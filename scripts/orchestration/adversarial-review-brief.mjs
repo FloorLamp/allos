@@ -190,6 +190,181 @@ export const HIGH_STAKES = [
   },
 ];
 
+// ---- the DIFF tier: what the change actually DOES ---------------------------
+//
+// #4842. The two tiers above read a PATH and a PARAGRAPH, and both directions of
+// that failed in one night:
+//
+//   * FALSE NEGATIVE. PR #4801 moved a write-authorization boundary — an action's
+//     `requireWriteAccess()` became `gateItemProfile(formData)`, so a client-posted
+//     `profile_id` now decides whose dose row is written — and came back `ordinary`,
+//     because it described the change in mechanism ("threads the subject through the
+//     panel") rather than in category. A falsifying pass run over the tool's head
+//     REFUTED it. PR #4834 the same, one surface over.
+//   * FALSE POSITIVE. PR #4881 came back CONSULT quoting
+//     "| `phi-scan` | OK — no likely-real PHI in 5440 files |" — a gate reporting
+//     that it found NOTHING, read as a claim that PHI was leaving a surface.
+//
+// One cause: an author can phrase either mistake into existence without meaning
+// to, and the better the PR's writing is about mechanism the less its prose trips
+// a keyword. So the EVIDENCE is now the hunks. A call to the write gate is on a
+// changed line or it is not; a `profile_id` predicate is in the WHERE clause or it
+// is not. Neither is a matter of phrasing.
+//
+// WHERE THIS VOCABULARY COMES FROM, since a guard's pattern must be how the REPO
+// writes the construct and not how an issue describes it. Every symbol below was
+// taken from the module that defines it and counted across lib/, app/ and
+// components/ (`git grep -c "\b<sym>\s*("`), not from a list in a brief:
+//   lib/auth.ts             requireWriteAccess 402, requireProfileWriteAccess 146,
+//                           requireAdmin 95, accessForProfile 35,
+//                           requireLoginWriteAccess 17, accessibleProfiles(ForLogin) 34
+//   app/(app)/gate-item.ts  gateItemProfile 157
+//   lib/scope.ts            requireScope 38
+//   lib/cross-profile.ts    profileIdsIn 46, authorizedProfileSubset 16
+//   lib/multi-view.ts       readForProfiles 54, itemAffordanceVisible 21,
+//                           subjectChipVisible 19
+//   lib/appointment-sensitivity.ts  sharedSurfaceDetail 19
+//   lib/notifications/managing-logins.ts  managingLoginIdsForProfile 40
+//   the cross-profile render flag, `crossProfile`, 49 across 11 files
+//
+// `requireSession` is DELIBERATELY ABSENT. It authenticates and decides no write
+// authority (lib/auth.ts says so: the write guard is the authoritative boundary,
+// and requireSession is what every read page calls), it has 189 call sites, and a
+// new page adds one — so it names a fact about every diff rather than about this
+// one.
+
+/**
+ * Signals read from a CHANGED LINE, either side of the diff. The question is not
+ * "was this call added" but "did this diff move it at all": #4801 removed
+ * `requireWriteAccess()` and added `gateItemProfile()` in one hunk, #4702 deleted a
+ * gated cross-profile action outright, and a gate that moves is the boundary
+ * moving whichever sign the line carries.
+ */
+export const CHANGED_CALL_SIGNALS = [
+  {
+    signal: "authorization gate",
+    verdict: "MANDATORY",
+    rx: /\b(?:requireWriteAccess|requireProfileWriteAccess|requireLoginWriteAccess|requireAdmin|gateItemProfile|accessForProfile|accessibleProfiles(?:ForLogin)?|requireScope|authorizedProfileSubset|profileIdsIn)\s*\(/,
+    why: "a call that decides who may write or reach a profile's rows changed position — the login/profile authorization boundary moved",
+  },
+  {
+    signal: "cross-profile visibility",
+    verdict: "CONSULT",
+    rx: /\b(?:sharedSurface[A-Za-z]*|itemAffordanceVisible|subjectChipVisible|readForProfiles|managingLoginIdsForProfile|crossProfile)\b/,
+    why: "what a shared surface shows about ANOTHER profile changed — an orchestrator reads the hunk, because widening and narrowing look identical from outside",
+  },
+];
+
+/**
+ * Signals read as a NET COUNT over the whole diff, because the hazard is LOSS and
+ * a construct MOVED between two files in one PR is not a loss. Whole-diff rather
+ * than per-file for exactly that reason: #4706 moved a profile-scoped DELETE out
+ * of one write core, and per-file it read as a removal.
+ *
+ * ONE DIRECTION, and the asymmetry is measured rather than assumed. Over the 96
+ * PRs merged to 2026-09-03 (#4652–#4881) a net writeTx REMOVAL occurs 0 times and
+ * a net ADDITION twice (#4746 wraps a new supersede write, #4831 moves one
+ * writeTx from `notifications/index.ts` into `delivery-marker.ts`) — neither is
+ * the hazard, and a write path that GAINS a transaction fails loudly in the DB
+ * tier while one that loses it corrupts silently.
+ */
+export const NET_REMOVAL_SIGNALS = [
+  {
+    signal: "profile scoping",
+    rx: /\bprofile_id\s*(?:=|!=|<>)|\bprofile_id\s+IN\b/gi,
+    why: "a query lost a profile_id predicate — the filter that keeps one profile's rows out of another's read or write",
+  },
+  {
+    signal: "write transaction",
+    rx: /\bwriteTx\s*\(|\.immediate\(\)/g,
+    why: "a write path lost its IMMEDIATE transaction (#468) — a read-then-write that no longer commits atomically",
+  },
+];
+
+// A comment is not a call. #4702's household action deleted an eleven-line comment
+// NAMING requireProfileWriteAccess as well as the call itself; without this the
+// quoted evidence is the sentence about the gate rather than the gate.
+const COMMENT_LINE = /^\s*(?:\/\/|\/\*|\*)/;
+
+/**
+ * Every changed line of a shipped, non-test file, with the hunk header it sits
+ * under — so a verdict can name the file AND the hunk that earned it rather than
+ * a keyword.
+ *
+ * @param {string | undefined} patch a unified diff
+ * @returns {{ hunk: string, sign: 1 | -1, text: string }[]}
+ */
+function changedLines(patch) {
+  const out = [];
+  let hunk = "";
+  for (const line of (patch ?? "").split("\n")) {
+    if (line.startsWith("@@")) {
+      hunk = line.slice(0, line.indexOf("@@", 2) + 2);
+      continue;
+    }
+    if (line.startsWith("+++") || line.startsWith("---")) continue;
+    if (!line.startsWith("+") && !line.startsWith("-")) continue;
+    const text = line.slice(1);
+    if (COMMENT_LINE.test(text)) continue;
+    out.push({ hunk, sign: line.startsWith("+") ? 1 : -1, text });
+  }
+  return out;
+}
+
+/**
+ * What the diff DOES, as evidence: one entry per signal per file, each quoting the
+ * changed line and naming its hunk.
+ *
+ * @param {string[]} files
+ * @param {Record<string, string>} [patches] filename -> unified diff
+ * @returns {{ file: string, hunk: string, signal: string, verdict: string,
+ *   why: string, line: string }[]}
+ */
+export function diffSignals(files, patches) {
+  const hits = [];
+  const shipped = files.filter(
+    (f) => SHIPPED_CODE.test(f) && !TEST_FILE.test(f)
+  );
+  const net = new Map(NET_REMOVAL_SIGNALS.map((s) => [s.signal, 0]));
+  const lastRemoval = new Map();
+  for (const file of shipped) {
+    const seen = new Set();
+    for (const { hunk, sign, text } of changedLines(patches?.[file])) {
+      for (const rule of CHANGED_CALL_SIGNALS) {
+        if (seen.has(rule.signal) || !rule.rx.test(text)) continue;
+        seen.add(rule.signal);
+        hits.push({
+          file,
+          hunk,
+          signal: rule.signal,
+          verdict: rule.verdict,
+          why: rule.why,
+          line: `${sign > 0 ? "+" : "-"}${text.trim()}`,
+        });
+      }
+      for (const rule of NET_REMOVAL_SIGNALS) {
+        const n = (text.match(rule.rx) ?? []).length;
+        if (!n) continue;
+        net.set(rule.signal, net.get(rule.signal) + sign * n);
+        if (sign < 0) lastRemoval.set(rule.signal, { file, hunk, text });
+      }
+    }
+  }
+  for (const rule of NET_REMOVAL_SIGNALS) {
+    if (net.get(rule.signal) >= 0) continue;
+    const at = lastRemoval.get(rule.signal);
+    hits.push({
+      file: at.file,
+      hunk: at.hunk,
+      signal: rule.signal,
+      verdict: "MANDATORY",
+      why: rule.why,
+      line: `-${at.text.trim()}`,
+    });
+  }
+  return hits;
+}
+
 // ---- the CONSULT tier: what the PR says about itself ------------------------
 //
 // Four of the five misses above were repaired by adding a glob for the file that
@@ -388,14 +563,25 @@ function netExpectDelta(patch) {
   return delta;
 }
 
-// Prose only. A PR body carries three things this tier must not read: fenced
+// Prose only. A PR body carries four things this tier must not read: fenced
 // blocks (pasted gate transcripts and command output), the PR template's own
 // checklist (`- [x] No PHI in code, fixtures, seed`, on 12 of 73 path-ordinary
-// PRs), and the generated footer. None of them is a claim the author is making
-// about the change.
+// PRs), the GATE RESULTS SECTION, and the generated footer. None of them is a
+// claim the author is making about the change.
+//
+// THE GATE SECTION IS A TRANSCRIPT WHEREVER IT IS SPELLED (#4842). This tier
+// already dropped `=== GATE` lines and fenced output, and PR #4881 walked through
+// the gap between them: its results are a markdown TABLE under `## Gates`, and the
+// row "| `phi-scan` | OK — no likely-real PHI in 5440 files |" — a gate reporting
+// it found NOTHING — came back CONSULT as a claim that PHI was leaving a surface.
+// The heading is the repo's own idiom, not an invention: of the 96 PRs merged to
+// 2026-09-03 (#4652–#4881), 24 carry a gate section and all 24 spell it `Gates`
+// (`## Gates`, `## Gates (all on this head)`, `### Gates`). Everything under it,
+// to the next heading of the same or higher level, is machinery output.
 export function claimProse(markdown) {
   const kept = [];
   let fenced = false;
+  let gateDepth = 0;
   for (const raw of (markdown ?? "").split("\n")) {
     const line = raw.replace(/\r$/, "");
     if (/^\s*(?:```|~~~)/.test(line)) {
@@ -403,6 +589,16 @@ export function claimProse(markdown) {
       continue;
     }
     if (fenced) continue;
+    const heading = /^\s*(#{1,6})\s/.exec(line);
+    if (heading) {
+      const depth = heading[1].length;
+      if (/^\s*#{1,6}\s*(?:the\s+)?gates?\b/i.test(line)) {
+        gateDepth = depth;
+        continue;
+      }
+      if (gateDepth && depth <= gateDepth) gateDepth = 0;
+    }
+    if (gateDepth) continue;
     if (/^\s*[-*+]\s*\[[ xX]\]/.test(line)) continue;
     if (/^\s*=+\s*GATE\b/i.test(line)) continue;
     if (/^\s*_Generated by \[Claude Code\]/.test(line)) continue;
@@ -510,25 +706,38 @@ export function classify({ files, sources, patches }) {
     const rule = HIGH_STAKES.find((r) => r.glob.test(file));
     if (rule) pathHits.push({ file, why: rule.why });
   }
-  if (pathHits.length) {
+  // `patches` is optional: a caller with no diff text gets the path-and-filename
+  // rules alone, which is what every pre-#3044 caller already had — and the diff
+  // tier simply finds nothing, rather than reporting an absence it never looked for.
+  const diffHits = diffSignals(files, patches);
+  const weakened = weakenedTests(files, patches);
+  const scoped = shipsRuntimeCode(files) || weakened.length > 0;
+  // EVIDENCE ORDER, and it is the whole of #4842: what the diff DOES outranks what
+  // the PR SAYS. A declared path and a moved authorization gate are both facts an
+  // author cannot phrase away, so either one is MANDATORY. The prose tier survives
+  // BELOW them, unchanged and still incapable of saying MANDATORY, because the five
+  // PRs of #3030 are semantic misses no path or hunk rule reaches — a word remains a
+  // reason to ASK, never evidence of a defect.
+  const mandatory =
+    pathHits.length > 0 || diffHits.some((h) => h.verdict === "MANDATORY");
+  if (mandatory) {
     return {
       verdict: "MANDATORY",
       exit: EXIT.mandatory,
       pathHits,
+      diffHits,
       vocabHits: [],
-      weakened: [],
+      weakened,
       scoped: true,
     };
   }
-  // `patches` is optional: a caller with no diff text simply gets the path-and-
-  // filename scope rule, which is what every pre-#3044 caller already had.
-  const weakened = weakenedTests(files, patches);
-  const scoped = shipsRuntimeCode(files) || weakened.length > 0;
   const vocabHits = scoped ? vocabularyHits(sources) : [];
+  const consult = diffHits.length > 0 || vocabHits.length > 0;
   return {
-    verdict: vocabHits.length ? "CONSULT" : "ordinary",
-    exit: vocabHits.length ? EXIT.consult : EXIT.ordinary,
+    verdict: consult ? "CONSULT" : "ordinary",
+    exit: consult ? EXIT.consult : EXIT.ordinary,
     pathHits,
+    diffHits,
     vocabHits,
     weakened,
     scoped,
@@ -644,18 +853,32 @@ function main(argv) {
     if (issue && typeof issue.number === "number") linkedIssues.push(issue);
   }
 
-  const { verdict, exit, pathHits, vocabHits, weakened, scoped } = classify({
-    files,
-    sources: claimSources(pr, linkedIssues),
-    patches,
-  });
+  const { verdict, exit, pathHits, diffHits, vocabHits, weakened, scoped } =
+    classify({
+      files,
+      sources: claimSources(pr, linkedIssues),
+      patches,
+    });
+
+  // The reasoning is printed so it can be CHECKED, not trusted: every diff signal
+  // names the file, the hunk header and the changed line that earned it, so an
+  // orchestrator reads the same evidence the tool read (#4842).
+  const printDiff = (tier) => {
+    for (const h of diffHits.filter((d) => d.verdict === tier)) {
+      console.error(`  [${h.signal}] ${h.file} ${h.hunk} — ${h.why}`);
+      console.error(`      ${h.line}`);
+    }
+  };
 
   if (verdict === "MANDATORY") {
-    console.error(`MANDATORY — high-stakes paths in PR #${prNumber}:`);
-    for (const h of pathHits) console.error(`  ${h.file}  (${h.why})`);
+    console.error(`MANDATORY — PR #${prNumber} (${files.length} files):`);
+    for (const h of pathHits) {
+      console.error(`  [declared path] ${h.file}  (${h.why})`);
+    }
+    printDiff("MANDATORY");
   } else if (verdict === "CONSULT") {
     console.error(
-      `CONSULT — no declared path matched in PR #${prNumber} (${files.length} files), but its own text is about a safety-relevant behaviour.`
+      `CONSULT — no declared path and no authorization signal in PR #${prNumber} (${files.length} files), but something here decides more than it says.`
     );
     if (weakened.length) {
       console.error(
@@ -663,15 +886,16 @@ function main(argv) {
       );
     }
     console.error(
-      "An ORCHESTRATOR decides whether the lane runs. Read these claims, not the terms:"
+      "An ORCHESTRATOR decides whether the lane runs. Read this evidence, not the terms:"
     );
+    printDiff("CONSULT");
     for (const h of vocabHits) {
       console.error(`  [${h.term}] ${h.where} — ${h.why}`);
       console.error(`      "${h.quote}"`);
     }
   } else {
     console.error(
-      `ordinary — no declared path and no safety vocabulary matched in PR #${prNumber} (${files.length} files${scoped ? "" : "; the diff ships no runtime code"}).`
+      `ordinary — no declared path, nothing in the hunks, and no safety vocabulary in PR #${prNumber} (${files.length} files${scoped ? "" : "; the diff ships no runtime code"}).`
     );
   }
   if (checkOnly) process.exit(exit);
@@ -682,11 +906,16 @@ function main(argv) {
   const body =
     (pr.body ?? "").trim() ||
     "(the PR has no body — its commits' messages carry the claims)";
-  const surface = pathHits.length
-    ? pathHits.map((h) => `- ${h.file} — ${h.why}`).join("\n")
-    : vocabHits.length
-      ? vocabHits.map((h) => `- ${h.term} (${h.where}) — ${h.why}`).join("\n")
-      : "- (dispatched by --force; the surface is the orchestrator's judgement)";
+  // The refuter is handed the SAME evidence the verdict was reached on — file and
+  // hunk first, so the attack starts at the line rather than at the category.
+  const surfaceLines = [
+    ...pathHits.map((h) => `- ${h.file} — ${h.why}`),
+    ...diffHits.map((h) => `- ${h.file} ${h.hunk}  ${h.line}\n  (${h.why})`),
+    ...vocabHits.map((h) => `- ${h.term} (${h.where}) — ${h.why}`),
+  ];
+  const surface = surfaceLines.length
+    ? surfaceLines.join("\n")
+    : "- (dispatched by --force; the surface is the orchestrator's judgement)";
 
   console.log(`You are the ADVERSARIAL REVIEWER for FloorLamp/allos PR #${prNumber}
 ("${pr.title}"). You are a second, independent lane — the ordinary review
