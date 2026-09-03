@@ -69,14 +69,10 @@ export function clinicalResultClaimsFreshness(
 
 // WHERE A RESULT HOSTS ITS OWN ACKNOWLEDGE CONTROL (#3225, generalising #4232).
 //
-// An acknowledgment SPENDS A CLAIM, so the control belongs on a row that has one to
-// spend — the freshness claim above, or plain notability, which is the precedence
-// this issue's reorder takes away. `isNotableFlag` is the same gate the result detail
-// page's "Seen it" uses, so one rule decides both mounts instead of two.
-//
-// The second half is where the control is MISSING: a key that already carries an
-// attention item hosts the menu there, and a second control posting the same signal
-// would be two controls for one state.
+// An acknowledgment SPENDS A CLAIM, so the control goes on a row that has one to
+// spend — freshness, or the notable-first precedence this issue's reorder takes away
+// — and nowhere a second control would post the same signal, which is a key already
+// carrying an attention item.
 //
 // #4232 wrote the first half as freshness ALONE, and its reasoning ("its only mount
 // is the attention row's menu — which a non-flagged result never has") holds only
