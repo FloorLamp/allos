@@ -275,3 +275,115 @@ describe("labeled-verb adoption retires the …now and Mark … verbs (issue #47
     expect(retiredVerbCopy("components/Plant.tsx", source)).toHaveLength(count);
   });
 });
+
+// ── THE ROW'S PAINT, AND WHY ONLY THE BRAND HALF IS SCANNED (issue #4548) ────
+//
+// `components/OfferRow.tsx` is the other half of this substrate — the chip above is
+// the compact offer, the row is the full-width one, and they already share
+// `OFFER_VERB_TONE`. The brand tint was copied byte-identically at four call sites
+// while `DoseHistoryPanel` had extracted a DIFFERENT constant for the neutral one, so
+// the rule here is the same one the chip tokens get: THE PAINT LIVES IN THE PRIMITIVE.
+//
+// THE SIGNATURE IS THE PAIR, not either token, because `bg-brand-50/60` alone is the
+// app's ordinary brand tint and four shipped surfaces wear it as a STATIC panel
+// (`ExerciseDetailPanel`, `StrengthSets` twice, `CreateVisitFromRecord`, and
+// `RestTimer`'s resting arm). What makes a tint an OFFER is that it responds to a
+// pointer: the resting token beside a `hover:bg-brand-*`. Onboarding's choice cards
+// spell theirs `has-checked:bg-brand-50/60`, which is why the token is matched whole
+// and not as a substring.
+//
+// WHAT IT CANNOT SEE, said plainly:
+//   • THE NEUTRAL TONE. Its tokens (`bg-surface` + `hover:bg-(--ghost-hover)`) are
+//     this app's generic ghost-surface vocabulary — twelve shipped non-offer surfaces
+//     wear them — so a rule there would cry wolf on all of them and be deleted within
+//     a week, taking the brand rule with it (#3325's lesson). The neutral copy that
+//     #4548 names is gone; nothing guards a second one.
+//   • A PAIR SPLIT ACROSS TWO LITERALS of one className. Every copy #4548 found was
+//     written as ONE string, which is how this repo spells a row's paint, so that is
+//     what is matched — per literal, so a ternary whose arms are exclusive (RestTimer)
+//     cannot be paired with itself.
+//   • ANYTHING OUTSIDE app/ AND components/, and whether the literal renders at all.
+const OFFER_IMPLEMENTATION = "components/OfferRow.tsx";
+const OFFER_TINT = "bg-brand-50/60";
+const OFFER_HOVER = /^hover:bg-brand-/;
+
+function offerRowPaint(file: string, text: string): string[] {
+  if (file === OFFER_IMPLEMENTATION || !text.includes(OFFER_TINT)) return [];
+  const source = ts.createSourceFile(
+    file,
+    text,
+    ts.ScriptTarget.Latest,
+    true,
+    file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS
+  );
+  const findings: string[] = [];
+  function visit(node: ts.Node) {
+    if (ts.isStringLiteralLike(node) || ts.isTemplateLiteralToken(node)) {
+      const words = node.text.split(/\s+/);
+      if (words.includes(OFFER_TINT) && words.some((w) => OFFER_HOVER.test(w)))
+        findings.push(
+          `${file}:${
+            source.getLineAndCharacterOfPosition(node.getStart()).line + 1
+          }`
+        );
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(source);
+  return findings;
+}
+
+describe("Offer row residual (issue #4548)", () => {
+  it("keeps the brand offer tint inside the primitive", () => {
+    const findings = ["app", "components"]
+      .flatMap(sourceFiles)
+      .flatMap((file) =>
+        offerRowPaint(file, fs.readFileSync(path.join(ROOT, file), "utf8"))
+      );
+    expect(
+      findings,
+      "A brand-tinted row whose tap performs the write it describes is " +
+        "`<OfferRow tone=\"brand\">`; margins stay the caller's. These spell its " +
+        `paint by hand:\n${findings.join("\n")}`
+    ).toHaveLength(0);
+  });
+
+  it.each([
+    // [what the forged file spells, how many findings the rule must report]
+    [
+      "a direct copy of the row's className",
+      '<button className="mb-2.5 flex w-full items-center gap-3 rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 text-left transition hover:bg-brand-50 disabled:opacity-50 dark:border-brand-900 dark:bg-brand-950/40 dark:hover:bg-brand-950/60">A</button>',
+      1,
+    ],
+    [
+      "a hoisted constant, the shape DoseHistoryPanel had",
+      'const OFFER_ROW_CLASS = "border-brand-200 bg-brand-50/60 hover:bg-brand-50";\nexport default () => <button className={OFFER_ROW_CLASS}>A</button>;',
+      1,
+    ],
+    [
+      "the paint inside a template literal's own text",
+      '<button className={`${base} bg-brand-50/60 hover:bg-brand-50`}>A</button>',
+      1,
+    ],
+    // The silences that keep the rule worth having: a tint that does not respond to a
+    // pointer is a PANEL, and onboarding's choice card carries the token only behind a
+    // `has-checked:` prefix.
+    [
+      "a static brand-tinted panel (ExerciseDetailPanel's shape)",
+      '<div className="mt-4 rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 dark:border-brand-900 dark:bg-brand-950/40">A</div>',
+      0,
+    ],
+    [
+      "a ternary whose arms are exclusive (RestTimer's shape)",
+      '<div className={`rounded-xl border ${done ? "border-emerald-400 hover:bg-brand-50" : "border-brand-200 bg-brand-50/60"}`}>A</div>',
+      0,
+    ],
+    [
+      "onboarding's choice card, where the tint is checked-state only",
+      '<label className="rounded-xl border transition hover:border-brand-300 has-checked:bg-brand-50/60">A</label>',
+      0,
+    ],
+  ])("%s: reports %i", (_name, source, count) => {
+    expect(offerRowPaint("components/Plant.tsx", source)).toHaveLength(count);
+  });
+});
