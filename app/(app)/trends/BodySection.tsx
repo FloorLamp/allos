@@ -526,6 +526,7 @@ export default async function BodySection({
     // its goal overlay + the shared event annotations came here with it.
     vitalsCharts.push({
       key: "resting_hr",
+      slug: "resting-hr",
       testid: "vitals-resting-hr",
       detailHref: metricDetailHref("resting-hr"),
       title: TREND_METRIC_META["resting-hr"].title,
@@ -639,23 +640,15 @@ export default async function BodySection({
       unit: ` ${wu}`,
       color: chartSeries.brand,
       ...goalOverlay("weight", weightChart, ` ${wu}`, 1),
-      // Contextual entry to the bulk-correction panel (#1603): a bad RUN in this
-      // chart (miscalibrated scale, lb-as-kg import) is fixed in one pass on
-      // Data → Review, not row-at-a-time. A FOOTER action, not a headerAction:
-      // the header row is the card's full-width tap target (#1488, pinned by
-      // chart-tap-through.spec) and must not cede width to a sibling affordance.
-      footerAction: (
-        <DestinationLink
-          href="/data?section=review&fix=weight#bulk-correction"
-          className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
-          data-testid="body-weight-fix-range"
-        >
-          Fix a range
-        </DestinationLink>
-      ),
+      // The bulk-correction door is EARNED now, not placed (#4924 fix 6): the
+      // card's footer band renders it for any metric the review page can correct
+      // while that chart is naming a live outage, from `correctionField` in the
+      // registry. Weight was the only card that had it, and every metric with a
+      // bad imported run has the same problem.
     },
     bodyfat: {
       key: "bodyfat",
+      slug: "body-fat",
       testid: "body-chart-bodyfat",
       detailHref: metricDetailHref("body-fat"),
       title: TREND_METRIC_META["body-fat"].title,
@@ -668,6 +661,7 @@ export default async function BodySection({
     // vitals section is resting HR's one home now.
     resting_hr: {
       key: "resting_hr",
+      slug: "resting-hr",
       detailHref: metricDetailHref("resting-hr"),
       title: TREND_METRIC_META["resting-hr"].title,
       data: restingHrChart,

@@ -18,6 +18,7 @@ import {
   savedMetricIdForTrendSlug,
   trendMetricChartScale,
   TREND_METRIC_META,
+  type TrendMetricSlug,
 } from "@/lib/trend-metrics";
 import { metricSeriesKey } from "@/lib/saved-items";
 import type { DayFillWindow } from "@/lib/day-fill";
@@ -93,6 +94,11 @@ export interface TrendChartSpec {
   // The gap-registry series this chart densifies as, when its key is not a registry
   // slug (sleep's shared per-night key). A slug-keyed chart derives its own.
   gapSeriesKey?: string;
+  // WHICH registry metric this card is, for the two body cards whose key spells it
+  // differently (`bodyfat`, `resting_hr`). Identity, not behaviour: what the card
+  // then GETS from the registry — the axis treatment, the bulk-correction key — is
+  // the registry's to decide, never a per-card prop.
+  slug?: TrendMetricSlug;
 }
 
 // ONE member of the body census flat ranked stack (#1674).
@@ -236,8 +242,11 @@ export default function TrendMetricCharts({
   // four builders had to remember to pass; a card that forgot got recharts'
   // defaults silently. Derived here from the same `key` the gap policy is derived
   // from, so the domain a metric declares reaches every surface that draws it.
+  const metricOf = (chart: TrendChartSpec): TrendMetricSlug | null =>
+    chart.slug ?? (isTrendMetricSlug(chart.key) ? chart.key : null);
+
   const scaleFor = (chart: TrendChartSpec) => {
-    const slug = isTrendMetricSlug(chart.key) ? chart.key : null;
+    const slug = metricOf(chart);
     return slug
       ? trendMetricChartScale(TREND_METRIC_META[slug])
       : { yDomain: undefined, groupYTicks: undefined };
@@ -317,22 +326,26 @@ export default function TrendMetricCharts({
         testid={chart.testid}
         headerAction={chart.headerAction}
         detailHref={chart.detailHref}
+        // The card owns the whole band (#4924): this hands it the pieces and
+        // composes nothing of its own, so the chart's captions, the projection
+        // note and the action cannot arrive in three wrappers with three margins.
         footer={
-          chart.projectionNote || chart.footer || chart.footerAction ? (
+          chart.projectionNote || chart.footer ? (
             <>
               {chart.projectionNote && (
-                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   {chart.projectionNote}
                 </p>
               )}
               {chart.footer}
-              {chart.footerAction && (
-                <div className="mt-2 flex justify-end">
-                  {chart.footerAction}
-                </div>
-              )}
             </>
           ) : null
+        }
+        footerAction={chart.footerAction}
+        fixRangeField={
+          metricOf(chart)
+            ? TREND_METRIC_META[metricOf(chart)!].correctionField
+            : undefined
         }
       >
         {lone ? (

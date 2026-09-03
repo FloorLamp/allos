@@ -58,7 +58,7 @@ export default async function TrainingZonesSection({
           model ? (
             <>
               {!data.hasHrData && (
-                <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
+                <p className="text-sm text-slate-500 dark:text-slate-400">
                   No heart-rate data yet. Sync a wearable (Health Connect) or
                   import workouts with HR to see your zone distribution.
                 </p>

@@ -2,6 +2,8 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { IconArrowsMaximize } from "@tabler/icons-react";
 import type { AppRoute } from "@/lib/hrefs";
+import type { CorrectionFieldId } from "@/lib/bulk-correction";
+import ChartCaptionBand from "./ChartCaptionBand";
 
 // THE full-size chart card (issue #1488).
 //
@@ -87,6 +89,8 @@ export default function ChartCard({
   surfaceClass = "card",
   plotHeightClass = "sm:h-64",
   footer,
+  footerAction,
+  fixRangeField,
   children,
 }: {
   title: string;
@@ -134,8 +138,16 @@ export default function ChartCard({
   surfaceClass?: string;
   // The DESKTOP plot height (`sm:` and up). Mobile is always the square.
   plotHeightClass?: string;
-  // Rendered under the plot (a goal-projection caption, a legend, a footnote).
+  // Rendered under the plot (a goal-projection caption, a legend, a footnote), in
+  // the card's own footer band beneath the chart's captions (#4924). Nothing here
+  // brings its own top margin: the band spaces its children.
   footer?: ReactNode;
+  // A right-aligned affordance at the foot of the band (a cross-link).
+  footerAction?: ReactNode;
+  // The `?fix=` key the review page accepts for this card's metric, if it has
+  // one. Renders the bulk-correction door WHEN the chart is naming a live outage
+  // — see ChartCaptionBand.
+  fixRangeField?: CorrectionFieldId;
   // The plot. Never wrapped in a link — see the tap contract above.
   children: ReactNode;
 }) {
@@ -224,16 +236,22 @@ export default function ChartCard({
         </p>
       )}
 
-      {/* The plot. A plain sibling of the header link — no anchor wraps it, so a tap
-          here is tooltip inspection, not navigation. */}
-      <div
-        data-testid="chart-card-plot"
-        className={`chart-card-plot aspect-square min-w-0 sm:aspect-auto ${plotHeightClass}`}
+      {/* The plot and the band beneath it. The plot is a plain sibling of the
+          header link — no anchor wraps it, so a tap here is tooltip inspection,
+          not navigation — and the band is where every sentence under a chart
+          goes, whether the card wrote it or the chart handed it up (#4924). */}
+      <ChartCaptionBand
+        footer={footer}
+        footerAction={footerAction}
+        fixRangeField={fixRangeField}
       >
-        {children}
-      </div>
-
-      {footer}
+        <div
+          data-testid="chart-card-plot"
+          className={`chart-card-plot aspect-square min-w-0 sm:aspect-auto ${plotHeightClass}`}
+        >
+          {children}
+        </div>
+      </ChartCaptionBand>
     </div>
   );
 }

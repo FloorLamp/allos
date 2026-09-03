@@ -37,10 +37,8 @@ import {
 } from "./chart-scaffold";
 import { chartBand, chartSeries } from "@/lib/chart-colors";
 import { categoryDateTicks } from "@/lib/chart-time-axis";
-import Link from "next/link";
 import SingleReadingMark from "./SingleReadingMark";
 import { formatLongDate, formatMonthDay } from "@/lib/format-date";
-import { dataSectionHref } from "@/lib/hrefs";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { groupChartValue, roundChartValue } from "@/lib/chart-format";
 import {
@@ -75,6 +73,7 @@ import {
 } from "@/lib/trend-sparkline";
 import type { DaySourceSpread } from "@/lib/metric-sources";
 import { EmptyState } from "@/components/ui";
+import { useChartCaptions } from "./ChartCaptionBand";
 
 // A full ISO date (YYYY-MM-DD) — distinguishes date series (which get the
 // compact-axis + friendly-tooltip default below) from time/category x-values.
@@ -421,9 +420,6 @@ export default function LineChartCard({
     ...(referenceBand ? [referenceBand] : []),
     ...(referenceBands ?? []),
   ];
-  if (data.length === 0) {
-    return <EmptyState message="No data yet" />;
-  }
   // The value formatter the tooltip shares between the mean line, the companion
   // marks and (aggregated charts only) the band's low–high pair — one number shape
   // per chart.
@@ -467,6 +463,39 @@ export default function LineChartCard({
     isoDates && key === "value" && !singleReadingAsChart
       ? loneReading(data)
       : null;
+  // THE CAPTIONS GO UP TO THE CARD (#4924). They used to be `<p>`s inside the
+  // wrapper this component returned — a wrapper that sat INSIDE the card's
+  // fixed-height plot slot, so the sentences overflowed the box and printed over
+  // the card's own footer or flush against its bottom edge. What crosses the
+  // boundary is a DESCRIPTOR: the sentences are this chart's, because only it
+  // knows its own gaps, its aggregation and its sources; the layout is the
+  // card's, because it owns the height and the padding.
+  //
+  // Unconditional, and above the two degrade returns below, because it is a HOOK:
+  // an empty card and a one-reading mark hand up nothing, they do not skip the
+  // call. A sparkline hands up nothing either — a tile has no room for a
+  // sentence, and its numbers are the caller's.
+  useChartCaptions(
+    sparkline || data.length === 0 || (lone != null && lone.value != null)
+      ? null
+      : {
+          ...(spreadCaption ? { spread: spreadCaption } : {}),
+          ...(longRange
+            ? { longRange: longRangeCaption(longRange.grain) }
+            : {}),
+          ...(sparse ? { sparse: sparseSeriesCaption(sparse) } : {}),
+          ...(trailingHole && lastReadingDate
+            ? {
+                trailingOutage: trailingOutageCaption(
+                  formatMonthDay(lastReadingDate, formatPrefs)
+                ),
+              }
+            : {}),
+        }
+  );
+  if (data.length === 0) {
+    return <EmptyState message="No data yet" />;
+  }
   if (lone && lone.value != null) {
     return (
       <div className={`${heightClass} min-w-0 max-w-full`}>
@@ -807,69 +836,5 @@ export default function LineChartCard({
       </ResponsiveContainer>
     </div>
   );
-  // Every caption here is an honesty note ABOUT THE MARK, and a sparkline takes
-  // none of them: a tile has no room for a sentence, and its numbers are the
-  // caller's.
-  if (sparkline || (!longRange && !sparse && !trailingHole && !spreadCaption))
-    return chart;
-  return (
-    <div className="min-w-0 max-w-full">
-      {chart}
-      {/* WHOSE READINGS THESE ARE (#2653 state 6). The grey marks are the one thing
-          on the plot a reader has no other way to name, so the caption names them —
-          which source is plotted, how many days another also covered, and who — and
-          takes no side: which number is right is not something the chart knows. */}
-      {spreadCaption && (
-        <p
-          className="mt-1.5 text-xs text-slate-500 dark:text-slate-400"
-          data-testid="chart-source-spread-note"
-        >
-          {spreadCaption}
-        </p>
-      )}
-      {/* The aggregated chart's honesty caption (#1938): each point is a summary,
-          and the plot must say so on the surface, not only in the tooltip. */}
-      {longRange && (
-        <p
-          className="mt-1.5 text-xs text-slate-500 dark:text-slate-400"
-          data-testid="chart-long-range-note"
-        >
-          {longRangeCaption(longRange.grain)}
-        </p>
-      )}
-      {/* The demoted plot's count (#2653 state 5). Same slot, same neutral text
-          token, no chip and no colour — it lets a reader price the stroke, and a
-          badge would make the chart look more considered instead of less
-          certain. */}
-      {sparse && (
-        <p
-          className="mt-1.5 text-xs text-slate-500 dark:text-slate-400"
-          data-testid="chart-sparse-note"
-        >
-          {sparseSeriesCaption(sparse)}
-        </p>
-      )}
-      {/* THE LIVE OUTAGE, NAMED (#2653 state 4). The chart already drew the hole;
-          this says when it started and routes to where the diagnosis lives. It is
-          deliberately NOT a verdict — #2146's quiet-stream judgement stays on
-          Data → Review, and this annotation only explains a gap the reader can
-          already see and offers the one door that leads somewhere about it. */}
-      {trailingHole && lastReadingDate && (
-        <p
-          className="mt-1.5 text-xs text-slate-500 dark:text-slate-400"
-          data-testid="chart-trailing-outage-note"
-        >
-          {trailingOutageCaption(formatMonthDay(lastReadingDate, formatPrefs))}{" "}
-          ·{" "}
-          <Link
-            href={dataSectionHref("review")}
-            className="text-link"
-            data-testid="chart-trailing-outage-link"
-          >
-            Data → Review
-          </Link>
-        </p>
-      )}
-    </div>
-  );
+  return chart;
 }

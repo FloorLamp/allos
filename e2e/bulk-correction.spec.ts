@@ -36,6 +36,12 @@ function dayStr(daysAgo: number): string {
 }
 // Six consecutive days, ending five days before frozen "today".
 const RUN_DATES = RUN_LB.map((_, i) => dayStr(10 - i));
+// The same run, ended long enough ago that the weight chart is naming a LIVE
+// OUTAGE — past `METRIC_GAP_LIMIT_DAYS.weight` (21, the habit tier) and inside
+// the 90-day default window. Since #4924 the bulk-correction door is earned by
+// that caption rather than hand-placed on this one card, so the link test has to
+// seed a chart that is showing it.
+const OUTAGE_RUN_DATES = RUN_LB.map((_, i) => dayStr(40 - i));
 
 interface SeededRun {
   profileId: number;
@@ -45,7 +51,7 @@ interface SeededRun {
 
 // Reset THIS profile's rows and insert the fixture run + one manual row inside
 // the same date range (which the source-scoped correction must never touch).
-function seedRun(): SeededRun {
+function seedRun(dates: readonly string[] = RUN_DATES): SeededRun {
   const db = new Database(workerDbPath());
   try {
     db.pragma("busy_timeout = 5000");
@@ -65,7 +71,7 @@ function seedRun(): SeededRun {
        VALUES (?, ?, ?, ?)`
     );
     const runIds = RUN_LB.map((v, i) =>
-      Number(ins.run(profileId, RUN_DATES[i], v, SRC).lastInsertRowid)
+      Number(ins.run(profileId, dates[i], v, SRC).lastInsertRowid)
     );
     const manualId = Number(
       ins.run(profileId, dayStr(7), MANUAL_KG, null).lastInsertRowid
@@ -195,16 +201,22 @@ test("preview → apply → undo corrects an lb-as-kg run, locks it, and skips l
 test("the Body weight chart's 'Fix a range' link lands on the panel with weight pre-selected (#1603)", async ({
   browser,
 }) => {
-  seedRun();
+  seedRun(OUTAGE_RUN_DATES);
   const page = await loginAs(browser, {
     username: E2E_LOGIN_BULKFIX,
     password: E2E_MEMBER_PASSWORD,
   });
   try {
     await page.goto("/trends");
+    const weight = page.getByTestId("body-chart-weight");
+    // The door is EARNED (#4924): it is here because this chart is naming a live
+    // outage, and the caption saying so is on the same card.
+    await expect(
+      weight.getByTestId("chart-trailing-outage-note")
+    ).toBeVisible();
     await followLink(
       page,
-      page.getByTestId("body-weight-fix-range"),
+      weight.getByTestId("chart-fix-range"),
       /\/data\?section=review&fix=weight/
     );
     await expect(page.getByTestId("bulk-correction-card")).toBeVisible();
