@@ -20,15 +20,16 @@ import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { dateStrInTz } from "@/lib/date";
 
 // One PRN (as-needed) medication's shared quick-log row (#797).
-// A primary one-tap records an administration NOW; "Earlier dose" reveals
-// the shared WhenControl (#2236) — a DATED absolute time, empty until stated, with
-// a one-tap "Now" — the retro-entry home ("gave it at 4pm, logging it now"). The
-// old relative chips (30 min / 1 hr ago) are gone: a relative offset is computed at
-// TAP time, so it drifts with every minute a rendered page sits open, which is the
-// argument lib/correction-time.ts already made and this control never saw
-// — the failure #2236 exists to end. Each successful log is a real administration
-// (the ledger allows multiples/day), and the action's own revalidate brings back the
-// updated "N today · last …" subtitle with its response.
+// A primary one-tap records an administration NOW; the clock door beside it — this
+// row's retired "Earlier dose" words, now the glyph the ruling makes the statement's
+// only spelling (#4426) — reveals the shared WhenControl (#2236): a DATED absolute
+// time, empty until stated, with a one-tap "Now", the retro-entry home ("gave it at
+// 4pm, logging it now"). The old relative chips (30 min / 1 hr ago) are gone: a
+// relative offset is computed at TAP time, so it drifts with every minute a rendered
+// page sits open, which is the argument lib/correction-time.ts already made and this
+// control never saw — the failure #2236 exists to end. Each successful log is a real
+// administration (the ledger allows multiples/day), and the action's own revalidate
+// brings back the updated "N today · last …" subtitle with its response.
 //
 // THE DAY COMES FROM THE CARD, THE STATEMENT STATES THE TIME (#4691, converged by
 // #4426 under #4738's ruling 3). The row used to hand the WhenControl `minDate ===
