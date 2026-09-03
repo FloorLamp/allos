@@ -190,6 +190,15 @@ export function priorEventWindows(
  * night rather than a moment. An hour: below that the floor is whatever the watch
  * happened to catch, and a single low minute from a half-worn night would sit in a
  * paired-observation arm as if it were a night's reading.
+ *
+ * THE ARGUMENT IS MEASURED; THE NUMBER IS NOT (owner ruling 2026-09-03, on #4775).
+ * That a half-worn night's minimum is not a night's minimum is a real property of the
+ * data. Sixty minutes is a judgement about where that stops being true, and nothing
+ * was counted to pick it — prod holds no CGM-era wear-gap distribution to fit it to.
+ * So it is deliberately a round hour rather than a precise-looking 45 or 75, which
+ * would imply a fit that was never done. If someone later measures the distribution of
+ * measured-minutes per night, this is the constant that should move, and moving it is
+ * a data question rather than a taste one.
  */
 export const OVERNIGHT_MIN_MEASURED_MIN = 60;
 
