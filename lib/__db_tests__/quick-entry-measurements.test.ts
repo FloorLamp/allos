@@ -11,7 +11,10 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { db, today } from "@/lib/db";
 import { setTimezone } from "@/lib/settings";
-import { setProfileBirthdate, setStoredAge } from "@/lib/settings/profile-attrs";
+import {
+  setProfileBirthdate,
+  setStoredAge,
+} from "@/lib/settings/profile-attrs";
 import { measurementsQuickEntry } from "@/lib/quick-entry-measurements";
 import { HEAD_CIRC_ENTRY_MAX_AGE_MONTHS } from "@/lib/growth-metrics";
 import { GROWTH_CHART_MAX_AGE } from "@/lib/life-stage";
@@ -47,7 +50,12 @@ describe("measurementsQuickEntry (#4891)", () => {
   // (!isGrowthTracked / isGrowthTracked), so one profile per side of
   // GROWTH_CHART_MAX_AGE proves both at once.
   it.each([
-    [GROWTH_CHART_MAX_AGE - 1, true, false, "growth-tracked (under the ceiling)"],
+    [
+      GROWTH_CHART_MAX_AGE - 1,
+      true,
+      false,
+      "growth-tracked (under the ceiling)",
+    ],
     [GROWTH_CHART_MAX_AGE, false, true, "adult (at the ceiling)"],
   ] as const)(
     "age %i: %s, %s (%s)",
@@ -76,12 +84,15 @@ describe("measurementsQuickEntry (#4891)", () => {
       false,
       "exactly at the ceiling",
     ],
-  ] as const)("head circumference at birthdate %s (%s)", (birthdate, expected, _label) => {
-    const profileId = makeProfile(`head-circ-${birthdate}`);
-    setProfileBirthdate(profileId, birthdate);
-    const entry = measurementsQuickEntry(LOGIN_ID, profileId, DATE);
-    expect(entry.showHeadCirc).toBe(expected);
-  });
+  ] as const)(
+    "head circumference at birthdate %s (%s)",
+    (birthdate, expected, _label) => {
+      const profileId = makeProfile(`head-circ-${birthdate}`);
+      setProfileBirthdate(profileId, birthdate);
+      const entry = measurementsQuickEntry(LOGIN_ID, profileId, DATE);
+      expect(entry.showHeadCirc).toBe(expected);
+    }
+  );
 
   it(`stays hidden past ${HEAD_CIRC_ENTRY_MAX_AGE_MONTHS} months regardless of the year-keyed gates`, () => {
     // A growth-tracked 10-year-old: showGrowth is true, but the head-circ window

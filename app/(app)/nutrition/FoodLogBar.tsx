@@ -875,8 +875,7 @@ export default function FoodLogBar({
     form.set("group_key", slug);
     form.set("date", date);
     const truthProfileId = subjectProfileId ?? activeProfileId;
-    if (truthProfileId != null)
-      form.set("profile_id", String(truthProfileId));
+    if (truthProfileId != null) form.set("profile_id", String(truthProfileId));
     let truth: FoodServingTruthResult;
     try {
       truth = await readFoodServingTruth(form);
@@ -2431,7 +2430,9 @@ export default function FoodLogBar({
                 eatenAt: editing.eatenAt,
                 loggedAt: editing.loggedTime,
               }}
-              subjectProfileId={subjectProfileId ?? activeProfileId ?? undefined}
+              subjectProfileId={
+                subjectProfileId ?? activeProfileId ?? undefined
+              }
               testId="food-correct"
               onSaved={settleCorrection}
               onCancel={closeCorrection}

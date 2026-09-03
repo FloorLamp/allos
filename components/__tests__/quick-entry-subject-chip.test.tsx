@@ -152,9 +152,7 @@ describe("the quick-log sheet's subject chip (#4932)", () => {
 
     const bodyBefore = screen.getByTestId("quick-entry-body");
     fireEvent.click(chip);
-    fireEvent.click(
-      screen.getByTestId(`quick-entry-subject-option-${SAM.id}`)
-    );
+    fireEvent.click(screen.getByTestId(`quick-entry-subject-option-${SAM.id}`));
 
     // The block collapsed, the chip now names Sam, and the gather re-ran FOR Sam —
     // one gate, the SAME reader, just a different subject argument.

@@ -127,7 +127,11 @@ const KINDS = [
   {
     name: "measurements",
     seed: (_profileId: number) => ({}) as { doseId?: number },
-    write: (subjectId: number | null, date: string, _seeded: { doseId?: number }) =>
+    write: (
+      subjectId: number | null,
+      date: string,
+      _seeded: { doseId?: number }
+    ) =>
       addMeasurements(
         fd({
           date,
@@ -138,12 +142,16 @@ const KINDS = [
       ),
     landed: (profileId: number, date: string, _seeded: { doseId?: number }) =>
       bodyWeightOf(profileId, date) === 70,
-    untouched: (profileId: number, date: string, _seeded: { doseId?: number }) =>
-      bodyWeightOf(profileId, date) === null,
+    untouched: (
+      profileId: number,
+      date: string,
+      _seeded: { doseId?: number }
+    ) => bodyWeightOf(profileId, date) === null,
   },
   {
     name: "dose (resolveDayDoses, #4429)",
-    seed: (profileId: number) => seedPendingDose(profileId) as { doseId?: number },
+    seed: (profileId: number) =>
+      seedPendingDose(profileId) as { doseId?: number },
     write: (
       subjectId: number | null,
       date: string,
@@ -187,7 +195,11 @@ const KINDS = [
   {
     name: "stool",
     seed: (_profileId: number) => ({}) as { doseId?: number },
-    write: (subjectId: number | null, date: string, _seeded: { doseId?: number }) =>
+    write: (
+      subjectId: number | null,
+      date: string,
+      _seeded: { doseId?: number }
+    ) =>
       logStoolForm(
         fd({
           type: 4,
@@ -197,13 +209,20 @@ const KINDS = [
       ),
     landed: (profileId: number, date: string, _seeded: { doseId?: number }) =>
       bristolCountOf(profileId, date) === 1,
-    untouched: (profileId: number, date: string, _seeded: { doseId?: number }) =>
-      bristolCountOf(profileId, date) === 0,
+    untouched: (
+      profileId: number,
+      date: string,
+      _seeded: { doseId?: number }
+    ) => bristolCountOf(profileId, date) === 0,
   },
   {
     name: "substance",
     seed: (_profileId: number) => ({}) as { doseId?: number },
-    write: (subjectId: number | null, _date: string, _seeded: { doseId?: number }) =>
+    write: (
+      subjectId: number | null,
+      _date: string,
+      _seeded: { doseId?: number }
+    ) =>
       logSubstanceUnitAction(
         fd({
           substance: "cannabis",
@@ -212,8 +231,11 @@ const KINDS = [
       ),
     landed: (profileId: number, date: string, _seeded: { doseId?: number }) =>
       substanceUnitsOf(profileId, date, "cannabis") === 1,
-    untouched: (profileId: number, date: string, _seeded: { doseId?: number }) =>
-      substanceUnitsOf(profileId, date, "cannabis") === 0,
+    untouched: (
+      profileId: number,
+      date: string,
+      _seeded: { doseId?: number }
+    ) => substanceUnitsOf(profileId, date, "cannabis") === 0,
   },
 ] as const;
 

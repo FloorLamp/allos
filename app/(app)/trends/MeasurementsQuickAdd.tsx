@@ -651,7 +651,10 @@ export default function MeasurementsQuickAdd({
     try {
       saved = await addMeasurements(stampLoggedVia(formData));
     } catch (err) {
-      if (profileId == null && shouldQueueOffline(navigator.onLine !== false, err)) {
+      if (
+        profileId == null &&
+        shouldQueueOffline(navigator.onLine !== false, err)
+      ) {
         const captured = await queueOffline();
         if (captured === "queued") return;
         if (captured !== "unqueueable") {

@@ -391,7 +391,11 @@ export async function loadQuickEntry(
     // logging an EXISTING tracked practice does not (`logPractice` already follows
     // the subject through `gateItemProfile`).
     const practices = getTrackedPractices(profile.id, date);
-    if (practices.length === 0 && subjectProfileId != null && subjectProfileId !== actingProfile.id) {
+    if (
+      practices.length === 0 &&
+      subjectProfileId != null &&
+      subjectProfileId !== actingProfile.id
+    ) {
       return {
         form: "unavailable",
         message:

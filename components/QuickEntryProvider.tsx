@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -175,6 +176,12 @@ type LoadState =
   | { status: "ready"; data: QuickEntryBody }
   | { status: "error" };
 
+// The stall bound a cold "Loading…" may sit under before the sheet admits the
+// gather is not coming back (#3416 proposal 3) — long enough that an ordinary slow
+// connection still finishes first, short enough that a dead one does not leave the
+// sheet looking merely quiet.
+const QUICK_ENTRY_LOAD_TIMEOUT_MS = 10_000;
+
 export default function QuickEntryProvider({
   children,
   measurements,
@@ -220,10 +227,26 @@ export default function QuickEntryProvider({
     setPickerOpen(false);
   }, []);
 
+  // LAST-GOOD, PER (FORM, SUBJECT) (#3416/#4454). Held in a ref, not state: it is
+  // read synchronously inside `loadFor` and never itself drives a render — only the
+  // `ready`/`error` state transitions below do. Keyed on the subject (#4932's Refs:
+  // "the subject joins #3416's snapshot key") so a cached read for Mia can never
+  // paint as Alex's, and cleared whenever the ACTING profile changes (below) — the
+  // same device-local wipe boundary ProfileSwitchWatcher enforces for the offline
+  // read snapshots, extended to this in-memory one.
+  const lastGoodRef = useRef(new Map<string, QuickEntryData>());
+  const priorActingProfileId = useRef(actingProfileId);
+  useLayoutEffect(() => {
+    if (priorActingProfileId.current !== actingProfileId) {
+      priorActingProfileId.current = actingProfileId;
+      lastGoodRef.current.clear();
+    }
+  }, [actingProfileId]);
+
   // ONE GATHER, taking the subject (#4932's own wording: "loadQuickEntry has one
   // subject parameter and one gate; no second copy of the gather per subject").
-  // Reused by both a fresh open and a mid-sheet subject switch, so the two can
-  // never diverge into two readers of the same form.
+  // Reused by a fresh open, a mid-sheet subject switch AND a retry (below), so none
+  // of the three can diverge into its own reader of the same form.
   const loadFor = useCallback(
     (next: QuickEntryForm, subjectId: number, token: number) => {
       // NO ROUND TRIP for measurements — the props are already here (#4091), and
@@ -246,13 +269,39 @@ export default function QuickEntryProvider({
         });
         return;
       }
-      setState({ status: "loading" });
+      const key = `${next}:${subjectId}`;
+      const cached = lastGoodRef.current.get(key);
+      // LAST-GOOD RENDER, REVALIDATE BEHIND IT (#3416 proposal 1). A held copy from
+      // an earlier successful open of this SAME (form, subject) pair renders
+      // immediately instead of a loading state that would be a lie about what the
+      // sheet already knows; the fetch below still runs regardless — the SAME one
+      // gather an open always made (#3369: no extra query for having a cache).
+      setState(
+        cached ? { status: "ready", data: cached } : { status: "loading" }
+      );
+      // THE STALL BOUND (#3416 proposal 3): with no last-good to fall back on, a
+      // gather that never settles must not leave "Loading…" up forever. ~10s, so a
+      // slow-but-real network still finishes ahead of it in the ordinary case.
+      const stallTimer = cached
+        ? null
+        : setTimeout(() => {
+            if (requestRef.current === token) setState({ status: "error" });
+          }, QUICK_ENTRY_LOAD_TIMEOUT_MS);
       void loadQuickEntry(next, subjectId).then(
         (data) => {
-          if (requestRef.current === token) setState({ status: "ready", data });
+          if (stallTimer != null) clearTimeout(stallTimer);
+          if (requestRef.current !== token) return;
+          lastGoodRef.current.set(key, data);
+          setState({ status: "ready", data });
         },
         () => {
-          if (requestRef.current === token) setState({ status: "error" });
+          if (stallTimer != null) clearTimeout(stallTimer);
+          if (requestRef.current !== token) return;
+          // A FAILED REVALIDATE BEHIND A LAST-GOOD RENDER KEEPS WHAT IS ALREADY
+          // SHOWN (#3416 proposal 1) — the person is mid-use of a form that just
+          // proved it still has yesterday's answer; only a COLD failure (nothing
+          // cached yet) reaches the error state.
+          if (!cached) setState({ status: "error" });
         }
       );
     },
@@ -307,6 +356,15 @@ export default function QuickEntryProvider({
     [subject, form, loadFor, writableProfiles, toast]
   );
 
+  // Re-runs the SAME gather (#3416 proposal 3) — the error state's Retry button, and
+  // the one thing that gets the sheet out of a stalled/cold-failed open without
+  // closing it. No-op once the sheet has no form (already closed).
+  const retry = useCallback(() => {
+    if (form == null) return;
+    const token = ++requestRef.current;
+    loadFor(form, subject, token);
+  }, [form, subject, loadFor]);
+
   const api = useMemo<QuickEntryApi>(
     () => ({ open: openForm, close }),
     [openForm, close]
@@ -343,7 +401,7 @@ export default function QuickEntryProvider({
         <Avatar profile={subjectInfo} size="sm" />
         <span className="truncate">{subjectInfo.name}</span>
         <IconChevronDown
-          className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform dark:text-slate-500 ${
+          className={`h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform dark:text-slate-400 ${
             pickerOpen ? "rotate-180" : ""
           }`}
           aria-hidden
@@ -421,6 +479,7 @@ export default function QuickEntryProvider({
                 state={state}
                 prefill={prefill}
                 onDone={close}
+                onRetry={retry}
                 subjectProfileId={subjectId}
               />
             </div>
@@ -435,11 +494,16 @@ function QuickEntryBody({
   state,
   prefill,
   onDone,
+  onRetry,
   subjectProfileId,
 }: {
   state: LoadState;
   prefill: QuickEntryPrefill | null;
   onDone: () => void;
+  // #3416 proposal 3: re-runs the SAME gather in place — the error state's Retry
+  // button. Never called from any other branch; a ready form has nothing to retry
+  // and a loading one is already trying.
+  onRetry: () => void;
   // The chosen subject (#4932), already narrowed to "explicit and non-acting" by
   // the caller — every form below carries it through to its own write(s), gated
   // server-side by `gateItemProfile` (or, for the two forms whose write cannot yet
@@ -459,13 +523,24 @@ function QuickEntryBody({
   }
   if (state.status === "error") {
     return (
-      <p
-        role="alert"
-        data-testid="quick-entry-error"
-        className="py-6 text-sm text-rose-600 dark:text-rose-400"
-      >
-        Couldn&apos;t open that form. Close this and try again.
-      </p>
+      <div data-testid="quick-entry-error" className="py-6">
+        {/* #3416 proposal 3: the copy stops instructing "close this and try
+            again" — the button does the trying. A stalled gather (past
+            QUICK_ENTRY_LOAD_TIMEOUT_MS) reaches here exactly like a hard
+            rejection; both are the same "try again" ask to the person looking
+            at the sheet. */}
+        <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
+          Couldn&apos;t open that form.
+        </p>
+        <button
+          type="button"
+          data-testid="quick-entry-retry"
+          onClick={onRetry}
+          className="btn-ghost mt-2"
+        >
+          Retry
+        </button>
+      </div>
     );
   }
 
