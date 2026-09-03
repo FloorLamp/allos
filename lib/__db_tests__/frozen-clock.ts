@@ -58,12 +58,25 @@
 // one assertion, no relevant diff between them.
 //
 // So the day the wall time lands on is now chosen against the real clock rather than
-// taken from it: past the wall time, freeze on the NEXT UTC day. The gap that was at
-// worst 15 minutes negative is instead never less than MIN_LEAD_OVER_REAL_CLOCK_MS
-// positive, which is the same argument this paragraph already makes, carried to the
-// one case it did not reach. The endorsed instant is still 23:45, still late on its
-// own day, and the date still tracks the real calendar — one day ahead of it for the
-// last hour and a quarter of each day, never drifting further.
+// taken from it: once the real clock is past the wall time, freeze on the NEXT UTC
+// day. The gap that was at worst 15 minutes negative is positive for every real
+// instant instead, which is the same argument this paragraph already makes, carried
+// to the one case it did not reach. The endorsed instant is still 23:45, still late
+// on its own day, and the date still tracks the real calendar — one day ahead of it
+// for the last quarter-hour of each day, never drifting further.
+//
+// AND THE GAP IS BOUNDED ABOVE AS WELL, AT 24 HOURS, which is not obvious and is the
+// reason this rolls the day at the wall time rather than comfortably BEFORE it. The
+// same file's `auth.test.ts:326` asserts a slid DB expiry is more than 29 days out
+// while reading `Date.now()` off the frozen clock, so it fails once the freeze leads
+// SQL by a full day. Measured, by moving the wall time 30 minutes ahead of the real
+// clock so a one-hour lead margin rolled the day: `expected 2503805000 to be greater
+// than 2505600000`, auth.test.ts:326. A margin wide enough to cover a whole tier run
+// would therefore have traded this issue's 15-minute red for a longer one earlier in
+// the evening. The two bounds leave the lead in (0, 24h) and nothing to spend, so the
+// residual case this does NOT fix is a run that starts in the minutes BEFORE 23:45
+// and reaches a SQL-judged assertion after it; closing that needs the seam on
+// auth.test.ts's side, not a different instant here.
 
 import { afterAll, beforeAll, beforeEach, vi } from "vitest";
 
@@ -76,30 +89,17 @@ export function frozenInstantForDay(day: string): Date {
 }
 
 /**
- * How far ahead of the real clock the frozen instant must always sit.
- *
- * SQLite's `datetime('now')` keeps advancing through a run that the fake Date does
- * not, so a lead smaller than the tier's own wall time is a lead the real clock can
- * eat before the last assertion reads it. The tier's worst measured wall time is
- * 862 s, on this same contended orchestration box at load average 18.1
- * (vitest.timeouts.ts, measured 2026-08-21); an hour is ~4.2x that, the margin that
- * file derives its own ceilings at, and its whole cost is that the frozen date is a
- * day ahead of the real one for the 75 minutes a day the rollover is in force.
- */
-export const MIN_LEAD_OVER_REAL_CLOCK_MS = 60 * 60 * 1000;
-
-/**
  * The instant to freeze at, given the real clock: FROZEN_WALL_TIME_UTC on `realNow`'s
- * own UTC day, or on the NEXT one when today's has passed or is too close to leave
- * MIN_LEAD_OVER_REAL_CLOCK_MS between the two clocks.
+ * own UTC day, or on the NEXT one once that has already gone by.
  *
  * Takes the real clock as an ARGUMENT rather than reading it, so the property that
- * matters — the returned instant leads `realNow`, at every minute of the day — is
- * checkable without waiting for 23:45 (./frozen-clock.test.ts).
+ * matters — the returned instant leads `realNow` by more than nothing and less than a
+ * day, at every minute of the day — is checkable without waiting for 23:45
+ * (./frozen-clock.test.ts). Both bounds are load-bearing; see the header.
  */
 export function frozenInstantFrom(realNow: Date): Date {
   const instant = frozenInstantForDay(realNow.toISOString().slice(0, 10));
-  if (instant.getTime() - realNow.getTime() < MIN_LEAD_OVER_REAL_CLOCK_MS) {
+  if (instant.getTime() <= realNow.getTime()) {
     instant.setUTCDate(instant.getUTCDate() + 1);
   }
   return instant;

@@ -13,7 +13,6 @@ import {
   FROZEN_WALL_TIME_UTC,
   frozenInstantForDay,
   frozenInstantFrom,
-  MIN_LEAD_OVER_REAL_CLOCK_MS,
   TIER_FROZEN_INSTANT,
 } from "./frozen-clock";
 
@@ -74,25 +73,35 @@ describe("the db/action tiers freeze the clock (#4509)", () => {
   });
 });
 
-// THE FROZEN INSTANT MUST LEAD SQLITE'S CLOCK (#4837). The fake Date does not
-// advance and `datetime('now')` does, so a JS-seeded expiry judged against a SQL
-// timestamp is only correct while the frozen instant is AHEAD. Before this, the day
-// came from the real clock unconditionally, which put the instant up to 15 minutes
-// BEHIND it every night after 23:45 — `auth.test.ts:346` tolerates 1000 ms and went
-// red on four PRs at once. These drive the choice with an injected real clock, so
-// the window is reachable at any hour rather than only between 23:45 and midnight.
-describe("the frozen instant leads the real clock (#4837)", () => {
+// THE FROZEN INSTANT MUST LEAD SQLITE'S CLOCK, BY LESS THAN A DAY (#4837). The fake
+// Date does not advance and `datetime('now')` does, so a JS-seeded expiry judged
+// against a SQL timestamp is only correct while the frozen instant is AHEAD. Before
+// this, the day came from the real clock unconditionally, which put the instant up to
+// 15 minutes BEHIND it every night after 23:45 — `auth.test.ts:346` tolerates 1000 ms
+// and went red on four PRs at once.
+//
+// THE UPPER BOUND IS THE HALF NOBODY EXPECTS, and it is why the day rolls at the wall
+// time and not before it: `auth.test.ts:326` reads `Date.now()` off the frozen clock
+// against a slid DB expiry and allows 29 of its 30 days, so a lead of a full day fails
+// it. A margin added below to cover a whole tier run pushes the lead past 24h and
+// simply moves the daily red an hour earlier — measured, not reasoned:
+// `expected 2503805000 to be greater than 2505600000`.
+//
+// These drive the choice with an injected real clock, so both edges are reachable at
+// any hour rather than only between 23:45 and midnight.
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+describe("the frozen instant leads the real clock, by less than a day (#4837)", () => {
   it.each([
     [
       "mid-morning, nowhere near the wall time",
       "2026-09-02T09:00:00.000Z",
       "2026-09-02",
     ],
-    ["an hour and a half before it", "2026-09-02T22:15:00.000Z", "2026-09-02"],
     [
-      "inside the lead margin, before the wall time",
-      "2026-09-02T23:00:00.000Z",
-      "2026-09-03",
+      "a minute before it, still ahead",
+      "2026-09-02T23:44:00.000Z",
+      "2026-09-02",
     ],
     [
       "one second past it — the first red minute",
@@ -117,29 +126,29 @@ describe("the frozen instant leads the real clock (#4837)", () => {
     );
   });
 
-  // The property the table's rows are examples of, over a whole UTC day at the
-  // resolution the defect appears at. The minimum is asserted rather than each
-  // reading, so a failure prints the worst lead — which is the number that says how
-  // long SQLite's clock had to overtake the freeze.
-  it("never freezes at an instant SQLite's clock can reach mid-run", () => {
+  // The property the rows above are examples of, over a whole UTC day at the
+  // resolution the defect appears at. The extremes are asserted rather than each
+  // reading, so a failure prints the worst lead in whichever direction went wrong —
+  // which is the number that says how long SQLite's clock had to overtake the freeze,
+  // or how far past a day it ran.
+  it("keeps the lead over SQLite's clock inside (0, 24h] at every minute", () => {
     const leads = Array.from({ length: 24 * 60 }, (_, minute) => {
       const realNow = new Date(Date.UTC(2026, 8, 2, 0, minute));
       return frozenInstantFrom(realNow).getTime() - realNow.getTime();
     });
-    expect(Math.min(...leads)).toBeGreaterThanOrEqual(
-      MIN_LEAD_OVER_REAL_CLOCK_MS
-    );
-  });
-
-  // The margin is only worth stating if it is bigger than the run it has to survive:
-  // 862 s is the tier's worst measured wall time (vitest.timeouts.ts).
-  it("keeps a margin larger than the tier's own worst measured wall time", () => {
-    expect(MIN_LEAD_OVER_REAL_CLOCK_MS).toBeGreaterThan(862_000);
+    expect(Math.min(...leads)).toBeGreaterThan(0);
+    // A FULL DAY IS REACHABLE AND SAFE, at the one instant `realNow` IS the wall
+    // time: the roll lands exactly 24h out, and every SQL timestamp compared against
+    // it is read later than this, so the lead an assertion actually sees is already
+    // under a day. Anything WIDER is the failure this bound is here for — a lead
+    // margin of M puts the maximum at 24h + M and moves auth.test.ts:326's red
+    // earlier in the evening instead of removing it.
+    expect(Math.max(...leads)).toBeLessThanOrEqual(DAY_MS);
   });
 
   // And the instant THIS run froze at leads the clock it actually has to beat.
-  // Measured against SQLite rather than against `Date.now()`, which this tier fakes
-  // to the frozen instant itself and which would therefore compare it to itself:
+  // Measured against SQLite rather than against `Date.now()`, which this tier fakes to
+  // the frozen instant itself and which would therefore compare it to itself:
   // `datetime('now')` is the unreachable real clock the whole invariant is about.
   it("holds for the instant this run actually froze at", () => {
     const sqlRealNow = Date.parse(
@@ -147,8 +156,8 @@ describe("the frozen instant leads the real clock (#4837)", () => {
         db.prepare("SELECT datetime('now') AS t").get() as { t: string }
       ).t.replace(" ", "T") + "Z"
     );
-    expect(TIER_FROZEN_INSTANT.getTime() - sqlRealNow).toBeGreaterThanOrEqual(
-      MIN_LEAD_OVER_REAL_CLOCK_MS
-    );
+    const lead = TIER_FROZEN_INSTANT.getTime() - sqlRealNow;
+    expect(lead).toBeGreaterThan(0);
+    expect(lead).toBeLessThan(DAY_MS);
   });
 });
