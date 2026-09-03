@@ -2,12 +2,16 @@
 //
 // Two things are pinned here that a pure parser test cannot reach.
 //
-// 1. THE ROUTING THROUGH THE REAL INGEST, in both directions. An interstitial record
-//    lands in `glucose_trace` and NOT in `medical_records`; a capillary record and an
-//    unset one land in `medical_records` under `Glucose` and NOT in the trace; the
-//    connection's switch turns all three into traces. A test asserting only that the
-//    unset default stays an observation is green on a tree where nothing ever becomes
-//    a trace, so both halves are one table.
+// 1. THE ROUTING THROUGH THE REAL INGEST, in both directions. The connection's
+//    declaration decides and nothing in the record does: undeclared, all three
+//    shapes land in `medical_records` under `Glucose` and NOT in the trace;
+//    declared, all three land in `glucose_trace` and NOT in `medical_records`. A
+//    test asserting only the undeclared half is green on a tree where nothing ever
+//    becomes a trace, so both halves are one pair of tables over the same shapes.
+//    The interstitial row stays in them deliberately: it is what the removed
+//    `specimen_source` clause used to route (owner ruling 2026-09-03 on #3182,
+//    because the exporter never writes the field — #4929), so it is the case that
+//    would go wrong first if a content-sniffing branch came back.
 //
 // 2. THE LATE-`data_origin` RECONCILIATION. The exporter emits record metadata
 //    CONDITIONALLY, so the same sensor's readings arrive bare and then qualified. The
@@ -72,19 +76,15 @@ function glucoseObservations(): number {
 
 describe("Health Connect glucose routing (#3182)", () => {
   it.each([
-    ["interstitial fluid", { specimen_source: "interstitial_fluid" }, "trace"],
-    ["capillary", { specimen_source: "capillary_blood" }, "observation"],
-    ["unset", {}, "observation"],
-  ])("switch off — %s lands as a %s", (_name, rec, expected) => {
+    ["interstitial fluid", { specimen_source: "interstitial_fluid" }],
+    ["capillary", { specimen_source: "capillary_blood" }],
+    ["unset", {}],
+  ])("switch off — %s lands as an observation", (_name, rec) => {
     push([{ time: "2026-06-15T12:00:00Z", mmol_per_liter: 5.5, ...rec }]);
     expect({
       trace: traceRows().length,
       observations: glucoseObservations(),
-    }).toEqual(
-      expected === "trace"
-        ? { trace: 1, observations: 0 }
-        : { trace: 0, observations: 1 }
-    );
+    }).toEqual({ trace: 0, observations: 1 });
   });
 
   it.each([

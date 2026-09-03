@@ -487,11 +487,12 @@ export function generateHealthConnectToken(
 
 // ---- "Treat glucose from this connection as a continuous sensor" (#3182) ----
 //
-// The per-connection override on the owner's ruling: when it is ON, every glucose
-// record from this connection routes to the trace store regardless of what the
-// record's specimen source says (or fails to say). OFF by default and nothing asks at
+// The per-connection declaration, and since #3182's 2026-09-03 ruling the ONLY thing
+// that routes glucose: ON sends every glucose record from this connection to the trace
+// store, whatever the records themselves carry. OFF by default and nothing asks at
 // setup — an absent key, an absent connection and an unparseable config all read as
-// off, which is the same safety default the field itself has.
+// off, so an undeclared connection stays on the observation path and nothing silently
+// becomes a trace.
 
 export function getHealthConnectCgmGlucose(profileId: number): boolean {
   return (

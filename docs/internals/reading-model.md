@@ -751,16 +751,31 @@ be registered under ANY name `frameUnstatedNames` returns (today `Glucose`, `Ins
 `blood_glucose` and land EVERY reading as a `medical_records` row under the band-less
 `Glucose`, so a CGM syncing through Health Connect produced the lab shape at trace
 volume. It could not simply key on the record type, because a fingerstick meter pushes
-the same one. The owner's ruling (2026-09-02) routes on `specimen_source`:
-**interstitial fluid** goes to the trace store; capillary, whole blood, every other
-value and — the safety default — an **UNSET** field stay a `medical_records` Glucose
-observation, so nothing silently becomes a trace. One switch on the connection screen,
-"Treat glucose from this connection as a continuous sensor", overrides the field for
-every glucose record from that connection; it is OFF by default and setup never raises
-it. What the field's allowed values are is the platform's business; what Dexcom or any
-meter app actually WRITES into it is not verified, and prod holds no CGM data — the
-default is a safety choice, not a measurement, and the switch is what the first person
-whose sensor leaves the field blank flips once.
+the same one. **The person says which, once, per connection, and that is the whole rule**:
+one switch on the connection screen, "Treat glucose from this connection as a
+continuous sensor", sends every glucose record from that connection to the trace store;
+it is OFF by default and setup never raises it. An undeclared connection stays on the
+`medical_records` Glucose observation path however its records are shaped, so nothing
+silently becomes a trace — a genuine discrete draw misrouted into a trace loses its
+identity, its band and its document. That default direction is a SAFETY CHOICE rather
+than a measurement, and nothing here has tested it: the observation path is the shipped
+one and #3182 is about the shape it produces, but **prod holds no CGM data at all** and
+this repo holds no real-exporter payload carrying glucose — outside the ingest code
+itself, `blood_glucose` appears only in the two #3182 test files and one synthetic
+fixture. So no sensor has reached either branch, and
+the switch is what the first person to link one turns on, once.
+
+The 2026-09-02 ruling also named a `specimen_source` clause — interstitial fluid to the
+trace, everything else and unset to observations — and #4913 built it. The owner removed
+it on 2026-09-03 (recorded on #3182) because it was dead on arrival: the only live sync
+path is the Health Connect webhook exporter, and that exporter never reads
+`specimenSource` off `BloodGlucoseRecord`. The word does not appear in its
+`SyncManager.kt`, and no recorded payload or fixture in this repo has ever carried the
+field. So every reading fell through to the default, which made the clause a
+discriminator in name only — worse than absent, because a reader would have believed
+the sensor was being asked about itself. #4929 tracks the four-line exporter change
+that would make the field real; if it lands, the clause comes back with the safety
+default intact, since an older exporter will still send nothing.
 
 The trace's `source` is `health-connect:<data_origin>`, the writing app qualifying the
 integration, because one Health Connect connection aggregates every app on the phone
