@@ -1406,7 +1406,9 @@ function collectEvents(
     if (!anchor) continue;
     if (assembled.id == null) continue; // no stable row → no detail route to link
     const detailItems: NonNullable<TimelineEvent["detailItems"]> = [];
-    for (const s of assembled.symptoms.filter(isLoggedSymptomSeries).slice(0, 6))
+    for (const s of assembled.symptoms
+      .filter(isLoggedSymptomSeries)
+      .slice(0, 6))
       detailItems.push({ label: s.label, value: severityLabel(s.maxSeverity) });
     if (assembled.maxTempF != null)
       detailItems.push({

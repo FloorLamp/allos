@@ -224,7 +224,14 @@ describe("dispatchTempRedFlagForEpisodeOpen (#4712)", () => {
 
     // 2 AM: the reading goes in. No episode exists, so the reading-keyed door finds
     // no finding and the phone stays dark — the defect, reproduced.
-    const reading = logTemperatureCore(child, 105.0, "F", date, "page", "02:00");
+    const reading = logTemperatureCore(
+      child,
+      105.0,
+      "F",
+      date,
+      "page",
+      "02:00"
+    );
     expect(reading.kind).toBe("logged");
     await dispatchTempRedFlagForReading(child, 105.0);
     expect(fetchMock).not.toHaveBeenCalled();
