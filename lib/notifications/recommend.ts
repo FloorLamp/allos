@@ -19,10 +19,7 @@ import {
   recoveryOverrideLine,
 } from "../workout-recommendation";
 import { parkedDisclosureLines } from "../weather-training";
-import {
-  niggleHeadsUpLine,
-  nigglesTouchingSession,
-} from "../niggle-model";
+import { niggleHeadsUpLine, nigglesTouchingSession } from "../niggle-model";
 import { exerciseSessionCount } from "../exercise-familiarity";
 import { isWorkoutNudgeSuppressed } from "../workout-nudge";
 import { workoutPresenceGate } from "../workout-presence-gate";
