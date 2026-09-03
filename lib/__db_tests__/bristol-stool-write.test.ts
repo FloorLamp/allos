@@ -35,6 +35,7 @@ import {
 import { BRISTOL_STOOL_METRIC } from "@/lib/bristol-stool";
 import { deleteMetricRow, updateMetricRow } from "@/lib/metric-readings";
 import { restoreDeletedRow } from "@/lib/undo-delete-db";
+import { STATED_FUTURE_SKEW_MS } from "@/lib/stated-time";
 import { FROZEN_WALL_TIME_UTC } from "./frozen-clock";
 
 // Profiles here take the instance-default timezone, so profile-local is UTC.
@@ -221,14 +222,25 @@ describe("logBristolStool — a stated time is judged (#4425)", () => {
   // Derived from the tier's own constant rather than retyped: if the freeze ever
   // moves, this table should move with it instead of going quietly wrong.
   const PINNED_HHMM = FROZEN_WALL_TIME_UTC.slice(0, 5);
+  // The future half is derived too, and for the same reason the line above is: it has
+  // to sit past `judgeStatedAt`'s skew AND still on the frozen day, which a retyped
+  // literal stops doing the moment the freeze moves. It used to read "23:55" against a
+  // 23:45 freeze; at 23:50 that is inside the skew and the row would be ACCEPTED, so
+  // the table would have gone on passing while testing the opposite verdict (#4837).
+  const FUTURE_HHMM = new Date(
+    Date.parse(`1970-01-01T${FROZEN_WALL_TIME_UTC}`) +
+      STATED_FUTURE_SKEW_MS +
+      120_000
+  )
+    .toISOString()
+    .slice(11, 16);
 
   it.each([
     // Before "now" on the pinned day — the ordinary backfill, kept as stated.
     ["08:12", undefined, "08:12"],
-    // Ten minutes after it — past the five-minute skew `judgeStatedAt` tolerates.
-    // The filed defect is "23:50 typed at 09:00"; the clock sits at 23:45 here
-    // because the file's other fixtures state evening times on the same day.
-    ["23:55", "future", PINNED_HHMM],
+    // Past the five-minute skew `judgeStatedAt` tolerates, derived from the freeze so
+    // it stays past it. The filed defect is "23:50 typed at 09:00".
+    [FUTURE_HHMM, "future", PINNED_HHMM],
   ])("%s → refused=%s, filed at %s", (at, refusal, filedAt) => {
     const date = today(profileId);
     expect(logBristolStool(profileId, date, 4, at)).toEqual(
@@ -243,7 +255,7 @@ describe("logBristolStool — a stated time is judged (#4425)", () => {
   // body-metric contract. A future time must not behave like a bad Bristol type.
   it("a refused time still files the movement", () => {
     const date = today(profileId);
-    logBristolStool(profileId, date, 6, "23:55");
+    logBristolStool(profileId, date, 6, FUTURE_HHMM);
     expect(getBristolReadings(profileId, date, date)).toEqual([
       { date, type: 6 },
     ]);

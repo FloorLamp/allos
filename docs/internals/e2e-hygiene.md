@@ -56,12 +56,15 @@ order-dependent. The recurring reds fall into four classes:
 clips horizontal overflow (`overflow-x-clip`), so a broken phone-width layout
 renders as invisible, unreachable content and the naive document-level
 `scrollWidth > clientWidth` check reads zero on every page. The blessed helper
-asserts ELEMENT-level containment — every rendered element's right edge inside
-the viewport unless it sits in a working `overflow-x: auto` container that
-itself fits — and folds the document-level check in for unclipped surfaces
-(share/print views). Set the phone viewport after auth, anchor on a
-page-specific element first, then call it; offenders are reported with
-tag/testid/class + widths. The hand-rolled form is now frozen at ZERO by the
+asserts what each element PAINTS (#4534) — its box intersected with every
+horizontally clipping ancestor and with the viewport — because "fits the
+viewport" is not "is visible": a `truncate` cluster cuts its children without
+moving their boxes. Excused: a working `overflow-x: auto` container that itself
+fits, a subtree the layout gave no room (a cell starved to zero, the 1px
+`sr-only` idiom), and a drawer parked off-canvas. The document-level check is
+folded in for unclipped surfaces (share/print views). Set the phone viewport
+after auth, anchor on a page-specific element first, then call it; offenders are
+reported as painted-against-box with the element that cut them. The hand-rolled form is now frozen at ZERO by the
 hygiene guard — see "Assertion integrity" below.
 
 4. **CI retries paint over everything ≤50% flaky.** `retries: 1–2` proves
@@ -365,7 +368,8 @@ every `(app)` page `document.documentElement.scrollWidth` equals the viewport
 width **no matter what the page contains** — measured under a 3000px-wide div
 injected into `<main>` at a 390px viewport, it still reads
 `{doc: 390, inner: 390}` and the comparison PASSES (the same page under
-`expectNoClippedContent` reports `right=3000 vs viewport=390`). Fifteen sites
+`expectNoClippedContent` reports `<div> paints 390px of its 3000px box (0→3000),
+cut by <main class="… overflow-x-clip …">`). Fifteen sites
 across thirteen specs hand-rolled that comparison as their mobile-overflow gate
 (one of them inverted, `> viewport` expected false — unconditionally false, same
 vacuity). Each one read like a guard, cost a line of review attention, and could
@@ -1543,6 +1547,20 @@ seam, **`lib/clock.ts`**:
   one). An externally-supplied `ALLOS_TEST_NOW` wins, so a boundary hour (e.g.
   `00:10` local) can be stress-tested on demand:
   `ALLOS_TEST_NOW="<today>T00:10:00" npm run test:e2e -- dashboard-illness-phase5 workout-presence`.
+
+**Forward-clock runs (#4370).** Moving that instant MONTHS ahead is the only
+instrument that finds a fixture which will age out later — a census over source
+text cannot, because the fuse can be a bare year inside a regex, and the worst
+half is an absence assertion that goes vacuously green once the year turns.
+`e2e-full.yml`'s `e2e-forward-clock` job runs the whole suite at +3 and +6 months
+on the weekly schedule; reproduce one locally with
+`ALLOS_TEST_NOW="2027-01-13T12:00:00Z" npm run test:e2e -- <spec>`. A red there is
+a fuse, not a regression — fix the fixture. Measured 2026-09-02 against #4369's
+pre-#4385 `ride-detail` assertion, restored on a scratch branch: green at the real
+clock, red at 2027 with `Received string: "Monday, January 11, 2027…"`. The
+neighbouring `not.toContainText("2026")` passed in that same run, which is the
+limit of the instrument — it catches the fuse that fires, never the assertion that
+stops meaning anything.
 
 `ALLOS_TEST_NOW` is a **test hook, not an operator knob** — it is deliberately
 absent from `.env.example`. `bootTasks` (`lib/migrations/boot-tasks.ts`) logs a

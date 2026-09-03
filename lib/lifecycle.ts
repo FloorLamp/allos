@@ -26,12 +26,12 @@
 //                            test that isHiddenUnderPolicy("safety-ungated", <any live
 //                            dismiss/snooze>, today) is ALWAYS false.
 //
-//   2. THE MARKER TRANSITION — the set/clear/freeze state machine an episode/health
-//      marker follows (the delivery-health marker #131/#192, the per-episode nudge
-//      markers' "frozen" third state #227). Named here so `decideMarker`
-//      (lib/notifications/delivery-status.ts) and the episode-marker consumers speak
-//      one vocabulary: a dispatch SETs a fresh failure, CLEARs a healed one, or FREEZEs
-//      (leaves untouched) when nothing actionable changed / a suppression stands.
+//   2. THE MARKER TRANSITION — the set/clear/freeze state machine an episode marker
+//      follows (the per-episode nudge markers' "frozen" third state #227; the
+//      delivery-health marker spoke it too until #2565 made that fact per-owner).
+//      Named here so the episode-marker consumers speak one vocabulary: a planner
+//      SETs a fresh marker, CLEARs a healed one, or FREEZEs (leaves untouched) when
+//      nothing actionable changed / a suppression stands.
 
 import type { SuppressionRecord } from "./upcoming-suppress";
 
@@ -81,10 +81,8 @@ export function isHiddenUnderPolicy(
 
 // The set/clear/freeze state machine a lifecycle MARKER follows. "freeze" is the third
 // state (#227): the marker is deliberately left exactly as it stood — a suppressed
-// nudge frozen at its old value, or a delivery-health marker a healthy dispatch didn't
-// touch because it never exercised the previously-failing channel (#192). Named here
-// so the delivery-health decision (`decideMarker`) and the episode-marker planners
-// share one vocabulary rather than each spelling "keep"/"leave"/"hold" its own way.
+// nudge frozen at its old value. Named here so the episode-marker planners share one
+// vocabulary rather than each spelling "keep"/"leave"/"hold" its own way.
 export const MARKER_LIFECYCLE_ACTIONS = ["set", "clear", "freeze"] as const;
 
 export type MarkerLifecycleAction = (typeof MARKER_LIFECYCLE_ACTIONS)[number];

@@ -24,7 +24,11 @@ import {
   getLoginPushDisabledKinds,
 } from "../settings";
 import { createLogger } from "../log";
-import type { NotificationChannel, NotificationMessage } from "./types";
+import type {
+  NotificationChannel,
+  NotificationKind,
+  NotificationMessage,
+} from "./types";
 import {
   buildPushPayload,
   isPushDeliverableKind,
@@ -33,6 +37,10 @@ import {
   type StoredPushSubscription,
 } from "./push-core";
 import { isKindEnabled } from "./home-assistant-core";
+import {
+  invalidateDeliveryOutcome,
+  recordDeliveryOutcome,
+} from "./delivery-marker";
 
 const log = createLogger("push");
 
@@ -97,7 +105,7 @@ function applyVapid(): boolean {
 
 // ---- Subscription store (per login) ----
 
-interface SubscriptionRow extends StoredPushSubscription {
+export interface SubscriptionRow extends StoredPushSubscription {
   login_id: number;
 }
 
@@ -117,6 +125,9 @@ export function savePushSubscription(
        auth = excluded.auth,
        last_used_at = datetime('now')`
   ).run(sub.endpoint, loginId, sub.p256dh, sub.auth);
+  // A new browser is a new configuration for this login (#2565): whatever the old set
+  // of browsers did says nothing about this one.
+  invalidateDeliveryOutcome("push", loginId);
 }
 
 // Remove one browser's subscription, scoped to the owning login so a login can
@@ -128,6 +139,7 @@ export function deletePushSubscription(
   db.prepare(
     "DELETE FROM push_subscriptions WHERE endpoint = ? AND login_id = ?"
   ).run(endpoint, loginId);
+  invalidateDeliveryOutcome("push", loginId);
 }
 
 // Delete a gone endpoint unconditionally (404/410 during send) — no login scope,
@@ -138,12 +150,12 @@ function deleteGoneEndpoint(endpoint: string): void {
 
 export function getPushSubscriptionsForLogin(
   loginId: number
-): StoredPushSubscription[] {
+): SubscriptionRow[] {
   return db
     .prepare(
-      "SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE login_id = ?"
+      "SELECT endpoint, login_id, p256dh, auth FROM push_subscriptions WHERE login_id = ?"
     )
-    .all(loginId) as StoredPushSubscription[];
+    .all(loginId) as SubscriptionRow[];
 }
 
 export function countPushSubscriptionsForLogin(loginId: number): number {
@@ -211,8 +223,13 @@ export const PUSH_SEND_TIMEOUT_MS = 30_000;
 // succeeded (or there was nothing live to deliver to); throws only when every
 // attempt failed for a NON-gone reason, so the caller (dispatch) marks the
 // channel failed and the slot can retry.
+//
+// The outcome is recorded PER LOGIN (#2565), by the same rule per owner: a login is
+// Delivering when at least one of its browsers took the push, Erroring when every
+// live attempt failed, and — when its last browser was just pruned — has no browser
+// left to be about, so its stale outcome goes with the subscription (Not set up).
 async function sendToSubscriptions(
-  subs: StoredPushSubscription[],
+  subs: SubscriptionRow[],
   msg: NotificationMessage
 ): Promise<void> {
   if (!applyVapid())
@@ -220,28 +237,44 @@ async function sendToSubscriptions(
   if (subs.length === 0) return; // nothing live to deliver to — not an error
 
   const payload = buildPushPayload(msg);
-  let ok = 0;
-  const errors: string[] = [];
+  const byLogin = new Map<number, { ok: number; errors: string[] }>();
+  for (const s of subs) byLogin.set(s.login_id, { ok: 0, errors: [] });
 
   await Promise.all(
     subs.map(async (s) => {
+      const tally = byLogin.get(s.login_id)!;
       try {
         await webpush.sendNotification(
           { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
           payload,
           { timeout: PUSH_SEND_TIMEOUT_MS }
         );
-        ok++;
+        tally.ok++;
       } catch (e) {
         const status = (e as { statusCode?: number }).statusCode ?? 0;
         if (isSubscriptionGone(status)) {
           deleteGoneEndpoint(s.endpoint);
           return; // expected cleanup, not a failure
         }
-        errors.push(e instanceof Error ? e.message : String(e));
+        tally.errors.push(e instanceof Error ? e.message : String(e));
       }
     })
   );
+
+  let ok = 0;
+  const errors: string[] = [];
+  for (const [loginId, tally] of byLogin) {
+    ok += tally.ok;
+    errors.push(...tally.errors);
+    if (tally.ok > 0) recordDeliveryOutcome("push", [loginId], { ok: true });
+    else if (tally.errors.length > 0)
+      recordDeliveryOutcome("push", [loginId], {
+        ok: false,
+        error: `web-push failed: ${tally.errors.join("; ")}`,
+      });
+    else if (countPushSubscriptionsForLogin(loginId) === 0)
+      invalidateDeliveryOutcome("push", loginId);
+  }
 
   if (ok === 0 && errors.length > 0) {
     throw new Error(`web-push failed: ${errors.join("; ")}`);
@@ -260,12 +293,24 @@ export async function sendTestPushToLogin(
   return subs.length;
 }
 
+// The subscriptions a message about `profileId` of `kind` reaches — the per-kind
+// matrix gate (#928) applied per OWNING login, see `send`.
+function audience(profileId: number, kind: NotificationKind | undefined) {
+  return getPushSubscriptionsForProfile(profileId).filter((s) =>
+    isKindEnabled(kind, getLoginPushDisabledKinds(s.login_id))
+  );
+}
+
 export const pushChannel: NotificationChannel = {
   id: "push",
   isConfigured(profileId: number) {
     return (
       isPushConfigured() && getPushSubscriptionsForProfile(profileId).length > 0
     );
+  },
+  owners(profileId: number, msg: NotificationMessage) {
+    if (!isPushDeliverableKind(msg.kind)) return [];
+    return [...new Set(audience(profileId, msg.kind).map((s) => s.login_id))];
   },
   async send(profileId: number, msg: NotificationMessage) {
     // An interaction-only kind (e.g. the food-log nudge) would arrive here as a
@@ -287,9 +332,6 @@ export const pushChannel: NotificationChannel = {
     // browsers out of the fan-out; a login that left it on still receives. A fully
     // filtered set is a deliberate no-op success (sendToSubscriptions treats an empty
     // list as "nothing live"), never a failure, so it can't set notify_last_error.
-    const subs = getPushSubscriptionsForProfile(profileId).filter((s) =>
-      isKindEnabled(msg.kind, getLoginPushDisabledKinds(s.login_id))
-    );
-    await sendToSubscriptions(subs, msg);
+    await sendToSubscriptions(audience(profileId, msg.kind), msg);
   },
 };

@@ -1,17 +1,31 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import type { DashboardPlacement } from "@/lib/dashboard-relevance";
 import { witnessedNowMotion } from "@/lib/dashboard-motion";
 import { microMotionPlan } from "@/lib/micro-motion";
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
+import Avatar, { type AvatarProfile } from "@/components/Avatar";
 import {
   DashboardFactRow,
   type DashboardStandingPresentation,
 } from "./DashboardStandingCluster";
 
+/**
+ * THE SUBJECT A CLUSTER OF NOW ROWS IS ABOUT (#4752 item 6). Present on every row
+ * only when Now holds more than one subject; absent throughout otherwise, which is
+ * how a single-subject Now renders no labels at all rather than one redundant one.
+ */
+export interface NowSubjectLabel {
+  key: string;
+  profile: AvatarProfile;
+  /** "You" for the viewer, the disambiguated display name for anyone else. */
+  name: string;
+}
+
 export interface NowStripRow {
   id: string;
+  subject?: NowSubjectLabel;
   candidate?: DashboardPlacement["candidate"];
   presentation?: DashboardStandingPresentation;
   /**
@@ -116,8 +130,31 @@ export default function NowCards({
 
   return (
     <ul className="band flex min-w-0 flex-col overflow-hidden rounded-xl border border-(--border) bg-surface">
-      {rows.map((row) => {
+      {rows.map((row, index) => {
         const animating = motion.animate.has(row.id);
+        // THE LABEL IS THE CLUSTER'S FIRST ROW'S (#4752 item 6). The ranker already
+        // gathered each subject's rows together, so a change of subject between two
+        // adjacent rows IS the group boundary — nothing here re-groups, and a row
+        // carrying no subject prints no label however its neighbours are ordered.
+        const opensGroup =
+          row.subject != null &&
+          row.subject.key !== rows[index - 1]?.subject?.key;
+        const header = opensGroup ? (
+          <li
+            key={`${row.id}:subject`}
+            data-testid="now-subject-label"
+            data-subject={row.subject!.key}
+            // The deliberate gap: a cluster after the first stands off from the one
+            // above it, so the viewer's own rows read as their own group rather than
+            // as more of a child's illness.
+            className={`flex items-center gap-2 border-t border-(--divider) px-4 pt-4 pb-1 first:border-t-0 ${
+              index === 0 ? "" : "mt-2"
+            }`}
+          >
+            <Avatar profile={row.subject!.profile} size="sm" />
+            <span className="section-label">{row.subject!.name}</span>
+          </li>
+        ) : null;
         const rowClass = `relative border-t border-(--divider) px-4 py-3 first:border-t-0 ${
           animating ? plan.className : ""
         }`;
@@ -127,31 +164,35 @@ export default function NowCards({
           // Giving it the row's as well would step its text 16px off the rag every
           // other entry on the page sits on.
           return (
-            <li
-              key={row.id}
-              data-testid="dashboard-illness-group"
-              data-motion={animating ? "promote" : undefined}
-              className={`relative border-t border-(--divider) first:border-t-0 ${
-                animating ? plan.className : ""
-              }`}
-            >
-              {row.node}
-            </li>
+            <Fragment key={row.id}>
+              {header}
+              <li
+                data-testid="dashboard-illness-group"
+                data-motion={animating ? "promote" : undefined}
+                className={`relative border-t border-(--divider) first:border-t-0 ${
+                  animating ? plan.className : ""
+                }`}
+              >
+                {row.node}
+              </li>
+            </Fragment>
           );
         return (
-          <DashboardFactRow
-            key={row.id}
-            candidate={row.candidate}
-            presentation={row.presentation}
-            lane="now"
-            // The attribute, not the class, is what a spec reads — it mirrors the
-            // class exactly, so a reduced-motion viewer (who gets no class) also gets
-            // no attribute, and "nothing animated" is one assertion rather than a
-            // guess about computed styles. The row's own box is also the door's rail
-            // (`relative`), as it is in the tail.
-            data-motion={animating ? "promote" : undefined}
-            className={rowClass}
-          />
+          <Fragment key={row.id}>
+            {header}
+            <DashboardFactRow
+              candidate={row.candidate}
+              presentation={row.presentation}
+              lane="now"
+              // The attribute, not the class, is what a spec reads — it mirrors the
+              // class exactly, so a reduced-motion viewer (who gets no class) also gets
+              // no attribute, and "nothing animated" is one assertion rather than a
+              // guess about computed styles. The row's own box is also the door's rail
+              // (`relative`), as it is in the tail.
+              data-motion={animating ? "promote" : undefined}
+              className={rowClass}
+            />
+          </Fragment>
         );
       })}
     </ul>

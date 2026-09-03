@@ -72,6 +72,25 @@ function entries(): { table: TemporalTable; col: TimeColumn }[] {
 // A suffix exception must name the physical column and explain why its grain cannot
 // use the ordinary persisted vocabulary. Empty today; keeping the reasoned shape
 // here makes any future exception an explicit review decision rather than a skip.
+// ---- The multi-event ledger ---------------------------------------------------
+//
+// ONE event column per table is the rule, and it is a good one: two columns that both
+// answer "when did the thing this row records happen" are a FALLBACK waiting to be
+// written, and `a_at ?? b_at` substitutes one fact for another with a declaration to
+// point at. Frozen at a count with a reason, in the same shape as the mixed, unverified
+// and hand-rolled-pairing ledgers below, so it can only shrink.
+//
+// The entry here is NOT "we needed more columns". It is that `body_metrics` is one WIDE
+// row carrying up to THREE separate measurements, so "when did it happen" is three
+// questions, not one — and the substitution the rule guards against is the very thing
+// the owner ruled out on #3950 (a shared instant reporting a 07:00 weigh-in as 22:00).
+const MULTI_EVENT_ALLOW: Record<string, { count: number; why: string }> = {
+  body_metrics: {
+    count: 4,
+    why: "#3950, owner-ruled 2026-08-29. The row carries weight, body fat and resting HR — three measurements taken hours apart — so weight_at / body_fat_at / resting_hr_at each date their OWN measure and no reader can fall between them: they are not answers to one question. The fourth, occurred_at, is the time the PERSON stated for their manual sitting (#2235) and is written only on source-NULL rows, where the other three are always absent. THE CHAIN THIS RULE FORBIDS IS STILL LIVE HERE, and it is worth naming: a future reader that spells `weight_at ?? occurred_at` would be substituting a stated sitting time for a device instant. Whether occurred_at should retire into weight_at is an open question on #3950, not a thing this ledger settles.",
+  },
+};
+
 const TIME_SUFFIX_ALLOW: Record<string, string> = {};
 
 describe("the declared index is internally consistent", () => {
@@ -151,9 +170,32 @@ describe("the declared index is internally consistent", () => {
     // A RECORD chain can be legitimate. An EVENT chain never is: falling
     // from one event column to another would be a substitution wearing a declaration.
     const bad = (Object.keys(TIME_COLUMNS) as TemporalTable[])
-      .filter((t) => timeColumnsFor(t, "event").length > 1)
+      .filter(
+        (t) =>
+          timeColumnsFor(t, "event").length > (MULTI_EVENT_ALLOW[t]?.count ?? 1)
+      )
       .map((t) => `${t}: ${timeColumnsFor(t, "event").length} event columns`);
     expect(bad, bad.join("\n")).toEqual([]);
+  });
+
+  it("keeps the multi-event ledger honest — no stale entry, every entry reasoned", () => {
+    // The ledger's whole value is that each entry was a DECISION. An entry whose table
+    // no longer has more event columns than the default is a licence nobody is using,
+    // and it would silently re-admit a chain the day somebody added one.
+    const stale = Object.entries(MULTI_EVENT_ALLOW)
+      .filter(([t]) => timeColumnsFor(t as TemporalTable, "event").length <= 1)
+      .map(([t]) => t);
+    const thin = Object.entries(MULTI_EVENT_ALLOW)
+      .filter(([, e]) => e.why.trim().length < 60)
+      .map(([t]) => t);
+    expect(
+      stale,
+      `stale MULTI_EVENT_ALLOW entries: ${stale.join(", ")}`
+    ).toEqual([]);
+    expect(
+      thin,
+      `MULTI_EVENT_ALLOW entries with no real reason: ${thin.join(", ")}`
+    ).toEqual([]);
   });
 
   it("explains every record chain, link by link", () => {

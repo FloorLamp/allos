@@ -252,7 +252,16 @@ export default function StandingSparkline({
           label={series.pointLabel(point)}
           className="absolute top-0"
           style={{
-            left: Math.max(0, point.x - band / 2),
+            // CLAMPED AT BOTH ENDS (#4534). A band is centred on its reading, and
+            // the first and last readings sit ON the plot's edges — so half of
+            // each end band falls outside the plot. The lower clamp was already
+            // here; this is its missing twin, and the end it was missing is the
+            // one that matters most: the NEWEST reading, the mark a reader goes
+            // to first. Uncaught because the shell's clip absorbed it — measured
+            // at 1280px, the last band ran 38px past the 176px plot and 21px past
+            // the standing card, and `overflow: hidden` there takes the focus
+            // ring and the readout with the paint.
+            left: Math.min(Math.max(0, point.x - band / 2), WIDTH - band),
             width: band,
             height: HEIGHT,
           }}

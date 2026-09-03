@@ -22,7 +22,16 @@ import { statedHhmm } from "@/lib/stated-time";
 //      surface people leave open, so a change DROPS the statement rather than
 //      re-anchoring it: 23:50 said about yesterday is not a claim about today, and
 //      re-anchoring would invent one in the future.
-//   4. A STATEMENT IS SPENT BY THE TAP IT ANSWERS. These surfaces stay open for a
+//   4. THE REVEAL IS A LABELLED STATEMENT, NEVER A BARE BOX (#4384 fix 3). Opening
+//      "Happened earlier?" used to hand the reader an EMPTY time input whose only
+//      label was an `aria-label` — on the practice row, a blank box between the word
+//      "Today" and a ghost "Now", which reads as a broken dropdown rather than as a
+//      question. The row leads with `timeLabel` as a VISIBLE field label, pointed at
+//      the control's own time input, so what the box is for is on screen in the state
+//      it is always in when it opens: empty. That is why the label lives here and not
+//      in `WhenControl` — the control's other mounts are always-on-screen fields
+//      inside forms that label their own sections, and #4218 owns its internals.
+//   5. A STATEMENT IS SPENT BY THE TAP IT ANSWERS. These surfaces stay open for a
 //      genuine second observation, and a second observation is a different time —
 //      restating a minute CORRECTS the row the first tap wrote instead of adding one.
 //      `spend` takes what the tap CONSUMED and drops only that, because the settle runs
@@ -106,18 +115,26 @@ export function useTimeStatement({
   // state a day through it however it is hosted.
   const reveal =
     shown && open ? (
-      <WhenControl
-        mode="state"
-        grain="minute"
-        value={when}
-        onChange={setWhen}
-        tz={tz}
-        minDate={day}
-        maxDate={day}
-        timeLabel={timeLabel}
-        disabled={disabled}
-        testId={testId}
-      />
+      <>
+        {/* `WhenControl` names its time input `{testId}-time`, which is what this
+            points at — one label, visible and associated, rather than a second
+            spelling of the accessible name the control already carries. */}
+        <label className="label" htmlFor={`${testId}-time`}>
+          {timeLabel}
+        </label>
+        <WhenControl
+          mode="state"
+          grain="minute"
+          value={when}
+          onChange={setWhen}
+          tz={tz}
+          minDate={day}
+          maxDate={day}
+          timeLabel={timeLabel}
+          disabled={disabled}
+          testId={testId}
+        />
+      </>
     ) : null;
   return {
     at,

@@ -862,7 +862,13 @@ describe("actual atomic dashboard manifests", () => {
       );
   });
 
-  it("orders real safety, three illness groups, then the live workout", () => {
+  // NOW GATHERS BY SUBJECT ON A REAL HOUSEHOLD MANIFEST (#4752 item 6). The layers
+  // are unchanged — safety is uncapped and still leads — but a cross-profile Now
+  // clusters each subject's rows before drawing them, so the viewer's own live
+  // workout sits under the viewer's own illness instead of trailing two other
+  // people's. This is the manifest that says it over the real personas rather than
+  // over a hand-built candidate list.
+  it("orders real safety, then whole subject clusters, on the household manifest", () => {
     const placements = manifests
       .get("household")!
       .filter((placement) => placement.lane === "now");
@@ -878,7 +884,40 @@ describe("actual atomic dashboard manifests", () => {
       Math.min(...illnesses.map((id) => now.indexOf(id)))
     );
     expect(workoutIndex).toBeGreaterThan(-1);
-    expect(Math.max(...illnesses.map((id) => now.indexOf(id)))).toBeLessThan(
+
+    // THE GROUPING IS REAL HERE, and the assertions below would be vacuous if it
+    // were not: more than one subject, and every subject labelled.
+    const subjects = placements.map((placement) =>
+      placement.lane === "now" ? placement.nowSubject : null
+    );
+    expect(subjects.filter((subject) => subject == null)).toEqual([]);
+    expect(new Set(subjects).size).toBeGreaterThan(1);
+    // EACH CLUSTER IS CONTIGUOUS — that IS "group by subject". A subject whose rows
+    // were interleaved with another's would open twice here.
+    const opens = subjects.filter(
+      (subject, index) => subject !== subjects[index - 1]
+    );
+    expect(opens).toEqual([...new Set(subjects)]);
+
+    // The viewer's own illness leads the viewer's own workout, INSIDE one cluster:
+    // rank survives the gathering.
+    const viewer = String(personaProfileIds.get("household"));
+    expect(subjects[workoutIndex]).toBe(viewer);
+    const viewerIllness = now.findIndex(
+      (id, index) =>
+        id.startsWith("illness.state:") && subjects[index] === viewer
+    );
+    expect(viewerIllness).toBeGreaterThanOrEqual(0);
+    expect(viewerIllness).toBeLessThan(workoutIndex);
+    // And the other two households' illnesses follow that whole cluster rather than
+    // being overtaken by it — gathering promotes nobody.
+    const otherIllnesses = now
+      .map((id, index) => ({ id, index, subject: subjects[index] }))
+      .filter(
+        (row) => row.id.startsWith("illness.state:") && row.subject !== viewer
+      );
+    expect(otherIllnesses).toHaveLength(2);
+    expect(Math.min(...otherIllnesses.map((row) => row.index))).toBeGreaterThan(
       workoutIndex
     );
   });
@@ -968,17 +1007,29 @@ describe("actual atomic dashboard manifests", () => {
     // walk and never made them; measured by instrumenting the walk and rendering
     // all six personas, which reported five walking one day fewer and household
     // short-circuiting.
-    bodybuilder: 225,
-    "marathon-runner": 224,
-    household: 274,
-    pregnant: 221,
-    "diabetic-cgm": 232,
+    // +1 on EVERY persona (#4767 item 2), MEASURED ON THE MERGED TREE each time and
+    // never added to main's numbers by hand: the Today band's intraday chart asks
+    // for the profile's latest worn HR day before anything else, and none of these
+    // six has one on today, so all six pay exactly that one indexed read and stop.
+    // The gate doing its job — a profile that DOES have today's minutes pays the day
+    // gather too, which is the cost of DRAWING the chart rather than of asking.
+    //
+    // Re-measured against three different mains while this branch waited to land
+    // (#4228 A's −3 on five personas, then household's +4 above), and the +1 came
+    // back unchanged every time, on every persona. So it composes with all of them
+    // rather than interacting with any — which is a measurement, not an assumption
+    // about independence.
+    bodybuilder: 226,
+    "marathon-runner": 225,
+    household: 275,
+    pregnant: 222,
+    "diabetic-cgm": 233,
     // +9 (#4424 ruling 7): Upcoming's practice rows mount the shared row control, so
     // the row now resolves what that control renders — `getTrackedPractices`, which is
     // one grouped today-tally and one live sweep however many practices there are,
     // plus the usual-duration vote per practice. Assembling the same four fields
     // per-target instead measured +13.
-    biohacker: 247,
+    biohacker: 248,
   };
 
   // A BACKSTOP, NOT THE METER. The baseline above is the meter; this is the bound
