@@ -42,7 +42,9 @@ const at = frozenSyncInstant;
 // is quiet and the rows under test are the outcomes.
 const WINDOW = ["2026-06-25", "2026-07-09"] as const;
 
-function seedEvents(events: { hoursAgo: number; ok: boolean }[]): void {
+function seedEvents(
+  events: { hoursAgo: number; ok: boolean; tally?: string }[]
+): void {
   withDb((db) => {
     db.prepare(
       `INSERT INTO integration_connections (profile_id, source_id, status)
@@ -55,8 +57,8 @@ function seedEvents(events: { hoursAgo: number; ok: boolean }[]): void {
     const ins = db.prepare(
       `INSERT INTO integration_sync_events
          (profile_id, source_id, at, ok, window_start, window_end,
-          inserted, updated, unchanged, error)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`
+          inserted, updated, unchanged, error, details)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`
     );
     for (const e of events) {
       ins.run(
@@ -68,7 +70,8 @@ function seedEvents(events: { hoursAgo: number; ok: boolean }[]): void {
         WINDOW[1],
         e.ok ? 16 : null,
         e.ok ? 320 : null,
-        e.ok ? null : ERR
+        e.ok ? null : ERR,
+        e.tally ?? null
       );
     }
   });
@@ -96,6 +99,28 @@ function seedEscalated(): void {
     { hoursAgo: 3, ok: false },
     { hoursAgo: 2, ok: false },
     { hoursAgo: 1, ok: false },
+  ]);
+}
+
+// ALIVE AND DROPPING (#4975): every run succeeded, cells landed, and one metric
+// arrived in every refresh and was stored none of the times. Nothing failed and data
+// IS arriving, so neither `intermittent` nor `failing` describes it — and each of the
+// surfaces below had a branch for both of those and none for this.
+const DROPPED_METRIC = "uv_index";
+function seedDropping(): void {
+  const tally = JSON.stringify({
+    warnings: [],
+    origins: [],
+    tally: {
+      temperature_c: { received: 24, landed: 24 },
+      [DROPPED_METRIC]: { received: 24, landed: 0 },
+    },
+  });
+  seedEvents([
+    { hoursAgo: 6, ok: true, tally },
+    { hoursAgo: 4, ok: true, tally },
+    { hoursAgo: 2, ok: true, tally },
+    { hoursAgo: 1, ok: true, tally },
   ]);
 }
 
@@ -298,6 +323,61 @@ test("silence past the tolerance escalates every surface at once, rendered once 
   await expect(
     page.getByRole("main").getByTestId(`upcoming-item-integration:${PROVIDER}`)
   ).toBeVisible();
+});
+
+test("a live source that stores nothing says so on every surface it escalates to", async ({
+  page,
+}) => {
+  // #4975. The standing is the whole delivery — Review's Needs-attention card filters
+  // on `isEscalatedSource`, never on an attention kind — but the surfaces underneath
+  // it had no branch for a source that is syncing and losing data, so each of them
+  // fell back to a sentence written for a source that had gone quiet or failed. This
+  // walks the three of them together.
+  seedDropping();
+
+  // Review: escalated, with the chip and a consequence that names WHAT is being lost.
+  // The generic line here is "…have stopped arriving", which is false: they arrive.
+  await page.goto("/data?section=review");
+  const review = page.getByTestId("review-inbox");
+  const card = review
+    .getByTestId("needs-attention-sources")
+    .getByTestId(`source-${PROVIDER}`);
+  await expect(card.getByTestId(`sync-status-${PROVIDER}`)).toContainText(
+    "Dropping records"
+  );
+  const consequence = card.getByTestId(`source-consequence-${PROVIDER}`);
+  await expect(consequence).toHaveText(
+    "Uv index is arriving but not being stored."
+  );
+  await expect(consequence).not.toContainText("stopped arriving");
+  // It leaves the calm half of the page, like every other escalated source.
+  await expect(
+    review.getByTestId("connected-sources").getByTestId(`source-${PROVIDER}`)
+  ).toHaveCount(0);
+
+  // The grid: the rose attention card, with a fact instead of "Refreshed · 1 hour
+  // ago" — which is what fell through under that border before.
+  await page.goto("/data?section=import");
+  const gridCard = page.getByTestId(`integration-card-${PROVIDER}`);
+  await expect(gridCard).toHaveAttribute("data-card-state", "attention");
+  await expect(gridCard.getByText("Dropping records")).toBeVisible();
+  await expect(gridCard).toContainText("Uv index is arriving but not being stored.");
+  await expect(gridCard.getByText("Forecast refreshed")).toHaveCount(0);
+
+  // The source page: the standing as a headline, and the reason line the header
+  // rendered NOTHING for — the stale line is gated on staleness and the error lines
+  // on a failed run, and this source is neither.
+  await page.goto("/integrations/weather");
+  await expect(page.getByTestId(`sync-status-${PROVIDER}`)).toContainText(
+    "Dropping records"
+  );
+  await expect(page.getByTestId(`sync-period-${PROVIDER}`)).toContainText(
+    "Some records aren't being stored"
+  );
+  await expect(page.getByTestId(`sync-dropping-${PROVIDER}`)).toHaveText(
+    "Uv index is arriving but not being stored."
+  );
+  await expect(page.getByTestId(`sync-stale-${PROVIDER}`)).toHaveCount(0);
 });
 
 test("the grid pitches what you don't own and reports on what you do, attention first", async ({
