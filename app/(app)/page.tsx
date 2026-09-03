@@ -1109,11 +1109,7 @@ async function renderDashboard(
   // before them, read from the cached stream summaries — the day's rides cost one
   // statement, and a profile with no cycling telemetry today pays only that.
   const todayRideBests = trainingRelevant
-    ? getRideBestRecaps(
-        profile.id,
-        on,
-        SPLIT_INTERVALS_M[units.distanceUnit]
-      )
+    ? getRideBestRecaps(profile.id, on, SPLIT_INTERVALS_M[units.distanceUnit])
     : [];
 
   // coaching-observations (#449) + data-quality (#1045): BOTH read the ONE

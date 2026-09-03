@@ -21,7 +21,10 @@ import {
 } from "../cycling-bests";
 
 const curve = (...watts: number[]) =>
-  watts.map((value, index) => ({ seconds: [5, 120, 2700][index]!, watts: value }));
+  watts.map((value, index) => ({
+    seconds: [5, 120, 2700][index]!,
+    watts: value,
+  }));
 const splits = (...times: number[]) =>
   times.map((timeSec, index) => ({ index: index + 1, timeSec }));
 const prior = (
@@ -34,9 +37,17 @@ describe("rideBests", () => {
   // the 2-minute duration, so exactly that duration is marked.
   it.each([
     ["a first place at every duration", curve(400, 300, 120), [1, 1, 1]],
-    ["only the 2-minute duration a first", curve(300, 300, 90), [undefined, 1, 3]],
+    [
+      "only the 2-minute duration a first",
+      curve(300, 300, 90),
+      [undefined, 1, 3],
+    ],
     ["a tie sharing first place", curve(350, 250, 100), [1, 2, 1]],
-    ["nothing inside the top three", curve(1, 1, 1), [undefined, undefined, undefined]],
+    [
+      "nothing inside the top three",
+      curve(1, 1, 1),
+      [undefined, undefined, undefined],
+    ],
   ])("marks %s", (_label, ride, expected) => {
     const priors = [
       prior(curve(350, 250, 100)),
@@ -47,16 +58,16 @@ describe("rideBests", () => {
     const bests = rideBests({ powerCurve: ride, splits: [] }, priors);
     expect(
       [5, 120, 2700].map(
-        (seconds) => bests.power.find((entry) => entry.seconds === seconds)?.rank
+        (seconds) =>
+          bests.power.find((entry) => entry.seconds === seconds)?.rank
       )
     ).toEqual(expected);
   });
 
   it("ranks a split against the priors AND the ride's own other splits", () => {
-    const bests = rideBests(
-      { powerCurve: [], splits: splits(600, 590, 900) },
-      [prior([], [700, 800])]
-    );
+    const bests = rideBests({ powerCurve: [], splits: splits(600, 590, 900) }, [
+      prior([], [700, 800]),
+    ]);
     // 590 is the fastest of all five efforts, 600 the second; 900 is fourth and
     // past the marker depth.
     expect(bests.splits).toEqual([
@@ -85,10 +96,11 @@ describe("rideBests", () => {
   });
 
   it("counts the population per kind, never once for the ride", () => {
-    const bests = rideBests(
-      { powerCurve: curve(400), splits: splits(600) },
-      [prior(curve(300), [700]), prior(curve(310)), prior([], [800])]
-    );
+    const bests = rideBests({ powerCurve: curve(400), splits: splits(600) }, [
+      prior(curve(300), [700]),
+      prior(curve(310)),
+      prior([], [800]),
+    ]);
     expect(bests.comparedPowerRides).toBe(3);
     expect(bests.comparedSplitRides).toBe(3);
   });
@@ -182,7 +194,11 @@ describe("the sentences", () => {
 // the nominal interval — a per-split `distanceM >= intervalM` test then drops
 // splits the ride plainly rode. The counts below are what that test kept.
 describe("comparableSplits", () => {
-  const constantSpeedRide = (speedMps: number, sampleSec: number, totalM: number) => {
+  const constantSpeedRide = (
+    speedMps: number,
+    sampleSec: number,
+    totalM: number
+  ) => {
     const samples = Math.floor(totalM / (speedMps * sampleSec)) + 1;
     const time = Array.from({ length: samples }, (_, i) => i * sampleSec);
     return {

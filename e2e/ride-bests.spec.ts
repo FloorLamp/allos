@@ -57,7 +57,7 @@ function plantRides() {
     `INSERT INTO activity_telemetry
        (profile_id, activity_id, source, streams_json, snapshot_at,
         stream_summary_json)
-     VALUES (1, ?, 'strava', ?, ?, ?)`
+     VALUES (1, ?, 'strava', ?, datetime('now'), ?)`
   );
   const ids: Record<string, number> = {};
   for (const [title, day, watts, speed, external] of [
@@ -85,10 +85,13 @@ function plantRides() {
     );
     // Written here rather than left to a boot: the server is already running, so
     // nothing would fill it before this spec asserts (#2292).
+    // `snapshot_at` is written by SQL rather than interpolated: it orders the
+    // snapshots WITHIN a ride and each ride here has exactly one, so an instant
+    // built from the day string would carry a naive-timezone hazard for nothing
+    // (lib/__tests__/e2e-fixture-time.test.ts, #1417).
     telemetry.run(
       id,
       streams,
-      `${day}T12:00:00Z`,
       serializeCyclingStreamSummary(summarizeCyclingStreams(streams, null))
     );
     ids[title] = id;

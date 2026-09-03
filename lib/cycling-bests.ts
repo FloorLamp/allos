@@ -170,8 +170,7 @@ export function rideBests(
     // priors alone would let a ride whose only split is a 1.7 km run-out print
     // "compared with 2 earlier rides with recorded splits" under a table where
     // nothing was compared at all.
-    comparedPowerRides:
-      ride.powerCurve.length > 0 ? powerPriors.length + 1 : 0,
+    comparedPowerRides: ride.powerCurve.length > 0 ? powerPriors.length + 1 : 0,
     comparedSplitRides: ride.splits.length > 0 ? splitPriors.length + 1 : 0,
     power,
     splits,
@@ -251,8 +250,7 @@ export function rideBestHeadline(
   }
   if (bests.comparedSplitRides > 1) {
     const won = bests.splits.find((entry) => entry.rank === 1);
-    const split =
-      won && ride.splits.find((entry) => entry.index === won.index);
+    const split = won && ride.splits.find((entry) => entry.index === won.index);
     if (split) {
       return {
         kind: "split",

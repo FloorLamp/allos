@@ -56,7 +56,12 @@ function plantRide(
         date,
         title,
         JSON.stringify([
-          { name: "Cycling", type: "cardio", distance_km: 12, duration_min: 30 },
+          {
+            name: "Cycling",
+            type: "cardio",
+            distance_km: 12,
+            duration_min: 30,
+          },
         ])
       ).lastInsertRowid
   );
@@ -94,7 +99,10 @@ describe("ride bests, as of the ride", () => {
   it("keeps an old ride's medal after a later ride beats it", () => {
     // The middle ride out-powered the one before it, so on its own day it was the
     // best 5-second effort the profile had recorded.
-    const allFirst = [5, 60, 300, 1200].map((seconds) => ({ seconds, rank: 1 }));
+    const allFirst = [5, 60, 300, 1200].map((seconds) => ({
+      seconds,
+      rank: 1,
+    }));
     const record = detail("Synthetic record ride");
     expect(record.bests.power).toEqual(allFirst);
     expect(record.bests.comparedPowerRides).toBe(2);
@@ -159,9 +167,10 @@ describe("the comparison never parses a prior's streams", () => {
       })
     );
     const forged = detail("Synthetic record ride");
-    expect(
-      forged.bests.power.find((entry) => entry.seconds === 5)
-    ).toEqual({ seconds: 5, rank: 2 });
+    expect(forged.bests.power.find((entry) => entry.seconds === 5)).toEqual({
+      seconds: 5,
+      rank: 2,
+    });
     // Only the 5-second duration and the splits are in that sentinel, so every
     // other duration's pool is empty and earns no marker at all.
     expect(forged.bests.power.map((entry) => entry.seconds)).toEqual([5]);
@@ -230,9 +239,9 @@ describe("getRideBestRecaps", () => {
       },
     ]);
     // The sentence names the window rather than saying "ever" (#2385).
-    expect(
-      rideBestStatementDetail("20 min power", recaps[0]!.headline!)
-    ).toBe("Best 20 min power of 3 rides with recorded power");
+    expect(rideBestStatementDetail("20 min power", recaps[0]!.headline!)).toBe(
+      "Best 20 min power of 3 rides with recorded power"
+    );
   });
 
   it("celebrates nothing on the first ride with power", () => {

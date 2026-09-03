@@ -824,7 +824,10 @@ export default async function CyclingActivityDetail(props: {
                     <dl className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                       {data.powerCurve.map((point) => {
                         const rank = powerRankBySeconds.get(point.seconds);
-                        const perKg = wattsPerKg(point.watts, data.bodyweightKg);
+                        const perKg = wattsPerKg(
+                          point.watts,
+                          data.bodyweightKg
+                        );
                         return (
                           <StatBox
                             key={point.seconds}
