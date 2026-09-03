@@ -545,11 +545,13 @@ export function insertVitals(
   // refusal set included a REACHABLE case, this function reported `wrote: true` while
   // writing no rows at all.
   //
-  // And the case is reachable: the queue stamps `localDate()` off the BROWSER clock
-  // while every core resolves the day through `today(profileId)`, the PROFILE's zone,
-  // so a device east of that zone captures TOMORROW. Asking here gives the refusal the
-  // channel it needs — the replay dead-letters with a reason and the online actions
-  // report failure — instead of two loops each learning to handle an outcome.
+  // And the case is reachable, though NOT by the route this comment used to name
+  // (#4559). It claimed the queue stamps a browser-zone day; the sitting's day comes
+  // from the measurements form, whose default and `maxDate` are both `today(profileId)`
+  // — so the day that gets here past the max is a typed one, which is exactly what the
+  // online action already answers with `dateRefused`. Asking here gives the offline
+  // half of that same refusal the channel it needs — the replay dead-letters with a
+  // reason — instead of two loops each learning to handle an outcome.
   if (!isPastWriteAccepted(today(profileId), date)) return { wrote: false };
   const normalized = normalizeVitalsInput(raw);
   if ("error" in normalized) return { wrote: false };
