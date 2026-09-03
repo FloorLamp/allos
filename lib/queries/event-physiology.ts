@@ -190,6 +190,47 @@ export function priorEventWindows(
  * night rather than a moment. An hour: below that the floor is whatever the watch
  * happened to catch, and a single low minute from a half-worn night would sit in a
  * paired-observation arm as if it were a night's reading.
+ *
+ * THE ARGUMENT IS MEASURED; THE NUMBER IS NOT (owner ruling 2026-09-03, on #4775).
+ * That a half-worn night's minimum is not a night's minimum is a real property of the
+ * data. Sixty minutes is a judgement about where that stops being true, and nothing
+ * was counted to pick it. So it is deliberately a round hour rather than a
+ * precise-looking 45 or 75, which would imply a fit that was never done.
+ *
+ * AND A FIT IS POSSIBLE, which is what makes this a tracked question rather than a
+ * shrug. Two constants on this stream WERE fitted to measurements
+ * (docs/internals/integrations-sync.md): the 2.5 h dip tolerance, to a gap
+ * distribution that came back bimodal with an empty valley at 2.1–2.5 h separating 16
+ * routine removals from 5 real events; and `frozenEvidence` N=4, to the finding that
+ * every clean false positive in 28 days was k=2 while every true detection was k>=5.
+ * Fitting from a measurement is the house style here — but DECLARED from it, never
+ * learned at runtime, which that document forbids outright.
+ *
+ * The closest relative is the one that was NOT fitted: the 40-minute bedtime floor,
+ * "dominated" at N=4 and "kept only because it costs nothing and still states the
+ * intent". But it is the closest relative, not a twin, and the difference runs against
+ * this constant. That floor is INERT — dominated is why the docs can say it costs
+ * nothing — while this one is the sole gate and actively drops nights. And it is
+ * bounded on both sides by a measurement (long enough that a watch put down minutes
+ * before the slot is not announced, short enough that the measured 55-minute incident
+ * still clears it), where sixty has no bound in either direction.
+ *
+ * So this is the least-evidenced number on the stream, not one of two. That is the
+ * honest comparison, and it is the reason the revisit rule below is not a formality.
+ *
+ * WHAT A FIT WOULD ACTUALLY NEED, since the obvious answer is the wrong one. Counting
+ * how many nights a threshold excludes measures its COST, not its correctness. The
+ * validity question is different: take nights that were well covered, subsample them
+ * to N measured minutes, and see how far the observed minimum drifts from the night's
+ * true one. Prod's `hr_minutes` can answer that. The published 56-day cut cannot be
+ * reused directly — it is daytime gap durations, ten of them the evening charge.
+ *
+ * WHAT WOULD SEND SOMEONE BACK TO IT, per the ruling: a REAL night excluded. If a
+ * night someone actually slept through, and would recognise as a night, falls under
+ * the hour and drops out of the series, this number is wrong. Note that nothing
+ * announces that: the drop below is a bare `continue`, with no counter and no log, so
+ * a night lost this way is simply one fewer datapoint. Someone has to go looking, and
+ * a counter here is the cheapest thing that would change that.
  */
 export const OVERNIGHT_MIN_MEASURED_MIN = 60;
 
