@@ -9,6 +9,21 @@ import {
   getSuspectSleepWakeDays,
   SLEEP_SKEW_HISTORY_DAYS,
 } from "@/lib/queries/sleep-clock-skew";
+import { sleepClockSkewSignalKey } from "@/lib/sleep-clock-skew";
+import { buildSleepClockSkewFindings } from "@/lib/rule-findings";
+import { FINDING_DASHBOARD_RELEVANCE } from "@/lib/findings";
+import { tierForDedupeKey } from "@/lib/rule-finding-prefixes";
+import { deleteMetricRow } from "@/lib/metric-readings";
+import {
+  getSleepDurationTrend,
+  getSleepMoodData,
+  getSleepRegularity,
+} from "@/lib/queries/sleep";
+import {
+  HEALTH_CONNECT_ID,
+  parseHealthConnectPayload,
+} from "@/lib/integrations/health-connect";
+import { ingestHealthConnectPayload } from "@/lib/integrations/health-connect-ingest";
 
 // DB INTEGRATION TIER — the gather half of the sleep clock-skew detector (#4299).
 //
@@ -229,5 +244,197 @@ describe("timezone-switch proximity is WORDING and never a trigger (#4299)", () 
     expect(getSuspectSleepSessions(profileId, shiftDateStr(T, -30))).toEqual(
       []
     );
+  });
+});
+
+// ---- The coaching-tier finding (#4299) --------------------------------------
+
+describe("buildSleepClockSkewFindings", () => {
+  it("states ONE episode's evidence, anchored to its oldest suspect night", () => {
+    const older = shiftDateStr(T, -2);
+    skewedNight(older);
+    skewedNight(shiftDateStr(T, -1));
+    const findings = buildSleepClockSkewFindings(profileId, T);
+
+    expect(findings).toHaveLength(1);
+    // Anchored to the OLDEST night of the run, so tomorrow's mis-stamped night joins
+    // this episode instead of minting a fresh row past a dismissal.
+    expect(findings[0].dedupeKey).toBe(sleepClockSkewSignalKey(older));
+    expect(tierForDedupeKey(findings[0].dedupeKey)).toBe("coaching");
+    expect(findings[0].title).toContain("2 recorded nights'");
+    // It quotes the two measurements and NOTHING that reads as an inferred offset.
+    expect(findings[0].detail).toContain(`${AWAKE} bpm`);
+    expect(findings[0].detail).toContain(`${ASLEEP} bpm`);
+    expect(findings[0].detail).not.toMatch(/\bhours?\b/);
+    expect(findings[0].dashboardRelevance).toBe(
+      FINDING_DASHBOARD_RELEVANCE.review
+    );
+    expect(findings[0].detail).not.toContain("timezone");
+  });
+
+  it("adds the travel sentence when a switch is recorded — wording, not a trigger", () => {
+    const day = shiftDateStr(T, -1);
+    skewedNight(day);
+    recordReturnEast(day);
+    expect(buildSleepClockSkewFindings(profileId, T)[0].detail).toContain(
+      "timezone change"
+    );
+  });
+
+  // The false-alarm side of the same builder. The second row is the discriminator:
+  // a REAL return east, recorded, on a night whose heart rate agrees with its clocks.
+  it.each([
+    ["a true jet-lag night", jetLagNight, false],
+    ["a true jet-lag night beside a recorded return east", jetLagNight, true],
+  ])("says nothing on %s", (_case, seed, withSwitch) => {
+    const day = shiftDateStr(T, -1);
+    seed(day);
+    if (withSwitch) recordReturnEast(day);
+    expect(buildSleepClockSkewFindings(profileId, T)).toEqual([]);
+  });
+});
+
+// ---- The repair (#4299 / #507 / #508 / #2032) --------------------------------
+//
+// Driven through the REAL Health Connect parse + ingest, because the claim being made
+// is about what a re-SYNC does: a fixture that hand-inserted the second copy would be
+// exercising a store the sync path never produced, and the tombstone consult lives in
+// that path.
+
+const HC = HEALTH_CONNECT_ID;
+const ORIGIN = "com.fitbit.FitbitMobile";
+
+function hcPush(body: Record<string, unknown>) {
+  return ingestHealthConnectPayload(
+    profileId,
+    parseHealthConnectPayload(body, "UTC"),
+    HC
+  );
+}
+
+/** One night as the exporter sends it, with an optional per-minute heart-rate trace. */
+function pushNight(
+  start: string,
+  end: string,
+  trough: { from: string; to: string } | null = null,
+  hrFrom?: string,
+  hrTo?: string
+) {
+  const heart: { time: string; bpm: number }[] = [];
+  if (hrFrom && hrTo) {
+    const lo = trough ? Date.parse(trough.from) : 0;
+    const hi = trough ? Date.parse(trough.to) : 0;
+    for (let at = Date.parse(hrFrom); at < Date.parse(hrTo); at += MIN_MS) {
+      heart.push({
+        time: utcInstant(new Date(at)),
+        bpm: trough && at >= lo && at < hi ? ASLEEP : AWAKE,
+      });
+    }
+  }
+  return hcPush({
+    timestamp: end,
+    sleep: [
+      {
+        start_time: start,
+        end_time: end,
+        duration_seconds: (Date.parse(end) - Date.parse(start)) / 1000,
+        metadata: { data_origin: ORIGIN },
+      },
+    ],
+    ...(heart.length > 0 ? { heart_rate: heart } : {}),
+  });
+}
+
+function storedSessions(): { date: string; started_at: string }[] {
+  return db
+    .prepare(
+      `SELECT date, started_at FROM metric_samples
+        WHERE profile_id = ? AND metric = 'sleep_min' ORDER BY started_at`
+    )
+    .all(profileId) as { date: string; started_at: string }[];
+}
+
+function sleepTarget(id: number) {
+  return { store: "metric_samples", id, metric: "sleep_min" } as const;
+}
+
+describe("deleting a suspect synced session (#4299)", () => {
+  it("buries the mis-stamped instants and lets the corrected night back in", () => {
+    const day = shiftDateStr(T, -1);
+    const claimed = { start: `${day}T09:39:00Z`, end: `${day}T14:37:00Z` };
+    // What the Fitbit app itself showed for the same night — 11:39 PM → 4:37 AM
+    // Eastern, which is exactly the window the body's own trough sits in. It has to
+    // BE the trough: a "corrected" re-sync that still disagreed with the heart rate
+    // would land and immediately flag again, and the test would be asserting the
+    // tombstone while proving nothing about the correction.
+    const corrected = {
+      start: `${day}T03:39:00Z`,
+      end: `${day}T08:37:00Z`,
+    };
+    pushNight(
+      claimed.start,
+      claimed.end,
+      { from: `${day}T03:39:00Z`, to: `${day}T08:37:00Z` },
+      `${shiftDateStr(day, -1)}T22:00:00Z`,
+      `${day}T22:00:00Z`
+    );
+
+    const suspect = getSuspectSleepSessions(profileId, shiftDateStr(T, -30));
+    expect(suspect).toHaveLength(1);
+    const id = suspect[0].sampleId;
+
+    // The Sleep log offers the delete on exactly this row, and STILL refuses the edit:
+    // the mark buys a way out of a mis-stamped session, never edit rights on synced
+    // sleep.
+    const row = getSleepMoodData(profileId).history.find((r) => r.date === day);
+    expect(row).toMatchObject({
+      sleepSuspect: true,
+      sleepSampleId: id,
+      sleepEditable: false,
+    });
+
+    expect(deleteMetricRow(profileId, sleepTarget(id)).ok).toBe(true);
+    expect(storedSessions()).toEqual([]);
+
+    // The same instants back are refused — the tombstone doing its #507/#508 job.
+    pushNight(claimed.start, claimed.end);
+    expect(storedSessions()).toEqual([]);
+
+    // And the CORRECTED re-sync of THE SAME NIGHT lands, because the tombstone is
+    // keyed on (metric, source, origin, started_at) — the stamps, not the night. A
+    // tombstone keyed on the wake-day would swallow this and look identical above.
+    pushNight(corrected.start, corrected.end);
+    expect(storedSessions()).toEqual([
+      { date: day, started_at: corrected.start },
+    ]);
+    expect(getSuspectSleepSessions(profileId, shiftDateStr(T, -30))).toEqual([]);
+  });
+
+  it("leaves a window containing the deleted night exactly as an unrecorded one", () => {
+    // Enough ordinary nights for the SRI's 14-night gate to answer at all — a
+    // comparison between two nulls would pass while proving nothing.
+    for (let i = 2; i <= 20; i++) {
+      const d = shiftDateStr(T, -i);
+      session(d, `${shiftDateStr(d, -1)}T23:00:00Z`, `${d}T07:00:00Z`);
+    }
+    const before = {
+      trend: getSleepDurationTrend(profileId),
+      sri: getSleepRegularity(profileId),
+    };
+    expect(before.sri).not.toBeNull();
+
+    const day = shiftDateStr(T, -1);
+    const id = skewedNight(day);
+    expect(getSuspectSleepWakeDays(profileId, shiftDateStr(T, -30))).toEqual(
+      new Set([day])
+    );
+    expect(deleteMetricRow(profileId, sleepTarget(id)).ok).toBe(true);
+
+    // No third state: the window degrades exactly the way it did before the night
+    // was ever recorded — same series, same SRI, no invented null.
+    expect({
+      trend: getSleepDurationTrend(profileId),
+      sri: getSleepRegularity(profileId),
+    }).toEqual(before);
   });
 });

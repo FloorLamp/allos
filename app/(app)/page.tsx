@@ -2788,13 +2788,13 @@ async function renderDashboard(
           sleepSummary.wakeDay,
           engagementFromSource(sleepSummary.source),
           sleepTiming,
-          !sleepClockSkewSuspect &&
-            key === "duration" &&
+          key === "duration" &&
             sleepArrivedInWakeWindow(
               sleepPresentation?.freshness ?? "stale",
               wakeDayAge,
               wakeMinutes,
-              nowMinutes
+              nowMinutes,
+              sleepClockSkewSuspect
             )
         ),
         {
