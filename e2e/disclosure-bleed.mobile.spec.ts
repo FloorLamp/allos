@@ -17,7 +17,7 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
 import { E2E_LOGIN_DASHBOARD_ALL, E2E_MEMBER_PASSWORD } from "./fixture-logins";
-import { awaitHydrated } from "./helpers";
+import { openCareOverviewSection, openDashboardAll } from "./helpers";
 import { loginAs } from "./nav";
 
 const PHONE = { viewport: { width: 390, height: 844 }, hasTouch: true };
@@ -58,14 +58,28 @@ async function paintOf(
   );
 }
 
-function expectFullBleed(paint: Paint, label: string): void {
+/** Polls until the fold's 200ms continuity motion has settled and the element paints
+ *  at the viewport edge, then pins the rest of the geometry. The poll IS the settle:
+ *  a fixed sleep would assert nothing about the motion having finished. */
+async function expectFullBleed(
+  page: Page,
+  foldSelector: string,
+  cardSelector: string,
+  label: string
+): Promise<void> {
+  await expect
+    .poll(
+      async () => (await paintOf(page, foldSelector, cardSelector)).hitAtEdge,
+      { message: `${label}: paints at the viewport edge` }
+    )
+    .toBe(true);
+  const paint = await paintOf(page, foldSelector, cardSelector);
   expect(paint.left, `${label}: left edge`).toBe(0);
   expect(paint.right, `${label}: right edge`).toBe(0);
   // The content keeps the page gutter — the fill moved, the text did not (#3920).
   expect(paint.contentLeft, `${label}: content gutter`).toBeGreaterThanOrEqual(
     16
   );
-  expect(paint.hitAtEdge, `${label}: paints at the viewport edge`).toBe(true);
 }
 
 test("a Show everything band paints to both viewport edges on a phone", async ({
@@ -77,16 +91,11 @@ test("a Show everything band paints to both viewport edges on a phone", async ({
     PHONE
   );
   await page.goto("/");
-  const fold = page.getByTestId("dashboard-all");
-  await awaitHydrated(fold);
-  if (!(await fold.getAttribute("open"))) {
-    await page.getByTestId("dashboard-all-summary").click();
-    await expect(fold).toHaveAttribute("open", "");
-  }
-  // Let the 200ms continuity motion settle before measuring paint.
-  await page.waitForTimeout(400);
-  expectFullBleed(
-    await paintOf(page, '[data-testid="dashboard-all"]', ".band"),
+  await openDashboardAll(page);
+  await expectFullBleed(
+    page,
+    '[data-testid="dashboard-all"]',
+    ".band",
     "Show everything band"
   );
 });
@@ -100,15 +109,11 @@ test("a Care overview card paints to both viewport edges on a phone", async ({
     PHONE
   );
   await page.goto("/records/care/overview");
-  const fold = page.locator("details.motion-disclose").first();
-  await awaitHydrated(fold);
-  if (!(await fold.getAttribute("open"))) {
-    await fold.locator("summary").click();
-    await expect(fold).toHaveAttribute("open", "");
-  }
-  await page.waitForTimeout(400);
-  expectFullBleed(
-    await paintOf(page, "details.motion-disclose", ".card"),
+  await openCareOverviewSection(page, "records-background");
+  await expectFullBleed(
+    page,
+    '[data-testid="records-background"]',
+    ".card",
     "Care overview card"
   );
 });
