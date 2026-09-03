@@ -60,6 +60,19 @@ import type { AnchoredAlign } from "@/lib/anchored-position";
 // answer to "what is reachable in here", so the two hosts cannot come to disagree
 // about where focus lands.
 //
+// THE POPOVER NEVER EXTENDS PAST THE VIEWPORT EDGE (#4776). The positioner
+// reports the room available on the side the panel landed; this file applies it
+// as the panel's `max-height` and lets the panel SCROLL the rest. Both halves
+// are the contract a caller is owed: a panel that clipped its own confirm button
+// would be no better than one that rendered it off-screen. So content here needs
+// no height management of its own — a caller that adds a `max-h-*` to
+// `panelClassName` is declaring a tighter cap for its own reasons, not making
+// the panel safe, and the inline max-height wins over it regardless.
+// `overscroll-contain` rides with the scroller: this popover draws a
+// full-viewport click-away catcher, so a drag its own scroller declines would
+// chain to the document and move the page BEHIND the open panel (#2774, and
+// lib/__tests__/overlay-motion-chokepoint.test.ts, which caught exactly this).
+//
 // A ROLE-LESS PANEL IS LEFT ALONE, and that is the discriminating rule rather
 // than a new prop. DateField's calendar opens when the FIELD takes focus and the
 // typist has to keep it — manual ISO entry works at every width (#3376) — so its
@@ -263,11 +276,14 @@ export default function AnchoredPanel({
           position: "fixed",
           top: pos?.top ?? 0,
           left: pos?.left ?? 0,
+          // THE ROOM THE POSITIONER FOUND, APPLIED (#4776) — see the header.
+          // Undefined only on the pre-measurement render, which is hidden anyway.
+          maxHeight: pos?.maxHeight,
           // Hidden until measured, so the panel is never painted where the
           // anchor used to be.
           visibility: pos ? "visible" : "hidden",
         }}
-        className={`${popoverZIndexClass} overflow-hidden rounded-lg border border-black/10 bg-surface shadow-lg dark:border-white/10 ${panelClassName}`}
+        className={`${popoverZIndexClass} overflow-x-hidden overflow-y-auto overscroll-contain rounded-lg border border-black/10 bg-surface shadow-lg dark:border-white/10 ${panelClassName}`}
       >
         {children()}
       </div>

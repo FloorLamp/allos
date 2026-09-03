@@ -314,12 +314,11 @@ export default function UpcomingRowMenu({
       open={open}
       onOpenChange={setOpen}
       // A slot run's kebab carries every chip beside it, so this menu is the one
-      // that can be LONG — a menu is otherwise short enough that AnchoredPanel
-      // deliberately leaves it uncapped, and an uncapped panel taller than the
-      // screen puts its last dose somewhere nobody can reach. Capped and scrolling,
-      // and wider, because these items are named after doses rather than actions.
-      // A row's one-subject menu is unchanged.
-      panelClassName={named ? "w-56 max-h-[70vh] overflow-y-auto" : "w-40"}
+      // that can be LONG — wider, because these items are named after doses
+      // rather than actions. It carried its own `max-h`/`overflow` until #4776,
+      // when AnchoredPanel took over capping every popover to the room on screen
+      // and scrolling the rest; a second cap here would only be a tighter one.
+      panelClassName={named ? "w-56" : "w-40"}
     >
       {({ runAction }) => (
         <>

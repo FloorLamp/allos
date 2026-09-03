@@ -148,9 +148,9 @@ that makes it work:
   change (#4258): the receipt `review-merge.md` §Merge requires. A head
   change voids it; the new head re-reviews. Flag owner-visible calls in it.
 - Run `adversarial-review-brief.mjs <pr> --check` for every PR (0 MANDATORY /
-  3 CONSULT — you decide from the quoted claims / 1 ordinary / 2 unreadable).
-  High-stakes paths get a separate falsifying agent and the merge WAITS; a
-  blocking finding fixed by changing the MECHANISM earns a fresh pass.
+  3 CONSULT — decide from the hunk it quotes / 1 ordinary / 2 unreadable). It
+  reads the DIFF, so a moved authorization gate is MANDATORY whatever the body
+  says: falsifying agent, merge WAITS, MECHANISM fix earns a fresh pass.
 - E2E reds: diagnose locally, send code corrections back to the AUTHOR unless
   the fix is an orchestrator-owned E2E spec. `ci-watch.mjs` waits for settled
   CI (0 green / 1 red / 2 unsettled / 3 conflict-blocked) — never poll.

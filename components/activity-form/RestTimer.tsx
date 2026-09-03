@@ -7,6 +7,7 @@ import {
   IconRotateClockwise,
 } from "@tabler/icons-react";
 import { formatSeconds } from "@/lib/duration";
+import ControlTooltip from "@/components/ControlTooltip";
 import { useHaptics } from "@/components/useHaptics";
 import FilterPills from "@/components/FilterPills";
 import Stepper from "@/components/Stepper";
@@ -192,27 +193,37 @@ export default function RestTimer({
               {REST_STEP_SEC}s
             </span>
           </Stepper>
-          <button
-            type="button"
-            onClick={() => (running ? setRunning(false) : start())}
-            aria-label={running ? "Pause rest timer" : "Start rest timer"}
-            data-testid="rest-toggle"
-            className="flex h-11 w-11 items-center justify-center rounded-lg bg-brand-600 text-white hover:bg-brand-500 active:scale-95"
+          <ControlTooltip
+            label={running ? "Pause rest timer" : "Start rest timer"}
           >
-            {running ? (
-              <IconPlayerPauseFilled className="h-5 w-5" />
-            ) : (
-              <IconPlayerPlayFilled className="h-5 w-5" />
+            {(anchor) => (
+              <button
+                {...anchor}
+                type="button"
+                onClick={() => (running ? setRunning(false) : start())}
+                data-testid="rest-toggle"
+                className="flex h-11 w-11 items-center justify-center rounded-lg bg-brand-600 text-white hover:bg-brand-500 active:scale-95"
+              >
+                {running ? (
+                  <IconPlayerPauseFilled className="h-5 w-5" />
+                ) : (
+                  <IconPlayerPlayFilled className="h-5 w-5" />
+                )}
+              </button>
             )}
-          </button>
-          <button
-            type="button"
-            onClick={reset}
-            aria-label="Reset rest timer"
-            className="flex h-11 w-11 items-center justify-center rounded-lg border border-black/10 bg-surface text-slate-600 hover:bg-slate-50 active:scale-95 dark:border-white/10 dark:text-slate-300"
-          >
-            <IconRotateClockwise className="h-5 w-5" />
-          </button>
+          </ControlTooltip>
+          <ControlTooltip label="Reset rest timer">
+            {(anchor) => (
+              <button
+                {...anchor}
+                type="button"
+                onClick={reset}
+                className="flex h-11 w-11 items-center justify-center rounded-lg border border-black/10 bg-surface text-slate-600 hover:bg-slate-50 active:scale-95 dark:border-white/10 dark:text-slate-300"
+              >
+                <IconRotateClockwise className="h-5 w-5" />
+              </button>
+            )}
+          </ControlTooltip>
         </div>
       </div>
       <div className="mt-2">
