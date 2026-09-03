@@ -7,10 +7,8 @@ import {
   type WriteSpec,
 } from "@/components/useWritePipeline";
 import { LOGGED_VIA_FIELD } from "@/lib/logged-via";
-import {
-  localDate,
-  OFFLINE_CAPTURE_REFUSED_MESSAGE,
-} from "@/lib/offline/queue";
+import { OFFLINE_CAPTURE_REFUSED_MESSAGE } from "@/lib/offline/queue";
+import { dateStrInTz } from "@/lib/date";
 import { UNDO_TOAST_MS } from "@/lib/undo-offer";
 
 // THE FOUR CLASSES THE PIPELINE MAKES UNREPRESENTABLE (#3276's 2026-08-31 amendment).
@@ -69,6 +67,11 @@ async function tapInside(
   return done;
 }
 
+// The acting profile's zone, which is what a real caller reads off `useTimezone()` —
+// never the browser's (#4559). Named here so this stand-in spells the day the same way
+// `DoseStatusControl` does.
+const PROFILE_TZ = "UTC";
+
 // A spec with every declaration the pipeline demands, so each case below overrides only
 // the one thing it is about.
 function doseSpec(
@@ -90,7 +93,7 @@ function doseSpec(
     offline: (tappedAt) => ({
       kind: "capture",
       flow: "dose",
-      date: localDate(tappedAt),
+      date: dateStrInTz(PROFILE_TZ, tappedAt),
       payload: { doseId: 7, clientTakenAt: tappedAt.toISOString() },
       keptMessage: "Dose saved offline — will sync when you reconnect.",
     }),
@@ -151,7 +154,9 @@ describe("the client write pipeline (#3276)", () => {
       expect(flow).toBe("dose");
       expect(Date.parse(payload.clientTakenAt)).toBeGreaterThanOrEqual(before);
       expect(Date.parse(payload.clientTakenAt)).toBeLessThanOrEqual(after);
-      expect(date).toBe(localDate(new Date(payload.clientTakenAt)));
+      expect(date).toBe(
+        dateStrInTz(PROFILE_TZ, new Date(payload.clientTakenAt))
+      );
       expect(mocks.toast).toHaveBeenCalledWith(
         "Dose saved offline — will sync when you reconnect."
       );

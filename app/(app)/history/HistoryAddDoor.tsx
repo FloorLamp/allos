@@ -140,7 +140,14 @@ export function HistoryUsualOffers({
   const router = useRouter();
   if (offers.length === 0) return null;
   return (
-    <div className="grid" data-testid="history-add-usual">
+    // A PLAIN BLOCK, NOT A GRID (#4918 ruling 6). A grid track's default minimum is
+    // its item's max-content width, so the offer button was sized to its own
+    // single-line summary and `UsualRoutineControl`'s `truncate` span never got a
+    // narrower box to truncate in — the card ran ~400px past the column every other
+    // block on the page stops at. One or two offers stack the same way in a block,
+    // and the shared control's own `min-w-0` seam (components/OfferRow.tsx) is what
+    // stops any future host repeating it.
+    <div data-testid="history-add-usual">
       {offers.map((offer) => (
         <UsualRoutineControl
           key={offer.window}

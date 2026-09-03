@@ -114,6 +114,40 @@ describe("course-state derivation", () => {
     expect(sorted.map((c) => c.id)).toEqual([1, 3, 2]);
   });
 
+  // #4909: the comment said a null start sorts LAST and the code sorts it FIRST.
+  // Nulls-first is what ships and what both readers want, so these pin the order
+  // and the consequence rather than the sentence.
+  it.each([
+    [
+      "a null start leads the order it is unbounded-past in",
+      [
+        course({ id: 2, started_on: "2025-03-01" }),
+        course({ id: 1, started_on: null }),
+        course({ id: 3, started_on: "2025-01-01" }),
+      ],
+      [1, 3, 2],
+    ],
+    [
+      "two null starts keep id order between them",
+      [
+        course({ id: 5, started_on: null }),
+        course({ id: 4, started_on: null }),
+        course({ id: 6, started_on: "2024-12-31" }),
+      ],
+      [4, 5, 6],
+    ],
+  ])("sortCourses: %s", (_label, courses, ids) => {
+    expect(sortCourses(courses).map((c) => c.id)).toEqual(ids);
+  });
+
+  it("a dated open course outranks a null-start open one as the current course", () => {
+    const nullStart = course({ id: 7, started_on: null });
+    const dated = course({ id: 8, started_on: "2025-05-01" });
+    expect(currentCourse([dated, nullStart])?.id).toBe(8);
+    // Alone it is still the current one — nulls-first only decides the contest.
+    expect(currentCourse([nullStart])?.id).toBe(7);
+  });
+
   it("currentCourse is the open one; the course-array overload reflects it", () => {
     const closed = [
       course({ id: 1, started_on: "2025-01-01", stopped_on: "2025-02-01" }),
