@@ -139,7 +139,7 @@ export interface IntakeItem {
   rx: number;
   // PRN redose notice (issue #798). A per-item, opt-in, administration-armed
   // reminder for the redose window opening ("6h since Ibuprofen — your minimum
-  // interval has passed · 2 of 4 today"). redose_notice is the opt-in flag;
+  // interval has passed · 2 of 4 in 24h"). redose_notice is the opt-in flag;
   // min_interval_hours / max_daily_count are the user-CONFIRMED label numbers
   // (pre-filled from lib/prn-defaults, never applied silently). The notice fires only
   // when redose_notice=1 AND both are set — an unconfirmed/empty field means NO
