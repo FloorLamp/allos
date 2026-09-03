@@ -106,10 +106,13 @@ export default async function SleepPage() {
   const sleepMood = getSleepMoodData(profile.id);
   const sleepMoodMinDate = shiftDateStr(todayStr, -(sleepMood.windowDays - 1));
   const ouraScores = getOuraScores(profile.id);
-  const lastNightBedtimeSupplements = summary
-    ? (sleepMood.history.find((row) => row.date === summary.wakeDay)
-        ?.bedtimeSupplements ?? null)
+  // Both read off the SAME log row the table below renders, so the hero's hedge and the
+  // row's delete affordance can never disagree about which night is suspect (#4299) —
+  // and neither costs a second gather.
+  const lastNightRow = summary
+    ? (sleepMood.history.find((row) => row.date === summary.wakeDay) ?? null)
     : null;
+  const lastNightBedtimeSupplements = lastNightRow?.bedtimeSupplements ?? null;
 
   const hasAny =
     summary != null ||
@@ -181,6 +184,7 @@ export default async function SleepPage() {
             presentation={summaryPresentation}
             bedtimeSupplements={lastNightBedtimeSupplements}
             usualSleepBand={usualSleepBand}
+            clockSkewSuspect={lastNightRow?.sleepSuspect ?? false}
           />
         )}
 

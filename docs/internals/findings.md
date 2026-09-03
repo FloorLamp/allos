@@ -79,6 +79,22 @@ collectCoachingFindings builder is classified rollup-only (annotation enforced)
 or origin-tab (the claimed surface verified), and a new builder must choose a
 side.
 
+**A surface that HEDGES a fact is not that finding's origin tab (#4299).** The
+sleep clock-skew observation is rollup-only, and the distinction is the one a
+future builder will get wrong: the Sleep page does react to a suspect night — it
+stops stating the times as fact and offers the delete — but it renders no
+`Finding`, so the observation itself, its evidence line and its dismiss are
+reachable only through the rollup. "My domain page changed because of this" is
+not the origin-tab claim; "my domain page renders this finding" is.
+
+**A finding over a RUN of bad rows is keyed to the run, not to the row (#4299).**
+A source whose clock reference has gone stale mis-stamps every night until it
+heals, so a per-night key would mint a replacement the morning after a dismissal
+and the fan-out would need a cap to hold it. The key is anchored to the OLDEST
+suspect night still in the window instead: later nights join the episode, and the
+family is bounded by construction. This is the stale-exercise episode anchor
+above, applied to a source's defect rather than to a person's lapse.
+
 Profile-entity fan-out is bounded before suppression, per family, in
 `COACHING_ENTITY_FINDING_LIMITS` (and the food–drug variance family's adjacent
 declaration). That ordering means dismissing the generated set cannot promote the
