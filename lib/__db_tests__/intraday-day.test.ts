@@ -72,12 +72,35 @@ function seedSample(
 }
 
 describe("getIntradayDay", () => {
-  it("returns null when nothing on the day is intraday", () => {
+  // #4918's empty-day ruling: ALWAYS a model now, never null — a day with nothing
+  // intraday gets one whose four data layers are all empty.
+  it("returns an empty model when nothing on the day is intraday", () => {
     const p = newProfile("Intraday Empty");
     const events: TimelineEvent[] = [
       { id: "body:1", date: DAY, category: "body", title: "Body metrics" },
     ];
-    expect(getIntradayDay(p, DAY, events)).toBeNull();
+    const model = getIntradayDay(p, DAY, events);
+    expect(model.hr).toBeNull();
+    expect(model.sleep).toEqual([]);
+    expect(model.blocks).toEqual([]);
+    expect(model.ticks).toEqual([]);
+    expect(model.solarDay).toBeNull();
+    expect(model.expectedSleep).toBeNull();
+  });
+
+  it("threads the daylight band and expected-sleep window through when the caller passes them", () => {
+    const p = newProfile("Intraday Context");
+    const model = getIntradayDay(p, DAY, [], {
+      solarDay: { sunriseMin: 372, sunsetMin: 1146 },
+      expectedSleep: { bedMinutes: 1380, wakeMinutes: 390 },
+    });
+    expect(model.solarDay).toEqual({ sunriseMin: 372, sunsetMin: 1146 });
+    expect(model.expectedSleep).toEqual({
+      startMinute: 0,
+      endMinute: 390,
+      clippedStart: true,
+      clippedEnd: false,
+    });
   });
 
   it("builds HR, sleep (clipped), stage sub-bands and a Zone 2 band", () => {

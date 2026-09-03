@@ -7,6 +7,8 @@ import {
   MIN_ZOOM_MINUTES,
   axisTicks,
   clipToView,
+  daylightBandX,
+  expectedSleepBandX,
   hrAxisLabels,
   inView,
   intradayGeometry,
@@ -48,6 +50,8 @@ function model(over: Partial<IntradayModel> = {}): IntradayModel {
     blocks: [],
     ticks: [],
     nowMinute: null,
+    solarDay: null,
+    expectedSleep: null,
     ...over,
   };
 }
@@ -174,6 +178,99 @@ describe("the row stack collapses to the day's layers", () => {
     );
     expect(geo.sleepLabelY).toBeLessThanOrEqual(geo.sleepTop);
     expect(geo.sleepTop + geo.sleepH).toBeLessThanOrEqual(geo.workTop);
+  });
+
+  // #4918 ruling 7: the expected-sleep band draws in the SAME lane a real session
+  // would, so the row has to exist for it even when there is no session at all —
+  // an HR-only day with nothing else stays exactly as thin as it was before.
+  it("reserves the sleep row for the expected band alone, same as a real session would", () => {
+    const bare = intradayGeometry(model(), "wide");
+    const expecting = intradayGeometry(
+      model({
+        expectedSleep: {
+          startMinute: -60,
+          endMinute: 390,
+          clippedStart: false,
+          clippedEnd: false,
+        },
+      }),
+      "wide"
+    );
+    expect(bare.hasExpectedSleep).toBe(false);
+    expect(expecting.hasExpectedSleep).toBe(true);
+    expect(expecting.height).toBeGreaterThan(bare.height);
+    // The row sits directly under HR, same as a real session's row would — no
+    // orphaned gap, and Train follows directly after it.
+    expect(expecting.sleepTop).toBe(
+      expecting.hrTop + expecting.hrH + expecting.rowGap
+    );
+    expect(expecting.workTop).toBe(
+      expecting.sleepTop + expecting.sleepH + expecting.rowGap
+    );
+    // UNLIKE a real session, the expected band draws no bed/wake TEXT of its
+    // own (see sleepEdgeLabels — it only ever reads model.sleep), so it earns no
+    // label strip above the row: the row is thinner than a real session's.
+    const withSession = intradayGeometry(
+      model({ sleep: [sleepBlock({ startMinute: -60, endMinute: 390 })] }),
+      "wide"
+    );
+    expect(expecting.workTop).toBeLessThan(withSession.workTop);
+  });
+});
+
+// #4918 rulings 3 and 7: the two background bands. Neither is a row — the whole
+// point is that adding one moves NOTHING about the row stack above.
+describe("the background bands add no lane", () => {
+  it("the daylight band spans sunrise→sunset in x, and adds zero height", () => {
+    const bareModel = model();
+    const sunModel = model({ solarDay: { sunriseMin: 372, sunsetMin: 1146 } });
+    const bare = intradayGeometry(bareModel, "wide");
+    const withSun = intradayGeometry(sunModel, "wide");
+    // ZERO HEIGHT ADDED: the same model plus a solarDay is the identical row stack.
+    expect(withSun.height).toBe(bare.height);
+    expect(withSun.axisY).toBe(bare.axisY);
+    const band = daylightBandX(withSun, sunModel)!;
+    expect(band.left).toBeCloseTo(projectMinute(withSun, 372), 6);
+    expect(band.right).toBeCloseTo(projectMinute(withSun, 1146), 6);
+  });
+
+  it("draws nothing without a solarDay, and nothing outside the visible window", () => {
+    const bareModel = model();
+    const geo = intradayGeometry(bareModel, "wide");
+    expect(daylightBandX(geo, bareModel)).toBeNull();
+    const sunModel = model({ solarDay: { sunriseMin: 372, sunsetMin: 1146 } });
+    const zoomed = intradayGeometry(sunModel, "wide", { from: 0, to: 300 });
+    // The window sits entirely before sunrise: nothing to draw.
+    expect(daylightBandX(zoomed, sunModel)).toBeNull();
+  });
+
+  it("clips the daylight band to a zoomed window that only covers part of it", () => {
+    const sunModel = model({ solarDay: { sunriseMin: 372, sunsetMin: 1146 } });
+    const geo = intradayGeometry(sunModel, "wide", { from: 300, to: 600 });
+    const band = daylightBandX(geo, sunModel)!;
+    expect(band.left).toBeCloseTo(projectMinute(geo, 372), 6);
+    expect(band.right).toBeCloseTo(projectMinute(geo, 600), 6);
+  });
+
+  it("the expected-sleep band's x-span is pinned to bed→wake, gated on the state existing", () => {
+    const waitingModel = model({
+      expectedSleep: {
+        startMinute: -60,
+        endMinute: 390,
+        clippedStart: false,
+        clippedEnd: false,
+      },
+    });
+    const geo = intradayGeometry(waitingModel, "wide");
+    const band = expectedSleepBandX(geo, waitingModel)!;
+    expect(band.left).toBeCloseTo(projectMinute(geo, -60), 6);
+    expect(band.right).toBeCloseTo(projectMinute(geo, 390), 6);
+
+    // GATED: no expectedSleep at all (a session is in hand, or nothing to expect)
+    // draws nothing, however the rest of the model looks.
+    const bareModel = model();
+    const noBand = intradayGeometry(bareModel, "wide");
+    expect(expectedSleepBandX(noBand, bareModel)).toBeNull();
   });
 });
 
