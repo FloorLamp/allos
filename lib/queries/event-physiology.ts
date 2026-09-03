@@ -197,21 +197,33 @@ export function priorEventWindows(
  * was counted to pick it. So it is deliberately a round hour rather than a
  * precise-looking 45 or 75, which would imply a fit that was never done.
  *
- * AND A FIT IS POSSIBLE, which is the part that makes this a tracked question rather
- * than a shrug. `hr_minutes` gap behaviour on prod HAS been measured, on this same
- * stream: bimodal, with an empty valley at 2.1–2.5 h separating 16 routine removals
- * from 5 real events (docs/internals/integrations-sync.md). Two sibling constants are
- * fitted to it — Health Connect's 2.5 h dip tolerance and the 40-minute bedtime floor.
- * This one is not, and it could be: the quantity it wants is the distribution of
- * MEASURED-MINUTES PER NIGHT, which that window can answer. Declared from a
- * measurement, the way its siblings were — never learned at runtime, which
- * integrations-sync.md forbids outright.
+ * AND A FIT IS POSSIBLE, which is what makes this a tracked question rather than a
+ * shrug. Two constants on this stream WERE fitted to measurements
+ * (docs/internals/integrations-sync.md): the 2.5 h dip tolerance, to a gap
+ * distribution that came back bimodal with an empty valley at 2.1–2.5 h separating 16
+ * routine removals from 5 real events; and `frozenEvidence` N=4, to the finding that
+ * every clean false positive in 28 days was k=2 while every true detection was k>=5.
+ * Fitting from a measurement is the house style here — but DECLARED from it, never
+ * learned at runtime, which that document forbids outright.
+ *
+ * The closest relative is the one that was NOT fitted. The 40-minute bedtime floor is
+ * "dominated" at N=4 and "kept only because it costs nothing and still states the
+ * intent" — an unfitted number earning its place by saying what it means. That is
+ * exactly this constant's shape, and the honest comparison.
+ *
+ * WHAT A FIT WOULD ACTUALLY NEED, since the obvious answer is the wrong one. Counting
+ * how many nights a threshold excludes measures its COST, not its correctness. The
+ * validity question is different: take nights that were well covered, subsample them
+ * to N measured minutes, and see how far the observed minimum drifts from the night's
+ * true one. Prod's `hr_minutes` can answer that. The published 56-day cut cannot be
+ * reused directly — it is daytime gap durations, ten of them the evening charge.
  *
  * WHAT WOULD SEND SOMEONE BACK TO IT, per the ruling: a REAL night excluded. If a
  * night someone actually slept through, and would recognise as a night, falls under
- * the hour and drops out of the series, that is the evidence this number is wrong —
- * and it is evidence the floor produces itself rather than something anyone has to go
- * looking for.
+ * the hour and drops out of the series, this number is wrong. Note that nothing
+ * announces that: the drop below is a bare `continue`, with no counter and no log, so
+ * a night lost this way is simply one fewer datapoint. Someone has to go looking, and
+ * a counter here is the cheapest thing that would change that.
  */
 export const OVERNIGHT_MIN_MEASURED_MIN = 60;
 
