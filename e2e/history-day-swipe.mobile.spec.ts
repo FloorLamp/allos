@@ -181,8 +181,10 @@ test("on today there is no next arrow and a leftward swipe changes nothing", asy
   // rendering — both of which would make the probe blind rather than the day quiet.
   await touchSwipe(page, { x: 110, y: 520 }, { x: 320, y: 514 });
   await expect(announced).toHaveText(/Opening /);
-  await expect(page).toHaveURL(/day=\d{4}-\d{2}-\d{2}/, {
-    timeout: NAV_TIMEOUT,
-  });
+  // NOT a bare `day=\d{4}-…` shape: the clamp is the SERVER's, so the browser URL
+  // still reads `day=2099-01-01` and a date-shaped pattern matches it before any
+  // navigation happens — which is how this assertion first passed over a swipe that
+  // had not landed yet. It names the day that must go instead.
+  await expect(page).not.toHaveURL(/day=2099-01-01/, { timeout: NAV_TIMEOUT });
   expect(page.url()).not.toBe(before);
 });
