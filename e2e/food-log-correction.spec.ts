@@ -99,7 +99,15 @@ test("a mis-slotted serving is corrected from the log and the meal tallies follo
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
   // Log into Morning explicitly, so the correction has a known source window.
-  await page.getByTestId("food-slot-morning").click();
+  // hydratedClick, not click: the meal selector is a CONTROLLED React button
+  // (components/SegmentedControl.tsx renders `<button type="button" onClick>` with no
+  // href and no form), so a tap dispatched before the handler attaches is lost with no
+  // native fallback and no error — the chip assertion below then retries against the
+  // unchanged slot and reports the derived window as wrong (#4830 on `e2e (4)`:
+  // `Expected: "Evening" Received: "Midday"`, 14 retries). This is why #4339's
+  // clearing of the `food-more-groups` taps does not transfer: THAT is an uncontrolled
+  // `<details>` that toggles natively, so a pre-hydration tap survives it.
+  await hydratedClick(page, page.getByTestId("food-slot-morning"));
   await expect(page.getByTestId("food-slot-chip")).toHaveText("Morning");
   await revealFoodGroup(page, "nuts_seeds");
 
@@ -166,7 +174,7 @@ test("the ⋯ menu removes the corrected row it names, and Undo restores that ro
 
   // Capture the Evening baselines FIRST: `count-<slug>` always reads the active slot, so
   // the group's Evening figure has to be taken while Evening is selected.
-  await page.getByTestId("food-slot-evening").click();
+  await hydratedClick(page, page.getByTestId("food-slot-evening"));
   await expect(page.getByTestId("food-slot-chip")).toHaveText("Evening");
   await revealFoodGroup(page, "shellfish");
   const eveningCountBefore = Number(
@@ -280,7 +288,7 @@ test("the sheet corrects a serving's eating time; Meal follows the hour until to
   await page.goto("/nutrition");
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
-  await page.getByTestId("food-slot-morning").click();
+  await hydratedClick(page, page.getByTestId("food-slot-morning"));
   await expect(page.getByTestId("food-slot-chip")).toHaveText("Morning");
   await revealFoodGroup(page, "legumes");
   const idsBefore = await loggedIds(page);

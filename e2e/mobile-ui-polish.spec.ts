@@ -448,10 +448,20 @@ test.describe("nutrition food-log controls stay in the viewport on mobile", () =
     // its right edge must stay within the viewport.
     const addBtn = page.locator('[data-testid^="log-"]').first(); // first-ok: the first log row's add button — the clip test is layout-general (see comment), order-agnostic
     await expect(addBtn).toBeVisible();
-    const box = await addBtn.boundingBox();
-    expect(box).not.toBeNull();
-    expect(box!.x + box!.width).toBeLessThanOrEqual(PHONE.width + 1);
-    expect(box!.x).toBeGreaterThanOrEqual(0);
+    // settledBoxes, not a raw read: something re-renders the food log bar and
+    // REPLACES this subtree rather than updating it (#4815), so the handle
+    // `toBeVisible()` just resolved can be detached by the time the box is read —
+    // and a detached node has no box. A raw read hands that null to a plain numeric
+    // `expect`, which cannot retry, so the run failed as `Received: null` and read
+    // as a clipped button (#4835). Two consecutive agreeing reads instead, with a
+    // null treated as "not a settled reading" and named as such when it never
+    // settles; the clip claim below is unchanged and still fails on a clipped one.
+    const [box] = await settledBoxes([addBtn]);
+    expect(
+      box.x + box.width,
+      "the add button's right edge must stay within the viewport"
+    ).toBeLessThanOrEqual(PHONE.width + 1);
+    expect(box.x).toBeGreaterThanOrEqual(0);
 
     // And no OTHER element on the page is pushed off the right edge either
     // (#1543 — element-level, since the shell clips the page-level signal away).
