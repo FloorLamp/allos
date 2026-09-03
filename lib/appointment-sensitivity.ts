@@ -1,16 +1,14 @@
 import type { AppointmentKind } from "./types";
-import type { RecentChangeCategory } from "./recent-changes";
 
-// WHAT A SHARED SURFACE MAY SHOW (issue #997, widened by #1463). PURE — no DB/network,
-// client-safe, unit-tested in lib/__tests__/appointment-sensitivity.test.ts.
+// WHAT A SHARED SURFACE MAY SHOW (issue #997). PURE — no DB/network, client-safe,
+// unit-tested in lib/__tests__/appointment-sensitivity.test.ts.
 //
-// Two rules live here, and they live TOGETHER on purpose: "this surface is shared"
-// must mean ONE thing wherever it is declared, decided once, or the next consumer to
-// pass the flag inherits nothing and reproduces the disclosure one surface later.
-//
-//   1. APPOINTMENT DETAIL — a behavioral-health visit is stated minimally (below).
-//   2. WITHHELD CATEGORIES — the categories dropped outright, EMPTY today (bottom
-//      of file). Rule 1 is the only thing a shared surface actually applies now.
+// ONE rule, and "this surface is shared" means exactly it: a behavioral-health visit
+// is stated minimally. #1463 briefly added a second — whole categories a shared
+// surface drops outright, holding "mood" — and the owner REVERSED that on 2026-09-03
+// (#4702/#4807): shared surfaces show mood check-ins. The mechanism went with the
+// rule rather than staying on as an always-false predicate; a category that needs
+// withholding later gets built for the category that actually needs it.
 //
 // Most appointment kinds show whatever detail the shared surface is set to — the
 // household rollups and the .ics family calendar feed already carry a minimal/full
@@ -58,33 +56,4 @@ export function sharedSurfaceDetail(
     return "minimal";
   }
   return requested;
-}
-
-// ── Rule 2: categories a shared surface withholds ENTIRELY (#1463; EMPTY since the
-// owner's reversal of 2026-09-03, #4702/#4807) ───────────────────────────────────
-//
-// This set held "mood" for two days, on the reasoning that access granted to help with
-// somebody's medications was not access to their mood feed. REVERSED: shared surfaces
-// show mood check-ins. The household is a family, and one rule fewer beat composing a
-// digest per recipient class.
-//
-// WHAT DECIDED IT was the morning digest, and the correction matters more than the
-// rule did. The digest passes no `shared` flag, and an earlier version of this comment
-// read that as settling the question — "the profile's OWN surfaces never consult
-// this". It is not a private surface. It renders ONE body and fans it out to
-// `managingLoginIdsForProfile`, which is `login_profiles` UNION the owner
-// (lib/notifications/managing-logins.ts), so every grantee has been reading the same
-// check-in all along. The digest shows mood to everyone it reaches, deliberately; no
-// flag settles that, and the next surface to pass `shared: true` should not read one
-// as having settled anything.
-const SHARED_SURFACE_WITHHELD_CATEGORIES = new Set<RecentChangeCategory>();
-
-// Whether a shared surface withholds this whole category — false for every category
-// today. Consulted ONCE, over the collected set, by `collectRecentChanges` — never
-// per-category at a call site, so a category added tomorrow is judged by this rule
-// rather than by whoever adds it.
-export function sharedSurfaceWithholdsCategory(
-  category: RecentChangeCategory
-): boolean {
-  return SHARED_SURFACE_WITHHELD_CATEGORIES.has(category);
 }

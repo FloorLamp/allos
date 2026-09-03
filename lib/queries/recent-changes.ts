@@ -44,10 +44,7 @@ import { getIntegration } from "../integrations/registry";
 import { syncVocabularyForKind } from "../integrations/source-state";
 import type { IntegrationId } from "../types/integrations";
 import { currentEpisodeForProfile } from "../illness-episode";
-import {
-  sharedSurfaceDetail,
-  sharedSurfaceWithholdsCategory,
-} from "../appointment-sensitivity";
+import { sharedSurfaceDetail } from "../appointment-sensitivity";
 import { biomarkerFamily } from "../canonical-name";
 import type { AppRoute } from "../hrefs";
 import { getIntakeDeltas } from "../intake-history";
@@ -66,12 +63,17 @@ export interface RecentChangesOptions {
   exclude?: readonly RecentChangeCategory[];
   // Categories the reader has demoted (#1714) — only their notable entries survive.
   demoted?: readonly RecentChangeCategory[];
-  // A SHARED surface — one other people can read, like the household card. It states
-  // behavioral-health visits minimally; the whole-category withholding beside it is
-  // empty since the 2026-09-03 reversal (#4807), so mood check-ins render here as they
-  // do anywhere else. Both rules are decided in lib/appointment-sensitivity.ts, never
-  // here and never at a call site. The morning digest passes no flag, and that is not a
-  // claim to be a private surface — it fans one body out to grantees too.
+  // A SHARED surface — one other people can read, like the household card. It means
+  // exactly ONE thing: behavioral-health visits are stated minimally, decided in
+  // lib/appointment-sensitivity.ts and never here or at a call site. It withholds no
+  // category — #1463's mood rule was reversed on 2026-09-03 (#4807) and the machinery
+  // went with it — so every category renders on a shared surface as it does anywhere.
+  //
+  // AND THE MORNING DIGEST PASSES NO FLAG, WHICH IS NOT A CLAIM TO BE PRIVATE. It
+  // renders ONE body and fans it out to `managingLoginIdsForProfile` — `login_profiles`
+  // UNION the owner (lib/notifications/managing-logins.ts) — so grantees read it too.
+  // A missing flag settles nothing about who sees what; the next surface deciding
+  // whether to pass `shared: true` is deciding the visit question, and only that.
   shared?: boolean;
   // Line cap and overflow copy.
   max?: number;
@@ -487,26 +489,13 @@ export function collectRecentChanges(
   // ── data arrival (#1713) ─────────────────────────────────────────────────────
   if (on("data")) changes.push(...arrivalChanges(profileId, sinceInstant));
 
-  // §3, THE WHOLE-CATEGORY HALF (#1463). Applied ONCE here, over everything collected,
-  // rather than inside the branch that produces each category: `shared: true` then
-  // means the same thing for every consumer that passes it and for every category
-  // added later, which is the property a per-branch or a call-site `exclude` cannot
-  // give. The visit rule above stays where it is because it rewrites a line rather
-  // than dropping one. The withheld set is EMPTY since #4807 reversed the mood rule,
-  // so this filter drops nothing today and stays as the seam a future category joins.
-  //
-  // BEFORE `present`, deliberately: `presentCategories` answers "what is in today's
-  // message" for the #1714 Tune control, and a category this surface withholds is not
-  // in the message — offering a toggle for it would name the very thing the rule
-  // exists to keep off a shared surface.
-  const visible = opts.shared
-    ? changes.filter((c) => !sharedSurfaceWithholdsCategory(c.category))
-    : changes;
-
   // Pre-demotion, so the Tune control (#1714) can offer a toggle for a category that
-  // IS producing lines this reader has chosen not to see.
-  const present = new Set(visible.map((c) => c.category));
-  const kept = applyRecentChangeDemotion(visible, new Set(opts.demoted ?? []));
+  // IS producing lines this reader has chosen not to see. Every collected category
+  // reaches here on a shared read as on the profile's own: #1463's whole-category
+  // withholding — which dropped a category before this line and kept it out of the
+  // Tune control with it — was reversed and removed (#4807).
+  const present = new Set(changes.map((c) => c.category));
+  const kept = applyRecentChangeDemotion(changes, new Set(opts.demoted ?? []));
   const ranked = rankRecentChanges(kept, {
     lifeStage: stage,
     openEpisode: currentEpisodeForProfile(profileId) != null,

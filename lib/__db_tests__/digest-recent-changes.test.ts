@@ -279,12 +279,17 @@ describe("collectRecentChanges — the digest's 24h window (#1713)", () => {
   // whole precondition here, so a surface added tomorrow is covered by this test on the
   // day it passes it.
   //
-  // This test pinned mood ABSENT from the shared read for two days. It pins PRESENT now,
-  // which is the assertion that can actually fail: absence was satisfiable by a collector
-  // that returned nothing at all, so the ROW ITSELF is what is asserted — its rendered
-  // score, its line in the message, and its place in `presentCategories` — beside the
-  // categories that never moved. The one thing a shared surface still changes is the
-  // visit restatement, and that is the test above.
+  // THIS OUTLIVES THE MACHINERY IT USED TO GUARD. #1463's whole-category withholding
+  // was deleted with the rule, so there is no predicate left to exercise — and that is
+  // the point: what is pinned is the collector's OUTPUT, so a withholding reintroduced
+  // in ANY shape (a per-branch skip, a call-site exclude, a new filter) fails here.
+  //
+  // It pinned mood ABSENT for two days and pins PRESENT now, which is also the
+  // assertion that can actually fail: absence was satisfiable by a collector that
+  // returned nothing at all, so the ROW ITSELF is asserted — its rendered score, its
+  // line in the message, its place in `presentCategories` — beside the categories that
+  // never moved. The one thing a shared surface still changes is the visit
+  // restatement, and that is the test above.
   it("a shared surface shows mood check-ins, exactly as the profile's own read does", () => {
     const pid = newProfile("Shared Sam");
     const td = today(pid);
