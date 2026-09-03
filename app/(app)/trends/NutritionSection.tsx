@@ -324,7 +324,7 @@ export default async function NutritionSection({
         title="Macros & fiber"
         detailHref="/nutrition"
         detailTitle="macros"
-        note="Protein, carbs, fat, and fiber per day. Informational — the intake trend, not a prescription."
+        about="Protein, carbs, fat, and fiber per day. Informational — the intake trend, not a prescription."
       >
         {macroFiber.length === 0 ? (
           <EmptyState
