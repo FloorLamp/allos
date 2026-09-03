@@ -29,6 +29,7 @@
 // sentence is — is shared. A third glance surface picks a form; it does not pick a
 // treatment.
 
+import { daysBetweenDateStr } from "./date";
 import { formatCompactAge, formatRelativeDate } from "./format-date";
 import type { FreshnessState } from "./freshness";
 
@@ -40,7 +41,10 @@ import type { FreshnessState } from "./freshness";
 //     DATE, because for a recent reading the exact day is the more useful fact and
 //     "3 days ago" is a downgrade; a stale one states its AGE, because "2022-03-08"
 //     does not read as "four years ago" at a glance, which is how that card came to
-//     look like a snapshot of "my vitals now" (#2303).
+//     look like a snapshot of "my vitals now" (#2303). The two freshest days are the
+//     exception (#4757): "Wednesday, September 2" IS today, and a reader should not
+//     have to do calendar math to learn a reading is current, so today and yesterday
+//     say so in words. The day after yesterday is already a date worth naming.
 //   "as-of"   — a qualifier tucked under a headline NUMBER (the Trends body chart
 //     cards, #2615 item 3). It states the DATE at every state, never the age: "2 weeks
 //     ago" sitting beside "99.2 °F" reads as a second quantity, and "as of" means a
@@ -140,6 +144,13 @@ export type GlanceAgeInput =
       dateLabel: string;
     });
 
+// The long form's two spoken days. Lowercase because the token follows the value on
+// one line ("63 bpm today"); the compact form's "Today" heads a column cell instead.
+function recentDayWord(date: string, today: string): string | null {
+  const days = daysBetweenDateStr(date, today);
+  return days == null || days > 1 ? null : days <= 0 ? "today" : "yesterday";
+}
+
 export function glanceAgeToken(input: GlanceAgeInput): GlanceAgeToken {
   const stale = input.freshness === "due";
   const text =
@@ -149,7 +160,7 @@ export function glanceAgeToken(input: GlanceAgeInput): GlanceAgeToken {
         ? `as of ${input.dateLabel}`
         : stale
           ? formatRelativeDate(input.date, input.today)
-          : input.dateLabel;
+          : (recentDayWord(input.date, input.today) ?? input.dateLabel);
   return {
     text,
     stale,

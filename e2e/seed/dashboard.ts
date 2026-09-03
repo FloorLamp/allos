@@ -996,6 +996,11 @@ export function seedNavGating(): void {
       pid
     );
     db.prepare(`DELETE FROM dental_procedures WHERE profile_id = ?`).run(pid);
+    // The relevance-bearing set grew with #2921: the Vision/Dental gates now also
+    // read the specialty lens, so a classified VISIT or a coded eye/tooth condition
+    // would unhide a pane this fixture exists to find hidden.
+    db.prepare(`DELETE FROM encounters WHERE profile_id = ?`).run(pid);
+    db.prepare(`DELETE FROM conditions WHERE profile_id = ?`).run(pid);
     db.prepare(
       `DELETE FROM profile_settings WHERE profile_id = ? AND key IN ('sex', 'reproductive_status', 'birthdate', 'age')`
     ).run(pid);

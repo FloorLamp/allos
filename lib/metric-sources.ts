@@ -277,3 +277,108 @@ export function pickRowsOneSourcePerWindow<T>(
   }
   return rows.filter((_, index) => keep.has(index));
 }
+
+// ── TWO SOURCES, ONE DAY (#2653, state 6) ────────────────────────────────────
+//
+// The issue filed state 6 as "stacked markers with nothing explaining the
+// disagreement". Nothing stacks: every election above collapses a contested day to
+// ONE point before a chart sees it, so the second scale's number is not drawn
+// ambiguously — it is DISCARDED, and the chart draws one confident mark for a day
+// two devices disagreed about. The missing thing is a FACT in the read, so the fold
+// below reports what it beat, in the same pass that elects. A day nobody contested
+// carries nothing extra.
+//
+// Every row handed here is already filed under a profile-local DAY (`body_metrics.
+// date`); nothing here parses an instant.
+
+/** A day more than one source reported. Present only when there IS more than one. */
+export interface DaySourceSpread {
+  /** The source the election kept — whose value is the one plotted. */
+  trusted: string;
+  /** Each source it set aside, with that source's own number for the day. */
+  others: { source: string; value: number }[];
+}
+
+export interface DailySourcePoint {
+  date: string;
+  value: number;
+  sources?: DaySourceSpread;
+}
+
+/**
+ * One MEAN per day for repeat measurements of a quantity (a weigh-in, a resting
+ * HR): the election picks the source with the most rows unless the selection
+ * prefers one (`electSourceGroup`, the same election every other fold uses), the
+ * kept source's rows average, and every other source's own mean rides along as
+ * `sources.others` (id order, so the answer is deterministic). STRICT (#1642): a
+ * day no selector covers yields no point. A CLASS selector (#1640) makes its
+ * members one group, so two documents on one day never contest each other.
+ * Oldest→newest.
+ */
+export function foldDaysBySourceMean(
+  rows: readonly { date: string; source: string | null; value: number }[],
+  selection: SourceSelection
+): DailySourcePoint[] {
+  const resolution = asSourceResolution(selection);
+  const byDate = new Map<string, Map<string, { sum: number; n: number }>>();
+  for (const r of rows) {
+    let m = byDate.get(r.date);
+    if (!m) {
+      m = new Map();
+      byDate.set(r.date, m);
+    }
+    const src = sourceGroupKey(r.source, resolution.order);
+    const acc = m.get(src) ?? { sum: 0, n: 0 };
+    acc.sum += r.value;
+    acc.n += 1;
+    m.set(src, acc);
+  }
+  const out: DailySourcePoint[] = [];
+  for (const [date, m] of byDate) {
+    const chosen = electSourceGroup(
+      new Map([...m].map(([src, acc]) => [src, acc.n])),
+      resolution
+    );
+    if (chosen == null) continue;
+    const kept = m.get(chosen)!;
+    const others = [...m]
+      .filter(([src]) => src !== chosen)
+      .map(([source, acc]) => ({ source, value: acc.sum / acc.n }))
+      .sort((a, b) => (a.source < b.source ? -1 : 1));
+    out.push({
+      date,
+      value: kept.sum / kept.n,
+      ...(others.length > 0 ? { sources: { trusted: chosen, others } } : {}),
+    });
+  }
+  return out.sort((a, b) => (a.date < b.date ? -1 : 1));
+}
+
+/**
+ * The display boundary for a series that may carry `sources`: the plotted value
+ * and every other source's account go through ONE `convert`, so a companion can
+ * never be drawn in kg beside a primary in lb, and source ids become the names a
+ * caption prints (`metricSourceLabel`) here rather than in a component that cannot
+ * read the documents table.
+ */
+export function displaySourcePoints(
+  series: readonly DailySourcePoint[],
+  convert: (value: number) => number,
+  labelOf: (source: string) => string
+): DailySourcePoint[] {
+  return series.map(({ date, value, sources }) => ({
+    date,
+    value: convert(value),
+    ...(sources
+      ? {
+          sources: {
+            trusted: labelOf(sources.trusted),
+            others: sources.others.map((other) => ({
+              source: labelOf(other.source),
+              value: convert(other.value),
+            })),
+          },
+        }
+      : {}),
+  }));
+}
