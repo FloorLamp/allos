@@ -726,6 +726,9 @@ describe("the clock door is the only spelling of the statement (#4426)", () => {
   // retired dialect the ruling names — and over the benign neighbours it must stay
   // quiet on, which are real sentences these surfaces already say.
   const MOUNT = "const s = useTimeStatement({ day });\n";
+  // A POSITIONAL `%i` IN THE TITLE LANDS ON THE SECOND ELEMENT — the source — and
+  // printed "reports NaN" on all eight rows. The expectation reads in the message
+  // instead, where a failure actually shows it.
   it.each([
     [
       "a text button beside the door",
@@ -763,9 +766,10 @@ describe("the clock door is the only spelling of the statement (#4426)", () => {
       `${MOUNT}<><button onClick={() => log("now")} />{s.door}</>`,
       0,
     ],
-  ])("%s: reports %i", (_label, source, count) => {
+  ])("%s", (label, source, count) => {
     expect(
-      scanStatementSurface("components/Plant.tsx", source).retired
+      scanStatementSurface("components/Plant.tsx", source).retired,
+      `${label} should report ${count} retired spelling(s)`
     ).toHaveLength(count);
   });
 
@@ -778,9 +782,9 @@ describe("the clock door is the only spelling of the statement (#4426)", () => {
       false,
       false,
     ],
-  ])("%s: adopts %s, draws %s", (_label, source, adopts, draws) => {
+  ])("%s", (label, source, adopts, draws) => {
     const scan = scanStatementSurface("components/Plant.tsx", source);
-    expect(scan.adopts).toBe(adopts);
-    expect(scan.drawsDoor).toBe(draws);
+    expect(scan.adopts, `${label} adopts: ${adopts}`).toBe(adopts);
+    expect(scan.drawsDoor, `${label} draws the door: ${draws}`).toBe(draws);
   });
 });
