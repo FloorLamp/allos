@@ -211,7 +211,11 @@ export default function LogPracticeButton({
   const statement = useTimeStatement({
     shown: inlineWhen && !currentLive,
     day: today,
-    timeLabel: `End time of this ${practice} session`,
+    // SHORT, because it is a VISIBLE field label now (#4384 fix 3) and this row is one
+    // of several on a phone-width sheet. The sentence it replaces was an `aria-label`
+    // nobody could see; what disambiguates the rows is the practice's own heading
+    // above the control, not a per-field restatement of it.
+    timeLabel: "End time",
     testId: "practice-when",
     disabled: pending || ledger.pending(),
   });
@@ -472,25 +476,35 @@ export default function LogPracticeButton({
           <Stepper
             testId="practice-inline-duration"
             stepTestId="practice-duration"
-            className="w-36 shrink-0 border-black/10 dark:border-white/10"
+            className="w-40 shrink-0 border-black/10 dark:border-white/10"
             onStep={(direction) => step(direction * PRACTICE_DURATION_STEP_MIN)}
             disabled={pending || ledger.pending()}
             decreaseDisabled={duration === ""}
             decreaseLabel={`Shorten the ${practice} session by ${PRACTICE_DURATION_STEP_MIN} minutes`}
             increaseLabel={`Lengthen the ${practice} session by ${PRACTICE_DURATION_STEP_MIN} minutes`}
           >
-            <input
-              type="number"
-              inputMode="numeric"
-              min="1"
-              step="1"
-              value={duration}
-              onChange={(event) => setDuration(event.target.value)}
-              className="number-no-spinner min-w-0 w-full border-x border-y-0 border-black/10 bg-transparent px-1 py-1 text-center text-sm outline-hidden focus:ring-0 dark:border-white/10"
-              aria-label={`Duration in minutes for this ${practice} session`}
-              placeholder="min"
-              data-testid="practice-duration-input"
-            />
+            {/* THE UNIT IS STATED WHILE THE FIELD HOLDS A VALUE (#4384 fix 4). It
+                used to be the `placeholder`, which is the one state where a bare
+                number is not ambiguous: blank read "min" and a filled field read
+                "15", so the stepper stopped saying what it was counting exactly when
+                it had something to count. The caption is static and says the same
+                word in both states. */}
+            <div className="flex min-w-0 grow items-baseline border-x border-black/10 dark:border-white/10">
+              <input
+                type="number"
+                inputMode="numeric"
+                min="1"
+                step="1"
+                value={duration}
+                onChange={(event) => setDuration(event.target.value)}
+                className="number-no-spinner min-w-0 w-full bg-transparent px-1 py-1 text-right text-sm outline-hidden focus:ring-0"
+                aria-label={`Duration in minutes for this ${practice} session`}
+                data-testid="practice-duration-input"
+              />
+              <span className="pr-1.5 text-xs text-slate-500 dark:text-slate-400">
+                min
+              </span>
+            </div>
           </Stepper>
         )}
         {currentLive ? (

@@ -480,9 +480,16 @@ describe("merge-gate.mjs", () => {
       [at("e2e-main (1)", null, "in_progress"), at("e2e-main (2)", "success")],
       "still running",
     ],
+    // A shard that SKIPPED did not pass, so it may not be counted as one that
+    // did (#4370). All-skipped is the shape e2e-main produces for a push with no
+    // runtime surface, and it used to read here as a four-shard green.
     [
       [at("e2e-main (1)", "success"), at("e2e-main (2)", "skipped")],
-      "is green (2 shards)",
+      "is green (1 of 2 shards ran)",
+    ],
+    [
+      [at("e2e-main (1)", "skipped"), at("e2e-main (2)", "skipped")],
+      "ran NOTHING (2 shards skipped",
     ],
     [[at("lint", "failure")], "no verdict on main"],
     // The same reading of `cancelled` the head checks get (#4800): a shard whose
