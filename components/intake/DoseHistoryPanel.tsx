@@ -3,6 +3,7 @@
 import { useState } from "react";
 import HistoricalDoseForm from "@/components/medications/HistoricalDoseForm";
 import OfferRow from "@/components/OfferRow";
+import CardSectionHeader from "@/components/CardSectionHeader";
 import { LabeledVerbChip } from "@/components/Chip";
 import EntryHistoryTable, {
   type EntryHistoryColumn,
@@ -271,8 +272,7 @@ export default function DoseHistoryPanel({
 
   return (
     <div data-testid="dose-history">
-      <div className="mb-1 flex items-center justify-between gap-3">
-        <span className="section-label">Dose history</span>
+      <CardSectionHeader title="Dose history" variant="label">
         {canWrite ? (
           <button
             type="button"
@@ -298,7 +298,7 @@ export default function DoseHistoryPanel({
             Log past dose
           </button>
         ) : null}
-      </div>
+      </CardSectionHeader>
       {canWrite && backfillDisabledReason ? (
         <p className="mb-1 text-xs text-slate-500 dark:text-slate-400">
           {backfillDisabledReason}

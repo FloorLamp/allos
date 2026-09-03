@@ -27,7 +27,6 @@ export default function QuickLogPrnContent({
   intro,
   emptyMessage,
   titleHref,
-  showPageLink = true,
   timeFormat,
   nowIso,
 }: {
@@ -45,7 +44,6 @@ export default function QuickLogPrnContent({
   intro?: ReactNode;
   emptyMessage?: string;
   titleHref?: AppRoute;
-  showPageLink?: boolean;
   timeFormat?: TimeFormat;
   // The redose-window "now", as an ISO instant from the nearest SERVER boundary.
   // REQUIRED whenever this content is mounted under a "use client" parent (the
@@ -99,10 +97,10 @@ export default function QuickLogPrnContent({
           title={title}
           href="/medications"
           variant={headingVariant}
-          action={headerAction}
           titleHref={titleHref}
-          showPageLink={showPageLink}
-        />
+        >
+          {headerAction}
+        </CardSectionHeader>
       )}
       {intro}
       {meds.length === 0 && emptyMessage ? (

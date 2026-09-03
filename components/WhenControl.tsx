@@ -306,11 +306,13 @@ export default function WhenControl({
 //
 // FROM `md` UP THE TWO SIT SIDE BY SIDE, which is not a second authoring of
 // anything — it is one content tree with a `md:flex-row` on it (#2305 forbids a
-// hidden twin, not a responsive layout). It has to: an anchored popover is
-// `position: fixed` and `AnchoredPanel` does not cap its height, so a stacked
-// calendar-over-wheel panel opened from a control low on the page runs off the
-// bottom of the viewport with its Done button on the other side of the edge.
-// Stacked is right on a phone, where the sheet scrolls and the width is the
+// hidden twin, not a responsive layout). It is the shape a mouse and a wide
+// window want: both halves of the value visible at once, with Done under them.
+// It began as a WORKAROUND — a stacked calendar-over-wheel popover opened from a
+// control low on the page ran off the bottom of the viewport with its Done
+// button on the other side of the edge, because `AnchoredPanel` did not cap its
+// height. #4776 fixed that where it belonged, so the layout now stands on its
+// own. Stacked is right on a phone, where the sheet scrolls and the width is the
 // screen's.
 /** The popover's width: a 16rem calendar beside the wheel, with the gap and padding. */
 const PANEL_WIDTH = 480;

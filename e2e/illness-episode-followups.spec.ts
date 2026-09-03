@@ -268,7 +268,7 @@ test.describe("Illness-episode follow-ups (#856)", () => {
       "data-chip-verb",
       /^(?:Take|Give)$/
     );
-    const panelDoor = doseWorkingRow.getByTestId("prn-log-more");
+    const panelDoor = doseWorkingRow.getByTestId("prn-log-when-toggle");
     await expect(panelDoor).toHaveAccessibleName("Happened earlier?");
     await expect(panelDoor).toHaveText("Happened earlier?"); // the visible glyph only — the words are sr-only
     await expect(panelDoor.locator("span")).toHaveClass(/sr-only/);
