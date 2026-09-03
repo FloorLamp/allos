@@ -1,4 +1,5 @@
 import { requireSession } from "@/lib/auth";
+import { getDisplayFormatPrefs } from "@/lib/settings";
 import HearingSection from "../../HearingSection";
 import { SectionSubtitle } from "../../SectionHeader";
 import PageContainer from "@/components/PageContainer";
@@ -14,13 +15,16 @@ export const dynamic = "force-dynamic";
 // stranding the #1079 gate rule warns about. Skin and Mental health are ungated for the
 // same reason.
 export default async function RecordsHearingPage() {
-  const { profile } = await requireSession();
+  const { login, profile } = await requireSession();
   return (
     <PageContainer width="flow" data-testid="records-hearing">
       <SectionSubtitle title="Hearing">
         Record audiogram thresholds and compare them over time.
       </SectionSubtitle>
-      <HearingSection profileId={profile.id} />
+      <HearingSection
+        profileId={profile.id}
+        formatPrefs={getDisplayFormatPrefs(login.id)}
+      />
     </PageContainer>
   );
 }

@@ -123,7 +123,11 @@ import {
   seedFiberSourceStates,
 } from "./seed/nutrition";
 import { seedProviderMergePair, seedProviderCloseout } from "./seed/providers";
-import { seedIllness, seedSymptomVideoEpisode } from "./seed/illness";
+import {
+  seedIllness,
+  seedSymptomVideoEpisode,
+  seedFeverAxisEpisode,
+} from "./seed/illness";
 import { seedCycleAndDerived, seedWindowAnalytics } from "./seed/situations";
 import {
   seedDigestTune,
@@ -312,6 +316,10 @@ seedTrashZones();
 // (no practice target, no practice log), so every existing fixture's row ids stay
 // exactly where they were.
 seedPracticeZero();
+// Appended LAST (#4858): one new profile + login whose episode pins the fever
+// chart's last date tick to the plot edge under an ISO date format, so every
+// existing fixture's row ids stay exactly where they were.
+seedFeverAxisEpisode();
 // LAST, and it must stay last: this mints the admin session every worker starts
 // with, and `createSession` records the profile the session lands on. Running it
 // before a fixture that adds profiles or grants would pin the session to a world
