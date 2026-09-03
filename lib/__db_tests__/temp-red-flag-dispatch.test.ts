@@ -29,7 +29,14 @@ import {
   type SituationEvent,
 } from "@/lib/trend-annotations";
 import { logTemperatureCore } from "@/lib/temperature-log";
-import { dispatchTempRedFlagForReading } from "@/lib/notifications/temp-red-flag";
+import {
+  dispatchTempRedFlagForEpisodeOpen,
+  dispatchTempRedFlagForReading,
+} from "@/lib/notifications/temp-red-flag";
+import {
+  getActiveSituations,
+  setActiveSituations,
+} from "@/lib/settings/profile-attrs";
 
 // The clock is FROZEN for the whole tier (#4509), late on its own UTC day, so every
 // wall time this file states has already happened and `logTemperatureCore` judges it
@@ -45,10 +52,10 @@ function newProfile(name: string): number {
   );
 }
 
-function configureHA(profileId: number): void {
+function configureHA(profileId: number, webhookUrl: string = HA_URL): void {
   setProfileHomeAssistant(profileId, {
     enabled: true,
-    webhookUrl: HA_URL,
+    webhookUrl,
     secret: "",
     disabledKinds: [],
   });
@@ -83,6 +90,18 @@ function makeSick(p: number, startDaysAgo: number): void {
     `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
      VALUES (?, 'Illness', ?, NULL)`
   ).run(p, shiftDateStr(today(p), -startDaysAgo));
+}
+
+// Open the built-in Illness situation the way the front door does: through
+// `setActiveSituations`, which composes `syncOpenIllnessEpisode` inside its own write
+// transaction. Deliberately NOT `makeSick` above — that one inserts the episode row by
+// hand, which is fine for fixtures about an episode that already exists, and useless
+// for a test about the act of OPENING one.
+function openIllness(profileId: number): void {
+  resolveSituationId(profileId, "Illness");
+  const active = new Set(getActiveSituations(profileId));
+  active.add("Illness");
+  setActiveSituations(profileId, [...active]);
 }
 
 afterEach(() => {
@@ -172,6 +191,90 @@ describe("dispatchTempRedFlagForReading (#1025)", () => {
     const fetchMock = stubFetch();
     logTemperatureCore(p, 105.0, "F", today(p), "page", "10:00");
     await dispatchTempRedFlagForReading(p, 105.0);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+// ── THE DARK PHONE (#4712) ───────────────────────────────────────────────────
+//
+// The case directly above is the DEFECT, not a rule: an infant's first 105 °F of the
+// night, logged by a caregiver who has not performed the situation-toggle ceremony,
+// sent nothing while that caregiver's own screen showed the red-flag toast. Opening
+// the episode is the second event that can make the finding true, and this is the
+// door that re-asks.
+//
+// EVERY ASSERTION HERE IS ON THE DESTINATION URL, NOT ON A CALL COUNT. Each profile
+// carries its OWN Home Assistant webhook, so "the push reached the child's household
+// channel" and "no push reached the other profile's" are separate, observable facts.
+// A count alone cannot tell a correct send from a send to the wrong person, which is
+// the whole failure this door risks.
+describe("dispatchTempRedFlagForEpisodeOpen (#4712)", () => {
+  const CHILD_URL = "http://homeassistant.local:8123/api/webhook/allos-child";
+  const OTHER_URL = "http://homeassistant.local:8123/api/webhook/allos-other";
+  const urls = (mock: ReturnType<typeof stubFetch>) =>
+    mock.mock.calls.map((call) => String(call[0]));
+
+  it("the first fever of the night reaches the SUBJECT once the episode opens, and reaches nobody else", async () => {
+    const child = newProfile("TrfChild");
+    const other = newProfile("TrfOther");
+    configureHA(child, CHILD_URL);
+    configureHA(other, OTHER_URL);
+    const fetchMock = stubFetch();
+    const date = today(child);
+
+    // 2 AM: the reading goes in. No episode exists, so the reading-keyed door finds
+    // no finding and the phone stays dark — the defect, reproduced.
+    const reading = logTemperatureCore(child, 105.0, "F", date, "page", "02:00");
+    expect(reading.kind).toBe("logged");
+    await dispatchTempRedFlagForReading(child, 105.0);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    // The offer is accepted: the episode opens through the SAME auth-blind core the
+    // Server Action calls (`setActiveSituations` → `syncOpenIllnessEpisode`), not
+    // through a hand-inserted row, so this exercises the real front door.
+    openIllness(child);
+    await dispatchTempRedFlagForEpisodeOpen(child);
+
+    // It fired, and it fired at the child's own channel.
+    expect(urls(fetchMock)).toEqual([CHILD_URL]);
+    expect(urls(fetchMock)).not.toContain(OTHER_URL);
+    expect(
+      getProfileSettingKeysWithPrefix(child, "notify_last_tempredflag_")
+    ).toHaveLength(1);
+    // The other profile has no reading, no episode, and no marker.
+    expect(
+      getProfileSettingKeysWithPrefix(other, "notify_last_tempredflag_")
+    ).toHaveLength(0);
+
+    // Walking the door a second time does not re-nag: the per-finding marker is the
+    // same one the reading path sets, so the two doors share one dedup.
+    await dispatchTempRedFlagForEpisodeOpen(child);
+    expect(urls(fetchMock)).toEqual([CHILD_URL]);
+  });
+
+  it("opening an episode for a profile with no crossing reading sends nothing", async () => {
+    const p = newProfile("TrfOpenNoFever");
+    configureHA(p, OTHER_URL);
+    const fetchMock = stubFetch();
+    logTemperatureCore(p, 99.4, "F", today(p), "page", "09:00");
+    openIllness(p);
+    await dispatchTempRedFlagForEpisodeOpen(p);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("opening an episode today cannot resurrect a crossing from before it", async () => {
+    // The window bound, asserted rather than assumed: `syncOpenIllnessEpisode` starts
+    // the row on the toggle's own profile-local day, and the assembly windows readings
+    // to `[start, …]` — so a 105.2 from two days ago is not this episode's latest
+    // reading and produces no finding. Without that bound, a caregiver marking an
+    // illness for an old cold would push a stale emergency line.
+    const p = newProfile("TrfStaleCrossing");
+    configureHA(p, CHILD_URL);
+    const fetchMock = stubFetch();
+    const date = today(p);
+    logTemperatureCore(p, 105.2, "F", shiftDateStr(date, -2), "page", "21:00");
+    openIllness(p);
+    await dispatchTempRedFlagForEpisodeOpen(p);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
