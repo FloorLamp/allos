@@ -4,6 +4,7 @@ import Database from "better-sqlite3";
 import {
   awaitHydrated,
   hydratedClick,
+  openFoodAdd,
   settledBoxes,
   settledClick,
   settledSelect,
@@ -19,6 +20,9 @@ import { workerDbPath, frozenNow } from "./worker-env";
 import { FOOD_QUICK_COUNT } from "@/lib/food-rank";
 
 async function revealFoodGroup(page: Page, slug: string) {
+  // The add layer folds behind one `+ Add` door (#4477) and the overflow is a
+  // second fold inside it, so reaching a row means opening both.
+  await openFoodAdd(page);
   const row = page.getByTestId(`food-group-${slug}`);
   if (!(await row.isVisible())) {
     await hydratedClick(page, page.getByTestId("food-more-groups-summary"));
@@ -36,6 +40,7 @@ test("logging updates the day count, header total, and weekly rollup; undo resto
   page,
 }) => {
   await page.goto("/nutrition");
+  await openFoodAdd(page);
 
   const bar = page.getByTestId("food-log-bar");
   await expect(bar).toBeVisible();
@@ -68,6 +73,7 @@ test("button counts are labeled for the selected meal and day", async ({
   page,
 }) => {
   await page.goto("/nutrition");
+  await openFoodAdd(page);
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
   await revealFoodGroup(page, "eggs");
 
@@ -105,6 +111,7 @@ test("a food row is one dense line: icon, name, stepper (#3987)", async ({
   // absence. An absence assertion alone passes just as happily on a row that lost
   // its identity too.
   await page.goto("/nutrition");
+  await openFoodAdd(page);
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
   await revealFoodGroup(page, "cruciferous");
@@ -149,6 +156,7 @@ test("the minus is not drawn until there is something to remove (#3987)", async 
   page,
 }) => {
   await page.goto("/nutrition");
+  await openFoodAdd(page);
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
   const slug = "eggs";
   await revealFoodGroup(page, slug);
@@ -176,6 +184,7 @@ test("the quick rows are the head of the ranking — nothing in the overflow out
   page,
 }) => {
   await page.goto("/nutrition");
+  await openFoodAdd(page);
   const quick = page.getByTestId("food-quick-log");
   await expect(quick).toBeVisible();
 
@@ -248,6 +257,7 @@ test("the today/yesterday toggle backfills yesterday, not today (#748 item 1)", 
   page,
 }) => {
   await page.goto("/nutrition");
+  await openFoodAdd(page);
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
   // A group untouched by the other specs, so parallel runs don't collide.
@@ -286,6 +296,7 @@ test("a recent day can be viewed and backfilled in a specific meal", async ({
   page,
 }) => {
   await page.goto("/nutrition");
+  await openFoodAdd(page);
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
   // THE MEALS CARDS ARE GONE AND THE CHOICE THEY CARRIED IS NOT (#3987). Their totals
@@ -395,6 +406,7 @@ test("logging a serving keeps the row order fixed (no reorder under the finger)"
   page,
 }) => {
   await page.goto("/nutrition");
+  await openFoodAdd(page);
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
   const rowIds = () =>
@@ -430,6 +442,7 @@ test.describe("the dense row keeps its anatomy on a phone (#3987)", () => {
     // is the anatomy the disclosure's geometry test was really about: the leading icon
     // stays optically centred on the name, at the width where the row is tightest.
     await page.goto("/nutrition");
+    await openFoodAdd(page);
     await revealFoodGroup(page, "leafy_greens");
 
     await expect(page.getByTestId("detail-leafy_greens")).toHaveCount(0);
@@ -473,6 +486,7 @@ test("a rapid double-tap logs TWO additive servings and never asks (#2007/#3611)
   page,
 }) => {
   await page.goto("/nutrition");
+  await openFoodAdd(page);
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
   // A group untouched by the other specs, so parallel runs don't collide.
@@ -746,6 +760,7 @@ test("unstated and Now captures store distinct eating-time truth (#2053/#3273)",
   page,
 }) => {
   await page.goto("/nutrition");
+  await openFoodAdd(page);
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
   // The affordance is offered — as a fold, closed, because it is a question most taps
@@ -816,6 +831,7 @@ test("an earlier stated time lands exactly and wins over the selected meal (#205
   page,
 }) => {
   await page.goto("/nutrition");
+  await openFoodAdd(page);
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
   // State an hour whose window is DETERMINED rather than read off the control: the
@@ -884,6 +900,7 @@ test("the time question relabels on a past day and its answer is per-day (#4118)
   // QUESTION changes, because a bare tap on a past day means the meal slot and no
   // instant rather than "now".
   await page.goto("/nutrition");
+  await openFoodAdd(page);
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
   await expect(page.getByTestId("food-when-summary")).toHaveText(
     "Happened earlier?"

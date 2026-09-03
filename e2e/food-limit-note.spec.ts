@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
-import { dismissToast, settledClick } from "./helpers";
+import { dismissToast, openFoodAdd, settledClick } from "./helpers";
 import Database from "better-sqlite3";
 import { frozenNow, workerDbPath } from "./worker-env";
 import { shiftDateStr } from "@/lib/date";
@@ -96,6 +96,9 @@ function seed(): void {
 }
 
 async function revealFoodGroup(page: Page, slug: string) {
+  // The add layer folds behind one `+ Add` door (#4477) and the overflow is a
+  // second fold inside it, so reaching a row means opening both.
+  await openFoodAdd(page);
   const row = page.getByTestId(`food-group-${slug}`);
   if (!(await row.isVisible())) {
     await page.getByTestId("food-more-groups-summary").click();
@@ -114,6 +117,7 @@ test.describe("the curated limit note at the log tap (#2377)", () => {
     page,
   }) => {
     await page.goto("/nutrition");
+    await openFoodAdd(page);
     await expect(page.getByTestId("food-log-bar")).toBeVisible();
     await revealFoodGroup(page, GROUP);
 

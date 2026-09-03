@@ -3,6 +3,7 @@ import type { Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import {
   hydratedClick,
+  openFoodAdd,
   settledClick,
   settledFill,
   settledSelect,
@@ -21,6 +22,9 @@ import {
 // shared seed rows.
 
 async function revealFoodGroup(page: Page, slug: string) {
+  // The add layer folds behind one `+ Add` door (#4477) and the overflow is a
+  // second fold inside it, so reaching a row means opening both.
+  await openFoodAdd(page);
   const row = page.getByTestId(`food-group-${slug}`);
   if (!(await row.isVisible())) {
     await hydratedClick(page, page.getByTestId("food-more-groups-summary"));
@@ -54,6 +58,7 @@ test.describe("protein quick-add hydration (#4399)", () => {
       }
     );
     await page.goto("/nutrition", { waitUntil: "commit" });
+    await openFoodAdd(page);
     const input = page.getByTestId("protein-quickadd-input");
     await expect(input).toBeVisible();
     expect(
@@ -74,6 +79,7 @@ test("food serving and protein grams queue together offline, then each sync exac
   context,
 }) => {
   await page.goto("/nutrition");
+  await openFoodAdd(page);
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
   await revealFoodGroup(page, "nuts_seeds");
   const quickAdd = page.getByTestId("protein-quickadd");
@@ -201,6 +207,7 @@ test("a stated eating time rides an offline serving through replay (#2053)", asy
   context,
 }) => {
   await page.goto("/nutrition");
+  await openFoodAdd(page);
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
   // State the time BEFORE going offline — the control is local state, so the statement
@@ -282,6 +289,7 @@ test("a fast device clock keeps the serving and the sync SAYS the time wasn't re
   context,
 }) => {
   await page.goto("/nutrition");
+  await openFoodAdd(page);
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
   // The broken clock, then a RELOAD: the control reads the browser's clock at render

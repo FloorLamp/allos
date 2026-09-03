@@ -7,7 +7,7 @@ import {
   TAP_TARGET_MIN_RENDERED_PX,
 } from "@/lib/tap-floor-tokens";
 import { roundControlBoxExtraLines } from "./control-box-lines";
-import { settledClick } from "./helpers";
+import { openFoodAdd, settledClick } from "./helpers";
 
 // THE CONTROL BOX (`--control-box` in app/globals.css, SECTION: Touch tap
 // targets), MEASURED — owner ruling #3938; the family floor it replaces was
@@ -915,6 +915,7 @@ test.describe("the hit-area mechanism reaches the floor it claims (#3486)", () =
     page,
   }) => {
     await page.goto("/nutrition");
+    await openFoodAdd(page);
     await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
     // Wait for the CONTENT this measures. A row still folded behind "more

@@ -910,6 +910,23 @@ export async function hydratedClick(
   await button.click();
 }
 
+/**
+ * OPEN THE NUTRITION PAGE'S `+ Add` DOOR (#4477), where there is one.
+ *
+ * The Food tab's add layer folds behind a single door and expands in place; the
+ * quick-log sheet mounts the SAME bar with no day above it and is itself the door, so
+ * there is nothing there to open. This is therefore surface-agnostic and idempotent by
+ * construction — the door unmounts once it is open — which is what lets a spec that
+ * reaches a food-group control call it unconditionally, on either surface, before it
+ * looks for the control.
+ */
+export async function openFoodAdd(page: Page): Promise<void> {
+  const door = page.getByTestId("food-add-door");
+  if ((await door.count()) === 0) return;
+  await hydratedClick(page, door);
+  await expect(page.getByTestId("food-add-panel")).toBeVisible();
+}
+
 /** Opens the dashboard's remembered exhaustive remainder when it exists. */
 export async function openDashboardAll(page: Page): Promise<void> {
   const details = page.getByTestId("dashboard-all");

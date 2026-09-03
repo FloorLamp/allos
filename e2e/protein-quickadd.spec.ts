@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import type { Locator } from "@playwright/test";
 import { loginAs } from "./nav";
-import { settledClick, settledFill } from "./helpers";
+import { openFoodAdd, settledClick, settledFill } from "./helpers";
 import { E2E_LOGIN_PROTEIN, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // Protein-grams quick-add in the Nutrition Food logging list (issue #824). Protein
@@ -43,6 +43,7 @@ test("logging protein grams sums into the adequacy floor, undo removes it (#824)
     // Local `next dev` compiles the nutrition route on first hit.
     test.slow();
     await page.goto("/nutrition");
+    await openFoodAdd(page);
 
     // The adequacy card starts on the ESTIMATED basis (food groups only, no grams yet).
     const card = page.getByTestId("protein-adequacy");
@@ -131,6 +132,7 @@ test("logging protein grams sums into the adequacy floor, undo removes it (#824)
     ).toBeVisible();
 
     await page.goto("/nutrition");
+    await openFoodAdd(page);
     await expect(total).toHaveText(/30g today/);
 
     // Undo removes the grams from the same day's total → back to the estimated basis.

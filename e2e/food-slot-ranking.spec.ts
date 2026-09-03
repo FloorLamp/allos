@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
-import { hydratedClick, settledClick } from "./helpers";
+import { hydratedClick, openFoodAdd, settledClick } from "./helpers";
 import {
   E2E_LOGIN_FOODSLOT,
   E2E_LOGIN_FOODUSUAL,
@@ -32,6 +32,7 @@ test("the one-tap bar order follows every selected meal slot (#950)", async ({
   try {
     test.slow(); // next dev compiles the nutrition route on first hit
     await page.goto("/nutrition");
+    await openFoodAdd(page);
 
     // The slot chip renders the derived current window (Morning/Midday/Evening).
     const chip = page.getByTestId("food-slot-chip");
@@ -135,6 +136,7 @@ test("a regular window offers its usual set in one tap, and stops offering it on
   try {
     test.slow();
     await page.goto("/nutrition");
+    await openFoodAdd(page);
 
     // Whatever window the run's frozen clock lands in, the habit is in Morning.
     // hydratedClick, not click: the meal selector is a CONTROLLED React button
@@ -212,6 +214,7 @@ test("the usual shortcut fills a past day, and writes to THAT day (#4118)", asyn
   try {
     test.slow();
     await page.goto("/nutrition");
+    await openFoodAdd(page);
 
     // Yesterday already holds the usual pair, so the offer is correctly SILENT there —
     // the converse, and the thing that makes step two mean something.
@@ -259,6 +262,7 @@ test("a cap-direction group is never offered back as an expectation (#2380 / #99
   try {
     test.slow();
     await page.goto("/nutrition");
+    await openFoodAdd(page);
 
     // The fixture's evenings hold alcohol AND leafy greens every day for three weeks —
     // two habitual groups by the arithmetic. Alcohol is excluded because its counter is
