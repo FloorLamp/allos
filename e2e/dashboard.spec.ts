@@ -898,15 +898,25 @@ test("the Standing link covers its phone label and desktop plot without covering
   }
 });
 
-// NO ICONS IN ROWS, ANYWHERE ON THE PAGE (#4076). The kind glyph existed because
-// "a line that earned a glyph would be halfway to a card"; with no cards left the
-// rule has no element, and the owner ruled that NO domain icon replaces it ("too many
-// icons"). Identity is carried by the label column and the block header instead.
+// NO IDENTITY OR DOMAIN ICONS IN ROWS, ANYWHERE ON THE PAGE (#4076, wording amended
+// by #4362 ruling 1). The kind glyph existed because "a line that earned a glyph would
+// be halfway to a card"; with no cards left the rule has no element, and the owner
+// ruled that NO domain icon replaces it ("too many icons"). Identity is carried by the
+// label column and the block header instead.
+//
+// THE WORDING IS THE RULING. #4076 said "no icons of ANY kind in rows", and read
+// literally that reaches the marks inside a row's VALUE — including the one below,
+// which is an accessibility channel. The owner ruled the invariant is about IDENTITY
+// AND DOMAIN icons, so the wording says that here and the guard's scope is the label
+// cell.
 //
 // The absence is asserted with its POSITIVE CONTROL in the same test: a page whose
 // rows never rendered would satisfy "no icons in rows" on an empty screen, which is
-// the failure this shape exists to catch.
-test("no row on the dashboard draws an icon of any kind", async ({ page }) => {
+// the failure this shape exists to catch. And with its CONVERSE, which is the half an
+// absence can never state — see the second block below.
+test("no row on the dashboard draws an identity icon, and the severity marks stay", async ({
+  page,
+}) => {
   await page.goto("/");
   await openDashboardAll(page);
   const main = page.getByRole("main");
@@ -961,6 +971,62 @@ test("no row on the dashboard draws an icon of any kind", async ({ page }) => {
   expect(await labelsWithIcons()).toHaveLength(1);
   await forged.evaluate((node) => (node as Element).remove());
   expect(await labelsWithIcons()).toEqual([]);
+
+  // ── THE CONVERSE (#4362 ruling 1) ──────────────────────────────────────────
+  // Everything above asserts something is GONE, and an absence is equally green on
+  // the tree where the mark vanished from the rows that NEED it. The ruling on
+  // #4362's first item is exactly that: `MedicalValue`'s flag caret survives the
+  // invariant, because it is the non-colour severity channel #1220/#2315 exist for.
+  // Deleting it to satisfy a literal "any kind" would have taken that channel with
+  // it, and no assertion on this page would have noticed.
+  //
+  // SO THE CLAIM IS A RELATIONSHIP BETWEEN REAL ROWS, not a mark counted against a
+  // constant. Two comparisons, both on rendered output:
+  //  * WORDS DO WHAT COLOUR DOES. "High" paints rose and "Below optimal" paints
+  //    amber — #1220's complaint is that a reader who cannot separate those two sees
+  //    one severity. So the two rows must paint differently AND say different words:
+  //    if the words ever collapse to one, colour is carrying the distinction alone.
+  //  * DIRECTION IS A SHAPE. The directional row draws its caret; the directionless
+  //    one cannot point anywhere and draws none, while still naming its status in
+  //    words. That fixture is seeded for this claim (e2e/seed/medical.ts, "the
+  //    compact dashboard must say Abnormal explicitly").
+  const labValue = (canonical: string) =>
+    main
+      .locator(
+        `[data-testid="dashboard-candidate"][data-candidate-id="labs.latest:${canonical}"]`
+      )
+      .getByTestId("standing-value");
+  const severity = async (canonical: string) => {
+    const value = labValue(canonical);
+    await expect(value).toBeVisible();
+    return {
+      word: (await value.getByTestId("medical-flag-text").innerText()).trim(),
+      carets: await value.locator("svg").count(),
+      // The paint the word exists to survive, read off the element rather than a
+      // class string.
+      paint: await value
+        .locator("span")
+        .first() // first-ok: MedicalValue's own paint span, inside a row addressed by its seeded candidate id
+        .evaluate((node) => getComputedStyle(node).color),
+    };
+  };
+
+  const outOfRange = await severity("LDL Cholesterol");
+  const aboveOptimal = await severity(
+    "Estimated Glomerular Filtration Rate (eGFR)"
+  );
+  const directionless = await severity("E2E Directionless Lab Status");
+
+  expect(outOfRange.paint).not.toBe(aboveOptimal.paint);
+  expect(outOfRange.word).not.toBe(aboveOptimal.word);
+  expect([outOfRange.word, aboveOptimal.word, directionless.word]).toEqual([
+    "High",
+    "Below optimal",
+    "Abnormal",
+  ]);
+  expect(outOfRange.carets).toBe(1);
+  expect(aboveOptimal.carets).toBe(1);
+  expect(directionless.carets).toBe(0);
 });
 
 test("Standing draws its aligned sparkline column on the desktop", async ({

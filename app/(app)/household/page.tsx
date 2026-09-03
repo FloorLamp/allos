@@ -252,9 +252,10 @@ export default async function HouseholdPage() {
         );
       })(),
       // Derived workout presence (#921), grants-scoped like the sick chip: a compact
-      // live-only "mid-workout · N min" glance. Unlinked (trainingLogActivityHref anchors
-      // the viewer's OWN log, so a cross-profile link would land on a dead anchor,
-      // #879) — a plain chip, not a button.
+      // live-only "mid-workout · N min" glance. Unlinked, and now doubly so: the
+      // `#activity-N` address it would have used retired with the Log's client pager
+      // (#4079), and it always anchored the VIEWER's own log, so a cross-profile link
+      // would have landed on a dead anchor either way (#879) — a plain chip, not a button.
       presence: trainingRelevant
         ? householdPresenceChip(getWorkoutPresence(pid))
         : null,

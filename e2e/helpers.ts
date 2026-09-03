@@ -910,6 +910,46 @@ export async function hydratedClick(
   await button.click();
 }
 
+/**
+ * OPEN THE NUTRITION PAGE'S `+ Add` DOOR (#4477), where there is one.
+ *
+ * The Food tab's add layer folds behind a single door and expands in place; the
+ * quick-log sheet mounts the SAME bar with no day above it and is itself the door, so
+ * there is nothing there to open. This is therefore surface-agnostic and idempotent by
+ * construction — the door unmounts once it is open — which is what lets a spec that
+ * reaches a food-group control call it unconditionally, on either surface, before it
+ * looks for the control.
+ */
+export async function openFoodAdd(page: Page): Promise<void> {
+  // WAIT FOR THE SURFACE BEFORE ASKING WHETHER IT HAS A DOOR. `food-quick-log` is the
+  // add layer on BOTH mounts, so its arrival is what makes the question below
+  // answerable; asked earlier, "no door here" and "no page yet" are the same empty
+  // count and the helper returns having opened nothing. e2e/offline-food-log.spec.ts
+  // navigates with `waitUntil: "commit"` on purpose, which returns before the document
+  // is parsed, so that spec asks this question at its very earliest.
+  await page.getByTestId("food-quick-log").waitFor({ state: "attached" });
+  const fold = page.getByTestId("food-add");
+  if ((await fold.count()) === 0) return;
+  // ALREADY OPEN IS DONE, not "click it again": the summary stays in the DOM once the
+  // fold is open, so a second click would CLOSE the door this helper exists to open.
+  if (await fold.evaluate((el) => (el as HTMLDetailsElement).open)) return;
+  // A NATIVE `<details>` NEEDS NO HYDRATION, and this deliberately does not wait for
+  // any: e2e/offline-food-log.spec.ts opens this door inside a forced pre-hydration
+  // window on purpose (#4399), and an `awaitHydrated` here would make that spec wait
+  // for the thing it is holding back.
+  await page.getByTestId("food-add-door").click();
+  await expect(page.getByTestId("food-add-panel")).toBeVisible();
+  // AND WAIT FOR THE FOLD TO FINISH OPENING. `.motion-disclose` transitions
+  // `::details-content`'s block-size and clips it while it runs (app/globals.css); a
+  // probe against the just-opened door counts four running animations. So the caller
+  // measures a settled panel rather than one mid-open.
+  await fold.evaluate((el) =>
+    Promise.all(
+      el.getAnimations({ subtree: true }).map((a) => a.finished.catch(() => {}))
+    )
+  );
+}
+
 /** Opens the dashboard's remembered exhaustive remainder when it exists. */
 export async function openDashboardAll(page: Page): Promise<void> {
   const details = page.getByTestId("dashboard-all");

@@ -289,7 +289,7 @@ test.describe("Weather & UV integration (#1172)", () => {
       // The feed is slim rows: follow the ride to its canonical page for metrics.
       await member.goto("/training?tab=log");
       const rideRow = member
-        .getByTestId("training-log-row")
+        .getByTestId("history-row")
         .filter({ hasText: "Cycling" })
         .first(); // first-ok: fixture-owned single seeded ride
       await followLink(

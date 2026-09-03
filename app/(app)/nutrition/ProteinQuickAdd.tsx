@@ -163,21 +163,26 @@ export default function ProteinQuickAdd({
   }
 
   return (
+    // THE PROTEIN CHIP, AT THE USUAL GRAMS (#4477's blessed add door). The scoop keeps
+    // its own control — a per-tap magnitude field is not a serving stepper — but it wears
+    // the same chip the ranked groups beside it do, on one line, so the ranked head reads
+    // as one strip instead of a stack of full-width cards. The amount field still
+    // pre-fills with the last-used scoop, which is what "at the usual grams" is.
     <div
       data-testid="protein-quickadd"
-      className="flex items-center gap-3 rounded-lg border border-(--border) bg-surface px-3 py-2"
+      className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-(--border) bg-surface py-1 pl-2.5 pr-1"
     >
       <FoodGroupIcon
         slug="__protein__"
-        className="h-5 w-5 shrink-0 text-emerald-500"
+        className="h-4 w-4 shrink-0 text-emerald-500"
       />
-      <div className="min-w-0 flex-1">
-        <span className="block truncate font-medium text-slate-800 dark:text-slate-100">
+      <div className="flex min-w-0 items-baseline gap-1.5">
+        <span className="truncate font-medium text-slate-800 dark:text-slate-100">
           Protein
         </span>
         <span
           data-testid="protein-quickadd-total"
-          className="block truncate text-xs tabular-nums text-slate-500 dark:text-slate-400"
+          className="truncate text-xs tabular-nums text-slate-500 dark:text-slate-400"
         >
           {/* The authoritative grams land immediately (#2654, motion 3); a bounded
               scale pulse acknowledges the optimistic change without delaying the

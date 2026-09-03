@@ -1,5 +1,6 @@
 import { activityComponentSportNames } from "./activity-icon";
 import { trainingActivityPageHref } from "./hrefs";
+import { isDraftActivityRow } from "./activity-draft";
 import { shiftDateStr } from "./date";
 import { db, today } from "./db";
 import type { MemberTimeline } from "./timeline-multi";
@@ -86,6 +87,15 @@ export interface TimelineOptions {
   limit?: number;
   units?: UnitPrefs;
   includeTrainingEvents?: boolean;
+  /**
+   * NAME THE SUBJECT IN THE DESTINATION (#4079). An activity's record page resolves
+   * against the ACTING profile unless the URL says otherwise, so a row gathered for
+   * ANOTHER member and rendered in a merged read (`?view=everyone`) needs its own
+   * subject in the href or the destination 404s. The gather runs per member and the
+   * merge happens above it, so only the caller knows the read is a merged one —
+   * which is why this is asked here rather than derived.
+   */
+  subjectQualifiedHrefs?: boolean;
 }
 
 export interface TimelinePage {
@@ -352,9 +362,18 @@ function collectEvents(
 
   if (includeTrainingEvents) {
     const activityBounds = exact("date");
-    const activities = db
+    // A DRAFT IS AN ADDRESS, NOT AN ENTRY (#2870 step 3 / #3056's census), and this
+    // reader was the one still counting the husk. A create-at-start session with
+    // nothing logged in it renders NOWHERE but its own page — the Training Log's
+    // private feed applied that rule and the record's feed never did, so the same
+    // husk was absent from one surface and listed on the other. With the Log tab
+    // reading through this gather (#4079) the disagreement became visible; the rule
+    // belongs here rather than on the consumer, because it is a fact about the ROW.
+    // `set_count` is what `isDraftActivityRow` cannot read off the row itself.
+    const activityRows = db
       .prepare(
-        `SELECT id, date, type, title, duration_min, distance_km, intensity, start_time, end_time, notes, source, components
+        `SELECT id, date, type, title, duration_min, distance_km, intensity, start_time, end_time, notes, source, components,
+                (SELECT COUNT(*) FROM exercise_sets s WHERE s.activity_id = activities.id) AS set_count
            FROM activities
           WHERE profile_id = ?${activityBounds.clause}
           ORDER BY date DESC, id DESC
@@ -373,7 +392,11 @@ function collectEvents(
       notes: string | null;
       source: string | null;
       components: string | null;
+      set_count: number;
     }[];
+    const activities = activityRows.filter(
+      (a) => !isDraftActivityRow(a, a.set_count)
+    );
     const setSummaries = activitySetSummaries(
       profileId,
       activities.map((a) => a.id),
@@ -397,7 +420,10 @@ function collectEvents(
           title: a.title,
           subtitle: compactList(meta, 4),
           detail: a.notes,
-          href: trainingActivityPageHref(a.id),
+          href: trainingActivityPageHref(
+            a.id,
+            options.subjectQualifiedHrefs ? profileId : undefined
+          ),
           sortTime: a.start_time,
           // The raw local window inputs for the intraday panel's block (#1068) —
           // resolved through the canonical activityWindow(), so an activity with no

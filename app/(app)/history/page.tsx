@@ -287,6 +287,7 @@ export default async function HistoryPage(props: {
       media,
       day,
       limit: show,
+      actingProfileId,
     })
   );
   const presentKinds = HISTORY_KINDS.filter((candidate) =>

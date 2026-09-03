@@ -96,20 +96,26 @@ describe("current namespace and log vocabulary (#2485)", () => {
 describe("Training Log vocabulary (#2486)", () => {
   it("uses Training Log names for the current activity surface", () => {
     const currentFiles = [
-      "app/(app)/training/TrainingLogView.tsx",
-      "app/(app)/training/training-log-feed-resolve.ts",
+      "app/(app)/training/HistorySection.tsx",
+      "app/(app)/training/TrainingLogFilterBar.tsx",
       // components/TrainingLogCalendar.tsx was on this list and is not any more
       // (#3154): it never rendered training data — the layout fed it the union of
       // every event store — so it was the one entry here that was not a Training
       // Log surface. It is components/EventCalendar.tsx now, and out of scope for
       // a Training Log naming guard rather than renamed within it.
       "lib/training-log-card.ts",
-      "lib/training-log-feed.ts",
-      "lib/training-log-filters.ts",
       "lib/training-log-format.ts",
-      "lib/training-log-multi-view.ts",
     ];
     const retiredFiles = [
+      // #4079 retired the Log's private machinery into the shared history
+      // substrate: the feed page, its multi-view merge, its filter vocabulary,
+      // its view and the resolver that fed both the page and the Server Action.
+      "app/(app)/training/TrainingLogView.tsx",
+      "app/(app)/training/TrainingLogRow.tsx",
+      "app/(app)/training/training-log-feed-resolve.ts",
+      "lib/training-log-feed.ts",
+      "lib/training-log-filters.ts",
+      "lib/training-log-multi-view.ts",
       "app/(app)/training/JournalView.tsx",
       "app/(app)/training/JournalCard.tsx",
       "app/(app)/training/journal-feed-resolve.ts",
