@@ -20,6 +20,7 @@ import {
 import {
   episodeHeadline,
   householdSickLine,
+  isLoggedSymptomSeries,
 } from "@/lib/illness-episode-format";
 import {
   promoteEpisodeToConditionCore,
@@ -156,16 +157,39 @@ describe("assembleIllnessEpisode — 5-day fixture (#448)", () => {
     expect(a.ongoing).toBe(false);
 
     // Symptoms: worst-first (fever sev 4, then cough sev 3, then Sinus headache).
+    // `distinctSymptomCount` counts LOGGED rows, which is why this fixture — which
+    // ALSO carries four fever-range readings — still reports 3 (#4712 item 4).
     expect(a.distinctSymptomCount).toBe(3);
-    expect(a.symptoms.map((s) => s.label)).toEqual([
+    const logged = a.symptoms.filter(isLoggedSymptomSeries);
+    expect(logged.map((s) => s.label)).toEqual([
       "Fever",
       "Cough",
       "Sinus headache",
     ]);
-    const cough = a.symptoms.find((s) => s.symptom === "cough")!;
+    const cough = logged.find((s) => s.symptom === "cough")!;
     expect(cough.points.map((pt) => pt.severity)).toEqual([3, 3, 2, 2, 1]);
     expect(cough.points[0].date).toBe("2026-06-01"); // oldest-first
     expect(cough.maxSeverity).toBe(3);
+
+    // THE DERIVED FEVER ROW SITS BESIDE THE STATED ONE, deliberately. This fixture
+    // holds both a tapped `fever` symptom and fever-range readings, and the model
+    // reports both: what a SURFACE should draw on such a day is unruled, and the
+    // assembly is not the place to decide it (#4712). The derived arm carries the
+    // day's peak reading and its id, never a severity.
+    const derived = a.symptoms.filter((s) => s.source === "derived");
+    expect(derived).toHaveLength(1);
+    expect(derived[0].symptom).toBe("fever");
+    expect(derived[0].label).toBe("Fever");
+    expect(
+      derived[0].source === "derived"
+        ? derived[0].days.map((d) => [d.date, d.peakDegF, d.time])
+        : null
+    ).toEqual([
+      ["2026-06-01", 99.6, "09:00"],
+      ["2026-06-02", 102.4, "08:00"],
+      ["2026-06-03", 100.6, "09:00"],
+      ["2026-06-04", 99.8, "20:00"],
+    ]);
 
     // Fever curve: five readings, peak 102.4, four flagged 'high' (>99).
     expect(a.temperatures.length).toBe(5);

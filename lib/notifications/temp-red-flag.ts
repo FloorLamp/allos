@@ -152,11 +152,49 @@ export async function dispatchTempRedFlagForReading(
   if (!detectTempRedFlag(degF, profileAgeMonths(profileId, date))) {
     return { failed: false };
   }
+  return assessTempRedFlagNow(profileId);
+}
+
+// The same immediate assessment with NO reading in hand.
+//
+// WHY THIS EXISTS (#4712): the reading-keyed door above is gated on an OPEN EPISODE
+// two layers down (`tempRedFlagFindingFor` → `openEpisodeAsOf` → null), and before
+// #4712 nothing but the situation toggle could open one. So the first fever of the
+// night — logged by a caregiver who has not performed that ceremony — reached
+// `dispatchTempRedFlagForReading`, found no episode, derived no finding, and sent
+// NOTHING, while the logger's own screen showed the red-flag toast. The other
+// caregiver's phone stayed dark. The push was not broken; its precondition simply
+// arrived after it.
+//
+// So the EPISODE OPENING is the second event that can make a finding true, and it
+// re-asks the same question through the same orchestrator. There is no reading
+// argument because the episode's own LATEST reading is the subject — the same one
+// `detectEpisodeTempRedFlag` would judge on any other path.
+//
+// IT CANNOT REACH BACK PAST THE EPISODE. `assembleIllnessEpisode` windows readings to
+// `[episode.start, …]`, and `syncOpenIllnessEpisode` opens a row starting on the
+// profile-local day of the toggle — so opening an episode today can only ever surface
+// a reading taken today. A fever from three days ago is outside the window, is not
+// `latestTemp`, and produces no finding: this door cannot resurrect a stale crossing.
+//
+// The per-finding marker and the suppression bus are unchanged, so this can no more
+// double-send than the reading path can — the two share one orchestrator and one key.
+export async function dispatchTempRedFlagForEpisodeOpen(
+  profileId: number
+): Promise<{ failed: boolean }> {
+  return assessTempRedFlagNow(profileId);
+}
+
+// The shared tail of both event-driven doors: resolve the profile's name and day, then
+// hand the question to the ONE orchestrator the hourly tick also runs.
+async function assessTempRedFlagNow(
+  profileId: number
+): Promise<{ failed: boolean }> {
   const profile = db
     .prepare("SELECT name FROM profiles WHERE id = ?")
     .get(profileId) as { name: string } | undefined;
   if (!profile) return { failed: false };
-  return runTempRedFlag(profileId, profile.name, date);
+  return runTempRedFlag(profileId, profile.name, today(profileId));
 }
 
 // Fire-and-forget wrapper for request-path callers (the temperature Server Action,
@@ -169,6 +207,18 @@ export function queueTempRedFlagDispatch(
 ): void {
   void dispatchTempRedFlagForReading(profileId, degF).catch((e) => {
     log.error("temp-red-flag write-path dispatch failed", {
+      profile: profileId,
+      err: e instanceof Error ? e : String(e),
+    });
+  });
+}
+
+// The same fire-and-forget wrapper for the episode-open door (#4712). Separate from
+// its reading-keyed sibling only in which event it names in the error log, so a failed
+// send says which door was walked.
+export function queueTempRedFlagForEpisodeOpen(profileId: number): void {
+  void dispatchTempRedFlagForEpisodeOpen(profileId).catch((e) => {
+    log.error("temp-red-flag episode-open dispatch failed", {
       profile: profileId,
       err: e instanceof Error ? e : String(e),
     });

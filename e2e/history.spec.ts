@@ -173,11 +173,19 @@ test.describe("the record (#3958)", () => {
 
     const day = page.getByTestId("history-day");
     await expect(day).toHaveCount(1);
-    const header = day.getByTestId("history-day-link");
+    // THE DAY VIEW'S NAME IS THE BAR'S (#4918 ruling 1), in the same #3958 grammar
+    // the feed's header keeps. The per-group header is gone from THIS view and the
+    // self-linking door with it — asserted as the absence of the door rather than of
+    // an `h2`, because the bar's name is an `h2` too.
+    await expect(day.getByTestId("history-day-link")).toHaveCount(0);
+    const header = page.getByTestId("timeline-day-name");
     await expect(header).toBeVisible();
-    // The day header is the whole "which day am I in" affordance, so the count line
-    // beside it has to be the day's, not the page's.
-    await expect(day.locator("h2")).toContainText(/\d+ records?/);
+    await expect(header).toContainText(/\d+ records?/);
+    // AND THE NAME IS ABOVE THE CHART, not below it: the defect was a date printed
+    // after the day's content, so the order is the claim and not merely the presence.
+    const nameBox = (await header.boundingBox())!;
+    const chartBox = (await page.getByTestId("intraday-panel").boundingBox())!;
+    expect(nameBox.y).toBeLessThan(chartBox.y);
 
     const serving = page
       .getByTestId("history-row")
@@ -484,8 +492,12 @@ test.describe("the record (#3958)", () => {
     // inherited.
     await page.goto("/history?day=2099-01-01");
     await expect(page.getByTestId("history-filters")).toBeVisible();
-    const days = await page.getByTestId("history-day-link").allTextContents();
-    expect(days.join(" ")).not.toContain("2099");
+    // THE BAR IS WHAT NAMES THE CLAMPED DAY NOW (#4918 ruling 1) — and it names it
+    // whether or not the day has rows, which the retired per-group header could not:
+    // a clamp landing on a quiet today used to leave this assertion nothing to read.
+    const named = page.getByTestId("timeline-day-name");
+    await expect(named).toBeVisible();
+    expect(await named.textContent()).not.toContain("2099");
   });
 
   test("the jump rail owns a lane and never overlaps a row's action column", async ({
@@ -688,12 +700,19 @@ test.describe("the record (#3958)", () => {
   });
 
   // ── THE DAY HEADER IS A DOOR AND SAYS SO (#4045 §7) ───────────────────────
+  //
+  // ON THE FEED, which is the only view that still draws it (#4918 ruling 1). The
+  // header is a DOOR to a day, and the day view is already through it — there it was
+  // a link to the page it was on, so the day view's name moved to the day bar and
+  // this door stayed exactly as it is on the page that lists many days.
   test("makes the whole day header the day link, chevron included", async ({
     page,
   }) => {
     seedDay();
-    await page.goto(`/history?day=${DAY}`);
-    const link = page.getByTestId("history-day-link");
+    await page.goto("/history");
+    const group = page.locator(`#timeline-day-${DAY}`);
+    await expect(group).toBeVisible();
+    const link = group.getByTestId("history-day-link");
     // THE COUNT IS INSIDE THE TAP TARGET. Asserted on the link's own text — shipped,
     // the count was a sibling of the link, which every "the h2 states a count" check
     // was satisfied by.
@@ -715,8 +734,8 @@ test.describe("the record (#3958)", () => {
     // And the chevron that says the header is a door at all, in the text cluster: the
     // link's box ends where its content ends rather than spanning the header.
     await expect(link.locator("svg")).toHaveCount(1);
-    const spans = await page.evaluate(() => {
-      const h2 = document.querySelector('[data-testid="history-day"] h2')!;
+    const spans = await page.evaluate((id: string) => {
+      const h2 = document.querySelector(`#${id} h2`)!;
       const a = h2.querySelector("a")!;
       return {
         header: Math.round(h2.getBoundingClientRect().width),
@@ -725,7 +744,7 @@ test.describe("the record (#3958)", () => {
         // and it is the link, so no sibling can drift to the far edge.
         children: h2.childElementCount,
       };
-    });
+    }, `timeline-day-${DAY}`);
     expect(spans.children).toBe(1);
     expect(spans.link).toBeLessThan(spans.header);
   });

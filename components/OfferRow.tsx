@@ -62,7 +62,14 @@ export default function OfferRow({
       onClick={onAct}
       aria-label={ariaLabel}
       data-testid={testId}
-      className={`press flex min-h-11 w-full items-center gap-3 rounded-lg border px-3 py-2 text-left text-sm transition disabled:opacity-50 ${
+      // `min-w-0` IS THE SEAM, NOT THE HOST'S PROBLEM (#4918 ruling 6). `w-full`
+      // alone means "as wide as my box"; it says nothing about how wide the box may
+      // become, so an intrinsically-sized host — a grid track, a flex item that has
+      // not been told to shrink — grew the box to the row's max-content width and
+      // the truncating span inside never had a narrower box to truncate in. Declared
+      // here so no host can stretch it, rather than at each mount, because the mount
+      // that gets it wrong is the one nobody has written yet.
+      className={`press flex min-h-11 w-full min-w-0 items-center gap-3 rounded-lg border px-3 py-2 text-left text-sm transition disabled:opacity-50 ${
         OFFER_ROW_TONE[tone]
       }${className ? ` ${className}` : ""}`}
       {...data}

@@ -8,6 +8,7 @@
 import { listEpisodeRows, episodeRowToDerived } from "./illness-episode-store";
 import { assembleIllnessEpisode } from "./illness-episode";
 import { getConditions } from "./queries/clinical";
+import { isLoggedSymptomSeries } from "./illness-episode-format";
 
 export interface EpisodeIndexEntry {
   id: number;
@@ -54,7 +55,9 @@ export function summarizeEpisodesForProfile(
       lastActiveDay: assembled.lastActiveDay,
       dayCount: assembled.dayCount,
       maxTempF: assembled.maxTempF,
-      symptomLabels: assembled.symptoms.map((s) => s.label),
+      symptomLabels: assembled.symptoms
+        .filter(isLoggedSymptomSeries)
+        .map((s) => s.label),
       distinctSymptomCount: assembled.distinctSymptomCount,
       totalAdministrations: assembled.totalAdministrations,
       outcome: row.outcome,
