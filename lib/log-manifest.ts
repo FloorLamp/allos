@@ -406,10 +406,12 @@ export const LOG_MANIFEST = {
       // with this leg; what stays shared is the whole-stack "Take all", which is
       // `dose-day-stack`, a bulk offer and not a row control.
       //
-      // `DoseConfirmButton` STANDS, AND IS NOT A SECOND ROW CONTROL. Three mounts, on
-      // two surfaces (`grep -rn "<DoseConfirmButton" --include=*.tsx`): the dashboard
-      // attention row, and — since #2579-D — both of Upcoming's, its banded due-dose
-      // row and the `DoseChip` its dose fold and its "Available to log" run share.
+      // `DoseConfirmButton` STANDS, AND IS NOT A SECOND ROW CONTROL. Four mounts, on
+      // three surfaces (`grep -rn "<DoseConfirmButton" --include=*.tsx`): the dashboard
+      // attention row, Upcoming's banded due-dose row, and — since #2579-D — both of
+      // Upcoming's dose fold and its "Available to log" run, which shared one `DoseChip`
+      // wrapper until #4753 inlined its two calls directly and kept only the label math
+      // (`intakeChipLabel`) shared between them.
       //
       // THE COUNT HAS MOVED TWICE AND BOTH MOVES WERE RULINGS. This cell said TWO and
       // named only the dashboard row and the household card's; #2579-D added Upcoming's

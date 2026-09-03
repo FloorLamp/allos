@@ -6,8 +6,7 @@ import {
   screen,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { LabeledVerbChip } from "@/components/Chip";
-import OfferRow from "@/components/OfferRow";
+import OfferRow, { LabeledVerbChip } from "@/components/OfferRow";
 import QuickLogPrnControl from "@/components/medications/QuickLogPrnControl";
 
 const logAdministration = vi.hoisted(() =>

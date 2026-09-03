@@ -1,6 +1,10 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
-import { expectPhoneTapTargets, openDashboardAll } from "./helpers";
+import {
+  dashboardAllSummary,
+  expectPhoneTapTargets,
+  openDashboardAll,
+} from "./helpers";
 import {
   DORMANT_DOMAINS_PROFILE,
   E2E_LOGIN_DORMANT,
@@ -250,7 +254,11 @@ for (const [label, viewport] of [
       "No weigh-in recorded in 150 days"
     );
 
-    const summary = tail.locator("summary");
+    // The outer control's OWN summary (#4065 nests a per-band fold, each with its
+    // own summary, inside this same `<details>` once a band is capped) — addressed
+    // by its testid rather than "the first summary inside `tail`", which the nested
+    // fold makes ambiguous.
+    const summary = dashboardAllSummary(page);
     if (viewport.width === 390)
       await expectPhoneTapTargets(page, "the dashboard fold control", [
         summary,

@@ -2,7 +2,12 @@ import type { Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { E2E_LOGIN_DASHBOARD_ALL, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { test, expect } from "./fixtures";
-import { awaitHydrated, hydratedClick, openFoodAdd } from "./helpers";
+import {
+  awaitHydrated,
+  dashboardAllSummary,
+  hydratedClick,
+  openFoodAdd,
+} from "./helpers";
 import { loginAs } from "./nav";
 import { workerDbPath } from "./worker-env";
 import {
@@ -298,7 +303,10 @@ test("a remembered-open disclosure is open on the first painted frame and never 
     await page.goto("/");
     const details = page.getByTestId("dashboard-all");
     await expect(details).not.toHaveAttribute("open", "");
-    await hydratedClick(page, details.locator("summary"));
+    // The outer control's OWN summary, not "the first summary inside `details`" — a
+    // capped Everything band nests its own fold (and its own summary) under this
+    // same `<details>` (#4065), which makes the naive `.locator("summary")` ambiguous.
+    await hydratedClick(page, dashboardAllSummary(page));
     await expect(details).toHaveAttribute("open", "");
 
     // Sample from the earliest frame the element exists in, on the RELOAD. If the

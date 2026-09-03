@@ -147,3 +147,21 @@ export function isAntipyreticIntakeItem(item: {
 }): boolean {
   return isAntipyreticEntry(prnDefaultsFor(item));
 }
+
+// Narrows a PRN quick-log list to fever reducers (#4712 judgement 1's dose offer). The
+// quick-log projection (`getPrnQuickLogItems`) never selects rxcui/rxcui_ingredients —
+// it is the same row every dashboard/episode meds chip already reads — so this takes
+// NAME-ONLY, which is exactly isAntipyreticIntakeItem's fallback path when rxcui is
+// absent. Generic over the caller's row shape so this stays free of a dependency on
+// the queries module's PrnMedForQuickLog type.
+export function antipyreticPrnMeds<T extends { name: string }>(
+  meds: readonly T[]
+): T[] {
+  return meds.filter((med) =>
+    isAntipyreticIntakeItem({
+      name: med.name,
+      rxcui: null,
+      rxcuiIngredients: null,
+    })
+  );
+}
