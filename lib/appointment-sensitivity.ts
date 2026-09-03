@@ -9,7 +9,8 @@ import type { RecentChangeCategory } from "./recent-changes";
 // pass the flag inherits nothing and reproduces the disclosure one surface later.
 //
 //   1. APPOINTMENT DETAIL — a behavioral-health visit is stated minimally (below).
-//   2. WITHHELD CATEGORIES — a mood check-in is not shown at all (bottom of file).
+//   2. WITHHELD CATEGORIES — the categories dropped outright, EMPTY today (bottom
+//      of file). Rule 1 is the only thing a shared surface actually applies now.
 //
 // Most appointment kinds show whatever detail the shared surface is set to — the
 // household rollups and the .ics family calendar feed already carry a minimal/full
@@ -59,30 +60,29 @@ export function sharedSurfaceDetail(
   return requested;
 }
 
-// ── Rule 2: categories a shared surface withholds ENTIRELY (#1463, owner ruling
-// 2026-09-01) ────────────────────────────────────────────────────────────────────
+// ── Rule 2: categories a shared surface withholds ENTIRELY (#1463; EMPTY since the
+// owner's reversal of 2026-09-03, #4702/#4807) ───────────────────────────────────
 //
-// A MINIMAL RESTATEMENT IS THE WRONG TOOL FOR A MOOD SCORE. Rule 1 works for a visit
-// because "Medical appointment" is still a true, useful thing to say — the caregiver
-// learns there is an appointment and learns nothing about why. A daily check-in has no
-// such residue: "mood 2/5" masked down to "a check-in happened" reports nothing worth a
-// line, and reporting the score reports the whole of it. So the answer is absence.
+// This set held "mood" for two days, on the reasoning that access granted to help with
+// somebody's medications was not access to their mood feed. REVERSED: shared surfaces
+// show mood check-ins. The household is a family, and one rule fewer beat composing a
+// digest per recipient class.
 //
-// AND IT IS A DIFFERENT KIND OF FACT. The other categories a shared digest carries —
-// flagged labs, out-of-range vitals, symptom days — are what a caregiver is granted
-// access in order to ACT on, and withholding them would leave nothing worth rendering.
-// A mood check-in is a subjective daily self-report: access granted to help with
-// somebody's medications is not access to their mood feed.
-//
-// The profile's OWN surfaces never consult this (its digest passes `shared: false`), so
-// a check-in is never hidden from the person who wrote it.
-const SHARED_SURFACE_WITHHELD_CATEGORIES = new Set<RecentChangeCategory>([
-  "mood",
-]);
+// WHAT DECIDED IT was the morning digest, and the correction matters more than the
+// rule did. The digest passes no `shared` flag, and an earlier version of this comment
+// read that as settling the question — "the profile's OWN surfaces never consult
+// this". It is not a private surface. It renders ONE body and fans it out to
+// `managingLoginIdsForProfile`, which is `login_profiles` UNION the owner
+// (lib/notifications/managing-logins.ts), so every grantee has been reading the same
+// check-in all along. The digest shows mood to everyone it reaches, deliberately; no
+// flag settles that, and the next surface to pass `shared: true` should not read one
+// as having settled anything.
+const SHARED_SURFACE_WITHHELD_CATEGORIES = new Set<RecentChangeCategory>();
 
-// Whether a shared surface withholds this whole category. Consulted ONCE, over the
-// collected set, by `collectRecentChanges` — never per-category at a call site, so a
-// category added tomorrow is judged by this rule rather than by whoever adds it.
+// Whether a shared surface withholds this whole category — false for every category
+// today. Consulted ONCE, over the collected set, by `collectRecentChanges` — never
+// per-category at a call site, so a category added tomorrow is judged by this rule
+// rather than by whoever adds it.
 export function sharedSurfaceWithholdsCategory(
   category: RecentChangeCategory
 ): boolean {

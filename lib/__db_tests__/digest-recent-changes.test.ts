@@ -272,19 +272,20 @@ describe("collectRecentChanges — the digest's 24h window (#1713)", () => {
     expect(line).not.toMatch(/psychiatry|therapy/i);
   });
 
-  // THE DISCLOSURE RULE, and the reason it is asserted through the COLLECTOR rather
-  // than through the household card (#1463 §3, owner ruling 2026-09-01). The card is
-  // the first surface to pass `shared: true`; it will not be the last, and a guarantee
-  // pinned on one consumer is one a second consumer inherits nothing from. Passing the
-  // flag is the whole precondition here, so a surface added tomorrow is covered by this
-  // test on the day it passes it.
+  // THE REVERSED DISCLOSURE RULE (#4807, owner ruling 2026-09-03), asserted through the
+  // COLLECTOR rather than through the household card (#1463 §3). The card is the first
+  // surface to pass `shared: true`; it will not be the last, and a guarantee pinned on
+  // one consumer is one a second consumer inherits nothing from. Passing the flag is the
+  // whole precondition here, so a surface added tomorrow is covered by this test on the
+  // day it passes it.
   //
-  // BOTH DIRECTIONS, because the absence half alone is satisfiable by a collector that
-  // returned nothing at all: the mood line must be GONE from the shared read, PRESENT
-  // on the profile's own, and the categories the ruling deliberately keeps — a flagged
-  // vital and a symptom day, the things a caregiver is granted access to act on — must
-  // still be on the shared read beside it.
-  it("a shared surface withholds mood check-ins and keeps what a caregiver acts on", () => {
+  // This test pinned mood ABSENT from the shared read for two days. It pins PRESENT now,
+  // which is the assertion that can actually fail: absence was satisfiable by a collector
+  // that returned nothing at all, so the ROW ITSELF is what is asserted — its rendered
+  // score, its line in the message, and its place in `presentCategories` — beside the
+  // categories that never moved. The one thing a shared surface still changes is the
+  // visit restatement, and that is the test above.
+  it("a shared surface shows mood check-ins, exactly as the profile's own read does", () => {
     const pid = newProfile("Shared Sam");
     const td = today(pid);
     const yesterday = shiftDateStr(td, -1);
@@ -295,29 +296,33 @@ describe("collectRecentChanges — the digest's 24h window (#1713)", () => {
     const categories = (r: { changes: { category: string }[] }) =>
       new Set(r.changes.map((c) => c.category));
 
-    // The profile's OWN read keeps everything — a check-in is never hidden from the
-    // person who wrote it.
     const own = collectRecentChanges(pid, { sinceDays: 1, today: td });
-    expect(categories(own)).toContain("mood");
-    expect(own.changes.find((c) => c.category === "mood")!.text).toContain(
-      "mood 2/5"
-    );
-
-    // The SHARED read drops the check-in outright — not masked to a residue line,
-    // absent — while the act-on-able categories stay.
     const shared = collectRecentChanges(pid, {
       sinceDays: 1,
       today: td,
       shared: true,
     });
-    expect(categories(shared)).not.toContain("mood");
-    expect(shared.lines.join("\n")).not.toMatch(/mood|check-in/i);
+
+    // The check-in row is THERE on the shared read, carrying its score — not a residue
+    // line, and not merely a call that did not throw.
+    const sharedMood = shared.changes.find((c) => c.category === "mood");
+    expect(sharedMood).toBeDefined();
+    expect(sharedMood!.text).toContain("mood 2/5");
+    expect(shared.lines.join("\n")).toContain("mood 2/5");
+
+    // Same row, same text, on the profile's own read: the flag no longer moves this
+    // category at all.
+    expect(own.changes.find((c) => c.category === "mood")!.text).toBe(
+      sharedMood!.text
+    );
+
+    // The categories that never moved are still beside it.
     expect(categories(shared)).toContain("vitals");
     expect(categories(shared)).toContain("symptoms");
 
-    // …and the withheld category is not offered as a Tune toggle either (#1714):
-    // `presentCategories` answers "what is in this message", and mood is not in it.
-    expect(shared.presentCategories).not.toContain("mood");
+    // …and mood IS offered as a Tune toggle now (#1714): `presentCategories` answers
+    // "what is in this message", and the check-in is in it on both reads.
+    expect(shared.presentCategories).toContain("mood");
     expect(own.presentCategories).toContain("mood");
   });
 

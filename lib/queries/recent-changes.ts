@@ -67,9 +67,11 @@ export interface RecentChangesOptions {
   // Categories the reader has demoted (#1714) — only their notable entries survive.
   demoted?: readonly RecentChangeCategory[];
   // A SHARED surface — one other people can read, like the household card. It states
-  // behavioral-health visits minimally and withholds mood check-ins entirely; both
-  // rules are decided in lib/appointment-sensitivity.ts, never here and never at a call
-  // site. A profile's OWN surfaces (its digest) pass false and see everything.
+  // behavioral-health visits minimally; the whole-category withholding beside it is
+  // empty since the 2026-09-03 reversal (#4807), so mood check-ins render here as they
+  // do anywhere else. Both rules are decided in lib/appointment-sensitivity.ts, never
+  // here and never at a call site. The morning digest passes no flag, and that is not a
+  // claim to be a private surface — it fans one body out to grantees too.
   shared?: boolean;
   // Line cap and overflow copy.
   max?: number;
@@ -485,12 +487,13 @@ export function collectRecentChanges(
   // ── data arrival (#1713) ─────────────────────────────────────────────────────
   if (on("data")) changes.push(...arrivalChanges(profileId, sinceInstant));
 
-  // §3, THE WHOLE-CATEGORY HALF (#1463, owner ruling 2026-09-01). Applied ONCE here,
-  // over everything collected, rather than inside the branch that produces each
-  // category: `shared: true` then means the same thing for every consumer that passes
-  // it and for every category added later, which is the property a per-branch or a
-  // call-site `exclude` cannot give. The visit rule above stays where it is because it
-  // rewrites a line rather than dropping one.
+  // §3, THE WHOLE-CATEGORY HALF (#1463). Applied ONCE here, over everything collected,
+  // rather than inside the branch that produces each category: `shared: true` then
+  // means the same thing for every consumer that passes it and for every category
+  // added later, which is the property a per-branch or a call-site `exclude` cannot
+  // give. The visit rule above stays where it is because it rewrites a line rather
+  // than dropping one. The withheld set is EMPTY since #4807 reversed the mood rule,
+  // so this filter drops nothing today and stays as the seam a future category joins.
   //
   // BEFORE `present`, deliberately: `presentCategories` answers "what is in today's
   // message" for the #1714 Tune control, and a category this surface withholds is not
