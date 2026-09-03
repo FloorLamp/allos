@@ -408,22 +408,29 @@ export default function ProtocolForm({
       ref={formRef}
       action={handle}
       onKeyDown={onKeyDown}
-      // FULL-BLEED, and the bleed has to step where the PANEL steps. Both mounts
-      // are ModalShell, whose panel pads `px-4` and steps to `px-6` at `md`
-      // (components/BottomSheet.tsx, `presentation="dialog"`) — so a bleed that
-      // stepped at `sm` over-pulled half a rem per side through the whole
-      // sm..md band and the footer's edge sat past the panel's (#3361). Every
-      // re-inset below steps at `md` for the same reason. The old `mt-4` is gone
+      // FULL-BLEED FROM `md`, WHICH IS EXACTLY WHERE THE HOST LETS A BLEED PAINT
+      // (#4534). Both mounts are ModalShell, whose panel pads `px-4` and steps to
+      // `px-6` at `md` (components/BottomSheet.tsx, `presentation="dialog"`) — so
+      // the bleed and every re-inset below step at `md` and not at `sm`, or they
+      // over-pull half a rem per side through the whole sm..md band and the
+      // footer's edge sits past the panel's (#3361).
+      //
+      // BELOW `md` THERE IS NO BLEED AT ALL, because the sheet's content region
+      // declares `overflow-x-hidden` there on purpose (#3360: a bleed handed that
+      // region real horizontal overflow and one thumb drag parked the whole sheet
+      // sideways). A base `-mx-4` therefore bought nothing and cost the truth: the
+      // form's box ran the full 390px while only the panel's 358 were ever
+      // painted, so the actions bar's border stopped 16px short of each edge while
+      // the markup claimed it spanned them. From `md` up the same region is
+      // `md:overflow-visible`, so there the bleed is real and the border does span
+      // the panel. The vertical pull stays at both sizes — `overflow-y` scrolls
+      // rather than clips, so it was never the dead half. The old `mt-4` is gone
       // too: the host's content region already gives the title gap (#3361).
-      className="-mx-4 -mb-4 flex min-h-0 flex-1 flex-col md:-mx-6 md:-mb-6"
+      className="-mb-4 flex min-h-0 flex-1 flex-col md:-mx-6 md:-mb-6"
       data-testid="protocol-form"
     >
       {editing && <input type="hidden" name="id" value={protocol!.id} />}
-      <DraftRestoreBanner
-        draft={draft}
-        noun="protocol"
-        className="mx-4 md:mx-6"
-      />
+      <DraftRestoreBanner draft={draft} noun="protocol" className="md:mx-6" />
       {/* THE TEMPLATE-SEED REMOUNT STAYS (#571), and #3219 needs it more than
           before. The five plain fields below are uncontrolled on purpose — see the
           state block — so a new template's `defaultValue` only lands when they
@@ -431,7 +438,7 @@ export default function ProtocolForm({
           what keeps the chips and the DOM saying the same thing. */}
       <div
         key={editing ? "editing" : templateId || "blank"}
-        className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 pb-5 md:px-6"
+        className="min-h-0 flex-1 space-y-5 overflow-y-auto pb-5 md:px-6"
         data-testid="protocol-form-scroll"
       >
         {!editing && (
@@ -791,7 +798,7 @@ export default function ProtocolForm({
         <InlineError>{error}</InlineError>
       </div>
       <div
-        className="flex shrink-0 flex-col-reverse gap-2 border-t border-(--border) bg-surface px-4 py-3 sm:flex-row sm:justify-end md:px-6"
+        className="flex shrink-0 flex-col-reverse gap-2 border-t border-(--border) bg-surface py-3 sm:flex-row sm:justify-end md:px-6"
         data-testid="protocol-form-actions"
       >
         {onDone && (

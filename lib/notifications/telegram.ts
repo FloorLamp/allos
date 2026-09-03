@@ -42,7 +42,8 @@ import type {
 import { composeForSend, composeMessage } from "./compose";
 import { prefixForProfile } from "./attribution";
 import { isKindEnabled } from "./home-assistant-core";
-import { resolveTelegramRecipients } from "./fan-out";
+import { resolveTelegramChats, resolveTelegramRecipients } from "./fan-out";
+import { recordedSend } from "./delivery-marker";
 import { foodNudgePointerFromMessage } from "./food-nudge-pointer";
 import { householdRoundPointerFromMessage } from "./household-round-pointer";
 import {
@@ -119,6 +120,16 @@ export const telegramChannel: NotificationChannel = {
     if (opts?.telegramChatIds?.length) return true;
     return resolveTelegramRecipients(profileId).length > 0;
   },
+  owners(profileId: number, msg: NotificationMessage, opts?: DispatchOptions) {
+    // The chats `send` below would post to, gated exactly as it gates them — every
+    // login on each chat. An override chat names no login and so no owner.
+    if (opts?.telegramChatIds?.length) return [];
+    return resolveTelegramChats(profileId)
+      .filter((c) =>
+        isKindEnabled(msg.kind, getLoginTelegramDisabledKinds(c.loginIds[0]))
+      )
+      .flatMap((c) => c.loginIds);
+  },
   async send(
     profileId: number,
     msg: NotificationMessage,
@@ -151,11 +162,14 @@ export const telegramChannel: NotificationChannel = {
       }
       return;
     }
-    const recipients = resolveTelegramRecipients(profileId);
-    for (const { loginId, chatId } of recipients) {
-      if (!isKindEnabled(msg.kind, getLoginTelegramDisabledKinds(loginId)))
+    // One send per chat; the outcome is recorded for EVERY login mapped to that chat
+    // (#2565), since the message that reached the family group reached all of them.
+    for (const { chatId, loginIds } of resolveTelegramChats(profileId)) {
+      if (!isKindEnabled(msg.kind, getLoginTelegramDisabledKinds(loginIds[0])))
         continue;
-      const messageId = await sendMessageRaw(chatId, msg);
+      const messageId = await recordedSend("telegram", loginIds, () =>
+        sendMessageRaw(chatId, msg)
+      );
       // The HOUSEHOLD ROUND needs the identical rotation (#1719) and never had it:
       // its confirm tokens carry each member's SEND-TIME date, so a surviving round
       // keyboard from an earlier day logs a dose to YESTERDAY — for someone else's

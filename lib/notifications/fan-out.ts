@@ -43,24 +43,43 @@ export interface TelegramRecipient {
   chatId: string;
 }
 
-// Collapse a recipient list to ONE entry per distinct, non-empty chat id (issue
-// #1072 "delivery dedupes by resolved chat-id"): a shared family-group chat that
-// several logins target must receive a single message, not one per login. The
-// FIRST login (input order — managingLoginIdsForProfile is id-ordered) owns the
-// chat, so the choice is deterministic. Empty chat ids are dropped (an enabled
-// login with no chat configured is not a deliverable recipient). Pure — unit-tested.
+// One distinct chat and EVERY login mapped to it, first login first. The send goes to
+// the chat once; the outcome belongs to all of them (#2565: a shared chat applies the
+// one send outcome to every deduped login).
+export interface TelegramChat {
+  chatId: string;
+  loginIds: number[];
+}
+
+// Group a recipient list by distinct, non-empty chat id (issue #1072 "delivery dedupes
+// by resolved chat-id"): a shared family-group chat that several logins target must
+// receive a single message, not one per login. Input order is kept (first-seen chat
+// first, first login first — managingLoginIdsForProfile is id-ordered), so the choice
+// of owning login is deterministic. Empty chat ids are dropped (an enabled login with
+// no chat configured is not a deliverable recipient). Pure — unit-tested.
+export function groupRecipientsByChat(
+  recipients: readonly TelegramRecipient[]
+): TelegramChat[] {
+  const byChat = new Map<string, TelegramChat>();
+  for (const r of recipients) {
+    const chat = r.chatId.trim();
+    if (!chat) continue;
+    const group = byChat.get(chat);
+    if (group) group.loginIds.push(r.loginId);
+    else byChat.set(chat, { chatId: chat, loginIds: [r.loginId] });
+  }
+  return [...byChat.values()];
+}
+
+// The collapse the rest of the fan-out speaks in: one recipient per chat, the FIRST
+// login owning it.
 export function dedupeRecipientsByChat(
   recipients: readonly TelegramRecipient[]
 ): TelegramRecipient[] {
-  const seen = new Set<string>();
-  const out: TelegramRecipient[] = [];
-  for (const r of recipients) {
-    const chat = r.chatId.trim();
-    if (!chat || seen.has(chat)) continue;
-    seen.add(chat);
-    out.push({ loginId: r.loginId, chatId: chat });
-  }
-  return out;
+  return groupRecipientsByChat(recipients).map((g) => ({
+    loginId: g.loginIds[0],
+    chatId: g.chatId,
+  }));
 }
 
 // Would muting `actingLoginId` leave NO unmuted managing login for this profile? The
@@ -109,6 +128,15 @@ export function wouldMuteSilenceSafety(
 export function resolveTelegramRecipients(
   profileId: number
 ): TelegramRecipient[] {
+  return resolveTelegramChats(profileId).map((g) => ({
+    loginId: g.loginIds[0],
+    chatId: g.chatId,
+  }));
+}
+
+// The same audience, one entry per chat with EVERY login mapped to it — what the
+// Telegram channel sends over, so the outcome it records reaches each of them.
+export function resolveTelegramChats(profileId: number): TelegramChat[] {
   const recipients: TelegramRecipient[] = [];
   for (const loginId of managingLoginIdsForProfile(profileId)) {
     if (isProfileMutedForLogin(loginId, profileId)) continue;
@@ -116,5 +144,5 @@ export function resolveTelegramRecipients(
     if (!telegramEnabled || !telegramChatId.trim()) continue;
     recipients.push({ loginId, chatId: telegramChatId });
   }
-  return dedupeRecipientsByChat(recipients);
+  return groupRecipientsByChat(recipients);
 }

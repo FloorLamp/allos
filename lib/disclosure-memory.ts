@@ -56,7 +56,8 @@ export const DISCLOSURE_MEMORY_KEY = "allos:disclosure:v1";
  * The disclosures that may remember. Adding one is a deliberate edit with a reason and
  * a test to update, never an inheritance — see the scope rules above.
  */
-export type DisclosureId = "settings-group" | "dashboard-all";
+export type DisclosureId =
+  "settings-group" | "dashboard-all" | "notify-channel";
 
 export interface DisclosureDeclaration {
   /** Why this fold is ROUTINE — the daily return that makes re-opening it friction. */
@@ -86,6 +87,19 @@ export const DISCLOSURES: Record<DisclosureId, DisclosureDeclaration> = {
       "The routine dashboard remainder returns on every visit and may stay open on this device.",
     defaultOpen: false,
     instanced: false,
+  },
+  // #2565 A. A channel row is one-time plumbing a person opens while setting a channel
+  // up and returns to across several visits to finish; instanced per channel so opening
+  // Telegram does not open Email. NOT a narrowing control — the strip shows all four
+  // channels either way, and the fold only holds that channel's own configuration.
+  // An ERRORING row passes an explicit `defaultOpen`, which by RememberedDetails'
+  // contract wins and remembers nothing, so a forced-open failure never becomes a
+  // remembered-open row after it heals.
+  "notify-channel": {
+    reason:
+      "Channel setup on Settings → Notifications, returned to while getting a channel working; instanced per channel.",
+    defaultOpen: false,
+    instanced: true,
   },
 };
 

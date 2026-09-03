@@ -135,18 +135,13 @@ function applyDoseIntent(
     zonedDateParts(getTimezone(profileId), capturedTakenAt).date === date;
   const outcome =
     flow === "dose"
-      ? markDoseTaken(
-          profileId,
-          doseId,
-          null,
-          date,
-          OFFLINE_REPLAY,
-          capturedOnRowDate
+      ? markDoseTaken(profileId, doseId, null, date, OFFLINE_REPLAY, {
+          takenAt: capturedOnRowDate
             ? capturedTakenAt
             : date === todayStr
               ? (capturedTakenAt ?? undefined)
-              : null
-        )
+              : null,
+        })
       : markDoseSkipped(profileId, doseId, null, date, OFFLINE_REPLAY);
   return classifyDoseReplay(flow, outcome);
 }

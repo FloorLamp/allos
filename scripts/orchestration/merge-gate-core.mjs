@@ -72,22 +72,55 @@ export function receiptVerdict(pr, reviews, head = pr.head.sha) {
   };
 }
 
+// A `cancelled` run never reached a verdict, so it is not one (#4800). The
+// gate was reading "never ran" as "ran and failed": a push that races the
+// previous run's start leaves the cancelled run standing beside the green that
+// replaced it, and counting the cancellation closed the gate on a head whose
+// checks tab was green.
+//
+// Discarding cancellations is the whole rule. Nothing here picks a winner
+// between two runs, so nothing here can mask a red: of what is left under one
+// name, ALL must be green. That is the right reading of every duplicate the
+// gate can actually see. GitHub's default listing already collapses each check
+// SUITE to its newest run — 20 runs on #4800's head, where `filter=all` returns
+// 37 — so a re-run never arrives here, and the duplicates that do are
+// cross-suite, genuinely separate runs. gitleaks is the standing example: it
+// fires on `pull_request` AND on branch `push`, and those scan different ranges
+// (`base..HEAD` against `before..HEAD`), so requiring both is requiring both
+// scans. Two workflows sharing a job name — ci.yml and ci-main.yml both define
+// `check`, `test-unit` and `test-db` — would likewise both be required, rather
+// than one silently standing in for the other.
+const reachedAVerdict = (run) => run.conclusion !== "cancelled";
+
 export function checkRunsVerdict(allRuns, ignoreCheck, head) {
-  const checkRuns = allRuns.filter((run) => run.name !== ignoreCheck);
+  const named = allRuns.filter((run) => run.name !== ignoreCheck);
+  const checkRuns = named.filter(reachedAVerdict);
   const pending = checkRuns.filter((run) => run.status !== "completed");
   const red = checkRuns.filter(
     (run) =>
       run.status === "completed" &&
       !["success", "neutral", "skipped"].includes(run.conclusion)
   );
-  const ignored = Boolean(ignoreCheck && allRuns.length !== checkRuns.length);
-  if (checkRuns.length === 0 || pending.length) {
+  const ignored = Boolean(ignoreCheck && named.length !== allRuns.length);
+  // A name whose EVERY run was cancelled has no verdict at all — not green, and
+  // not red either, because nothing failed. Incomplete is the honest state, and
+  // the wrapper publishes it as `pending`, which asks for a re-run instead of
+  // sending someone to hunt a failure that never happened.
+  const decided = new Set(checkRuns.map((run) => run.name));
+  const noVerdict = [...new Set(named.map((run) => run.name))].filter(
+    (name) => !decided.has(name)
+  );
+  if (checkRuns.length === 0 || pending.length || noVerdict.length) {
     return {
       kind: "incomplete",
       ignored,
       message:
         `CI INCOMPLETE on ${head.slice(0, 8)}: ${checkRuns.length} registered, ` +
-        `${pending.length} pending. Not a verdict — run ci-watch.mjs to settlement.`,
+        `${pending.length} pending` +
+        (noVerdict.length
+          ? `, no verdict for ${noVerdict.join(", ")} (every run cancelled — re-run it)`
+          : "") +
+        ". Not a verdict — run ci-watch.mjs to settlement.",
     };
   }
   if (red.length) {
@@ -121,9 +154,12 @@ export function closedStatusDescription(failure) {
 // separate ruling.
 export function baseDetectorNotice(runs, ref, detector = "e2e-main") {
   const at = runs[0]?.head_sha ? `${ref}@${runs[0].head_sha.slice(0, 8)}` : ref;
-  const shards = runs.filter((run) => run.name.startsWith(detector));
+  const detected = runs.filter((run) => run.name.startsWith(detector));
+  const shards = detected.filter(reachedAVerdict);
   if (!shards.length)
-    return `${detector}: no verdict on ${at} — it debounces, and skips a push with no runtime surface`;
+    return detected.length
+      ? `${detector}: no verdict on ${at} — every shard run was cancelled; re-run it`
+      : `${detector}: no verdict on ${at} — it debounces, and skips a push with no runtime surface`;
   const red = shards.filter(
     (run) =>
       run.status === "completed" &&
@@ -134,5 +170,13 @@ export function baseDetectorNotice(runs, ref, detector = "e2e-main") {
   const pending = shards.filter((run) => run.status !== "completed");
   if (pending.length)
     return `${detector}: still running on ${at} (${pending.length} of ${shards.length})`;
-  return `${detector}: ${at} is green (${shards.length} shards)`;
+  // A SKIPPED SHARD IS NOT A GREEN ONE (#4370). e2e-main skips a push with no
+  // runtime surface, and this line used to fold `skipped` in with `success` and
+  // report "is green (4 shards)" over a run that executed no browser at all —
+  // the exact false confidence #4370 was filed about, printed at the moment a
+  // merge decision is taken.
+  const ran = shards.filter((run) => run.conclusion !== "skipped");
+  if (!ran.length)
+    return `${detector}: ${at} ran NOTHING (${shards.length} shards skipped — no runtime surface in that push). Not a green; the nightly is what covers main`;
+  return `${detector}: ${at} is green (${ran.length} of ${shards.length} shards ran)`;
 }

@@ -1,21 +1,11 @@
 import { describe, it, expect } from "vitest";
-import {
-  hrSlotSeries,
-  intradayVitalPoints,
-  slotLabel,
-  toIntradaySlotSeries,
-  VITALS_SLOT_MINUTES,
-  vitalReadingTime,
-  type VitalReadingRow,
-} from "@/lib/vitals-day";
-import { MINUTES_IN_DAY } from "@/lib/intraday";
+import { vitalReadingTime, type VitalReadingRow } from "@/lib/vitals-day";
 
-// The Trends Body 1D intraday model (#1466/#3387). Pure: fixtures only, no DB.
-// Every value here is synthetic (no PHI) — round numbers on a fictional day.
+// A vital reading's clock time (#1466, narrowed by #4767). Pure: fixtures only, no
+// DB. Every value here is synthetic (no PHI) — round numbers on a fictional day.
 
 const TZ = "America/New_York";
 const DAY = "2026-07-25";
-const SLOTS = MINUTES_IN_DAY / VITALS_SLOT_MINUTES;
 
 function bpRow(over: Partial<VitalReadingRow> = {}): VitalReadingRow {
   return { id: 1, date: DAY, value_num: 120, ...over };
@@ -102,112 +92,5 @@ describe("vitalReadingTime", () => {
         TZ
       )
     ).toBeNull();
-  });
-});
-
-describe("intradayVitalPoints", () => {
-  it("keeps only today's TIMED readings, ascending by minute", () => {
-    const rows = [
-      bpRow({ id: 1, value_num: 131, occurred_at: "2026-07-25T23:40:00Z" }),
-      bpRow({ id: 2, value_num: 118, occurred_at: "2026-07-25T11:10:00Z" }),
-      bpRow({ id: 3, value_num: 125 }), // untimed → cannot sit on a clock axis
-      bpRow({
-        id: 4,
-        date: "2026-07-24",
-        value_num: 140,
-        occurred_at: "2026-07-24T11:10:00Z",
-      }),
-    ];
-    expect(intradayVitalPoints(rows, DAY, TZ)).toEqual([
-      { minute: 7 * 60 + 10, value: 118, time: "07:10" },
-      { minute: 19 * 60 + 40, value: 131, time: "19:40" },
-    ]);
-  });
-
-  it("positions an ingested reading by its LOCAL clock", () => {
-    const rows = [
-      bpRow({
-        id: 5,
-        value_num: 97,
-        external_id: hcId("Oxygen Saturation", "2026-07-25T11:10:00Z"),
-      }),
-    ];
-    expect(intradayVitalPoints(rows, DAY, TZ)).toEqual([
-      { minute: 430, value: 97, time: "07:10" },
-    ]);
-  });
-});
-
-describe("toIntradaySlotSeries", () => {
-  it("spans the whole day at a fixed slot width", () => {
-    const series = toIntradaySlotSeries([]);
-    expect(series).toHaveLength(SLOTS);
-    expect(series[0].date).toBe("00:00");
-    expect(series[1].date).toBe("00:05");
-    expect(series[SLOTS - 1].date).toBe("23:55");
-    // An empty day is all-null, never a collapsed axis — the caller data-gates on
-    // the point list, not on this array's length.
-    expect(series.every((p) => p.value === null)).toBe(true);
-  });
-
-  it("places a reading in its slot and leaves the rest null", () => {
-    const series = toIntradaySlotSeries([
-      { minute: 7 * 60 + 12, value: 97 },
-      { minute: 19 * 60 + 40, value: 95 },
-    ]);
-    // 07:12 floors into the 07:10 slot; the gap between the two readings is a run
-    // of real nulls, which is what makes x proportional to time.
-    expect(series[(7 * 60 + 10) / 5]).toEqual({ date: "07:10", value: 97 });
-    expect(series[(19 * 60 + 40) / 5]).toEqual({ date: "19:40", value: 95 });
-    expect(series.filter((p) => p.value !== null)).toHaveLength(2);
-  });
-
-  it("keeps the LATER reading when two share a slot", () => {
-    const series = toIntradaySlotSeries([
-      { minute: 604, value: 99 },
-      { minute: 601, value: 91 },
-    ]);
-    expect(series[120]).toEqual({ date: "10:00", value: 99 });
-  });
-
-  it("drops out-of-day and non-finite minutes", () => {
-    const series = toIntradaySlotSeries([
-      { minute: -5, value: 60 },
-      { minute: MINUTES_IN_DAY, value: 61 },
-      { minute: Number.NaN, value: 62 },
-      { minute: 0, value: Number.NaN },
-    ]);
-    expect(series.every((p) => p.value === null)).toBe(true);
-  });
-});
-
-describe("slotLabel", () => {
-  it("formats minutes past midnight as a wall clock", () => {
-    expect(slotLabel(0)).toBe("00:00");
-    expect(slotLabel(65)).toBe("01:05");
-    expect(slotLabel(1435)).toBe("23:55");
-  });
-});
-
-describe("hrSlotSeries", () => {
-  it("maps the day's HR minutes onto the same slot grid", () => {
-    const buckets = [
-      { ts: `${DAY}T06:00`, bpm: 58, n: 4 },
-      { ts: `${DAY}T06:02`, bpm: 62, n: 4 },
-      { ts: `${DAY}T09:30`, bpm: 140, n: 6 },
-      { ts: `2026-07-24T06:00`, bpm: 200, n: 6 }, // another day → ignored
-    ];
-    const series = hrSlotSeries(DAY, buckets);
-    expect(series).toHaveLength(SLOTS);
-    // The 06:00 slot is downsampleHr's count-weighted merge of 06:00 + 06:02.
-    expect(series[72]).toEqual({ date: "06:00", value: 60 });
-    expect(series[114]).toEqual({ date: "09:30", value: 140 });
-    // The hours between are genuine wear gaps, carried as nulls so the caller can
-    // render a break rather than a straight line implying a measured flat HR.
-    expect(series[90].value).toBeNull();
-  });
-
-  it("returns an empty series when the day has no HR at all", () => {
-    expect(hrSlotSeries(DAY, [])).toEqual([]);
   });
 });
