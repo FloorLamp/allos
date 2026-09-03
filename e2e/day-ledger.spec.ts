@@ -382,41 +382,51 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     // (#4835). Two consecutive agreeing NON-EMPTY reads, each through a freshly
     // resolved locator, so the pair compared belongs to one node still on the page.
     // Same budget settledBoxes spends on the same question, in the same 50ms steps.
+    // Same budget settledBoxes spends on the same question. Expressed as a retrying
+    // expect rather than a hand-rolled loop: the e2e hygiene guard bans a new
+    // waitForTimeout and a new wall-clock read in a spec, and it is right to — the
+    // suite's own settling primitives live in e2e/helpers.ts, and this one is
+    // Playwright's.
     const TONE_SETTLE_MS = 10_000;
-    const tones = async (): Promise<{ due: string; ground: string }> => {
-      const deadline = Date.now() + TONE_SETTLE_MS;
-      let previous: { due: string; ground: string } | null = null;
-      for (;;) {
-        const read = await dueRow.evaluate((el) => {
-          // An empty ground rather than a `!` that throws: when the row is detached
-          // from a still-attached list, `closest` finds nothing, and "no reading" is
-          // what that is — the diagnosis below names it.
-          const ground = el.closest('[data-testid="ledger-rows"]');
-          return {
-            due: getComputedStyle(el).backgroundColor,
-            ground: ground ? getComputedStyle(ground).backgroundColor : "",
-          };
-        });
-        if (
-          read.due !== "" &&
-          read.ground !== "" &&
-          previous?.due === read.due &&
-          previous.ground === read.ground
-        ) {
-          return read;
-        }
-        if (Date.now() > deadline) {
-          throw new Error(
-            `[tones] the due row was still being replaced under the read after ` +
-              `${TONE_SETTLE_MS}ms, so no colour was ever measured: last two reads ` +
-              `were ${JSON.stringify(previous)} then ${JSON.stringify(read)}. An ` +
-              `EMPTY string is a detached node (#4815), never a colour — this is ` +
-              `NOT the due row and its ground agreeing.`
-          );
-        }
-        previous = read;
-        await page.waitForTimeout(50);
-      }
+    type Tone = { due: string; ground: string };
+    const tones = async (): Promise<Tone> => {
+      let previous: Tone | null = null;
+      let settled: Tone | null = null;
+      await expect
+        .poll(
+          async () => {
+            const read = await dueRow.evaluate((el) => {
+              // An empty ground rather than a `!` that throws: when the row is
+              // detached from a still-attached list, `closest` finds nothing, and
+              // "no reading" is what that is.
+              const ground = el.closest('[data-testid="ledger-rows"]');
+              return {
+                due: getComputedStyle(el).backgroundColor,
+                ground: ground ? getComputedStyle(ground).backgroundColor : "",
+              };
+            });
+            const before = previous;
+            previous = read;
+            const agreed =
+              read.due !== "" &&
+              read.ground !== "" &&
+              before !== null &&
+              before.due === read.due &&
+              before.ground === read.ground;
+            settled = agreed ? read : null;
+            return agreed;
+          },
+          {
+            timeout: TONE_SETTLE_MS,
+            message:
+              "the due row was still being replaced under the read, so no colour " +
+              "was ever measured. An EMPTY computed style is a detached node " +
+              "(#4815), never a colour — this is NOT the due row and its ground " +
+              "agreeing",
+          }
+        )
+        .toBe(true);
+      return settled!;
     };
 
     const light = await tones();
