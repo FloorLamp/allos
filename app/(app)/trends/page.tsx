@@ -4,7 +4,6 @@ import { today } from "@/lib/db";
 import {
   ALL_TIME_RANGE_PARAM,
   ALL_TIME_RANGE_VALUE,
-  intradayQuickRange,
   isAllTimeRange,
   isCustomRange,
   normalizeTimelineRange,
@@ -19,6 +18,8 @@ import { PageHeader } from "@/components/ui";
 import TabList from "@/components/TabList";
 import TrendsContextBar from "@/components/TrendsContextBar";
 import DateRangeControl from "@/components/DateRangeControl";
+import DestinationLink from "@/components/DestinationLink";
+import { historyDayIntradayHref } from "@/lib/hrefs";
 import {
   TrendAnnotationControls,
   TrendAnnotationProvider,
@@ -135,14 +136,7 @@ export default async function TrendsPage(props: {
   const bodyHistoryPage = clampPage(
     Number(firstParam(searchParams.bpage)) || 1
   );
-  // The "1D" pill (#1466), injected through the shared control's extra-ranges slot.
-  // It followed the vitals to Body (#1486) and follows the census here: 1D is only
-  // meaningful where the surface swaps to genuinely intraday content (the census's
-  // vitals run — the HR minute series + time-positioned BP/SpO2 points). On every
-  // daily-grain tab a one-day window renders a single dot, so no other tab offers
-  // it.
   const overview = activeTab === "overview";
-  const extraRanges = overview ? [intradayQuickRange(todayStr)] : [];
 
   // Build a /trends URL, preserving the active tab + window unless overridden.
   // Overview is the default tab, so it's dropped from the query string.
@@ -204,7 +198,7 @@ export default async function TrendsPage(props: {
   // The phone range trigger is built from the SAME predicates the pills light
   // themselves with, so its compact label can never disagree with the expanded
   // range control.
-  const rangeLabel = activeRangeLabel(range, todayStr, extraRanges);
+  const rangeLabel = activeRangeLabel(range, todayStr);
 
   // Build only the URL-selected tab server-side (#105); Overview divides its own
   // work once more with a Suspense boundary below.
@@ -350,11 +344,24 @@ export default async function TrendsPage(props: {
               }}
               buildHref={buildRangeHref}
               idPrefix="trends"
-              extraRanges={extraRanges}
+              // WHERE THE 1D PILL SAT (#4767). The census no longer swaps to a clock
+              // axis — the /history day view is the one intraday surface — so its door
+              // takes the pill's seat on the landing surface: today, on the record.
+              trailingChips={
+                overview ? (
+                  <DestinationLink
+                    href={historyDayIntradayHref(todayStr)}
+                    data-testid="body-timeline-link"
+                    className="inline-flex min-h-(--control-box) shrink-0 items-center whitespace-nowrap text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
+                  >
+                    Today on History
+                  </DestinationLink>
+                ) : undefined
+              }
               // Only a CUSTOM window needs a summary chip: with a preset lit, the chip
               // just repeats that pill's own label (the duplicate "All time" — #1455 D).
               rightSlot={
-                isCustomRange(range, todayStr, extraRanges) ? (
+                isCustomRange(range, todayStr) ? (
                   <span
                     data-testid="range-summary-chip"
                     className="whitespace-nowrap rounded-full border border-(--border) bg-(--ghost) px-3 py-1 text-slate-500 dark:text-slate-400"
