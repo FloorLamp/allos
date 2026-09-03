@@ -90,24 +90,39 @@ export default function TimeField({
 
   // THE DIRTY-FORM REGISTRY LISTENS FOR NATIVE EVENTS ON THE NAMED FIELD ITSELF
   // (#4976), and this field's named element is the hidden sibling below — the
-  // VISIBLE input the person actually types into carries no `name`, so nothing
-  // it fires natively ever reaches the registry. Two dispatches stand in, one
-  // per event the registry listens for, in the order a real focus-then-type
-  // always produces them:
+  // VISIBLE input and picker BUTTON the person actually interacts with carry no
+  // `name`, so nothing either fires natively ever reaches the registry. Two
+  // dispatches stand in, one per event the registry listens for, in the order a
+  // real focus-then-edit always produces them:
   //
-  //   `focusin`, from the VISIBLE input's own `onFocus` below — BEFORE any
-  //   keystroke has changed `value`, so the hidden input's DOM value the
-  //   registry reads at that moment is still the PRE-EDIT one. That is what
-  //   lets it register the correct baseline; firing this only from a synthetic
-  //   post-commit effect (after `value` had already moved) would register the
-  //   field against its own just-edited value and it could never look dirty.
-  //   `onFocusIn` is idempotent for an already-registered field, so a second
-  //   focus mid-edit does not clobber the first baseline.
+  //   `focusin`, from `registerDirtyBaseline` below — called from EVERY seam that
+  //   precedes an edit, BEFORE any of them has changed `value`, so the hidden
+  //   input's DOM value the registry reads at that moment is still the PRE-EDIT
+  //   one. That is what lets it register the correct baseline; firing this only
+  //   from a synthetic post-commit effect (after `value` had already moved) would
+  //   register the field against its own just-edited value and it could never
+  //   look dirty. `onFocusIn` is idempotent for an already-registered field, so a
+  //   second call mid-edit does not clobber the first baseline.
+  //
+  //   THE WHEEL IS A SEPARATE SEAM FROM TYPING, and missing it was a real bug
+  //   (caught in review, not by a test that existed): opening the picker moves
+  //   focus to the button, never to the text input, so a value chosen entirely
+  //   by wheel or keyboard never ran through the visible input's `onFocus` at
+  //   all — the hidden field went straight to `onEdit`'s never-focused branch,
+  //   which registers baseline from `domDefaultValue` at THAT moment, and by
+  //   then (a post-commit dispatch) the default had already moved onto the pick.
+  //   A picked time therefore read as clean no matter what was chosen. The fix is
+  //   the same registration call, made from the wheel's own pre-edit moment: the
+  //   button's `onClick`, when it is OPENING (never on close, which precedes no
+  //   edit).
   //
   //   `input`, from THIS effect, once per committed `value` change — marks the
-  //   already-registered field touched. Skips the mount's own commit: the
-  //   hidden input's initial value already equals `value`, so dispatching then
-  //   would be a harmless no-op the registry discards anyway.
+  //   already-registered field touched, whichever seam registered it. Skips the
+  //   mount's own commit: the hidden input's initial value already equals
+  //   `value`, so dispatching then would be a harmless no-op the registry
+  //   discards anyway.
+  const registerDirtyBaseline = () =>
+    hiddenRef.current?.dispatchEvent(new Event("focusin", { bubbles: true }));
   const mountedRef = useRef(false);
   useEffect(() => {
     if (!name) return;
@@ -172,13 +187,10 @@ export default function TimeField({
         placeholder={timeFormat === "24h" ? "hh:mm" : "h:mm am"}
         inputMode="numeric"
         autoComplete="off"
-        // The dirty-form registration moment (#4976) — see the effect above for
-        // why it fires here rather than post-edit.
-        onFocus={() =>
-          hiddenRef.current?.dispatchEvent(
-            new Event("focusin", { bubbles: true })
-          )
-        }
+        // The TYPING seam's dirty-form registration moment (#4976) — see the
+        // comment above `registerDirtyBaseline` for why it fires here rather
+        // than post-edit, and why the wheel needs its own call at its own seam.
+        onFocus={registerDirtyBaseline}
         onChange={(e) => {
           const text = e.target.value;
           const parsed = parseClockHhmm(text);
@@ -214,7 +226,16 @@ export default function TimeField({
       )}
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        // The WHEEL seam's dirty-form registration moment (#4976): the button
+        // taking focus is the pre-edit moment for a picked value, since nothing
+        // else here ever focuses the visible input. Only on OPEN — closing
+        // precedes no edit, and re-registering on every toggle is needless
+        // (idempotent, but the moment is what matters, not the repetition).
+        onClick={() => {
+          const next = !open;
+          setOpen(next);
+          if (next) registerDirtyBaseline();
+        }}
         disabled={disabled}
         aria-label="Open time picker"
         aria-haspopup="dialog"
