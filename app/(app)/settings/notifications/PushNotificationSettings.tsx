@@ -149,10 +149,7 @@ export default function PushNotificationSettings() {
   }
 
   return (
-    <div className="card space-y-4" data-testid="push-settings">
-      <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-        Web Push notifications
-      </h2>
+    <div className="space-y-4" data-testid="push-settings">
       <p className="text-xs text-slate-500 dark:text-slate-400">
         Get the same reminders as a browser notification on this device — no
         Telegram needed. Subscriptions belong to this browser and cover every
@@ -225,7 +222,7 @@ export default function PushNotificationSettings() {
               className="btn-ghost"
               data-testid="push-test"
             >
-              Send test notification
+              Send test
             </button>
           </div>
         </>

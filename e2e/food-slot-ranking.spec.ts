@@ -56,7 +56,10 @@ test("the one-tap bar order follows every selected meal slot (#950)", async ({
     // Switching meal cards swaps the quick-log catalog to that meal's independent
     // learned order; counts and ordering now share the same selected-slot context.
     for (const meal of ["Morning", "Midday", "Evening"]) {
-      await page.getByTestId(`food-slot-${meal.toLowerCase()}`).click();
+      await hydratedClick(
+        page,
+        page.getByTestId(`food-slot-${meal.toLowerCase()}`)
+      );
       await expect(chip).toHaveText(meal);
       await expect(firstRow).toHaveAttribute(
         "data-testid",
@@ -134,7 +137,15 @@ test("a regular window offers its usual set in one tap, and stops offering it on
     await page.goto("/nutrition");
 
     // Whatever window the run's frozen clock lands in, the habit is in Morning.
-    await page.getByTestId("food-slot-morning").click();
+    // hydratedClick, not click: the meal selector is a CONTROLLED React button
+    // (components/SegmentedControl.tsx renders `<button type="button" onClick>` with no
+    // href and no form), so a tap dispatched before the handler attaches is lost with no
+    // native fallback and no error — the chip assertion below then retries against the
+    // unchanged slot and reports the derived window as wrong (#4830 on `e2e (4)`:
+    // `Expected: "Evening" Received: "Midday"`, 14 retries). This is why #4339's
+    // clearing of the `food-more-groups` taps does not transfer: THAT is an uncontrolled
+    // `<details>` that toggles natively, so a pre-hydration tap survives it.
+    await hydratedClick(page, page.getByTestId("food-slot-morning"));
     await expect(page.getByTestId("food-slot-chip")).toHaveText("Morning");
 
     // The offer names EXACTLY the groups it will write — the label is the promise.
@@ -158,7 +169,8 @@ test("a regular window offers its usual set in one tap, and stops offering it on
 
     // The absence survives a reload — it is the server's answer, not a local flag.
     await page.reload();
-    await page.getByTestId("food-slot-morning").click();
+    // A reload re-mounts and re-hydrates, so this is a first interaction again.
+    await hydratedClick(page, page.getByTestId("food-slot-morning"));
     await expect(page.getByTestId("count-berries")).toHaveText("1");
     await expect(page.getByTestId("food-usual-offer")).toHaveCount(0);
 
@@ -252,7 +264,7 @@ test("a cap-direction group is never offered back as an expectation (#2380 / #99
     // two habitual groups by the arithmetic. Alcohol is excluded because its counter is
     // the substance ledger, which leaves ONE, and one group is already one tap on the
     // row below. So the window that is MOST regular offers nothing at all.
-    await page.getByTestId("food-slot-evening").click();
+    await hydratedClick(page, page.getByTestId("food-slot-evening"));
     await expect(page.getByTestId("food-slot-chip")).toHaveText("Evening");
     await expect(page.getByTestId("food-quick-log")).toBeVisible();
     await expect(page.getByTestId("food-usual-offer")).toHaveCount(0);

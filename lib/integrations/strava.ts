@@ -5,8 +5,12 @@ import {
 } from "@/lib/clock-skew";
 import { hhmmToMinutes } from "@/lib/date";
 import type { ActivityType } from "@/lib/types";
-import { boundedOrNull, inMetricBounds } from "@/lib/ingest-bounds";
-import { toKm } from "@/lib/units";
+import {
+  boundedOrNull,
+  canonicalDistanceKm,
+  canonicalDurationMin,
+  inMetricBounds,
+} from "@/lib/ingest-bounds";
 import type {
   NormActivity,
   NormMetricSample,
@@ -283,12 +287,12 @@ export function mapStravaActivity(
     return m == null ? null : Math.round(m * 3.6 * 10) / 10; // m/s → km/h
   };
 
-  const durationMin = movingSec != null ? Math.round(movingSec / 60) : null;
-  // Strava reports distance in METRES. This division is the unit boundary, so the
-  // result is minted canonical here (#2149) and every downstream use of `distanceKm`
-  // is a `Km` — the raw metre count can no longer reach `activities.distance_km`.
-  const distanceKm =
-    meters != null ? toKm(Math.round((meters / 1000) * 100) / 100, "km") : null;
+  const durationMin = canonicalDurationMin(movingSec, "s");
+  // Strava reports distance in METRES and duration in SECONDS. Both conversions —
+  // and the rounding each carries — belong to the shared unit boundary (#4537), which
+  // also mints the `Km` brand (#2149): the raw metre count can no longer reach
+  // `activities.distance_km`.
+  const distanceKm = canonicalDistanceKm(meters, "m");
 
   // Plausibility guard (issue #132). The identity-defining distance/duration are
   // the record's core: a physiologically-impossible one makes the whole activity

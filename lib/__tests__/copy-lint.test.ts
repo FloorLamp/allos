@@ -54,6 +54,12 @@ const ACTING_IMMUNIZATION_COPY =
   "The schedule assessment is deliberately acting-profile-only.";
 const ACTING_SUBSTANCE_USE_COPY =
   "Substance use is deliberately acting-profile-only (#2557).";
+// The one place second person is the CROSS-PROFILE reading rather than a lapse from
+// it: Now's subject labels (#4752 item 6) exist to tell a caregiver whose rows these
+// are, and above their own rows "You" is the distinction the label was added to draw.
+// Their own name there would read as a third person in the household.
+const NOW_SUBJECT_LABEL_COPY =
+  "Now's own-rows subject label names the viewer as such (#4752 item 6).";
 const CROSS_PROFILE_VOICE_ALLOW: {
   file: string;
   substring: string;
@@ -74,6 +80,11 @@ const CROSS_PROFILE_VOICE_ALLOW: {
     substring:
       "Add your date of birth in Settings to see age-based recommendations.",
     why: ACTING_IMMUNIZATION_COPY,
+  },
+  {
+    file: "app/(app)/page.tsx",
+    substring: 'p.id === profile.id ? "You"',
+    why: NOW_SUBJECT_LABEL_COPY,
   },
   {
     file: "app/(app)/settings/family/FamilyManager.tsx",

@@ -211,10 +211,8 @@ export function buildTrendsSubjectContext(
     );
   }
 
-  // Worn heart rate — the intraday card and the daily summary read the same store.
-  const hrDay = getLatestHrDay(profileId);
-  presence.hr = presenceFromLatest(hrDay, todayStr);
-  presence["hr-day"] = presence.hr;
+  // Worn heart rate: the daily summary's presence is its latest worn day.
+  presence.hr = presenceFromLatest(getLatestHrDay(profileId), todayStr);
 
   // Derived cards: BMI pairs each weigh-in with the height in effect, and the
   // growth-percentile card is a height trajectory.

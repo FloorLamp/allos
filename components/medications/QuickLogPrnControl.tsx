@@ -11,7 +11,6 @@ import { useCockpitDay } from "@/components/illness/CockpitDayContext";
 import {
   DOSE_ACTION_BRAND,
   DOSE_ACTION_ICON,
-  DOSE_ACTION_LABEL,
   DOSE_ACTION_NEUTRAL,
 } from "@/components/medications/dose-action-styles";
 import { medicationHref } from "@/lib/hrefs";
@@ -50,13 +49,23 @@ import { dateStrInTz } from "@/lib/date";
 // blocking, so this NEVER confirms. It does take layer 1 — the shared ledger's
 // post-success cooldown, keyed per offset so the now-tap and a retro entry are separate
 // writes — which absorbs the queued second click on the same button.
-// The action button's words and its accessible name, and the statement's label — one
-// string, because they name the same affordance.
-const EARLIER_DOSE = "Earlier dose";
+// THE CLOCK DOOR IS A GLYPH AND ITS NAME IS A QUESTION (#4426's time-grammar ruling,
+// rendered by #4752 item 8). "Earlier dose" was the door's visible words AND its
+// accessible name; the ruling makes the clock the ONLY spelling of "happened
+// earlier", so the words go and the question becomes the name. It is spelled as the
+// accessible name alone and NEVER as a `title=`: #2378/#3375 ruled hover-only text
+// out of this codebase because a touch or keyboard reader never receives it, and
+// lib/__tests__/raw-title-boundary.test.ts holds that line.
+const EARLIER_DOSE = "Happened earlier?";
 // ONE WORD, AND NEVER "now" (#4753's copy migration, owner-blessed on the issue).
 // "Taken now" carried the whole sentence because the button had no label to say it
 // with; the chip's label states the dose, so the verb is only the verb.
-const TAKE_VERB = "Take";
+//
+// GIVE OR TAKE IS NOT A VARIANT — IT IS THE SENTENCE BEING TRUE (#4752 item 4). This
+// row carries a `profileId` only when a caregiver is logging for somebody ELSE, which
+// is exactly the case where "Take" would be addressed to the wrong person. Nothing
+// else about the control changes with it, and no caller chooses it.
+const doseVerb = (crossProfile: boolean) => (crossProfile ? "Give" : "Take");
 
 export default function QuickLogPrnControl({
   itemId,
@@ -123,9 +132,10 @@ export default function QuickLogPrnControl({
   // A med with no recorded amount has nothing quantitative to promise, so the label
   // falls back to the medication itself — #4753's own `Ibuprofen · [Give]` shape.
   const doseLabel = doseDetail || name;
+  const verb = doseVerb(profileId != null);
   // The whole sentence for a reader, where the visible pill abbreviates it. Both arms
   // read this one string.
-  const takeName = `${TAKE_VERB} ${name}${doseDetail ? ` · ${doseDetail}` : ""}`;
+  const takeName = `${verb} ${name}${doseDetail ? ` · ${doseDetail}` : ""}`;
   // The shared collapsed statement (#4426). Its four rules — no field until one is
   // stated, only what was on screen, a day change DROPS the statement, and a statement
   // is spent by the tap it answers — are stated once in `useTimeStatement` and were
@@ -198,15 +208,13 @@ export default function QuickLogPrnControl({
       type="button"
       onClick={() => statement.setOpen(!statement.open)}
       disabled={busy}
-      className={`${compactActions ? DOSE_ACTION_ICON : DOSE_ACTION_LABEL} ${DOSE_ACTION_NEUTRAL}`}
+      className={`${DOSE_ACTION_ICON} ${DOSE_ACTION_NEUTRAL}`}
       aria-expanded={statement.open}
       aria-label={EARLIER_DOSE}
       data-testid="prn-log-more"
     >
       <IconClock className="h-4 w-4" stroke={2} />
-      <span className={compactActions ? "sr-only" : undefined}>
-        {EARLIER_DOSE}
-      </span>
+      <span className="sr-only">{EARLIER_DOSE}</span>
     </button>
   );
 
@@ -240,7 +248,7 @@ export default function QuickLogPrnControl({
     // it lands on the verb nub rather than filling the pill (#4548's ruling).
     <LabeledVerbChip
       label={doseLabel}
-      verb={TAKE_VERB}
+      verb={verb}
       tone={redosePrimary ? "brand" : "neutral"}
       onAct={() => log("now")}
       disabled={busy}

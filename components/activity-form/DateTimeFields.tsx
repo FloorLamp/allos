@@ -1,14 +1,18 @@
 "use client";
 
 import DateField from "../DateField";
-import { nowHHMM } from "./model";
-import { shiftHHMM } from "@/lib/activity-meta";
+import TimeRangeFields from "../TimeRangeFields";
 import { dateStrInTz, hourInTz, shiftDateStr } from "@/lib/date";
 
-// The activity form's date + start/end time fields, with the "now" shortcuts,
-// Start↔End derivation, the post-midnight date nudge, and the time-error /
-// duration controls. Presentational only — extracted from ActivityForm so the
-// parent stays composition (#319).
+// The activity form's date + duration column and the post-midnight date nudge,
+// beside the shared start/end pair. Presentational only — extracted from
+// ActivityForm so the parent stays composition (#319).
+//
+// THE PAIR ITSELF IS NO LONGER HERE (#4384 fix 6): the "now" shortcuts, the
+// Start↔End derivation and the End-before-Start message moved to
+// `components/TimeRangeFields.tsx`, which the practice form mounts too. What
+// stays is what is genuinely the ACTIVITY's — the date, its yesterday nudge, and
+// the session Duration that the parts feed and the clock span derives.
 export default function DateTimeFields({
   date,
   startTime,
@@ -45,16 +49,6 @@ export default function DateTimeFields({
   onEndTime: (v: string) => void;
   onSessionDuration: (v: string) => void;
 }) {
-  // Derive End = Start + duration (or Start = End − duration) when two of the
-  // three are known and the result stays in-day (#336).
-  const derivedEnd =
-    startTime && !endTime && derivableDurationMin != null
-      ? shiftHHMM(startTime, derivableDurationMin)
-      : null;
-  const derivedStart =
-    endTime && !startTime && derivableDurationMin != null
-      ? shiftHHMM(endTime, -derivableDurationMin)
-      : null;
   // Post-midnight nudge (#336): a session finished at 00:15 usually belongs to
   // yesterday. In the small hours (before 4am), if the date is still today,
   // offer a one-tap switch to yesterday.
@@ -131,89 +125,16 @@ export default function DateTimeFields({
           </div>
         )}
       </div>
-      <div data-testid="time-range-fields">
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <div className="flex items-baseline gap-2">
-              <label className="label mb-0" htmlFor="activity-start-time">
-                Start
-              </label>
-              {derivedStart ? (
-                <button
-                  type="button"
-                  data-testid="start-time-shortcut"
-                  onClick={() => onStartTime(derivedStart)}
-                  aria-label={`−${derivableDurationMin}m — set start to end − ${derivableDurationMin} min`}
-                  className="-mx-2 -my-2 px-2 py-2 text-xs text-link"
-                >
-                  −{derivableDurationMin}m
-                </button>
-              ) : (
-                startTime !== nowHHMM(tz) && (
-                  <button
-                    type="button"
-                    data-testid="start-time-shortcut"
-                    onClick={() => onStartTime(nowHHMM(tz))}
-                    className="-mx-2 -my-2 px-2 py-2 text-xs text-link"
-                  >
-                    now
-                  </button>
-                )
-              )}
-            </div>
-            <input
-              id="activity-start-time"
-              type="time"
-              value={startTime}
-              onChange={(e) => onStartTime(e.target.value)}
-              className="input mt-1"
-            />
-          </div>
-          <div>
-            <div className="flex items-baseline gap-2">
-              <label className="label mb-0" htmlFor="activity-end-time">
-                End
-              </label>
-              {derivedEnd ? (
-                <button
-                  type="button"
-                  data-testid="end-time-shortcut"
-                  onClick={() => onEndTime(derivedEnd)}
-                  aria-label={`+${derivableDurationMin}m — set end to start + ${derivableDurationMin} min`}
-                  className="-mx-2 -my-2 px-2 py-2 text-xs text-link"
-                >
-                  +{derivableDurationMin}m
-                </button>
-              ) : (
-                endTime !== nowHHMM(tz) && (
-                  <button
-                    type="button"
-                    data-testid="end-time-shortcut"
-                    onClick={() => onEndTime(nowHHMM(tz))}
-                    className="-mx-2 -my-2 px-2 py-2 text-xs text-link"
-                  >
-                    now
-                  </button>
-                )
-              )}
-            </div>
-            <input
-              id="activity-end-time"
-              type="time"
-              data-testid="end-time-input"
-              value={endTime}
-              min={startTime || undefined}
-              onChange={(e) => onEndTime(e.target.value)}
-              className={`input mt-1 ${timeError ? "border-rose-300 dark:border-rose-800" : ""}`}
-            />
-          </div>
-        </div>
-        {timeError && (
-          <p className="mt-1 text-xs text-rose-500 dark:text-rose-400">
-            End time must be after the start time.
-          </p>
-        )}
-      </div>
+      <TimeRangeFields
+        idPrefix="activity"
+        startTime={startTime}
+        endTime={endTime}
+        tz={tz}
+        timeError={timeError}
+        derivableDurationMin={derivableDurationMin}
+        onStartTime={onStartTime}
+        onEndTime={onEndTime}
+      />
     </div>
   );
 }

@@ -4,6 +4,7 @@ import type { EpisodeMedSuggestion } from "./episode-med-reconcile";
 import {
   episodeAlternateLogDate,
   type AssembledEpisode,
+  type CockpitRecovery,
 } from "./illness-episode-format";
 import type { IntakeCatalogOptions } from "./queries/intake-options";
 import {
@@ -49,7 +50,10 @@ export interface DashboardIllnessCockpitModel {
   temperatureUnit: TemperatureUnit;
   timeZone: string;
   nowIso: string;
-  feverFree: { label: string; met: boolean } | null;
+  // THE COUNTDOWN, NOT ONLY ITS LABEL (#4752 item 1). The recovery-led header draws a
+  // progress ring, so the cleared hours and the convention's threshold have to survive
+  // the gather rather than being folded into a string nothing can measure.
+  feverFree: CockpitRecovery | null;
   controls: DashboardIllnessControls | null;
 }
 
@@ -170,6 +174,8 @@ export function gatherDashboardIllnessCockpits(
                 options.temperatureUnit
               ),
               met: schoolStatus.met,
+              clearedForHours: schoolStatus.clearedForHours,
+              thresholdHours: schoolStatus.thresholdHours,
             }
           : null,
       controls: sharedControls

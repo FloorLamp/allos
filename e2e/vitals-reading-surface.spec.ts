@@ -159,31 +159,7 @@ test.describe("the intraday chart reads the reading's own occurred_at (#2154)", 
     }
   }
 
-  // Hover the slot a minute-of-day falls in, on the chart's own plot area (the
-  // CartesianGrid box), so recharts snaps its tooltip to that category. The
-  // intraday x-axis is the fixed 288-slot 5-minute grid (lib/vitals-day.ts).
-  async function expectReadingAt(
-    card: import("@playwright/test").Locator,
-    minute: number,
-    value: string,
-    hhmm: string
-  ): Promise<void> {
-    const grid = card.locator(".recharts-cartesian-grid");
-    const tooltip = card.locator(".recharts-tooltip-wrapper");
-    await expect(async () => {
-      const box = await grid.boundingBox();
-      if (!box) throw new Error("no intraday plot area");
-      const slots = 288;
-      const slot = Math.floor(minute / 5);
-      const x = box.x + ((slot + 0.5) / slots) * box.width;
-      const y = box.y + box.height / 2;
-      await card.page().mouse.move(x, y);
-      await expect(tooltip).toContainText(hhmm, { timeout: 2_000 });
-      await expect(tooltip).toContainText(value, { timeout: 2_000 });
-    }).toPass({ timeout: 10_000 }); // topass-ok: recharts opens the tooltip only after a hover mousemove — re-hover per attempt, no single awaitable render event (the kids-growth precedent)
-  }
-
-  test("a manual late-morning BP plots at its hour beside the imported morning one", async ({
+  test("a manual late-morning BP lands its stated hour on the observation row", async ({
     browser,
   }) => {
     test.slow();
@@ -231,16 +207,9 @@ test.describe("the intraday chart reads the reading's own occurred_at (#2154)", 
         }
       }
 
-      // The 1D window: the systolic intraday chart positions BOTH readings on
-      // the clock axis — the manual one at ITS stated hour (from occurred_at),
-      // the imported one at the hour its sync stated (the fixture's 07:10 row,
-      // a pre-#2154 device row the legacy external_id fallback still serves).
-      await page.goto(`/trends?from=${TODAY}&to=${TODAY}`);
-      const card = page.getByTestId("vitals-intraday-bp");
-      await expect(card).toBeVisible();
-      await card.scrollIntoViewIfNeeded();
-      await expectReadingAt(card, 12 * 60 + 45, MANUAL_SYS, MANUAL_HHMM);
-      await expectReadingAt(card, 7 * 60 + 10, "118", "07:10");
+      // The 1D clock-axis chart that used to plot this reading at its hour retired
+      // with #4767; the stated instant is the row's, asserted above, and the
+      // reading is on the day view's feed.
     } finally {
       await page.context().close();
       clearManualBp();

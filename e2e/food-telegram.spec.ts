@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import {
+  openChannelRow,
   settledCheck,
   settledCheckSave,
   settledFill,
@@ -27,10 +28,10 @@ test.describe("notification settings — login-scoped channels (issue #1072)", (
     await page.goto("/settings/notifications");
 
     // --- LOGIN Telegram channel (This login) ---
-    const tgCard = page.locator(".card", {
-      has: page.getByRole("heading", { name: "Telegram (your chat)" }),
-    });
-    await expect(tgCard).toBeVisible();
+    // Since #2565 A the channel is a strip ROW, and its configuration lives behind
+    // that row's disclosure — so the card is located by the row's own testid rather
+    // than by a heading the row now carries itself.
+    const tgCard = await openChannelRow(page, "telegram");
     const enableTelegram = page.getByTestId("login-telegram-enabled");
     await settledCheck(page, enableTelegram, true);
     await settledFill(
@@ -87,8 +88,10 @@ test.describe("notification settings — login-scoped channels (issue #1072)", (
     await settledCheck(page, muteToggle, true);
     await expect(page.getByTestId("profile-notify-mute")).toBeChecked();
 
-    // Persists across a reload.
+    // Persists across a reload. The strip row's open state is per-device memory, so
+    // re-open it explicitly rather than racing the restore.
     await page.reload();
+    await openChannelRow(page, "telegram");
     await expect(page.getByTestId("food-telegram-enabled")).toBeChecked();
     await expect(page.getByTestId("wear-reminder-enabled")).toBeChecked();
     await expect(page.getByTestId("login-telegram-chat-id")).toHaveValue(

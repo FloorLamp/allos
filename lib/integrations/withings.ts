@@ -1,5 +1,9 @@
 import { utcInstant, zonedDateParts } from "@/lib/date";
-import { boundedOrNull, inTimeWindow } from "@/lib/ingest-bounds";
+import {
+  boundedOrNull,
+  canonicalDurationMin,
+  inTimeWindow,
+} from "@/lib/ingest-bounds";
 import { toKg } from "@/lib/units";
 import type { NormBodyMetric, NormMetricSample, NormVital } from "./normalize";
 
@@ -91,10 +95,6 @@ const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 function dayStr(v: unknown): string | null {
   const s = str(v);
   return s && DAY_RE.test(s) ? s : null;
-}
-
-function secToMin(sec: number | null): number | null {
-  return sec == null ? null : Math.round(sec / 60);
 }
 
 function round(v: number | null): number | null {
@@ -329,7 +329,7 @@ export function mapWithingsSleep(
 
   const stageMin: Record<string, number | null> = {};
   for (const field of Object.keys(WITHINGS_STAGE_METRIC)) {
-    stageMin[field] = secToMin(num(data[field]));
+    stageMin[field] = canonicalDurationMin(num(data[field]), "s");
   }
   // Total sleep = deep + REM + light (awake excluded).
   const total =

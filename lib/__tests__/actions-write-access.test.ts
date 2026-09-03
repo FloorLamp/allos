@@ -377,6 +377,12 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   },
   {
     file: "app/(app)/nutrition/intake-actions.ts",
+    fn: "logHistoricalDose",
+    why: "adds follow the surface on a subject-scoped container (#4693, amending #4424 ruling 4): /medications/[id] names one subject, so its backfill ADD posts that subject's `profile_id` and takes the same gateItemProfile() \u2192 requireProfileWriteAccess(subjectProfileId) the amend beside it takes. Every single-subject mount posts none and falls back to the acting-profile gate. The dose's wall time re-anchors in the GATED profile's zone, and the audit row is stamped with it",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/nutrition/intake-actions.ts",
     fn: "updateHistoricalDose",
     why: "record correction (#4009): amends the ROW's dose log via gateItemProfile() → requireProfileWriteAccess(rowProfileId); the stated wall time re-anchors in the GATED profile's zone, which is the zone HistoricalDoseForm collected it in",
     gate: "gateItemProfile",

@@ -3,7 +3,6 @@ import {
   isQuickRangeActive,
   quickRanges,
   type DateRange,
-  type QuickRange,
 } from "./timeline-format";
 import { rangeSummaryLabel } from "./trends";
 
@@ -21,8 +20,7 @@ import { rangeSummaryLabel } from "./trends";
 // The name of the window currently in force, as the chip row itself would say it.
 //
 // One rule, in the order the chip row draws: a quick-range pill whose bounds match
-// exactly (including a surface-injected extra like the body census "1D" — #1466)
-// names the window by its own short label; the open window is "All time"; anything
+// exactly names the window by its own short label; the open window is "All time"; anything
 // else is a CUSTOM window with no pill to name it, so it falls back to the shared
 // summary the range chip shows ("2026-01-01 → 2026-02-01").
 //
@@ -30,12 +28,8 @@ import { rangeSummaryLabel } from "./trends";
 // (isQuickRangeActive / isAllTimeRange) rather than a second interpretation of the
 // range: the label's whole job is to say what the expanded control would show, and
 // a label that could disagree with the lit pill would be worse than no label.
-export function activeRangeLabel(
-  range: DateRange,
-  todayStr: string,
-  extraRanges: readonly QuickRange[] = []
-): string {
-  const match = [...extraRanges, ...quickRanges(todayStr)].find((qr) =>
+export function activeRangeLabel(range: DateRange, todayStr: string): string {
+  const match = quickRanges(todayStr).find((qr) =>
     isQuickRangeActive(range, qr)
   );
   if (match) return match.label;

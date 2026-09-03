@@ -432,20 +432,6 @@ export function resolveTrendsRange(
   return defaultTrendsRange(todayStr);
 }
 
-// The single-day (today) window behind the Vitals tab's "1D" pill (#1466). It is
-// NOT part of the shared `quickRanges` set: on a daily-grain series a one-day
-// window is a single dot — worse than useless — so only a surface that swaps to
-// genuinely INTRADAY content injects it, through DateRangeControl's `extraRanges`.
-export function intradayQuickRange(todayStr: string): QuickRange {
-  return { label: "1D", from: todayStr, to: todayStr };
-}
-
-// Whether `range` is that single-day window — the Vitals tab's cue to swap its
-// windowed daily charts for the intraday ones.
-export function isIntradayRange(range: DateRange, todayStr: string): boolean {
-  return isQuickRangeActive(range, intradayQuickRange(todayStr));
-}
-
 // Whether `range` is a CUSTOM window — one that no chip in the row already names:
 // not "All time" and not an exact quick-range match. Two surfaces ask this same
 // question and must never drift (#1455), so it lives here once:
@@ -455,20 +441,9 @@ export function isIntradayRange(range: DateRange, todayStr: string): boolean {
 //   • The Trends hub + metric pages render the `rangeSummaryLabel` chip ONLY for a
 //     custom window — with a preset active the chip just repeats the lit pill's
 //     own label (the duplicate "All time" chip).
-//
-// `extraRanges` is whatever the surface injected beyond the shared set (#1466's 1D
-// pill). A window one of THOSE pills names is not custom either — otherwise
-// lighting 1D would also pop the "Custom…" panel open and print a summary chip
-// duplicating the lit pill, the exact pair of bugs #1455 D removed.
-export function isCustomRange(
-  range: DateRange,
-  todayStr: string,
-  extraRanges: QuickRange[] = []
-): boolean {
+export function isCustomRange(range: DateRange, todayStr: string): boolean {
   if (isAllTimeRange(range)) return false;
-  return ![...extraRanges, ...quickRanges(todayStr)].some((qr) =>
-    isQuickRangeActive(range, qr)
-  );
+  return !quickRanges(todayStr).some((qr) => isQuickRangeActive(range, qr));
 }
 
 // ---------------------------------------------------------------------------

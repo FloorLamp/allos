@@ -10,7 +10,7 @@ import path from "node:path";
 import { now as clockNow } from "../../lib/clock";
 import { db, writeTx } from "../../lib/db";
 import { utcInstant, zonedDateParts, zonedWallTimeToUtc } from "../../lib/date";
-import { setDeliveryFailure } from "../../lib/notifications/delivery-marker";
+import { recordDeliveryOutcome } from "../../lib/notifications/delivery-marker";
 import { setInstanceTimezone } from "../../lib/settings";
 import { pinnedTimezone } from "../pinned-timezone";
 
@@ -90,20 +90,24 @@ export function seedPrelude(): void {
     reanchorSeededInstants(zone);
   }
 
-  // A persisted notification-delivery failure (#131) so Settings → Notifications
-  // surfaces the "Last notification delivery failed" marker for the e2e to assert.
-  // Synthetic error text — no PHI. Written through the real marker write path (the
-  // notify_lifecycle delivery-health row, #942) so the fixture can't drift from
-  // what dispatch() records on a failed Telegram send.
-  // The canonical second-resolution instant (#2233, migration 167) — the same
-  // shape instantNow() binds on a real failed dispatch.
-  writeTx(() =>
-    setDeliveryFailure(
-      "telegram",
-      "Telegram API 401: Unauthorized (bot token revoked)",
-      "2026-07-09T08:00:00Z"
-    )
-  );
+  // A persisted notification-delivery failure (#131) so Settings → Server surfaces
+  // the "Last notification delivery failed" marker for the e2e to assert. Synthetic
+  // error text — no PHI. Written through the real scoped write path (#2565: one
+  // notify_lifecycle row per delivery owner — here the admin login's Telegram) so the
+  // fixture can't drift from what a failed Telegram send records, and stamped with
+  // the frozen clock's instant like every real attempt in the run. The aggregate the
+  // Server page folds these into prefers the latest attempt and breaks a same-second
+  // tie by channel order, Telegram first — so a spec's own failed send elsewhere in
+  // the worker (a fake push endpoint, an unreachable HA webhook) cannot displace it.
+  const adminLoginId = (
+    db
+      .prepare("SELECT id FROM logins WHERE role = 'admin' ORDER BY id LIMIT 1")
+      .get() as { id: number }
+  ).id;
+  recordDeliveryOutcome("telegram", [adminLoginId], {
+    ok: false,
+    error: "Telegram API 401: Unauthorized (bot token revoked)",
+  });
 
   // A persisted unexpected server error (#596) so Settings → Errors has a row to
   // render for the admin-access e2e. Synthetic message — no PHI. Written straight

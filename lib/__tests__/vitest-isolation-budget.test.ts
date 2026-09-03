@@ -54,7 +54,11 @@ import { specsNeedingIsolation } from "@/vitest.isolation";
 // file rather than another case in the manifest spec because the manifest spec is a
 // QUERY BUDGET pinned at one frozen instant, and a second render at a different hour
 // would move the number it exists to measure.
-const DB_ISOLATED = 32;
+// 33 since #2565: delivery-lifecycle substitutes the web-push transport so ONE send can
+// hold two per-endpoint outcomes at once — which is what the partial-success and
+// all-failed owner states are made of. The tier cannot install that shared: a stub that
+// routes by endpoint suffix would change what every other DB spec's push send does.
+const DB_ISOLATED = 33;
 // 7 since #3065: Longevity's server-component FitnessSection is tested directly with
 // controlled session, age, and assembler boundaries. It must prove that minor and unknown
 // profiles return null before assembling adult population data; sharing those module stubs
