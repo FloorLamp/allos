@@ -785,13 +785,16 @@ function getIntegrationAttentionUncached(
   ];
 }
 
-// How many recent runs the dropping derivation will read per source. A CAP, not the
-// window: the window is the source's own silence tolerance (#2263), and this only
-// bounds the rows the tolerance is applied to. 60 runs covers 12 h at one run every
-// 12 minutes — comfortably past the Health Connect exporter's ~20-minute re-push, the
-// densest source here. When it does NOT reach back a full tolerance the derivation
-// abstains rather than judging a bisected window, so the cap can only cost a signal,
-// never invent one.
+// How many recent runs the dropping derivation reads per source. A CAP on the ROWS, not
+// the window — the window is the source's own silence tolerance (#2263) — and it exists
+// because `details` is up to 4 KB per run and this read is on the dashboard and digest
+// paths. 60 runs covers a 12 h tolerance at one run every 12 minutes, comfortably past
+// the Health Connect exporter's ~20-minute re-push, the densest source here.
+//
+// If a source ever DOES out-push it, the verdict is taken from its 60 most recent runs
+// inside the tolerance, which is the honest reading rather than a degraded one: sixty
+// consecutive pushes that all received a type and landed none of it is a live drop
+// whatever happened before them.
 const DROPPING_RUN_CAP = 60;
 
 const DROPPING_RUNS_STMT = hoistedStatement(
@@ -825,15 +828,9 @@ function droppingIntegrations(profileId: number): AttentionIntegration[] {
       ok: number;
       details: string | null;
     }[];
-    const within = runs.filter(
-      (r) => (silenceMinutes(r.at, nowAt) ?? Infinity) <= tolerance
+    const dropped = droppedTypes(
+      runs.filter((r) => (silenceMinutes(r.at, nowAt) ?? Infinity) <= tolerance)
     );
-    // ABSTAIN unless the cap left us a window that actually spans the tolerance:
-    // judging a bisected window can only lose the landing that would have cleared a
-    // type, which is the one direction an alert must never fail in.
-    if (within.length === runs.length && runs.length === DROPPING_RUN_CAP)
-      continue;
-    const dropped = droppedTypes(within);
     if (!dropped.length) continue;
     out.push({
       id: def.id,
