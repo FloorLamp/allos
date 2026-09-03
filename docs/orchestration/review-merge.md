@@ -92,21 +92,6 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
   `adversarial-review-brief.mjs` serves it as "the claims to attack", so a stale
   body aims the next lens at deleted code (failure modes).
 - Verify linked issues closed, then clean the worktree and local branch.
-- **A 502 from the merge call does not mean the merge did not happen.** On
-  #4912 the squash landed as `91a9681d` while the call returned 502, the retry
-  answered "merge already in progress", and the PR record never flipped to
-  merged. Re-read `origin/main` for your commit title BEFORE retrying — a
-  second merge call on a landed squash is the real risk — then close the PR by
-  hand, naming the commit, once you have diffed the PR's touched files between
-  it and the PR head.
-- **A remote branch cannot be deleted from here.** `DELETE /git/refs/heads/N`
-  is 403 at the proxy ("write access to this GitHub API path is not
-  permitted") and `git push --delete` never leaves the client; the squash-merge
-  normally does it for us. So a surviving remote branch is USUALLY sound
-  evidence that nothing merged, which is what `dispatch-brief.mjs done` refuses
-  on — and exactly why the refusal misfires when the merge bookkeeping breaks
-  as above. Retire with `--keep` only after verifying the content on `main`
-  file by file, and leave the branch: nobody can remove it.
 
 ## Merge queue
 
