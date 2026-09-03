@@ -194,11 +194,18 @@ export function priorEventWindows(
  * THE ARGUMENT IS MEASURED; THE NUMBER IS NOT (owner ruling 2026-09-03, on #4775).
  * That a half-worn night's minimum is not a night's minimum is a real property of the
  * data. Sixty minutes is a judgement about where that stops being true, and nothing
- * was counted to pick it — prod holds no CGM-era wear-gap distribution to fit it to.
- * So it is deliberately a round hour rather than a precise-looking 45 or 75, which
- * would imply a fit that was never done. If someone later measures the distribution of
- * measured-minutes per night, this is the constant that should move, and moving it is
- * a data question rather than a taste one.
+ * was counted to pick it. So it is deliberately a round hour rather than a
+ * precise-looking 45 or 75, which would imply a fit that was never done.
+ *
+ * AND A FIT IS POSSIBLE, which is the part that makes this a tracked question rather
+ * than a shrug. `hr_minutes` gap behaviour on prod HAS been measured, on this same
+ * stream: bimodal, with an empty valley at 2.1–2.5 h separating 16 routine removals
+ * from 5 real events (docs/internals/integrations-sync.md). Two sibling constants are
+ * fitted to it — Health Connect's 2.5 h dip tolerance and the 40-minute bedtime floor.
+ * This one is not, and it could be: the quantity it wants is the distribution of
+ * MEASURED-MINUTES PER NIGHT, which that window can answer. Declared from a
+ * measurement, the way its siblings were — never learned at runtime, which
+ * integrations-sync.md forbids outright.
  *
  * WHAT WOULD SEND SOMEONE BACK TO IT, per the ruling: a REAL night excluded. If a
  * night someone actually slept through, and would recognise as a night, falls under
