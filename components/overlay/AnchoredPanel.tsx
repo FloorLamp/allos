@@ -60,14 +60,12 @@ import type { AnchoredAlign } from "@/lib/anchored-position";
 // answer to "what is reachable in here", so the two hosts cannot come to disagree
 // about where focus lands.
 //
-// THE POPOVER NEVER EXTENDS PAST THE VIEWPORT EDGE (#4776). The positioner
-// reports the room available on the side the panel landed; this file applies it
-// as the panel's `max-height` and lets the panel SCROLL the rest. Both halves
-// are the contract a caller is owed: a panel that clipped its own confirm button
-// would be no better than one that rendered it off-screen. So content here needs
-// no height management of its own — a caller that adds a `max-h-*` to
-// `panelClassName` is declaring a tighter cap for its own reasons, not making
-// the panel safe, and the inline max-height wins over it regardless.
+// THE POPOVER NEVER EXTENDS PAST THE VIEWPORT EDGE (#4776), and this file no
+// longer says so itself — the hook's `panelStyle` is the one applier of that
+// bound (#4887). What IS this file's is the SCROLLER under it, the contract's other
+// half: content here needs no height management, and a caller adding a `max-h-*`
+// to `panelClassName` declares a tighter cap for its own reasons rather than
+// making the panel safe; the inline max-height wins regardless.
 // `overscroll-contain` rides with the scroller: this popover draws a
 // full-viewport click-away catcher, so a drag its own scroller declines would
 // chain to the document and move the page BEHIND the open panel (#2774, and
@@ -142,7 +140,8 @@ export default function AnchoredPanel({
 }) {
   const compact = useCompactViewport();
   const {
-    pos,
+    panelStyle,
+    measured,
     attachPanel,
     panelRef: popoverNodeRef,
   } = useAnchoredPopover({
@@ -186,7 +185,7 @@ export default function AnchoredPanel({
   // the positioner has placed it, and a hidden element cannot take focus in a
   // browser. (jsdom lets it, which is why the browser case in
   // e2e/sidebar-refit.spec.ts names the control focus actually lands on.)
-  const focusIntoPanel = open && !compact && !!role && pos !== null;
+  const focusIntoPanel = open && !compact && !!role && measured;
   useEffect(() => {
     if (!focusIntoPanel) return;
     const panel = popoverNodeRef.current;
@@ -272,17 +271,7 @@ export default function AnchoredPanel({
         data-anchored-panel="popover"
         data-escape-layer={escapeLayer ? "true" : undefined}
         onKeyDown={onPanelKeyDown}
-        style={{
-          position: "fixed",
-          top: pos?.top ?? 0,
-          left: pos?.left ?? 0,
-          // THE ROOM THE POSITIONER FOUND, APPLIED (#4776) — see the header.
-          // Undefined only on the pre-measurement render, which is hidden anyway.
-          maxHeight: pos?.maxHeight,
-          // Hidden until measured, so the panel is never painted where the
-          // anchor used to be.
-          visibility: pos ? "visible" : "hidden",
-        }}
+        style={panelStyle}
         className={`${popoverZIndexClass} overflow-x-hidden overflow-y-auto overscroll-contain rounded-lg border border-black/10 bg-surface shadow-lg dark:border-white/10 ${panelClassName}`}
       >
         {children()}
