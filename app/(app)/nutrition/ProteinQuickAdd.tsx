@@ -39,9 +39,10 @@ export default function ProteinQuickAdd({
   initialGrams,
   lastPreset,
 }: {
-  // The acting profile's today (YYYY-MM-DD) — the quick-add logs to today only.
+  // The day the bar has selected (YYYY-MM-DD) — the tap logs against this, so a
+  // move of the day picker moves where a typed amount lands.
   today: string;
-  // Today's manual-protein total so far (0 when nothing logged).
+  // That day's manual-protein total so far (0 when nothing logged).
   initialGrams: number;
   // The profile's last-used amount (repeated scoop size), or null if never logged.
   lastPreset: number | null;
@@ -53,6 +54,19 @@ export default function ProteinQuickAdd({
   const [amount, setAmount] = useState<string>(
     lastPreset != null ? String(lastPreset) : ""
   );
+  // TYPED GRAMS SURVIVE A DAY MOVE (#4934). The bar used to mount this control under
+  // `key={activeDate}`, so moving the day picker destroyed the field's DOM node and
+  // threw away whatever the person had typed, with no warning. Nothing is remounted
+  // now, so `amount` persists and the tap logs against the day now shown (`today` is
+  // the selected day, read at tap time). Only the day's own datum is re-seeded — the
+  // logged total in the readout — because that belongs to the day, not to the typist.
+  // A prop-keyed derived-state repair, applied during render (the RestTimer idiom)
+  // rather than in an effect that would paint the previous day's total first.
+  const [seededDay, setSeededDay] = useState(today);
+  if (seededDay !== today) {
+    setSeededDay(today);
+    setTotal(initialGrams);
+  }
   const toast = useToast();
   // Offline quick-log queue (#1596): an ADD tap with no signal queues for replay.
   const { enqueue } = useOfflineQueue();

@@ -2352,7 +2352,6 @@ export default function FoodLogBar({
                 {proteinSplit > 0 && rows(quickGroups.slice(0, proteinSplit))}
                 {proteinQuickAdd && (
                   <ProteinQuickAdd
-                    key={activeDate}
                     today={activeDate}
                     initialGrams={
                       proteinQuickAdd.initialGramsByDate[activeDate] ?? 0
