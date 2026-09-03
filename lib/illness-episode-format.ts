@@ -105,17 +105,23 @@ export interface TemperaturePoint {
 //
 // It derives onto the CURATED `fever` slug rather than minting a parallel key: it is
 // the same clinical concept the vocabulary already names, and the `source` discriminant
-// is what tells the two apart. What a surface should draw on a day carrying BOTH a
-// stated `fever` row and fever-range readings is unruled and deliberately not decided
-// here.
+// is what tells the two apart. On a day carrying BOTH a stated `fever` row and
+// fever-range readings, THE DERIVED ROW YIELDS (owner-ruled 2026-09-03, #4712
+// judgement 3): the person's own statement wins and only that one row shows. This is
+// PER-DAY, not per-episode — `statedFeverDates` is the caller's set of days already
+// carrying a stated row, and a day outside it still derives normally. The readings
+// themselves are untouched either way; the temperature fold reads `temperatures`
+// directly and never consults this suppression.
 export const DERIVED_FEVER_SYMPTOM = "fever";
 
 export function deriveFeverSeries(
-  temperatures: readonly TemperaturePoint[]
+  temperatures: readonly TemperaturePoint[],
+  statedFeverDates: ReadonlySet<string> = new Set()
 ): DerivedSymptomSeries | null {
   const byDate = new Map<string, DerivedSymptomDay>();
   for (const reading of temperatures) {
     if (reading.flag !== "high") continue;
+    if (statedFeverDates.has(reading.date)) continue;
     const held = byDate.get(reading.date);
     if (held && held.peakDegF >= reading.degF) continue;
     byDate.set(reading.date, {
