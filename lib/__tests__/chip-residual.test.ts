@@ -343,7 +343,7 @@ describe("Offer row residual (issue #4548)", () => {
     expect(
       findings,
       "A brand-tinted row whose tap performs the write it describes is " +
-        "`<OfferRow tone=\"brand\">`; margins stay the caller's. These spell its " +
+        '`<OfferRow tone="brand">`; margins stay the caller\'s. These spell its ' +
         `paint by hand:\n${findings.join("\n")}`
     ).toHaveLength(0);
   });
@@ -362,7 +362,7 @@ describe("Offer row residual (issue #4548)", () => {
     ],
     [
       "the paint inside a template literal's own text",
-      '<button className={`${base} bg-brand-50/60 hover:bg-brand-50`}>A</button>',
+      "<button className={`${base} bg-brand-50/60 hover:bg-brand-50`}>A</button>",
       1,
     ],
     // The silences that keep the rule worth having: a tint that does not respond to a
