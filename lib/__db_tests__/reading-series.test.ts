@@ -263,6 +263,14 @@ describe("the migration-free guarantee", () => {
   //     nullable like the others, so "unrestructured" still holds; nothing moved,
   //     nothing was migrated onto it. `metric_samples` does not get it: it is
   //     outside #3087's first tranche.
+  //   • #3950 (owner ruling, 2026-08-29): `20260902-body-metric-measure-instants`
+  //     adds nullable `weight_at` / `body_fat_at` / `resting_hr_at` to
+  //     body_metrics. THIS IS THE PIN CONFIRMING ITS OWN CLAIM, not an erosion of
+  //     it: three columns per DAY ROW is what a WIDE store looks like, and it is
+  //     the shape the ruling chose precisely INSTEAD of one row per measure, which
+  //     stays #2896's deferred question. The row count per (profile, date, source)
+  //     is unchanged, nothing was migrated onto the columns, and every existing row
+  //     reads NULL.
   const columns = (table: string) =>
     (db.pragma(`table_info(${table})`) as { name: string }[])
       .map((c) => c.name)
@@ -270,6 +278,7 @@ describe("the migration-free guarantee", () => {
 
   it("leaves body_metrics as the wide per-day store", () => {
     expect(columns("body_metrics")).toEqual([
+      "body_fat_at",
       "body_fat_pct",
       "date",
       "edited",
@@ -279,7 +288,9 @@ describe("the migration-free guarantee", () => {
       "occurred_at",
       "profile_id",
       "resting_hr",
+      "resting_hr_at",
       "source",
+      "weight_at",
       "weight_kg",
     ]);
   });
