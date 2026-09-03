@@ -12,7 +12,6 @@ import {
   receiptVerdict,
 } from "../../scripts/orchestration/merge-gate-core.mjs";
 import {
-  TITLE_MAX_CHARACTERS,
   titleLength,
   titleRuleRefusal,
 } from "../../scripts/orchestration/title-rule.mjs";
@@ -464,7 +463,9 @@ describe("merge-gate.mjs", () => {
   // three shapes it must not refuse are all live in this repo's own tracker.
   it.each([
     ["a compliant clause", "Rank a ride against the rides that came before it"],
-    ["exactly 72 characters", "R".repeat(TITLE_MAX_CHARACTERS)],
+    // A LITERAL 72, never the constant: a boundary case that reads the
+    // bound from the code under test moves with it and can never fail.
+    ["exactly 72 characters", "R".repeat(72)],
     // A colon inside a token is not a clause boundary: a time, a line
     // citation and a CSS pseudo-element, all three taken from open issues.
     ["a time", "The 9:30 sync drops HRV"],
@@ -476,6 +477,12 @@ describe("merge-gate.mjs", () => {
     ["an unspaced dash", "The 10:00Z–12:00Z band guesses the zone"],
     ["a minus sign", "Top − m42 assumes a pure translate"],
     ["a trailing reference", "The temperature fold offers the dose (#4712 judgement 1)"],
+    // The exception is what makes this one pass: the reference is removed
+    // before the separators are counted, so its own dash is not a tail.
+    [
+      "a dash inside a trailing reference",
+      "Rank a ride against the rides before it (#4712 — judgement 1)",
+    ],
     // Curly apostrophes are already in this repo's titles; this pair is one
     // real title either side of the bound, at 71 and (below) 73.
     [
@@ -487,7 +494,7 @@ describe("merge-gate.mjs", () => {
   });
 
   it.each([
-    ["one character over", "R".repeat(TITLE_MAX_CHARACTERS + 1), "is 73 characters"],
+    ["one character over", "R".repeat(73), "is 73 characters"],
     [
       "a curly apostrophe over the bound",
       "A lane commit’s Fixes keyword closes an issue the PR body had marked Refs",
