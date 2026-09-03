@@ -197,6 +197,17 @@ export const SEND_MARKER_REGISTRY: readonly SendMarkerEntry[] = [
       "None, and the id-keyed class is what makes that safe: an activity id never recycles, so a marker outliving its activity can never suppress another session's reminder. The MERGE case is an IDENTITY question rather than a retention one (#2570) — a merge deletes the keyed row and can make a brand-new, unmarked row the keeper, so the fold carries the announcement fact onto the survivor and the dispatch additionally declines when a high-confidence duplicate twin has already been announced. The dropped rows' markers are left as inert orphans deliberately: deleting them would make an ingest-time fold a destructive settings write for no gain.",
   },
   {
+    key: "notify_last_practice_recap_",
+    markerClass: "id-keyed",
+    cadence: "one-shot",
+    store: "profile_settings",
+    shape: "`<practiceLogId>`",
+    value: "the practice row's own profile-local date, the day the note was sent for",
+    writer: "lib/notifications/practice-recap-dispatch.ts",
+    retention:
+      "None: one note per practice row (#4775 §3), keyed on an id that never recycles. It is stamped ONLY on delivery, so a row that aged out of the two-hour bound without the stream ever covering it leaves the key unset — the marker records a send that happened, and there was none.",
+  },
+  {
     key: "notify_stale_workout_",
     markerClass: "id-keyed",
     cadence: "one-shot",
