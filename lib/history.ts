@@ -647,17 +647,24 @@ export function gatherHistoryLog(
     if (totals.length > limit) truncated = true;
     for (const row of totals.slice(0, limit)) {
       const def = substanceDef(row.substance);
+      // WHEN THE DAY'S USE WAS STATED TO HAPPEN, or nothing (#3295 phase 1). A day
+      // total still has no instant of its own — `substance_daily_totals` records when
+      // a use was LOGGED and nothing about when it happened, so a nicotine or cannabis
+      // row is date-only for every row, for ever, and sinks below the day's timed rows
+      // exactly as it did. What changed is that ALCOHOL's units are `food_log_events`
+      // rows, which CAN carry a stated `occurred_at`; `statedAt` is that statement,
+      // read through the declared event column in lib/queries/substance.ts and null
+      // wherever the schema cannot answer. It is never the filing stamp: reading
+      // `bestKnownInstant` off the day store would answer `recorded_at` and print a
+      // typing time as if it were a drinking one.
+      const hhmm = row.statedAt ? localClock(tz, row.statedAt) : null;
       rows.push({
         id: `substance:${row.substance}:${row.id}`,
         kind: "substance",
         profileId,
         tz,
         date: row.date,
-        // A DAY TOTAL HAS NO INSTANT and the schema says so — `substance_daily_totals`
-        // records when a use was LOGGED and nothing about when it happened. So the row
-        // is date-only and sinks below the day's timed rows, which is the standing rule
-        // rather than a substance special case.
-        ...historyClockFields(null, "logged", prefs),
+        ...historyClockFields(hhmm, hhmm ? "stated" : "logged", prefs),
         title: def.label,
         // PLAIN, LIKE THE FOOD GROUPS BESIDE IT (#4045 §5). The title link is a
         // PER-ITEM question — "does this thing have a home" — and a substance has
@@ -680,6 +687,26 @@ export function gatherHistoryLog(
           notes: row.notes,
         },
       });
+      // THE DAY'S USE, ONTO THE DAY'S CHART (#3295 phase 1). Pushed HERE, beside the
+      // row it came from and with the SAME id, for the reason the practice and feed
+      // loops push at their emit points: a row this reader's `?kind=`/`?item=` dropped
+      // never reaches the array, so the panel cannot mark something the list does not
+      // show, and a tick's anchor is the row it scrolls to.
+      //
+      // DATA-GATED, NOT KIND-GATED. Every substance row is offered; `buildIntradayModel`
+      // draws a tick only where `sortTime` is a real clock minute, so a date-only
+      // nicotine, cannabis or custom row contributes nothing — the same rule that keeps
+      // a weigh-in and a day's dose roll-up off the rail. The category is `substance`,
+      // which is what keeps a drink from reading as a meal on the chart.
+      if (opts.day != null) {
+        dayEvents.push({
+          id: `substance:${row.substance}:${row.id}`,
+          date: row.date,
+          category: "substance",
+          title: def.label,
+          sortTime: hhmm,
+        });
+      }
     }
   }
 

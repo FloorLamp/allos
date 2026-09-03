@@ -17,6 +17,7 @@
 // formatting over that tenant.
 
 import { db } from "../db";
+import { eventInstant } from "../row-instants";
 import {
   cadenceWindows,
   getCadenceScopeCounts,
@@ -49,41 +50,71 @@ export interface SubstanceDailyTotal {
   date: string;
   amount: number;
   notes: string | null;
+  // WHEN THE DAY'S USE WAS STATED TO HAPPEN, or null because nobody said (#3295
+  // phase 1). Alcohol's units are `food_log_events` rows, so a drink HAS a column to
+  // hold a stated instant; every other substance rides `substance_daily_totals`, which
+  // is UNIQUE per (profile, date, substance) and structurally timeless, so this is null
+  // for them BY CONSTRUCTION rather than by a branch anyone has to remember. Reading
+  // `bestKnownInstant` off that table would answer with `recorded_at` — the FILING
+  // stamp — and hand nicotine and cannabis a minute they never claimed.
+  //
+  // THE DAY'S EARLIEST STATEMENT. The row is the day's entry, so its clock is where
+  // that day's drinking began; a later drink adds to the count and does not move it.
+  statedAt: string | null;
 }
 
 export function getSubstanceDailyTotals(
   profileId: number,
   substance: SubstanceKey
 ): SubstanceDailyTotal[] {
-  const rows =
-    substanceDef(substance).ledger === "food-log"
-      ? (db
-          .prepare(
-            `SELECT id, date, servings AS amount, notes
-             FROM food_daily_totals
-             WHERE profile_id = ? AND group_key = ?
-             ORDER BY date DESC, id DESC`
-          )
-          .all(profileId, ALCOHOL_FOOD_GROUP) as {
-          id: number;
-          date: string;
-          amount: number;
-          notes: string | null;
-        }[])
-      : (db
-          .prepare(
-            `SELECT id, date, units AS amount, notes
+  if (substanceDef(substance).ledger !== "food-log") {
+    return (
+      db
+        .prepare(
+          `SELECT id, date, units AS amount, notes
              FROM substance_daily_totals
              WHERE profile_id = ? AND substance = ?
              ORDER BY date DESC, id DESC`
-          )
-          .all(profileId, substance) as {
-          id: number;
-          date: string;
-          amount: number;
-          notes: string | null;
-        }[]);
-  return rows.map((row) => ({ ...row, substance }));
+        )
+        .all(profileId, substance) as {
+        id: number;
+        date: string;
+        amount: number;
+        notes: string | null;
+      }[]
+    ).map((row) => ({ ...row, substance, statedAt: null }));
+  }
+  // MIN over the day's serving events, which skips the NULLs: a day nobody stated a
+  // time for answers null, exactly as it did before there was a column to ask about.
+  // `occurred_at` is canonical UTC (lib/time-columns.ts), so its lexical minimum IS
+  // its chronological one — and the value still goes through the declared reader
+  // below rather than being trusted straight out of SQL.
+  const rows = db
+    .prepare(
+      `SELECT d.id, d.date, d.servings AS amount, d.notes,
+              (SELECT MIN(e.occurred_at) FROM food_log_events e
+                WHERE e.profile_id = d.profile_id
+                  AND e.group_key = d.group_key
+                  AND e.date = d.date) AS occurred_at
+         FROM food_daily_totals d
+        WHERE d.profile_id = ? AND d.group_key = ?
+        ORDER BY d.date DESC, d.id DESC`
+    )
+    .all(profileId, ALCOHOL_FOOD_GROUP) as {
+    id: number;
+    date: string;
+    amount: number;
+    notes: string | null;
+    occurred_at: string | null;
+  }[];
+  return rows.map(({ occurred_at, ...row }) => {
+    const stated = eventInstant("food_log_events", { occurred_at });
+    return {
+      ...row,
+      substance,
+      statedAt: stated.known ? stated.at : null,
+    };
+  });
 }
 
 // THIS PROFILE'S SUBSTANCE VOCABULARY: the curated catalog (always, in catalog order —
