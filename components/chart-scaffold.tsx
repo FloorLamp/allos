@@ -335,10 +335,31 @@ export function chartLineDot(
     color,
     pointCount,
     enabled = true,
-  }: { color: string; pointCount: number; enabled?: boolean }
+    isolated,
+  }: {
+    color: string;
+    pointCount: number;
+    enabled?: boolean;
+    // Indices whose stroke is cut on BOTH sides (lib/trend-sparkline's
+    // `isolatedReadings`). They draw whatever the density says.
+    isolated?: ReadonlySet<number>;
+  }
 ) {
-  if (!enabled || pointCount > DENSE_SERIES_POINTS) return false as const;
-  return chartExactDot(c, color);
+  if (!enabled) return false as const;
+  if (pointCount <= DENSE_SERIES_POINTS) return chartExactDot(c, color);
+  // A READING WITH NO STROKE NEIGHBOUR ALWAYS DRAWS ITS MARK (#4924).
+  //
+  // The density threshold above is a CLUTTER rule: above thirty points the dots
+  // fuse into a heavy line and the stroke already says where every reading is,
+  // so hover carries the value instead. That argument holds for a reading the
+  // stroke draws, and collapses for one it does not — on a gap-filled card an
+  // isolated reading had no segment and no dot, so a value that exists rendered
+  // as nothing at all, beneath a caption naming a date the plot never showed.
+  //
+  // So the threshold keeps its job and stops deciding this one case, in the
+  // scaffold rather than in the card, so every gap-filled surface inherits it.
+  if (isolated == null || isolated.size === 0) return false as const;
+  return chartIsolatedDot(c, color, isolated);
 }
 
 /** The resting mark for an EXACT reading, unconditionally — for the two cards
@@ -350,7 +371,40 @@ export function chartExactDot(c: ChartColors, color: string) {
     fill: color,
     stroke: c.surface,
     strokeWidth: 1,
+    // The RESTING-MARK selector, so a spec can count the marks a reader can
+    // actually see. recharts' own `.recharts-line-dot` is on the layer whether
+    // the mark is a dot or an empty group.
+    className: CHART_DOT_CLASS,
   } as const;
+}
+
+/** The class every resting mark carries. */
+export const CHART_DOT_CLASS = "chart-dot";
+
+/**
+ * The dot layer for a dense series that still has readings the stroke cannot
+ * reach: their mark, and nothing else. A renderer rather than a prop bag because
+ * the decision is per POINT, and recharts hands a dot function the point's index.
+ */
+function chartIsolatedDot(
+  c: ChartColors,
+  color: string,
+  isolated: ReadonlySet<number>
+) {
+  const mark = chartExactDot(c, color);
+  return function IsolatedDot({
+    cx,
+    cy,
+    index,
+  }: {
+    cx?: number | string;
+    cy?: number | string;
+    index?: number;
+  }) {
+    if (index == null || !isolated.has(index)) return <g />;
+    if (typeof cx !== "number" || typeof cy !== "number") return <g />;
+    return <circle {...mark} cx={cx} cy={cy} />;
+  };
 }
 
 /**
@@ -369,6 +423,8 @@ export function chartInexactDot(c: ChartColors, color: string) {
     fill: c.surface,
     stroke: color,
     strokeWidth: 1.5,
+    className: CHART_DOT_CLASS,
+    "data-inexact": true,
   } as const;
 }
 

@@ -60,6 +60,7 @@ import {
   applyDayFill,
   gapBreaksPastLimit,
   gapLimitDaysForSeriesKey,
+  isolatedReadings,
   loneReading,
   overLimitHoles,
   seriesGapForSeriesKey,
@@ -470,6 +471,14 @@ export default function LineChartCard({
       </div>
     );
   }
+  // The readings no stroke reaches (#4924), read off the topology just built:
+  // the runs when the series was cut, the bridging policy when it was not. They
+  // draw their resting mark whatever the density threshold says, because for
+  // them the mark is the whole of their representation.
+  const isolated = isolatedReadings(
+    plotData.map((d) => d.value),
+    { bridged: bridges, runs: strokeRuns }
+  );
   const chartRows =
     spreadColumns === 0
       ? runData
@@ -764,6 +773,7 @@ export default function LineChartCard({
                     // Tile sparklines opt into resting points; dense series still
                     // fall through chartLineDot's shared clutter threshold.
                     enabled: showDots && (!sparkline || sparklineDots),
+                    isolated,
                   })
             }
             activeDot={chartActiveDot(color)}

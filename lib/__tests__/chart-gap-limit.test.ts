@@ -8,10 +8,12 @@ import {
   gapBridgesNulls,
   gapFillValue,
   gapLimitDaysForSeriesKey,
+  isolatedReadings,
   overLimitHoles,
   trailingOutageCaption,
   unloggedGapLabel,
 } from "../trend-sparkline";
+import { DENSE_SERIES_POINTS } from "../../components/chart-scaffold";
 
 // THE GAP LIMIT (issue #2653, states 2, 3 and 4).
 //
@@ -271,5 +273,96 @@ describe("the words a hole gets", () => {
         /insufficient|unavailable|unfortunately|please|note that|cannot|in order to/i
       );
     }
+  });
+});
+
+// ── A READING WITH NO STROKE NEIGHBOUR (#4924) ──────────────────────────────
+//
+// The predicate that stops a CLUTTER threshold deciding for a reading whose mark
+// is its only representation. Its inputs are the render topology the card just
+// built — the runs, or the bridging policy — so the answer cannot disagree with
+// what was drawn.
+describe("isolatedReadings", () => {
+  const V = (values: (number | null)[]) => values;
+
+  it.each([
+    // [what, values, bridged, runs, isolated indices]
+    [
+      "an unbridged series: every reading with neither neighbour, ends included",
+      V([1, null, null, 4, null, null, 7]),
+      false,
+      undefined,
+      [0, 3, 6],
+    ],
+    [
+      "an unbridged series: calendar-adjacent readings join",
+      V([1, 2, null, null, 5, 6]),
+      false,
+      undefined,
+      [],
+    ],
+    [
+      "an unbridged series: one neighbour on either side is enough",
+      V([null, 2, 3, null]),
+      false,
+      undefined,
+      [],
+    ],
+    [
+      "a bridged series joins everything, however far apart",
+      V([1, null, null, null, null, 6]),
+      true,
+      undefined,
+      [],
+    ],
+    [
+      "a bridged series of exactly one reading",
+      V([null, null, 3, null]),
+      true,
+      undefined,
+      [2],
+    ],
+    [
+      "a cut series: the run holding one reading",
+      V([1, 2, null, null, null, 6, null, null, null, 10]),
+      true,
+      [
+        [0, 4],
+        [5, 8],
+        [9, 9],
+      ],
+      [5, 9],
+    ],
+    [
+      "a cut series: a run with two readings draws its own segment",
+      V([1, 2, null, null, 5, 6]),
+      true,
+      [
+        [0, 3],
+        [4, 5],
+      ],
+      [],
+    ],
+    ["nothing at all", V([null, null]), false, undefined, []],
+  ])("%s", (_what, values, bridged, runs, expected) => {
+    expect(
+      [...isolatedReadings(values, { bridged, runs })].sort((a, b) => a - b)
+    ).toEqual(expected);
+  });
+
+  it("the August reading the card used to draw as nothing", () => {
+    // The reported shape, at the size that produced it: a densely-logged June, an
+    // over-limit hole, ONE August reading, and a live outage to today. Thirty-six
+    // real readings is above DENSE_SERIES_POINTS, which is exactly why the dot
+    // layer had turned itself off over this reading's head.
+    const june = Array.from({ length: 36 }, (_, i) => 400 + i);
+    const values = [
+      ...june,
+      ...Array(20).fill(null),
+      920,
+      ...Array(20).fill(null),
+    ];
+    expect(june.length).toBeGreaterThan(DENSE_SERIES_POINTS);
+    expect([...isolatedReadings(values, { bridged: false })]).toEqual([56]);
   });
 });
