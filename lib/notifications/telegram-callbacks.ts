@@ -51,6 +51,7 @@ import { resolveHouseholdTapAccess } from "./household-round-access";
 import { householdMemberLabel } from "./household-round";
 import {
   type AllCallback,
+  callbackEntry,
   type EscalationCallback,
   type FoodLogCallback,
   type FoodExpandCallback,
@@ -148,7 +149,7 @@ import {
   type StoredUsualOffer,
 } from "./usual-routine-attach";
 import { keyboardTokens, tokenPrefix } from "./reconcile-core";
-import { owningFamily } from "./reconcile-registry";
+import { owningFamily, type ReconcilePrefix } from "./reconcile-registry";
 import { finishWorkoutSession, discardWorkoutSession } from "../workout-finish";
 import { classifyActivityType } from "../activity-type-write";
 import {
@@ -354,254 +355,352 @@ async function sweepAfterTap(profileIds: readonly number[]): Promise<void> {
   }
 }
 
-async function dispatchTap(cq: TelegramCallbackQuery): Promise<TapWrote> {
+// ── THE DECLARED CALLBACK REGISTRY (#4544) ───────────────────────────────────
+//
+// Every button this app can put in a chat, paired ONCE with the parser that recognises
+// its token and the handler that consumes it. This replaced 35 consecutive
+// parse-then-handle arms whose only guarantee was adjacency; `callbackEntry` (see
+// callback-data.ts) is the constructor that turns that adjacency into a type.
+//
+// ORDER IS DISPATCH ORDER, and it is load-bearing in four places, each said out loud at
+// the entry that depends on it. It used to be carried by line numbers in prose.
+//
+// THE TWO DIRECTIONS THIS TABLE IS BOUND IN:
+//   • `prefixes` is `ReconcilePrefix`, so no family reaches the dispatcher without being
+//     declared in RECONCILE_PREFIXES — the table that answers "what happens when this
+//     message is still sitting in the chat tomorrow?";
+//   • `_everyDeclaredPrefixIsDispatched` below fails to compile when a declared prefix
+//     has no arm here.
+// Binding them found `dgtuse`/`dgtdyn`/`dgtno`, dispatched since #2217 and declared
+// nowhere, because they are minted outside the directory the source scan reads.
+//
+// WHAT IT STILL CANNOT SEE: a handler called from somewhere other than this table, and a
+// hand-written arm added to `dispatchTap` beside the loop. Neither is a shape TypeScript
+// can forbid; the loop below is the only caller today.
+const CALLBACK_REGISTRY = [
   // "✅ All (N)" — mark every pending dose in the session's window taken.
-  const all = parseAllCallback(cq.data);
-  if (all) {
-    return handleAllTaken(cq, all);
-  }
+  callbackEntry({
+    prefixes: ["all"],
+    parse: parseAllCallback,
+    handle: handleAllTaken,
+    // The token's date is passed to markDoseTaken, which gates on isDoseDateAccepted.
+    dateGuard: "dose-window",
+  }),
 
   // "✅ <Stack> (n)" — mark one stack's still-pending doses taken (#3098).
-  const stackTake = parseOfferCallback(cq.data, "stacktake");
-  if (stackTake) {
-    return handleStackTaken(cq, stackTake);
-  }
+  callbackEntry({
+    prefixes: ["stacktake"],
+    parse: (data) => parseOfferCallback(data, "stacktake"),
+    handle: handleStackTaken,
+  }),
 
   // "✅ Your usual <window> (n)" — the composed one-tap (#2460). The token names a
   // STORED offer; the handler re-derives what stands and writes only the intersection.
-  const usual = parseOfferCallback(cq.data, "usual");
-  if (usual) {
-    return handleUsualRoutineTap(cq, usual);
-  }
+  callbackEntry({
+    prefixes: ["usual"],
+    parse: (data) => parseOfferCallback(data, "usual"),
+    handle: handleUsualRoutineTap,
+  }),
 
   // A dose tap is either ✅ take or ⏭️ skip (#232); both carry the same token
   // shape and share the rebuild path, differing only in which write they apply
   // and how they answer.
-  const take = parseTakeCallback(cq.data);
-  if (take) {
-    return handleDoseTap(cq, take, "take");
-  }
-  const skip = parseSkipCallback(cq.data);
-  if (skip) {
-    return handleDoseTap(cq, skip, "skip");
-  }
+  callbackEntry({
+    prefixes: ["take"],
+    parse: parseTakeCallback,
+    handle: (cq, take) => handleDoseTap(cq, take, "take"),
+    dateGuard: "dose-window",
+  }),
+  callbackEntry({
+    prefixes: ["skip"],
+    parse: parseSkipCallback,
+    handle: (cq, skip) => handleDoseTap(cq, skip, "skip"),
+    dateGuard: "dose-window",
+  }),
 
   // Phase 1 (#233): preventive-nudge buttons (✅ Done / 🚫 Not applicable /
   // ⏰ Remind later).
-  const preventive = parsePreventiveCallback(cq.data);
-  if (preventive) {
-    return handlePreventiveTap(cq, preventive);
-  }
+  callbackEntry({
+    prefixes: ["pvdone", "pvna", "pvlater"],
+    parse: parsePreventiveCallback,
+    handle: handlePreventiveTap,
+  }),
 
   // Phase 3 (#233): refill-nudge "📦 Ordered — remind me in 3 days".
-  const refill = parseRefillCallback(cq.data);
-  if (refill) {
-    return handleRefillTap(cq, refill);
-  }
+  callbackEntry({
+    prefixes: ["rfsnooze"],
+    parse: parseRefillCallback,
+    handle: handleRefillTap,
+  }),
 
   // Phase 2 (#233): missed-dose escalation (✅ Confirmed taken / 👍 I'm on it).
-  const escalation = parseEscalationCallback(cq.data);
-  if (escalation) {
-    return handleEscalationTap(cq, escalation);
-  }
+  callbackEntry({
+    prefixes: ["esctake", "escskip", "escack"],
+    parse: parseEscalationCallback,
+    handle: handleEscalationTap,
+    // esctake/escskip run the same markDoseTaken/markDoseSkipped cores a dose tap does,
+    // so they accept the same window; escack writes no dated row.
+    dateGuard: "dose-window",
+  }),
 
-  // Household dose round (#1459): a caregiver's cross-profile confirm. Parsed BEFORE
-  // the generic paths because its token names two profiles and resolves its own
-  // access edge (chat → receiving profile → member write grant), not the shared
-  // chat→profile resolution a single-subject tap uses.
-  const household = parseHouseholdDoseCallback(cq.data);
-  if (household) {
-    return handleHouseholdDoseTap(cq, household);
-  }
+  // Household dose round (#1459): a caregiver's cross-profile confirm. ORDER: before
+  // the generic paths because its token names two profiles and resolves its own access
+  // edge (chat → receiving profile → member write grant), not the shared chat→profile
+  // resolution a single-subject tap uses.
+  callbackEntry({
+    prefixes: ["hh"],
+    parse: parseHouseholdDoseCallback,
+    handle: handleHouseholdDoseTap,
+    // handleHouseholdDoseTap consults tapDateGuard directly (#1719).
+    dateGuard: "exact-day",
+  }),
 
   // Stale-workout nudge (#1205): 🏁 Finish workout / 🗑️ Discard — resolve a quiet
   // live draft in place through the shared finish/discard cores.
-  const workoutFinish = parseWorkoutFinishCallback(cq.data);
-  if (workoutFinish) {
-    return handleWorkoutFinishTap(cq, workoutFinish);
-  }
+  callbackEntry({
+    prefixes: ["wofinish", "wodiscard"],
+    parse: parseWorkoutFinishCallback,
+    handle: handleWorkoutFinishTap,
+  }),
 
   // The post-workout TYPE ask (#2272): the source recorded a workout but declined to
   // say what kind, so the recap that was already going out asked. The tap is the write.
-  const typeAsk = parseActivityTypeAskCallback(cq.data);
-  if (typeAsk) {
-    return handleActivityTypeAskTap(cq, typeAsk);
-  }
+  callbackEntry({
+    prefixes: ["actype"],
+    parse: parseActivityTypeAskCallback,
+    handle: handleActivityTypeAskTap,
+  }),
 
   // Food logging (#682): a quick-log button logs one serving of a group; the
   // first-connection opt-in prompt flips the per-profile food-logging flag.
-  const foodLog = parseFoodLogCallback(cq.data);
-  if (foodLog) {
-    return handleFoodLog(cq, foodLog);
-  }
+  callbackEntry({
+    prefixes: ["food"],
+    parse: parseFoodLogCallback,
+    handle: handleFoodLog,
+    // foodTapDateGuard, widened by #4118 from #947's exact-day rule to the same
+    // isDoseDateAccepted window its dose neighbours use.
+    dateGuard: "dose-window",
+  }),
   // Protein "+Xg" quick-log (#1073): the reserved pseudo-group button logs grams via
   // addProteinGramsCore (writing the __protein__ ranking event too), then rebuilds the nudge.
-  const foodProtein = parseFoodProteinCallback(cq.data);
-  if (foodProtein) {
-    return handleFoodProtein(cq, foodProtein);
-  }
+  callbackEntry({
+    prefixes: ["foodprotein"],
+    parse: parseFoodProteinCallback,
+    handle: handleFoodProtein,
+    dateGuard: "dose-window",
+  }),
   // "➕ Show more" (#1075) / "➖ Show less" (#1807): page the ranked buttons up or down in
   // place — a stateless view change, answered quietly.
-  const foodExpand = parseFoodExpandCallback(cq.data);
-  if (foodExpand) {
-    return handleFoodExpand(cq, foodExpand);
-  }
-  const foodOptIn = parseFoodOptInCallback(cq.data);
-  if (foodOptIn) {
-    return handleFoodOptIn(cq, foodOptIn);
-  }
+  callbackEntry({
+    prefixes: ["foodmore", "foodless"],
+    parse: parseFoodExpandCallback,
+    handle: handleFoodExpand,
+    // The same foodTapDateGuard its sibling taps use — a view control on a message too
+    // old to log into has nothing to reveal.
+    dateGuard: "dose-window",
+  }),
+  callbackEntry({
+    prefixes: ["foodoptin"],
+    parse: parseFoodOptInCallback,
+    handle: handleFoodOptIn,
+  }),
   // Eating-time correction (#2019): a −Nh chip, or the 🕐 absolute-hour drill-down.
   // Both ride the food nudge's own keyboard and re-stamp `occurred_at` for a whole burst.
-  const foodTimeChip = parseCorrectionChipToken(
-    cq.data,
-    FOOD_TIME_PREFIXES.chip
-  );
-  if (foodTimeChip) {
-    return handleFoodTimeChip(cq, foodTimeChip);
-  }
-  const foodTimeAt = parseCorrectionAtToken(cq.data, FOOD_TIME_PREFIXES.at);
-  if (foodTimeAt) {
-    return handleFoodTimeAt(cq, foodTimeAt);
-  }
+  callbackEntry({
+    prefixes: ["foodtime"],
+    parse: (data) => parseCorrectionChipToken(data, FOOD_TIME_PREFIXES.chip),
+    handle: handleFoodTimeChip,
+  }),
+  callbackEntry({
+    prefixes: ["foodtimeat"],
+    parse: (data) => parseCorrectionAtToken(data, FOOD_TIME_PREFIXES.at),
+    handle: handleFoodTimeAt,
+  }),
   // The dose twin (#2020), over `recorded_at` — the safety-relevant one, because the PRN
   // redose window arms off exactly the instant these buttons correct.
-  const doseTimeChip = parseCorrectionChipToken(
-    cq.data,
-    DOSE_TIME_PREFIXES.chip
-  );
-  if (doseTimeChip) {
-    return handleDoseTimeChip(cq, doseTimeChip);
-  }
-  const doseTimeAt = parseCorrectionAtToken(cq.data, DOSE_TIME_PREFIXES.at);
-  if (doseTimeAt) {
-    return handleDoseTimeAt(cq, doseTimeAt);
-  }
+  callbackEntry({
+    prefixes: ["dosetime"],
+    parse: (data) => parseCorrectionChipToken(data, DOSE_TIME_PREFIXES.chip),
+    handle: handleDoseTimeChip,
+  }),
+  callbackEntry({
+    prefixes: ["dosetimeat"],
+    parse: (data) => parseCorrectionAtToken(data, DOSE_TIME_PREFIXES.at),
+    handle: handleDoseTimeAt,
+  }),
   // The practice twin (#2875), over `practice_logs.start_time` — the one whose column feeds
   // the scheduler that produced the tap: `modalHour()` reads it to pick each practice's
   // typical hour, and #2188's retimed pace nudge fires at that hour, so an uncorrectable
   // late acknowledgement compounds into a later and later nudge.
-  const practiceTimeChip = parseCorrectionChipToken(
-    cq.data,
-    PRACTICE_TIME_PREFIXES.chip
-  );
-  if (practiceTimeChip) {
-    return handlePracticeTimeChip(cq, practiceTimeChip);
-  }
-  const practiceTimeAt = parseCorrectionAtToken(
-    cq.data,
-    PRACTICE_TIME_PREFIXES.at
-  );
-  if (practiceTimeAt) {
-    return handlePracticeTimeAt(cq, practiceTimeAt);
-  }
+  callbackEntry({
+    prefixes: ["practime"],
+    parse: (data) => parseCorrectionChipToken(data, PRACTICE_TIME_PREFIXES.chip),
+    handle: handlePracticeTimeChip,
+  }),
+  callbackEntry({
+    prefixes: ["practimeat"],
+    parse: (data) => parseCorrectionAtToken(data, PRACTICE_TIME_PREFIXES.at),
+    handle: handlePracticeTimeAt,
+  }),
 
   // ⤓ May (#1505 part 2): accept the demotion suggestion riding this reminder. The
   // one obligation write the notification layer can make — user-initiated, downward,
   // and through the same compare-and-swap core the in-app card uses.
-  const demote = parseDemoteCallback(cq.data);
-  if (demote) {
-    return handleDemoteTap(cq, demote);
-  }
+  callbackEntry({
+    prefixes: ["demote"],
+    parse: parseDemoteCallback,
+    handle: handleDemoteTap,
+    // The token's date is message identity only: the write is a compare-and-swap on
+    // the item's CURRENT obligation, so there is no dated row for a guard to protect.
+    dateGuard: "none",
+  }),
 
   // Stop (#2574): end an unconfirmed imported medication from the reminder that is
   // interrupting about it. Its own token namespace, parsed beside the demotion tap
   // because they ride the same row and are complements on `kind` — never both present,
   // and never mistakable for one another.
-  const medStop = parseMedStopCallback(cq.data);
-  if (medStop) {
-    return handleMedStopTap(cq, medStop);
-  }
+  callbackEntry({
+    prefixes: ["medstop"],
+    parse: parseMedStopCallback,
+    handle: handleMedStopTap,
+    // Stops the course as of TODAY, never the reminder's date — a decision made now,
+    // so the token's date is identity and nothing else.
+    dateGuard: "none",
+  }),
 
   // The digest's offer tail (#1505): expand/collapse the "➕ Doses" button in
-  // place. Checked BEFORE the prn: log tokens because the expanded keyboard is made
+  // place. ORDER: BEFORE the prn: log tokens, because the expanded keyboard is made
   // of those, and a tail tap must never be mistaken for a log.
-  const offerTail = parseOfferTailCallback(cq.data);
-  if (offerTail) {
-    return handleOfferTailTap(cq, offerTail);
-  }
+  callbackEntry({
+    prefixes: ["offer", "offerc"],
+    parse: parseOfferTailCallback,
+    handle: handleOfferTailTap,
+    // `token.date !== today(profileId)` ⇒ refuse: a tap on yesterday's digest must not
+    // expand into today's offers.
+    dateGuard: "exact-day",
+  }),
 
   // The digest's ⚙️ Tune control (#1714): expand/collapse the per-category toggles in
-  // place, or flip one category's demotion. Parsed here — before the log tokens —
-  // for the same reason the offer tail is: an expanded Tune keyboard is made of
-  // `tunet:` buttons and a tune tap must never be mistaken for anything that writes
-  // to the profile's records.
-  const tune = parseTuneCallback(cq.data);
-  if (tune) {
-    return handleTuneTap(cq, tune);
-  }
+  // place, or flip one category's demotion. ORDER: here, before the log tokens, for the
+  // same reason the offer tail is — an expanded Tune keyboard is made of `tunet:`
+  // buttons and a tune tap must never be mistaken for anything that writes to the
+  // profile's records.
+  callbackEntry({
+    prefixes: ["tune", "tunec", "tunet"],
+    parse: parseTuneCallback,
+    handle: handleTuneTap,
+    dateGuard: "exact-day",
+  }),
 
   // The digest time suggestion's exits (#2217): Use HH:MM / As soon as it's ready /
   // Not now. Parsed alongside the other digest-riding controls, and before the log
   // tokens, for the same reason they are: these buttons write a SETTING, and a tap on
   // one must never be mistaken for anything that writes to the profile's records.
-  const digestTime = parseDigestTimeCallback(cq.data);
-  if (digestTime) {
-    return handleDigestTimeTap(cq, digestTime);
-  }
+  callbackEntry({
+    prefixes: ["dgtuse", "dgtdyn", "dgtno"],
+    parse: parseDigestTimeCallback,
+    handle: handleDigestTimeTap,
+    dateGuard: "exact-day",
+  }),
 
-  // One administration-armed redose window. Parsed before the reusable `/dose` token:
+  // One administration-armed redose window. ORDER: before the reusable `/dose` token —
   // this button is consumed and refuses after an app log supersedes its window.
-  const redose = parseRedoseLogCallback(cq.data);
-  if (redose) {
-    return handleRedoseLogTap(cq, redose);
-  }
+  callbackEntry({
+    prefixes: ["redose"],
+    parse: parseRedoseLogCallback,
+    handle: handleRedoseLogTap,
+  }),
 
   // PRN administration logging (#797): a "💊 <med>" button from the /dose command
   // logs one as-needed administration NOW.
-  const prn = parsePrnLogCallback(cq.data);
-  if (prn) {
-    return handlePrnLogTap(cq, prn);
-  }
+  callbackEntry({
+    prefixes: ["prn"],
+    parse: parsePrnLogCallback,
+    handle: handlePrnLogTap,
+  }),
 
   // Wellness-practice "Done ✅" (#1259): a button from the pace-aware practice nudge
   // logs one session NOW for the target's practice, and is consumed on tap.
-  const practiceDone = parsePracticeDoneCallback(cq.data);
-  if (practiceDone) {
-    return handlePracticeDoneTap(cq, practiceDone);
-  }
+  callbackEntry({
+    prefixes: ["pdone"],
+    parse: parsePracticeDoneCallback,
+    handle: handlePracticeDoneTap,
+  }),
 
   // The same tap from the on-demand `/practice` list (#1895). A different PREFIX,
   // because the two messages claim different things to the sweep (see callback-data),
   // and deliberately the SAME handler and write core — a second logging path for one
   // button is how two answers to "did that log?" come about.
-  const practiceLog = parsePracticeLogCallback(cq.data);
-  if (practiceLog) {
-    return handlePracticeDoneTap(cq, practiceLog);
-  }
+  callbackEntry({
+    prefixes: ["plog"],
+    parse: parsePracticeLogCallback,
+    handle: handlePracticeDoneTap,
+  }),
 
   // Right-sizing ride-along (#1670): the same practice nudge's ⤓ button lowers the
   // weekly floor to the cadence actually kept — the floor is re-derived from the live
   // detector on tap, never read off the button.
-  const rightSize = parseRightSizeLowerCallback(cq.data);
-  if (rightSize) {
-    return handleRightSizeLowerTap(cq, rightSize);
-  }
+  callbackEntry({
+    prefixes: ["rslower"],
+    parse: parseRightSizeLowerCallback,
+    handle: handleRightSizeLowerTap,
+  }),
 
   // Daily mood check-in (#992): a face button logs the day's mood — the same
   // idempotent per-day upsert the dashboard card and offline replay run.
-  const moodTap = parseMoodCheckinCallback(cq.data);
-  if (moodTap) {
-    return handleMoodTap(cq, moodTap);
-  }
+  callbackEntry({
+    prefixes: ["mood"],
+    parse: parseMoodCheckinCallback,
+    handle: handleMoodTap,
+    // THE ONE THAT MADE THIS FIELD NECESSARY. handleMoodTap writes `token.date` and
+    // consults no guard at all — deliberately looser than the sweep, which closes the
+    // message at the day boundary (RECONCILE_DATE_GUARD.mood says so and why). Declared
+    // rather than discovered: the next date-bearing prefix cannot inherit this silently.
+    dateGuard: "none",
+  }),
 
   // "Keep daily check-ins" (#1668): the confirm-to-KEEP affordance the final reminder
   // carries before the auto-pause takes effect.
-  const moodKeep = parseMoodKeepCallback(cq.data);
-  if (moodKeep) {
-    return handleMoodKeepTap(cq, moodKeep);
-  }
+  callbackEntry({
+    prefixes: ["moodkeep"],
+    parse: parseMoodKeepCallback,
+    handle: handleMoodKeepTap,
+    // Flips the check-in setting back on; the token's date is message identity only.
+    dateGuard: "none",
+  }),
 
   // Symptom quick-log (#859 item 5): a "<symptom>" button opens a severity picker;
   // a severity button logs the symptom-day.
-  const symPick = parseSymptomPickCallback(cq.data);
-  if (symPick) {
-    return handleSymptomPick(cq, symPick);
-  }
-  const symSev = parseSymptomSeverityCallback(cq.data);
-  if (symSev) {
-    return handleSymptomSeverity(cq, symSev);
-  }
+  callbackEntry({
+    prefixes: ["symp"],
+    parse: parseSymptomPickCallback,
+    handle: handleSymptomPick,
+  }),
+  callbackEntry({
+    prefixes: ["symsev"],
+    parse: parseSymptomSeverityCallback,
+    handle: handleSymptomSeverity,
+  }),
+] as const;
 
+// EVERY DECLARED PREFIX HAS AN ARM. A prefix in RECONCILE_PREFIXES with nothing here to
+// answer it is a button this app can mint and cannot honour — it would reach the
+// dispatcher's final `else` and be told it is out of date, forever, with no test red.
+// The type names the offenders in the error rather than merely failing.
+type UndispatchedPrefix = Exclude<
+  ReconcilePrefix,
+  (typeof CALLBACK_REGISTRY)[number]["prefixes"][number]
+>;
+const _everyDeclaredPrefixIsDispatched: [UndispatchedPrefix] extends [never]
+  ? true
+  : UndispatchedPrefix = true;
+void _everyDeclaredPrefixIsDispatched;
+
+async function dispatchTap(cq: TelegramCallbackQuery): Promise<TapWrote> {
+  for (const entry of CALLBACK_REGISTRY) {
+    const handled = entry.run(cq);
+    if (handled) return handled;
+  }
   // Unknown/malformed token — a button from a message whose token shape has since
   // been retired. Nothing is written, so answer honestly rather than silently (#1716).
   await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);

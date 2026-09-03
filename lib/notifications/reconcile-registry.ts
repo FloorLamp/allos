@@ -73,7 +73,7 @@ export type ReconcilePrefixEntry = {
     }
 );
 
-export const RECONCILE_PREFIXES: readonly ReconcilePrefixEntry[] = [
+const PREFIX_TABLE = [
   // ── Class 1: state-claim buttons ───────────────────────────────────────────
   // The message asserts something is outstanding and an in-app write can resolve it.
 
@@ -248,7 +248,49 @@ export const RECONCILE_PREFIXES: readonly ReconcilePrefixEntry[] = [
     inert:
       "the post-workout type ask (#2272) — 'your tracker didn't say what this was'. It rides the recap the way `demote` rides a dose reminder, carries an activity id and no date, and its write is a COMPARE-AND-SWAP on the row still being `unclassified`: a session classified in the app since, or absorbed by the duplicate auto-merge (#2271), refuses the tap and says which happened (already-classified / out-of-date) instead of confirming a write that did not occur. That is the difference from the correction chips, which are NOT inert — those expire on a CLOCK nothing can re-check at tap time, so only the sweep can stop them lying. This one cannot lie: it is asked ONCE, and the answer it can still write is the only one it will ever accept.",
   },
-];
+
+  // THE THREE THIS TABLE HAD NEVER BEEN ASKED ABOUT (#4544). The digest time
+  // suggestion's exits (#2217) are minted in lib/digest-time-suggestion.ts — OUTSIDE
+  // lib/notifications, which is the only directory the source scan reads — so nothing
+  // ever noticed they were undeclared, and `dispatchTap` has been answering them since
+  // #2217. Found by binding the dispatch table to this one, which is the whole point of
+  // that binding: a prefix invisible to a scanner is not invisible to a type.
+  //
+  // Inert on `actype`'s reasoning rather than `foodoptin`'s, and the distinction is the
+  // COMPARE-AND-SWAP: the token carries no minute, and `handleDigestTimeTap` re-resolves
+  // the live suggestion before writing anything — so a button sitting in a chat cannot
+  // write a time the detector has stopped proposing, and it answers DIGEST_TIME_STALE_TEXT
+  // instead. Standalone, like the other digest-riding controls: a preference question is
+  // as answerable tomorrow as today, and the digest's own claims are reconciled by its
+  // PROSE reconciler (KIND_PROSE below), which owns that message's pointer end to end.
+  {
+    prefix: "dgtuse",
+    expiry: "standalone",
+    inert:
+      "writes the digest send time the detector currently proposes (#2217) — re-resolved at tap, never read off the button",
+  },
+  {
+    prefix: "dgtdyn",
+    expiry: "standalone",
+    inert:
+      "switches the digest to dynamic mode (#2217) — a preference, which is whatever it currently is and cannot go stale",
+  },
+  {
+    prefix: "dgtno",
+    expiry: "standalone",
+    inert:
+      "declines the suggestion and records one suppression row (#2217) — the same preference question, answered the other way",
+  },
+] as const satisfies readonly ReconcilePrefixEntry[];
+
+// EVERY PREFIX THIS APP HAS DECLARED, as a type. The dispatch registry (#4544) is typed
+// against it, so a callback family cannot reach `dispatchTap` without an entry here, and
+// — through CALLBACK_REGISTRY's exhaustiveness check — an entry here cannot exist with
+// no arm to answer it. The table above therefore keeps its literal types, and the export
+// below hands every existing consumer the same widened shape it always had.
+export type ReconcilePrefix = (typeof PREFIX_TABLE)[number]["prefix"];
+
+export const RECONCILE_PREFIXES: readonly ReconcilePrefixEntry[] = PREFIX_TABLE;
 
 // ── THE DATE-GUARD DECLARATION (issue #2018) ─────────────────────────────────
 //

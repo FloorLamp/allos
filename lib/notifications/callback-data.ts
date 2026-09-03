@@ -34,6 +34,11 @@ import {
   type DigestCategory,
 } from "./digest-tune";
 import { GLYPH } from "./glyphs";
+import type {
+  ReconcileDateGuard,
+  ReconcilePrefix,
+} from "./reconcile-registry";
+import type { TelegramCallbackQuery } from "./telegram";
 
 // WHAT A TAP HANDLER REPORTS BACK (#3933): the profile whose records it WROTE, or
 // undefined when it wrote none. `handleCallbackQuery` sweeps that profile's other live
@@ -46,6 +51,68 @@ import { GLYPH } from "./glyphs";
 // chat the message sits in: the household round writes under the member and the stale
 // keyboards it invalidates are the member's own.
 export type TapWrote = number | undefined;
+
+// ── ONE DECLARED CALLBACK ENTRY (#4544) ──────────────────────────────────────
+//
+// A tap arrives as an opaque string from Telegram, and answering it takes three things
+// that were previously only ever adjacent: the token PREFIXES this family mints, the
+// PARSER that recognises them, and the HANDLER that consumes what that parser produced.
+// `dispatchTap` used to hold all three as 35 consecutive parse-then-handle arms, so the
+// pairing was true by adjacency and by nothing else — a handler could be given a token
+// its parser never produces, and a prefix could reach the wire with no arm at all.
+//
+// This constructor is where the three become one value, and it is the only door: the
+// payload type `T` is INFERRED from `parse` and then DEMANDED of `handle`, so a mismatched
+// pair is a compile error rather than a runtime `undefined`. `prefixes` is typed against
+// the reconcile registry's own declaration (`ReconcilePrefix`), which is what makes the
+// two tables one table — see CALLBACK_REGISTRY in telegram-callbacks.ts for the
+// exhaustiveness check in the other direction.
+//
+// ── THE DATE ANSWER IS DEMANDED, NOT REMEMBERED ──────────────────────────────
+//
+// A token that carries a `date` is a claim about a DAY, and how late it may still be
+// acted on is a question every such handler has to have answered. It was answered where
+// somebody remembered to: `handleMoodTap` writes `token.date` with no guard at all, which
+// is safe today and is exactly the shape the NEXT date-bearing prefix would inherit
+// silently. So the type asks: a payload with a `date` cannot be registered without
+// naming which of the three existing guards its handler consults, in the vocabulary
+// `RECONCILE_DATE_GUARD` already uses. `"none"` is a legal answer — "this handler
+// consults nothing" and "nobody looked" stay distinguishable because one of them
+// compiles.
+//
+// It is a DECLARATION, not a second guard: the dispatcher does not run it, because the
+// handlers' refusals differ in their wording and their answers and unifying those is a
+// behaviour change, not a convergence. What it buys is the pairing test in
+// lib/__tests__/reconcile-registry.test.ts, which pins it against the SWEEP's answer for
+// the same family in the one direction that can hurt — a sweep that keeps a button its
+// handler would refuse.
+export interface CallbackEntry<
+  P extends readonly ReconcilePrefix[] = readonly ReconcilePrefix[],
+> {
+  readonly prefixes: P;
+  // The handler's promise, or null when this entry does not recognise the token.
+  readonly run: (cq: TelegramCallbackQuery) => Promise<TapWrote> | null;
+}
+
+type DateAnswer<T> = [T] extends [{ date: string }]
+  ? { dateGuard: ReconcileDateGuard }
+  : { dateGuard?: never };
+
+export function callbackEntry<T, const P extends readonly ReconcilePrefix[]>(
+  spec: {
+    prefixes: P;
+    parse: (data: unknown) => T | null;
+    handle: (cq: TelegramCallbackQuery, token: T) => Promise<TapWrote>;
+  } & DateAnswer<T>
+): CallbackEntry<P> {
+  return {
+    prefixes: spec.prefixes,
+    run: (cq) => {
+      const token = spec.parse(cq.data);
+      return token == null ? null : spec.handle(cq, token);
+    },
+  };
+}
 
 // A keyboard button carries EITHER a callback token or a deep-link url (issue
 // #233's refill "Open form"); mirrors telegram.ts's InlineKeyboard.
