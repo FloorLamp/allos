@@ -230,6 +230,8 @@ import {
   TrendArrow,
 } from "@/components/dashboard/HealthspanPillarPresentation";
 import { sleepWaitingDetail } from "@/lib/sleep-waiting";
+import { SLEEP_SKEW_HEDGE } from "@/lib/sleep-clock-skew";
+import { isSuspectSleepWakeDay } from "@/lib/queries/sleep-clock-skew";
 import {
   formatHm,
   formatSleepWindow,
@@ -869,6 +871,14 @@ async function renderDashboard(
     const band = formatUsualSleepBand(formatPrefs.timeFormat, bed, wake);
     return band == null ? undefined : `Usual ${band}`;
   })();
+  // Does last night's SYNCED session disagree with the heart rate recorded across it
+  // (#4299)? Two consequences below, both about not stating a fabricated time as fact:
+  // the bed/wake rows carry the hedge instead of the usual band, and the family holds no
+  // attention claim — an alarm built on contradicted data is noise wearing a safety
+  // costume. Asked only where there is a recorded night to ask about.
+  const sleepClockSkewSuspect =
+    sleepSummary != null &&
+    isSuspectSleepWakeDay(profile.id, sleepSummary.wakeDay);
   const sleepPreviousNightLabel =
     sleepSummary && sleepPresentation?.freshness === "recent"
       ? `${sleepPresentation.label} · ${formatHm(sleepSummary.durationMin)}`
@@ -2778,7 +2788,8 @@ async function renderDashboard(
           sleepSummary.wakeDay,
           engagementFromSource(sleepSummary.source),
           sleepTiming,
-          key === "duration" &&
+          !sleepClockSkewSuspect &&
+            key === "duration" &&
             sleepArrivedInWakeWindow(
               sleepPresentation?.freshness ?? "stale",
               wakeDayAge,
@@ -2795,7 +2806,13 @@ async function renderDashboard(
           // the wake time, so #3253's glance-context rider survives with no per-row
           // control. Duration never carried it and still does not: a duration has no
           // usual bed-and-wake pair to be measured against.
-          detail: key === "wake-time" ? usualSleepBand : undefined,
+          detail: sleepClockSkewSuspect
+            ? key === "duration"
+              ? undefined
+              : SLEEP_SKEW_HEDGE
+            : key === "wake-time"
+              ? usualSleepBand
+              : undefined,
           href: "/sleep",
           presence: "current",
         }

@@ -148,3 +148,18 @@ export function getSuspectSleepWakeDays(
     getSuspectSleepSessions(profileId, since).map((s) => s.wakeDay)
   );
 }
+
+/**
+ * Is THIS wake-day's synced session suspect?
+ *
+ * The narrow read for a surface that states ONE night — the dashboard's last-night
+ * bed/wake row. `since` is the day itself, so the gather's `date >= ?` bound reduces the
+ * scan to that night and any later one rather than walking the whole history to answer a
+ * question about a single row.
+ */
+export function isSuspectSleepWakeDay(
+  profileId: number,
+  wakeDay: string
+): boolean {
+  return getSuspectSleepWakeDays(profileId, wakeDay).has(wakeDay);
+}

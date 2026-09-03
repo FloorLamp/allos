@@ -32,6 +32,24 @@
 
 import { utcInstant } from "./date";
 
+// The dedupeKey namespace this evidence rides on when it becomes a coaching-tier
+// finding (#448's registry, #449's reach policy). ONE finding per EPISODE, anchored to
+// the OLDEST suspect night still in the window: a source whose clock has gone stale
+// mis-stamps every night until it heals, and a per-night key would mint a fresh row
+// each morning after a dismiss.
+export const SLEEP_SKEW_PREFIX = "sleep-clock-skew:";
+
+export function sleepClockSkewSignalKey(firstWakeDay: string): string {
+  return `${SLEEP_SKEW_PREFIX}${firstWakeDay}`;
+}
+
+// The one sentence a surface prints beneath a suspect session's times INSTEAD of
+// letting them stand as fact. It names the disagreement and stops there — it never
+// says how far off the clock is, because nothing here measures that (#4299's
+// out-of-scope ruling).
+export const SLEEP_SKEW_HEDGE =
+  "These times disagree with your heart rate — the source clock may be off.";
+
 // One per-minute HR bucket as stored: `ts` is a canonical UTC instant (hr_minutes.ts
 // has been an absolute instant since migration 164 — docs/internals/time-columns.md),
 // `bpm` the count-weighted average.
