@@ -3,7 +3,7 @@
 import { useState } from "react";
 import {
   IconCheck,
-  IconClock,
+  IconListDetails,
   IconPlayerPlay,
   IconPlayerStop,
 } from "@tabler/icons-react";
@@ -573,7 +573,9 @@ export default function LogPracticeButton({
             aria-label="Log with details"
             data-testid="practice-log-details-trigger"
           >
-            <IconClock className="h-4 w-4" stroke={2} aria-hidden />
+            {/* NOT a clock (#4882 owner ruling): the glyph is reserved for the time
+                statement's own door, seated immediately left of this button. */}
+            <IconListDetails className="h-4 w-4" stroke={2} aria-hidden />
             <span className="sm:hidden">Details</span>
             <span className="hidden sm:inline">Log with details</span>
           </button>

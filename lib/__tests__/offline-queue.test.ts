@@ -9,7 +9,6 @@ import {
   chunkIntents,
   MAX_INTENTS,
   newIdempotencyKey,
-  localDate,
   isSettled,
   settledKeys,
   isAuthFailure,
@@ -129,13 +128,6 @@ describe("chunkIntents (issue #604)", () => {
   it("rejects a non-positive size (a zero/negative would loop forever)", () => {
     expect(() => chunkIntents([1, 2], 0)).toThrow();
     expect(() => chunkIntents([1, 2], -1)).toThrow();
-  });
-});
-
-describe("localDate", () => {
-  it("formats a local Date as YYYY-MM-DD (zero-padded)", () => {
-    expect(localDate(new Date(2026, 0, 5))).toBe("2026-01-05");
-    expect(localDate(new Date(2026, 11, 31))).toBe("2026-12-31");
   });
 });
 

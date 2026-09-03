@@ -60,19 +60,29 @@ test("a quiet domain collapses to one line that states how long, and offers the 
 
   // #3548 NARROWED #3226 EXACTLY THIS FAR, AND #4232 MOVED WHERE THE FOLD IS: a
   // dormant line keeps its existence, its copy and its affordance, and loses the
-  // always-visible slot. It is now in the page's ONE fold, in the Read group its own
-  // model routes it to, and everything below is asserted with that fold open.
+  // always-visible slot. It is now in the page's ONE fold, and everything below is
+  // asserted with that fold open.
   await expect(
     page
       .getByTestId("dashboard-standing")
       .locator('[data-candidate-id="weight.dormant"]')
   ).toHaveCount(0);
   await openDashboardAll(page);
+  // #4841 item 4 (owner ruling 2026-09-03 14:05 UTC): dormant weight moved from
+  // Read to Act, the same move vitals' dormant rows already made (#4841 item 3)
+  // — a prompt to weigh in is not a report. Both directions, the exact-once
+  // partition's own shape: naming Act alone would pass on a tree that drew the
+  // row in both.
+  await expect(
+    page
+      .getByTestId("dashboard-everything-act")
+      .locator('[data-candidate-id="weight.dormant"]')
+  ).toHaveCount(1);
   await expect(
     page
       .getByTestId("dashboard-everything-read")
       .locator('[data-candidate-id="weight.dormant"]')
-  ).toBeVisible();
+  ).toHaveCount(0);
 
   // REACH IS UNCHANGED: each collapsed line carries the link that would end the
   // silence, so what it replaced is one tap away.
@@ -81,6 +91,15 @@ test("a quiet domain collapses to one line that states how long, and offers the 
   ).toBeVisible();
   await expect(
     weight.getByRole("link", { name: /Body metrics/ })
+  ).toBeVisible();
+
+  // AND THE DOOR THAT CAN END THE DORMANCY (#4841 item 4) — the same door the
+  // live weight row earns, present here without a click: this fixture is
+  // read-only by contract (see the file header), so only presence is asserted;
+  // the write path itself is proven on the vitals sibling
+  // (e2e/dashboard-vitals-recency.spec.ts), which owns a writable profile.
+  await expect(
+    weight.getByRole("button", { name: "Log weight" })
   ).toBeVisible();
 
   await page.close();
@@ -242,11 +261,11 @@ for (const [label, viewport] of [
     await expect(
       dormantWeight.getByRole("link", { name: /Body metrics/ })
     ).toBeVisible();
-    // …in the Read group, which is where the exact-once partition routes a dormant
-    // reading once Standing stops claiming it.
+    // …in the Act group (#4841 item 4): the exact-once partition routes a
+    // dormant WRITE-carrying candidate there, same as vitals' dormant rows.
     await expect(
       page
-        .getByTestId("dashboard-everything-read")
+        .getByTestId("dashboard-everything-act")
         .locator('[data-candidate-id="weight.dormant"]')
     ).toHaveCount(1);
 
