@@ -1766,6 +1766,101 @@ get the same note — the defect was never unique to this kind.
 placement a few minutes before a late bedtime is missed. #2121's finer ticks and
 a `typicalBedTime` anchor tighten it later; neither is a dependency.
 
+## Physiology in the sends (#4775)
+
+**One computation, four surfaces.** `lib/event-physiology.ts` (pure) plus
+`lib/queries/event-physiology.ts` (gather) answer one question over one
+`ActivityWindow`: what did this event do to the heart rate. In-window minutes, mean,
+peak, low and zone split; the mean over the 15 minutes before the start; minutes from
+the end until bpm sat back inside the resting range, bounded at 120; and **coverage**.
+The activity page's HR block was where this assembly lived, inline, and it is now a
+consumer of it (#221) — the sends format the same result rather than each growing a
+copy.
+
+**THE COVERAGE RULE, and it governs every line below.** The Health Connect pipeline
+runs 30–61 min behind the wrist (`docs/internals/integrations-sync.md`, #2560), so at
+the moment a finish tap lands the session's own minutes are usually not in yet. A
+clause computed then is not an exception and not an empty state: it is a confident
+sentence about a flat line that is only flat because the data has not arrived, and it
+reads exactly like a measurement. So `covered` is false until the profile's newest HR
+minute is **at or after the window's END**, and no formatter states physiology while it
+is. At-or-after and not merely "reaches the last in-window minute": the window is
+half-open, so a frontier at `end − 1` looks identical whether the stream covered the
+session exactly or simply stopped inside it, and only a minute past the end tells the
+two apart.
+
+**Verdicts are the person's own usual, never a cutoff.** Every comparison is the same
+quantity over that profile's own prior events of the same kind — the last 10, with a
+floor of 3 before "usual" is a word that may be used. Below the floor the fact renders
+alone. There is no published band for what a red-light session should do to a heart
+rate, and inventing one would be the clinical language AGENTS.md forbids.
+
+### The three compositions
+
+**1. The post-workout finish message** (`sessionPhysiologyClause`,
+`workout-recap-format.ts`). With coverage, the recap line gains
+`· Z2 24 min · Z3 11 min · peak 168` — and a MANUAL strength session, which carried no
+heart rate in this message at all, finally has one. Without coverage the import's own
+`avg HR / max HR` stands, which is a figure the SOURCE published rather than one this
+app derived from half a window. With coverage the import's summary steps aside, because
+two renderings of one quantity from two instruments invite the reader to reconcile
+them. **The clause rides a line and never makes one**: a row with nothing to recap and
+no due doses sends exactly what it sent before, covered or not.
+
+**2. Recovery rides the next send** (owner-ruled — there is no delayed post-workout
+message). Recovery is unknowable at the finish tap; by the morning digest the stream
+has long since covered the session, so the Yesterday activity line carries
+`· back to resting in 28 min (usual 35)`. An uncovered window, a wear gap and "still
+elevated two hours later" all arrive as the same absence, and none of them is a number.
+
+**3. The practice finish note** — kind `practice-recap`, marker
+`notify_last_practice_recap_<practiceLogId>` (id-keyed, one-shot). **The one send in
+this app that waits for its own evidence.** "🧘 Sauna done" is the tap read back to the
+person who made it; what makes it worth a message is the number, and the number is not
+there yet. So: NO PHYSIOLOGY, NO SEND — not a degraded message, nothing, and no marker
+burned. It fires on the first tick where the window is covered, bounded at two hours
+after the end (the pipeline's p99 frontier-advance interval is 81 minutes, so two hours
+is its slowest realistic push and then some). The copy states the in-window mean as a
+signed rise over the profile's own resting baseline —
+`HR 95 avg, +35 over resting (usual +24)` — never over the 15 minutes before the start,
+because a session logged straight out of bed carries the get-up spike inside that band
+and read −1 bpm on a session running 24 bpm above resting (#4775 comment 2026-09-02).
+Direction is stated, never scored: a sauna's rise and a meditation's fall are both what
+it did.
+
+**There is no armed-state column.** A row carrying a start and a duration IS the armed
+state, and the tick asks which rows ended inside the bound and have no marker — nothing
+written at the tap, nothing to sweep on a delete, and no way for a flag and its row to
+disagree after an edit. What made that possible is the **Start-now duration ruling**
+(owner, 2026-09-02): `startLivePracticeSession` stamps the practice's own usual duration
+onto the row and marks it `derived_window = 1`, so a live row the six-hour sweep closes
+still has a window instead of being a windowless tick. Its copy says "about 20 min"; the
+End tap overwrites it with the observed length; a practice with no recorded duration
+writes none and stays a tick. #4384 Fix 7 is untouched — this writes a DURATION, never
+an `end_time`.
+
+Telegram's own Done tap (`pdone:`) is deliberately outside this: it writes an observed
+end and no duration, because the chat shows no duration and a hidden usual must never
+fabricate a start. A tap through that path therefore never arms a practice note.
+
+### The digest's two new lines
+
+**The Sleep section's overnight HR** — `Overnight HR low 49 · avg 56 — resting 55
+(usual 53)`, with `— elevated` appended when the device's daily resting figure clears
+the SAME threshold `rest-rhr` uses (`restingHrJumpThreshold`: 7 bpm, or twice the
+profile's own spread). It is scoped to the main sleep SESSION's own window, never to
+clock hours: a 02:00 bedtime and a 22:00 one are the same night, and a fixed
+midnight-to-06:00 read would report a different night's floor for the person who went to
+bed late. Absent when the stream did not cover the session — the overnight LOW is what
+this line is most about and the number a partial night gets most wrong. The rest
+recommendation itself is unchanged by this line existing.
+
+**One drink-log observation** — the recorded exception to #2177's "never a send",
+behind `substance_telegram_enabled` (off by default). See
+`docs/internals/findings.md` §Paired observations and
+`docs/internals/substances.md` §Reach, both of which record it; the gather is
+`gatherSubstanceObservationLine`, which asks the flag before it computes anything.
+
 ## Send markers and nudge cadence (#2036)
 
 **The `notify_last_*` discipline is a registry now, not a convention.**

@@ -37,6 +37,7 @@ import {
   getPracticeDayCount,
   getPracticeSession,
   getPracticeSpellings,
+  getPracticeUsualDuration,
 } from "./queries/wellness";
 import { ADMIN_DEDUP_WINDOW_SEC } from "./queries/intake/adherence";
 
@@ -419,8 +420,24 @@ export function startLivePracticeSession(
     closeAbandonedPracticeSessions(profileId);
     const existing = openPracticeSession(profileId, name);
     if (existing) return { kind: "already-live" as const, session: existing };
+    // START NOW STAMPS THE PRACTICE'S USUAL DURATION (#4775, owner ruling
+    // 2026-09-02). Before this, a Start-now row carried a start and nothing else, so a
+    // live row the six-hour sweep closed kept "exactly what was observed" (#3143) —
+    // no end, no duration — and therefore had NO WINDOW: it drew as a tick on the day
+    // chart and no physiology could be computed for it. The one path the usual-duration
+    // ruling (#4384 Fix 5) never reached.
+    //
+    // It is a DERIVED window and says so: `derived_window = 1` already marks exactly
+    // this, and the copy that renders it reads "about 15 min". The End tap overwrites
+    // it with the observed duration a moment later, as it always did — #4384 Fix 7
+    // ("taps never write `end_time`") is untouched, because this writes a DURATION.
+    //
+    // A practice with no recorded duration writes none and stays a tick: leg 3 of the
+    // prefill is blank, and blank stays blank rather than being filled from a default
+    // this profile never demonstrated.
     const outcome = logPracticeSession(profileId, name, date, loggedVia, {
       startTime: localStart.hhmm,
+      durationMin: getPracticeUsualDuration(profileId, name),
       live: true,
       derivedWindow: true,
     });
