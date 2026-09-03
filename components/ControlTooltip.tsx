@@ -13,7 +13,7 @@ import { createPortal } from "react-dom";
 import {
   ANCHOR_MARGIN,
   anchoredPosition,
-  type AnchoredPosition,
+  type UnboundedAnchoredPosition,
 } from "@/lib/anchored-position";
 import { microMotionPlan } from "@/lib/micro-motion";
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
@@ -53,7 +53,7 @@ export function TooltipPanel({
   anchorRef: RefObject<HTMLElement | null>;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<AnchoredPosition | null>(null);
+  const [pos, setPos] = useState<UnboundedAnchoredPosition | null>(null);
   const reduceMotion = usePrefersReducedMotion();
 
   useLayoutEffect(() => {
@@ -67,6 +67,10 @@ export function TooltipPanel({
           panel: { height: panel.offsetHeight, width: panel.offsetWidth },
           viewport: { width: window.innerWidth, height: window.innerHeight },
           align: "center",
+          // No height bound (#4917): pointer-events-none, so a cap would truncate
+          // rather than scroll. `pos.maxHeight` below is `null` — stated, not
+          // dropped — and TOOLTIP_MAX_WIDTH is the actual constraint.
+          capHeight: false,
         })
       );
     };
