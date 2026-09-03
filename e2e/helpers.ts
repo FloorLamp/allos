@@ -932,6 +932,18 @@ export async function openFoodAdd(page: Page): Promise<void> {
   // for the thing it is holding back.
   await page.getByTestId("food-add-door").click();
   await expect(page.getByTestId("food-add-panel")).toBeVisible();
+  // AND WAIT FOR THE FOLD TO FINISH OPENING. `.motion-disclose` transitions
+  // `::details-content`'s block-size over 200ms and CLIPS it while it runs
+  // (app/globals.css), so the panel is already "visible" while a control deep inside it
+  // still measures zero and reads as HIDDEN. Measured 2026-09-03: the pre-hydration
+  // test in e2e/offline-food-log.spec.ts failed on `protein-quickadd-input` once in a
+  // thirteen-file batch and passed 5/5 alone — a timing window, not a missing element.
+  // This waits for the animation rather than re-rolling the dice on it.
+  await fold.evaluate((el) =>
+    Promise.all(
+      el.getAnimations({ subtree: true }).map((a) => a.finished.catch(() => {}))
+    )
+  );
 }
 
 /** Opens the dashboard's remembered exhaustive remainder when it exists. */
