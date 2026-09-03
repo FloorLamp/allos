@@ -199,6 +199,12 @@ export function priorEventWindows(
  * would imply a fit that was never done. If someone later measures the distribution of
  * measured-minutes per night, this is the constant that should move, and moving it is
  * a data question rather than a taste one.
+ *
+ * WHAT WOULD SEND SOMEONE BACK TO IT, per the ruling: a REAL night excluded. If a
+ * night someone actually slept through, and would recognise as a night, falls under
+ * the hour and drops out of the series, that is the evidence this number is wrong —
+ * and it is evidence the floor produces itself rather than something anyone has to go
+ * looking for.
  */
 export const OVERNIGHT_MIN_MEASURED_MIN = 60;
 
