@@ -16,6 +16,7 @@ import {
   chartActiveDot,
   chartAnnotationLabel,
   chartAxisProps,
+  chartCurve,
   chartDash,
   chartExactDot,
   chartGridProps,
@@ -295,7 +296,7 @@ export default function BiomarkerChart({
             {...chartTooltipProps(c, motion)}
           />
           <Line
-            type="monotone"
+            type={chartCurve}
             dataKey="value"
             stroke={c.line}
             strokeWidth={2}

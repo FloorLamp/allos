@@ -13,11 +13,12 @@ import {
 } from "recharts";
 import { useChartColors } from "./useChartColors";
 import {
-  ChartLegend,
   chartActiveDot,
   chartAxisProps,
+  chartCurve,
   chartDash,
   chartGridProps,
+  ChartLegend,
   chartLineDot,
   chartMarkMotion,
   chartTooltipProps,
@@ -216,7 +217,7 @@ export default function CompareChart({
           ))}
           <Line
             yAxisId="left"
-            type="monotone"
+            type={chartCurve}
             dataKey="a"
             name={labelA}
             stroke={colorA}
@@ -228,7 +229,7 @@ export default function CompareChart({
           />
           <Line
             yAxisId={dualAxis ? "right" : "left"}
-            type="monotone"
+            type={chartCurve}
             dataKey="b"
             name={labelB}
             stroke={colorB}

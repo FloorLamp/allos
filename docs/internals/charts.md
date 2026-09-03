@@ -166,6 +166,7 @@ recharts tree.)
 | Decision         | Rule                                                                                                                | Export                             |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
 | Grid             | horizontal-only, solid hairlines. Never a dashed both-axes grid — the loudest "default recharts" tell               | `chartGridProps`                   |
+| Curve            | straight segments between readings — never an interpolating spline, which invents a peak nobody measured            | `chartCurve`                       |
 | Axes             | no tick marks, no spine; ticks at 11px in a **text** token                                                          | `chartAxisProps`                   |
 | Dots             | off above 30 points; exact readings are solid with a surface-colored ring; only inexact bounded readings are hollow | `chartLineDot` / `chartInexactDot` |
 | Hover dot        | r ≥ 4, present even when resting dots are off                                                                       | `chartActiveDot`                   |

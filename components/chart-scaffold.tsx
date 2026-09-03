@@ -233,6 +233,25 @@ export function chartBarCursorProps(c: ChartColors) {
   return { fill: c.grid, fillOpacity: 0.5 } as const;
 }
 
+// ── the curve (#4924) ───────────────────────────────────────────────────────
+
+/**
+ * The curve EVERY line in this app draws: straight segments between readings.
+ *
+ * It was `type="monotone"` written out at nine call sites across six cards — a
+ * mark decision that never made it into the scaffold, so it could not be fixed
+ * once. `curveMonotoneX` invents a smooth path through the points: on a dense
+ * daily series that is a harmless smoothing, and on FIVE WEIGH-INS over a
+ * quarter it draws a peak between two readings that nobody measured. The chart
+ * cannot tell those apart, because the two get the same curve.
+ *
+ * A straight segment asserts exactly what its two endpoints bound and nothing
+ * between them, which is the only claim a line here is entitled to make. The
+ * separate #2653 states still say how much to trust the segment (demoted for a
+ * thin series, cut at an over-limit hole); this decides its SHAPE, once.
+ */
+export const chartCurve = "linear" as const;
+
 // ── marks (Part 2: dots, annotations, stack gaps) ───────────────────────────
 
 /** Above this many points a line's per-point dots stop being data and start

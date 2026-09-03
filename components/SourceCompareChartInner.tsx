@@ -11,10 +11,11 @@ import {
 } from "recharts";
 import { useChartColors } from "./useChartColors";
 import {
-  ChartLegend,
   chartActiveDot,
   chartAxisProps,
+  chartCurve,
   chartGridProps,
+  ChartLegend,
   chartLineDot,
   chartMarkMotion,
   chartTooltipProps,
@@ -128,7 +129,7 @@ export default function SourceCompareChartInner({
           {series.map((s) => (
             <Line
               key={s.key}
-              type="monotone"
+              type={chartCurve}
               dataKey={s.key}
               stroke={s.color}
               strokeWidth={2}

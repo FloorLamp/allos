@@ -16,9 +16,11 @@ import {
 import type { ComponentProps } from "react";
 import { useChartColors } from "./useChartColors";
 import {
+  CHART_LINE_STROKE_WIDTH,
   chartActiveDot,
   chartAnnotationLabel,
   chartAxisProps,
+  chartCurve,
   chartDash,
   chartFittedAnnotationLabel,
   chartFullMargin,
@@ -31,7 +33,6 @@ import {
   chartSparseDot,
   chartSparseLineProps,
   chartTooltipProps,
-  CHART_LINE_STROKE_WIDTH,
   useChartMotion,
 } from "./chart-scaffold";
 import { chartBand, chartSeries } from "@/lib/chart-colors";
@@ -683,7 +684,7 @@ export default function LineChartCard({
             strokeRuns.map(([from], r) => (
               <Line
                 key={`run-${from}`}
-                type="monotone"
+                type={chartCurve}
                 dataKey={`run${r}`}
                 stroke={color}
                 {...(sparse
@@ -705,7 +706,7 @@ export default function LineChartCard({
           {Array.from({ length: spreadColumns }, (_, column) => (
             <Line
               key={`other-${column}`}
-              type="monotone"
+              type={chartCurve}
               dataKey={`other${column}`}
               stroke="none"
               dot={chartOtherSourceDot(c)}
@@ -716,7 +717,7 @@ export default function LineChartCard({
             />
           ))}
           <Line
-            type="monotone"
+            type={chartCurve}
             dataKey={key}
             // A cut series draws its strokes per run, above; this line keeps the
             // marks and the tooltip and paints no stroke of its own, so the two
