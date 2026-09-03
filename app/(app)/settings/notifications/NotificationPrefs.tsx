@@ -175,6 +175,15 @@ function timeValue(minute: number | null, auto: boolean): string {
 // WAS NEVER VALIDATION — nothing here ever consulted validity), and the
 // sub-hourly warning below still names it from the same `gridMinutes` this
 // control no longer takes.
+//
+// `inputClassName="w-32"`, not `w-auto` (#4976 CI fix). `.input` itself is
+// `w-full`; the native `<input type="time">` this replaced had a browser-
+// intrinsic content width regardless, so `w-auto` (reverting to that intrinsic
+// sizing inside this flex row) rendered small either way. `TimeField`'s visible
+// half is `type="text"`, whose intrinsic width with no `size` attribute is the
+// UA's ~20-character default — 257px, wider than a phone-width row and clipped
+// by `overflow-x-clip`. `w-32` matches the width `WhenControl` already gives
+// this same component; `pr-9` (the picker glyph's room) is untouched.
 function TimeControl({
   value,
   onChange,
@@ -218,7 +227,7 @@ function TimeControl({
             // save it as "off"; the mode select owns Off.
             if (v !== "") onChange(v);
           }}
-          inputClassName="w-auto"
+          inputClassName="w-32"
           label={`${label} time`}
           data-testid={testId ? `${testId}-time` : undefined}
         />
@@ -317,7 +326,7 @@ function DigestControl({
               // mode select owns Off.
               if (v !== "") onChange({ digest_hour: v });
             }}
-            inputClassName="w-auto"
+            inputClassName="w-32"
             label={
               mode === "dynamic" ? `${label} earliest time` : `${label} time`
             }
@@ -1037,7 +1046,7 @@ export default function NotificationPrefs({
                                 v
                               );
                           }}
-                          inputClassName="w-auto"
+                          inputClassName="w-32"
                           label={`${e.label} time`}
                         />
                       )}
