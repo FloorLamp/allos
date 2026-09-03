@@ -367,13 +367,15 @@ export function enduranceEventItems(
   return getActiveEndurancePlans(profileId)
     .filter((p) => p.eventDate >= today)
     .map((p) => {
+      // The viewer's distance unit (#1019) threads into BOTH naming rules: an
+      // unnamed event's TITLE carries a distance too, so formatting only the detail
+      // leaves "Event: 10 km Run · Run · 6.21 mi" on a miles login.
+      const fmt = (km: number) => fmtDistance(km, distanceUnit);
       return {
         key: `endurance-event:${p.id}`,
         domain: "training" as const,
-        title: `Event: ${eventTitle(p)}`,
-        // The viewer's distance unit threads into the shared detail rule (#1019), so
-        // an event with no cardio pair reads by its kind and one with reads in miles.
-        detail: eventDetail(p, (km) => fmtDistance(km, distanceUnit)),
+        title: `Event: ${eventTitle(p, fmt)}`,
+        detail: eventDetail(p, fmt),
         href: "/training" as const,
         dueDate: p.eventDate,
         suppressible: false,

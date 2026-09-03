@@ -818,10 +818,15 @@ domain. Non-norm tiers (rough bands, evidence scales) never enter it, no
 percentile is fabricated for them, and there is still no overall fitness score.
 Training and Longevity render the same component over the same model.
 
-Endurance event plans work backward from a target date through a safe weekly
-volume trajectory, long-session progression, and taper. If the available time is
-too short, the plan says so instead of compressing unsafe growth into the
-calendar. Mobility sessions log against body regions, build their own coverage
+Events record what you are training toward — a race, a competition, a meet, a
+tournament, or whatever you call yours: a kind, a name and a date. Add a
+discipline and a target distance and it becomes an endurance plan too, working
+backward from the date through a safe weekly volume trajectory, long-session
+progression, and taper. If the available time is too short, the plan says so
+instead of compressing unsafe growth into the calendar. An event without a
+distance — a lifting meet, a club open — keeps the name, the date, the countdown
+and the complete/abandon lifecycle, and simply has no trajectory to show. You can
+hold one active plan per cardio discipline, and as many other events as you like. Mobility sessions log against body regions, build their own coverage
 strip, and can satisfy weekly mobility habits.
 
 Exercise how-to guides, muscle vocabulary, routine semantics, recommendation

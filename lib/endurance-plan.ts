@@ -80,9 +80,7 @@ export type CoachedEndurancePlan = EndurancePlan & {
 
 // The ONE narrowing door. Null for an event with no cardio pair — a meet, a
 // tournament, a race whose distance the user never entered.
-export function coachedPlan(
-  plan: EndurancePlan
-): CoachedEndurancePlan | null {
+export function coachedPlan(plan: EndurancePlan): CoachedEndurancePlan | null {
   const { discipline, targetDistanceKm } = plan;
   if (discipline == null || targetDistanceKm == null) return null;
   return { ...plan, discipline, targetDistanceKm };
@@ -287,11 +285,7 @@ export function computeEnduranceTrajectory(
   input: EnduranceTrajectoryInput
 ): EnduranceTrajectory {
   const weekStart = input.weekStart ?? 0;
-  const eventWeekIndex = weeksToEvent(
-    input.today,
-    input.eventDate,
-    weekStart
-  );
+  const eventWeekIndex = weeksToEvent(input.today, input.eventDate, weekStart);
 
   const peakLong = peakLongSessionKm(input.discipline, input.targetDistanceKm);
   // Weekly volume needed to support the peak long session (never below current).
@@ -466,19 +460,28 @@ export interface EndurancePlanCard {
 // Structural, not `EndurancePlan`, so the timeline's raw SQL row reaches the SAME
 // rule without being shaped into a whole plan first. Spelling the fallback twice is
 // exactly how the card and the timeline row would drift apart.
-export function eventTitle(plan: {
-  kind: string;
-  eventName: string | null;
-  discipline: EndurancePlanDiscipline | null;
-  targetDistanceKm: number | null;
-}): string {
+export function eventTitle(
+  plan: {
+    kind: string;
+    eventName: string | null;
+    discipline: EndurancePlanDiscipline | null;
+    targetDistanceKm: number | null;
+  },
+  formatDistanceKm: (km: number) => string = defaultKm
+): string {
   const named = plan.eventName?.trim();
   if (named) return named;
   const { discipline, targetDistanceKm } = plan;
   if (discipline != null && targetDistanceKm != null)
-    return `${round1(targetDistanceKm)} km ${disciplineLabel(discipline)}`;
+    return `${formatDistanceKm(targetDistanceKm)} ${disciplineLabel(discipline)}`;
   return eventKindLabel(plan.kind);
 }
+
+// Canonical km, for every caller with no viewer to format for. The Upcoming rows
+// pass the viewer's pref instead (#1019) — and BOTH the title and the detail take
+// it, because an unnamed event's title CONTAINS a distance: threading it into only
+// one of them is the regression `upcoming-display-units.test.ts` caught here.
+const defaultKm = (km: number) => `${round1(km)} km`;
 
 // The one-line descriptor beside the title: the cardio pair where there is one, else
 // the open kind. Same pairing rule, same two callers as `eventTitle`.
@@ -488,7 +491,7 @@ export function eventDetail(
     discipline: EndurancePlanDiscipline | null;
     targetDistanceKm: number | null;
   },
-  formatDistanceKm: (km: number) => string = (km) => `${round1(km)} km`
+  formatDistanceKm: (km: number) => string = defaultKm
 ): string {
   const { discipline, targetDistanceKm } = plan;
   return discipline != null && targetDistanceKm != null

@@ -184,7 +184,9 @@ export function getEnduranceEvents(
       const coached = coachedPlan(p);
       return {
         plan: p,
-        card: coached ? getEndurancePlanCard(profileId, coached, todayStr) : null,
+        card: coached
+          ? getEndurancePlanCard(profileId, coached, todayStr)
+          : null,
         weeksToEvent: weeksToEvent(
           todayStr,
           p.eventDate,

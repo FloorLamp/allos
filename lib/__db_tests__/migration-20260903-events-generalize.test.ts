@@ -50,16 +50,54 @@ const MIGRATION = "20260903-events-generalize-endurance-plans";
 function seedOldShape(): Database.Database {
   const mem = new Database(":memory:");
   runMigrations(mem, migrationsBefore(MIGRATION));
-  mem.prepare("INSERT INTO profiles (id, name) VALUES (1, 'Rebuild Test')").run();
+  mem
+    .prepare("INSERT INTO profiles (id, name) VALUES (1, 'Rebuild Test')")
+    .run();
   const insert = mem.prepare(
     `INSERT INTO endurance_plans
        (id, profile_id, event_name, discipline, event_date, target_distance_km,
         target_time_sec, status, session_kinds, notes, completed_on, created_at)
      VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
-  insert.run(4, "City Half", "run", "2019-05-25", 21.1, 6300, "active", null, null, null, "2019-01-02 03:04:05");
-  insert.run(5, null, "ride", "2019-07-14", 40, null, "active", null, null, null, "2019-01-03 03:04:05");
-  insert.run(6, "Lake Swim", "swim", "2019-03-09", 1.5, null, "completed", '["tempo"]', "wetsuit legal", "2019-03-09", "2019-01-04 03:04:05");
+  insert.run(
+    4,
+    "City Half",
+    "run",
+    "2019-05-25",
+    21.1,
+    6300,
+    "active",
+    null,
+    null,
+    null,
+    "2019-01-02 03:04:05"
+  );
+  insert.run(
+    5,
+    null,
+    "ride",
+    "2019-07-14",
+    40,
+    null,
+    "active",
+    null,
+    null,
+    null,
+    "2019-01-03 03:04:05"
+  );
+  insert.run(
+    6,
+    "Lake Swim",
+    "swim",
+    "2019-03-09",
+    1.5,
+    null,
+    "completed",
+    '["tempo"]',
+    "wetsuit legal",
+    "2019-03-09",
+    "2019-01-04 03:04:05"
+  );
   return mem;
 }
 
@@ -159,7 +197,16 @@ beforeAll(() => {
         target_time_sec, status, created_at)
      VALUES (?, ?, 'race', ?, ?, ?, ?, ?, ?, '2019-01-02 03:04:05')`
   );
-  insert.run(4, PROFILE, "City Half", "run", "2019-05-25", 21.1, 6300, "active");
+  insert.run(
+    4,
+    PROFILE,
+    "City Half",
+    "run",
+    "2019-05-25",
+    21.1,
+    6300,
+    "active"
+  );
   insert.run(5, PROFILE, null, "ride", "2019-07-14", 40, null, "active");
 });
 

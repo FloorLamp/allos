@@ -27,10 +27,7 @@ import {
   setEndurancePlanStatusCore,
   deleteEndurancePlanCore,
 } from "@/lib/endurance-plans";
-import {
-  coachedPlan,
-  enduranceLongSessionKey,
-} from "@/lib/endurance-plan";
+import { coachedPlan, enduranceLongSessionKey } from "@/lib/endurance-plan";
 
 function makeProfile(name: string): number {
   return Number(

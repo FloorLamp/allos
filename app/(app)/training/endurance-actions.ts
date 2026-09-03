@@ -111,7 +111,9 @@ export async function createEndurancePlan(
   if (unavailable) return unavailable;
   const discipline = parseDiscipline(formData.get("discipline"));
   if (discipline === undefined)
-    return formError("Pick a discipline (run, ride, or swim), or leave it blank.");
+    return formError(
+      "Pick a discipline (run, ride, or swim), or leave it blank."
+    );
   const unit = capturedDistanceUnit(formData, login.id);
   const out = createEndurancePlanCore(profile.id, {
     kind: String(formData.get("kind") ?? ""),
@@ -153,7 +155,9 @@ export async function updateEndurancePlan(
   if (!Number.isInteger(id)) return formError("Invalid plan.");
   const discipline = parseDiscipline(formData.get("discipline"));
   if (discipline === undefined)
-    return formError("Pick a discipline (run, ride, or swim), or leave it blank.");
+    return formError(
+      "Pick a discipline (run, ride, or swim), or leave it blank."
+    );
   const unit = capturedDistanceUnit(formData, login.id);
   // Discipline is validated above and always named — it is what the duplicate check reads.
   const patch: EndurancePlanPatch = { discipline };
