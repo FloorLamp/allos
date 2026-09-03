@@ -157,7 +157,7 @@ describe("getMedicationFamilyStates — the two-ibuprofen family (#1027)", () =>
     // combined count spans both items.
     expect(state.latestId).toBe(rxAdmin);
     expect(state.latestItemId).toBe(rx.itemId);
-    expect(state.countToday).toBe(2);
+    expect(state.countInWindow).toBe(2);
     expect(state.minConfirmedMax).toBe(4);
   });
 
@@ -253,7 +253,7 @@ describe("family over-max care finding (#1027)", () => {
     expect(up!.detail).toContain("across");
     expect(up!.detail).toContain("Ibuprofen 800 mg");
     // The copy states the basis actually used (#1854): doses, not milligrams.
-    expect(up!.detail).toContain("5 doses logged today");
+    expect(up!.detail).toContain("5 doses logged in the last 24h");
   });
 
   it("a solo item keeps the exact pre-#1027 behavior", () => {
@@ -332,8 +332,8 @@ describe("family over-max care finding — mg basis (#1854)", () => {
     expect(up.domain).toBe("prn-max");
     // End-to-end copy: milligram basis stated, both members named, never a
     // dose-count framing.
-    expect(up.detail).toContain("2400 mg logged today");
-    expect(up.detail).toContain("max of 1200 mg per day");
+    expect(up.detail).toContain("2400 mg logged in the last 24h");
+    expect(up.detail).toContain("max of 1200 mg in 24h");
     expect(up.detail).toContain("Ibuprofen 800 mg");
     expect(up.detail).not.toContain("doses logged");
   });
@@ -378,8 +378,8 @@ describe("family over-max care finding — mg basis (#1854)", () => {
     const up = collectUpcoming(p, date).find(
       (u) => u.key === prnMaxSignalKey(otc.itemId)
     )!;
-    expect(up.detail).toContain("5 doses logged today");
-    expect(up.detail).not.toContain("mg logged today");
+    expect(up.detail).toContain("5 doses logged in the last 24h");
+    expect(up.detail).not.toContain("mg logged in the last 24h");
   });
 
   it("mg lower bound when NO count fallback exists: known amounts already past the ceiling read 'at least'", () => {
@@ -406,7 +406,7 @@ describe("family over-max care finding — mg basis (#1854)", () => {
     const up = collectUpcoming(p, date).find(
       (u) => u.key === prnMaxSignalKey(otc.itemId)
     )!;
-    expect(up.detail).toContain("At least 1600 mg logged today");
+    expect(up.detail).toContain("At least 1600 mg logged in the last 24h");
     expect(up.detail).toContain("1 dose had no recorded amount");
   });
 });
@@ -481,7 +481,7 @@ describe("therapeutic-duplication note (#1027 ask 3, coaching tier)", () => {
       [a1.itemId, a2.itemId, a3.itemId].sort()
     );
     expect(state.latestId).toBe(arming);
-    expect(state.countToday).toBe(2);
+    expect(state.countInWindow).toBe(2);
     expect(state.minConfirmedMax).toBe(6);
 
     // A dismissal recorded against the family key (as before the copy change)

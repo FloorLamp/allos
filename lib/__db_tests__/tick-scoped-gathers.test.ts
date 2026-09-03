@@ -56,7 +56,12 @@ import {
   setProfileSex,
 } from "@/lib/settings";
 import { DIGEST_MODE_KEY } from "@/lib/settings/notifications";
-import { shiftDateStr, utcInstant, utcSqlString } from "@/lib/date";
+import {
+  shiftDateStr,
+  utcInstant,
+  utcMinute,
+  utcSqlString,
+} from "@/lib/date";
 import {
   collectUpcoming,
   getMedicationFamilyStates,
@@ -355,7 +360,7 @@ async function familyTickCalls(profileId: number): Promise<{
 }> {
   const date = today(profileId);
   await runRedoseNotices(profileId, "TickScope", date);
-  const overMax = getPrnOverMaxItems(profileId, date).length;
+  const overMax = getPrnOverMaxItems(profileId, utcMinute(new Date())).length;
   const quick = getPrnMedicationsForQuickLog(profileId);
   const ibuprofen = quick.find((q) => q.name === "Ibuprofen");
   return {
@@ -741,10 +746,11 @@ describe("a tick scope's memo cannot outlive its tick", () => {
   it("a NEW scope re-reads the ledger a previous scope had memoized", async () => {
     const { profileId, otcItemId } = seedFamilyProfile("TickFamLifetime");
     const date = today(profileId);
+    const nowUtc = utcMinute(new Date());
     const first = await runInTickScope(async () =>
-      getMedicationFamilyStates(profileId, date).get(otcItemId)
+      getMedicationFamilyStates(profileId, nowUtc).get(otcItemId)
     );
-    expect(first?.countToday).toBe(2);
+    expect(first?.countInWindow).toBe(2);
 
     // A dose confirmed between ticks — the write that must never be missed.
     const dose = db
@@ -753,12 +759,12 @@ describe("a tick scope's memo cannot outlive its tick", () => {
     logAdministration(otcItemId, dose.id, date, 0, "200 mg");
 
     const second = await runInTickScope(async () =>
-      getMedicationFamilyStates(profileId, date).get(otcItemId)
+      getMedicationFamilyStates(profileId, nowUtc).get(otcItemId)
     );
-    expect(second?.countToday).toBe(3);
+    expect(second?.countInWindow).toBe(3);
     // And with no scope at all, every read is fresh.
     expect(
-      getMedicationFamilyStates(profileId, date).get(otcItemId)?.countToday
+      getMedicationFamilyStates(profileId, nowUtc).get(otcItemId)?.countInWindow
     ).toBe(3);
   });
 
@@ -772,22 +778,23 @@ describe("a tick scope's memo cannot outlive its tick", () => {
     // here instead of silently reading its own stale snapshot.
     const { profileId, otcItemId } = seedFamilyProfile("TickFamSnapshot");
     const date = today(profileId);
+    const nowUtc = utcMinute(new Date());
     const dose = db
       .prepare("SELECT id FROM intake_item_doses WHERE item_id = ? LIMIT 1")
       .get(otcItemId) as { id: number };
 
     await runInTickScope(async () => {
       expect(
-        getMedicationFamilyStates(profileId, date).get(otcItemId)?.countToday
+        getMedicationFamilyStates(profileId, nowUtc).get(otcItemId)?.countInWindow
       ).toBe(2);
       logAdministration(otcItemId, dose.id, date, 0, "200 mg");
       expect(
-        getMedicationFamilyStates(profileId, date).get(otcItemId)?.countToday
+        getMedicationFamilyStates(profileId, nowUtc).get(otcItemId)?.countInWindow
       ).toBe(2);
     });
     // The moment the scope closes, the write is visible again.
     expect(
-      getMedicationFamilyStates(profileId, date).get(otcItemId)?.countToday
+      getMedicationFamilyStates(profileId, nowUtc).get(otcItemId)?.countInWindow
     ).toBe(3);
   });
 

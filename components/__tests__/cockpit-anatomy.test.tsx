@@ -185,7 +185,7 @@ describe("meds are labeled-verb chips, detail only when acting (#4752 item 4)", 
     ]);
     // ONE sentence about the whole row, replacing six lines of per-row boilerplate.
     expect(screen.getByTestId("cockpit-med-status").textContent).toBe(
-      "Nothing given today"
+      "Nothing given in 24h"
     );
     // A COLLAPSED CHIP SHOWS NEITHER (#4752's acceptance criterion): no per-med day
     // label and no per-med redose line until somebody opens the med.
