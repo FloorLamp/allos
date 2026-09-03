@@ -11,13 +11,15 @@
 //      result it earned — so the caller's channel-agnostic contact rule
 //      (`delivered = results.some(ok)`, lib/notifications/tick.ts) stamps the
 //      slot marker once on a partial success;
-//   2. the timed-out channel is recorded as the delivery-health failure
-//      (Erroring in Settings, #2565's surface) with the TYPED timeout error —
-//      never as success, never as "nothing configured";
+//   2. the timed-out channel is recorded as the delivery-health failure for the
+//      OWNER it was addressing (Erroring on that login's row, #2565) with the
+//      TYPED timeout error — never as success, never as "nothing configured";
 //   3. an all-timeout dispatch reports every channel failed, which leaves the
 //      caller's slot marker unset for the ordinary retry band;
-//   4. a late completion after the deadline mutates neither the returned
-//      results nor the recorded marker.
+//   4. a late completion after the deadline never mutates the returned results —
+//      while the OWNER'S ROW follows it (#2565): the row is about the latest
+//      completed attempt to that owner, and a late success is one whose message
+//      did land, so Erroring-by-timeout gives way to Delivering.
 //
 // Every value is synthetic: a fake bot token, a fake HA webhook, a fake chat id.
 
@@ -25,6 +27,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db } from "@/lib/db";
 import { setTelegramBotConfig, setProfileHomeAssistant } from "@/lib/settings";
 import { dispatch, getNotifyError } from "@/lib/notifications";
+import { seedLoginTelegram } from "./fixtures";
 import {
   DispatchTimeoutError,
   NOTIFICATION_DISPATCH_TIMEOUT_MS,
@@ -93,14 +96,16 @@ describe("dispatch() under the shared deadline (#3057)", () => {
       disabledKinds: [],
     });
 
+    // A managing login's chat is the Telegram OWNER the timeout is recorded against
+    // (#2565); an explicit chat override names no login and so no owner.
+    seedLoginTelegram(profileId, CHAT_ID);
+
     let results: Awaited<ReturnType<typeof dispatch>> | null = null;
-    // The explicit chat override makes the REAL telegram channel configured
-    // without a managing-login fixture (#615/#1716) — same bounded dispatch.
-    void dispatch(
-      profileId,
-      { title: "test", body: "deadline probe", kind: "dose" },
-      { telegramChatIds: [CHAT_ID] }
-    ).then((r) => {
+    void dispatch(profileId, {
+      title: "test",
+      body: "deadline probe",
+      kind: "dose",
+    }).then((r) => {
       results = r;
     });
 
@@ -132,26 +137,28 @@ describe("dispatch() under the shared deadline (#3057)", () => {
     expect(marker!.channel).toBe("telegram");
     expect(marker!.error).toBe(telegram.error);
 
-    // The send finally answers, long after the results were acted on: the late
-    // completion is logged only — results and marker stand exactly as frozen.
+    // The send finally answers, long after the results were acted on: the results
+    // stand exactly as frozen, and the owner's row reads the outcome that actually
+    // happened — the message landed, so the timeout's Erroring gives way.
     wire.resolveTelegram({ ok: true, result: { message_id: 42 } });
     await vi.advanceTimersByTimeAsync(0);
     expect(results!.find((r) => r.id === "telegram")).toBe(telegram);
     expect(telegram.ok).toBe(false);
-    expect(getNotifyError()).toEqual(marker);
+    await vi.waitFor(() => expect(getNotifyError()).toBeNull());
   });
 
   it("all channels timed out: every result is a failure, so the slot marker stays unset for the retry band", async () => {
     // Only Telegram is configured, and its transport never answers.
     stubWire();
     const profileId = createProfile("DeadlineAllFail");
+    seedLoginTelegram(profileId, CHAT_ID);
 
     let results: Awaited<ReturnType<typeof dispatch>> | null = null;
-    void dispatch(
-      profileId,
-      { title: "test", body: "deadline probe", kind: "dose" },
-      { telegramChatIds: [CHAT_ID] }
-    ).then((r) => {
+    void dispatch(profileId, {
+      title: "test",
+      body: "deadline probe",
+      kind: "dose",
+    }).then((r) => {
       results = r;
     });
 

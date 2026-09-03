@@ -3,6 +3,7 @@ import {
   buildIntradayModel,
   clockMinute,
   downsampleHr,
+  intradayFreshness,
   localStampMinute,
   splitHrSegments,
   INTRADAY_MAX_POINTS,
@@ -721,5 +722,73 @@ describe("timelineEntryAnchorId", () => {
     expect(timelineEntryAnchorId("doc: Ada’s panel (2026)")).toBe(
       "timeline-entry-doc-Ada-s-panel-2026-"
     );
+  });
+});
+
+describe("intradayFreshness (#4767)", () => {
+  // THE FIXTURE REACHES EVERY BRANCH, and the one that matters is the third: a
+  // window that closed AFTER the last sample. HR runs 06:00–07:00; "now" and the
+  // block are what move.
+  const hr = hrRun(DAY, 360, 61, () => 62);
+  const model = (nowMinute: number | null, over: Partial<IntradayInput> = {}) =>
+    buildIntradayModel(input({ hr, nowMinute, ...over }))!;
+
+  it.each([
+    ["a past day states no lag at all", null, null],
+    ["a sample this minute", 420, "Synced just now"],
+    ["under an hour reads in minutes", 442, "Synced 22 min ago"],
+    ["a whole hour drops the minutes half", 480, "Synced 1h ago"],
+    ["past the hour keeps both", 505, "Synced 1h 25m ago"],
+  ] as const)("%s", (_name, nowMinute, expected) => {
+    expect(intradayFreshness(model(nowMinute))).toBe(expected);
+  });
+
+  it("names the session the watch has not caught up with", () => {
+    // A ride 09:00–10:00 — after the 07:00 last sample. "Synced 3h ago" is true and
+    // answers a different question than the one someone who just finished is asking.
+    const withRide = model(720, {
+      events: [
+        activityEvent("activity:9", {
+          title: "Evening ride",
+          sortTime: "09:00",
+          clockWindow: {
+            date: DAY,
+            start_time: "09:00",
+            end_time: "10:00",
+            duration_min: 60,
+          },
+        }),
+      ],
+    });
+    expect(intradayFreshness(withRide)).toBe("No data since Evening ride yet");
+  });
+
+  it("says so when today has no worn minutes at all", () => {
+    // The gate that keeps this off a wearable-less dashboard lives at the mount; a
+    // day that draws for another reason (a workout window) still must not present
+    // an empty HR axis as a measured flat.
+    const noHr = buildIntradayModel(
+      input({ nowMinute: 720, events: [activityEvent("activity:9")] })
+    )!;
+    expect(intradayFreshness(noHr)).toBe("No heart rate synced today yet");
+  });
+
+  it("is silent on a block that closed BEFORE the last sample", () => {
+    // The converse of the workout case, and the reason it is a comparison rather
+    // than "is there a block": a morning session the watch DID cover must read as
+    // an ordinary sync, not as a gap.
+    const covered = model(420, {
+      events: [
+        activityEvent("activity:9", {
+          clockWindow: {
+            date: DAY,
+            start_time: "06:10",
+            end_time: "06:40",
+            duration_min: 30,
+          },
+        }),
+      ],
+    });
+    expect(intradayFreshness(covered)).toBe("Synced just now");
   });
 });

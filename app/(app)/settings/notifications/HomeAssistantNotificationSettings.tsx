@@ -90,14 +90,7 @@ export default function HomeAssistantNotificationSettings({
   }
 
   return (
-    <div className="card space-y-5" data-testid="ha-settings">
-      <div className="flex items-center justify-between">
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Notifications (Home Assistant)
-        </h2>
-        <SaveStatus {...status} />
-      </div>
-
+    <div className="space-y-5" data-testid="ha-settings">
       <p className="text-xs text-slate-500 dark:text-slate-400">
         Send reminders to a{" "}
         <a
@@ -173,13 +166,15 @@ export default function HomeAssistantNotificationSettings({
         </>
       )}
 
+      {/* ONE label per action across this page (#2565's census: "Save", "Save
+          notifications", "Apply Home Assistant settings", "Send test" were four
+          spellings of two actions). This button used to be called "Apply Home
+          Assistant settings" solely because Playwright's getByRole name matching is
+          case-insensitive SUBSTRING matching, so a second bare "Save" on the page made
+          unscoped clicks ambiguous. The strip settles that properly: each channel's
+          controls live inside its own row, so a spec scopes to the row (or to the
+          per-channel testid) instead of the label carrying the disambiguation. */}
       <div className="flex flex-wrap items-center gap-2">
-        {/* NOT labeled "Save": the Telegram card above already has a "Save"
-            button, and Playwright's getByRole name matching is case-insensitive
-            SUBSTRING matching — so any accessible name containing "Save" (even
-            "Save Home Assistant") would make pre-existing bare
-            getByRole("button", { name: "Save" }) clicks on this page ambiguous
-            (strict-mode failure). Distinct verb keeps every spec unambiguous. */}
         <button
           type="button"
           onClick={save}
@@ -187,7 +182,7 @@ export default function HomeAssistantNotificationSettings({
           className="btn"
           data-testid="ha-save"
         >
-          Apply Home Assistant settings
+          Save
         </button>
         {enabled && (
           <button
@@ -197,9 +192,10 @@ export default function HomeAssistantNotificationSettings({
             className="btn-ghost"
             data-testid="ha-test"
           >
-            Send test notification
+            Send test
           </button>
         )}
+        <SaveStatus {...status} />
       </div>
 
       {result && (

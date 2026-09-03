@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { openChannelRow } from "./helpers";
 // Web Push subscribe UI (issue #17). A REAL end-to-end push can't run headless:
 // it needs a live browser push service (FCM/Mozilla) plus a registered service
 // worker, neither of which exists in CI. So we stub the browser Push API surface
@@ -67,6 +68,8 @@ test.describe("Web Push subscribe UI", () => {
 
     await page.goto("/settings/notifications");
 
+    // The channel configurations moved behind their strip rows (#2565 A).
+    await openChannelRow(page, "push");
     const card = page.getByTestId("push-settings");
     await expect(card).toBeVisible();
     await expect(page.getByTestId("push-status")).toContainText("Not enabled");

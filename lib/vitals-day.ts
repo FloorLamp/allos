@@ -1,32 +1,11 @@
-// The Trends Body census's 1D intraday layer (issue #1466) — PURE model.
-//
-// It answers "What did today actually look like?" with readings positioned on a
-// fixed 5-minute slot grid spanning 00:00–24:00. #3387 retired the sibling Today
-// strip; the intraday chart remains the distinct clock-axis view.
-//
-// WHY A SLOT GRID (and not the #402 epoch axis). recharts treats a string dataKey
-// as a CATEGORY axis, where x-position is the array INDEX — which is exactly the
-// distortion #402 fixes for a SPARSE daily series (the categories are the readings
-// themselves, so a 4-year gap renders as wide as a day). Here the categories are
-// the DAY'S OWN uniform 5-minute slots, present whether or not a reading landed in
-// them, so index IS proportional to time by construction and a wear gap is a run of
-// nulls with real width. Same honesty as the numeric time axis, without a second
-// chart component.
-//
-// No DB, no React, no clock: every input is already profile-local (medical_records
-// `date` is day-granular by contract, hr_minutes.ts is a local stamp by design —
-// #94). The one conversion this module does is turning an ingested ABSOLUTE instant
-// (Health Connect stores the reading's timestamp in `external_id`) into the
-// profile's wall clock, and it is gated on landing back on the row's own day.
+// A vital reading's CLOCK TIME — PURE. The 1D intraday layer this module used to
+// model (#1466) retired with #4767 (the /history day view is the one intraday
+// surface); what stays is the one conversion its consumers still need: turning a
+// reading's stated `occurred_at`, or the ABSOLUTE instant Health Connect stores in
+// `external_id`, into the profile's wall clock, gated on landing back on the row's
+// own day. No DB, no React, no clock.
 
 import { zonedDateParts } from "./date";
-import {
-  clockMinute,
-  downsampleHr,
-  INTRADAY_BUCKET_MINUTES,
-  MINUTES_IN_DAY,
-  type IntradayHrBucket,
-} from "./intraday";
 
 // ── Reading time ─────────────────────────────────────────────────────────────
 
@@ -85,87 +64,4 @@ export function vitalReadingTime(
   if (Number.isNaN(at.getTime())) return null;
   const parts = zonedDateParts(tz, at);
   return parts.date === row.date ? parts.hhmm : null;
-}
-
-// ── The 1D intraday swap ────────────────────────────────────────────────────
-
-// The slot width of the intraday grid — the SAME bucket the #1068 panel
-// downsamples HR to, so the two surfaces resolve the day identically.
-export const VITALS_SLOT_MINUTES = INTRADAY_BUCKET_MINUTES;
-
-export interface IntradayVitalPoint {
-  minute: number;
-  value: number;
-  time: string;
-}
-
-// A day's TIMED readings of one vital, ascending. Rows with no resolvable clock
-// time are excluded on purpose: an untimed reading cannot be positioned honestly on
-// a clock axis, so it is excluded instead of being pinned to a lie.
-export function intradayVitalPoints(
-  rows: VitalReadingRow[],
-  date: string,
-  tz: string
-): IntradayVitalPoint[] {
-  const out: IntradayVitalPoint[] = [];
-  for (const row of rows) {
-    if (row.date !== date) continue;
-    const value = row.value_num;
-    if (value == null || !Number.isFinite(value)) continue;
-    const time = vitalReadingTime(row, tz);
-    if (time == null) continue;
-    const minute = clockMinute(time);
-    if (minute == null) continue;
-    out.push({ minute, value, time });
-  }
-  return out.sort((a, b) => a.minute - b.minute);
-}
-
-// "HH:MM" for a minute past local midnight (the slot grid's category labels).
-export function slotLabel(minute: number): string {
-  const m = Math.max(0, Math.trunc(minute));
-  const h = Math.floor(m / 60) % 24;
-  return `${String(h).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
-}
-
-// The chart series: one entry per slot across the whole local day, value null where
-// nothing was measured. The full-day grid is the point — it is what makes x
-// proportional to time, and what lets a wear gap render as a break (the caller
-// passes connectNulls={false}) instead of a straight line implying a measured flat.
-export function toIntradaySlotSeries(
-  points: { minute: number; value: number }[],
-  slotMinutes = VITALS_SLOT_MINUTES
-): { date: string; value: number | null }[] {
-  const width = Math.max(1, Math.trunc(slotMinutes));
-  const slots = Math.ceil(MINUTES_IN_DAY / width);
-  const values = new Array<number | null>(slots).fill(null);
-  const filledAt = new Array<number>(slots).fill(-1);
-  for (const p of points) {
-    if (!Number.isFinite(p.minute) || !Number.isFinite(p.value)) continue;
-    if (p.minute < 0 || p.minute >= MINUTES_IN_DAY) continue;
-    const slot = Math.floor(p.minute / width);
-    // Later minute wins within a slot, so the label reads as "the reading at
-    // (about) this time" rather than whichever row happened to be enumerated last.
-    if (p.minute < filledAt[slot]) continue;
-    values[slot] = p.value;
-    filledAt[slot] = p.minute;
-  }
-  return values.map((value, slot) => ({
-    date: slotLabel(slot * width),
-    value,
-  }));
-}
-
-// The day's HR line, on the same slot grid — over the SAME downsampleHr the #1068
-// intraday panel uses (one computation; this surface is another formatter of it).
-export function hrSlotSeries(
-  date: string,
-  buckets: IntradayHrBucket[]
-): { date: string; value: number | null }[] {
-  const points = downsampleHr(date, buckets, VITALS_SLOT_MINUTES).map((p) => ({
-    minute: p.minute,
-    value: p.bpm,
-  }));
-  if (points.length === 0) return [];
-  return toIntradaySlotSeries(points);
 }

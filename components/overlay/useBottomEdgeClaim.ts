@@ -108,7 +108,32 @@ export function useBottomEdgeClaim<T extends HTMLElement>(
       ) {
         claims.delete(el);
       } else {
-        const top = el.getBoundingClientRect().top;
+        // THE RESTING TOP EDGE, NOT THE ANIMATED ONE (#4334, #4796). A surface
+        // that ARRIVES carries a `translateY` while it does, and
+        // `getBoundingClientRect` reads the TRANSFORMED box — the edge it is
+        // sliding up FROM. Publishing that is the UNSAFE direction: for the
+        // whole arrival the edge reads as LESS claimed than it is about to be,
+        // so a notice raised in that window comes to rest on the panel, which is
+        // the collision this exists to prevent. Discounting the element's own
+        // transform publishes the edge it comes to REST on, from its first
+        // frame. A claimant at REST carries no transform of its own — neither
+        // dock draws one, and the overlay keyframes are the only thing that
+        // puts one on a sheet panel (app/globals.css; no surface hand-rolls a
+        // slide, per lib/__tests__/overlay-motion-chokepoint.test.ts) — so
+        // discounting it is a no-op everywhere except mid-motion, which is the
+        // only place it was wrong.
+        //
+        // What this does NOT reach: a panel already at rest that is being
+        // dragged away (useOverlayDrag writes the same property) or one playing
+        // its EXIT keeps its resting claim, because nothing re-measures an
+        // element that is only being translated. Both over-state the edge, so a
+        // notice clears more than it needs to — the safe direction, unlike an
+        // arrival.
+        const { transform } = getComputedStyle(el);
+        // `none` is not a <transform-list>, so it is not DOMMatrix's to parse.
+        const shift =
+          transform === "none" ? 0 : new DOMMatrixReadOnly(transform).m42;
+        const top = el.getBoundingClientRect().top - shift;
         claims.set(el, Math.max(0, window.innerHeight - top));
       }
       publish();
@@ -126,18 +151,9 @@ export function useBottomEdgeClaim<T extends HTMLElement>(
         : new ResizeObserver(measure);
     ro?.observe(el);
     window.addEventListener("resize", measure);
-    // A surface that ARRIVES has a transform on it while it arrives, and
-    // `getBoundingClientRect` reads the transformed box — so a sheet measured on
-    // mount reports the edge it is sliding up FROM rather than the one it comes to
-    // rest on (#4334). The keyframe carries no `forwards` fill, so the element's
-    // own `animationend` is the moment the box becomes the settled one. Nothing
-    // else fires there: a transform changes no border box, so the ResizeObserver
-    // above never sees it.
-    el.addEventListener("animationend", measure);
     return () => {
       ro?.disconnect();
       window.removeEventListener("resize", measure);
-      el.removeEventListener("animationend", measure);
       claims.delete(el);
       publish();
     };

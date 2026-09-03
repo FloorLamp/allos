@@ -204,7 +204,11 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     await expect(page.getByText("Daily symptoms", { exact: true })).toHaveCount(
       0
     );
-    await expect(page.getByTestId("quick-log-prn-more")).toBeVisible();
+    // MEDS ARE CHIPS AND THE TAIL FOLDS BEHIND "N more" (#4752 item 4). The
+    // "More medications (N)" disclosure is retired with the per-row boilerplate it
+    // used to hide; the fold is a chip in the same flow row as the rest.
+    await expect(page.getByTestId("cockpit-med-more")).toBeVisible();
+    await expect(page.getByTestId("quick-log-prn-more")).toHaveCount(0);
     await expect(page.getByTestId("episode-fever-chart")).toContainText(
       "Normal range"
     );
@@ -229,12 +233,21 @@ test.describe("Illness-episode follow-ups (#856)", () => {
       .getByTestId("symptom-logged-list")
       .locator("li")
       .first(); // first-ok: a logged-symptom row — asserts its border layout, order-agnostic
-    const doseWorkingRow = page.getByTestId("quick-log-prn-item").first(); // first-ok: a PRN quick-log row — asserts its border layout, order-agnostic
     await expect(symptomWorkingRow).toHaveCSS("border-top-style", "solid");
-    await expect(doseWorkingRow).toHaveCSS("border-top-width", "0px");
-    await expect(doseWorkingRow).toHaveCSS("border-bottom-style", "solid");
-    await expect(doseWorkingRow).toHaveCSS("border-radius", "0px");
-    const doseLink = doseWorkingRow.getByRole("link").first(); // first-ok: the med link inside the scoped PRN row — order-agnostic
+    // DETAIL IS ONE TAP AWAY, AND ONLY WHEN ACTING ON THE MED (#4752 item 4).
+    // Collapsed, a med is its NAME beside one shared status line — no per-row day
+    // label, no per-row redose line, which is the six lines of boilerplate this
+    // rebuild removed. Both only exist inside the panel a chip opens.
+    await expect(page.getByTestId("cockpit-med-status")).toBeVisible();
+    await expect(page.getByTestId("prn-day-label")).toHaveCount(0);
+    await expect(page.getByTestId("prn-redose-line")).toHaveCount(0);
+    await expect(page.getByTestId("cockpit-med-panel")).toHaveCount(0);
+    const medChip = page.locator('[data-testid^="cockpit-med-chip-"]').first(); // first-ok: the row's leading med chip; every chip opens the same panel shape
+    await medChip.click();
+    const doseWorkingRow = page.getByTestId("cockpit-med-panel");
+    await expect(doseWorkingRow).toBeVisible();
+    await expect(medChip).toHaveAttribute("aria-expanded", "true");
+    const doseLink = doseWorkingRow.getByRole("link").first(); // first-ok: the med link naming the open panel — order-agnostic
     await expect(doseLink).toHaveCSS("font-size", "14px");
     // The ONE inline action-link treatment, now named rather than spelled out:
     // #3607 item 3 swept the hand-rolled `font-medium text-brand-600
@@ -243,47 +256,33 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     // longer in any className. The claim is unchanged.
     await expect(doseLink).toHaveClass(/text-link/);
     await expect(doseWorkingRow).toContainText(/\d+(?:\.\d+)?\s*(?:mg|mL)/i);
-    // The verb never says "now" (#4753): the name is the sentence the labeled-verb
-    // chip composes on the labeled surfaces, spoken here by the icon-only arm that
-    // keeps its shipped shape.
-    await expect(
-      doseWorkingRow.getByTestId("prn-log-now")
-    ).toHaveAccessibleName(/^Take .+/);
-    await expect(
-      doseWorkingRow.getByTestId("prn-log-more")
-    ).toHaveAccessibleName("Earlier dose");
-    // Illness medication rows use the same compact action treatment as the
-    // Medications Today panel: equal icon-only buttons with tooltip/accessibility
-    // labels, rather than a second set of full-width text actions.
-    const illnessDoseActions = [
-      doseWorkingRow.getByTestId("prn-log-now"),
-      doseWorkingRow.getByTestId("prn-log-more"),
-    ];
-    const illnessDoseActionWidths = await Promise.all(
-      illnessDoseActions.map(
-        async (button) => (await button.boundingBox())!.width
-      )
+    await expect(doseWorkingRow.getByTestId("prn-day-label")).toBeVisible();
+    // THE FULL STATEMENT (#4752 item 4): the labeled-verb chip's label is the dose
+    // this tap writes and the verb is one word that never says "now", with the
+    // clock door in its seat immediately right of it (#4752 item 8).
+    const panelTake = doseWorkingRow.getByTestId("prn-log-now");
+    await expect(panelTake).toHaveAccessibleName(/^(?:Take|Give) .+/);
+    await expect(panelTake).toHaveAttribute(
+      "data-chip-verb",
+      /^(?:Take|Give)$/
     );
-    expect(
-      Math.max(...illnessDoseActionWidths) -
-        Math.min(...illnessDoseActionWidths)
-    ).toBeLessThanOrEqual(1);
-    expect(Math.max(...illnessDoseActionWidths)).toBeLessThanOrEqual(36);
-    for (const button of illnessDoseActions) {
-      await expect(button).toHaveAccessibleName(/\S+/);
-      await expect(button.locator("span")).toHaveClass(/sr-only/);
-    }
-    const medNameBox = await doseWorkingRow
-      .getByRole("link")
-      .first() // first-ok: the med link inside the scoped PRN row, measured for layout — order-agnostic
-      .boundingBox();
+    const panelDoor = doseWorkingRow.getByTestId("prn-log-more");
+    await expect(panelDoor).toHaveAccessibleName("Happened earlier?");
+    await expect(panelDoor).toHaveText("Happened earlier?"); // the visible glyph only — the words are sr-only
+    await expect(panelDoor.locator("span")).toHaveClass(/sr-only/);
+    // ONE SETTLED GROUP, not two round-trips: the claim below is RELATIVE, so the
+    // two boxes have to describe the same layout (#868's hygiene rule).
+    const [takeBox, doorBox] = await settledBoxes([panelTake, panelDoor]);
+    // Seated immediately RIGHT of the action it modifies, and never before it.
+    expect(doorBox.x).toBeGreaterThan(takeBox.x + takeBox.width - 1);
+    const medNameBox = await doseLink.boundingBox();
     const medStatusBox = await doseWorkingRow
       .getByTestId("prn-day-label")
       .boundingBox();
     expect(
       Math.abs((medNameBox?.x ?? 0) - (medStatusBox?.x ?? 0))
     ).toBeLessThan(2);
-    await doseWorkingRow.getByTestId("prn-log-more").click();
+    await panelDoor.click();
     const earlierDose = doseWorkingRow.getByTestId("prn-log-options");
     await expect(earlierDose).toContainText("When was it taken?");
     await expect(earlierDose.getByLabel("Specific time")).toBeVisible();
@@ -293,7 +292,9 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     expect(
       Math.abs((medNameBox?.x ?? 0) - (earlierDoseBox?.x ?? 0))
     ).toBeLessThan(2);
-    await doseWorkingRow.getByTestId("prn-log-more").click();
+    await panelDoor.click();
+    await medChip.click();
+    await expect(page.getByTestId("cockpit-med-panel")).toHaveCount(0);
     await expect(page.getByTestId("symptom-add-picker-toggle")).toHaveClass(
       /\bbtn-ghost\b/
     );
@@ -469,25 +470,24 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     const eventEditor = page.getByTestId("illness-event-editor");
     await expect(eventEditor).toBeVisible();
     const dateTime = eventEditor.getByTestId("illness-event-date-time");
-    await expect(
-      dateTime.getByRole("button", { name: "Open calendar" })
-    ).toBeVisible();
-    const dateBox = await dateTime
-      .locator('input:not([type="hidden"])')
-      .first() // first-ok: the date input in the scoped event-editor date-time control, measured for layout — order-agnostic
-      .boundingBox();
-    // The visible time input lives in the shared WhenControl (#2236/#2228); the
-    // form's `time` field itself is a hidden input kept in sync with the pair.
-    const timeBox = await dateTime
-      .getByTestId("illness-event-when-time")
-      .boundingBox();
+    // ONE DOOR FOR THE PAIR (#4218). A temperature reading REQUIRES its minute, on
+    // a day the reader may still move inside the episode's window, so the editor
+    // states both halves through ONE composed field over one panel holding the
+    // calendar and the time wheel — where it used to draw a date box beside a
+    // time box and this test measured that they shared a row.
+    //
+    // That row claim is now true by construction, so asserting it again would be
+    // asserting nothing. What replaces it is the claim the composition actually
+    // makes: there is exactly one field here, and no loose text box beside it.
+    const whenDoor = dateTime.getByTestId("illness-event-when-when");
+    await expect(whenDoor).toBeVisible();
+    await expect(dateTime.locator('input:not([type="hidden"])')).toHaveCount(0);
     const saveBox = await eventEditor
       .getByRole("button", { name: "Save" })
       .boundingBox();
     const cancelBox = await eventEditor
       .getByRole("button", { name: "Cancel" })
       .boundingBox();
-    expect(Math.abs((dateBox?.y ?? 0) - (timeBox?.y ?? 0))).toBeLessThan(2);
     expect(Math.abs((saveBox?.y ?? 0) - (cancelBox?.y ?? 0))).toBeLessThan(2);
     const editorActions = eventEditor.getByTestId(
       "illness-event-editor-actions"

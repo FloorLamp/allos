@@ -341,9 +341,14 @@ describe("the record's Add door posts to the domain's own create action", () => 
   it("keeps the dose form on its chosen day and resets it for a second save", async () => {
     open("dose");
     const chosenDay = "2026-08-17";
-    fireEvent.change(screen.getByTestId("historical-dose-date"), {
-      target: { value: chosenDay },
-    });
+    // ONE DOOR FOR THE PAIR (#4218). A backfill states a day AND a minute, so the
+    // control composes them into a single field over one panel holding the
+    // calendar and the time wheel — there is no separate date box to type into
+    // here any more. The day is picked by its own accessible date name, the name
+    // #3744 gave every cell in the shared month grid.
+    fireEvent.click(screen.getByTestId("historical-dose-when"));
+    fireEvent.click(screen.getByRole("button", { name: "August 17, 2026" }));
+    fireEvent.click(screen.getByTestId("historical-dose-when-done"));
     fireEvent.change(screen.getByLabelText("Amount"), {
       target: { value: "7 g" },
     });

@@ -29,6 +29,17 @@ name: E2E full suite (on demand)
 # #1159, don't re-add retries. (Scheduled runs always execute on the default
 # branch; `inputs.*` is EMPTY on a schedule event, so the run step's fallbacks
 # below — not the dispatch defaults above them — are what pick the census form.)
+#
+# FORWARD-CLOCK CENSUS: the same census, one axis over (#4370 part 3, ruled
+# 2026-09-02 to fold in here rather than become a schedule of its own). CI always
+# runs at today's date, so it structurally cannot see a fixture that will age out
+# next quarter — and four such failures surfaced in one day (#4353, #4358, both
+# halves of #4369), none of them caused by a change. A grep over `YYYY-MM-DD`
+# literals found 163 hits across 60 files and could not see either half of #4369,
+# because one is a bare year inside a regex and the other is an absence assertion
+# that goes VACUOUSLY GREEN once the year turns. Moving the clock finds those; no
+# census over source text can. `e2e-forward-clock` below runs the whole suite at
+# ALLOS_TEST_NOW = +3 and +6 months, on this same weekly schedule.
 
 on:
   workflow_dispatch:
@@ -43,6 +54,10 @@ on:
         type: choice
         options: ["1", "2", "3"]
         default: "1"
+      forward_clock:
+        description: "Also run the forward-clock census (+3 and +6 months). Always on for the weekly schedule."
+        type: boolean
+        default: false
   schedule:
     # Sundays 06:23 UTC — a quiet hour, off the :00 spike GitHub delays worst.
     - cron: "23 6 * * 0"
@@ -101,6 +116,72 @@ jobs:
         with:
           name: e2e-results-shard-${{ matrix.shard }}
           path: test-results/e2e-results.json
+          retention-days: 7
+
+  # THE FORWARD-CLOCK CENSUS (#4370 part 3).
+  #
+  # A red here is NOT a regression on main. It is a fuse: a spec that passes
+  # today and will stop passing on a date that has not arrived yet, or — the
+  # worse half — one that will keep passing for a reason that has stopped being
+  # true. Read it that way before reverting anything, and fix the fixture rather
+  # than the clock.
+  #
+  # +3 and +6 months, not a single further offset: a fixture inside a 90-day
+  # window fuses between the two, and one that fuses only at a year boundary
+  # (#4369's `2027`) is reached by whichever of the two crosses New Year. `date`
+  # keeps the hour of day, so e2e/pinned-timezone.ts draws the same zone it would
+  # have drawn for a real run at this hour and the offset is the only thing that
+  # moved.
+  #
+  # retries=0 repeat-each=1, deliberately not the browser census's repeat-each=2:
+  # this axis is asking whether the suite still holds at a later date, which is a
+  # question one pass answers. The repeat exists for LOW-RATE flake drift and
+  # doubling it here would double eight jobs to buy an answer the sibling job
+  # already gives.
+  e2e-forward-clock:
+    if: ${{ github.event_name == 'schedule' || inputs.forward_clock }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        months: [3, 6]
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/e2e-setup
+
+      - name: Freeze the clock +${{ matrix.months }} months
+        id: clock
+        run: |
+          set -euo pipefail
+          NOW=$(date -u -d "+${{ matrix.months }} months" +%Y-%m-%dT%H:%M:%SZ)
+          echo "now=$NOW" >> "$GITHUB_OUTPUT"
+          echo "ALLOS_TEST_NOW=$NOW"
+
+      # playwright.config.ts honours an externally-supplied ALLOS_TEST_NOW
+      # verbatim — no midnight nudge — and e2e/global-setup.ts seeds the template
+      # at the same instant, so the seed and the app agree on "now".
+      - name: E2E at +${{ matrix.months }} months (shard ${{ matrix.shard }}/4)
+        env:
+          ALLOS_TEST_NOW: ${{ steps.clock.outputs.now }}
+        run: npm run test:e2e -- --shard=${{ matrix.shard }}/4 --retries=0 --repeat-each=1
+
+      - name: Say which clock this shard ran at
+        if: ${{ !cancelled() }}
+        run: |
+          {
+            echo "## Forward clock: ${{ steps.clock.outputs.now }} (+${{ matrix.months }} months), shard ${{ matrix.shard }}/4"
+            echo
+            echo "A failure here is a time fuse, not a regression on main (#4370)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-forward-clock-${{ matrix.months }}m-shard-${{ matrix.shard }}
+          path: playwright-report/
           retention-days: 7
 
   # The strip-comments compiler oracle is a DRIFT CENSUS for the same reason this

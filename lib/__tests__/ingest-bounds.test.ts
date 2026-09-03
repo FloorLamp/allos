@@ -16,6 +16,9 @@ import {
   resolveMaxIngestBytes,
   overSizeReviewMessage,
   overRecordReviewMessage,
+  canonicalDistanceKm,
+  canonicalDurationMin,
+  parseDistanceUnit,
 } from "@/lib/ingest-bounds";
 
 // Issue #132: physiological plausibility bounds for integration ingest. These are
@@ -358,5 +361,68 @@ describe("over-cap Review messages", () => {
 describe("raised record cap (issue #1064)", () => {
   it("is 100k so a real catch-up sync is accepted with headroom", () => {
     expect(MAX_INGEST_RECORDS).toBe(100_000);
+  });
+});
+
+// Issue #4537: the one unit boundary. The mappers used to spell the arithmetic and
+// the rounding themselves, so what a source stored depended on which mapper it came
+// through. These tables pin the two decisions in one place.
+describe("canonicalDistanceKm / canonicalDurationMin (issue #4537)", () => {
+  // A 5,432 m run — the issue's own example — stated the four ways the sources state
+  // it. Every row must land on the SAME stored kilometres.
+  it.each<[number, "m" | "km" | "mi", number]>([
+    [5432, "m", 5.43],
+    [5.432, "km", 5.43],
+    [3.3753413, "mi", 5.43],
+    // Full-precision provider floats, the #1109 payload: rounded, never stored raw.
+    [32397.218025887694, "m", 32.4],
+    [27.83881802588772, "km", 27.84],
+  ])("converts %p %s to %p km", (value, unit, km) => {
+    expect(canonicalDistanceKm(value, unit)).toBe(km);
+  });
+
+  it.each<[number, "ms" | "s" | "min", number]>([
+    [3661, "s", 61],
+    [3_661_000, "ms", 61],
+    [61.4, "min", 61],
+    // Half-minute rounds up, the rule every mapper's `Math.round` already applied.
+    [90, "s", 2],
+  ])("converts %p %s to %p min", (value, unit, min) => {
+    expect(canonicalDurationMin(value, unit)).toBe(min);
+  });
+
+  // Absence and garbage fold into the mappers' existing skip path rather than
+  // becoming a 0 that reads as a real measurement.
+  it.each([null, undefined, NaN, Infinity])("returns null for %p", (v) => {
+    expect(canonicalDistanceKm(v as number | null, "m")).toBeNull();
+    expect(canonicalDurationMin(v as number | null, "s")).toBeNull();
+  });
+
+  it("returns null when the source stated no unit we recognize", () => {
+    expect(canonicalDistanceKm(5, null)).toBeNull();
+    expect(parseDistanceUnit("furlongs")).toBeNull();
+    expect(parseDistanceUnit(null)).toBeNull();
+  });
+
+  // The Fitbit archive is the one source stating its unit as free text.
+  it.each<[string, "m" | "km" | "mi"]>([
+    ["Meter", "m"],
+    ["  meters ", "m"],
+    ["metres", "m"],
+    ["KM", "km"],
+    ["kilometers", "km"],
+    ["Mile", "mi"],
+    ["miles", "mi"],
+  ])("parses the unit spelling %p", (raw, unit) => {
+    expect(parseDistanceUnit(raw)).toBe(unit);
+  });
+
+  // Precision is NOT re-declared by the boundary: it reads METRIC_ROUND_DP, so a
+  // future change to the stored precision reaches every mapper without touching one.
+  it("takes its precision from METRIC_ROUND_DP, not a literal of its own", () => {
+    expect(METRIC_ROUND_DP.distance_km).toBe(2);
+    expect(canonicalDistanceKm(5432, "m")).toBe(
+      roundForMetric("distance_km", 5.432)
+    );
   });
 });

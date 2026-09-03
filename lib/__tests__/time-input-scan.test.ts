@@ -27,9 +27,6 @@ import { findTags, scanDirs, REPO } from "./jsx-tag-scan";
 
 const SCAN_DIRS = ["app", "components"];
 
-/** The one legitimate home of a raw event-time input. */
-const CONTROL_FILE = "components/WhenControl.tsx";
-
 /** The frozen hand-rolled set: file → { count, kind, reason }. */
 const HANDROLLED_ALLOW = new Map<
   string,
@@ -47,6 +44,11 @@ const HANDROLLED_ALLOW = new Map<
   // the same five fields the log form did, so it now MOUNTS that form and the pair it
   // carried is GONE rather than migrated.
   //
+  // PracticeSessionForm.tsx and activity-form/DateTimeFields.tsx left the list on
+  // #4384 fix 6's touch — NOT by adopting `WhenControl`, but by both mounting the one
+  // `TimeRangeFields` that now spells the pair. That is the FIRST entry below; it is the
+  // only kind of departure that shrinks this list without the control growing.
+  //
   // AND TWO MOUNTS MOVED THE OTHER WAY, which is a trade rather than a win and is
   // stated here rather than smuggled: the `/history` add door's practice case and that
   // record row's correction each stated a START through `WhenControl` and could not
@@ -55,28 +57,23 @@ const HANDROLLED_ALLOW = new Map<
   // shape this entry exists for. The ratchet's count does not move, because the pair is
   // spelled once and four surfaces mount it.
   [
-    "components/practices/PracticeSessionForm.tsx",
+    "components/TimeRangeFields.tsx",
     {
       count: 2,
       kind: "event",
       reason:
-        "the #3142 detailed practice start/end pair — the SAME range shape as the " +
-        "activity start/end pair below, unmodelled by the control for the same " +
-        "reason. #3143 extracted the deliberate historical form from the quick " +
-        "intent control so backfill remains exempt; the same two inputs moved, " +
-        "not grew. #4424 ruling 1 made this THE practice form — add and edit, at " +
-        "every mount — so four spellings of the pair are now this one. Migrates " +
-        "with DateTimeFields when the control grows a range form",
-    },
-  ],
-  [
-    "components/activity-form/DateTimeFields.tsx",
-    {
-      count: 2,
-      kind: "event",
-      reason:
-        "activity start/end pair — two times sharing one day, a shape the " +
-        "control does not model yet; migrates when it grows a range form",
+        "THE HOUSE START/END PAIR (#4384 fix 6) — two times sharing one day, a " +
+        "shape `WhenControl` does not model. It is ONE entry where there were two: " +
+        "the activity form's pair and the practice form's pair were the same two " +
+        "inputs with the same rules, and the practice one had lost #336's interplay " +
+        "on the way across. Both mount this now, so the count did not shrink because " +
+        "a surface migrated to `WhenControl` — it shrank because two spellings became " +
+        "one. AND IT IS STILL RAW SINCE #4218 LANDED, deliberately: `TimeField` " +
+        "replaced the minute grain INSIDE `WhenControl`, and putting it here too " +
+        "would restyle the activity form's clocks — a surface #4218's own pass " +
+        "left on this list rather than migrating. One component to change when " +
+        "that is decided, which is the point of the extraction. Migrates when " +
+        "the control grows a range form",
     },
   ],
   [
@@ -85,12 +82,12 @@ const HANDROLLED_ALLOW = new Map<
       count: 2,
       kind: "event",
       reason:
-        "the #1851 bed\u2192wake pair — the same range shape as the activity " +
+        "the #1851 bed\u2192wake pair — the same range shape as the house " +
         "start/end pair above and unmodelled for the same reason, plus one of " +
         "its own: NEITHER clock states a date. The wake day is the sitting's, " +
         "the bed day is DERIVED from the clock against the noon anchor, and " +
         "the pair resolves to instants in the PROFILE's zone at the write " +
-        "boundary rather than the browser's. Migrates with DateTimeFields " +
+        "boundary rather than the browser's. Migrates with TimeRangeFields " +
         "when the control grows a range form. The form's own sitting Time is " +
         "still WhenControl's and is not counted here.",
     },
@@ -144,14 +141,22 @@ const HOW = [
 describe('raw <input type="time"> ratchet (issue #2236)', () => {
   const found = scanRepo();
 
-  it("the shared control itself renders one — the scan is not silently empty", () => {
-    expect(found.get(CONTROL_FILE)).toHaveLength(1);
-  });
-
-  it("every raw time input outside the control is a frozen, reasoned entry", () => {
+  // THE CONTROL'S OWN EXEMPTION RETIRED WITH THE INPUT IT COVERED (#4218).
+  // `components/WhenControl.tsx` was the one legitimate home of a raw time input,
+  // and it no longer renders one: its minute grain is `components/TimeField.tsx`,
+  // a text field plus an authored wheel, so there is nothing left here to exempt.
+  // Deleting the entry means the control is now held to the same rule as
+  // everything else — a raw time input reappearing there fails the build.
+  //
+  // AND THE POSITIVE CONTROL MOVED RATHER THAN GOING AWAY. The retired case
+  // ("the shared control itself renders one") existed so a scan that had stopped
+  // matching anything could not read as a clean sweep. The allowlist-currency
+  // case below is that control now: it asserts a real LINE COUNT in each of five
+  // shipped files, so a reader that matched nothing fails there — over five
+  // files instead of one.
+  it("every raw time input is a frozen, reasoned entry", () => {
     const offenders: string[] = [];
     for (const [rel, lines] of found) {
-      if (rel === CONTROL_FILE) continue;
       const allowed = HANDROLLED_ALLOW.get(rel);
       if (!allowed) {
         offenders.push(`${rel}:${lines.join(",")} — not in HANDROLLED_ALLOW`);
@@ -418,12 +423,23 @@ export function stillHandRolled(src: string): boolean {
   );
 }
 
-/** Files mounting `<WhenControl>` directly. Comments and strings do not count. */
+/**
+ * Files mounting `<WhenControl>` directly. Comments and strings do not count.
+ *
+ * PRODUCT SURFACES ONLY. The register below argues, per file, why a hand-rolled
+ * composition is the right shape for THAT surface — a question a test file that
+ * renders the control to assert its behaviour is not asking. Scanning them would
+ * put every such test in a register of surfaces, where its entry would say
+ * nothing and its removal would be a false alarm. The raw-time-input ratchet
+ * above deliberately keeps scanning them: a raw `<input type="time">` in a
+ * fixture is still a second spelling of a time input to keep in step.
+ */
 export function whenControlMounts(): string[] {
   return [
     ...scanDirs(SCAN_DIRS, (text) => findTags(text, "WhenControl", () => true)),
   ]
     .map(([rel]) => rel)
+    .filter((rel) => !rel.includes("/__tests__/"))
     .sort();
 }
 

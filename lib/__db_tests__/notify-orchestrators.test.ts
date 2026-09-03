@@ -55,7 +55,7 @@ import { runRefills } from "@/lib/notifications/refill";
 import { runPreventive } from "@/lib/notifications/preventive";
 import { runEscalations } from "@/lib/notifications/escalate";
 import { getNotifyError } from "@/lib/notifications";
-import { setDeliveryFailure } from "@/lib/notifications/delivery-marker";
+import { recordDeliveryOutcome } from "@/lib/notifications/delivery-marker";
 import { ESCALATION_SUPPRESSION_POLICY } from "@/lib/notifications/escalation";
 import { isHiddenUnderPolicy } from "@/lib/lifecycle";
 import { escalationMarkerKey } from "@/lib/notifications/escalation-keys";
@@ -136,12 +136,12 @@ function configureHA(profileId: number): void {
 // Enable the global bot + a MANAGING LOGIN whose Telegram chat receives this
 // profile's notifications (issue #1072: the channel is login-scoped and delivery
 // fans out to managing logins; this is also the escalation fan-out target).
-function configureTelegram(profileId: number, chatId = "555001"): void {
+function configureTelegram(profileId: number, chatId = "555001"): number {
   setTelegramBotConfig({
     telegramBotToken: "orch-test-token",
     telegramMode: "poll",
   });
-  seedLoginTelegram(profileId, chatId);
+  return seedLoginTelegram(profileId, chatId);
 }
 
 function jsonResponse(obj: unknown): Response {
@@ -711,14 +711,14 @@ describe("runEscalations orchestrator", () => {
   it("a healthy escalation dispatch clears a stale delivery marker (#1716)", async () => {
     const p = newProfile("EscAccountingClear");
     const { date } = escalationFixture(p);
-    configureTelegram(p);
+    const loginId = configureTelegram(p);
     stubFetch();
 
-    setDeliveryFailure(
-      "telegram",
-      "an earlier failure",
-      new Date().toISOString()
-    );
+    // The caregiver's own Telegram row is Erroring from an earlier attempt (#2565).
+    recordDeliveryOutcome("telegram", [loginId], {
+      ok: false,
+      error: "an earlier failure",
+    });
     expect(getNotifyError()).not.toBeNull();
 
     await runEscalations(
@@ -728,8 +728,8 @@ describe("runEscalations orchestrator", () => {
       LATE_MINUTE,
       getNotifySchedule(p)
     );
-    // Cleared only because this dispatch actually ATTEMPTED the failing channel —
-    // the #192 channel-aware clear, now reached by the safety tier too.
+    // Cleared because this dispatch actually reached THAT caregiver's chat — the
+    // owner whose row was failing (#2565), reached by the safety tier too.
     expect(getNotifyError()).toBeNull();
   });
 

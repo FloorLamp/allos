@@ -1,6 +1,13 @@
 import { utcMinute, zonedDateParts, zonedWallIsoToUtc } from "@/lib/date";
-import { boundedOrNull, inTimeWindow } from "@/lib/ingest-bounds";
-import { toKg, toKm } from "@/lib/units";
+import {
+  boundedOrNull,
+  canonicalDistanceKm,
+  canonicalDurationMin,
+  inMetricBounds,
+  inTimeWindow,
+  parseDistanceUnit,
+} from "@/lib/ingest-bounds";
+import { toKg } from "@/lib/units";
 import { resolveActivityType } from "@/lib/activity-meta";
 import type { ActivityType } from "@/lib/types";
 import type {
@@ -888,8 +895,7 @@ export function parseSleepJson(text: string, tz: string): TakeoutParsed {
       tz
     );
     const ms = typeof log.duration === "number" ? log.duration : null;
-    const total =
-      ms != null ? boundedOrNull("sleep_min", Math.round(ms / 60000)) : null;
+    const total = boundedOrNull("sleep_min", canonicalDurationMin(ms, "ms"));
     if (!date || !start || !end || total == null || total <= 0) {
       out.skipped++;
       continue;
@@ -1009,20 +1015,6 @@ export function fitbitActivityIdentity(
   return { name, type };
 }
 
-const MILES_TO_KM = 1.609344;
-
-export function fitbitDistanceKm(
-  value: number | null,
-  unit: string | null
-): number | null {
-  if (value == null || !Number.isFinite(value)) return null;
-  const u = (unit ?? "").trim().toLowerCase();
-  if (u === "kilometer" || u === "kilometers" || u === "km") return value;
-  if (u === "mile" || u === "miles" || u === "mi") return value * MILES_TO_KM;
-  if (u === "meter" || u === "meters" || u === "m") return value / 1000;
-  return null;
-}
-
 // `MM/DD/YY HH:MM:SS` — US-ordered local wall time, the only form the JSON families
 // use. Returns the calendar date and the "HH:MM" clock, both verbatim: this is the
 // "HH:MM" <-> minutes-of-day. The activity clock fields are wall times, not
@@ -1109,8 +1101,10 @@ export function parseExerciseJson(text: string, tz: string): TakeoutParsed {
         : typeof log.duration === "number"
           ? log.duration
           : null;
-    const durationMin =
-      ms != null ? boundedOrNull("duration_min", Math.round(ms / 60000)) : null;
+    const durationMin = boundedOrNull(
+      "duration_min",
+      canonicalDurationMin(ms, "ms")
+    );
     const externalId = `${FITBIT_TAKEOUT_ID}:${logId}`;
     if (["meditating", "meditation"].includes(name.toLowerCase())) {
       out.practices.push({
@@ -1125,17 +1119,18 @@ export function parseExerciseJson(text: string, tz: string): TakeoutParsed {
     }
     const identity = fitbitActivityIdentity(name);
     const type = identity.type;
-    // `fitbitDistanceKm` is this archive's unit boundary (it reads the log's own
-    // `distanceUnit` — miles, metres or kilometres) and the bounds filter hands back
-    // a plain number, so the canonical mint sits after both (#2149).
-    const boundedKm = boundedOrNull(
-      "distance_km",
-      fitbitDistanceKm(
-        typeof log.distance === "number" ? log.distance : null,
+    // This archive is the one source that STATES its unit per log (`distanceUnit` —
+    // miles, metres or kilometres), so it parses that text and hands the token to the
+    // shared unit boundary, which converts, rounds and mints the `Km` brand (#4537,
+    // #2149). Plausibility stays field-local here, as it is for Health Connect.
+    const km = canonicalDistanceKm(
+      typeof log.distance === "number" ? log.distance : null,
+      parseDistanceUnit(
         typeof log.distanceUnit === "string" ? log.distanceUnit : null
       )
     );
-    const distanceKm = boundedKm == null ? null : toKm(boundedKm, "km");
+    const distanceKm =
+      km != null && inMetricBounds("distance_km", km) ? km : null;
     out.activities.push({
       external_id: externalId,
       date: stamp.date,
