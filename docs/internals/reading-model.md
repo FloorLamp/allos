@@ -758,11 +758,11 @@ it is OFF by default and setup never raises it. An undeclared connection stays o
 `medical_records` Glucose observation path however its records are shaped, so nothing
 silently becomes a trace — a genuine discrete draw misrouted into a trace loses its
 identity, its band and its document. That default direction is a SAFETY CHOICE rather
-than a measurement — and while the observation path it points at is the shipped one,
-running live continuously (it is what #3182 was filed about), the CHOICE has never been
-tested by the case it exists for: **prod holds no CGM data at all**, so no real sensor
-has ever reached either branch. The switch is what the first person to link one turns
-on, once.
+than a measurement, and nothing here has tested it: the observation path is the shipped
+one and #3182 is about the shape it produces, but **prod holds no CGM data at all** and
+this repo holds no real-exporter payload carrying glucose — `blood_glucose` appears only
+in the two #3182 test files and one fixture. So no sensor has reached either branch, and
+the switch is what the first person to link one turns on, once.
 
 The 2026-09-02 ruling also named a `specimen_source` clause — interstitial fluid to the
 trace, everything else and unset to observations — and #4913 built it. The owner removed
