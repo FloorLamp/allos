@@ -2055,7 +2055,14 @@
 }
 .motion-disclose::details-content {
   block-size: 0;
-  overflow: hidden;
+  /* BLOCK AXIS ONLY. The animation clips the height it is interpolating and nothing
+     else: `hidden` clipped BOTH axes, and below `sm` a `.card` or `band` inside a fold
+     computes its full-bleed pull (#3920) and then paints inset anyway, because the
+     fold's own contents box cut its 16px overhang on each side — the dashboard's
+     Show everything and Records → Care read as inset cards while a hit test at x 2
+     returned the page. `clip` on the inline axis would clip the same way; `visible`
+     pairs with `clip` (never with `hidden`) without forcing the other axis to auto. */
+  overflow: visible clip;
   /* CLOSING — a transition reads the properties of the state it moves TO, so this rule
      times the close and the one below times the open. `allow-discrete` keeps the panel
      rendered for the whole 200 ms; without it the contents vanish on frame one and
