@@ -547,11 +547,12 @@ export function insertVitals(
   //
   // And the case is reachable, though NOT by the route this comment used to name
   // (#4559). It claimed the queue stamps a browser-zone day; the sitting's day comes
-  // from the measurements form, whose default and `maxDate` are both `today(profileId)`
-  // — so the day that gets here past the max is a typed one, which is exactly what the
-  // online action already answers with `dateRefused`. Asking here gives the offline
-  // half of that same refusal the channel it needs — the replay dead-letters with a
-  // reason — instead of two loops each learning to handle an outcome.
+  // from the measurements form, whose `defaultDate` is the server's own, so a day
+  // ahead of the profile's is one the person TYPED — and nothing upstream stops it,
+  // because `maxDate` is optional there and neither mount of that form passes one.
+  // The online action already answers that with `dateRefused`; asking here gives the
+  // offline half of the same refusal the channel it needs — the replay dead-letters
+  // with a reason — instead of two loops each learning to handle an outcome.
   if (!isPastWriteAccepted(today(profileId), date)) return { wrote: false };
   const normalized = normalizeVitalsInput(raw);
   if ("error" in normalized) return { wrote: false };

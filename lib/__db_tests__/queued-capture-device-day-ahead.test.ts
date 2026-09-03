@@ -44,6 +44,14 @@ function readingCount(profileId: number): number {
   ).n;
 }
 
+const mood = (valence: number) => ({
+  valence,
+  energy: null,
+  anxiety: null,
+  factors: [],
+  note: null,
+});
+
 const VITALS_PAYLOAD = {
   systolic: "118",
   diastolic: "76",
@@ -70,7 +78,7 @@ describe("a capture dated ahead of the profile's day (#4425 review)", () => {
   it.each<[FlowKind, IntentPayload, (p: number) => number]>([
     [
       "mood",
-      { valence: 4, energy: null, anxiety: null, factors: [], note: null },
+      mood(4),
       (p) =>
         (
           db
@@ -160,13 +168,7 @@ describe("a capture replayed after the profile's day has moved (#4559)", () => {
 
     vi.setSystemTime(CAPTURE);
     const captureDay = today(p);
-    const intent = buildIntent(
-      "mood",
-      captureDay,
-      { valence: 4, energy: null, anxiety: null, factors: [], note: null },
-      p,
-      CAPTURE
-    );
+    const intent = buildIntent("mood", captureDay, mood(4), p, CAPTURE);
 
     vi.setSystemTime(REPLAY);
     // The fixture reaches the state the assertion is about: the profile's today has
@@ -182,5 +184,28 @@ describe("a capture replayed after the profile's day has moved (#4559)", () => {
         .all(p)
         .map((row) => (row as { date: string }).date)
     ).toEqual([captureDay]);
+  });
+
+  // BOTH SPELLINGS DRAIN THROUGH ONE QUEUE. The fix is at the CAPTURE, so a device
+  // that has not reloaded still holds intents a pre-fix build stamped in the BROWSER's
+  // zone — a day ahead of the profile's, whenever the device sits east of it. Those
+  // replay beside intents the fixed capture stamped, and each entry gets its own
+  // transaction, so the stale day has to dead-letter ITSELF and take nothing with it.
+  // The pre-fix leg is the deliberate failure here: it is the only one asserted to be
+  // refused, and the row below is what proves the refusal cost the other one nothing.
+  it("dead-letters a pre-fix capture without costing the fixed one beside it", () => {
+    const p = newProfile("mixed-queue");
+    const day = today(p);
+    const preFix = buildIntent("mood", shiftDateStr(day, 1), mood(2), p);
+    const fixed = buildIntent("mood", day, mood(5), p);
+
+    expect(applyIntent(p, preFix).status).toBe("rejected");
+    expect(applyIntent(p, fixed)).toEqual({ status: "done" });
+
+    expect(
+      db
+        .prepare("SELECT date, valence FROM mood_logs WHERE profile_id = ?")
+        .all(p)
+    ).toEqual([{ date: day, valence: 5 }]);
   });
 });
