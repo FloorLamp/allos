@@ -120,7 +120,9 @@ describe("deleteAdministrationLog / restoreAdministrationLog — window + supply
 
     // Three administrations: count 3, supply 10 − 3 = 7, over the max of 2.
     logThree(profileId, itemId);
-    expect(getRedoseArmingState(profileId, itemId, nowUtc).countInWindow).toBe(3);
+    expect(getRedoseArmingState(profileId, itemId, nowUtc).countInWindow).toBe(
+      3
+    );
     expect(onHand(itemId)).toBe(7);
     let over = getPrnOverMaxItems(profileId, nowUtc);
     expect(over.map((o) => o.id)).toContain(itemId);
@@ -132,16 +134,20 @@ describe("deleteAdministrationLog / restoreAdministrationLog — window + supply
     const removed = deleteAdministrationLog(profileId, logId);
     expect(typeof removed?.undoId).toBe("number");
     const undoId = removed!.undoId;
-    expect(getRedoseArmingState(profileId, itemId, nowUtc).countInWindow).toBe(2);
-    expect(onHand(itemId)).toBe(8);
-    expect(getPrnOverMaxItems(profileId, nowUtc).map((o) => o.id)).not.toContain(
-      itemId
+    expect(getRedoseArmingState(profileId, itemId, nowUtc).countInWindow).toBe(
+      2
     );
+    expect(onHand(itemId)).toBe(8);
+    expect(
+      getPrnOverMaxItems(profileId, nowUtc).map((o) => o.id)
+    ).not.toContain(itemId);
 
     // Restore → count back to 3 (a NEW ledger row), over-max fires again, supply
     // re-decremented 8 → 7.
     expect(restoreAdministrationLog(profileId, undoId!)).toBe(true);
-    expect(getRedoseArmingState(profileId, itemId, nowUtc).countInWindow).toBe(3);
+    expect(getRedoseArmingState(profileId, itemId, nowUtc).countInWindow).toBe(
+      3
+    );
     expect(onHand(itemId)).toBe(7);
     over = getPrnOverMaxItems(profileId, nowUtc);
     expect(over.find((o) => o.id === itemId)!.total).toBe(3);

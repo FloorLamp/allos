@@ -61,12 +61,7 @@ import {
   type MedicationListRow,
 } from "@/lib/medication-list";
 import { parseRxcuiIngredients } from "@/lib/rxnorm";
-import {
-  lastNDates,
-  zonedDateParts,
-  parseUtcSql,
-  utcMinute,
-} from "@/lib/date";
+import { lastNDates, zonedDateParts, parseUtcSql, utcMinute } from "@/lib/date";
 import {
   getActiveSituations,
   getSituationEvents,
@@ -339,7 +334,10 @@ export function loadMedicationsData(
   // stays the item's OWN administrations.
   // The ceiling counters read the trailing 24 HOURS (#4686), so the gather takes the
   // instant rather than the day; the per-item day label below still reads `todayStr`.
-  const familyStates = getMedicationFamilyStates(profileId, utcMinute(nowInstant));
+  const familyStates = getMedicationFamilyStates(
+    profileId,
+    utcMinute(nowInstant)
+  );
   const prnInfoFor = (
     s: IntakeItem
   ): {

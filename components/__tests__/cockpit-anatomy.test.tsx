@@ -45,7 +45,7 @@ afterEach(cleanup);
 // ── THE RECOVERY-LED COMPACT COCKPIT, REGION BY REGION (#4752) ──────────────
 //
 // The cockpit was a phone layout stretched across a monitor: three stat headings
-// spread across gulfs, six lines of "None today · Redose OK" above three taps, and
+// spread across gulfs, six lines of "None · Redose OK" above three taps, and
 // the headline recovery fact at footnote weight on the far right. These are the
 // claims the rebuild makes about what a caregiver now sees.
 

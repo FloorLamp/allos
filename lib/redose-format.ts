@@ -162,7 +162,7 @@ export function redoseActionIsPrimary(status: RedoseStatus | null): boolean {
 // ingredient-family counters, and the in-app card rendered the verdict from exactly
 // those fields. The surface with the least context did the least checking: a tap could
 // pass the confirmed daily max with no warning, and a family-fed counter read "1 today"
-// where the app said "3 of 4 today across 2 items".
+// where the app said "3 of 4 in 24h across 2 items".
 //
 // One verdict formatter (#221): the list label and the card label are the SAME
 // classification, so Telegram can never be laxer than the app.

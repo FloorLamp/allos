@@ -84,7 +84,10 @@ export function prnCeilingWindowStart(now: Date): string {
 // This anchor is for the COUNT only. Nothing here feeds the interval clock: an elapsed
 // time computed from a placeholder is how a safety line says "Redose OK" for a dose
 // that may have been given minutes ago.
-export function prnUntimedDateFloor(tz: string, windowStartUtc: string): string {
+export function prnUntimedDateFloor(
+  tz: string,
+  windowStartUtc: string
+): string {
   const start = parseUtcSql(windowStartUtc);
   if (!start) return "";
   const candidate = dateStrInTz(tz, start);
@@ -323,7 +326,7 @@ export function redoseNoticeDecision(input: RedoseWindowInput): RedoseDecision {
 // So a null max means only that the count-ceiling half of the status is unknown:
 // `atMax` is false (an unknown ceiling is never a reached one) and the count fragment
 // drops its "of N". When no amount ceiling exists either, the shared formatter names
-// that no daily limit is on record (#4254). The window half (open / opens-in) needs
+// that no 24h limit is on record (#4254). The window half (open / opens-in) needs
 // only the interval and the last administration. The one-shot NOTIFICATION path
 // (redoseNoticeDecision above) keeps requiring both — its gather gate only returns
 // items with both confirmed.

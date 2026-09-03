@@ -40,7 +40,11 @@ import {
 } from "@/lib/queries";
 import { getIntakeDoses } from "@/lib/queries/intake/schedule";
 import { getDayDoseLedger } from "@/lib/queries/day-ledger";
-import { resolveDayDoses } from "@/app/(app)/nutrition/intake-actions";
+import {
+  resolveDayDoses,
+  setDoseStatus,
+} from "@/app/(app)/nutrition/intake-actions";
+import { localDayOf } from "@/lib/local-day-window";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
 // 10:30 UTC on the 28th is 00:30 on the 29th in Kiritimati (+14) and 23:30 on the 27th
@@ -807,3 +811,109 @@ describe("a logged dose proves it existed, and the clamp gives way to it", () =>
     expect(offered).toContain(doseId);
   });
 });
+
+// ── WHAT INSTANT A PAST-DAY CHECK-OFF STATES (#4779, #4428's rule) ───────────
+//
+// The quick-log sheet's day switcher and the Day ledger's rows both post a PAST `date`
+// through `DoseStatusControl`, and the sheet's own bulk button posts the same day
+// through `resolveDayDoses`. Those are two arms of ONE control, and they disagreed: the
+// bulk arm passed `takenAt: null`, the tri-state passed nothing, and the core stamped
+// today's instant onto a row dated yesterday — a row whose `date` says one day and
+// whose `occurred_at` says another.
+//
+// SO THE TABLE ASSERTS THE STORED INSTANT, NOT A RENDERING. A misdated dose row renders
+// exactly like a correct one, and it carries no `profile_id` of its own, so nothing at
+// the surface tier can tell the two apart. `date` and `occurred_at` are pinned APART —
+// the take happens on 10:30 UTC and the row is dated the profile's local yesterday — so
+// a stamped instant is visibly the wrong day rather than coincidentally the right one.
+//
+// AND THE TWO ARMS ARE COMPARED TO EACH OTHER, not each to a constant, so changing one
+// alone reds. Two arms agreeing by coincidence is what let this ship.
+describe.each(ZONES)(
+  "a past-day take states no minute — $tz",
+  ({ tz, localToday }) => {
+    // `taken` through the explicit tri-state (setDoseStatus) and through the bulk
+    // resolve (resolveDayDoses), for the same day, on separate doses.
+    async function takeBothArms(label: string, dayOffset: number) {
+      const { profile, doses } = seedProfile(label, tz);
+      const date = shiftDateStr(today(profile.id), dayOffset);
+      await setDoseStatus(
+        fd({ dose_id: doses.creatine, date, status: "taken" })
+      );
+      await resolve(date, "taken", [doses.collagen]);
+      const rows = db
+        .prepare(
+          `SELECT l.dose_id, l.date, l.occurred_at FROM intake_item_logs l
+           JOIN intake_item_doses d ON d.id = l.dose_id
+           JOIN intake_items s ON s.id = d.item_id
+          WHERE s.profile_id = ? AND l.date = ?`
+        )
+        .all(profile.id, date) as {
+        dose_id: number;
+        date: string;
+        occurred_at: string | null;
+      }[];
+      return {
+        date,
+        triState: rows.find((r) => r.dose_id === doses.creatine)!,
+        bulk: rows.find((r) => r.dose_id === doses.collagen)!,
+      };
+    }
+
+    it("today: both arms stamp the tap, and the instant resolves to the row's own day", async () => {
+      const { date, triState, bulk } = await takeBothArms(`today-${tz}`, 0);
+      expect(triState.occurred_at).toBe(bulk.occurred_at);
+      expect(triState.occurred_at).toBe(NOW_ISO);
+      // The instant and the day the row is filed under are ONE claim.
+      expect(localDayOf(tz, triState.occurred_at!)).toBe(date);
+    });
+
+    it("yesterday: both arms state NO instant, so nothing contradicts the row's day", async () => {
+      const { date, triState, bulk } = await takeBothArms(`past-${tz}`, -1);
+      expect(triState.occurred_at).toBe(bulk.occurred_at);
+      expect(triState.occurred_at).toBeNull();
+      // The row still says which day the dose belongs to; that is the whole claim.
+      expect(triState.date).toBe(date);
+      expect(date).not.toBe(localToday);
+    });
+
+    it("a stated minute still lands, anchored on the posted day", async () => {
+      const { profile, doses } = seedProfile(`stated-${tz}`, tz);
+      const date = shiftDateStr(today(profile.id), -1);
+      await setDoseStatus(
+        fd({ dose_id: doses.creatine, date, status: "taken", at: "07:05" })
+      );
+      const row = db
+        .prepare(
+          `SELECT occurred_at FROM intake_item_logs WHERE dose_id = ? AND date = ?`
+        )
+        .get(doses.creatine, date) as { occurred_at: string | null };
+      expect(row.occurred_at).not.toBeNull();
+      expect(localDayOf(tz, row.occurred_at!)).toBe(date);
+    });
+
+    it("a skipped→taken FLIP on a past day states no minute either", async () => {
+      const { profile, doses } = seedProfile(`flip-${tz}`, tz);
+      const date = shiftDateStr(today(profile.id), -1);
+      await setDoseStatus(
+        fd({ dose_id: doses.melatonin, date, status: "skipped" })
+      );
+      await setDoseStatus(
+        fd({ dose_id: doses.melatonin, date, status: "taken" })
+      );
+      const row = db
+        .prepare(
+          `SELECT status, occurred_at FROM intake_item_logs
+          WHERE dose_id = ? AND date = ?`
+        )
+        .get(doses.melatonin, date) as {
+        status: string;
+        occurred_at: string | null;
+      };
+      // The UPDATE arm used to write a bare `instantNow()`, so the flip re-introduced
+      // the misdated stamp the INSERT arm had just been taught not to write.
+      expect(row.status).toBe("taken");
+      expect(row.occurred_at).toBeNull();
+    });
+  }
+);

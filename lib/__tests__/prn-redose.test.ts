@@ -368,7 +368,11 @@ describe("redoseNoticeDecision × exposure (#1854)", () => {
   });
 
   it("a null exposure keeps the count gate exactly as before", () => {
-    const d = redoseNoticeDecision({ ...base, countInWindow: 4, exposure: null });
+    const d = redoseNoticeDecision({
+      ...base,
+      countInWindow: 4,
+      exposure: null,
+    });
     expect(d.kind).toBe("suppressed-max");
   });
 });

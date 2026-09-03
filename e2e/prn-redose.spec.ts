@@ -14,10 +14,10 @@ import { workerDbPath } from "./worker-env";
 // the Medications card and the dashboard presentation render the status line. The add-form
 // test drives the confirm flow: pre-fill the label defaults, opt in, save.
 //
-// #868 fixture ownership: the "N of 4 today" count is a SHARED-seed tally whose exact
+// #868 fixture ownership: the "N of 4 in 24h" count is a SHARED-seed tally whose exact
 // value drifts near the day boundary (the seeded "~7h ago" administration rolls onto
 // yesterday when the suite runs in the early morning, so today's count is 0), so these
-// specs assert the count PATTERN (`/\d of 4 today/`) and the max, never a pinned "1 of 4".
+// specs assert the count PATTERN (`/\d of 4 in 24h/`) and the max, never a pinned "1 of 4".
 // The add-form test creates its own uniquely-named med each run and DB-cleans it in
 // afterAll, so a --repeat-each run neither collides on the row nor leaves an
 // ibuprofen med behind to skew the neighbor interaction specs.
@@ -54,7 +54,7 @@ test("Today panel PRN row surfaces the redose window status line (#798/#817)", a
   // #817 redesign (same QuickLogPrnControl the dashboard renders, one computation).
   const prnRow = prnTodayItem(medicationsToday(page), REDOSE_MED);
   await expect(prnRow).toBeVisible();
-  // The window is open (last dose ~7h ago > 6h interval), 1 of 4 today.
+  // The window is open (last dose ~7h ago > 6h interval), 1 of 4 in the last 24h.
   const line = prnRow.getByTestId("prn-redose-line");
   const dayLabel = prnRow.getByTestId("prn-day-label");
   await expect(line).toBeVisible();
@@ -65,7 +65,7 @@ test("Today panel PRN row surfaces the redose window status line (#798/#817)", a
   // Window open (last dose > 6h ago). Assert the count PATTERN + the max, never a
   // pinned "1 of 4" — the seeded count is 0 or 1 depending on the day boundary (#868).
   await expect(line).toContainText("Redose OK");
-  await expect(line).toContainText(/\d of 4 today/);
+  await expect(line).toContainText(/\d of 4 in 24h/);
 });
 
 test("med form: confirm flow pre-fills OTC label defaults and opts in (#798)", async ({

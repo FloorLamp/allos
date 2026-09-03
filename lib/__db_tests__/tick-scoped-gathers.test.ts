@@ -56,12 +56,7 @@ import {
   setProfileSex,
 } from "@/lib/settings";
 import { DIGEST_MODE_KEY } from "@/lib/settings/notifications";
-import {
-  shiftDateStr,
-  utcInstant,
-  utcMinute,
-  utcSqlString,
-} from "@/lib/date";
+import { shiftDateStr, utcInstant, utcMinute, utcSqlString } from "@/lib/date";
 import {
   collectUpcoming,
   getMedicationFamilyStates,
@@ -785,11 +780,13 @@ describe("a tick scope's memo cannot outlive its tick", () => {
 
     await runInTickScope(async () => {
       expect(
-        getMedicationFamilyStates(profileId, nowUtc).get(otcItemId)?.countInWindow
+        getMedicationFamilyStates(profileId, nowUtc).get(otcItemId)
+          ?.countInWindow
       ).toBe(2);
       logAdministration(otcItemId, dose.id, date, 0, "200 mg");
       expect(
-        getMedicationFamilyStates(profileId, nowUtc).get(otcItemId)?.countInWindow
+        getMedicationFamilyStates(profileId, nowUtc).get(otcItemId)
+          ?.countInWindow
       ).toBe(2);
     });
     // The moment the scope closes, the write is visible again.

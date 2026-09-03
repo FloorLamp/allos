@@ -133,9 +133,10 @@ describe("the (item_id, best administration instant) index", () => {
   });
 
   it("still finds the SAME arming administration — an index changes cost, not answers", () => {
-    const state = getMedicationFamilyStates(profileId, utcMinute(new Date())).get(
-      itemId
-    );
+    const state = getMedicationFamilyStates(
+      profileId,
+      utcMinute(new Date())
+    ).get(itemId);
     expect(state?.latestId).toBe(newestId);
     // ONE of the thirty, and that is the point of #4686's window: every row here is
     // dated today while its `occurred_at` walks back a month, so a `date`-keyed count

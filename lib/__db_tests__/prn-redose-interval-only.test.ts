@@ -89,7 +89,7 @@ describe("PRN redose guidance with the daily max left blank (#1458)", () => {
     expect(lines.card).not.toBeNull();
     expect(lines.todayPanel).not.toBeNull();
     // 6h interval, dosed an hour ago → ~5h to go. The count stays bare rather than
-    // inventing a ceiling, and the line names that no daily limit is on record.
+    // inventing a ceiling, and the line names that no 24h limit is on record.
     expect(lines.card).toBe(
       "Next dose in ~5h · 1 in 24h · no 24h limit on record"
     );
