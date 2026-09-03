@@ -51,7 +51,13 @@ interface SeededRun {
 
 // Reset THIS profile's rows and insert the fixture run + one manual row inside
 // the same date range (which the source-scoped correction must never touch).
-function seedRun(dates: readonly string[] = RUN_DATES): SeededRun {
+function seedRun(
+  dates: readonly string[] = RUN_DATES,
+  // The manual row sits INSIDE the run's date range (which the source-scoped
+  // correction must never touch) — so it moves with the run, or it becomes the
+  // series' newest reading and there is no outage after it.
+  manualDate: string = dayStr(7)
+): SeededRun {
   const db = new Database(workerDbPath());
   try {
     db.pragma("busy_timeout = 5000");
@@ -74,7 +80,7 @@ function seedRun(dates: readonly string[] = RUN_DATES): SeededRun {
       Number(ins.run(profileId, dates[i], v, SRC).lastInsertRowid)
     );
     const manualId = Number(
-      ins.run(profileId, dayStr(7), MANUAL_KG, null).lastInsertRowid
+      ins.run(profileId, manualDate, MANUAL_KG, null).lastInsertRowid
     );
     return { profileId, runIds, manualId };
   } finally {
@@ -201,7 +207,7 @@ test("preview → apply → undo corrects an lb-as-kg run, locks it, and skips l
 test("the Body weight chart's 'Fix a range' link lands on the panel with weight pre-selected (#1603)", async ({
   browser,
 }) => {
-  seedRun(OUTAGE_RUN_DATES);
+  seedRun(OUTAGE_RUN_DATES, dayStr(37));
   const page = await loginAs(browser, {
     username: E2E_LOGIN_BULKFIX,
     password: E2E_MEMBER_PASSWORD,
