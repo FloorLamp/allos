@@ -187,7 +187,7 @@ test("scheduled and PRN rows share the one Today-row primitive (#851 item 10)", 
     scheduledRow.getByTestId("dose-take"),
     scheduledRow.getByTestId("dose-skip"),
     prnRow.getByTestId("prn-log-now"),
-    prnRow.getByTestId("prn-log-more"),
+    prnRow.getByTestId("prn-log-when-toggle"),
   ];
   const actionWidths = await Promise.all(
     actionButtons.map(async (button) => (await button.boundingBox())!.width)
