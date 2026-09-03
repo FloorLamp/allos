@@ -316,29 +316,29 @@ test("a frequency-target act row names its target and says Log once", async ({
   const page = await openDashboard(browser, { username: E2E_LOGIN_NOWQUIET });
   try {
     await openDashboardAll(page);
-    for (const scopeValue of NOW_QUIET_TARGETS) {
-      const row = page
-        .locator(
-          '[data-testid="dashboard-candidate"][data-candidate-id^="target.log:"]'
-        )
-        .filter({ hasText: `${scopeValue} body` });
-      await expect(row).toHaveCount(1);
-      // The NOUN, exactly — "Log Lower" and "Lower" both fail this.
-      await expect(row.getByTestId("standing-label")).toHaveText(
-        `${scopeValue} body`
-      );
-      // ONE verb on the row, and it is the action's. Counted over the row's whole
-      // rendered text rather than over any one element, because "twice" was a fact
-      // about the ROW: before the fix this read 2.
-      //
-      // `innerText` AND NOT `textContent`, and it is the assertion's correctness and
-      // not a preference: textContent concatenates the label straight onto the
-      // action ("…this weekLog"), which destroys the word boundary the count is
-      // keyed on — measured here, where the textContent spelling counted 0 on the
-      // FIXED tree and 1 on the broken one, i.e. exactly backwards.
-      const shown = await row.innerText();
+    // ADDRESSED BY IDENTITY, NEVER BY THE WORDS UNDER TEST. Filtering the rows by
+    // "Lower body" would make the whole check vanish on the broken tree — zero rows,
+    // zero assertions, and a red that says nothing about the label or the verb.
+    const rows = page.locator(
+      '[data-testid="dashboard-candidate"][data-candidate-id^="target.log:"]'
+    );
+    await expect(rows).toHaveCount(NOW_QUIET_TARGETS.length);
+    // The NOUN, exactly, cased by `cadenceScopeNoun`: "Log Lower" and "Lower" both
+    // fail this. Sorted, because the habit order is not this test's subject.
+    expect(
+      (await rows.getByTestId("standing-label").allInnerTexts()).sort()
+    ).toEqual(["Lower body", "Upper body"]);
+    // ONE verb per row, and it is the action's. Counted over the row's whole
+    // rendered text rather than over any one element, because "twice" was a fact
+    // about the ROW: before the fix this read 2.
+    //
+    // `innerText` AND NOT `textContent`, and that is the assertion's correctness
+    // rather than a preference: textContent concatenates the detail straight onto
+    // the action ("…this weekLog"), destroying the word boundary the count is keyed
+    // on — measured here, where the textContent spelling counted 0 on the FIXED tree
+    // and 1 on the broken one, i.e. exactly backwards.
+    for (const shown of await rows.allInnerTexts())
       expect(shown.match(/\bLog\b/g)?.length ?? 0).toBe(1);
-    }
   } finally {
     await page.context().close();
   }
