@@ -111,12 +111,17 @@ export function DashboardFactRow({
   // WHERE THE DOOR GOES WHEN THE ROW CANNOT BE ONE (see the link-wrap suppression
   // below). EXACTLY ONE element carries the href: the row's own CTA words if it has
   // any — "Fix it", "Log", "Continue" — because those name the destination better
-  // than anything else on the row; otherwise the label, which is its identity. Two
-  // links to one page on one row is a second tab stop saying the same thing.
+  // than anything else on the row; otherwise its identity — the label, or on a row
+  // with no label of its own (a `single` family's one member, named by the family)
+  // the value, since a stale vital that earns a door (#4757) must not lose its history
+  // with it. Two links to one page on one row is a second tab stop saying the same
+  // thing.
   const unwrapped = presentation.control != null && presentation.href != null;
-  const labelLink =
+  const identityLink =
     unwrapped && !presentation.actionLabel ? presentation.href : undefined;
   const actionLink = unwrapped && presentation.actionLabel;
+  const identityLinkClass =
+    "hover:text-brand-700 hover:underline dark:hover:text-brand-400";
   const content = (
     <>
       {presentation.label && (
@@ -132,11 +137,8 @@ export function DashboardFactRow({
               : "text-xs text-slate-500 dark:text-slate-400"
           }
         >
-          {labelLink ? (
-            <Link
-              href={labelLink}
-              className="hover:text-brand-700 hover:underline dark:hover:text-brand-400"
-            >
+          {identityLink ? (
+            <Link href={identityLink} className={identityLinkClass}>
               {presentation.label}
             </Link>
           ) : (
@@ -149,7 +151,13 @@ export function DashboardFactRow({
           data-testid="standing-value"
           className="font-semibold tabular-nums text-slate-900 dark:text-slate-100"
         >
-          {presentation.value}
+          {identityLink && !presentation.label ? (
+            <Link href={identityLink} className={identityLinkClass}>
+              {presentation.value}
+            </Link>
+          ) : (
+            presentation.value
+          )}
         </span>
       )}
       {presentation.detail != null && (

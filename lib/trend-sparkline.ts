@@ -22,6 +22,7 @@
 import { daysBetweenDateStr } from "./date";
 import type { DayFillWindow, DayGapFill } from "./day-fill";
 import { fillDailyRows, fillDailySeries } from "./day-fill";
+import type { DaySourceSpread } from "./metric-sources";
 
 export type SparklineShape = "line" | "bar";
 
@@ -796,4 +797,58 @@ export function unloggedGapLabel(days: number): string {
  */
 export function trailingOutageCaption(lastReadingLabel: string): string {
   return `No data since ${lastReadingLabel}`;
+}
+
+// ── TWO SOURCES, ONE DAY: what earns a companion mark (#2653 state 6) ─────────
+//
+// The read reports every source a day's election set aside (lib/metric-sources);
+// the chart draws a companion only where the other source would PRINT A DIFFERENT
+// NUMBER at the chart's own precision. Two scales agreeing to the digit a reader
+// can see is not a disagreement — a second mark there is the coincident smudge the
+// issue opened with, ink with no fact. Deciding on the printed string is also what
+// keeps the marks and the caption counting the same days.
+export function sourceSpreadCompanions(
+  points: readonly {
+    date: string;
+    value: number | null;
+    sources?: DaySourceSpread;
+  }[],
+  print: (value: number) => string | number
+): Map<string, DaySourceSpread> {
+  const out = new Map<string, DaySourceSpread>();
+  for (const point of points) {
+    if (point.sources == null || point.value == null) continue;
+    const shown = print(point.value);
+    const others = point.sources.others.filter(
+      (other) => print(other.value) !== shown
+    );
+    if (others.length > 0) {
+      out.set(point.date, { trusted: point.sources.trusted, others });
+    }
+  }
+  return out;
+}
+
+/** "Oura", "Oura and Withings", "Oura, Withings and Manual". */
+function nameList(names: readonly string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+}
+
+// The caption under a plot with companion marks: "Showing Withings · 2 days also
+// reported by Oura". Facts in the register of the other honesty captions — which
+// source is plotted, how many days another one also covered, and who — and no word
+// for the disagreement: which number is right is not something the chart knows;
+// choosing lives in the primary-source picker.
+export function sourceSpreadCaption(
+  spreads: ReadonlyMap<string, DaySourceSpread>
+): string {
+  const trusted = [...new Set([...spreads.values()].map((s) => s.trusted))];
+  const others = [
+    ...new Set(
+      [...spreads.values()].flatMap((s) => s.others.map((o) => o.source))
+    ),
+  ];
+  const days = spreads.size;
+  return `Showing ${nameList(trusted)} · ${days} day${days === 1 ? "" : "s"} also reported by ${nameList(others)}`;
 }

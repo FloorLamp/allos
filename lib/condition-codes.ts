@@ -253,6 +253,22 @@ function normalizeCode(code: string): string {
 const ICD10_SHAPE = /^[A-Z]\d/;
 const SNOMED_SHAPE = /^\d+$/;
 
+// The row's ICD-10 code in normalized form, or null when it has none to offer: no
+// code, a system naming a different vocabulary, or a code whose shape is not
+// ICD-10's letter-led one. Extracted so a consumer that reads ICD-10 STRUCTURE
+// rather than this module's curated families — the specialty lens's chapter blocks
+// (#2921) — asks the same vocabulary question through the same door instead of
+// re-deriving it. `conditionCodeConcepts` below is its first caller.
+export function icd10CodeOf(input: ConditionInput): string | null {
+  if (typeof input === "string") return null;
+  const raw = input.code?.trim();
+  if (!raw) return null;
+  const vocab = vocabularyOf(input.codeSystem);
+  if (vocab !== "icd10" && vocab !== "unknown") return null;
+  const code = normalizeCode(raw);
+  return ICD10_SHAPE.test(code) ? code : null;
+}
+
 // The concepts a condition's stored CODE unambiguously identifies — empty when
 // the row is uncoded, the system is a non-ICD-10/SNOMED vocabulary, or the code
 // is outside every curated family (the consumer then falls through to its
@@ -268,9 +284,7 @@ export function conditionCodeConcepts(
   const vocab = vocabularyOf(input.codeSystem);
   if (vocab === "other") return out;
   const code = normalizeCode(rawCode);
-  const asIcd10 =
-    (vocab === "icd10" || (vocab === "unknown" && ICD10_SHAPE.test(code))) &&
-    ICD10_SHAPE.test(code);
+  const asIcd10 = icd10CodeOf(input) !== null;
   const asSnomed =
     (vocab === "snomed" || (vocab === "unknown" && SNOMED_SHAPE.test(code))) &&
     SNOMED_SHAPE.test(code);

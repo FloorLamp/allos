@@ -552,6 +552,16 @@ describe("single-value + series reads honor the primary source", () => {
     expect(new Set(dates).size).toBe(dates.length); // no doubled days
     const day = series.find((r) => r.date === "2024-02-07");
     expect(day).toEqual({ date: "2024-02-07", value: 61 });
+    // The day both devices reported (the edit-lock suite's 2024-02-03) keeps ONE
+    // value and names the other account instead of discarding it (#2653 state 6).
+    expect(series.find((r) => r.date === "2024-02-03")).toEqual({
+      date: "2024-02-03",
+      value: 58,
+      sources: {
+        trusted: "health-connect",
+        others: [{ source: "oura", value: 53 }],
+      },
+    });
   });
 
   it("getHrDailySummary keeps one source's minutes per day", () => {
@@ -759,11 +769,18 @@ describe("documents source class + strict mode", () => {
     });
   });
 
+  // A scan day the scale ALSO weighed carries the scale's account beside the scan's
+  // (#2653 state 6): the value is the scan's, the other number is not thrown away.
+  const scaleAlso = (value: number) => ({
+    trusted: DOCUMENTS_SOURCE_CLASS,
+    others: [{ source: "withings", value }],
+  });
+
   it("per-day: a scan day is the scan's, a scan-less day still falls back", () => {
     setMetricSourcePriorityEntry(p, "body_fat", DOCUMENTS_SOURCE_CLASS);
     expect(getBodyMetricDailySeries(p, "body_fat")).toEqual([
-      { date: SCAN_A, value: 21.4 },
-      { date: SCAN_B, value: 19.8 },
+      { date: SCAN_A, value: 21.4, sources: scaleAlso(24.6) },
+      { date: SCAN_B, value: 19.8, sources: scaleAlso(24.1) },
       { date: SCALE_ONLY, value: 24.0 }, // preference mode: the scale still answers
     ]);
   });
@@ -771,8 +788,8 @@ describe("documents source class + strict mode", () => {
   it("strict + the class is the scans-only sparse series (#1640 × #1642)", () => {
     setMetricSourcePriorityEntry(p, "body_fat", DOCUMENTS_SOURCE_CLASS, true);
     expect(getBodyMetricDailySeries(p, "body_fat")).toEqual([
-      { date: SCAN_A, value: 21.4 },
-      { date: SCAN_B, value: 19.8 },
+      { date: SCAN_A, value: 21.4, sources: scaleAlso(24.6) },
+      { date: SCAN_B, value: 19.8, sources: scaleAlso(24.1) },
     ]);
     // The scale's own days are gone — not re-labeled, not averaged in.
     expect(
