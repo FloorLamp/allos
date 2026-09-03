@@ -77,7 +77,7 @@ test.describe("the day view's intraday panel (#1068)", () => {
       await expect(chart.getByTestId("intraday-sleep-block")).toHaveCount(1);
       await expect(chart.getByTestId("intraday-sleep-stage")).toHaveCount(1);
       // Layer 3 — the two windowed sessions, ON THEIR OWN ROWS (#4852). The ride is
-      // Train's, the evening sauna is Practice's; same shape and colour, different
+      // Train's, the morning sauna is Practice's; same shape and colour, different
       // line, because a workout and a sauna stacked together read as one thing.
       const blocks = chart.getByTestId("intraday-block");
       await expect(blocks).toHaveCount(2);
@@ -161,7 +161,7 @@ test.describe("the day view's intraday panel (#1068)", () => {
 
       // The 08:00–09:00 ride is named inside its own block (elided to the block's
       // width), so a 45-minute run and a 45-minute lift are no longer identical
-      // rectangles. Since #4852 the evening practice carries its own name on its
+      // rectangles. Since #4852 the morning practice carries its own name on its
       // own row — and names are placed PER ROW, so neither can drop the other.
       const names = chart.getByTestId("intraday-block-name");
       await expect(names).toHaveCount(2);
@@ -327,6 +327,99 @@ test.describe("the day view's intraday panel (#1068)", () => {
     }
   });
 
+  // #4852 — A ctrlKey WHEEL IS A TRACKPAD PINCH, AND IT NEVER REACHES THE BROWSER
+  // (PM ruling, 2026-09-03). Both directions, every zoom level. The scroll-through
+  // exception the test above proves is about PLAIN wheels only: an unhandled plain
+  // wheel scrolls, which is the thing a reader needs to get past a tall chart,
+  // whereas an unhandled ctrlKey wheel PAGE-ZOOMS, which nobody asked for.
+  //
+  // Cancellation is asserted on a dispatched event because that is the claim
+  // itself: `dispatchEvent` returns false exactly when a listener called
+  // preventDefault, so the plain/ctrlKey pair is read off one mechanism at one
+  // zoom level instead of inferred from what the viewport did afterwards. The real
+  // ctrl+wheel below then proves it end to end through the browser's own input
+  // path — where the listener has to be non-passive for any of it to be true.
+  test("a ctrlKey wheel is always swallowed, where a plain one is handed back", async ({
+    browser,
+  }) => {
+    test.slow();
+
+    const member = await loginAs(browser, {
+      username: E2E_LOGIN_INTRADAY,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await openFixtureDay(member);
+      const chart = member.getByTestId("intraday-panel").locator(WIDE);
+      await expect(chart).toBeVisible();
+      await expect(chart.getByTestId("intraday-hr")).toBeVisible();
+      await expect(chart).toHaveAttribute("data-view-from", "0");
+      await expect(chart).toHaveAttribute("data-view-to", "1440");
+
+      const svg = chart.getByTestId("intraday-svg");
+      await svg.scrollIntoViewIfNeeded();
+
+      // `false` means a listener called preventDefault — the page never sees it.
+      const wheel = (deltaY: number, ctrlKey: boolean) =>
+        svg.evaluate(
+          (el, { deltaY: dy, ctrlKey: ctrl }) => {
+            const box = el.getBoundingClientRect();
+            return el.dispatchEvent(
+              new WheelEvent("wheel", {
+                deltaY: dy,
+                ctrlKey: ctrl,
+                clientX: box.x + box.width / 2,
+                clientY: box.y + box.height * 0.6,
+                bubbles: true,
+                cancelable: true,
+              })
+            );
+          },
+          { deltaY, ctrlKey }
+        );
+
+      // AT THE FULL DAY, BOTH DIRECTIONS. Zooming out moves nothing here — that is
+      // precisely the case the plain-wheel exception releases and this one does not.
+      expect(await wheel(500, true)).toBe(false);
+      await expect(chart).toHaveAttribute("data-view-to", "1440");
+      expect(await wheel(-400, true)).toBe(false);
+      await expect(chart).toHaveAttribute("data-zoomed", "true");
+
+      // AND AT A ZOOMED LEVEL, out to the full day and back in again: "every zoom
+      // level" is the half of the ruling a full-day-only test would not carry.
+      expect(await wheel(500, true)).toBe(false);
+      expect(await wheel(-400, true)).toBe(false);
+
+      // THE CONTRAST. Back at the full day a PLAIN zoom-out is handed to the page,
+      // which is what keeps a reader able to scroll past the chart at all.
+      await chart.getByTestId("intraday-zoom-reset").click();
+      await expect(chart).toHaveAttribute("data-zoomed", "false");
+      expect(await wheel(500, false)).toBe(true);
+      await expect(chart).toHaveAttribute("data-view-to", "1440");
+
+      // END TO END through the browser's own input path: a real ctrl+wheel at the
+      // full day moves nothing, scrolls nothing, and — the behaviour the ruling
+      // exists to remove — does not zoom the PAGE, which is what an unhandled one
+      // does and what `devicePixelRatio` would report.
+      const box = (await svg.boundingBox())!;
+      await member.mouse.move(box.x + box.width / 2, box.y + box.height * 0.6);
+      const before = await member.evaluate(() => ({
+        scrollY: window.scrollY,
+        dpr: window.devicePixelRatio,
+      }));
+      await member.keyboard.down("Control");
+      await member.mouse.wheel(0, 500);
+      await member.keyboard.up("Control");
+      await expect(chart).toHaveAttribute("data-view-to", "1440");
+      expect(await member.evaluate(() => window.scrollY)).toBe(before.scrollY);
+      expect(await member.evaluate(() => window.devicePixelRatio)).toBe(
+        before.dpr
+      );
+    } finally {
+      await member.context().close();
+    }
+  });
+
   // #1573 — the guard the element-level containment walk cannot provide: an SVG
   // <text> painting past its own plot still sits inside an <svg> box that fits.
   test("no chart label paints outside its plot, and none is micro-type", async ({
@@ -384,7 +477,7 @@ test.describe("the day view's intraday panel (#1068)", () => {
       // rather than an axis, and it is the layer the presence gate is about.
       await expect(chart.getByTestId("intraday-hr")).toBeVisible();
       // The seeded ride's window, shaded on the axis — the AC's "shaded window" —
-      // beside the evening practice's on the row below it (#4852).
+      // beside the morning practice's on the row below it (#4852).
       await expect(chart.getByTestId("intraday-block")).toHaveCount(2);
 
       // The lag sentence, on the row's own facts. Compared against the PANEL's

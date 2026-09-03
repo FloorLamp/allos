@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { MIN_LABEL_PX, effectiveFontPx } from "@/lib/chart-svg";
 import {
   FULL_DAY_VIEW,
+  INTRADAY_ROW_NAMES,
   INTRADAY_VARIANTS,
   MIN_ZOOM_MINUTES,
   axisTicks,
@@ -258,6 +259,28 @@ describe("axis ticks fit the plot they label", () => {
     expect(perLabel).toBeGreaterThan("00:00".length * geo.labelSize * 0.6);
   });
 
+  // WHAT THE WIDER GUTTER COST THE AXIS (#4852). Holding "Practice" whole took 15
+  // units off the compact plot, which is one label slot: the compact axis now
+  // affords 7 labels where it afforded 8. Nothing changes at the full day (both
+  // variants keep their step) and nothing changes on the wide variant at all — the
+  // move is confined to compact ZOOMED windows, where a span that used to land
+  // exactly on 8 ticks steps up to the next clock-friendly step instead.
+  //
+  // Pinned rather than narrated, because it is the one place the gutter ruling
+  // changed what a reader sees, and an accidental re-narrowing would show up here.
+  it("gives the compact zoom one label slot fewer than the old gutter did", () => {
+    const geo = intradayGeometry(model(), "compact", { from: 480, to: 590 });
+    const ticks = axisTicks(geo);
+    // 110 minutes: 8 ticks at a 15-minute step fitted the old 310-unit plot; the
+    // 295-unit one takes the 20-minute step and 6 ticks.
+    expect(ticks[1] - ticks[0]).toBe(20);
+    expect(ticks.length).toBeLessThanOrEqual(7);
+    // The wide variant is untouched: it loses 16.5 units and still affords 9.
+    expect(
+      axisTicks(intradayGeometry(model(), "wide", { from: 480, to: 590 }))
+    ).toEqual([480, 495, 510, 525, 540, 555, 570, 585]);
+  });
+
   it("picks a fine, clock-friendly step for a zoomed window", () => {
     const ticks = axisTicks(
       intradayGeometry(model(), "wide", { from: 480, to: 525 })
@@ -486,6 +509,34 @@ describe("workout block names (#1512 B)", () => {
 });
 
 describe("gutter labels", () => {
+  // THE GUTTER HOLDS EVERY ROW NAME WHOLE (#4852, owner ruling 2026-09-03).
+  //
+  // "Practice" is 52.80 units at the compact label size and 60.00 at the wide one;
+  // the gutters that held "Sleep" and "Train" gave it 37.80 and 43.50, so it drew
+  // as `Prac…`. The ruling widened `padLeft` rather than renaming the row, and this
+  // is the assertion that keeps it widened: it reads `INTRADAY_ROW_NAMES` — the
+  // same list the chart draws from — so a fourth row, a bigger label size or a
+  // narrowed gutter all fail here rather than shipping a shortened row name.
+  //
+  // The claim is the TEXT, not merely that something was placed: `rowLabel` returns
+  // a label either way, and `Prac…` is a placed label that passes every containment
+  // assertion below it.
+  it.each(VARIANTS)("%s elides no row name", (variant) => {
+    const geo = intradayGeometry(
+      model({ sleep: [sleepBlock()], blocks: [workout(), practice()] }),
+      variant
+    );
+    for (const name of Object.values(INTRADAY_ROW_NAMES)) {
+      const placed = rowLabel(geo, name);
+      expect(placed, `${variant} dropped "${name}"`).not.toBeNull();
+      expect(placed!.text, `${variant} elided "${name}"`).toBe(name);
+      // …and still inside the gutter: widening it is not licence to paint over
+      // the plot's left edge.
+      expect(placed!.start).toBeGreaterThanOrEqual(-1e-9);
+      expect(placed!.end).toBeLessThanOrEqual(geo.plotLeft + 1e-9);
+    }
+  });
+
   it.each(VARIANTS)("%s row labels stay out of the plot", (variant) => {
     const geo = intradayGeometry(model({ sleep: [sleepBlock()] }), variant);
     const label = rowLabel(geo, "Sleep")!;

@@ -51,6 +51,18 @@ export interface IntradayVariantSpec {
   maxWidthPx: number;
   /** Every label in the panel, in user units. Computed, never typed in. */
   labelSize: number;
+  /**
+   * THE GUTTER, and it is sized by the LONGEST ROW NAME, not by taste.
+   *
+   * `rowLabel` elides a name that will not fit, so a gutter chosen for "Sleep"
+   * and "Train" turned "Practice" (#4852) into `Prac…` — a row name nobody wants
+   * and the one thing the ruling forbade. The budget a name gets is
+   * `padLeft - labelSize × 0.2`, so the gutter has to hold
+   * `INTRADAY_ROW_NAMES`' widest at this variant's own label size. Widening it
+   * costs plot width (about 5% compact, 2% wide) and MOVES every x-projection and
+   * axis-tick choice on the chart, which is why the number is derived below and
+   * guarded in the pure suite rather than nudged by eye.
+   */
   padLeft: number;
   padRight: number;
   padTop: number;
@@ -82,6 +94,22 @@ function spec(
   };
 }
 
+/**
+ * EVERY NAME THE GUTTER HAS TO HOLD, in one list because `padLeft` is sized by
+ * the widest of them.
+ *
+ * Kept here rather than inline in the chart so the geometry and the drawing
+ * cannot disagree: a fourth row added at the call site alone would be measured
+ * by nothing, and the first anybody heard of it would be `Prac…` in the gutter
+ * (#4852). The pure suite asserts this list renders whole at both variants, so
+ * adding a name here is what makes the gutter's cost visible.
+ */
+export const INTRADAY_ROW_NAMES = {
+  sleep: "Sleep",
+  train: "Train",
+  practice: "Practice",
+} as const;
+
 export const INTRADAY_VARIANTS: Record<IntradayVariant, IntradayVariantSpec> = {
   // Below `sm`. The narrowest container is MEASURED, not assumed: the Timeline
   // day column at a 390px viewport is ~308px once the shell padding, the day's
@@ -89,8 +117,12 @@ export const INTRADAY_VARIANTS: Record<IntradayVariant, IntradayVariantSpec> = {
   // the labels at 8.98px — under the floor, and the browser test said so). 300
   // keeps a little headroom. 360 units into a 300–420px container puts the label
   // size at 11 units ≈ 9.2–12.8 real px.
+  //
+  // padLeft 55: "Practice" is 52.80 units at labelSize 11, and the gutter's own
+  // 2.20 of inset makes 55 the narrowest that holds it whole (#4852). 40 held
+  // 37.80 and elided it.
   compact: spec("compact", 360, 300, 420, {
-    padLeft: 40,
+    padLeft: 55,
     padRight: 10,
     padTop: 6,
     hrH: 92,
@@ -101,8 +133,10 @@ export const INTRADAY_VARIANTS: Record<IntradayVariant, IntradayVariantSpec> = {
     axisH: 20,
   }),
   // `sm` and up. 720 units into a 520–760 px container: 12.5 units ≈ 9.0–13.2 px.
+  // padLeft 62.5 by the same arithmetic: "Practice" is 60.00 units at 12.5, plus
+  // 2.50 of inset. 46 held 43.50 and elided it.
   wide: spec("wide", 720, 520, 760, {
-    padLeft: 46,
+    padLeft: 62.5,
     padRight: 14,
     padTop: 6,
     hrH: 96,
@@ -620,8 +654,13 @@ export function hrAxisLabels(
 }
 
 /**
- * A row's name in the left gutter ("Sleep", "Train", "Meds"), elided to the
- * gutter rather than painting back over the plot's left edge.
+ * A row's name in the left gutter, elided to the gutter rather than painting
+ * back over the plot's left edge.
+ *
+ * The elision is the FALLBACK, not the plan: `padLeft` is sized to hold every
+ * `INTRADAY_ROW_NAMES` entry whole at this variant's label size (#4852), and the
+ * pure suite fails if one of them comes back shortened. What survives here is the
+ * guarantee that nothing paints back over the plot, whatever it is handed.
  */
 export function rowLabel(
   geo: IntradayGeometry,

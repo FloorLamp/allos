@@ -44,6 +44,7 @@ import {
   axisTicks,
   clipSegmentsToView,
   hrAxisLabels,
+  INTRADAY_ROW_NAMES,
   intradayGeometry,
   minuteAtX,
   nearestHrPoint,
@@ -109,8 +110,8 @@ function hhmm(minute: number): string {
   return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 }
 
-/** The gutter row name ("Sleep", "Train"), elided into the gutter rather than
- *  painting back over the plot's left edge. */
+/** A gutter row name from `INTRADAY_ROW_NAMES` — the list `padLeft` is sized by,
+ *  so the name paints whole rather than being elided into the gutter (#4852). */
 function RowName({
   geo,
   text,
@@ -306,10 +307,18 @@ export default function IntradayChart({
   // as a PASSIVE listener, where `preventDefault()` is a silent no-op. "The page
   // does not scroll while zooming" therefore cannot be written as a prop at all.
   //
-  // AND THE EXCEPTION IS THE FEATURE. `zoomViewAt`/`panView` return null when the
-  // gesture moves nothing — above all at the full day, where a wheel that would
-  // only zoom out has nowhere to go. Returning WITHOUT preventDefault there is the
-  // difference between a chart a reader scrolls past and one that eats the page.
+  // AND THE EXCEPTION IS THE FEATURE — FOR PLAIN WHEELS. `zoomViewAt`/`panView`
+  // return null when the gesture moves nothing — above all at the full day, where
+  // a wheel that would only zoom out has nowhere to go. Returning WITHOUT
+  // preventDefault there is the difference between a chart a reader scrolls past
+  // and one that eats the page.
+  //
+  // A ctrlKey WHEEL IS EXEMPT FROM THAT EXCEPTION (PM ruling, 2026-09-03): it
+  // always preventDefaults, in both directions and at every zoom level. It is a
+  // trackpad PINCH, and what the browser does with an unhandled one is PAGE ZOOM
+  // rather than scrolling — so the reasoning behind the exception does not reach
+  // it. The exception exists so a reader can scroll PAST the chart, and a pinch is
+  // never an attempt to scroll past anything.
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg) return;
@@ -328,15 +337,16 @@ export default function IntradayChart({
       } else if (dy !== 0) {
         const userX =
           ((event.clientX - rect.left) / rect.width) * geo.viewBoxWidth;
-        // A trackpad pinch arrives here as a ctrlKey wheel and takes the same path.
+        // A trackpad pinch arrives here as a ctrlKey wheel and takes the same
+        // path — it differs only in never being handed back to the page.
         next = zoomViewAt(
           geo.view,
           minuteAtX(geo, userX),
           Math.exp(dy * WHEEL_ZOOM_RATE)
         );
       }
+      if (event.ctrlKey || next) event.preventDefault();
       if (!next) return;
-      event.preventDefault();
       applyZoom(next.from, next.to);
     };
     svg.addEventListener("wheel", onWheel, { passive: false });
@@ -641,7 +651,7 @@ export default function IntradayChart({
         {geo.hasSleep && (
           <RowName
             geo={geo}
-            text="Sleep"
+            text={INTRADAY_ROW_NAMES.sleep}
             y={geo.sleepTop + geo.sleepH * 0.75}
           />
         )}
@@ -746,12 +756,16 @@ export default function IntradayChart({
           );
         })}
         {geo.hasWorkouts && (
-          <RowName geo={geo} text="Train" y={geo.workTop + geo.workH * 0.7} />
+          <RowName
+            geo={geo}
+            text={INTRADAY_ROW_NAMES.train}
+            y={geo.workTop + geo.workH * 0.7}
+          />
         )}
         {geo.hasPractice && (
           <RowName
             geo={geo}
-            text="Practice"
+            text={INTRADAY_ROW_NAMES.practice}
             y={geo.practiceTop + geo.workH * 0.7}
           />
         )}

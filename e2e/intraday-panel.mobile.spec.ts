@@ -50,7 +50,7 @@ test.describe("the day chart at phone width (#1512 F / #1518)", () => {
       // Every layer still renders — the variant is geometry, not a content fork.
       await expect(compact.getByTestId("intraday-hr")).toBeVisible();
       await expect(compact.getByTestId("intraday-sleep-block")).toHaveCount(1);
-      // Two blocks on two rows since #4852 — the ride on Train, the evening
+      // Two blocks on two rows since #4852 — the ride on Train, the morning
       // practice on Practice — and both rows named in the compact gutter.
       await expect(compact.getByTestId("intraday-block")).toHaveCount(2);
       await expect(compact.locator('[data-row="Train"]')).toHaveCount(1);

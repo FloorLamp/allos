@@ -589,6 +589,36 @@ describe("buildIntradayModel — practice sessions", () => {
     ]);
   });
 
+  // THE ROW'S POPULATION AFTER #4897, checked because both changes are about the
+  // same practices. #4775's ruling made `startLivePracticeSession` stamp the
+  // practice's OWN usual duration and mark it `derived_window = 1`, so a Start-now
+  // session that used to reach this model start-only — and drew as a TICK — now
+  // arrives with a bounded window and draws as a BLOCK, on the row #4852 gives it.
+  // Neither change is wrong; the pair is what needed asserting.
+  //
+  // The honesty rule is intact and NARROWER, not gone: the fabrication it forbids
+  // is this renderer inventing a length, and the derived window is the ROW's own
+  // claim about itself. A practice whose usual duration is unknown still writes
+  // none, so start-only still reaches here and still ticks — the case below.
+  it("draws a Start-now practice's derived window as a block on its own row", () => {
+    const model = buildIntradayModel(
+      input({
+        events: [
+          practiceEvent("practice:started", {
+            ...win("19:00", null, 25),
+            derived_duration: true,
+          }),
+          // No usual duration to stamp: still start-only, still a tick.
+          practiceEvent("practice:lengthless", win("06:30", null, null)),
+        ],
+      })
+    );
+    expect(model!.blocks.map((b) => [b.source, b.startMinute, b.endMinute])).toEqual(
+      [["practice", 1140, 1165]]
+    );
+    expect(model!.ticks.map((t) => t.minute)).toEqual([390]);
+  });
+
   it("stays data-gated: a day of untimed practice rows draws no panel", () => {
     expect(
       buildIntradayModel(
