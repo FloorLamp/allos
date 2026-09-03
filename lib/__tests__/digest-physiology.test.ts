@@ -99,7 +99,7 @@ describe("the Sleep section's overnight-HR line", () => {
         usualRestingBpm: 53,
         elevated: false,
       }).at(-1)
-    ).toBe("📈 Overnight HR low 49 · avg 56 — resting 55 (usual 53)");
+    ).toBe("📈 Overnight HR — low 49 · avg 56 · resting 55 (usual 53)");
   });
 
   // The verdict is a CLAUSE on the facts, and it qualifies the night (#992).
@@ -130,7 +130,7 @@ describe("the Sleep section's overnight-HR line", () => {
       usualRestingBpm: null,
       elevated: false,
     }).at(-1);
-    expect(line).toContain("low 49 · avg 56");
+    expect(line).toBe("📈 Overnight HR — low 49 · avg 56");
     expect(line).not.toContain("resting");
   });
 
@@ -143,6 +143,6 @@ describe("the Sleep section's overnight-HR line", () => {
         usualRestingBpm: 52.5,
         elevated: false,
       }).at(-1)
-    ).toBe("📈 Overnight HR low 49 · avg 55 — resting 55 (usual 53)");
+    ).toBe("📈 Overnight HR — low 49 · avg 55 · resting 55 (usual 53)");
   });
 });

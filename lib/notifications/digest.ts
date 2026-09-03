@@ -847,7 +847,10 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     // job and is unchanged by this line existing.
     if (s.overnightHr) {
       const hr = s.overnightHr;
-      const notes: (string | null)[] = [];
+      const notes: (string | null)[] = [
+        `low ${Math.round(hr.lowBpm)}`,
+        `avg ${Math.round(hr.avgBpm)}`,
+      ];
       if (hr.restingBpm != null) {
         const usual =
           hr.usualRestingBpm != null
@@ -858,9 +861,11 @@ export function buildDigest(input: DigestInput): DigestModel | null {
       sleepLines.push(
         formatEmphasizedLine({
           glyph: GLYPH.trend,
-          head: `Overnight HR low ${Math.round(hr.lowBpm)} · avg ${Math.round(hr.avgBpm)}`,
-          notes,
+          head: "Overnight HR",
+          // The verdict is the CAUSE of the line's interest, so it leads the
+          // qualifiers and takes the em dash; the three figures follow as notes.
           because: hr.elevated ? "elevated" : null,
+          notes,
         })
       );
     }
