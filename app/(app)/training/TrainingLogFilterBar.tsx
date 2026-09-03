@@ -40,6 +40,7 @@ export default function TrainingLogFilterBar({
   sourceOptions,
   showFault,
   hasHistory,
+  day,
   everyone,
   show,
   initialCreateDate,
@@ -50,6 +51,8 @@ export default function TrainingLogFilterBar({
   showFault: boolean;
   /** Whether this profile has any training row at all — see the mount (#809). */
   hasHistory: boolean;
+  /** The day this read is bounded to, when a day link brought the reader here. */
+  day?: { date: string; label: string };
   everyone: boolean;
   show?: number;
   initialCreateDate?: string;
@@ -60,12 +63,12 @@ export default function TrainingLogFilterBar({
     {
       value: "",
       label: "All",
-      href: trainingLogHref({ ...query, type: null }),
+      href: trainingLogHref({ ...query, day: day?.date, type: null }),
     },
     ...ACTIVITY_TYPES.filter((t) => TYPE_LABELS[t] != null).map((t) => ({
       value: t as string,
       label: TYPE_LABELS[t]!,
-      href: trainingLogHref({ ...query, type: t }),
+      href: trainingLogHref({ ...query, day: day?.date, type: t }),
     })),
   ];
 
@@ -89,6 +92,7 @@ export default function TrainingLogFilterBar({
             className="flex min-w-48 items-center gap-2"
           >
             <input type="hidden" name="tab" value="log" />
+            {day && <input type="hidden" name="day" value={day.date} />}
             {query.type && (
               <input type="hidden" name="type" value={query.type} />
             )}
@@ -138,6 +142,21 @@ export default function TrainingLogFilterBar({
           </form>
 
           <div className="flex flex-wrap items-center gap-2">
+            {/* THE DAY BOUND SAYS SO, AND SAYS HOW TO LEAVE. A day link narrows the
+                read to one day, which reads as a Log that has lost its history unless
+                the page names the bound; this chip is that name, and its href is the
+                way back to the whole ledger. Human date shape on the chip, machine
+                date in the URL — the day panel's own split. */}
+            {day && (
+              <Chip
+                role="filter"
+                href={trainingLogHref({ ...query, everyone, show })}
+                current
+                testId="training-log-day-filter"
+              >
+                {day.label}
+              </Chip>
+            )}
             <SegmentedControl
               options={typeSegments}
               value={query.type ?? ""}
@@ -156,7 +175,11 @@ export default function TrainingLogFilterBar({
                 </span>
                 <Chip
                   role="filter"
-                  href={trainingLogHref({ ...query, source: null })}
+                  href={trainingLogHref({
+                    ...query,
+                    day: day?.date,
+                    source: null,
+                  })}
                   current={query.source == null}
                 >
                   Any
@@ -165,7 +188,11 @@ export default function TrainingLogFilterBar({
                   <Chip
                     key={option.value}
                     role="filter"
-                    href={trainingLogHref({ ...query, source: option.value })}
+                    href={trainingLogHref({
+                      ...query,
+                      day: day?.date,
+                      source: option.value,
+                    })}
                     current={query.source === option.value}
                   >
                     {option.label}
@@ -179,7 +206,11 @@ export default function TrainingLogFilterBar({
             {showFault && (
               <Chip
                 role="filter"
-                href={trainingLogHref({ ...query, fault: !query.fault })}
+                href={trainingLogHref({
+                  ...query,
+                  day: day?.date,
+                  fault: !query.fault,
+                })}
                 current={query.fault}
                 testId="training-log-fault-filter"
               >
@@ -190,7 +221,7 @@ export default function TrainingLogFilterBar({
             {query.tag && (
               <Chip
                 role="filter"
-                href={trainingLogHref({ ...query, tag: null })}
+                href={trainingLogHref({ ...query, day: day?.date, tag: null })}
                 current
                 testId="training-log-tag-filter"
               >

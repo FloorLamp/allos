@@ -61,9 +61,13 @@ test("activity rows open the canonical activity page", async ({ page }) => {
 // and the periods below it are folds, so there is no client pager to drive and no
 // helper builds that address any more (`trainingLogActivityHref` retired with it).
 //
-// WHAT SURVIVED IS THE DAY ANCHOR, and it is a LIVE contract — `ActiveDaysStrip` and
-// `DayHistory` both build `/training?tab=log#day-YYYY-MM-DD` — so it is pinned here
-// in the retired test's place rather than left to the mount's own comment.
+// THE DAY ANCHOR SURVIVED THE SAME REASONING ONE STEP LATER. `ActiveDaysStrip` and
+// `DayHistory` used to build `/training?tab=log#day-YYYY-MM-DD`, and it landed on
+// nothing for any day outside the window the Log happened to draw; both name the day
+// in the query now (`trainingLogDayHref`), which the page answers by reading that day.
+// The anchor is kept because `#day-` links are already out in readers' bookmarks, so
+// what is pinned here is the weaker promise it can actually keep: a day the Log has
+// RENDERED still answers to the name it has always had.
 test("a #day-YYYY-MM-DD anchor still addresses the day it names", async ({
   page,
 }) => {

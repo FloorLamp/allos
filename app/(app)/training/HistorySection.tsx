@@ -14,6 +14,7 @@ import {
   HISTORY_DEFAULT_SHOW,
   HISTORY_MAX_SHOW,
   HISTORY_SHOW_STEP,
+  clampHistoryDay,
   layoutHistoryDay,
   parseHistoryShow,
   type HistoryRow,
@@ -155,6 +156,18 @@ export default async function HistorySection({
   const show = parseHistoryShow(searchParams.show);
   const openFolds = parseTimelineOpen(searchParams.open);
 
+  // ONE DAY, AS A READ BOUND (#4079). `?day=` is not one of the layered refinements —
+  // those are statements about an ACTIVITY, resolved against `activities`, while this
+  // is the substrate's own gather bound and is spelled the way the record's day view
+  // spells it. It is what makes `trainingLogDayHref` land: the day a reader asked for
+  // is read directly instead of being hunted for inside whatever the window drew.
+  // Clamped by the shared parser, so a hand-typed future or malformed day degrades to
+  // the page rather than to an empty one asserting there is nothing there.
+  const day = clampHistoryDay(searchParams.day, todayStr);
+  // Either kind of narrowing answers a question the reader asked, and both are
+  // answered over the whole record rather than over the window.
+  const narrowed = filtered || day != null;
+
   // A FILTER IS A QUESTION ABOUT THE WHOLE RECORD, NOT ABOUT THE WINDOW (#1634).
   //
   // That issue's defect was a search that only ever saw the fetched pages, so a match
@@ -172,6 +185,7 @@ export default async function HistorySection({
     const feed = historyMemberFeed(id, {
       loginId,
       family: "training",
+      day,
       limit: gatherLimit,
       actingProfileId,
     });
@@ -201,15 +215,16 @@ export default async function HistorySection({
   // typed a question and the page answered with furniture. So a filtered read opens
   // every period it returned. The bound that keeps this finite is the gather's ceiling
   // above; the fold spine is a convenience for SCROLLING, and a reader who has typed
-  // is not scrolling.
+  // is not scrolling. A day-bounded read is the same case at its limit — one day, and
+  // a fold shut over it is the whole page.
   const windowed = windowTimelineDays(
     days,
     todayStr,
-    filtered
+    narrowed
       ? new Set(
-          days.flatMap((day) => [
-            timelineMonthKey(day.date),
-            timelineYearKey(day.date),
+          days.flatMap((group) => [
+            timelineMonthKey(group.date),
+            timelineYearKey(group.date),
           ])
         )
       : openFolds
@@ -263,6 +278,7 @@ export default async function HistorySection({
   ): AppRoute =>
     trainingLogHref({
       ...query,
+      day,
       everyone,
       show: show === HISTORY_DEFAULT_SHOW ? undefined : show,
       open: toggledTimelineOpen(openFolds, key, fold),
@@ -276,7 +292,10 @@ export default async function HistorySection({
   const daySection = (group: (typeof renderedDays)[number]) => (
     <section
       key={group.date}
-      // The workout-day anchor grammar `trainingLogDayHref` writes, unchanged.
+      // The day group's own address. `trainingLogDayHref` names its day in the query
+      // now, so nothing the app builds depends on this resolving — it is kept because
+      // `#day-YYYY-MM-DD` links are already out in readers' bookmarks, and a rendered
+      // day should still answer to the name it has always had.
       id={`day-${group.date}`}
       data-testid="training-log-day"
       className="scroll-mt-[calc(6rem+env(safe-area-inset-top))] pb-2 pt-1"
@@ -326,6 +345,7 @@ export default async function HistorySection({
         sourceOptions={sourceOptions}
         showFault={anyFault}
         hasHistory={hasHistory}
+        day={day ? { date: day, label: formatLongDate(day, prefs) } : undefined}
         everyone={everyone}
         show={show === HISTORY_DEFAULT_SHOW ? undefined : show}
         initialCreateDate={initialCreateDate}
@@ -336,7 +356,7 @@ export default async function HistorySection({
         // different exits, and only the second one should lead with the invitation.
         <EmptyState
           message={
-            filtered
+            narrowed
               ? "No sessions match these filters."
               : "No training logged yet."
           }
@@ -392,6 +412,7 @@ export default async function HistorySection({
               data-testid="training-log-show-more"
               href={trainingLogHref({
                 ...query,
+                day,
                 everyone,
                 show: Math.min(show + HISTORY_SHOW_STEP, HISTORY_MAX_SHOW),
                 open: [...openFolds].sort(),

@@ -121,7 +121,7 @@ test("Training → Analyze leads with workout history and its active days (#186/
   await expect(newestOccurrence).toContainText(/\d+ sessions?/);
   await expect(newestOccurrence.getByRole("link")).toHaveAttribute(
     "href",
-    `/training?tab=log#day-${activeDates.at(-1)}`
+    `/training?tab=log&day=${activeDates.at(-1)}`
   );
 });
 
@@ -153,15 +153,20 @@ test("selecting a workout day opens its panel, which links to that Training Log 
   );
   await expect(page).toHaveURL(/tab=analyze/);
 
-  // Workout review/editing belongs to the Training Log, anchored to this day.
+  // Workout review/editing belongs to the Training Log, BOUNDED to this day. The
+  // day is a query param, not a fragment: a fragment asked the browser to find the
+  // day among whatever the Log had drawn, so it landed on nothing for any day
+  // outside the default window (#4079).
   const link = panel.getByRole("link", { name: /Training log/ });
-  await expect(link).toHaveAttribute("href", `/training?tab=log#day-${date}`);
+  await expect(link).toHaveAttribute("href", `/training?tab=log&day=${date}`);
 
   // followLink, not a raw click — a raw click intermittently lands in the
   // pre-hydration swallow window and never advances the URL, this spec's
   // retries=0 flake (#889/#868).
   await followLink(page, link, /\/training\?tab=log/);
   await expect(page.getByRole("main").locator(`#day-${date}`)).toBeVisible();
+  // And the bound is stated on the page it bounds, with the way out of it.
+  await expect(page.getByTestId("training-log-day-filter")).toBeVisible();
 });
 
 test("the matrix is one keyboard grid and selecting a cell opens the shared day panel", async ({

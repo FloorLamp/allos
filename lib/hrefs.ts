@@ -342,11 +342,22 @@ export function historyDayIntradayHref(date: string): AppRoute {
   return `${historyDayHref(date)}#${INTRADAY_PANEL_ANCHOR}` as AppRoute;
 }
 
-// The Training Log's date anchor. Workout-day surfaces land in the domain
-// ledger rather than routing through Timeline; the log owns activity review
-// and editing, while Timeline remains the cross-domain destination.
+// ONE WORKOUT DAY, IN THE LOG. Workout-day surfaces land in the domain ledger
+// rather than routing through Timeline; the log owns activity review and editing,
+// while Timeline remains the cross-domain destination.
+//
+// THE DAY IS IN THE QUERY, NOT IN A FRAGMENT (#4079). This used to be
+// `/training?tab=log#day-<date>`, which asked the BROWSER to find the day among
+// whatever the Log had drawn — so it resolved only while the day happened to fall
+// inside the default window, and stopped resolving the moment that window moved.
+// The Log is a place with a URL now, and the substrate it renders through already
+// takes a day as a read bound (`HistoryGatherOptions.day`, the same `?day=` the
+// record's day view is spelled with). Naming the day there is what makes the link
+// land: the page gathers that day, so there is nothing left to scroll to. It is the
+// ruling `#timeline-day-<date>` was retired under, and the one `bucketFeedHref`
+// already applies a month at a time.
 export function trainingLogDayHref(date: string): AppRoute {
-  return `/training?tab=log#day-${date}`;
+  return trainingLogHref({ day: date });
 }
 
 // THE LOG TAB'S OWN URL (#4079). The tab renders through the shared history
@@ -361,12 +372,15 @@ export function trainingLogHref(
     source?: string | null;
     fault?: boolean;
     tag?: { kind: "muscle" | "region"; value: string } | null;
+    /** One profile-local day, the substrate's own read bound. */
+    day?: string | null;
     everyone?: boolean;
     show?: number;
     open?: readonly string[];
   } = {}
 ): AppRoute {
   const sp = new URLSearchParams({ tab: "log" });
+  if (params.day) sp.set("day", params.day);
   if (params.q) sp.set("q", params.q);
   if (params.type) sp.set("type", params.type);
   if (params.source) sp.set("src", params.source);
