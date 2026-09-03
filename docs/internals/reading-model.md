@@ -757,7 +757,10 @@ continuous sensor", sends every glucose record from that connection to the trace
 it is OFF by default and setup never raises it. An undeclared connection stays on the
 `medical_records` Glucose observation path however its records are shaped, so nothing
 silently becomes a trace — a genuine discrete draw misrouted into a trace loses its
-identity, its band and its document.
+identity, its band and its document. That default direction is a SAFETY CHOICE rather
+than a measurement, and it has never run against live data: **prod holds no CGM data at
+all**, so neither path has been exercised by a real sensor. The switch is what the first
+person to link one turns on, once.
 
 The 2026-09-02 ruling also named a `specimen_source` clause — interstitial fluid to the
 trace, everything else and unset to observations — and #4913 built it. The owner removed
