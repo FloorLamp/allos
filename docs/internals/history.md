@@ -93,12 +93,24 @@ decides it:
    one thing.
 3. The substance row describes the act in the person's own terms.
 
-**Two consequences follow from the ruling and are decided, not accidents.** A drink
-renders **date-only** and sinks to the bottom of its day, because `food_daily_totals`
-carries no instant while the food event did — the row used to show a clock. And a day's
+**Two consequences follow from the ruling and are decided, not accidents.** A day's
 drinks are one editable **day count**, so a single mistyped drink can no longer be
 corrected or deleted on its own from the record; that correction lives on the substance
-surface, which owns the counter.
+surface, which owns the counter. And a drink stated no time at all, so the row rendered
+**date-only** and sank to the bottom of its day.
+
+**The second consequence is now conditional (#3295 phase 1).** The substance add door
+offers alcohol the shared `WhenControl`, so a drink CAN state its minute — stored on the
+serving event as `occurred_at` with `time_source = 'stated'`, which is the column
+`food_daily_totals` never had. `SubstanceDailyTotal.statedAt` is the day's **earliest**
+such statement, read through the declared `food_log_events` event column, and the row
+takes a stated clock from it and — as category `substance`, at that minute — a tick on
+the day chart's rail. A day nobody stated a time for still renders date-only and sinks,
+and so does every nicotine, cannabis and custom row for ever: `substance_daily_totals`
+is UNIQUE per (profile, date, substance) and declares no event column. That last part is
+the trap — `bestKnownInstant` on that table answers with `recorded_at`, the FILING stamp,
+which would put a use on the chart at the hour somebody typed it. The read asks for the
+EVENT instant and takes null for an answer.
 
 **The drink does not disappear, and the totals do not move.** The food door writes
 the `food_daily_totals` counter as well as the event, and the substance read is over

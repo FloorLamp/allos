@@ -585,6 +585,7 @@ describe("substance consumption history actions (#2009)", () => {
         date: past,
         amount: 2,
         notes: "Dinner with friends",
+        statedAt: null,
       },
     ]);
     const updated = await updateSubstanceDailyTotalAction(
@@ -870,6 +871,7 @@ describe("substance history actions refuse another profile's row (#2072)", () =>
         date: td,
         amount: 2,
         notes: "Owner note",
+        statedAt: null,
       },
     ]);
     const ownerEvents = db
@@ -925,6 +927,7 @@ describe("substance history actions refuse another profile's row (#2072)", () =>
         date: td,
         amount: 3,
         notes: "Owner note",
+        statedAt: null,
       },
     ]);
     expect(getSubstanceDailyTotals(intruderProfile.id, "nicotine")).toEqual([]);

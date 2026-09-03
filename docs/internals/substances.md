@@ -3,7 +3,13 @@
 The cross-domain Timeline browses alcohol, nicotine, cannabis, and custom
 substances as one per-day `substance` rollup. Alcohol is counted from its shared
 food serving events; the other substances are counted from their current daily
-totals. This is browse-only. #3295 owns the later event-row schema and writers,
+totals. This is browse-only. #3295 phase 1 gave ALCOHOL a stated minute on the web: the
+substance add door mounts `WhenControl` for the food-log ledger only, the statement
+lands on each serving event as `occurred_at` / `time_source = 'stated'` through the food
+ledger's own log core, and the record's `substance` row reports it as a clock and a day
+chart tick. Every other substance stays day-only until the event ledger lands, because
+`substance_daily_totals` has nowhere to put an instant. #3295 phase 2 owns the later
+event-row schema and writers,
 and its rows must land on the app's one record — the `substance` kind in
 `lib/history.ts`, recorded in `docs/internals/history.md` — rather than creating a
 substance shell beside it. The shared event-ledger frame that sentence used to name is

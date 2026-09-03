@@ -851,6 +851,7 @@ describe("custom substances (#3279)", () => {
         date,
         amount: 2,
         notes: "two cans",
+        statedAt: null,
       },
     ]);
 
@@ -971,7 +972,14 @@ describe("the substance write core keeps the shared food contracts (#4435)", () 
         addSubstanceDailyTotalCore(p, substance, { date, amount: 2 }, "page")
       ).toEqual({ kind: "added", id: first.id });
       expect(historyOn(p, date)).toEqual([
-        { id: first.id, substance, date, amount: 3, notes: "the first one" },
+        {
+          id: first.id,
+          substance,
+          date,
+          amount: 3,
+          notes: "the first one",
+          statedAt: null,
+        },
       ]);
     }
   );
