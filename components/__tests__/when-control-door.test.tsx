@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useState } from "react";
 import WhenControl, { type WhenValue } from "@/components/WhenControl";
@@ -33,6 +33,11 @@ beforeEach(() => {
     }
   );
 });
+
+/** The wheel's row height and the quiet time it reads as a finished flick — the
+ *  two numbers the settle case below has to outlive (components/TimeField.tsx). */
+const WHEEL_CELL_PX = 44;
+const SETTLE_WINDOW_MS = 500;
 
 const DAY = "2026-08-29";
 /** 19:30 in UTC on DAY — the zone every case below runs in. */
@@ -165,5 +170,59 @@ describe("the composed door", () => {
 
     fireEvent.click(screen.getByTestId("w-when-done"));
     expect(screen.queryByTestId("w-when-panel")).toBeNull();
+  });
+
+  // THE PAIR SURVIVES A CLOCK WRITE THAT WAS DECIDED BEFORE THE DAY WAS (#4944).
+  //
+  // Every wheel column writes the WHOLE `{ date, statedAt }` pair, so a column
+  // that commits a choice it made a fifth of a second ago restates the day that
+  // render held — and the day the user picked in between is gone, silently, with
+  // the panel repainting on the old one. The wheel's settle timer is the only
+  // writer in this subtree that can reach `onChange` from a past render; this is
+  // the invariant in `setDate`'s comment ("the two fields cannot come apart even
+  // mid-edit") asserted against it.
+  //
+  // jsdom has no layout, so the column's scroll offset is stood in for. What that
+  // stands in for is only WHERE the column is; what is pinned here is which
+  // MOMENT the settle reads the value and the callback from, which no layout
+  // affects.
+  it("a wheel settle that was armed before the day pick still writes the picked day", () => {
+    vi.useFakeTimers();
+    try {
+      const { seen } = mount({ timeRequired: true, maxDate: "2026-12-31" });
+      fireEvent.click(door()!);
+      const panel = screen.getByTestId("w-when-panel");
+      const hour = within(panel).getByRole("listbox", { name: "Hour" });
+      let top = 0;
+      Object.defineProperty(hour, "scrollTop", {
+        get: () => top,
+        set: (next: number) => {
+          top = next;
+        },
+        configurable: true,
+      });
+
+      // A flick leaves the column on 05 and announces it; nothing is committed
+      // yet, because a wheel commits when it stops moving.
+      top = 5 * WHEEL_CELL_PX;
+      fireEvent.scroll(hour);
+
+      // The day is picked while that flick is still settling.
+      fireEvent.click(
+        within(panel).getByRole("button", { name: "August 20, 2026" })
+      );
+      expect(seen.at(-1)!.date).toBe("2026-08-20");
+
+      act(() => void vi.advanceTimersByTime(SETTLE_WINDOW_MS));
+
+      // The flick lands — on the day that is now chosen, not the one the arming
+      // render was looking at.
+      expect(seen.at(-1)).toEqual({
+        date: "2026-08-20",
+        statedAt: "2026-08-20T05:30:00.000Z",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

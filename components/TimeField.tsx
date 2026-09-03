@@ -349,6 +349,18 @@ function WheelColumn({
   // yank the column out from under the finger.
   const flicking = useRef(false);
   const settle = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // THE SETTLE DECIDES `SETTLE_MS` AFTER THE SCROLL THAT ARMED IT, so props read
+  // from that render are that old by the time it commits — and what a column
+  // commits is not a bare hour: `WhenControl` writes the whole `{ date, statedAt }`
+  // pair, so a stale callback restates the day its arming render was looking at
+  // and a day picked inside the window is silently put back (#4944). The row is
+  // read live off `scrollTop`; the value it is compared against, and the callback
+  // that commits it, are read live too, or the comparison has one foot in each
+  // moment.
+  const latest = useRef({ options, value, onSelect });
+  useEffect(() => {
+    latest.current = { options, value, onSelect };
+  });
 
   // Park the column on its value — on open, and whenever the value moves from
   // anywhere but this column's own scroll. `scrollTop = index * CELL_PX` puts
@@ -383,14 +395,15 @@ function WheelColumn({
           flicking.current = false;
           const el = ref.current;
           if (!el) return;
+          const live = latest.current;
           const i = Math.min(
-            options.length - 1,
+            live.options.length - 1,
             Math.max(0, Math.round(el.scrollTop / CELL_PX))
           );
           // Only a MOVE is a choice. Parking the column on its own value fires a
           // scroll event too, and committing that would make opening the picker
           // look like using it.
-          if (options[i] !== value) onSelect(options[i]);
+          if (live.options[i] !== live.value) live.onSelect(live.options[i]);
         }, SETTLE_MS);
       }}
       onKeyDown={(e) => {
