@@ -20,7 +20,13 @@ import {
   type CyclingLens,
 } from "@/lib/hrefs";
 import { CARDIO_METRICS, RANGES } from "@/lib/analyze-view";
+import { SPLIT_INTERVALS_M } from "@/lib/cycling-analytics";
 import { isCyclingActivityName } from "@/lib/cycling-activity";
+import {
+  bestRankMarker,
+  comparedWindowText,
+  type BestRank,
+} from "@/lib/cycling-bests";
 import { getRideDetailData } from "@/lib/queries";
 import type { ActivityDetailData } from "@/lib/training-activity-detail";
 import { heartRateTextStatesMax } from "@/lib/training-log-card";
@@ -248,6 +254,17 @@ export function cyclingLens(
   };
 }
 
+// A rank marker. `.badge` is the shared chip treatment; amber is the same tone
+// the strength surfaces already use for a personal record, so one visual grammar
+// covers both.
+function RankChip({ rank }: { rank: BestRank }) {
+  return (
+    <span className="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+      {bestRankMarker(rank)}
+    </span>
+  );
+}
+
 export default async function CyclingActivityDetail(props: {
   activityId: number;
   profileId: number;
@@ -260,7 +277,7 @@ export default async function CyclingActivityDetail(props: {
   subjectProfileId?: number;
 }) {
   const { activityId: id, profileId, units, formatPrefs, base } = props;
-  const splitDistanceM = units.distanceUnit === "mi" ? 5 * 1609.344 : 5 * 1000;
+  const splitDistanceM = SPLIT_INTERVALS_M[units.distanceUnit];
   const data = getRideDetailData(profileId, id, splitDistanceM, {
     row: base.row,
     activity: base.card.activity,
@@ -781,16 +798,29 @@ export default async function CyclingActivityDetail(props: {
                 data-testid="ride-power-profile"
               >
                 {data.powerCurve.length > 0 ? (
-                  <dl className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                    {data.powerCurve.map((point) => (
-                      <StatBox
-                        key={point.seconds}
-                        label={`${point.label} best`}
-                        value={`${point.watts} W`}
-                        data-testid={`ride-power-curve-${point.seconds}`}
-                      />
-                    ))}
-                  </dl>
+                  <>
+                    <dl className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      {data.powerCurve.map((point) => {
+                        const rank = powerRankBySeconds.get(point.seconds);
+                        const perKg = wattsPerKg(point.watts, data.bodyweightKg);
+                        return (
+                          <StatBox
+                            key={point.seconds}
+                            label={`${point.label} best`}
+                            value={`${point.watts} W`}
+                            sub={perKg == null ? undefined : `${perKg} W/kg`}
+                            badge={rank ? <RankChip rank={rank} /> : undefined}
+                            data-testid={`ride-power-curve-${point.seconds}`}
+                          />
+                        );
+                      })}
+                    </dl>
+                    {powerWindowText ? (
+                      <CardFootnote data-testid="ride-power-curve-window">
+                        {powerWindowText}
+                      </CardFootnote>
+                    ) : null}
+                  </>
                 ) : null}
                 {data.cyclingLoad ? (
                   <CardGroupSection>
@@ -960,7 +990,14 @@ export default async function CyclingActivityDetail(props: {
                           className="border-b border-black/5 last:border-0 dark:border-white/5"
                         >
                           <Td slot="title" className="py-2.5 pr-3 font-medium">
-                            {split.index}
+                            <span className="flex items-center gap-1.5">
+                              {split.index}
+                              {splitRankByIndex.has(split.index) ? (
+                                <RankChip
+                                  rank={splitRankByIndex.get(split.index)!}
+                                />
+                              ) : null}
+                            </span>
                           </Td>
                           <Td
                             slot="value"
