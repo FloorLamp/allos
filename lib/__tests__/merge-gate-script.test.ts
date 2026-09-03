@@ -472,11 +472,17 @@ describe("merge-gate.mjs", () => {
     ["a line citation", "auth.test.ts:326 reads the frozen clock"],
     ["a pseudo-element", "The sweep is blind to ::after readouts"],
     // A PAIR of spaced dashes encloses a parenthetical — still one clause.
-    ["a mid-clause dash pair", "The walk exists twice — in A and in B — and it drifts"],
+    [
+      "a mid-clause dash pair",
+      "The walk exists twice — in A and in B — and it drifts",
+    ],
     // Ranges and compounds are not separators, and U+2212 is arithmetic.
     ["an unspaced dash", "The 10:00Z–12:00Z band guesses the zone"],
     ["a minus sign", "Top − m42 assumes a pure translate"],
-    ["a trailing reference", "The temperature fold offers the dose (#4712 judgement 1)"],
+    [
+      "a trailing reference",
+      "The temperature fold offers the dose (#4712 judgement 1)",
+    ],
     // The exception is what makes this one pass: the reference is removed
     // before the separators are counted, so its own dash is not a tail.
     [
@@ -500,15 +506,43 @@ describe("merge-gate.mjs", () => {
       "A lane commit’s Fixes keyword closes an issue the PR body had marked Refs",
       "is 73 characters",
     ],
-    ["a colon tail", "Fix the reader: it dropped three types", "carries a colon tail"],
-    ["a colon tail nine characters in", "Main red: the notice count is #4370 wording", "carries a colon tail"],
-    ["an em-dash tail", "Fix the reader — it dropped three types", "carries a dash tail"],
-    ["a hyphen tail", "Fix the reader - it dropped three types", "carries a dash tail"],
-    ["a dash pair AND a tail", "The walk exists twice — in A and in B — and it drifts — badly", "carries a dash tail"],
+    [
+      "a colon tail",
+      "Fix the reader: it dropped three types",
+      "carries a colon tail",
+    ],
+    [
+      "a colon tail nine characters in",
+      "Main red: the notice count is #4370 wording",
+      "carries a colon tail",
+    ],
+    [
+      "an em-dash tail",
+      "Fix the reader — it dropped three types",
+      "carries a dash tail",
+    ],
+    [
+      "a hyphen tail",
+      "Fix the reader - it dropped three types",
+      "carries a dash tail",
+    ],
+    [
+      "a dash pair AND a tail",
+      "The walk exists twice — in A and in B — and it drifts — badly",
+      "carries a dash tail",
+    ],
     // The exception is about the TAIL, so a trailing reference is still
     // counted in the length: the squash subject carries it.
-    ["a trailing reference over the bound", `${"R".repeat(60)} (#4712 judgement 1)`, "is 80 characters"],
-    ["both halves at once", `Fix the reader: ${"R".repeat(70)}`, "is 86 characters and carries a colon tail"],
+    [
+      "a trailing reference over the bound",
+      `${"R".repeat(60)} (#4712 judgement 1)`,
+      "is 80 characters",
+    ],
+    [
+      "both halves at once",
+      `Fix the reader: ${"R".repeat(70)}`,
+      "is 86 characters and carries a colon tail",
+    ],
   ])("refuses %s", (_case, title, clause) => {
     const refusal = titleRuleRefusal("PR", title);
     expect(refusal).toContain(`PR title ${clause}`);
@@ -553,7 +587,9 @@ describe("merge-gate.mjs", () => {
 
   it("names the length it measured when the title passes", () => {
     const run = runGate({});
-    expect(run.stdout).toContain("PASS: PR title is one clause of 49 characters");
+    expect(run.stdout).toContain(
+      "PASS: PR title is one clause of 49 characters"
+    );
   });
 
   it("closes on a draft PR — PRs open READY", () => {
