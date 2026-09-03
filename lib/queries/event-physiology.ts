@@ -1,10 +1,11 @@
 // The GATHERING half of #4775 §1. The computation is pure and lives in
 // lib/event-physiology.ts; nothing here re-derives it.
 //
-// Three reads per event, all already profile-scoped: the minute stream over the span
-// the window can reach, the profile's zone model, and the resting-HR signal the
-// `rest-rhr` rule uses. No `.prepare` — every read goes through an existing scoped
-// query, so there is no new SQL to scope.
+// Three reads per event: the minute stream over the span the window can reach, the
+// profile's zone model, and the resting-HR signal the `rest-rhr` rule uses — all
+// through existing profile-scoped queries. The two statements this module does own
+// (the frontier seek and the prior-events window below) are bounded, indexed and
+// scoped by `profile_id` in their WHERE clause, per AGENTS.md.
 //
 // ── The frontier, and why it is MAX(ts) rather than the stored watermark ─────
 //
@@ -28,6 +29,8 @@ import { getRestingHrSignal } from "./coaching";
 import {
   eventPhysiology,
   physiologyDaySpan,
+  usualValue,
+  USUAL_RECENT_EVENTS,
   type EventPhysiology,
 } from "../event-physiology";
 import { activityWindow, type ActivityWindow } from "../training-zones";
@@ -100,4 +103,79 @@ export function getWindowPhysiology(
     frontier: getHrFrontierLocal(profileId),
     now: zonedMinuteStr(getTimezone(profileId), at),
   });
+}
+
+/**
+ * The profile's usual recovery for a KIND of event, over its own prior windowed rows —
+ * `priorsNewestFirst` capped at `USUAL_RECENT_EVENTS` before anything is read, so the
+ * cost of this is bounded by a constant and not by account age.
+ *
+ * Rows the stream could not answer for contribute nothing: below three MEASURED
+ * recoveries there is no usual and the fact renders alone. That is deliberately
+ * stricter than "three prior events" — a usual averaged over one real recovery and two
+ * silences would be a number with a plural word in front of it.
+ */
+export function usualRecoveryMin(
+  profileId: number,
+  priorsNewestFirst: readonly ActivityWindowInput[]
+): number | null {
+  const measured: number[] = [];
+  for (const row of priorsNewestFirst.slice(0, USUAL_RECENT_EVENTS)) {
+    const recovery = getEventPhysiology(profileId, row)?.recoveryMin;
+    if (recovery != null) measured.push(recovery);
+  }
+  return usualValue(measured);
+}
+
+/**
+ * The recovery fact for one finished event, plus the profile's usual for its kind, or
+ * null when the stream cannot honestly answer. The COVERAGE gate is applied here so no
+ * caller has to remember it: an uncovered window's recovery is not "not yet", it is a
+ * measurement over minutes that have not arrived.
+ */
+export function eventRecovery(
+  profileId: number,
+  row: ActivityWindowInput,
+  priorsNewestFirst: readonly ActivityWindowInput[],
+  at: Date = clockNow()
+): { recoveryMin: number; usualRecoveryMin: number | null } | null {
+  const physiology = getEventPhysiology(profileId, row, at);
+  if (!physiology?.covered || physiology.recoveryMin == null) return null;
+  return {
+    recoveryMin: physiology.recoveryMin,
+    usualRecoveryMin: usualRecoveryMin(profileId, priorsNewestFirst),
+  };
+}
+
+/**
+ * The profile's own PRIOR windowed events of one activity type, newest first and
+ * capped — the "same kind" a usual is averaged over. Bounded by
+ * `USUAL_RECENT_EVENTS` in SQL rather than in the caller, because the point of the cap
+ * is that this read cannot grow with account age.
+ *
+ * "Prior" is the (date, id) LEDGER order the rest of the app walks, not the date
+ * alone: two sessions on one day are ordered, and a usual that included the session it
+ * is being compared against would flatten toward it.
+ */
+export function priorEventWindows(
+  profileId: number,
+  type: string,
+  before: { date: string; id: number }
+): ActivityWindowInput[] {
+  return db
+    .prepare(
+      `SELECT date, start_time, end_time, duration_min FROM activities
+        WHERE profile_id = ? AND type = ? AND start_time IS NOT NULL
+          AND (date < ? OR (date = ? AND id < ?))
+        ORDER BY date DESC, id DESC
+        LIMIT ?`
+    )
+    .all(
+      profileId,
+      type,
+      before.date,
+      before.date,
+      before.id,
+      USUAL_RECENT_EVENTS
+    ) as ActivityWindowInput[];
 }

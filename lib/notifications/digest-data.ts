@@ -61,6 +61,10 @@ import { groupUpcoming } from "../upcoming";
 import { integrationToItem, isEscalatingIntegration } from "../attention";
 import { getIntegrationAttention } from "../queries/integrations";
 import { mainSleepNights } from "../sleep-regularity";
+import {
+  eventRecovery,
+  priorEventWindows,
+} from "../queries/event-physiology";
 import { isLastNight, isSleepTracking } from "../sleep-summary";
 import {
   arrivalStatistics,
@@ -421,6 +425,13 @@ export function gatherDigestInput(
         // The provenance the import already stored (#1913 item 1). It rides THIS line,
         // which is what retires the separate "📥 Strava: workouts" arrival narration.
         source: a.source,
+        // The recovery fact (#4775 §2), riding the first send that already carries the
+        // activity rather than a delayed post-workout message of its own (owner-ruled).
+        // By morning the stream has long since covered last night's session, which is
+        // exactly why this is the carrier and the finish tap is not: `eventRecovery`
+        // returns null on an uncovered window and the clause simply is not there.
+        ...(eventRecovery(profileId, a, priorEventWindows(profileId, a.type, a)) ??
+          {}),
       }))
     : [];
   const yDue = dueDoseIdsOn(yd);

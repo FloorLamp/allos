@@ -59,6 +59,18 @@ export interface DigestActivity {
   // Optional so a caller with nothing to say stores nothing; a manual row renders no
   // clause at all, because "Manual" beside a session you logged yourself is noise.
   source?: string | null;
+  // HOW LONG THE HEART RATE TOOK TO COME BACK DOWN (#4775 §2), and the profile's own
+  // usual for the same kind of session. Recovery is not knowable at the finish tap —
+  // the pipeline runs 30–61 min behind the wrist and the after-effect has not happened
+  // yet — so it RIDES THE NEXT SEND that already carries the activity rather than
+  // getting a delayed message of its own (owner-ruled). This line is that send.
+  //
+  // Null is the ordinary case and means one of three things the reader never has to
+  // tell apart: the stream did not cover the window, the heart rate had not re-entered
+  // the resting range two hours later, or the watch was off. None of them is a number.
+  recoveryMin?: number | null;
+  // Null below the three-prior-events floor: the fact then renders with no comparison.
+  usualRecoveryMin?: number | null;
 }
 
 export interface DigestFlaggedBiomarker {
@@ -458,6 +470,20 @@ function activitySource(a: DigestActivity): string | null {
   return activityProvenanceLabel(source);
 }
 
+// The recovery clause (#4775 §2): "back to resting in 28 min (usual 35)". A NOTE on
+// the activity line, in the same register as the stat and the provenance beside it —
+// a fact about the session, with the person's own usual as a parenthetical rather than
+// a verdict. There is no cutoff anywhere in it: nothing here knows what a good
+// recovery is, only what this profile's own has been.
+function activityRecovery(a: DigestActivity): string | null {
+  if (a.recoveryMin == null) return null;
+  const usual =
+    a.usualRecoveryMin != null
+      ? ` (usual ${Math.round(a.usualRecoveryMin)})`
+      : "";
+  return `back to resting in ${Math.round(a.recoveryMin)} min${usual}`;
+}
+
 // Doses are summarized by the Today dose-count headline, so they're dropped from
 // the banded "what's due" lines to avoid double-counting (issue #1108).
 const DOSE_EXCLUDED_FROM_BANDS: readonly UpcomingDomain[] = ["dose"];
@@ -646,7 +672,7 @@ export function buildDigest(input: DigestInput): DigestModel | null {
       formatEmphasizedLine({
         glyph: GLYPH.training,
         head: a.title,
-        notes: [activityStat(a), activitySource(a)],
+        notes: [activityStat(a), activitySource(a), activityRecovery(a)],
       })
     );
   }
