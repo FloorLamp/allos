@@ -676,7 +676,11 @@ describe("dropping standing (#4975) — alive and not storing", () => {
   // Each row is a source that qualifies as `dropping` AND as something else. The
   // ordering claim: below the silence rule, above everything calm.
   it.each([
-    ["a clean source with a dropped type", { droppedTypes: DROPPED }, "dropping"],
+    [
+      "a clean source with a dropped type",
+      { droppedTypes: DROPPED },
+      "dropping",
+    ],
     ["nothing dropped leaves it alone", { droppedTypes: [] }, "healthy"],
     ["a source reporting no tally at all", {}, "healthy"],
     // A SILENT source is already told to reconnect, and you cannot act on "one type
@@ -742,7 +746,10 @@ describe("dropping standing (#4975) — alive and not storing", () => {
   });
 
   it.each([
-    [["heart_rate_variability"], "Heart rate variability is arriving but not being stored."],
+    [
+      ["heart_rate_variability"],
+      "Heart rate variability is arriving but not being stored.",
+    ],
     [
       ["heart_rate_variability", "sleep_min"],
       "Heart rate variability, Sleep are arriving but not being stored.",

@@ -224,28 +224,39 @@ describe("the standing a live dropping source carries (#4975)", () => {
     // rather than only that some is. `steps` lands every push and never appears.
     expect(state?.droppedTypes).toEqual(["heart_rate_variability"]);
     // THE DELIVERABLE: the card's own filter, unchanged, now admits it.
-    expect(getConnectedSources(p).filter(isEscalatedSource).map((s) => s.id)).toEqual(
-      [HC]
-    );
+    expect(
+      getConnectedSources(p)
+        .filter(isEscalatedSource)
+        .map((s) => s.id)
+    ).toEqual([HC]);
   });
 
   it.each([
     [
       "clears the moment one record of the type lands",
       // No resolution step and nothing to dismiss — the window is re-read.
-      [{ h: 11, t: DROPPING_HRV }, { h: 0, t: LANDING_HRV }],
+      [
+        { h: 11, t: DROPPING_HRV },
+        { h: 0, t: LANDING_HRV },
+      ],
       "healthy",
     ],
     [
       "says nothing about a source whose type keeps landing",
-      [{ h: 6, t: LANDING_HRV }, { h: 0, t: LANDING_HRV }],
+      [
+        { h: 6, t: LANDING_HRV },
+        { h: 0, t: LANDING_HRV },
+      ],
       "healthy",
     ],
     [
       "does not follow a merely STALE source into it",
       // The drop is real but two days old, so it is outside the window on both
       // halves: the source is silent, and `failing` is the honest verdict.
-      [{ h: 40, t: DROPPING_HRV }, { h: 30, t: DROPPING_HRV }],
+      [
+        { h: 40, t: DROPPING_HRV },
+        { h: 30, t: DROPPING_HRV },
+      ],
       "failing",
     ],
   ])("%s", (_why, pushes, expected) => {

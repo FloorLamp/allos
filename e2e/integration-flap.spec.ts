@@ -361,7 +361,9 @@ test("a live source that stores nothing says so on every surface it escalates to
   const gridCard = page.getByTestId(`integration-card-${PROVIDER}`);
   await expect(gridCard).toHaveAttribute("data-card-state", "attention");
   await expect(gridCard.getByText("Dropping records")).toBeVisible();
-  await expect(gridCard).toContainText("Uv index is arriving but not being stored.");
+  await expect(gridCard).toContainText(
+    "Uv index is arriving but not being stored."
+  );
   await expect(gridCard.getByText("Forecast refreshed")).toHaveCount(0);
 
   // The source page: the standing as a headline, and the reason line the header
