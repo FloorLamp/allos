@@ -463,13 +463,37 @@ export interface EndurancePlanCard {
 // The display name for ANY event (#3285): the user's name where they gave one, else
 // the cardio pair spelled out, else the kind. One rule, so the Overview card, the
 // completion milestone and the timeline row cannot drift apart.
-export function eventTitle(plan: EndurancePlan): string {
+// Structural, not `EndurancePlan`, so the timeline's raw SQL row reaches the SAME
+// rule without being shaped into a whole plan first. Spelling the fallback twice is
+// exactly how the card and the timeline row would drift apart.
+export function eventTitle(plan: {
+  kind: string;
+  eventName: string | null;
+  discipline: EndurancePlanDiscipline | null;
+  targetDistanceKm: number | null;
+}): string {
   const named = plan.eventName?.trim();
   if (named) return named;
-  const coached = coachedPlan(plan);
-  if (coached)
-    return `${round1(coached.targetDistanceKm)} km ${disciplineLabel(coached.discipline)}`;
+  const { discipline, targetDistanceKm } = plan;
+  if (discipline != null && targetDistanceKm != null)
+    return `${round1(targetDistanceKm)} km ${disciplineLabel(discipline)}`;
   return eventKindLabel(plan.kind);
+}
+
+// The one-line descriptor beside the title: the cardio pair where there is one, else
+// the open kind. Same pairing rule, same two callers as `eventTitle`.
+export function eventDetail(
+  plan: {
+    kind: string;
+    discipline: EndurancePlanDiscipline | null;
+    targetDistanceKm: number | null;
+  },
+  formatDistanceKm: (km: number) => string = (km) => `${round1(km)} km`
+): string {
+  const { discipline, targetDistanceKm } = plan;
+  return discipline != null && targetDistanceKm != null
+    ? `${disciplineLabel(discipline)} · ${formatDistanceKm(targetDistanceKm)}`
+    : eventKindLabel(plan.kind);
 }
 
 // An open kind rendered for a human: "race" → "Race", "time trial" → "Time trial".

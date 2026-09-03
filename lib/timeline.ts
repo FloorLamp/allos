@@ -1,7 +1,7 @@
 import { activityComponentSportNames } from "./activity-icon";
 import {
-  disciplineLabel,
-  eventKindLabel,
+  eventDetail,
+  eventTitle,
   type EndurancePlanDiscipline,
 } from "./endurance-plan";
 import { trainingActivityPageHref } from "./hrefs";
@@ -1254,19 +1254,16 @@ function collectEvents(
       created_at: string;
     }[];
     for (const p of plans) {
-      // The cardio pair travels together (#3285), so one test covers both halves and
-      // an event without it reads by its KIND rather than falling through to "Swim ·
-      // NaN km" — which is what a chained ternary on a now-nullable column does.
-      const cardio =
-        p.discipline != null && p.target_distance_km != null
-          ? `${disciplineLabel(p.discipline)} · ${Math.round(p.target_distance_km * 10) / 10} km`
-          : null;
-      const disc = cardio ?? eventKindLabel(p.kind);
-      const name =
-        p.event_name?.trim() ||
-        (p.discipline != null && p.target_distance_km != null
-          ? `${Math.round(p.target_distance_km * 10) / 10} km ${disciplineLabel(p.discipline)}`
-          : eventKindLabel(p.kind));
+      // Through the shared naming rules (#3285), not a local ternary: the cardio pair
+      // is nullable now, and a chained `run ? … : ride ? … : "Swim"` would have read a
+      // lifting meet as "Swim · NaN km" while every column-set assertion stayed green.
+      const event = {
+        kind: p.kind,
+        eventName: p.event_name,
+        discipline: p.discipline,
+        targetDistanceKm: p.target_distance_km,
+      };
+      const name = eventTitle(event);
       pushLimited(
         events,
         {
@@ -1274,7 +1271,7 @@ function collectEvents(
           date: p.event_date,
           category: "endurance",
           title: `Event: ${name}`,
-          subtitle: disc,
+          subtitle: eventDetail(event),
           href: "/training",
           sortTime: timeFromCreatedAt(p.created_at, tz),
           tone: p.status === "completed" ? "good" : "default",
