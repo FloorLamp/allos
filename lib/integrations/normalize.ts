@@ -367,6 +367,10 @@ export interface IngestCounts {
   hrMinutes: number;
   activities: number;
   vitals: number;
+  // Continuous-sensor glucose points (#3182). Its own line rather than folded into
+  // `samples`: a trace point is not a `metric_samples` row, and a push whose glucose
+  // stopped becoming `vitals` has to say where it went instead (#419).
+  glucoseTrace: number;
 }
 
 // Upsert one imported body-metrics row per day, keyed by date + source. Only ever

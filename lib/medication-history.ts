@@ -113,8 +113,16 @@ export function isCourseOpen(c: MedicationCourse): boolean {
 }
 
 // Chronological order (oldest first). started_on is the primary key; a null
-// started_on sorts last within its group, and id breaks ties so the order is
-// stable across equal dates.
+// started_on sorts FIRST, and id breaks ties so the order is stable across equal
+// dates.
+//
+// NULLS FIRST IS THE DESIGN; this comment said the opposite until #4909. An unknown
+// start reads as unbounded past everywhere else — the course-window SQL admits a
+// null-start course on every date, and the backdating extension skips one because it
+// already reaches back further than any dose — so oldest-first puts it at the front,
+// which `?? ""` does. It is also what both readers want: currentCourse and the card's
+// `ordered[ordered.length - 1]` both take the LAST course, so nulls-last would let an
+// unknown start outrank a real one in both.
 export function sortCourses(courses: MedicationCourse[]): MedicationCourse[] {
   return [...courses].sort((a, b) => {
     const as = a.started_on ?? "";

@@ -39,6 +39,7 @@ import { trackedPageFor } from "@/lib/recent-pages";
 import { logSheetSegments } from "@/lib/log-sheet";
 import { biomarkerFlagDismissalKey } from "@/lib/dismissal-keys";
 import { dashboardAttentionCandidateId } from "@/lib/dashboard-attention-identity";
+import LogPracticeButton from "@/components/practices/LogPracticeButton";
 import { isNotableFlag } from "@/lib/reference-range";
 import type { MedicalFlag } from "@/lib/types";
 
@@ -1095,18 +1096,29 @@ describe("actual atomic dashboard manifests", () => {
     // MEASURED AT +33 BEFORE THE GATHER WAS BATCHED, on this same test: the first
     // version issued one heart-rate SELECT per night, so its cost grew with the
     // profile's sleep history rather than with the question. That is what this baseline
-    // is for, and it is the reason the number below is 252 and not 281.
-    bodybuilder: 227,
-    "marathon-runner": 226,
-    household: 276,
-    pregnant: 223,
-    "diabetic-cgm": 234,
+    // is for, and it is why biohacker moves by 4 here instead of by 33.
+    //
+    // RE-MEASURED ON THE MERGED TREE, with #4775's −1 already in main's numbers: the
+    // same +1/+4 came back on every persona, so the two moves compose rather than
+    // interact. Measured, not arithmetic on two branches' deltas.
+    bodybuilder: 226,
+    "marathon-runner": 225,
+    household: 275,
+    pregnant: 222,
+    "diabetic-cgm": 233,
     // +9 (#4424 ruling 7): Upcoming's practice rows mount the shared row control, so
     // the row now resolves what that control renders — `getTrackedPractices`, which is
     // one grouped today-tally and one live sweep however many practices there are,
     // plus the usual-duration vote per practice. Assembling the same four fields
     // per-target instead measured +13.
-    biohacker: 252,
+    biohacker: 251,
+    // −1 each (#4775): the paired-observation registry gained a third alcohol entry
+    // (`alcohol-overnight-hr`), which reads the SAME `food_daily_totals` window the
+    // other two already read — and the factor read happens before each entry's
+    // short-circuit, so it was being paid once per entry. `factorDaysReader` memoizes
+    // it per gather the way `outcomeSeriesReader` already memoized the outcome side,
+    // so three entries now cost one read where two cost two. The new entry's own
+    // outcome series is lazy and is not reached on these personas.
   };
 
   // A BACKSTOP, NOT THE METER. The baseline above is the meter; this is the bound
@@ -1197,5 +1209,137 @@ describe("actual atomic dashboard manifests", () => {
         "commit message, then refresh QUERY_BASELINE in this file with:\n\n" +
         `  const QUERY_BASELINE: Record<string, number> = {\n${refreshed}\n  };\n`
     ).toEqual([]);
+  });
+});
+
+// THE PRACTICE-TARGET ROW LOGS IN PLACE (#4076, the 2026-08-30 "#4384 thread"
+// ruling). Self-contained: its own profiles, its own render — it does not touch
+// PERSONAS or QUERY_BASELINE above, so a change here cannot silently move either.
+//
+// Rolling mode (the default; no week_start/week_mode setting is written) makes the
+// window always fully elapsed (#748 item 3's `elapsedDays: 7`), so a fresh
+// per_week >= 1 target with zero sessions in the trailing week is BEHIND by
+// construction — no calendar alignment to pin. That is the fixture every case below
+// reuses, varied on exactly the one axis each case is about.
+describe("the practice-target row logs in place (#4076)", () => {
+  const adminLoginId = (): number =>
+    (
+      db
+        .prepare(
+          "SELECT id FROM logins WHERE role = 'admin' ORDER BY id LIMIT 1"
+        )
+        .get() as { id: number }
+    ).id;
+
+  async function renderFor(profileId: number) {
+    session.loginId = adminLoginId();
+    session.accessible = profiles([profileId]);
+    session.profile = session.accessible[0];
+    const { default: Dashboard } = await import("../../app/(app)/page");
+    const page = (await requestCache.during(
+      async () => await Dashboard()
+    )) as ReactElement<{ children: ReactElement }>;
+    const surface = page.props.children as ReactElement<{
+      children: ReactElement;
+    }>;
+    const canvas = surface.props
+      .children as ReactElement<DashboardPlacementCanvasProps>;
+    return {
+      candidateIds: canvas.props.placements.map(
+        (placement) => placement.candidate.candidateId
+      ),
+      presentations: canvas.props.presentations,
+    };
+  }
+
+  function seedTarget(
+    name: string,
+    scopeKind: "practice" | "type",
+    scopeValue: string,
+    perWeek: number
+  ): number {
+    const profileId = newProfile(`dashboard:${name}`);
+    // `practice` rows carry a NOT-NULL `scope_identity` (#123's trigger) — the same
+    // lowercase key every practice write already uses.
+    db.prepare(
+      `INSERT INTO frequency_targets
+         (profile_id, scope_kind, scope_value, scope_identity, per_week, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(
+      profileId,
+      scopeKind,
+      scopeValue,
+      scopeKind === "practice" ? scopeValue.toLowerCase() : null,
+      perWeek,
+      `${shiftDateStr(today(profileId), -60)} 00:00:00`
+    );
+    return profileId;
+  }
+
+  it("carries LogPracticeButton in the row's control slot and drops the target.log door", async () => {
+    const profileId = seedTarget("practice-behind", "practice", "Sauna", 2);
+    const { candidateIds, presentations } = await renderFor(profileId);
+
+    const rowId = candidateIds.find((id) =>
+      id.startsWith("target.weekly-progress:")
+    );
+    expect(rowId, candidateIds.join(", ")).toBeDefined();
+    expect(candidateIds.some((id) => id.startsWith("target.log:"))).toBe(false);
+
+    const control = presentations.get(rowId!)?.control as ReactElement<{
+      practice: string;
+      todayCount: number;
+      today: string;
+      compact?: boolean;
+    }> | null;
+    expect(control, "no control on the behind practice-target row").not.toBe(
+      null
+    );
+    expect(control!.type).toBe(LogPracticeButton);
+    expect(control!.props.practice).toBe("Sauna");
+    expect(control!.props.todayCount).toBe(0);
+    expect(control!.props.compact).toBe(true);
+  });
+
+  // THE CONVERSE (a removal guard proves nothing alone): an ON-PACE practice
+  // target — met, so never behind — keeps NO control and no door either, because
+  // an already-met target offers nothing to log. Distinguishes "logs in place" from
+  // "every practice row gets a button".
+  it("an on-pace (met) practice target's row carries no control and no door", async () => {
+    const profileId = seedTarget("practice-met", "practice", "Sauna", 1);
+    const today0 = today(profileId);
+    db.prepare(
+      `INSERT INTO practice_logs (profile_id, practice, date, logged_via) VALUES (?, 'Sauna', ?, 'page')`
+    ).run(profileId, today0);
+    const { candidateIds, presentations } = await renderFor(profileId);
+
+    const rowId = candidateIds.find((id) =>
+      id.startsWith("target.weekly-progress:")
+    );
+    expect(rowId, candidateIds.join(", ")).toBeDefined();
+    expect(presentations.get(rowId!)?.control).toBeFalsy();
+    // A met target is never "owed" a log — this asserts the family's existing
+    // `!progress.met` applicability, not anything this change touches.
+    expect(candidateIds.some((id) => id.startsWith("target.log:"))).toBe(false);
+  });
+
+  // THE OTHER CONVERSE: a behind target OUTSIDE the practice domain (training's
+  // `type`/cardio scope, the marathon-runner persona's own shape) keeps the
+  // ORIGINAL door and gets no control — the ruling is scoped to
+  // `scope_kind === "practice"`, and #4083's dose precedent (and every other habit
+  // domain) is untouched by it. Not `group`/`region` — those are STRENGTH-
+  // programming scopes (`isStrengthProgrammingScope`), gated on a known adult-ish
+  // age this fixture does not set, and would drop out of `freqTargets` entirely for
+  // an unrelated reason before ever reaching the row this test is about.
+  it("a behind training (type/cardio-scope) target keeps its door and carries no control", async () => {
+    const profileId = seedTarget("cardio-behind", "type", "cardio", 2);
+    const { candidateIds, presentations } = await renderFor(profileId);
+
+    const rowId = candidateIds.find((id) =>
+      id.startsWith("target.weekly-progress:")
+    );
+    expect(rowId, candidateIds.join(", ")).toBeDefined();
+    expect(presentations.get(rowId!)?.control).toBeFalsy();
+    expect(candidateIds.some((id) => id.startsWith("target.log:"))).toBe(true);
   });
 });

@@ -3,8 +3,10 @@ import {
   HISTORY_FAMILIES,
   HISTORY_FAMILY_KINDS,
   HISTORY_KINDS,
+  HISTORY_LOG_KINDS,
   HISTORY_ROLLUP_KINDS,
   detailSegment,
+  historyAddKinds,
   historyClock,
   historyKindFamily,
   historyRollupNoun,
@@ -71,6 +73,54 @@ describe("the closed kind registry", () => {
       HISTORY_FAMILY_KINDS.logs.filter((k) => k !== "sleep").sort()
     );
     expect(HISTORY_ROLLUP_KINDS).not.toContain("sleep");
+  });
+});
+
+describe("historyAddKinds (#4851 owner ruling)", () => {
+  // A profile that has logged EVERY OTHER log kind at least once, and never a
+  // symptom — the one fixture shape that can tell "symptom is exempt" apart from
+  // "the gate is off because nothing is present yet". If symptom read the shared
+  // gate like its siblings, this present-kinds set is exactly what would hide it.
+  const loggedEverythingButSymptom: HistoryKind[] = HISTORY_LOG_KINDS.filter(
+    (k) => k !== "symptom"
+  );
+
+  it("still offers symptom when the profile has logged every other kind but it", () => {
+    expect(historyAddKinds(loggedEverythingButSymptom)).toContain("symptom");
+  });
+
+  it("keeps the gate on every other kind — the ruling exempts one, not all", () => {
+    const offered = historyAddKinds(loggedEverythingButSymptom);
+    for (const kind of HISTORY_LOG_KINDS) {
+      if (kind === "sleep" || kind === "symptom") continue;
+      // Each of these WAS just logged (it's in the fixture), so this is the
+      // gate's ordinary open door, not its closed one — see the next test for that.
+      expect(offered).toContain(kind);
+    }
+  });
+
+  it("closes the gate on an unlogged non-exempt kind while leaving symptom open", () => {
+    // Logged food only: dose is absent from present-kinds and must be gated OUT,
+    // in the same call that proves symptom is gated IN — the converse the ruling
+    // depends on ("the other kinds keep the gate").
+    const offered = historyAddKinds(["food"]);
+    expect(offered).toContain("symptom");
+    expect(offered).not.toContain("dose");
+  });
+
+  it("still offers every kind but sleep when nothing has ever been logged", () => {
+    // The pre-existing escape hatch (empty present-kinds shows everything) must
+    // survive the exemption rather than being subsumed by it.
+    expect([...historyAddKinds([])].sort()).toEqual(
+      HISTORY_LOG_KINDS.filter((k) => k !== "sleep")
+        .slice()
+        .sort()
+    );
+  });
+
+  it("never offers sleep, present or not", () => {
+    expect(historyAddKinds(HISTORY_LOG_KINDS)).not.toContain("sleep");
+    expect(historyAddKinds([])).not.toContain("sleep");
   });
 });
 

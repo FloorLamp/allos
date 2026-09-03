@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   cockpitRecoveryFraction,
+  deriveFeverSeries,
   cockpitRecoveryHeadline,
   cockpitSummaryLine,
   doseLaneRoster,
@@ -439,6 +440,100 @@ describe("orderIllnessCockpits", () => {
   });
 });
 
+// The derived fever row's own edge cases (#4712 item 4). The assembly-tier proof —
+// that a stated fever row makes the derived one yield for THAT DAY only (owner-ruled
+// 2026-09-03, judgement 3) — is in lib/__db_tests__/illness-episode.test.ts; this pins
+// the composition itself, including the `statedFeverDates` suppression below.
+describe("deriveFeverSeries", () => {
+  const reading = (
+    date: string,
+    time: string | null,
+    degF: number,
+    flag: string | null,
+    id?: number
+  ) => ({ id, date, time, degF, flag });
+
+  it.each([
+    {
+      name: "no flagged reading derives nothing",
+      readings: [reading("2026-06-01", "09:00", 99.0, null)],
+      expected: null,
+    },
+    {
+      name: "an unflagged reading on a flagged day is not the day's peak",
+      readings: [
+        reading("2026-06-01", "08:00", 98.4, null),
+        reading("2026-06-01", "20:00", 103.4, "high", 7),
+      ],
+      expected: [["2026-06-01", 103.4, "20:00", 7]],
+    },
+    {
+      name: "the day's PEAK flagged reading wins, whatever order it was taken in",
+      readings: [
+        reading("2026-06-01", "08:00", 103.4, "high", 1),
+        reading("2026-06-01", "20:00", 100.2, "high", 2),
+      ],
+      expected: [["2026-06-01", 103.4, "08:00", 1]],
+    },
+    {
+      name: "a tie keeps the EARLIER reading, the first crossing of the day",
+      readings: [
+        reading("2026-06-01", "08:00", 101.0, "high", 1),
+        reading("2026-06-01", "20:00", 101.0, "high", 2),
+      ],
+      expected: [["2026-06-01", 101.0, "08:00", 1]],
+    },
+    {
+      name: "days come back oldest-first, one row per day",
+      readings: [
+        reading("2026-06-01", "20:00", 100.1, "high", 1),
+        reading("2026-06-02", "08:00", 104.0, "high", 2),
+        reading("2026-06-03", "08:00", 98.6, null, 3),
+      ],
+      expected: [
+        ["2026-06-01", 100.1, "20:00", 1],
+        ["2026-06-02", 104.0, "08:00", 2],
+      ],
+    },
+    {
+      name: "an untimed flagged reading still derives, with a null clock",
+      readings: [reading("2026-06-01", null, 102.0, "high", 4)],
+      expected: [["2026-06-01", 102.0, null, 4]],
+    },
+  ])("$name", ({ readings, expected }) => {
+    const series = deriveFeverSeries(readings);
+    if (expected === null) {
+      expect(series).toBeNull();
+      return;
+    }
+    expect(series).not.toBeNull();
+    expect(series!.source).toBe("derived");
+    expect(series!.symptom).toBe("fever");
+    expect(series!.label).toBe("Fever");
+    // No severity anywhere on the derived arm — that absence is the ruling.
+    expect(series!).not.toHaveProperty("maxSeverity");
+    expect(series!).not.toHaveProperty("points");
+    expect(
+      series!.days.map((d) => [d.date, d.peakDegF, d.time, d.readingId])
+    ).toEqual(expected);
+  });
+
+  it("a date in statedFeverDates yields — per date, not for the whole series (#4712 judgement 3)", () => {
+    const readings = [
+      reading("2026-06-01", "08:00", 103.4, "high", 1),
+      reading("2026-06-02", "08:00", 101.0, "high", 2),
+    ];
+    const series = deriveFeverSeries(readings, new Set(["2026-06-01"]));
+    expect(series).not.toBeNull();
+    expect(series!.days.map((d) => d.date)).toEqual(["2026-06-02"]);
+  });
+
+  it("every flagged date stated yields nothing at all, not a fallback row", () => {
+    const readings = [reading("2026-06-01", "08:00", 103.4, "high", 1)];
+    expect(deriveFeverSeries(readings, new Set(["2026-06-01"]))).toBeNull();
+  });
+});
+
 describe("assignOrderedEpisodeFacts", () => {
   it("assigns overlapping stored facts only to the first ordered episode", () => {
     const temperature = {
@@ -449,6 +544,7 @@ describe("assignOrderedEpisodeFacts", () => {
       flag: "high",
     };
     const symptom = {
+      source: "logged" as const,
       symptom: "cough",
       label: "Cough",
       points: [{ date: "2026-06-04", severity: 2, note: null }],
@@ -499,6 +595,7 @@ describe("assignOrderedEpisodeFacts", () => {
 
   it("presents an explicitly linked symptom only in its owning episode", () => {
     const symptom = {
+      source: "logged" as const,
       symptom: "headache",
       label: "Headache",
       points: [
@@ -599,6 +696,7 @@ describe("illnessTimelineEvents", () => {
         ],
         symptoms: [
           {
+            source: "logged" as const,
             symptom: "cough",
             label: "Cough",
             maxSeverity: 2,

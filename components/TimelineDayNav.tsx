@@ -8,6 +8,12 @@ import { useShellChrome } from "@/components/useShellChrome";
 import PendingLink, { PendingIconSlot } from "@/components/PendingLink";
 import type { AppRoute } from "@/lib/hrefs";
 
+/** One adjacent day: where it is and what it is called. */
+export interface DayNavDestination {
+  href: AppRoute;
+  label: string;
+}
+
 // Adjacent-day navigation for the Timeline's single-day view (issue #1425).
 //
 // Two things, deliberately in one component: the visible prev/next controls and
@@ -67,16 +73,16 @@ import type { AppRoute } from "@/lib/hrefs";
 // the multi-profile view banner rides inside the chrome and makes it taller.
 // From `sm` up it drops to static and nothing sticks — desktop is unchanged.
 export default function TimelineDayNav({
-  prevHref,
-  nextHref,
-  prevLabel,
-  nextLabel,
+  prev,
+  next,
+  day,
   targetSelector,
 }: {
-  prevHref: AppRoute;
-  nextHref: AppRoute;
-  prevLabel: string;
-  nextLabel: string;
+  prev: DayNavDestination;
+  /** Absent on today: there is no day after it to walk to. See the note above. */
+  next?: DayNavDestination;
+  /** What the bar NAMES — the day's own header line (#3958's grammar). */
+  day: string;
   targetSelector: string;
 }) {
   const router = useRouter();
@@ -123,16 +129,24 @@ export default function TimelineDayNav({
   };
 
   // Swipe left: the day slides away to the left, the NEXT one arrives — the
-  // direction every paged calendar on a phone already teaches.
+  // direction every paged calendar on a phone already teaches. ON TODAY THERE IS
+  // NO NEXT, so the recognizer is not enabled at all: `next` being optional is
+  // what makes "no arrow" and "no swipe" the same fact rather than two rules that
+  // can drift. They HAD drifted — the arrow's own comment said today draws none
+  // while the code passed today's href, and the gesture pushed it unconditionally,
+  // so the most-repeated navigation on a phone reloaded the page it was on.
   useDragGesture({
     ...shared,
     direction: "left",
-    onCommit: () => swipeTo("next", nextHref),
+    enabled: next !== undefined,
+    onCommit: () => {
+      if (next) swipeTo("next", next.href);
+    },
   });
   useDragGesture({
     ...shared,
     direction: "right",
-    onCommit: () => swipeTo("prev", prevHref),
+    onCommit: () => swipeTo("prev", prev.href),
   });
 
   const swipePending = (direction: "prev" | "next") =>
@@ -153,10 +167,10 @@ export default function TimelineDayNav({
       className="sub-chrome sticky top-edge-safe z-20 -mx-4 mb-5 flex items-center justify-between gap-2 border-b border-(--border) bg-(--nav) px-4 py-2 sm:static sm:z-auto sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0"
     >
       <PendingLink
-        href={prevHref}
-        label={prevLabel}
+        href={prev.href}
+        label={prev.label}
         testId="timeline-day-prev"
-        className="btn-ghost text-xs"
+        className="btn-ghost shrink-0 text-xs"
       >
         {(pending) => (
           <>
@@ -171,38 +185,60 @@ export default function TimelineDayNav({
                 />
               }
             />
-            {prevLabel}
+            {prev.label}
           </>
         )}
       </PendingLink>
-      <PendingLink
-        href={nextHref}
-        label={nextLabel}
-        testId="timeline-day-next"
-        className="btn-ghost text-xs"
+      {/* ── THE BAR NAMES THE DAY (#4918 ruling 1) ────────────────────────────
+          The day view's only date text used to be the per-group header BELOW the
+          chart, which renders once per group of rows — so a day with nothing on it
+          named no day at all, and a day with rows named it late and as a link to
+          the page already open. The name belongs to the frame, which is here: this
+          bar is already on screen, already sticky below `sm`, and already the thing
+          between the two neighbouring days. `truncate` because the name is the part
+          that gives when the column is narrow — the two arrows are `shrink-0`, and
+          losing the tail of a date the arrows still bracket beats wrapping the
+          control. */}
+      <h2
+        data-testid="timeline-day-name"
+        className="min-w-0 flex-1 truncate text-center text-sm font-semibold text-slate-800 dark:text-slate-100"
       >
-        {(pending) => (
-          <>
-            {nextLabel}
-            <PendingIconSlot
-              pending={pending || swipePending("next")}
-              size="h-4 w-4"
-              icon={
-                <IconChevronRight
-                  className="h-4 w-4"
-                  stroke={2}
-                  aria-hidden="true"
-                />
-              }
-            />
-          </>
-        )}
-      </PendingLink>
+        {day}
+      </h2>
+      {/* NO ARROW ON TODAY, which is what the comment beside this control claimed
+          from the day it landed while the code passed today's own href. There is no
+          empty slot left behind either: the name is `flex-1`, so it simply takes the
+          room. */}
+      {next ? (
+        <PendingLink
+          href={next.href}
+          label={next.label}
+          testId="timeline-day-next"
+          className="btn-ghost shrink-0 text-xs"
+        >
+          {(pending) => (
+            <>
+              {next.label}
+              <PendingIconSlot
+                pending={pending || swipePending("next")}
+                size="h-4 w-4"
+                icon={
+                  <IconChevronRight
+                    className="h-4 w-4"
+                    stroke={2}
+                    aria-hidden="true"
+                  />
+                }
+              />
+            </>
+          )}
+        </PendingLink>
+      ) : null}
       {/* The arrows announce themselves from inside PendingLink; a swipe has no
           link to do that, so the bar names the day it is opening. */}
       {swiping && (
         <span role="status" className="sr-only">
-          Opening {swipeDirection === "next" ? nextLabel : prevLabel}
+          Opening {swipeDirection === "next" ? next?.label : prev.label}
         </span>
       )}
     </nav>

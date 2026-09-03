@@ -551,6 +551,28 @@ function restDetail(
       : `${reasonCore} — you're training now; make your next session a light one.`;
 }
 
+/**
+ * How far above baseline a resting HR has to sit before it reads as under-recovered:
+ * the fixed jump, widened to the profile's own spread when there is one. THE ONE
+ * definition of that threshold (#221) — `restReasons` below asks it for the `rest-rhr`
+ * rule, and #4775's digest Sleep line asks it to decide whether to append "— elevated".
+ * Extracted rather than copied: a second spelling would let the digest call a night
+ * elevated on a morning the rest rule stayed quiet, about the same number.
+ */
+export function restingHrJumpThreshold(
+  restingHr: RestingHrSignal | null,
+  th: CoachingThresholds
+): number {
+  return restingHr &&
+    restingHr.baselineSpreadBpm != null &&
+    restingHr.baselineSpreadBpm > 0
+    ? Math.max(
+        th.restingHrJumpBpm,
+        th.variabilitySpreadMultiplier * restingHr.baselineSpreadBpm
+      )
+    : th.restingHrJumpBpm;
+}
+
 // Every firing rest reason in salience order (sleep → resting HR → overtraining, then
 // weekly load only if the streak didn't already fire — the two schedule-derived
 // triggers stay mutually exclusive as before, so "trained N days in a row" and
@@ -638,15 +660,7 @@ export function restReasons(
   // Elevated resting HR — only when data exists. Same variance-aware widening:
   // with a known personal spread, the jump must clear max(fixed, multiplier ×
   // spread) before it reads as under-recovered.
-  const effRhrJump =
-    restingHr &&
-    restingHr.baselineSpreadBpm != null &&
-    restingHr.baselineSpreadBpm > 0
-      ? Math.max(
-          th.restingHrJumpBpm,
-          th.variabilitySpreadMultiplier * restingHr.baselineSpreadBpm
-        )
-      : th.restingHrJumpBpm;
+  const effRhrJump = restingHrJumpThreshold(restingHr, th);
   if (
     restingHr &&
     restingHr.baseline > 0 &&

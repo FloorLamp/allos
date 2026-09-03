@@ -475,9 +475,41 @@ export function generateHealthConnectToken(
       tokenHash: hashShareToken(token),
       tokenCreatedAt: utcInstant(new Date(now)),
       tokenExpiresAt: expiresAtFromChoice(expiry, now),
+      // CARRIED THROUGH THE MINT, and it is the one key that is (#3182). Rotating a
+      // token is a credential operation; the CGM switch is an ingest POLICY the person
+      // set deliberately, and dropping it silently would send the next push's glucose
+      // back to 288 lab rows a day with nothing on screen to say why.
+      cgmGlucose: getHealthConnectCgmGlucose(profileId),
     },
   });
   return token;
+}
+
+// ---- "Treat glucose from this connection as a continuous sensor" (#3182) ----
+//
+// The per-connection declaration, and since #3182's 2026-09-03 ruling the ONLY thing
+// that routes glucose: ON sends every glucose record from this connection to the trace
+// store, whatever the records themselves carry. OFF by default and nothing asks at
+// setup — an absent key, an absent connection and an unparseable config all read as
+// off, so an undeclared connection stays on the observation path and nothing silently
+// becomes a trace.
+
+export function getHealthConnectCgmGlucose(profileId: number): boolean {
+  return (
+    readConfig(getConnection(profileId, "health-connect")).cgmGlucose === true
+  );
+}
+
+export function setHealthConnectCgmGlucose(
+  profileId: number,
+  on: boolean
+): void {
+  mergeConnectionConfig(
+    profileId,
+    "health-connect",
+    () => readConfig(getConnection(profileId, "health-connect")),
+    { cgmGlucose: on }
+  );
 }
 
 // Record a successful ingest auth, throttled to once an hour (mirrors the session

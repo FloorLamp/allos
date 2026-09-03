@@ -59,6 +59,18 @@ export interface DigestActivity {
   // Optional so a caller with nothing to say stores nothing; a manual row renders no
   // clause at all, because "Manual" beside a session you logged yourself is noise.
   source?: string | null;
+  // HOW LONG THE HEART RATE TOOK TO COME BACK DOWN (#4775 §2), and the profile's own
+  // usual for the same kind of session. Recovery is not knowable at the finish tap —
+  // the pipeline runs 30–61 min behind the wrist and the after-effect has not happened
+  // yet — so it RIDES THE NEXT SEND that already carries the activity rather than
+  // getting a delayed message of its own (owner-ruled). This line is that send.
+  //
+  // Null is the ordinary case and means one of three things the reader never has to
+  // tell apart: the stream did not cover the window, the heart rate had not re-entered
+  // the resting range two hours later, or the watch was off. None of them is a number.
+  recoveryMin?: number | null;
+  // Null below the three-prior-events floor: the fact then renders with no comparison.
+  usualRecoveryMin?: number | null;
 }
 
 export interface DigestFlaggedBiomarker {
@@ -102,6 +114,26 @@ export interface DigestSleep {
   deepMin?: number | null; // deep-stage minutes when the source reports stages
   remMin?: number | null; // REM-stage minutes when reported
   sri?: number | null; // Sleep Regularity Index when the signal is meaningful
+  // OVERNIGHT HEART RATE (#4775 §4), scoped to the main sleep SESSION's own window
+  // rather than to fixed clock hours — a 02:00 bedtime and a 22:00 one are the same
+  // night to this line, which is the whole reason it is not a "midnight to 06:00"
+  // read. Absent whenever the minute stream did not cover the session: an overnight
+  // low computed over half a night is a number, and a wrong one.
+  overnightHr?: DigestOvernightHr | null;
+}
+
+export interface DigestOvernightHr {
+  lowBpm: number;
+  avgBpm: number;
+  // The DEVICE's daily resting figure and the profile's own baseline for it. Both
+  // optional: a profile can have a covered night and no resting-HR history at all.
+  restingBpm: number | null;
+  usualRestingBpm: number | null;
+  // Does tonight's resting figure clear the SAME threshold the `rest-rhr` rule uses
+  // (7 bpm, or twice the profile's own spread)? Decided in the gather through the one
+  // shared `restingHrJumpThreshold`, never re-derived here — a second spelling would
+  // let this line call a night elevated on a morning the rest rule stayed quiet.
+  elevated: boolean;
 }
 
 export interface DigestInput {
@@ -243,6 +275,21 @@ export interface DigestInput {
   // Empty on a quiet 24h, and an empty list renders NO section — the digest must never
   // manufacture news to fill space (the same rule the delta line already follows).
   recentChangeLines?: string[];
+  // ONE paired-observation line about the drink log (#4775 §5), preformatted from the
+  // SAME `buildPairedObservationFindings` verdict the Wellness page renders — both
+  // arms' n, no direction word, no advice verb, and the pair's own monthly dismissal
+  // already applied by the gather.
+  //
+  // THIS IS THE ONE SUBSTANCE FINDING THAT MAY BE SENT, and it is an exception the
+  // owner made on 2026-09-02 to #2177's "never a send" and to the substances doc's
+  // "no substance ever generates a finding-driven send". Both documents record it.
+  // Everything that made those rulings right still holds: it is behind
+  // `substance_telegram_enabled`, which is OFF by default (#3330), so nothing about
+  // substances reaches a profile that has not asked for it.
+  //
+  // A RIDE-ALONG, NOT A REASON TO SEND. It is appended only to a Sleep section that
+  // already exists, so it can never be the thing that makes a message.
+  substanceObservationLine?: string | null;
   // Last night's sleep (issue #1117), or null when the sleep summary is off or
   // there's no fresh sleep data. When present the digest gets a calm Sleep section.
   sleep?: DigestSleep | null;
@@ -458,6 +505,20 @@ function activitySource(a: DigestActivity): string | null {
   return activityProvenanceLabel(source);
 }
 
+// The recovery clause (#4775 §2): "back to resting in 28 min (usual 35)". A NOTE on
+// the activity line, in the same register as the stat and the provenance beside it —
+// a fact about the session, with the person's own usual as a parenthetical rather than
+// a verdict. There is no cutoff anywhere in it: nothing here knows what a good
+// recovery is, only what this profile's own has been.
+function activityRecovery(a: DigestActivity): string | null {
+  if (a.recoveryMin == null) return null;
+  const usual =
+    a.usualRecoveryMin != null
+      ? ` (usual ${Math.round(a.usualRecoveryMin)})`
+      : "";
+  return `back to resting in ${Math.round(a.recoveryMin)} min${usual}`;
+}
+
 // Doses are summarized by the Today dose-count headline, so they're dropped from
 // the banded "what's due" lines to avoid double-counting (issue #1108).
 const DOSE_EXCLUDED_FROM_BANDS: readonly UpcomingDomain[] = ["dose"];
@@ -646,7 +707,7 @@ export function buildDigest(input: DigestInput): DigestModel | null {
       formatEmphasizedLine({
         glyph: GLYPH.training,
         head: a.title,
-        notes: [activityStat(a), activitySource(a)],
+        notes: [activityStat(a), activitySource(a), activityRecovery(a)],
       })
     );
   }
@@ -779,6 +840,45 @@ export function buildDigest(input: DigestInput): DigestModel | null {
         })
       );
     }
+    // Overnight HR (#4775 §4): "Overnight HR low 49 · avg 56 · resting 55 (usual 53)".
+    // FACTS FIRST, verdict as a clause — the same register as the duration line above
+    // it, and by #992's contract the "— elevated" qualifies the NIGHT, never the
+    // sleeper. It states no recommendation: the rest recommendation is `rest-rhr`'s
+    // job and is unchanged by this line existing.
+    if (s.overnightHr) {
+      const hr = s.overnightHr;
+      const notes: (string | null)[] = [
+        `low ${Math.round(hr.lowBpm)}`,
+        `avg ${Math.round(hr.avgBpm)}`,
+      ];
+      if (hr.restingBpm != null) {
+        const usual =
+          hr.usualRestingBpm != null
+            ? ` (usual ${Math.round(hr.usualRestingBpm)})`
+            : "";
+        notes.push(`resting ${Math.round(hr.restingBpm)}${usual}`);
+      }
+      sleepLines.push(
+        formatEmphasizedLine({
+          glyph: GLYPH.trend,
+          head: "Overnight HR",
+          // The verdict is the CAUSE of the line's interest, so it leads the
+          // qualifiers and takes the em dash; the three figures follow as notes.
+          because: hr.elevated ? "elevated" : null,
+          notes,
+        })
+      );
+    }
+    // The drink-log observation (#4775 §5), LAST in the section and only when the
+    // section already has something in it — the same contact-consent shape the
+    // Yesterday section's food-limit line uses.
+    if (input.substanceObservationLine && sleepLines.length > 0)
+      sleepLines.push(
+        formatEmphasizedLine({
+          glyph: GLYPH.trend,
+          head: input.substanceObservationLine,
+        })
+      );
     sections.push({ heading: "Sleep", lines: sleepLines });
   }
 

@@ -57,6 +57,7 @@ import {
   pairedObservationsFor,
 } from "./paired-observations";
 import {
+  factorDaysReader,
   gatherPairedNights,
   outcomeSeriesReader,
 } from "./queries/paired-observations";
@@ -735,10 +736,14 @@ export function buildPairedObservationFindings(
   });
   if (entries.length === 0) return [];
   const series = outcomeSeriesReader(profileId);
+  // One memo for the factor side too (#4775): three entries now share the alcohol
+  // factor over one window, and the factor read happens before every entry's
+  // short-circuit — so without this the registry costs a range scan per entry.
+  const days = factorDaysReader(profileId);
   const monthAnchor = today.slice(0, 7);
   const out: Finding[] = [];
   for (const entry of entries) {
-    const nights = gatherPairedNights(profileId, entry, today, series);
+    const nights = gatherPairedNights(profileId, entry, today, series, days);
     const verdict = decidePairedObservation(entry, nights, today, monthAnchor);
     if (!verdict) continue;
     out.push({

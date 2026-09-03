@@ -804,7 +804,15 @@ export default function SymptomLogBar({
             data-testid="symptom-illness-bridge-activate"
             onClick={() =>
               startTransition(async () => {
-                await activateIllnessForSymptoms();
+                // THE SUBJECT RIDES THE BRIDGE (#4712). This bar already stamps its
+                // cross-profile target onto every symptom and temperature it posts;
+                // the illness bridge posted nothing, so on a household member's bar it
+                // would have opened an episode for the CAREGIVER. The action gates the
+                // posted subject with requireProfileWriteAccess, exactly as the writes
+                // above it do.
+                const fd = new FormData();
+                if (profileId != null) fd.set("profile_id", String(profileId));
+                await activateIllnessForSymptoms(fd);
               })
             }
             className="btn-ghost btn-sm border-dashed"

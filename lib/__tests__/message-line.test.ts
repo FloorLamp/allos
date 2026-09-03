@@ -353,6 +353,11 @@ const ALLOW: { module: string; includes: string; why: string }[] = [
     why: "importedRecapLine states a LIST of coequal facts an import carried ('Run done · 32 min · 5.2 km'), deliberately shaped like lib/session-recap.ts's strength line so one session reads the same however it arrived (#2272). Re-cutting the session recap's line composition is #2178's decision, not a side effect of landing this chokepoint.",
   },
   {
+    module: "lib/notifications/workout-recap-format.ts",
+    includes: 'return parts.length > 0 ? parts.join(" ',
+    why: "sessionPhysiologyClause lists the coequal facts the minute stream measured ('Z2 24 min · Z3 11 min · peak 168', #4775 §2) — zones and peak qualify nothing and are qualified by nothing. It is a CLAUSE, not a line: the caller appends it to the recap line that composes through the formatter above it.",
+  },
+  {
     module: "lib/notifications/food-format.ts",
     includes: 'if (i > 0) parts.push(" ',
     why: "tallyLine lists the food groups logged today ('✅ Today: 🥬 Leafy greens ×2 · 🫐 Berries ×1', #1016) — a list of coequal counts about different foods, none qualifying another, with the group names emphasized individually.",

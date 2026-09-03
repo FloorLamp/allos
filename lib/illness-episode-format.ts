@@ -20,6 +20,7 @@ import type { TemperatureUnit } from "./settings";
 import { fmtTemp } from "./units";
 import { formatMedicationDoseProduct } from "./medication-dose-format";
 import { SUMMARY_NAME_LIMIT, summarizeNames } from "./summarize-names";
+import { symptomLabel } from "./symptoms";
 
 // A single severity reading of one symptom on one day.
 export interface SymptomSeriesPoint {
@@ -31,13 +32,53 @@ export interface SymptomSeriesPoint {
   episodeId?: number | null;
 }
 
-// One symptom's severity-over-time series within the episode (oldest day first).
-export interface SymptomSeries {
+// One symptom's severity-over-time series within the episode (oldest day first), as
+// the person LOGGED it.
+export interface LoggedSymptomSeries {
+  source: "logged";
   symptom: string; // stored key (curated slug or custom name)
   label: string; // display label
   points: SymptomSeriesPoint[];
   maxSeverity: number;
 }
+
+// One day a derived symptom held, and the measurement that says so.
+export interface DerivedSymptomDay {
+  date: string;
+  // The day's PEAK reading — the fact the row states ("peaked 103.4").
+  peakDegF: number;
+  // The reading itself, so the row's tap can go to it. Undefined only for a synthetic
+  // assembly whose TemperaturePoints carry no row id.
+  readingId: number | undefined;
+  // The peak reading's profile-local clock, or null when it was stored untimed.
+  time: string | null;
+}
+
+// A symptom COMPOSED AT READ TIME from measurements, never stored — the owner's
+// 2026-09-01 ruling on #4712: derive, never write. A written copy would drift the
+// moment a reading is corrected, and mapping degrees onto the 1-4 severity scale
+// would fabricate a judgment nobody made.
+//
+// THE ABSENCE OF `points` AND `maxSeverity` IS THE LOAD-BEARING PART. This arm cannot
+// be handed to a severity editor, or counted in a worst-severity sort, or written back
+// through `setSymptomSeverityCore`, because it carries nothing any of them read. That
+// is the invariant as a TYPE rather than as a guard every surface has to remember.
+export interface DerivedSymptomSeries {
+  source: "derived";
+  symptom: string; // the curated vocabulary key this derives onto
+  label: string;
+  days: DerivedSymptomDay[]; // oldest day first
+}
+
+export type SymptomSeries = LoggedSymptomSeries | DerivedSymptomSeries;
+
+// The union's narrowing. Every consumer that predates the derived arm asks a question
+// only a LOGGED series can answer — a severity, a day's note, a run of consecutive
+// logged days — so each narrows through this rather than growing an arm that would
+// have to invent one.
+export const isLoggedSymptomSeries = (
+  series: SymptomSeries
+): series is LoggedSymptomSeries => series.source === "logged";
 
 // A temperature reading on the fever curve. `degF` is canonical (#800); `time` is the
 // bare "HH:MM" the reading rides in medical_records.notes (day-granular date + clock).
@@ -48,6 +89,55 @@ export interface TemperaturePoint {
   time: string | null;
   degF: number;
   flag: string | null; // reference-range flag ("high" for a fever), or null
+}
+
+// THE DERIVED FEVER ROW (#4712 item 4, owner-ruled 2026-09-01). One symptom row
+// composed from the episode's own fever-range readings — the SAME `temperatures`
+// series the fever-free clock reads (#4685), so this is one computation over one set
+// of facts and a correction to a reading moves the row with no reconciliation write.
+//
+// A day qualifies when it holds at least one reading the reference range flagged
+// "high"; `flag` is the derivation's whole input, so the fever thresholds stay owned
+// by `reconcileFlags` and are not re-spelled here. The day's PEAK reading is the one
+// the row states and the one its tap goes to. Ties keep the EARLIER reading, because
+// `temperatures` arrives date-then-time ascending and the first crossing of the day is
+// the one a caregiver is looking for.
+//
+// It derives onto the CURATED `fever` slug rather than minting a parallel key: it is
+// the same clinical concept the vocabulary already names, and the `source` discriminant
+// is what tells the two apart. On a day carrying BOTH a stated `fever` row and
+// fever-range readings, THE DERIVED ROW YIELDS (owner-ruled 2026-09-03, #4712
+// judgement 3): the person's own statement wins and only that one row shows. This is
+// PER-DAY, not per-episode — `statedFeverDates` is the caller's set of days already
+// carrying a stated row, and a day outside it still derives normally. The readings
+// themselves are untouched either way; the temperature fold reads `temperatures`
+// directly and never consults this suppression.
+export const DERIVED_FEVER_SYMPTOM = "fever";
+
+export function deriveFeverSeries(
+  temperatures: readonly TemperaturePoint[],
+  statedFeverDates: ReadonlySet<string> = new Set()
+): DerivedSymptomSeries | null {
+  const byDate = new Map<string, DerivedSymptomDay>();
+  for (const reading of temperatures) {
+    if (reading.flag !== "high") continue;
+    if (statedFeverDates.has(reading.date)) continue;
+    const held = byDate.get(reading.date);
+    if (held && held.peakDegF >= reading.degF) continue;
+    byDate.set(reading.date, {
+      date: reading.date,
+      peakDegF: reading.degF,
+      readingId: reading.id,
+      time: reading.time,
+    });
+  }
+  if (byDate.size === 0) return null;
+  return {
+    source: "derived",
+    symptom: DERIVED_FEVER_SYMPTOM,
+    label: symptomLabel(DERIVED_FEVER_SYMPTOM),
+    days: [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)),
+  };
 }
 
 // One PRN administration (#797) within the episode, with its snapshotted dose.
@@ -145,7 +235,10 @@ export function illnessTimelineEvents(
         amount: a.amount,
       }))
     ),
-    ...episode.symptoms.flatMap((s) =>
+    // LOGGED ROWS ONLY. The ledger's symptom event carries a severity label, which
+    // the derived arm has nothing to answer with; the fever it derives from is already
+    // in this ledger as its own temperature events.
+    ...episode.symptoms.filter(isLoggedSymptomSeries).flatMap((s) =>
       s.points.map((p) => ({
         kind: "symptom" as const,
         id: `${s.symptom}:${p.date}`,
@@ -531,6 +624,9 @@ export function episodeCollapsedStatus(
 export function episodeIsWorsening(ep: AssembledEpisode): boolean {
   if (feverTrend(ep.temperatures) === "rising") return true;
   for (const s of ep.symptoms) {
+    // The fever half of "worsening" is `feverTrend` above, over the same readings the
+    // derived row is composed from — asking this arm again would double-count it.
+    if (!isLoggedSymptomSeries(s)) continue;
     const pts = s.points;
     if (pts.length < 2) continue;
     const last = pts[pts.length - 1];
@@ -665,6 +761,10 @@ export function assignOrderedEpisodeFacts<
   return ordered.map((entry) => {
     const { profileId, episode } = entry;
     const ownedSymptoms = episode.symptoms.flatMap((series) => {
+      // Exact-once ownership is keyed on a LOGGED point's (symptom, date); the derived
+      // arm has no points to key on, and its readings are de-duplicated by
+      // `ownedTemperatures` below, on the reading's own id.
+      if (!isLoggedSymptomSeries(series)) return [];
       const points = series.points.filter((point) => {
         if (point.episodeId != null && point.episodeId !== episode.id)
           return false;
