@@ -110,7 +110,19 @@ export default function TrainingLogFilterBar({
                 className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-400"
                 stroke={2}
               />
+              {/* KEYED ON THE QUERY, so the box always says what the URL says. The
+                  field is uncontrolled — `defaultValue` seeds it and the reader
+                  types freely — and an uncontrolled input keeps its own `value`
+                  PROPERTY across a soft navigation even when React re-renders it
+                  with a new `defaultValue`. Clearing every refinement is exactly
+                  that navigation: the URL loses `q`, the attribute re-renders to
+                  "", and without this key the same DOM node goes on showing the
+                  old term over an unfiltered feed. Measured in CI on this branch —
+                  `<input value="">` reporting a live value of the cleared search
+                  term. The key remounts the field whenever the query changes,
+                  which is the only moment its seed is allowed to move. */}
               <input
+                key={query.q ?? ""}
                 type="search"
                 name="q"
                 defaultValue={query.q ?? ""}
