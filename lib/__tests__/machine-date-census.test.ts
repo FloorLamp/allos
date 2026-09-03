@@ -171,21 +171,29 @@ describe("the known-offender ledger", () => {
     }
   });
 
-  it("licenses a collocated date hit but never a lab-unit hit", () => {
-    const known = CENSUS_KNOWN_OFFENDERS[0];
-    expect(known).toBeDefined();
-    if (!known) return;
-
+  it("licenses a registered date hit but never a lab-unit hit, and nothing at all while empty", () => {
+    for (const known of CENSUS_KNOWN_OFFENDERS) {
+      expect(
+        knownMachineDateOffender(known.route, {
+          kind: "date",
+          testId: known.testId,
+        })
+      ).toBe(known);
+      expect(
+        knownMachineDateOffender(known.route, {
+          kind: "lab-unit",
+          testId: known.testId,
+        })
+      ).toBeUndefined();
+    }
+    // #3526 deleted the last entry when it fixed the surface, so the loop above is
+    // vacuous today and this is the assertion that carries the file: an EMPTY ledger
+    // licenses nothing — the retired route/testid included. Without it the ledger
+    // could refill by accident and no test here would notice.
     expect(
-      knownMachineDateOffender(known.route, {
+      knownMachineDateOffender("/", {
         kind: "date",
-        testId: known.testId,
-      })
-    ).toBe(known);
-    expect(
-      knownMachineDateOffender(known.route, {
-        kind: "lab-unit",
-        testId: known.testId,
+        testId: "attention-item-detail",
       })
     ).toBeUndefined();
   });

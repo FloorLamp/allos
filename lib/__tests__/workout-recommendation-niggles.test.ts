@@ -29,10 +29,16 @@ import {
 } from "@/lib/injury-model";
 import {
   NIGGLE_LOAD_FACTOR,
+  niggleHeadsUpLine,
   niggleTemperLine,
+  niggleTempers,
+  nigglesTouchingSession,
   resolveTrainingTemper,
   type NiggleCoachingContext,
 } from "@/lib/niggle-model";
+import { formatWorkoutReminder } from "@/lib/notifications/workout-format";
+import { plainBody } from "@/lib/notifications/rich-text";
+import type { MuscleRegion } from "@/lib/lifts";
 
 const TODAY = "2026-07-10"; // a Friday
 const TUESDAY = "2026-07-07"; // three days back — "from Tuesday"
@@ -251,6 +257,10 @@ describe("invariant 3 — never silent (#3211)", () => {
         label: "right knee",
         factor: NIGGLE_LOAD_FACTOR,
         lastReportedDay: TUESDAY,
+        // Null because the confirm chip blames no lift — a note names a body part, not
+        // a movement (#3211's own open question). Carried anyway for part 4's heads-up,
+        // whose second trigger half and copy both read it.
+        sourceExercise: null,
         note: "Easing off Legs — right knee niggle from Tuesday",
       },
     ]);
@@ -281,5 +291,115 @@ describe("invariant 3 — never silent (#3211)", () => {
     // A weekday name is ambiguous past a week, so the phrase falls back to the
     // relative form the rest of the app uses.
     expect(at("2026-06-28")).toContain("from 2 weeks ago");
+  });
+});
+
+// ── PART 4, FIRST MOMENT — the pre-workout heads-up (#3211 part 4) ───────────
+//
+// Part 3 above proves the target moves and every IN-APP surface says why. This block
+// proves the two things part 4 adds: WHICH niggles today's session actually touches
+// (narrower than the temper set on purpose), and that the Telegram nudge — the one
+// channel that carried no niggle field at all — renders them.
+
+// A left-shoulder niggle blamed on the bench. The load-bearing fixture: its region is
+// `Shoulders` while Bench Press ranks `Chest`, so on a chest day the SOURCE EXERCISE is
+// the only thing that can tie the two together. Region matching alone would miss it.
+const leftShoulder: NiggleCoachingContext = {
+  region: "Shoulders",
+  label: "left shoulder",
+  lastReportedDay: TUESDAY,
+  sourceExercise: "bench press",
+};
+
+// Both, through the real builder — so the REGION_SCOPES ordering it applies
+// (Shoulders before Legs) is the order the heads-up inherits.
+const bothTempers = niggleTempers([rightKnee, leftShoulder], new Set(), TODAY);
+
+describe("which niggles today's session touches (#3211 part 4)", () => {
+  it("orders the tempers by REGION_SCOPES, so the heads-up inherits that order", () => {
+    expect(bothTempers.map((t) => t.label)).toEqual([
+      "left shoulder",
+      "right knee",
+    ]);
+  });
+
+  it.each([
+    // The focus names the region outright.
+    ["focus region", ["Legs"], [], ["right knee"]],
+    // No focus overlap, but a suggested lift trains the region.
+    ["a suggested lift's region", ["Chest"], ["Squat"], ["right knee"]],
+    // THE CASE REGION MATCHING CANNOT REACH: chest day, chest lift, shoulder niggle —
+    // reached only because the bench is the lift the report blamed.
+    ["the blamed lift", ["Chest"], ["Bench Press"], ["left shoulder"]],
+    // Both routes firing at once, in REGION_SCOPES order.
+    ["both routes", ["Legs"], ["Bench Press"], ["left shoulder", "right knee"]],
+    // The negative this whole filter exists for: a live niggle that today's session does
+    // not go near says NOTHING. Without it a knee nobody is about to use becomes a
+    // fortnight of daily pushes.
+    ["a session that touches neither", ["Back"], ["Deadlift"], []],
+  ])(
+    "%s",
+    (_name, focus: string[], exercises: string[], expected: string[]) => {
+      expect(
+        nigglesTouchingSession(
+          bothTempers,
+          focus as MuscleRegion[],
+          exercises
+        ).map((t) => t.label)
+      ).toEqual(expected);
+    }
+  );
+});
+
+describe("the heads-up line (#3211 part 4)", () => {
+  it.each([
+    [
+      "names the lift the report blamed, from the stored key's display name",
+      leftShoulder,
+      TODAY,
+      "Left shoulder niggle after Bench Press from Tuesday — take it easy today.",
+    ],
+    [
+      "omits the lift when the report blamed none — every confirm-chip niggle today",
+      rightKnee,
+      TODAY,
+      "Right knee niggle from Tuesday — take it easy today.",
+    ],
+    [
+      // The `from <when>` fragment is part 3's `niggleTemperLine` phrasing verbatim, so
+      // one niggle reads the same wherever the app mentions it.
+      "says the day the way the in-app disclosure says it",
+      rightKnee,
+      "2026-07-08", // the day after TUESDAY
+      "Right knee niggle from yesterday — take it easy today.",
+    ],
+  ])("%s", (_name, ctx: NiggleCoachingContext, today: string, expected) => {
+    const [t] = niggleTempers([ctx], new Set(), today);
+    expect(niggleHeadsUpLine(t, today)).toBe(expected);
+  });
+});
+
+describe("the Telegram nudge renders it (#3211 part 4)", () => {
+  const rec = (niggleNotes?: string[]) => ({
+    focus: ["Legs"] as MuscleRegion[],
+    exercises: ["Squat"],
+    behind: [],
+    rest: null,
+    onTrack: null,
+    ...(niggleNotes ? { niggleNotes } : {}),
+  });
+
+  it("places the heads-up with the suggestion it is about", () => {
+    const line = niggleHeadsUpLine(bothTempers[1], TODAY);
+    const body = plainBody(formatWorkoutReminder(rec([line]))!.body);
+    expect(body.split("\n")).toEqual(["Suggested: Squat", line]);
+  });
+
+  it("is byte-identical to the pre-#3211 message when nothing is touched", () => {
+    // The converse of the assertion above, and the reason it can fail: an empty list and
+    // an absent field must both leave the message exactly what it was.
+    const before = plainBody(formatWorkoutReminder(rec())!.body);
+    expect(plainBody(formatWorkoutReminder(rec([]))!.body)).toBe(before);
+    expect(before).toBe("Suggested: Squat");
   });
 });

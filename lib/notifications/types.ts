@@ -156,11 +156,3 @@ export function bodyFor(
 ): MessageBody {
   return msg.bodyByChannel?.[channel] ?? msg.body;
 }
-
-export function prefixMessage(
-  msg: NotificationMessage,
-  prefix: string
-): NotificationMessage {
-  if (!prefix) return msg;
-  return { ...msg, title: `${prefix}${msg.title}` };
-}

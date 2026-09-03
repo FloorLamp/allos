@@ -7,6 +7,7 @@ import {
 } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import HistoryAddDoor, {
+  HistoryUsualOffers,
   type HistoryAddKind,
 } from "@/app/(app)/history/HistoryAddDoor";
 
@@ -222,7 +223,6 @@ const VOCABULARY = {
   measurements: MEASUREMENTS,
   moodDay: { date: FOUND_DAY, label: "Aug 18", mood: null },
   moodShowCalm: true,
-  usual: [] as UsualOffer[],
   doseItems: [
     {
       id: 7,
@@ -237,14 +237,34 @@ const VOCABULARY = {
   doseDefaultTime: "08:00",
 };
 
-function open(kind: HistoryAddKind, usual: UsualOffer[] = []): void {
+function open(kind: HistoryAddKind): void {
   render(
     <HistoryAddDoor
       kind={kind}
       date={FOUND_DAY}
       maxDate={TODAY}
-      vocabulary={{ ...VOCABULARY, usual }}
+      vocabulary={VOCABULARY}
     />
+  );
+  fireEvent.click(screen.getByTestId(`history-add-open-${kind}`));
+}
+
+/**
+ * The page's own composition (#4310 ruling): the offers line, then the per-kind door
+ * beneath it. Rendered together because the claim under test is where the offer sits
+ * RELATIVE to the door, which neither half can answer alone.
+ */
+function addDoor(kind: HistoryAddKind, usual: UsualOffer[] = []): void {
+  render(
+    <>
+      <HistoryUsualOffers offers={usual} date={FOUND_DAY} />
+      <HistoryAddDoor
+        kind={kind}
+        date={FOUND_DAY}
+        maxDate={TODAY}
+        vocabulary={VOCABULARY}
+      />
+    </>
   );
   fireEvent.click(screen.getByTestId(`history-add-open-${kind}`));
 }
@@ -594,35 +614,45 @@ describe("the record's Add door posts to the domain's own create action", () => 
   });
 });
 
-// ── THE ONE-TAP USUAL ON A PAST DAY (#4118) ──────────────────────────────────
+// ── THE ONE-TAP USUAL ON A PAST DAY (#4118), LEADING THE DOOR (#4310) ────────
 //
 // The acceptance criterion a person actually performs: an empty past day fills from
 // the record's own add door. The write, its bound, its provenance and its audit are
 // the core's and are proved at the db and action tiers; what only this tier can prove
-// is that the CONTROL posts the day the reader is looking at, and that its label stops
-// promising a day the field has moved off.
-describe("the composed usual on the add door", () => {
+// is that the CONTROL posts the day the reader is looking at.
+//
+// AND WHERE IT SITS, which is #4310's whole subject. The bundle writes servings AND
+// doses, so it is an offer over foods and stacks rather than a food, and it led the
+// `Log food` door under-naming itself. It leads the add door instead — above the
+// per-kind row, outside every door's panel, and silent on a day with nothing standing.
+// The KIND-NEUTRALITY is structural rather than asserted: the line takes no kind.
+describe("the composed usual leads the add door", () => {
   function usualButton() {
     return screen.getByTestId("history-add-usual-Morning");
   }
 
-  // The two absences that survived the date-follow tests' move to the nutrition bar
-  // (#4424 ruling 2 retired the door's shared date field, so the sequenced re-read went
-  // where the day PICKER is). Both are still live invariants here: no habit standing on
-  // that day renders no control, and no kind but food has a breakfast to offer.
-  it.each([
-    ["no offer stands on the day", "food", [] as UsualOffer[]],
-    ["a kind with no bundle", "substance", [MORNING_OFFER]],
-  ] as [string, HistoryAddKind, UsualOffer[]][])(
-    "renders no composed control for %s",
-    (_why, kind, usual) => {
-      open(kind, usual);
-      expect(screen.queryByTestId("history-add-usual")).toBeNull();
+  it("renders nothing on a day with no standing offer", () => {
+    addDoor("food");
+    expect(screen.queryByTestId("history-add-usual")).toBeNull();
+  });
+
+  // OUTSIDE THE PANEL IS THE STRONGER CLAIM, and it subsumes the one this file used to
+  // make about the <form>: the panel CONTAINS that form, so an offer outside the panel
+  // cannot be a submit control of it. Both kinds, because "not inside the food kind" is
+  // only half of the ruling — the other half is that a day's offer stands over a door
+  // that has no breakfast to offer.
+  it.each(["food", "substance"] as HistoryAddKind[])(
+    "stands above the %s door, outside its panel",
+    (kind) => {
+      addDoor(kind, [MORNING_OFFER]);
+      expect(
+        screen.getByTestId(`history-add-panel-${kind}`).contains(usualButton())
+      ).toBe(false);
     }
   );
 
   it("posts the composed bundle on the day the reader was looking at", async () => {
-    open("food", [MORNING_OFFER]);
+    addDoor("food", [MORNING_OFFER]);
     // THE LABEL IS THE PROMISE: it names every serving and every dose the tap writes,
     // and the count is both halves — a button promising less than it writes is the
     // defect `usualRoutineAttachmentFor` refuses in Telegram, and it is refused here.
@@ -637,9 +667,12 @@ describe("the composed usual on the add door", () => {
     expect(sent.meal_slot).toBe("Morning");
     expect(sent.groups).toBe("berries,fermented");
     expect(sent.dose_ids).toBe("41");
-    // Resolved in place, exactly as the four forms are.
-    expect(screen.queryByTestId("history-add-panel-food")).toBeNull();
+    // Resolved in place, exactly as the four forms are (#4045 §1).
     expect(refreshed).toHaveLength(1);
+    // AND THE DOOR IS NOT ITS PANEL TO CLOSE any more (#4310). The offer is no longer a
+    // control inside the food door, so a tap on it leaves whatever the reader had open
+    // exactly as they left it.
+    expect(screen.getByTestId("history-add-panel-food")).toBeTruthy();
     // AND IT DID NOT GO THROUGH THE PER-ITEM DOOR. A one-tap that quietly posted
     // `logFoodServing` would satisfy every assertion above about the label and none
     // about the bundle: no dose, no audit, no backfill provenance.
@@ -689,7 +722,7 @@ describe("the composed usual on the add door", () => {
         ],
         doses: [...doses],
       });
-      open("food", [MORNING_OFFER]);
+      render(<HistoryUsualOffers offers={[MORNING_OFFER]} date={FOUND_DAY} />);
       await act(async () => fireEvent.click(usualButton()));
 
       expect(toasts).toHaveLength(1);
@@ -720,13 +753,10 @@ describe("the composed usual on the add door", () => {
   });
 
   it("leaves the per-item form exactly where it was", async () => {
-    // The one-tap is the FAST path and never the only one. A reader whose usual is not
-    // what they ate must still be able to name a group, and the bundle button sits
-    // ABOVE the form rather than inside it — nested, it would become a submit control
-    // of that form and log the wrong thing.
-    open("food", [MORNING_OFFER]);
-    const panel = screen.getByTestId("history-add-panel-food");
-    expect(panel.querySelector("form")!.contains(usualButton())).toBe(false);
+    // The one-tap is the FAST path and never the only one: a reader whose usual is not
+    // what they ate must still be able to name a group, and the offer standing above
+    // the door must not change what the door's own form posts.
+    addDoor("food", [MORNING_OFFER]);
     fireEvent.change(screen.getByRole("combobox", { name: /food group/i }), {
       target: { value: "leafy_greens" },
     });

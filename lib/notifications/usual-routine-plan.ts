@@ -106,8 +106,7 @@ export function attachUsualForSlots(
   for (const slot of slots) {
     const plan = plans.get(slot as FoodSlot);
     const attachment = plan?.claim("dose");
-    if (attachment)
-      return dispatchableUsual(attachUsualRoutine(message, attachment));
+    if (attachment) return attachUsualRoutine(message, attachment);
   }
   return message;
 }
@@ -116,6 +115,9 @@ export function attachUsualForSlots(
 // keyboard that has a family to inherit. A violation drops the DECORATION and sends the
 // message: a dose reminder is safety tier and must go out even when its decoration is
 // wrong, and an unowned keyboard would sit in the chat forever.
+//
+// Run by the send/rebuild composition (#4538), so it covers every host — including the
+// ones that attach nothing themselves — rather than the two that remembered to call it.
 export function dispatchableUsual(
   message: NotificationMessage
 ): NotificationMessage {

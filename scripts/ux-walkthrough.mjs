@@ -76,6 +76,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { chromium } from "@playwright/test";
 import { resolveChromiumExecutable } from "../lib/e2e-chromium.mjs";
 import {
+  censusRouteScope,
   DISCLOSURE_EXPANSIONS,
   DYNAMIC_ROUTES,
   HOVER_CAPTURES,
@@ -1055,15 +1056,12 @@ async function pagesJourney(browser) {
     }
   };
   walk(appDir, "");
-  // UX_ROUTES: comma-separated route prefixes to census a SUBSET (e.g.
+  // UX_ROUTES: comma-separated route filter to census a SUBSET (e.g.
   // "/trends,/upcoming" to audit one hub, or to keep a run tractable on a
-  // pathologically slow dev filesystem). Unset = every route.
-  const only = (process.env.UX_ROUTES || "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const keep = (r) =>
-    !only.length || only.some((p) => r === p || r.startsWith(p));
+  // pathologically slow dev filesystem). Unset = every route. An entry is a
+  // prefix; `=` makes it exact, so `UX_ROUTES==/` is the dashboard alone —
+  // censusRouteScope in scripts/ux-census-routes.mjs owns the convention.
+  const { entries: only, keep } = censusRouteScope(process.env.UX_ROUTES);
   const picked = routes.filter((r) => !r.includes("[")).filter(keep);
   const dynamicPatterns = routes.filter((r) => r.includes("[")).filter(keep);
   const staticTotal = routes.filter((r) => !r.includes("[")).length;

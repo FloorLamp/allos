@@ -124,6 +124,10 @@ import { getLastSleepRecordDate } from "@/lib/queries/domain-dormancy";
 import { freshnessAgeDays } from "@/lib/freshness";
 import { glanceAgeToken } from "@/lib/glance-age";
 import { VITAL_PRESENTATION_FLOORS } from "@/lib/vitals-latest";
+import {
+  TREND_METRIC_PRESENTATION_FLOORS,
+  trendMetricPresentationFreshness,
+} from "@/lib/trend-metric-freshness";
 import { getRecapCard } from "@/lib/notifications/recap-data";
 import { upcomingRowQualifiers } from "@/lib/notifications/upcoming-digest";
 import { recapLineAnnotation, recapLineId, recapRangeLabel } from "@/lib/recap";
@@ -234,6 +238,10 @@ import {
 } from "@/lib/sleep-summary";
 import UsualRoutineControl from "@/components/dashboard/UsualRoutineControl";
 import DashboardQuickEntryAction from "@/components/dashboard/DashboardQuickEntryAction";
+import {
+  StandingAge,
+  staleMeasurementDoor,
+} from "@/components/dashboard/StandingAge";
 import IllnessCockpitBody from "../../components/illness/IllnessCockpitBody";
 import { LoggedViaSurface } from "@/components/LoggedViaSurface";
 import {
@@ -283,6 +291,7 @@ import {
   type UpcomingItem,
 } from "@/lib/upcoming";
 import { isSuppressed } from "@/lib/upcoming-suppress";
+import { itemDetailText } from "@/lib/upcoming-aggregate";
 import { dashboardAttentionCandidateId } from "@/lib/dashboard-attention-identity";
 import { loadContextLabel } from "@/lib/lifts";
 import { formatMinutes } from "@/lib/duration";
@@ -319,10 +328,15 @@ function attentionRowDetail(
   formatPrefs: DisplayFormatPrefs
 ) {
   const due = upcomingDueText(item, today, formatPrefs);
-  if (!item.detail) return due;
+  // THE DETAIL IS RENDERED, NOT READ (#3526). The biomarker retest row's sentence is
+  // composed by a login-less generator and carries the raw ISO day; this is a surface
+  // WITH a login, so it re-composes the row's carried facts through the same
+  // `formatPrefs` the due text already uses. Every other item's detail is unchanged.
+  const detail = itemDetailText(item, today, formatPrefs);
+  if (!detail) return due;
   return (
     <>
-      <span data-testid="attention-item-detail">{item.detail}</span>
+      <span data-testid="attention-item-detail">{detail}</span>
       {due ? ` · ${due}` : null}
     </>
   );
@@ -2301,13 +2315,7 @@ async function renderDashboard(
               data-testid="vitals-latest-bp"
             >
               <span>{`${vitalsModel.bp.systolic}/${vitalsModel.bp.diastolic} mmHg`}</span>
-              <span
-                data-testid="vitals-latest-bp-age"
-                data-stale={age.stale ? "true" : undefined}
-                className={`standing-age ${age.className}`}
-              >
-                {age.text}
-              </span>
+              <StandingAge age={age} testId="vitals-latest-bp-age" />
               {direction && (
                 <span className="sr-only">{`${direction === "flat" ? "flat" : direction} versus previous blood pressure`}</span>
               )}
@@ -2316,6 +2324,7 @@ async function renderDashboard(
         })(),
         href: "/trends#body",
         disclosure: bpAge?.title ?? undefined,
+        control: staleMeasurementDoor(bpAge!, "vitals", "Log a vital"),
         presence: "current",
       }
     );
@@ -2363,13 +2372,7 @@ async function renderDashboard(
               data-testid="vitals-latest-resting-hr"
             >
               <span>{`${vitalsModel.restingHr.value} bpm`}</span>
-              <span
-                data-testid="vitals-latest-resting-hr-age"
-                data-stale={age.stale ? "true" : undefined}
-                className={`standing-age ${age.className}`}
-              >
-                {age.text}
-              </span>
+              <StandingAge age={age} testId="vitals-latest-resting-hr-age" />
               {direction && (
                 <span className="sr-only">{`${direction === "flat" ? "flat" : direction} versus previous resting heart rate`}</span>
               )}
@@ -2392,6 +2395,7 @@ async function renderDashboard(
         },
         href: "/trends#body",
         disclosure: restingHrAge?.title ?? undefined,
+        control: staleMeasurementDoor(restingHrAge!, "vitals", "Log a vital"),
         presence: "current",
       }
     );
@@ -2473,15 +2477,7 @@ async function renderDashboard(
             showFlagLabel
           />
         ),
-        detail: (
-          <span
-            data-testid="recent-lab-date"
-            data-stale={age.stale ? "true" : undefined}
-            className={`standing-age ${age.className}`}
-          >
-            {age.text}
-          </span>
-        ),
+        detail: <StandingAge age={age} testId="recent-lab-date" />,
         href: row.href,
         disclosure: age.title ?? undefined,
         moment: { title: "Recent clinical results", href: "/results" },
@@ -2553,7 +2549,24 @@ async function renderDashboard(
     );
   } else {
     const latestWeight = bodyMetrics.at(-1);
-    if (latestWeight)
+    if (latestWeight) {
+      // Weight's glance floor is the one its Trends card already reads (#4757): the
+      // self-measured six weeks of TREND_METRIC_PRESENTATION_FLOORS, by reference, so
+      // the dashboard and the chart cannot disagree about how old a weigh-in may be.
+      // Between that floor and the 90-day dormancy collapse the row keeps its value,
+      // goes amber, and grows the door.
+      const weightAge = glanceAgeToken({
+        date: latestWeight.date,
+        today: on,
+        freshness: trendMetricPresentationFreshness(
+          "weight",
+          latestWeight.date,
+          on
+        ),
+        form: "long",
+        floorLabel: TREND_METRIC_PRESENTATION_FLOORS.weight.label,
+        dateLabel: formatLongDate(latestWeight.date, formatPrefs),
+      });
       add(
         progressCandidates.weightLatest(
           { subject: profileSubject, sourceOrder: sourceOrder++ },
@@ -2564,30 +2577,27 @@ async function renderDashboard(
           label: "Latest",
           value: `${latestWeight.value} ${units.weightUnit}`,
           // The date stays visible when the destination door appears (#3555).
-          detail: (
-            <span className="standing-age">
-              {formatLongDate(latestWeight.date, formatPrefs)}
-            </span>
-          ),
+          detail: <StandingAge age={weightAge} testId="weight-latest-age" />,
           // The desktop column (#3252): the SAME trailing-90-day series the weight
           // domain already derived above for this page — not a second read, and not a
-          // second window. `stale` is false by construction here: this branch is the
-          // one the dormancy verdict left alive, and weight declares no glance floor
-          // between "current" and "dormant" (its dormant row is a different row, with
-          // no plot at all).
+          // second window. The tone follows this row's own glance age, as the resting
+          // HR plot does.
           series: {
             points: bodyMetrics,
             seriesKey: "metric:weight",
-            stale: false,
+            stale: weightAge.stale,
             name: `Weight, last ${WEIGHT_TREND_WINDOW_DAYS} days`,
             pointLabel: (point) =>
               `${point.value} ${units.weightUnit} · ${formatLongDate(point.date, formatPrefs)}`,
             loneCaption: `Single reading · ${formatLongDate(latestWeight.date, formatPrefs)}`,
           },
           href: "/trends#body",
+          disclosure: weightAge.title ?? undefined,
+          control: staleMeasurementDoor(weightAge, "body", "Log weight"),
           presence: "current",
         }
       );
+    }
     add(
       progressCandidates.weightTrend(
         {

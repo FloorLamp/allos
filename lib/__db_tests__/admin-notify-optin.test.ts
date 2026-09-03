@@ -18,8 +18,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { db } from "@/lib/db";
 import { setTelegramBotConfig, setTimezone } from "@/lib/settings";
 import { buildIntakeReminderForSlots } from "@/lib/notifications/intake";
-import { prefixForProfile } from "@/lib/notifications/attribution";
-import { prefixMessage } from "@/lib/notifications/types";
+import { composeForSend } from "@/lib/notifications/compose";
 import {
   managingLoginIdsForProfile,
   resolveTelegramRecipients,
@@ -128,7 +127,7 @@ describe("a lone admin can be reached about another profile only after opting in
     // otherwise-identical reminders, so the "[Name] " prefix is what keeps them apart.
     const built = buildIntakeReminderForSlots(ward, ["Morning"]);
     expect(built).not.toBeNull();
-    const attributed = prefixMessage(built!.message, prefixForProfile(ward));
+    const attributed = composeForSend(ward, built!.message);
     expect(attributed.title).toContain("[Ward Wilhelmina]");
   });
 
