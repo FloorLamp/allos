@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Button from "@/components/Button";
-import { LabeledVerbChip } from "@/components/Chip";
+import { LabeledVerbChip } from "@/components/OfferRow";
 import { useUndoableAction } from "@/components/useUndoableAction";
 import {
   DOSE_UNDONE_MESSAGE,

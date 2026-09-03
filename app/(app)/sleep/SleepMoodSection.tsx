@@ -31,6 +31,7 @@ import {
 } from "@/lib/sleep-summary";
 import { describeCorrelation, pearson } from "@/lib/trends-compare";
 import { readingTargetToken } from "@/lib/reading-placement";
+import { SLEEP_SKEW_HEDGE } from "@/lib/sleep-clock-skew";
 import SleepMoodEditDialog from "./SleepMoodEditDialog";
 import BedtimeSupplementStatus from "./BedtimeSupplementStatus";
 import { deleteSleepMoodRow } from "./actions";
@@ -107,6 +108,7 @@ export default function SleepMoodSection({
       sleepEditable: true,
       sleepEditHours: null,
       sleepSampleId: null,
+      sleepSuspect: false,
       moodLogId: null,
     });
   }
@@ -447,6 +449,12 @@ export default function SleepMoodSection({
 // duration-only sample offers no sleep delete (an imported or windowed night is
 // read-only here exactly as it is in the edit dialog), and a day with no check-in
 // offers no mood delete. The menu therefore never presents a write that would refuse.
+//
+// ONE synced night is deletable: a session the clock-skew detector contradicted
+// (#4299). Editing it stays refused — the dialog still says so — because a mis-stamped
+// session cannot be corrected by hand into an instant the source will not re-send.
+// Removing it can be, and the #507/#508 tombstone is keyed on `started_at`, so a
+// corrected re-sync at the right instants lands rather than being buried with it.
 function SleepMoodRowMenu({
   row,
   dateLabel,
@@ -510,15 +518,23 @@ function SleepMoodRowMenu({
                       id: row.sleepSampleId!,
                       metric: "sleep_min",
                     }),
-                    {
-                      title: "Delete sleep duration",
-                      message: `Delete the manual sleep duration logged for ${dateLabel}? You can undo this.`,
-                      deleted: "Sleep duration deleted.",
-                    }
+                    row.sleepSuspect
+                      ? {
+                          title: "Delete synced sleep session",
+                          message: `${SLEEP_SKEW_HEDGE} Delete the synced session for ${dateLabel}? A corrected re-sync of the same night still lands. You can undo this.`,
+                          deleted: "Sleep session deleted.",
+                        }
+                      : {
+                          title: "Delete sleep duration",
+                          message: `Delete the manual sleep duration logged for ${dateLabel}? You can undo this.`,
+                          deleted: "Sleep duration deleted.",
+                        }
                   );
                 }}
               >
-                Delete sleep duration
+                {row.sleepSuspect
+                  ? "Delete synced sleep session"
+                  : "Delete sleep duration"}
               </button>
             )}
             {row.moodLogId != null && (

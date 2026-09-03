@@ -124,7 +124,7 @@ const RAW_DRAG_LISTENER_ALLOW = new Map<string, string>([
   ],
   [
     "components/IntradayChart.tsx",
-    "the day chart's horizontal ZOOM-BRUSH (#1068/#1515): the drag selects a minute RANGE on the chart's own axis — content manipulation, like ImageCropper's crop box — and it deliberately takes no pointer capture so the ticks and blocks underneath keep their clicks. `touch-pan-y` leaves the vertical scroll to the page, so there is no axis arbitration for the shared recognizer to do. FOUND BY THE WIDENED PATTERN BELOW when #3958 closed #2816's blind spot: it had been a third unlisted JSX recognizer the whole time",
+    "the day chart's ZOOM GESTURES (#1068/#1515/#4852): drag-select, wheel and pinch each pick a minute RANGE on the chart's own axis — content manipulation, like ImageCropper's crop box — and none takes pointer capture, so the ticks and blocks underneath keep their clicks. `touch-pan-y` leaves the vertical scroll to the page; the ONE moment it does not is while two pointers are down for a pinch (`touch-none`, #4852), which is a gesture the page has no reading of at all — so there is still no axis to arbitrate for the shared recognizer. FOUND BY THE WIDENED PATTERN BELOW when #3958 closed #2816's blind spot: it had been a third unlisted JSX recognizer the whole time",
   ],
   [
     "components/JumpRailScrubber.tsx",

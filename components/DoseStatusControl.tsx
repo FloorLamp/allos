@@ -9,7 +9,7 @@ import {
   type DoseStatusResult,
 } from "@/app/(app)/nutrition/intake-actions";
 import { type TimeStatement } from "@/components/TimeStatement";
-import { LabeledVerbChip } from "@/components/Chip";
+import { LabeledVerbChip } from "@/components/OfferRow";
 import { doseConfirmMessage } from "@/lib/dose-outcome-text";
 import { microMotionPlan } from "@/lib/micro-motion";
 import { useTimezone } from "@/components/TimezoneProvider";

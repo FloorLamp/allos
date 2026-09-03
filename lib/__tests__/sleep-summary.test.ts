@@ -588,6 +588,7 @@ describe("pairSleepMood", () => {
         sleepEditHours: null,
         sleepSampleId: null,
         moodLogId: null,
+        sleepSuspect: false,
       },
       {
         date: "2026-03-18",
@@ -605,6 +606,7 @@ describe("pairSleepMood", () => {
         sleepEditHours: null,
         sleepSampleId: null,
         moodLogId: null,
+        sleepSuspect: false,
       },
       {
         date: "2026-03-19",
@@ -622,6 +624,7 @@ describe("pairSleepMood", () => {
         sleepEditHours: null,
         sleepSampleId: null,
         moodLogId: null,
+        sleepSuspect: false,
       },
       {
         date: "2026-03-20",
@@ -634,6 +637,7 @@ describe("pairSleepMood", () => {
         sleepEditHours: null,
         sleepSampleId: null,
         moodLogId: null,
+        sleepSuspect: false,
       },
     ]);
   });
