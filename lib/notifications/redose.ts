@@ -32,7 +32,7 @@ import {
   getRedoseArmingState,
   getMedicationFamilyStates,
 } from "../queries";
-import { redoseNoticeDecision } from "../prn-redose";
+import { ceilingWindowEndMinute, redoseNoticeDecision } from "../prn-redose";
 import { redoseNoticeMessage } from "../redose-format";
 import { formatGivenAtNoticeTime } from "../administration-format";
 import { getProfileSetting, setProfileSetting, getTimezone } from "../settings";
@@ -61,8 +61,10 @@ function redoseLogToken(): string {
 
 // Send any due PRN redose notices for one profile. Returns whether a send failed (so
 // the tick can aggregate into its exit code). Never throws for an ordinary send
-// failure. `now` is the tick's instant (injectable for tests); interval elapsed is a
-// pure duration, while the day count/max reset in the profile's timezone (date).
+// failure. `now` is the tick's instant (injectable for tests). The interval elapsed is
+// a pure duration; the count/max ceiling is judged on the trailing 24 hours ending at
+// that same `now` (#4686), so the notice's two halves read one instant. `date` is kept
+// only for the notice's own clock LABEL ("4:02pm" vs a dated one).
 export async function runRedoseNotices(
   profileId: number,
   profileName: string,
@@ -80,7 +82,8 @@ export async function runRedoseNotices(
   // members. The per-item one-shot marker semantics are unchanged — the notice
   // still belongs to this item, keyed by the arming administration id (a sibling's
   // id works identically: ids are ledger-global and never recycle).
-  const families = getMedicationFamilyStates(profileId, date);
+  const nowMinute = ceilingWindowEndMinute(now);
+  const families = getMedicationFamilyStates(profileId, nowMinute);
 
   let failed = false;
   for (const item of items) {
@@ -88,7 +91,7 @@ export async function runRedoseNotices(
     const arming = fam ?? {
       // A notice item is always an active med, so it's always in the family map;
       // this per-item fallback only guards a race with a just-paused item.
-      ...getRedoseArmingState(profileId, item.id, date),
+      ...getRedoseArmingState(profileId, item.id, nowMinute),
       latestItemId: null as number | null,
       latestItemName: null as string | null,
       minConfirmedMax: null as number | null,
@@ -108,7 +111,7 @@ export async function runRedoseNotices(
       maxDailyCount: effectiveMax,
       latestAdministrationId: arming.latestId,
       latestGivenAt: parseUtcSql(arming.latestGivenAt),
-      countToday: arming.countToday,
+      countInWindow: arming.countInWindow,
       now,
       notifiedAdministrationId,
       tickMinutes,
@@ -129,10 +132,10 @@ export async function runRedoseNotices(
       product: item.product,
       sinceHours: decision.sinceHours,
       lastClock: formatGivenAtNoticeTime(tz, arming.latestGivenAt, date),
-      countToday: decision.countToday,
+      countInWindow: decision.countInWindow,
       maxDailyCount: decision.maxDailyCount,
       // The same basis the ceiling was judged on (#1854): the body reads
-      // "1200 of 2400 mg today" when milligrams are known.
+      // "1200 of 2400 mg in 24h" when milligrams are known.
       exposure: decision.exposure,
       // When a same-ingredient SIBLING's dose armed the clock (#1027), the body
       // names it — "8h since Ibuprofen OTC" — instead of implying this item.

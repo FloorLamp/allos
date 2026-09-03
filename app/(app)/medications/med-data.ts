@@ -34,7 +34,11 @@ import {
   getEffectiveActiveSituations,
 } from "@/lib/queries";
 import { loadIntakeFormContext } from "@/lib/intake-form-context";
-import { effectiveMaxDailyCount, redoseWindowStatus } from "@/lib/prn-redose";
+import {
+  ceilingWindowEndMinute,
+  effectiveMaxDailyCount,
+  redoseWindowStatus,
+} from "@/lib/prn-redose";
 import { now as clockNow } from "@/lib/clock";
 import { redoseActionIsPrimary, redoseCardLabel } from "@/lib/redose-format";
 import { prnQuickLogRedoseStatus } from "@/lib/prn-redose";
@@ -332,7 +336,12 @@ export function loadMedicationsData(
   // FAMILY's latest administration / combined count / most conservative confirmed
   // max (an OTC ibuprofen dose holds the Rx item's "Redose OK"); the day label
   // stays the item's OWN administrations.
-  const familyStates = getMedicationFamilyStates(profileId, todayStr);
+  // The ceiling counters read the trailing 24 HOURS (#4686), so the gather takes the
+  // instant rather than the day; the per-item day label below still reads `todayStr`.
+  const familyStates = getMedicationFamilyStates(
+    profileId,
+    ceilingWindowEndMinute(nowInstant)
+  );
   const prnInfoFor = (
     s: IntakeItem
   ): {
@@ -370,7 +379,7 @@ export function loadMedicationsData(
       : null;
     const fam = familyStates.get(s.id);
     const famLast = fam?.latestGivenAt ?? last;
-    const famCount = fam?.countToday ?? admins.length;
+    const famCount = fam?.countInWindow ?? admins.length;
     let redoseLine: string | null = null;
     let redosePrimary = true;
     // The daily max is optional (#1458): the interval + an administration are all
@@ -383,7 +392,7 @@ export function loadMedicationsData(
           fam?.minConfirmedMax
         ),
         latestGivenAt: parseUtcSql(famLast),
-        countToday: famCount,
+        countInWindow: famCount,
         now: nowInstant,
         // The family's amount-aware exposure (#1854): the card's "N of M" line
         // reads milligrams when a mg/day max is confirmed and amounts are known.

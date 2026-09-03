@@ -19,11 +19,11 @@ const COLLAPSED_CHIPS = 3;
 
 // ── MEDS AS CHIPS, DETAIL ONLY WHEN ACTING (#4752 item 4) ───────────────────
 //
-// The cockpit drew a full PRN row per medication: name, "None today", "Redose OK",
+// The cockpit drew a full PRN row per medication: name, "None", "Redose OK",
 // a Take button and a clock door, three times over — six lines of boilerplate above
 // three taps, and on a desktop the names sat a monitor's width from their buttons.
 // Collapsed it is a flow row of named chips under ONE status line about the whole
-// row ("Nothing given today · both windows open"), with the tail behind "N more".
+// row ("Nothing given in 24h · both windows open"), with the tail behind "N more".
 //
 // A CHIP OPENS THE MED; IT DOES NOT GIVE IT. That is deliberate and it is the
 // pediatric case deciding it: the collapsed chip shows the medication's NAME, and
