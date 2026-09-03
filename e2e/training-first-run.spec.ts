@@ -31,12 +31,10 @@ test.describe("Training Log first-run empty state (#809)", () => {
 
     // First-run copy — NOT the filter-empty copy (there is nothing to filter).
     await expect(
-      page.getByText("No activities logged yet. Log your first workout", {
-        exact: false,
-      })
+      page.getByText("No training logged yet.", { exact: false })
     ).toBeVisible();
     await expect(
-      page.getByText("No activities match your filters")
+      page.getByText("No sessions match these filters.")
     ).toHaveCount(0);
 
     // Add activity is the page-header primary; Start workout remains the Log
@@ -57,7 +55,7 @@ test.describe("Training Log first-run empty state (#809)", () => {
     await expect(page.getByTestId("repeat-last")).toHaveCount(0);
 
     // Search / filter controls are meaningless over an empty history and are hidden,
-    // as is the routine/cadence row.
+    // as is the routine/cadence row (retired outright by #4079).
     await expect(page.getByTestId("training-log-controls")).toHaveCount(0);
     await expect(
       page.getByPlaceholder("Search activities or exercises…")
@@ -82,17 +80,17 @@ test.describe("Training Log first-run empty state (#809)", () => {
 
     await page.goto("/training?tab=log");
     await expect(
-      page.getByText("No activities logged yet. Log your first workout", {
-        exact: false,
-      })
+      page.getByText("No training logged yet.", { exact: false })
     ).toBeVisible();
 
-    // The desktop primary and secondary action row are hidden below md; the mobile entry point is
-    // the dock's always-mounted log puck (the responsive shared-content rule —
-    // the first-run empty state must not strand mobile users either). Both Train
-    // rows are present in its sheet, and Log activity opens the editor overlay.
-    await expect(page.getByTestId("training-log-actions")).toBeHidden();
+    // The desktop page-header primary is hidden below md — but #4079 restores an
+    // IN-PAGE way to add at every viewport, so the action row is present here and
+    // carries "Log activity". The dock's always-mounted log puck stays the standing
+    // entry point beside it; both Train rows are present in its sheet.
     await expect(page.getByTestId("training-log-add-activity")).toBeHidden();
+    await expect(
+      page.getByTestId("training-log-add-activity-inline")
+    ).toBeVisible();
     const sheet = await openLogSheet(page);
     await expect(await showLogRow(sheet, "live-workout")).toBeVisible();
     const mobileLog = await showLogRow(sheet, "log-activity");
@@ -126,9 +124,7 @@ test.describe("Training Log first-run empty state (#809)", () => {
       /\/training\?tab=log/
     );
     await expect(
-      page.getByText("No activities logged yet. Log your first workout", {
-        exact: false,
-      })
+      page.getByText("No training logged yet.", { exact: false })
     ).toBeVisible();
 
     await page.close();

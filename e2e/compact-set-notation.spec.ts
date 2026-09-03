@@ -73,7 +73,7 @@ const UNIFORM_SENTENCE = new RegExp(
 function cardsByTitle(page: Page, text: string | RegExp) {
   return page
     .getByRole("main")
-    .locator('[id^="activity-"]')
+    .getByTestId("history-row")
     .filter({ hasText: text });
 }
 

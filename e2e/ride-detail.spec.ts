@@ -29,7 +29,7 @@ test.afterEach(() => deleteActivitiesTitled(...PLANTED_RIDES));
 // The Log feed is a slim index. Selecting a ride navigates directly to its
 // canonical activity page at every viewport size.
 async function openRideRecord(page: Page, title: string) {
-  const row = page.getByTestId("training-log-row").filter({ hasText: title });
+  const row = page.getByTestId("history-row").filter({ hasText: title });
   await followLink(
     page,
     row.getByRole("link", { name: title, exact: true }),

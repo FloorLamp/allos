@@ -386,6 +386,20 @@ export interface HistoryRow extends MergeableRow {
   detailItems?: TimelineEvent["detailItems"];
   linkedRefs?: TimelineEvent["linkedRefs"];
   linkedScope?: TimelineEvent["linkedRefsScope"];
+  /**
+   * THE ROW'S OWN GLYPH, when its kind's glyph is not specific enough (#4079). A
+   * training row's icon is chosen from its structured sport, not from its kind: an
+   * imported ride is a BIKE and a hand-logged session a barbell, and both are `kind:
+   * "activity"`. The timeline's activity composer has always emitted these three
+   * fields; the row carried everything else across and dropped them, so the Log tab
+   * reading through this substrate lost the distinction #2897 exists to draw.
+   *
+   * Same rule as `detailItems` above: the TIMELINE's own types, not a second spelling.
+   * Absent on every kind whose glyph the closed kind registry answers completely.
+   */
+  iconType?: string;
+  iconTitle?: string;
+  iconSportNames?: string[];
 }
 
 /**
