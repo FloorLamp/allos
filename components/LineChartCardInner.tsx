@@ -119,7 +119,15 @@ export default function LineChartCard({
   // already in this chart's display unit and already NAMED (lib/metric-sources'
   // `displaySourcePoints`), because a document's name lives in a table this
   // component cannot read. A caller with no multi-source read omits the field.
-  data: { date: string; value: number | null; sources?: DaySourceSpread }[];
+  // `partial` marks a bucket the profile's local day has not finished filling
+  // (#4924) — today's step total, today's HR average. It draws as the hollow
+  // inexact mark and the stroke stops at the last complete day.
+  data: {
+    date: string;
+    value: number | null;
+    partial?: boolean;
+    sources?: DaySourceSpread;
+  }[];
   dataKey?: string;
   label: string;
   color?: string;
@@ -272,6 +280,7 @@ export default function LineChartCard({
   const plotData: {
     date: string;
     value: number | null;
+    partial?: boolean;
     band?: [number, number];
   }[] = longRange
     ? longRange.points.map((p) => ({
@@ -329,10 +338,17 @@ export default function LineChartCard({
   // bridged stroke, with the marks and the tooltip staying on one strokeless
   // line above them. Nothing is hidden, no point moves, and no value is invented
   // to span anything.
+  // TODAY IS NOT ON THE STROKE (#4924). A segment drawn to a bucket the day has
+  // not finished filling asserts a fall (or a spike) that is only the clock. The
+  // cut is the SAME machinery an over-limit hole uses — the series is split into
+  // runs and each run draws its own bridged stroke — so the partial point keeps
+  // its mark, its hover and its place on the axis, and only the line stops short.
+  const cutAt = new Set<string>();
+  if (breaksPastLimit) for (const hole of interiorHoles) cutAt.add(hole.from);
+  const firstPartial = plotData.find((d) => d.partial && d.value != null);
+  if (firstPartial) cutAt.add(firstPartial.date);
   const strokeRuns: number[][] = [];
-  if (breaksPastLimit && interiorHoles.length > 0) {
-    const cutAt = new Set<string>();
-    for (const hole of interiorHoles) cutAt.add(hole.from);
+  if (cutAt.size > 0) {
     let runStart = 0;
     plotData.forEach((row, i) => {
       if (!cutAt.has(row.date)) return;
@@ -478,6 +494,12 @@ export default function LineChartCard({
   const isolated = isolatedReadings(
     plotData.map((d) => d.value),
     { bridged: bridges, runs: strokeRuns }
+  );
+  // FILL MEANS EXACTNESS (owner call 3 on #2830). A bucket the day is still
+  // filling is a number known only to be a floor of the day's, so it takes the
+  // one hollow mark rather than a colour, a badge or a size of its own.
+  const inexact = new Set(
+    plotData.flatMap((d, i) => (d.partial && d.value != null ? [i] : []))
   );
   const chartRows =
     spreadColumns === 0
@@ -774,6 +796,7 @@ export default function LineChartCard({
                     // fall through chartLineDot's shared clutter threshold.
                     enabled: showDots && (!sparkline || sparklineDots),
                     isolated,
+                    inexact,
                   })
             }
             activeDot={chartActiveDot(color)}

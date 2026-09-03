@@ -44,7 +44,9 @@ export interface TrendChartSpec {
   // #1533 double-render shape, ~700px apart on a phone. The title stays in the
   // document outline (sr-only), so the card is still named for a screen reader.
   hideTitle?: boolean;
-  data: { date: string; value: number | null }[];
+  // `partial` marks a bucket the profile's local day has not finished filling
+  // (#4924) — today's step total, today's HR average.
+  data: { date: string; value: number | null; partial?: boolean }[];
   unit: string;
   color: string;
   // A goal's target line (already in this chart's display unit), when the metric
@@ -132,7 +134,7 @@ export interface TrendStackItem {
 function latestHeadline(
   chart: TrendChartSpec,
   grouped: boolean | undefined
-): { text: string; date: string } | null {
+): { text: string; date: string; partial: boolean } | null {
   for (let i = chart.data.length - 1; i >= 0; i--) {
     const point = chart.data[i];
     // A count metric groups its headline the way it groups its axis and tooltip
@@ -145,6 +147,7 @@ function latestHeadline(
             : roundChartValue(point.value, chart.decimals)
         }${chart.unit}`,
         date: point.date,
+        partial: point.partial === true,
       };
   }
   return null;
@@ -244,6 +247,24 @@ export default function TrendMetricCharts({
     if (chart.hideTitle) return null;
     const latest = latestHeadline(chart, scaleFor(chart).groupYTicks);
     if (!latest) return null;
+    // TODAY'S NUMBER SAYS SO (#4924). The headline is current-shaped copy — "59
+    // bpm" with nothing attached reads as your heart rate — and over a bucket the
+    // day is still filling that is a claim about a finished day that has not
+    // finished. The as-of stamp below cannot say it: staleness is the opposite
+    // question, and a today-dated reading passes it at full confidence.
+    if (latest.partial) {
+      return (
+        <span className="flex flex-wrap items-baseline gap-x-1.5">
+          {latest.text}
+          <span
+            data-testid="chart-card-headline-partial"
+            className="text-xs font-normal text-slate-500 dark:text-slate-400"
+          >
+            · so far today
+          </span>
+        </span>
+      );
+    }
     const slug = isTrendMetricSlug(chart.key) ? chart.key : null;
     const freshness =
       slug && today

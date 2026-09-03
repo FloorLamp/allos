@@ -280,6 +280,7 @@ export default async function BodySection({
     (r) => ({
       date: r.date,
       value: Math.round(r.value),
+      partial: r.partial,
     })
   );
   // Skin temperature variation keeps 1 decimal, unlike its whole-unit neighbours:
@@ -732,6 +733,7 @@ export default async function BodySection({
   ).map((r) => ({
     date: r.date,
     value: Math.round(r.value),
+    partial: r.partial,
   }));
   const activeCaloriesChart = filterSeriesByRange(activeCaloriesAll, range);
   // Sleep keeps its detailed regularity / stage analysis on /sleep, while Trends →
@@ -778,13 +780,21 @@ export default async function BodySection({
     profile.id,
     "hydration_l",
     ALL_ROWS
-  ).map((r) => ({ date: r.date, value: round(r.value, 2) }));
+  ).map((r) => ({
+    date: r.date,
+    value: round(r.value, 2),
+    partial: r.partial,
+  }));
   const hydrationChart = filterSeriesByRange(hydrationAll, range);
   const caloriesAll = getMetricDailyTotals(
     profile.id,
     "nutrition_kcal",
     ALL_ROWS
-  ).map((r) => ({ date: r.date, value: Math.round(r.value) }));
+  ).map((r) => ({
+    date: r.date,
+    value: Math.round(r.value),
+    partial: r.partial,
+  }));
   const caloriesChart = filterSeriesByRange(caloriesAll, range);
   // BMI over the weight series, pairing each weigh-in with the height in effect ON
   // OR BEFORE that date — the SAME date-paired derivation the growth card uses, so
@@ -816,6 +826,9 @@ export default async function BodySection({
   const hrAll = getHrDailySummary(profile.id, 3650).map((r) => ({
     date: r.date,
     value: Math.round(r.avg),
+    // Today's average is over the minutes so far (#4924); the flag travels with
+    // the point so the mark, the stroke and the headline all say the same thing.
+    partial: r.partial,
   }));
   const hrChart = filterSeriesByRange(hrAll, range);
 

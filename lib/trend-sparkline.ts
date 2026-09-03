@@ -20,7 +20,7 @@
 // "which one".
 
 import { daysBetweenDateStr } from "./date";
-import type { DayFillWindow, DayGapFill } from "./day-fill";
+import type { DayFillWindow, DayGapFill, DaySeriesPoint } from "./day-fill";
 import { fillDailyRows, fillDailySeries } from "./day-fill";
 import type { DaySourceSpread } from "./metric-sources";
 
@@ -525,10 +525,10 @@ export interface DayFillSpec extends DayFillWindow {
  * days, or a 90-day window with 12 weigh-ins would silently lose its dots).
  */
 export function applyDayFill(
-  points: readonly { date: string; value: number | null }[],
+  points: readonly DaySeriesPoint[],
   spec: DayFillSpec | null | undefined
 ): {
-  data: { date: string; value: number | null }[];
+  data: DaySeriesPoint[];
   bridges: boolean | null;
   realCount: number;
 } {

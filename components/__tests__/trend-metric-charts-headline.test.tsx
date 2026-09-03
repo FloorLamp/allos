@@ -67,6 +67,38 @@ describe("synced daily cards read their headline through headlineFor (#4763)", (
       asOf: false,
     },
     {
+      // BOTH DIRECTIONS, one table (#4924). A `partial` flag that is always true
+      // — or never — passes a one-sided test happily, so the same metric, the
+      // same window and the same last value appear twice, differing only in
+      // whether the day the reading belongs to has finished.
+      name: "an unfinished day says so, instead of a staleness stamp",
+      chart: spec({
+        key: "hr",
+        unit: " bpm",
+        data: [
+          { date: "2026-09-01", value: 71 },
+          { date: TODAY, value: 59, partial: true },
+        ],
+      }),
+      headline: "59 bpm",
+      asOf: false,
+      partial: true,
+    },
+    {
+      name: "a window that ended before today carries no partial note",
+      chart: spec({
+        key: "hr",
+        unit: " bpm",
+        data: [
+          { date: "2026-08-31", value: 71 },
+          { date: "2026-09-01", value: 59 },
+        ],
+      }),
+      headline: "59 bpm",
+      asOf: false,
+      partial: false,
+    },
+    {
       name: "heart rate reads its daily average",
       chart: spec({
         key: "hr",
@@ -76,7 +108,7 @@ describe("synced daily cards read their headline through headlineFor (#4763)", (
       headline: "63 bpm",
       asOf: false,
     },
-  ])("$name", ({ chart, headline, asOf }) => {
+  ])("$name", ({ chart, headline, asOf, partial = false }) => {
     render(
       <TrendMetricCharts
         items={[{ id: chart.key, chart }]}
@@ -89,6 +121,10 @@ describe("synced daily cards read their headline through headlineFor (#4763)", (
     expect(screen.queryAllByTestId("chart-card-headline-asof")).toHaveLength(
       asOf ? 1 : 0
     );
+    expect(screen.queryAllByTestId("chart-card-headline-partial")).toHaveLength(
+      partial ? 1 : 0
+    );
+    if (partial) expect(header.textContent).toMatch(/so far today/);
   });
 
   it("sleep is a chart at one reading; a metric is a marker", () => {

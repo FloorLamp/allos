@@ -336,6 +336,7 @@ export function chartLineDot(
     pointCount,
     enabled = true,
     isolated,
+    inexact,
   }: {
     color: string;
     pointCount: number;
@@ -343,24 +344,35 @@ export function chartLineDot(
     // Indices whose stroke is cut on BOTH sides (lib/trend-sparkline's
     // `isolatedReadings`). They draw whatever the density says.
     isolated?: ReadonlySet<number>;
+    // Indices whose value is not the whole of what it will be — a bucket the
+    // profile's local day is still filling (#4924). They draw HOLLOW, and they
+    // draw whatever the density says, because the mark is the claim.
+    inexact?: ReadonlySet<number>;
   }
 ) {
   if (!enabled) return false as const;
-  if (pointCount <= DENSE_SERIES_POINTS) return chartExactDot(c, color);
-  // A READING WITH NO STROKE NEIGHBOUR ALWAYS DRAWS ITS MARK (#4924).
+  // TWO EXCEPTIONS TO THE CLUTTER RULE, AND THEY ARE THE SAME EXCEPTION (#4924).
   //
-  // The density threshold above is a CLUTTER rule: above thirty points the dots
-  // fuse into a heavy line and the stroke already says where every reading is,
-  // so hover carries the value instead. That argument holds for a reading the
-  // stroke draws, and collapses for one it does not — on a gap-filled card an
+  // The density threshold is a CLUTTER rule: above thirty points the dots fuse
+  // into a heavy line and the stroke already says where every reading is, so
+  // hover carries the value instead. That argument holds for a reading the
+  // stroke DRAWS. It collapses for a reading the stroke cannot reach — an
   // isolated reading had no segment and no dot, so a value that exists rendered
-  // as nothing at all, beneath a caption naming a date the plot never showed.
-  //
-  // So the threshold keeps its job and stops deciding this one case, in the
-  // scaffold rather than in the card, so every gap-filled surface inherits it.
-  if (isolated == null || isolated.size === 0) return false as const;
-  return chartIsolatedDot(c, color, isolated);
+  // as nothing at all — and for one whose mark carries a claim the stroke does
+  // not make, which is what hollow says. Both keep their marks at any density.
+  const marked = size(isolated) + size(inexact) > 0;
+  if (pointCount <= DENSE_SERIES_POINTS && !marked) {
+    return chartExactDot(c, color);
+  }
+  if (pointCount > DENSE_SERIES_POINTS && !marked) return false as const;
+  return chartPointDot(c, color, {
+    isolated,
+    inexact,
+    dense: pointCount > DENSE_SERIES_POINTS,
+  });
 }
+
+const size = (s?: ReadonlySet<number>) => s?.size ?? 0;
 
 /** The resting mark for an EXACT reading, unconditionally — for the two cards
  *  that draw their own `<circle>` per point and so cannot take a prop bag that
@@ -382,17 +394,28 @@ export function chartExactDot(c: ChartColors, color: string) {
 export const CHART_DOT_CLASS = "chart-dot";
 
 /**
- * The dot layer for a dense series that still has readings the stroke cannot
- * reach: their mark, and nothing else. A renderer rather than a prop bag because
- * the decision is per POINT, and recharts hands a dot function the point's index.
+ * The dot layer when the marks are not all alike: hollow where the value is not
+ * the whole of what it will be, solid where the stroke cannot reach, and nothing
+ * at all for a point a dense stroke already draws. A renderer rather than a prop
+ * bag because the decision is per POINT, and recharts hands a dot function the
+ * point's index.
  */
-function chartIsolatedDot(
+function chartPointDot(
   c: ChartColors,
   color: string,
-  isolated: ReadonlySet<number>
+  {
+    isolated,
+    inexact,
+    dense,
+  }: {
+    isolated?: ReadonlySet<number>;
+    inexact?: ReadonlySet<number>;
+    dense: boolean;
+  }
 ) {
-  const mark = chartExactDot(c, color);
-  return function IsolatedDot({
+  const exact = chartExactDot(c, color);
+  const hollow = chartInexactDot(c, color);
+  return function PointDot({
     cx,
     cy,
     index,
@@ -401,9 +424,14 @@ function chartIsolatedDot(
     cy?: number | string;
     index?: number;
   }) {
-    if (index == null || !isolated.has(index)) return <g />;
-    if (typeof cx !== "number" || typeof cy !== "number") return <g />;
-    return <circle {...mark} cx={cx} cy={cy} />;
+    if (typeof cx !== "number" || typeof cy !== "number" || index == null) {
+      return <g />;
+    }
+    if (inexact?.has(index)) return <circle {...hollow} cx={cx} cy={cy} />;
+    if (!dense || isolated?.has(index)) {
+      return <circle {...exact} cx={cx} cy={cy} />;
+    }
+    return <g />;
   };
 }
 
