@@ -560,6 +560,14 @@ function QuickEntryBody({
           presentation="modal"
           defaultGroup={prefill?.measurementGroup}
           onSaved={onDone}
+          // Always undefined in THIS mount: `loadFor` already turned any
+          // non-acting subject into the "unavailable" case above this switch, so
+          // `data.form === "measurements"` is reached only for the acting
+          // profile. Passed anyway, and by the same name every sibling form
+          // uses, so the prop never silently reads `data.profileId` (the
+          // memory-key field) as a write signal — see MeasurementsQuickAdd's own
+          // comment on the two fields.
+          subjectProfileId={subjectProfileId}
         />
       );
     case "food":

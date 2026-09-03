@@ -192,8 +192,20 @@ export interface MeasurementsQuickAddProps {
   // hydration mismatch.
   defaultGroup?: MeasurementGroup;
   // Scopes that memory to the data subject, so switching profiles doesn't inherit
-  // the other one's open group. Omitted where no memory is wanted.
+  // the other one's open group. Omitted where no memory is wanted. This is a
+  // MEMORY key, not a write signal — it is present on every mount, including an
+  // ordinary acting-profile one, and answers "whose localStorage group" rather
+  // than "is this a cross-profile write." `subjectProfileId` below answers that
+  // second question; do not read this field for it (#4932 postmortem).
   profileId?: number;
+  // The quick-log sheet's chosen subject (#4932), set ONLY when it differs from
+  // the acting profile — distinct from `profileId` above, which is present on
+  // every mount for the memory key regardless of subject. This is the one field
+  // that means "a non-acting subject was chosen": it gates the offline refusal
+  // and is the id stamped as `profile_id` on the write, so `addMeasurements`'s
+  // `gateItemProfile` re-gates THAT profile rather than defaulting to the acting
+  // one. Omitted (not just falsy) on every mount outside the quick-entry sheet.
+  subjectProfileId?: number;
 }
 
 // The last-written group, per profile. A device-local UI preference — which
@@ -260,6 +272,7 @@ export default function MeasurementsQuickAdd({
   presentation = "card",
   defaultGroup,
   profileId,
+  subjectProfileId,
 }: MeasurementsQuickAddProps) {
   const toast = useToast();
   const { enqueue } = useOfflineQueue();
@@ -384,10 +397,13 @@ export default function MeasurementsQuickAdd({
     };
     const date = String(formData.get("date") ?? "").trim();
     // #4932: the quick-log sheet's subject chip mounts this SAME form cross-profile.
-    // `profileId` present means a non-acting subject was chosen; stamp it so
-    // `addMeasurements`'s `gateItemProfile` re-gates THAT profile rather than
-    // defaulting to the acting one.
-    if (profileId != null) formData.set("profile_id", String(profileId));
+    // `subjectProfileId` present means a non-acting subject was chosen; stamp it
+    // so `addMeasurements`'s `gateItemProfile` re-gates THAT profile rather than
+    // defaulting to the acting one. NOT `profileId` — that field is present on
+    // every mount (it is the memory-key scope) and would stamp an explicit
+    // subject onto an ordinary acting-profile write.
+    if (subjectProfileId != null)
+      formData.set("profile_id", String(subjectProfileId));
 
     const body = {
       weight: s("weight"),
@@ -629,8 +645,10 @@ export default function MeasurementsQuickAdd({
     // The queue is stamped to the acting profile and carries no subject (same as
     // MoodForm's identical guard) — a non-acting subject's save must fail honestly
     // offline rather than queue a write that could replay onto somebody else.
+    // `subjectProfileId`, not `profileId`: the latter is set on every mount (the
+    // memory-key scope) and would refuse the acting profile's own offline save.
     if (
-      profileId != null &&
+      subjectProfileId != null &&
       typeof navigator !== "undefined" &&
       navigator.onLine === false
     ) {
@@ -652,7 +670,7 @@ export default function MeasurementsQuickAdd({
       saved = await addMeasurements(stampLoggedVia(formData));
     } catch (err) {
       if (
-        profileId == null &&
+        subjectProfileId == null &&
         shouldQueueOffline(navigator.onLine !== false, err)
       ) {
         const captured = await queueOffline();
