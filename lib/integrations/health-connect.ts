@@ -493,46 +493,35 @@ function dataOrigin(rec: Record<string, unknown>): string | null {
 // ---- glucose routing: trace vs observation (#3182) ----
 //
 // A fingerstick meter and a CGM push the SAME Health Connect record type, so "is this
-// `blood_glucose`" cannot decide where a reading belongs. The owner's ruling
-// (2026-09-02, on #3182) settles it in two clauses, and the SAFETY DEFAULT is the
-// load-bearing one:
+// `blood_glucose`" cannot decide where a reading belongs. The person says which,
+// once, per connection — and that is the WHOLE rule.
 //
-//   * `specimenSource` = interstitial fluid  → the trace store (#3181, the ruling in
-//     docs/internals/reading-model.md). The sensor telling the truth about itself.
-//   * capillary, whole blood, ANY other value, and — the default — an UNSET field →
-//     the existing `medical_records` Glucose observation path. Nothing silently
-//     becomes a trace: a genuine discrete draw misrouted into a trace store loses its
-//     identity, its band and its document, and a guessing discriminator gets that
-//     wrong in whichever direction it guesses.
-//   * one per-connection override turns every glucose record from the connection into
-//     a trace regardless of the field.
+//   * the connection is declared a continuous sensor → the trace store (#3181, the
+//     ruling in docs/internals/reading-model.md).
+//   * everything else → the existing `medical_records` Glucose observation path.
 //
-// WHAT IS AND IS NOT VERIFIED, because the default was chosen rather than measured:
-// the allowed values are the platform's; what Dexcom or any meter app actually writes
-// into the field is NOT verified, and there is no recorded payload anywhere in this
-// repo carrying it. The default is a safety choice. The override is what the first
-// person whose sensor leaves the field blank flips, once.
+// The default direction is load-bearing and unchanged: nothing silently becomes a
+// trace. A genuine discrete draw misrouted into a trace store loses its identity, its
+// band and its document, so an undeclared connection stays on the observation path
+// however its records are shaped.
 //
-// THE SPELLING IS THE PLATFORM'S, NOT THIS REPO'S. Nothing here has ever written a
-// specimen source, so there is no local convention to copy: Health Connect names the
-// constant `SPECIMEN_SOURCE_INTERSTITIAL_FLUID` and an exporter may serialize it as
-// `interstitial_fluid`, `interstitialFluid`, `INTERSTITIAL_FLUID` or with a space.
-// Folding case and dropping the separators accepts all four with one comparison
-// rather than an enumeration that goes stale.
+// WHY THERE IS NO `specimenSource` CLAUSE, since the 2026-09-02 ruling named one.
+// #4913 built it as ruled and it was dead on arrival: the only live sync path is the
+// Health Connect webhook exporter, and that exporter never reads `specimenSource` off
+// `BloodGlucoseRecord` — the word does not appear in its `SyncManager.kt`, and no
+// recorded payload or fixture in this repo has ever carried the field. So the clause
+// could not fire, which made it a discriminator in name only: every reading fell
+// through to the default, and a reader would have believed the sensor was being asked
+// about itself when nothing was. The owner ruled it out on 2026-09-03 (recorded on
+// #3182) and this is that removal. If the exporter ever starts writing the field the
+// clause is four lines, and #4929 tracks the exporter change that would make it real.
 export type GlucoseRouting = "trace" | "observation";
 
-const INTERSTITIAL = "interstitialfluid";
-
 export function glucoseRouting(
-  rec: Record<string, unknown>,
+  _rec: Record<string, unknown>,
   cgmConnection: boolean
 ): GlucoseRouting {
-  if (cgmConnection) return "trace";
-  const raw = rec.specimen_source ?? rec.specimenSource;
-  if (typeof raw !== "string") return "observation";
-  return raw.toLowerCase().replace(/[^a-z]/g, "") === INTERSTITIAL
-    ? "trace"
-    : "observation";
+  return cgmConnection ? "trace" : "observation";
 }
 
 function originChoices(
