@@ -7,6 +7,7 @@ import {
 import { bodyweightAsOf } from "../../bodyweight";
 import {
   cyclingLoad,
+  comparableSplits,
   distanceSplits,
   parseActivityStreams,
   powerCurve,
@@ -29,6 +30,11 @@ import {
   parseCyclingStreamSummary,
   parsePowerZones,
 } from "../../cycling-stream-summary";
+import {
+  rideBests,
+  type PriorRide,
+  type RideBests,
+} from "../../cycling-bests";
 import { speedKmh } from "../../coaching/cardio";
 import {
   cyclingOverviewRollup,
@@ -102,6 +108,9 @@ export interface RideDetailData {
   dynamics: RideDynamics | null;
   distanceSplits: SessionDistanceSplit[];
   splitDistanceM: number;
+  // Where this ride's power-curve and split rows placed against the rides BEFORE
+  // it (#3195). Ranks only — the surfaces attach the markers and state the window.
+  bests: RideBests;
   laps: SessionLap[];
   segmentEfforts: SessionSegmentEffort[];
   routeHistory: RideRouteHistory | null;
@@ -178,6 +187,76 @@ export interface CyclingOverviewData {
   uniqueRouteCount: number;
   segmentRideCount: number;
   segmentPersonalBestCount: number;
+}
+
+// THE RIDES THIS ONE IS MEASURED AGAINST (#3195): every EARLIER ride of the same
+// cycling identity that carries a usable cached summary.
+//
+// TWO PROPERTIES THIS QUERY EXISTS TO HOLD, and both are asserted rather than
+// commented (lib/__db_tests__/ride-bests.test.ts):
+//
+//   • IT NEVER SELECTS `streams_json`. The whole comparison runs off the few
+//     numbers in `stream_summary_json`, so its cost is a row per ride rather than
+//     a ride's worth of per-second samples per ride — the #2292 reasoning, applied
+//     to a second surface. A row whose summary is missing or stale is treated as
+//     absent, exactly as the overview treats it; the boot reconcile re-derives it.
+//     There is deliberately NO fallback to parsing the streams, because that
+//     fallback IS the unbounded read.
+//
+//   • IT IS AS-OF, NOT CURRENT-STATE. The date/id predicate is the same strict
+//     "before this ride" ordering the route-history read above uses, so a medal is
+//     a fact about the day it was earned and an old ride's page does not rewrite
+//     itself when a later ride beats it.
+//
+// Scoped to the same cycling identity `getCyclingOverviewData` groups its own
+// all-time power bests on, so "best" means the same thing on both surfaces rather
+// than two subtly different populations.
+function priorRideEfforts(
+  profileId: number,
+  ride: Activity,
+  activityName: string,
+  intervalM: number
+): PriorRide[] {
+  const activityKey = activityHistoryKey(activityName);
+  const rows = db
+    .prepare(
+      `SELECT a.id AS id, a.type AS type, a.title AS title,
+              a.components AS components, t.stream_summary_json AS summary
+         FROM activity_telemetry t
+         JOIN activities a ON a.id = t.activity_id
+        WHERE t.profile_id = ? AND a.profile_id = ?
+          AND a.type IN ('cardio', 'sport')
+          AND (a.date < ? OR (a.date = ? AND a.id < ?))
+        ORDER BY a.date, a.id, t.snapshot_at, t.id`
+    )
+    .all(profileId, profileId, ride.date, ride.date, ride.id) as {
+    id: number;
+    type: string;
+    title: string;
+    components: string | null;
+    summary: string | null;
+  }[];
+  // One effective snapshot per ride — the newest wins, the same rule the overview
+  // read applies when a profile carries rows from more than one source.
+  const byRide = new Map<number, string | null>();
+  for (const row of rows) {
+    const name = cyclingActivityName(row);
+    if (name == null || activityHistoryKey(name) !== activityKey) continue;
+    byRide.set(row.id, row.summary);
+  }
+  return [...byRide.values()].flatMap((summaryJson) => {
+    const summary = parseCyclingStreamSummary(summaryJson);
+    if (!summary) return [];
+    return [
+      {
+        powerCurve: summary.powerCurve,
+        splitTimesSec:
+          summary.splitTimesSec.find(
+            (entry) => Math.round(entry.intervalM) === Math.round(intervalM)
+          )?.timesSec ?? [],
+      },
+    ];
+  });
 }
 
 // One profile-scoped read model for the ride detail page. It enriches the same
@@ -259,6 +338,14 @@ export function getRideDetailData(
     shared?.streams ?? parseActivityStreams(telemetry?.streams_json ?? null);
   const traces = shared?.traces ?? sessionTraces(streams);
   const curve = powerCurve(streams);
+  const splits = distanceSplits(streams, splitDistanceM);
+  // This ride's OWN rows come from its OWN streams, which the page has already
+  // parsed and which is one row however long the history is. Only the priors are
+  // read from summaries.
+  const bests = rideBests(
+    { powerCurve: curve, splits: comparableSplits(splits, splitDistanceM) },
+    priorRideEfforts(profileId, row, activityName, splitDistanceM)
+  );
   const powerZones = parsePowerZones(telemetry?.power_zones_json ?? null);
   const { laps, segmentEfforts } =
     shared?.course ?? getSessionCourseData(profileId, row.id);
@@ -348,8 +435,9 @@ export function getRideDetailData(
     powerZones,
     powerZoneTimes: powerZoneTimes(streams, powerZones),
     dynamics: rideDynamics(streams),
-    distanceSplits: distanceSplits(streams, splitDistanceM),
+    distanceSplits: splits,
     splitDistanceM,
+    bests,
     laps,
     segmentEfforts,
     routeHistory,

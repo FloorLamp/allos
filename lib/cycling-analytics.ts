@@ -1,4 +1,5 @@
 import { decodePolyline, routeBounds, type LatLng } from "./polyline";
+import type { DistanceUnit } from "./settings";
 import type {
   ActivityStreams,
   TelemetryStream,
@@ -568,6 +569,37 @@ export const POWER_CURVE_DURATIONS = [
   { seconds: 300, label: "5 min" },
   { seconds: 1200, label: "20 min" },
 ] as const;
+
+// The distance-split intervals the ride detail can render — one per distance
+// unit, so the union is closed by the unit type rather than by a lookup table
+// that could acquire a third member. Canonical metres, the way the rest of the
+// module measures distance; the mile value is the exact conversion the detail
+// page used inline before this constant existed, so no split boundary moves.
+//
+// These are folded into the stream-summary signature exactly as
+// POWER_CURVE_DURATIONS is (lib/cycling-stream-summary.ts), because a stored
+// split candidate is only comparable against splits taken at the same interval.
+export const SPLIT_INTERVALS_M: Record<DistanceUnit, number> = {
+  km: 5000,
+  mi: 5 * 1609.344,
+};
+
+// The splits of a ride that are COMPARABLE across rides: those that actually
+// covered the interval. `distanceSplits` appends a final short split whenever the
+// ride's tail reaches 30% of the interval, and a 1.7 km run-out is not a candidate
+// for "fastest 5 km". Only the last split can be short, so this is exact rather
+// than a tolerance.
+//
+// A split may OVERSHOOT the interval by up to one sample of travel, because the
+// cursor stops at the first sample past the boundary. That biases a split's time
+// upward — against claiming a record — which is the safe direction, so it is left
+// uncorrected rather than scaled.
+export function comparableSplits(
+  splits: SessionDistanceSplit[],
+  intervalM: number
+): SessionDistanceSplit[] {
+  return splits.filter((split) => split.distanceM >= intervalM);
+}
 
 export function powerCurveLabel(seconds: number): string | null {
   return (
