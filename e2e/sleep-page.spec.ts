@@ -20,12 +20,95 @@ import {
 } from "./helpers";
 import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
 import { workerDbPath, frozenNow } from "./worker-env";
+import { pinnedTimezone } from "./pinned-timezone";
+import { shiftDateStr, zonedWallTimeToUtc } from "@/lib/date";
 import {
   TAP_FLOOR_FLOAT_EPSILON_PX,
   CONTROL_BOX_PX,
 } from "@/lib/tap-floor-tokens";
 
 const DB_PATH = workerDbPath();
+
+const PROFILE_ID = 1; // the seed's bootstrap admin profile (the active profile)
+
+// THE HERO'S NIGHT IS OWNED HERE, NOT BORROWED FROM THE RUN SEED (#5032).
+//
+// The two tests that read the hero read profile 1 — the SHARED admin profile — and the
+// seed's last night is not theirs to keep. `e2e/manual-vitals.spec.ts` logs sleep as the
+// same admin, for the same wake-day, through the real measurements form: a 7.5h duration
+// in its #16 test and a 23:15 → 07:05 window in its #1851 one. Both are ordinary,
+// correct writes, and a longer night wins `mainSleepSession` — so the hero renders the
+// neighbour's night ("7h 30m", then "7h 50m") and this spec fails having asserted
+// something it never established. Nothing about that write changed; #5017's manifest
+// refresh moved the two files into one shard, and specs sharing a worker share its
+// database. Reproduce with `manual-vitals.spec.ts sleep-page.spec.ts --workers=1`.
+//
+// So the night is re-established immediately before the read. A worker runs one test at
+// a time, so nothing can reach it in between, and the delete takes the whole wake-day
+// rather than one row shape — a neighbour's night is not addressable by anything else.
+//
+// THE WINDOW IS DELIBERATELY NOT THE SEED'S 23:00 → 04:00. Five minutes later at both
+// ends is a value nothing else in the suite supplies, so these assertions cannot be
+// satisfied by a neighbour's row NOR by the fixture — delete the seeding call and they
+// red, which is what makes them assertions about this spec's own state. The duration
+// stays exactly 300 min: "5h" is the #1118 claim (main sleep, never nap-summed), and the
+// point is to own that claim, not to weaken it. The nap keeps the seed's canonical
+// 13:00 → 13:45, since the wake-day delete takes it too and it has to come back.
+const OWNED_NIGHT = {
+  bed: "23:05",
+  wake: "04:05",
+  bed12: "11:05 PM",
+  wake12: "4:05 AM",
+  minutes: 300,
+} as const;
+const OWNED_NAP = { start: "13:00", end: "13:45", minutes: 45 } as const;
+
+function seedOwnedLastNight(): void {
+  const handle = new Database(DB_PATH);
+  handle.pragma("busy_timeout = 5000");
+  try {
+    // The run's pin puts local at 13:mm, so the profile-local date always equals the
+    // frozen instant's UTC date (e2e/pinned-timezone.ts).
+    const wakeDay = frozenNow().toISOString().slice(0, 10);
+    const bedDay = shiftDateStr(wakeDay, -1);
+    // The #2159 wake-day rule: a session's wake-day is the profile-LOCAL date of its
+    // END, so the windows are built through the run's pinned zone, never bare `…Z`.
+    const tz = pinnedTimezone(frozenNow().toISOString()).zone;
+    const at = (day: string, hhmm: string) =>
+      zonedWallTimeToUtc(tz, day, hhmm)!.toISOString();
+    handle
+      .transaction(() => {
+        handle
+          .prepare(
+            `DELETE FROM metric_samples
+             WHERE profile_id = ? AND metric = 'sleep_min' AND date = ?`
+          )
+          .run(PROFILE_ID, wakeDay);
+        const insert = handle.prepare(
+          `INSERT INTO metric_samples
+             (profile_id, source, metric, date, started_at, ended_at, value)
+           VALUES (?, 'manual', 'sleep_min', ?, ?, ?, ?)`
+        );
+        insert.run(
+          PROFILE_ID,
+          wakeDay,
+          at(bedDay, OWNED_NIGHT.bed),
+          at(wakeDay, OWNED_NIGHT.wake),
+          OWNED_NIGHT.minutes
+        );
+        insert.run(
+          PROFILE_ID,
+          wakeDay,
+          at(wakeDay, OWNED_NAP.start),
+          at(wakeDay, OWNED_NAP.end),
+          OWNED_NAP.minutes
+        );
+      })
+      .immediate();
+  } finally {
+    handle.close();
+  }
+}
 
 interface SleepEditFixture {
   username: string;
@@ -227,13 +310,14 @@ async function selectAndSave(
 // the dashboard sleep readings link through. The child fixture profile has NO
 // sleep data, so it proves the nav gate hides the entry.
 //
-// Reads only; drives no writes on the shared profile-1 session, so it can't
-// disturb neighbors.
+// Reads only, apart from the last night the two hero tests seed for themselves
+// (seedOwnedLastNight — a profile-1 wake-day a neighbour writes too, #5032).
 
 test.describe("Sleep page (#1066)", () => {
   test("renders the last-night hero and every section on a sleep-seeded profile", async ({
     page,
   }) => {
+    seedOwnedLastNight();
     await page.goto("/sleep");
 
     const main = page.getByRole("main");
@@ -249,9 +333,15 @@ test.describe("Sleep page (#1066)", () => {
     const duration = hero.getByTestId("sleep-hero-duration");
     await expect(duration).toBeVisible();
     const durationText = (await duration.innerText()).trim();
-    // The seeded last night is a 5h overnight (23:00 → 04:00) — NOT 5h45m, which
-    // is what a nap-summed total would read. Naps have their own card below.
+    // The night seeded just above is a 5h overnight — NOT 5h45m, which is what a
+    // nap-summed total would read. Naps have their own card below.
     expect(durationText).toBe("5h");
+    // And it is THIS spec's overnight, not whatever the shared profile last had: the
+    // window names a minute nothing else in the suite writes (#5032). A duration alone
+    // cannot tell the two apart — a neighbour's night is a duration too.
+    await expect(hero).toContainText(
+      `${OWNED_NIGHT.bed} → ${OWNED_NIGHT.wake}`
+    );
     await expect(hero).not.toContainText("nap");
     const source = hero.getByTestId("sleep-hero-source");
     await expect(source).toHaveText("Logged manually");
@@ -737,14 +827,19 @@ test.describe("Sleep page (#1066)", () => {
   test("clock times follow the login's 12h/24h pref on the hero + consistency strip (#1163)", async ({
     page,
   }) => {
+    seedOwnedLastNight();
     try {
-      // Default (24h): the seeded main session (23:00 → 04:00 local) renders as a
-      // 24-hour clock, and the consistency strip carries no AM/PM.
+      // Default (24h): this spec's own main session (23:05 → 04:05 local, seeded just
+      // above) renders as a 24-hour clock, and the consistency strip carries no AM/PM.
+      // The window is asserted WHOLE rather than as two loose clock strings: the hero
+      // also carries the usual band ("Usually ~23:00 – 07:00."), so a bare "23:00" was
+      // satisfied by that line and proved nothing about the night at all.
       await page.goto("/sleep");
       const main = page.getByRole("main");
       const hero = main.getByTestId("sleep-hero");
-      await expect(hero).toContainText("23:00");
-      await expect(hero).toContainText("04:00");
+      await expect(hero).toContainText(
+        `${OWNED_NIGHT.bed} → ${OWNED_NIGHT.wake}`
+      );
       const usualTimes = hero.getByTestId("sleep-usual-times");
       await expect(usualTimes).toHaveText("Usually ~23:00 – 07:00.");
       const strip = main.getByTestId("sleep-consistency");
@@ -776,8 +871,9 @@ test.describe("Sleep page (#1066)", () => {
       // time numbers, formatClock at the render layer picks the convention (#1163).
       await page.goto("/sleep");
       const hero12 = page.getByRole("main").getByTestId("sleep-hero");
-      await expect(hero12).toContainText("11:00 PM");
-      await expect(hero12).toContainText("4:00 AM");
+      await expect(hero12).toContainText(
+        `${OWNED_NIGHT.bed12} → ${OWNED_NIGHT.wake12}`
+      );
       await expect(hero12.getByTestId("sleep-usual-times")).toHaveText(
         "Usually ~11:00 PM – 7:00 AM."
       );

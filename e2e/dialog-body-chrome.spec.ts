@@ -75,11 +75,18 @@ test.describe("a dialog body renders content, never chrome (#3361)", () => {
       await expect(title).toHaveCount(1);
       await expect(title).toBeVisible();
 
-      // The description line survives — "modal" drops the card and the heading,
-      // never the sentence that says what the form is for.
+      // WHAT THE FORM IS FOR IS STILL SAID — as the title's glyph, not as a
+      // paragraph under it (#4977 item 3). The sentence is the same on every visit,
+      // so it held the widest line in the header forever; #4918 ruling 4 is the
+      // precedent and `intraday-help` is the shape. Both halves are asserted,
+      // because "no paragraph" alone is equally true of a form that simply lost the
+      // sentence.
       await expect(
         sheet.getByText("body and vitals readings", { exact: false })
-      ).toBeVisible();
+      ).toHaveCount(0);
+      await expect(sheet.getByTestId("measurements-help")).toHaveAccessibleName(
+        /fill in only what you measured/
+      );
 
       const form = sheet.getByTestId("measurements-quick-add");
       await expect(form).toBeVisible();
