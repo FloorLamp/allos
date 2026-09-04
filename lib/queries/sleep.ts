@@ -6,6 +6,7 @@
 // session read goes through the already profile-scoped getSleepSessions — so the
 // scoping guard is unaffected.
 
+import { cache } from "../request-cache";
 import {
   getDailySleepSessionsSince,
   getSleepSessions,
@@ -674,7 +675,15 @@ export function getSleepRegularityInRange(
 }
 
 // The rolling SRI trend series (oldest→newest) for the Trends sleep chart.
-export function getSleepRegularityTrend(
+//
+// REQUEST-CACHED because several surfaces on one render ask for the same series
+// (#5010): the dashboard reaches it through `sriTrendArrow`, the protocol samples ask
+// again, and `getSleepRegularityInsight` below re-reads it — each a full pass over the
+// profile's sleep history. `cache()` is identity outside a Next request
+// (lib/request-cache.ts says so deliberately), so the notify tick and the DB tier
+// behave exactly as before. Keyed on the arguments, so a caller narrowing the window
+// with its own `opts` still gets its own computation.
+export const getSleepRegularityTrend = cache(function getSleepRegularityTrend(
   profileId: number,
   opts?: SleepRegularityOptions
 ): { date: string; sri: number }[] {
@@ -682,7 +691,7 @@ export function getSleepRegularityTrend(
     freeDays: getFreeDays(profileId),
     ...opts,
   });
-}
+});
 
 // The "regularity dropped since travel" insight note, or null. Reuses the trend
 // above and the profile's dated situation change-log (which already tracks
