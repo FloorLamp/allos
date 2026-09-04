@@ -1036,7 +1036,8 @@ function startWithUsual(
       durationMin: usualMin,
     });
   const started = startLivePracticeSession(pid, "Red light", "page");
-  if (started.kind !== "started") throw new Error("Start now did not open a row");
+  if (started.kind !== "started")
+    throw new Error("Start now did not open a row");
   return { pid, id: started.session.id };
 }
 
@@ -1087,7 +1088,11 @@ describe("a live practice with a known duration completes itself (#5091)", () =>
 
   it.each([
     // Before the derived end the second tap still owns the row and writes what it saw.
-    ["before its derived end", 10, { live: 0, end_time: "06:38", duration_min: 10 }],
+    [
+      "before its derived end",
+      10,
+      { live: 0, end_time: "06:38", duration_min: 10 },
+    ],
     // The owner's own reading, 4h24m in: the row completed four hours ago, so a stale
     // mount's tap cannot stamp a four-hour session onto a fifteen-minute practice.
     ["after it", 264, { live: 0, end_time: "06:43", duration_min: 15 }],
@@ -1167,7 +1172,8 @@ describe("a live practice with a known duration completes itself (#5091)", () =>
       durationMin: 15,
     });
     const started = startLivePracticeSession(pid, "Red light", "page");
-    if (started.kind !== "started") throw new Error("Start now did not open a row");
+    if (started.kind !== "started")
+      throw new Error("Start now did not open a row");
 
     vi.setSystemTime(new Date("2026-09-01T00:10:00Z"));
     expect(readAsPageLoad(pid, started.session.id)).toMatchObject({
