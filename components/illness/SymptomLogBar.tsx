@@ -44,6 +44,9 @@ import SymptomSeverityControl from "@/components/illness/SymptomSeverityControl"
 import SymptomRowControl from "@/components/illness/SymptomRowControl";
 import Button from "@/components/Button";
 import IconButton from "@/components/IconButton";
+import IllnessMedicationLogger from "@/components/illness/IllnessMedicationLogger";
+import type { PrnMedForQuickLog } from "@/lib/queries/intake/adherence";
+import type { IntakeFormContext } from "@/lib/intake-form-context";
 
 // One-tap symptom logger (issue #799/#857), modeled on the FoodLogBar one-tap pattern:
 // optimistic local severities, a Server Action per tap, and reconciliation to the
@@ -86,6 +89,10 @@ export default function SymptomLogBar({
   showTitle = true,
   textIntakeEnabled = false,
   analysisHref,
+  antipyreticMeds = [],
+  intakeContext,
+  nowIso,
+  hasOpenEpisode = episodeId != null,
 }: {
   // Primary date (YYYY-MM-DD). On the dashboard this is today; on the Timeline it's the
   // selected day.
@@ -137,6 +144,36 @@ export default function SymptomLogBar({
   // household member's cockpit — every mount that sets `profileId` — the link would
   // name their symptoms and show the viewer's own, so those mounts omit it.
   analysisHref?: AppRoute;
+  // ── THE FOLD'S INLINE FEVER OFFER (#4712 judgement 1, owner ruling 2026-09-03
+  // 15:40 UTC, option A) ────────────────────────────────────────────────────────
+  //
+  // After a fever-range reading, the fold shows a confirmation block UNDER the
+  // reading rather than closing: the fever sentence, "Open an episode" (primary)
+  // beside the dose offer, and a "Not now" link. It renders only while the fold
+  // itself is open — closing the fold (or unmounting the sheet it lives in) takes
+  // the block with it; there is no toast and no persistent nudge for this.
+  //
+  // The PRN subset eligible for the one-tap dose offer, already narrowed to fever
+  // reducers by the caller (`antipyreticPrnMeds`, lib/prn-defaults.ts) — this bar
+  // stays free of that judgment. Reuses IllnessMedicationLogger (#4834) rather than
+  // a second dose control; absent or empty, the block still offers the episode.
+  // NO PRODUCTION CALLER FEEDS THIS as of #4712's duplicate-chip fix — the one
+  // mount with PRN data (IllnessCockpitBody) already shows every antipyretic as a
+  // persistent Meds chip, so passing it here would duplicate that chip rather than
+  // add a dose offer. The owner rules the fold-vs-persistent-row conflict on #4712
+  // (`needs-human`); until then the only feeders are this file's own component
+  // tests, which exist to keep the contract above correct and ready.
+  antipyreticMeds?: PrnMedForQuickLog[];
+  // Required alongside antipyreticMeds to mount IllnessMedicationLogger (its own
+  // required prop) — absent, the dose offer is skipped rather than mounted half-fed.
+  intakeContext?: IntakeFormContext;
+  // IllnessMedicationLogger's redose-window "now" (see QuickLogPrnContent.nowIso).
+  nowIso?: string;
+  // Whether this write already has a known open episode, so the block does not
+  // offer to open one that already exists. Defaults from `episodeId` — set
+  // explicitly only where a mount (the episode page, closed-episode backfill)
+  // knows the answer independently of the id it posts.
+  hasOpenEpisode?: boolean;
 }) {
   // THE DAY THIS BAR IS STANDING ON (#4691) comes from the CARD, not from this
   // component: the toggle sets the card's day context and every control beneath it —
@@ -194,9 +231,20 @@ export default function SymptomLogBar({
   function selectDay(next: string): void {
     card?.select(next);
     setTempWhen({ date: next, statedAt: null });
+    // The offer is about the reading that produced it, on the day it was on; leaving
+    // it up under a different day would say something about a day it never saw.
+    setFeverOffer(null);
   }
   const [tempError, setTempError] = useState<string | null>(null);
   const [tempPending, setTempPending] = useState(false);
+
+  // THE FEVER OFFER (#4712 judgement 1) — set on a fever-range reading, cleared by
+  // whatever ends its lifetime: dismissing it, accepting the episode offer, changing
+  // the day, or the fold closing. It never survives the fold: rendering below reads
+  // `tempOpen && feverOffer`, so there is no separate cleanup this state can forget
+  // that would leave the block up with the fold closed.
+  const [feverOffer, setFeverOffer] = useState<{ degF: number } | null>(null);
+  const [episodeOfferPending, setEpisodeOfferPending] = useState(false);
 
   // Free-text intake (issue #877): a typed sentence → staged, editable suggestions the
   // user confirms with one tap. Suggest-only — nothing writes until confirm, which goes
@@ -298,13 +346,20 @@ export default function SymptomLogBar({
   function toggleSymptomPicker() {
     const opening = !pickerOpen;
     setPickerOpen(opening);
-    if (opening) setTempOpen(false);
+    if (opening) {
+      setTempOpen(false);
+      // THE BLOCK LIVES IN THE FOLD (#4712 judgement 1). Closing it any way —
+      // including by opening the OTHER fold, which forces this one shut above —
+      // takes the offer with it.
+      setFeverOffer(null);
+    }
   }
 
   function toggleTemperatureEntry() {
     const opening = !tempOpen;
     setTempOpen(opening);
     if (opening) setPickerOpen(false);
+    else setFeverOffer(null);
   }
 
   // NO CLIENT RANGE CHECK. `logTemperatureCore` runs `temperatureRangeError` over the
@@ -338,7 +393,21 @@ export default function SymptomLogBar({
       form.reset();
       tempUnitDetection.reset();
       setTempWhen({ date: activeDate, statedAt: null });
-      setTempOpen(false);
+      // FEVER-RANGE KEEPS THE FOLD OPEN (#4712 judgement 1). The confirmation block
+      // renders under the reading, in the SAME fold — closing it here would bury the
+      // offer under the very toggle that reveals it. A fever reading with nothing to
+      // offer (an episode already open and no eligible PRN) closes exactly as before.
+      const offers = !hasOpenEpisode || antipyreticMeds.length > 0;
+      if (res.flag === "high" && offers) {
+        setFeverOffer({ degF: res.degF });
+      } else {
+        setFeverOffer(null);
+        setTempOpen(false);
+      }
+      // NO ACTION ON THIS TOAST (#4712 judgement 1's second exclusion). The owner
+      // ruled the offer never rides a toast; the toast stays exactly what it was
+      // before this issue — a confirmation of the write, "— fever" included as
+      // TEXT, never as an `action` button. The offer itself is the block below.
       toast(
         `Temperature logged: ${fmtTemp(res.degF, temperatureUnit)}${
           res.flag === "high" ? " — fever" : ""
@@ -379,6 +448,24 @@ export default function SymptomLogBar({
     // stops reading every one of them as the symptom page's own form.
     return stampLoggedVia(fd);
   };
+
+  // "OPEN AN EPISODE" (#4712 judgement 1) — the SAME subject-capable door the
+  // "Mark as illness" bridge already uses (#4922), for the reading's own subject.
+  // Idempotent: if one is somehow already open by the time this lands, activating
+  // again changes nothing. Dismisses the block on success; the newly-open episode
+  // is the durable surface from here, not this transient confirmation.
+  function acceptEpisodeOffer() {
+    setEpisodeOfferPending(true);
+    startTransition(async () => {
+      await activateIllnessForSymptoms(withTarget(new FormData()));
+      setEpisodeOfferPending(false);
+      setFeverOffer(null);
+    });
+  }
+
+  function dismissFeverOffer() {
+    setFeverOffer(null);
+  }
 
   // The full universe of rows (curated catalog + any custom keys already logged, either
   // day). Labels/icons only — order comes from `orderedKeys`.
@@ -498,47 +585,27 @@ export default function SymptomLogBar({
 
   return (
     <div data-testid="symptom-log-bar">
-      {(showTitle || hasToggle) && (
-        <div className="mb-2 flex items-center justify-between gap-2">
-          {showTitle && (
-            <p className="section-label">
-              Daily symptoms
-              <span
-                data-testid="symptom-logged-count"
-                className="ml-2 font-normal normal-case tracking-normal"
-              >
-                {loggedCount} logged
-              </span>
-            </p>
-          )}
-          {card?.altDate && (
-            <div
-              data-testid="symptom-day-toggle"
-              className="ml-auto inline-flex overflow-hidden rounded-md border border-black/10 text-xs dark:border-white/15"
-            >
-              <button
-                type="button"
-                data-testid="symptom-day-primary"
-                aria-pressed={isPrimaryDay}
-                onClick={() => selectDay(card.date)}
-                className={`px-2 py-1 ${isPrimaryDay ? "bg-slate-100 font-medium text-slate-700 dark:bg-ink-800 dark:text-slate-100" : "text-slate-500 dark:text-slate-400"}`}
-              >
-                {card.dateLabel}
-              </button>
-              <button
-                type="button"
-                data-testid="symptom-day-alt"
-                aria-pressed={!isPrimaryDay}
-                onClick={() => selectDay(card.altDate!)}
-                className={`px-2 py-1 ${!isPrimaryDay ? "bg-slate-100 font-medium text-slate-700 dark:bg-ink-800 dark:text-slate-100" : "text-slate-500 dark:text-slate-400"}`}
-              >
-                {card.altDateLabel}
-              </button>
-            </div>
-          )}
-        </div>
+      {/* NOT A HEADER ROW (#4548 ruling 3). This was `justify-between` around ONE
+          child, and the count it looks like it would push to the right edge lives
+          inside the label's own paragraph. There is nothing for the arrangement to
+          arrange, so the wrapper goes and the label carries the margin; adopting
+          CardSectionHeader here would have moved the count instead. */}
+      {showTitle && (
+        <p className="section-label mb-2">
+          Daily symptoms
+          <span
+            data-testid="symptom-logged-count"
+            className="ml-2 font-normal normal-case tracking-normal"
+          >
+            {loggedCount} logged
+          </span>
+        </p>
       )}
 
+      {/* ONE ROW (#4752 item 5). The day toggle, both add buttons and the empty
+          state used to occupy three stacked rows above an empty list — three lines
+          of chrome before a single symptom. They are one row now, and the empty
+          state is the sentence at its end rather than a paragraph of its own. */}
       <div
         data-testid="symptom-log-actions"
         className="mb-3 flex flex-wrap items-center gap-2"
@@ -580,6 +647,39 @@ export default function SymptomLogBar({
             <IconChartBar className="h-3.5 w-3.5" />
             Symptom trends
           </Link>
+        )}
+        {loggedCount === 0 && (
+          <p
+            data-testid="symptom-none-logged"
+            className="text-xs text-slate-500 dark:text-slate-400"
+          >
+            No symptoms logged{hasToggle ? " for this day" : ""}.
+          </p>
+        )}
+        {card?.altDate && (
+          <div
+            data-testid="symptom-day-toggle"
+            className="ml-auto inline-flex overflow-hidden rounded-md border border-black/10 text-xs dark:border-white/15"
+          >
+            <button
+              type="button"
+              data-testid="symptom-day-primary"
+              aria-pressed={isPrimaryDay}
+              onClick={() => selectDay(card.date)}
+              className={`px-2 py-1 ${isPrimaryDay ? "bg-slate-100 font-medium text-slate-700 dark:bg-ink-800 dark:text-slate-100" : "text-slate-500 dark:text-slate-400"}`}
+            >
+              {card.dateLabel}
+            </button>
+            <button
+              type="button"
+              data-testid="symptom-day-alt"
+              aria-pressed={!isPrimaryDay}
+              onClick={() => selectDay(card.altDate!)}
+              className={`px-2 py-1 ${!isPrimaryDay ? "bg-slate-100 font-medium text-slate-700 dark:bg-ink-800 dark:text-slate-100" : "text-slate-500 dark:text-slate-400"}`}
+            >
+              {card.altDateLabel}
+            </button>
+          </div>
         )}
       </div>
 
@@ -791,7 +891,15 @@ export default function SymptomLogBar({
             data-testid="symptom-illness-bridge-activate"
             onClick={() =>
               startTransition(async () => {
-                await activateIllnessForSymptoms();
+                // THE SUBJECT RIDES THE BRIDGE (#4712). This bar already stamps its
+                // cross-profile target onto every symptom and temperature it posts;
+                // the illness bridge posted nothing, so on a household member's bar it
+                // would have opened an episode for the CAREGIVER. The action gates the
+                // posted subject with requireProfileWriteAccess, exactly as the writes
+                // above it do.
+                const fd = new FormData();
+                if (profileId != null) fd.set("profile_id", String(profileId));
+                await activateIllnessForSymptoms(fd);
               })
             }
             className="btn-ghost btn-sm border-dashed"
@@ -802,63 +910,123 @@ export default function SymptomLogBar({
       )}
 
       {showTemperature && tempOpen && (
-        <form
-          id="temp-quick-entry"
-          data-testid="temp-quick-entry"
-          onSubmit={(event) => void logTemp(event)}
-          className="subpanel-inset-sm mb-3 rounded-lg border border-black/5 p-3 dark:border-white/5"
-        >
-          <label className="label mb-1 block" htmlFor="temp-quick-input">
-            Temperature
-          </label>
-          <div className="flex flex-wrap items-start gap-2">
-            <div className="min-w-40 flex-1">
-              {/* THE VITALS FORM'S FIELD (#4424 ruling 5), not a second drawing of it. */}
-              <TemperatureField
-                id="temp-quick-input"
-                testIdPrefix="temp-quick"
-                detection={tempUnitDetection}
-                unitLabel="Temperature unit"
-                required
-                autoFocus
+        <>
+          <form
+            id="temp-quick-entry"
+            data-testid="temp-quick-entry"
+            onSubmit={(event) => void logTemp(event)}
+            className="subpanel-inset-sm mb-3 rounded-lg border border-black/5 p-3 dark:border-white/5"
+          >
+            <label className="label mb-1 block" htmlFor="temp-quick-input">
+              Temperature
+            </label>
+            <div className="flex flex-wrap items-start gap-2">
+              <div className="min-w-40 flex-1">
+                {/* THE VITALS FORM'S FIELD (#4424 ruling 5), not a second drawing of it. */}
+                <TemperatureField
+                  id="temp-quick-input"
+                  testIdPrefix="temp-quick"
+                  detection={tempUnitDetection}
+                  unitLabel="Temperature unit"
+                  required
+                  autoFocus
+                />
+              </div>
+              <WhenControl
+                mode="state"
+                grain="minute"
+                value={tempWhen}
+                onChange={setTempWhen}
+                tz={timeZone}
+                // ONE DAY, the day the bar is standing on: a reading is filed against
+                // the day the toggle is showing, so the control renders it as text and
+                // the pair rule holds with nothing to enforce.
+                minDate={activeDate}
+                maxDate={activeDate}
+                // A past day has no "now" to fall back to (#4685), so the minute is
+                // required there and optional on today.
+                timeRequired={!isPrimaryDay}
+                timeLabel="Reading time"
+                testId="temp-quick"
               />
+              <button
+                type="submit"
+                data-testid="temp-quick-save"
+                disabled={tempPending}
+                className="btn btn-sm"
+              >
+                {tempPending ? "Logging…" : "Log temp"}
+              </button>
             </div>
-            <WhenControl
-              mode="state"
-              grain="minute"
-              value={tempWhen}
-              onChange={setTempWhen}
-              tz={timeZone}
-              // ONE DAY, the day the bar is standing on: a reading is filed against
-              // the day the toggle is showing, so the control renders it as text and
-              // the pair rule holds with nothing to enforce.
-              minDate={activeDate}
-              maxDate={activeDate}
-              // A past day has no "now" to fall back to (#4685), so the minute is
-              // required there and optional on today.
-              timeRequired={!isPrimaryDay}
-              timeLabel="Reading time"
-              testId="temp-quick"
-            />
-            <button
-              type="submit"
-              data-testid="temp-quick-save"
-              disabled={tempPending}
-              className="btn btn-sm"
+            {tempError && (
+              <p
+                role="alert"
+                data-testid="temp-quick-error"
+                className="mt-1 text-xs text-rose-600 dark:text-rose-400"
+              >
+                {tempError}
+              </p>
+            )}
+          </form>
+
+          {/* THE OFFER (#4712 judgement 1) — UNDER the reading, inside the SAME
+              fold: it renders only while `tempOpen` holds, so the enclosing
+              condition is this block's whole lifetime, never a second copy of it.
+              No toast, no persistent nudge (StaleEpisodeNudge or otherwise) —
+              this is the one and only place the episode/dose offer appears. */}
+          {feverOffer && (
+            <div
+              data-testid="fever-offer"
+              className="subpanel-inset-sm mb-3 rounded-lg border border-black/5 p-3 dark:border-white/5"
             >
-              {tempPending ? "Logging…" : "Log temp"}
-            </button>
-          </div>
-          {tempError && (
-            <p
-              role="alert"
-              data-testid="temp-quick-error"
-              className="mt-1 text-xs text-rose-600 dark:text-rose-400"
-            >
-              {tempError}
-            </p>
+              <p
+                data-testid="fever-offer-sentence"
+                className="text-sm text-slate-700 dark:text-slate-200"
+              >
+                That’s a fever — {fmtTemp(feverOffer.degF, temperatureUnit)}.
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {/* PRIMARY, beside the dose (#4712 judgement 1's row grammar) —
+                    omitted only when this write already names an open episode,
+                    so the offer never asks to open the one it is already in. */}
+                {!hasOpenEpisode && (
+                  <Button
+                    variant="primary"
+                    data-testid="fever-offer-open-episode"
+                    disabled={episodeOfferPending}
+                    onClick={acceptEpisodeOffer}
+                  >
+                    Open an episode
+                  </Button>
+                )}
+                {antipyreticMeds.length > 0 && intakeContext && nowIso && (
+                  <div data-testid="fever-offer-dose" className="min-w-0">
+                    {/* THE DOSE REUSES IllnessMedicationLogger (#4834), narrowed
+                        to fever reducers — never a second dose control spelled
+                        here (08:24 audit on #4712). */}
+                    <IllnessMedicationLogger
+                      meds={antipyreticMeds}
+                      tz={timeZone ?? tempZone}
+                      profileId={profileId}
+                      intakeContext={intakeContext}
+                      canAdd={false}
+                      nowIso={nowIso}
+                    />
+                  </div>
+                )}
+              </div>
+              {/* A LINK, NOT A THIRD BUTTON (#4712 judgement 1's row grammar). */}
+              <button
+                type="button"
+                data-testid="fever-offer-dismiss"
+                onClick={dismissFeverOffer}
+                className="tap-target mt-2 inline-flex min-h-(--control-box) items-center text-sm text-link"
+              >
+                Not now
+              </button>
+            </div>
           )}
-        </form>
+        </>
       )}
 
       {/* Picker guidance stays with the expanded picker instead of occupying the
@@ -873,14 +1041,7 @@ export default function SymptomLogBar({
         </p>
       )}
 
-      {loggedCount === 0 ? (
-        <p
-          data-testid="symptom-none-logged"
-          className="mb-3 text-xs text-slate-500 dark:text-slate-400"
-        >
-          No symptoms logged{hasToggle ? " for this day" : ""}.
-        </p>
-      ) : (
+      {loggedCount > 0 && (
         <ul className="space-y-2" data-testid="symptom-logged-list">
           {loggedKeys.map((key) => {
             const r = rowMap.get(key);

@@ -1,121 +1,30 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { findTags, scanDirs, REPO } from "./jsx-tag-scan";
+import ts from "typescript-api";
+import { findTags, scanDirs, walkTsx, REPO } from "./jsx-tag-scan";
 
-// One "when" control (issue #2236), ratcheted in the repo's established
-// source-scan idiom (`icon-button-tooltip-scan.test.ts`, `page-width-scan.
-// test.ts`): read the app's own TSX as TEXT — no DB, no network, so it stays
-// "pure" — and fail the build when a NEW raw `<input type="time">` ships
-// outside the shared control.
+// One "when" control (issue #2236). A raw <input type="time"> asks "when did this
+// happen?" without the shared rules that question carries — the pair moves
+// together, null means "not stated", a stated time is never seeded from a record
+// stamp, never default to now but offer it, absolute local times only, and it
+// renders the login's own 12h/24h preference rather than the browser's locale.
+// `components/WhenControl.tsx` (an observed event's date+time pair) and
+// `components/TimeField.tsx` (the styled clock every other surface renders now,
+// a plan's or an event's alike) own those rules, so a raw time input has nowhere
+// left to hide. Read the app's own TSX as TEXT — no DB, no network, so it stays
+// "pure" — for a literal `type="time"`, and fail the build on any match.
 //
-// WHY. "When did this happen?" was asked by ten hand-rolled controls in four
-// vocabularies, and every one privately re-decided the five behavioural rules
-// the question carries (the pair moves together; null means "not stated"; a
-// stated time is never seeded from a record stamp; never default to now, offer
-// "now"; absolute local times only). `components/WhenControl.tsx` owns those
-// rules now, and the raw time input lives THERE and nowhere else.
-//
-// THE RATCHET. The hand-rolled set below is frozen at its current counts, each
-// with the reason it is still allowed. An `event` entry is debt: it migrates to
-// the shared control when its surface is touched (#2227/#2228/#2235 are the
-// filed first movers), and its count may only SHRINK — shrinking updates the
-// entry, growing fails the build. A `plan` entry is out of the control's scope
-// on purpose: a notification slot or an appointment time states a PLAN, not an
-// observation, so "when did this happen?" is not its question and it is not
-// expected to migrate.
+// #4976 TOOK THE LAST FOUR FILES / EIGHT INPUTS TO ZERO: `TimeRangeFields.tsx`
+// (the house Start/End pair, and through it the measurements Bed & wake pair in
+// its `overnight` mode) and the two plan forms — `NotificationPrefs.tsx`,
+// `AppointmentForm.tsx` — all mount `TimeField` now. This is therefore a straight
+// ban, not a ratchet: no allowlist to consult, and the ONE exemption is
+// `TimeField.tsx` itself — the element every other file's raw input used to be,
+// wrapped once here rather than restyled per host.
 
 const SCAN_DIRS = ["app", "components"];
-
-/** The one legitimate home of a raw event-time input. */
-const CONTROL_FILE = "components/WhenControl.tsx";
-
-/** The frozen hand-rolled set: file → { count, kind, reason }. */
-const HANDROLLED_ALLOW = new Map<
-  string,
-  { count: number; kind: "event" | "plan"; reason: string }
->([
-  // MeasurementsQuickAdd.tsx left the list with #2154's write half: the two
-  // per-measure time inputs (temperature, peak flow) folded into the form's one
-  // shared Time control, whose statement now lands on occurred_at.
-  // HistoricalDoseForm.tsx and EpisodeTimeline.tsx left the list with #2228's
-  // write half: both adopt the shared control (backfill = state + timeRequired,
-  // amend = correct with "Not stated" reachable).
-  // SymptomLogBar.tsx left it on the touch its own entry named (#4424 ruling 5): the
-  // temperature reading time is WhenControl's now, day-fixed to the card's date.
-  // PracticeSessionHistory.tsx left it on #4424 ruling 1's touch: its edit form spelled
-  // the same five fields the log form did, so it now MOUNTS that form and the pair it
-  // carried is GONE rather than migrated.
-  //
-  // AND TWO MOUNTS MOVED THE OTHER WAY, which is a trade rather than a win and is
-  // stated here rather than smuggled: the `/history` add door's practice case and that
-  // record row's correction each stated a START through `WhenControl` and could not
-  // state an END at all, so a window stated in the expanded form was correctable on
-  // exactly one surface. Both mount the one form now, which states the RANGE — the
-  // shape this entry exists for. The ratchet's count does not move, because the pair is
-  // spelled once and four surfaces mount it.
-  [
-    "components/practices/PracticeSessionForm.tsx",
-    {
-      count: 2,
-      kind: "event",
-      reason:
-        "the #3142 detailed practice start/end pair — the SAME range shape as the " +
-        "activity start/end pair below, unmodelled by the control for the same " +
-        "reason. #3143 extracted the deliberate historical form from the quick " +
-        "intent control so backfill remains exempt; the same two inputs moved, " +
-        "not grew. #4424 ruling 1 made this THE practice form — add and edit, at " +
-        "every mount — so four spellings of the pair are now this one. Migrates " +
-        "with DateTimeFields when the control grows a range form",
-    },
-  ],
-  [
-    "components/activity-form/DateTimeFields.tsx",
-    {
-      count: 2,
-      kind: "event",
-      reason:
-        "activity start/end pair — two times sharing one day, a shape the " +
-        "control does not model yet; migrates when it grows a range form",
-    },
-  ],
-  [
-    "app/(app)/trends/MeasurementsQuickAdd.tsx",
-    {
-      count: 2,
-      kind: "event",
-      reason:
-        "the #1851 bed\u2192wake pair — the same range shape as the activity " +
-        "start/end pair above and unmodelled for the same reason, plus one of " +
-        "its own: NEITHER clock states a date. The wake day is the sitting's, " +
-        "the bed day is DERIVED from the clock against the noon anchor, and " +
-        "the pair resolves to instants in the PROFILE's zone at the write " +
-        "boundary rather than the browser's. Migrates with DateTimeFields " +
-        "when the control grows a range form. The form's own sitting Time is " +
-        "still WhenControl's and is not counted here.",
-    },
-  ],
-  [
-    "app/(app)/settings/notifications/NotificationPrefs.tsx",
-    {
-      count: 3,
-      kind: "plan",
-      reason:
-        "notification slot times state a PLAN (a schedule), not an observed " +
-        "event — permanently out of the control's scope",
-    },
-  ],
-  [
-    "app/(app)/encounters/AppointmentForm.tsx",
-    {
-      count: 1,
-      kind: "plan",
-      reason:
-        "an appointment time states a PLAN, not an observation — permanently " +
-        "out of the control's scope",
-    },
-  ],
-]);
+const TIME_FIELD = "components/TimeField.tsx";
 
 /**
  * Every `<input …>` opening tag whose attributes carry `type="time"`, as line
@@ -132,51 +41,25 @@ export function rawTimeInputs(text: string): number[] {
 
 const scanRepo = () => scanDirs(SCAN_DIRS, rawTimeInputs);
 
-const HOW = [
-  'A raw <input type="time"> asks "when did this happen?" without the shared',
-  "rules that question carries. Render <WhenControl> (components/WhenControl",
-  '.tsx) instead — it owns the date+time pair, the null = "not stated" value,',
-  'the never-default-to-now rule and the one-tap "now". A time that states a',
-  'PLAN rather than an observation may be allowlisted here as kind: "plan",',
-  "with the reason said.",
-].join("\n");
-
-describe('raw <input type="time"> ratchet (issue #2236)', () => {
-  const found = scanRepo();
-
-  it("the shared control itself renders one — the scan is not silently empty", () => {
-    expect(found.get(CONTROL_FILE)).toHaveLength(1);
-  });
-
-  it("every raw time input outside the control is a frozen, reasoned entry", () => {
+describe('raw <input type="time"> is banned (issue #2236 / #4976)', () => {
+  // THE ONE EXEMPTION IS THE WRAPPER ITSELF. Every other match is an offender —
+  // there is no count to allow and no reason to record, because there is no
+  // legitimate reason left: render `TimeField` (a single clock) or
+  // `TimeRangeFields` (a Start/End pair, plain or `overnight`) instead.
+  it("renders nowhere outside the field that wraps it", () => {
     const offenders: string[] = [];
-    for (const [rel, lines] of found) {
-      if (rel === CONTROL_FILE) continue;
-      const allowed = HANDROLLED_ALLOW.get(rel);
-      if (!allowed) {
-        offenders.push(`${rel}:${lines.join(",")} — not in HANDROLLED_ALLOW`);
-      } else if (lines.length > allowed.count) {
-        offenders.push(
-          `${rel} grew: ${lines.length} raw time inputs, allowlisted at ` +
-            `${allowed.count} — the count only shrinks`
-        );
-      }
+    for (const [rel, lines] of scanRepo()) {
+      if (rel === TIME_FIELD) continue;
+      offenders.push(`${rel}:${lines.join(",")}`);
     }
-    expect(offenders, `${HOW}\n\n${offenders.join("\n")}`).toEqual([]);
-  });
-
-  it("the allowlist counts are current — a migrated surface leaves the list", () => {
-    const stale: string[] = [];
-    for (const [rel, allowed] of HANDROLLED_ALLOW) {
-      const lines = found.get(rel) ?? [];
-      if (lines.length < allowed.count) {
-        stale.push(
-          `${rel}: allowlisted at ${allowed.count} but ${lines.length} remain ` +
-            "— shrink (or remove) its entry so the ratchet holds"
-        );
-      }
-    }
-    expect(stale, stale.join("\n")).toEqual([]);
+    expect(
+      offenders,
+      'A raw <input type="time"> asks "when did this happen?" without the shared ' +
+        "rules that question carries, and ignores the login's 12h/24h preference. " +
+        "Render <TimeField> (components/TimeField.tsx), or <TimeRangeFields> for " +
+        "a Start/End pair, instead:\n\n" +
+        offenders.join("\n")
+    ).toEqual([]);
   });
 });
 
@@ -404,6 +287,17 @@ const WHEN_MOUNTS = new Map<string, WhenMount>([
     "components/stool/StoolForm.tsx",
     { kind: "field", why: "the dated door's own when (#4708)" },
   ],
+  [
+    "components/substances/SubstanceForm.tsx",
+    {
+      kind: "field",
+      why:
+        "the drink's day + drinking-time pair (#3295 phase 1), and the food form's " +
+        "sibling for the same reason: nothing is collapsed, the control IS the " +
+        "form's date field. The ADD door only, and only for the food-log ledger — " +
+        "every other substance rides a day counter with nowhere to put an instant",
+    },
+  ],
 ]);
 
 /**
@@ -418,12 +312,23 @@ export function stillHandRolled(src: string): boolean {
   );
 }
 
-/** Files mounting `<WhenControl>` directly. Comments and strings do not count. */
+/**
+ * Files mounting `<WhenControl>` directly. Comments and strings do not count.
+ *
+ * PRODUCT SURFACES ONLY. The register below argues, per file, why a hand-rolled
+ * composition is the right shape for THAT surface — a question a test file that
+ * renders the control to assert its behaviour is not asking. Scanning them would
+ * put every such test in a register of surfaces, where its entry would say
+ * nothing and its removal would be a false alarm. The raw-time-input ratchet
+ * above deliberately keeps scanning them: a raw `<input type="time">` in a
+ * fixture is still a second spelling of a time input to keep in step.
+ */
 export function whenControlMounts(): string[] {
   return [
     ...scanDirs(SCAN_DIRS, (text) => findTags(text, "WhenControl", () => true)),
   ]
     .map(([rel]) => rel)
+    .filter((rel) => !rel.includes("/__tests__/"))
     .sort();
 }
 
@@ -518,5 +423,319 @@ describe("every direct WhenControl mount is classified (#4426)", () => {
     ["one that mounts nothing at all", "export const x = 1;", false],
   ])("%s still hand-rolls: %s", (_label, source, expected) => {
     expect(stillHandRolled(source)).toBe(expected);
+  });
+});
+
+// ── ONE SPELLING OF THE STATEMENT TOGGLE (#4426's rendering ruling) ──────────
+//
+// The ruling (owner, 2026-09-02): the clock glyph is the ONLY spelling of the
+// statement toggle, seated immediately right of the action it modifies, on the
+// standard 34px icon button, with "Happened earlier?" as its accessible name — "no
+// text 'Happened earlier?' buttons, no 'Earlier dose' links, no 'Now' chips remain on
+// adopted surfaces."
+//
+// MOST OF THAT IS NOW CLOSED BY THE TYPE, WHICH IS WHY THIS SCAN IS SMALL. The door is
+// the shared control's own: `useTimeStatement` takes no `label`, returns no combined
+// node, and renders the glyph itself, so there is no prop through which a mount could
+// spell the question in words and no arrangement in which it draws something else. What
+// a type cannot see is the FIFTH DIALECT — a surface that mounts the statement and then
+// draws its own text affordance BESIDE the door — and that is this scan's whole subject.
+//
+// MEMBERSHIP, NOT AN ALLOWLIST (the shape #4753's chip-residual scan settled on): a
+// file that CALLS `useTimeStatement` is an adopted surface, as a fact about the file
+// rather than as a name in an array. But membership alone makes a sweep that can
+// quietly stop looking, so THE CENSUS ITSELF IS ASSERTED: these four surfaces, by name.
+// A fifth adopting is a one-line edit here; the four going missing is the vacuity this
+// pins, because a pattern that matches nothing passes forever.
+//
+// READ THROUGH A REAL PARSE rather than through source text. `ts.isStringLiteralLike`
+// and `ts.isJsxText` are the two ways rendered copy is written, and a comment quoting a
+// retired spelling in order to explain the retirement is correct and must stay — which
+// the AST gives for free, and which is also why this adds no comment stripper of its
+// own for `lib/__tests__/strip-comments.test.ts`'s registry to grow by.
+//
+// WHAT IT CANNOT SEE, said plainly because a rule read as exhaustive is worse than none:
+//   • THE SEAT. "Immediately right of the action it modifies" is geometry, and only a
+//     rendered box can answer it — e2e/illness-episode-followups.spec.ts measures the
+//     PRN door against its pill, and e2e/button-height-floor.mobile.spec.ts measures
+//     the practice and stool doors against the control box.
+//   • COPY THAT ARRIVES AS A PROP, or is composed at runtime. There is no literal.
+//   • UNADOPTED SURFACES. The food bar keeps its own statement and is argued for above,
+//     in `WHEN_MOUNTS`; it is out of range here for the same reason.
+const STATEMENT_CONTROL = "components/TimeStatement.tsx";
+
+// The spellings the ruling retires, as this repo actually wrote them: "Happened
+// earlier?" and "Taken earlier?" as a text button's words, "Earlier dose" as the PRN
+// row's link, and a bare "Now" chip. Both halves are a PAIR rather than either word
+// alone — "earlier" belongs to ordinary copy ("Past due — earlier today") and "now"
+// appears in half the sentences these surfaces already say ("Logged type 3 now — …").
+const RETIRED_SPELLING =
+  /\b(?:happened|taken|logged|given|eaten|done|finished) earlier\b|\bearlier (?:dose|entry|reading|session)\b/i;
+
+/**
+ * A bare "Now" chip: the control's WHOLE visible run, never the word in a sentence —
+ * and never a bare `"now"` standing somewhere other than in the markup, which on these
+ * surfaces is the PRN row's offset key (`log("now")`, `ledger.pending("now")`). That is
+ * a wire value four call sites deep in one file, not a label anybody reads, so the
+ * chip rule asks where the literal SITS as well as what it says: JSX text, a JSX
+ * attribute's value, or a JSX expression child. A "Now" hoisted into a `const` and
+ * interpolated is out of reach, like every other runtime-composed spelling above.
+ */
+const NOW_CHIP = /^\s*now\s*$/i;
+
+/** Is this literal rendered copy — in the markup rather than in an argument list? */
+function inMarkup(node: ts.Node): boolean {
+  if (ts.isJsxText(node)) return true;
+  const parent = node.parent;
+  return (
+    parent !== undefined &&
+    (ts.isJsxAttribute(parent) || ts.isJsxExpression(parent))
+  );
+}
+
+interface StatementSurface {
+  /** Does this file mount the shared statement? */
+  adopts: boolean;
+  /** Does it draw the door the statement hands it? */
+  drawsDoor: boolean;
+  /** Retired spellings, as `file:line spelling`. */
+  retired: string[];
+  /**
+   * A SECOND `IconClock` the surface draws itself, as `file:line`. The door's own
+   * glyph lives in `components/TimeStatement.tsx` and never appears as a literal
+   * tag in a host file — a host only ever writes `{s.door}` — so any `<IconClock`
+   * this scan finds here is the host drawing its OWN clock beside the one the
+   * control already drew (#4882 owner ruling: "the clock is reserved for the time
+   * statement… nothing else on the row spells with a clock").
+   */
+  clock: string[];
+}
+
+export function scanStatementSurface(
+  file: string,
+  text: string
+): StatementSurface {
+  const source = ts.createSourceFile(
+    file,
+    text,
+    ts.ScriptTarget.Latest,
+    true,
+    file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS
+  );
+  const out: StatementSurface = {
+    adopts: false,
+    drawsDoor: false,
+    retired: [],
+    clock: [],
+  };
+  function visit(node: ts.Node) {
+    if (
+      ts.isCallExpression(node) &&
+      node.expression.getText(source) === "useTimeStatement"
+    )
+      out.adopts = true;
+    if (ts.isPropertyAccessExpression(node) && node.name.text === "door")
+      out.drawsDoor = true;
+    if (ts.isStringLiteralLike(node) || ts.isJsxText(node)) {
+      const spelled =
+        node.text.match(RETIRED_SPELLING)?.[0] ??
+        (inMarkup(node) && NOW_CHIP.test(node.text) ? node.text.trim() : null);
+      if (spelled)
+        out.retired.push(
+          `${file}:${
+            source.getLineAndCharacterOfPosition(node.getStart()).line + 1
+          } ${spelled}`
+        );
+    }
+    const tagName =
+      ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)
+        ? node.tagName.getText(source)
+        : null;
+    if (tagName === "IconClock")
+      out.clock.push(
+        `${file}:${
+          source.getLineAndCharacterOfPosition(node.getStart()).line + 1
+        }`
+      );
+    ts.forEachChild(node, visit);
+  }
+  visit(source);
+  return out;
+}
+
+/**
+ * Every adopted surface, found rather than listed. Parsing cannot create the call, so
+ * a file whose raw text lacks the name is skipped before the compiler sees it — the
+ * same prefilter `chip-residual.test.ts` uses, for the same reason.
+ */
+function statementSurfaces(): [string, StatementSurface][] {
+  return SCAN_DIRS.flatMap((dir) => walkTsx(path.join(REPO, dir)))
+    .map((full) => path.relative(REPO, full).split(path.sep).join("/"))
+    .filter((rel) => rel !== STATEMENT_CONTROL && !rel.includes("/__tests__/"))
+    .flatMap((rel): [string, StatementSurface][] => {
+      const text = fs.readFileSync(path.join(REPO, rel), "utf8");
+      if (!text.includes("useTimeStatement")) return [];
+      const scan = scanStatementSurface(rel, text);
+      return scan.adopts ? [[rel, scan]] : [];
+    })
+    .sort(([a], [b]) => a.localeCompare(b));
+}
+
+describe("the clock door is the only spelling of the statement (#4426)", () => {
+  const surfaces = statementSurfaces();
+
+  it("finds every surface that mounts the statement", () => {
+    expect(
+      surfaces.map(([rel]) => rel),
+      "\nThe adopted surfaces have changed. A NEW one is a one-line edit here — and " +
+        "check its door is seated immediately right of the action it modifies, which " +
+        "no source scan can see. A surface DISAPPEARING is the direction that matters: " +
+        "the rule below would then range over fewer files and go on passing.\n"
+    ).toEqual([
+      "components/medications/QuickLogPrnControl.tsx",
+      "components/medications/ScheduledDoseAction.tsx",
+      "components/practices/LogPracticeButton.tsx",
+      "components/stool/StoolTypeControl.tsx",
+    ]);
+  });
+
+  it.each(surfaces)(
+    "%s draws the door and no other time affordance",
+    (rel, scan) => {
+      expect(
+        scan.drawsDoor,
+        `${rel} mounts the statement and never draws its door, so the surface offers ` +
+          `no way to open the reveal at all`
+      ).toBe(true);
+      expect(
+        scan.retired,
+        `${rel} spells the statement a second way. The clock door is the only spelling ` +
+          `(owner ruling, 2026-09-02): delete the text affordance rather than seating it ` +
+          `beside the glyph.`
+      ).toEqual([]);
+      // #4882 owner ruling (2026-09-03): the clock glyph is reserved for the time
+      // statement, and nothing else on an adopted surface's row spells with a clock.
+      // The door's own `IconClock` lives in TimeStatement.tsx, so a `<IconClock` this
+      // scan finds HERE is a second clock the host drew itself — the two-clock practice
+      // row the issue reported, generalized to every surface that could grow one.
+      expect(
+        scan.clock,
+        `${rel} draws its own IconClock beside the statement's door. The clock is ` +
+          `reserved for the time statement (owner ruling, 2026-09-03): give this ` +
+          `affordance a different glyph.`
+      ).toEqual([]);
+    }
+  );
+
+  // THE SHARED CONTROL'S OWN DEFINITION SPELLS THE QUESTION, and must. It is the one
+  // place the words are written — as the door's accessible name — so this is asserted
+  // rather than assumed: if the exclusion above ever stopped excluding it, the rule
+  // would fire on the very control it exists to protect.
+  it("does not range over the control that owns the question", () => {
+    const control = scanStatementSurface(
+      STATEMENT_CONTROL,
+      fs.readFileSync(path.join(REPO, STATEMENT_CONTROL), "utf8")
+    );
+    expect(control.retired.length).toBeGreaterThan(0);
+    expect(surfaces.map(([rel]) => rel)).not.toContain(STATEMENT_CONTROL);
+  });
+
+  // THE GUARD CAN SEE. A green sweep over a complying tree says nothing about what the
+  // sweep is able to notice, so run it over sources authored to break it — every
+  // retired dialect the ruling names — and over the benign neighbours it must stay
+  // quiet on, which are real sentences these surfaces already say.
+  const MOUNT = "const s = useTimeStatement({ day });\n";
+  // A POSITIONAL `%i` IN THE TITLE LANDS ON THE SECOND ELEMENT — the source — and
+  // printed "reports NaN" on all eight rows. The expectation reads in the message
+  // instead, where a failure actually shows it.
+  it.each([
+    [
+      "a text button beside the door",
+      `${MOUNT}<><button>Happened earlier?</button>{s.door}</>`,
+      1,
+    ],
+    [
+      "the scheduled dose's own words",
+      `${MOUNT}<><button aria-label="Taken earlier?" />{s.door}</>`,
+      1,
+    ],
+    [
+      "the PRN row's link",
+      `${MOUNT}<><a href="#">Earlier dose</a>{s.door}</>`,
+      1,
+    ],
+    ["a Now chip", `${MOUNT}<><Chip>Now</Chip>{s.door}</>`, 1],
+    [
+      "a comment quoting a retired spelling",
+      `// "Happened earlier?" retired here (#4426).\n${MOUNT}<>{s.door}</>`,
+      0,
+    ],
+    [
+      "prose that says earlier about a day",
+      `${MOUNT}<>{"Past due — earlier today"}{s.door}</>`,
+      0,
+    ],
+    [
+      "a sentence that says now",
+      `${MOUNT}<>{\`Logged type 3 now — 07:05 hasn't happened yet.\`}{s.door}</>`,
+      0,
+    ],
+    [
+      "a bare `now` used as a wire value rather than as copy",
+      `${MOUNT}<><button onClick={() => log("now")} />{s.door}</>`,
+      0,
+    ],
+  ])("%s", (label, source, count) => {
+    expect(
+      scanStatementSurface("components/Plant.tsx", source).retired,
+      `${label} should report ${count} retired spelling(s)`
+    ).toHaveLength(count);
+  });
+
+  // THE `clock` FIELD, on the same "guard can see" terms: fire on a forged second
+  // IconClock beside the door, and stay quiet on the benign neighbours a real surface
+  // draws all the time — the door itself (as `{s.door}`, never a literal tag) and an
+  // unrelated icon that merely shares the "Icon" prefix.
+  it.each([
+    [
+      "a second IconClock beside the door",
+      `${MOUNT}<><button><IconClock />Details</button>{s.door}</>`,
+      1,
+    ],
+    [
+      "a second IconClock, self-closing with props",
+      `${MOUNT}<><IconClock className="h-4 w-4" stroke={2} aria-hidden />{s.door}</>`,
+      1,
+    ],
+    [
+      "the door alone — {s.door} is a property access, never a literal tag",
+      `${MOUNT}<>{s.door}</>`,
+      0,
+    ],
+    [
+      "an unrelated icon beside the door",
+      `${MOUNT}<><IconListDetails />{s.door}</>`,
+      0,
+    ],
+  ])("%s", (label, source, count) => {
+    expect(
+      scanStatementSurface("components/Plant.tsx", source).clock,
+      `${label} should report ${count} host-drawn IconClock(s)`
+    ).toHaveLength(count);
+  });
+
+  it.each([
+    ["a mount that draws the door", `${MOUNT}<>{s.door}</>`, true, true],
+    ["a mount that never draws it", `${MOUNT}<>{s.reveal}</>`, true, false],
+    [
+      "a file that only names the hook in prose",
+      "// useTimeStatement owns this\n",
+      false,
+      false,
+    ],
+  ])("%s", (label, source, adopts, draws) => {
+    const scan = scanStatementSurface("components/Plant.tsx", source);
+    expect(scan.adopts, `${label} adopts: ${adopts}`).toBe(adopts);
+    expect(scan.drawsDoor, `${label} draws the door: ${draws}`).toBe(draws);
   });
 });

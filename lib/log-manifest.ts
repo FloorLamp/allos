@@ -406,10 +406,12 @@ export const LOG_MANIFEST = {
       // with this leg; what stays shared is the whole-stack "Take all", which is
       // `dose-day-stack`, a bulk offer and not a row control.
       //
-      // `DoseConfirmButton` STANDS, AND IS NOT A SECOND ROW CONTROL. Three mounts, on
-      // two surfaces (`grep -rn "<DoseConfirmButton" --include=*.tsx`): the dashboard
-      // attention row, and — since #2579-D — both of Upcoming's, its banded due-dose
-      // row and the `DoseChip` its dose fold and its "Available to log" run share.
+      // `DoseConfirmButton` STANDS, AND IS NOT A SECOND ROW CONTROL. Four mounts, on
+      // three surfaces (`grep -rn "<DoseConfirmButton" --include=*.tsx`): the dashboard
+      // attention row, Upcoming's banded due-dose row, and — since #2579-D — both of
+      // Upcoming's dose fold and its "Available to log" run, which shared one `DoseChip`
+      // wrapper until #4753 inlined its two calls directly and kept only the label math
+      // (`intakeChipLabel`) shared between them.
       //
       // THE COUNT HAS MOVED TWICE AND BOTH MOVES WERE RULINGS. This cell said TWO and
       // named only the dashboard row and the household card's; #2579-D added Upcoming's
@@ -552,8 +554,8 @@ export const LOG_MANIFEST = {
       // mode, which is what the ⋯ does. The feed row hosts no one-field inline edit
       // because #3958 leaves it nowhere to go — that ruling makes the row one line at
       // every viewport with the trailing affordance EXCLUSIVE (⋯ or ›, never both), and
-      // #4424 nowhere claims to override it. The day view's own card mounts the bar,
-      // whose rows are this control.
+      // #4424 nowhere claims to override it. The day view mounts the SAME door as
+      // every other kind since #4851, so the record's only symptom entry is the form.
       //
       // THE CONTROL HAS ONE MOUNT TODAY — the bar — so read `shared` as "the domain has
       // exactly one, and every symptom row hosting a write control mounts it", never as
@@ -687,9 +689,12 @@ export const LOG_MANIFEST = {
       //
       // THE CELL'S FIGURES DID NOT SURVIVE MEASUREMENT and are corrected here rather
       // than inherited. The form defines NINETEEN fields (eighteen plus Notes) and
-      // renders SEVENTEEN at either life stage, not thirteen; the stale number traces
-      // to a comment in the form itself, written before #1850, #1851 and #2322 added
-      // seven more, and is fixed at that source too. `PediatricWeightUpdate` was the
+      // renders EIGHTEEN labeled boxes at the adult life stage, SIXTEEN at the minor's
+      // — not thirteen; the stale number traces to a comment in the form itself,
+      // written before #1850, #1851 and #2322 added seven more, and is fixed at that
+      // source too. (#4976 moved the rendered count off the field count by one: the
+      // bed/wake pair draws its own two labels now rather than one shared "Bed &
+      // wake".) `PediatricWeightUpdate` was the
       // THIRD weight form, not the fourth: the count reached four by including the
       // one-field row edit, which ruling 3 classes as row-control-grade and which edits
       // any metric's value rather than a weight. The door's three measures,

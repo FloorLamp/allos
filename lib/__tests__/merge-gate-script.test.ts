@@ -11,6 +11,10 @@ import {
   readinessVerdict,
   receiptVerdict,
 } from "../../scripts/orchestration/merge-gate-core.mjs";
+import {
+  titleLength,
+  titleRuleRefusal,
+} from "../../scripts/orchestration/title-rule.mjs";
 
 // THE MERGE GATE. Verdict branches run against the pure core; the smaller
 // stub-curl set drives the real CLI where process, auth and transport matter.
@@ -108,6 +112,10 @@ function fixture(overrides: Fixture) {
       draft: false,
       head: { sha: HEAD },
       user: { login: "author-agent" },
+      // A REAL title, not an absent one: the gate checks it (#4983), so a
+      // fixture with none would run every case below past a check that never
+      // fired and read as if it had.
+      title: "Rank a ride against the rides that came before it",
       ...overrides.pr,
     },
     reviews: overrides.reviews ?? [
@@ -329,6 +337,81 @@ describe("merge-gate.mjs", () => {
     expect(other.kind).toBe("incomplete");
   });
 
+  // A CANCELLED RUN IS NOT A VERDICT (#4800). GitHub returns the latest run per
+  // name PER CHECK SUITE, so a head whose workflow was triggered twice carries
+  // the concurrency-cancelled run beside the green that replaced it. Discard
+  // cancellations; of what is left under a name, ALL must be green.
+  //
+  // A RE-RUN NEVER REACHES THIS FUNCTION, which is why the tempting "prefer
+  // red" rule is wrong rather than merely redundant: `rerun_failed_jobs` makes
+  // a NEW run in the SAME suite (on #4800's head, `e2e (6)` failure 21:59:18
+  // then success 22:10:28, both in suite 91296879440), and merge-gate.mjs reads
+  // the DEFAULT listing, which hands over only the newest run of each suite —
+  // 20 runs where `filter=all` returns 37. The last row is that head's real
+  // input; preferring red would have blocked a sanctioned re-run.
+  const job = (conclusion: string | null, status = "completed") => ({
+    name: "merge-gate-job",
+    status,
+    conclusion,
+  });
+  it.each([
+    [
+      "a cancelled run beside its replacement is green",
+      [job("cancelled"), job("success")],
+      "pass",
+    ],
+    [
+      "order carries no meaning — nothing picks a winner",
+      [job("success"), job("cancelled")],
+      "pass",
+    ],
+    [
+      "a real failure beside a success still fails",
+      [job("failure"), job("success")],
+      "fail",
+    ],
+    [
+      "a pending run beside a completed one is not a verdict",
+      [job(null, "in_progress"), job("success")],
+      "incomplete",
+    ],
+    [
+      "every run cancelled is no verdict, not a red",
+      [job("cancelled"), job("cancelled")],
+      "incomplete",
+    ],
+    [
+      "a re-run's discarded failure never arrives — one success is the input",
+      [green("e2e (6)")],
+      "pass",
+    ],
+  ])("cancelled is not a verdict: %s", (_case, runs, kind) => {
+    expect(checkRunsVerdict(runs, null, HEAD).kind).toBe(kind);
+  });
+
+  it("names the check whose every run was cancelled, and does not call it red", () => {
+    const result = checkRunsVerdict(
+      [green("lint"), job("cancelled")],
+      null,
+      HEAD
+    );
+    expect(result.kind).toBe("incomplete");
+    expect(result.message).toContain("no verdict for merge-gate-job");
+  });
+
+  it("counts a discarded cancellation out, and never reads it as an exclusion", () => {
+    const runs = [green("lint"), job("cancelled"), job("success")];
+    const result = checkRunsVerdict(runs, null, HEAD);
+    expect(result.message).toContain("all 2 checks green");
+    // `ignored` answers "did --ignore-check drop something", so discarding a
+    // cancellation must not make the CLI announce an exclusion nobody asked for.
+    expect(result.ignored).toBe(false);
+    const cli = runGate({ checkRuns: runs });
+    expect(cli.status).toBe(0);
+    expect(cli.stdout).toContain("GATE OPEN");
+    expect(cli.stdout).not.toContain("ignoring check");
+  });
+
   it("closes on an unresolved review thread, outdated or not", () => {
     const run = runGate({
       threads: [
@@ -373,6 +456,142 @@ describe("merge-gate.mjs", () => {
     expect(run.status).toBe(2);
   });
 
+  // THE TITLE RULE (#4983). A squash merge takes this title as the commit
+  // subject, so a title nobody refused is one `git log` carries forever. Both
+  // directions are pinned: a gate that refused a time, a range or a
+  // mid-clause parenthetical would be routed around within a day, and the
+  // three shapes it must not refuse are all live in this repo's own tracker.
+  it.each([
+    ["a compliant clause", "Rank a ride against the rides that came before it"],
+    // A LITERAL 72, never the constant: a boundary case that reads the
+    // bound from the code under test moves with it and can never fail.
+    ["exactly 72 characters", "R".repeat(72)],
+    // A colon inside a token is not a clause boundary: a time, a line
+    // citation and a CSS pseudo-element, all three taken from open issues.
+    ["a time", "The 9:30 sync drops HRV"],
+    ["a line citation", "auth.test.ts:326 reads the frozen clock"],
+    ["a pseudo-element", "The sweep is blind to ::after readouts"],
+    // A PAIR of spaced dashes encloses a parenthetical — still one clause.
+    [
+      "a mid-clause dash pair",
+      "The walk exists twice — in A and in B — and it drifts",
+    ],
+    // Ranges and compounds are not separators, and U+2212 is arithmetic.
+    ["an unspaced dash", "The 10:00Z–12:00Z band guesses the zone"],
+    ["a minus sign", "Top − m42 assumes a pure translate"],
+    [
+      "a trailing reference",
+      "The temperature fold offers the dose (#4712 judgement 1)",
+    ],
+    // The exception is what makes this one pass: the reference is removed
+    // before the separators are counted, so its own dash is not a tail.
+    [
+      "a dash inside a trailing reference",
+      "Rank a ride against the rides before it (#4712 — judgement 1)",
+    ],
+    // Curly apostrophes are already in this repo's titles; this pair is one
+    // real title either side of the bound, at 71 and (below) 73.
+    [
+      "a curly apostrophe under the bound",
+      "A lane commit’s Fixes keyword closes an issue whose body marked it Refs",
+    ],
+  ])("accepts %s", (_case, title) => {
+    expect(titleRuleRefusal("PR", title)).toBeNull();
+  });
+
+  it.each([
+    ["one character over", "R".repeat(73), "is 73 characters"],
+    [
+      "a curly apostrophe over the bound",
+      "A lane commit’s Fixes keyword closes an issue the PR body had marked Refs",
+      "is 73 characters",
+    ],
+    [
+      "a colon tail",
+      "Fix the reader: it dropped three types",
+      "carries a colon tail",
+    ],
+    [
+      "a colon tail nine characters in",
+      "Main red: the notice count is #4370 wording",
+      "carries a colon tail",
+    ],
+    [
+      "an em-dash tail",
+      "Fix the reader — it dropped three types",
+      "carries a dash tail",
+    ],
+    [
+      "a hyphen tail",
+      "Fix the reader - it dropped three types",
+      "carries a dash tail",
+    ],
+    [
+      "a dash pair AND a tail",
+      "The walk exists twice — in A and in B — and it drifts — badly",
+      "carries a dash tail",
+    ],
+    // The exception is about the TAIL, so a trailing reference is still
+    // counted in the length: the squash subject carries it.
+    [
+      "a trailing reference over the bound",
+      `${"R".repeat(60)} (#4712 judgement 1)`,
+      "is 80 characters",
+    ],
+    [
+      "both halves at once",
+      `Fix the reader: ${"R".repeat(70)}`,
+      "is 86 characters and carries a colon tail",
+    ],
+  ])("refuses %s", (_case, title, clause) => {
+    const refusal = titleRuleRefusal("PR", title);
+    expect(refusal).toContain(`PR title ${clause}`);
+    // The rule is QUOTED, so the reader rewriting the title need not look it up.
+    expect(refusal).toContain(
+      "the rule is 72 characters max, one clause, no colon or dash tail (#4983)"
+    );
+  });
+
+  // 72 characters OF WHAT: grapheme clusters, because the rule exists so a
+  // title survives a truncating list and a grapheme is what a reader sees
+  // there. The three counts agree on every title in the live tracker, so the
+  // choice can only bite on an emoji or a combining mark — and there the
+  // reader's count is the one that should decide.
+  it("counts what a reader counts, not UTF-16 code units", () => {
+    const flag = "🇬🇧";
+    expect(flag.length).toBe(4);
+    expect([...flag].length).toBe(2);
+    expect(titleLength(flag)).toBe(1);
+    const title = `${flag.repeat(72)}`;
+    expect(titleLength(title)).toBe(72);
+    expect(titleRuleRefusal("PR", title)).toBeNull();
+    expect(titleRuleRefusal("PR", `${flag.repeat(73)}`)).toContain(
+      "is 73 characters"
+    );
+  });
+
+  it("refuses through the CLI in the shape every other refusal prints", () => {
+    const run = runGate({
+      pr: { title: "Fix the reader: it dropped three types" },
+    });
+    expect(run.status).toBe(1);
+    expect(run.stdout).toContain("FAIL: PR title carries a colon tail");
+    expect(run.stdout).toContain("GATE CLOSED — 1 failure(s)");
+    // The published status is the evaluator's own clause, inside GitHub's limit.
+    const status = run.stdout
+      .split("\n")
+      .find((line) => line.startsWith("STATUS: "))!;
+    expect(status.length - "STATUS: ".length).toBeLessThanOrEqual(140);
+    expect(status).toContain("gate CLOSED — PR title carries a colon tail");
+  });
+
+  it("names the length it measured when the title passes", () => {
+    const run = runGate({});
+    expect(run.stdout).toContain(
+      "PASS: PR title is one clause of 49 characters"
+    );
+  });
+
   it("closes on a draft PR — PRs open READY", () => {
     const state = fixture({ pr: { draft: true } });
     const result = readinessVerdict(state.pr);
@@ -405,11 +624,36 @@ describe("merge-gate.mjs", () => {
       [at("e2e-main (1)", null, "in_progress"), at("e2e-main (2)", "success")],
       "still running",
     ],
+    // A shard that SKIPPED did not pass, so it may not be counted as one that
+    // did (#4370). All-skipped is the shape e2e-main produces for a push with no
+    // runtime surface, and it used to read here as a four-shard green.
     [
       [at("e2e-main (1)", "success"), at("e2e-main (2)", "skipped")],
-      "is green (2 shards)",
+      "is green (1 of 2 shards ran)",
+    ],
+    [
+      [at("e2e-main (1)", "skipped"), at("e2e-main (2)", "skipped")],
+      "ran NOTHING (2 shards skipped",
     ],
     [[at("lint", "failure")], "no verdict on main"],
+    // The same reading of `cancelled` the head checks get (#4800): a shard whose
+    // run was cancelled and re-triggered must not be attributed as a red, and a
+    // shard set that was ENTIRELY cancelled has no verdict rather than a green.
+    //
+    // THE COUNT IS #4370's WORDING, and the two rules meet here: `cancelled` is
+    // discarded before counting (#4800) while `skipped` is counted and named
+    // (#4370), so this pair reads "2 of 2" rather than "2 shards". Both merged
+    // green alone and this row was the seam between them — it is the assertion,
+    // not the behaviour, that had to move.
+    [
+      [
+        at("e2e-main (1)", "success"),
+        at("e2e-main (2)", "cancelled"),
+        at("e2e-main (2)", "success"),
+      ],
+      "is green (2 of 2 shards ran)",
+    ],
+    [[at("e2e-main (1)", "cancelled")], "every shard run was cancelled"],
   ])("reports main's e2e-main standing: %#", (runs, expected) => {
     expect(baseDetectorNotice(runs, "main")).toContain(expected);
   });
@@ -472,5 +716,62 @@ describe("merge-gate.mjs source confinement", () => {
     expect(posts).toHaveLength(1);
     expect(source).toContain("api.github.com/graphql");
     expect(source).not.toContain("mutation");
+  });
+});
+
+// THE TITLE RULE AS A COMMAND (#5068). title-rule.mjs shipped as exports and
+// nothing else: run as a command it printed nothing and exited 0 for every
+// string, while dispatch briefs told lanes to run it as THE check that a title
+// is one clause within budget. Titles were still caught, but by the merge gate
+// an hour later on an already-open PR. A guard that exits 0 on everything is
+// worse than no guard — it turns a check into a ritual and the person running
+// it reasonably believes they have checked.
+//
+// So the REFUSAL direction is what this describe exists for. A test that only
+// asserted a good title exits 0 would pass unchanged against the broken file
+// and reproduce the very defect; every case below therefore pins an exit code
+// AND the output that goes with it, and the two that must be non-zero come
+// first. The colon-tail control is the string from the issue.
+describe("title-rule.mjs as a command", () => {
+  const TITLE_RULE = path.join(REPO, "scripts/orchestration/title-rule.mjs");
+  const runTitle = (...args: string[]) =>
+    spawnSync(process.execPath, [TITLE_RULE, ...args], {
+      cwd: REPO,
+      encoding: "utf8",
+      timeout: 30_000,
+    });
+
+  it.each([
+    [
+      "a colon tail",
+      "Fix: dashboard performance - assert one read per window",
+      ["title carries a colon tail"],
+    ],
+    // Both halves arrive together, one to a line, so a rewrite fixes both at
+    // once rather than meeting the same gate twice.
+    [
+      "a length and a tail at once",
+      `Fix the reader: ${"R".repeat(70)}`,
+      ["title is 86 characters", "title carries a colon tail"],
+    ],
+  ])("exits 1 on %s and names it", (_case, title, lines) => {
+    const run = runTitle(title);
+    expect(run.status).toBe(1);
+    expect(run.stdout.trim().split("\n")).toEqual([
+      ...lines,
+      "the rule is 72 characters max, one clause, no colon or dash tail (#4983); the detail is the body's first line",
+    ]);
+  });
+
+  it("explains itself and exits non-zero with no title to check", () => {
+    const run = runTitle();
+    expect(run.status).toBe(2);
+    expect(run.stderr).toContain('usage: title-rule.mjs "<title>"');
+  });
+
+  it("accepts a conforming title, and says so rather than going quiet", () => {
+    const run = runTitle("Rank a ride against the rides that came before it");
+    expect(run.status).toBe(0);
+    expect(run.stdout.trim()).toBe("title is one clause of 49 characters");
   });
 });

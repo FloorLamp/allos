@@ -142,7 +142,7 @@ reads structured `kind='medication'` rows as its primary medication source, with
 extracted prescriptions. **PRN redose notice + pediatric label dosing (#798).**
 Three nullable/defaulted columns on `intake_items` — `min_interval_hours`,
 `max_daily_count`, `redose_notice` (opt-in flag) — carry a per-item,
-administration-armed **redose reminder** ("6h since Ibuprofen — 2 of 4 today").
+administration-armed **redose reminder** ("6h since Ibuprofen — 2 of 4 in 24h").
 The numbers are the user's OWN confirmed OTC-label values: **PRE-FILLED** from
 the curated, cited `lib/prn-defaults` dataset (the `food-drug-interactions`
 treatment — keyed by RxNorm ingredient CUI with a #279 name fallback;
@@ -150,13 +150,26 @@ treatment — keyed by RxNorm ingredient CUI with a #279 name fallback;
 applied silently — an unconfirmed/empty field means **no notice, ever** (the
 liability line). The tick's `runRedoseNotices` fires the safety-tier one-shot
 (see `docs/internals/notifications.md`: administration-armed, re-arms on the
-next dose, suppressed at the daily max, and DELIBERATELY overnight-capable). A
-day that **exceeds** the confirmed max surfaces a bus-suppressible **care-tier**
-finding (`prn-max:<itemId>`, the #148 UL-warning shape per-day).
-**The daily max is amount-aware (#1854, migration 140):** beside
+next dose, suppressed at the max, and DELIBERATELY overnight-capable).
+**THE CEILING'S WINDOW IS THE TRAILING 24 HOURS, NOT A CALENDAR DAY (#4686).**
+Every ceiling figure here is a Drug Facts number stated "in 24 hours", and while
+the counts behind them were gathered for one profile-local `date` the midnight
+reset disarmed them mid-fever: doses at 16:00/20:00/23:45 read "3 of 5", and five
+more before 15:45 the next day made EIGHT administrations inside 24 hours with
+every surface calm. `prnCeilingWindowStart` (`lib/prn-redose.ts`) is the window,
+and one SQL predicate in `lib/queries/intake/prn-family.ts` decides membership: a
+row that states an `occurred_at` is compared against it directly, and one that
+states NONE is placed at profile-local NOON of its own `date`
+(`prnUntimedDateFloor`) — unbounded above, because today's noon is in the future
+until midday and a bounded rule would drop this morning's dose out of the ceiling.
+The INTERVAL half is untouched and takes no anchor: "how long since the last
+dose" is a duration and needs no window. A stretch of 24 hours that **exceeds**
+the confirmed max surfaces a bus-suppressible **care-tier** finding
+(`prn-max:<itemId>`, the #148 UL-warning shape).
+**The max is amount-aware (#1854, migration 140):** beside
 `max_daily_count`, the med form carries a user-confirmed `max_daily_amount_mg`
 (mg/day, never pre-filled), and the pure `prnDayExposure` (`lib/prn-redose.ts`)
-decides the day's basis — when the mg max is confirmed and EVERY family
+decides the window's basis — when the mg max is confirmed and EVERY family
 administration's snapshotted amount parses to a mass (`parseAmountMg`), the
 counters compare summed MILLIGRAMS (3 × 800 mg Rx = 2400 mg fires a 1200 mg/day
 ceiling that "3 of 6 doses" would miss, and 6 × 200 mg = 1200 mg stays calm
@@ -174,7 +187,7 @@ ingredient CUIs first, cleaned-generic-name fallback, no resolution ⇒ own
 family), and the ONE gather `getMedicationFamilyStates`
 (`lib/queries/intake/prn-family.ts`) feeds every counter surface: the redose
 interval clock arms from the FAMILY's latest administration (a sibling's dose
-holds "Redose OK" — the false-GO fix), the day exposure totals the family
+holds "Redose OK" — the false-GO fix), the 24h exposure totals the family
 (summed mg or count per the basis above), and over-max compares it against the
 most conservative confirmed ceiling among members (the finding stays keyed
 `prn-max:<itemId>` on the member holding the binding max). The
@@ -993,7 +1006,16 @@ weekly recap) passes that window, and a single-occurrence miss then names its da
 ("Missed: Coenzyme Q10 on Wednesday"; a `Mon, Aug 4`-style date when the miss
 precedes the window) — resolved inside the formatter as a function of the window,
 never a per-caller flag (#3033). The day-scale callers pass nothing and keep the
-run-length copy.
+run-length copy. A resume states the lapse it ended in the lapse direction —
+"Resumed: Beta-Glucan after 8 days missed", hoisted as "Resumed after 2 days
+missed: X, Y" — since "for 8 days" read as eight days back on it, and a lapse longer
+than the report window is then coherent (it began before the window; the 14-day
+classifier read is unchanged). The missed half's phrasing is untouched, so
+`intakeGapExplainedBy`'s word-for-word agreement holds. Past `INTAKE_DELTA_MAX_NAMED`
+(3) a half AGGREGATES instead of truncating to "+N more": "Resumed: 11 supplements
+after 4–8 days missed", "Missed: 5 supplements for 2–4 days", the one shared run when
+the runs are uniform — a stack-wide lapse is one event, not eleven comebacks with
+alphabetical order choosing the named three (#4228 B/C).
 
 See [the attention doctrine](findings.md#the-attention-doctrine) for the general
 rules this change is the first implementation of.

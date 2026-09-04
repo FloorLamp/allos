@@ -9,9 +9,11 @@ import {
   type DoseStatusResult,
 } from "@/app/(app)/nutrition/intake-actions";
 import { type TimeStatement } from "@/components/TimeStatement";
+import { LabeledVerbChip } from "@/components/OfferRow";
 import { doseConfirmMessage } from "@/lib/dose-outcome-text";
 import { microMotionPlan } from "@/lib/micro-motion";
-import { localDate } from "@/lib/offline/queue";
+import { useTimezone } from "@/components/TimezoneProvider";
+import { dateStrInTz } from "@/lib/date";
 import {
   DOSE_ACTION_AMBER,
   DOSE_ACTION_BRAND,
@@ -66,6 +68,7 @@ export default function DoseStatusControl({
   skipped,
   variant,
   label,
+  payload,
   compact = false,
   profileId,
   date,
@@ -79,6 +82,25 @@ export default function DoseStatusControl({
   skipped: boolean;
   variant: DoseVariant;
   label?: string;
+  /**
+   * THE NON-REDUNDANT PAYLOAD (#4753, owner ruling 1): the slot, amount or day this
+   * row does not already state. Present, the take affordance becomes the LABELED-VERB
+   * CHIP — `8:00am · [Take]` — and the host stops rendering that phrase itself, so the
+   * payload is stated once, on the control that writes it.
+   *
+   * ABSENT IS THE RULING'S OTHER HALF, not an oversight: "when nothing non-redundant
+   * remains, the control is NOT this primitive — a plain verb button". Every mount
+   * whose row already prints the amount and the slot (`ScheduledDoseAction`, whose
+   * link renders both) passes nothing and keeps the pill it shipped with.
+   *
+   * ONLY WHILE THE DOSE IS UNRESOLVED. A chip is an OFFER; once taken or skipped the
+   * control is a RECEIPT (#2654) and its resolved styling is the whole point, so the
+   * chip stands down and the pill comes back — which is also what lets the settle
+   * animation keep landing on the take control after the tap that resolved it.
+   * Meaningless on the icon-only arms (`circle`, `compact`), which ruling 3 excludes
+   * from this primitive outright.
+   */
+  payload?: string;
   compact?: boolean;
   // The profile this dose belongs to (#858/#1373). Set on a multi-view Medications
   // board so a caregiver confirms a household member's scheduled dose without
@@ -133,6 +155,11 @@ export default function DoseStatusControl({
   const todayTap = useWritePipeline("dose-status");
   const datedTap = useWritePipeline("dose-day");
   const pipeline = date == null ? todayTap : datedTap;
+  // THE PROFILE'S ZONE, NOT THE BROWSER'S (#4559). An undated row has to name its own
+  // day when the tap is captured offline, and the server-resolved zone this provider
+  // carries is the same authority `today(profileId)` reads at replay — so the day the
+  // capture claims and the day the write cores judge cannot disagree.
+  const tz = useTimezone();
   const state = optimistic ?? (taken ? "taken" : skipped ? "skipped" : "clear");
   // Whichever transition this control could start from here is the one in flight.
   const busy =
@@ -251,7 +278,7 @@ export default function DoseStatusControl({
             message: "You're offline — reconnect to change a logged dose.",
           };
         const flow = target === "taken" ? "dose" : "skip-dose";
-        const capturedDate = date ?? localDate(tappedAt);
+        const capturedDate = date ?? dateStrInTz(tz, tappedAt);
         return {
           kind: "capture",
           flow,
@@ -299,6 +326,16 @@ export default function DoseStatusControl({
   // The visible verb stays short; the name says WHICH dose when the row does not.
   const named = (verb: string) => (itemName ? `${verb} — ${itemName}` : verb);
 
+  // THE VERB NAMES THE ACT (#4753, owner ruling 2). The retired framing named the
+  // BOOKKEEPING of the act — the checkbox, not the dose — and it goes with this
+  // family's adoption: taking a dose is `Take`, and undoing one is spelled the way the
+  // skip beside it already spells its own undo. The scan in
+  // `lib/__tests__/chip-residual.test.ts` holds the whole FILE to it, which is why the
+  // icon-only arms move with the chip arm rather than keeping a second vocabulary for
+  // the same tap.
+  const TAKE_VERB = "Take";
+  const takeName = named(isTaken ? "Undo take" : TAKE_VERB);
+
   const takeClass =
     variant === "circle"
       ? `tap-target flex h-(--control-box) w-(--control-box) shrink-0 items-center justify-center rounded-full border-2 text-sm transition ${
@@ -333,6 +370,20 @@ export default function DoseStatusControl({
               : DOSE_ACTION_NEUTRAL
         }`;
 
+  // THE OFFER ARM (#4753). A payload the row does not already state, a labeled arm to
+  // show it on, and a dose still unresolved — all three, or this is not the chip. The
+  // pill below is what a `false` here means, and it is a real answer rather than a
+  // fallback: an icon-only arm has no label to carry the payload (ruling 3), and a
+  // RESOLVED dose is a receipt whose whole job is to look resolved, which an offer
+  // chip must never be able to do.
+  //
+  // NO CLOCK DOOR IN THE SEAT, and the absence is deliberate. The statement this
+  // control writes is placed by its HOST (see `statement` above), so seating a second
+  // copy beside the pill would put the same door on screen twice; a mount that wants
+  // the door in the chip's seat hands it to the host's layout, not to this arm.
+  const offersChip =
+    payload != null && variant === "pill" && !compact && !isTaken && !isSkipped;
+
   return (
     <div
       className={`flex shrink-0 items-center ${DOSE_STATUS_GEOMETRY[variant]}`}
@@ -342,24 +393,39 @@ export default function DoseStatusControl({
     >
       {/* Selected-state registry keep (#2730): these buttons WRITE typed dose
           outcomes; they do not select a view, destination, or list filter. */}
-      <button
-        type="button"
-        onClick={() => apply(isTaken ? "clear" : "taken")}
-        disabled={busy}
-        data-settling={settling ? "true" : "false"}
-        className={`${takeClass}${settling ? " motion-settle" : ""}`}
-        aria-pressed={isTaken}
-        aria-label={named(isTaken ? "Mark not taken" : "Mark taken")}
-        data-testid="dose-take"
-      >
-        <IconCheck
-          className={variant === "circle" ? "h-4 w-4" : "h-3.5 w-3.5"}
-          stroke={2.5}
+      {offersChip ? (
+        <LabeledVerbChip
+          label={payload}
+          verb={TAKE_VERB}
+          tone="brand"
+          onAct={() => apply("taken")}
+          disabled={busy}
+          // The pill's two spans, said as one sentence, plus WHICH dose when the row
+          // does not name it. Spelled rather than left to the default so the name a
+          // reader hears is the label they see, in the order they see it.
+          ariaLabel={named(`${payload} · ${TAKE_VERB}`)}
+          testId="dose-take"
         />
-        {label ? (
-          <span className={compact ? "sr-only" : undefined}>{label}</span>
-        ) : null}
-      </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => apply(isTaken ? "clear" : "taken")}
+          disabled={busy}
+          data-settling={settling ? "true" : "false"}
+          className={`${takeClass}${settling ? " motion-settle" : ""}`}
+          aria-pressed={isTaken}
+          aria-label={takeName}
+          data-testid="dose-take"
+        >
+          <IconCheck
+            className={variant === "circle" ? "h-4 w-4" : "h-3.5 w-3.5"}
+            stroke={2.5}
+          />
+          {label ? (
+            <span className={compact ? "sr-only" : undefined}>{label}</span>
+          ) : null}
+        </button>
+      )}
       <button
         type="button"
         onClick={() => apply(isSkipped ? "clear" : "skipped")}

@@ -1,8 +1,29 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Label, type LabelProps } from "recharts";
+import { Label, ReferenceArea, ReferenceLine, type LabelProps } from "recharts";
+import type {
+  ChartDots,
+  ChartReference,
+  ChartTooltip,
+  ChartXAxis,
+  ChartYAxis,
+} from "./chart-spec";
 import { textWidth } from "@/lib/chart-svg";
+import { chartNeutral } from "@/lib/chart-colors";
+import {
+  ANNOTATION_KIND_META,
+  type AnnotationKind,
+} from "@/lib/trend-annotations";
+import {
+  categoryDateTicks,
+  CHART_VALUE_AXIS_NICE_TICKS,
+  CHART_VALUE_AXIS_TICKS,
+  formatTimeTick,
+  spansYearBoundary,
+  timeAxisDomain,
+  timeAxisTicks,
+} from "@/lib/chart-time-axis";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 import { useHydrated } from "./useHydrated";
 import type { ChartColors } from "./useChartColors";
@@ -80,6 +101,17 @@ export function chartGridProps(c: ChartColors) {
  * Axis props: ticks in a text token, no tick marks, no axis spine. The spine and
  * ticks duplicate information the gridlines and labels already carry.
  *
+ * AND THE TICK VALUES ARE A POLICY (#4924). Every card handed recharts an axis
+ * with no `tickCount` and no nice-number mode, so the numbers down the side were
+ * whatever its default `adaptive` fit produced: 4.75 / 5.7 / 6.65 hours of sleep,
+ * 55 / 66 / 77 / 88 / 99 bpm. Those are honest divisions of the data range and
+ * nobody reads a chart in ninths. `snap125` snaps the step to 1 / 2 / 2.5 / 5 at
+ * each order of magnitude, which is how a person would have chosen it.
+ *
+ * It applies to whichever axis carries NUMBERS: recharts ignores both props on a
+ * category axis, and the date axis takes an explicit tick set instead
+ * (`categoryDateTicks`, lib/chart-time-axis.ts).
+ *
  * `tickFill` overrides the tick color, and exists for exactly one case: a
  * dual-axis chart where the axis serves ONE series. Even there the answer is
  * usually the neutral token — identity belongs to the marks and the legend, and
@@ -91,6 +123,62 @@ export function chartAxisProps(c: ChartColors, tickFill?: string) {
     stroke: c.axis,
     tickLine: false,
     axisLine: false,
+    niceTicks: CHART_VALUE_AXIS_NICE_TICKS,
+    tickCount: CHART_VALUE_AXIS_TICKS,
+  } as const;
+}
+
+// ── THE TWO TIME SCALES (#4925) ─────────────────────────────────────────────
+//
+// A time series' x is one of exactly two things, and each was hand-wired per
+// card. THREE cards (biomarker, compare, source-compare) carried a byte-identical
+// six-prop `<XAxis dataKey="t" type="number" scale="time" …>` block, and the
+// category cards carried none at all until #4924 gave them a tick set — so the
+// same axis was three copies in one shape and a default in the other.
+//
+// One bag per SCALE, both spreading the same `chartAxisProps` and the same tick
+// policy (lib/chart-time-axis.ts). A card says which scale its x is; nothing else
+// about the axis is its business.
+
+/**
+ * A category axis of ISO days — every category is a calendar day (#2258), and the
+ * tick set is the calendar-step policy. The caller keeps its own `tickFormatter`,
+ * which is the one thing that genuinely differs (a month-bucketed plot labels
+ * `YYYY-MM`).
+ */
+export function chartDayAxisProps(c: ChartColors, dates: readonly string[]) {
+  const ticks = categoryDateTicks(dates);
+  return {
+    dataKey: "date",
+    // UNDEFINED, NEVER AN EMPTY ARRAY. recharts reads `ticks || niceTicks`, and
+    // `[]` is truthy — so a category axis whose values are not dates (an intraday
+    // HH:MM slot grid, a per-event index) would render NO ticks at all rather
+    // than falling back to its own fit.
+    ticks: ticks.length ? ticks : undefined,
+    ...chartAxisProps(c),
+  } as const;
+}
+
+/**
+ * A numeric axis of INSTANTS, where x is proportional to elapsed time (#402): a
+ * four-year lab gap renders four years wide. `dataKey: "t"` is the epoch column
+ * the callers already build.
+ */
+export function chartInstantAxisProps(
+  c: ChartColors,
+  dates: readonly string[]
+) {
+  const domain = timeAxisDomain([...dates]);
+  const ticks = timeAxisTicks(domain);
+  const withYear = spansYearBoundary(domain);
+  return {
+    dataKey: "t",
+    type: "number",
+    scale: "time",
+    domain: domain ?? (["auto", "auto"] as const),
+    ticks: ticks.length ? ticks : undefined,
+    tickFormatter: (v: number) => formatTimeTick(v, withYear),
+    ...chartAxisProps(c),
   } as const;
 }
 
@@ -232,6 +320,25 @@ export function chartBarCursorProps(c: ChartColors) {
   return { fill: c.grid, fillOpacity: 0.5 } as const;
 }
 
+// ── the curve (#4924) ───────────────────────────────────────────────────────
+
+/**
+ * The curve EVERY line in this app draws: straight segments between readings.
+ *
+ * It was `type="monotone"` written out at nine call sites across six cards — a
+ * mark decision that never made it into the scaffold, so it could not be fixed
+ * once. `curveMonotoneX` invents a smooth path through the points: on a dense
+ * daily series that is a harmless smoothing, and on FIVE WEIGH-INS over a
+ * quarter it draws a peak between two readings that nobody measured. The chart
+ * cannot tell those apart, because the two get the same curve.
+ *
+ * A straight segment asserts exactly what its two endpoints bound and nothing
+ * between them, which is the only claim a line here is entitled to make. The
+ * separate #2653 states still say how much to trust the segment (demoted for a
+ * thin series, cut at an over-limit hole); this decides its SHAPE, once.
+ */
+export const chartCurve = "linear" as const;
+
 // ── marks (Part 2: dots, annotations, stack gaps) ───────────────────────────
 
 /** Above this many points a line's per-point dots stop being data and start
@@ -258,7 +365,8 @@ export const DENSE_SERIES_POINTS = 30;
 // The two evictees moved to the channel each actually meant:
 //   • sparse emphasis → MARK SIZE (`CHART_SPARSE_DOT_R`, below): it was always
 //     about mark-vs-stroke prominence, not about the reading being exact.
-//   • two sources on one day (#2653 state 6) → paired OFFSET marks.
+//   • two sources on one day (#2653 state 6) → paired OFFSET marks
+//     (`chartOtherSourceDot`, below).
 //
 // `lib/__tests__/chart-fill-channel.test.ts` fails on a surface-filled dot
 // anywhere but `chartInexactDot`, so the channel cannot silently re-fork.
@@ -297,11 +405,43 @@ export function chartLineDot(
     color,
     pointCount,
     enabled = true,
-  }: { color: string; pointCount: number; enabled?: boolean }
+    isolated,
+    inexact,
+  }: {
+    color: string;
+    pointCount: number;
+    enabled?: boolean;
+    // Indices whose stroke is cut on BOTH sides (lib/trend-sparkline's
+    // `isolatedReadings`). They draw whatever the density says.
+    isolated?: ReadonlySet<number>;
+    // Indices whose value is not the whole of what it will be — a bucket the
+    // profile's local day is still filling (#4924). They draw HOLLOW, and they
+    // draw whatever the density says, because the mark is the claim.
+    inexact?: ReadonlySet<number>;
+  }
 ) {
-  if (!enabled || pointCount > DENSE_SERIES_POINTS) return false as const;
-  return chartExactDot(c, color);
+  if (!enabled) return false as const;
+  // TWO EXCEPTIONS TO THE CLUTTER RULE, AND THEY ARE THE SAME EXCEPTION (#4924).
+  //
+  // The density threshold is a CLUTTER rule: above thirty points the dots fuse
+  // into a heavy line and the stroke already says where every reading is, so
+  // hover carries the value instead. That argument holds for a reading the
+  // stroke DRAWS. It collapses for a reading the stroke cannot reach — an
+  // isolated reading had no segment and no dot, so a value that exists rendered
+  // as nothing at all — and for one whose mark carries a claim the stroke does
+  // not make, which is what hollow says. Both keep their marks at any density.
+  const dense = pointCount > DENSE_SERIES_POINTS;
+  // A series whose marks are all alike takes the PROP BAG, which is the shape
+  // recharts renders through its own `<Dot>` — same geometry, and it keeps the
+  // `recharts-dot` / `recharts-line-dot` classes specs and stylesheets address.
+  // Below the threshold an isolated reading is already drawn, so only an INEXACT
+  // point makes the marks differ from each other.
+  if (!dense && size(inexact) === 0) return chartExactDot(c, color);
+  if (dense && size(isolated) + size(inexact) === 0) return false as const;
+  return chartPointDot(c, color, { isolated, inexact, dense });
 }
+
+const size = (s?: ReadonlySet<number>) => s?.size ?? 0;
 
 /** The resting mark for an EXACT reading, unconditionally — for the two cards
  *  that draw their own `<circle>` per point and so cannot take a prop bag that
@@ -312,7 +452,72 @@ export function chartExactDot(c: ChartColors, color: string) {
     fill: color,
     stroke: c.surface,
     strokeWidth: 1,
+    // The RESTING-MARK selector, so a spec can count the marks a reader can
+    // actually see. recharts' own `.recharts-line-dot` is on the layer whether
+    // the mark is a dot or an empty group.
+    className: CHART_DOT_CLASS,
   } as const;
+}
+
+/** The class every resting mark carries. */
+export const CHART_DOT_CLASS = "chart-dot";
+
+/**
+ * The dot layer when the marks are not all alike: hollow where the value is not
+ * the whole of what it will be, solid where the stroke cannot reach, and nothing
+ * at all for a point a dense stroke already draws. A renderer rather than a prop
+ * bag because the decision is per POINT, and recharts hands a dot function the
+ * point's index.
+ */
+function chartPointDot(
+  c: ChartColors,
+  color: string,
+  {
+    isolated,
+    inexact,
+    dense,
+  }: {
+    isolated?: ReadonlySet<number>;
+    inexact?: ReadonlySet<number>;
+    dense: boolean;
+  }
+) {
+  // What recharts' own `<Dot>` would have put on the circle (`DotItem` merges the
+  // Line's `recharts-line-dot` with `recharts-dot`). A per-point RENDERER bypasses
+  // that entirely, so the classes are restated here rather than silently dropped:
+  // e2e/sleep-page.spec.ts finds the SRI card's marks by `.recharts-dot`, and a
+  // selector that stops matching because a mark became conditional is the same
+  // regression as the mark disappearing.
+  const rechartsDot = "recharts-dot recharts-line-dot";
+  const exact = chartExactDot(c, color);
+  const hollow = chartInexactDot(c, color);
+  return function PointDot({
+    cx,
+    cy,
+    index,
+  }: {
+    cx?: number | string;
+    cy?: number | string;
+    index?: number;
+  }) {
+    if (typeof cx !== "number" || typeof cy !== "number" || index == null) {
+      return <g />;
+    }
+    const mark = inexact?.has(index)
+      ? hollow
+      : !dense || isolated?.has(index)
+        ? exact
+        : null;
+    if (!mark) return <g />;
+    return (
+      <circle
+        {...mark}
+        className={`${rechartsDot} ${mark.className}`}
+        cx={cx}
+        cy={cy}
+      />
+    );
+  };
 }
 
 /**
@@ -331,7 +536,66 @@ export function chartInexactDot(c: ChartColors, color: string) {
     fill: c.surface,
     stroke: color,
     strokeWidth: 1.5,
+    className: CHART_DOT_CLASS,
+    "data-inexact": true,
   } as const;
+}
+
+// ── PAIRED MARKS: two sources, one day (#2653 state 6) ──────────────────────
+//
+// A day two sources reported is drawn as TWO marks at one x: the series' own where
+// it always sat, and a companion beside it at what the other source said. The PAIR
+// is the channel — one mark is one account of the day, two are two — which is what
+// owner call 3 left for this state after assigning fill to exactness. The three
+// spoken-for channels stay untouched, deliberately: FILL solid (both readings are
+// exact; a hollow companion would claim the other source reported a bound), SIZE
+// `CHART_DOT_R` (another reading at ordinary weight, neither emphasised nor
+// demoted), COLOUR the declared NEUTRAL that docs/internals/charts.md §1 reserves
+// for "a bucket that genuinely means other / none" — exactly what a source the
+// election did not keep is. A series hue would assert a second series.
+//
+// The x offset is what keeps the pair legible when the two numbers are close —
+// stacked coincident dots are the smudge the issue opened with — and small enough
+// that the companion still reads as its own day's rather than the next one's.
+//
+// NO CONNECTOR between the two marks. A hairline would state a RANGE, and two
+// accounts of one day are not a spread around a value; the caption below the plot
+// already names what the grey mark is. It would also cost an `ErrorBar` per series
+// on every chart in the funnel to buy one day's emphasis.
+//
+// AND IT DOES NOT REACH `SourceCompareChart`. That surface plots every source as its
+// own named, coloured, legended series on purpose — the pair is the glance-level
+// answer for a chart showing ONE series, and drawing it there would say twice, in two
+// vocabularies, what that chart already says once.
+
+/** How far a companion mark sits from its day's own x, in px. */
+export const CHART_PAIR_OFFSET_X = 4;
+
+/**
+ * The companion mark for a reading the source election did not keep. A renderer
+ * rather than a prop bag because the offset needs the `cx` recharts resolves.
+ */
+export function chartOtherSourceDot(c: ChartColors) {
+  return function OtherSourceDot({
+    cx,
+    cy,
+  }: {
+    cx?: number | string;
+    cy?: number | string;
+  }) {
+    if (typeof cx !== "number" || typeof cy !== "number") return <g />;
+    return (
+      <circle
+        cx={cx + CHART_PAIR_OFFSET_X}
+        cy={cy}
+        r={CHART_DOT_R}
+        fill={chartNeutral}
+        stroke={c.surface}
+        strokeWidth={1}
+        data-testid="chart-other-source-dot"
+      />
+    );
+  };
 }
 
 /** The hover dot. Bigger than every resting dot (and present even when resting
@@ -400,6 +664,36 @@ export function chartSparseDot(c: ChartColors, color: string) {
     fill: color,
     stroke: c.surface,
     strokeWidth: 1,
+  } as const;
+}
+
+// ── THE REFERENCE-MARK VOCABULARY (#4925) ───────────────────────────────────
+//
+// A protocol window and an event annotation are the same two marks on every
+// chart that carries them, and three cards spelled both out: the same
+// `fillOpacity` and `strokeOpacity` on the area, the same dash and opacity on the
+// line, each reading its colour out of `ANNOTATION_KIND_META` by hand. The
+// COLOUR is the kind's (identity), and the WEIGHT is the scaffold's — a window
+// has to sit under the series without competing with it, and that is one
+// decision, not three.
+
+/** A shaded intervention window (#660), behind the series. */
+export function chartWindowAreaProps(kind: AnnotationKind) {
+  const color = ANNOTATION_KIND_META[kind].color;
+  return {
+    fill: color,
+    fillOpacity: 0.08,
+    stroke: color,
+    strokeOpacity: 0.3,
+  } as const;
+}
+
+/** A vertical event marker (a medication start, an appointment, a situation). */
+export function chartAnnotationLineProps(kind: AnnotationKind) {
+  return {
+    stroke: ANNOTATION_KIND_META[kind].color,
+    strokeDasharray: chartDash.annotation,
+    strokeOpacity: 0.6,
   } as const;
 }
 
@@ -610,4 +904,343 @@ export function ChartLegend({ items }: { items: ChartLegendItem[] }) {
       ))}
     </ul>
   );
+}
+
+// ── THE SPEC, RESOLVED (#4925) ──────────────────────────────────────────────
+//
+// A `chart-spec.ts` spec is plain data: it NAMES a mark, an axis kind, a dot
+// policy, and holds no prop bag and no render function, so a public card can
+// build one without importing recharts (which is the whole point of the code
+// split). These functions are the other half of that bargain — they turn a name
+// back into the bags above, and they live here because that is where the bags
+// live. Both renderers call them; nothing else does.
+
+/** The x axis a spec declares. A sparkline's axis stays MOUNTED (it still scales
+ *  the series) and simply stops painting itself. */
+export function chartSpecXAxisProps(
+  c: ChartColors,
+  x: ChartXAxis,
+  sparkline = false
+) {
+  if (sparkline) {
+    const key =
+      x.kind === "numeric" || x.kind === "category"
+        ? x.dataKey
+        : x.kind === "instant"
+          ? "t"
+          : "date";
+    return { dataKey: key, ...chartSparklineAxisProps() } as const;
+  }
+  switch (x.kind) {
+    case "day":
+      return {
+        tickFormatter: x.tickFormatter,
+        ...chartDayAxisProps(c, x.dates),
+      };
+    case "instant":
+      return chartInstantAxisProps(c, x.dates);
+    case "numeric":
+      return {
+        dataKey: x.dataKey,
+        type: "number" as const,
+        domain: x.domain,
+        tickFormatter: x.tickFormatter,
+        ...chartAxisProps(c),
+        ...(x.title
+          ? {
+              label: chartAxisLabelProps(c, x.title, {
+                position: "insideBottom",
+                offset: -2,
+              }),
+            }
+          : {}),
+      };
+    case "category":
+      return {
+        dataKey: x.dataKey,
+        tickFormatter: x.tickFormatter,
+        ...chartAxisProps(c),
+      };
+  }
+}
+
+/** One value axis a spec declares. */
+export function chartSpecYAxisProps(
+  c: ChartColors,
+  y: ChartYAxis,
+  sparkline = false
+) {
+  return {
+    ...(y.id ? { yAxisId: y.id } : {}),
+    ...(y.orientation ? { orientation: y.orientation } : {}),
+    ...(sparkline ? chartSparklineAxisProps() : chartAxisProps(c)),
+    ...(y.domain ? { domain: y.domain } : {}),
+    ...(y.ticks ? { ticks: y.ticks } : {}),
+    ...(y.tickFormatter
+      ? { tickFormatter: (v: unknown) => y.tickFormatter!(Number(v)) }
+      : {}),
+    ...(y.allowDecimals != null ? { allowDecimals: y.allowDecimals } : {}),
+    ...(y.unit != null ? { unit: y.unit } : {}),
+  };
+}
+
+/** The tooltip a spec declares, over `chartTooltipProps`' surface and motion. */
+export function chartSpecTooltipProps(
+  c: ChartColors,
+  motion: ChartMotion,
+  t: ChartTooltip
+) {
+  const animate = t.animate ?? true;
+  return {
+    ...(t.cursor === "bar"
+      ? { cursor: chartBarCursorProps(c) }
+      : t.cursor === "sparkline-bar"
+        ? { cursor: chartSparklineBarCursorProps(c) }
+        : {}),
+    ...(t.filterNull === false ? { filterNull: false } : {}),
+    formatter: (v: unknown, name: unknown, item: unknown, index: number) =>
+      t.row(
+        v,
+        String(name),
+        (item as { payload?: Record<string, unknown> } | undefined)?.payload,
+        index
+      ),
+    ...(t.label ? { labelFormatter: (v: unknown) => t.label!(String(v)) } : {}),
+    ...chartTooltipProps(c, motion),
+    // AFTER the spread, both of them: a chart wanting its own numeric order, and
+    // one whose labelled bands can force an edge flip that crosses the card, are
+    // each overriding a default the shared props just set.
+    ...(t.order
+      ? { itemSorter: (item: { dataKey?: unknown }) => t.order!(item.dataKey) }
+      : {}),
+    isAnimationActive: animate && !motion.reduced,
+    ...(animate ? {} : { wrapperStyle: { transition: "none" } }),
+  };
+}
+
+/** The resting mark a series declares. */
+export function chartSpecDots(c: ChartColors, d: ChartDots) {
+  switch (d.policy) {
+    case "none":
+      return false as const;
+    case "density":
+      return chartLineDot(c, {
+        color: d.color,
+        pointCount: d.pointCount,
+        enabled: d.enabled,
+        isolated: d.isolated,
+        inexact: d.inexact,
+      });
+    case "sparse":
+      return chartSparseDot(c, d.color);
+    case "exact":
+      return chartExactDot(c, d.color);
+    case "bounded":
+      return chartBoundedDot(c, d.color, d.inexact);
+    case "other-source":
+      return chartOtherSourceDot(c);
+    case "curve-end-label":
+      return chartCurveEndLabel(c, d.label, d.atIndex);
+  }
+}
+
+/**
+ * Exact or hollow at EVERY point, whatever the density says — a lab series,
+ * where the readings ARE the content and a bounded assay result must show that
+ * it is one. `chartLineDot`'s clutter threshold is the wrong rule here: thirty
+ * lab draws is a well-measured analyte, not a smudge.
+ *
+ * Deliberately NOT carrying `CHART_DOT_CLASS` or recharts' own dot classes,
+ * which is a difference from `chartPointDot` and not an oversight: this is the
+ * markup `BiomarkerChartInner` has always emitted, and #4925 may not change a
+ * consumer's rendered output. Whether the biomarker chart's marks SHOULD be
+ * findable by the selectors every other card's marks answer to is a real
+ * question, and it is one for the issue that asks it.
+ */
+function chartBoundedDot(
+  c: ChartColors,
+  color: string,
+  inexact: ReadonlySet<number>
+) {
+  const exact = chartExactDot(c, color);
+  const hollow = chartInexactDot(c, color);
+  return function BoundedDot({
+    cx,
+    cy,
+    index,
+  }: {
+    cx?: number | string;
+    cy?: number | string;
+    index?: number;
+  }) {
+    const key = `dot-${index ?? 0}`;
+    if (typeof cx !== "number" || typeof cy !== "number")
+      return <g key={key} />;
+    const mark = index != null && inexact.has(index) ? hollow : exact;
+    return (
+      <circle
+        key={key}
+        cx={cx}
+        cy={cy}
+        r={mark.r}
+        fill={mark.fill}
+        stroke={mark.stroke}
+        strokeWidth={mark.strokeWidth}
+      />
+    );
+  };
+}
+
+/**
+ * A label at one end of a reference curve instead of a mark at every point. The
+ * growth chart's percentile numbers are its legend, and they are anchored at
+ * each band's OWN last sample: a trajectory point past a band's reference-age
+ * range extends the axis beyond where that curve ends, so anchoring every label
+ * at the global last row made them all vanish.
+ */
+function chartCurveEndLabel(c: ChartColors, label: string, atIndex: number) {
+  return function CurveEndLabel({
+    cx,
+    cy,
+    index,
+  }: {
+    cx?: number | string;
+    cy?: number | string;
+    index?: number;
+  }) {
+    const key = `lbl-${label}`;
+    if (typeof cx !== "number" || typeof cy !== "number" || index !== atIndex)
+      return <g key={key} />;
+    return (
+      <text
+        key={key}
+        x={cx + 3}
+        y={cy}
+        dy={3}
+        fontSize={CHART_LABEL_FONT_SIZE}
+        fill={c.tick}
+        textAnchor="start"
+      >
+        {label}
+      </text>
+    );
+  };
+}
+
+/**
+ * The reference marks a spec declares, as recharts elements.
+ *
+ * An ARRAY rather than a component, for the reason this file's header gives:
+ * recharts identifies its children by component type, so a `<ChartReferences/>`
+ * wrapping them would be silently ignored and the marks would simply not draw.
+ *
+ * `yAxisId` is threaded onto every mark because recharts requires one from every
+ * child as soon as ANY axis carries an id (the dual-axis compare chart).
+ */
+export function chartReferenceMarks(
+  c: ChartColors,
+  references: readonly ChartReference[],
+  yAxisId?: string
+) {
+  const axis = yAxisId ? { yAxisId } : {};
+  return references.map((r, i) => {
+    switch (r.mark) {
+      case "event":
+        return (
+          <ReferenceLine
+            key={`ref-${i}`}
+            {...axis}
+            x={r.x}
+            {...chartAnnotationLineProps(r.kind)}
+          />
+        );
+      case "window":
+        return (
+          <ReferenceArea
+            key={`ref-${i}`}
+            {...axis}
+            x1={r.x1}
+            x2={r.x2}
+            {...chartWindowAreaProps(r.kind)}
+          />
+        );
+      case "unlogged":
+        return (
+          <ReferenceArea
+            key={`ref-${i}`}
+            {...axis}
+            x1={r.x1}
+            x2={r.x2}
+            fill={c.grid}
+            fillOpacity={0.45}
+            stroke="none"
+            // A plot can be shaded by two unrelated things — a protocol window
+            // the reader toggled on, and a silence in the data. Both are
+            // reference areas, so the unlogged run carries its own class: "is a
+            // protocol shaded here?" must never be answered by a gap.
+            className="chart-unlogged-band"
+            label={
+              r.label == null
+                ? undefined
+                : chartFittedAnnotationLabel(r.label, c.tick, "insideTop")
+            }
+          />
+        );
+      case "now":
+        return (
+          <ReferenceLine
+            key={`ref-${i}`}
+            {...axis}
+            x={r.x}
+            stroke={r.color}
+            strokeDasharray={chartDash.now}
+            label={chartAnnotationLabel(r.label, r.labelColor ?? c.tick, "top")}
+          />
+        );
+      case "target":
+        return (
+          <ReferenceLine
+            key={`ref-${i}`}
+            {...axis}
+            y={r.y}
+            stroke={r.color}
+            strokeDasharray={chartDash[r.dash]}
+            {...(r.width != null ? { strokeWidth: r.width } : {})}
+            label={
+              r.label == null
+                ? undefined
+                : chartAnnotationLabel(
+                    r.label,
+                    r.color,
+                    r.labelPosition,
+                    r.labelFontSize != null ? { fontSize: r.labelFontSize } : {}
+                  )
+            }
+          />
+        );
+      case "band":
+        return (
+          <ReferenceArea
+            key={`ref-${i}`}
+            {...axis}
+            y1={r.y1}
+            y2={r.y2}
+            fill={r.color}
+            fillOpacity={r.fillOpacity}
+            {...(r.strokeOpacity != null
+              ? { stroke: r.color, strokeOpacity: r.strokeOpacity }
+              : {})}
+            label={
+              r.label == null
+                ? undefined
+                : chartAnnotationLabel(
+                    r.label,
+                    r.labelColor ?? c.tick,
+                    r.labelPosition ?? "insideLeft"
+                  )
+            }
+          />
+        );
+    }
+  });
 }

@@ -21,8 +21,9 @@ describe("parseHealthConnectPayload — guards", () => {
       hrMinutes: [],
       activities: [],
       vitals: [],
+      glucoseTrace: [],
       skipped: 0,
-      details: { warnings: [], origins: [] },
+      details: { warnings: [], origins: [], tally: {} },
       pushedAt: null,
     };
     expect(parse(null)).toEqual(empty);
@@ -387,14 +388,78 @@ describe("parseHealthConnectPayload — heart rate bucketing", () => {
     expect(out.skipped).toBe(0);
   });
 
-  it("diagnoses a known record type whose whole batch has an unknown shape", () => {
+  it.each([
+    ["heart_rate", { time: "2026-06-15T08:00:00Z", renamed_average: 84 }],
+    ["heart_rate_variability", { time: "2026-06-15T08:00:00Z", renamed: 62 }],
+    // The three the OLD code could not diagnose: only heart rate and HRV carried a
+    // hand-placed warning, so respiratory rate, SpO2 and skin temperature dropped in
+    // total silence when v1.9.17 renamed their fields (#4956). The diagnosis is now
+    // derived from the per-type tally, so it covers every consumed type by
+    // construction rather than by anyone having remembered to write it.
+    ["respiratory_rate", { time: "2026-06-15T08:00:00Z", renamed: 14 }],
+    ["oxygen_saturation", { time: "2026-06-15T08:00:00Z", renamed: 97 }],
+    ["skin_temperature", { time: "2026-06-15T08:00:00Z", renamed: -0.4 }],
+  ])(
+    "diagnoses %s when its whole batch has an unknown shape",
+    (key, record) => {
+      const out = parse({ [key]: [record] });
+      expect(out.skipped).toBe(1);
+      expect(out.details.tally[key]).toEqual({ received: 1, landed: 0 });
+      expect(out.details.warnings).toEqual([
+        `${key} records were all skipped — exporter shape not recognized`,
+      ]);
+    }
+  );
+
+  // The converse, and it is the half a warning-only guard cannot state: a type that
+  // PARTLY lands is not a dropped type, and must stay quiet. A tally that reported
+  // `landed: 0` whenever anything was skipped would pass every case above while
+  // crying wolf on the ordinary out-of-range reading.
+  it("stays quiet for a type that lands some of its records", () => {
     const out = parse({
-      heart_rate: [{ time: "2026-06-15T08:00:00Z", renamed_average: 84 }],
+      respiratory_rate: [
+        { time: "2026-06-15T08:00:00Z", avg: 14, min: 14, max: 14 },
+        { time: "2026-06-15T08:01:00Z", renamed: 15 },
+      ],
     });
     expect(out.skipped).toBe(1);
-    expect(out.details.warnings).toEqual([
-      "heart_rate records were all skipped — exporter shape not recognized",
-    ]);
+    expect(out.details.tally.respiratory_rate).toEqual({
+      received: 2,
+      landed: 1,
+    });
+    expect(out.details.warnings).toEqual([]);
+  });
+
+  // The exporter's two shapes, per type, in one table (#4956). The bucketed column is
+  // what v1.9.17 defaults every sample series to; the raw column is what it sent
+  // before, and both must land the same value through the same reader.
+  it.each([
+    [
+      "heart_rate_variability",
+      { rmssd_millis: 54 },
+      { avg: 54, min: 54, max: 54 },
+    ],
+    ["oxygen_saturation", { percentage: 97 }, { avg: 97, min: 97, max: 97 }],
+    ["respiratory_rate", { rate: 14 }, { avg: 14, min: 14, max: 14 }],
+    [
+      "skin_temperature",
+      { delta_celsius: -0.4 },
+      {
+        avg_delta_celsius: -0.4,
+        min_delta_celsius: -0.4,
+        max_delta_celsius: -0.4,
+      },
+    ],
+    ["heart_rate", { bpm: 71 }, { avg: 71, min: 71, max: 71 }],
+  ])("reads both exporter shapes of %s", (key, raw, bucketed) => {
+    for (const shape of [raw, bucketed]) {
+      const out = parse({
+        [key]: [{ time: "2026-06-15T08:00:00Z", ...shape }],
+      });
+      expect(out.details.tally[key]).toEqual({ received: 1, landed: 1 });
+      expect(out.skipped).toBe(0);
+      expect(out.details.warnings).toEqual([]);
+    }
   });
 });
 

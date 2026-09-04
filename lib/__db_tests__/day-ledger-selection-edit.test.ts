@@ -13,9 +13,11 @@
 //      only the intersection — so a bystander profile's row id, a skipped dose, a
 //      `__protein__` event and a stale id are all refused BY NAME rather than dropped
 //      silently, and the bystander's row is re-read afterwards to prove nothing moved.
-//   3. Every bound is the core's, not the surface's. A future day, a day past the
-//      picker's span, and a time that has not happened yet are refused here with
-//      nothing written, because a forged POST never sees the surface's markup.
+//   3. Every bound is the core's, not the surface's. A future day and a time that has
+//      not happened yet are refused here with nothing written, because a forged POST
+//      never sees the surface's markup. The FAR PAST is not a bound at all since
+//      #4754 — the converse is the year-old move above, which has to keep passing for
+//      the two remaining refusals to mean anything.
 //
 // Every value is synthetic.
 
@@ -171,6 +173,41 @@ describe("Day-ledger selection edit — the batch reaches both tables", () => {
     // THE CONVERSE OF A BARE RE-DATE: a move that left the instant behind would put a
     // stated time on a day it does not belong to — exactly what judgeStatedAt refuses —
     // so the wall clock is asserted, not just the date.
+    expect(servingRow(day.servingId)).toEqual({
+      date: target,
+      occurredAt: `${target}T12:15:00Z`,
+      timeSource: "stated",
+    });
+    expect(doseRow(day.logId)).toEqual({
+      date: target,
+      occurredAt: `${target}T08:30:00Z`,
+    });
+  });
+
+  it("Move to day reaches a year-old day, as far back as the deep doors reach", () => {
+    // #4754's ruling: the move bound is the shared not-future invariant and nothing
+    // more. A year back is the case the retired 7-day floor refused, and it is the
+    // distance `/history`'s food door and `logHistoricalDose` already reach for the
+    // same profile under the same access — so the ledger's batch may reach it too.
+    const day = seedDay();
+    applied(
+      editDayLedgerSelectionCore(
+        day.profileId,
+        day.date,
+        { servings: [day.servingId], doses: [] },
+        { kind: "set-time", hhmm: "12:15" }
+      )
+    );
+    const target = shiftDateStr(day.date, -365);
+    const outcome = applied(
+      editDayLedgerSelectionCore(
+        day.profileId,
+        day.date,
+        { servings: [day.servingId], doses: [day.logId] },
+        { kind: "move-day", date: target }
+      )
+    );
+    expect(outcome).toMatchObject({ applied: 2, refused: [] });
     expect(servingRow(day.servingId)).toEqual({
       date: target,
       occurredAt: `${target}T12:15:00Z`,
@@ -358,14 +395,6 @@ describe("Day-ledger selection edit — the bounds are the core's", () => {
         ({
           kind: "move-day",
           date: shiftDateStr(today(day.profileId), 1),
-        }) as const,
-    ],
-    [
-      "a day beyond the ledger's own picker span",
-      (day: ReturnType<typeof seedDay>) =>
-        ({
-          kind: "move-day",
-          date: shiftDateStr(today(day.profileId), -7),
         }) as const,
     ],
     [

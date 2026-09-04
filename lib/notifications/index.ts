@@ -1,26 +1,20 @@
 // Channel registry + dispatch. Adding a channel = implement NotificationChannel
 // and list it here.
 
-import { writeTx } from "../db";
-import { instantNow } from "../clock";
 import { createLogger } from "../log";
 import { type DispatchOptions, type NotificationMessage } from "./types";
 import { telegramChannel } from "./telegram";
+import { composeForSend } from "./compose";
 import { pushChannel } from "./push";
 import { homeAssistantChannel } from "./home-assistant";
 import { emailChannel } from "./email";
-import { decideMarker, type NotifyErrorMarker } from "./delivery-status";
+import type { NotifyErrorMarker } from "./delivery-status";
 import {
   NOTIFICATION_DISPATCH_TIMEOUT_MS,
   settleWithinDeadline,
   type DispatchResult,
 } from "./dispatch-deadline";
-import {
-  readDeliveryMarker,
-  readFailedChannel,
-  setDeliveryFailure,
-  clearDeliveryMarker,
-} from "./delivery-marker";
+import { readDeliveryMarker, recordDeliveryOutcome } from "./delivery-marker";
 
 const log = createLogger("notifications");
 
@@ -42,56 +36,12 @@ export {
 } from "./dispatch-deadline";
 export type { DispatchResult } from "./dispatch-deadline";
 
-// The last persisted delivery failure for the Settings surface, or null when the
-// most recent attempted send succeeded (marker cleared). Global, like the backup
-// error — one shared bot serves every profile, so a revoked token / broken send
-// is an instance-level signal. Now backed by the `notify_lifecycle` row (issue #942,
-// migration 061) instead of three ad-hoc settings keys — same returned shape.
+// The aggregate delivery failure for Settings → Server, or null when no owner is
+// failing. Since #2565 this is a FOLD over the scoped per-owner lifecycle rows
+// (lib/notifications/delivery-marker.ts) rather than a fact of its own — the strip on
+// Settings → Notifications reads the owner rows directly and never this.
 export function getNotifyError(): NotifyErrorMarker | null {
   return readDeliveryMarker();
-}
-
-// Fold a dispatch fan-out into the global delivery-health marker. Set it when any
-// attempted channel failed; clear it when a healthy dispatch actually exercised the
-// previously-failing channel; leave it untouched otherwise — nothing attempted (no
-// configured channel), or a healthy dispatch that never touched the broken channel
-// (#192: a Telegram-only profile must not clear a still-broken push recorded by a
-// both-channels profile earlier in the same tick). Best-effort — a settings write
-// must never turn a delivery into a throw, so failures are logged and swallowed.
-function recordDeliveryOutcome(results: DispatchResult[]): void {
-  try {
-    // Read-decide-write in ONE immediate transaction (issue #468): the marker is a
-    // single lifecycle row, written by BOTH the web app and the notify tick. Without
-    // the write lock taken at BEGIN, a set from one process could interleave with a
-    // clear from the other and — worse — feed the #192 channel-aware clear a stale
-    // prevFailedChannel read a moment before another process rewrote it. writeTx makes
-    // the read (the prior failed channel) and the row write atomic against the other
-    // writer.
-    writeTx(() => {
-      // The channel of the currently-recorded failure, if any (empty when the
-      // marker is clear).
-      const prevFailedChannel = readFailedChannel();
-      const decision = decideMarker(results, prevFailedChannel);
-      if (decision.action === "set") {
-        // `notify_lifecycle.at` is on the canonical stored-instant convention
-        // (migration 167, #2233): the shape comes from lib/date.ts via the clock
-        // seam, never from a hand-built `new Date().toISOString()` — which wrote
-        // a third serialization (milliseconds + Z) into a schema that has two.
-        setDeliveryFailure(
-          decision.failure.channel,
-          decision.failure.error,
-          instantNow()
-        );
-      } else if (decision.action === "clear") {
-        clearDeliveryMarker();
-      }
-      // "freeze" → leave the row untouched.
-    });
-  } catch (e) {
-    log.error("recording delivery outcome failed", {
-      err: e instanceof Error ? e.message : String(e),
-    });
-  }
 }
 
 // The channels dispatch() fans a message out to. All are tried on every send; each
@@ -131,13 +81,20 @@ export async function dispatch(
     log.warn("no configured channels; nothing sent");
     return [];
   }
+  // COMPOSED ONCE, HERE (#4538) — after the "is anything sending?" gate, so a profile
+  // with no channel costs no reads. Attribution used to depend on which caller
+  // remembered it while the rebuild applied it unconditionally, so a label could appear
+  // on a message that was sent without one. Every dispatch is an UNBIDDEN send, which
+  // is what `telegram-nudge` means (#3087); the on-demand surfaces go out through
+  // `sendTelegramMessage` instead.
+  const composed = composeForSend(profileId, msg, "telegram-nudge");
   const results = await settleWithinDeadline(
     channels.map((c) => ({
       id: c.id,
       promise: (async (): Promise<DispatchResult> => {
         try {
-          await c.send(profileId, msg, opts);
-          log.info("sent", { channel: c.id, title: msg.title });
+          await c.send(profileId, composed, opts);
+          log.info("sent", { channel: c.id, title: composed.title });
           return { id: c.id, ok: true };
         } catch (e) {
           const error = e instanceof Error ? e.message : String(e);
@@ -156,8 +113,17 @@ export async function dispatch(
         }
       )
   );
-  // Persist the delivery-health marker so a broken bot token / chat id becomes
-  // visible in Settings instead of only surfacing as a tick exit code (#131).
-  recordDeliveryOutcome(results);
+  // Each channel recorded its owners' outcomes as it sent (#2565). The one outcome
+  // no adapter can see is its own deadline: a channel still pending when the shared
+  // deadline fired is Erroring for the owners it was addressing (#3057), recorded
+  // here against the audience the adapter names. Its late settlement, if any,
+  // records the real outcome over this one — the row is about the latest attempt.
+  results.forEach((r, i) => {
+    if (r.timedOut)
+      recordDeliveryOutcome(r.id, channels[i].owners(profileId, msg, opts), {
+        ok: false,
+        error: r.error ?? "timed out",
+      });
+  });
   return results;
 }

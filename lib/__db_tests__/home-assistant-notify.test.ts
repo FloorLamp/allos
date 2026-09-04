@@ -119,7 +119,11 @@ describe("dispatch to an HA-only profile", () => {
     );
     const body = JSON.parse(init.body as string);
     expect(body).toMatchObject({
-      title: "💊 Morning supplements",
+      // ATTRIBUTED, and on EVERY channel (#4538). `dispatch` composes the "[Name] "
+      // label once for the whole fan-out, so a Home Assistant announcement in a
+      // two-profile instance says whose reminder it is exactly as Telegram does — it
+      // used to depend on whether the caller had remembered to apply it.
+      title: "[Mom] 💊 Morning supplements",
       kind: "dose",
       profile: "Mom",
       profile_id: p,

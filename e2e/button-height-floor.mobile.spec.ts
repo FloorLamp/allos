@@ -7,7 +7,7 @@ import {
   TAP_TARGET_MIN_RENDERED_PX,
 } from "@/lib/tap-floor-tokens";
 import { roundControlBoxExtraLines } from "./control-box-lines";
-import { settledClick } from "./helpers";
+import { openFoodAdd, settledClick } from "./helpers";
 
 // THE CONTROL BOX (`--control-box` in app/globals.css, SECTION: Touch tap
 // targets), MEASURED — owner ruling #3938; the family floor it replaces was
@@ -139,18 +139,21 @@ const BOX_ROUTES: { route: string; ready: string; surfaces: BoxSurface[] }[] = [
       { kind: "typed field", testId: "m-time", repairable: false },
     ],
   },
-  // THE STOOL SHEET'S "Happened earlier?" DISCLOSURE (#3273). It is
-  // `btn-ghost btn-sm` and carry no `.tap-target`, so the `/nutrition` sweep further
-  // down is structurally unable to see them and no other entry here names them — two
-  // new phone controls outside the standing census is the gap #3938 exists to close.
-  // One route per sheet, because the two forms are different overlays; both are a
-  // plain `goto` plus a readiness marker like every entry above.
+  // THE SHARED TIME STATEMENT'S CLOCK DOOR (#3273's question, #4426's rendering).
+  // These were `btn-ghost btn-sm` text buttons carrying no `.tap-target`, so the
+  // `/nutrition` sweep further down was structurally unable to see them and no other
+  // entry here names them — two phone controls outside the standing census is the gap
+  // #3938 exists to close. #4426 made them the ONE clock door: a hand-rolled 34px
+  // icon button in the dose-action paint, which is a DIFFERENT construction from
+  // `.btn`'s derived padding and is exactly why the two entries stay. One route per
+  // sheet, because the two forms are different overlays; both are a plain `goto` plus
+  // a readiness marker like every entry above.
   {
     route: "/?quick=log-stool",
     ready: "quick-entry-stool",
     surfaces: [
       {
-        kind: "btn-ghost disclosure",
+        kind: "icon-only clock door",
         testId: "stool-when-toggle",
         repairable: true,
       },
@@ -161,7 +164,7 @@ const BOX_ROUTES: { route: string; ready: string; surfaces: BoxSurface[] }[] = [
     ready: "quick-entry-practice-list",
     surfaces: [
       {
-        kind: "btn-ghost disclosure",
+        kind: "icon-only clock door",
         testId: "practice-when-toggle",
         repairable: true,
       },
@@ -912,6 +915,7 @@ test.describe("the hit-area mechanism reaches the floor it claims (#3486)", () =
     page,
   }) => {
     await page.goto("/nutrition");
+    await openFoodAdd(page);
     await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
     // Wait for the CONTENT this measures. A row still folded behind "more
@@ -975,6 +979,12 @@ test.describe("the hit-area mechanism reaches the floor it claims (#3486)", () =
   }) => {
     await page.goto("/nutrition");
     await expect(page.getByTestId("food-log-bar")).toBeVisible();
+    // EVERY `.tap-target` ON THIS PAGE IS IN THE ADD LAYER, and the add layer folds
+    // behind one door (#4477). Left closed, this sweep measures ZERO controls — which
+    // the visibleCount guard below correctly reds on, and which is the sweep asking
+    // its question of a page that is not showing its controls rather than of the
+    // controls themselves.
+    await openFoodAdd(page);
 
     // Measure visibility and geometry from the SAME rendered snapshot. A locator
     // `:visible` filter and a later `evaluateAll` can straddle a responsive/details

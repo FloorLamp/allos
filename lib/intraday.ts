@@ -85,6 +85,20 @@ export interface IntradayInput {
   // Wall-clock minute of "now", set ONLY when the rendered day is the profile's
   // today. Null on every other day (no now-marker).
   nowMinute: number | null;
+  // THE DAYLIGHT BAND (#4918 ruling 3). Sunrise/sunset in minutes past local
+  // midnight, straight from lib/sun.ts's solarDay — the SAME reader DaylightChip's
+  // icon row gates on (both endpoints present; null on a polar day/night, where the
+  // chip's own text line already says the honest thing and a background band would
+  // only compete with it). Null whenever there is no home location, or nothing to
+  // draw — the day view asks; the dashboard's "day so far" card passes null.
+  solarDay: { sunriseMin: number; sunsetMin: number } | null;
+  // THE EXPECTED SLEEP WINDOW (#4918 ruling 7) — the profile's typical bed/wake
+  // pair, in raw CLOCK minutes (typicalBedTime/typicalWakeTime, 0..1439), the SAME
+  // pair the dashboard's usual band already reads (#3253). The caller passes this
+  // only when TODAY is waiting for last night's sleep (getSleepWaitingState
+  // returned a state) — never derived here, never on a past day, where the window
+  // means nothing.
+  expectedSleep: { bedMinutes: number; wakeMinutes: number } | null;
 }
 
 // ── Model (what the SVG draws) ───────────────────────────────────────────────
@@ -116,12 +130,21 @@ export interface IntradaySleepBlock {
   stages: { stage: SleepStage; startMinute: number; endMinute: number }[];
 }
 
+/** Which ledger a block's window travelled on — the row it draws in (#4852). */
+export type IntradayBlockSource = "activity" | "practice";
+
 // A drawn SPAN on the axis: an activity's window, or one practice session's (#3142).
 // Not "a workout" — the layer is keyed on having a bounded window, and the title is
 // whatever feed event the window travelled on.
+//
+// `source` says WHICH, because #4852 gives the two their own rows: a morning workout
+// and an evening sauna stacked on one line read as one kind of thing. Same shape and
+// colour, different row — so the split is a placement decision the layout makes, and
+// this field is the only thing the model has to say about it.
 export interface IntradayBlock {
   key: string;
   eventId: string;
+  source: IntradayBlockSource;
   anchorId: string;
   startMinute: number;
   endMinute: number;
@@ -159,6 +182,16 @@ const EXCLUDED_TICK_CATEGORIES: ReadonlySet<TimelineCategory> = new Set([
   "insight",
 ]);
 
+// The resolved expected-sleep window, in the axis's own relative minute space
+// (see buildIntradayModel) — mirrors IntradaySleepBlock's clip shape without the
+// fields (key, stages) a window that never happened has no use for.
+export interface IntradayExpectedSleep {
+  startMinute: number;
+  endMinute: number;
+  clippedStart: boolean;
+  clippedEnd: boolean;
+}
+
 export interface IntradayModel {
   date: string;
   minutesInDay: number;
@@ -167,6 +200,8 @@ export interface IntradayModel {
   blocks: IntradayBlock[];
   ticks: IntradayTick[];
   nowMinute: number | null;
+  solarDay: { sunriseMin: number; sunsetMin: number } | null;
+  expectedSleep: IntradayExpectedSleep | null;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -296,11 +331,15 @@ export function splitHrSegments(
 
 // ── The model ────────────────────────────────────────────────────────────────
 
-// Build the day's intraday model, or NULL when nothing on the day is intraday —
-// so an ordinary day (a weigh-in and a lab panel, none of them clock-timed, no HR,
-// no sleep) renders no empty frame at all. Each layer is independently data-gated
-// the same way.
-export function buildIntradayModel(input: IntradayInput): IntradayModel | null {
+// Build the day's intraday model. ALWAYS returns one (#4918's empty-day ruling):
+// a day with nothing on it (no HR, no sleep, no windowed workout, no clock-timed
+// event) gets a model whose four data layers are all empty rather than no model at
+// all — the day view's card draws the daylight band and its context line on that
+// model just as it would any other, and only the ROWS are missing. Each layer is
+// independently data-gated the same way; a caller that only cares whether there is
+// anything to plot reads hr/sleep/blocks/ticks directly (the dashboard's "day so
+// far" card gates on hr.pointCount, unaffected by this).
+export function buildIntradayModel(input: IntradayInput): IntradayModel {
   const points = downsampleHr(input.date, input.hr);
   const hr: IntradayHrLayer | null =
     points.length > 0
@@ -337,8 +376,16 @@ export function buildIntradayModel(input: IntradayInput): IntradayModel | null {
   // `activityWindow` can bound — it has a start AND an end, stated or derived from a
   // duration — is a BLOCK; a window carrying only a start is a TICK at that minute,
   // which is the honest render for a session whose length nobody said. Inferring a
-  // length from typical durations would be fabrication, so a start-only session gets
-  // the same shape every other clock-timed event with no span gets.
+  // length from typical durations would be fabrication AT THIS TIER, so a start-only
+  // session gets the same shape every other clock-timed event with no span gets.
+  //
+  // NARROWED (#4775, owner ruling 2026-09-02): a Start-now practice no longer arrives
+  // here start-only. `startLivePracticeSession` stamps the practice's OWN usual
+  // duration onto the row and marks it `derived_window = 1`, which is a claim the row
+  // makes about itself and carries into its own copy ("about 15 min") — not an
+  // inference this renderer makes on the row's behalf, which is what the sentence
+  // above forbids and still forbids. A practice with no recorded duration writes none,
+  // so a start-only row still reaches this branch and still draws as a tick.
   //
   // The start-only tick is why this loop places ticks at all rather than leaving them
   // to the rail below: `sortTime` for a practice session is `bestKnownInstant`, which
@@ -391,6 +438,12 @@ export function buildIntradayModel(input: IntradayInput): IntradayModel | null {
       blocks.push({
         key: event.id,
         eventId: event.id,
+        // The row the block draws in (#4852). The feed CATEGORY is the discriminator
+        // because it is the only thing here that knows which ledger the row came
+        // from: `clockWindow` is carried by exactly two producers — an activity
+        // (lib/timeline.ts) and one practice session (lib/history.ts) — and nothing
+        // about the window itself distinguishes them.
+        source: event.category === "practice" ? "practice" : "activity",
         anchorId: timelineEntryAnchorId(event.id),
         ...clipped,
         title: event.title,
@@ -445,16 +498,27 @@ export function buildIntradayModel(input: IntradayInput): IntradayModel | null {
   }
   ticks.sort((a, b) => a.minute - b.minute || a.key.localeCompare(b.key));
 
-  if (!hr && sleep.length === 0 && blocks.length === 0 && ticks.length === 0) {
-    return null;
-  }
-
   const nowMinute =
     input.nowMinute != null &&
     input.nowMinute >= 0 &&
     input.nowMinute <= MINUTES_IN_DAY
       ? input.nowMinute
       : null;
+
+  // Bed sits the NIGHT BEFORE wake whenever the two clock minutes say so: a
+  // typical 23:00 bedtime relative to a 06:30 wake crosses local midnight, so it
+  // draws from BEFORE this day's 00:00 — negative, like any other span that bleeds
+  // in from yesterday (clipToDay already knows how to draw that; see sleep above).
+  // A bedtime that is itself a small clock minute (a 01:00 night owl) already sits
+  // on the SAME day as its wake and needs no shift.
+  const expectedSleep = input.expectedSleep
+    ? clipToDay(
+        input.expectedSleep.bedMinutes > input.expectedSleep.wakeMinutes
+          ? input.expectedSleep.bedMinutes - MINUTES_IN_DAY
+          : input.expectedSleep.bedMinutes,
+        input.expectedSleep.wakeMinutes
+      )
+    : null;
 
   return {
     date: input.date,
@@ -464,5 +528,46 @@ export function buildIntradayModel(input: IntradayInput): IntradayModel | null {
     blocks,
     ticks,
     nowMinute,
+    solarDay: input.solarDay,
+    expectedSleep,
   };
+}
+
+// ── The lag sentence (#4767 item 5) ─────────────────────────────────────────
+
+// A worn series ENDS WHERE THE SYNC ENDED, not where the body stopped. Drawn to the
+// right edge of a day axis that keeps running, a three-hour sync gap looks exactly
+// like three hours of measured flat — which is the one reading this chart must never
+// invite. So every mount states the distance between the last sample and now, in
+// words, beside the drawing.
+//
+// TODAY ONLY. `nowMinute` is non-null only on the profile's own today (the gather
+// sets it there and nowhere else), and a past day has no lag to state: "synced 6h
+// ago" about last Tuesday would be a sentence about nothing.
+//
+// The workout case is called out separately because it is the one this issue's use
+// case turns on — "I just finished, what did it do to me?" — and "synced 3h ago"
+// answers a different question than "your watch has told us nothing since the
+// session you just finished".
+export function intradayFreshness(model: IntradayModel): string | null {
+  const nowMinute = model.nowMinute;
+  if (nowMinute == null) return null;
+  const segments = model.hr?.segments ?? [];
+  const lastSegment = segments[segments.length - 1];
+  const lastPoint = lastSegment?.[lastSegment.length - 1];
+  if (!lastPoint) return "No heart rate synced today yet";
+  const lagMin = Math.max(0, Math.round(nowMinute - lastPoint.minute));
+  // The latest window that CLOSED after the last sample landed. `endMinute` is
+  // clipped to the day by the model, so this cannot name tomorrow's session.
+  const uncovered = model.blocks
+    .filter((block) => block.endMinute > lastPoint.minute)
+    .sort((a, b) => b.endMinute - a.endMinute)[0];
+  if (uncovered) return `No data since ${uncovered.title} yet`;
+  if (lagMin < 1) return "Synced just now";
+  if (lagMin < 60) return `Synced ${lagMin} min ago`;
+  const hours = Math.floor(lagMin / 60);
+  const minutes = lagMin % 60;
+  return minutes === 0
+    ? `Synced ${hours}h ago`
+    : `Synced ${hours}h ${minutes}m ago`;
 }

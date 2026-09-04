@@ -149,12 +149,13 @@ test("a clean tab takes the deploy by itself and says so afterwards (#2471)", as
   ).toBeNull();
   // ANY client-side navigation will do here — this case is about the taken-build
   // marker, not about which row was clicked. It uses a TOP-LEVEL row on purpose:
-  // #3079 moved Timeline into the collapsed "Plan & review" group, and a spec that
-  // has no opinion about nav shape should not have to expand a group to say so.
+  // #4965 moved Trends into the collapsed "Plan & review" group and put History
+  // in its old top-level slot, and a spec that has no opinion about nav shape
+  // should not have to expand a group to say so.
   await followLink(
     page,
-    page.locator("aside nav").getByRole("link", { name: "Trends" }),
-    /\/trends/
+    page.locator("aside nav").getByRole("link", { name: "History" }),
+    /\/history/
   );
   expect(
     await page.evaluate((k) => sessionStorage.getItem(k), UPDATE_TAKEN_KEY)
@@ -236,8 +237,8 @@ test("with the automatic attempt spent, the deploy raises exactly one bar and it
   // client navigation is the subject, not the nav registry.
   await followLink(
     page,
-    page.locator("aside nav").getByRole("link", { name: "Trends" }),
-    /\/trends/
+    page.locator("aside nav").getByRole("link", { name: "History" }),
+    /\/history/
   );
   await expect(bar).toBeVisible();
   await expect(page.getByTestId("update-ready-bar")).toHaveCount(1);
@@ -469,7 +470,13 @@ test("a keystroke inside the autosave debounce is flushed, not crossed (#3371)",
   await expect(page.getByTestId("routines-section")).toBeVisible();
   // `hydratedClick`: this follows a fresh goto onto a route that rewrites its own URL
   // at hydration, and a click swallowed inside that window leaves the builder closed.
-  await hydratedClick(page, page.getByTestId("routine-new"));
+  // Scoped past the staged copy for the same reason `routines-section` is filtered
+  // below: a streamed boundary lands in a `<div hidden>` before the inline script
+  // relocates it, so a bare id lookup is strict-mode ambiguous in that window.
+  await hydratedClick(
+    page,
+    page.getByTestId("routine-new").filter({ visible: true })
+  );
   const builder = page.getByTestId("routine-builder");
   await expect(builder).toBeVisible();
   await expect(builder).toHaveAttribute("data-unsaved", "false");
@@ -609,12 +616,28 @@ test("a keystroke inside the autosave debounce is flushed, not crossed (#3371)",
   // `RoutinesSection` once, and its comment records that a second anchor would emit a
   // duplicate id), so two is a transition artifact, never a shipped duplicate.
   //
-  // WAITING FOR THE COUNT TO SETTLE IS THE PRECONDITION THIS TEST ALWAYS HAD, unstated.
-  // It is asserted rather than worked around with `.first()`: a genuine duplicate id
-  // still reds here, which is exactly what `.first()` would have hidden.
-  await expect(page.getByTestId("routines-section")).toHaveCount(1);
-  await expect(page.getByTestId("routines-section")).toBeVisible();
-  await hydratedClick(page, page.getByTestId("routine-new"));
+  // WAITING FOR THE COUNT TO SETTLE IS THE PRECONDITION THIS TEST ALWAYS HAD, unstated
+  // — but it has to be waited for on the RIGHT locator, and the first attempt at this
+  // (2026-09-02) got that wrong. `toHaveCount(1)` passed and the very next line still
+  // saw two, because the reload's two trees do not overlap in the direction that fix
+  // assumed: the count reaches one when the outgoing document is alone, and goes back
+  // to two as the incoming one mounts beside it. A settle assertion on the raw locator
+  // can therefore pass BEFORE the moment it was added to survive.
+  //
+  // So the wait is on the live tree instead: exactly one VISIBLE section. Both trees
+  // are `hidden` mid-transition (that is what the failure printed), so this cannot pass
+  // early, and it still reds on a genuine duplicate id — two visible sections is two,
+  // which is the claim `.first()` would have thrown away.
+  await expect(
+    page.getByTestId("routines-section").filter({ visible: true })
+  ).toHaveCount(1);
+  // Scoped past the staged copy for the same reason `routines-section` is filtered
+  // below: a streamed boundary lands in a `<div hidden>` before the inline script
+  // relocates it, so a bare id lookup is strict-mode ambiguous in that window.
+  await hydratedClick(
+    page,
+    page.getByTestId("routine-new").filter({ visible: true })
+  );
   const reopened = page.getByTestId("routine-builder");
   await expect(reopened).toBeVisible();
   await expect(

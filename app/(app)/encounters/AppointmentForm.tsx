@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import DateField from "@/components/DateField";
+import TimeField from "@/components/TimeField";
 import SubmitButton from "@/components/SubmitButton";
 import ProviderCombobox from "@/components/ProviderCombobox";
 import { useProviderOptions } from "@/components/ProviderOptionsContext";
@@ -53,10 +54,15 @@ import InlineError from "@/components/InlineError";
 //    (components/DirtyFormRegistry.tsx, lib/dirty-forms.ts). Binding `title` to React
 //    state to feed its chip would therefore switch off the unsaved-input guard for it
 //    with nothing on screen to show for it, and every test would still pass. So
-//    `title`, `time`, `kind`, `location` and `notes` keep `defaultValue` + an onChange
-//    MIRROR that feeds the chip label only; the mirror is never the source of what
-//    submits. `date` and `provider` are DateField and ProviderCombobox, which hold their
-//    own state internally and were never registry-visible — they lose nothing.
+//    `title`, `kind`, `location` and `notes` keep `defaultValue` + an onChange MIRROR
+//    that feeds the chip label only; the mirror is never the source of what submits.
+//    `date` and `provider` are DateField and ProviderCombobox, which hold their own
+//    state internally and were never registry-visible — they lose nothing. `time`
+//    JOINS them here as of TimeField's adoption (#4976): its named element is now
+//    TimeField's own hidden input, which the registry excludes the same way it
+//    already excludes `date`'s — so an edit that touches ONLY the time no longer
+//    marks this form dirty, a real (if narrow) change from the native input this
+//    replaces. Flagged rather than silently accepted; see the issue's return summary.
 //
 //    e2e/dirty-form-refresh.spec.ts is the pin, and it is this form: all three of its
 //    #1878 tests type into "Reason / title" here.
@@ -372,14 +378,17 @@ export default function AppointmentForm({
                   Time (optional)
                 </label>
                 {/* Its own column, never folded into the date (#2234): blank stores a
-                    bare day rather than a fabricated midnight. */}
-                <input
+                    bare day rather than a fabricated midnight. Controlled by `mirror.time`
+                    exactly as `date` is by `currentDate` above — its named element is
+                    TimeField's own hidden input, which the dirty-form registry excludes
+                    the same way it already excludes `date` and `provider` (#4976), so this
+                    loses nothing the DOM-owned fields below still need. */}
+                <TimeField
                   id={`appt-time-${uid}`}
                   name="time"
-                  type="time"
-                  className="input"
-                  defaultValue={storedTime}
-                  onChange={(e) => edited("when", { time: e.target.value })}
+                  value={mirror.time}
+                  onChange={(v) => edited("when", { time: v })}
+                  label="Time (optional)"
                 />
               </div>
             </div>

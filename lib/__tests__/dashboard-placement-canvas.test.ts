@@ -127,7 +127,10 @@ describe("dashboard placement canvas", () => {
         placements,
         presentations: tailRows,
         aheadPresentations: new Map([
-          [horizon.candidateId, { label: "Horizon row" }],
+          [
+            horizon.candidateId,
+            { label: "Horizon row", href: "/training" as const },
+          ],
           [later.candidateId, { label: "Later row" }],
           [laterSecond.candidateId, { label: "Later second row" }],
         ]),
@@ -150,6 +153,15 @@ describe("dashboard placement canvas", () => {
     expect(html).toContain("Later row");
     expect(html).toContain("Later second row");
     expect(html).toContain('href="/upcoming#later"');
+    // The bucket's door is on its HEADING. Its first row keeps its own destination
+    // and the door that names it: a Training row that landed on Upcoming was the bug.
+    expect(html).toMatch(/<h3[^>]*><a [^>]*href="\/upcoming#later"/);
+    expect(html).toMatch(
+      /<a [^>]*href="\/training"[^>]*>(?:(?!<\/a>).)*Horizon row/
+    );
+    expect(html).toMatch(
+      /<a [^>]*href="\/training"[^>]*>(?:(?!<\/a>).)*Training</
+    );
 
     const weekHtml = renderToStaticMarkup(
       createElement(DashboardPlacementCanvas, {
@@ -162,14 +174,20 @@ describe("dashboard placement canvas", () => {
         ),
         presentations: tailRows,
         aheadPresentations: new Map([
-          [horizon.candidateId, { label: "Horizon row" }],
+          [
+            horizon.candidateId,
+            { label: "Horizon row", href: "/training" as const },
+          ],
           [later.candidateId, { label: "Later row" }],
           [laterSecond.candidateId, { label: "Later second row" }],
         ]),
         attentionBadgeCount: 0,
       })
     );
-    expect(weekHtml).toContain('href="/upcoming#week"');
+    expect(weekHtml).toMatch(/<h3[^>]*><a [^>]*href="\/upcoming#week"/);
+    expect(weekHtml).toMatch(
+      /<a [^>]*href="\/training"[^>]*>(?:(?!<\/a>).)*Horizon row/
+    );
   });
 
   // ONE FOLD ON THE WHOLE PAGE, AND ITS CONVERSE (#4232, re-targeting #3934's pair).
@@ -191,7 +209,7 @@ describe("dashboard placement canvas", () => {
         lane: "standing",
         laneOrder: 0,
         timingDisposition: { kind: "active" },
-        standingFamilyKey: "steps-today",
+        standingFamilyKey: "day-so-far",
         standingSection: "today",
         standingBand: "rest",
       },
@@ -493,6 +511,241 @@ describe("the Show-everything tail (#3365/#4076)", () => {
     expect(() => renderTail([everything(orphan, "act", 0)], [])).toThrow(
       "Missing dashboard row presentation for orphan"
     );
+  });
+});
+
+// ── THE BAND CAP (owner ruling 2026-09-03, #4065) ──────────────────────────────
+//
+// "Each of the Understand and Set up bands keeps at most three rows open, newest
+// first, and the rest sit behind one fold per band whose closed state shows the
+// count." Admission stays total — a folded row is still ON THE PAGE, just closed —
+// so every claim below carries its positive control: the folded candidate's own id
+// is asserted PRESENT in the markup, never merely absent from the open section.
+describe("the band cap (#4065)", () => {
+  function statementWithGroup(id: string, groupKey: string | null) {
+    return statementCandidate({
+      candidateId: id,
+      factKey: `fact.${id}`,
+      groupKey,
+      subject,
+      applicable: true,
+      relevance: { kind: "event" },
+      sourceOrder: 0,
+    });
+  }
+
+  function bandPlacement(
+    candidate: DashboardCandidate,
+    everythingGroup: Extract<
+      DashboardPlacement,
+      { lane: "everything" }
+    >["everythingGroup"],
+    laneOrder: number
+  ): DashboardPlacement {
+    return {
+      candidate,
+      lane: "everything",
+      laneOrder,
+      timingDisposition: { kind: "active" },
+      everythingGroup,
+      memberOrder: laneOrder,
+      admitted: true,
+    };
+  }
+
+  function renderBand(
+    group: Extract<
+      DashboardPlacement,
+      { lane: "everything" }
+    >["everythingGroup"],
+    candidates: readonly DashboardCandidate[]
+  ) {
+    const placements = candidates.map((candidate, index) =>
+      bandPlacement(candidate, group, index)
+    );
+    const presentations = new Map<string, DashboardStandingPresentation>(
+      candidates.map((candidate) => [
+        candidate.candidateId,
+        { label: candidate.candidateId, value: "1" },
+      ])
+    );
+    return renderToStaticMarkup(
+      createElement(DashboardPlacementCanvas, {
+        dateLabel: "September 3, 2026",
+        placements,
+        presentations,
+        aheadPresentations: new Map(),
+        attentionBadgeCount: 0,
+      })
+    );
+  }
+
+  const foldTestId = (group: string) => `dashboard-everything-${group}-fold`;
+
+  // THE BOUNDARY, EXACT (dispatch criterion 2): four eligible rows, three open, the
+  // fourth behind the fold — not four open, not a "three plus ties" allowance.
+  it.each(["understand", "setup"] as const)(
+    "%s: three eligible rows render with no fold; a fourth opens exactly one, showing '1 more'",
+    (group) => {
+      const three = [0, 1, 2].map((i) =>
+        statementWithGroup(`${group}-${i}`, null)
+      );
+      const threeHtml = renderBand(group, three);
+      // Below the cap: every row present, no fold rendered at all.
+      for (const candidate of three)
+        expect(threeHtml).toContain(
+          `data-candidate-id="${candidate.candidateId}"`
+        );
+      expect(threeHtml).not.toContain(foldTestId(group));
+
+      const four = [...three, statementWithGroup(`${group}-3`, null)];
+      const fourHtml = renderBand(group, four);
+      // POSITIVE CONTROL: nothing dropped — all four ids are somewhere on the page,
+      // open or folded, which is what makes the "exactly three OPEN" claim below
+      // meaningful rather than a coincidence of an emptied band.
+      for (const candidate of four)
+        expect(fourHtml).toContain(
+          `data-candidate-id="${candidate.candidateId}"`
+        );
+      expect(fourHtml).toContain(foldTestId(group));
+      // The fold's own contents hold exactly the fourth row, and nothing from the
+      // open three leaked into it.
+      const fold = fourHtml.slice(
+        fourHtml.indexOf(`data-testid="${foldTestId(group)}"`)
+      );
+      expect(fold).toContain(`data-candidate-id="${group}-3"`);
+      for (const candidate of three)
+        expect(fold).not.toContain(
+          `data-candidate-id="${candidate.candidateId}"`
+        );
+      // THE COUNT NEVER HIDES (dispatch criterion 3): the closed state names how
+      // many, in the ruling's own shape ("11 more").
+      expect(fourHtml).toContain("1 more");
+      // Stateless and closed on arrival: no `open` attribute on the fold's
+      // <details>, so a first-time reader always sees the closed count first.
+      const detailsOpenTag = fourHtml.slice(
+        fourHtml.lastIndexOf(
+          "<details",
+          fourHtml.indexOf(`data-testid="${foldTestId(group)}"`)
+        )
+      );
+      expect(detailsOpenTag.slice(0, detailsOpenTag.indexOf(">"))).not.toMatch(
+        /\bopen\b/
+      );
+    }
+  );
+
+  // THE CAP IS SCOPED (dispatch criterion 4's converse): every other band keeps
+  // rendering exactly as #4076 left it, however many rows it holds — this ruling
+  // touches Understand and Setup only.
+  it.each(["act", "read", "active-states"] as const)(
+    "%s never folds, however many rows it holds",
+    (group) => {
+      const five = [0, 1, 2, 3, 4].map((i) =>
+        statementWithGroup(`${group}-${i}`, null)
+      );
+      const html = renderBand(group, five);
+      for (const candidate of five)
+        expect(html).toContain(`data-candidate-id="${candidate.candidateId}"`);
+      expect(html).not.toContain(foldTestId(group));
+    }
+  );
+
+  // THE CAP UNIT IS THE MOMENT BLOCK, NOT THE ROW (#4076's "no two blocks share a
+  // title" is what a per-row split would violate — see DashboardPlacementCanvas.tsx).
+  // A four-member block that is entirely within the first three block SLOTS stays
+  // open and undivided; the block that pushes past the cap folds whole.
+  it("understand: a many-row block stays open and undivided when it is among the first three blocks", () => {
+    const bigBlock = [0, 1, 2, 3, 4].map((i) =>
+      statementWithGroup(`family-${i}`, "shared-family")
+    );
+    const solo1 = statementWithGroup("solo-1", null);
+    const solo2 = statementWithGroup("solo-2", null);
+    const solo3 = statementWithGroup("solo-3", null);
+    const presentations = new Map<string, DashboardStandingPresentation>([
+      ...bigBlock.map((candidate): [string, DashboardStandingPresentation] => [
+        candidate.candidateId,
+        {
+          label: candidate.candidateId,
+          value: "1",
+          moment: { title: "Coaching observations" },
+        },
+      ]),
+      ...[solo1, solo2, solo3].map(
+        (candidate): [string, DashboardStandingPresentation] => [
+          candidate.candidateId,
+          { label: candidate.candidateId, value: "1" },
+        ]
+      ),
+    ]);
+    const placements = [...bigBlock, solo1, solo2, solo3].map(
+      (candidate, index) => bandPlacement(candidate, "understand", index)
+    );
+    const html = renderToStaticMarkup(
+      createElement(DashboardPlacementCanvas, {
+        dateLabel: "September 3, 2026",
+        placements,
+        presentations,
+        aheadPresentations: new Map(),
+        attentionBadgeCount: 0,
+      })
+    );
+    // Three blocks open: the big shared-groupKey block (1 block, 5 rows) plus
+    // solo-1 and solo-2. solo-3 is the fourth block and folds.
+    for (const candidate of bigBlock)
+      expect(html).toContain(`data-candidate-id="${candidate.candidateId}"`);
+    expect(html).toContain('data-candidate-id="solo-1"');
+    expect(html).toContain('data-candidate-id="solo-2"');
+    expect(html).toContain(foldTestId("understand"));
+    const fold = html.slice(
+      html.indexOf(`data-testid="${foldTestId("understand")}"`)
+    );
+    expect(fold).toContain('data-candidate-id="solo-3"');
+    // NO DUPLICATE TITLE: the shared block's header prints exactly once, whole,
+    // never split across the open section and the fold.
+    expect(html.split("Coaching observations").length - 1).toBe(1);
+    // The fold's count is the folded ROW count (1, for solo-3 alone) — not the
+    // folded block count, which would also read 1 here and prove nothing; the next
+    // test is the one that tells those two apart.
+    expect(fold).toContain("1 more");
+  });
+
+  it("understand: a folded multi-row block reports its real row count, not 1", () => {
+    const openFiller = [0, 1, 2].map((i) =>
+      statementWithGroup(`filler-${i}`, null)
+    );
+    const foldedFamily = [0, 1, 2, 3].map((i) =>
+      statementWithGroup(`late-${i}`, "late-family")
+    );
+    const presentations = new Map<string, DashboardStandingPresentation>(
+      [...openFiller, ...foldedFamily].map((candidate) => [
+        candidate.candidateId,
+        {
+          label: candidate.candidateId,
+          value: "1",
+          moment: { title: "Data quality" },
+        },
+      ])
+    );
+    const placements = [...openFiller, ...foldedFamily].map(
+      (candidate, index) => bandPlacement(candidate, "understand", index)
+    );
+    const html = renderToStaticMarkup(
+      createElement(DashboardPlacementCanvas, {
+        dateLabel: "September 3, 2026",
+        placements,
+        presentations,
+        aheadPresentations: new Map(),
+        attentionBadgeCount: 0,
+      })
+    );
+    // One folded BLOCK, four folded ROWS — the count names the rows.
+    expect(html).toContain("4 more");
+    const fold = html.slice(
+      html.indexOf(`data-testid="${foldTestId("understand")}"`)
+    );
+    for (const candidate of foldedFamily)
+      expect(fold).toContain(`data-candidate-id="${candidate.candidateId}"`);
   });
 });
 

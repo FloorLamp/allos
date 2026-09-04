@@ -9,7 +9,10 @@ import {
 import { requireWriteAccess } from "@/lib/auth";
 import { gateItemProfile } from "../../gate-item";
 import { db, today, writeTx } from "@/lib/db";
-import { isRealIsoDate } from "@/lib/date";
+import { isRealIsoDate, utcInstant } from "@/lib/date";
+import { now } from "@/lib/clock";
+import { judgeStatedAt } from "@/lib/stated-time";
+import { getTimezone } from "@/lib/settings";
 import {
   isSubstanceInstrument,
   substanceInstrumentDef,
@@ -195,14 +198,18 @@ export async function recordSubstanceInstrumentAction(
 export async function logSubstanceUnitAction(
   formData: FormData
 ): Promise<SubstanceLogResult> {
-  const { profile } = await requireWriteAccess();
-  if (isMinor(getProfileAge(profile.id)))
+  // #4932: the quick-log sheet's subject chip mounts this SAME control cross-profile,
+  // so the tap follows gateItemProfile() → requireProfileWriteAccess(subjectProfileId)
+  // like every other sheet body; every other mount posts no subject and falls back
+  // to the acting-profile gate.
+  const profileId = await gateItemProfile(formData);
+  if (isMinor(getProfileAge(profileId)))
     return { ok: false, error: MINOR_REFUSAL };
   const substance = resolveSubstanceKey(
     String(formData.get("substance") ?? "")
   );
   if (substance === null) return { ok: false, error: "Unknown substance." };
-  return logOneUnit(profile.id, substance, webOrigin(formData));
+  return logOneUnit(profileId, substance, webOrigin(formData));
 }
 
 // The surface this post came from, defaulting to the substance page's own form when
@@ -300,8 +307,10 @@ export async function trackSubstanceUseAction(
 export async function undoSubstanceUnitAction(
   formData: FormData
 ): Promise<SubstanceLogResult> {
-  const { profile } = await requireWriteAccess();
-  if (isMinor(getProfileAge(profile.id)))
+  // #4932: the add's inverse must resolve the SAME subject the add did, so it reads
+  // it through the same gateItemProfile().
+  const profileId = await gateItemProfile(formData);
+  if (isMinor(getProfileAge(profileId)))
     return { ok: false, error: MINOR_REFUSAL };
   const substance = resolveSubstanceKey(
     String(formData.get("substance") ?? "")
@@ -309,14 +318,14 @@ export async function undoSubstanceUnitAction(
   if (substance === null) return { ok: false, error: "Unknown substance." };
   const outcome =
     substanceDef(substance).ledger === "food-log"
-      ? undoFoodServingCore(profile.id, ALCOHOL_FOOD_GROUP, today(profile.id))
-      : undoSubstanceUnitCore(profile.id, substance, today(profile.id));
+      ? undoFoodServingCore(profileId, ALCOHOL_FOOD_GROUP, today(profileId))
+      : undoSubstanceUnitCore(profileId, substance, today(profileId));
   if (outcome.kind !== "undone")
     return { ok: false, error: "Couldn't undo that." };
   revalidateSubstanceUse();
   return {
     ok: true,
-    weekCount: getSubstanceWeekState(profile.id, substance).count,
+    weekCount: getSubstanceWeekState(profileId, substance).count,
   };
 }
 
@@ -358,6 +367,38 @@ function historyInput(
   };
 }
 
+// THE MINUTE A DRINK STATES (#3295 phase 1), read off the post and gated here.
+//
+// ALCOHOL ONLY, and the predicate is the ledger rather than the key: alcohol's units
+// are `food_log_events` rows, which carry `occurred_at` + `time_source`, while every
+// other substance — curated or a profile's own — rides `substance_daily_totals`, which
+// is UNIQUE per (profile, date, substance) and has nowhere to put an instant. The form
+// offers no time control there; this refuses a posted one, because a Server Action is
+// independently POST-callable and a field the store cannot hold must not be half-kept.
+//
+// THE GATE IS `judgeStatedAt` — the same two rules every stated instant in the app
+// passes (not meaningfully in the future, and the instant's profile-local date IS the
+// row's `date`), asked of the SUBJECT's zone and the server's clock. A refusal DROPS
+// THE STATEMENT AND KEEPS THE WRITE, which is the log path's side of that function's
+// documented split: losing the stated minute is cosmetic, losing the drink is not.
+function statedDrinkInstant(
+  profileId: number,
+  substance: SubstanceKey,
+  date: string,
+  formData: FormData
+): string | null {
+  if (substanceDef(substance).ledger !== "food-log") return null;
+  const raw = String(formData.get("stated_at") ?? "").trim();
+  if (!raw) return null;
+  const verdict = judgeStatedAt(
+    new Date(raw),
+    getTimezone(profileId),
+    date,
+    now()
+  );
+  return verdict.kind === "accepted" ? utcInstant(verdict.at) : null;
+}
+
 // Historical add/correction (#2009). The action contract never names the backing
 // store; the auth-blind core dispatches from the validated substance catalog.
 export async function addSubstanceDailyTotalAction(
@@ -374,7 +415,15 @@ export async function addSubstanceDailyTotalAction(
   const outcome = addSubstanceDailyTotalCore(
     profile.id,
     parsed.substance,
-    parsed,
+    {
+      ...parsed,
+      statedAt: statedDrinkInstant(
+        profile.id,
+        parsed.substance,
+        parsed.date,
+        formData
+      ),
+    },
     webOrigin(formData)
   );
   if (outcome.kind !== "added") return outcome;
@@ -408,12 +457,14 @@ export async function updateSubstanceDailyTotalAction(
   if (!parsed.ok) return parsed.outcome;
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id) || id <= 0) return { kind: "not-found" };
+  // NO SURFACE STAMP: the correction no longer creates a row (a drink's units are
+  // events and are corrected on the event, #5026 item 1), so there is no provenance
+  // for it to claim — a day counter's correction only restates what is already there.
   const outcome = updateSubstanceDailyTotalCore(
     profileId,
     parsed.substance,
     id,
-    parsed,
-    webOrigin(formData)
+    parsed
   );
   if (outcome.kind !== "updated") return outcome;
   revalidateSubstanceUse();

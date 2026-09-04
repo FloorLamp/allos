@@ -54,8 +54,11 @@ export function seedTimelineChrome(): void {
     );
   }
 
-  // The well profile's ONE day with symptoms (worst-severity upsert, like the
-  // runtime write core). TL_CHROME_QUIET_DAY deliberately gets nothing.
+  // The well profile's ONE seeded day with symptoms (worst-severity upsert, like the
+  // runtime write core). It is also what earns the profile its Symptoms chip, since
+  // the Add past row offers the kinds a profile has rows for. TL_CHROME_QUIET_DAY
+  // deliberately gets nothing — it is where the spec's own two writing tests
+  // (the add door, and the ⋯ correction) plant and clear their rows.
   const insSymptom = db.prepare(
     `INSERT INTO symptom_logs (profile_id, date, symptom, severity, note)
      VALUES (?, ?, ?, ?, NULL)
@@ -66,7 +69,8 @@ export function seedTimelineChrome(): void {
   insSymptom.run(wellId, TL_CHROME_SYMPTOM_DAY, "headache", 1);
 
   // The sick profile carries an ACTIVE illness-type situation and NO symptom rows,
-  // so its quiet day isolates the situation branch of the auto-expand.
+  // so its quiet day isolates the branch that used to auto-open the retired card
+  // (#4851 item 3) and now must draw no symptom surface at all.
   const existing = db
     .prepare("SELECT id FROM situations WHERE profile_id = ? AND name = ?")
     .get(sickId, "Illness") as { id: number } | undefined;
@@ -83,8 +87,9 @@ export function seedTimelineChrome(): void {
     "UPDATE situations SET active = 1, illness_type = 1 WHERE id = ?"
   ).run(sitId);
 
-  // Write grant on both: the spec performs no writes, but a read-only session
-  // renders the app's read-only chrome, which is not the surface under test.
+  // Write grant on both: the add door only draws for a login that may write, and a
+  // read-only session renders the app's read-only chrome, which is not the surface
+  // under test.
   const loginId = seedMemberLogin(E2E_LOGIN_TL_CHROME, wellId, "write");
   grantProfile(loginId, sickId, "write");
 

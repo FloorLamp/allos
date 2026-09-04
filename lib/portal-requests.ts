@@ -301,9 +301,11 @@ const STALENESS_CANDIDATES_STMT = hoistedStatement(
               AND i.profile_id IS NOT NULL)
             AS mapped,
           ${EVER_RAN_COL},
-          ${CHECK_CLOCK_COLS}
+          ${CHECK_CLOCK_COLS},
+          r.created_at AS lastAskedAt
      FROM portal_accounts a
      LEFT JOIN portal_run_reports rr ON rr.account_id = a.id
+     LEFT JOIN portal_sync_requests r ON r.account_id = a.id
     ORDER BY a.id`
 );
 
@@ -328,6 +330,11 @@ function accountToday(
 // the cadence. Global (a portal login is not profile-owned), cheap (a household has a
 // handful of logins), and idempotent: a login that already has an open request of equal
 // or greater salience is a no-op, so running this hourly forever writes nothing.
+//
+// The one row per login (`portal_sync_requests`) is also the "last asked" clock, read
+// here whatever its reason and whether or not it is still open: an EXPIRED ask is not
+// open, so supersession alone would let the next tick re-raise it, and the pure rule's
+// one-ask-per-cadence clause is what stops that.
 export function evaluateStalenessRequests(
   todayFor: TodayForProfile,
   now: string = sqlNow()
@@ -339,6 +346,7 @@ export function evaluateStalenessRequests(
     everRan: number;
     lastReportAt: string | null;
     lastOkAt: string | null;
+    lastAskedAt: string | null;
   }[]) {
     const today = accountToday(row.accountId, todayFor);
     if (today === null) continue; // no mapped patients — silent, by the pure rule below
@@ -347,6 +355,7 @@ export function evaluateStalenessRequests(
         everRan: row.everRan !== 0,
         mappedPatients: row.mapped,
         lastCheckedAt: row.lastOkAt,
+        lastAskedAt: row.lastAskedAt,
         today,
       })
     ) {

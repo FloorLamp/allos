@@ -7,7 +7,8 @@ the sharded CI e2e matrix, retries=0 end-to-end #1160, the on-demand +
 weekly-census full-suite workflow, pass-on-retry flake telemetry, the opt-in
 `mobile` phone-viewport project #1420, the #1534 SQL clock seam + UTC-midnight
 CI backstop, the #1543 document-level-overflow freeze + the #1545
-degenerate-input convention, the #1858 `settledClickApplied` contract; the
+degenerate-input convention, the #1858 `settledClickApplied` contract, the #4890
+unscoped-`getByTestId` freeze + the frozen streaming surface; the
 grandfathered `.first()`, `.toPass(`, and wall-clock burn-downs are COMPLETE —
 their allowlists are empty)
 
@@ -56,12 +57,15 @@ order-dependent. The recurring reds fall into four classes:
 clips horizontal overflow (`overflow-x-clip`), so a broken phone-width layout
 renders as invisible, unreachable content and the naive document-level
 `scrollWidth > clientWidth` check reads zero on every page. The blessed helper
-asserts ELEMENT-level containment — every rendered element's right edge inside
-the viewport unless it sits in a working `overflow-x: auto` container that
-itself fits — and folds the document-level check in for unclipped surfaces
-(share/print views). Set the phone viewport after auth, anchor on a
-page-specific element first, then call it; offenders are reported with
-tag/testid/class + widths. The hand-rolled form is now frozen at ZERO by the
+asserts what each element PAINTS (#4534) — its box intersected with every
+horizontally clipping ancestor and with the viewport — because "fits the
+viewport" is not "is visible": a `truncate` cluster cuts its children without
+moving their boxes. Excused: a working `overflow-x: auto` container that itself
+fits, a subtree the layout gave no room (a cell starved to zero, the 1px
+`sr-only` idiom), and a drawer parked off-canvas. The document-level check is
+folded in for unclipped surfaces (share/print views). Set the phone viewport
+after auth, anchor on a page-specific element first, then call it; offenders are
+reported as painted-against-box with the element that cut them. The hand-rolled form is now frozen at ZERO by the
 hygiene guard — see "Assertion integrity" below.
 
 4. **CI retries paint over everything ≤50% flaky.** `retries: 1–2` proves
@@ -120,6 +124,12 @@ mechanically-detectable settle anti-patterns per file and fails a NEW one:
 - `test.skip(...)` — frozen at ZERO. A committed skip makes the same revision run
   different coverage depending on time or environment. Delete obsolete coverage,
   or make the boundary deterministic in the fixture.
+- an unscoped testid lookup — `page.getByTestId(x)` (or a second page under any
+  name) where `x` is not a document-unique root. On a streamed route it matches
+  the staged copy too and throws strict mode (#4890). Scope it —
+  `appContent(page)`, a row/card/dialog you hold — or mark the line
+  `testid-scope-ok: <why>`. Frozen per-file in
+  `lib/__tests__/__fixtures__/e2e-testid-scope-allow.json`; see below.
 - a bare fixed year in `toContainText` — frozen at ZERO. A relative fixture will
   eventually leave that year, and the negated form then passes vacuously. Derive the
   complete displayed date from the fixture, or use a year-shape regex when the
@@ -227,6 +237,127 @@ locator to something that exists only on the page being clicked (here the row's
 `episode-index-row` testid) and write the note about how many elements match
 **on that page**. A justification about which profile owns the fixture answers a
 question no `.first()` was ever asking.
+
+### The unscoped-`getByTestId` freeze (the streamed staged copy, #4890)
+
+The guard freezes a further pattern: a testid lookup that starts from a whole
+**page**. On a route whose Suspense boundary streams, React flushes the
+boundary's content into a `<div hidden>` appended to `<body>` and an inline
+`$RC(…)` script relocates it. While both copies exist, every marker inside that
+boundary exists twice with the same testid, so a global `page.getByTestId("x")`
+resolves to 2 elements and throws a strict-mode violation instead of retrying
+down to one. Under CI load the window outlives Playwright's retry, so it is a
+property of the page rather than a flake.
+
+**Why a rule and not a helper.** This was read one marker at a time three times
+— `history-row`, then `routine-new`, then `training-log-clear-filters`, across
+four specs — and each reading fixed the marker in front of it and left the page
+exposed. A `trainingRow()` helper covers the markers somebody thought to put on
+it; a rule covers the NEXT call site by default and forces an exemption to be
+written down. It matters that one occurrence reached the failure INSIDE
+`e2e/helpers.ts` (`hydratedClick(page, page.getByTestId("routine-new"))` throws at
+the helper's line, reading like a hydration problem), where the call site could
+not have scoped its way out at all — so this is the one guard here that also reads
+the blessed helper module.
+
+**What counts as scoped.** The staged copy's ancestry stops at `<body>`, so any
+scope living in the document proper excludes it. A lookup whose receiver is a
+Locator you already hold — a row, a card, a dialog — is scoped and is not
+counted. `appContent(page)` (e2e/helpers.ts) is the blessed floor: the `(app)`
+shell's own wrapper around every page's children, one per document, above every
+boundary. `page.getByTestId(<root>).getByTestId(x)` is scoped too, for the roots
+the guard blesses — which is why the `training-page` form #4833 shipped stays
+legal. A root has to exist ONCE per document and sit ABOVE every boundary; do not
+bless one that could itself land inside a streamed section.
+
+`training-page` is TRANSITIONAL. It is blessed to keep #4833's shipped fixes
+legal, not because a per-hub root is the shape to reach for — it buys nothing
+`appContent(page)` does not, and it only works on one page. When one of those
+call sites is next touched, converge it on `appContent(page)`; the root can go
+when the last one has.
+
+**It reads a second page under any name.** `page` is the fixture, but a spec that
+opens a second context names it `member`, `tabB`, `anon`, `otherPage` — 311 of the
+lookups in the suite are on one of those, and a rule anchored on the literal
+`page.` would have called every one of them clean. It also reads the WRAPPED chain
+prettier actually writes (`page\n  .getByTestId(`): 452 lookups are formatted that
+way, and an unwrapped-only rule saw none of them. Both holes were found by
+mutating the rule, not by reading it.
+
+**The allowlist is the honest record.** 5,427 unscoped lookups across 435 files
+exist today; a rule that started as "scope all of them" would be 5,427 hand edits
+with nothing preventing the 5,428th. Today's per-file counts are frozen in
+`lib/__tests__/__fixtures__/e2e-testid-scope-allow.json`, immutable-downward like
+every other list here, and the list says what has NOT been checked rather than
+claiming everything has. A NEW lookup anywhere fails: scope it, or mark the line
+`testid-scope-ok: <why>` when the marker provably cannot sit inside a streamed
+boundary (a `/login` page outside the `(app)` shell, an overlay portalled to
+`<body>` — a portal is client-only, so it has exactly one copy).
+
+**The counts are a reading of one base, and the base is named.** They were derived
+at `da622bc0` (main, 2026-09-04). A coverage number is only true against the tree
+it was measured on, and a reader who does not know which tree cannot check it. CI
+gates the merge on the branch head, so a fixture read from an older tree than the
+one it merges into can pass on the PR and red on `main` — the worst outcome this
+rule could produce. Re-derive at promotion, against the tree it will actually land
+on, not earlier. A rebase therefore re-reads the whole list in both directions — a spec that landed
+since carries lookups the rule never saw, a spec someone scoped in the meantime
+carries fewer — and the guard names every file whose count moved and which way.
+Nothing has to check that the reading is stale, because the comparison is exact
+equality rather than a ceiling: a count above its entry reds, and a count BELOW it
+reds too ("you reduced offenders — lower the entry"). So main gaining a lookup and
+main removing one both fail, and a fixture cannot drift out of date quietly. A
+ceiling would have left the removal case green and let that file regain a bare
+lookup for free. Raising an entry is legitimate only there; never as a way to land a new bare
+lookup. Lowering is always legitimate and always wanted.
+
+**Burn down the 161 files that reach a streaming route first.** They are the files
+whose code names `/training` or `/trends`; they hold 2,298 of the 5,427 lookups and
+they are the only ones that can race today. The other 274 files / 3,129 lookups are
+frozen for uniformity and can wait indefinitely.
+The freeze is immutable-downward like every other list here, so scoping a site
+and lowering its number happen in the same PR — that is the ratchet, and it is
+worth the friction to keep one guard file consistent with itself.
+
+**No file is excluded from the freeze, and that was measured rather than
+assumed.** An entry that could never burn down would make the number lie — it
+would read as "not yet checked" while meaning "unreachable" — so the obvious move
+is to drop the specs that never enter the `(app)` shell. There are none. Every
+allowlisted file naming `/login`, `/set-password`, `/offline` or `/share` also
+navigates into the shell, because signing in and landing on the dashboard is the
+point of most of them; and the six files naming no `(app)` route at all are
+shared helper MODULES (`helpers.ts`, `symptom-helpers.ts`, `cycle-helpers.ts`,
+`log-sheet-helpers.ts`, `intake-form-helpers.ts`, `trends-chrome.ts`) that receive
+an already-navigated page from a spec that did — the exact shape that put one
+occurrence inside `e2e/helpers.ts`. Excluding those would hide files that CAN
+race, which is worse than an honest overcount. **So the number does not lie: every
+entry can burn down.** What is permanent is per-LINE, not per-file — a lookup at a
+`/login` control or a body-portalled overlay takes the `testid-scope-ok` marker and
+leaves the rest of its file burnable. That is the answer to the next proposal to
+exclude a file.
+
+One question decides whether a new boundary is one of these: does it suspend a
+SERVER component — it stages a copy, so re-read the specs asserting against that
+route — or a client-only `dynamic(…, { ssr: false })` import from inside
+`"use client"`, which stages nothing and carries no exposure? The guard's failure
+message asks exactly that, and the answer belongs beside the entry.
+
+**The streaming surface is frozen with it.** `components/StreamedSection.tsx` is
+what makes a section genuinely suspend — every read here is synchronous
+better-sqlite3, so an `async` Server Component resolves in microtasks and a bare
+`<Suspense>` never flushes early — and its call sites are the whole hazard
+surface. Today that is two routes: `/training` (the tab panel) and `/trends` (the
+Body census). The guard freezes both that list and every `<Suspense>` in `app/` and
+`components/`, so a third streaming hub cannot land without someone re-reading
+the specs that assert against it. `loading.tsx` is the other way in; `app/(app)/layout.tsx`
+refuses it in prose (#530) and the guard now freezes it at zero.
+
+**`/history` and the household feed do NOT have this exposure.** They share the
+history substrate and the refine-by-navigation shape, which is why they were worth
+checking, but `app/(app)/history/page.tsx` and `app/(app)/household/page.tsx`
+render no `<Suspense>` and no `StreamedSection`, so their content arrives inline in
+the shell with nothing staged. Their bare lookups are frozen for uniformity, not
+because they are racing today.
 
 ### The family-create freeze + `e2e/family-helpers.ts` (phase-2 create-member hardening)
 
@@ -365,7 +496,8 @@ every `(app)` page `document.documentElement.scrollWidth` equals the viewport
 width **no matter what the page contains** — measured under a 3000px-wide div
 injected into `<main>` at a 390px viewport, it still reads
 `{doc: 390, inner: 390}` and the comparison PASSES (the same page under
-`expectNoClippedContent` reports `right=3000 vs viewport=390`). Fifteen sites
+`expectNoClippedContent` reports `<div> paints 390px of its 3000px box (0→3000),
+cut by <main class="… overflow-x-clip …">`). Fifteen sites
 across thirteen specs hand-rolled that comparison as their mobile-overflow gate
 (one of them inverted, `> viewport` expected false — unconditionally false, same
 vacuity). Each one read like a guard, cost a line of review attention, and could
@@ -489,8 +621,13 @@ What this means when writing a spec:
 
 - Assert census content directly after a navigation — no per-spec reveal wait
   exists, and none should be reintroduced.
-- The rule generalizes: any FUTURE streamed boundary on any page is covered by
-  the same guard, because it keys on React's staging nodes, not on Trends ids.
+- The rule generalizes ACROSS PAGES but not across ways of arriving: the guard
+  wraps `goto`/`reload`/`goBack`/`goForward`, so a full-document navigation the
+  BROWSER starts — a GET-form submit, a plain link click — returns without it. That
+  is the gap #4890 lives in: the Training Log's search became a GET form (#4079),
+  submitting it is a real document navigation, and no wrapped method ran. Scope the
+  locator (see the unscoped-`getByTestId` freeze above); do not assume the harness
+  settled it.
 - Do NOT reach for `waitForTimeout` or `networkidle` if a streamed surface
   seems racy — if the guard's ceiling is ever exceeded, its error names the
   stuck page; that is a finding, not a flake to sleep past.
@@ -1544,6 +1681,20 @@ seam, **`lib/clock.ts`**:
   `00:10` local) can be stress-tested on demand:
   `ALLOS_TEST_NOW="<today>T00:10:00" npm run test:e2e -- dashboard-illness-phase5 workout-presence`.
 
+**Forward-clock runs (#4370).** Moving that instant MONTHS ahead is the only
+instrument that finds a fixture which will age out later — a census over source
+text cannot, because the fuse can be a bare year inside a regex, and the worst
+half is an absence assertion that goes vacuously green once the year turns.
+`e2e-full.yml`'s `e2e-forward-clock` job runs the whole suite at +3 and +6 months
+on the weekly schedule; reproduce one locally with
+`ALLOS_TEST_NOW="2027-01-13T12:00:00Z" npm run test:e2e -- <spec>`. A red there is
+a fuse, not a regression — fix the fixture. Measured 2026-09-02 against #4369's
+pre-#4385 `ride-detail` assertion, restored on a scratch branch: green at the real
+clock, red at 2027 with `Received string: "Monday, January 11, 2027…"`. The
+neighbouring `not.toContainText("2026")` passed in that same run, which is the
+limit of the instrument — it catches the fuse that fires, never the assertion that
+stops meaning anything.
+
 `ALLOS_TEST_NOW` is a **test hook, not an operator knob** — it is deliberately
 absent from `.env.example`. `bootTasks` (`lib/migrations/boot-tasks.ts`) logs a
 `WARN [clock]` on every boot when it is set, so a misconfigured production
@@ -1794,7 +1945,10 @@ Two failure modes it is deliberately built to survive:
   the manifest is still planned, weighted at 1.25× the mean measured file (erring
   high, so a new spec lands in a lighter bucket), and every run prints its
   coverage — a manifest that has rotted says so in the job log instead of quietly
-  unbalancing the matrix.
+  unbalancing the matrix. That is the PLANNER's tolerance, and it is not a
+  licence to ship an unmeasured spec: the pure tier fails when the manifest does
+  not cover the walk (#5053, `lib/__tests__/e2e-shard-plan.test.ts`), because a
+  degradation nothing reports is one nobody fixes.
 
 The manifest holds seconds per spec file. **Measure it on a RUNNER, not on a
 laptop** — the first version of this was measured locally on the claim that only
@@ -1864,6 +2018,16 @@ rather than an empty contribution, because a shard that silently adds nothing
 understates every file it owned and reshuffles the plan around a number nobody
 measured.
 
+### Adding a spec takes two pushes
+
+The manifest must cover every spec file, and the number has to come off a
+runner — so a spec you have just written cannot be measured until CI has run
+it. That is two pushes, not a workaround: push the spec, let its e2e shard run,
+read your own file's `e2e-durations` line out of that shard's job log
+(`mcp__github__get_job_logs`, `return_content: true`), add the entry in seconds
+as the generator would write it (`6932` ms → `6.932`), and push again. Do NOT
+substitute a local number to clear the red; the table above is what that costs.
+
 ### Feed ONE run's inputs
 
 Merging is additive — that is the whole point, since one run's twelve shards
@@ -1887,6 +2051,47 @@ both attempts are cost that run really paid, and it has to be spelled out:
 ```
 npx tsx scripts/gen-e2e-durations.ts --from-log shard-*.log --allow-rerun
 ```
+
+## A shard bucket is an OUTCOME, not a property (2026-09-04, #5032)
+
+Which bucket a spec lands in falls out of the duration manifest and the spec
+list together. Both move. A manifest refresh reshuffles almost everything —
+greedy LPT assigns in descending weight order, so any weight change cascades
+through every later assignment — and so does adding ONE spec, because an
+unlisted spec is planned in on an estimate and displaces its neighbours.
+
+The planner is deterministic, so the same tree always gives the same answer —
+what moves is the TREE. Asked on two trees the same night, one pair of specs
+sat in different buckets each time. So **do not write a bucket number down**,
+and that includes a count of how many moved: it is a fact about a tree that no
+longer exists by the next merge, and a rule that quotes one teaches the next
+reader to trust it. This section quoted such a count until #5053, and it had
+been computed over a file list `main` had already moved past.
+
+Two consequences, both of which cost something on 2026-09-04:
+
+- **A separation claim is verified on the tree that will LAND**, never on the
+  branch alone. #5017's body stated a correct separation for its own branch;
+  merged with main, one of the pair had moved. The claim survived, the
+  arrangement did not — and this sentence deliberately names no number, for
+  the reason above.
+- **A separation buys nothing.** Two specs in different buckets today are a
+  coincidence of the current partition. The fix for a co-residency defect is
+  the spec owning the state it asserts (#5014's shape) — never an arrangement
+  that happens to keep two specs apart.
+
+`main` went red the same night on exactly this: `sleep-page.spec.ts` read a
+sleep hero it did not seed, because the refresh moved it in beside a writer it
+had never shared a worker with (#5032). The manifest was not the defect. It
+exposed one that had been latent for as long as the spec had existed.
+
+### "Covers main exactly" is true against the base it was measured on
+
+A manifest's coverage claim is a measurement, and measurements have a date.
+Every spec merged since is unlisted and planned on an estimate — inherent, not
+a defect, and self-correcting at the next refresh. Re-run the check against
+current `main` before believing a "missing (none)" line: on the day #5017
+landed, its manifest was exact at its base and one short against `main`.
 
 ## Co-residency: an ABSENCE is the precondition that sharding breaks
 
@@ -2856,6 +3061,17 @@ x.isVisible().catch(() => false))` right after `goto` races the render. Wait
     rounds. `Emulation.setCPUThrottlingRate` slows the RENDERER; the timer that
     closes this window is not in the renderer, and 20x moved it not at all. Before
     reaching for the throttle, ask which process the suspect state lives in.
+20. **An assertion whose subject is real, recency-ranked app content is
+    clock-coupled even when nothing in it mentions time** (#4963).
+    `mobile-clipping.mobile.spec.ts:921` forged away a container's horizontal
+    reserve to trigger a synthetic escapee, then never restored it before the
+    next phase asserted silence on a clipped label — so that phase graded the
+    sheet's real frecency-ranked food-group chips (#591/#2225) against a body
+    it had itself narrowed. Which chip sits flush at a wrapped row's edge
+    tracks the frozen clock, so the test went red for whatever slice of the
+    day put an escaping chip last. Fix: undo a forgery before the assertion
+    that follows it, stated at the forgery site — never widen the assertion
+    that catches it.
 
 **Two spec-authoring hazards worth their own note.**
 

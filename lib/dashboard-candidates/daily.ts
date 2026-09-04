@@ -3,7 +3,6 @@ import { profileDataRelevance } from "./candidate";
 import {
   action,
   reading,
-  state,
   type DomainCandidateContext,
   type Engagement,
 } from "./shared";
@@ -91,6 +90,19 @@ export const dailyCandidates = {
       { timing }
     );
   },
+  // TODAY'S PHYSIOLOGY THROUGH THE DAY (#4767 item 2). A reading, not a state: it
+  // reports what the watch has recorded, and it is `external` because nothing a
+  // person types can produce it. Day-keyed, so it expires at midnight by
+  // construction — the property that made this the one chart worth putting here.
+  intraday(ctx: DomainCandidateContext, day: string) {
+    return reading(
+      ctx,
+      `activity.intraday:${day}`,
+      `metric.intraday:${day}`,
+      null,
+      "external"
+    );
+  },
   steps(ctx: DomainCandidateContext, day: string) {
     return reading(
       ctx,
@@ -125,16 +137,24 @@ export const dailyCandidates = {
   // The same row's slot when the quantity has gone quiet for a year (#3226). Its
   // candidateId keeps the `vitals.<kind>:` prefix so the Standing family claims it in the
   // seat the reading vacated — same section, same order, no family-level collapse.
+  //
+  // AN ACTION, NOT A STATE (#4841 item 3). "No blood pressure recorded since Mar 2022"
+  // is a prompt to take a reading: it cannot resolve on its own, and the only thing
+  // that ends it is the measurement. Declaring the kind is what routes it to Act and
+  // earns it the write control; the relevance stays profile-data/dormant, which is
+  // what still hands it to the Standing family's tail and keeps #2652's one-honest-
+  // line rule and the dormant presence exactly where they were.
   vitalDormant(
     ctx: DomainCandidateContext,
     kind: "blood-pressure" | "resting-heart-rate",
     lastRecord: string
   ) {
-    return state(
+    return action(
       ctx,
       `vitals.${kind}:dormant`,
       `vitals.${kind}:dormancy:${lastRecord}`,
       "vitals.latest",
+      "may",
       { relevance: profileDataRelevance("dormant") }
     );
   },

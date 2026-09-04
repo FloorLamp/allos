@@ -30,47 +30,26 @@ const SCAN_DIRS = ["app", "components", "lib"];
 const SCAFFOLD = "components/chart-scaffold.tsx";
 
 /**
- * The blessed recharts importers (4c). Every entry is a chart CARD: a
- * self-contained, code-split renderer for one chart form, consuming the shared
- * palette and the shared scaffold. Adding a row here is the deliberate act of
- * declaring a new chart FORM — if the answer is "a line chart, but for my page",
- * compose `LineChartCard` instead.
+ * The blessed recharts importers (4c). Three entries and the scaffold, where
+ * there were nine cards: #4925 made the chart TREE a spec, so a chart is a
+ * RENDERER (a form nothing else can draw) or it is a spec over one. Adding a row
+ * here is the deliberate act of declaring a new FORM — if the answer is "a line
+ * chart, but for my page", write a `TimeSeriesSpec` instead.
  */
 const RECHARTS_MODULES = new Map<string, string>([
   [
     SCAFFOLD,
-    "the scaffold itself — owns the shared grid/axis/tooltip/mark props",
+    "the scaffold itself — owns the shared grid/axis/tooltip/mark props and resolves a spec's named marks back to them",
   ],
   [
-    "components/LineChartCardInner.tsx",
-    "form: time series (the default chart)",
+    "components/TimeSeriesChartInner.tsx",
+    "renderer: every line chart — the daily card, biomarkers, compare, growth, per-source",
   ],
   [
-    "components/CompareChartInner.tsx",
-    "form: two-series overlay on one time axis",
-  ],
-  [
-    "components/BiomarkerChartInner.tsx",
-    "form: one analyte over time with reference bands",
+    "components/BarSeriesChartInner.tsx",
+    "renderer: every bar chart — stacked composition, zone minutes, the per-day sparkline",
   ],
   ["components/ScatterChartCardInner.tsx", "form: two-variable relationship"],
-  [
-    "components/SourceCompareChartInner.tsx",
-    "form: one metric, one line per reporting source",
-  ],
-  [
-    "components/GrowthChartInner.tsx",
-    "form: pediatric percentile bands + trajectory",
-  ],
-  ["components/StackedBarCardInner.tsx", "form: composition over time"],
-  [
-    "components/BarSparklineInner.tsx",
-    "form: a per-day quantity as a sparkline (#1485 D) — the bar twin of LineChartCard's sparkline variant, for a series whose rest days are real zeros",
-  ],
-  [
-    "components/ZoneMinutesCardInner.tsx",
-    "form: weekly HR-zone composition + target line",
-  ],
 ]);
 
 /**
@@ -99,6 +78,29 @@ const RAW_DASH = /strokeDasharray\s*(?:=\s*"|:\s*")/;
 
 // A hand-built recharts tooltip surface.
 const RAW_TOOLTIP = /contentStyle\s*=\s*\{\{/;
+
+// A CURVE written as a literal on a recharts `<Line>` / `<Area>` (#4924). The
+// interpolation vocabulary only — an axis' `type="number"` / `type="category"`
+// is a different prop of the same name and must stay silent here.
+const CURVE_LITERALS = [
+  "basis",
+  "basisClosed",
+  "basisOpen",
+  "bumpX",
+  "bumpY",
+  "cardinal",
+  "catmullRom",
+  "linear",
+  "linearClosed",
+  "monotone",
+  "monotoneX",
+  "monotoneY",
+  "natural",
+  "step",
+  "stepAfter",
+  "stepBefore",
+];
+const RAW_CURVE = new RegExp(`type\\s*=\\s*"(?:${CURVE_LITERALS.join("|")})"`);
 
 // An import of recharts, in any of its spellings.
 const RECHARTS_IMPORT =
@@ -147,6 +149,11 @@ describe("chart scaffold chokepoint (issue #1445, Part 4b)", () => {
       "chartAxisProps",
       "chartTooltipProps",
       "chartDash",
+      "chartAnnotationLineProps",
+      "chartCurve",
+      "chartDayAxisProps",
+      "chartInstantAxisProps",
+      "chartWindowAreaProps",
       "chartLineDot",
       "chartActiveDot",
       "chartAnnotationLabel",
@@ -177,6 +184,48 @@ describe("chart scaffold chokepoint (issue #1445, Part 4b)", () => {
         `named pattern from components/chart-scaffold.tsx (chartDash.*) instead ` +
         `of a literal:\n${offenders.join("\n")}`
     ).toEqual([]);
+  });
+
+  it("no chart hand-rolls a curve — use chartCurve from the scaffold", () => {
+    // #4924. `type="monotone"` sat at nine call sites across six cards, so five
+    // weigh-ins got the same invented spline a ninety-point series gets and no
+    // one place could say otherwise. The curve is a mark decision like the dash
+    // vocabulary above it, and it lives in the scaffold now.
+    const offenders: string[] = [];
+    for (const { rel, text } of productionSources) {
+      if (rel === SCAFFOLD) continue;
+      text.split("\n").forEach((line, i) => {
+        if (RAW_CURVE.test(line)) offenders.push(`${rel}:${i + 1}`);
+      });
+    }
+    expect(
+      offenders,
+      `A line's curve is chart VOCABULARY, decided once. Import chartCurve ` +
+        `from components/chart-scaffold.tsx and pass type={chartCurve}:\n${offenders.join("\n")}`
+    ).toEqual([]);
+  });
+
+  it("the scaffold's curve is straight segments", () => {
+    // The converse of the absence sweep above, in the same commit: with every
+    // literal gone, flipping this ONE constant back to an interpolating spline
+    // would restore the defect app-wide and the sweep would stay green.
+    const src = fs.readFileSync(path.join(REPO, SCAFFOLD), "utf8");
+    expect(src).toMatch(/export const chartCurve = "linear" as const;/);
+  });
+
+  // THE GUARD MUST BE ABLE TO SEE, and to stay quiet on its benign neighbours: a
+  // green sweep over a complying tree says nothing about either (#3325's lesson).
+  // `type` is also an AXIS prop, and flagging `type="number"` would get this test
+  // deleted inside a week, taking the real guard with it.
+  it.each([
+    ['<Line type="monotone" dataKey="value" />', true],
+    ['<Area type="natural" dataKey="band" />', true],
+    ['  type: "stepAfter",', false],
+    ['<Line type={chartCurve} dataKey="value" />', false],
+    ['<YAxis type="number" domain={[0, 5]} />', false],
+    ['<XAxis type="category" dataKey="date" />', false],
+  ])("RAW_CURVE sees %s → %s", (source, flagged) => {
+    expect(RAW_CURVE.test(source)).toBe(flagged);
   });
 
   it("every fixed-viewBox exemption still exists and still draws its own SVG (no stale entries)", () => {

@@ -41,6 +41,7 @@ import { microMotionPlan } from "@/lib/micro-motion";
 export default function StoolTypeControl({
   todayCount,
   today,
+  subjectProfileId,
 }: {
   // How many Bristol readings this profile already has for today, from the server.
   todayCount: number;
@@ -49,6 +50,12 @@ export default function StoolTypeControl({
   // the SERVER's day rather than on a browser that may have crossed midnight.
   // `TAP_REACH` files this as a `today` tap; a BACKFILL states its day on `StoolForm`.
   today: string;
+  // The quick-log sheet's chosen subject (#4932), when it is not the acting profile.
+  // Posted as `profile_id` and re-gated by `logStoolForm`'s own `gateItemProfile`
+  // call. Offline capture REFUSES rather than queues (see `offline` below) — the
+  // same reason `OfflineDecision`'s comment gives: the replay carries no target
+  // profile and would land on the wrong person.
+  subjectProfileId?: number;
 }) {
   const pipeline = useWritePipeline("stool-form");
   const [count, setCount] = useState(todayCount);
@@ -64,10 +71,8 @@ export default function StoolTypeControl({
   // tap's (`TAP_REACH`).
   const statement = useTimeStatement({
     day: today,
-    label: "Happened earlier?",
     timeLabel: "Time it happened",
     testId: "stool-when",
-    className: "mt-3",
   });
   useEffect(
     () => () => {
@@ -107,7 +112,13 @@ export default function StoolTypeControl({
       // ONLY when a time was actually stated, and never a day: the ABSENCE of each
       // field leaves the instant to the clock seam and the day to the action's `today`,
       // so an untouched sheet posts precisely the body it always posted (#3273).
-      fields: { type: String(type), ...(stated ? { at: stated } : {}) },
+      fields: {
+        type: String(type),
+        ...(stated ? { at: stated } : {}),
+        ...(subjectProfileId != null
+          ? { profile_id: String(subjectProfileId) }
+          : {}),
+      },
       action: logStoolForm,
       settle: (res) => {
         if (!res.ok)
@@ -144,13 +155,19 @@ export default function StoolTypeControl({
         };
       },
       failureMessage: "Couldn't log that. Try again.",
-      offline: () => ({
-        kind: "capture",
-        flow: "stool",
-        date: today,
-        payload: { type, at: stated },
-        keptMessage: "Saved offline — will sync when you reconnect.",
-      }),
+      offline: () =>
+        subjectProfileId != null
+          ? {
+              kind: "refuse",
+              message: "You're offline — reconnect to log for someone else.",
+            }
+          : {
+              kind: "capture",
+              flow: "stool",
+              date: today,
+              payload: { type, at: stated },
+              keptMessage: "Saved offline — will sync when you reconnect.",
+            },
     });
     // The server's total is authoritative; a capture has no revalidate behind it, so
     // its +1 stands in until replay; nothing written rolls back.
@@ -198,7 +215,10 @@ export default function StoolTypeControl({
           </button>
         ))}
       </div>
-      {statement.node}
+      {/* This domain's action is the GRID, so #4426's "immediately right" has no one
+          button to sit against; the door takes the first seat after it instead. */}
+      <div className="mt-3 flex items-center gap-2">{statement.door}</div>
+      {statement.reveal ? <div className="mt-2">{statement.reveal}</div> : null}
       <p
         data-testid="quick-entry-stool-count"
         className="mt-3 text-sm text-slate-500 dark:text-slate-400"

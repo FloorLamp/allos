@@ -42,6 +42,20 @@ export interface PediatricFormContext {
 // paths from drifting onto different age gates.
 export const PEDIATRIC_MAX_AGE_MONTHS = 216; // 18 years
 
+// The subject's age in WHOLE YEARS, read off the same context the weight-band picker
+// runs on (#4609). The food-note age gate (#851 item 4) asks in years while the dosing
+// machinery asks in months, and the form used to take BOTH as separate props — so a
+// host could pass the pediatric context and omit the age, and the form rendered a
+// child's weight-band dosing above chronic-alcohol counselling that only an unknown age
+// admits. One fact, one prop: ageMonths counts whole calendar months, so flooring to
+// years lands on the same birthday boundary ageFromBirthdate computes, and the two can
+// no longer disagree.
+export function pediatricAgeYears(
+  context: PediatricFormContext | undefined
+): number | null {
+  return context?.ageMonths == null ? null : Math.floor(context.ageMonths / 12);
+}
+
 // Canonical body weight is stored in kilograms; OTC pediatric charts are in pounds.
 const KG_PER_LB = 0.45359237;
 

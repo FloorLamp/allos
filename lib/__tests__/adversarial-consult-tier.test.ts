@@ -40,8 +40,11 @@ import {
   SAFETY_VOCABULARY,
   claimProse,
   claimSources,
+  CHANGED_CALL_SIGNALS,
+  NET_REMOVAL_SIGNALS,
   classify,
   closingKeywordIssues,
+  diffSignals,
   sentenceAround,
   shipsRuntimeCode,
   vocabularyHits,
@@ -820,5 +823,398 @@ describe("the rule is stated in the file as a test, not as precedents", () => {
   it("says where the exit codes differ, because 2 and 3 both refuse", () => {
     expect(src).toContain("A GUARD MUST NOT FAIL INTO ITS PERMISSIVE ANSWER");
     expect(src).toContain("refusals of DIFFERENT");
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+// THE VERDICT FOLLOWS THE DIFF (#4842).
+//
+// Both of the tool's failure directions were observed in one night and both had
+// one cause: it read what the PR SAID about itself. The two planted cases below
+// are the real shapes, not invented ones — #4801's hunk and #4881's gate table —
+// and each is run in BOTH directions, because a control that can only pass in one
+// of them proves nothing about the other.
+describe("the diff tier: the classification is evidence from the hunks (#4842)", () => {
+  // #4801's actual hunk (56de14a0, app/(app)/nutrition/intake-actions.ts): the
+  // acting-profile write gate is replaced by one that gates a CLIENT-POSTED
+  // profile_id. Its prose is a good PR description and names no safety term,
+  // which is why the tool answered `ordinary` and the falsifying pass that
+  // REFUTED the PR only ran because an orchestrator overrode it by hand.
+  const AUTHORIZATION_MOVE = {
+    files: ["app/(app)/nutrition/intake-actions.ts"],
+    patches: {
+      "app/(app)/nutrition/intake-actions.ts": [
+        "@@ -1497,10 +1497,21 @@ export async function logHistoricalDose(",
+        "-  const { login, profile } = await requireWriteAccess();",
+        "+  const profileId = await gateItemProfile(formData);",
+        "+  const { login } = await requireSession();",
+      ].join("\n"),
+    },
+    sources: [
+      {
+        where: "PR title",
+        text: "The dose-history panel writes the surface it stands on, on that subject's clock",
+      },
+      {
+        where: "PR body",
+        text: "The panel posts the container's subject on every one of its four writes, and the zone, the core call and the audit row all follow it.",
+      },
+    ],
+  };
+
+  // #4881's actual body (`## Gates` + a results table) over hunks that touch a
+  // presentational control. The tool answered CONSULT, quoting a gate REPORTING
+  // THAT IT FOUND NOTHING as though it were a claim that PHI was leaving a surface.
+  const GATE_REPORT_ONLY = {
+    files: ["components/practices/LogPracticeButton.tsx"],
+    patches: {
+      "components/practices/LogPracticeButton.tsx": [
+        "@@ -212,7 +212,6 @@ export default function LogPracticeButton({",
+        "-    label: EARLIER,",
+        "     disabled: pending || ledger.pending(),",
+      ].join("\n"),
+    },
+    sources: [
+      {
+        where: "PR title",
+        text: "The clock glyph is the only spelling of the time statement",
+      },
+      {
+        where: "PR body",
+        text: claimProse(
+          [
+            "The shared control now draws the door itself.",
+            "",
+            "## Gates (all on this head)",
+            "",
+            "| Gate | Result |",
+            "|---|---|",
+            "| `lint` | PASS |",
+            "| `phi-scan` | OK — no likely-real PHI in 5440 files |",
+            "| `format:check` (LAST) | All matched files use Prettier code style |",
+          ].join("\n")
+        ),
+      },
+    ],
+  };
+
+  it.each([
+    [
+      "an authorization boundary moving, said in no safety word → MANDATORY",
+      AUTHORIZATION_MOVE,
+      "MANDATORY",
+      EXIT.mandatory,
+    ],
+    [
+      "a gate table reporting a clean phi-scan over an inert hunk → ordinary",
+      GATE_REPORT_ONLY,
+      "ordinary",
+      EXIT.ordinary,
+    ],
+  ])("%s", (_label, input, verdict, exit) => {
+    const got = classify(input);
+    expect(got.verdict).toBe(verdict);
+    expect(got.exit).toBe(exit);
+  });
+
+  // THE OTHER HALF OF EACH PLANT, so neither case can pass for the wrong reason.
+  // The authorization move is carried by the HUNK: hand the same classifier the
+  // same files and the same prose with no patch text — every pre-#4842 caller's
+  // shape — and it is `ordinary` again, which is the defect reproduced on demand.
+  it("the same authorization move with no diff text is ordinary again", () => {
+    expect(
+      classify({ ...AUTHORIZATION_MOVE, patches: undefined }).verdict
+    ).toBe("ordinary");
+  });
+
+  // …and the gate table is dropped by claimProse, not by the hunks: the SAME words
+  // written as the author's own prose are still a claim, and still CONSULT.
+  it("the same words as prose rather than a gate row are still CONSULT", () => {
+    expect(
+      classify({
+        ...GATE_REPORT_ONLY,
+        sources: [
+          {
+            where: "PR body",
+            text: claimProse("No PHI leaves the surface it was recorded on."),
+          },
+        ],
+      }).verdict
+    ).toBe("CONSULT");
+  });
+
+  it("names the file and the hunk that earned the classification", () => {
+    const [hit] = classify(AUTHORIZATION_MOVE).diffHits;
+    expect(hit.file).toBe("app/(app)/nutrition/intake-actions.ts");
+    expect(hit.hunk).toBe("@@ -1497,10 +1497,21 @@");
+    expect(hit.line).toBe(
+      "-const { login, profile } = await requireWriteAccess();"
+    );
+    expect(hit.signal).toBe("authorization gate");
+  });
+
+  // WHAT THE SIGNALS MUST STAY SILENT ON. A guard that cried wolf on these would be
+  // deleted inside a week, taking the real one with it — so each benign neighbour is
+  // a shape the repo writes constantly.
+  const hunk = (...lines: string[]) => ["@@ -1,4 +1,6 @@", ...lines].join("\n");
+  const file = "lib/queries/intake/doses.ts";
+  const silent = (patch: string, f = file) => diffSignals([f], { [f]: patch });
+
+  it.each([
+    [
+      "a comment that names the gate",
+      hunk(
+        "+// requireProfileWriteAccess(profileId) asserts the caller may write it."
+      ),
+      file,
+    ],
+    [
+      "a new query that ADDS profile scoping",
+      hunk('+    "SELECT id FROM doses WHERE profile_id = ? AND date = ?"'),
+      file,
+    ],
+    [
+      "a new write that ADDS a transaction",
+      hunk("+  return writeTx(() => insert(profileId, row));"),
+      file,
+    ],
+    [
+      "a test file where the gate names appear as fixture text",
+      hunk('+    gate: "gateItemProfile",'),
+      "lib/__tests__/actions-write-access.test.ts",
+    ],
+    [
+      "a spec or a script, which ship nothing at runtime",
+      hunk("+  await requireWriteAccess();"),
+      "e2e/medications.spec.ts",
+    ],
+  ])("stays silent on %s", (_label, patch, f) => {
+    expect(silent(patch, f)).toEqual([]);
+  });
+
+  // A predicate MOVED between two files in one PR is not a predicate lost — the net
+  // is taken over the whole diff for exactly this reason (#4706 moved a
+  // profile-scoped DELETE out of one write core into a shared one).
+  it.each([
+    [
+      "a scoping predicate moved between two files",
+      {
+        "lib/a.ts": hunk(
+          '-      "DELETE FROM food_log_events WHERE id = ? AND profile_id = ?"'
+        ),
+        "lib/b.ts": hunk(
+          '+      "DELETE FROM food_log_events WHERE id = ? AND profile_id = ?"'
+        ),
+      },
+      [],
+    ],
+    [
+      "a scoping predicate deleted outright",
+      {
+        "lib/a.ts": hunk(
+          '-      "DELETE FROM food_log_events WHERE id = ? AND profile_id = ?"'
+        ),
+      },
+      ["profile scoping"],
+    ],
+    [
+      "a write transaction deleted outright",
+      { "lib/a.ts": hunk("-  return writeTx(() => insert(row));") },
+      ["write transaction"],
+    ],
+  ])("%s", (_label, patches, signals) => {
+    expect(
+      diffSignals(Object.keys(patches), patches).map((h) => h.signal)
+    ).toEqual(signals);
+  });
+
+  // EVERY DECLARED SYMBOL, AS THIS REPO WRITES IT. A guard's pattern comes from the
+  // construct's real spelling, and an alternation that loses one branch is silent
+  // exactly where it was needed — measured: deleting `crossProfile` from the
+  // visibility signal broke nothing until these rows existed, and `crossProfile` is
+  // what sees #4834 (one patient's name over another's controls) and half of #4801.
+  // Each line below is the shape its symbol is actually written in.
+  it.each([
+    [
+      "authorization gate",
+      "-  const { profile } = await requireWriteAccess();",
+    ],
+    ["authorization gate", "+  await requireProfileWriteAccess(profileId);"],
+    ["authorization gate", "+  await requireLoginWriteAccess();"],
+    ["authorization gate", "-  const session = await requireAdmin();"],
+    [
+      "authorization gate",
+      "+  const profileId = await gateItemProfile(formData);",
+    ],
+    [
+      "authorization gate",
+      '+    accessForProfile(login.id, login.role, profileId) === "write"',
+    ],
+    [
+      "authorization gate",
+      "-  const list = accessibleProfiles(login.id, login.role);",
+    ],
+    ["authorization gate", "+  return accessibleProfilesForLogin(loginId);"],
+    [
+      "authorization gate",
+      "+  const scope = await requireScope(searchParams);",
+    ],
+    [
+      "authorization gate",
+      "-  const ids = authorizedProfileSubset(scope.ids, requested);",
+    ],
+    [
+      "authorization gate",
+      "+    `SELECT id FROM doses WHERE profile_id IN ${profileIdsIn(ids)}`,",
+    ],
+    [
+      "cross-profile visibility",
+      "+  const detail = sharedSurfaceDetail(kind, requested);",
+    ],
+    [
+      "cross-profile visibility",
+      "-export function sharedSurfaceWithholdsCategory(",
+    ],
+    [
+      "cross-profile visibility",
+      "-          const actionVisible = itemAffordanceVisible(item.writeTarget);",
+    ],
+    [
+      "cross-profile visibility",
+      '+import { subjectChipVisible } from "@/lib/multi-view";',
+    ],
+    [
+      "cross-profile visibility",
+      "+    readForProfiles(scope.viewIds, (pid) => rows(pid)),",
+    ],
+    [
+      "cross-profile visibility",
+      "-  for (const id of managingLoginIdsForProfile(profileId)) {",
+    ],
+    [
+      "cross-profile visibility",
+      '+const doseVerb = (crossProfile: boolean) => (crossProfile ? "Give" : "Take");',
+    ],
+  ])("sees %s in: %s", (signal, line) => {
+    const f = "app/(app)/x-actions.ts";
+    expect(diffSignals([f], { [f]: hunk(line) }).map((h) => h.signal)).toEqual([
+      signal,
+    ]);
+  });
+
+  // The tier that decides is the DIFF; the tier that asks is still the prose. A word
+  // may never say MANDATORY — that was true before #4842 and the diff tier does not
+  // change it — and a cross-profile visibility change may never say it either,
+  // because widening and narrowing look identical from outside the hunk.
+  it.each([
+    [
+      "a shared-surface visibility change is CONSULT, not MANDATORY",
+      {
+        "lib/queries/recent-changes.ts": hunk(
+          "-  const visible = opts.shared ? changes.filter((c) => !sharedSurfaceWithholdsCategory(c.category)) : changes;"
+        ),
+      },
+      "CONSULT",
+    ],
+    [
+      "an authorization gate is MANDATORY",
+      {
+        "app/(app)/x-actions.ts": hunk(
+          "-  const { profile } = await requireWriteAccess();"
+        ),
+      },
+      "MANDATORY",
+    ],
+  ])("%s", (_label, patches, verdict) => {
+    expect(
+      classify({
+        files: Object.keys(patches),
+        patches,
+        sources: [{ where: "PR title", text: "a title with no safety words" }],
+      }).verdict
+    ).toBe(verdict);
+  });
+
+  it("keeps the four verdicts on four exit codes", () => {
+    // The diff tier adds no fifth answer: an orchestrator's procedure and the
+    // merge-gate neighbours read these numbers.
+    expect(EXIT).toEqual({
+      mandatory: 0,
+      ordinary: 1,
+      cannotAnswer: 2,
+      consult: 3,
+    });
+  });
+
+  it("declares exactly the signals that were measured, with a stated reason", () => {
+    expect(CHANGED_CALL_SIGNALS.map((s) => s.signal)).toEqual([
+      "authorization gate",
+      "cross-profile visibility",
+    ]);
+    expect(NET_REMOVAL_SIGNALS.map((s) => s.signal)).toEqual([
+      "profile scoping",
+      "write transaction",
+    ]);
+    for (const s of [...CHANGED_CALL_SIGNALS, ...NET_REMOVAL_SIGNALS]) {
+      expect(s.why.length).toBeGreaterThan(20);
+      expect(s.rx).toBeInstanceOf(RegExp);
+    }
+    // requireSession authenticates and decides no write authority; admitting it
+    // names a fact about every diff (189 call sites) rather than about this one.
+    expect(
+      diffSignals(["app/(app)/x/page.tsx"], {
+        "app/(app)/x/page.tsx": hunk(
+          "+  const session = await requireSession();"
+        ),
+      })
+    ).toEqual([]);
+  });
+});
+
+describe("the gate section is a transcript, not a claim (#4842)", () => {
+  it.each([
+    ["## Gates", "## Gates"],
+    ["### Gates", "### Gates"],
+    ["a parenthetical", "## Gates (all on this head)"],
+  ])("drops a %s section", (_label, heading) => {
+    const body = [
+      "Real prose with no term in it.",
+      heading,
+      "| Gate | Result |",
+      "| `phi-scan` | OK — no likely-real PHI in 5440 files |",
+      "## Next section",
+      "More real prose.",
+    ].join("\n");
+    const prose = claimProse(body);
+    expect(prose).toContain("More real prose.");
+    expect(prose).not.toContain("phi-scan");
+    expect(vocabularyHits([{ where: "b", text: prose }])).toEqual([]);
+  });
+
+  it("closes the section at a heading of the same or higher level, not a deeper one", () => {
+    const body = [
+      "## Gates",
+      "| `phi-scan` | OK — no likely-real PHI |",
+      "### A subsection of the gate report",
+      "The credential shapes in the transcript below.",
+      "## After",
+      "A real warning claim.",
+    ].join("\n");
+    const prose = claimProse(body);
+    expect(prose).not.toContain("credential");
+    expect(
+      vocabularyHits([{ where: "b", text: prose }]).map((h) => h.term)
+    ).toEqual(["warning"]);
+  });
+
+  it("does not eat a heading that merely contains the word", () => {
+    // "gating" and "gated" are not the gate report; only the section is.
+    const prose = claimProse(
+      "## The gating rule\nA warning stops firing here."
+    );
+    expect(
+      vocabularyHits([{ where: "b", text: prose }]).map((h) => h.term)
+    ).toEqual(["warning"]);
   });
 });

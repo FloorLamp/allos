@@ -8,7 +8,11 @@ import { activityEditDataHasStrength } from "@/lib/activity-form-model";
 import ActivitySummaryLine from "@/components/activity/ActivitySummaryLine";
 import ActivityMetricsLine from "@/components/activity/ActivityMetricsLine";
 import ActivityPartRows from "@/components/activity/ActivityPartRows";
-import { equipmentHref, strengthAnalyzeHref } from "@/lib/hrefs";
+import {
+  equipmentHref,
+  strengthAnalyzeHref,
+  trainingLogHref,
+} from "@/lib/hrefs";
 import type { MuscleId } from "@/lib/lifts";
 
 // The canonical activity page's session body. The page owns identity, actions,
@@ -85,6 +89,9 @@ export default function ActivityRecord({
             }
             exerciseHref={exerciseHref}
             highlightMusclesByExercise={highlightMusclesByExercise}
+            // The muscle badge is the Log's tag filter's door (#4079): "show me
+            // every session that worked this".
+            tagHref={(kind, value) => trainingLogHref({ tag: { kind, value } })}
           />
         </div>
       )}

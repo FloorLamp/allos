@@ -3,19 +3,24 @@ import { today } from "./db";
 import type { EpisodeMedSuggestion } from "./episode-med-reconcile";
 import {
   episodeAlternateLogDate,
+  isLoggedSymptomSeries,
   type AssembledEpisode,
+  type CockpitRecovery,
 } from "./illness-episode-format";
 import type { IntakeCatalogOptions } from "./queries/intake-options";
 import {
   getCustomSymptomNames,
   getIntakeCatalogOptions,
-  getPediatricFormContext,
   getPrnMedicationsForQuickLog,
   getSymptomLogOrder,
   getEpisodeMedReconciliations,
 } from "./queries";
 import type { PrnMedForQuickLog } from "./queries/intake/adherence";
-import type { PediatricFormContext } from "./prn-dosing";
+import { antipyreticPrnMeds } from "./prn-defaults";
+import {
+  loadIntakeFormContext,
+  type IntakeFormContext,
+} from "./intake-form-context";
 import { schoolReturnStatusesFor } from "./school-return-data";
 import { schoolReturnCompactLabel } from "./school-return";
 import {
@@ -30,8 +35,20 @@ export interface DashboardIllnessControls {
   staleNudge: StaleEpisodeNudge | null;
   medReconciliation: EpisodeMedSuggestion[];
   prnMeds: PrnMedForQuickLog[];
+  // The fever-reducing subset of prnMeds (#4712 judgement 1). Derived and carried on
+  // every gather so the ruled dose offer ("Log <antipyretic> <dose>" in the
+  // temperature fold, reusing IllnessMedicationLogger) can be fed by ONE prop pass
+  // once a mount exists that would not already show the same chip elsewhere — NOT
+  // read by any production caller as of this PR: the one mount that reads
+  // `controls` (IllnessCockpitBody) already renders every one of these as a
+  // persistent Meds chip, and feeding them again would duplicate it. That
+  // fold-vs-persistent-row conflict is the owner's to rule (#4712, `needs-human`);
+  // until then this field's only readers are the component tests.
+  antipyreticPrnMeds: PrnMedForQuickLog[];
   intakeOptions: IntakeCatalogOptions;
-  pediatric: PediatricFormContext;
+  // The whole subject context the cockpit's add-medication fold feeds its form
+  // (#4609) — this profile's, not the viewer's.
+  intakeForm: IntakeFormContext;
   initial: Record<string, number>;
   initialAlt?: Record<string, number>;
   initialNotes: Record<string, string>;
@@ -45,7 +62,10 @@ export interface DashboardIllnessCockpitModel {
   temperatureUnit: TemperatureUnit;
   timeZone: string;
   nowIso: string;
-  feverFree: { label: string; met: boolean } | null;
+  // THE COUNTDOWN, NOT ONLY ITS LABEL (#4752 item 1). The recovery-led header draws a
+  // progress ring, so the cleared hours and the convention's threshold have to survive
+  // the gather rather than being folded into a string nothing can measure.
+  feverFree: CockpitRecovery | null;
   controls: DashboardIllnessControls | null;
 }
 
@@ -54,6 +74,11 @@ function dayRecords(episodes: readonly AssembledEpisode[], date: string) {
   const notes: Record<string, string> = {};
   for (const episode of episodes) {
     for (const symptom of episode.symptoms) {
+      // THE SAFETY NARROWING. These maps seed `SymptomLogBar`'s severity chips and its
+      // `setSymptomSeverityCore` writes, so a derived row reaching here would offer a
+      // severity editor over a measurement — the exact write the owner ruled out. The
+      // type has no severity to read, so this cannot be forgotten silently.
+      if (!isLoggedSymptomSeries(symptom)) continue;
       const row = symptom.points.find((point) => point.date === date);
       if (!row) continue;
       initial[symptom.symptom] = row.severity;
@@ -106,10 +131,12 @@ export function gatherDashboardIllnessCockpits(
   let staleAcked = new Set<number>();
   let reconciliations = new Map<number, EpisodeMedSuggestion[]>();
   if (options.canWrite) {
+    const prnMeds = getPrnMedicationsForQuickLog(profileId);
     sharedControls = {
-      prnMeds: getPrnMedicationsForQuickLog(profileId),
+      prnMeds,
+      antipyreticPrnMeds: antipyreticPrnMeds(prnMeds),
       intakeOptions: getIntakeCatalogOptions(profileId),
-      pediatric: getPediatricFormContext(profileId, options.weightUnit),
+      intakeForm: loadIntakeFormContext(profileId, options.weightUnit),
       customNames: getCustomSymptomNames(profileId),
       rankedKeys: getSymptomLogOrder(profileId),
     };
@@ -166,6 +193,8 @@ export function gatherDashboardIllnessCockpits(
                 options.temperatureUnit
               ),
               met: schoolStatus.met,
+              clearedForHours: schoolStatus.clearedForHours,
+              thresholdHours: schoolStatus.thresholdHours,
             }
           : null,
       controls: sharedControls

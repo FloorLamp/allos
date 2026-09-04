@@ -1,14 +1,54 @@
 # Substances
 
+## Consumables share one event model and one correction shape
+
+**Owner ruling, 2026-09-04.** Substances are consumables, like food and intake, and
+behave the same way. A drink, a cigarette or a joint is an **event with an instant**,
+exactly as a food serving or a dose is. The daily total is a **rollup** — the cap's
+substrate and the card's count — and never the editable thing.
+
+Two consequences, and they are the doctrine rather than a rendering preference:
+
+- **One record row per event.** A day with drinks at 21:00 and 23:00 is two rows and
+  two chart ticks, not one row saying "2 standard drinks". The count derives from the
+  events.
+- **One correction shape.** A substance event is corrected where a food serving is
+  corrected — re-time, re-file, delete, on the event itself — never through a
+  day-count form.
+
+**Phase 1 (#3295) applies it to alcohol, which already had the ledger for it.** Alcohol
+lives in `food_log_events`, so its events existed and only the record was hiding them:
+the add door now mounts `WhenControl` for the food-log ledger, the statement lands on
+each serving event as `occurred_at` / `time_source = 'stated'` through the food ledger's
+own log core, and `/history` composes one `substance` row per drink carrying the FOOD
+edit payload. It stays a `substance` row — the life-stage gate and "the act in the
+person's own terms" are the record's reasons for that and neither is amended;
+`edit.kind` names the correction door, `kind` names what the thing is.
+
+**Both of a drink's doors agree (#5026 item 1).** The substance-use card's history is
+that same rollup, one row per day, and it used to open the day-count form on an alcohol
+row — so the same drink had two correction doors disagreeing about what the editable
+thing is. Measured on that path: two drinks stated at 21:00 and 23:00, corrected to the
+next day, came back with `occurred_at` and `time_source` NULL on both, and shrinking the
+day from 2 to 1 deleted whichever was filed first. Now `updateSubstanceDailyTotalCore`
+refuses a food-log ledger outright and the card's row offers Delete alone, pointing at
+the record where each drink corrects on its own. For a day-count substance the day IS
+the stored fact, so that form is still its correction.
+
+**Phase 2 (#3295) owes the same model to nicotine, cannabis and custom substances**:
+per-event rows with `occurred_at` and `time_source`, with `substance_daily_totals` kept
+as a derived rollup. Until it lands they are day rows, date-only, corrected through the
+day-count form — `substance_daily_totals` is UNIQUE per (profile, date, substance) and
+declares no event column, so there is nowhere to put an instant. The trap to know is
+that the table DOES carry `recorded_at`, so `bestKnownInstant` answers with a filing
+stamp; the read must ask for the EVENT instant and take null for an answer.
+
 The cross-domain Timeline browses alcohol, nicotine, cannabis, and custom
-substances as one per-day `substance` rollup. Alcohol is counted from its shared
-food serving events; the other substances are counted from their current daily
-totals. This is browse-only. #3295 owns the later event-row schema and writers,
-and its rows must land on the app's one record — the `substance` kind in
-`lib/history.ts`, recorded in `docs/internals/history.md` — rather than creating a
-substance shell beside it. The shared event-ledger frame that sentence used to name is
-gone: #3958 folded the four ledger routes into `/history`, and the substance record's
-first door opens onto it.
+substances as one per-day `substance` rollup, and that is browse-only. Substance rows
+land on the app's one record — the `substance` kind in `lib/history.ts`, recorded in
+`docs/internals/history.md` — rather than creating a substance shell beside it. The
+shared event-ledger frame that sentence used to name is gone: #3958 folded the four
+ledger routes into `/history`, and the substance record's first door opens onto it.
 
 Status: vocabulary shipped (#3279); the surfaces that consume it are in flight
 
@@ -36,7 +76,7 @@ unknowns, and nothing more.
 | **curated key**          | One of the app's authored substances (`alcohol`, `nicotine`, `cannabis`). A closed set that may grow modestly where good defaults exist. `Substance` / `isCuratedSubstance()`.   |
 | **custom key**           | A profile's own substance, stored as its normalized name. Not registered anywhere before use. `isCustomSubstanceKey()`.                                                          |
 | **unit**                 | One countable use: a standard drink, a cigarette, a session. Custom substances always count in generic uses.                                                                     |
-| **episodic consumption** | Countable uses aggregated to one per-day total. What a substance key names.                                                                                                      |
+| **episodic consumption** | Countable uses, each an event with an instant, rolled up to a per-day total. What a substance key names. Alcohol has the events today; phase 2 owes them to the rest.            |
 | **dosed regimen**        | A named substance taken at an amount on a cadence. **Not a substance key** — see the boundary below.                                                                             |
 | **reduction cap**        | An opt-in weekly ceiling on units. A `frequency_targets` row with `scope_kind = 'substance'`.                                                                                    |
 | **screener**             | An opt-in screening instrument administered or entered on the substance page.                                                                                                    |
@@ -116,7 +156,8 @@ Two shapes, two existing stores, no third engine.
 
 - **Episodic consumption** — sessions, drinks, uses — is a substance key on the substance
   ledger. Alcohol on `food_daily_totals`/`food_log_events`, everything else on
-  `substance_daily_totals`.
+  `substance_daily_totals`. Each use is an EVENT (see the doctrine at the top); the
+  daily total is the rollup over them.
 - **A dosed regimen** — 10 µg every 3 days — is an **intake item**: free-text name,
   µg-capable amount, interval cadence, situational holds, linked to a protocol through the
   shipped intake-linked N-of-1 tally (#3144), with outcome metrics like any protocol. This
@@ -196,46 +237,57 @@ dedicated store, so one store never has two quick-log owners in the census.
 Substance data stays out of share links, the emergency card and print surfaces by
 default, and a send names a substance only behind the per-profile opt-in below. The
 neutral stance changes what the **owner** can do, not what the app broadcasts. No
-substance ever generates a finding-driven send.
+substance ever generates a finding-driven send — **with one recorded exception**.
 
-Telegram carries this profile's alcohol rows only after an explicit per-profile opt-in —
-`substance_telegram_enabled`, off by default, the same consent shape as food buttons
-(`getProfileFoodTelegram`) and profile-scoped for the same reason: one login's chat
-receives every profile it manages, so the choice belongs to the data subject. There is no
-backfill; an existing profile with Telegram already wired up reads "off" on first deploy
-and stops carrying substance content until someone says otherwise (#3330).
+**The exception (owner decision, 2026-09-02, #4775 §5).** The paired-observation
+`alcohol-*` entries (`lib/paired-observations.ts`) may render **one** line in the
+morning digest, behind `substance_telegram_enabled` and only above the pair's own
+effect floor. This overrules #2177's "never a send" for this pair family and nothing
+else. It is one line, never a message of its own: it is appended to a Sleep section
+that already exists, so it cannot be the thing that makes a digest go out. Everything
+that made the original ruling right still holds — the opt-in is off by default, the
+pair's monthly dismissal silences the line as it silences the card, and the copy is
+the verdict's own sentence with both arms' n and no advice verb. The gather is
+`gatherSubstanceObservationLine` (`lib/notifications/digest-data.ts`), which asks the
+flag before it computes anything at all.
 
-Alcohol is the reach the food nudge governs, because alcohol is the one substance whose
-ledger is a food group (`ledger: "food-log"`) and so rides that nudge. Every other
-substance, curated or custom, lives in `substance_daily_totals` and has no food-nudge
-surface — but a declared **cap** on any substance, alcohol included, is named by its own
-noun on the periodic recap's two cap lines, which go out over Telegram, Web Push and
-Email (#3900). The same flag governs both reaches. `TELEGRAM_DOMAIN_CENSUS` keeps
+What the exception does NOT open: no other substance, no cap finding, no second line,
+and no send that exists because of a substance.
+
+**Alcohol is the special case, by owner ruling (2026-09-02).** Its ledger is a food group
+(`ledger: "food-log"`), so it rides the food nudge's buttons and tally under the
+food-buttons consent (`food_telegram_enabled`, `getProfileFoodTelegram`) exactly like
+every other group, and its cap is named on the recap like any food cap. #3330 first put
+alcohol behind the substance flag below; that read "off" for every existing profile and
+removed the 🍷 button from the one nudge that logs most drinks, so the drinks went
+unlogged — which is a worse record, not a better protection. The food-buttons consent is
+already profile-scoped for the same reason (one login's chat receives every profile it
+manages, so the choice belongs to the data subject), and it is the choice that governs.
+
+Every other substance, curated or custom, lives in `substance_daily_totals` and has no
+food-nudge surface; a declared **cap** on one is named by its own noun on the periodic
+recap's two cap lines, which go out over Telegram, Web Push and Email (#3900). Those ride
+only behind `substance_telegram_enabled` — off by default, per profile, no backfill; the
+toggle sits on the Recap row in Settings → Notifications. `TELEGRAM_DOMAIN_CENSUS` keeps
 `substance` off the slash-command vocabulary.
 
-The flag is read in three gathers, and the three are the whole of it — the first attempt
-gated only the first, the eating-time correction rows kept naming the drink from a second
-read thirty lines downstream, and the recap named the cap from a third module out:
+The flag is read in ONE gather, and that is the whole of it (an earlier design read it in
+three — `buildFoodNudge`'s buttons and tally, and the eating-time correction rows' recent-tap
+read — both of which were alcohol-only and went with the alcohol ruling above; every chat
+surface now pairs correction bursts straight from `getRecentFoodTaps`):
 
-- `buildFoodNudge` drops the group from the ranked keys and the day totals, which is the
-  quick-log **button** and the `Today:` **tally**.
-- `consentedFoodTaps` (same file) drops it from the recent-tap read every eating-time
-  **correction** surface takes — the chips beside the nudge, the `Recorded: … (corrected)`
-  statement in the prose, the reconcile sweep's dead-token set and picker anchor, and the
-  picker handler's own `resolve` in `telegram-time-correction.ts`, which is outside the
-  nudge builder entirely. Filtered before `collapseBursts`, so a mixed burst collapses to
-  a form naming a neighbour or naming nothing, never a gap; an all-substance burst is
-  gone, and a token aimed at it takes the refusal that already exists for one that aged
-  out.
-- `gatherRecapInput` drops `scope_kind: "substance"` targets from both cadence cap
-  readers when the gather is `forSend`, including the gather used to generate a stored
-  AI narrative. This removes the week **verdict** line ("over
-  the Nicotine cap") and the period **cap-weeks** line ("over the Nicotine cap in 2 of 4
-  weeks") — a custom substance names itself on both, since `cadenceScopeNoun` returns the
-  profile's own string. The dashboard recap card and year retrospective remain
-  unfiltered: they are surfaces the profile is standing on, not sends. The stored AI
-  narrative is safe to paste into the send because it is generated from the gated facts;
-  its in-app card renders the deterministic cap facts beside that prose, preserving the
+- `gatherRecapInput` drops `scope_kind: "substance"` targets whose ledger is the
+  substance log from both cadence cap readers when the gather is `forSend`, including the
+  gather used to generate a stored AI narrative — the predicate is
+  `substanceDef(scope_value).ledger === "food-log"`, the same line `isSubstanceLogged`
+  draws for writes, so an alcohol cap passes and a nicotine, cannabis or custom cap does
+  not. This removes the week **verdict** line ("over the Nicotine cap") and the period
+  **cap-weeks** line ("over the Nicotine cap in 2 of 4 weeks") — a custom substance names
+  itself on both, since `cadenceScopeNoun` returns the profile's own string. The
+  dashboard recap card and year retrospective remain unfiltered: they are surfaces the
+  profile is standing on, not sends. The stored AI narrative is safe to paste into the
+  send because it is generated from the gated facts; its in-app card renders the
+  deterministic cap facts beside that prose, preserving the
   profile's own substance view (#3909).
 
   **This gate can suppress a whole recap, and that is the intended outcome.**

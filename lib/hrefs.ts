@@ -152,21 +152,35 @@ export function intakeHref(kind: IntakeItemKind): AppRoute {
 // Param ORDER is fixed by this function, never by the caller's object literal, so the
 // same state always produces the same URL — which is what makes a link cacheable and
 // "did this href change?" a question a test can ask.
-export function historyHref(
-  params: {
-    family?: HistoryFamily;
-    kind?: HistoryKind;
-    class?: "supplement" | "medication";
-    item?: string;
-    media?: boolean;
-    day?: string;
-    everyone?: boolean;
-    open?: readonly string[];
-    /** The rollup lines opened in Everything (#3958 phase 2), one key per entry. */
-    expand?: readonly string[];
-    show?: number;
-  } = {}
-): AppRoute {
+/** Everything `historyHref` spells, as a value a caller can build and pass on. Named so
+ *  a server surface can hand a client one its own rules produced — the day view's add
+ *  chips do that, adding the chart's window without re-deriving the kind rules (#4950). */
+export interface HistoryHrefParams {
+  family?: HistoryFamily;
+  kind?: HistoryKind;
+  class?: "supplement" | "medication";
+  item?: string;
+  media?: boolean;
+  day?: string;
+  everyone?: boolean;
+  open?: readonly string[];
+  /** The rollup lines opened in Everything (#3958 phase 2), one key per entry. */
+  expand?: readonly string[];
+  show?: number;
+  /**
+   * A window selected on the day chart (#4950), as profile-local `HH:MM` clocks on
+   * the day in view. `to` is optional: a tap marks a start alone and leaves the
+   * length to the form. Written and read through `lib/intraday-window.ts`, which is
+   * where the shape is defined and where a pair that is not a window is refused.
+   *
+   * These ship WITH their reader, per the `?subject=` note above: the day view parses
+   * them beside `kind` and hands the window to the add door.
+   */
+  from?: string;
+  to?: string;
+}
+
+export function historyHref(params: HistoryHrefParams = {}): AppRoute {
   const sp = new URLSearchParams();
   // A kind implies its family; spelling both would be a URL that can contradict itself.
   if (params.family && !params.kind) sp.set("family", params.family);
@@ -175,6 +189,10 @@ export function historyHref(
   if (params.item) sp.set("item", params.item);
   if (params.media) sp.set("media", "1");
   if (params.day) sp.set("day", params.day);
+  // The window follows the day it is a window ON, and `to` follows `from`, so a URL
+  // reads in the order a person would say it.
+  if (params.from) sp.set("from", params.from);
+  if (params.from && params.to) sp.set("to", params.to);
   if (params.everyone) sp.set("view", "everyone");
   for (const key of params.open ?? []) sp.append("open", key);
   for (const key of params.expand ?? []) sp.append("expand", key);
@@ -328,11 +346,68 @@ export function historyDayHref(date: string): AppRoute {
   return historyHref({ day: date });
 }
 
-// The Training Log's date anchor. Workout-day surfaces land in the domain
-// ledger rather than routing through Timeline; the log owns activity review
-// and editing, while Timeline remains the cross-domain destination.
+// THE DAY VIEW'S INTRADAY PANEL, AS A DESTINATION (#4767 item 1). The panel is the
+// app's one intraday surface, and until now nothing could land on it: it carried
+// testids and no id, so a receipt or a dashboard chart could only drop you at the
+// top of the day and leave the scroll to you.
+//
+// This is NOT the `#timeline-day-<date>` fragment the note above retired. That one
+// named a POSITION IN A FEED, which `?day=` made meaningless; this names a PANEL on
+// the page the day param already selects — the same thing `/data#integrations` is.
+export const INTRADAY_PANEL_ANCHOR = "day-at-a-glance";
+
+export function historyDayIntradayHref(date: string): AppRoute {
+  return `${historyDayHref(date)}#${INTRADAY_PANEL_ANCHOR}` as AppRoute;
+}
+
+// ONE WORKOUT DAY, IN THE LOG. Workout-day surfaces land in the domain ledger
+// rather than routing through Timeline; the log owns activity review and editing,
+// while Timeline remains the cross-domain destination.
+//
+// THE DAY IS IN THE QUERY, NOT IN A FRAGMENT (#4079). This used to be
+// `/training?tab=log#day-<date>`, which asked the BROWSER to find the day among
+// whatever the Log had drawn — so it resolved only while the day happened to fall
+// inside the default window, and stopped resolving the moment that window moved.
+// The Log is a place with a URL now, and the substrate it renders through already
+// takes a day as a read bound (`HistoryGatherOptions.day`, the same `?day=` the
+// record's day view is spelled with). Naming the day there is what makes the link
+// land: the page gathers that day, so there is nothing left to scroll to. It is the
+// ruling `#timeline-day-<date>` was retired under, and the one `bucketFeedHref`
+// already applies a month at a time.
 export function trainingLogDayHref(date: string): AppRoute {
-  return `/training?tab=log#day-${date}`;
+  return trainingLogHref({ day: date });
+}
+
+// THE LOG TAB'S OWN URL (#4079). The tab renders through the shared history
+// substrate, so its state is the substrate's — the bound, the open folds, the
+// household mode — plus the training-only refinements layered on the mount. One
+// builder, so every control writes the same grammar and a filter change can never
+// drop the bound the reader had widened.
+export function trainingLogHref(
+  params: {
+    q?: string | null;
+    type?: string | null;
+    source?: string | null;
+    fault?: boolean;
+    tag?: { kind: "muscle" | "region"; value: string } | null;
+    /** One profile-local day, the substrate's own read bound. */
+    day?: string | null;
+    everyone?: boolean;
+    show?: number;
+    open?: readonly string[];
+  } = {}
+): AppRoute {
+  const sp = new URLSearchParams({ tab: "log" });
+  if (params.day) sp.set("day", params.day);
+  if (params.q) sp.set("q", params.q);
+  if (params.type) sp.set("type", params.type);
+  if (params.source) sp.set("src", params.source);
+  if (params.fault) sp.set("fault", "1");
+  if (params.tag) sp.set("tag", `${params.tag.kind}:${params.tag.value}`);
+  if (params.everyone) sp.set("view", "everyone");
+  if (params.show != null) sp.set("show", String(params.show));
+  for (const key of params.open ?? []) sp.append("open", key);
+  return `/training?${sp.toString()}` as AppRoute;
 }
 
 // Turn a day-history panel's domain landing page into its dated CREATE entry
@@ -363,6 +438,15 @@ export type DataSection = (typeof DATA_SECTIONS)[number];
 // (e.g. "paste-import"). `section` is union-typed so a typo can't strand a caller.
 export function dataSectionHref(section: DataSection, hash?: string): AppRoute {
   return hash ? `/data?section=${section}#${hash}` : `/data?section=${section}`;
+}
+
+/**
+ * The bulk-correction panel with one field pre-selected (#1603). The `fix=` key
+ * is a `CorrectionFieldId`; the review page validates it and falls back to no
+ * pre-selection, so a key the panel does not know lands on an ordinary Review.
+ */
+export function bulkCorrectionHref(field: string): AppRoute {
+  return `/data?section=review&fix=${field}#bulk-correction`;
 }
 
 // A provider's setup / detail page. Each CONNECTABLE provider has its OWN static

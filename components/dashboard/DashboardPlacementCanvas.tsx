@@ -7,14 +7,17 @@ import {
   type DashboardEverythingGroup,
   type DashboardPlacement,
 } from "@/lib/dashboard-relevance";
-import NowStrip, { type NowStripRow } from "./NowStrip";
+import NowStrip, { type NowStripRow, type NowSubjectLabel } from "./NowStrip";
 import AppBadge from "@/components/AppBadge";
 import RememberedDetails from "@/components/RememberedDetails";
+import Disclosure from "@/components/Disclosure";
 import DashboardAhead, { type DashboardAheadBucket } from "./DashboardAhead";
 import DashboardStandingCluster, {
   DashboardFactRow,
   type DashboardStandingPresentation,
+  type StandingFamilyDrawing,
 } from "./DashboardStandingCluster";
+import type { StandingFamilyKey } from "@/lib/dashboard-standing";
 
 export interface DashboardPlacementCanvasProps {
   dateLabel: string;
@@ -27,6 +30,14 @@ export interface DashboardPlacementCanvasProps {
    */
   presentations: ReadonlyMap<string, DashboardStandingPresentation>;
   /**
+   * THE DRAWING BELONGS TO THE FAMILY (#4969), resolved once per family
+   * alongside `presentations` rather than hung off whichever member happened to
+   * carry it. Standing is the only lane with families, so this is consulted
+   * there and nowhere else. Optional: a caller with no plotted family (most
+   * fixtures) may omit it rather than pass an empty map at every call site.
+   */
+  drawings?: ReadonlyMap<StandingFamilyKey, StandingFamilyDrawing>;
+  /**
    * AHEAD SAYS WHEN, NOT WHAT (#4076). One row RENDERER serves every zone, but Ahead
    * is a schedule: its facts column states when a thing is due, where the same
    * candidate drawn in Now or in the tail states the item's own content — the
@@ -38,6 +49,12 @@ export interface DashboardPlacementCanvasProps {
   aheadPresentations: ReadonlyMap<string, DashboardStandingPresentation>;
   attentionBadgeCount: number;
   illnessGroupNode?: ReactNode;
+  /**
+   * WHO EACH NOW SUBJECT IS (#4752 item 6), keyed by the ranker's subject key. Only
+   * consulted when the ranker actually grouped, so a single-subject dashboard can
+   * pass whatever it likes and still render no labels.
+   */
+  nowSubjects?: ReadonlyMap<string, NowSubjectLabel>;
 }
 
 const EVERYTHING_LABELS: Record<DashboardEverythingGroup, string> = {
@@ -157,13 +174,121 @@ function MomentBlock({
   );
 }
 
+// THE BAND CAP (#4065, owner ruling 2026-09-03 "fold with a cap"). Understand and
+// Setup are the tail's bulk — 74 statements and 65-87 setup rows measured across the
+// seeded personas, most saying today what they said yesterday. Nothing is dropped:
+// every block a band computes is still drawn, admission stays total, and a row
+// leaves only by resolving (no age-based decay is added here or anywhere).
+//
+// THE CAP UNIT IS THE MOMENT BLOCK, NOT THE UNDERLYING CANDIDATE. A family that
+// already shares one `groupKey` — coaching observations, data-quality findings —
+// reads as ONE entry under ONE header before this ruling and must keep doing so
+// after it: splitting a block across open/folded would print its header twice,
+// which is the exact duplicate #4076 exists to forbid ("no two blocks share a
+// title"). So three BLOCKS stay open, newest first, and the block that would push a
+// fourth open goes to the fold whole, however many rows it carries — which is also
+// why the fold's count below is a ROW count, not a block count: a folded family of
+// eight must say "8 more", never "1 more", or the amount itself would be hiding.
+const EVERYTHING_BAND_CAP = 3;
+const CAPPED_EVERYTHING_GROUPS: ReadonlySet<DashboardEverythingGroup> = new Set(
+  ["understand", "setup"]
+);
+
+function EverythingBand({
+  group,
+  members,
+  presentations,
+}: {
+  group: DashboardEverythingGroup;
+  members: readonly EverythingPlacement[];
+  presentations: ReadonlyMap<string, DashboardStandingPresentation>;
+}) {
+  const blocks = momentBlocks(members);
+  // NEWEST FIRST. Neither band carries a real timestamp per block — a coaching
+  // observation and a setup item are placed by the ranker's own order
+  // (`compareSource`/dismissal-fatigue rerank for findings, declared step order for
+  // setup), not by when the underlying fact appeared — so there is no clock to sort
+  // by without minting one, which the ruling's "no new decay" and this repo's
+  // "types over guards" doctrine both argue against. The band's OWN order is kept as
+  // the stand-in: it already pushes repeatedly-dismissed findings toward the back
+  // (`routineOrder`, lib/dismissal-fatigue.ts), so keeping the FRONT open is not an
+  // arbitrary truncation — it is "whatever the ranker considers current" open and
+  // "whatever it has already downranked" folded, which is the same direction "newest
+  // first" points in every band that does have a real order today.
+  const capped =
+    CAPPED_EVERYTHING_GROUPS.has(group) && blocks.length > EVERYTHING_BAND_CAP;
+  const openBlocks = capped ? blocks.slice(0, EVERYTHING_BAND_CAP) : blocks;
+  const foldedBlocks = capped ? blocks.slice(EVERYTHING_BAND_CAP) : [];
+  const foldedRowCount = foldedBlocks.reduce(
+    (sum, block) => sum + block.members.length,
+    0
+  );
+  return (
+    <div
+      className="band overflow-hidden rounded-xl border border-(--border) bg-surface"
+      data-testid={`dashboard-everything-${group}`}
+    >
+      {openBlocks.map((block) => (
+        <MomentBlock
+          key={block.key}
+          block={block}
+          presentations={presentations}
+        />
+      ))}
+      {foldedBlocks.length > 0 && (
+        // A SECOND INSTANCE OF THE APP'S ONE FOLD (#4232), never a second kind of
+        // one. Same `<Disclosure>` primitive, same motion, same border-top rhythm
+        // MomentBlock already uses for a new entry in this band — a reader who has
+        // learned what a chevron-and-count means once does not learn it again here.
+        //
+        // STATELESS, ON PURPOSE. `dashboard-all` remembers because it is the daily
+        // routine remainder; this fold gates findings and setup prompts, which
+        // `lib/disclosure-memory.ts`'s own allowlist holds OUT of memory by class —
+        // a remembered-open findings fold pre-opens a wall the reader did not ask
+        // for on this visit. So this is the app's shared `<Disclosure>` used
+        // directly, uncontrolled, always closed on arrival, never routed through
+        // `RememberedDetails` or the `DisclosureId` registry.
+        <Disclosure
+          data-testid={`dashboard-everything-${group}-fold`}
+          className="border-t border-(--divider)"
+        >
+          <summary
+            data-testid={`dashboard-everything-${group}-fold-summary`}
+            className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-medium text-slate-600 marker:content-none dark:text-slate-300"
+          >
+            <span
+              aria-hidden
+              className="inline-block transition-transform group-open:rotate-90 motion-reduce:transition-none"
+            >
+              ›
+            </span>
+            {foldedRowCount} more
+          </summary>
+          {foldedBlocks.map((block) => (
+            <MomentBlock
+              key={block.key}
+              block={block}
+              presentations={presentations}
+            />
+          ))}
+        </Disclosure>
+      )}
+    </div>
+  );
+}
+
+const NO_DRAWINGS: ReadonlyMap<StandingFamilyKey, StandingFamilyDrawing> =
+  new Map();
+
 export default function DashboardPlacementCanvas({
   dateLabel,
   placements,
   presentations,
+  drawings = NO_DRAWINGS,
   aheadPresentations,
   attentionBadgeCount,
   illnessGroupNode,
+  nowSubjects,
 }: DashboardPlacementCanvasProps) {
   const rowFor = (placement: DashboardPlacement) =>
     (placement.lane === "ahead" ? aheadPresentations : presentations).get(
@@ -210,7 +335,21 @@ export default function DashboardPlacementCanvas({
   // The illness group stands where its FIRST episode placed, and every other episode
   // placement leaves the strip (their facts are inside the cockpit).
   const firstIllnessId = illnessPlacements[0]?.candidate.candidateId;
+  // WHOSE NAME MAY STAND OVER THE ILLNESS GROUP (#4752 item 6). The group is ONE
+  // container holding every ill profile's cockpit, so a subject label above it is
+  // true only while a single subject is ill; with two, the first one's name would
+  // sit over another patient's controls, which is exactly the mis-attribution
+  // #531/#534 made the per-cockpit name a safety feature to prevent. Two ill
+  // profiles therefore draw NO label here and are named where they always were —
+  // on each cockpit's own header, inside the group.
+  const oneIllSubject =
+    new Set(illnessPlacements.map((placement) => placement.nowSubject)).size ===
+    1;
   const now = nowPlacements.flatMap((placement): NowStripRow[] => {
+    const subject =
+      placement.nowSubject == null
+        ? undefined
+        : nowSubjects?.get(placement.nowSubject);
     const grouped =
       placement.nowLayer === "illness" &&
       placement.candidate.episodeGroup != null;
@@ -218,12 +357,19 @@ export default function DashboardPlacementCanvas({
       return [
         {
           id: placement.candidate.candidateId,
+          subject,
           candidate: placement.candidate,
           presentation: presentations.get(placement.candidate.candidateId)!,
         },
       ];
     return placement.candidate.candidateId === firstIllnessId
-      ? [{ id: "illness-group", node: illnessGroupNode }]
+      ? [
+          {
+            id: "illness-group",
+            subject: oneIllSubject ? subject : undefined,
+            node: illnessGroupNode,
+          },
+        ]
       : [];
   });
   const standing = placementsInLane(placements, "standing");
@@ -288,6 +434,7 @@ export default function DashboardPlacementCanvas({
         <DashboardStandingCluster
           placements={standing}
           presentations={presentations}
+          drawings={drawings}
         />
       )}
 
@@ -299,11 +446,16 @@ export default function DashboardPlacementCanvas({
           className="group"
           testId="dashboard-all"
           summary={
-            // THE ONLY FOLD CONTROL ON THE PAGE (#4232), so it carries the phone
-            // tap floor the retired Quiet summary carried. Merging the two folds
-            // moved every dormant line, quiet pillar, quiet result and out-ranked
-            // setup row behind THIS control; at its inherited 28px it was the one
-            // tap standing between a phone reader and all of them.
+            // THE OUTER FOLD CONTROL (#4232), so it carries the phone tap floor
+            // the retired Quiet summary carried. Merging the two folds moved every
+            // dormant line, quiet pillar, quiet result and out-ranked setup row
+            // behind THIS control; at its inherited 28px it was the one tap
+            // standing between a phone reader and all of them.
+            //
+            // #4065 nests up to two more `<Disclosure>`s under this one (per
+            // `EverythingBand`, above) rather than opening a second kind of
+            // control — this stays the page's one FOLD MECHANISM, just used at
+            // two depths, the way #4232 already used it at every tail group.
             <summary
               // The UX census must click this before the tail is in any picture at
               // all, and the `<details>` takes its own testid through a prop — which
@@ -328,18 +480,11 @@ export default function DashboardPlacementCanvas({
                 <h3 className="mb-2 text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400">
                   {EVERYTHING_LABELS[group]}
                 </h3>
-                <div
-                  className="band overflow-hidden rounded-xl border border-(--border) bg-surface"
-                  data-testid={`dashboard-everything-${group}`}
-                >
-                  {momentBlocks(members).map((block) => (
-                    <MomentBlock
-                      key={block.key}
-                      block={block}
-                      presentations={presentations}
-                    />
-                  ))}
-                </div>
+                <EverythingBand
+                  group={group}
+                  members={members}
+                  presentations={presentations}
+                />
               </section>
             ))}
           </div>

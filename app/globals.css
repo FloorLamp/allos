@@ -890,6 +890,26 @@
   @apply inline-flex shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg border-black/10 px-2.5 text-xs font-medium text-slate-600 transition hover:bg-slate-100 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750 dark:disabled:bg-ink-750 dark:disabled:text-slate-400;
 }
 
+@utility series-point {
+  /* THE SERIES POINT (#4760): a chart mark that is its own door to its value.
+     `VisualizationDetails` used to restate every mark in a labelled fold beside
+     the chart; the fold retired, so the mark carries the value itself — named
+     for AT by `aria-label`, focusable for the keyboard, and showing that same
+     name while hovered or focused. The readout is GENERATED from the label: no
+     second copy to drift, and no DOM text for a spec's `hasText` filter to trip
+     on. Positioning stays the mark's own — an absolute mark is already the
+     readout's containing block; a static one adds `relative`. */
+  @apply cursor-default outline-hidden focus:ring-2 focus:ring-brand-500;
+  &::after {
+    content: attr(aria-label);
+    @apply pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 hidden -translate-x-1/2 rounded-md border border-white/10 bg-slate-900 px-2 py-1 text-xs leading-4 font-normal whitespace-nowrap text-slate-100 shadow-lg dark:bg-ink-700;
+  }
+  &:hover::after,
+  &:focus::after {
+    @apply block;
+  }
+}
+
 @utility button-control-primary {
   /* THE TYPED BUTTON'S ONE PRIMARY VARIANT (owner decision, #3982). #3759 moved
      four hand-rolled actions onto `Button` for their behavior, and two of them —
@@ -914,6 +934,30 @@
   }
   &:not(:disabled):not([aria-disabled="true"]):hover {
     background-color: var(--btn-hover);
+  }
+}
+
+@utility button-control-danger {
+  /* THE TYPED BUTTON'S ONE DESTRUCTIVE PAINT (#4978). A destructive action has
+     to be told apart from its neighbour BEFORE the tap — undo is after — so
+     `danger` joins `primary` as the primitive's second (and last) rank paint,
+     built the same way: colours lifted from the retiring `.btn-danger` family
+     so a migrated mount looks like what it replaced.
+
+     PAINT ONLY, ADDED TO `button-control` RATHER THAN REPLACING IT, exactly
+     like `button-control-primary` above — the box, the reserved border,
+     `whitespace-nowrap`, the focus ring and the pending spinner are the SAME
+     declarations regardless of rank. Scoped away from the disabled states so
+     the family's ONE disabled treatment (#1450 cluster B) still wins: a
+     pending or disabled destructive action renders the same muted surface a
+     pending or disabled primary does, never a faded red. */
+  &:not(:disabled):not([aria-disabled="true"]) {
+    border-color: transparent;
+    background-color: var(--danger-btn);
+    color: var(--danger-btn-fg);
+  }
+  &:not(:disabled):not([aria-disabled="true"]):hover {
+    background-color: var(--danger-btn-hover);
   }
 }
 
@@ -1037,6 +1081,30 @@
   &[aria-pressed="true"],
   &[aria-selected="true"] {
     @apply bg-brand-600 text-white dark:bg-brand-500 dark:text-ink-950;
+  }
+}
+
+/* A THIRD ROLE, AND IT IS AN ACTION (#4753). The two roles above are a DESTINATION
+   and a SELECTION; `chip-base + chip-offer` is a chip whose tap WRITES what its label
+   says — `Aug 30 · 250 mg` with a `Log` nub. It picks its role by what it does,
+   exactly as the vocabulary above asks a new strip to.
+
+   IT PAINTS NO SELECTED STATE, deliberately, and that is the whole difference from
+   `chip-filter`. An offer chip is never "on": it performs its write and the surface
+   that hosted it re-renders into whatever now stands. So there is no `aria-pressed`
+   rule here — a control that cannot be selected must not be able to look selected.
+
+   The outline construction is `chip-nav`'s, because the border is part of the 34px
+   box (see the note above) and an action chip must measure the same as the nav chip
+   it may sit beside. The VERB NUB's fill is not here: it is the offer tone declared
+   in `components/OfferRow.tsx`, so the compact offer and the full-width one cannot
+   drift into two vocabularies. */
+@utility chip-offer {
+  @apply rounded-full text-slate-700 dark:text-slate-200;
+  border: 1px solid var(--border);
+  background-color: var(--surface);
+  &:hover {
+    background-color: var(--ghost-hover);
   }
 }
 
@@ -1818,10 +1886,13 @@
    asynchronous receipt: it fires once when the quick-log gather finishes, inside a
    box that already exists, and announces that same completion through aria-live.
    Explicitly not in this vocabulary: skeleton shimmer, attention pulses on findings
-   (a finding may not campaign — reach policy), chart draw-in, page transitions. The fold pulse is the
-   near miss to keep an eye on: it fires ONCE, on the tap that incremented the count,
-   and never on arrival at the page. The overlay family below is a different question
-   at a different duration; do not cross-wire them.
+   (a finding may not campaign — reach policy), chart draw-in, CROSS-ROUTE page
+   transitions (#3676's own words — a transition spanning two DIFFERENT documents'
+   worth of state; `historyfold` below crosses one route re-rendering its own same
+   params, which is the narrower thing #3676 left for "its own issue if wanted").
+   The fold pulse is the near miss to keep an eye on: it fires ONCE, on the tap that
+   incremented the count, and never on arrival at the page. The overlay family below
+   is a different question at a different duration; do not cross-wire them.
 
    Every class is transform/box-shadow/opacity only — never a property that triggers
    layout — so a motion can never delay the next tap. The state change lands on its
@@ -1833,9 +1904,11 @@
   --motion-tick: 180ms;
   --motion-promote: 300ms;
   --motion-arrive: 200ms;
-  /* The continuity class's first and only tenant (#3676). In-band, on the same
-     curve — one feel for both classes was the condition the second class got. */
+  /* The continuity class's first tenant (#3676). In-band, on the same curve — one
+     feel for both classes was the condition the second class got. */
   --motion-disclose: 200ms;
+  /* The continuity class's second tenant (#4365) — see the section note below. */
+  --motion-historyfold: 250ms;
   /* Band-exempt, see the note above. */
   --motion-fold: 500ms;
   /* ONE curve for the whole vocabulary. Decelerating: the move arrives and
@@ -2011,7 +2084,14 @@
 }
 .motion-disclose::details-content {
   block-size: 0;
-  overflow: hidden;
+  /* BLOCK AXIS ONLY. The animation clips the height it is interpolating and nothing
+     else: `hidden` clipped BOTH axes, and below `sm` a `.card` or `band` inside a fold
+     computes its full-bleed pull (#3920) and then paints inset anyway, because the
+     fold's own contents box cut its 16px overhang on each side — the dashboard's
+     Show everything and Records → Care read as inset cards while a hit test at x 2
+     returned the page. `clip` on the inline axis would clip the same way; `visible`
+     pairs with `clip` (never with `hidden`) without forcing the other axis to auto. */
+  overflow: visible clip;
   /* CLOSING — a transition reads the properties of the state it moves TO, so this rule
      times the close and the one below times the open. `allow-discrete` keeps the panel
      rendered for the whole 200 ms; without it the contents vanish on frame one and
@@ -2030,6 +2110,32 @@
      A reader tapping a fold and a spec reading one are the same case. Guarded in
      e2e/disclosure-motion.spec.ts, synchronously in the click's own task. */
   transition: block-size var(--motion-disclose) var(--motion-ease);
+}
+
+/* THE SECOND CONTINUITY TENANT (#4365), and the first that crosses a NAVIGATION
+   rather than a client toggle. History's fold and rollup links are still plain URL
+   state (#4135) — no client fold model exists to hand this a per-element motion
+   class the way `disclose` above gets one — so it rides the browser's OWN View
+   Transition API instead: `components/TimelineFilterLink.tsx`'s
+   `useHistoryFoldNavigate` wraps the same-route navigation in
+   `document.startViewTransition()`, toggling this class onto `<html>` for exactly
+   that transition's lifetime. The browser diffs its own before/after paint of the
+   WHOLE page — there is no per-row markup to name — so a row that renders
+   pixel-identical either side of the toggle is never drawn as moving; only the
+   revealed or hidden region visibly changes. What this rule spends is the ONE thing
+   every motion in this section spends: `--motion-historyfold` on `--motion-ease`,
+   in place of the browser's own default crossfade timing. No `@keyframes`: the
+   browser interpolates between the two paints itself, exactly as `disclose`
+   interpolates a height rather than playing a pulse.
+
+   ONE SELECTOR, on the GROUP rather than on the old/new image pair: the UA
+   stylesheet already gives `::view-transition-old`/`::view-transition-new`
+   `animation-duration: inherit` (and `-timing-function: inherit`) from their
+   `::view-transition-group` parent, so setting the pair once here is the whole
+   answer rather than a duplicate of it. */
+.motion-historyfold::view-transition-group(root) {
+  animation-duration: var(--motion-historyfold);
+  animation-timing-function: var(--motion-ease);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2056,6 +2162,12 @@
   .motion-disclose::details-content,
   .motion-disclose[open]::details-content {
     transition: none;
+  }
+  /* `useHistoryFoldNavigate` never calls `startViewTransition` under this
+     preference — the class below is never added — so this is the same
+     belt-and-braces as the rule above, for the same reason. */
+  .motion-historyfold::view-transition-group(root) {
+    animation-duration: 0s;
   }
 }
 

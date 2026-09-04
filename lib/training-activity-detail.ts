@@ -27,10 +27,9 @@ import type { DatedWeight } from "./calorie-estimate";
 import type { UnitPrefs } from "./settings";
 import { DEFAULT_FORMAT_PREFS, type DisplayFormatPrefs } from "./format-date";
 import { db, today as todayFn, yesterday as yesterdayFn } from "./db";
-import { shiftDateStr } from "./date";
 import { getProfileZoneModel } from "./queries/zones";
 import { getWeatherDaysForProfile } from "./queries/weather-situations";
-import { getHrMinutesInRange } from "./queries/metrics";
+import { getEventPhysiology } from "./queries/event-physiology";
 import { activityWindow, windowsOverlap } from "./import-review/detect";
 import {
   isCyclingActivity,
@@ -58,13 +57,7 @@ import {
   sessionSplitIntervalM,
   streamDistanceKm,
 } from "./session-analytics";
-import {
-  activityWindows,
-  scopeBucketsToWindows,
-  zoneMinuteTotals,
-  type ActivityWindow,
-  type ZoneModel,
-} from "./training-zones";
+import type { ActivityWindow, ZoneModel } from "./training-zones";
 import type { Activity } from "./types";
 import type { ActivityStreams } from "./integrations/activity-telemetry";
 import {
@@ -89,6 +82,13 @@ export interface ActivityDetailHeartRate {
   minutes: { ts: string; bpm: number }[];
   zoneMinutes: number[] | null;
   zoneModel: ZoneModel | null;
+  // The two facts the shared event-physiology computation adds for free (#4775 §1):
+  // the mean over the quiet minutes before the start, and how long after the end the
+  // heart rate took to sit back inside the profile's resting range. Both null when the
+  // stream cannot answer — a wear gap and "still elevated at two hours" are the same
+  // absence here, and neither may be rendered as a number.
+  preWindowMeanBpm: number | null;
+  recoveryMin: number | null;
 }
 
 export interface ActivityStrengthRecord extends StrengthSessionRecords {
@@ -233,22 +233,19 @@ export function getActivityDetailData(
       setCount: c.parts.length,
     }));
 
-  // The ride page's HR assembly, unchanged in shape: the activity's own time
-  // window scopes the profile's minute buckets, spilling into the next date so
-  // a session crossing midnight keeps its tail.
-  const heartRateWindow = activityWindows([row])[0] ?? null;
-  const minutes = (
-    heartRateWindow
-      ? scopeBucketsToWindows(
-          getHrMinutesInRange(profileId, row.date, shiftDateStr(row.date, 1)),
-          [heartRateWindow]
-        )
-      : []
-  ).sort((a, b) => a.ts.localeCompare(b.ts));
-  const zoneMinutes =
-    zoneModel && minutes.length > 0
-      ? zoneMinuteTotals(minutes, zoneModel)
-      : null;
+  // THE SHARED EVENT-PHYSIOLOGY COMPUTATION (#4775 §1). This block used to BE the
+  // assembly — activityWindows → getHrMinutesInRange → scopeBucketsToWindows →
+  // zoneMinuteTotals, inline — and it was the only place in the app that could answer
+  // "what did this event do". It is now a CONSUMER of lib/event-physiology, so the
+  // finish message, the practice message and the digest format the same result rather
+  // than each growing a copy of this. The in-window minutes and the zone totals are
+  // byte-identical to what this produced before (pinned in
+  // lib/__db_tests__/event-physiology-gather.test.ts); the pre-window mean and the
+  // recovery figure are new facts the same read already paid for.
+  const physiology = getEventPhysiology(profileId, row);
+  const heartRateWindow = physiology?.window ?? null;
+  const minutes = physiology?.minutes ?? [];
+  const zoneMinutes = physiology?.zoneMinutes ?? null;
 
   // The source's second-by-second record, through the same pure derivation the
   // ride page uses — nothing in `sessionTraces` is about bicycles.
@@ -432,7 +429,14 @@ export function getActivityDetailData(
     row,
     card,
     siblings,
-    heartRate: { window: heartRateWindow, minutes, zoneMinutes, zoneModel },
+    heartRate: {
+      window: heartRateWindow,
+      minutes,
+      zoneMinutes,
+      zoneModel,
+      preWindowMeanBpm: physiology?.preWindowMeanBpm ?? null,
+      recoveryMin: physiology?.recoveryMin ?? null,
+    },
     telemetry,
     course,
     overlappingSiblings,

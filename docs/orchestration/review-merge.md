@@ -32,11 +32,11 @@
   dispatches
   the lane, 3 is CONSULT and you decide, 1 is ordinary, 2 could not read the PR.
 - Never treat 2 or 3 as a no.
-- High-stakes paths—data integrity, auth boundaries, and safety signals—require
-  a separate agent to execute falsifying attacks.
-- On CONSULT, read the quoted claims it prints, not the matched terms. Dispatch
-  when a claim is the safety-relevant value or gate; otherwise say so in the
-  thread.
+- MANDATORY is read from the DIFF (#4842): a high-stakes path, a moved
+  authorization gate, a dropped `profile_id` predicate. Those need a separate
+  agent to execute falsifying attacks; prose alone only ever reaches CONSULT.
+- On CONSULT, read the file and hunk it quotes, not the matched terms; dispatch
+  when it moves what a shared surface shows about another profile.
 - The merge waits for that report. Fix each refuted claim or record a reasoned
   override in the thread.
 - A blocking finding fixed by changing the MECHANISM, not the value, earns a

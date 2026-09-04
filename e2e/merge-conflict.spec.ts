@@ -26,7 +26,7 @@ test("merge preview lets you override a conflicting field to the discarded value
     await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
     const keeperRow = page
-      .locator('[id^="activity-"]')
+      .getByTestId("history-row")
       .filter({ hasText: "Conflict merge keeper" });
     await expect(keeperRow).toHaveCount(1);
     // Before the merge the keeper's row summary shows its own 42 min, and both

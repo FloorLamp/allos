@@ -45,7 +45,7 @@ import {
 import { fullTrendMetricSeries } from "./trend-metric-series";
 // The analyte-plot leaf both this module and the biomarker-goal reader depend on
 // (#1853): one answer to "what does this analyte's series look like, in what unit".
-import { biomarkerPlot } from "./queries/biomarker-plot";
+import { biomarkerPlot, biomarkerPlots } from "./queries/biomarker-plot";
 import { activeRangeLabel } from "./trends-context";
 import { resultSeriesKey, metricSeriesKey } from "./saved-items";
 import { bioColor } from "./trend-colors";
@@ -302,7 +302,18 @@ export function buildBiomarkerSeries(
 ): TrendSeries | null {
   const plot = biomarkerPlot(profileId, canonical);
   if (!plot) return null;
+  return biomarkerSeriesFromPlot(canonical, plot, range);
+}
 
+// The WINDOWING and SHAPING half, over a plot already read. Split out so a caller
+// holding many plots from one `biomarkerPlots` pass builds its series from them
+// without going back to the database per name (#5012). Every caller — batched or
+// not — lands here, so there is one shaping rule and not two that agree today.
+function biomarkerSeriesFromPlot(
+  canonical: string,
+  plot: NonNullable<ReturnType<typeof biomarkerPlot>>,
+  range: DateRange
+): TrendSeries | null {
   const windowed = filterSeriesByRange(plot.points, range);
   if (windowed.length === 0) return null;
   const windowedFlags = filterSeriesByRange(plot.pointFlags, range);
@@ -621,9 +632,26 @@ export function buildDigestSeries(
   range: DateRange
 ): TrendSeries[] {
   const out = buildMetricSeries(profileId, loginId, range);
-  for (const name of getUsedCanonicalNamesWithDerived(profileId)) {
-    if (bodyMetricKindForBiomarker(name) != null) continue;
-    const s = buildBiomarkerSeries(profileId, name, range);
+  // ONE BATCH, NOT ONE QUERY PER NAME (#5012).
+  //
+  // `biomarkerPlots` was written for exactly this and hoists every read that is not
+  // per-analyte — the series (one `IN (…)` over the families) and the three
+  // demographic reads. Asking it one name at a time took its single-name fast path
+  // instead, so a profile with 307 canonical names in use paid 307 deduped
+  // per-family reads on every Trends render, 0.53 s of SQLite between them, and the
+  // request cache could not help because it keys on (profile, canonical) and every
+  // name is distinct.
+  //
+  // The names are collected first and iterated in the SAME order afterwards, so the
+  // digest's series set and its order are what they were.
+  const names = getUsedCanonicalNamesWithDerived(profileId).filter(
+    (name) => bodyMetricKindForBiomarker(name) == null
+  );
+  const plots = biomarkerPlots(profileId, names);
+  for (const name of names) {
+    const plot = plots.get(name);
+    if (!plot) continue;
+    const s = biomarkerSeriesFromPlot(name, plot, range);
     if (s) out.push(s);
   }
   return out;

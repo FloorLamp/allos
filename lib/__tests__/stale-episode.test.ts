@@ -34,6 +34,7 @@ function ep(over: Partial<AssembledEpisode> = {}): AssembledEpisode {
 
 function symptom(date: string): SymptomSeries {
   return {
+    source: "logged",
     symptom: "cough",
     label: "Cough",
     points: [{ date, severity: 2, note: null }],

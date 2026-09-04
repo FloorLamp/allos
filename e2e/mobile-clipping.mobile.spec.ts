@@ -1,8 +1,9 @@
 import { test, expect } from "./fixtures";
-import type { Locator } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { shiftDateStr } from "@/lib/date";
 import {
   expectAtomicCardPairs,
+  expectNoClippedContent,
   expectNoEscapingOverflow,
   hydratedClick,
   overflowStory,
@@ -10,6 +11,9 @@ import {
   touchSwipe,
 } from "./helpers";
 import { frozenNow } from "./worker-env";
+import { loginAs } from "./nav";
+import { E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import { E2E_LOGIN_LOGSHEET_RESERVE } from "./logins/nutrition";
 
 // Content clipped inside its own container at 390px (issue #2614).
 //
@@ -503,6 +507,117 @@ test.describe("mobile clipping batch (#2614)", () => {
   });
 });
 
+// THE CLIPPED-CONTENT GUARD'S OWN PROOF (#4534).
+//
+// `expectNoClippedContent` used to ask whether a box cleared the viewport, and
+// "fits the viewport" is not "is visible" — an `overflow: hidden` ancestor cuts
+// its children without moving their boxes, which is the #4394 shape and the
+// reason #4677 could delete a sweep from this file as blind. It now asks what is
+// PAINTED. Both halves of that need proving in the same place: it must fail on a
+// cut inside a fitting box, and it must stay quiet on the deliberate hiding that
+// is everywhere in the tree, or its first run drowns 64 call sites at once.
+//
+// FORGED THROUGH THE GUARD'S OWN OBJECT. Each shape is built into a real page and
+// `expectNoClippedContent` is the thing that runs; a control written with its own
+// fresh query would only ever prove that SOME query can see a cut. And every
+// excused shape below is THE CUT CASE with ONE property changed on the host, so
+// each silence is attributable to that property rather than to a forgery that
+// never reached the state at all.
+const FORGED_TESTID = "forged-cut-content";
+
+// The cut: a 200px child inside a 40px clipping host, both far inside the
+// viewport, so the pre-#4534 rule reports the page clean.
+const CUT_HOST = "left:8px;width:40px;overflow-x:hidden";
+const FORGED_CHILD_WIDTH_PX = 200;
+
+async function forgeCut(page: Page, host: string): Promise<void> {
+  await page.evaluate(
+    ({ host, testid, childWidth }) => {
+      const el = document.createElement("div");
+      el.id = "forged-cut-host";
+      el.style.cssText = `position:fixed;top:8px;height:20px;z-index:9999;${host}`;
+      const child = document.createElement("span");
+      child.setAttribute("data-testid", testid);
+      child.style.cssText = `display:block;height:20px;width:${childWidth}px`;
+      child.textContent = "forged";
+      el.appendChild(child);
+      document.body.appendChild(el);
+    },
+    { host, testid: FORGED_TESTID, childWidth: FORGED_CHILD_WIDTH_PX }
+  );
+}
+
+async function removeForgery(page: Page): Promise<void> {
+  await page.evaluate(() =>
+    document.getElementById("forged-cut-host")?.remove()
+  );
+}
+
+// One property changed on the host, and the sentence that property stands for.
+const EXCUSED: readonly { why: string; host: string }[] = [
+  {
+    why: "a working scroller the reader can move",
+    host: "left:8px;width:40px;overflow-x:auto",
+  },
+  {
+    why: "a cell starved to zero width by its own shrink negotiation",
+    host: "left:8px;width:0px;overflow-x:hidden",
+  },
+  {
+    why: "the sr-only idiom: a 1px box with overflow hidden",
+    host: "left:8px;width:1px;overflow-x:hidden",
+  },
+  {
+    why: "a drawer parked off-canvas to the right",
+    host: "left:100%;width:200px;overflow-x:hidden",
+  },
+  {
+    why: "a drawer parked off-canvas to the left",
+    host: "left:-200px;width:200px;overflow-x:hidden",
+  },
+];
+
+test.describe("expectNoClippedContent sees paint, not boxes (#4534)", () => {
+  test("it fails on a cut inside a box that fits, and only while the cut is there", async ({
+    page,
+  }) => {
+    await page.goto("/trends");
+    await expect(page.getByTestId("body-metric-tiles")).toBeVisible();
+    await expectNoClippedContent(page);
+
+    await forgeCut(page, CUT_HOST);
+    // The forgery is INSIDE the viewport — this is the state the old rule could
+    // not fail on, asserted rather than described.
+    const box = await page.getByTestId(FORGED_TESTID).evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return {
+        right: r.right,
+        width: r.width,
+        vw: document.documentElement.clientWidth,
+      };
+    });
+    expect(box.width).toBe(FORGED_CHILD_WIDTH_PX);
+    expect(box.right).toBeLessThan(box.vw);
+
+    await expect(expectNoClippedContent(page)).rejects.toThrow(
+      new RegExp(`${FORGED_TESTID}[^\\n]*paints 40px of its 200px box`)
+    );
+
+    await removeForgery(page);
+    await expectNoClippedContent(page);
+  });
+
+  for (const { why, host } of EXCUSED) {
+    test(`it stays quiet on ${why}`, async ({ page }) => {
+      await page.goto("/trends");
+      await expect(page.getByTestId("body-metric-tiles")).toBeVisible();
+      await forgeCut(page, host);
+      await expectNoClippedContent(page);
+      await removeForgery(page);
+    });
+  }
+});
+
 // A DIALOG BODY IS NOT A SIDEWAYS SCROLLER (#3360).
 //
 // The shape above is a container that clips content it should scroll. This is the
@@ -831,6 +946,13 @@ test.describe("no dialog body overflows sideways at a phone viewport (#3395)", (
     // dialog starts pushing 6px of nothing past the edge at once. So the forgery
     // removes the reserve first, and the assertions below are then measuring the
     // real regression rather than a control nobody would write.
+    //
+    // RESTORED BELOW, before the third phase (#4963): this inline override is
+    // scoped to the two assertions that need the reserve gone. Left in place, the
+    // third phase would measure the sheet's REAL content — the frecency-ranked
+    // food-group chips (#591/#2225) — against a body this test itself narrowed,
+    // which makes the third phase's verdict a function of chip order and, through
+    // it, of the clock, rather than of the clipped label it exists to check.
     await content.evaluate((node) => {
       node.style.paddingRight = "0px";
       const row = document.createElement("div");
@@ -862,8 +984,17 @@ test.describe("no dialog body overflows sideways at a phone viewport (#3395)", (
     // alive. A `truncate` label overruns its own box by a mile and CLIPS every
     // pixel of it, so it can never make the region scrollable. Without the
     // computed-overflow filter three innocent labels topped this list.
+    //
+    // THE RESERVE COMES BACK FIRST (#4963). This phase is not proving anything
+    // about a stripped container — that was the phase above. Restoring the
+    // `pointer-coarse:pr-1.5` reserve (dropping the inline override) puts the
+    // region back in the state every real dialog ships in, so what remains under
+    // test is only the clipped label, never the sheet's own ranked chip row —
+    // which real chips are on screen, and where their wrapped row happens to
+    // break, is content this test does not control and must not be graded on.
     await content.evaluate((node) => {
       node.querySelector('[data-testid="e2e-flush-tap-target"]')?.remove();
+      node.style.removeProperty("padding-right");
       const clipped = document.createElement("div");
       clipped.setAttribute("data-testid", "e2e-clipped-label");
       clipped.className = "truncate";
@@ -877,4 +1008,63 @@ test.describe("no dialog body overflows sideways at a phone viewport (#3395)", (
       "a clipped overrun is not a suspect — it cannot make the region scrollable"
     ).toBe("nothing overflows");
   });
+});
+
+// ── THE STANDING OFFER'S BOX IS ITS OWN (#4918 defect 3, ruling 6) ───────────
+//
+// `HistoryUsualOffers` wrapped its rows in a bare `grid`. A grid track's default
+// minimum is its item's MAX-CONTENT width, so `OfferRow`'s `w-full` button was
+// sized to its own single-line summary and the `truncate` span inside it never got
+// a narrower box to truncate in — the card ran past the column every other block on
+// the page stops at. The same control inside the dashboard's flex hosts was fine,
+// which is why this is asserted on the HOST rather than on the control's paint.
+//
+// BOTH WIDTHS, because the defect is intrinsic sizing and not a phone rule: the
+// track grows to the content at any column width, and the owner's screenshot was a
+// desktop one. 390 is where the app's clipping rule (#2614) is stated; the desktop
+// pass is what says the fix is not a media query.
+//
+// FIXTURE: the quick-log reserve profile (#3736) — it carries a standing routine
+// offer AND the deliberately long item label that seed renamed to overflow, so this
+// asserts the case `truncate` exists for rather than one that never needed it. It
+// is measured, never tapped, on both this spec and its own.
+test("the record's standing offer stays inside its column (#4918)", async ({
+  browser,
+}) => {
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_LOGSHEET_RESERVE,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    for (const width of [390, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/history");
+      const host = page.getByTestId("history-add-usual");
+      await expect(host).toBeVisible();
+      // The seed's own claim, read back: a one-line label would satisfy the layout
+      // assertion below on a tree that still had the defect.
+      const names = page.locator('[data-testid$="-names"]').first(); // first-ok: whichever window's offer stands, its summary is the truncating span
+      await expect(names).toBeVisible();
+      expect(
+        ((await names.textContent()) ?? "").length,
+        `${width}px: the fixture's offer summary is long enough to overflow`
+      ).toBeGreaterThan(40);
+
+      await expectNoEscapingOverflow(host, `${width}px: the offer's host`);
+      // AND THE RELATIONSHIP, not only the host's own scrollWidth: the button's
+      // right edge against the edge of the column that holds it. An absolute width
+      // cannot see a row that hangs past a container which is itself narrower than
+      // the viewport.
+      const overhang = await overhangWithin(
+        host.getByRole("button").first(), // first-ok: the first standing offer is the row measured
+        page.getByTestId("history-add")
+      );
+      expect(
+        Math.round(overhang),
+        `${width}px: the offer row hangs past the add layer's column`
+      ).toBeLessThanOrEqual(0);
+    }
+  } finally {
+    await page.context().close();
+  }
 });

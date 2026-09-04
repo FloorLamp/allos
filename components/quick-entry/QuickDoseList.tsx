@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { IconPlus } from "@tabler/icons-react";
 import DoseStatusControl from "@/components/DoseStatusControl";
+import OfferRow from "@/components/OfferRow";
 import QuickLogPrnContent from "@/components/medications/QuickLogPrnContent";
 import SegmentedControl from "@/components/SegmentedControl";
 import { useDoseDayResolution } from "@/components/medications/dose-day-settlement";
@@ -62,6 +63,7 @@ export default function QuickDoseList({
   prn,
   pastDays,
   onDone,
+  subjectProfileId,
 }: {
   today: string;
   doses: QuickEntryDose[];
@@ -72,6 +74,12 @@ export default function QuickDoseList({
   // emptying on its own is NOT that moment any more: closing then would take the
   // switcher, and the missed day behind it, away with it.
   onDone: () => void;
+  // The sheet's chosen subject (#4932), when it is not the acting profile —
+  // `today`/`doses`/`pastDays` are already gathered for this subject; this is what
+  // makes the WRITES cross the same boundary (#4429) rather than landing on the
+  // acting profile the gather no longer reflects. `DoseStatusControl` and
+  // `resolveDayDoses` both re-gate it server-side.
+  subjectProfileId?: number;
 }) {
   // Doses resolved during THIS overlay session, dropped from their day's list. Local
   // rather than re-fetched: the sheet is a transactional surface, and re-running the
@@ -178,6 +186,7 @@ export default function QuickDoseList({
             }))
           }
           onResolved={(doseIds) => markResolved(day, doseIds)}
+          subjectProfileId={subjectProfileId}
         />
       ) : remaining.length === 0 && !prn?.meds.length ? (
         <p
@@ -215,16 +224,21 @@ export default function QuickDoseList({
                   </span>
                 )}
               </span>
-              <span className="shrink-0 whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
-                {dose.dueText}
-              </span>
+              {/* THE SLOT IS STATED ONCE, ON THE CONTROL THAT WRITES IT (#4753,
+                  owner ruling 1). This row prints the dose's NAME, so the
+                  non-redundant payload is WHEN it was owed — which sat in a span of
+                  its own beside the button, leaving the tap to be read as a bare
+                  "Mark taken". It is the chip's label now: `8:00am · [Take]`, the
+                  canvas's own `Midday · Take`, and the span is gone rather than
+                  duplicated. */}
               <DoseStatusControl
                 doseId={dose.doseId}
                 taken={false}
                 skipped={false}
                 variant="pill"
-                label="Mark taken"
+                payload={dose.dueText}
                 rowLeaves
+                profileId={subjectProfileId}
                 onSettled={(result) => {
                   if (result.ok) markResolved(today, [dose.doseId]);
                   else
@@ -239,7 +253,11 @@ export default function QuickDoseList({
         </ul>
       ) : null}
       {day === today && prn && prn.meds.length > 0 && (
-        <QuickLogPrnContent {...prn} title={null} showPageLink={false} />
+        <QuickLogPrnContent
+          {...prn}
+          title={null}
+          profileId={subjectProfileId}
+        />
       )}
     </div>
   );
@@ -253,6 +271,7 @@ function PastDayDoses({
   notes,
   onNote,
   onResolved,
+  subjectProfileId,
 }: {
   date: string;
   slots: { bucket: TimeBucket; doses: QuickEntryPastDose[] }[];
@@ -261,6 +280,7 @@ function PastDayDoses({
   notes: Record<string, string>;
   onNote: (doseId: number, text: string) => void;
   onResolved: (doseIds: readonly number[]) => void;
+  subjectProfileId?: number;
 }) {
   const { resolveAll, bulkBlocked } = useDoseDayResolution({
     date,
@@ -268,6 +288,7 @@ function PastDayDoses({
       "Something went wrong — reopen this sheet to see what was logged.",
     note: onNote,
     resolved: onResolved,
+    profileId: subjectProfileId,
   });
 
   if (slots.length === 0) {
@@ -295,14 +316,14 @@ function PastDayDoses({
               {TIME_BUCKET_LABELS[slot.bucket]}
             </h3>
             {slot.doses.length > 1 && (
-              <button
-                type="button"
-                data-testid={`quick-entry-dose-stack-${slot.bucket}`}
-                data-doses={ids.join(",")}
-                aria-label={`${heading}: ${phrase}`}
+              <OfferRow
+                tone="brand"
+                testId={`quick-entry-dose-stack-${slot.bucket}`}
+                data={{ "data-doses": ids.join(",") }}
+                ariaLabel={`${heading}: ${phrase}`}
                 disabled={bulkBlocked(ids)}
-                onClick={() => resolveAll(ids)}
-                className="mb-1.5 flex w-full items-center gap-3 rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 text-left transition hover:bg-brand-50 disabled:opacity-50 dark:border-brand-900 dark:bg-brand-950/40 dark:hover:bg-brand-950/60"
+                onAct={() => resolveAll(ids)}
+                className="mb-1.5"
               >
                 <IconPlus
                   className="h-5 w-5 shrink-0 text-brand-700 dark:text-brand-300"
@@ -319,7 +340,7 @@ function PastDayDoses({
                     {phrase}
                   </span>
                 </span>
-              </button>
+              </OfferRow>
             )}
             <ul className="flex flex-col gap-1.5">
               {slot.doses.map((dose) => (
@@ -355,6 +376,7 @@ function PastDayDoses({
                     compact
                     itemName={dose.name}
                     rowLeaves
+                    profileId={subjectProfileId}
                     onSettled={(result) => {
                       if (result.ok) onResolved([dose.doseId]);
                       else onNote(dose.doseId, result.error);

@@ -4,6 +4,7 @@ import {
   careCandidates,
   profileDataRelevance,
   readingCandidate,
+  sleepCandidates,
   stateCandidate,
   statementCandidate,
 } from "../dashboard-candidates";
@@ -118,11 +119,9 @@ describe("fixed Standing instrument cluster", () => {
     expect(
       STANDING_READING_ORDER.map(({ section, key, cap }) => [section, key, cap])
     ).toEqual([
-      ["today", "last-night-sleep", undefined],
-      ["today", "steps-today", undefined],
       ["today", "protein-today", undefined],
-      ["today", "nap-total", undefined],
       ["today", "cycle-phase", undefined],
+      ["today", "day-so-far", undefined],
       ["body", "weight", undefined],
       ["body", "blood-pressure", undefined],
       ["body", "resting-heart-rate", undefined],
@@ -172,13 +171,13 @@ describe("fixed Standing instrument cluster", () => {
     const expected = standingIds(candidates);
     expect(standingIds(candidates.toReversed())).toEqual(expected);
     expect(expected.slice(0, 11)).toEqual([
+      "nutrition.protein:2026-08-18",
+      "cycle.phase:2026-08-18",
       "sleep.duration:2026-08-18",
       "sleep.bed-time:2026-08-18",
       "sleep.wake-time:2026-08-18",
-      "activity.steps:2026-08-18",
-      "nutrition.protein:2026-08-18",
       "sleep.nap-total:2026-08-18",
-      "cycle.phase:2026-08-18",
+      "activity.steps:2026-08-18",
       "weight.latest:2026-08-18",
       "weight.trend",
       "vitals.blood-pressure:2026-08-18",
@@ -229,7 +228,7 @@ describe("fixed Standing instrument cluster", () => {
         standingBand,
       ])
     ).toEqual([
-      ["sleep.bootstrap", "last-night-sleep", "attention"],
+      ["sleep.bootstrap", "day-so-far", "attention"],
       ["labs.bootstrap", "clinical-results", "attention"],
     ]);
     // …and the quiet source is in the ONE fold, in the group its own model routes it
@@ -268,13 +267,19 @@ describe("fixed Standing instrument cluster", () => {
         relevance: { kind: "event" },
         sourceOrder: 1,
       }),
+      // NOT `profileDataRelevance(...)` (#4969): that relevance is now the
+      // declared way IN for a non-reading replacement — sleep.waiting and
+      // sleep.refresh are exactly a `state`/`action` kind with `profile-data`
+      // "current" relevance, and they are MEANT to join a family. A candidate
+      // whose id merely resembles one BY ACCIDENT, with no domain builder
+      // choosing to declare it, carries `stateCandidate`'s own bare default
+      // instead — which is what this fixture is actually testing for.
       stateCandidate({
         candidateId: "weight.latest:state-lookalike",
         factKey: "weight.state:today",
         groupKey: null,
         subject: profile,
         applicable: true,
-        relevance: profileDataRelevance("current"),
         sourceOrder: 2,
       }),
       reading("sleep.nap:today:600", 3),
@@ -299,7 +304,10 @@ describe("fixed Standing instrument cluster", () => {
     expect(duplicatePlacements).toHaveLength(1);
     expect(duplicatePlacements[0]).toMatchObject({
       lane: "standing",
-      standingFamilyKey: "steps-today",
+      // protein-today is now the FIRST family in registry order to match either
+      // candidate (day-so-far, the steps side, comes later — #4969), so it is
+      // the one that claims the shared fact.
+      standingFamilyKey: "protein-today",
     });
 
     const withinFamily = rank([
@@ -532,6 +540,51 @@ describe("Standing's ranked bands", () => {
       })
     );
 
+  // sleep.waiting and sleep.refresh are the real thing the "state-lookalike"
+  // fixture above (fixed Standing instrument cluster) is a decoy for — a
+  // `state`/`action` kind candidate that DOES declare `profile-data`
+  // relevance, through the real domain builder, on purpose (#4969: "the two
+  // sleep atoms move into a family, they do not disappear"). They join
+  // day-so-far; they never fall to the tail.
+  it.each([
+    [
+      "waiting",
+      () =>
+        sleepCandidates.waiting(
+          { subject: profile, sourceOrder: 0 },
+          "2026-08-19",
+          { kind: "always" }
+        ),
+      // `changed` (a live claim: the window just opened) lifts it straight to
+      // the tier, same as any other `changed` reading.
+      "attention",
+    ],
+    [
+      "refresh",
+      () =>
+        sleepCandidates.refresh(
+          { subject: profile, sourceOrder: 0 },
+          "2026-08-19"
+        ),
+      // No live claim of its own — an ordinary stable-rest member, same as the
+      // sync offer it replaces.
+      "rest",
+    ],
+  ] as const)(
+    "admits the real sleep.%s atom into day-so-far",
+    (_label, build, band) => {
+      expect(placedAs([...fillNow(), build()], build().candidateId)).toEqual([
+        "standing",
+        band,
+      ]);
+      expect(
+        rank([...fillNow(), build()]).find(
+          (placement) => placement.candidate.candidateId === build().candidateId
+        )
+      ).toMatchObject({ standingFamilyKey: "day-so-far" });
+    }
+  );
+
   it("lifts a composed family whole without changing member or quiet families", () => {
     const arrivedSleep = reading("sleep.duration:2026-08-18", 0, {
       rankReasons: {
@@ -741,6 +794,8 @@ describe("Standing's ranked bands", () => {
       replacement("labs.bootstrap", "never", 5),
     ];
     expect(STANDING_CTA_CLAIM_CAP).toBe(3);
+    // protein-today now precedes day-so-far in registry order (#4969), so
+    // nutrition.bootstrap claims the first cold-start seat.
     expect(
       rank(ctas)
         .filter((placement) => placement.lane === "standing")
@@ -749,9 +804,9 @@ describe("Standing's ranked bands", () => {
           standingBand,
         ])
     ).toEqual([
+      ["nutrition.bootstrap", "attention"],
       ["sleep.bootstrap", "attention"],
       ["activity.steps-bootstrap", "attention"],
-      ["nutrition.bootstrap", "attention"],
     ]);
     expect(everythingIds(ctas)).toEqual(["weight.bootstrap", "labs.bootstrap"]);
   });
@@ -781,9 +836,11 @@ describe("Standing's ranked bands", () => {
         )
         .map(({ candidate }) => candidate.candidateId);
     expect(restOrder(members)).toEqual(restOrder(members.toReversed()));
+    // protein-today now precedes day-so-far (steps' family) in registry order —
+    // day-so-far is last in Today (#4969) — so the stable rest follows suit.
     expect(restOrder(members)).toEqual([
-      "activity.steps:2026-08-19",
       "nutrition.protein:2026-08-19",
+      "activity.steps:2026-08-19",
       "weight.latest:2026-08-19",
       "target.weekly-progress:8",
     ]);

@@ -6,6 +6,7 @@
 // session read goes through the already profile-scoped getSleepSessions — so the
 // scoping guard is unaffected.
 
+import { cache } from "../request-cache";
 import {
   getDailySleepSessionsSince,
   getSleepSessions,
@@ -22,8 +23,10 @@ import {
   OURA_READINESS_SCORE_METRIC,
 } from "../integrations/oura";
 import { HEALTH_CONNECT_ID } from "../integrations/health-connect";
+import { restampedTwinPairs } from "../integrations/sleep-overlap-db";
 import { sleepOverlapPairs, type SleepSessionRow } from "../sleep-overlap";
 import { getMoodLogs } from "./mood";
+import { getSuspectSleepSessions } from "./sleep-clock-skew";
 import { getActivityDates } from "./training/activities";
 import { getIntakeDosesForHistory, getIntakeItems } from "./intake/schedule";
 import { getIntakeLogsInRange } from "./intake/adherence";
@@ -43,6 +46,7 @@ import {
 } from "../settings";
 import { doseWindowSince, indexTakenByDose } from "../intake-adherence";
 import { profileDayZone } from "../travel-excusal";
+import { zoneOf } from "../travel-timezone";
 import { doseBucketOn, doseDueOn } from "../intake-schedule";
 import { situationHistoryResolver } from "../trend-annotations";
 import {
@@ -97,7 +101,7 @@ export function getMainSleepNightlyMinutes(
 ): { date: string; value: number }[] {
   const nights = mainSleepNights(
     getSleepSessions(profileId),
-    getTimezone(profileId)
+    profileDayZone(profileId)
   );
   return nights
     .slice(-limitDays)
@@ -134,7 +138,7 @@ export function typicalWakeTime(
 ): number | null {
   return computeTypicalWakeTime(
     getSleepSessions(profileId),
-    getTimezone(profileId),
+    profileDayZone(profileId),
     opts
   );
 }
@@ -150,7 +154,7 @@ export function typicalBedTime(
 ): number | null {
   return computeTypicalBedTime(
     getSleepSessions(profileId),
-    getTimezone(profileId),
+    profileDayZone(profileId),
     opts
   );
 }
@@ -198,7 +202,7 @@ export function getLastNightSummary(
   const sessions = getSleepSessions(profileId);
   const windowSummary = lastNightSummary(
     sessions,
-    getTimezone(profileId),
+    profileDayZone(profileId),
     stagesByDay
   );
   const durationTrend = getSleepDurationTrend(profileId, 180);
@@ -241,7 +245,7 @@ export function getSleepSummaryInRange(
 ): LastNightSummary | null {
   const inRange = (date: string) =>
     (!range.from || date >= range.from) && (!range.to || date <= range.to);
-  const timezone = getTimezone(profileId);
+  const dayZone = profileDayZone(profileId);
   const sessions = getSleepSessionsInRange(
     profileId,
     range.from,
@@ -258,9 +262,9 @@ export function getSleepSummaryInRange(
       awake: row.awake,
     });
   }
-  const sessionSummary = lastNightSummary(sessions, timezone, stagesByDay);
+  const sessionSummary = lastNightSummary(sessions, dayZone, stagesByDay);
 
-  const mainDurations = mainSleepNights(sessions, timezone).map((night) => ({
+  const mainDurations = mainSleepNights(sessions, dayZone).map((night) => ({
     date: night.wakeDay,
     value: night.durationMin,
   }));
@@ -295,12 +299,12 @@ export function getSleepConsistency(
   profileId: number,
   limitDays = 42
 ): ConsistencyNight[] {
-  const tz = getTimezone(profileId);
+  const dayZone = profileDayZone(profileId);
   const sessions = getSleepSessions(profileId);
-  const nights = mainSleepNights(sessions, tz).slice(-limitDays);
-  return consistencyNights(nights, tz, {
-    typicalBedMinute: computeTypicalBedTime(sessions, tz),
-    typicalWakeMinute: computeTypicalWakeTime(sessions, tz),
+  const nights = mainSleepNights(sessions, dayZone).slice(-limitDays);
+  return consistencyNights(nights, dayZone, {
+    typicalBedMinute: computeTypicalBedTime(sessions, dayZone),
+    typicalWakeMinute: computeTypicalWakeTime(sessions, dayZone),
   });
 }
 
@@ -354,19 +358,23 @@ export function getNapHistory(
   const boundedDays = Math.max(1, Math.floor(windowDays));
   const end = today(profileId);
   const since = shiftDateStr(end, -(boundedDays - 1));
-  const timezone = getTimezone(profileId);
+  const dayZone = profileDayZone(profileId);
   const history = napSessions(
     getDailySleepSessionsSince(profileId, since),
-    timezone
+    dayZone
   )
     .filter((nap) => nap.wakeDay >= since && nap.wakeDay <= end)
     .map((nap) => ({
       date: nap.wakeDay,
       startMinutes: hhmmToMinutes(
-        zonedDateParts(timezone, new Date(nap.start)).hhmm
+        zonedDateParts(
+          zoneOf(dayZone, new Date(nap.start)),
+          new Date(nap.start)
+        ).hhmm
       ),
       endMinutes: hhmmToMinutes(
-        zonedDateParts(timezone, new Date(nap.end)).hhmm
+        zonedDateParts(zoneOf(dayZone, new Date(nap.end)), new Date(nap.end))
+          .hhmm
       ),
       durationMin: nap.durationMin,
       source: nap.session.source ?? null,
@@ -399,19 +407,21 @@ function bedtimeSupplementsByWakeDay(
   const wanted = new Set(wakeDays);
   if (wanted.size === 0) return new Map();
 
-  const timezone = getTimezone(profileId);
   const dayZone = profileDayZone(profileId);
   const earliestWakeDay = [...wanted].sort()[0];
   const sleepDateByWakeDay = new Map(
     mainSleepNights(
       getSleepSessionsSince(profileId, shiftDateStr(earliestWakeDay, -1)),
-      timezone
+      dayZone
     )
       .filter((night) => wanted.has(night.wakeDay))
-      .map((night) => [
-        night.wakeDay,
-        zonedDateParts(timezone, new Date(night.start)).date,
-      ])
+      .map((night) => {
+        const start = new Date(night.start);
+        return [
+          night.wakeDay,
+          zonedDateParts(zoneOf(dayZone, start), start).date,
+        ];
+      })
   );
   if (sleepDateByWakeDay.size === 0) return new Map();
 
@@ -533,10 +543,25 @@ export function getSleepMoodData(
     editableHistory.map((row) => row.date),
     boundedDays
   );
-  const history = editableHistory.map((row) => ({
-    ...row,
-    bedtimeSupplements: bedtimeByWakeDay.get(row.date) ?? null,
-  }));
+  // The clock-skew mark (#4299), folded in AFTER the manual-editability pass so the two
+  // cannot fight over `sleepSampleId`: a night is either the duration-only manual row
+  // that pass identified, or a synced session the detector contradicted — never both, and
+  // a suspect night stays UNeditable either way (`sleepEditable` is untouched here).
+  const suspectSampleByWakeDay = new Map(
+    getSuspectSleepSessions(profileId, since).map((s) => [
+      s.wakeDay,
+      s.sampleId,
+    ])
+  );
+  const history = editableHistory.map((row) => {
+    const suspectSampleId = suspectSampleByWakeDay.get(row.date) ?? null;
+    return {
+      ...row,
+      bedtimeSupplements: bedtimeByWakeDay.get(row.date) ?? null,
+      sleepSuspect: suspectSampleId != null,
+      sleepSampleId: row.sleepSampleId ?? suspectSampleId,
+    };
+  });
   return {
     points: sleepMoodPoints(history),
     history,
@@ -599,7 +624,7 @@ export function getSleepRegularity(
 ): SleepRegularity | null {
   return computeSleepRegularity(
     getSleepSessions(profileId),
-    getTimezone(profileId),
+    profileDayZone(profileId),
     // Resolve the profile's free-day set for the social-jetlag split (#1241) — an
     // explicit opts.freeDays (tests) wins; otherwise the stored setting (Sat/Sun
     // default) drives it. The pure core stays auth-blind: the setting is data.
@@ -624,7 +649,7 @@ export function getSleepRegularityThrough(
       const end = new Date(session.end).getTime();
       return Number.isFinite(end) && end <= through;
     }),
-    getTimezone(profileId),
+    profileDayZone(profileId),
     { freeDays: getFreeDays(profileId), ...opts }
   );
 }
@@ -641,7 +666,7 @@ export function getSleepRegularityInRange(
   const windowDays = span == null ? 28 : Math.max(1, span + 1);
   return computeSleepRegularity(
     getSleepSessionsInRange(profileId, start, end),
-    getTimezone(profileId),
+    profileDayZone(profileId),
     {
       asOf: end,
       windowDays,
@@ -651,15 +676,31 @@ export function getSleepRegularityInRange(
 }
 
 // The rolling SRI trend series (oldest→newest) for the Trends sleep chart.
-export function getSleepRegularityTrend(
+//
+// REQUEST-CACHED because several surfaces on one render ask for the same series
+// (#5010): the dashboard reaches it through `sriTrendArrow`, the protocol samples ask
+// again, and `getSleepRegularityInsight` below re-reads it — each a full pass over the
+// profile's sleep history. `cache()` is identity outside a Next request
+// (lib/request-cache.ts says so deliberately), so the notify tick and the DB tier
+// behave exactly as before. Keyed on the arguments, so a caller narrowing the window
+// with its own `opts` still gets its own computation.
+//
+// THE KEY IS ARGUMENT IDENTITY, so a second argument silently costs a full recompute.
+// React memoizes on the positional arguments BY IDENTITY: every call site today passes
+// `profileId` alone, which is why they collapse. A caller that adds an options literal
+// — even `{}`, even one structurally equal to another caller's — misses, and gets its
+// own pass over the whole sleep history with nothing to report that it did. If you are
+// adding a call site and you need `opts`, hoist the object so the callers that share a
+// window share the object too.
+export const getSleepRegularityTrend = cache(function getSleepRegularityTrend(
   profileId: number,
   opts?: SleepRegularityOptions
 ): { date: string; sri: number }[] {
-  return sriTrend(getSleepSessions(profileId), getTimezone(profileId), {
+  return sriTrend(getSleepSessions(profileId), profileDayZone(profileId), {
     freeDays: getFreeDays(profileId),
     ...opts,
   });
-}
+});
 
 // The "regularity dropped since travel" insight note, or null. Reuses the trend
 // above and the profile's dated situation change-log (which already tracks
@@ -868,7 +909,13 @@ export function getOverlappingSleepSessions(
       HEALTH_CONNECT_ID,
       shiftDateStr(today(profileId), -SLEEP_OVERLAP_REVIEW_DAYS)
     ) as (SleepSessionRow & { date: string; value: number })[];
-  return sleepOverlapPairs(rows).map(({ a, b }) => ({
+  // The twin rule needs the stage read, so it lives with the store half; Review lists
+  // what the collapse pairs, or a pair it left undecided would never reach the person
+  // (#5020).
+  return [
+    ...sleepOverlapPairs(rows),
+    ...restampedTwinPairs(profileId, HEALTH_CONNECT_ID, rows),
+  ].map(({ a, b }) => ({
     // `sleepOverlapPairs` only pairs rows of one non-null origin, so either side names it.
     origin: a.origin as string,
     sessions: [a, b].map((s) => ({

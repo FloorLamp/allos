@@ -6,8 +6,12 @@
 // "how did I sleep last night" (the one-question-one-computation rule, #221).
 //
 // Pure — no DB, no clock, no network — so the same math runs in the page, the
-// widget, and the unit tests. Timezone-correct: all clock math converts each
-// stored absolute instant to profile-local wall clock via zonedDateParts.
+// widget, and the unit tests. Timezone-correct in the strong sense (#3428): every
+// stored instant is converted through the zone the profile's day was running on AT
+// THAT INSTANT (`ProfileDayZone`), not the zone it is standing in now — so a night
+// slept in New York keeps its New York clock after the traveller lands in Los
+// Angeles. A profile that has never moved passes a plain zone name and nothing
+// changes.
 
 import { daysBetweenDateStr, shiftDateStr, zonedDateParts } from "./date";
 import { isStreamActive } from "./stream-activity";
@@ -19,6 +23,7 @@ import {
 } from "./format-date";
 import { mainSleepPeriod, type SleepSession } from "./sleep-regularity";
 import type { BedtimeSupplementSummary } from "./sleep-bedtime-supplements";
+import { zoneOf, type ProfileDayZone } from "./travel-timezone";
 
 // A night's MAIN-sleep stage breakdown (minutes), attributed from timestamped
 // metric_samples by getSleepStageDailyTotals. Nap stages stay out so the stage
@@ -85,14 +90,15 @@ export interface LastNightSummary {
 // same anchor mainSleepNights / buildNights use.
 function groupByWakeDay(
   sessions: SleepSession[],
-  tz: string
+  zone: ProfileDayZone
 ): Map<string, SleepSession[]> {
   const byDay = new Map<string, SleepSession[]>();
   for (const s of sessions) {
     const a = new Date(s.start).getTime();
     const b = new Date(s.end).getTime();
     if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a) continue;
-    const day = zonedDateParts(tz, new Date(s.end)).date;
+    const end = new Date(s.end);
+    const day = zonedDateParts(zoneOf(zone, end), end).date;
     const arr = byDay.get(day);
     if (arr) arr.push(s);
     else byDay.set(day, [s]);
@@ -104,12 +110,12 @@ function groupByWakeDay(
 // session. The hero and dashboard sleep presentation read THIS — same inputs, same answer.
 export function lastNightSummary(
   sessions: SleepSession[],
-  tz: string,
+  zone: ProfileDayZone,
   stagesByDay: Map<string, SleepStageMinutes> = new Map(),
   opts: { baselineDays?: number } = {}
 ): LastNightSummary | null {
   const baselineDays = opts.baselineDays ?? 30;
-  const byDay = groupByWakeDay(sessions, tz);
+  const byDay = groupByWakeDay(sessions, zone);
   if (byDay.size === 0) return null;
 
   const days = [...byDay.keys()].sort();
@@ -139,13 +145,30 @@ export function lastNightSummary(
       : null;
   const deltaMin = baselineAvgMin == null ? null : durationMin - baselineAvgMin;
 
+  const periodStart = new Date(period.start);
+  const periodEnd = new Date(period.end);
+  // ONE ZONE PER NIGHT, AND IT IS THE WAKE'S (#5018).
+  //
+  // #4820 made every sleep reader resolve each instant through the zone in force at
+  // THAT instant, which is right for a stamp read on its own and wrong for a PAIR that
+  // has to be read against each other. A night spanning a recorded switch would take
+  // its bedtime from the old zone and its wake from the new one, and the interval
+  // between them is then drawn from two clocks with different offsets: the 08-21 night
+  // stored `01:15Z → 08:59Z`, 464 minutes, printed 9:15 PM → 1:59 AM and drew a
+  // 4.7-hour bar for a 7.7-hour night.
+  //
+  // The wake's zone wins because it is already the one that NAMES this night —
+  // `groupByWakeDay` above keys on `zonedDateParts(zoneOf(zone, end), end).date`. The
+  // bed's zone is the other single-zone answer and would be equally self-consistent;
+  // taking the wake's introduces no new derivation, which is the whole argument.
+  const nightZone = zoneOf(zone, periodEnd);
   return {
     wakeDay: latest,
     durationMin,
     // Merged night spans the outer edges: onset of the first fragment → wake of the
     // last (#1191). For a single overnight these are its own bed/wake, unchanged.
-    bedMinutes: hhmmToMinutes(zonedDateParts(tz, new Date(period.start)).hhmm),
-    wakeMinutes: hhmmToMinutes(zonedDateParts(tz, new Date(period.end)).hhmm),
+    bedMinutes: hhmmToMinutes(zonedDateParts(nightZone, periodStart).hhmm),
+    wakeMinutes: hhmmToMinutes(zonedDateParts(nightZone, periodEnd).hhmm),
     baselineAvgMin,
     deltaMin,
     baselineNights,
@@ -399,15 +422,23 @@ function clockHour(hhmm: string): number {
 // interval is forward-going before the phase-aware plot aligns nights together.
 export function consistencyNights(
   mainNights: { wakeDay: string; start: string; end: string }[],
-  tz: string,
+  zone: ProfileDayZone,
   schedule: {
     typicalBedMinute?: number | null;
     typicalWakeMinute?: number | null;
   } = {}
 ): ConsistencyNight[] {
   const rows = mainNights.map((n) => {
-    const bed = zonedDateParts(tz, new Date(n.start)).hhmm;
-    const wake = zonedDateParts(tz, new Date(n.end)).hhmm;
+    const start = new Date(n.start);
+    const end = new Date(n.end);
+    // One zone per night, the wake's — see lastNightSummary above (#5018). This
+    // reader needs it for a second reason: the bar's WIDTH is `wakeHour - bedHour`,
+    // so two clocks with different offsets do not merely mislabel the ends, they
+    // draw an interval that is not the session's length. The deviation the strip
+    // flags is measured across that same pair.
+    const nightZone = zoneOf(zone, end);
+    const bed = zonedDateParts(nightZone, start).hhmm;
+    const wake = zonedDateParts(nightZone, end).hhmm;
     const bedHour = clockHour(bed);
     const rawWakeHour = clockHour(wake);
     const wakeHour = rawWakeHour <= bedHour ? rawWakeHour + 24 : rawWakeHour;
@@ -587,6 +618,11 @@ export interface SleepMoodHistoryRow {
   // read-only here as it is in the dialog), and `moodLogId` is the day's check-in.
   sleepSampleId: number | null;
   moodLogId: number | null;
+  // The night's SYNCED session contradicts the heart rate recorded across it
+  // (#4299), so this row's times are not stated as fact and — uniquely among synced
+  // sleep — the row carries a `sleepSampleId` the ⋯ menu can remove. Editing a synced
+  // night stays refused; the detector's mark buys a way OUT, not a way in.
+  sleepSuspect: boolean;
 }
 
 // Date union for the factual history table. Unlike pairSleepMood, this retains a
@@ -618,6 +654,7 @@ export function buildSleepMoodHistory(
       sleepEditHours: null,
       sleepSampleId: null,
       moodLogId: null,
+      sleepSuspect: false,
     });
   }
   for (const mood of moods) {
@@ -638,6 +675,7 @@ export function buildSleepMoodHistory(
       sleepEditHours: row?.sleepEditHours ?? null,
       sleepSampleId: row?.sleepSampleId ?? null,
       moodLogId: mood.id ?? null,
+      sleepSuspect: row?.sleepSuspect ?? false,
     });
   }
   for (const stageRow of stageRows) {
@@ -658,6 +696,7 @@ export function buildSleepMoodHistory(
       sleepEditHours: row?.sleepEditHours ?? null,
       sleepSampleId: row?.sleepSampleId ?? null,
       moodLogId: row?.moodLogId ?? null,
+      sleepSuspect: row?.sleepSuspect ?? false,
     });
   }
   return [...byDate.values()].sort((a, b) =>
@@ -684,7 +723,9 @@ export function attachEditableManualSleep(
       sleepEditHours: existingIsEditable ? manual.value / 60 : null,
       // DELETABLE exactly where EDITABLE is (#2556): the same duration-only manual
       // row, identified the same way. A night the dialog refuses to edit is not one
-      // this menu offers to remove.
+      // this menu offers to remove — with ONE exception, added by the caller after
+      // this pass: a synced night the clock-skew detector marked (#4299), which stays
+      // uneditable and becomes deletable.
       sleepSampleId: existingIsEditable ? (manual.id ?? null) : null,
     };
   });

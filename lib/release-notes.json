@@ -1,6 +1,849 @@
 {
   "days": [
     {
+      "date": "2026-09-04",
+      "entries": [
+        {
+          "pr": 4991,
+          "kind": "feature",
+          "category": "Interface",
+          "title": "Practice, workout, appointment and reminder times use the app’s clock picker",
+          "issues": [4976]
+        },
+        {
+          "pr": 4992,
+          "kind": "feature",
+          "category": "Connected apps",
+          "title": "A source dropping records says so, and names what is not being stored",
+          "issues": [4975]
+        },
+        {
+          "pr": 4992,
+          "kind": "fix",
+          "category": "Connected apps",
+          "title": "A source that is dropping records now reaches Review’s needs-attention card",
+          "issues": [4975]
+        },
+        {
+          "pr": 5013,
+          "kind": "feature",
+          "category": "General",
+          "title": "Sleep, naps, steps and the day chart group under one “Day so far” heading",
+          "issues": [4969]
+        },
+        {
+          "pr": 5013,
+          "kind": "fix",
+          "category": "General",
+          "title": "One chart draws for that group, under its facts, not on the first row",
+          "issues": [4969]
+        },
+        {
+          "pr": 5015,
+          "kind": "fix",
+          "category": "General",
+          "title": "Every Ahead row links to its own page; the group’s door is on its heading",
+          "issues": []
+        },
+        {
+          "pr": 5015,
+          "kind": "fix",
+          "category": "General",
+          "title": "Rows about a health portal or a Fitbit export have a working link",
+          "issues": []
+        },
+        {
+          "pr": 5015,
+          "kind": "fix",
+          "category": "General",
+          "title": "A portal you have not checked is asked about once a month instead of every week",
+          "issues": []
+        },
+        {
+          "pr": 5016,
+          "kind": "fix",
+          "category": "Nutrition",
+          "title": "Typing grams into protein quick-add and then moving the day keeps what you typed",
+          "issues": [4934]
+        },
+        {
+          "pr": 5024,
+          "kind": "fix",
+          "category": "History",
+          "title": "Days revealed inside a month inside a year line up indented under that month",
+          "issues": [4365]
+        },
+        {
+          "pr": 5024,
+          "kind": "feature",
+          "category": "History",
+          "title": "Opening a month, a year or a rollup animates across instead of repainting",
+          "issues": [4365]
+        },
+        {
+          "pr": 5025,
+          "kind": "feature",
+          "category": "Medical",
+          "title": "You can state the time you had a drink, not just the day",
+          "issues": [3295]
+        },
+        {
+          "pr": 5025,
+          "kind": "feature",
+          "category": "Medical",
+          "title": "Each drink is its own row in the record, with its own clock",
+          "issues": [3295]
+        },
+        {
+          "pr": 5025,
+          "kind": "feature",
+          "category": "Medical",
+          "title": "A drink is corrected or removed on its own, through the food serving’s form",
+          "issues": [3295]
+        },
+        {
+          "pr": 5025,
+          "kind": "feature",
+          "category": "History",
+          "title": "A drink with a stated time draws its own tick on the day chart",
+          "issues": [3295]
+        },
+        {
+          "pr": 5023,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "A workout note is corrected once a fuller copy of that session arrives",
+          "issues": [4996]
+        },
+        {
+          "pr": 5023,
+          "kind": "feature",
+          "category": "Reminders",
+          "title": "A workout note still asking the type says details follow when Strava syncs",
+          "issues": [4996]
+        },
+        {
+          "pr": 5031,
+          "kind": "feature",
+          "category": "Medications",
+          "title": "You can check off and log doses on the medication page of someone you help",
+          "issues": [4429]
+        },
+        {
+          "pr": 5031,
+          "kind": "feature",
+          "category": "Medications",
+          "title": "You can mark a dose taken from the “Today across everyone” strip",
+          "issues": [4429]
+        },
+        {
+          "pr": 5039,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "The measurements sheet opens wide enough for four fields to a row",
+          "issues": [4977]
+        },
+        {
+          "pr": 5039,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "Blood pressure has room for both numbers, labelled Systolic and Diastolic",
+          "issues": [4977]
+        },
+        {
+          "pr": 5039,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "The measurements form’s standing sentence moves behind an info icon",
+          "issues": [4977]
+        },
+        {
+          "pr": 5042,
+          "kind": "fix",
+          "category": "Sleep",
+          "title": "A night that crosses a clock change reads its bed and wake on one clock",
+          "issues": [5018]
+        },
+        {
+          "pr": 5042,
+          "kind": "fix",
+          "category": "Sleep",
+          "title": "The sleep consistency strip stops calling a clock-change night off schedule",
+          "issues": [5018]
+        },
+        {
+          "pr": 5043,
+          "kind": "perf",
+          "category": "Trends",
+          "title": "Trends loads faster when you have a lot of biomarkers tracked",
+          "issues": []
+        },
+        {
+          "pr": 5028,
+          "kind": "fix",
+          "category": "Sleep",
+          "title": "A daytime nap stops making that night’s times look like a wrong clock",
+          "issues": [5019]
+        },
+        {
+          "pr": 5028,
+          "kind": "fix",
+          "category": "Sleep",
+          "title": "Deleting the flagged session removes the night, not that day’s nap",
+          "issues": [5019]
+        }
+      ]
+    },
+    {
+      "date": "2026-09-03",
+      "entries": [
+        {
+          "pr": 4848,
+          "kind": "security",
+          "category": "Household",
+          "title": "Mood check-ins are shown on shared household surfaces after all",
+          "issues": [4807]
+        },
+        {
+          "pr": 4834,
+          "kind": "feature",
+          "category": "Medical",
+          "title": "The illness card leads with recovery: a countdown, and Feeling better",
+          "issues": [4752]
+        },
+        {
+          "pr": 4834,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "Medicines on the illness card sit on one row you tap to open",
+          "issues": [4752]
+        },
+        {
+          "pr": 4834,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "Panels on the illness card open in place instead of moving the page",
+          "issues": [4752]
+        },
+        {
+          "pr": 4834,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "The illness card is a readable column on a big screen, not a stretched phone",
+          "issues": [4752]
+        },
+        {
+          "pr": 4834,
+          "kind": "feature",
+          "category": "Household",
+          "title": "When more than one person has something on Now, each group carries their name",
+          "issues": [4752]
+        },
+        {
+          "pr": 4831,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "A refused notification setting is taken back instead of looking saved",
+          "issues": [4736]
+        },
+        {
+          "pr": 4831,
+          "kind": "feature",
+          "category": "Reminders",
+          "title": "Notification channels are one status strip instead of four separate cards",
+          "issues": [2565]
+        },
+        {
+          "pr": 4825,
+          "kind": "feature",
+          "category": "Trends",
+          "title": "Today’s chart moves onto the dashboard, beside the rest of today",
+          "issues": [4763, 4767]
+        },
+        {
+          "pr": 4825,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "Trends drops its 1D window; today’s detail is on History instead",
+          "issues": [4763, 4767]
+        },
+        {
+          "pr": 4849,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Cards inside a fold reach the screen edges on a phone",
+          "issues": [3920]
+        },
+        {
+          "pr": 4818,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "Reading the newest point on a standing chart no longer runs off the card",
+          "issues": [4534]
+        },
+        {
+          "pr": 4824,
+          "kind": "fix",
+          "category": "Training",
+          "title": "Practice duration is worked out from the start and end you enter",
+          "issues": [4384]
+        },
+        {
+          "pr": 4824,
+          "kind": "feature",
+          "category": "Training",
+          "title": "Practice start and end each offer a now, and an end before its start is refused",
+          "issues": [4384]
+        },
+        {
+          "pr": 4824,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Setting an exact time shows a labelled box instead of a blank one",
+          "issues": [4384]
+        },
+        {
+          "pr": 4803,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "Drinks show up in the food message under the food-buttons setting",
+          "issues": []
+        },
+        {
+          "pr": 4803,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "The substance setting names its own caps: nicotine, cannabis, yours",
+          "issues": []
+        },
+        {
+          "pr": 4820,
+          "kind": "fix",
+          "category": "Sleep",
+          "title": "Sleep times use the zone you were in that night, not the one you are in now",
+          "issues": []
+        },
+        {
+          "pr": 4821,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "A glyph button's tooltip says the same name a screen reader reads",
+          "issues": []
+        },
+        {
+          "pr": 4822,
+          "kind": "feature",
+          "category": "Medical",
+          "title": "Records group visits and diagnoses by the kind of care they belong to",
+          "issues": []
+        },
+        {
+          "pr": 4826,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "A stale vitals or weight reading offers a door to log a new one",
+          "issues": []
+        },
+        {
+          "pr": 4826,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "Standing readings say which app they came from, Manual included",
+          "issues": []
+        },
+        {
+          "pr": 4829,
+          "kind": "fix",
+          "category": "Documents",
+          "title": "A pasted imaging report is stored whole, not just its impression",
+          "issues": []
+        },
+        {
+          "pr": 4829,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "Retest lines write their dates the way you have chosen to see dates",
+          "issues": []
+        },
+        {
+          "pr": 4830,
+          "kind": "fix",
+          "category": "Connected apps",
+          "title": "A synced weigh-in keeps the time the scale measured it",
+          "issues": []
+        },
+        {
+          "pr": 4832,
+          "kind": "fix",
+          "category": "History",
+          "title": "Your usual offers lead History's add door, above the per-kind row",
+          "issues": []
+        },
+        {
+          "pr": 4833,
+          "kind": "feature",
+          "category": "Training",
+          "title": "The Training Log moves onto the same rows the rest of History uses",
+          "issues": []
+        },
+        {
+          "pr": 4868,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "The fever chart's last date label stays inside the card",
+          "issues": []
+        },
+        {
+          "pr": 4871,
+          "kind": "fix",
+          "category": "History",
+          "title": "Symptoms joins the day's Add row, and its standalone card retires",
+          "issues": []
+        },
+        {
+          "pr": 4873,
+          "kind": "feature",
+          "category": "Training",
+          "title": "The workout message flags a niggle in what today's session will touch",
+          "issues": []
+        },
+        {
+          "pr": 4880,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "A months-old flagged lab can be acknowledged where you see it",
+          "issues": []
+        },
+        {
+          "pr": 4881,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "The clock button is the only way the time question is spelled",
+          "issues": []
+        },
+        {
+          "pr": 4883,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "A panel that opens near an edge is bounded by its room, and scrolls",
+          "issues": []
+        },
+        {
+          "pr": 4886,
+          "kind": "fix",
+          "category": "General",
+          "title": "The dashboard's act row names what it logs",
+          "issues": []
+        },
+        {
+          "pr": 4886,
+          "kind": "feature",
+          "category": "General",
+          "title": "A dormant vitals line offers a reading",
+          "issues": []
+        },
+        {
+          "pr": 4889,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "PRN ceilings judge the last 24 hours, not the calendar day",
+          "issues": []
+        },
+        {
+          "pr": 4896,
+          "kind": "feature",
+          "category": "History",
+          "title": "The day is one stream, and the add layer folds behind + Add",
+          "issues": []
+        },
+        {
+          "pr": 4897,
+          "kind": "feature",
+          "category": "Reminders",
+          "title": "A finished practice gets a note once your watch's data catches up",
+          "issues": [4775]
+        },
+        {
+          "pr": 4897,
+          "kind": "feature",
+          "category": "Trends",
+          "title": "Drink evenings sit beside the night's lowest heart rate",
+          "issues": [4775]
+        },
+        {
+          "pr": 4904,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "The PRN detail block's write side wears the same Today header",
+          "issues": []
+        },
+        {
+          "pr": 4910,
+          "kind": "feature",
+          "category": "General",
+          "title": "Setup suggestions say what each one gets you",
+          "issues": []
+        },
+        {
+          "pr": 4913,
+          "kind": "feature",
+          "category": "Connected apps",
+          "title": "A connection can be told to treat its glucose as a continuous sensor",
+          "issues": [3182]
+        },
+        {
+          "pr": 4921,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "A course-start correction that cannot apply refuses the dose",
+          "issues": [4909]
+        },
+        {
+          "pr": 4922,
+          "kind": "feature",
+          "category": "Medical",
+          "title": "A fever reading opens the episode for whoever it belongs to",
+          "issues": [4712]
+        },
+        {
+          "pr": 4922,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "The first fever of the night reaches the other caregiver's phone",
+          "issues": [4712]
+        },
+        {
+          "pr": 4923,
+          "kind": "fix",
+          "category": "History",
+          "title": "The day bar names the day, even when nothing is on it",
+          "issues": [4918]
+        },
+        {
+          "pr": 4923,
+          "kind": "fix",
+          "category": "History",
+          "title": "Today's day view no longer shows an arrow back to today",
+          "issues": [4918]
+        },
+        {
+          "pr": 4828,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "A reply to a Telegram command says whose entry it is",
+          "issues": [4538]
+        },
+        {
+          "pr": 4828,
+          "kind": "feature",
+          "category": "Reminders",
+          "title": "The reply to /food carries the same one-tap “log your usual” button",
+          "issues": [4538]
+        },
+        {
+          "pr": 4879,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Section headings inside cards line up and space the same way everywhere",
+          "issues": [4548]
+        },
+        {
+          "pr": 4879,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Small section headings are announced as headings by a screen reader",
+          "issues": [4548]
+        },
+        {
+          "pr": 4935,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "A day you logged a fever on no longer shows a second, worked-out one",
+          "issues": [4712]
+        },
+        {
+          "pr": 4938,
+          "kind": "feature",
+          "category": "History",
+          "title": "Symptom is always on the record’s Add row, even before you have logged one",
+          "issues": [4851]
+        },
+        {
+          "pr": 4938,
+          "kind": "fix",
+          "category": "History",
+          "title": "A practice’s “Log with details” button shows a list icon instead of a clock",
+          "issues": [4882]
+        },
+        {
+          "pr": 4939,
+          "kind": "feature",
+          "category": "General",
+          "title": "A practice you are behind on has its own Log button on the dashboard row",
+          "issues": [4076]
+        },
+        {
+          "pr": 4941,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "A dose marked offline is filed under your profile’s day, not your phone’s",
+          "issues": [4559]
+        },
+        {
+          "pr": 4943,
+          "kind": "fix",
+          "category": "General",
+          "title": "The dashboard’s mood row reads “Today’s mood”, and its button says Log or Update",
+          "issues": [4841]
+        },
+        {
+          "pr": 4943,
+          "kind": "fix",
+          "category": "General",
+          "title": "Blood pressure and resting heart rate share one “Log a vital” button",
+          "issues": [4841]
+        },
+        {
+          "pr": 4943,
+          "kind": "fix",
+          "category": "General",
+          "title": "The “add your first vitals” prompt goes once you have any reading",
+          "issues": [4841]
+        },
+        {
+          "pr": 4943,
+          "kind": "feature",
+          "category": "General",
+          "title": "A weight reading that has gone quiet offers a Log weight button",
+          "issues": [4841]
+        },
+        {
+          "pr": 4946,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Picking a different day after spinning the time wheel keeps the day you picked",
+          "issues": [4940]
+        },
+        {
+          "pr": 4949,
+          "kind": "feature",
+          "category": "History",
+          "title": "The day chart gives practice sessions their own row, apart from workouts",
+          "issues": [4852]
+        },
+        {
+          "pr": 4949,
+          "kind": "feature",
+          "category": "History",
+          "title": "You can zoom the day chart with a wheel or a pinch, and pan it sideways",
+          "issues": [4852]
+        },
+        {
+          "pr": 4949,
+          "kind": "fix",
+          "category": "History",
+          "title": "Row names in the day chart print in full instead of being cut short",
+          "issues": [4852]
+        },
+        {
+          "pr": 4953,
+          "kind": "feature",
+          "category": "Sleep",
+          "title": "A synced night whose times disagree with your heart rate says so",
+          "issues": [4299]
+        },
+        {
+          "pr": 4953,
+          "kind": "feature",
+          "category": "Sleep",
+          "title": "You can delete a synced sleep night whose source clock looks wrong",
+          "issues": [4299]
+        },
+        {
+          "pr": 4954,
+          "kind": "feature",
+          "category": "Training",
+          "title": "A ride’s power curve and splits show where they place against earlier rides",
+          "issues": [3195]
+        },
+        {
+          "pr": 4954,
+          "kind": "feature",
+          "category": "Training",
+          "title": "Each of those tables says what the ride was compared with",
+          "issues": [3195]
+        },
+        {
+          "pr": 4954,
+          "kind": "feature",
+          "category": "Training",
+          "title": "After a ride, the dashboard shows its best figure and any segment records",
+          "issues": [3195]
+        },
+        {
+          "pr": 4955,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "Four Trends cards move their explanation behind an info icon",
+          "issues": [4927]
+        },
+        {
+          "pr": 4961,
+          "kind": "feature",
+          "category": "Medical",
+          "title": "Logging a fever-range temperature offers to open an episode, in place",
+          "issues": [4712]
+        },
+        {
+          "pr": 4964,
+          "kind": "feature",
+          "category": "Training",
+          "title": "Endurance plans become events of any kind — a race, a meet, your own word",
+          "issues": [3285]
+        },
+        {
+          "pr": 4964,
+          "kind": "feature",
+          "category": "Training",
+          "title": "Discipline and distance are optional: an event can be a name and a date",
+          "issues": [3285]
+        },
+        {
+          "pr": 4964,
+          "kind": "fix",
+          "category": "Documents",
+          "title": "A data export’s “Event plans” table is now “Events”, with a kind column",
+          "issues": [3285]
+        },
+        {
+          "pr": 4966,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "Line charts join readings with straight segments instead of a smoothed curve",
+          "issues": [4924]
+        },
+        {
+          "pr": 4966,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "A reading with no neighbour on either side draws its own dot",
+          "issues": [4924]
+        },
+        {
+          "pr": 4966,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "Today’s part-finished day draws hollow, and the headline says “so far today”",
+          "issues": [4924]
+        },
+        {
+          "pr": 4966,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "Notes under a chart no longer overlap each other or sit against the card’s edge",
+          "issues": [4925]
+        },
+        {
+          "pr": 4966,
+          "kind": "feature",
+          "category": "Trends",
+          "title": "A chart whose data source has stopped links to Review and offers “Fix a range”",
+          "issues": [4925]
+        },
+        {
+          "pr": 4967,
+          "kind": "fix",
+          "category": "Connected apps",
+          "title": "Health Connect stores HRV, respiratory rate and skin temperature again",
+          "issues": [4956]
+        },
+        {
+          "pr": 4967,
+          "kind": "feature",
+          "category": "Connected apps",
+          "title": "A source that syncs while a whole kind of record is discarded says so",
+          "issues": [4956]
+        },
+        {
+          "pr": 4967,
+          "kind": "fix",
+          "category": "Connected apps",
+          "title": "Sync details no longer draw an empty box on a sync with nothing to report",
+          "issues": [4956]
+        },
+        {
+          "pr": 4971,
+          "kind": "fix",
+          "category": "General",
+          "title": "The dashboard’s Understand and Set up show three groups, the rest folded",
+          "issues": [4065]
+        },
+        {
+          "pr": 4982,
+          "kind": "feature",
+          "category": "Interface",
+          "title": "History earns its own sidebar row, and Trends moves into Plan & review",
+          "issues": [4965]
+        },
+        {
+          "pr": 4984,
+          "kind": "feature",
+          "category": "History",
+          "title": "A day’s daylight, cycle phase and weather move under the day chart’s title",
+          "issues": [4918]
+        },
+        {
+          "pr": 4984,
+          "kind": "feature",
+          "category": "History",
+          "title": "The day chart shades the hours between sunrise and sunset where you live",
+          "issues": [4918]
+        },
+        {
+          "pr": 4984,
+          "kind": "feature",
+          "category": "History",
+          "title": "Before last night’s sleep arrives, the chart hatches your usual bed and wake",
+          "issues": [4918]
+        },
+        {
+          "pr": 4984,
+          "kind": "fix",
+          "category": "History",
+          "title": "A day with nothing recorded still shows its chart",
+          "issues": [4918]
+        },
+        {
+          "pr": 4987,
+          "kind": "feature",
+          "category": "Household",
+          "title": "The quick-log sheet says who the entry is for, and you can switch person from it",
+          "issues": [4932]
+        },
+        {
+          "pr": 4987,
+          "kind": "fix",
+          "category": "Household",
+          "title": "Reopening a form you have used shows it straight away, not “Loading…”",
+          "issues": [4932]
+        },
+        {
+          "pr": 4987,
+          "kind": "fix",
+          "category": "Household",
+          "title": "A form whose data never arrives says so instead of loading forever",
+          "issues": [4932]
+        },
+        {
+          "pr": 4988,
+          "kind": "fix",
+          "category": "Connected apps",
+          "title": "The sensor-glucose switch shows it is saving, and goes back if it fails",
+          "issues": [4972]
+        }
+      ]
+    },
+    {
       "date": "2026-09-02",
       "entries": [
         {
@@ -240,6 +1083,146 @@
           "category": "Interface",
           "title": "Escape closes a picker that has a list, and reaches the dialog when it does not",
           "issues": [3432]
+        },
+        {
+          "pr": 4764,
+          "kind": "fix",
+          "category": "Nutrition",
+          "title": "Correcting a child’s food row can no longer move it into an adult-only group",
+          "issues": [4072]
+        },
+        {
+          "pr": 4773,
+          "kind": "fix",
+          "category": "History",
+          "title": "A correction on the day view reaches any past day, not just the last seven",
+          "issues": [4754]
+        },
+        {
+          "pr": 4773,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "A bulk take names what it takes instead of showing a count",
+          "issues": [4477]
+        },
+        {
+          "pr": 4773,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "The row that is actually due wears the day’s one accent",
+          "issues": [4477]
+        },
+        {
+          "pr": 4773,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "A bucket says its name once at the top instead of on every row",
+          "issues": [4477]
+        },
+        {
+          "pr": 4783,
+          "kind": "feature",
+          "category": "Medications",
+          "title": "A one-tap offer shows the dose or time it will log, beside the verb",
+          "issues": [4753]
+        },
+        {
+          "pr": 4783,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Backfilling a missed dose names the day on the button itself",
+          "issues": [4753]
+        },
+        {
+          "pr": 4777,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "The weekly recap stops counting today’s pending doses as missed",
+          "issues": [4228]
+        },
+        {
+          "pr": 4777,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "A resumed medication says which way its number points",
+          "issues": [4228]
+        },
+        {
+          "pr": 4777,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "The weekly notification leads with its news instead of its totals",
+          "issues": [4228]
+        },
+        {
+          "pr": 4777,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "A wear reminder states what happened, not a claim about tonight",
+          "issues": [3060]
+        },
+        {
+          "pr": 4782,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "Each chart point shows its value on hover or focus; the list below it is gone",
+          "issues": [4760]
+        },
+        {
+          "pr": 4786,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "A parent adding a child’s medication no longer gets advice meant for adults",
+          "issues": [4609]
+        },
+        {
+          "pr": 4786,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "The medication form shows interaction, gene and condition notices it skipped",
+          "issues": [4609]
+        },
+        {
+          "pr": 4794,
+          "kind": "feature",
+          "category": "Interface",
+          "title": "The time field opens an in-app wheel instead of the browser’s time control",
+          "issues": [4218]
+        },
+        {
+          "pr": 4794,
+          "kind": "feature",
+          "category": "Interface",
+          "title": "Where a time is required, one field opens a single date-and-time panel",
+          "issues": [4218]
+        },
+        {
+          "pr": 4794,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "The time field uses the 12- or 24-hour clock you chose, not your device’s",
+          "issues": [4218]
+        },
+        {
+          "pr": 4806,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "A notice raised while a sheet is opening no longer lands on top of it",
+          "issues": [4796]
+        },
+        {
+          "pr": 4801,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Editing someone else’s past dose keeps their clock, not yours",
+          "issues": [4693]
+        },
+        {
+          "pr": 4801,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "You can log and correct doses on another person’s medicine page",
+          "issues": [4693]
         }
       ]
     },

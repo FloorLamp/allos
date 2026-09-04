@@ -1,4 +1,7 @@
-import type { HealthConnectOriginChoice } from "./health-connect";
+import type {
+  HealthConnectOriginChoice,
+  SyncTypeTally,
+} from "./health-connect";
 
 // The structured `details` JSON every source's sync event can carry. Started as
 // Health Connect's origin/warning diagnostics and is now the shared event-level
@@ -13,6 +16,11 @@ export interface SyncEventDetails {
   // and the sync cursor was deliberately not advanced so the next run re-covers the
   // remainder. Absent (rather than false) on an ordinary complete run.
   truncated?: boolean;
+  // Per-type record accounting for this run (#4956) — what arrived, what landed.
+  // Health Connect writes it for every consumed type that carried records; a source
+  // that reports no per-type breakdown simply omits it, and `droppedTypes` below then
+  // has nothing to say about that run rather than guessing.
+  tally?: SyncTypeTally;
 }
 
 export const MAX_SYNC_DETAILS_CHARS = 4000;
@@ -42,6 +50,22 @@ export function metricLabel(metric: string): string {
   );
 }
 
+// Read a stored tally back defensively — `details` is durable JSON written by past
+// versions, so an entry whose counts are not finite numbers is dropped rather than
+// trusted into an arithmetic comparison. Returns null when nothing usable survives.
+function readTally(raw: unknown): SyncTypeTally | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const out: SyncTypeTally = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!value || typeof value !== "object") continue;
+    const { received, landed } = value as Record<string, unknown>;
+    if (typeof received !== "number" || !Number.isFinite(received)) continue;
+    if (typeof landed !== "number" || !Number.isFinite(landed)) continue;
+    out[key.slice(0, 100)] = { received, landed };
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 export function parseSyncEventDetails(
   raw: string | null
 ): SyncEventDetails | null {
@@ -66,8 +90,15 @@ export function parseSyncEventDetails(
         )
       : [];
     const truncated = value.truncated === true;
-    if (!warnings.length && !origins.length && !truncated) return null;
-    return { warnings, origins, ...(truncated ? { truncated: true } : {}) };
+    const tally = readTally(value.tally);
+    if (!warnings.length && !origins.length && !truncated && !tally)
+      return null;
+    return {
+      warnings,
+      origins,
+      ...(truncated ? { truncated: true } : {}),
+      ...(tally ? { tally } : {}),
+    };
   } catch {
     return null;
   }
@@ -121,6 +152,12 @@ export function serializeSyncEventDetails(
     // The truncation marker is a single boolean and must never be the thing the
     // char budget drops — it is what the UI badges the run on.
     ...(details.truncated ? { truncated: true } : {}),
+    // Neither may the tally: it is the durable evidence `droppedTypes` reads, and a
+    // budget that silently drops it would restore exactly the silence #4956 is about.
+    // Its size is bounded by the consumed-key set, not by anything a payload controls.
+    ...(details.tally && Object.keys(details.tally).length
+      ? { tally: details.tally }
+      : {}),
   };
   const fits = (candidate: SyncEventDetails) =>
     JSON.stringify(candidate).length <= maxChars;
@@ -140,7 +177,12 @@ export function serializeSyncEventDetails(
     const candidate = { ...bounded, origins: [...bounded.origins, value] };
     if (fits(candidate)) bounded.origins.push(value);
   }
-  if (!bounded.warnings.length && !bounded.origins.length && !bounded.truncated)
+  if (
+    !bounded.warnings.length &&
+    !bounded.origins.length &&
+    !bounded.truncated &&
+    !bounded.tally
+  )
     return null;
   return JSON.stringify(bounded);
 }
@@ -156,6 +198,39 @@ export function boundSyncDetailsJson(
   if (raw.length <= maxChars) return raw;
   const parsed = parseSyncEventDetails(raw);
   return parsed ? serializeSyncEventDetails(parsed, maxChars) : null;
+}
+
+// THE TYPES A LIVE SOURCE IS SWALLOWING (#4956), over a window of its events.
+//
+// A source can be perfectly healthy — every run `ok`, rows landing — and still be
+// dropping one record type entirely, because the exporter renamed a field the parser
+// reads. That is what happened for six days across 405 `ok` pushes, and nothing in the
+// failing/stale vocabulary can describe it: nothing failed and data did arrive.
+//
+// A type qualifies when the window contains at least one successful run that RECEIVED
+// it and NOT ONE successful run that landed any of it. So a single landed record
+// clears the type on the next read — the signal ends the moment the drop does, with no
+// separate resolution step — and a type simply absent from a push says nothing either
+// way, which is what makes a nightly type (skin temperature) safe to judge over a
+// window that contains daytime pushes.
+//
+// FAILED runs are ignored: a run that threw has no honest tally, and a source whose
+// runs are failing is already described by `failing`.
+export function droppedTypes(
+  events: readonly { ok: number; details?: string | null }[]
+): string[] {
+  const received = new Set<string>();
+  const landed = new Set<string>();
+  for (const ev of events) {
+    if (!ev.ok) continue;
+    const tally = parseSyncEventDetails(ev.details ?? null)?.tally;
+    if (!tally) continue;
+    for (const [key, counts] of Object.entries(tally)) {
+      if (counts.received > 0) received.add(key);
+      if (counts.landed > 0) landed.add(key);
+    }
+  }
+  return [...received].filter((key) => !landed.has(key)).sort();
 }
 
 export function originChoiceLabel(choice: HealthConnectOriginChoice): string {

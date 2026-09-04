@@ -293,7 +293,14 @@ export async function logUsualRoutine(
     .map((raw) => Number(raw.trim()))
     .filter((id) => Number.isInteger(id) && id > 0);
   const proteinGrams = Number(formData.get("protein_grams") ?? 0);
-  if (groups.length === 0 && doseIds.length === 0)
+  // A SUBMISSION NAMING NOTHING. Shape only, like every field here — the core still
+  // decides what may land. The scoop counts as something named (#4379/#4765): a bundle
+  // whose food half is the scoop alone posts no slugs, so counting only groups and doses
+  // would refuse a tap the offer had legitimately made. Neither web control can build
+  // that post today (FoodLogBar's own note carries the reasoning), so this term changes
+  // no outcome — it is here so this gate says the same thing about a food half as
+  // `usualRoutineOffer` and the two controls do, rather than a fourth thing.
+  if (groups.length === 0 && doseIds.length === 0 && !(proteinGrams > 0))
     return { ok: false, error: "Nothing to log." };
   const day = today(profile.id);
   const rawDate = String(formData.get("date") ?? "").trim();

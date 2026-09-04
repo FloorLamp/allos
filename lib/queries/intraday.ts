@@ -118,16 +118,23 @@ function sleepSpans(
   return spans;
 }
 
-// The panel's model for one profile-local day, or null when nothing on the day is
-// intraday (no HR, no sleep, no windowed workout, no clock-timed event) — the
-// caller then renders no frame at all.
+// The panel's model for one profile-local day. ALWAYS returns one — see
+// buildIntradayModel's own comment for the empty-day case.
 //
 // `events` MUST be the feed's own resolved events for this day (see the header).
+// `context` carries the day view's two extras no other caller needs: the daylight
+// band's sunrise/sunset pair (#4918 ruling 3), and, only while today waits on last
+// night's sleep, the expected bed/wake window (ruling 7). Both default to null,
+// which is exactly what the dashboard's "day so far" card wants.
 export function getIntradayDay(
   profileId: number,
   date: string,
-  events: TimelineEvent[]
-): IntradayModel | null {
+  events: TimelineEvent[],
+  context: {
+    solarDay?: { sunriseMin: number; sunsetMin: number } | null;
+    expectedSleep?: { bedMinutes: number; wakeMinutes: number } | null;
+  } = {}
+): IntradayModel {
   const tz = getTimezone(profileId);
   const zoneModel = getProfileZoneModel(profileId);
   // Zone 2 = [Z2 floor, Z3 floor) from the SAME zone model the Trends zone section
@@ -148,6 +155,8 @@ export function getIntradayDay(
     sleep: sleepSpans(profileId, date, tz),
     zone2,
     nowMinute,
+    solarDay: context.solarDay ?? null,
+    expectedSleep: context.expectedSleep ?? null,
   };
   return buildIntradayModel(input);
 }

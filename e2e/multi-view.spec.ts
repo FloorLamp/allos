@@ -38,6 +38,8 @@ import {
   MVMEDS_RO_PROFILE,
   MVMEDS_SELF_MED,
   MVMEDS_RO_MED,
+  MVMEDS_WARD_PROFILE,
+  MVMEDS_WARD_MED,
   E2E_LOGIN_MVBIO,
   MVBIO_SELF_PROFILE,
   MVBIO_RO_PROFILE,
@@ -183,9 +185,12 @@ test.describe("Multi-profile viewing (issue #1096)", () => {
 
     // Confirm the SHARED profile's dose from its own row (a cross-profile write:
     // acting profile stays the owner). The row drops off once taken.
+    // STILL "Mark taken", and deliberately: this row is `DoseConfirmButton`, whose
+    // form-to-button conversion is the one #4753 mount the owner has not released, so
+    // the dose family's copy migration stops at the row control (#4753 ruling 4).
     await settledClick(
       page,
-      sharedRow.getByRole("button", { name: "Mark taken" })
+      sharedRow.getByRole("button", { name: "Mark taken", exact: true })
     );
     await expect(
       page.getByText(MULTI_SHARED_DOSE, { exact: false })
@@ -567,7 +572,7 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
     browser,
   }) => {
     test.slow();
-    const { ownerId, sharedId } = resetMultiTrainingLog();
+    const { sharedId } = resetMultiTrainingLog();
     const page = await loginAs(browser, {
       username: E2E_LOGIN_MULTI,
       password: E2E_MEMBER_PASSWORD,
@@ -578,12 +583,12 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
     await page.goto("/training?tab=log");
     await expect(
       page
-        .locator('[id^="activity-"]')
+        .getByTestId("history-row")
         .filter({ hasText: MULTI_OWNER_ACTIVITY_A })
     ).toBeVisible();
     await expect(
       page
-        .locator('[id^="activity-"]')
+        .getByTestId("history-row")
         .filter({ hasText: MULTI_OWNER_ACTIVITY_B })
     ).toBeVisible();
     await expect(page.getByText(MULTI_SHARED_ACTIVITY)).toHaveCount(0);
@@ -597,54 +602,54 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
 
     // Multi view: the merged feed now carries the shared member's card WITH a subject
     // chip on ITS card; the acting (owner) cards never carry a chip.
+    //
+    // THE MERGE IS A DEEP-LINKED MODE, NOT A SWITCHER (#1463, and #4079's named
+    // retirement of the Log's private multi-view). The Log renders through the shared
+    // history substrate, whose household read is `?view=everyone` — so having a member
+    // in VIEW scope makes the mode available and the URL is what asks for it. A plain
+    // `?tab=log` stays the acting profile's own log, which is asserted below.
     await page.goto("/training?tab=log");
+    await expect(page.getByText(MULTI_SHARED_ACTIVITY)).toHaveCount(0);
+    await page.goto("/training?tab=log&view=everyone");
     const sharedCard = page
-      .locator('[id^="activity-"]')
+      .getByTestId("history-row")
       .filter({ hasText: MULTI_SHARED_ACTIVITY });
     await expect(sharedCard).toBeVisible();
-    const sharedChipSlot = sharedCard.getByTestId(
-      `subject-chip-${sharedId}-row`
+    // WHOSE ROW IT IS, in the substrate's own grammar (#4079). The Log's card carried
+    // the caller-owned `SubjectChip` slot; the shared row names its subject in one
+    // span beside the title, which is what every other family in `?view=everyone`
+    // already does. The row-level geometry of that span — painted width against every
+    // clipping ancestor, at the smallest phone — is owned by
+    // e2e/history-everyone.spec.ts over BOTH mounts, so it is not re-measured here.
+    await expect(sharedCard.getByTestId("history-row-subject")).toHaveText(
+      MULTI_SHARED_PROFILE
     );
-    const sharedChip = sharedChipSlot.getByTestId(`subject-chip-${sharedId}`);
-    await expect(sharedChipSlot).toBeVisible();
-    await expect(sharedChip).toContainText(MULTI_SHARED_PROFILE);
-    // The owner's own cards are still there, without a chip anywhere on the feed.
-    await expect(
-      page
-        .locator('[id^="activity-"]')
-        .filter({ hasText: MULTI_OWNER_ACTIVITY_A })
-    ).toBeVisible();
-    await expect(
-      page.locator(`[data-testid="subject-chip-${ownerId}"]`)
-    ).toHaveCount(0);
+    // The owner's own rows are still there, and in a merged read EVERY row names its
+    // subject — including the acting profile's, which is the substrate's rule and the
+    // one e2e/history-everyone.spec.ts pins for the other families. What must never
+    // happen is two rows wearing the same name.
+    const ownerCard = page
+      .getByTestId("history-row")
+      .filter({ hasText: MULTI_OWNER_ACTIVITY_A });
+    await expect(ownerCard).toBeVisible();
+    await expect(ownerCard.getByTestId("history-row-subject")).toHaveText(
+      MULTI_OWNER_PROFILE
+    );
 
-    // At phone width the caller-owned slot drops below the activity copy while the
-    // shared primitive remains contained in its row and the viewport.
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto("/training?tab=log");
-    await expect(sharedChipSlot).toBeVisible();
-    const [phoneRowBox, phoneContentBox, phoneSlotBox] = await settledBoxes([
-      sharedCard,
-      sharedCard.locator(":scope > div.min-w-0"),
-      sharedChipSlot,
-    ]);
-    expect(phoneSlotBox.x).toBeGreaterThanOrEqual(phoneRowBox.x - 1);
-    expect(phoneSlotBox.x + phoneSlotBox.width).toBeLessThanOrEqual(
-      phoneRowBox.x + phoneRowBox.width + 1
-    );
-    expect(
-      phoneSlotBox.y,
-      "phone subject slot follows activity copy"
-    ).toBeGreaterThanOrEqual(phoneContentBox.y + phoneContentBox.height - 1);
+    await page.goto("/training?tab=log&view=everyone");
+    await expect(sharedCard.getByTestId("history-row-subject")).toBeVisible();
     await expectNoClippedContent(page);
 
     // Cross-profile merge never pairs: the owner's Alpha record's merge picker
     // offers its same-DAY same-PROFILE sibling (Bravo) but NEVER the shared
     // member's same-day card. The menu lives on the canonical record.
     const ownerRow = page
-      .locator('[id^="activity-"]')
+      .getByTestId("history-row")
       .filter({ hasText: MULTI_OWNER_ACTIVITY_A });
-    await hydratedClick(page, ownerRow);
+    // The row is one line with a title LINK (#4079: the Log renders through the
+    // shared history substrate); the record is behind that link, not the whole row.
+    await hydratedClick(page, ownerRow.getByTestId("history-row-title"));
     await page
       .getByTestId("training-activity-page")
       .getByRole("button", { name: "Activity actions" })
@@ -681,17 +686,18 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
     await openProfileSwitcher(page);
     await settledClick(page, page.getByTestId(`view-toggle-${sharedId}`));
     await expectInView(page, 2);
-    await page.goto("/training?tab=log");
+    // The household read is the substrate's deep-linked mode (#1463/#4079).
+    await page.goto("/training?tab=log&view=everyone");
 
     const sharedCard = page
-      .locator('[id^="activity-"]')
+      .getByTestId("history-row")
       .filter({ hasText: MULTI_SHARED_ACTIVITY });
     await expect(sharedCard).toBeVisible();
 
     // "Duplicate activity" on the SHARED member's record opens a create prefill that
     // auto-saves a NEW session — on the ACTING (owner) profile, never the
     // shared subject. Open the canonical record for its menu.
-    await hydratedClick(page, sharedCard);
+    await hydratedClick(page, sharedCard.getByTestId("history-row-title"));
     await page
       .getByTestId("training-activity-page")
       .getByRole("button", { name: "Activity actions" })
@@ -910,7 +916,16 @@ test.describe("Tier-1b bespoke lists adopt multi-view (issue #1359)", () => {
 // spec (only reads + toggles the view-set), so it never races a neighbor and stays
 // repeat-safe. Fresh cookie-less context (loginAs) so it drives the member's own session.
 test.describe("Medications multi-view regimen boards (issue #1373)", () => {
-  function mvMedsIds(): { selfId: number; roId: number } {
+  // Resolve the three fixture profile ids, and clear the ward's dose log so the
+  // cross-profile take below is repeat-safe (#868 fixture ownership) — that take is
+  // the ONE persistent write this fixture carries, and a re-run or retry would
+  // otherwise find the dose already taken and have nothing to press.
+  function mvMedsIds(): {
+    selfId: number;
+    roId: number;
+    wardId: number;
+    wardMedId: number;
+  } {
     const dbPath = workerDbPath();
     const db = new Database(dbPath);
     try {
@@ -921,19 +936,38 @@ test.describe("Medications multi-view regimen boards (issue #1373)", () => {
             id: number;
           }
         ).id;
+      const wardId = idOf(MVMEDS_WARD_PROFILE);
+      db.prepare(
+        `DELETE FROM intake_item_logs
+          WHERE item_id IN (
+            SELECT id FROM intake_items WHERE name = ? AND profile_id = ?
+          )`
+      ).run(MVMEDS_WARD_MED, wardId);
       return {
         selfId: idOf(MVMEDS_SELF_PROFILE),
         roId: idOf(MVMEDS_RO_PROFILE),
+        wardId,
+        wardMedId: (
+          db
+            .prepare(
+              "SELECT id FROM intake_items WHERE name = ? AND profile_id = ?"
+            )
+            .get(MVMEDS_WARD_MED, wardId) as { id: number }
+        ).id,
       };
     } finally {
       db.close();
     }
   }
 
-  async function toggleIntoView(page: Page, id: number): Promise<void> {
+  async function toggleIntoView(
+    page: Page,
+    id: number,
+    inView = 2
+  ): Promise<void> {
     await openProfileSwitcher(page);
     await settledClick(page, page.getByTestId(`view-toggle-${id}`));
-    await expectInView(page, 2);
+    await expectInView(page, inView);
   }
 
   test("single-view stays plain, then multi-view stacks writable and read-only boards", async ({
@@ -974,6 +1008,84 @@ test.describe("Medications multi-view regimen boards (issue #1373)", () => {
         roBoard.getByText(MVMEDS_RO_MED, { exact: false }).first() // first-ok: spec-owned board-scoped med, appears in Today + Current
       ).toBeVisible();
       await expect(selfBoard.getByTestId("dose-status").first()).toBeVisible(); // first-ok: spec-owned board-scoped Today panel
+    } finally {
+      await page.context().close();
+    }
+  });
+
+  // THE STRIP ANSWERS THE ROW IT SHOWS (#4429). "Today across everyone" listed each
+  // member's due doses as jump links only, so the one surface that gathers the
+  // household's doses was the one that could not resolve any of them — a caregiver had
+  // to travel to a board for a tap the board was already offering. These are found rows
+  // on a page the caregiver has already reached, so the control is the SHARED
+  // tri-state, write-gated per member, with no subject picker and no acting switch.
+  test("the everyone strip resolves a writable member's due dose and leaves a read-only member's alone", async ({
+    browser,
+  }) => {
+    test.slow();
+    const { selfId, roId, wardId, wardMedId } = mvMedsIds();
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_MVMEDS,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await page.goto("/medications");
+      await toggleIntoView(page, roId, 2);
+      // A view toggle leaves the panel OPEN, and the trigger is a toggle — so a second
+      // `openProfileSwitcher` on the same page would CLOSE it. Re-navigating between
+      // the two is what makes the second open deterministic rather than a coin flip on
+      // panel state; the re-navigation after them also proves the three-member view
+      // persisted on the session.
+      await page.goto("/medications");
+      await toggleIntoView(page, wardId, 3);
+      await page.goto("/medications");
+
+      const strip = page.getByTestId("med-today-everyone");
+      await expect(strip).toBeVisible();
+      const wardRow = strip.getByTestId(`med-everyone-${wardId}`);
+      const roRow = strip.getByTestId(`med-everyone-${roId}`);
+
+      // THE PAIR, in one render. The read-only member's row keeps the jump link it
+      // always had and grows no control; asserted BESIDE the writable member's, so an
+      // absence here means the grant rather than a strip that renders no controls at
+      // all — which is the tree a lone absence assertion also passes on.
+      await expect(roRow.getByTestId("med-everyone-due")).toBeVisible();
+      await expect(roRow.getByTestId("dose-status")).toHaveCount(0);
+      const take = wardRow.getByTestId("dose-take");
+      await expect(take).toBeVisible();
+
+      await settledClick(page, take);
+
+      // THE WRITE FOLLOWED THE ROW, NOT THE SESSION — the whole of the capability, and
+      // the half a same-profile take could never show. The ward's own board reads taken
+      // while the acting profile's identically-shaped row does not, so a control that
+      // had silently posted the acting profile would fail here rather than pass by
+      // landing somewhere plausible.
+      await expect(
+        page.getByTestId(`med-board-${wardId}`).getByTestId("dose-take")
+      ).toHaveAttribute("aria-pressed", "true");
+      await expect(
+        page.getByTestId(`med-board-${selfId}`).getByTestId("dose-take")
+      ).toHaveAttribute("aria-pressed", "false");
+
+      // AND THE WARD'S OWN MEDICATION PAGE OFFERS THE SAME TAP (#4429's second mount).
+      // That page is a subject-scoped container reached WITHOUT switching — the actor
+      // is unchanged, the banner names the ward — and until now its Today row was the
+      // read-only receipt whatever the grant said. The take above is what it reads back,
+      // which is the two mounts agreeing about one dose rather than two claims.
+      await page.goto(`/medications/${wardMedId}`);
+      await expect(
+        page.getByTestId("medication-identity-banner")
+      ).toBeVisible();
+      await expect(page.getByTestId("profile-identity-bar")).toHaveAttribute(
+        "data-acting-profile-id",
+        String(selfId)
+      );
+      await expect(page.getByTestId("scheduled-dose-readonly")).toHaveCount(0);
+      await expect(page.getByTestId("dose-take")).toHaveAttribute(
+        "aria-pressed",
+        "true"
+      );
     } finally {
       await page.context().close();
     }

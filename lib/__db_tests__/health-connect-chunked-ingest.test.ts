@@ -218,8 +218,9 @@ describe("HC chunked ingest — orchestration (#1064)", () => {
       hrMinutes: [],
       activities: [],
       vitals: [],
+      glucoseTrace: [],
       skipped: 0,
-      details: { warnings: [], origins: [] },
+      details: { warnings: [], origins: [], tally: {} },
       pushedAt: null,
     };
     const res = ingestHealthConnectPayload(
@@ -386,8 +387,9 @@ describe("HC mid-batch failure reports the committed split (#1614)", () => {
       hrMinutes: [],
       activities: [],
       vitals: [],
+      glucoseTrace: [],
       skipped: 0,
-      details: { warnings: [], origins: [] },
+      details: { warnings: [], origins: [], tally: {} },
       pushedAt: null,
     };
 

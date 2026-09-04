@@ -114,6 +114,39 @@ describe("truncated pull marker", () => {
     expect(parseSyncEventDetails(raw)?.truncated).toBe(true);
   });
 
+  // The per-type tally (#4956) is machine evidence, not a note: it must survive the
+  // round trip on a run that carries nothing else, and it must survive the char budget
+  // for the same reason `truncated` does — a budget that dropped it would restore
+  // exactly the silence the tally exists to end.
+  it("round-trips a tally-only payload, budget and all", () => {
+    const tally = { heart_rate_variability: { received: 12, landed: 0 } };
+    // 120 chars is under the warning's 500-char slice, so the budget genuinely has to
+    // choose — and the tally is what must survive the choice.
+    const raw = serializeSyncEventDetails(
+      { warnings: ["a very long warning ".repeat(50)], origins: [], tally },
+      120
+    )!;
+    expect(parseSyncEventDetails(raw)?.warnings).toEqual([]);
+    expect(parseSyncEventDetails(raw)?.tally).toEqual(tally);
+    const bare = serializeSyncEventDetails({
+      warnings: [],
+      origins: [],
+      tally,
+    });
+    expect(bare).not.toBeNull();
+    expect(parseSyncEventDetails(bare)?.tally).toEqual(tally);
+  });
+
+  // Counts that are not numbers are dropped rather than trusted into a comparison —
+  // `details` is durable JSON and past versions wrote no tally at all.
+  it("drops tally entries whose counts are not finite numbers", () => {
+    expect(
+      parseSyncEventDetails(
+        JSON.stringify({ tally: { steps: { received: "4", landed: 4 } } })
+      )
+    ).toBeNull();
+  });
+
   it("serializes a marker-only payload instead of collapsing it to null", () => {
     const raw = serializeSyncEventDetails({
       warnings: [],

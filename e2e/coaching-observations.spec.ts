@@ -1,6 +1,11 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { openDashboardAll, settledClick } from "./helpers";
+import {
+  dashboardAllSummary,
+  openDashboardAll,
+  openEverythingFold,
+  settledClick,
+} from "./helpers";
 import { workerDbPath } from "./worker-env";
 import { plateauSignalKey } from "@/lib/training-observations";
 import {
@@ -51,6 +56,21 @@ test("the dashboard surfaces tab-only coaching observations (#449)", async ({
   resetCoachingObservationDismissals();
   await page.goto("/");
   await openDashboardAll(page);
+  // Coaching observations are Understand's statements, and the seeded fixture
+  // carries more than the band's three-block cap (#4065), so Skullcrusher's block
+  // sits behind Understand's own fold rather than in its front three.
+  await openEverythingFold(page, "understand");
+
+  // GUARD (#4065): this fixture is the one place in the suite that actually reaches
+  // the nested state — Understand capped, its own fold open — so it is where a
+  // regression to the ambiguous locator this PR fixed would show up first. The naive
+  // `getByTestId("dashboard-all").locator("summary")` genuinely resolves to more than
+  // one summary here (the outer control's and the open band fold's); the converse
+  // proves the fix still addresses the outer control specifically despite that.
+  expect(
+    await page.getByTestId("dashboard-all").locator("summary").count()
+  ).toBeGreaterThan(1);
+  await expect(dashboardAllSummary(page)).toHaveCount(1);
 
   const rollup = dashboardCandidateWithText(
     page,
@@ -69,6 +89,8 @@ test("dismissing a coaching observation from the dashboard removes it (#449)", a
   resetCoachingObservationDismissals();
   await page.goto("/");
   await openDashboardAll(page);
+  // Same cap as above: "E2E Dismiss Press" sits behind Understand's own fold.
+  await openEverythingFold(page, "understand");
 
   const rollup = dashboardCandidateWithText(
     page,

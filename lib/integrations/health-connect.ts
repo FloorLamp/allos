@@ -1,8 +1,14 @@
 import type { ActivityType } from "@/lib/types";
 import { tzOffsetMs, utcInstant, utcMinute, zonedDateParts } from "@/lib/date";
 import { anchorImpliedDay } from "@/lib/metric-window-overlap";
-import { boundedOrNull, inTimeWindow } from "@/lib/ingest-bounds";
-import { toKg, toKm, type Kg } from "@/lib/units";
+import {
+  boundedOrNull,
+  canonicalDistanceKm,
+  canonicalDurationMin,
+  inMetricBounds,
+  inTimeWindow,
+} from "@/lib/ingest-bounds";
+import { toKg, type Kg } from "@/lib/units";
 import { metricAggregation } from "@/lib/metric-buckets";
 import { SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
 import { SUB_DAILY_WINDOW_MAX_MIN } from "./health-connect-metrics";
@@ -25,6 +31,18 @@ export {
 // it into source-agnostic normalized records (see normalize.ts). Parsing is
 // tolerant: unknown keys and malformed records are skipped and counted, and field
 // names are matched defensively so a minor app version bump doesn't break ingest.
+//
+// EVERY SAMPLE-SERIES TYPE ARRIVES IN ONE OF TWO SHAPES, per record, and a reader that
+// knows only one of them drops the type in silence. When a series is bucketed the
+// exporter emits `avg`/`min`/`max` in place of the raw field — spelled
+// `avg_delta_celsius`/`min_`/`max_` for skin temperature — and it emits the raw field
+// otherwise (SyncManager.kt, the `if (x.min != null)` branches). v1.9.17 made bucketing
+// the DEFAULT for all five sample series, and because each type carried its own
+// hand-written field list, HRV, respiratory rate and skin temperature vanished for six
+// days across 405 `ok` pushes (#4956; #1100 was the same mechanism a month earlier).
+// So both shapes go through ONE reader, `sampleSeriesValue` below, and every consumed
+// type's `{ received, landed }` ride `out.details.tally` — which is what makes "this
+// type arrived and none of it landed" derivable instead of hand-placed.
 
 export const HEALTH_CONNECT_ID = "health-connect";
 
@@ -389,6 +407,10 @@ export interface ParsedPayload {
   hrMinutes: NormHrMinute[];
   activities: NormActivity[];
   vitals: NormVital[];
+  // Continuous-sensor glucose, routed here instead of onto `vitals` (#3182). Empty
+  // for every payload whose glucose is a discrete observation — which is every payload
+  // from a connection the person has not declared a continuous sensor.
+  glucoseTrace: NormGlucoseTrace[];
   skipped: number;
   details: HealthConnectSyncDetails;
   // THE EXPORTER'S OWN STAMP ON THIS PUSH (`payload.timestamp`), as an absolute
@@ -406,6 +428,28 @@ export interface ParsedPayload {
   pushedAt: string | null;
 }
 
+/**
+ * One continuous-sensor reading on its way to `glucose_trace` (#3181/#3182).
+ *
+ * `origin` is the Android package that wrote the record (`metadata.data_origin`),
+ * carried per ROW rather than per push because one Health Connect connection
+ * aggregates every writing app on the phone. It is what qualifies the trace's
+ * `source`, and it is nullable because the exporter emits metadata conditionally.
+ */
+export interface NormGlucoseTrace {
+  ts: string;
+  mgdl: number;
+  origin: string | null;
+}
+
+// Per-type record accounting for ONE push (#4956): payload key → how many records of
+// that type arrived and how many the parser accepted. Only types that ARRIVED get an
+// entry, so an absent key means "none in this push" and never "none recognised".
+export type SyncTypeTally = Record<
+  string,
+  { received: number; landed: number }
+>;
+
 export interface HealthConnectOriginChoice {
   date: string;
   metric: string;
@@ -416,6 +460,12 @@ export interface HealthConnectOriginChoice {
 export interface HealthConnectSyncDetails {
   warnings: string[];
   origins: HealthConnectOriginChoice[];
+  // Per-consumed-type accounting for THIS push (#4956), keyed by payload key and
+  // carrying only the types that actually arrived. `landed` is records the parser
+  // accepted; `received - landed` is what it dropped. It is what turns the
+  // all-skipped diagnosis from two hand-placed warnings into one derivation over
+  // every type, and it is the durable evidence the `dropping` attention row reads.
+  tally: SyncTypeTally;
 }
 
 // ---- local time helpers (day/minute attribution in the PROFILE's IANA timezone) ----
@@ -450,6 +500,19 @@ function num(...vals: unknown[]): number | null {
   return null;
 }
 
+// The ONE accessor for a sample-series record's value, covering the exporter's two
+// shapes (see the header). `bucketKey` is the name the BUCKETED shape uses; the raw
+// names follow, most specific first, and the historical aliases stay so an older
+// exporter keeps landing. Preferring the bucket key matches what heart rate has always
+// done — a record carrying both is a bucket, and its `avg` is the value.
+function sampleSeriesValue(
+  rec: Record<string, unknown>,
+  rawKeys: readonly string[],
+  bucketKey = "avg"
+): number | null {
+  return num(rec[bucketKey], ...rawKeys.map((k) => rec[k]));
+}
+
 function asArray(v: unknown): Record<string, unknown>[] {
   return Array.isArray(v)
     ? (v.filter((x) => x && typeof x === "object") as Record<string, unknown>[])
@@ -464,6 +527,40 @@ function dataOrigin(rec: Record<string, unknown>): string | null {
   if (!metadata || typeof metadata !== "object") return null;
   const raw = (metadata as Record<string, unknown>).data_origin;
   return typeof raw === "string" && raw.trim() ? raw.trim() : null;
+}
+
+// ---- glucose routing: trace vs observation (#3182) ----
+//
+// A fingerstick meter and a CGM push the SAME Health Connect record type, so "is this
+// `blood_glucose`" cannot decide where a reading belongs. The person says which,
+// once, per connection — and that is the WHOLE rule.
+//
+//   * the connection is declared a continuous sensor → the trace store (#3181, the
+//     ruling in docs/internals/reading-model.md).
+//   * everything else → the existing `medical_records` Glucose observation path.
+//
+// The default direction is load-bearing and unchanged: nothing silently becomes a
+// trace. A genuine discrete draw misrouted into a trace store loses its identity, its
+// band and its document, so an undeclared connection stays on the observation path
+// however its records are shaped.
+//
+// WHY THERE IS NO `specimenSource` CLAUSE, since the 2026-09-02 ruling named one.
+// #4913 built it as ruled and it was dead on arrival: the only live sync path is the
+// Health Connect webhook exporter, and that exporter never reads `specimenSource` off
+// `BloodGlucoseRecord` — the word does not appear in its `SyncManager.kt`, and no
+// recorded payload or fixture in this repo has ever carried the field. So the clause
+// could not fire, which made it a discriminator in name only: every reading fell
+// through to the default, and a reader would have believed the sensor was being asked
+// about itself when nothing was. The owner ruled it out on 2026-09-03 (recorded on
+// #3182) and this is that removal. If the exporter ever starts writing the field the
+// clause is four lines, and #4929 tracks the exporter change that would make it real.
+export type GlucoseRouting = "trace" | "observation";
+
+export function glucoseRouting(
+  _rec: Record<string, unknown>,
+  cgmConnection: boolean
+): GlucoseRouting {
+  return cgmConnection ? "trace" : "observation";
 }
 
 function originChoices(
@@ -692,7 +789,7 @@ function minutesBetween(start?: string, end?: string): number | null {
   const a = new Date(start).getTime();
   const b = new Date(end).getTime();
   if (Number.isNaN(a) || Number.isNaN(b) || b <= a) return null;
-  return Math.round((b - a) / 60000);
+  return canonicalDurationMin(b - a, "ms");
 }
 
 // The same window in EXACT seconds. Sleep durations derive from this rather than from
@@ -717,18 +814,31 @@ function payloadPushInstant(raw: unknown): string | null {
   return Number.isFinite(Date.parse(raw)) ? raw : null;
 }
 
+/** Per-connection ingest policy the payload itself cannot state. */
+export interface ParseHealthConnectOptions {
+  /**
+   * "Treat glucose from this connection as a continuous sensor" (#3182) — the one
+   * switch on the connection screen. OFF by default and nothing asks at setup, so
+   * an omitted option is the same answer as an unset switch.
+   */
+  cgmConnection?: boolean;
+}
+
 export function parseHealthConnectPayload(
   body: unknown,
-  tz: string
+  tz: string,
+  options: ParseHealthConnectOptions = {}
 ): ParsedPayload {
+  const cgmConnection = options.cgmConnection === true;
   const out: ParsedPayload = {
     bodyMetrics: [],
     samples: [],
     hrMinutes: [],
     activities: [],
     vitals: [],
+    glucoseTrace: [],
     skipped: 0,
-    details: { warnings: [], origins: [] },
+    details: { warnings: [], origins: [], tally: {} },
     pushedAt: null,
   };
   if (!body || typeof body !== "object") {
@@ -743,6 +853,18 @@ export function parseHealthConnectPayload(
   // so the Review feed's received/skipped tally reflects them instead of silently
   // vanishing them (mirrors the plausibility skip path #132).
   out.skipped += countUnknownRecords(payload);
+
+  // EVERY SKIP BELOW NAMES ITS TYPE (#4956). The aggregate `out.skipped` is unchanged —
+  // this only remembers which key each drop came from, so `landed = received - skipped`
+  // is exact per type and the all-skipped diagnosis stops depending on somebody having
+  // hand-written a warning for that particular type. A record is reachable by at most
+  // one of these calls (the glucose observation and trace loops `continue` past each
+  // other's rows), so the two counts cannot double.
+  const skippedByKey = new Map<string, number>();
+  const skip = (key: string) => {
+    out.skipped++;
+    skippedByKey.set(key, (skippedByKey.get(key) ?? 0) + 1);
+  };
 
   // --- weight / body fat % / resting HR → one body_metrics row per local day ---
   // All three share the body_metrics home: weight is last-wins per day;
@@ -811,7 +933,7 @@ export function parseHealthConnectPayload(
     const p = parts(w.time, tz);
     const kg = boundedOrNull("weight_kg", num(w.kilograms, w.kg, w.weight));
     if (!p || kg == null) {
-      out.skipped++;
+      skip("weight");
       continue;
     }
     const t = noteInstant(w.time);
@@ -831,7 +953,7 @@ export function parseHealthConnectPayload(
       num(b.percentage, b.percent, b.value)
     );
     if (!p || pct == null) {
-      out.skipped++;
+      skip("body_fat");
       continue;
     }
     const t = noteInstant(b.time);
@@ -847,7 +969,7 @@ export function parseHealthConnectPayload(
       num(r.bpm, r.beatsPerMinute, r.value)
     );
     if (!p || bpm == null) {
-      out.skipped++;
+      skip("resting_heart_rate");
       continue;
     }
     const t = noteInstant(r.time);
@@ -901,7 +1023,7 @@ export function parseHealthConnectPayload(
       // out-of-range reading folds into the same skip path as a missing one (#132).
       const value = boundedOrNull(metric, valueOf(rec));
       if (!p || !start || !end || value == null) {
-        out.skipped++;
+        skip(key);
         continue;
       }
       // THE DAY A DAY BUCKET IS FILED UNDER IS THE ONE ITS OWN ANCHOR NAMES (#3901).
@@ -930,10 +1052,9 @@ export function parseHealthConnectPayload(
     }
   };
   interval("steps", "steps", (r) => num(r.count, r.steps, r.value));
-  interval("distance", "distance_km", (r) => {
-    const m = num(r.meters, r.distance_meters, r.value);
-    return m == null ? null : m / 1000;
-  });
+  interval("distance", "distance_km", (r) =>
+    canonicalDistanceKm(num(r.meters, r.distance_meters, r.value), "m")
+  );
   interval("active_calories", "active_kcal", (r) =>
     num(r.calories, r.kcal, r.value)
   );
@@ -961,7 +1082,7 @@ export function parseHealthConnectPayload(
     const end = typeof rec.end_time === "string" ? rec.end_time : start;
     const p = parts(start, tz);
     if (!p || !start || !end) {
-      out.skipped++;
+      skip("nutrition");
       continue;
     }
     for (const [field, metric] of NUTRIENTS) {
@@ -989,7 +1110,7 @@ export function parseHealthConnectPayload(
       const p = parts(t, tz);
       const value = boundedOrNull(metric, valueOf(rec));
       if (!p || !t || value == null) {
-        out.skipped++;
+        skip(key);
         continue;
       }
       out.samples.push({
@@ -1024,14 +1145,20 @@ export function parseHealthConnectPayload(
     canonical: string,
     category: "vitals" | "lab",
     unit: string,
-    valueOf: (rec: Record<string, unknown>) => number | null
+    valueOf: (rec: Record<string, unknown>) => number | null,
+    // Records this observation path does NOT own. Only glucose passes one (#3182):
+    // a record routed to the trace store is emitted by the loop below and must not
+    // also become a `medical_records` row, nor be counted as skipped for not being
+    // one. Absent for every other type, which owns its key outright.
+    owns?: (rec: Record<string, unknown>) => boolean
   ) => {
     for (const rec of asArray(payload[key])) {
+      if (owns && !owns(rec)) continue;
       const t = typeof rec.time === "string" ? rec.time : undefined;
       const p = parts(t, tz);
       const value = boundedOrNull(canonical, valueOf(rec));
       if (!p || !t || value == null) {
-        out.skipped++;
+        skip(key);
         continue;
       }
       out.vitals.push({
@@ -1062,7 +1189,7 @@ export function parseHealthConnectPayload(
       num(rec.diastolic, rec.diastolic_mmhg)
     );
     if (!p || !t || (sys == null && dia == null)) {
-      out.skipped++;
+      skip("blood_pressure");
       continue;
     }
     if (sys != null)
@@ -1088,22 +1215,49 @@ export function parseHealthConnectPayload(
         unit: "mmHg",
       });
   }
-  // Glucose mmol/L → mg/dL; body temperature °C → °F (canonical units).
+  // Glucose mmol/L → mg/dL. ONE record type, TWO destinations (#3182): a reading the
+  // routing calls a trace goes to `glucose_trace` and never becomes a `Glucose`
+  // observation; everything else — which is everything, until the connection is
+  // declared a continuous sensor — takes the path it always took.
   // Glucose is a lab (#1076), not a vital sign — category 'lab' so it stays on the
   // lab list once the biomarker surfaces scope to `lab` only.
-  vital("blood_glucose", "Glucose", "lab", "mg/dL", (r) => {
+  const toMgdl = (r: Record<string, unknown>) => {
     const v = num(r.mmol_per_liter, r.mmol, r.value);
     return v == null ? null : Math.round(v * 18.0156 * 10) / 10;
-  });
+  };
+  vital(
+    "blood_glucose",
+    "Glucose",
+    "lab",
+    "mg/dL",
+    toMgdl,
+    (rec) => glucoseRouting(rec, cgmConnection) === "observation"
+  );
+  for (const rec of asArray(payload.blood_glucose)) {
+    if (glucoseRouting(rec, cgmConnection) === "observation") continue;
+    const t = typeof rec.time === "string" ? rec.time : undefined;
+    // The SAME plausibility bound the observation path applies (#132) — the routing
+    // decides the store, never how hard a value is checked.
+    const mgdl = boundedOrNull("Glucose", toMgdl(rec));
+    if (!t || !parts(t, tz) || mgdl == null) {
+      skip("blood_glucose");
+      continue;
+    }
+    out.glucoseTrace.push({
+      ts: utcInstant(new Date(t)),
+      mgdl,
+      origin: dataOrigin(rec),
+    });
+  }
   vital("oxygen_saturation", "Oxygen Saturation", "vitals", "%", (r) =>
-    num(r.percentage, r.percent, r.value)
+    sampleSeriesValue(r, ["percentage", "percent", "value"])
   );
   vital("body_temperature", "Body Temperature", "vitals", "degF", (r) => {
     const c = num(r.celsius, r.value);
     return c == null ? null : Math.round(((c * 9) / 5 + 32) * 10) / 10;
   });
   vital("respiratory_rate", "Respiratory Rate", "vitals", "breaths/min", (r) =>
-    num(r.rate, r.value)
+    sampleSeriesValue(r, ["rate", "value"])
   );
   // VO2 Max files as `vitals` — the canonical registry's own classification for it
   // (#2479 part 2). It used to write the legacy `biomarker` catch-all, which gave a
@@ -1113,17 +1267,21 @@ export function parseHealthConnectPayload(
   );
 
   // HRV: a point measurement → metric_samples (start == end == time).
-  const hrvRecords = asArray(payload.heart_rate_variability);
-  const hrvBefore = out.samples.length;
-  for (const h of hrvRecords) {
+  for (const h of asArray(payload.heart_rate_variability)) {
     const t = typeof h.time === "string" ? h.time : undefined;
     const p = parts(t, tz);
     const ms = boundedOrNull(
       "hrv_ms",
-      num(h.rmssd_millis, h.milliseconds, h.ms, h.rmssd, h.value)
+      sampleSeriesValue(h, [
+        "rmssd_millis",
+        "milliseconds",
+        "ms",
+        "rmssd",
+        "value",
+      ])
     );
     if (!p || !t || ms == null) {
-      out.skipped++;
+      skip("heart_rate_variability");
       continue;
     }
     out.samples.push({
@@ -1135,12 +1293,6 @@ export function parseHealthConnectPayload(
       origin: dataOrigin(h),
     });
   }
-  if (hrvRecords.length > 0 && out.samples.length === hrvBefore) {
-    out.details.warnings.push(
-      "heart_rate_variability records were all skipped — exporter shape not recognized"
-    );
-  }
-
   // Sleep: total duration (minutes) per session → metric_samples 'sleep_min', plus a
   // per-stage breakdown → 'sleep_deep_min' / '_rem_' / '_light_' / '_awake_'. A
   // session spans midnight, so everything (total + every stage) is attributed to the
@@ -1167,10 +1319,12 @@ export function parseHealthConnectPayload(
     const p = parts(end, tz);
     // Bound the total (minutes): a session can't exceed 24 h, so an absurd duration
     // is dropped and counted like a malformed one (#132).
-    const sleepMin =
-      secs != null ? boundedOrNull("sleep_min", Math.round(secs / 60)) : null;
+    const sleepMin = boundedOrNull(
+      "sleep_min",
+      canonicalDurationMin(secs, "s")
+    );
     if (!p || !start || !end || secs == null || secs <= 0 || sleepMin == null) {
-      out.skipped++;
+      skip("sleep");
       continue;
     }
     const wakeDay = p.date;
@@ -1267,10 +1421,14 @@ export function parseHealthConnectPayload(
     const p = parts(t, tz);
     const delta = boundedOrNull(
       SKIN_TEMP_DELTA_METRIC,
-      num(rec.delta_celsius, rec.delta, rec.celsius, rec.value)
+      sampleSeriesValue(
+        rec,
+        ["delta_celsius", "delta", "celsius", "value"],
+        "avg_delta_celsius"
+      )
     );
     if (!p || !t || delta == null) {
-      out.skipped++;
+      skip("skin_temperature");
       continue;
     }
     const ms = new Date(t).getTime();
@@ -1290,19 +1448,16 @@ export function parseHealthConnectPayload(
     string,
     { sum: number; n: number; min: number; max: number }
   >();
-  const heartRateRecords = asArray(payload.heart_rate);
-  let acceptedHeartRate = 0;
-  for (const s of heartRateRecords) {
+  for (const s of asArray(payload.heart_rate)) {
     const p = parts(s.time, tz);
     const bpm = boundedOrNull(
       "heart_rate_bpm",
-      num(s.avg, s.bpm, s.beatsPerMinute, s.value)
+      sampleSeriesValue(s, ["bpm", "beatsPerMinute", "value"])
     );
     if (!p || bpm == null) {
-      out.skipped++;
+      skip("heart_rate");
       continue;
     }
-    acceptedHeartRate++;
     const statedN = num(s.n, s.count, s.sample_count);
     const n =
       statedN != null && statedN > 0 ? Math.max(1, Math.round(statedN)) : 1;
@@ -1318,11 +1473,6 @@ export function parseHealthConnectPayload(
       b.min = Math.min(b.min, min);
       b.max = Math.max(b.max, max);
     }
-  }
-  if (heartRateRecords.length > 0 && acceptedHeartRate === 0) {
-    out.details.warnings.push(
-      "heart_rate records were all skipped — exporter shape not recognized"
-    );
   }
   for (const [ts, b] of buckets) {
     out.hrMinutes.push({
@@ -1345,7 +1495,7 @@ export function parseHealthConnectPayload(
     const end = typeof e.end_time === "string" ? e.end_time : undefined;
     const p = parts(start, tz);
     if (!p || !start) {
-      out.skipped++;
+      skip("exercise");
       continue;
     }
     const { type, title } = classifyExercise(e.type);
@@ -1355,18 +1505,18 @@ export function parseHealthConnectPayload(
     // only the bad field rather than the whole activity.
     const duration_min = boundedOrNull(
       "duration_min",
-      minutesBetween(start, end) ??
-        (secs != null ? Math.round(secs / 60) : null)
+      minutesBetween(start, end) ?? canonicalDurationMin(secs, "s")
     );
-    const meters = num(e.distance_meters, e.meters, e.distance);
-    // METRES → the canonical kilometres the column stores. The bounds filter runs on
-    // the converted number and hands back a plain one, so the canonical mint sits on
-    // the far side of it, at the point the value is declared to be kilometres (#2149).
-    const boundedKm = boundedOrNull(
-      "distance_km",
-      meters != null ? meters / 1000 : null
+    // METRES → the canonical kilometres the column stores, through the one shared unit
+    // boundary (#4537), which rounds and mints the `Km` brand (#2149). Plausibility
+    // stays here and stays field-local: an implausible distance nulls the column
+    // rather than discarding the exercise, unlike Strava's core-field rule.
+    const km = canonicalDistanceKm(
+      num(e.distance_meters, e.meters, e.distance),
+      "m"
     );
-    const distance_km = boundedKm == null ? null : toKm(boundedKm, "km");
+    const distance_km =
+      km != null && inMetricBounds("distance_km", km) ? km : null;
     const endParts = end ? parts(end, tz) : null;
     const externalId = `${HEALTH_CONNECT_ID}:${start}`;
     out.activities.push({
@@ -1388,6 +1538,24 @@ export function parseHealthConnectPayload(
   }
 
   out.details.origins = originChoices(out.samples);
+
+  // THE ALL-SKIPPED DIAGNOSIS, DERIVED (#4956). Every consumed type that carried
+  // records reports what arrived and what landed, and any type that landed NOTHING
+  // says so in the same sentence the two hand-placed warnings used to. Structural, so
+  // a type added below can no longer drop in silence for want of someone remembering
+  // to write it a warning — which is how HRV, respiratory rate and skin temperature
+  // went missing across 405 `ok` pushes.
+  for (const key of KNOWN_HEALTH_CONNECT_KEYS) {
+    const received = asArray(payload[key]).length;
+    if (received === 0) continue;
+    const landed = received - (skippedByKey.get(key) ?? 0);
+    out.details.tally[key] = { received, landed };
+    if (landed === 0) {
+      out.details.warnings.push(
+        `${key} records were all skipped — exporter shape not recognized`
+      );
+    }
+  }
 
   // Wrong-granularity diagnostics (#1065): read the raw payload shape and append any
   // actionable hints to the warnings surfaced in Data → Review. Informational only —

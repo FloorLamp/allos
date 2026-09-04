@@ -5,9 +5,10 @@ import { PICKER_SYMPTOMS } from "@/lib/symptoms";
 import type { TemperatureUnit } from "@/lib/settings";
 
 // The quick-log sheet's symptom panel (issue #4064) — one of four mountings of
-// `SymptomLogBar`, beside the Timeline day view, the illness cockpit and the Cycles
+// `SymptomLogBar`, beside the illness cockpit, the episode log panel and the Cycles
 // page. It arrived as a fifth, over the dashboard's own well-day card; #3366 retired
-// that card once this row existed, which is the order its Depends-on required.
+// that card once this row existed, which is the order its Depends-on required. The
+// record's day view was a mounting too until #4851 retired that card in turn.
 //
 // It holds no logic and no write. Every prop below was gathered on the server on open
 // (`loadQuickEntry("symptom")`) from the same reads the dashboard's own mount makes, and
@@ -40,6 +41,7 @@ export default function QuickSymptomPanel({
   temperatureUnit,
   textIntakeEnabled,
   trackingIllness,
+  subjectProfileId,
 }: {
   today: string;
   severities: Record<string, number>;
@@ -49,6 +51,10 @@ export default function QuickSymptomPanel({
   temperatureUnit: TemperatureUnit;
   textIntakeEnabled: boolean;
   trackingIllness: string[];
+  // The quick-log sheet's chosen subject (#4932), when it is not the acting
+  // profile — the SAME `profileId` prop the illness cockpit's own mount already
+  // passes (SymptomLogBar's cross-profile support predates this sheet).
+  subjectProfileId?: number;
 }) {
   return (
     <div className="space-y-3 py-1" data-testid="quick-symptom-panel">
@@ -71,6 +77,7 @@ export default function QuickSymptomPanel({
         temperatureUnit={temperatureUnit}
         textIntakeEnabled={textIntakeEnabled}
         showTitle={false}
+        profileId={subjectProfileId}
       />
     </div>
   );

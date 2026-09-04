@@ -12,6 +12,8 @@ import {
   type DoseLedgerItem,
 } from "@/components/intake/dose-ledger-entry";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import { useTimezone } from "@/components/TimezoneProvider";
+import { statedInstantOnDate } from "@/lib/stated-time";
 import PracticeSessionForm from "@/components/practices/PracticeSessionForm";
 import SubstanceForm from "@/components/substances/SubstanceForm";
 import SymptomForm from "@/components/illness/SymptomForm";
@@ -106,12 +108,6 @@ export interface HistoryAddVocabulary {
   moodDay: MoodFormDay;
   moodShowCalm: boolean;
   /**
-   * The composed "your usual <window>" offers standing on the day being read (#4118),
-   * one per window, seeded server-side. Empty for every kind but `food`, for a day
-   * outside the bundle's reach, and for a profile with no habit to offer.
-   */
-  usual: UsualRoutineDayOffer[];
-  /**
    * The acting profile's meal-bucket boundaries, so the food form's meal follows the
    * hour a backfill states on this door exactly as it does in the nutrition bar
    * (#2227 decision 4). Two numbers; the same read the bar's mount already makes.
@@ -119,38 +115,107 @@ export interface HistoryAddVocabulary {
   foodSlotBoundaries: FoodSlotBoundaries;
 }
 
+// ── THE DAY'S STANDING OFFERS, ABOVE THE DOOR ROW (#4310 ruling) ─────────────
+//
+// The composed one-tap is an OFFER over foods and stacks (#4477's vocabulary) and never
+// a food: the tap writes servings AND doses. Under `Log food` the label under-named it,
+// and a reader reconstructing a day met the bundle behind the food door and the per-dose
+// backfill behind `Log a dose`. So the add door LEADS with the day's standing offers, in
+// the same accent offer chip the quick-log sheet's food overlay leads with, and the door
+// row keeps its per-kind grammar beneath.
+//
+// UNCHANGED IN THE MOVE: the day it stands on (#4118 — the record day, which is the day
+// its own label names) and resolving in place (#4045 §1). What went is the `close()`,
+// because there is no panel of its own to close from out here.
+//
+// ON A DAY WITH NO STANDING OFFER IT RENDERS NOTHING, which is what lets it sit above
+// every kind rather than inside one — the offer's own gate is the food half, and the
+// line is silent wherever that gate is.
+export function HistoryUsualOffers({
+  offers,
+  date,
+}: {
+  offers: UsualRoutineDayOffer[];
+  /** The day the reader is looking at, or today. */
+  date: string;
+}) {
+  const router = useRouter();
+  if (offers.length === 0) return null;
+  return (
+    // A PLAIN BLOCK, NOT A GRID (#4918 ruling 6). A grid track's default minimum is
+    // its item's max-content width, so the offer button was sized to its own
+    // single-line summary and `UsualRoutineControl`'s `truncate` span never got a
+    // narrower box to truncate in — the card ran ~400px past the column every other
+    // block on the page stops at. One or two offers stack the same way in a block,
+    // and the shared control's own `min-w-0` seam (components/OfferRow.tsx) is what
+    // stops any future host repeating it.
+    <div data-testid="history-add-usual">
+      {offers.map((offer) => (
+        <UsualRoutineControl
+          key={offer.window}
+          window={offer.window}
+          food={offer.food}
+          proteinGrams={offer.proteinGrams}
+          doses={offer.doses}
+          subjectName={null}
+          date={date}
+          testIds={{
+            button: `history-add-usual-${offer.window}`,
+            names: `history-add-usual-${offer.window}-names`,
+          }}
+          onLogged={() => router.refresh()}
+        />
+      ))}
+    </div>
+  );
+}
+
 export default function HistoryAddDoor({
   kind,
   date,
   maxDate,
   vocabulary,
+  window = null,
+  defaultPractice = null,
 }: {
   kind: HistoryAddKind;
   /** The day the reader is looking at, or today. */
   date: string;
   maxDate: string;
   vocabulary: HistoryAddVocabulary;
+  /**
+   * The window the day chart was showing when a kind chip was tapped (#4950), as
+   * `HH:MM` clocks on `date`. It arrives from the URL rather than from the chart, so
+   * this door needs no client state of its own and the window survives a reload of the
+   * link with the form open.
+   *
+   * Every form treats it as a DEFAULT a person can change, never as a write: a stated
+   * window is a stated time, not a claim about what happened.
+   */
+  window?: { from: string; to?: string } | null;
+  /**
+   * The practice this profile usually does at the window's moment (#4950 item 4),
+   * decided server-side from its own weekly rhythm and always one of `practices`. A
+   * prefill a tap confirms, never a claim about what happened — and null whenever the
+   * rhythm is unknown, which leaves the picker exactly as it is without a window.
+   */
+  defaultPractice?: string | null;
 }) {
   const router = useRouter();
   const formatPrefs = useFormatPrefs();
+  const tz = useTimezone();
   const toast = useToast();
+  // THE WINDOW AS THE `WhenControl` KINDS SPELL IT (#4950 item 3): one stated instant
+  // on the day in hand, built once here rather than in each form, so food, body and a
+  // movement cannot disagree about what `19:10` on this day means. Null when no window
+  // was stated, and null when the clock does not exist on this day — a spring-forward
+  // gap is refused rather than settled onto a different reading (`statedInstantOnDate`).
+  const windowStatedAt =
+    window == null
+      ? null
+      : (statedInstantOnDate(date, window.from, tz)?.toISOString() ?? null);
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // ── THE ONE-TAP USUAL, ON A PAST DAY (#4118) ───────────────────────────────
-  //
-  // The web's answer to "reconstruct an empty day": the composed bundle, seeded to the
-  // day being read. Everything below the label was already built — the offer read is
-  // date-parameterized, the write core takes a day, and the bound is the core's.
-  //
-  // IT STANDS ON THE DOOR'S OWN DAY, and no longer chases a field. The door used to own
-  // a shared date input above every kind's form, so the offer had to re-read whenever
-  // that input moved or its label would keep promising Tuesday's breakfast while the
-  // field said Thursday. Ruling 2 deleted that input — each domain's one form carries
-  // its own date now — so the only day this control can be about is the record day it
-  // is seeded for, which is the day its own label names. The sequenced re-read moved to
-  // the nutrition bar, where a day PICKER still sits above the same offer.
-  const usual = vocabulary.usual;
 
   if (kind === "dose" && vocabulary.doseItems.length === 0) return null;
   if (kind === "practice" && vocabulary.practices.length === 0) return null;
@@ -161,45 +226,6 @@ export default function HistoryAddDoor({
     setOpen(false);
     setError(null);
   }
-  // THE DOMAIN'S SHARED COMPOSED CONTROL, WITH THE RECORD DAY IN HAND (#4424 ruling 2).
-  // This door used to spell the bundle button a FOURTH time — its own markup, its own
-  // submit path, its own answer rounding — for the one reason that it knows a day. The
-  // shared control takes a `date` now, so the door renders which offers stand and owns
-  // nothing about the write: not the label, not the promise, not the sentence that
-  // answers it. Its `submit()` went with it; every other kind here is already the
-  // domain's own form, owning its own.
-  function usualControls(): ReactNode {
-    if (usual.length === 0) return null;
-    return (
-      <div className="grid" data-testid="history-add-usual">
-        {usual.map((offer) => (
-          <UsualRoutineControl
-            key={offer.window}
-            window={offer.window}
-            food={offer.food}
-            proteinGrams={offer.proteinGrams}
-            doses={offer.doses.map((d) => ({
-              id: d.id,
-              name: d.name,
-              stack: d.stack,
-            }))}
-            subjectName={null}
-            date={date}
-            testIds={{
-              button: `history-add-usual-${offer.window}`,
-              names: `history-add-usual-${offer.window}-names`,
-            }}
-            // Resolved in place, exactly as the forms beside it are (#4045 §1).
-            onLogged={() => {
-              close();
-              router.refresh();
-            }}
-          />
-        ))}
-      </div>
-    );
-  }
-
   function form(): ReactNode {
     switch (kind) {
       case "food":
@@ -213,6 +239,7 @@ export default function HistoryAddDoor({
             date={date}
             slotBoundaries={vocabulary.foodSlotBoundaries}
             maxDate={maxDate}
+            defaultStatedAt={windowStatedAt}
             testId="history-add-food"
             onSaved={() => {
               toast("Added to the record.");
@@ -237,7 +264,10 @@ export default function HistoryAddDoor({
             }))}
             initialDate={date}
             maxDate={maxDate}
-            defaultTime={vocabulary.doseDefaultTime}
+            /* The window's start beats the vocabulary's default (#4950): a person who
+               framed 19:10 on the trace has said when, and `doseDefaultTime` is what
+               to offer when nobody has. */
+            defaultTime={window?.from ?? vocabulary.doseDefaultTime}
             repeatAfterAdd
             onSaved={() => router.refresh()}
             onDone={close}
@@ -256,6 +286,9 @@ export default function HistoryAddDoor({
             today={maxDate}
             date={date}
             maxDate={maxDate}
+            defaultStartTime={window?.from ?? null}
+            defaultEndTime={window?.to ?? null}
+            defaultPractice={defaultPractice}
             onSaved={() => {
               close();
               router.refresh();
@@ -280,6 +313,10 @@ export default function HistoryAddDoor({
           />
         );
       case "mood":
+        // NO WINDOW HERE, and none missing: a check-in has a day and no event instant,
+        // so there is no time control for a stated window to open (#4950 item 3, "a
+        // form with no time control ignores the window"). Same for `symptom` below,
+        // whose store is UNIQUE(profile_id, date, symptom).
         return (
           <MoodForm
             days={[vocabulary.moodDay]}
@@ -291,11 +328,12 @@ export default function HistoryAddDoor({
           />
         );
       case "symptom":
-        // A DATE-CONTEXT WRAPPER, NOT A FORM (#4424 ruling 2). The day view's own
-        // symptom card mounts the tap BAR, which is why this kind had no door at all —
-        // but a reader filtered to `?kind=symptom` is standing on no day, so the record
-        // could show symptom rows and correct them while offering no way to add one.
-        // The domain's form is that way, with the found day in hand.
+        // A DATE-CONTEXT WRAPPER, NOT A FORM (#4424 ruling 2, amended by #4851 to
+        // "symptom is an add-door kind everywhere"). This is now the record's ONLY
+        // symptom entry surface: the day view's standalone bar card retired with #4851,
+        // because carrying two entry surfaces for the one kind that had two is what put
+        // "+ Log symptom" on its own line below the chart. The domain's form is here,
+        // with the found day in hand.
         //
         // NO `dateField`: the store is UNIQUE(profile_id, date, symptom) and the form
         // says so — the day is the door's, not a field inside it.
@@ -320,6 +358,7 @@ export default function HistoryAddDoor({
           <StoolForm
             date={date}
             maxDate={maxDate}
+            defaultStatedAt={windowStatedAt}
             onSaved={() => {
               close();
               router.refresh();
@@ -346,6 +385,12 @@ export default function HistoryAddDoor({
             // weight, body fat and resting HR onto the feed), so the door opens on the
             // group holding them rather than on the form's own default.
             defaultGroup="body"
+            /* The window beats the day's existing manual instant (#4950): a person who
+               framed 19:10 on the trace has said when, and the seed is what to offer
+               when nobody has. */
+            defaultStatedAt={
+              windowStatedAt ?? vocabulary.measurements.defaultStatedAt
+            }
             onSaved={() => router.refresh()}
           />
         );
@@ -365,11 +410,6 @@ export default function HistoryAddDoor({
       </button>
       {open ? (
         <div className="mt-2" data-testid={`history-add-panel-${kind}`}>
-          {/* ABOVE the form, never inside it: the bundle is an alternative to filling
-              the form out, and nesting a button in a <form> makes it a submit control
-              of that form. The manual per-item path stays exactly where it was — the
-              one-tap is the fast path and never the only one. */}
-          {kind === "food" ? usualControls() : null}
           {form()}
           <InlineError data-testid={`history-add-error-${kind}`}>
             {error}

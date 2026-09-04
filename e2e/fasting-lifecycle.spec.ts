@@ -1,6 +1,12 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
-import { dismissToast, hydratedClick, settledClick } from "./helpers";
+import {
+  dismissToast,
+  hydratedClick,
+  openFoodAdd,
+  settledBoxes,
+  settledClick,
+} from "./helpers";
 import Database from "better-sqlite3";
 import { frozenNow, workerDbPath } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
@@ -214,8 +220,16 @@ test.describe("the fasting lifecycle (#2756)", () => {
     await expect(details).not.toHaveAttribute("open", "");
     await expect(page.getByTestId("fasting-fold")).toHaveCount(1);
     await expect(fold).toBeVisible();
+    // settledBoxes, not a raw rect: a DETACHED node's getBoundingClientRect() is all
+    // zeros, and this page's subtree is replaced rather than updated under load
+    // (#4815), so a height of 0 read one line after `toBeVisible()` passed is a node
+    // that stopped existing — not a fold that is too short (#4835). A genuinely short
+    // fold still has a box and still fails on the number below; a genuinely
+    // zero-height one is not visible, so the line above catches that.
+    const [foldBox] = await settledBoxes([fold]);
     expect(
-      await fold.evaluate((element) => element.getBoundingClientRect().height)
+      foldBox.height,
+      "the idle fold must stay a thumb-sized target"
     ).toBeGreaterThanOrEqual(44);
     await expect(page.getByTestId("fasting-control")).not.toBeVisible();
     await expect(page.getByTestId("fasting-backdate-toggle")).not.toBeVisible();
@@ -889,6 +903,7 @@ test.describe("a profile restricted MID-FAST can still close it out (#2756)", ()
   }) => {
     seedFast(agoInstant(16), null);
     await page.goto("/nutrition");
+    await openFoodAdd(page);
     // End it as an adult, so the Undo affordance is the one the app itself offered.
     await openFastingFold(page);
     await settledClick(page, page.getByTestId("fasting-control"));
@@ -929,6 +944,9 @@ test.describe("a profile restricted MID-FAST can still close it out (#2756)", ()
 // the assertion under test is only reached in the hours where the ranking happens to
 // cooperate, which is a spec that reports on the clock rather than on the code.
 async function revealFoodGroup(page: Page, slug: string): Promise<void> {
+  // The add layer folds behind one `+ Add` door (#4477) and the overflow is a
+  // second fold inside it, so reaching a row means opening both.
+  await openFoodAdd(page);
   const row = page.getByTestId(`food-group-${slug}`);
   if (!(await row.isVisible())) {
     await page.getByTestId("food-more-groups-summary").click();
@@ -953,6 +971,7 @@ test.describe("food logged mid-fast (#2756) and the stand-down (#2757)", () => {
   }) => {
     seedFast(agoInstant(16), null);
     await page.goto("/nutrition");
+    await openFoodAdd(page);
     await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
     const group = "legumes";
@@ -983,6 +1002,7 @@ test.describe("food logged mid-fast (#2756) and the stand-down (#2757)", () => {
   }) => {
     seedFast(agoInstant(16), null);
     await page.goto("/nutrition");
+    await openFoodAdd(page);
     await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
     await revealFoodGroup(page, "legumes");
@@ -1020,6 +1040,7 @@ test.describe("food logged mid-fast (#2756) and the stand-down (#2757)", () => {
   }) => {
     seedFast(agoInstant(FAST_MAX_HOURS + 96), null);
     await page.goto("/nutrition");
+    await openFoodAdd(page);
     await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
     await revealFoodGroup(page, "legumes");
@@ -1054,6 +1075,7 @@ test.describe("food logged mid-fast (#2756) and the stand-down (#2757)", () => {
     page,
   }) => {
     await page.goto("/nutrition");
+    await openFoodAdd(page);
     await expect(page.getByTestId("food-log-bar")).toBeVisible();
     await revealFoodGroup(page, "legumes");
     await settledClick(page, page.getByTestId("log-legumes"));

@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import Button from "@/components/Button";
+import { LabeledVerbChip } from "@/components/OfferRow";
 import { useUndoableAction } from "@/components/useUndoableAction";
 import {
   DOSE_UNDONE_MESSAGE,
@@ -38,14 +40,11 @@ import type {
 //   • the undo POSTS ids and re-derives everything server-side. It rebuilds its form from
 //     the same declared `fields` rather than reusing the submitted FormData, so the
 //     inverse can only ever name the dose this button names.
-export default function DoseConfirmButton({
-  action,
-  undoAction,
-  fields,
-  testid,
-  ariaLabel,
-  children,
-}: {
+// TWO ARMS, CLOSED BY THE TYPE (#4752 item 7). A caller supplies a `payload` and
+// gets the labeled-verb chip, or `children` and gets the plain verb button — never
+// both, and never neither, so there is no runtime branch to police and no state
+// where the visible words come from two places at once.
+type DoseConfirmButtonProps = {
   action: (formData: FormData) => Promise<DoseConfirmResult>;
   // The typed inverse for this surface (#2642). Optional: a surface with no inverse
   // wired simply offers no Undo, which is the honest default rather than a broken one.
@@ -59,9 +58,32 @@ export default function DoseConfirmButton({
   // words. Pass the row's own distinguishing attributes here; omitted, the visible
   // label is the accessible name as before.
   ariaLabel?: string;
-  children: React.ReactNode;
-}) {
+} & (
+  | {
+      /**
+       * WHAT THIS TAP WRITES, as the reader should see it (#4753's primitive,
+       * adopted by #4752 item 7): `Due today · from 11:00 · [Take]`. The payload
+       * plus a one-word verb IS the sentence "Mark taken" was standing in for.
+       */
+      payload: string;
+      children?: never;
+    }
+  // No payload worth showing keeps the plain verb button — the primitive's own
+  // applicability test, not a second style to choose between.
+  | { payload?: never; children: React.ReactNode }
+);
+
+export default function DoseConfirmButton({
+  action,
+  undoAction,
+  fields,
+  payload,
+  testid,
+  ariaLabel,
+  children,
+}: DoseConfirmButtonProps) {
   const announce = useUndoableAction();
+  const [pending, setPending] = useState(false);
 
   async function confirm(fd: FormData) {
     let result: DoseConfirmResult;
@@ -105,6 +127,30 @@ export default function DoseConfirmButton({
             }
           : null,
     });
+  }
+
+  if (payload != null) {
+    // The verb is ONE WORD and never says "now" (#4752 item 8): the label already
+    // states when this dose was owed, so the button stops carrying the sentence.
+    const takeName = ariaLabel ?? `Take — ${payload}`;
+    return (
+      <LabeledVerbChip
+        label={payload}
+        verb="Take"
+        tone="brand"
+        disabled={pending}
+        ariaLabel={takeName}
+        testId={testid}
+        onAct={() => {
+          const fd = new FormData();
+          for (const [name, value] of Object.entries(fields)) {
+            fd.set(name, String(value));
+          }
+          setPending(true);
+          void confirm(fd).finally(() => setPending(false));
+        }}
+      />
+    );
   }
 
   return (

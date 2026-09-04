@@ -6,7 +6,7 @@ import { medicationsToday, prnTodayItem } from "./med-card-helpers";
 import { workerDbPath } from "./worker-env";
 
 // #1458 — the sick-kid path, end to end. A caregiver adds a PRN medication with a
-// minimum interval and leaves the OPTIONAL "Maximum doses per day" blank, logs a dose,
+// minimum interval and leaves the OPTIONAL "Maximum doses in 24 hours" blank, logs a dose,
 // and must still get the one number they want at 2am: when the next dose is OK.
 // Before the fix both med-data gathers ANDed interval AND max, so this exact config
 // rendered `prn-redose-line` nowhere.
@@ -83,7 +83,7 @@ test("PRN med with ONLY a minimum interval still shows redose guidance (#1458)",
   await expect(line).toContainText("Next dose in ~");
   // The count fragment degrades to a bare "N today" — no invented ceiling, and the
   // window is freshly closed so it must never read as a reached maximum.
-  await expect(line).toContainText("1 today");
+  await expect(line).toContainText("1 in 24h");
   await expect(line).not.toContainText(" of ");
   await expect(line).not.toContainText("Max reached");
 });

@@ -86,11 +86,6 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     why: "read-only (#878): narrates a finding's OWN reason payload via the AI resolver; computes no fact and writes nothing, so login-scoped requireSession() is the right gate",
   },
   {
-    file: "app/(app)/training/activity-actions.ts",
-    fn: "loadTrainingLogPage",
-    why: "read-only: fetches an older window of the active profile's Training Log feed for server-side paging (#451); `before` is a date cursor, not a profile selector",
-  },
-  {
     file: "app/(app)/integrations/sync-actions.ts",
     fn: "loadSyncHistoryPage",
     why: "read-only: fetches an older page of the active profile's provider-scoped sync ledger; the cursor selects a profile-local day and the action writes nothing, so requireSession() is the right gate",
@@ -382,8 +377,32 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   },
   {
     file: "app/(app)/nutrition/intake-actions.ts",
+    fn: "logHistoricalDose",
+    why: "adds follow the surface on a subject-scoped container (#4693, amending #4424 ruling 4): /medications/[id] names one subject, so its backfill ADD posts that subject's `profile_id` and takes the same gateItemProfile() \u2192 requireProfileWriteAccess(subjectProfileId) the amend beside it takes. Every single-subject mount posts none and falls back to the acting-profile gate. The dose's wall time re-anchors in the GATED profile's zone, and the audit row is stamped with it",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/nutrition/intake-actions.ts",
     fn: "updateHistoricalDose",
     why: "record correction (#4009): amends the ROW's dose log via gateItemProfile() → requireProfileWriteAccess(rowProfileId); the stated wall time re-anchors in the GATED profile's zone, which is the zone HistoricalDoseForm collected it in",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/nutrition/intake-actions.ts",
+    fn: "resolveDayDoses",
+    why: "#4429/#4932: the day-ledger and the quick-log sheet's past-day switcher post a FOUND day's doses for whichever profile is on screen, which may not be the acting one — the per-row confirm (markTaken) already crossed this boundary, this bulk sibling did not. gateItemProfile() → requireProfileWriteAccess(subjectProfileId); every single-subject mount posts none and falls back to the acting-profile gate",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/trends/measurement-actions.ts",
+    fn: "addMeasurements",
+    why: "#4932: the quick-log sheet's subject chip mounts the SAME combined measurements form cross-profile, so the write follows gateItemProfile() → requireProfileWriteAccess(subjectProfileId) like every other sheet body; every other mount (the Trends panel, a metric detail page, the record's add door) posts no subject and falls back to the acting-profile gate",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/medical/document-actions.ts",
+    fn: "uploadMedicalDocument",
+    why: "#4932: the quick-log sheet's subject chip mounts the SAME upload form cross-profile, so the write follows gateItemProfile() → requireProfileWriteAccess(subjectProfileId); the Data page's own mount posts no subject and falls back to the acting-profile gate",
     gate: "gateItemProfile",
   },
   {
@@ -465,6 +484,18 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     gate: "gateItemProfile",
   },
   {
+    file: "app/(app)/medical/substance-use/actions.ts",
+    fn: "logSubstanceUnitAction",
+    why: "#4932: the quick-log sheet's subject chip mounts the SAME unit-tap control cross-profile, so the tap follows gateItemProfile() → requireProfileWriteAccess(subjectProfileId) like its own correction siblings above; every other mount posts no subject and falls back to the acting-profile gate",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/medical/substance-use/actions.ts",
+    fn: "undoSubstanceUnitAction",
+    why: "#4932: the add's inverse must resolve the SAME subject the add did, so it reads it through the same gateItemProfile()",
+    gate: "gateItemProfile",
+  },
+  {
     file: "app/(app)/trends/reading-actions.ts",
     fn: "updateMetricReading",
     why: "record correction (#4009): corrects the ROW's body reading via gateItemProfile() → requireProfileWriteAccess(rowProfileId); the display-unit conversion still reads the LOGIN's prefs, which is a formatting question and not a subject one",
@@ -486,6 +517,12 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     file: "app/(app)/stool-actions.ts",
     fn: "deleteStoolReading",
     why: "record correction (#4433): removes the ROW's logged movement via gateItemProfile() → requireProfileWriteAccess(rowProfileId)",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/stool-actions.ts",
+    fn: "logStoolForm",
+    why: "#4932: the quick-log sheet's subject chip mounts the SAME seven-button control cross-profile, so the tap follows gateItemProfile() → requireProfileWriteAccess(subjectProfileId) like its own correction siblings above; every other mount posts no subject and falls back to the acting-profile gate",
     gate: "gateItemProfile",
   },
   {

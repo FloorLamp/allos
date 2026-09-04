@@ -182,6 +182,11 @@ export const KIND_CADENCE: readonly KindCadenceEntry[] = [
     why: "One summary per finished session, keyed on the activity id (`notify_last_post_workout_<id>`). Finishing a workout is the trigger and it happens once; ids never recycle (#203), so a stranded marker is an inert dead row rather than a lost or duplicated send.",
   },
   {
+    kind: "practice-recap",
+    cadence: "per-subject-event",
+    why: "One note per finished practice ROW, keyed on the practice_logs id (`notify_last_practice_recap_<id>`); ids never recycle (#203). The trigger is not the tap but the moment the minute stream first covers the session's window, so the tick re-asks each pass inside a two-hour bound and stops — a row that never gains coverage sends nothing and leaves the marker unset, because the marker records a send that happened.",
+  },
+  {
     kind: "workout-stale",
     cadence: "per-subject-event",
     why: "One nudge per unfinished draft (#1205), keyed on the draft's activity id. The draft either gets finished or discarded — nothing ever puts the same draft back into the un-nudged state — so there is no second send to space and no marker to sweep.",

@@ -1,7 +1,6 @@
 import { Fragment } from "react";
 import { measurementsQuickEntry } from "@/lib/quick-entry-measurements";
 import Link from "next/link";
-import { IconChevronDown } from "@tabler/icons-react";
 import PageContainer from "@/components/PageContainer";
 import DestinationLink from "@/components/DestinationLink";
 import { PageHeader, EmptyState } from "@/components/ui";
@@ -10,11 +9,11 @@ import FilterPills from "@/components/FilterPills";
 import JumpRailScrubber, {
   type ScrubberStop,
 } from "@/components/JumpRailScrubber";
-import TimelineFilterLink from "@/components/TimelineFilterLink";
 import EventCalendar from "@/components/EventCalendar";
 import type { DoseLedgerItem } from "@/components/intake/dose-ledger-entry";
 import HistoryRows from "./HistoryRows";
-import HistoryAddDoor from "./HistoryAddDoor";
+import HistoryAddDoor, { HistoryUsualOffers } from "./HistoryAddDoor";
+import HistoryFoldCard from "./HistoryFoldCard";
 import { requireScope } from "@/lib/scope";
 import { today } from "@/lib/db";
 import {
@@ -22,7 +21,6 @@ import {
   getHomeLocation,
   getProfileAge,
   getTimezone,
-  getUnitPrefs,
 } from "@/lib/settings";
 import {
   getCustomSymptomNames,
@@ -31,26 +29,43 @@ import {
   getIntakeItems,
   getMoodOnDate,
   getSymptomLogOrder,
-  getSymptomNotesOnDate,
-  getSymptomSeveritiesOnDate,
   isAnxietyScaleRelevant,
 } from "@/lib/queries";
-import { getTrackedPractices } from "@/lib/queries/wellness";
+import {
+  getPracticeRhythms,
+  getTrackedPractices,
+} from "@/lib/queries/wellness";
+import { practiceFittingWindow } from "@/lib/practice";
 import { getTimelineDates } from "@/lib/timeline";
 import { usualRoutineDayOffers } from "@/lib/queries/usual-routine";
 import { profileFoodSlotBoundaries } from "@/lib/profile-food-slot";
 import { getProfileSubstanceKeys } from "@/lib/queries/substance";
 import { substanceDef } from "@/lib/substance-use";
 import { isOnDemand } from "@/lib/intake-schedule";
-import { formatLongDate, formatMonthDay } from "@/lib/format-date";
+import {
+  formatClockMinutes,
+  formatLongDate,
+  formatMonthDay,
+  formatRelativeTime,
+} from "@/lib/format-date";
 import { shiftDateStr, zonedDateParts } from "@/lib/date";
-import DaylightChip from "@/components/DaylightChip";
-import CyclePhaseChip from "@/components/CyclePhaseChip";
 import TimelineDayNav from "@/components/TimelineDayNav";
 import IntradayPanel from "@/components/IntradayPanel";
-import SymptomEntryCard from "./SymptomEntryCard";
-import SymptomLogBar from "@/components/illness/SymptomLogBar";
+import { IntradayInteractionProvider } from "@/components/IntradayInteraction";
+import HistoryAddRow from "./HistoryAddRow";
+import {
+  intradayWindowParams,
+  parseIntradayWindow,
+} from "@/lib/intraday-window";
 import { getIntradayDay } from "@/lib/queries/intraday";
+import { solarDay } from "@/lib/sun";
+import {
+  getLastNightSummary,
+  getSleepWaitingState,
+  typicalBedTime,
+  typicalWakeTime,
+} from "@/lib/queries/sleep";
+import { sleepWaitingDetail } from "@/lib/sleep-waiting";
 import { getUvDoseForDays } from "@/lib/queries/weather";
 import { evaluateSeries, notableStatesSummary } from "@/lib/weather-situations";
 import {
@@ -59,10 +74,12 @@ import {
 } from "@/lib/queries/weather-situations";
 import { listCyclePeriods } from "@/lib/cycle-store";
 import { cyclePhaseOnDate, periodOnDate } from "@/lib/cycle";
-import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
 import { PICKER_SYMPTOMS, symptomLabel } from "@/lib/symptoms";
-import { isTaskConfigured } from "@/lib/ai-resolve";
-import { historyHref, type AppRoute } from "@/lib/hrefs";
+import {
+  historyHref,
+  type HistoryHrefParams,
+  type AppRoute,
+} from "@/lib/hrefs";
 import { historyMemberFeed } from "@/lib/history";
 import {
   HISTORY_DEFAULT_SHOW,
@@ -71,10 +88,10 @@ import {
   HISTORY_FAMILY_LABELS,
   HISTORY_KIND_LABELS,
   HISTORY_KINDS,
-  HISTORY_LOG_KINDS,
   HISTORY_MAX_SHOW,
   HISTORY_SHOW_STEP,
   clampHistoryDay,
+  historyAddKinds,
   historyKindFamily,
   layoutHistoryDay,
   parseHistoryExpand,
@@ -93,10 +110,8 @@ import { mergeMemberTimelines } from "@/lib/timeline-multi";
 import {
   parseTimelineOpen,
   renderedTimelineDays,
-  timelineFoldCounts,
   toggledTimelineOpen,
   windowTimelineDays,
-  type TimelineFold,
 } from "@/lib/timeline-window";
 import {
   SCRUBBER_GUTTER_CLASS,
@@ -150,83 +165,19 @@ export const dynamic = "force-dynamic";
 // shared control — a second shape of one component selected by a prop. Raised rather
 // than built.
 
-// One collapsed period — a month of the current year, or an earlier year (#2657).
-// The `timeline-fold-` anchor id is INHERITED, not restated: the rail's stops are
-// computed from those ids in lib/timeline-scrubber.ts, which survived the route.
-// Phase 2 moved the feed onto this page rather than reconciling two vocabularies.
-function FoldCard({
-  fold,
-  href,
-  gutter,
-  nested = false,
-}: {
-  fold: TimelineFold<{ date: string; events: unknown[] }> & {
-    monthCount?: number;
-  };
-  href: AppRoute;
-  /** The rail's lane, when the rail renders — see the feed container's note. */
-  gutter: string;
-  nested?: boolean;
-}) {
-  return (
-    <section
-      id={`timeline-fold-${fold.key}`}
-      data-testid={`history-fold-${fold.key}`}
-      data-fold-key={fold.key}
-      data-fold-open={fold.open ? "true" : "false"}
-      // NESTING IS MACHINE-READABLE, not only a left inset. A month card inside an
-      // opened year is a level DOWN, and the whole point of the year roll-up is that
-      // the two levels stay distinguishable — a nested card that rendered flush with
-      // its parent would read as a second name for the same level, which is exactly
-      // the compression #2657 bought being given back. The `pl-4` says it visually;
-      // this is what a test can name.
-      data-fold-nested={nested ? "true" : undefined}
-      className={`scroll-mt-24 py-1.5 ${nested ? "pl-4" : ""} ${gutter}`}
-    >
-      {/* THE POSITION-PRESERVING LINK, NOT A PLAIN ONE (#4045 §4). This shipped as a
-          `next/link` with default scroll, so every fold tap navigated to `?open=…` and
-          jumped to the top of the page: the reader tapped a card, landed above their
-          own recent history, saw nothing new, and read the card as dead. The retired
-          `/timeline`'s fold cards never did that: they went through this component, which
-          carries `scroll={false}` and the #2657 scroll-target capture — the re-housing
-          simply dropped it. Reused rather than re-spelled: a second copy of a
-          scroll-preserving link is the duplication #2816 was filed about.
+// The fold card itself is `./HistoryFoldCard.tsx` (#4365) — a CLIENT component,
+// because its navigation now wraps a browser View Transition and a hook cannot
+// cross the server/client boundary this async page renders across. Its own header
+// carries the "why here, why nested" notes that used to live on this inline
+// function.
 
-          `scroll={false}` ALONE IS NOT THE FIX; the other half is where the revealed
-          days render, below. */}
-      <TimelineFilterLink
-        href={href}
-        testId={`history-fold-${fold.key}-toggle`}
-        label={fold.label}
-        ariaExpanded={fold.open}
-        className="flex items-center gap-3 rounded-lg border border-(--border) bg-surface px-3 py-2 transition hover:bg-(--ghost-hover)"
-      >
-        <span
-          aria-hidden
-          className={`inline-flex h-5 w-5 shrink-0 items-center justify-center text-slate-500 transition dark:text-slate-400 ${
-            fold.open ? "rotate-180" : ""
-          }`}
-        >
-          <IconChevronDown className="h-3.5 w-3.5" stroke={2} />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-sm font-medium text-slate-900 dark:text-slate-100">
-            {fold.label}
-          </span>
-          {/* THE COUNT IS ADDRESSABLE (#1504's grammar): the amount never hides,
-              only the vertical cost of it does — so it is a claim the fold makes
-              about content it is not showing, and a test has to be able to name it
-              rather than matching its text against a page full of other numbers. */}
-          <span
-            data-testid={`history-fold-${fold.key}-counts`}
-            className="block text-xs text-slate-500 dark:text-slate-400"
-          >
-            {timelineFoldCounts(fold)}
-          </span>
-        </span>
-      </TimelineFilterLink>
-    </section>
-  );
+// The first value of a repeatable query param. A private copy, matching the ones in
+// `app/(app)/trends/page.tsx:46` and `components/DataExport.tsx:7` rather than inventing
+// a fourth spelling — converging the three is #4553's, not this lane's.
+function firstQueryParam(
+  value: string | string[] | undefined
+): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
 }
 
 export default async function HistoryPage(props: {
@@ -241,6 +192,9 @@ export default async function HistoryPage(props: {
     open?: string | string[];
     expand?: string | string[];
     show?: string | string[];
+    /** A window selected on the day chart (#4950) — see lib/intraday-window.ts. */
+    from?: string | string[];
+    to?: string | string[];
   }>;
 }) {
   const searchParams = await props.searchParams;
@@ -265,6 +219,15 @@ export default async function HistoryPage(props: {
       ? searchParams.media[0]
       : searchParams.media) === "1";
   const day = clampHistoryDay(searchParams.day, todayStr);
+  // THE WINDOW THE CHART STATED (#4950), and only ON a day. The chart that writes it is
+  // the day view's, so a `?from=` arriving on the feed names a window over nothing —
+  // dropped here rather than carried to a door that could not use it anyway.
+  const chartWindow = day
+    ? parseIntradayWindow(
+        firstQueryParam(searchParams.from),
+        firstQueryParam(searchParams.to)
+      )
+    : null;
   const show = parseHistoryShow(searchParams.show);
   const openFolds = parseTimelineOpen(searchParams.open);
   // THE ROLLUP LINES THE READER HAS OPENED (#3958 phase 2). A second param beside
@@ -294,6 +257,7 @@ export default async function HistoryPage(props: {
       media,
       day,
       limit: show,
+      actingProfileId,
     })
   );
   const presentKinds = HISTORY_KINDS.filter((candidate) =>
@@ -337,11 +301,14 @@ export default async function HistoryPage(props: {
   // pre-filter and means nothing on any other kind, so a chip that leaves doses must
   // not carry it: a row of chips whose "All" still says `class=medication` is a
   // control that does not do what it is called.
-  const chipHref = (next: {
+  // Split from the speller (#4950) so a client surface can take the PARAMS these rules
+  // produce and add to them, rather than re-deriving the rules or editing a finished
+  // URL. `historyHref` stays the one place a history URL is spelled.
+  const chipHrefParams = (next: {
     kind?: HistoryKind;
     family?: HistoryFamily;
     media?: boolean;
-  }): AppRoute => {
+  }): HistoryHrefParams => {
     const nextKind = "kind" in next ? next.kind : kind;
     // A FAMILY CHIP DROPS THE KIND INSIDE IT. Moving to Clinical while `?kind=dose` was
     // set would produce a URL that contradicts itself (a kind implies its family), and
@@ -349,7 +316,7 @@ export default async function HistoryPage(props: {
     // have navigated back to Doses.
     const nextFamily =
       "family" in next ? next.family : "kind" in next ? undefined : family;
-    return historyHref({
+    return {
       family: nextKind ? undefined : nextFamily,
       kind: nextKind,
       class: nextKind === "dose" ? doseClass : undefined,
@@ -358,8 +325,14 @@ export default async function HistoryPage(props: {
       day,
       everyone,
       show: show === HISTORY_DEFAULT_SHOW ? undefined : show,
-    });
+    };
   };
+
+  const chipHref = (next: {
+    kind?: HistoryKind;
+    family?: HistoryFamily;
+    media?: boolean;
+  }): AppRoute => historyHref(chipHrefParams(next));
 
   // THE DAY NAV'S TWO DESTINATIONS. Same day, one step either way, and every other
   // filter the reader has set rides across — walking days inside `?kind=dose` stays
@@ -502,11 +475,6 @@ export default async function HistoryPage(props: {
   // WHICH KINDS THE ADD DOOR CAN BE (#3958: "Log kinds only"). Clinical, training and
   // life records are created on their domain surfaces, and sleep arrives from an
   // integration and is corrected at its source.
-  //
-  // SYMPTOM ONLY WHERE THE BAR IS NOT (#4424 ruling 2). A symptom is quick-logged and
-  // the day view mounts the bar that does it — but a reader filtered to `?kind=symptom`
-  // is standing on no day, so that argument covered a view the bar never reaches: the
-  // record listed symptom rows, corrected them, and offered nothing to add one with.
   const addKind =
     kind === "food" ||
     kind === "dose" ||
@@ -514,22 +482,49 @@ export default async function HistoryPage(props: {
     kind === "mood" ||
     kind === "substance" ||
     kind === "body" ||
+    kind === "symptom" ||
     kind === "stool"
       ? kind
-      : kind === "symptom" && day == null
-        ? kind
-        : null;
+      : null;
   const defaultTime = zonedDateParts(
     getTimezone(actingProfileId),
     new Date()
   ).hhmm;
+  const trackedPractices =
+    canWrite && addKind === "practice"
+      ? getTrackedPractices(actingProfileId)
+      : [];
+  // WHICH PRACTICE THE WINDOW LOOKS LIKE (#4950 item 4), read only when there IS a
+  // window and a practice door to prefill — so no other view of this page pays for it.
+  // Habit, never physiology: `practiceFittingWindow` never sees a heart rate, and a
+  // practice with no rhythm cannot fit, which leaves the picker exactly as it is today.
+  const practiceRhythms =
+    day && chartWindow && trackedPractices.length > 0
+      ? getPracticeRhythms(actingProfileId)
+      : null;
+  const windowPractice =
+    day && chartWindow && practiceRhythms
+      ? practiceFittingWindow(
+          trackedPractices.flatMap((practice) => {
+            const rhythm = practiceRhythms.get(practice.identity);
+            return rhythm
+              ? [
+                  {
+                    name: practice.name,
+                    rhythm,
+                    usualDurationMin: practice.previousDurationMin,
+                  },
+                ]
+              : [];
+          }),
+          day,
+          chartWindow
+        )
+      : null;
   const addVocabulary =
     canWrite && addKind
       ? {
-          practices:
-            addKind === "practice"
-              ? getTrackedPractices(actingProfileId).map((p) => p.name)
-              : [],
+          practices: trackedPractices.map((p) => p.name),
           substances:
             addKind === "substance"
               ? getProfileSubstanceKeys(actingProfileId).map((key) => ({
@@ -576,14 +571,6 @@ export default async function HistoryPage(props: {
           // The acting profile's meal-bucket boundaries, so the food form's Meal
           // follows a stated hour here exactly as it does in the nutrition bar.
           foodSlotBoundaries: profileFoodSlotBoundaries(actingProfileId),
-          // THE COMPOSED ONE-TAP FOR THE DAY BEING READ (#4118). Seeded here, and this
-          // is the only day the door's control can be about (#4424 ruling 2 deleted the
-          // shared date input it used to chase). Empty for every other kind — a
-          // `Log a use` door has no breakfast to offer.
-          usual:
-            addKind === "food"
-              ? usualRoutineDayOffers(actingProfileId, day ?? todayStr)
-              : [],
         }
       : null;
   // WHETHER THIS KIND HAS A DOOR AT ALL — the dose door's own presence rule, which the
@@ -601,6 +588,14 @@ export default async function HistoryPage(props: {
             ? addVocabulary.symptoms.length > 0
             : true
     : false;
+  // THE DAY'S STANDING COMPOSED OFFERS (#4118), read for the day being looked at rather
+  // than for a kind (#4310 ruling): the usual is an offer over foods and stacks, never a
+  // food, so it leads the add door above the per-kind row instead of sitting inside
+  // `Log food`. `usualRoutineDayOffers` gates on the bundle's reach and then on the food
+  // half, so a day with no habit standing returns before it touches intake at all.
+  const usualOffers = canWrite
+    ? usualRoutineDayOffers(actingProfileId, day ?? todayStr)
+    : [];
   const subjectNames: Record<number, string> = {};
   if (everyone) {
     for (const profile of scope.profiles) {
@@ -610,9 +605,9 @@ export default async function HistoryPage(props: {
 
   // ── THE DAY VIEW'S INHERITANCE (#3958 phase 2; #1068/#1425/#799) ─────────
   //
-  // `/history?day=` is the app's one "that day" anchor now, so the four things
+  // `/history?day=` is the app's one "that day" anchor now, so the three things
   // `/timeline`'s single-day view carried come with it: the intraday panel, the day
-  // context chips, the prev/next nav with its swipe, and the SymptomLogBar mount.
+  // context chips, and the prev/next nav with its swipe.
   //
   // SINGLE-SUBJECT ONLY, which is the timeline's own rule and not a simplification:
   // daylight, UV, weather and cycle phase are ONE body's context, and a merged
@@ -665,31 +660,69 @@ export default async function HistoryPage(props: {
     ? periodOnDate(cyclePeriods, dayContext, todayStr)
     : null;
 
+  // TODAY'S UNARRIVED NIGHT, NAMED (#4918 ruling 7 / defect 4). #2097's one pure
+  // decision, gathered by the SAME reader the dashboard row and the /sleep hero use,
+  // so the day view cannot disagree with them about whether this profile is waiting.
+  // TODAY ONLY: the window is clock-relative (wake anchor plus the measured arrival
+  // lag), so it says nothing at all about a past day and is not asked there. Null on
+  // the common day, which leaves the panel exactly as it was.
+  //
+  // RESOLVED BEFORE THE INTRADAY MODEL below, because the chart's expected-sleep
+  // band (ruling 7) is gated on this same state — never a second decision.
+  const sleepWaiting =
+    day != null && day === todayStr
+      ? (getSleepWaitingState(
+          actingProfileId,
+          getLastNightSummary(actingProfileId)?.wakeDay ?? null
+        ) ?? undefined)
+      : undefined;
+
+  // THE EXPECTED SLEEP WINDOW (#4918 ruling 7) — the profile's typical bed/wake
+  // pair, the SAME pair the dashboard's usual band already reads (#3253), fed to
+  // the chart only while `sleepWaiting` says there is nothing real to draw yet.
+  // Either boundary can fall below the 14-night gate and come back null; the model
+  // treats "only one of the pair" as nothing to draw (see buildIntradayModel).
+  const expectedSleep = sleepWaiting
+    ? (() => {
+        const bedMinutes = typicalBedTime(actingProfileId);
+        const wakeMinutes = typicalWakeTime(actingProfileId);
+        return bedMinutes != null && wakeMinutes != null
+          ? { bedMinutes, wakeMinutes }
+          : null;
+      })()
+    : null;
+
+  // THE DAYLIGHT BAND'S SUNRISE/SUNSET (#4918 ruling 3) — the SAME solarDay
+  // DaylightChip's own icon row reads, resolved once here for the chart's
+  // background band. Gated exactly like the chip: both endpoints present, which
+  // excludes a polar day/night (the chip's text line already says that honestly).
+  const daylightBand = (() => {
+    if (!dayContext || !home) return null;
+    const day = solarDay(home.lat, home.lng, dayContext, profileTimezone);
+    return day && day.sunriseMin != null && day.sunsetMin != null
+      ? { sunriseMin: day.sunriseMin, sunsetMin: day.sunsetMin }
+      : null;
+  })();
+
   // THE INTRADAY PANEL (#1068) — the day rotated 90°. It reads the list this page
   // RESOLVED (`gather.dayEvents`), never a second query, which is what makes "a tick
   // can never name something the list below does not show" true by construction.
-  // Null when nothing on the day is intraday, so a quiet day draws no empty frame.
+  //
+  // ALWAYS a model now (#4918's empty-day ruling): a quiet day still gets one, with
+  // its four data layers all empty, so the card below can still draw the daylight
+  // band and its context line. Null here means only "no day is open at all"
+  // (`dayContext`), never "nothing happened".
   const intraday = dayContext
     ? getIntradayDay(
         actingProfileId,
         dayContext,
-        feeds[0]?.gather.dayEvents ?? []
+        feeds[0]?.gather.dayEvents ?? [],
+        {
+          solarDay: daylightBand,
+          expectedSleep,
+        }
       )
     : null;
-
-  // RETRO SYMPTOM ENTRY (#799/#1517 C). The bar writes to the ACTING profile, so it
-  // mounts only on the acting profile's own day — never a mixed-subject write. It
-  // opens on arrival when logging IS the point of the visit: the day already carries
-  // symptom entries, or an illness-type situation is active.
-  const daySymptomSeverities = dayContext
-    ? getSymptomSeveritiesOnDate(actingProfileId, dayContext)
-    : {};
-  const daySymptomNotes = dayContext
-    ? getSymptomNotesOnDate(actingProfileId, dayContext)
-    : {};
-  const dayIllnessActive = dayContext
-    ? hasActiveIllnessSituation(actingProfileId)
-    : false;
 
   // WHETHER THE DAY'S LOG ROWS COLLAPSE (#3958 phase 2).
   //
@@ -704,40 +737,58 @@ export default async function HistoryPage(props: {
   // was holding it. Written once because the fold arrangement renders it from three
   // places (recent, an open month, an open month inside an open year), and three copies
   // of a sticky header is how two of them drift.
-  const daySection = (group: (typeof days)[number]) => (
+  //
+  // `nested` MATCHES `FoldCard`'s OWN FLAG, not a new idea (#4365). A month card inside
+  // an open year carries `pl-4` because it is a level down; the days that card reveals
+  // are that level's CONTENTS, so they carry the identical `pl-4` — same left inset,
+  // same class, so the two boxes' left edges are the same number by construction and
+  // not by two authors agreeing on 16px. A top-level month's days pass `nested={false}`,
+  // same as their own un-inset card, so nothing here changes for them.
+  const daySection = (group: (typeof days)[number], nested = false) => (
     <section
       key={group.date}
       id={`timeline-day-${group.date}`}
       data-testid="history-day"
-      className={`scroll-mt-24 pb-2 pt-1 ${dayGutter}`}
+      data-day-nested={nested ? "true" : undefined}
+      className={`scroll-mt-24 pb-2 pt-1 ${nested ? "pl-4" : ""} ${dayGutter}`}
     >
-      {/* THE DAY HEADER STICKS, and it is the whole "which day am I in" affordance —
+      {/* THE DAY HEADER STICKS ON THE FEED, AND ONLY ON THE FEED (#4918 ruling 1).
+          It is the "which day am I in" affordance for a page that lists MANY days.
+          The day view has exactly one, so the answer belongs to that page's frame —
+          `TimelineDayNav`'s centre slot, which is above the fold, present on a day
+          with no rows at all, and not a link to the page already open. Rendering
+          both would put the same sentence twice on one screen; rendering this one
+          only here is why the day view could stop drawing a self-linking chevron
+          without losing the date.
+
+          THE DAY HEADER STICKS, and it is the whole "which day am I in" affordance —
           there is no per-row date cell, which is most of what the one-line row buys.
           THE WHOLE TEXT CLUSTER IS THE DOOR and it carries a chevron (#4045 §7): the
           header shipped with only its date text linked and no chevron at all, so the
           count sat outside the tap target and nothing said the header was a door. The
           chevron sits IN the cluster — nothing is right-floated, per the spec's own
           words. (Phase 2 renders the day view; the link is already the real one.) */}
-      <h2 className="sticky top-edge-safe z-10 -mx-1 mb-1 bg-(--page) px-1 py-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
-        {/* THE ONE RIGHTWARD DESTINATION CUE, not a hand-rolled chevron: the glyph and
+      {day == null ? (
+        <h2 className="sticky top-edge-safe z-10 -mx-1 mb-1 bg-(--page) px-1 py-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
+          {/* THE ONE RIGHTWARD DESTINATION CUE, not a hand-rolled chevron: the glyph and
             its geometry belong to the primitive (lib/__tests__/destination-link-primitive
             .test.ts refuses a raw one inside a link). Its `ml-auto` costs nothing here
             because the link is `inline-flex` and sized to its own content — the cue
             sits IN the text cluster, and nothing is right-floated. */}
-        <DestinationLink
-          // THE READER'S OWN BOUND RIDES ACROSS. Without `show` a day opened at
-          // `HISTORY_DEFAULT_SHOW`, so a busy day truncated on first open even though
-          // the page it was opened from had already been widened.
-          href={historyHref({
-            day: group.date,
-            everyone,
-            show: show === HISTORY_DEFAULT_SHOW ? undefined : show,
-          })}
-          className="inline-flex items-baseline gap-2 hover:underline"
-          data-testid="history-day-link"
-        >
-          <span>{formatLongDate(group.date, prefs)}</span>
-          {/* THE SEPARATOR IS LOAD-BEARING, not decoration. #3958 writes this header
+          <DestinationLink
+            // THE READER'S OWN BOUND RIDES ACROSS. Without `show` a day opened at
+            // `HISTORY_DEFAULT_SHOW`, so a busy day truncated on first open even though
+            // the page it was opened from had already been widened.
+            href={historyHref({
+              day: group.date,
+              everyone,
+              show: show === HISTORY_DEFAULT_SHOW ? undefined : show,
+            })}
+            className="inline-flex items-baseline gap-2 hover:underline"
+            data-testid="history-day-link"
+          >
+            <span>{formatLongDate(group.date, prefs)}</span>
+            {/* THE SEPARATOR IS LOAD-BEARING, not decoration. #3958 writes this header
               as "FRI, AUG 28 — 15 records" and the implementation dropped the dash;
               with the count promoted INSIDE the link (above), the two spans then sat
               adjacent with nothing between them, so the cluster's `textContent` read
@@ -749,15 +800,16 @@ export default async function HistoryPage(props: {
               after it, so its positive control stopped being able to see a date here
               at all. Restoring the dash puts the rendered shape back to the spec's
               own and makes the text content honest in the same stroke. */}
-          <span aria-hidden className="text-slate-500 dark:text-slate-400">
-            —
-          </span>
-          <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
-            {group.events.length} record
-            {group.events.length === 1 ? "" : "s"}
-          </span>
-        </DestinationLink>
-      </h2>
+            <span aria-hidden className="text-slate-500 dark:text-slate-400">
+              —
+            </span>
+            <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
+              {group.events.length} record
+              {group.events.length === 1 ? "" : "s"}
+            </span>
+          </DestinationLink>
+        </h2>
+      ) : null}
       <HistoryRows
         rows={
           layoutHistoryDay(group.events as HistoryRow[], { rollup }).visible
@@ -793,9 +845,13 @@ export default async function HistoryPage(props: {
       className="mx-auto"
       data-testid="history-page"
     >
+      {/* NO SUBTITLE ON THE DAY VIEW (#4918 ruling 5). "Everything recorded, newest
+          first." describes the FEED — a day view is one day, and the day bar under
+          this header already says which. On the day view it was a sentence about a
+          different page sitting above the day's own name. */}
       <PageHeader
         title="History"
-        subtitle="Everything recorded, newest first."
+        subtitle={day ? undefined : "Everything recorded, newest first."}
         compactBelowSm
         className={railGutter}
       />
@@ -943,153 +999,154 @@ export default async function HistoryPage(props: {
           NEVER PAST TODAY (#3958's edge-case ruling: "day nav cannot advance past
           today"). `clampHistoryDay` clamps a future `?day=` on arrival, so a next
           arrow into tomorrow would land back on today — an arrow that visibly does
-          nothing. On today it is not drawn at all. */}
+          nothing. ON TODAY THERE IS NO `next` AT ALL, and until #4918 that was true
+          only of this comment: the code passed `dayNavHref(day)`, so today's right
+          arrow was a link to today, labelled today, and the swipe followed it. The
+          destination is optional now, so the arrow and the gesture are the same
+          fact and the comment cannot drift from the code again.
+
+          AND THE BAR NAMES THE DAY (#4918 ruling 1), in #3958's header grammar and
+          with the count the header carried — "0 records" included, because a day
+          with nothing on it is exactly the day that named no day at all. */}
       {day ? (
         <TimelineDayNav
-          prevHref={dayNavHref(shiftDateStr(day, -1))}
-          nextHref={
-            day < todayStr ? dayNavHref(shiftDateStr(day, 1)) : dayNavHref(day)
-          }
-          prevLabel={formatMonthDay(shiftDateStr(day, -1), prefs)}
-          nextLabel={
+          prev={{
+            href: dayNavHref(shiftDateStr(day, -1)),
+            label: formatMonthDay(shiftDateStr(day, -1), prefs),
+          }}
+          next={
             day < todayStr
-              ? formatMonthDay(shiftDateStr(day, 1), prefs)
-              : formatMonthDay(day, prefs)
+              ? {
+                  href: dayNavHref(shiftDateStr(day, 1)),
+                  label: formatMonthDay(shiftDateStr(day, 1), prefs),
+                }
+              : undefined
           }
-          targetSelector='[data-testid="app-content-container"]'
+          day={`${formatLongDate(day, prefs)} — ${rowCount} record${
+            rowCount === 1 ? "" : "s"
+          }`}
+          targetSelector="main"
         />
       ) : null}
 
-      {/* THE DAY'S CONTEXT (#1068's neighbours: daylight, UV, weather, cycle phase).
-          Body context for ONE body, so it renders only on a single-subject day —
-          `?view=everyone&day=` still lists the rows and simply draws no chips, which
-          is the merged feed's own rule rather than a gap.
+      {/* THE DAY AT A GLANCE (#1068), above the list it maps. Rendered from the
+          resolved row set rather than a second gather — see `HistoryGather.dayEvents`
+          — so the chart cannot show a mark for something the list below dropped.
 
-          Each chip is quiet by default: `DaylightChip` draws nothing without a home
-          location, `CyclePhaseChip` nothing off a cycle, and the weather line only on
-          a day the #1726 predicates called notable — so the WRAPPER is conditional on
-          there being content, not on the day, or an ordinary Tuesday draws an empty
-          strip.
+          DIRECTLY UNDER THE DAY BAR (#4918 ruling 2). It used to sit below the add
+          layer, so the day's own content had the weakest position on its own page:
+          three frames of three styles stacked above the record. The chart is the
+          day's content — #3958 lists it beside the rows — so it does not spend the
+          chrome budget above the first record, and the add layer it swapped with is
+          now directly above the rows it creates (#4832's offers-first order inside
+          that layer is unchanged).
 
-          THE CONDITION ASKS ABOUT EVERY CHIP, not just the home-gated ones. Gating it
-          on `home` alone was wrong and a spec caught it: a profile tracking cycles
-          with no home location set got no strip at all, so the phase chip — which
-          needs no location — disappeared with the two that do. */}
-      {dayContext &&
-      (home ||
-        dayWeather ||
-        dayCyclePhase != null ||
-        dayCyclePeriod != null) ? (
-        <div className={`mb-3 ${railGutter}`} data-testid="history-day-context">
-          <DaylightChip
-            home={home}
-            date={dayContext}
-            timezone={profileTimezone}
-            outdoorMinutes={daylightOutdoor}
-            uv={dayUv}
-          />
-          <CyclePhaseChip phase={dayCyclePhase} period={dayCyclePeriod} />
-          {dayWeather ? (
-            <div
-              className="mt-1 text-xs text-slate-500 dark:text-slate-400"
-              data-testid="history-day-weather"
-            >
-              {dayWeather}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
+          THE CARD ALWAYS RENDERS (#4918's empty-day ruling and ruling 3). The
+          standalone `history-day-context` strip retired into the card's own context
+          line — daylight, UV, cycle phase and weather, body context for ONE body, so
+          it only has anything to say on a single-subject day (`?view=everyone&day=`
+          still lists the rows and simply draws no chips, the merged feed's own rule).
+          Each chip stays quiet by default (`DaylightChip` draws nothing without a
+          home location, `CyclePhaseChip` nothing off a cycle), so a quiet Tuesday
+          draws no context row at all — but the CARD itself, and the daylight band
+          on the plot, draw regardless: `intraday` is non-null whenever a day is
+          open (see above), rows or none. */}
+      {/* ONE ZOOM AND ONE CROSSHAIR FOR THE DAY (#4950). The panel mounts the chart
+          twice — compact and wide, both in the DOM at once — and the add row BELOW
+          reads "the current view" off them. Two owners would mean two views and no way
+          for this page to know which variant the viewport is showing, so the state
+          lives here and both charts read it.
 
-      {/* THE ADD DOOR, KIND-RESOLVED. Filtered to a kind it IS that kind's backfill,
+          IT WRAPS THE CHART AND THE ADD LAYER TOGETHER, which is the whole point and
+          was the defect the e2e caught: closed around the chart alone, the add row fell
+          back to its own private pair and its label could never leave "Add". A provider
+          that does not span both readers is not a shared state. */}
+      <IntradayInteractionProvider>
+        {intraday ? (
+          <div className={railGutter}>
+            <IntradayPanel
+              model={intraday}
+              formatPrefs={prefs}
+              profileId={actingProfileId}
+              home={home}
+              timezone={profileTimezone}
+              daylightOutdoor={daylightOutdoor}
+              uv={dayUv}
+              cyclePhase={dayCyclePhase}
+              cyclePeriod={dayCyclePeriod}
+              weather={dayWeather}
+              waiting={sleepWaiting}
+              waitingDetail={
+                sleepWaiting
+                  ? sleepWaitingDetail(sleepWaiting, {
+                      clock: (min) => formatClockMinutes(prefs.timeFormat, min),
+                      when: (iso) => formatRelativeTime(iso),
+                    })
+                  : null
+              }
+              selectedWindow={chartWindow}
+            />
+          </div>
+        ) : null}
+
+        {/* THE ADD LAYER SITS ABOVE THE ROWS IT CREATES (#4918 ruling 2) — under the
+          chart, not above it.
+
+          THE ADD DOOR, KIND-RESOLVED. Filtered to a kind it IS that kind's backfill,
           MOUNTED IN PLACE — the form opens here rather than sending the reader to the
           domain surface, which is what #3958 asked for and what only the dose kind
           shipped (#4045 §1). Log kinds only — clinical, training and life records are
           created on their own surfaces — and never the future: every door here is
           bounded by today. */}
-      {canWrite ? (
-        <div className={`mb-2 text-sm ${railGutter}`} data-testid="history-add">
-          {!hasAddDoor ? (
-            /* IN ALL — AND IN A KIND WITH NOTHING TO OFFER — THE DOOR ASKS THE KIND
+        {canWrite ? (
+          <div
+            className={`mb-2 text-sm ${railGutter}`}
+            data-testid="history-add"
+          >
+            {/* THE OFFERS LINE FIRST (#4310 ruling), before the per-kind grammar below it,
+              and silent on a day with no standing offer. */}
+            <HistoryUsualOffers offers={usualOffers} date={day ?? todayStr} />
+            {!hasAddDoor ? (
+              /* IN ALL — AND IN A KIND WITH NOTHING TO OFFER — THE DOOR ASKS THE KIND
                FIRST, which on a record page is the same act as narrowing to it. It
                scrolls rather than wraps for the same reason the filter row does. */
-            <div className="-mx-2 flex items-center gap-3 overflow-x-auto px-2 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
-              <span className="shrink-0 text-slate-500 dark:text-slate-400">
-                Add past
-              </span>
-              {HISTORY_LOG_KINDS.filter(
-                (candidate) =>
-                  candidate !== "sleep" &&
-                  (presentKinds.length === 0 ||
-                    presentKinds.includes(candidate))
-              ).map((candidate) => (
-                <Link
-                  key={candidate}
-                  className="btn-ghost btn-sm shrink-0"
-                  href={chipHref({ kind: candidate })}
-                  data-testid={`history-add-${candidate}`}
-                >
-                  {HISTORY_KIND_LABELS[candidate]}
-                </Link>
-              ))}
-            </div>
-          ) : addVocabulary && addKind ? (
-            <HistoryAddDoor
-              kind={addKind}
-              // THE DAY THE READER WAS LOOKING AT. Finding a gap is the reason to open
-              // this door at all, so the form opens on that day rather than on today —
-              // the context the redirect used to throw away.
-              date={day ?? todayStr}
-              maxDate={todayStr}
-              vocabulary={addVocabulary}
-            />
-          ) : null}
-        </div>
-      ) : null}
-
-      {/* THE DAY AT A GLANCE (#1068), above the list it maps. Rendered from the
-          resolved row set rather than a second gather — see `HistoryGather.dayEvents`
-          — so the chart cannot show a mark for something the list below dropped. */}
-      {intraday ? (
-        <div className={railGutter}>
-          <IntradayPanel
-            model={intraday}
-            formatPrefs={prefs}
-            profileId={actingProfileId}
-          />
-        </div>
-      ) : null}
-
-      {/* THE SYMPTOM BAR'S CONVENIENCE MOUNT (#799), which is the whole reason a
-          symptom is not an Add-door kind: symptoms are quick-logged against a day,
-          not declared as an entry. Acting profile only — the card renders only on
-          `dayContext`, which is already the acting profile's own day. */}
-      {dayContext && canWrite ? (
-        <div className={`mb-3 ${railGutter}`}>
-          <SymptomEntryCard
-            dateLabel={formatLongDate(dayContext, prefs)}
-            defaultOpen={
-              Object.keys(daySymptomSeverities).length > 0 ||
-              Object.keys(daySymptomNotes).length > 0 ||
-              dayIllnessActive
-            }
-          >
-            <SymptomLogBar
-              date={dayContext}
-              initial={daySymptomSeverities}
-              initialNotes={daySymptomNotes}
-              symptoms={PICKER_SYMPTOMS}
-              customNames={getCustomSymptomNames(actingProfileId)}
-              rankedKeys={getSymptomLogOrder(actingProfileId)}
-              suggestActivateIllness={!dayIllnessActive}
-              temperatureUnit={getUnitPrefs(loginId).temperatureUnit}
-              textIntakeEnabled={isTaskConfigured("symptom-map")}
-              // Unconditional: the card above renders only on the acting profile's
-              // own day, so this link can never name someone else's analysis.
-              analysisHref="/trends/symptoms"
-            />
-          </SymptomEntryCard>
-        </div>
-      ) : null}
+              /* SYMPTOM IS EXEMPT FROM THE PRESENCE GATE (#4851 owner ruling) —
+               `historyAddKinds` is the one computation that knows it, so the exemption
+               cannot drift out of step with the rest of the gate. The row itself is a
+               client component (#4950): it reads the window the chart is showing and
+               adds it to the params these rules produced. */
+              <HistoryAddRow
+                timeFormat={prefs.timeFormat}
+                /* Only the day view has a chart, so only it has a window and a day for
+                 the workouts door to open on (#4950 item 5). */
+                workoutsDate={day}
+                chips={historyAddKinds(presentKinds).map((candidate) => ({
+                  kind: candidate,
+                  label: HISTORY_KIND_LABELS[candidate],
+                  params: chipHrefParams({ kind: candidate }),
+                }))}
+              />
+            ) : addVocabulary && addKind ? (
+              <HistoryAddDoor
+                kind={addKind}
+                /* The window the chip carried, already parsed and refused if it was not
+                 one (#4950). It rides the URL rather than client state, so it survives
+                 a reload with the form open. */
+                window={chartWindow ? intradayWindowParams(chartWindow) : null}
+                /* The practice this profile usually does at that moment — a prefill a tap
+                 confirms, never a claim about what happened. */
+                defaultPractice={windowPractice}
+                // THE DAY THE READER WAS LOOKING AT. Finding a gap is the reason to open
+                // this door at all, so the form opens on that day rather than on today —
+                // the context the redirect used to throw away.
+                date={day ?? todayStr}
+                maxDate={todayStr}
+                vocabulary={addVocabulary}
+              />
+            ) : null}
+          </div>
+        ) : null}
+      </IntradayInteractionProvider>
 
       {/* THE TWO EMPTY STATES ARE DIFFERENT MESSAGES (#1410), and the difference is
           the whole design: an EMPTY ACCOUNT is fixed by putting data in, a FILTERED
@@ -1102,9 +1159,22 @@ export default async function HistoryPage(props: {
           that still had them. Deleting the route is what surfaced it. */}
       {rowCount === 0 ? (
         kind || family || media || day ? (
+          /* ON THE DAY VIEW THE EMPTY STATE IS COMPACT AND SAYS WHAT IT MEANS
+             (#4918 ruling 5). A `p-10` dashed card reading "Nothing recorded here
+             yet." was the LARGEST element on a quiet day — and on today it sat
+             under a chart already drawing six hours of recorded heart rate, so its
+             copy contradicted the thing above it. "No entries" is about the ROWS,
+             which is all this panel ever spoke for. */
           <EmptyState
             testId="history-empty-filtered"
-            message="Nothing recorded here yet."
+            compact={day != null}
+            message={
+              day == null
+                ? "Nothing recorded here yet."
+                : day === todayStr
+                  ? "No entries yet today."
+                  : "No entries."
+            }
           />
         ) : (
           <EmptyState
@@ -1129,7 +1199,7 @@ export default async function HistoryPage(props: {
           headers instead — "the band fill stays full-bleed while row content ends
           short of the edge". */}
       <div data-testid="history-feed">
-        {(windowed ? windowed.recent : days).map(daySection)}
+        {(windowed ? windowed.recent : days).map((group) => daySection(group))}
         {/* READING ORDER: the recent band first, then this year's older months, then
             one card per earlier year. A fold card above the days would put a stack of
             shut doors between the reader and their own recent history, which is the
@@ -1148,17 +1218,17 @@ export default async function HistoryPage(props: {
             reader on the card they tapped. */}
         {windowed?.months.map((fold) => (
           <Fragment key={fold.key}>
-            <FoldCard
+            <HistoryFoldCard
               fold={fold}
               gutter={railGutter}
               href={foldHref(fold.key)}
             />
-            {fold.open ? fold.days.map(daySection) : null}
+            {fold.open ? fold.days.map((group) => daySection(group)) : null}
           </Fragment>
         ))}
         {windowed?.years.map((year) => (
           <Fragment key={year.key}>
-            <FoldCard
+            <HistoryFoldCard
               fold={year}
               gutter={railGutter}
               href={foldHref(year.key, {
@@ -1169,13 +1239,15 @@ export default async function HistoryPage(props: {
             {year.open
               ? year.months.map((month) => (
                   <Fragment key={month.key}>
-                    <FoldCard
+                    <HistoryFoldCard
                       fold={month}
                       gutter={railGutter}
                       href={foldHref(month.key)}
                       nested
                     />
-                    {month.open ? month.days.map(daySection) : null}
+                    {month.open
+                      ? month.days.map((group) => daySection(group, true))
+                      : null}
                   </Fragment>
                 ))
               : null}

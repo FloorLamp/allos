@@ -200,8 +200,9 @@ test("upload → grid → lightbox → compare → delete round trip (fallback c
     // stands on the surviving neighbours.
     const sidebarNav = page.locator("aside nav");
     await sidebarNav.getByRole("button", { name: "Plan & review" }).click();
+    // Trends (#4965), not History — History left this group for a top-level row.
     await expect(
-      sidebarNav.getByRole("link", { name: "History" })
+      sidebarNav.getByRole("link", { name: "Trends" })
     ).toBeVisible();
     await expect(
       sidebarNav.getByRole("link", { name: "Progress photos" })

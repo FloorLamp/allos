@@ -1,0 +1,390 @@
+// Profile the dashboard render over a copy of a real database (#5010).
+//
+//   npm run profile:dashboard -- --db ~/snapshots/allos.db
+//   npm run profile:dashboard -- --db ~/snapshots/allos.db --profile 1 \
+//       --now 2026-09-04T01:10:00Z --renders 3 --out data/profiles/today
+//   npm run profile:dashboard -- --db ~/snapshots/allos.db \
+//       --page "app/(app)/trends/page" --params '{"tab":"overview"}'
+//   npm run profile:dashboard -- --db ~/snapshots/allos.db \
+//       --attribute lib/local-day-window.ts
+//
+// ANY PAGE, NOT ONLY THE DASHBOARD. `--page` names a page module under `app/`;
+// `--params` / `--route-params` are its searchParams and params as JSON. A page that
+// reads Next's request APIs directly (headers(), cookies()) rather than through the
+// session and scope the harness fakes cannot render here and the log says which.
+//
+// WHAT IT MEASURES. One `Dashboard()` render per pass, through the same harness the
+// query meter (`lib/__db_tests__/dashboard-placement-manifest.test.ts`) counts with,
+// so the statements it times are the statements the meter budgets. Three readings:
+//   - per render: wall time, statement count, time inside SQLite;
+//   - per statement: total time, count, and the app frame that ran it;
+//   - `--attribute <file>`, repeatable: whose call it was, for one hot file — the
+//     question the file ranking above cannot answer and the one a fix depends on;
+//   - a V8 CPU profile of the renders after the warm-up, summarised here by self
+//     time per function and per file and by inclusive time per app frame, and kept
+//     as `render.cpuprofile` for a browser's Performance panel.
+//
+// NEVER THE FILE YOU PASS. The database is copied before anything opens it: a render
+// may write (recent pages, reconcile flags), and a snapshot must stay a snapshot. The
+// copy lives in `--out` and is removed unless `--keep-copy`.
+//
+// The render itself runs inside vitest (`lib/__db_tests__/dashboard-profile.test.ts`)
+// because the page reads Next's request cookies and the harness fakes those with
+// `vi.mock`; this script is the front door that sets the PROBE_* environment, runs
+// that one file, and reads its output back.
+import "./load-env";
+import fs from "node:fs";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
+
+interface Args {
+  db: string;
+  page?: string;
+  params?: string;
+  routeParams?: string;
+  now?: string;
+  profile?: string;
+  renders: string;
+  out: string;
+  keepCopy: boolean;
+  top: number;
+  attribute: string[];
+}
+
+function parseArgs(argv: string[]): Args {
+  const args: Partial<Args> = {
+    renders: "3",
+    keepCopy: false,
+    top: 18,
+    attribute: [],
+  };
+  for (let i = 0; i < argv.length; i += 1) {
+    const flag = argv[i];
+    const value = argv[i + 1];
+    switch (flag) {
+      case "--db":
+        args.db = value;
+        i += 1;
+        break;
+      case "--now":
+        args.now = value;
+        i += 1;
+        break;
+      case "--profile":
+        args.profile = value;
+        i += 1;
+        break;
+      case "--renders":
+        args.renders = value;
+        i += 1;
+        break;
+      case "--out":
+        args.out = value;
+        i += 1;
+        break;
+      case "--top":
+        args.top = Number(value);
+        i += 1;
+        break;
+      case "--page":
+        args.page = value;
+        i += 1;
+        break;
+      case "--params":
+        args.params = value;
+        i += 1;
+        break;
+      case "--route-params":
+        args.routeParams = value;
+        i += 1;
+        break;
+      case "--attribute":
+        args.attribute = [...(args.attribute ?? []), value];
+        i += 1;
+        break;
+      case "--keep-copy":
+        args.keepCopy = true;
+        break;
+      default:
+        throw new Error(`unknown argument ${flag}`);
+    }
+  }
+  if (!args.db) throw new Error("--db <path to a database file> is required");
+  if (!args.out) {
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    args.out = path.join("data", "profiles", `dashboard-${stamp}`);
+  }
+  return args as Args;
+}
+
+interface StatementReport {
+  sql: string;
+  count: number;
+  ms: number;
+  callers: { caller: string; ms: number }[];
+}
+interface Report {
+  page: string;
+  db: string;
+  now: string;
+  profileId: number;
+  renders: {
+    wall: number;
+    statements: number;
+    sqlMs: number;
+    components?: number;
+    skipped?: string[];
+  }[];
+  statements: StatementReport[];
+  hrWindows?: unknown[][];
+}
+interface CpuNode {
+  id: number;
+  callFrame: { functionName: string; url: string; lineNumber: number };
+  children?: number[];
+}
+interface CpuProfile {
+  nodes: CpuNode[];
+  samples: number[];
+  timeDeltas: number[];
+}
+
+const APP = /^(app|lib|components)\//;
+function shortUrl(url: string): string {
+  return url.replace(/^.*?\/(app|lib|components)\//, "$1/") || "(native)";
+}
+function frameLabel(node: CpuNode): string {
+  const { functionName, url, lineNumber } = node.callFrame;
+  return `${functionName || "(anon)"} ${shortUrl(url)}:${lineNumber + 1}`;
+}
+
+// WHO SPENDS ONE FILE'S TIME (#5061). `summariseCpu` above ranks the files; this
+// answers the next question, which is the one a hot frame is useless without — is the
+// cost one caller or twenty, and is the frame doing real work for someone or the same
+// work twice for two people. Keyed on the SAMPLE, not the node: every sample whose
+// LEAF is in the file lands in exactly one bucket, so the parts sum to the file's self
+// time by construction. Which is why the SUM line is checked against the total
+// `summariseCpu` ABOVE arrived at by its OWN walk rather than one recomputed here: a
+// total derived from the same loop as the parts always agrees with them, so the check
+// would be a tautology and the reassurance free. A sum that does not match is a partial
+// attribution, and a partial attribution reads exactly like a complete one.
+function attributeFile(
+  profile: CpuProfile,
+  file: string,
+  selfTotal: number
+): string[] {
+  const nodes = new Map(profile.nodes.map((n) => [n.id, n]));
+  const parent = new Map<number, number>();
+  for (const n of profile.nodes)
+    for (const child of n.children ?? []) parent.set(child, n.id);
+  const self = new Map<number, number>();
+  profile.samples.forEach((id, i) =>
+    self.set(id, (self.get(id) ?? 0) + profile.timeDeltas[i])
+  );
+  const byLeaf = new Map<string, number>();
+  const byCaller = new Map<string, number>();
+  for (const [id, us] of self) {
+    const node = nodes.get(id);
+    if (!node || shortUrl(node.callFrame.url) !== file) continue;
+    byLeaf.set(frameLabel(node), (byLeaf.get(frameLabel(node)) ?? 0) + us);
+    // The first frame up the stack that is NOT this file: the caller paying for it.
+    let current = parent.get(id);
+    while (
+      current !== undefined &&
+      shortUrl(nodes.get(current)!.callFrame.url) === file
+    )
+      current = parent.get(current);
+    const caller =
+      current === undefined
+        ? "(no caller — root)"
+        : frameLabel(nodes.get(current)!);
+    byCaller.set(caller, (byCaller.get(caller) ?? 0) + us);
+  }
+  const ms = (us: number) => (us / 1000).toFixed(1).padStart(8);
+  const lines = [
+    `attribution: ${file} — ${(selfTotal / 1000).toFixed(1)} ms self`,
+  ];
+  for (const [title, map] of [
+    ["self time by leaf frame", byLeaf],
+    ["self time by caller outside the file", byCaller],
+  ] as const) {
+    lines.push(`  ${title}`);
+    let sum = 0;
+    for (const [k, v] of [...map].sort((a, b) => b[1] - a[1])) {
+      sum += v;
+      lines.push(`  ${ms(v)} ms  ${k}`);
+    }
+    lines.push(
+      `  ${ms(sum)} ms  = SUM, against ${ms(selfTotal)} ms self` +
+        (Math.abs(sum - selfTotal) < 1000
+          ? " — MATCHES"
+          : " — MISMATCH, this attribution is partial")
+    );
+  }
+  return lines;
+}
+
+function summariseCpu(
+  profile: CpuProfile,
+  top: number
+): { lines: string[]; selfByFile: Map<string, number> } {
+  const nodes = new Map(profile.nodes.map((n) => [n.id, n]));
+  const parent = new Map<number, number>();
+  for (const n of profile.nodes)
+    for (const child of n.children ?? []) parent.set(child, n.id);
+  const self = new Map<number, number>();
+  profile.samples.forEach((id, i) =>
+    self.set(id, (self.get(id) ?? 0) + profile.timeDeltas[i])
+  );
+  const byFunction = new Map<string, number>();
+  const byFile = new Map<string, number>();
+  const inclusive = new Map<string, number>();
+  let total = 0;
+  for (const [id, us] of self) {
+    total += us;
+    const node = nodes.get(id)!;
+    const label = frameLabel(node);
+    byFunction.set(label, (byFunction.get(label) ?? 0) + us);
+    const file = shortUrl(node.callFrame.url);
+    byFile.set(file, (byFile.get(file) ?? 0) + us);
+    const seen = new Set<number>();
+    let current: number | undefined = id;
+    while (current !== undefined && !seen.has(current)) {
+      seen.add(current);
+      const l = frameLabel(nodes.get(current)!);
+      inclusive.set(l, (inclusive.get(l) ?? 0) + us);
+      current = parent.get(current);
+    }
+  }
+  const ms = (us: number) => `${Math.round(us / 1000)}`.padStart(7);
+  const lines = [`CPU profile: ${Math.round(total / 1000)} ms sampled`];
+  lines.push("  self time by function");
+  for (const [k, v] of [...byFunction]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, top))
+    lines.push(`  ${ms(v)} ms  ${k}`);
+  lines.push("  self time by file");
+  for (const [k, v] of [...byFile].sort((a, b) => b[1] - a[1]).slice(0, 12))
+    lines.push(`  ${ms(v)} ms  ${k}`);
+  lines.push("  inclusive time, app frames");
+  let shown = 0;
+  for (const [k, v] of [...inclusive].sort((a, b) => b[1] - a[1])) {
+    if (!APP.test(k.split(" ")[1] ?? "")) continue;
+    lines.push(`  ${ms(v)} ms  ${k}`);
+    if ((shown += 1) >= top + 8) break;
+  }
+  return { lines, selfByFile: byFile };
+}
+
+function main(): void {
+  const args = parseArgs(process.argv.slice(2));
+  fs.mkdirSync(args.out, { recursive: true });
+  const copy = path.resolve(args.out, "snapshot-copy.db");
+  fs.copyFileSync(args.db, copy);
+  for (const sidecar of ["-wal", "-shm"])
+    fs.rmSync(copy + sidecar, { force: true });
+
+  const env = {
+    ...process.env,
+    PROBE_DB: copy,
+    PROBE_OUT: path.resolve(args.out),
+    PROBE_RENDERS: args.renders,
+    ...(args.now ? { PROBE_NOW: args.now } : {}),
+    ...(args.profile ? { PROBE_PROFILE: args.profile } : {}),
+    ...(args.page ? { PROBE_PAGE: args.page } : {}),
+    ...(args.params ? { PROBE_PARAMS: args.params } : {}),
+    ...(args.routeParams ? { PROBE_ROUTE_PARAMS: args.routeParams } : {}),
+  };
+  const run = spawnSync(
+    process.execPath,
+    [
+      path.join("node_modules", "vitest", "vitest.mjs"),
+      "run",
+      "--config",
+      "vitest.db.config.ts",
+      "lib/__db_tests__/dashboard-profile.test.ts",
+    ],
+    { env, encoding: "utf8" }
+  );
+  fs.writeFileSync(path.join(args.out, "vitest.log"), run.stdout + run.stderr);
+  if (run.status !== 0) {
+    process.stderr.write(run.stdout + run.stderr);
+    throw new Error(`the profile render failed (see ${args.out}/vitest.log)`);
+  }
+
+  const report = JSON.parse(
+    fs.readFileSync(path.join(args.out, "profile.json"), "utf8")
+  ) as Report;
+  const profile = JSON.parse(
+    fs.readFileSync(path.join(args.out, "render.cpuprofile"), "utf8")
+  ) as CpuProfile;
+  if (!args.keepCopy) fs.rmSync(copy, { force: true });
+
+  const out: string[] = [];
+  out.push(
+    `dashboard profile · profile ${report.profileId} · now ${report.now}`
+  );
+  out.push(`source ${args.db}`);
+  out.push("renders (the first warms the module graph)");
+  report.renders.forEach((r, i) =>
+    out.push(
+      `  ${i + 1}: wall ${r.wall} ms · ${r.statements} statements · ${r.sqlMs} ms in SQLite` +
+        (r.components != null ? ` · ${r.components} components resolved` : "") +
+        (r.skipped?.length ? ` · ${r.skipped.length} skipped` : "")
+    )
+  );
+  const skipped = report.renders.at(-1)?.skipped ?? [];
+  if (skipped.length) {
+    out.push(
+      "components left unrendered (client components, or request APIs with no request)"
+    );
+    for (const s of [...new Set(skipped)].slice(0, 12)) out.push(`  ${s}`);
+  }
+  out.push(`statements by time (last render)`);
+  for (const s of report.statements.slice(0, args.top))
+    out.push(
+      `  ${s.ms.toFixed(1).padStart(8)} ms  x${String(s.count).padEnd(4)} ${(
+        s.callers[0]?.caller ?? "?"
+      ).padEnd(44)} ${s.sql.slice(0, 96)}`
+    );
+  const byCaller = new Map<string, number>();
+  for (const s of report.statements)
+    for (const c of s.callers)
+      byCaller.set(c.caller, (byCaller.get(c.caller) ?? 0) + c.ms);
+  out.push("SQLite time by caller");
+  for (const [caller, ms] of [...byCaller]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 12))
+    out.push(`  ${Math.round(ms).toString().padStart(6)} ms  ${caller}`);
+  // WHAT A COUNT CANNOT SAY (#5010). Everything above keys on SQL text, so the
+  // heart-rate range read appears as one row with a count — and N reads of N windows
+  // and N reads of one window are both N. These are the spans it was actually bound
+  // to; a repeat here is a second materialisation of rows the render already had.
+  const hrWindows = report.hrWindows ?? [];
+  const perWindow = new Map<string, number>();
+  for (const window of hrWindows) {
+    const key = JSON.stringify(window);
+    perWindow.set(key, (perWindow.get(key) ?? 0) + 1);
+  }
+  out.push(
+    `hr_minutes windows read (last render): ${hrWindows.length} reads over ${perWindow.size} distinct`
+  );
+  for (const [window, count] of perWindow)
+    out.push(`  x${String(count).padEnd(5)} ${window}`);
+
+  out.push("most frequent statements");
+  for (const s of [...report.statements]
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8))
+    out.push(`  x${String(s.count).padEnd(5)} ${s.sql.slice(0, 96)}`);
+  const cpu = summariseCpu(profile, args.top);
+  out.push(...cpu.lines);
+  for (const file of args.attribute)
+    out.push(...attributeFile(profile, file, cpu.selfByFile.get(file) ?? 0));
+  out.push(`written: ${args.out}/profile.json, render.cpuprofile, vitest.log`);
+  const text = out.join("\n");
+  fs.writeFileSync(path.join(args.out, "summary.txt"), text + "\n");
+  process.stdout.write(text + "\n");
+}
+
+main();

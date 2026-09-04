@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 import { MIN_LABEL_PX, effectiveFontPx } from "@/lib/chart-svg";
 import {
   FULL_DAY_VIEW,
+  INTRADAY_ROW_NAMES,
   INTRADAY_VARIANTS,
   MIN_ZOOM_MINUTES,
   axisTicks,
   clipToView,
+  daylightBandX,
+  expectedSleepBandX,
   hrAxisLabels,
   inView,
   intradayGeometry,
@@ -18,6 +21,9 @@ import {
   sleepEdgeLabels,
   blockLayout,
   blockLabels,
+  blockRowTop,
+  panView,
+  zoomViewAt,
   type IntradayVariant,
 } from "@/lib/intraday-layout";
 import { MINUTES_IN_DAY, type IntradayModel } from "@/lib/intraday";
@@ -44,6 +50,8 @@ function model(over: Partial<IntradayModel> = {}): IntradayModel {
     blocks: [],
     ticks: [],
     nowMinute: null,
+    solarDay: null,
+    expectedSleep: null,
     ...over,
   };
 }
@@ -64,6 +72,7 @@ function workout(over: Partial<IntradayModel["blocks"][number]> = {}) {
   return {
     key: "a:1",
     eventId: "a:1",
+    source: "activity" as const,
     anchorId: "timeline-entry-a-1",
     startMinute: 480,
     endMinute: 525,
@@ -76,6 +85,20 @@ function workout(over: Partial<IntradayModel["blocks"][number]> = {}) {
     clippedEnd: false,
     ...over,
   };
+}
+
+/** A practice session's block — same shape, its own row since #4852. */
+function practice(over: Partial<IntradayModel["blocks"][number]> = {}) {
+  return workout({
+    key: "practice:1",
+    eventId: "practice:1",
+    source: "practice",
+    anchorId: "timeline-entry-practice-1",
+    startMinute: 1140,
+    endMinute: 1170,
+    title: "Sauna",
+    ...over,
+  });
 }
 
 const hhmm = (minute: number) =>
@@ -155,6 +178,124 @@ describe("the row stack collapses to the day's layers", () => {
     );
     expect(geo.sleepLabelY).toBeLessThanOrEqual(geo.sleepTop);
     expect(geo.sleepTop + geo.sleepH).toBeLessThanOrEqual(geo.workTop);
+  });
+
+  // #4918 ruling 7: the expected-sleep band draws in the SAME lane a real session
+  // would, so the row has to exist for it even when there is no session at all —
+  // an HR-only day with nothing else stays exactly as thin as it was before.
+  it("reserves the sleep row for the expected band alone, same as a real session would", () => {
+    const bare = intradayGeometry(model(), "wide");
+    const expecting = intradayGeometry(
+      model({
+        expectedSleep: {
+          startMinute: -60,
+          endMinute: 390,
+          clippedStart: false,
+          clippedEnd: false,
+        },
+      }),
+      "wide"
+    );
+    expect(bare.hasExpectedSleep).toBe(false);
+    expect(expecting.hasExpectedSleep).toBe(true);
+    expect(expecting.height).toBeGreaterThan(bare.height);
+    // The row sits directly under HR, same as a real session's row would — no
+    // orphaned gap, and Train follows directly after it.
+    expect(expecting.sleepTop).toBe(
+      expecting.hrTop + expecting.hrH + expecting.rowGap
+    );
+    expect(expecting.workTop).toBe(
+      expecting.sleepTop + expecting.sleepH + expecting.rowGap
+    );
+    // UNLIKE a real session, the expected band draws no bed/wake TEXT of its
+    // own (see sleepEdgeLabels — it only ever reads model.sleep), so it earns no
+    // label strip above the row: the row is thinner than a real session's.
+    const withSession = intradayGeometry(
+      model({ sleep: [sleepBlock({ startMinute: -60, endMinute: 390 })] }),
+      "wide"
+    );
+    expect(expecting.workTop).toBeLessThan(withSession.workTop);
+  });
+});
+
+// #4918 rulings 3 and 7: the two background bands. Neither is a row — the whole
+// point is that adding one moves NOTHING about the row stack above.
+describe("the background bands add no lane", () => {
+  it("the daylight band spans sunrise→sunset in x, and adds zero height", () => {
+    const bareModel = model();
+    const sunModel = model({ solarDay: { sunriseMin: 372, sunsetMin: 1146 } });
+    const bare = intradayGeometry(bareModel, "wide");
+    const withSun = intradayGeometry(sunModel, "wide");
+    // ZERO HEIGHT ADDED: the same model plus a solarDay is the identical row stack.
+    expect(withSun.height).toBe(bare.height);
+    expect(withSun.axisY).toBe(bare.axisY);
+    const band = daylightBandX(withSun, sunModel)!;
+    expect(band.left).toBeCloseTo(projectMinute(withSun, 372), 6);
+    expect(band.right).toBeCloseTo(projectMinute(withSun, 1146), 6);
+  });
+
+  // #4918's empty-day ruling, and its own trap: the ROW-STACK floor above only
+  // guards `showSleepRow`/`hasExpectedSleep`; a truly rowless day (no HR, no
+  // sleep, no blocks, no ticks) leaves `axisY === padTop` UNLESS something else
+  // gives the plot a canvas — which is exactly the day this ruling is about ("the
+  // daylight band and the day context draw alone").
+  it("still has a canvas for the daylight band on a day with no rows AT ALL", () => {
+    const emptyWithSun = model({
+      hr: null,
+      solarDay: { sunriseMin: 372, sunsetMin: 1146 },
+    });
+    const geo = intradayGeometry(emptyWithSun, "wide");
+    expect(geo.axisY).toBeGreaterThan(geo.padTop);
+    const band = daylightBandX(geo, emptyWithSun)!;
+    expect(band).not.toBeNull();
+    expect(band.right).toBeGreaterThan(band.left);
+    // The floor costs NOTHING once anything else already reserves the row stack —
+    // proved by comparison rather than a hardcoded number, so a future row this
+    // module gains cannot silently make the floor start double-reserving.
+    const emptyNoSun = model({ hr: null });
+    const bareEmpty = intradayGeometry(emptyNoSun, "wide");
+    expect(bareEmpty.axisY).toBe(geo.axisY);
+    const normalDay = intradayGeometry(model(), "wide"); // default fixture HAS hr
+    expect(normalDay.axisY).toBeGreaterThan(bareEmpty.padTop);
+  });
+
+  it("draws nothing without a solarDay, and nothing outside the visible window", () => {
+    const bareModel = model();
+    const geo = intradayGeometry(bareModel, "wide");
+    expect(daylightBandX(geo, bareModel)).toBeNull();
+    const sunModel = model({ solarDay: { sunriseMin: 372, sunsetMin: 1146 } });
+    const zoomed = intradayGeometry(sunModel, "wide", { from: 0, to: 300 });
+    // The window sits entirely before sunrise: nothing to draw.
+    expect(daylightBandX(zoomed, sunModel)).toBeNull();
+  });
+
+  it("clips the daylight band to a zoomed window that only covers part of it", () => {
+    const sunModel = model({ solarDay: { sunriseMin: 372, sunsetMin: 1146 } });
+    const geo = intradayGeometry(sunModel, "wide", { from: 300, to: 600 });
+    const band = daylightBandX(geo, sunModel)!;
+    expect(band.left).toBeCloseTo(projectMinute(geo, 372), 6);
+    expect(band.right).toBeCloseTo(projectMinute(geo, 600), 6);
+  });
+
+  it("the expected-sleep band's x-span is pinned to bed→wake, gated on the state existing", () => {
+    const waitingModel = model({
+      expectedSleep: {
+        startMinute: -60,
+        endMinute: 390,
+        clippedStart: false,
+        clippedEnd: false,
+      },
+    });
+    const geo = intradayGeometry(waitingModel, "wide");
+    const band = expectedSleepBandX(geo, waitingModel)!;
+    expect(band.left).toBeCloseTo(projectMinute(geo, -60), 6);
+    expect(band.right).toBeCloseTo(projectMinute(geo, 390), 6);
+
+    // GATED: no expectedSleep at all (a session is in hand, or nothing to expect)
+    // draws nothing, however the rest of the model looks.
+    const bareModel = model();
+    const noBand = intradayGeometry(bareModel, "wide");
+    expect(expectedSleepBandX(noBand, bareModel)).toBeNull();
   });
 });
 
@@ -238,6 +379,28 @@ describe("axis ticks fit the plot they label", () => {
     // Every label plus one label of breathing room has to fit.
     const perLabel = geo.plotW / ticks.length;
     expect(perLabel).toBeGreaterThan("00:00".length * geo.labelSize * 0.6);
+  });
+
+  // WHAT THE WIDER GUTTER COST THE AXIS (#4852). Holding "Practice" whole took 15
+  // units off the compact plot, which is one label slot: the compact axis now
+  // affords 7 labels where it afforded 8. Nothing changes at the full day (both
+  // variants keep their step) and nothing changes on the wide variant at all — the
+  // move is confined to compact ZOOMED windows, where a span that used to land
+  // exactly on 8 ticks steps up to the next clock-friendly step instead.
+  //
+  // Pinned rather than narrated, because it is the one place the gutter ruling
+  // changed what a reader sees, and an accidental re-narrowing would show up here.
+  it("gives the compact zoom one label slot fewer than the old gutter did", () => {
+    const geo = intradayGeometry(model(), "compact", { from: 480, to: 590 });
+    const ticks = axisTicks(geo);
+    // 110 minutes: 8 ticks at a 15-minute step fitted the old 310-unit plot; the
+    // 295-unit one takes the 20-minute step and 6 ticks.
+    expect(ticks[1] - ticks[0]).toBe(20);
+    expect(ticks.length).toBeLessThanOrEqual(7);
+    // The wide variant is untouched: it loses 16.5 units and still affords 9.
+    expect(
+      axisTicks(intradayGeometry(model(), "wide", { from: 480, to: 590 }))
+    ).toEqual([480, 495, 510, 525, 540, 555, 570, 585]);
   });
 
   it("picks a fine, clock-friendly step for a zoomed window", () => {
@@ -468,6 +631,34 @@ describe("workout block names (#1512 B)", () => {
 });
 
 describe("gutter labels", () => {
+  // THE GUTTER HOLDS EVERY ROW NAME WHOLE (#4852, owner ruling 2026-09-03).
+  //
+  // "Practice" is 52.80 units at the compact label size and 60.00 at the wide one;
+  // the gutters that held "Sleep" and "Train" gave it 37.80 and 43.50, so it drew
+  // as `Prac…`. The ruling widened `padLeft` rather than renaming the row, and this
+  // is the assertion that keeps it widened: it reads `INTRADAY_ROW_NAMES` — the
+  // same list the chart draws from — so a fourth row, a bigger label size or a
+  // narrowed gutter all fail here rather than shipping a shortened row name.
+  //
+  // The claim is the TEXT, not merely that something was placed: `rowLabel` returns
+  // a label either way, and `Prac…` is a placed label that passes every containment
+  // assertion below it.
+  it.each(VARIANTS)("%s elides no row name", (variant) => {
+    const geo = intradayGeometry(
+      model({ sleep: [sleepBlock()], blocks: [workout(), practice()] }),
+      variant
+    );
+    for (const name of Object.values(INTRADAY_ROW_NAMES)) {
+      const placed = rowLabel(geo, name);
+      expect(placed, `${variant} dropped "${name}"`).not.toBeNull();
+      expect(placed!.text, `${variant} elided "${name}"`).toBe(name);
+      // …and still inside the gutter: widening it is not licence to paint over
+      // the plot's left edge.
+      expect(placed!.start).toBeGreaterThanOrEqual(-1e-9);
+      expect(placed!.end).toBeLessThanOrEqual(geo.plotLeft + 1e-9);
+    }
+  });
+
   it.each(VARIANTS)("%s row labels stay out of the plot", (variant) => {
     const geo = intradayGeometry(model({ sleep: [sleepBlock()] }), variant);
     const label = rowLabel(geo, "Sleep")!;
@@ -508,5 +699,158 @@ describe("reading a value at a minute (#1515)", () => {
   it("reports nothing across a wear gap rather than the far side's value", () => {
     expect(nearestHrPoint(segments, 700, 5)).toBeNull();
     expect(nearestHrPoint([], 700, 5)).toBeNull();
+  });
+});
+
+// PRACTICE SESSIONS GET THEIR OWN ROW (#4852). A morning workout and an evening
+// sauna stacked on one line read as one kind of thing; the block keeps its shape
+// and its colour and changes line.
+describe("the practice row (#4852)", () => {
+  it("puts Practice directly under Train, and each block on its own line", () => {
+    const geo = intradayGeometry(
+      model({ blocks: [workout(), practice()] }),
+      "wide"
+    );
+    expect(geo.practiceTop).toBeGreaterThanOrEqual(geo.workTop + geo.workH);
+    expect(blockRowTop(geo, workout())).toBe(geo.workTop);
+    expect(blockRowTop(geo, practice())).toBe(geo.practiceTop);
+  });
+
+  // The collapse rule every other row already follows, applied to both halves of
+  // the split: a day with only practices reserves NO Train strip, and an HR-only
+  // day reserves neither. `tickTop - workTop` is the height the two rows cost, so
+  // a row that collapsed but kept its strip cannot pass.
+  it.each([
+    ["an activity and a practice", [workout(), practice()], true, true],
+    ["only practices", [practice()], false, true],
+    ["only activities", [workout()], true, false],
+    ["heart rate only", [], false, false],
+  ] as const)("%s", (_label, blocks, train, sessions) => {
+    const geo = intradayGeometry(model({ blocks: [...blocks] }), "wide");
+    expect([geo.hasWorkouts, geo.hasPractice]).toEqual([train, sessions]);
+    const rows = (train ? 1 : 0) + (sessions ? 1 : 0);
+    expect(geo.tickTop - geo.workTop).toBe(rows * (geo.workH + geo.rowGap));
+    // A practice-only day starts its row where Train would have been, rather than
+    // leaving an empty line above it.
+    expect(geo.practiceTop).toBe(
+      geo.workTop + (train ? geo.workH + geo.rowGap : 0)
+    );
+  });
+
+  // Names are placed PER ROW. The single shared row layout this replaced drops one
+  // of a same-minute pair — asserted here so the split is proved against the
+  // behaviour it fixes, not only against itself.
+  it("keeps both names when an activity and a practice share a minute", () => {
+    const a = workout({ startMinute: 480, endMinute: 525 });
+    const p = practice({ startMinute: 482, endMinute: 520 });
+    const geo = intradayGeometry(model({ blocks: [a, p] }), "compact");
+    expect(blockLabels(geo, [a, p])).toHaveLength(1);
+    expect(blockLabels(geo, [a])).toHaveLength(1);
+    expect(blockLabels(geo, [p])).toHaveLength(1);
+  });
+});
+
+// WHEEL AND PINCH (#4852). Both gestures are one span multiplier about one minute,
+// so both are this pair of pure functions and the component only maps an event to
+// them. NULL is the interesting return: it means the gesture moves nothing and the
+// caller must NOT preventDefault, which is the whole difference between a chart a
+// reader can scroll past and a scroll trap.
+describe("wheel and pinch zoom (#4852)", () => {
+  it("hands the full day's zoom-out back to the page and keeps its zoom-in", () => {
+    expect(zoomViewAt(FULL_DAY_VIEW, 600, 1.3)).toBeNull();
+    expect(zoomViewAt(FULL_DAY_VIEW, 600, 1)).toBeNull();
+    expect(zoomViewAt(FULL_DAY_VIEW, 600, 0.5)).toEqual({
+      from: 300,
+      to: 1020,
+    });
+  });
+
+  it.each([
+    // The pointer's minute keeps its position in the plot — the anchoring that
+    // makes a wheel feel like it zooms where you are pointing.
+    [
+      "about the middle",
+      { from: 480, to: 600 },
+      540,
+      0.5,
+      { from: 510, to: 570 },
+    ],
+    [
+      "about the left edge",
+      { from: 480, to: 600 },
+      480,
+      0.5,
+      { from: 480, to: 540 },
+    ],
+    [
+      "out, clamped to midnight",
+      { from: 0, to: 120 },
+      0,
+      2,
+      { from: 0, to: 240 },
+    ],
+    [
+      "out, clamped to the day's end",
+      { from: 1320, to: 1440 },
+      1440,
+      2,
+      { from: 1200, to: 1440 },
+    ],
+    [
+      "in, clamped to the narrowest window",
+      { from: 0, to: 12 },
+      6,
+      0.5,
+      { from: 1, to: 11 },
+    ],
+    [
+      "out, clamped to the whole day",
+      { from: 600, to: 660 },
+      630,
+      100,
+      { from: 0, to: MINUTES_IN_DAY },
+    ],
+  ])("zooms %s", (_label, view, at, factor, expected) => {
+    expect(zoomViewAt(view, at, factor)).toEqual(expected);
+  });
+
+  // Already AT a clamp: the window cannot move, so the page keeps the event rather
+  // than the chart swallowing a scroll it has no use for.
+  it("returns null when the window is already at a clamp", () => {
+    expect(zoomViewAt({ from: 0, to: MIN_ZOOM_MINUTES }, 5, 0.5)).toBeNull();
+    expect(zoomViewAt({ from: 480, to: 600 }, 540, 0)).toBeNull();
+  });
+
+  it.each([
+    [
+      "slides a zoomed window",
+      { from: 480, to: 600 },
+      30,
+      { from: 510, to: 630 },
+    ],
+    ["clamps to midnight", { from: 480, to: 600 }, -600, { from: 0, to: 120 }],
+    [
+      "rounds to whole minutes",
+      { from: 480, to: 600 },
+      30.4,
+      { from: 510, to: 630 },
+    ],
+  ])("%s", (_label, view, delta, expected) => {
+    const next = panView(view, delta)!;
+    expect(next).toEqual(expected);
+    // A pan is not a zoom: the span is the one thing it may never change.
+    expect(next.to - next.from).toBe(view.to - view.from);
+  });
+
+  it.each([
+    ["the whole day is already visible", FULL_DAY_VIEW, 60],
+    [
+      "the window is against the edge it is pushed toward",
+      { from: 1380, to: 1440 },
+      100,
+    ],
+    ["the nudge is under a minute", { from: 480, to: 600 }, 0.4],
+  ])("pans nothing when %s", (_label, view, delta) => {
+    expect(panView(view, delta)).toBeNull();
   });
 });

@@ -7,7 +7,6 @@
 // the client components receive the pre-built values as props.
 
 import {
-  getIntakeItems,
   getIntakeDoses,
   getRetiredDoses,
   getTakenDoseTimes,
@@ -28,15 +27,18 @@ import {
   getOtotoxicWarnings,
   getDrugAllergyWarnings,
   getSafetyScreeningCoverage,
-  getGenomicVariants,
   getFindingSuppressions,
   getAdministrationsForItemsOnDate,
-  getPediatricFormContext,
   getPrnMedicationsForQuickLog,
   getMedicationFamilyStates,
   getEffectiveActiveSituations,
 } from "@/lib/queries";
-import { effectiveMaxDailyCount, redoseWindowStatus } from "@/lib/prn-redose";
+import { loadIntakeFormContext } from "@/lib/intake-form-context";
+import {
+  ceilingWindowEndMinute,
+  effectiveMaxDailyCount,
+  redoseWindowStatus,
+} from "@/lib/prn-redose";
 import { now as clockNow } from "@/lib/clock";
 import { redoseActionIsPrimary, redoseCardLabel } from "@/lib/redose-format";
 import { prnQuickLogRedoseStatus } from "@/lib/prn-redose";
@@ -62,7 +64,6 @@ import {
   buildMedicationList,
   type MedicationListRow,
 } from "@/lib/medication-list";
-import { today } from "@/lib/db";
 import { parseRxcuiIngredients } from "@/lib/rxnorm";
 import { lastNDates, zonedDateParts, parseUtcSql } from "@/lib/date";
 import {
@@ -228,7 +229,11 @@ export function loadMedicationsData(
   weightUnit: WeightUnit = "kg",
   timeFormat: TimeFormat = "12h"
 ): MedicationsData {
-  const intakeItems = getIntakeItems(profileId);
+  // The intake form's whole subject context, from the ONE loader every add door calls
+  // (#4609) — the page no longer assembles a second copy of the stack, the variants
+  // and the pediatric figures for its own mounts.
+  const intakeForm = loadIntakeFormContext(profileId, weightUnit);
+  const intakeItems = intakeForm.allIntakeItems;
   const doses = getIntakeDoses(profileId);
   const dosesByItem = new Map<number, IntakeDose[]>();
   for (const d of doses) {
@@ -243,7 +248,12 @@ export function loadMedicationsData(
     retiredByItem.set(d.item_id, arr);
   }
 
-  const todayStr = today(profileId);
+  // The loader's day, not a second today() call (#4609). This is the todayStr handed
+  // to the add workspace and the med card, where the form seeds `started_on` from it
+  // while reading the weight-staleness day from `pediatric.today`. Two independent
+  // today() calls could straddle profile-local midnight and seed a start date one day
+  // off the day the staleness gate used; one value cannot.
+  const todayStr = intakeForm.todayStr;
   const tz = getTimezone(profileId);
   const dayZone = profileDayZone(profileId);
   const takenTimes = getTakenDoseTimes(profileId, todayStr);
@@ -326,7 +336,12 @@ export function loadMedicationsData(
   // FAMILY's latest administration / combined count / most conservative confirmed
   // max (an OTC ibuprofen dose holds the Rx item's "Redose OK"); the day label
   // stays the item's OWN administrations.
-  const familyStates = getMedicationFamilyStates(profileId, todayStr);
+  // The ceiling counters read the trailing 24 HOURS (#4686), so the gather takes the
+  // instant rather than the day; the per-item day label below still reads `todayStr`.
+  const familyStates = getMedicationFamilyStates(
+    profileId,
+    ceilingWindowEndMinute(nowInstant)
+  );
   const prnInfoFor = (
     s: IntakeItem
   ): {
@@ -364,7 +379,7 @@ export function loadMedicationsData(
       : null;
     const fam = familyStates.get(s.id);
     const famLast = fam?.latestGivenAt ?? last;
-    const famCount = fam?.countToday ?? admins.length;
+    const famCount = fam?.countInWindow ?? admins.length;
     let redoseLine: string | null = null;
     let redosePrimary = true;
     // The daily max is optional (#1458): the interval + an administration are all
@@ -377,7 +392,7 @@ export function loadMedicationsData(
           fam?.minConfirmedMax
         ),
         latestGivenAt: parseUtcSql(famLast),
-        countToday: famCount,
+        countInWindow: famCount,
         now: nowInstant,
         // The family's amount-aware exposure (#1854): the card's "N of M" line
         // reads milligrams when a mg/day max is confirmed and amounts are known.
@@ -517,31 +532,6 @@ export function loadMedicationsData(
     allPgxWarnings
   );
 
-  const stackItems: InteractionItem[] = intakeItems.map((s) => ({
-    id: s.id,
-    name: s.name,
-    rxcui: s.rxcui,
-    rxcuiIngredients: parseRxcuiIngredients(s.rxcui_ingredients),
-    ingredients: (ingredientsByItem.get(s.id) ?? []).map((g) => g.name),
-    active: !!s.active,
-  }));
-  const pgxVariants: PgxVariantInput[] = getGenomicVariants(profileId)
-    .filter((v) => v.result_type === "pharmacogenomic")
-    .map((v) => ({
-      id: v.id,
-      gene: v.gene,
-      star_allele: v.star_allele,
-      genotype: v.genotype,
-      variant: v.variant,
-      interpretation: v.interpretation,
-      notes: v.notes,
-    }));
-
-  const pediatric: PediatricFormContext = getPediatricFormContext(
-    profileId,
-    weightUnit
-  );
-
   // Today panel PRN rows — the recently-used ordering the dashboard quick-log uses,
   // with the same pre-formatted labels (one computation).
   const prnToday = getPrnMedicationsForQuickLog(profileId).map((m) => {
@@ -601,9 +591,9 @@ export function loadMedicationsData(
     taken,
     skipped,
     allIntakeItems: intakeItems,
-    stackItems,
-    pgxVariants,
-    pediatric,
+    stackItems: intakeForm.stackItems,
+    pgxVariants: intakeForm.pgxVariants,
+    pediatric: intakeForm.pediatric,
     suppressedFoodKeys,
     interactionWarnings,
     pgxWarnings,

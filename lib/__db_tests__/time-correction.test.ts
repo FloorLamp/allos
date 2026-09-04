@@ -22,6 +22,7 @@ import {
   it,
   vi,
 } from "vitest";
+import { ceilingWindowEndMinute } from "@/lib/prn-redose";
 import { stubTelegramSends } from "./telegram-spies";
 
 import { db, today } from "@/lib/db";
@@ -852,17 +853,19 @@ describe("a dose reminder carries correction chips after a confirm (#2020)", () 
     markDoseTaken(pid, doseId, itemId, today(pid), "page");
     stampTap(doseLogs(pid)[0].id, "2026-08-05 19:20:00");
 
-    const armedBefore = getMedicationFamilyStates(pid, today(pid)).get(
-      itemId
-    )!.latestGivenAt!;
+    const armedBefore = getMedicationFamilyStates(
+      pid,
+      ceilingWindowEndMinute(new Date())
+    ).get(itemId)!.latestGivenAt!;
     const anchor = doseLogs(pid)[0].id;
     await handleCallbackQuery(
       cq("5552032", `dosetime:${pid}:${anchor}:60`, [])
     );
 
-    const armedAfter = getMedicationFamilyStates(pid, today(pid)).get(
-      itemId
-    )!.latestGivenAt!;
+    const armedAfter = getMedicationFamilyStates(
+      pid,
+      ceilingWindowEndMinute(new Date())
+    ).get(itemId)!.latestGivenAt!;
     // The arming dose the safety read consults is the corrected one …
     expect(armedAfter).not.toBe(armedBefore);
     // … and it is EARLIER, so the computed freshness can only shrink. A correction of a
@@ -1054,7 +1057,8 @@ describe("the picker reaches last evening the next morning (#3010)", () => {
     // …and the step down to yesterday IS among them.
     expect(levelOne).toContain(`foodtimeat:${pid}:${anchor}:prev`);
 
-    // Level two: yesterday's whole day, each hour day-qualified on the wire.
+    // Level two: yesterday below level one's floor, each hour day-qualified on the wire
+    // — 24 hours less the four (20:00–23:00) level one already reaches at 08:00 (#3060 §3).
     editText.mockClear();
     await handleCallbackQuery(
       cq("5553010", `foodtimeat:${pid}:${anchor}:prev`, levelOneKb)
@@ -1064,7 +1068,10 @@ describe("the picker reaches last evening the next morning (#3010)", () => {
     expect(levelTwo).toContain(
       `foodtimeat:${pid}:${anchor}:p:2026-08-05:18:00`
     );
-    expect(levelTwo.filter((t) => t.includes(":p:"))).toHaveLength(24);
+    expect(levelTwo).not.toContain(
+      `foodtimeat:${pid}:${anchor}:p:2026-08-05:20:00`
+    );
+    expect(levelTwo.filter((t) => t.includes(":p:"))).toHaveLength(20);
     // The buttons say which day they mean — the grid always crossed midnight and never
     // said so (#2206 applied to the day half).
     const label = (levelTwoKb as { text: string; callback_data?: string }[][])
@@ -1130,9 +1137,10 @@ describe("the picker reaches last evening the next morning (#3010)", () => {
     // …and the PRN redose window arms off the CORRECTED instant, which is the safe
     // direction (#2020): a dose actually taken fourteen hours ago is not fresh, and the
     // safety read now says so instead of believing the morning tap.
-    const armed = getMedicationFamilyStates(pid, today(pid)).get(
-      itemId
-    )!.latestGivenAt!;
+    const armed = getMedicationFamilyStates(
+      pid,
+      ceilingWindowEndMinute(new Date())
+    ).get(itemId)!.latestGivenAt!;
     expect(armed).toBe("2026-08-05T16:00:00Z");
   });
 
@@ -1208,12 +1216,16 @@ describe("the picker reaches last evening the next morning (#3010)", () => {
     expect(String(answer.mock.calls[0][1])).toContain("nothing was changed");
 
     // And the freshly drawn keyboard offers the day it is now showing, so the user's
-    // way through is a re-opened picker rather than a dead end.
+    // way through is a re-opened picker rather than a dead end. At 00:05 level one
+    // reaches 20:00 yesterday itself, so level two starts under its floor (#3060 §3).
     editText.mockClear();
     await handleCallbackQuery(
       cq("5553013", `foodtimeat:${pid}:${anchor}:prev`, levelTwoKb)
     );
     expect(pickerTokens(lastEditedKeyboard())).toContain(
+      `foodtimeat:${pid}:${anchor}:p:2026-08-05:10:00`
+    );
+    expect(pickerTokens(lastEditedKeyboard())).not.toContain(
       `foodtimeat:${pid}:${anchor}:p:2026-08-05:20:00`
     );
   });

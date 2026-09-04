@@ -389,6 +389,77 @@ describe("FoodLogBar projection publication", () => {
     expect(submitted.get("date")).toBe(yesterday);
   });
 
+  // THE TYPED AMOUNT IS THE TYPIST'S; THE TOTAL IS THE DAY'S (#4934, owner ruling
+  // 2026-09-03). Driven through the real provider and day picker: whatever is in the
+  // box survives a day move and posts against the day now shown, while the readout
+  // re-seeds to the day moved to. The cleared row is the other half of "only a submit
+  // or an explicit clear discards them" — an emptied box must stay empty across the
+  // move rather than being re-seeded from `lastPreset` or from the day's total.
+  it.each([
+    { typed: "17", posts: "17" },
+    { typed: "", posts: null },
+  ])(
+    "carries a $typed-gram box across a day move and logs it on the day now shown",
+    async ({ typed, posts }) => {
+      const yesterday = "2026-08-23";
+      mountBar({
+        days: [DAY, { ...DAY, date: yesterday, label: "Yesterday" }],
+        proteinQuickAdd: {
+          initialGramsByDate: { [DATE]: 5, [yesterday]: 0 },
+          lastPreset: 30,
+        },
+      });
+
+      const input = screen.getByTestId(
+        "protein-quickadd-input"
+      ) as HTMLInputElement;
+      fireEvent.change(input, { target: { value: typed } });
+      expect(screen.getByTestId("protein-quickadd-grams").textContent).toBe(
+        "5"
+      );
+
+      fireEvent.click(screen.getByTestId("food-day-yesterday"));
+
+      // The SAME node, not a fresh one: a remount is what discarded the value, and
+      // a value-only check would pass against a remount that happened to re-seed
+      // the same string.
+      expect(screen.getByTestId("protein-quickadd-input")).toBe(input);
+      expect(input.value).toBe(typed);
+      // The day's own datum still follows the day.
+      expect(screen.getByTestId("protein-quickadd-grams").textContent).toBe(
+        "0"
+      );
+
+      const add = screen.getByTestId(
+        "protein-quickadd-add"
+      ) as HTMLButtonElement;
+      fireEvent.click(add);
+
+      if (posts === null) {
+        // An emptied box offers nothing to log, so the add door stays shut.
+        expect(add.disabled).toBe(true);
+        await waitFor(() =>
+          expect(actions.addProteinGrams).not.toHaveBeenCalled()
+        );
+        return;
+      }
+      await waitFor(() =>
+        expect(actions.addProteinGrams).toHaveBeenCalledOnce()
+      );
+      const submitted = actions.addProteinGrams.mock.calls[0][0] as FormData;
+      expect(submitted.get("grams")).toBe(posts);
+      expect(submitted.get("date")).toBe(yesterday);
+      // And the readout then holds the server's authoritative total for the day
+      // moved to. A seed that re-applied on any render rather than on a day change
+      // would drag this back to the day's starting 0.
+      await waitFor(() =>
+        expect(screen.getByTestId("protein-quickadd-grams").textContent).toBe(
+          "30"
+        )
+      );
+    }
+  );
+
   it("publishes the authoritative receipt for a tap committed before passive effects", async () => {
     const outcome = {
       ok: true,
@@ -1678,7 +1749,10 @@ describe("FoodLogBar composed usual bundle", () => {
     doses,
   });
 
-  function mount(seeded: ReturnType<typeof offer>[]) {
+  function mount(
+    seeded: ReturnType<typeof offer>[],
+    habit: Record<FoodSlot, string[]> = HABIT
+  ) {
     return render(
       <TimezoneProvider tz="UTC">
         <ActiveProfileProvider profileId={7}>
@@ -1690,7 +1764,7 @@ describe("FoodLogBar composed usual bundle", () => {
                   today={DATE}
                   days={[DAY, otherDay]}
                   groupsBySlot={BOTH}
-                  usualBySlot={HABIT}
+                  usualBySlot={habit}
                   usualRoutine={{ date: DATE, offers: seeded }}
                   slot="Midday"
                   slotBoundaries={{ midday: 660, evening: 900 }}
@@ -1770,6 +1844,98 @@ describe("FoodLogBar composed usual bundle", () => {
         .map((t) => t.textContent)
         .join(" ")
     ).toContain("1 dose taken");
+  });
+
+  // THE SCOOP IS A MEMBER OF THE FOOD HALF HERE TOO (#4379, owner ruling 2026-09-02:
+  // "protein behaves exactly like a food group"). This page is the one host that
+  // derives the food half CLIENT-side, off the habitual set rather than off the offer
+  // the other hosts read, so the ruling has to be true in a second computation — and
+  // nothing pinned it here. The member stands only while BOTH halves say it does, so
+  // the second case below is the converse and not a second scenario: same habitual set,
+  // server offer silent about grams, member gone. Slugs are asserted too because the
+  // reserved key is a member of the NAME and never of the posted group list.
+  it.each([
+    [30, "Cruciferous vegetables, Berries and +30g protein + Creatine"],
+    [null, "Cruciferous vegetables and Berries + Creatine"],
+  ])(
+    "names the scoop as a food member when the offer promises %s",
+    (grams, phrase) => {
+      mount([offer("Midday", [DOSE], grams)], {
+        ...HABIT,
+        Midday: ["__protein__", "cruciferous", "berries"],
+      });
+      expect(screen.getByTestId("food-usual-names").textContent).toBe(phrase);
+      expect(
+        screen.getByTestId("food-usual-offer").getAttribute("data-groups")
+      ).toBe("cruciferous,berries");
+    }
+  );
+
+  // ── A BUNDLE WHOSE WHOLE FOOD HALF IS THE SCOOP (#4765) ────────────────────
+  //
+  // The gate here asked for a catalog GROUP while `usualRoutineOffer` asks for a food
+  // MEMBER, and the scoop is a member (#4379). These two cases pin the rule at this
+  // component's own boundary: its PROPS. Whether the app can hand it a habitual set with
+  // no resolvable group in it is a question two modules upstream, and the answer today
+  // is no — `getFoodRegularity` drops unresolvable slugs before the measure, so every
+  // non-scoop member of `usualBySlot` is a real group, and `usualFoodOffer`'s
+  // FOOD_USUAL_MIN_GROUPS floor counts the scoop, so a standing half of two-or-more
+  // members always leaves one. The fixture below therefore reaches a state no seeded
+  // profile currently produces, and that is stated rather than hidden: what it pins is
+  // that the component answers the props it is GIVEN by the rule the offer functions
+  // use, not by a second rule of its own. It fails against the old gate.
+  // A habitual set whose only members are the scoop and a slug this mount's catalog does
+  // not name — the shape of a half with no group left in it.
+  const RETIRED_HABIT = {
+    ...HABIT,
+    Midday: ["__protein__", "retired-grains"],
+  } as Record<FoodSlot, string[]>;
+  const retiredOffer = (proteinGrams: number | null) => ({
+    ...offer("Midday", [DOSE], proteinGrams),
+    food: [
+      { slug: "retired-grains", name: "retired-grains" },
+      ...(proteinGrams === null
+        ? []
+        : [{ slug: "__protein__", name: `+${proteinGrams}g protein` }]),
+    ],
+  });
+
+  it("offers and posts a bundle whose only food member is the scoop", async () => {
+    appActions.logUsualRoutine.mockResolvedValue({
+      ok: true,
+      window: "Midday",
+      date: DATE,
+      groups: [],
+      doses: [{ doseId: 9, name: "Creatine", outcome: "logged" }],
+      protein: 30,
+    });
+    mount([retiredOffer(30)], RETIRED_HABIT);
+    const button = screen.getByTestId("food-usual-offer");
+    expect(screen.getByTestId("food-usual-names").textContent).toBe(
+      "+30g protein + Creatine"
+    );
+    // No slugs to post, and that is not the same as nothing to write: the grams are the
+    // write, and the action's shape gate counts them (app/(app)/actions.ts).
+    expect(button.getAttribute("data-groups")).toBe("");
+    await act(async () => fireEvent.click(button));
+    const sent = appActions.logUsualRoutine.mock.calls[0][0] as FormData;
+    expect(sent.get("groups")).toBe("");
+    expect(sent.get("protein_grams")).toBe("30");
+    expect(sent.get("dose_ids")).toBe("9");
+    expect(
+      screen
+        .getAllByTestId("toast")
+        .map((t) => t.textContent)
+        .join(" ")
+    ).toContain("+30g protein");
+  });
+
+  // THE CONVERSE, so the gate cannot have become "always". Same habitual set, same
+  // unresolvable slug, and a server offer that promises no grams: the food half has no
+  // member at all and the whole control goes, exactly as a dose-only "usual" always has.
+  it("still renders no bundle when the unresolvable half promises no scoop", () => {
+    mount([retiredOffer(null)], RETIRED_HABIT);
+    expect(screen.queryByTestId("food-usual-offer")).toBeNull();
   });
 
   // THE STICKY STATEMENT DOES NOT RIDE THE BUNDLE, and this is the converse of the

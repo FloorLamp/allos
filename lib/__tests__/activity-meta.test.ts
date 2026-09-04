@@ -5,6 +5,7 @@ import {
   inferFreeTextType,
   legacyActivityName,
   minutesBetween,
+  overnightMinutesBetween,
   requiresDistance,
   resolveActivityType,
   shiftHHMM,
@@ -226,6 +227,27 @@ describe("minutesBetween", () => {
     expect(minutesBetween("10:00", "09:00")).toBeNull();
     expect(minutesBetween("", "09:00")).toBeNull();
     expect(minutesBetween("x:y", "09:00")).toBeNull();
+  });
+});
+
+describe("overnightMinutesBetween", () => {
+  it("returns the same-day span unchanged when end is after start", () => {
+    expect(overnightMinutesBetween("08:00", "09:30")).toBe(90);
+    expect(overnightMinutesBetween("10:15", "10:45")).toBe(30);
+  });
+
+  it("rolls an end at or before start into the next day (#4976)", () => {
+    // The issue's own worked example: 22:32 -> 06:22 is 7h 50m.
+    expect(overnightMinutesBetween("22:32", "06:22")).toBe(470);
+    expect(overnightMinutesBetween("23:00", "00:00")).toBe(60);
+    expect(overnightMinutesBetween("23:59", "00:00")).toBe(1);
+  });
+
+  it("returns null for a same-instant pair or invalid/missing input", () => {
+    expect(overnightMinutesBetween("22:00", "22:00")).toBeNull();
+    expect(overnightMinutesBetween("", "09:00")).toBeNull();
+    expect(overnightMinutesBetween("22:00", "")).toBeNull();
+    expect(overnightMinutesBetween("x:y", "09:00")).toBeNull();
   });
 });
 

@@ -1,4 +1,4 @@
-import { db } from "../db";
+import { db, today } from "../db";
 import { ALL_ROWS } from "../trends";
 import { cache } from "../request-cache";
 import { snapshotCached } from "../read-snapshot";
@@ -6,11 +6,12 @@ import { clampPage, pageCount, pageOffset } from "../pagination";
 import { tickCached } from "../tick-cache";
 import {
   SOURCE_PREFERENCE,
+  foldDaysBySourceMean,
   pickOneSourcePerDay,
   pickRowsOneOriginPerSourceDay,
   pickRowsOneSourcePerDay,
   pickRowsOneSourcePerWindow,
-  type SourceSelection,
+  type DailySourcePoint,
 } from "../metric-sources";
 import {
   DOCUMENTS_SOURCE_CLASS,
@@ -24,6 +25,7 @@ import {
   localDayOf,
   localDayRange,
   localDaySpan,
+  localMinuteProjector,
   offsetSegments,
 } from "../local-day-window";
 import {
@@ -31,7 +33,6 @@ import {
   isDstTransitionDay,
   parseUtcSql,
   zonedDateParts,
-  zonedMinuteStr,
 } from "../date";
 import type { ArrivalNight } from "../notifications/digest-schedule";
 import { metricAggregation } from "../metric-buckets";
@@ -117,15 +118,36 @@ export function getManualBodyMetricStatedAt(
 // in SQL: a JS filter after a LIMIT would let a run of weightless days starve the
 // window (e.g. a daily-HR syncer with weekly weigh-ins). weight_kg is non-null on
 // every returned row. Backs the dashboard + weight-page weight/BMI charts.
-export function getWeights(
+//
+// REQUEST-CACHED because one dashboard render asks for the same window five times
+// (#3369 item 2): the nutrition bodyweight reads, the training-detail series and the
+// per-day source election all want the profile's weight history, and none of them can
+// see that another already read it. Keyed on the arguments, so the 60-day window and
+// the 365-day one stay separate reads. NO WRITER CAN INTERVENE (lib/queries/AGENTS.md):
+// nothing that writes `body_metrics` reads this within one request — the fitness and
+// goal actions read the latest value BEFORE their insert and never re-read after it.
+// Callers may not mutate what they get back; today every one of them maps or filters
+// first, which is what makes a shared array safe to hand out.
+//
+// The default lives on the EXPORTED wrapper rather than inside the memo. React's
+// `cache()` keys on positional arguments, so `getWeights(p)` and `getWeights(p, 365)`
+// would be two entries for one question; normalizing the arity here means the callers
+// that pass the default explicitly and the ones that omit it share a read.
+const getWeightsCached = cache(function getWeights(
   profileId: number,
-  limit = 365
+  limit: number
 ): (BodyMetric & { weight_kg: number })[] {
   return db
     .prepare(
       "SELECT * FROM body_metrics WHERE profile_id = ? AND weight_kg IS NOT NULL ORDER BY date DESC LIMIT ?"
     )
     .all(profileId, limit) as (BodyMetric & { weight_kg: number })[];
+});
+export function getWeights(
+  profileId: number,
+  limit = 365
+): (BodyMetric & { weight_kg: number })[] {
+  return getWeightsCached(profileId, limit);
 }
 
 // Weight rows collapsed to ONE source per day (the profile's primary source first,
@@ -288,6 +310,34 @@ export function getBodyMetricsPage(
   };
 }
 
+// ── THE DAY THAT IS NOT OVER (#4924) ────────────────────────────────────────
+//
+// A daily bucket over a STREAM is a running total until local midnight, and every
+// reader here handed today's half-day back looking exactly like a finished one.
+// On the owner's morning screenshot the Heart Rate card's headline read 59 bpm —
+// an overnight-plus-morning average — off a last point that fell off a cliff, and
+// Active Calories spiked for the same reason in the other direction. The as-of
+// stamp could not help: it is a STALENESS gate, so a today-dated reading is
+// treated as maximally trustworthy exactly when it is least finished.
+//
+// The flag is on the ROW because only the reader knows which day the profile is
+// living in, and it is set only where the bucket genuinely accumulates: an
+// additive daily total and the HR minute aggregate. A point reading taken today
+// (a height, a tape measure) is complete the moment it is taken, and calling it
+// partial would be a second, wrong claim.
+//
+// A metric with no row for today is untouched — there is nothing to qualify.
+
+/** A daily row's day is the profile's own today, so the bucket is still filling. */
+function markPartialToday<T extends { date: string }>(
+  profileId: number,
+  rows: T[]
+): (T & { partial?: true })[] {
+  const last = rows.at(-1);
+  if (!last || last.date !== today(profileId)) return rows;
+  return [...rows.slice(0, -1), { ...last, partial: true as const }];
+}
+
 // The body-metrics rows recorded FOR one day. A different question from a page of
 // history: the Body census asks it to decide whether a day's composition number is
 // one physical reading (and may therefore print that reading's clock) or a blend of
@@ -336,7 +386,7 @@ function getMetricDailyTotalsUncached(
   profileId: number,
   metric: string,
   limitDays = 180
-): { date: string; value: number }[] {
+): { date: string; value: number; partial?: true }[] {
   const priority = getMetricSourcePriority(profileId);
   if (metricAggregation(metric) === "AVG") {
     const chosen = priority[metric];
@@ -366,12 +416,18 @@ function getMetricDailyTotalsUncached(
       .all(profileId, metric, limitDays) as { date: string; value: number }[];
     return rows.reverse();
   }
-  return getAdditiveMetricDailyTotalsBatchWithPriority(
+  // An additive daily total ACCUMULATES through the local day, so today's is a
+  // running number rather than the day's (#4924). The AVG branch above returns
+  // point readings, which are complete when taken.
+  return markPartialToday(
     profileId,
-    [metric],
-    limitDays,
-    priority
-  ).get(metric)!;
+    getAdditiveMetricDailyTotalsBatchWithPriority(
+      profileId,
+      [metric],
+      limitDays,
+      priority
+    ).get(metric)!
+  );
 }
 export const getMetricDailyTotals = snapshotCached(
   "metrics.daily-totals",
@@ -1147,17 +1203,6 @@ function hrDayAggregates(
   return mergeHrDayRows(out);
 }
 
-// A stored instant as the profile-local minute stamp ('YYYY-MM-DDTHH:MM') the pure
-// consumers compare against. The read-time twin of what ingest used to STORE — which
-// is the whole #94 correction: the projection is recomputed from the absolute instant
-// on every read, so changing the profile timezone re-reads history correctly instead
-// of silently re-meaning it. Falls back to the raw stamp if it will not parse, so a
-// surprise row is visible rather than dropped.
-function localMinuteStamp(tz: string, ts: string): string {
-  const d = parseUtcSql(ts);
-  return d ? zonedMinuteStr(tz, d) : ts;
-}
-
 // The profile's newest and oldest stored instants, or null when it has no HR at all.
 // Two indexed seeks — the open-ended readers need real data bounds to build a window
 // from, and scanning to find them would undo the point.
@@ -1223,7 +1268,7 @@ function recentHrCutoff(profileId: number, limitDays: number): string | null {
 export function getHrDailySummary(
   profileId: number,
   limitDays = 180
-): { date: string; avg: number; min: number; max: number }[] {
+): { date: string; avg: number; min: number; max: number; partial?: true }[] {
   // Bound the GROUP BY to the limitDays most-recent days-with-data (issue #387).
   // The JS slice below still picks one source per day over exactly this window.
   const cutoff = recentHrCutoff(profileId, limitDays);
@@ -1244,8 +1289,11 @@ export function getHrDailySummary(
   ).sort((a, b) => (a.date < b.date ? -1 : 1));
   // Match SQLite LIMIT semantics used by the other Trends queries: a negative
   // limit is the ALL_ROWS sentinel, not Array.slice(1).
-  return (limitDays < 0 ? picked : picked.slice(-limitDays)).map(
-    ({ date, avg, min, max }) => ({ date, avg, min, max })
+  return markPartialToday(
+    profileId,
+    (limitDays < 0 ? picked : picked.slice(-limitDays)).map(
+      ({ date, avg, min, max }) => ({ date, avg, min, max })
+    )
   );
 }
 
@@ -1258,7 +1306,7 @@ export function getHrDailySummaryInRange(
   profileId: number,
   from?: string,
   to?: string
-): { date: string; avg: number; min: number; max: number }[] {
+): { date: string; avg: number; min: number; max: number; partial?: true }[] {
   if (!from && !to) return getHrDailySummary(profileId, -1);
 
   // One window whichever end is open: an absent bound is resolved to the profile's
@@ -1273,15 +1321,18 @@ export function getHrDailySummaryInRange(
   const { startUtc, endUtc } = localDaySpan(tz, fromDay, toDay);
   const rows = hrDayAggregates(profileId, tz, startUtc, endUtc);
 
-  return pickRowsOneSourcePerDay(
-    rows,
-    resolutionFor(profileId, "heart_rate"),
-    (row) => row.date,
-    (row) => row.source,
-    (row) => row.n
-  )
-    .sort((left, right) => (left.date < right.date ? -1 : 1))
-    .map(({ date, avg, min, max }) => ({ date, avg, min, max }));
+  return markPartialToday(
+    profileId,
+    pickRowsOneSourcePerDay(
+      rows,
+      resolutionFor(profileId, "heart_rate"),
+      (row) => row.date,
+      (row) => row.source,
+      (row) => row.n
+    )
+      .sort((left, right) => (left.date < right.date ? -1 : 1))
+      .map(({ date, avg, min, max }) => ({ date, avg, min, max }))
+  );
 }
 
 // The most recent day that has any HR buckets, or null.
@@ -1300,7 +1351,8 @@ export function getLatestHrDay(profileId: number): string | null {
 export function getHrMinutes(profileId: number, date: string): HrMinute[] {
   // The local day as a half-open UTC range — 23, 24 or 25 hours wide depending on
   // DST, which is precisely what a `substr` day could not express.
-  const { startUtc, endUtc } = localDayRange(getTimezone(profileId), date);
+  const tz = getTimezone(profileId);
+  const { startUtc, endUtc } = localDayRange(tz, date);
   const rows = db
     .prepare(
       `SELECT * FROM hr_minutes
@@ -1313,8 +1365,8 @@ export function getHrMinutes(profileId: number, date: string): HrMinute[] {
   // training-zone windows, the ride series — compares it against activity times that
   // are profile-local wall clocks. Storage is UTC, presentation is local, and the
   // conversion happens HERE, once, instead of each surface guessing.
-  const tz = getTimezone(profileId);
-  const local = rows.map((r) => ({ ...r, ts: localMinuteStamp(tz, r.ts) }));
+  const toLocalMinute = localMinuteProjector(tz, startUtc, endUtc);
+  const local = rows.map((r) => ({ ...r, ts: toLocalMinute(r.ts) ?? r.ts }));
   return pickRowsOneSourcePerDay(
     local,
     resolutionFor(profileId, "heart_rate"),
@@ -1323,21 +1375,34 @@ export function getHrMinutes(profileId: number, date: string): HrMinute[] {
   );
 }
 
-// Per-minute HR buckets (ts + bpm) within an inclusive [since, until] date range
-// (until omitted = open-ended), one source per day — the shared read behind the
-// training-zone aggregations (lib/queries/zones.ts), so zone minutes can't
-// double-count a workout recorded by two HR sources at once (issue #14).
-export function getHrMinutesInRange(
+// Per-minute HR buckets (ts + bpm) within an inclusive [since, until] date range, one
+// source per day — the shared read behind the training-zone aggregations
+// (lib/queries/zones.ts), so zone minutes can't double-count a workout recorded by two
+// HR sources at once (issue #14). Both bounds are profile-local days.
+//
+// `until` IS REQUIRED (#5069). It used to default to the day of the profile's LAST
+// STORED instant, which reads as "to now" only while the last row is roughly now — a
+// coincidence, not a bound. A device stamping ahead (#5035) widened this scan with
+// nothing saying so: #5069 records a snapshot whose rows ran into the future, where the
+// zone reads materialised 144,000 minutes and kept 86. Every caller already knew the
+// window it meant, so the open-ended form is DELETED rather than guarded — the
+// parameter is the bound, and a caller that forgets one no longer compiles.
+//
+// REQUEST-CACHED because a dashboard asks for the SAME window more than once (#5010):
+// `getDayLoadInputs` and `getIntensitySignal` read the same 42 days on one render, and
+// each read is a wide materialisation. `cache()` is identity outside a Next request
+// (lib/request-cache.ts says so deliberately), so a notify tick and the DB tier behave
+// exactly as before. Keyed on the arguments, so two spellings of one span would stay
+// separate reads — with `until` required, the trailing window has one spelling.
+export const getHrMinutesInRange = cache(function getHrMinutesInRange(
   profileId: number,
   since: string,
-  until?: string
+  until: string
 ): { ts: string; bpm: number }[] {
   const tz = getTimezone(profileId);
-  const bounds = hrInstantBounds(profileId);
-  if (!bounds) return [];
-  const lastDay = until ?? localDayOf(tz, bounds.last);
-  if (!lastDay || lastDay < since) return [];
-  const { startUtc, endUtc } = localDaySpan(tz, since, lastDay);
+  if (!hrInstantBounds(profileId)) return [];
+  if (until < since) return [];
+  const { startUtc, endUtc } = localDaySpan(tz, since, until);
   const rows = db
     .prepare(
       `SELECT ts, bpm, source FROM hr_minutes
@@ -1351,14 +1416,22 @@ export function getHrMinutesInRange(
   // Projected to the profile-local minute before anything groups or compares it —
   // same boundary rule as getHrMinutes above. Once projected, the day is the stamp's
   // own prefix again and the training-zone windows line up as they always did.
-  const local = rows.map((r) => ({ ...r, ts: localMinuteStamp(tz, r.ts) }));
+  //
+  // Through the window's OFFSET SEGMENTS rather than through `Intl` per row (#5010).
+  // The zone's offset is constant inside a segment, so the local minute is the stored
+  // instant plus that constant; the segments cost ~90 `Intl` probes for a 90-day
+  // window against the 125,000 `formatToParts` calls this line used to make. Identical
+  // output, including on the transition instant itself — pinned minute by minute
+  // against `zonedMinuteStr` in lib/__tests__/local-day-window.test.ts.
+  const toLocalMinute = localMinuteProjector(tz, startUtc, endUtc);
+  const local = rows.map((r) => ({ ...r, ts: toLocalMinute(r.ts) ?? r.ts }));
   return pickRowsOneSourcePerDay(
     local,
     resolutionFor(profileId, "heart_rate"),
     (r) => r.ts.slice(0, 10),
     (r) => r.source
   ).map(({ ts, bpm }) => ({ ts, bpm }));
-}
+});
 
 function bodyMetricColumn(metric: BodyMetricKind): string {
   return metric === "weight"
@@ -1375,7 +1448,16 @@ function bodyMetricColumn(metric: BodyMetricKind): string {
 // source is returned, as before. With the 'documents' class (#1640) this is
 // "the newest scan, whichever report it came from". A STRICT choice (#1642)
 // keeps the honest empty state instead of falling back to another source.
-export function getLatestBodyMetricDated(
+//
+// REQUEST-CACHED (#3369 item 2): three of the profile's body stats are asked for by
+// the passport, the weight-band dosing context and the dashboard's own summary within
+// one render, each unaware of the others, and a `chosen` primary source makes it two
+// statements rather than one. Keyed on (profileId, metric), so a household render
+// still pays one read per profile per metric — the fan-out is real work and stays.
+// NO WRITER CAN INTERVENE (lib/queries/AGENTS.md): the two actions that read this
+// (a fitness entry's VO2 estimate, a measured goal's baseline) read it before their
+// own insert and never again.
+export const getLatestBodyMetricDated = cache(function getLatestBodyMetricDated(
   profileId: number,
   metric: BodyMetricKind
 ): { value: number; date: string } | null {
@@ -1400,7 +1482,7 @@ export function getLatestBodyMetricDated(
     )
     .get(profileId) as { value: number; date: string } | undefined;
   return row ?? null;
-}
+});
 
 // The most recent (non-null) recorded value for a body metric, or null.
 export function getLatestBodyMetric(
@@ -1415,12 +1497,13 @@ export function getLatestBodyMetric(
 // report the same day (body_metrics keys on (profile_id, date, source)), so each
 // day keeps ONE source's reading (primary source first — issue #14); several
 // same-day rows from the kept source (possible for manual rows, whose NULL
-// source is exempt from the unique key) are averaged.
+// source is exempt from the unique key) are averaged. A day another source ALSO
+// reported carries `sources` — who won and what the others said (#2653 state 6).
 function getBodyMetricDailySeriesUncached(
   profileId: number,
   metric: BodyMetricKind,
   limit = 365
-): { date: string; value: number }[] {
+): DailySourcePoint[] {
   const col = bodyMetricColumn(metric);
   const rows = db
     .prepare(
@@ -1429,7 +1512,7 @@ function getBodyMetricDailySeriesUncached(
         ORDER BY date DESC LIMIT ?`
     )
     .all(profileId, limit) as BodyMetricRow[];
-  return foldBodyMetricDaily(rows, resolutionFor(profileId, metric));
+  return foldDaysBySourceMean(rows, resolutionFor(profileId, metric));
 }
 export const getBodyMetricDailySeries = snapshotCached(
   "metrics.body-daily-series",
@@ -1438,36 +1521,15 @@ export const getBodyMetricDailySeries = snapshotCached(
   getBodyMetricDailySeriesUncached
 );
 
+// The raw shape both body-metric day reads hand to `foldDaysBySourceMean`, which
+// keeps ONE source's reading per day (primary source first — #14), averages any
+// remaining same-day rows from the kept source, and reports the sources the election
+// set aside (#2653 state 6) rather than discarding them. The full-series read and the
+// latest-two trend read (#1367) call the same fold, so the rollup cannot drift.
 interface BodyMetricRow {
   date: string;
   source: string | null;
   value: number;
-}
-
-// Collapse raw body_metrics rows to one value per day (oldest→newest): keep ONE
-// source's reading per day (primary source first — #14), then average any remaining
-// same-day rows from the kept source. Shared by the full-series read and the
-// latest-two trend read (#1367) so both compute the daily rollup ONE way.
-function foldBodyMetricDaily(
-  rows: BodyMetricRow[],
-  selection: SourceSelection
-): { date: string; value: number }[] {
-  const picked = pickRowsOneSourcePerDay(
-    rows,
-    selection,
-    (r) => r.date,
-    (r) => r.source
-  );
-  const byDate = new Map<string, { sum: number; n: number }>();
-  for (const r of picked) {
-    const acc = byDate.get(r.date) ?? { sum: 0, n: 0 };
-    acc.sum += r.value;
-    acc.n += 1;
-    byDate.set(r.date, acc);
-  }
-  return [...byDate.entries()]
-    .map(([date, { sum, n }]) => ({ date, value: sum / n }))
-    .sort((a, b) => (a.date < b.date ? -1 : 1));
 }
 
 // The latest `dateLimit` DAILY points for a body metric, oldest→newest — the exact
@@ -1483,7 +1545,7 @@ export function getLatestBodyMetricDailyPoints(
   profileId: number,
   metric: BodyMetricKind,
   dateLimit = 2
-): { date: string; value: number }[] {
+): DailySourcePoint[] {
   const col = bodyMetricColumn(metric);
   const rows = db
     .prepare(
@@ -1496,7 +1558,7 @@ export function getLatestBodyMetricDailyPoints(
           )`
     )
     .all(profileId, profileId, dateLimit) as BodyMetricRow[];
-  return foldBodyMetricDaily(rows, resolutionFor(profileId, metric));
+  return foldDaysBySourceMean(rows, resolutionFor(profileId, metric));
 }
 
 // ---- Per-source comparison series (issue #14) ----

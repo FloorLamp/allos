@@ -8,7 +8,6 @@ import {
   practiceConsistencyText,
   type PracticeWeekVerdict,
 } from "@/lib/trends-practices";
-import VisualizationDetails from "@/components/VisualizationDetails";
 import Disclosure from "@/components/Disclosure";
 import { StateCells, StateLegend } from "@/components/StateCells";
 
@@ -147,10 +146,6 @@ export default function PracticeTrends({
           )}
         </div>
       </Disclosure>
-      <VisualizationDetails
-        label={`${practice.name} weekly details`}
-        items={practice.weeks.map((week) => weekCellTitle(week, weekly))}
-      />
     </div>
   );
 }

@@ -2,6 +2,9 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { IconArrowsMaximize } from "@tabler/icons-react";
 import type { AppRoute } from "@/lib/hrefs";
+import type { CorrectionFieldId } from "@/lib/bulk-correction";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
+import ChartCaptionBand from "./ChartCaptionBand";
 
 // THE full-size chart card (issue #1488).
 //
@@ -75,6 +78,7 @@ export default function ChartCard({
   hideTitle = false,
   headline,
   description,
+  about,
   note,
   detailHref,
   detailTitle,
@@ -87,6 +91,8 @@ export default function ChartCard({
   surfaceClass = "card",
   plotHeightClass = "sm:h-64",
   footer,
+  footerAction,
+  fixRangeField,
   children,
 }: {
   title: string;
@@ -106,7 +112,15 @@ export default function ChartCard({
   headline?: ReactNode;
   // A one-line explanation under the title, inside the tap target.
   description?: ReactNode;
-  // An honesty caption ABOVE the plot, OUTSIDE the tap target (it is often long).
+  // A constant explainer about what this card IS — the same sentence on every
+  // visit. Rendered as the title's own info glyph (InfoTooltipIcon), never as
+  // running prose under the header (#4927). A fact about the data belongs in
+  // `note` instead.
+  about?: string;
+  // A FACT ABOVE the plot, OUTSIDE the tap target — it is about the data in
+  // front of the reader and changes with it (the practice-consistency
+  // sentence). A constant explainer about what the card IS belongs in `about`,
+  // not here (#4927).
   note?: ReactNode;
   // Where the card taps through to. `null` is legal ONLY with a same-line
   // `detail-none: <why>` comment at the call site — see the guard scan.
@@ -134,8 +148,16 @@ export default function ChartCard({
   surfaceClass?: string;
   // The DESKTOP plot height (`sm:` and up). Mobile is always the square.
   plotHeightClass?: string;
-  // Rendered under the plot (a goal-projection caption, a legend, a footnote).
+  // Rendered under the plot (a goal-projection caption, a legend, a footnote), in
+  // the card's own footer band beneath the chart's captions (#4924). Nothing here
+  // brings its own top margin: the band spaces its children.
   footer?: ReactNode;
+  // A right-aligned affordance at the foot of the band (a cross-link).
+  footerAction?: ReactNode;
+  // The `?fix=` key the review page accepts for this card's metric, if it has
+  // one. Renders the bulk-correction door WHEN the chart is naming a live outage
+  // — see ChartCaptionBand.
+  fixRangeField?: CorrectionFieldId;
   // The plot. Never wrapped in a link — see the tap contract above.
   children: ReactNode;
 }) {
@@ -143,15 +165,18 @@ export default function ChartCard({
   const heading = (
     <>
       <span className="flex min-w-0 flex-col sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
-        <Heading
-          className={
-            hideTitle
-              ? "sr-only"
-              : "truncate font-semibold text-slate-800 transition-colors group-hover:text-brand-800 group-hover:underline dark:text-slate-100 dark:group-hover:text-brand-300"
-          }
-        >
-          {title}
-        </Heading>
+        <span className="flex min-w-0 items-baseline gap-1">
+          <Heading
+            className={
+              hideTitle
+                ? "sr-only"
+                : "truncate font-semibold text-slate-800 transition-colors group-hover:text-brand-800 group-hover:underline dark:text-slate-100 dark:group-hover:text-brand-300"
+            }
+          >
+            {title}
+          </Heading>
+          {about != null && <InfoTooltipIcon label={about} />}
+        </span>
         {headline != null && (
           <span
             className="shrink-0 text-lg font-semibold leading-tight tabular-nums text-slate-900 dark:text-slate-100"
@@ -224,16 +249,22 @@ export default function ChartCard({
         </p>
       )}
 
-      {/* The plot. A plain sibling of the header link — no anchor wraps it, so a tap
-          here is tooltip inspection, not navigation. */}
-      <div
-        data-testid="chart-card-plot"
-        className={`chart-card-plot aspect-square min-w-0 sm:aspect-auto ${plotHeightClass}`}
+      {/* The plot and the band beneath it. The plot is a plain sibling of the
+          header link — no anchor wraps it, so a tap here is tooltip inspection,
+          not navigation — and the band is where every sentence under a chart
+          goes, whether the card wrote it or the chart handed it up (#4924). */}
+      <ChartCaptionBand
+        footer={footer}
+        footerAction={footerAction}
+        fixRangeField={fixRangeField}
       >
-        {children}
-      </div>
-
-      {footer}
+        <div
+          data-testid="chart-card-plot"
+          className={`chart-card-plot aspect-square min-w-0 sm:aspect-auto ${plotHeightClass}`}
+        >
+          {children}
+        </div>
+      </ChartCaptionBand>
     </div>
   );
 }

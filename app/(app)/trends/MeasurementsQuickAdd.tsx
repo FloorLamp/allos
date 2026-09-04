@@ -11,6 +11,8 @@ import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { useTemperatureUnitDetection } from "@/components/useTemperatureUnitDetection";
 import TemperatureField from "@/components/vitals/TemperatureField";
 import WeightField from "@/components/vitals/WeightField";
+import TimeRangeFields from "@/components/TimeRangeFields";
+import { useTimezone } from "@/components/TimezoneProvider";
 import {
   measurementsSavedText,
   validateBodyMetricInput,
@@ -41,6 +43,7 @@ import {
 import type { TemperatureUnit, WeightUnit } from "@/lib/settings";
 import { TREND_METRIC_META } from "@/lib/trend-metrics";
 import InlineError from "@/components/InlineError";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import {
   addMeasurements,
   type MeasurementsSaveResult,
@@ -78,8 +81,9 @@ function refusedMessage(
 // itself after a save; the page mounts simply reset and stay put.
 //
 // ── The layout is INTRINSIC, never a viewport breakpoint (issue #2014) ───────
-// Those three hosts are ~400px (the quick-entry BottomSheet, `sm:max-w-md` less its
-// padding), ~912px (the Trends modal, `max-w-5xl`) and a page column. The grid used
+// Those three hosts are the quick-entry BottomSheet, the Trends modal and a page
+// column — and the first two are the SAME declared bucket since #4977, which is a
+// fact about the hosts and not about this file. The grid used
 // `sm:grid-cols-2 lg:grid-cols-4` — VIEWPORT queries, which read the window and know
 // nothing about the box the form is in. At a 1024px window the sheet therefore laid
 // four columns into 400px: 91px each, three-line label wraps, inputs at four
@@ -88,8 +92,15 @@ function refusedMessage(
 // screen got BIGGER, which is why it survived.
 //
 // `repeat(auto-fit, minmax(10.5rem, 1fr))` asks the CONTAINER instead, so it is
-// right in all three hosts and in any host nobody has thought of yet. Two things
-// follow from the same reasoning and are part of the same fix:
+// right in all three hosts and in any host nobody has thought of yet. THAT IS ALSO
+// WHY #4977 IS A ONE-LINE CHANGE SOMEWHERE ELSE: the quick-entry sheet was narrow
+// because its host declared no size and took the default bucket, and declaring `lg`
+// there (components/QuickEntryProvider.tsx's `SHEET`) flows this grid to four
+// fields a row with nothing in this file touched. A breakpoint added here would be
+// the defect above coming back — if a fix for a HOST's width wants a `md:` or `lg:`
+// on the grid below, the host is the thing to fix.
+//
+// Two things follow from the same reasoning and are part of the same fix:
 //   • a unit is not a peer control — it is a suffix INSIDE the field (`bpm`, `%`)
 //     or a two-state toggle on the field's trailing edge (°F/°C, mg/dL) — because
 //     the `input` + `select` flex row is precisely what overflowed;
@@ -99,14 +110,18 @@ function refusedMessage(
 //     time are one field for the same reason.
 //
 // ── Progressive disclosure: three groups, one open ───────────────────────────
-// SEVENTEEN always-empty boxes to collect the one or two readings someone actually
+// EIGHTEEN always-empty boxes to collect the one or two readings someone actually
 // took is what the copy already argues against. (This comment said THIRTEEN, which was
 // the count before #1850, #1851 and #2322 added peak flow, the bed/wake pair,
-// respiratory rate, lean and bone mass, hydration and the waist tape. `LOG_MANIFEST`
-// inherited the stale figure and #4424's body leg corrected both. The form DEFINES
-// nineteen fields — the eighteen in `field` below plus Notes — and renders seventeen at
-// either life stage, since the growth pair swaps in exactly as body fat and HRV swap
-// out; `components/__tests__/body-two-pieces.test.tsx` asserts the pair.) Exactly one group is open on mount,
+// respiratory rate, lean and bone mass, hydration and the waist tape, then SEVENTEEN
+// once those landed. `LOG_MANIFEST` inherited each stale figure and #4424's body leg
+// corrected it in its turn. The form DEFINES nineteen fields — the eighteen in `field`
+// below plus Notes — and renders eighteen labeled boxes at the adult life stage (#4976:
+// the bed/wake pair draws its own two labels, "Bed time" / "Wake time", rather than
+// one shared "Bed & wake" — one field, two boxes, so the rendered count is no longer
+// the field count) and sixteen at the minor's, since the growth pair swaps in exactly
+// as body fat and HRV swap out; `components/__tests__/body-two-pieces.test.tsx` asserts
+// the pair.) Exactly one group is open on mount,
 // chosen by where the person came from: the vitals card opens Vitals, Trends → Overview → body census
 // opens Body, a `?focus=`/`?new=` deep link opens the group holding its field, and
 // the quick-log sheet opens whatever this profile last wrote to (seeded to Vitals).
@@ -192,8 +207,20 @@ export interface MeasurementsQuickAddProps {
   // hydration mismatch.
   defaultGroup?: MeasurementGroup;
   // Scopes that memory to the data subject, so switching profiles doesn't inherit
-  // the other one's open group. Omitted where no memory is wanted.
+  // the other one's open group. Omitted where no memory is wanted. This is a
+  // MEMORY key, not a write signal — it is present on every mount, including an
+  // ordinary acting-profile one, and answers "whose localStorage group" rather
+  // than "is this a cross-profile write." `subjectProfileId` below answers that
+  // second question; do not read this field for it (#4932 postmortem).
   profileId?: number;
+  // The quick-log sheet's chosen subject (#4932), set ONLY when it differs from
+  // the acting profile — distinct from `profileId` above, which is present on
+  // every mount for the memory key regardless of subject. This is the one field
+  // that means "a non-acting subject was chosen": it gates the offline refusal
+  // and is the id stamped as `profile_id` on the write, so `addMeasurements`'s
+  // `gateItemProfile` re-gates THAT profile rather than defaulting to the acting
+  // one. Omitted (not just falsy) on every mount outside the quick-entry sheet.
+  subjectProfileId?: number;
 }
 
 // The last-written group, per profile. A device-local UI preference — which
@@ -231,6 +258,11 @@ function rememberGroup(
   }
 }
 
+// bed_time / wake_time are NOT here (#4976): TimeRangeFields' TimeField mounts hold
+// them as controlled React state (bedTime/wakeTime below), the same reason DateField
+// hosts never appear in this list either — a controlled field keeps its own value
+// across a form action's commit with no pinning trick needed, and resetForm() clears
+// it explicitly rather than relying on the DOM's own reset.
 const UNCONTROLLED_VITAL_FIELDS = [
   "systolic",
   "diastolic",
@@ -238,8 +270,6 @@ const UNCONTROLLED_VITAL_FIELDS = [
   "spo2",
   "temperature",
   "sleep_hours",
-  "bed_time",
-  "wake_time",
   "hrv",
   "respiratory_rate",
   "peak_flow",
@@ -260,6 +290,7 @@ export default function MeasurementsQuickAdd({
   presentation = "card",
   defaultGroup,
   profileId,
+  subjectProfileId,
 }: MeasurementsQuickAddProps) {
   const toast = useToast();
   const { enqueue } = useOfflineQueue();
@@ -277,6 +308,13 @@ export default function MeasurementsQuickAdd({
     date: defaultDate,
     statedAt: defaultStatedAt,
   }));
+  const tz = useTimezone();
+  // The night's two clocks (#1851, #4976), controlled the same way `when` is —
+  // `TimeRangeFields` posts them through its own hidden inputs (`bed_time`/
+  // `wake_time`, unchanged names), so the write below reads the pair exactly as
+  // it always has.
+  const [bedTime, setBedTime] = useState("");
+  const [wakeTime, setWakeTime] = useState("");
   const tempUnitDetection = useTemperatureUnitDetection(temperatureUnit);
   // HRV is an adult measure here for the same reason body fat is (#493): a
   // growth-tracked profile's Body surfaces don't carry it, so the field doesn't
@@ -383,6 +421,14 @@ export default function MeasurementsQuickAdd({
       return v === null || String(v).trim() === "" ? null : String(v);
     };
     const date = String(formData.get("date") ?? "").trim();
+    // #4932: the quick-log sheet's subject chip mounts this SAME form cross-profile.
+    // `subjectProfileId` present means a non-acting subject was chosen; stamp it
+    // so `addMeasurements`'s `gateItemProfile` re-gates THAT profile rather than
+    // defaulting to the acting one. NOT `profileId` — that field is present on
+    // every mount (it is the memory-key scope) and would stamp an explicit
+    // subject onto an ordinary acting-profile write.
+    if (subjectProfileId != null)
+      formData.set("profile_id", String(subjectProfileId));
 
     const body = {
       weight: s("weight"),
@@ -511,6 +557,10 @@ export default function MeasurementsQuickAdd({
         waistUnit.options[0].defaultSelected = true;
       }
       form.reset();
+      // form.reset() only reaches uncontrolled fields — the night's two clocks are
+      // React state now (#4976) and clear themselves here instead.
+      setBedTime("");
+      setWakeTime("");
     };
     const clearQueuedBodyFields = (): void => {
       const form = formRef.current;
@@ -621,6 +671,19 @@ export default function MeasurementsQuickAdd({
       return "queued";
     };
 
+    // The queue is stamped to the acting profile and carries no subject (same as
+    // MoodForm's identical guard) — a non-acting subject's save must fail honestly
+    // offline rather than queue a write that could replay onto somebody else.
+    // `subjectProfileId`, not `profileId`: the latter is set on every mount (the
+    // memory-key scope) and would refuse the acting profile's own offline save.
+    if (
+      subjectProfileId != null &&
+      typeof navigator !== "undefined" &&
+      navigator.onLine === false
+    ) {
+      setError("You're offline — reconnect to save these measurements.");
+      return;
+    }
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
       const captured = await queueOffline();
       if (captured === "queued") return;
@@ -635,7 +698,10 @@ export default function MeasurementsQuickAdd({
     try {
       saved = await addMeasurements(stampLoggedVia(formData));
     } catch (err) {
-      if (shouldQueueOffline(navigator.onLine !== false, err)) {
+      if (
+        subjectProfileId == null &&
+        shouldQueueOffline(navigator.onLine !== false, err)
+      ) {
         const captured = await queueOffline();
         if (captured === "queued") return;
         if (captured !== "unqueueable") {
@@ -852,8 +918,25 @@ export default function MeasurementsQuickAdd({
     // A blood pressure is ONE reading typed as two numbers — one field, two inputs
     // and a slash. Adjacency used to be an ordering convention against a grid that
     // reflows freely; here it is structural.
+    //
+    // AND IT HOLDS TWO CONTROLS, so it takes two tracks WHERE THERE ARE TWO
+    // (#4977 item 2). A track is sized for one input; splitting one between two of
+    // them plus a slash and a unit left each under the length of its own
+    // placeholder, which then truncated mid-word — the field said "Sy" and "Dia"
+    // where it means systolic and diastolic. Two tracks give each input a track's
+    // room, and the placeholders can say the words.
+    //
+    // The `sleepWindow` cell above spans two tracks UNCONDITIONALLY (#4991), which
+    // is the same idea one gate short — at a one-column width it invents the narrow
+    // implicit track described on GRID_CLASS. It is left alone here: the Bed & wake
+    // pair is #4976's surface and out of this issue's scope.
     bloodPressure: (
-      <Field key="blood-pressure" label="Blood Pressure" htmlFor="m-systolic">
+      <Field
+        key="blood-pressure"
+        label="Blood Pressure"
+        htmlFor="m-systolic"
+        tracks={2}
+      >
         <div className="flex items-center gap-1.5">
           <input
             id="m-systolic"
@@ -862,7 +945,7 @@ export default function MeasurementsQuickAdd({
             min="0"
             name="systolic"
             aria-label="Systolic"
-            placeholder="Sys"
+            placeholder="Systolic"
             className="input min-w-0 flex-1"
           />
           <span aria-hidden className="text-slate-400">
@@ -875,7 +958,7 @@ export default function MeasurementsQuickAdd({
             min="0"
             name="diastolic"
             aria-label="Diastolic"
-            placeholder="Dia"
+            placeholder="Diastolic"
             className="input min-w-0 flex-1"
           />
           <span className="shrink-0 text-xs font-medium text-slate-500 dark:text-slate-400">
@@ -942,30 +1025,34 @@ export default function MeasurementsQuickAdd({
     // structural pairing a blood pressure gets. This is the whole of what the Sleep
     // Regularity Index needs; the hours field below cannot give it, because a
     // duration says nothing about WHEN.
+    //
+    // TimeRangeFields in its `overnight` mode (#4976 item 2): a bed time is always
+    // followed, never preceded, by its wake, so a wake clock earlier than bed means
+    // the next day rather than a refusal. The pair's own two labels ("Bed time" /
+    // "Wake time", the issue's own ruling) replace the outer "Bed & wake" label this
+    // Field used to draw — `e2e/manual-vitals.spec.ts` locates them by those labels
+    // either way, so its locators are untouched. `col-span-2`: this grid's own
+    // per-field column is 10.5rem at its narrowest (`GRID_CLASS` below), too tight
+    // for two styled clocks side by side — the two native inputs this replaces
+    // didn't need the room a real text input plus its picker button does.
     sleepWindow: (
-      <Field key="sleep-window" label="Bed & wake" htmlFor="m-bed-time">
-        <div className="flex items-center gap-1.5">
-          <input
-            id="m-bed-time"
-            type="time"
-            name="bed_time"
-            aria-label="Bed time"
-            data-testid="measurements-bed-time"
-            className="input min-w-0 flex-1"
-          />
-          <span aria-hidden className="text-slate-400">
-            –
-          </span>
-          <input
-            id="m-wake-time"
-            type="time"
-            name="wake_time"
-            aria-label="Wake time"
-            data-testid="measurements-wake-time"
-            className="input min-w-0 flex-1"
-          />
-        </div>
-      </Field>
+      <div key="sleep-window" className="col-span-2 min-w-0">
+        <TimeRangeFields
+          idPrefix="m-sleep"
+          startTime={bedTime}
+          endTime={wakeTime}
+          tz={tz}
+          timeError={false}
+          derivableDurationMin={null}
+          startName="bed_time"
+          endName="wake_time"
+          startLabel="Bed time"
+          endLabel="Wake time"
+          overnight
+          onStartTime={setBedTime}
+          onEndTime={setWakeTime}
+        />
+      </div>
     ),
     sleep: (
       <Field key="sleep" label="Sleep" htmlFor="m-sleep">
@@ -1112,6 +1199,12 @@ export default function MeasurementsQuickAdd({
     sleep: [field.sleepWindow, field.sleep, ...(showHrv ? [field.hrv] : [])],
   };
 
+  // ONE sentence for what this form is (#4977 item 3): the same string whichever
+  // presentation renders it, and whichever mount is rendering.
+  const about = metric
+    ? `Add one manual ${metric.label.toLowerCase()} reading. It will appear alongside synced readings.`
+    : "Today’s body and vitals readings — fill in only what you measured. Shows up alongside synced readings.";
+
   return (
     <form
       id="measurements-quick-add"
@@ -1125,26 +1218,26 @@ export default function MeasurementsQuickAdd({
       data-life-stage={showGrowth ? "minor" : "adult"}
     >
       <input type="hidden" name="weight_unit" value={weightUnit} />
+      {/* WHAT THE FORM IS FOR, AS THE TITLE'S GLYPH (#4977 item 3, on #4918
+          ruling 4's precedent). It was a paragraph, and it said the same sentence
+          on every visit forever while holding the widest line under the title — the
+          shape that rule moves to an info affordance. `about` is authored ONCE and
+          read by both branches below; the two hosts used to carry their own copy of
+          it, which is how a sentence gets edited in one place and not the other.
+
+          IN A DIALOG THE HEADING IS THE HOST'S (#3361), so the glyph is the whole
+          of what this form contributes to that row — a heading of its own here
+          would print the panel's name twice, which is the thing #3361 removed. */}
       {presentation === "card" ? (
         <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-              {metric ? `Log ${metric.label}` : "Log measurements"}
-            </h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              {metric
-                ? `Add one manual ${metric.label.toLowerCase()} reading. It will appear alongside synced readings.`
-                : "Today’s body and vitals readings — fill in only what you measured. Shows up alongside synced readings."}
-            </p>
-          </div>
+          <h2 className="flex items-center gap-1 font-semibold text-slate-800 dark:text-slate-100">
+            {metric ? `Log ${metric.label}` : "Log measurements"}
+            <InfoTooltipIcon label={about} data-testid="measurements-help" />
+          </h2>
           {headerSlot}
         </div>
       ) : (
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          {metric
-            ? `Add one manual ${metric.label.toLowerCase()} reading. It will appear alongside synced readings.`
-            : "Today’s body and vitals readings — fill in only what you measured. Shows up alongside synced readings."}
-        </p>
+        <InfoTooltipIcon label={about} data-testid="measurements-help" />
       )}
 
       {/* The submission's one date + one optional Time (#2235 decision 3): the
@@ -1254,20 +1347,43 @@ export default function MeasurementsQuickAdd({
 // INTRINSIC columns (#2014): sized by the CONTAINER, not by the window, because
 // this one form is mounted in hosts ~400px, ~912px and a page column wide. Picking
 // a better breakpoint value only moves which host is wrong.
+//
+// `@container` IS PART OF THE SAME RULE, and it is what makes a two-track cell safe
+// (#4977 item 2). `auto-fit` counts its columns from the container and IGNORES
+// spans, so where only ONE column fits, a cell asking for two makes the grid invent
+// a second — an implicit track, sized `auto` from that cell's content. Measured at a
+// 320px viewport that produced `168px 82px`: a real column beside an invented 82px
+// one, and the next single-control field landed in the 82px. So a span is gated on
+// the CONTAINER having room for a second real column (21.75rem = two 10.5rem tracks
+// and the 0.75rem gap — the same arithmetic `auto-fit` itself does), which is the
+// #2014 rule applied to spans rather than an exception to it. A viewport query here
+// would be the defect above coming back.
 const GRID_CLASS =
-  "grid gap-3 grid-cols-[repeat(auto-fit,minmax(10.5rem,1fr))]";
+  "grid gap-3 @container grid-cols-[repeat(auto-fit,minmax(10.5rem,1fr))]";
 
 function Field({
   label,
   htmlFor,
   children,
+  tracks = 1,
 }: {
   label: string;
   htmlFor: string;
   children: ReactNode;
+  // How many of the grid's tracks this field's cell takes. One, unless the cell
+  // holds more than one control (#4977 item 2). Two is a CEILING, not a promise:
+  // the span is container-gated (see GRID_CLASS), so where the grid has only one
+  // real column the cell takes that column and the row is unchanged from a
+  // single-track field's. Measured across five viewports in
+  // e2e/measurements-form-layout.spec.ts.
+  tracks?: 1 | 2;
 }) {
   return (
-    <div className="min-w-0">
+    <div
+      className={
+        tracks === 2 ? "@min-[21.75rem]:col-span-2 min-w-0" : "min-w-0"
+      }
+    >
       <label className="label" htmlFor={htmlFor}>
         {label}
       </label>

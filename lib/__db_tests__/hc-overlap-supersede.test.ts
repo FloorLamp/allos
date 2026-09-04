@@ -1096,8 +1096,9 @@ describe("each batch is processed in ascending started_at order", () => {
       hrMinutes: [],
       activities: [],
       vitals: [],
+      glucoseTrace: [],
       skipped: 0,
-      details: { warnings: [], origins: [] },
+      details: { warnings: [], origins: [], tally: {} },
       pushedAt: null,
     };
     ingestHealthConnectPayload(p, parsed, HC, 2);

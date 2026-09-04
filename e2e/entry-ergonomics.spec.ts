@@ -14,6 +14,11 @@ import {
   settledBoxes,
   settledFill,
 } from "./helpers";
+import {
+  diffRecentActivities,
+  snapshotRecentActivities,
+} from "./shared-profile-guard";
+import { frozenNow } from "./worker-env";
 
 // Pick an activity in the editor's exercise combobox. The option button's text
 // varies with the input state: a partial filter lists options as the name plus a
@@ -81,7 +86,7 @@ test("'Duplicate activity' pre-fills a create form that saves a new activity (#2
 
   // The e2e seed plants a manual "Training Log merge keeper" activity; repeat it.
   const titleRows = page
-    .getByTestId("training-log-row")
+    .getByTestId("history-row")
     .filter({ hasText: "Training Log merge keeper" });
   await expect(titleRows.first()).toBeVisible(); // first-ok: the "Training Log merge keeper" row (filtered) — one match
   const before = await titleRows.count();
@@ -162,150 +167,98 @@ test("Training Log houses its primary in the header and keeps secondary actions 
   expect((await contentContainer.boundingBox())!.width).toBeGreaterThan(1280);
   await page.setViewportSize({ width: 1280, height: 720 });
 
-  // The compact cadence strip shares the routine row and represents exactly the
-  // trailing 14 profile-local days using the Fitness heatmap's density scale.
-  const cadence = page.getByTestId("training-log-active-days");
-  await expect(cadence).toBeVisible();
-  await expect(cadence.getByTestId("active-days-label-expanded")).toBeVisible();
-  await expect(cadence.getByTestId("active-days-label-expanded")).toContainText(
-    /\d+\/21 days active/
-  );
+  // THE CADENCE STRIP AND THE WEEK SUMMARY LEFT THIS TAB (#4079, named
+  // retirements): Overview's This week card owns the week's session count and the
+  // active-days band, under the page's one week definition. Asserted as ABSENCE
+  // here and as presence there — a strip that renders in two places is the
+  // duplication the recomposition removed.
+  await expect(page.getByTestId("training-log-active-days")).toHaveCount(0);
+  await expect(page.getByTestId("training-log-week-summary")).toHaveCount(0);
+  // …and the converse, in the same test, because an absence assertion passes both
+  // on the tree that moved the strip and on the tree that lost it.
+  await page.goto("/training?tab=overview");
   await expect(
-    cadence.locator('[aria-label$="— no workouts"], a[aria-label*="session"]')
-  ).toHaveCount(21);
-  const activeDay = cadence.getByTestId("active-day").first(); // first-ok: an active-day cell in the cadence strip (count asserted above) — order-agnostic
-  await expect(activeDay).toHaveAttribute(
-    "href",
-    /\/training\?tab=log#day-\d{4}-\d{2}-\d{2}/
-  );
-  // The weekly-target chips remain on Overview/Plan (#2892); this row carries
-  // only the literal weekly summary and recent cadence. The heading was renamed by
-  // #3474 ("Weekly routine" → "Weekly targets") — this absence follows the CURRENT
-  // string, or it would go green by naming one nothing renders any more.
-  const routineRow = page.getByTestId("training-log-routine-row");
-  await expect(routineRow.getByText("Weekly targets")).toHaveCount(0);
-  const weekSummary = page.getByTestId("training-log-week-summary");
-  await expect(weekSummary).toContainText(/\d+ sessions?/);
-  await expect(weekSummary).toContainText(/\d+\/7 days active/);
-
-  // The longer window is reserved for the largest practical layout. At an
-  // intermediate desktop width, the strip contracts to its newest 14 days.
-  await page.setViewportSize({ width: 1100, height: 844 });
-  await expect(cadence.getByTestId("active-days-label-compact")).toBeVisible();
-  await expect(cadence.getByTestId("active-days-label-expanded")).toBeHidden();
-  await expect(page.getByTestId("activity-editor-scroll")).toBeHidden();
-  expect(
-    await cadence
-      .locator('[aria-label$="— no workouts"], a[aria-label*="session"]')
-      .evaluateAll(
-        (days) =>
-          days.filter((day) => getComputedStyle(day).display !== "none").length
-      )
-  ).toBe(14);
-  await page.setViewportSize({ width: 1280, height: 720 });
-  await expect(page.getByTestId("activity-editor-scroll")).toBeHidden();
+    page.getByTestId("training-week").getByTestId("training-log-active-days")
+  ).toBeVisible();
+  await page.goto("/training?tab=log");
 
   const actions = page.getByTestId("training-log-actions");
   const addActivity = page.getByTestId("training-log-add-activity");
   const button = page.getByTestId("repeat-last");
   await expect(actions).toContainText("Repeat last");
   await expect(actions).toContainText("Start workout");
-  await expect(actions).not.toContainText("Add activity");
   await expect(addActivity).toBeVisible();
   await expect(addActivity).toHaveAccessibleName("Add activity");
   await expect(button).toBeVisible();
 
-  // The create is the page-header primary. Repeat/start are secondary controls
-  // aligned with search; neither group lives in the editor's scroller.
+  // The create is the page-header primary, and the in-page add stands down beside
+  // it rather than saying the same thing twice (#4014's one-primary-kind rule).
   await expect(
     addActivity.locator(
       'xpath=ancestor::*[@data-testid="training-page-action"][1]'
     )
   ).toHaveCount(1);
   await expect(
-    addActivity.locator(
-      'xpath=ancestor::*[@data-testid="training-log-controls"]'
-    )
-  ).toHaveCount(0);
-  await expect(
-    button.locator('xpath=ancestor::*[@data-testid="training-log-controls"][1]')
-  ).toHaveCount(1);
-  await expect(
-    button.locator('xpath=ancestor::*[@data-testid="activity-editor-scroll"]')
-  ).toHaveCount(0);
+    page.getByTestId("training-log-add-activity-inline")
+  ).toBeHidden();
+
+  // Search is a GET form now (#4079): a filtered Log is a place, so the refinements
+  // are in the URL and the control is a submit rather than a debounced client
+  // filter. It still shares the controls block with the type segments.
   const search = page.getByPlaceholder("Search activities or exercises…");
-  const searchBox = await search.boundingBox();
-  const btnBox = await button.boundingBox();
-  expect(searchBox).not.toBeNull();
-  expect(btnBox).not.toBeNull();
-  expect(searchBox!.width).toBeGreaterThan(320);
-  expect(Math.abs(btnBox!.y - searchBox!.y)).toBeLessThanOrEqual(2);
-  await expect(button).toBeEnabled();
-
-  // Search owns an inline clear action, while activity types behave as one
-  // segmented control with a single reset for all active filters.
+  await expect(
+    search.locator('xpath=ancestor::*[@data-testid="training-log-controls"][1]')
+  ).toHaveCount(1);
   await search.fill("Bench");
-  const clearSearch = page.getByRole("button", { name: "Clear search" });
-  // The control box, not `button-control`'s retired 26px desktop height (#3938).
-  expect((await clearSearch.boundingBox())?.height).toBe(CONTROL_BOX_PX);
-  await clearSearch.click();
-  await expect(search).toHaveValue("");
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await page.waitForURL(/[?&]q=Bench/);
+  await expect(search).toHaveValue("Bench");
+
+  // The type segments are LINKS, so the selected one is the page rather than a
+  // pressed button, and one control clears every refinement at once.
   const types = page.getByRole("group", { name: "Activity type" });
-  await expect(types.getByRole("button", { name: "All" })).toHaveAttribute(
-    "aria-pressed",
-    "true"
+  await types.getByRole("link", { name: "Strength" }).click();
+  await page.waitForURL(/[?&]type=strength/);
+  await expect(types.getByRole("link", { name: "Strength" })).toHaveAttribute(
+    "aria-current",
+    "page"
   );
-  await types.getByRole("button", { name: "Strength" }).click();
-  await page.getByRole("button", { name: "Clear filters" }).click();
-  await expect(types.getByRole("button", { name: "All" })).toHaveAttribute(
-    "aria-pressed",
-    "true"
+  // Scoped through `training-page`, which the STAGED copy has no ancestor of (#4890).
+  // Each Suspense boundary's content lands in a `<div hidden>` on `<body>` before an
+  // inline script relocates it, so through that window this testid exists twice and an
+  // unscoped locator throws a strict-mode violation rather than retrying down to one.
+  // The two clicks above navigate through the log's GET form, which is what puts this
+  // assertion inside the streaming window; #5017's shard refresh made the wait long
+  // enough under load to outlive Playwright's retry. Same one-line scoping #4833
+  // applied to `training-log-search-depth.spec.ts` and `unclassified-activity.spec.ts`;
+  // #4890 still owns the other twenty-one call sites.
+  await page
+    .getByTestId("training-page")
+    .getByTestId("training-log-clear-filters")
+    .click();
+  await page.waitForURL(/\/training\?tab=log$/);
+  await expect(types.getByRole("link", { name: "All" })).toHaveAttribute(
+    "aria-current",
+    "page"
   );
 
-  // Mobile navigation already owns activity creation, so the page-level action
-  // group disappears rather than duplicating all three controls.
+  // ADD SURVIVES AT 390px (#4079). The page-header primary is desktop-only and the
+  // dock owns the standing quick-log, but the Log itself now carries an in-page way
+  // to add — the defect was a reader standing in their own log with no door into it.
   await page.setViewportSize({ width: 390, height: 844 });
-  await search.fill("Bench");
-  await expectPhoneTapTargets(page, "training search clear", [clearSearch]);
-  const searchRow = search.locator("..").locator("..");
-  const [phoneRow, phoneSearch, phoneClear] = await settledBoxes([
-    searchRow,
-    search,
-    clearSearch,
-  ]);
-  expect(phoneSearch.x + phoneSearch.width).toBeLessThanOrEqual(phoneClear.x);
-  expect(phoneClear.x + phoneClear.width).toBeLessThanOrEqual(
-    phoneRow.x + phoneRow.width
-  );
-  await clearSearch.click();
-  await expect(search).toHaveValue("");
-  await expect(cadence.getByTestId("active-days-label-compact")).toBeVisible();
-  expect(
-    await cadence
-      .locator('[aria-label$="— no workouts"], a[aria-label*="session"]')
-      .evaluateAll(
-        (days) =>
-          days.filter((day) => getComputedStyle(day).display !== "none").length
-      )
-  ).toBe(14);
-  await expect(actions).toBeHidden();
   await expect(addActivity).toBeHidden();
+  const inlineAdd = page.getByTestId("training-log-add-activity-inline");
+  await expect(inlineAdd).toBeVisible();
+  await expectPhoneTapTargets(page, "training log inline add", [inlineAdd]);
 
-  // The mobile nav remains through 767px, so page actions must not reappear at
-  // the earlier 640px breakpoint and create duplicate controls.
+  // The mobile nav remains through 767px, so the header primary must not reappear
+  // at the earlier 640px breakpoint and create duplicate controls.
   await page.setViewportSize({ width: 700, height: 844 });
-  await expect(actions).toBeHidden();
   await expect(addActivity).toBeHidden();
+  await expect(inlineAdd).toBeVisible();
   await page.setViewportSize({ width: 800, height: 844 });
-  await expect(actions).toBeVisible();
   await expect(addActivity).toBeVisible();
-  const narrowFiltersBox = await types.boundingBox();
-  const narrowActionsBox = await actions.boundingBox();
-  expect(narrowFiltersBox).not.toBeNull();
-  expect(narrowActionsBox).not.toBeNull();
-  expect(narrowActionsBox!.y).toBeGreaterThan(
-    narrowFiltersBox!.y + narrowFiltersBox!.height
-  );
+  await expect(inlineAdd).toBeHidden();
 });
 
 test("Training header confines Add activity to the Log tab", async ({
@@ -357,7 +310,7 @@ test("edit mode surfaces the exercise's previous sessions (#188)", async ({
   // panel of prior sessions (issue #188: edit mode used to omit it entirely).
   const main = page.getByRole("main");
   const pushRow = main
-    .getByTestId("training-log-row")
+    .getByTestId("history-row")
     .filter({ hasText: "Push day" })
     .first(); // first-ok: the seeded Push day session row (filtered by its title) — order-agnostic
   await expect(pushRow).toBeVisible();
@@ -438,7 +391,7 @@ test("editing cardio duration updates the parent session total", async ({
   // both its parent and visible Running component. Editing the visible field
   // must not resubmit the parent's hidden 28-minute seed.
   const row = page
-    .getByTestId("training-log-row")
+    .getByTestId("history-row")
     .filter({ hasText: "Intervals" })
     .first(); // first-ok: the "Intervals" activity row (filtered by its title) — order-agnostic
   await expect(row).toBeVisible();
@@ -586,7 +539,7 @@ test("the activity form keeps workout entry primary and context visible across b
 
   const pushRow = page
     .getByRole("main")
-    .getByTestId("training-log-row")
+    .getByTestId("history-row")
     .filter({ hasText: "Push day" })
     .first(); // first-ok: the seeded Push day session row (filtered by its title) — order-agnostic
 
@@ -917,7 +870,7 @@ test("a lone sport logged with Start/End auto-fills its Duration and shows real 
   // follow its generated-title link to the canonical page, edit, and delete.
   await page.goto("/training?tab=log");
   const newRow = page
-    .getByTestId("training-log-row")
+    .getByTestId("history-row")
     .filter({ hasText: "Tennis" })
     .filter({ hasText: "55 min" })
     .first(); // first-ok: the Tennis/55-min row THIS spec just logged (filtered) — one match
@@ -1143,6 +1096,12 @@ test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)
 }) => {
   await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
+  // The BEFORE reading for the row-absence assertion at the end (#4741). That claim
+  // used to be a closing COMMENT and CI contradicted it twice, so it is now a diff
+  // over the same snapshot the shared-profile guard reads.
+  const at = frozenNow();
+  const activitiesBefore = snapshotRecentActivities(at);
+
   // Force every saveActivity call to fail at the network layer. saveActivity runs
   // as a Server Action — a POST to the page carrying a `next-action` header; the
   // service worker passes non-GET straight through (public/sw.js), so this is an
@@ -1156,14 +1115,51 @@ test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)
   // the honest "Couldn’t save" indicator (the exact { ok: false } not-owned/invalid
   // branches are pinned directly at the action tier — the single-profile e2e DB
   // can't naturally produce a stale foreign id).
+  //
+  // AN ABORT MODELS A SAVE THAT DID NOT PERSIST, WHICH IS #332's SUBJECT — not a
+  // server that ANSWERS with a rejection. The two reach the form differently:
+  // `{ ok: false }` takes the `!res.ok` branch, an abort throws
+  // `TypeError: Failed to fetch` into the catch and is classified retriable
+  // (`activity-autosave-retriable`, measured on this case). Both end at
+  // `setStatus("error")`, so both raise this indicator — which is why the case is
+  // honest, and why the count below is what says the abort actually happened.
+  //
+  // WHAT THE HANDLER SAW, RECORDED AS IT RAN (#4741). This case has now reded three
+  // times on CI, twice on diffs that cannot reach a route handler, and never once on
+  // this box across 27 runs — so the one thing nobody has is the interception state
+  // inside the runner's browser. Playwright can be asked afterwards for the requests
+  // a PAGE made; it cannot be asked what THIS handler matched, which is the question.
+  // So every field below is written by the handler as it runs, and read at the moment
+  // the poll gives up. Do not delete it because the poll is green: green is when it
+  // costs nothing, and the one run it has to speak for is one nobody can watch.
+  let abortedActionPosts = 0;
+  let routeInstalled = false;
+  const seen = {
+    requests: 0,
+    posts: 0,
+    nextActionHeaders: 0,
+    postPaths: [] as string[],
+  };
   await page.route("**/*", async (route) => {
     const req = route.request();
-    if (req.method() === "POST" && req.headers()["next-action"]) {
-      await route.abort("failed");
-      return;
+    seen.requests += 1;
+    // Counted over EVERY method rather than only POST: an action arriving as
+    // something this discriminator rejects is a shape that would explain a miss, and
+    // a POST-scoped count could not tell that apart from no action at all.
+    const nextAction = Boolean(req.headers()["next-action"]);
+    if (nextAction) seen.nextActionHeaders += 1;
+    if (req.method() === "POST") {
+      seen.posts += 1;
+      seen.postPaths.push(new URL(req.url()).pathname);
+      if (nextAction) {
+        abortedActionPosts += 1;
+        await route.abort("failed");
+        return;
+      }
     }
     await route.continue();
   });
+  routeInstalled = true;
 
   // Open a fresh create form and fill it enough to be savable (same flow as the
   // est-calories spec — see its note on why fields are addressed by testid/role).
@@ -1180,6 +1176,51 @@ test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)
   // hits the aborted request.
   await page.getByTestId("cardio-duration").fill("30");
 
+  // THE FORCED FAILURE IS ASSERTED BEFORE ANYTHING IS CONCLUDED FROM IT (#4741).
+  // A forced failure that does not fire makes every assertion below it a claim
+  // about an ordinary successful save, and the case reads green or red for reasons
+  // that have nothing to do with #332. This is a PRESENCE assertion on a counter
+  // the route handler owns, so it is the same object the abort runs through, and
+  // its ceiling is free: waiting longer cannot invent a POST that was never made.
+  // It comes FIRST so that when this case reds, the report already says whether the
+  // interception applied — the question #4741 was opened to settle.
+  //
+  // The report is assembled INSIDE the polled function, so the failure prints the
+  // state at the poll's LAST READ rather than a reading taken afterwards.
+  //
+  // READ "installed" HONESTLY: `routeInstalled` is near-vacuous by construction —
+  // the `await page.route(...)` above precludes false — so it is there to be visibly
+  // true, not to discriminate. The halves that carry weight are `page.isClosed()`,
+  // which really can be false and takes the handler with it, and `requests`, which
+  // says whether an installed handler is still being REACHED. An installed handler
+  // that saw zero requests is the deaf case; one that saw dozens of them, none
+  // carrying a next-action header, is a different bug entirely — and today both
+  // print "Received: 0" and nothing else.
+  let interception = "the poll never read the handler";
+  const readAbortedActionPosts = () => {
+    interception =
+      `route handler installed=${routeInstalled && !page.isClosed()}; ` +
+      `requests seen=${seen.requests}, of them POSTs=${seen.posts}, ` +
+      `carrying a next-action header=${seen.nextActionHeaders}; ` +
+      `POST paths: ${seen.postPaths.join(" ") || "(none)"}`;
+    return abortedActionPosts;
+  };
+  try {
+    await expect
+      .poll(readAbortedActionPosts, {
+        message:
+          "no Server Action POST was intercepted — the forced failure never fired, " +
+          "so nothing below this line is a test of #332 (see #4741)",
+      })
+      .toBeGreaterThan(0);
+  } catch (failure) {
+    // expect.poll's `message` is fixed when the assertion is CONSTRUCTED, so this is
+    // the only place the state at the miss can reach the failure line.
+    throw new Error(
+      `${(failure as Error).message}\n  interception at the moment of the miss: ${interception}`
+    );
+  }
+
   // The failure must surface as the error indicator (SaveStatus, aria-label
   // "Couldn’t save"), and the success check must never appear.
   // Desktop renders the active indicator in the sticky header; the mobile
@@ -1192,8 +1233,22 @@ test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)
   // contain the word — this pinned the autosave indicator only by luck.
   await expect(page.getByLabel("Saved", { exact: true })).toHaveCount(0);
 
-  // Nothing persisted (the save was forced to fail), so there is no draft row to
-  // clean up — the shared seed DB is left untouched.
+  // NOTHING PERSISTED — ASSERTED, NOT ASSUMED (#4741). One reading, taken at a
+  // moment the two assertions above have made settled: the save has been attempted,
+  // intercepted and answered on screen. No poll — a retrying absence check would
+  // wait out exactly the window a late write lands in.
+  //
+  // It reuses the guard's own snapshot/diff rather than a second query, and does NOT
+  // repeat its repair: `noSharedProfileLeak` (e2e/fixtures.ts) already deletes ADDED
+  // rows in teardown. What this adds is ATTRIBUTION — the guard reads after the
+  // context is gone, and its message cannot say which of this file's two identical
+  // fixtures produced the row. "Running" + 30 min generates
+  // "Afternoon 30 Min Running Session" here, and the est-calories case above builds
+  // the same activity for real, so a bare guard failure names a title both cases mint.
+  expect(
+    diffRecentActivities(activitiesBefore, snapshotRecentActivities(at)).added,
+    "the save was forced to fail, so no activity row may exist (#332/#4741)"
+  ).toEqual([]);
 });
 
 test("bulk-delete rows in Data → Manage, then Undo restores them (#29)", async ({

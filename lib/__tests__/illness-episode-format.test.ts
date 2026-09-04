@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
+  cockpitRecoveryFraction,
+  deriveFeverSeries,
+  cockpitRecoveryHeadline,
+  cockpitSummaryLine,
   doseLaneRoster,
   episodeDayNumber,
   feverTrend,
@@ -436,6 +440,100 @@ describe("orderIllnessCockpits", () => {
   });
 });
 
+// The derived fever row's own edge cases (#4712 item 4). The assembly-tier proof —
+// that a stated fever row makes the derived one yield for THAT DAY only (owner-ruled
+// 2026-09-03, judgement 3) — is in lib/__db_tests__/illness-episode.test.ts; this pins
+// the composition itself, including the `statedFeverDates` suppression below.
+describe("deriveFeverSeries", () => {
+  const reading = (
+    date: string,
+    time: string | null,
+    degF: number,
+    flag: string | null,
+    id?: number
+  ) => ({ id, date, time, degF, flag });
+
+  it.each([
+    {
+      name: "no flagged reading derives nothing",
+      readings: [reading("2026-06-01", "09:00", 99.0, null)],
+      expected: null,
+    },
+    {
+      name: "an unflagged reading on a flagged day is not the day's peak",
+      readings: [
+        reading("2026-06-01", "08:00", 98.4, null),
+        reading("2026-06-01", "20:00", 103.4, "high", 7),
+      ],
+      expected: [["2026-06-01", 103.4, "20:00", 7]],
+    },
+    {
+      name: "the day's PEAK flagged reading wins, whatever order it was taken in",
+      readings: [
+        reading("2026-06-01", "08:00", 103.4, "high", 1),
+        reading("2026-06-01", "20:00", 100.2, "high", 2),
+      ],
+      expected: [["2026-06-01", 103.4, "08:00", 1]],
+    },
+    {
+      name: "a tie keeps the EARLIER reading, the first crossing of the day",
+      readings: [
+        reading("2026-06-01", "08:00", 101.0, "high", 1),
+        reading("2026-06-01", "20:00", 101.0, "high", 2),
+      ],
+      expected: [["2026-06-01", 101.0, "08:00", 1]],
+    },
+    {
+      name: "days come back oldest-first, one row per day",
+      readings: [
+        reading("2026-06-01", "20:00", 100.1, "high", 1),
+        reading("2026-06-02", "08:00", 104.0, "high", 2),
+        reading("2026-06-03", "08:00", 98.6, null, 3),
+      ],
+      expected: [
+        ["2026-06-01", 100.1, "20:00", 1],
+        ["2026-06-02", 104.0, "08:00", 2],
+      ],
+    },
+    {
+      name: "an untimed flagged reading still derives, with a null clock",
+      readings: [reading("2026-06-01", null, 102.0, "high", 4)],
+      expected: [["2026-06-01", 102.0, null, 4]],
+    },
+  ])("$name", ({ readings, expected }) => {
+    const series = deriveFeverSeries(readings);
+    if (expected === null) {
+      expect(series).toBeNull();
+      return;
+    }
+    expect(series).not.toBeNull();
+    expect(series!.source).toBe("derived");
+    expect(series!.symptom).toBe("fever");
+    expect(series!.label).toBe("Fever");
+    // No severity anywhere on the derived arm — that absence is the ruling.
+    expect(series!).not.toHaveProperty("maxSeverity");
+    expect(series!).not.toHaveProperty("points");
+    expect(
+      series!.days.map((d) => [d.date, d.peakDegF, d.time, d.readingId])
+    ).toEqual(expected);
+  });
+
+  it("a date in statedFeverDates yields — per date, not for the whole series (#4712 judgement 3)", () => {
+    const readings = [
+      reading("2026-06-01", "08:00", 103.4, "high", 1),
+      reading("2026-06-02", "08:00", 101.0, "high", 2),
+    ];
+    const series = deriveFeverSeries(readings, new Set(["2026-06-01"]));
+    expect(series).not.toBeNull();
+    expect(series!.days.map((d) => d.date)).toEqual(["2026-06-02"]);
+  });
+
+  it("every flagged date stated yields nothing at all, not a fallback row", () => {
+    const readings = [reading("2026-06-01", "08:00", 103.4, "high", 1)];
+    expect(deriveFeverSeries(readings, new Set(["2026-06-01"]))).toBeNull();
+  });
+});
+
 describe("assignOrderedEpisodeFacts", () => {
   it("assigns overlapping stored facts only to the first ordered episode", () => {
     const temperature = {
@@ -446,6 +544,7 @@ describe("assignOrderedEpisodeFacts", () => {
       flag: "high",
     };
     const symptom = {
+      source: "logged" as const,
       symptom: "cough",
       label: "Cough",
       points: [{ date: "2026-06-04", severity: 2, note: null }],
@@ -496,6 +595,7 @@ describe("assignOrderedEpisodeFacts", () => {
 
   it("presents an explicitly linked symptom only in its owning episode", () => {
     const symptom = {
+      source: "logged" as const,
       symptom: "headache",
       label: "Headache",
       points: [
@@ -596,6 +696,7 @@ describe("illnessTimelineEvents", () => {
         ],
         symptoms: [
           {
+            source: "logged" as const,
             symptom: "cough",
             label: "Cough",
             maxSeverity: 2,
@@ -704,5 +805,95 @@ describe("doseLaneRoster (#2612)", () => {
   it("skips a medication with no administrations, and answers empty for none at all", () => {
     expect(doseLaneRoster([med("Ibuprofen", 0)])).toBe("");
     expect(doseLaneRoster([])).toBe("");
+  });
+});
+
+// ── THE RECOVERY-LED HEADER'S THREE STRINGS (#4752 item 1) ──────────────────
+//
+// The header IS the status, so what it says is decided here rather than in JSX.
+// The cases that matter are the ones where the clock does NOT exist: with nothing
+// measured there is no ring to draw and no sentence about the person that the data
+// has earned, and a ring at zero would look exactly like a ring that does not apply.
+describe("the cockpit recovery header (#4752 item 1)", () => {
+  const recovery = (clearedForHours: number | null, met = false) => ({
+    clearedForHours,
+    thresholdHours: 24,
+    met,
+    label: "Fever-free 22h of 24",
+  });
+
+  it.each([
+    ["no clock at all is the name and nothing more", null, "Dune"],
+    ["nothing measured is the name and nothing more", recovery(null), "Dune"],
+    ["past halfway is nearly there", recovery(12), "Dune is nearly there"],
+    ["short of halfway is on the mend", recovery(11), "Dune is on the mend"],
+    [
+      "a met convention says so outright",
+      recovery(24, true),
+      "Dune is fever-free",
+    ],
+  ] as const)("headline: %s", (_name, input, expected) => {
+    expect(cockpitRecoveryHeadline("Dune", input)).toBe(expected);
+  });
+
+  it.each([
+    ["no clock is undrawable, not zero", null, null],
+    ["nothing measured is undrawable", recovery(null), null],
+    ["a partial clock is its fraction", recovery(12), 0.5],
+    ["a clock past its threshold clamps at full", recovery(30), 1],
+    [
+      "a zero-hour convention is already met",
+      { ...recovery(0), thresholdHours: 0 },
+      1,
+    ],
+  ] as const)("ring: %s", (_name, input, expected) => {
+    expect(cockpitRecoveryFraction(input)).toBe(expected);
+  });
+
+  // ONE LINE, THREE CLAUSES, and an absent fact says so in the same breath rather
+  // than printing "Not logged" under a heading of its own.
+  const status = (
+    over: Partial<ReturnType<typeof baseStatus>> = {}
+  ): ReturnType<typeof baseStatus> => ({ ...baseStatus(), ...over });
+  function baseStatus() {
+    return {
+      dayLabel: "Illness · Day 3",
+      dayOnlyLabel: "Day 3",
+      temperature: {
+        id: 1,
+        value: "97.5 °F",
+        when: "13h ago",
+        high: false,
+      } as {
+        id: number;
+        value: string;
+        when: string | null;
+        high: boolean;
+      } | null,
+      lastMeds: {
+        id: 2,
+        name: "Ibuprofen",
+        dose: "160 mg",
+        when: "yesterday 11:30 PM",
+      } as {
+        id: number;
+        name: string;
+        dose: string | null;
+        when: string | null;
+      } | null,
+      worsening: false,
+    };
+  }
+
+  it("folds the recovery clause, the last reading and the last dose into one line", () => {
+    expect(cockpitSummaryLine(status(), recovery(22))).toBe(
+      "Fever-free 22h of 24 · last reading 97.5 °F 13h ago · last med Ibuprofen yesterday 11:30 PM"
+    );
+  });
+
+  it("names what is missing instead of dropping the clause", () => {
+    expect(
+      cockpitSummaryLine(status({ temperature: null, lastMeds: null }), null)
+    ).toBe("no temperature logged · no meds logged");
   });
 });

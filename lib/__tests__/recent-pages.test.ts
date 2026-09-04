@@ -41,6 +41,14 @@ describe("trackedPageFor", () => {
       "Nutrition",
     ],
     ["a trailing slash, ignored", "/history/", "/history", "History"],
+    // A source's setup page: the row that asks for a portal run or a fresh export
+    // goes here, and it must get a door like every other Ahead row.
+    [
+      "a source setup page",
+      "/integrations/patient-portals",
+      "/integrations",
+      "Integrations",
+    ],
     ["a section anchor, ignored", "/trends#body", "/trends", "Trends"],
     [
       "a query AND an anchor together",

@@ -125,6 +125,8 @@ export default function ActivityForm({
   editData,
   prefill = null,
   initialDate,
+  initialStartTime,
+  initialEndTime,
   live = false,
   onLiveFinished,
   adoptRowId = null,
@@ -160,6 +162,14 @@ export default function ActivityForm({
   // Date-only create seed from a day-history link. Kept separate from a repeat
   // prefill so choosing a day never fabricates an activity type or title.
   initialDate?: string;
+  /**
+   * The clocks a window on the day chart stated (#4950 item 5), `HH:MM` local. A
+   * CREATE-only default: a row being edited keeps its own times, and a create with no
+   * window keeps the "now" it has always opened at. The start is what the person
+   * pointed at; an end they did not state stays empty.
+   */
+  initialStartTime?: string;
+  initialEndTime?: string;
   // Live workout mode (issue #340): opens the form in the in-gym layout — a
   // control strip with the rest timer + Finish above the normal form. Purely a
   // presentation flag over the same form state (no second engine); "Finish"
@@ -343,9 +353,11 @@ export default function ActivityForm({
     () => seed?.date ?? initialDate ?? todayStr(tz)
   );
   const [startTime, setStartTime] = useState(() =>
-    editData ? (editData.start_time ?? "") : nowHHMM(tz)
+    editData ? (editData.start_time ?? "") : (initialStartTime ?? nowHHMM(tz))
   );
-  const [endTime, setEndTime] = useState(editData?.end_time ?? "");
+  const [endTime, setEndTime] = useState(
+    editData?.end_time ?? initialEndTime ?? ""
+  );
   const finishStampedEndRef = useRef(false);
   const [sessionDuration, setSessionDuration] = useState(() =>
     seed?.duration_min != null ? String(Math.round(seed.duration_min)) : ""
@@ -1326,6 +1338,7 @@ export default function ActivityForm({
         <SessionCompleteStep
           recap={stepRecap}
           unit={units.weightUnit}
+          date={date}
           intensity={intensity}
           onIntensity={setIntensity}
           notes={notes}

@@ -20,8 +20,9 @@
 // "which one".
 
 import { daysBetweenDateStr } from "./date";
-import type { DayFillWindow, DayGapFill } from "./day-fill";
+import type { DayFillWindow, DayGapFill, DaySeriesPoint } from "./day-fill";
 import { fillDailyRows, fillDailySeries } from "./day-fill";
+import type { DaySourceSpread } from "./metric-sources";
 
 export type SparklineShape = "line" | "bar";
 
@@ -524,10 +525,10 @@ export interface DayFillSpec extends DayFillWindow {
  * days, or a 90-day window with 12 weigh-ins would silently lose its dots).
  */
 export function applyDayFill(
-  points: readonly { date: string; value: number | null }[],
+  points: readonly DaySeriesPoint[],
   spec: DayFillSpec | null | undefined
 ): {
-  data: { date: string; value: number | null }[];
+  data: DaySeriesPoint[];
   bridges: boolean | null;
   realCount: number;
 } {
@@ -775,6 +776,64 @@ export function overLimitHoles(
 }
 
 /**
+ * The plotted readings NO STROKE REACHES, by index (#4924).
+ *
+ * THE DEFECT. Three shipped rules compounded on the Active Calories card. Its
+ * `slot-null` policy breaks the stroke at every null day, so only calendar-
+ * adjacent readings join. Resting dots turn off above `DENSE_SERIES_POINTS`,
+ * fed the window's REAL reading count. And the sparse demotion judges the MEDIAN
+ * interval, which a densely-logged June keeps at 1. So an August reading with no
+ * neighbour had no segment and no dot: it existed only on hover, under a caption
+ * saying "No data since Aug 30" over a plot that visibly ended on Jul 27.
+ *
+ * A clutter threshold was deciding for a reading whose MARK is its only
+ * representation. This is the predicate that separates the two: a reading the
+ * stroke already draws may be thinned out of the dot layer, and a reading the
+ * stroke cannot reach may not.
+ *
+ * Read off the render topology rather than re-derived from the policy, so the
+ * answer cannot disagree with what was drawn:
+ *   • cut into RUNS (an over-limit hole broke the stroke) — a run holding one
+ *     reading draws no segment, so that reading is isolated;
+ *   • one BRIDGED line — every reading joins every other, so only a series of
+ *     one is isolated (and that one already has `loneReading`'s own mark);
+ *   • one UNBRIDGED line — a reading joins only a calendar neighbour.
+ */
+export function isolatedReadings(
+  values: readonly (number | null)[],
+  { bridged, runs }: { bridged: boolean; runs?: readonly (readonly number[])[] }
+): Set<number> {
+  const real = (i: number) => values[i] != null;
+  const out = new Set<number>();
+  if (runs != null && runs.length > 1) {
+    for (const [from, to] of runs) {
+      let only = -1;
+      let count = 0;
+      for (let i = from; i <= to && count < 2; i++) {
+        if (real(i)) {
+          only = i;
+          count++;
+        }
+      }
+      if (count === 1) out.add(only);
+    }
+    return out;
+  }
+  if (bridged) {
+    const drawn = values.reduce<number[]>(
+      (acc, v, i) => (v == null ? acc : [...acc, i]),
+      []
+    );
+    if (drawn.length === 1) out.add(drawn[0]);
+    return out;
+  }
+  values.forEach((v, i) => {
+    if (v != null && !real(i - 1) && !real(i + 1)) out.add(i);
+  });
+  return out;
+}
+
+/**
  * The label inside an interior hole: "4 days unlogged".
  *
  * RAW FACT ONLY — a count and the plainest word for what did not happen. Not
@@ -796,4 +855,58 @@ export function unloggedGapLabel(days: number): string {
  */
 export function trailingOutageCaption(lastReadingLabel: string): string {
   return `No data since ${lastReadingLabel}`;
+}
+
+// ── TWO SOURCES, ONE DAY: what earns a companion mark (#2653 state 6) ─────────
+//
+// The read reports every source a day's election set aside (lib/metric-sources);
+// the chart draws a companion only where the other source would PRINT A DIFFERENT
+// NUMBER at the chart's own precision. Two scales agreeing to the digit a reader
+// can see is not a disagreement — a second mark there is the coincident smudge the
+// issue opened with, ink with no fact. Deciding on the printed string is also what
+// keeps the marks and the caption counting the same days.
+export function sourceSpreadCompanions(
+  points: readonly {
+    date: string;
+    value: number | null;
+    sources?: DaySourceSpread;
+  }[],
+  print: (value: number) => string | number
+): Map<string, DaySourceSpread> {
+  const out = new Map<string, DaySourceSpread>();
+  for (const point of points) {
+    if (point.sources == null || point.value == null) continue;
+    const shown = print(point.value);
+    const others = point.sources.others.filter(
+      (other) => print(other.value) !== shown
+    );
+    if (others.length > 0) {
+      out.set(point.date, { trusted: point.sources.trusted, others });
+    }
+  }
+  return out;
+}
+
+/** "Oura", "Oura and Withings", "Oura, Withings and Manual". */
+function nameList(names: readonly string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+}
+
+// The caption under a plot with companion marks: "Showing Withings · 2 days also
+// reported by Oura". Facts in the register of the other honesty captions — which
+// source is plotted, how many days another one also covered, and who — and no word
+// for the disagreement: which number is right is not something the chart knows;
+// choosing lives in the primary-source picker.
+export function sourceSpreadCaption(
+  spreads: ReadonlyMap<string, DaySourceSpread>
+): string {
+  const trusted = [...new Set([...spreads.values()].map((s) => s.trusted))];
+  const others = [
+    ...new Set(
+      [...spreads.values()].flatMap((s) => s.others.map((o) => o.source))
+    ),
+  ];
+  const days = spreads.size;
+  return `Showing ${nameList(trusted)} · ${days} day${days === 1 ? "" : "s"} also reported by ${nameList(others)}`;
 }

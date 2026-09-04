@@ -171,15 +171,10 @@ export default function Combobox({
     value.trim() !== "" &&
     !options.some((o) => o.toLowerCase() === q);
 
-  // THE LISTBOX IS PORTALED (#3271). Left in flow it was an absolutely-positioned
-  // child, and an absolutely-positioned element is clipped by ANY ancestor
-  // carrying an `overflow` — `z-50` never helped, because z-index does not escape
-  // a clip box. So the list was confined to whichever ancestor scroller it
-  // happened to sit in: a phone sheet bounded at `max-h-[85dvh]`, a `max-h`
-  // editor, a table's scroller. The owner's report was the Add supplement dialog
-  // cut off mid-row with two scrollbars — the ancestor's, and the list's own
-  // `max-h-56`. An `overflow` establishes that clip whether or not it is
-  // currently scrolling, so the bug did not need the ancestor to be scrolled.
+  // THE LISTBOX IS PORTALED (#3271) — why an in-flow panel could not work is in
+  // the hook's own header, once, rather than here as well. The sighting was the
+  // Add supplement dialog cut off mid-row with two scrollbars: the ancestor's,
+  // and the list's own `max-h-56`.
   //
   // Anchored to the ROOT rather than the input so a field dropdown keeps exactly
   // the width it had (the root is what `w-full` used to resolve against). The
@@ -197,7 +192,16 @@ export default function Combobox({
       : showUse && highlight === filtered.length
         ? freeTextId
         : undefined;
-  const { pos, attachPanel, panelRef } = useAnchoredPopover({
+  // A LISTBOX IS NOT A PANEL — ruled on #4887, which asked whether this should
+  // just mount `AnchoredPanel` and leave the app one anchored host. It should not:
+  // that host forks to a BOTTOM SHEET below `md` for every mount, by its own "ONE
+  // FORK, THIRTY SURFACES" rule, and a field's dropdown stays on its field at
+  // every width — focus never leaves the input here (aria-activedescendant), which
+  // a scrimmed, focus-trapped, scroll-locked sheet cannot honour. The rest of the
+  // distance (`matchAnchorWidth`, the preference below, a `<ul>`) is one prop each,
+  // and a host whose shape is selected by props is what #4542 and #4738 ruling 2
+  // forbid. So the hosts stay two and the BOUND keeps one applier.
+  const { panelStyle, attachPanel, panelRef } = useAnchoredPopover({
     open: listOpen,
     anchorRef: ref,
     matchAnchorWidth: !titleAppearance,
@@ -297,9 +301,17 @@ export default function Combobox({
       // real trap rather than reading this attribute — the marker is what looked
       // decisive on #3426 and wasn't.
       //
-      // WHAT THIS DOES NOT DO is the other half of #3432's ruling: dropping an
-      // un-navigated draft on the same press. That half is not here, and the reason is
-      // in the issue rather than in a comment nobody can act on.
+      // THE OTHER HALF — dropping the typed draft on this same press — IS NOT HERE, and
+      // the ruled boundary for it is why. #3432's second-half ruling restricts the drop
+      // to pickers WITHOUT `allowFreeText`, "where the typed text cannot be the value".
+      // That boundary is not in this component: `allowFreeText` decides whether a
+      // "Use '<query>'" ROW is offered, not whether the caller keeps what was typed, and
+      // two shipped pickers with the flag OFF keep it anyway — GenomicVariantForm's Gene
+      // field, whose own empty state reads "type any symbol", and AnalyzePicker, whose
+      // `options` are opaque identities under `labelFor` labels, so its value matches no
+      // option in ANY state and a bare Escape over the analyze title would blank it with
+      // nothing typed. Both measured; see components/__tests__/combobox-escape.test.tsx,
+      // which pins today's behaviour so the next attempt starts from the counterexamples.
       data-escape-layer={listOpen ? "true" : undefined}
     >
       {!titleAppearance && (
@@ -485,16 +497,7 @@ export default function Combobox({
             ref={attachPanel}
             id={listboxId}
             role="listbox"
-            style={{
-              position: "fixed",
-              top: pos?.top ?? 0,
-              left: pos?.left ?? 0,
-              width: pos?.width,
-              maxHeight: pos?.maxHeight,
-              // Never paint at 0,0 for a frame: the panel entering the DOM is
-              // what makes measurement possible, so the first render is hidden.
-              visibility: pos ? "visible" : "hidden",
-            }}
+            style={panelStyle}
             // Above the sheet/dialog it opens over (`z-60`), the same layer the
             // portaled date calendar takes for the same reason.
             className={`z-70 overflow-auto rounded-lg border border-black/10 bg-surface py-1 shadow-lg dark:border-white/10 ${

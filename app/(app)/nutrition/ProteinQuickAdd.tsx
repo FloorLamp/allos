@@ -39,9 +39,10 @@ export default function ProteinQuickAdd({
   initialGrams,
   lastPreset,
 }: {
-  // The acting profile's today (YYYY-MM-DD) — the quick-add logs to today only.
+  // The day the bar has selected (YYYY-MM-DD) — the tap logs against this, so a
+  // move of the day picker moves where a typed amount lands.
   today: string;
-  // Today's manual-protein total so far (0 when nothing logged).
+  // That day's manual-protein total so far (0 when nothing logged).
   initialGrams: number;
   // The profile's last-used amount (repeated scoop size), or null if never logged.
   lastPreset: number | null;
@@ -53,6 +54,19 @@ export default function ProteinQuickAdd({
   const [amount, setAmount] = useState<string>(
     lastPreset != null ? String(lastPreset) : ""
   );
+  // TYPED GRAMS SURVIVE A DAY MOVE (#4934). The bar used to mount this control under
+  // `key={activeDate}`, so moving the day picker destroyed the field's DOM node and
+  // threw away whatever the person had typed, with no warning. Nothing is remounted
+  // now, so `amount` persists and the tap logs against the day now shown (`today` is
+  // the selected day, read at tap time). Only the day's own datum is re-seeded — the
+  // logged total in the readout — because that belongs to the day, not to the typist.
+  // A prop-keyed derived-state repair, applied during render (the RestTimer idiom)
+  // rather than in an effect that would paint the previous day's total first.
+  const [seededDay, setSeededDay] = useState(today);
+  if (seededDay !== today) {
+    setSeededDay(today);
+    setTotal(initialGrams);
+  }
   const toast = useToast();
   // Offline quick-log queue (#1596): an ADD tap with no signal queues for replay.
   const { enqueue } = useOfflineQueue();
@@ -163,21 +177,26 @@ export default function ProteinQuickAdd({
   }
 
   return (
+    // THE PROTEIN CHIP, AT THE USUAL GRAMS (#4477's blessed add door). The scoop keeps
+    // its own control — a per-tap magnitude field is not a serving stepper — but it wears
+    // the same chip the ranked groups beside it do, on one line, so the ranked head reads
+    // as one strip instead of a stack of full-width cards. The amount field still
+    // pre-fills with the last-used scoop, which is what "at the usual grams" is.
     <div
       data-testid="protein-quickadd"
-      className="flex items-center gap-3 rounded-lg border border-(--border) bg-surface px-3 py-2"
+      className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-(--border) bg-surface py-1 pl-2.5 pr-1"
     >
       <FoodGroupIcon
         slug="__protein__"
-        className="h-5 w-5 shrink-0 text-emerald-500"
+        className="h-4 w-4 shrink-0 text-emerald-500"
       />
-      <div className="min-w-0 flex-1">
-        <span className="block truncate font-medium text-slate-800 dark:text-slate-100">
+      <div className="flex min-w-0 items-baseline gap-1.5">
+        <span className="truncate font-medium text-slate-800 dark:text-slate-100">
           Protein
         </span>
         <span
           data-testid="protein-quickadd-total"
-          className="block truncate text-xs tabular-nums text-slate-500 dark:text-slate-400"
+          className="truncate text-xs tabular-nums text-slate-500 dark:text-slate-400"
         >
           {/* The authoritative grams land immediately (#2654, motion 3); a bounded
               scale pulse acknowledges the optimistic change without delaying the

@@ -169,6 +169,19 @@ test.describe("Unified profile switcher (issue #1801)", () => {
       await expect(
         page.getByTestId("medication-cross-profile-note")
       ).toContainText(`Viewing ${MVMEDS_RO_PROFILE}'s medication`);
+      // ADDS FOLLOW THE SURFACE, BUT ONLY WHERE THE LOGIN MAY WRITE IT (#4693). The
+      // detail page is a subject-scoped container, so its dose-history add inherits the
+      // page's subject instead of the switcher — gated on write access to THAT profile,
+      // which this caregiver does not hold here. The pairing below is what makes this
+      // absence mean something: the same locator finds the door on the medication this
+      // login CAN write, so an empty result here is the grant and not a stale testid.
+      await expect(page.getByTestId("dose-history-add")).toHaveCount(0);
+      // AND THE SAME GRANT DECIDES TODAY'S CHECK-OFF (#4429). The card's dose
+      // affordances all follow the surface's subject now, so the read-only ward's row
+      // is the receipt with nothing to press — paired below with the medication this
+      // login CAN write, where the very same locator finds the control.
+      await expect(page.getByTestId("scheduled-dose-readonly")).toBeVisible();
+      await expect(page.getByTestId("dose-take")).toHaveCount(0);
 
       // The paired own-profile branch keeps the normal way back and no subject frame.
       await page.goto(`/medications/${selfMedicationId}`);
@@ -184,6 +197,9 @@ test.describe("Unified profile switcher (issue #1801)", () => {
       await expect(
         page.getByTestId("medication-cross-profile-note")
       ).toHaveCount(0);
+      await expect(page.getByTestId("dose-history-add")).toHaveCount(1);
+      await expect(page.getByTestId("dose-take")).toHaveCount(1);
+      await expect(page.getByTestId("scheduled-dose-readonly")).toHaveCount(0);
     } finally {
       await page.context().close();
     }

@@ -57,6 +57,7 @@ import {
   pairedObservationsFor,
 } from "./paired-observations";
 import {
+  factorDaysReader,
   gatherPairedNights,
   outcomeSeriesReader,
 } from "./queries/paired-observations";
@@ -144,6 +145,12 @@ import {
 } from "./mood-observation";
 import { getMoodLogs, getMetricDailyTotals } from "./queries";
 import { getSleepRegularity } from "./queries/sleep";
+import {
+  getSuspectSleepSessions,
+  SLEEP_SKEW_HISTORY_DAYS,
+} from "./queries/sleep-clock-skew";
+import { sleepClockSkewSignalKey } from "./sleep-clock-skew";
+import { activityProvenanceLabel } from "./training-log-format";
 import { shiftDateStr, lastNDates } from "./date";
 import { fmtWeight, round } from "./units";
 import {
@@ -512,6 +519,7 @@ export function collectCoachingFindings(
     ...buildMobilitySuggestionFindings(profileId, today),
     ...buildMoodFindings(profileId, today),
     ...buildSleepMoodBridgeFindings(profileId, today),
+    ...buildSleepClockSkewFindings(profileId, today),
     ...buildPairedObservationFindings(profileId, today),
     ...buildCycleBleedingFindings(profileId, today),
     ...buildTtcWorkupFindings(profileId, today),
@@ -572,6 +580,84 @@ export function buildMoodFindings(profileId: number, today: string): Finding[] {
         "or a diagnosis.",
       actionHref: "/trends#body",
       actionLabel: "View mood trend",
+    },
+  ];
+}
+
+// ---- Sleep clock skew (#4299): the source's instants vs the body's heart rate ----
+
+// ONE coaching-tier observation when a synced sleep session's stored instants disagree
+// with the `hr_minutes` the same database holds across them — the Fitbit/Health Connect
+// sighting where every night after a return east was stamped +6h and Allos printed
+// "Bed time 5:39 AM" as fact.
+//
+// ONE finding PER EPISODE, not per night. A source whose clock reference has gone stale
+// mis-stamps every night until it heals, so the key is anchored to the OLDEST suspect
+// night still in the window: a dismissal covers the run rather than being re-minted each
+// morning, and the fan-out is bounded by construction rather than by a cap.
+//
+// The judgement is NOT here — it is the pure detector in lib/sleep-clock-skew.ts, keyed
+// on the heart-rate contradiction and on nothing else, so a genuinely shifted night (real
+// jet lag, whose HR agrees with its clocks) never reaches this builder. A recorded
+// timezone switch nearby only adds a SENTENCE to copy that already exists.
+//
+// Coaching tier ONLY (#449): it joins collectCoachingFindings, SLEEP_SKEW_PREFIX is
+// registered in RULE_FINDING_PREFIXES, and it NEVER notifies and never reaches Now — a
+// source's clock carries no obligation. No owned SQL here (reads through the
+// profile-scoped gather).
+export function buildSleepClockSkewFindings(
+  profileId: number,
+  today: string
+): Finding[] {
+  const suspect = getSuspectSleepSessions(
+    profileId,
+    shiftDateStr(today, -SLEEP_SKEW_HISTORY_DAYS)
+  );
+  if (suspect.length === 0) return [];
+  // The gather orders newest-first, so the newest session carries the quoted evidence
+  // and the last one anchors the episode.
+  const newest = suspect[0];
+  const firstWakeDay = suspect[suspect.length - 1].wakeDay;
+  const source = activityProvenanceLabel(newest.source);
+  const nights =
+    suspect.length === 1
+      ? "One recorded night's"
+      : `${suspect.length} recorded nights'`;
+  return [
+    {
+      domain: "sleep-clock-skew",
+      dedupeKey: sleepClockSkewSignalKey(firstWakeDay),
+      title: `${nights} sleep times disagree with your heart rate`,
+      detail:
+        // Two readings caught these nights, and each has its own true sentence. The
+        // median reading can name an equally long window elsewhere holding the
+        // overnight low; on a run finding no such window exists — that absence is why
+        // the median reading missed it — so it names the stretch inside the window
+        // instead (#5020).
+        (newest.evidence.awakeRun
+          ? // No duration in this sentence, for the same reason there is no offset in
+            // the other one: "a two-hour stretch" beside "the clock times may not be"
+            // reads as a claim about how far off the clock is, and nothing here
+            // measures that.
+            `Across the newest of them part of the recorded window ran at ` +
+            `${newest.evidence.awakeRun.bpm} bpm — a daytime level — while the window ` +
+            `as a whole sat at ${newest.evidence.claimedBpm} bpm. ` +
+            `The durations look right; the clock times ${source} recorded may not be.`
+          : `Across the newest of them your heart rate sat at ${newest.evidence.claimedBpm} bpm, ` +
+            `while an equally long window earlier the same day sat at ${newest.evidence.troughBpm} bpm — ` +
+            `the overnight low. The durations look right; the clock times ${source} recorded may not be.`) +
+        (newest.nearTimezoneSwitch
+          ? " Your travel log records a timezone change around then."
+          : ""),
+      // Calm FYI about a source, never an alarm about the person.
+      tone: "info",
+      // This class's only surface is the dashboard rollup — the Sleep page hedges the
+      // times and offers the delete, but it does not render the finding (#3129).
+      dashboardRelevance: FINDING_DASHBOARD_RELEVANCE.review,
+      evidence:
+        "Your own heart-rate record, from the same source and the same nights.",
+      actionHref: "/sleep",
+      actionLabel: "Review sleep",
     },
   ];
 }
@@ -664,10 +750,14 @@ export function buildPairedObservationFindings(
   });
   if (entries.length === 0) return [];
   const series = outcomeSeriesReader(profileId);
+  // One memo for the factor side too (#4775): three entries now share the alcohol
+  // factor over one window, and the factor read happens before every entry's
+  // short-circuit — so without this the registry costs a range scan per entry.
+  const days = factorDaysReader(profileId);
   const monthAnchor = today.slice(0, 7);
   const out: Finding[] = [];
   for (const entry of entries) {
-    const nights = gatherPairedNights(profileId, entry, today, series);
+    const nights = gatherPairedNights(profileId, entry, today, series, days);
     const verdict = decidePairedObservation(entry, nights, today, monthAnchor);
     if (!verdict) continue;
     out.push({

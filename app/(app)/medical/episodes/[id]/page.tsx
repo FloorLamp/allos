@@ -19,7 +19,7 @@ import {
   getCustomSymptomNames,
   getPrnMedicationsForQuickLog,
   getEpisodeMedReconciliation,
-  getPediatricFormContext,
+  getIntakeCatalogOptions,
   getEncounters,
   encountersForEpisode,
   linkedEncounterIdsForEpisode,
@@ -34,7 +34,10 @@ import {
   getTimezone,
   getUnitPrefs,
 } from "@/lib/settings";
+import CardSectionHeader from "@/components/CardSectionHeader";
 import IllnessMedicationLogger from "@/components/illness/IllnessMedicationLogger";
+import { IntakeOptionsProvider } from "@/components/IntakeOptionsContext";
+import { loadIntakeFormContext } from "@/lib/intake-form-context";
 import { PICKER_SYMPTOMS, symptomLabel } from "@/lib/symptoms";
 import { dateStrInTz, isRealIsoDate } from "@/lib/date";
 import { episodeAlternateLogDate } from "@/lib/illness-episode-format";
@@ -188,6 +191,12 @@ export default async function EpisodePage(props: {
         })
       : [];
   const canAddMedication = assembled.ongoing && canWrite && !crossProfile;
+  // The add door's context comes from the ONE loader, keyed on the EPISODE's profile
+  // (#4609). This page used to hand its form the pediatric figures alone and wrap it in
+  // no picker provider at all, so the same fold that renders a child's weight-band
+  // dosing showed adult alcohol counselling and offered the curated, non-profile-ranked
+  // medication list.
+  const intakeContext = loadIntakeFormContext(profileId, units.weightUnit);
 
   // Episode-end medication reconciliation (issue #880): the episode-associated meds the
   // "Feeling better" / stale-end checklist offers to close. Only for an open episode a
@@ -378,6 +387,13 @@ export default async function EpisodePage(props: {
                   rangeStart={rangeStart}
                   rangeEnd={rangeEnd}
                   profileId={target}
+                  // NO DOSE OFFER HERE (#4712 judgement 1, corrected) — see the
+                  // matching note in IllnessCockpitBody.tsx. This page's own Meds
+                  // section below renders whenever `prnMeds` is non-empty, which is
+                  // every time the fold's dose offer would have anything to show
+                  // (antipyreticPrnMeds is that same list narrowed), so feeding it
+                  // real data here would duplicate a chip the persistent section
+                  // already renders.
                   photoControl={
                     <label
                       htmlFor="episode-symptom-photo-input"
@@ -399,17 +415,30 @@ export default async function EpisodePage(props: {
                       : undefined
                   }
                 >
-                  <IllnessMedicationLogger
-                    meds={prnMeds}
-                    tz={getTimezone(profileId)}
-                    profileId={target}
-                    pediatric={getPediatricFormContext(
-                      profileId,
-                      units.weightUnit
-                    )}
-                    canAdd={canAddMedication}
-                    nowIso={clockNow().toISOString()}
+                  {/* THE HOST STATES ITS OWN SECTION (#4752 item 4). The med
+                      logger draws a chip row and nothing above it: on the illness
+                      cockpit the card's own recovery header already says what this
+                      is, and a "Meds" heading over three chips was the boilerplate
+                      that rebuild removed. Here the logger IS a section among
+                      sections, so this page says so — the same split
+                      QuickLogPrnContent's `title` note describes. */}
+                  <CardSectionHeader
+                    title="Meds"
+                    href="/medications"
+                    variant="section"
                   />
+                  <IntakeOptionsProvider
+                    options={getIntakeCatalogOptions(profileId)}
+                  >
+                    <IllnessMedicationLogger
+                      meds={prnMeds}
+                      tz={getTimezone(profileId)}
+                      profileId={target}
+                      intakeContext={intakeContext}
+                      canAdd={canAddMedication}
+                      nowIso={clockNow().toISOString()}
+                    />
+                  </IntakeOptionsProvider>
                 </div>
               )}
             </>

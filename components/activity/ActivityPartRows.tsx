@@ -47,7 +47,7 @@ export default function ActivityPartRows({
   className = "",
   exerciseHref,
   highlightMusclesByExercise = {},
-  onFilterTag,
+  tagHref,
 }: {
   parts: DisplayPart[];
   partDeltas?: (ProgressDelta | null)[];
@@ -57,7 +57,13 @@ export default function ActivityPartRows({
   className?: string;
   exerciseHref?: (exercise: string) => Route;
   highlightMusclesByExercise?: Record<string, MuscleId[]>;
-  onFilterTag?: (kind: "muscle" | "region", value: string) => void;
+  /**
+   * THE MUSCLE BADGE AS A DOOR (#4079). This was a callback that set client filter
+   * state on the retired Training Log row; the Log's refinements live in the URL now,
+   * so the badge is a LINK — which also means it works from the activity record,
+   * where the badge actually renders, rather than only from a feed row.
+   */
+  tagHref?: (kind: "muscle" | "region", value: string) => Route;
 }) {
   if (parts.length === 0 && remainingParts === 0) return null;
 
@@ -193,14 +199,13 @@ export default function ActivityPartRows({
                 {(part.muscle || part.equipment) && (
                   <span className="flex min-w-0 items-center gap-x-1 overflow-hidden whitespace-nowrap">
                     {part.muscle &&
-                      (onFilterTag ? (
-                        <button
-                          type="button"
-                          onClick={() => onFilterTag("muscle", part.muscle!)}
+                      (tagHref ? (
+                        <Link
+                          href={tagHref("muscle", part.muscle)}
                           className="relative z-10 shrink-0 text-xs text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
                         >
                           {part.muscle}
-                        </button>
+                        </Link>
                       ) : (
                         <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
                           {part.muscle}

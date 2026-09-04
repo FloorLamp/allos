@@ -167,12 +167,16 @@ export default async function MedicationsPage(props: {
               stackItems={actingData.stackItems}
               pgxVariants={actingData.pgxVariants}
               pediatric={actingData.pediatric}
-              age={actingData.age}
               todayStr={actingData.todayStr}
               conditions={medConditions}
             />
 
-            {multi && <MedicationTodayStrip members={stripMembers} />}
+            {multi && (
+              <MedicationTodayStrip
+                members={stripMembers}
+                actingProfileId={actingProfileId}
+              />
+            )}
 
             {/* Single-view renders the ONE board with no wrapper (byte-identical to the
           pre-#1373 page body); multi-view stacks the per-member boards. */}

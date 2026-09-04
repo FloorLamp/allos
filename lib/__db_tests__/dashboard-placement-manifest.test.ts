@@ -1,6 +1,7 @@
 // Real-schema candidate census and query budget for the dashboard cutover (#3096).
 
-import type { ReactElement } from "react";
+import { createElement, type ReactElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { utcInstant, shiftDateStr } from "@/lib/date";
@@ -23,8 +24,16 @@ import {
   serializeOnboardingState,
 } from "@/lib/onboarding";
 import { PERSONAS, type PersonaContext } from "../../scripts/seed-personas";
-import { accessibleProfileIdsForLogin, type SessionProfile } from "@/lib/auth";
-import { authorizedProfileSubset } from "@/lib/cross-profile";
+import {
+  allProfileIds,
+  HR_RANGE_READ,
+  installStatementTrace,
+  loadDashboard,
+  profilesForIds as profiles,
+  renderDashboard as renderDashboardPage,
+  requestCache,
+  session,
+} from "@/lib/__db_tests__/dashboard-render-harness";
 import PageContainer from "../../components/PageContainer";
 import { LoggedViaSurface } from "@/components/LoggedViaSurface";
 import DashboardPlacementCanvas, {
@@ -37,158 +46,39 @@ import {
 } from "@/lib/dashboard-relevance";
 import { trackedPageFor } from "@/lib/recent-pages";
 import { logSheetSegments } from "@/lib/log-sheet";
+import { biomarkerFlagDismissalKey } from "@/lib/dismissal-keys";
+import { dashboardAttentionCandidateId } from "@/lib/dashboard-attention-identity";
+import LogPracticeButton from "@/components/practices/LogPracticeButton";
+import { isNotableFlag } from "@/lib/reference-range";
+import { ALCOHOL_FOOD_GROUP } from "@/lib/substance-use";
+import type { MedicalFlag } from "@/lib/types";
 
-const session = vi.hoisted(() => ({
-  loginId: 0,
-  profile: null as SessionProfile | null,
-  accessible: [] as SessionProfile[],
-}));
-
-// A REAL memoizing stand-in for `lib/request-cache`'s `cache()` (#3369).
-//
-// WHY. `lib/request-cache.ts` is `React.cache ?? ((fn) => fn)`, and its own comment
-// says the rest: outside a Next server request React.cache has no dispatcher and
-// simply calls through. So in this tier every `cache()`-wrapped read executes once
-// per CALLER, and the number counted below overstated what a production render pays
-// by roughly 30 statements per persona (#3369 measured household 297 -> 267,
-// biohacker 305 -> 258; the trace's top "offender", `getSleepSessions`' two
-// statements at 9x each, collapses to one). A budget policed by an overstating meter
-// polices a number nobody pays, so the meter gets the memo first and the reductions
-// it is used to measure come after.
-//
-// THE SCOPE IS ONE RENDER, AND NOT ONE BYTE MORE. React's `cache()` lifetime is
-// exactly one server request. Here that scope is opened around each `Dashboard()`
-// call by `renderDashboard` below and closed when it settles; outside it this
-// wrapper calls straight through, which is also what production does outside a
-// request (scripts/seed.ts, the notify sidecar). That matters in both directions:
-// persona seeding runs between renders and must not read through another persona's
-// memo, and a memo that outlived a render would UNDERSTATE the budget — the wrong
-// direction for a meter, because it hides queries someone is really paying for.
-//
-// THE KEYING IS REACT'S KEYING. React memoizes on the positional arguments by
-// identity, so this walks a Map trie of the argument list rather than serializing a
-// key. Two structurally equal but distinct objects miss in React and miss here; a
-// serialized key would have hit, memoized harder than production, and understated.
-// FAITHFUL EXCEPT IN THE SAFE DIRECTION, DELIBERATELY. Exactness against a canary
-// React this tier cannot import is not on offer, so what is guaranteed instead is
-// the DIRECTION of every deviation: this mock may count HIGH but never low. A meter
-// that cannot under-report is the only property a budget actually needs. Errors are
-// the live example — React caches a throw for the request and this does not, so a
-// re-thrown read would count twice here and once in production. Do not "fix" that
-// toward exactness: memoizing throws moves the deviation to the unsafe side, and a
-// read that throws fails the render outright anyway, so there is nothing to buy.
-//
-// A single module-level slot rather than AsyncLocalStorage, for the same reason
-// `lib/tick-cache.ts` uses one: the loop below awaits one render at a time.
-const requestCache = vi.hoisted(() => {
-  interface MemoNode {
-    children: Map<unknown, MemoNode>;
-    filled: boolean;
-    value: unknown;
-  }
-  const node = (): MemoNode => ({
-    children: new Map(),
-    filled: false,
-    value: undefined,
-  });
-  const childOf = (parent: MemoNode, key: unknown): MemoNode => {
-    const existing = parent.children.get(key);
-    if (existing) return existing;
-    const created = node();
-    parent.children.set(key, created);
-    return created;
-  };
-  let open: Map<symbol, MemoNode> | null = null;
-  return {
-    cache: <A extends unknown[], R>(fn: (...args: A) => R) => {
-      const identity = Symbol(fn.name || "cached");
-      return (...args: A): R => {
-        const scope = open;
-        if (!scope) return fn(...args);
-        let root: MemoNode | undefined = scope.get(identity);
-        if (!root) {
-          root = node();
-          scope.set(identity, root);
-        }
-        let current: MemoNode = root;
-        for (const arg of args) current = childOf(current, arg);
-        if (current.filled) return current.value as R;
-        const value = fn(...args);
-        current.filled = true;
-        current.value = value;
-        return value;
-      };
-    },
-    /** Run `fn` with one request's worth of memoization open. */
-    async during<T>(fn: () => Promise<T>): Promise<T> {
-      open = new Map();
-      try {
-        return await fn();
-      } finally {
-        open = null;
-      }
-    },
-  };
-});
-
-vi.mock("@/lib/request-cache", () => ({ cache: requestCache.cache }));
-
-vi.mock("@/lib/auth", async (importActual) => {
-  const actual = await importActual<typeof import("@/lib/auth")>();
-  return {
-    ...actual,
-    requireSession: async () => {
-      if (!session.profile) throw new Error("dashboard test session not set");
-      return {
-        login: {
-          id: session.loginId,
-          username: "dashboard-test",
-          role: "admin",
-        },
-        profile: session.profile,
-        access: "write" as const,
-        deviceSessionKey: "dashboard-test-device",
-      };
-    },
-    getAccessibleProfiles: async () => session.accessible,
-    ownProfileForLogin: () => session.profile?.id ?? null,
-  };
-});
-
-vi.mock("@/lib/scope", async (importActual) => {
-  const actual = await importActual<typeof import("@/lib/scope")>();
-  return {
-    ...actual,
-    requireScope: async () => {
-      if (!session.profile) throw new Error("dashboard test scope not set");
-      const ids = authorizedProfileSubset(
-        accessibleProfileIdsForLogin(session.loginId),
-        session.accessible.map((profile) => profile.id)
-      );
-      return {
-        loginId: session.loginId,
-        role: "admin" as const,
-        actingProfileId: session.profile.id,
-        ownProfileId: session.profile.id,
-        profiles: session.accessible,
-        ids,
-        viewIds: authorizedProfileSubset(ids, [session.profile.id]),
-        access: new Map(ids.map((id) => [id, "write" as const])),
-      };
-    },
-  };
-});
-
-vi.mock("@/lib/ai-log", async (importActual) => {
-  const actual = await importActual<typeof import("@/lib/ai-log")>();
-  return { ...actual, withAiLogContext: () => undefined };
-});
-
-vi.mock("@/lib/recommendation-engine", async (importActual) => {
-  const actual =
-    await importActual<typeof import("@/lib/recommendation-engine")>();
-  return { ...actual, runRecommendation: () => undefined };
-});
+vi.mock("@/lib/request-cache", async () =>
+  (
+    await import("@/lib/__db_tests__/dashboard-render-harness")
+  ).requestCacheModule()
+);
+vi.mock("@/lib/auth", async (importActual) =>
+  (await import("@/lib/__db_tests__/dashboard-render-harness")).authModule(
+    await importActual()
+  )
+);
+vi.mock("@/lib/scope", async (importActual) =>
+  (await import("@/lib/__db_tests__/dashboard-render-harness")).scopeModule(
+    await importActual(),
+    await vi.importActual<typeof import("@/lib/auth")>("@/lib/auth")
+  )
+);
+vi.mock("@/lib/ai-log", async (importActual) =>
+  (await import("@/lib/__db_tests__/dashboard-render-harness")).aiLogModule(
+    await importActual()
+  )
+);
+vi.mock("@/lib/recommendation-engine", async (importActual) =>
+  (
+    await import("@/lib/__db_tests__/dashboard-render-harness")
+  ).recommendationEngineModule(await importActual())
+);
 
 function newProfile(name: string): number {
   return Number(
@@ -238,45 +128,76 @@ function ctxFor(profileId: number): PersonaContext {
   };
 }
 
-function allProfileIds(): number[] {
-  return (
-    db.prepare("SELECT id FROM profiles ORDER BY id").all() as { id: number }[]
-  ).map((row) => row.id);
+// #5010's last acceptance criterion, and it is a claim about ARGUMENTS rather than
+// about a count. The owner's profile over a production snapshot saw three `hr_minutes`
+// range reads per render, down from four, and could not tell from the trace whether
+// three reads meant three windows or one window asked for three times — both print 3,
+// and only one of them is correct. So each execution is keyed on the span it was BOUND
+// to, the way #5055's probe keyed its reads on their profile ids.
+//
+// THE WINDOW IS THE BOUND SPAN, NOT THE ARGUMENTS THE CALLER SPELLED. `getHrMinutesInRange`
+// is memoized on `(profileId, since, until)`, so a duplicate of that tuple is already
+// impossible under the request cache — an assertion keyed on it could only ever restate
+// the memo. What the memo cannot see is two DIFFERENT spellings resolving to one span —
+// #5069 has since required `until`, which retires the spelling that used to do it — and
+// that is a second full materialisation of the same rows. Keying on the statement's
+// parameters catches both that and a memo that stopped collapsing at all. The pattern
+// itself lives in the harness, because the profiler prints the same read's windows.
+/** Render name → the windows its `hr_minutes` range reads were bound to, in order. */
+const hrWindowReads = new Map<string, string[]>();
+/**
+ * The one render in this file that HAS heart-rate minutes. Rendered after the persona
+ * loop below, on its own profile, so it cannot move a single number in QUERY_BASELINE.
+ */
+const HR_FIXTURE = "hr-minutes fixture";
+
+function windowsRead(
+  trace: ReturnType<typeof installStatementTrace>
+): string[] {
+  return trace.bindings().map((execution) => JSON.stringify(execution.args));
 }
 
-function profiles(ids: readonly number[]): SessionProfile[] {
-  if (ids.length === 0) return [];
-  const marks = ids.map(() => "?").join(",");
-  return db
-    .prepare(
-      `SELECT id, name, photo_path, photo_version FROM profiles
-       WHERE id IN (${marks}) ORDER BY id`
-    )
-    .all(...ids) as SessionProfile[];
+/** Drink and dry evenings, so the alcohol pair reaches its overnight outcome series. */
+function seedDrinkEvenings(profileId: number, days: number): void {
+  const insert = db.prepare(
+    `INSERT INTO food_daily_totals (profile_id, date, group_key, servings)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT (profile_id, date, group_key)
+       DO UPDATE SET servings = excluded.servings`
+  );
+  const td = today(profileId);
+  for (let back = 1; back <= days; back++) {
+    const day = shiftDateStr(td, -back);
+    // A dry evening has to be a LOGGED evening — the pair's `logging-evidence`
+    // control reads a day with no food at all as evidence about logging.
+    insert.run(profileId, day, "whole-grains", 1);
+    if (back % 3 === 0) insert.run(profileId, day, ALCOHOL_FOOD_GROUP, 2);
+  }
 }
 
-function installStatementTrace() {
-  const executed: string[] = [];
-  const realPrepare = db.prepare.bind(db);
-  vi.spyOn(db, "prepare").mockImplementation(((sql: string) => {
-    const statement = realPrepare(sql);
-    return new Proxy(statement, {
-      get(target, property) {
-        const value = Reflect.get(target, property, target);
-        if (
-          typeof value === "function" &&
-          ["get", "all", "run", "iterate"].includes(String(property))
-        ) {
-          return (...args: unknown[]) => {
-            executed.push(sql.replace(/\s+/g, " ").trim());
-            return value.apply(target, args);
-          };
-        }
-        return typeof value === "function" ? value.bind(target) : value;
-      },
-    });
-  }) as typeof db.prepare);
-  return { clear: () => executed.splice(0), count: () => executed.length };
+/**
+ * A quarter-hourly heart-rate trace over `days` of history. No persona seeds
+ * `hr_minutes` and `npm run seed` writes none (#5034), so without this every reader
+ * on this seam returns before its range read and the criterion above would be asserted
+ * over zero executions.
+ */
+function seedHrMinutes(profileId: number, days: number): void {
+  const insert = db.prepare(
+    `INSERT OR IGNORE INTO hr_minutes (profile_id, ts, bpm, n, source)
+     VALUES (?, ?, ?, 1, 'health-connect')`
+  );
+  const start = Date.parse(
+    `${shiftDateStr(today(profileId), -days)}T00:00:00.000Z`
+  );
+  const steps = days * 24 * 4;
+  for (let step = 0; step < steps; step++) {
+    const at = new Date(start + step * 15 * 60_000);
+    // A plain diurnal swing: low overnight, higher through the day, so the night's
+    // floor and a workout window are different numbers rather than one constant.
+    const hour = at.getUTCHours();
+    const bpm = hour < 7 ? 52 + (step % 5) : 78 + (step % 40);
+    insert.run(profileId, at.toISOString().slice(0, 16), bpm);
+  }
 }
 
 const manifests = new Map<
@@ -324,8 +245,8 @@ describe("actual atomic dashboard manifests", () => {
         id: number;
       }
     ).id;
-    const trace = installStatementTrace();
-    const { default: Dashboard } = await import("../../app/(app)/page");
+    const trace = installStatementTrace({ bindings: HR_RANGE_READ });
+    const Dashboard = await loadDashboard();
     // One call = one request, so one request-cache scope. Everything outside this
     // helper — persona seeding above all — runs unmemoized, exactly as production
     // does outside a request.
@@ -335,9 +256,9 @@ describe("actual atomic dashboard manifests", () => {
     // presentation, and a presentation change must not be able to make the placement
     // meter stop measuring.
     const renderDashboard = async () => {
-      const page = (await requestCache.during(
-        async () => await Dashboard()
-      )) as ReactElement<{ children: ReactElement }>;
+      const page = (await renderDashboardPage(Dashboard)) as ReactElement<{
+        children: ReactElement;
+      }>;
       expect(page.type).toBe(PageContainer);
       // …and the SURFACE DECLARATION inside it (#3087): the dashboard names itself
       // `dashboard-widget` once, at the region root, so every logging control it
@@ -371,6 +292,7 @@ describe("actual atomic dashboard manifests", () => {
       rowPresentations.set(persona.name, element.props.presentations);
       aheadPresentations.set(persona.name, element.props.aheadPresentations);
       queryCounts.set(persona.name, trace.count());
+      hrWindowReads.set(persona.name, windowsRead(trace));
       personaProfileIds.set(persona.name, profileId);
       if (persona.name === "household") {
         const switched = session.accessible.find(
@@ -385,6 +307,34 @@ describe("actual atomic dashboard manifests", () => {
         )!;
       }
     }
+
+    // ── THE ONE RENDER ON THIS FILE THAT HAS HEART-RATE MINUTES (#5010).
+    // After the loop and on its own profile, so no persona's count can move: the
+    // budget above is captured before this line runs, and nothing below reads
+    // `trace.count()`. It reuses a persona's own shape — the trained profile with
+    // synced nights, which is what puts the zone reader, the overnight reader and the
+    // event windows on one render — and adds only the minutes those readers ask for.
+    //
+    // IT REACHES THE STATE THE ASSERTION FORBIDS, which the six personas above do not:
+    // this render issues three range reads — the trailing zone window, the span of the
+    // nights the alcohol pair judges, and the recent event window. The personas issue
+    // NONE, so on them the check below is a claim about an empty list.
+    const hrBefore = new Set(allProfileIds());
+    const hrProfileId = newProfile(`dashboard:${HR_FIXTURE}`);
+    PERSONAS.find((persona) => persona.name === "biohacker")!.apply(
+      ctxFor(hrProfileId)
+    );
+    seedHrMinutes(hrProfileId, 95);
+    seedDrinkEvenings(hrProfileId, 90);
+    session.accessible = profiles(
+      allProfileIds().filter((id) => !hrBefore.has(id))
+    );
+    session.profile = session.accessible.find(
+      (profile) => profile.id === hrProfileId
+    )!;
+    trace.clear();
+    await renderDashboard();
+    hrWindowReads.set(HR_FIXTURE, windowsRead(trace));
   }, MANIFEST_HOOK_MS);
 
   afterAll(() => {
@@ -699,6 +649,109 @@ describe("actual atomic dashboard manifests", () => {
     }
   });
 
+  // THE COMPLETENESS CONTRACT EXTENDED TO THE BAND CAP (owner ruling 2026-09-03,
+  // #4065). "Keeps drawing the tail it did not drop" above is a claim about the
+  // MANIFEST — the placement the ranker hands the canvas. Since #4065 the Understand
+  // and Setup bands can fold most of what they draw behind a count, so completeness
+  // now also has to survive RENDERING: a candidate the manifest admits must still be
+  // ON THE PAGE once the cap and its fold are applied, open or closed. Real persona
+  // data is what actually exercises a folded family (the unit-tier fixtures in
+  // lib/__tests__/dashboard-placement-canvas.test.ts prove the mechanism in
+  // isolation; this proves it against the same seeded populations #3366's baseline
+  // measured — 74 Understand rows, 65+ Setup rows across six personas).
+  it("keeps every folded Understand/Setup candidate on the page, and the fold is exercised", () => {
+    // THE CAP UNIT, reproduced from DashboardPlacementCanvas.tsx's own `momentBlocks`
+    // grouping key (`candidate.groupKey ?? <unique>`) rather than re-imported, since
+    // that function is private to the component. This is the POSITIVE half of the
+    // measurement below (which bands actually trigger the fold), not the guard
+    // itself — the guard is the presence assertion inside the loop, which reuses
+    // nothing from this count.
+    const blockCount = (
+      group: DashboardEverythingGroup,
+      placements: DashboardPlacementCanvasProps["placements"]
+    ) => {
+      const members = placements.filter(
+        (placement) =>
+          placement.lane === "everything" &&
+          placement.everythingGroup === group &&
+          placement.admitted
+      );
+      return new Set(
+        members.map(
+          (placement) =>
+            placement.candidate.groupKey ?? placement.candidate.candidateId
+        )
+      ).size;
+    };
+
+    // STRIP THE LIVE CONTROLS, KEEP THE STRUCTURE. A real persona's presentations
+    // carry write controls (`DoseConfirmButton`, snooze/dismiss menus) that reach
+    // into app-shell context (toast, quick-entry, offline queue, …) this isolated
+    // render does not have — and does not need, since candidacy and fold placement
+    // never depend on what a control renders. `data-candidate-id` sits on the row
+    // itself, so dropping `value`/`detail`/`control` proves the same completeness
+    // claim without reconstructing the shell.
+    const structuralOnly = (
+      presentations: DashboardPlacementCanvasProps["presentations"]
+    ): DashboardPlacementCanvasProps["presentations"] =>
+      new Map(
+        [...presentations].map(([id, presentation]) => [
+          id,
+          {
+            label: presentation.label,
+            href: presentation.href,
+            actionLabel: presentation.actionLabel,
+            moment: presentation.moment,
+          },
+        ])
+      );
+
+    let cappedBandsExercised = 0;
+    for (const [persona, placements] of manifests) {
+      const presentations = structuralOnly(rowPresentations.get(persona)!);
+      const html = renderToStaticMarkup(
+        createElement(DashboardPlacementCanvas, {
+          dateLabel: "September 3, 2026",
+          placements,
+          presentations,
+          aheadPresentations: structuralOnly(aheadPresentations.get(persona)!),
+          attentionBadgeCount: 0,
+          // A placeholder — some personas carry an open illness episode and the
+          // canvas requires this whenever they do; its content is irrelevant to
+          // the Understand/Setup bands under test.
+          illnessGroupNode: createElement("div"),
+        })
+      );
+      for (const group of ["understand", "setup"] as const) {
+        const admitted = placements.filter(
+          (placement) =>
+            placement.lane === "everything" &&
+            placement.everythingGroup === group &&
+            placement.admitted
+        );
+        // THE POSITIVE CONTROL, per band: nothing in this loop can mean anything on
+        // an empty band.
+        if (admitted.length === 0) continue;
+        for (const placement of admitted)
+          expect(
+            html,
+            `${persona}/${group}: ${placement.candidate.candidateId} missing from the rendered page`
+          ).toContain(`data-candidate-id="${placement.candidate.candidateId}"`);
+        if (blockCount(group, placements) > 3) {
+          cappedBandsExercised += 1;
+          expect(
+            html,
+            `${persona}/${group}: has >3 blocks but rendered no fold`
+          ).toContain(`data-testid="dashboard-everything-${group}-fold"`);
+        }
+      }
+    }
+    // The loop above is satisfiable by a population that never exceeds the cap
+    // anywhere — the seeded personas are what makes the fold assertion above mean
+    // something rather than never firing.
+    expect(cappedBandsExercised).toBeGreaterThan(0);
+  });
+
   // THE TAIL'S GENERIC WRITE CARDS ARE GONE, AND THE SHEET HAS THEM (#3366/#4064).
   //
   // Owner ruling: the quick logger is the app's one quick-write surface, so an
@@ -862,7 +915,74 @@ describe("actual atomic dashboard manifests", () => {
       );
   });
 
-  it("orders real safety, three illness groups, then the live workout", () => {
+  // WHERE THE ACKNOWLEDGMENT IS OFFERED (#3225). It spends a CLAIM, so the control
+  // belongs on the rows that still hold one — fresh, or notable — and nowhere a
+  // second control would post the same signal, which is a row whose
+  // `biomarker-flag:` key already carries an attention fact.
+  //
+  // "chronic notable" is this issue's own population and the state that moved. A
+  // notable result too old to be fresh is also too old to carry an attention item:
+  // the flagged window bounds the COLLECTION date at 14 days, inside the 30-day
+  // freshness window — so #4232's freshness-only rule left the owner's 37 June
+  // notables with no acknowledge control on the dashboard at all, only on the detail
+  // page each row links to. Reach is counted per state because a table over real
+  // personas says nothing about a state no persona reaches.
+  it("offers the acknowledgment on every unspent claim and nowhere twice", () => {
+    const reach = new Map<string, number>();
+    for (const [persona, placements] of manifests) {
+      const presentations = rowPresentations.get(persona)!;
+      const placed = new Set(
+        placements.map(({ candidate }) => candidate.candidateId)
+      );
+      for (const placement of placements.filter((entry) =>
+        entry.candidate.candidateId.startsWith("labs.latest:")
+      )) {
+        const name = placement.candidate.candidateId.slice(
+          "labs.latest:".length
+        );
+        const presentation = presentations.get(
+          placement.candidate.candidateId
+        )!;
+        // The flag the ROW ITSELF prints, read off its `MedicalValue`, so notability
+        // here is the word the person sees and not a second read of the record.
+        const flag = (
+          presentation.value as ReactElement<{ flag: MedicalFlag | null }>
+        ).props.flag;
+        const state = placed.has(
+          dashboardAttentionCandidateId(biomarkerFlagDismissalKey(name))
+        )
+          ? "hosted on its attention row"
+          : placement.candidate.rankReasons.owed
+            ? "fresh"
+            : isNotableFlag(flag)
+              ? "chronic notable"
+              : "quiet and ordinary";
+        reach.set(state, (reach.get(state) ?? 0) + 1);
+        expect(
+          presentation.control != null,
+          `${persona}:${name} (${state})`
+        ).toBe(state === "fresh" || state === "chronic notable");
+      }
+    }
+    for (const state of [
+      "fresh",
+      "hosted on its attention row",
+      "chronic notable",
+      "quiet and ordinary",
+    ])
+      expect(
+        reach.get(state) ?? 0,
+        `${state} was never produced`
+      ).toBeGreaterThan(0);
+  });
+
+  // NOW GATHERS BY SUBJECT ON A REAL HOUSEHOLD MANIFEST (#4752 item 6). The layers
+  // are unchanged — safety is uncapped and still leads — but a cross-profile Now
+  // clusters each subject's rows before drawing them, so the viewer's own live
+  // workout sits under the viewer's own illness instead of trailing two other
+  // people's. This is the manifest that says it over the real personas rather than
+  // over a hand-built candidate list.
+  it("orders real safety, then whole subject clusters, on the household manifest", () => {
     const placements = manifests
       .get("household")!
       .filter((placement) => placement.lane === "now");
@@ -878,7 +998,40 @@ describe("actual atomic dashboard manifests", () => {
       Math.min(...illnesses.map((id) => now.indexOf(id)))
     );
     expect(workoutIndex).toBeGreaterThan(-1);
-    expect(Math.max(...illnesses.map((id) => now.indexOf(id)))).toBeLessThan(
+
+    // THE GROUPING IS REAL HERE, and the assertions below would be vacuous if it
+    // were not: more than one subject, and every subject labelled.
+    const subjects = placements.map((placement) =>
+      placement.lane === "now" ? placement.nowSubject : null
+    );
+    expect(subjects.filter((subject) => subject == null)).toEqual([]);
+    expect(new Set(subjects).size).toBeGreaterThan(1);
+    // EACH CLUSTER IS CONTIGUOUS — that IS "group by subject". A subject whose rows
+    // were interleaved with another's would open twice here.
+    const opens = subjects.filter(
+      (subject, index) => subject !== subjects[index - 1]
+    );
+    expect(opens).toEqual([...new Set(subjects)]);
+
+    // The viewer's own illness leads the viewer's own workout, INSIDE one cluster:
+    // rank survives the gathering.
+    const viewer = String(personaProfileIds.get("household"));
+    expect(subjects[workoutIndex]).toBe(viewer);
+    const viewerIllness = now.findIndex(
+      (id, index) =>
+        id.startsWith("illness.state:") && subjects[index] === viewer
+    );
+    expect(viewerIllness).toBeGreaterThanOrEqual(0);
+    expect(viewerIllness).toBeLessThan(workoutIndex);
+    // And the other two households' illnesses follow that whole cluster rather than
+    // being overtaken by it — gathering promotes nobody.
+    const otherIllnesses = now
+      .map((id, index) => ({ id, index, subject: subjects[index] }))
+      .filter(
+        (row) => row.id.startsWith("illness.state:") && row.subject !== viewer
+      );
+    expect(otherIllnesses).toHaveLength(2);
+    expect(Math.min(...otherIllnesses.map((row) => row.index))).toBeGreaterThan(
       workoutIndex
     );
   });
@@ -940,18 +1093,147 @@ describe("actual atomic dashboard manifests", () => {
   // retired the `getPrnIntakeItemsForQuickLog` read that gathered them. Household is
   // unchanged because that read was already skipped there — it is gated on a WELL day
   // and the household fixture carries an open illness.
+  // +4 on household ONLY (#4609): the illness cockpit gather asked for the profile's
+  // pediatric figures and nothing else, so the "Add medication" fold it renders mounted
+  // the intake form with no stack, variants, conditions or local day — an unknown-age
+  // alcohol note over a child's weight-band dosing. It now loads the whole
+  // intake-form context per cockpit. This fixture renders three cockpits; measured by
+  // stubbing the loader out of the gather alone, that is +7 for the context and −3 for
+  // the per-cockpit pediatric read it subsumes. Every other persona is flat because
+  // none carries an open illness, and /medications is unmoved: med-data now reads the
+  // same rows through the one loader instead of assembling its own copy.
+  // −1 on EVERY persona (#5010): `getHrMinutesInRange` joined the request cache.
+  // `getDayLoadInputs` and `getIntensitySignal` both read the same trailing 42-day
+  // window on one render, so the memo collapses two identical reads into one. It moves
+  // every persona, including those with no `hr_minutes` at all, because the second read
+  // was issued regardless of what it returned.
+  // −20 on every persona and −21 on household (#3369 item 2): eight reads that one
+  // render asked the SAME question of, more than once, joined the request cache at
+  // their existing author. Measured LEAVE-ONE-OUT on this file — each wrap disabled
+  // alone against the other seven — so these are contributions, not a split of the
+  // total guessed after the fact; they sum to exactly the move above, so the eight
+  // compose rather than overlap. Per persona: getActiveRoutine 4, getWeights 3,
+  // getOutcomeGoals 3, getEpisodeRowForDate 3, getLatestBodyMetricDated 2 (3 on
+  // household), getFoodDailyServingTotals 2, mostRecentClosedEpisodeRow 2,
+  // getActiveMedicationFamilies 1.
+  //
+  // WHAT WAS DELIBERATELY NOT WRAPPED, because a memo there would have hidden real
+  // work rather than removed it: `getEpisodeRowsForDate` runs 4× on household and
+  // its four executions carry FOUR DIFFERENT profile ids — the household's own
+  // per-profile fan-out — and `preloadProfileSettings` is likewise one read per
+  // profile already. Both would have shown a green count and cost the same queries.
+  // Every wrap above keys on `profile_id`, so what collapses is one profile asking
+  // twice and never one profile answering for another; the two-profile assertion
+  // below is what holds that.
   const QUERY_BASELINE: Record<string, number> = {
-    bodybuilder: 226,
-    "marathon-runner": 225,
-    household: 269,
-    pregnant: 222,
-    "diabetic-cgm": 233,
+    // +1 on four personas and +3 on two (#4956): the attention read now also asks
+    // whether a live source is DROPPING a record type. That is one scan of this
+    // profile's CONNECTED sources, plus one bounded window of recent runs per
+    // connected source that declares a silence tolerance. Four personas have no such
+    // source and pay the scan alone; `marathon-runner` and `biohacker` each have two
+    // (health-connect and strava) and pay a window read for each, hence +3. Counted
+    // per persona in this file's own statement trace: the scan 1 everywhere, the
+    // window 0/2/0/0/0/2. Bounded by the number of connected sources and never by
+    // history — DROPPING_RUN_CAP caps what each window read returns.
+    //
+    // RE-MEASURED ON THE MERGED TREE after #4953's +1/+4 landed, and the +1/+3 came
+    // back unchanged on every persona, so the two compose. Re-measuring was not a
+    // formality here: on three personas this branch's +1 and #4953's +1 produced the
+    // SAME number from the same base, so git auto-merged them as one change and the
+    // merge was quietly a query short on each.
+    // +2 each (#2921): the Vision/Dental relevance bits now ask the SPECIALTY LENS
+    // as well as their own table, so a profile whose only eye care is VISITS stops
+    // having its pane hidden. That is one representative-id encounters read plus
+    // the shared conditions list, once per render under the request memo.
+    // `household` spends +1 rather than +2 because `hasSpecialtyLensContent`
+    // short-circuits: it reads conditions only when the visits read found nothing,
+    // and on that persona one of the two lines stops at the visits read.
+    // The two bits gate the Records › Specialty panes and nothing else (no nav leaf
+    // carries them), so this is a cost the dashboard pays for a question asked on
+    // another page — recorded here rather than absorbed, and the cheapest way to
+    // remove it later is to drop the two vestigial bits from NavRelevance.
+    // −3 each (#4228 A): the recap's adherence walk stops before today, so no
+    // persona makes today's three per-day reads any more — the day's activities,
+    // its taken set and its skipped set. `household` is unmoved because its acting
+    // profile has no active intake items, so `windowAdherence` returns before the
+    // walk and never made them; measured by instrumenting the walk and rendering
+    // all six personas, which reported five walking one day fewer and household
+    // short-circuiting.
+    // +1 on EVERY persona (#4767 item 2), MEASURED ON THE MERGED TREE each time and
+    // never added to main's numbers by hand: the Today band's intraday chart asks
+    // for the profile's latest worn HR day before anything else, and none of these
+    // six has one on today, so all six pay exactly that one indexed read and stop.
+    // The gate doing its job — a profile that DOES have today's minutes pays the day
+    // gather too, which is the cost of DRAWING the chart rather than of asking.
+    //
+    // Re-measured against three different mains while this branch waited to land
+    // (#4228 A's −3 on five personas, then household's +4 above), and the +1 came
+    // back unchanged every time, on every persona. So it composes with all of them
+    // rather than interacting with any — which is a measurement, not an assumption
+    // about independence.
+    // +1 on EVERY persona and +4 on biohacker (#4299): the sleep clock-skew check asks
+    // whether any synced sleep session's stored instants disagree with the heart rate
+    // recorded across them. A persona with no synced sleep pays the candidate read and
+    // stops — that is the +1 — while biohacker, which has synced nights AND a heart-rate
+    // trace, pays the candidate read, ONE batched read of the minutes across the judged
+    // span, its travel log, and the narrow last-night repeat of the same question the
+    // bed/wake row asks.
+    //
+    // MEASURED AT +33 BEFORE THE GATHER WAS BATCHED, on this same test: the first
+    // version issued one heart-rate SELECT per night, so its cost grew with the
+    // profile's sleep history rather than with the question. That is what this baseline
+    // is for, and it is why biohacker moves by 4 here instead of by 33.
+    //
+    // RE-MEASURED ON THE MERGED TREE, with #4775's −1 already in main's numbers: the
+    // same +1/+4 came back on every persona, so the two moves compose rather than
+    // interact. Measured, not arithmetic on two branches' deltas.
+    // +1 on EVERY persona (#3195): the day's ride-best recap is one statement for the
+    // day's rides. None of the six has a ride with a stored summary today, so the
+    // per-ride prior read and the segment read never execute — the +1 is the statement
+    // asking, not answering. A persona that DID ride today pays the reads that produce
+    // the sentence, which is the cost of having one rather than of looking.
+    //
+    // RE-MEASURED ON THE MERGED TREE against #4967's numbers, which were themselves
+    // measured against #4299's, which were measured against #4775's: the same +1 came
+    // back on all six every time. Four independent moves in this baseline today and
+    // each composes with the others — measured each time, never summed.
+    //
+    // AND NEVER TAKEN FROM THE MERGE. On the merge against #4967, four of these six
+    // numbers were IDENTICAL on both sides while meaning different things — each side
+    // had added its own +1 to a different base — so git auto-merged them as agreement
+    // and only flagged the two that happened to differ. Taking that merge would have
+    // left four personas a query short with nothing to show for it. The numbers below
+    // came from running the gate on the merged tree, which is the only thing that can
+    // tell "we agree" from "we both landed on 227 by coincidence".
+    bodybuilder: 206,
+    "marathon-runner": 207,
+    household: 254,
+    pregnant: 202,
+    "diabetic-cgm": 213,
     // +9 (#4424 ruling 7): Upcoming's practice rows mount the shared row control, so
     // the row now resolves what that control renders — `getTrackedPractices`, which is
     // one grouped today-tally and one live sweep however many practices there are,
     // plus the usual-duration vote per practice. Assembling the same four fields
     // per-target instead measured +13.
-    biohacker: 248,
+    biohacker: 233,
+    // −1 each (#5061): `getDayLoadInputs` and `getIntensitySignal` ask the same
+    // question of the same 42 days — the shared HR read, kept to the activity windows
+    // that bound it — and only the READ was request-cached (#5010), so each one still
+    // fetched the windows and walked every minute again. `windowScopedBuckets` in
+    // lib/queries/zones.ts caches the scoped answer instead, and the second fetch of
+    // `activities` goes with it. The statement is the only one that moved: diffing the
+    // profiler's per-statement counts over one snapshot render, before and after,
+    // reports exactly `SELECT date, start_time, end_time, duration_min FROM activities`
+    // ×3 → ×2 and nothing else. The walk it also removed is not a statement and so is
+    // invisible here — 144,000 of the render's 295,200 bucket comparisons, counted with
+    // a probe rather than read off this meter.
+    // −1 each (#4775): the paired-observation registry gained a third alcohol entry
+    // (`alcohol-overnight-hr`), which reads the SAME `food_daily_totals` window the
+    // other two already read — and the factor read happens before each entry's
+    // short-circuit, so it was being paid once per entry. `factorDaysReader` memoizes
+    // it per gather the way `outcomeSeriesReader` already memoized the outcome side,
+    // so three entries now cost one read where two cost two. The new entry's own
+    // outcome series is lazy and is not reached on these personas.
   };
 
   // A BACKSTOP, NOT THE METER. The baseline above is the meter; this is the bound
@@ -965,13 +1247,14 @@ describe("actual atomic dashboard manifests", () => {
   // rather than a bound, and decoration is exactly what the single cap had already
   // decayed into by the time #3164 filed against it. So it is re-derived here:
   //
-  //   household 270 (the heaviest baseline) + 20 headroom = 290
+  //   household 254 (the heaviest baseline) + 20 headroom = 274
   //
-  // RE-DERIVED, NOT LEFT BEHIND (#3410/#3316/#3100). The line above read
-  // "267 + 23 = 290" after the household baseline moved to 270, which is the one
-  // arithmetic this comment cannot afford to get wrong: the whole subject here is
-  // that these numbers are honest. The CEILING did not move — only the split of it
-  // into "what a render costs" and "what is left".
+  // RE-DERIVED, NOT LEFT BEHIND (#3410/#3316/#3100). This line has read "267 + 23"
+  // and then "270 + 20" as the household baseline moved, and it is the one arithmetic
+  // this comment cannot afford to get wrong: the whole subject here is that these
+  // numbers are honest. What changes is the split of the ceiling into "what a render
+  // costs" and "what is left", and the split has to be re-done every time either half
+  // moves — including, as below, when it moves DOWN.
   //
   // WHAT THE HEADROOM IS FOR: one household-shaped addition landing without a
   // conversation. The integrated household fixture carries four profiles, so an
@@ -988,7 +1271,43 @@ describe("actual atomic dashboard manifests", () => {
   // the residual duplicates) are each expected to take a bite out of these numbers;
   // when they do, this number follows them down. A ceiling left behind by a
   // reduction stops being able to fire, and then it is decoration again.
-  const QUERY_CEILING = 290;
+  //
+  // 290 → 275 (#3369 item 2), WHICH IS THAT RULE BEING FOLLOWED RATHER THAN AN
+  // OPTIMISATION BANKED. Wrapping the eight repeated reads took household 276 → 255,
+  // so the derivation above re-runs as 255 + 20 = 275 and the ceiling follows the
+  // baselines down. Leaving it at 290 would have parked 35 statements of slack over
+  // the heaviest persona — room for a 20-query regression to be pasted in without
+  // anyone having the conversation this bound exists to force, which is the exact
+  // decay the 535 suffered. Re-deriving is one line and is meant to happen every
+  // time a gather moves these numbers.
+  //
+  // 275 → 274 (#5061), the same rule again and the smallest it will ever look. The
+  // zone reads stopped fetching the activity windows twice, which is −1 on every
+  // persona, so household is 254 and the derivation above re-runs as 254 + 20 = 274.
+  // A one-statement reduction is exactly the size at which leaving the ceiling alone
+  // feels reasonable, and that is the decay: nothing here ever moves by 15 at once,
+  // it moves by one several times and the slack is what accumulates. The arithmetic
+  // in this comment is the whole product, so it follows the number down or it is
+  // false — which is the same defect #5062 deleted from this file, one paragraph up.
+  //
+  // WHAT IS NOT COMING: #3369 item 1 said the closed Show-everything tail's node
+  // payloads would move behind the disclosure and take a bite out of the table
+  // above. Measured on 5045340d by attributing every statement to the page frame
+  // that issued it — one stack capture per statement, six personas, the per-line
+  // counts summing to exactly the six baselines — the tail's payloads are not what
+  // this page spends. The whole candidate-and-row region of `app/(app)/page.tsx`,
+  // every `add(...)` and every presentation built for one, issues ONE statement per
+  // persona (`getLastSleepRecordDate`, itself a dormancy date and so candidacy) and
+  // none at all on biohacker. Every other statement comes from the shared gathers
+  // ABOVE the first candidate — which is also where the candidate IDS come from.
+  // Six of those gathers do feed nothing but everything-lane candidates and are
+  // worth 32-47% of a render (collectCoachingFindings 38-44, gatherCoachingInput
+  // 17-22, getRecapCard 8-16, getHealthspanPillars 10-18, getActiveProtocolSummaries
+  // 1-13, getScheduledAppointments 1), but each MINTS the ids it feeds —
+  // `data-quality.finding:<dedupeKey>`, `recap.<line>`, `healthspan.pillar:<key>` —
+  // so deferring one defers CANDIDACY, not a payload, and that is the #3077
+  // exact-once partition rather than a cost question.
+  const QUERY_CEILING = 274;
 
   it("dashboard query budget: each persona matches its recorded main baseline", () => {
     // THE BACKSTOP ASKS ABOUT THE TABLE, NOT THE MEASUREMENT — which is the only
@@ -1042,5 +1361,170 @@ describe("actual atomic dashboard manifests", () => {
         "commit message, then refresh QUERY_BASELINE in this file with:\n\n" +
         `  const QUERY_BASELINE: Record<string, number> = {\n${refreshed}\n  };\n`
     ).toEqual([]);
+  });
+
+  it("reads each hr_minutes window once per render (#5010)", () => {
+    // THE CONTROL COMES FIRST BECAUSE ZERO IS THE FLATTERING ANSWER. Every window
+    // below is distinct when no window was read at all, which is the state all six
+    // personas are in — and it is what the assertion would report forever if the
+    // statement this watches were renamed or the fixture stopped reaching the reader.
+    expect(
+      hrWindowReads.get(HR_FIXTURE) ?? [],
+      `${HR_FIXTURE} made no hr_minutes range read, so the check below is vacuous.\n` +
+        `Either the fixture stopped reaching a reader on this seam, or the read's\n` +
+        `SQL no longer matches ${HR_RANGE_READ}.`
+    ).not.toEqual([]);
+
+    const repeated = [...hrWindowReads].flatMap(([render, windows]) => {
+      const times = new Map<string, number>();
+      for (const window of windows)
+        times.set(window, (times.get(window) ?? 0) + 1);
+      return [...times]
+        .filter(([, count]) => count > 1)
+        .map(([window, count]) => `${render}: ${count} reads of ${window}`);
+    });
+    expect(
+      repeated,
+      "One render read the same hr_minutes window more than once.\n" +
+        "Each line names the render and the [profile_id, from, to] span it asked for\n" +
+        "twice. A second read of one span is a second full materialisation of the same\n" +
+        "rows — the cost #5010 removed — and it is invisible to a statement COUNT,\n" +
+        "because N reads of N windows and N reads of one window are both N.\n" +
+        "The usual cause is a caller reaching the reader outside the request memo, or\n" +
+        "two callers spelling one span differently — separate keys, one window. #5069\n" +
+        "required `until`, so the trailing window now has a single spelling."
+    ).toEqual([]);
+  });
+});
+
+// THE PRACTICE-TARGET ROW LOGS IN PLACE (#4076, the 2026-08-30 "#4384 thread"
+// ruling). Self-contained: its own profiles, its own render — it does not touch
+// PERSONAS or QUERY_BASELINE above, so a change here cannot silently move either.
+//
+// Rolling mode (the default; no week_start/week_mode setting is written) makes the
+// window always fully elapsed (#748 item 3's `elapsedDays: 7`), so a fresh
+// per_week >= 1 target with zero sessions in the trailing week is BEHIND by
+// construction — no calendar alignment to pin. That is the fixture every case below
+// reuses, varied on exactly the one axis each case is about.
+describe("the practice-target row logs in place (#4076)", () => {
+  const adminLoginId = (): number =>
+    (
+      db
+        .prepare(
+          "SELECT id FROM logins WHERE role = 'admin' ORDER BY id LIMIT 1"
+        )
+        .get() as { id: number }
+    ).id;
+
+  async function renderFor(profileId: number) {
+    session.loginId = adminLoginId();
+    session.accessible = profiles([profileId]);
+    session.profile = session.accessible[0];
+    const { default: Dashboard } = await import("../../app/(app)/page");
+    const page = (await requestCache.during(
+      async () => await Dashboard()
+    )) as ReactElement<{ children: ReactElement }>;
+    const surface = page.props.children as ReactElement<{
+      children: ReactElement;
+    }>;
+    const canvas = surface.props
+      .children as ReactElement<DashboardPlacementCanvasProps>;
+    return {
+      candidateIds: canvas.props.placements.map(
+        (placement) => placement.candidate.candidateId
+      ),
+      presentations: canvas.props.presentations,
+    };
+  }
+
+  function seedTarget(
+    name: string,
+    scopeKind: "practice" | "type",
+    scopeValue: string,
+    perWeek: number
+  ): number {
+    const profileId = newProfile(`dashboard:${name}`);
+    // `practice` rows carry a NOT-NULL `scope_identity` (#123's trigger) — the same
+    // lowercase key every practice write already uses.
+    db.prepare(
+      `INSERT INTO frequency_targets
+         (profile_id, scope_kind, scope_value, scope_identity, per_week, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(
+      profileId,
+      scopeKind,
+      scopeValue,
+      scopeKind === "practice" ? scopeValue.toLowerCase() : null,
+      perWeek,
+      `${shiftDateStr(today(profileId), -60)} 00:00:00`
+    );
+    return profileId;
+  }
+
+  it("carries LogPracticeButton in the row's control slot and drops the target.log door", async () => {
+    const profileId = seedTarget("practice-behind", "practice", "Sauna", 2);
+    const { candidateIds, presentations } = await renderFor(profileId);
+
+    const rowId = candidateIds.find((id) =>
+      id.startsWith("target.weekly-progress:")
+    );
+    expect(rowId, candidateIds.join(", ")).toBeDefined();
+    expect(candidateIds.some((id) => id.startsWith("target.log:"))).toBe(false);
+
+    const control = presentations.get(rowId!)?.control as ReactElement<{
+      practice: string;
+      todayCount: number;
+      today: string;
+      compact?: boolean;
+    }> | null;
+    expect(control, "no control on the behind practice-target row").not.toBe(
+      null
+    );
+    expect(control!.type).toBe(LogPracticeButton);
+    expect(control!.props.practice).toBe("Sauna");
+    expect(control!.props.todayCount).toBe(0);
+    expect(control!.props.compact).toBe(true);
+  });
+
+  // THE CONVERSE (a removal guard proves nothing alone): an ON-PACE practice
+  // target — met, so never behind — keeps NO control and no door either, because
+  // an already-met target offers nothing to log. Distinguishes "logs in place" from
+  // "every practice row gets a button".
+  it("an on-pace (met) practice target's row carries no control and no door", async () => {
+    const profileId = seedTarget("practice-met", "practice", "Sauna", 1);
+    const today0 = today(profileId);
+    db.prepare(
+      `INSERT INTO practice_logs (profile_id, practice, date, logged_via) VALUES (?, 'Sauna', ?, 'page')`
+    ).run(profileId, today0);
+    const { candidateIds, presentations } = await renderFor(profileId);
+
+    const rowId = candidateIds.find((id) =>
+      id.startsWith("target.weekly-progress:")
+    );
+    expect(rowId, candidateIds.join(", ")).toBeDefined();
+    expect(presentations.get(rowId!)?.control).toBeFalsy();
+    // A met target is never "owed" a log — this asserts the family's existing
+    // `!progress.met` applicability, not anything this change touches.
+    expect(candidateIds.some((id) => id.startsWith("target.log:"))).toBe(false);
+  });
+
+  // THE OTHER CONVERSE: a behind target OUTSIDE the practice domain (training's
+  // `type`/cardio scope, the marathon-runner persona's own shape) keeps the
+  // ORIGINAL door and gets no control — the ruling is scoped to
+  // `scope_kind === "practice"`, and #4083's dose precedent (and every other habit
+  // domain) is untouched by it. Not `group`/`region` — those are STRENGTH-
+  // programming scopes (`isStrengthProgrammingScope`), gated on a known adult-ish
+  // age this fixture does not set, and would drop out of `freqTargets` entirely for
+  // an unrelated reason before ever reaching the row this test is about.
+  it("a behind training (type/cardio-scope) target keeps its door and carries no control", async () => {
+    const profileId = seedTarget("cardio-behind", "type", "cardio", 2);
+    const { candidateIds, presentations } = await renderFor(profileId);
+
+    const rowId = candidateIds.find((id) =>
+      id.startsWith("target.weekly-progress:")
+    );
+    expect(rowId, candidateIds.join(", ")).toBeDefined();
+    expect(presentations.get(rowId!)?.control).toBeFalsy();
+    expect(candidateIds.some((id) => id.startsWith("target.log:"))).toBe(true);
   });
 });

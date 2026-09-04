@@ -273,6 +273,19 @@ These are not review taste; each retired a green that meant nothing.
   expects rather than FORBID rules it does not. The presence form is immune to
   this; the absence form is not.
 
+- **A browser pseudo-class can be a DOCUMENT-WIDE oracle in jsdom, so it answers
+  differently depending on which test ran before it.** `:focus-visible` reads as
+  the browser's own answer to "did this focus come from the keyboard", and it is
+  one line. In jsdom the selector engine resolves it from a document-level record
+  of the last focus and the last key/mouse event, so the IDENTICAL focus on the
+  IDENTICAL element returned `true` alone and `false` after a neighbouring test
+  had run (#4511; established by reading
+  `@asamuzakjp/dom-selector/src/js/evaluator.js:998`, not by re-running until it
+  settled). The tell is a test whose verdict moves with its COMPANY rather than
+  with its input — the unit-tier twin of the shard-composition effect. The fix is
+  not a wait or a reset: it is to keep the state you are asserting on scoped to
+  the thing under test, so the oracle cannot be reached by anyone else.
+
 ## Merge-time failure modes
 
 - **A missed closing keyword reads as safe.** GitHub honours ten — close,

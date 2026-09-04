@@ -8,8 +8,10 @@ import {
   formulationForSlug,
   formulationSlugForProduct,
   kgToLbs,
+  pediatricAgeYears,
   pediatricDoseSuggestion,
 } from "@/lib/prn-dosing";
+import type { PediatricFormContext } from "@/lib/prn-dosing";
 import { prnDefaultsFor, type PediatricBand } from "@/lib/prn-defaults";
 
 const IBUPROFEN = prnDefaultsFor({ name: "Ibuprofen", rxcui: "5640" })!;
@@ -115,6 +117,39 @@ describe("mlForBand — formulation-gated volume", () => {
 describe("kgToLbs", () => {
   it("converts canonical kg to pounds", () => {
     expect(kgToLbs(10)).toBeCloseTo(22.05, 1);
+  });
+});
+
+describe("pediatricAgeYears — whole years COMPLETED", () => {
+  // Pinned on months, never on a clock, so the same cases hold in July as in March.
+  // The boundary is the minor/adult line: pediatricAgeYears feeds the food-note age
+  // gate, and meetsMinLifeStage(18, "adult") unlocks chronic-alcohol counselling. An
+  // age in years is the number of years COMPLETED, so months must FLOOR — rounding is
+  // the round-UP trap of #3020 (17.6 stored as 18 makes a minor an adult, see
+  // lib/settings/profile-attrs.ts setStoredAge). Under Math.round, 210–215 months
+  // (17y6m–17y11m) reads as 18 and a 17-year-old is shown adult-only content; 209 and
+  // 215 are here to catch exactly that.
+  const at = (ageMonths: number | null): PediatricFormContext => ({
+    ageMonths,
+    weightKg: null,
+    weightDate: null,
+    weightUnit: "kg",
+    today: "2026-07-15",
+  });
+
+  it("floors months to completed years across the 18th-birthday line", () => {
+    expect(pediatricAgeYears(at(209))).toBe(17); // 17y5m
+    expect(pediatricAgeYears(at(215))).toBe(17); // 17y11m — still a minor
+    expect(pediatricAgeYears(at(216))).toBe(18); // the birthday itself
+  });
+
+  it("a newborn is 0, not unknown", () => {
+    expect(pediatricAgeYears(at(0))).toBe(0);
+  });
+
+  it("no age on file stays null (never a number the gate could pass)", () => {
+    expect(pediatricAgeYears(at(null))).toBe(null);
+    expect(pediatricAgeYears(undefined)).toBe(null);
   });
 });
 

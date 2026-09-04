@@ -72,6 +72,7 @@ import { prnDefaultsFor, redoseLabelDefaults } from "@/lib/prn-defaults";
 import type { PediatricBand } from "@/lib/datasets/prn-defaults";
 import {
   formulationSlugForProduct,
+  pediatricAgeYears,
   PEDIATRIC_MAX_AGE_MONTHS,
   pediatricDoseSuggestion,
   type PediatricFormContext,
@@ -176,7 +177,6 @@ export default function IntakeItemForm({
   pairs: initialPairs = [],
   onDone,
   pediatric,
-  age = null,
   course,
   todayStr,
   initialSupply = null,
@@ -203,7 +203,6 @@ export default function IntakeItemForm({
   pairs?: IntakePair[];
   onDone?: () => void;
   pediatric?: PediatricFormContext;
-  age?: number | null;
   course?: MedicationCourse;
   todayStr?: string;
   initialSupply?: SupplyOption | null;
@@ -1136,7 +1135,7 @@ export default function IntakeItemForm({
         stackItems={stackItems}
         pgxVariants={pgxVariants}
         excludeId={s?.id}
-        age={age}
+        age={pediatricAgeYears(pediatricContext)}
       />
 
       {openPanel == null ? (
@@ -1403,9 +1402,9 @@ export default function IntakeItemForm({
                   <p className="mt-1">
                     After a dose is logged you get a one-time reminder when the
                     minimum interval passes (e.g. {`"`}6h since Ibuprofen — 2 of
-                    4 today{`"`}). These are YOUR confirmed numbers — pre-filled
-                    from the label as a suggestion, never applied on their own;
-                    leave them blank for no reminder.
+                    4 in 24h{`"`}). These are YOUR confirmed numbers —
+                    pre-filled from the label as a suggestion, never applied on
+                    their own; leave them blank for no reminder.
                     {prnDefaults && ` Label source: ${prnDefaults.source}.`}
                   </p>
                 </Disclosure>
@@ -1431,7 +1430,7 @@ export default function IntakeItemForm({
                   </div>
                   <div>
                     <label className="label" htmlFor={`redose-max-${fid}`}>
-                      Maximum doses per day
+                      Maximum doses in 24 hours
                     </label>
                     <input
                       id={`redose-max-${fid}`}
@@ -1450,7 +1449,7 @@ export default function IntakeItemForm({
                   </div>
                   <div>
                     <label className="label" htmlFor={`redose-max-mg-${fid}`}>
-                      Maximum mg per day
+                      Maximum mg in 24 hours
                     </label>
                     <input
                       id={`redose-max-mg-${fid}`}

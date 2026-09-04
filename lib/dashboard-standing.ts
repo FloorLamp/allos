@@ -31,10 +31,8 @@ export type StandingRenderedBand = Exclude<StandingBandKey, "tail">;
 export const STANDING_CTA_CLAIM_CAP = 3;
 
 export type StandingFamilyKey =
-  | "last-night-sleep"
-  | "steps-today"
+  | "day-so-far"
   | "protein-today"
-  | "nap-total"
   | "cycle-phase"
   | "weight"
   | "blood-pressure"
@@ -48,7 +46,10 @@ export interface StandingReadingFamily {
   key: StandingFamilyKey;
   section: StandingSectionKey;
   label: string;
-  composition: "single" | "composed" | "members";
+  // "single" folded into "composed" (#4969 item 2): a lone member was already
+  // "composed" with one member and nothing enforcing the count, so the third
+  // value bought no distinction a caller could act on.
+  composition: "composed" | "members";
   matches: (candidate: DashboardCandidate) => boolean;
   /**
    * Where this family's members sit when they hold NO live claim (#3548, narrowed by
@@ -102,44 +103,10 @@ export function cappedFamilyGather<Row>(
 // reading remains in Show everything until this closed registry explicitly claims it.
 export const STANDING_READING_ORDER: readonly StandingReadingFamily[] = [
   {
-    key: "last-night-sleep",
-    section: "today",
-    label: "Last-night sleep",
-    composition: "composed",
-    matches: idStartsWith(
-      "sleep.duration:",
-      "sleep.bed-time:",
-      "sleep.wake-time:",
-      "sleep.bootstrap",
-      "sleep.dormant"
-    ),
-    memberOrder: {
-      kind: "identity",
-      prefixes: [
-        "sleep.duration:",
-        "sleep.bed-time:",
-        "sleep.wake-time:",
-        "sleep.bootstrap",
-        "sleep.dormant",
-      ],
-    },
-  },
-  {
-    key: "steps-today",
-    section: "today",
-    label: "Steps today",
-    composition: "single",
-    matches: idStartsWith("activity.steps:", "activity.steps-bootstrap"),
-    memberOrder: {
-      kind: "identity",
-      prefixes: ["activity.steps:", "activity.steps-bootstrap"],
-    },
-  },
-  {
     key: "protein-today",
     section: "today",
     label: "Protein today",
-    composition: "single",
+    composition: "composed",
     matches: idStartsWith("nutrition.protein:", "nutrition.bootstrap"),
     memberOrder: {
       kind: "identity",
@@ -147,20 +114,54 @@ export const STANDING_READING_ORDER: readonly StandingReadingFamily[] = [
     },
   },
   {
-    key: "nap-total",
-    section: "today",
-    label: "Nap total",
-    composition: "single",
-    matches: idStartsWith("sleep.nap-total:"),
-    memberOrder: { kind: "identity", prefixes: ["sleep.nap-total:"] },
-  },
-  {
     key: "cycle-phase",
     section: "today",
     label: "Cycle day / phase",
-    composition: "single",
+    composition: "composed",
     matches: idStartsWith("cycle.phase:"),
     memberOrder: { kind: "identity", prefixes: ["cycle.phase:"] },
+  },
+  // THE DAY SO FAR (#4969), last in Today because it is the band's only DRAWING
+  // and the numbers above it are what a glance reads first. One row for the whole
+  // morning read: last night's sleep (or its waiting/bootstrap/dormant/refresh
+  // replacement — #2097's waiting atom belongs to this family, not to a hand-set
+  // Show-everything mount), today's naps, steps and the intraday chart. A member
+  // may be absent (no watch minutes yet, no wearable at all) without the family
+  // disappearing — presence is "any member placed", same as every other family.
+  {
+    key: "day-so-far",
+    section: "today",
+    label: "Day so far",
+    composition: "composed",
+    matches: idStartsWith(
+      "sleep.duration:",
+      "sleep.bed-time:",
+      "sleep.wake-time:",
+      "sleep.waiting:",
+      "sleep.refresh",
+      "sleep.bootstrap",
+      "sleep.dormant",
+      "sleep.nap-total:",
+      "activity.steps:",
+      "activity.steps-bootstrap",
+      "activity.intraday:"
+    ),
+    memberOrder: {
+      kind: "identity",
+      prefixes: [
+        "sleep.duration:",
+        "sleep.bed-time:",
+        "sleep.wake-time:",
+        "sleep.waiting:",
+        "sleep.refresh",
+        "sleep.bootstrap",
+        "sleep.dormant",
+        "sleep.nap-total:",
+        "activity.steps:",
+        "activity.steps-bootstrap",
+        "activity.intraday:",
+      ],
+    },
   },
   {
     key: "weight",
@@ -187,7 +188,7 @@ export const STANDING_READING_ORDER: readonly StandingReadingFamily[] = [
     key: "blood-pressure",
     section: "body",
     label: "Blood pressure",
-    composition: "single",
+    composition: "composed",
     matches: idStartsWith("vitals.blood-pressure:"),
     memberOrder: {
       kind: "identity",
@@ -198,7 +199,7 @@ export const STANDING_READING_ORDER: readonly StandingReadingFamily[] = [
     key: "resting-heart-rate",
     section: "body",
     label: "Resting heart rate",
-    composition: "single",
+    composition: "composed",
     matches: idStartsWith("vitals.resting-heart-rate:"),
     memberOrder: {
       kind: "identity",
@@ -317,15 +318,18 @@ export function standingFamilyForCandidate(
   return STANDING_READING_ORDER.find((family) => family.matches(candidate));
 }
 
+// A candidate may join a Standing family when it speaks FOR a piece of
+// profile data — an ordinary reading, or a replacement standing in for one
+// that is missing (`never`), gone stale (`dormant`), or momentarily unsettled
+// (`current` on a non-reading kind: the sleep-waiting and stale-refresh atoms,
+// #4969 — "the two sleep atoms move into a family, they do not disappear").
+// `relevance.kind === "profile-data"` already says all of that: every builder
+// that declares it is declaring membership in exactly this story, whatever
+// its structural `kind` or presence.
 function isStandingReadingOrReplacement(
   candidate: DashboardCandidate
 ): boolean {
-  if (candidate.relevance.kind !== "profile-data") return false;
-  return (
-    candidate.kind === "reading" ||
-    candidate.relevance.presence === "never" ||
-    candidate.relevance.presence === "dormant"
-  );
+  return candidate.relevance.kind === "profile-data";
 }
 
 export function resolveStandingMembers(

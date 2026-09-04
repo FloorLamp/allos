@@ -18,8 +18,47 @@ import { fileURLToPath } from "node:url";
 // `chart-scaffold-scan` is: the claim is about every speaker at once.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const FUNNEL = "components/LineChartCardInner.tsx";
+// The funnel is the CARD since #4925, not an Inner: the recharts tree moved to
+// the shared renderer and everything that decides what a day-grain series MEANS
+// — the fill, the runs, the sparse verdict, the sources, the one-reading degrade
+// — stayed here. So this scan follows the decisions, which is what it was ever
+// about, and not the file that used to hold them.
+const FUNNEL = "components/LineChartCard.tsx";
 const funnel = fs.readFileSync(path.join(REPO, FUNNEL), "utf8");
+// Since #4924 the funnel decides WHAT each caption says and the card's footer
+// band renders it, so the sentences and their markers are read here. The split
+// is the point of that fix — the chart owns the claim, the card owns the layout —
+// and a scan that kept looking for the markup in the funnel would be asserting
+// the arrangement the screenshot was filed about.
+const BAND = "components/ChartCaptionBand.tsx";
+const band = fs.readFileSync(path.join(REPO, BAND), "utf8");
+// The RENDERER, and the scaffold half that resolves a spec's named marks back
+// into recharts props. #4925 moved the chart TREE out of the funnel and into a
+// renderer five cards share, so the marks this file pins are read where they are
+// now drawn. The DECISIONS stayed in the funnel and are still read there — which
+// is the split this scan has always been about.
+const SCAFFOLD = "components/chart-scaffold.tsx";
+const scaffold = fs.readFileSync(path.join(REPO, SCAFFOLD), "utf8");
+
+/**
+ * The text between two anchors, THROWING when either is missing.
+ *
+ * `indexOf` returns -1 for an anchor that has moved, and `slice(-1, -1)` is the
+ * empty string — so a window whose anchors drifted makes every `not.toContain`
+ * in it pass and every `toContain` fail with a message about the wrong thing.
+ * One of those halves is silent, and this file is nothing but windows.
+ */
+function between(text: string, from: string, to: string): string {
+  const a = text.indexOf(from);
+  const b = text.indexOf(to);
+  if (a < 0) throw new Error(`anchor not found: ${from}`);
+  if (b < 0) throw new Error(`anchor not found: ${to}`);
+  if (b < a) throw new Error(`anchors out of order: ${from} … ${to}`);
+  return text.slice(a, b);
+}
+
+/** The one place a chart's unlogged-run band is drawn, since #4925. */
+const unloggedMark = between(scaffold, 'case "unlogged":', 'case "now":');
 
 describe("state 1 — one reading is a marker, not a plot", () => {
   it("the funnel itself degrades, so every consumer inherits it", () => {
@@ -32,7 +71,7 @@ describe("state 1 — one reading is a marker, not a plot", () => {
 
   it("the marker returns BEFORE the plot is built, so no band is drawn behind it", () => {
     const mark = funnel.indexOf("<SingleReadingMark");
-    const plot = funnel.indexOf("<ComposedChart");
+    const plot = funnel.indexOf("<TimeSeriesChart");
     expect(mark).toBeGreaterThan(-1);
     expect(plot).toBeGreaterThan(-1);
     expect(
@@ -56,10 +95,7 @@ describe("state 1 — one reading is a marker, not a plot", () => {
     // ("sleep is a chart at every range"). Three sleep tiles rendered no chart
     // subtree at all. A shared decision must still read the declarations its
     // callers already carry.
-    const gate = funnel.slice(
-      funnel.indexOf("const lone ="),
-      funnel.indexOf("<SingleReadingMark")
-    );
+    const gate = between(funnel, "const lone =", "<SingleReadingMark");
     expect(gate).toContain("!singleReadingAsChart");
     expect(/singleReadingAsChart\?: boolean/.test(funnel)).toBe(true);
   });
@@ -67,10 +103,7 @@ describe("state 1 — one reading is a marker, not a plot", () => {
   it("only a dated day-grain series may take it", () => {
     // A per-event or intraday x is not a calendar day, so "one reading on Jul 13"
     // is not a sentence about it. Same gate as every other honesty state here.
-    const branch = funnel.slice(
-      funnel.indexOf("const lone ="),
-      funnel.indexOf("<SingleReadingMark")
-    );
+    const branch = between(funnel, "const lone =", "<SingleReadingMark");
     expect(branch).toContain("isoDates");
     expect(branch).toContain('key === "value"');
   });
@@ -82,24 +115,22 @@ describe("states 2 and 4 — the quiet span is visibly quiet, and names itself",
     // the trailing hole, so the line stopped short of the axis edge — mutely.
     expect(funnel).toContain("trailingHole");
     expect(/trailingOutageCaption\(/.test(funnel)).toBe(true);
-    expect(/data-testid="chart-trailing-outage-note"/.test(funnel)).toBe(true);
+    expect(/trailingOutage:/.test(funnel)).toBe(true);
+    expect(/data-testid="chart-trailing-outage-note"/.test(band)).toBe(true);
   });
 
   it("the caption links to where the diagnosis lives, at the chart", () => {
     // Owner ruling 2026-08-13: the label renders at the chart, with the link, and
     // routes to Data → Review rather than re-homing #2146's verdict onto the card.
-    expect(funnel).toContain('dataSectionHref("review")');
-    expect(funnel).toContain("Data → Review");
+    expect(band).toContain('dataSectionHref("review")');
+    expect(band).toContain("Data → Review");
   });
 
   it("the since-date never reaches for an index that may not exist", () => {
     // `findIndex` returns -1 for a date not in the series, and `slice(0, -1)`
     // silently drops the LAST element instead of erroring — a wrong answer with
     // no symptom. The date is selected by comparison instead.
-    const derive = funnel.slice(
-      funnel.indexOf("const lastReadingDate"),
-      funnel.indexOf("const strokeRuns")
-    );
+    const derive = between(funnel, "const lastReadingDate", "const strokeRuns");
     expect(derive).not.toContain("findIndex");
     expect(derive).toContain("d.date < trailingHole.from");
   });
@@ -109,10 +140,7 @@ describe("states 2 and 4 — the quiet span is visibly quiet, and names itself",
     // any annotation derived twice.
     expect(/const lastReadingDate\s*=/.test(funnel)).toBe(true);
     expect(
-      funnel.slice(
-        funnel.indexOf("const lastReadingDate"),
-        funnel.indexOf("const strokeRuns")
-      )
+      between(funnel, "const lastReadingDate", "const strokeRuns")
     ).toContain("series");
   });
 });
@@ -130,13 +158,15 @@ describe("state 3 — an over-limit hole earns a hole", () => {
     // beside `chartAnnotationLabel`, and the geometry it produces is asserted on
     // computed extents in `chart-annotation-fit.test.ts`. What this line guards
     // is only that the funnel still goes through it.
-    const band = funnel.slice(
-      funnel.indexOf("key={`hole-"),
-      funnel.indexOf("{snapped.map")
+    expect(unloggedMark).toContain("chartFittedAnnotationLabel(");
+    // And the funnel still decides WHICH runs get words: the live trailing one
+    // takes its sentence from the caption band instead, where the route to the
+    // fix can be a real link.
+    expect(funnel).toContain(
+      "hole.trailing ? null : unloggedGapLabel(hole.days)"
     );
-    expect(band).toContain("chartFittedAnnotationLabel(");
     expect(
-      /[^a-zA-Z]chartAnnotationLabel\(/.test(band),
+      /[^a-zA-Z]chartAnnotationLabel\(/.test(unloggedMark),
       "an unlogged band's label must go through the fit rule — a raw " +
         "chartAnnotationLabel here is the overprinting render of #2871"
     ).toBe(false);
@@ -155,7 +185,7 @@ describe("state 3 — an over-limit hole earns a hole", () => {
       "nulls must reach the tooltip formatter, or a hovered gap day is an " +
         "unlabelled empty box (#2258) and the fit rule of #2871 loses the " +
         "channel it drops the label in favour of"
-    ).toContain("filterNull={false}");
+    ).toContain("filterNull: false");
     expect(funnel).toContain(
       'return name === "band" ? null : ["No data", label];'
     );
@@ -165,18 +195,14 @@ describe("state 3 — an over-limit hole earns a hole", () => {
     // Both are recharts reference areas. Without a class of its own, a silence
     // in the data answers "is a protocol shaded here?" — which is exactly how
     // toggling protocols off came to leave ten shaded areas on the plot.
-    expect(funnel).toContain('className="chart-unlogged-band"');
+    expect(unloggedMark).toContain('className="chart-unlogged-band"');
   });
 
   it("the band is neutral ink, never a second series", () => {
     // A shaded span in a series colour would read as data. It is the grid token,
     // which is the app's word for scaffolding.
-    const band = funnel.slice(
-      funnel.indexOf("key={`hole-"),
-      funnel.indexOf("{snapped.map")
-    );
-    expect(band).toContain("fill={c.grid}");
-    expect(band).toContain('stroke="none"');
+    expect(unloggedMark).toContain("fill={c.grid}");
+    expect(unloggedMark).toContain('stroke="none"');
   });
 
   it("only an opted-in series has its stroke cut", () => {
@@ -184,10 +210,7 @@ describe("state 3 — an over-limit hole earns a hole", () => {
     // other series' over-limit hole is named and drawn exactly as before.
     expect(/gapBreaksPastLimit\(/.test(funnel)).toBe(true);
     expect(
-      funnel.slice(
-        funnel.indexOf("const breaksPastLimit"),
-        funnel.indexOf("const interiorHoles")
-      )
+      between(funnel, "const breaksPastLimit", "const interiorHoles")
     ).toContain("gapBreaksPastLimit");
   });
 
@@ -195,27 +218,33 @@ describe("state 3 — an over-limit hole earns a hole", () => {
     // recharts' connectNulls is all-or-nothing, and the declared policy is
     // neither. The runs are what express it.
     expect(/const strokeRuns/.test(funnel)).toBe(true);
-    const runs = funnel.slice(funnel.indexOf("strokeRuns.length > 1 &&"));
-    expect(runs.slice(0, 900)).toContain("connectNulls");
+    // Bounded by the block that FOLLOWS the runs, not by a character count: the
+    // count was an arbitrary 900 and #4924 pushed `connectNulls` past it with a
+    // comment. The companion-mark lines below also carry a `connectNulls`, so the
+    // window still has to end before them or a neighbour could satisfy this.
+    const runs = between(
+      funnel,
+      "THE PER-RUN STROKES",
+      "THE SECOND ACCOUNT OF A DAY"
+    );
+    expect(runs).toContain("connectNulls: true");
   });
 
   it("the runs carry stroke only — one tooltip and one set of marks survive", () => {
-    const runs = funnel.slice(
-      funnel.indexOf("strokeRuns.length > 1 &&"),
-      funnel.indexOf("dataKey={key}")
+    const runs = between(
+      funnel,
+      "THE PER-RUN STROKES",
+      "THE SECOND ACCOUNT OF A DAY"
     );
-    expect(runs).toContain("dot={false}");
-    expect(runs).toContain('tooltipType="none"');
+    expect(runs).toContain('dots: { policy: "none" }');
+    expect(runs).toContain("hideFromTooltip: true");
   });
 
   it("no run invents a value to span anything", () => {
     // The runs are slices of the plotted series. An interpolated fill would draw
     // the same pixels and be a different claim, which is the whole point of the
     // issue.
-    const build = funnel.slice(
-      funnel.indexOf("const runData"),
-      funnel.indexOf("const tickFmt")
-    );
+    const build = between(funnel, "const runData", "const tickFmt");
     expect(build).toContain("? row.value : null");
     expect(build).not.toMatch(/interpolat|\/\s*2\b/);
   });
@@ -235,7 +264,7 @@ describe("state 3 — an over-limit hole earns a hole", () => {
 // property is not "the funnel decides" — it is "every full-size chart family decides
 // the same way". #3235 owns the third instance (EquipmentTrend) and is deliberately
 // NOT asserted here; when it lands it adds its own block.
-const BIOMARKER = "components/BiomarkerChartInner.tsx";
+const BIOMARKER = "components/BiomarkerChart.tsx";
 const biomarker = fs.readFileSync(path.join(REPO, BIOMARKER), "utf8");
 
 describe("the biomarker detail chart draws a mark, not a plot (#3497)", () => {
@@ -256,7 +285,7 @@ describe("the biomarker detail chart draws a mark, not a plot (#3497)", () => {
 
   it("the mark returns BEFORE the plot, so no band is drawn behind it", () => {
     const mark = biomarker.indexOf("<SingleReadingMark");
-    const plot = biomarker.indexOf("<LineChart");
+    const plot = biomarker.indexOf("<TimeSeriesChart");
     expect(mark).toBeGreaterThan(-1);
     expect(plot).toBeGreaterThan(-1);
     expect(
@@ -290,7 +319,54 @@ describe("nothing here is carried by motion (#2654)", () => {
     // bands, the labels, the captions, the runs — is static, and the runs take
     // the same shared chartMarkMotion the ordinary line does rather than a
     // duration of their own.
-    const added = funnel.slice(funnel.indexOf("{holes.map"));
-    expect(added).not.toMatch(/animationDuration=|transition-|animate-/);
+    // Anchored through `between`, so a moved anchor throws rather than leaving a
+    // `not.toMatch` to pass over an empty string.
+    const added = between(funnel, "const references", "const spec:");
+    expect(added).not.toMatch(/animationDuration|transition-|animate-/);
+    // The marks the renderer draws for those states carry no motion either.
+    expect(unloggedMark).not.toMatch(/animationDuration|transition-|animate-/);
+  });
+});
+
+describe("state 6 — two sources on one day are two marks, in the funnel", () => {
+  it("the funnel asks the shared decision and draws the scaffold's companion", () => {
+    expect(/\bsourceSpreadCompanions\(/.test(funnel)).toBe(true);
+    // The funnel NAMES the mark and the scaffold resolves the name: since #4925 a
+    // card cannot hand a chart a prop bag (that would drag recharts across the
+    // code-split seam), so both halves are pinned rather than the old one line.
+    expect(funnel).toContain('dots: { policy: "other-source" }');
+    expect(
+      between(scaffold, 'case "other-source":', 'case "curve-end-label":')
+    ).toContain("chartOtherSourceDot(c)");
+    expect(band).toContain('data-testid="chart-source-spread-note"');
+  });
+
+  it("only a dated day-grain series plotted on value takes it — never a sparkline or an aggregated plot", () => {
+    expect(
+      /isoDates && key === "value" && !longRange && !sparkline\s*\?\s*sourceSpreadCompanions\(/.test(
+        funnel
+      )
+    ).toBe(true);
+  });
+
+  it("the companion is drawn BEFORE the series' own line, so the plotted reading is never painted over", () => {
+    const companion = funnel.indexOf("key: `other${column}`");
+    const own = funnel.indexOf("color: strokeRuns.length > 1 ? null : color");
+    expect(companion).toBeGreaterThan(-1);
+    expect(companion).toBeLessThan(own);
+  });
+
+  it("the companion spends no spoken-for channel: solid, ordinary radius, the declared neutral, offset in x", () => {
+    const body = scaffold.slice(
+      scaffold.indexOf("export function chartOtherSourceDot")
+    );
+    const dot = body.slice(0, body.indexOf("\n}\n"));
+    expect(dot).toContain("r={CHART_DOT_R}");
+    expect(dot).toContain("fill={chartNeutral}");
+    expect(dot).not.toContain("fill={c.surface}");
+    expect(dot).toContain("cx={cx + CHART_PAIR_OFFSET_X}");
+    expect(/export const CHART_PAIR_OFFSET_X = [1-9]\d*;/.test(scaffold)).toBe(
+      true
+    );
   });
 });

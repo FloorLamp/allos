@@ -44,6 +44,10 @@
 - A green names its tier and nothing more. `CI (main)` covers `check`,
   `test-unit`, `test-db` — it cannot see e2e. `E2E (main)` is the post-merge
   browser run and the only main-side evidence about the browser tier.
+- `E2E (main)` skips a push with no runtime surface, and a skip is not a green:
+  its four shards report `skipped`, the run summary says nothing ran, and the
+  merge gate prints "ran NOTHING" rather than a shard count. Its nightly run
+  (00:41 UTC) is unconditional and is what covers main between code pushes.
 
 ## Diagnosing a red
 
@@ -60,6 +64,11 @@
   Several PRs failing the same untouched specs is a base regression until that
   run says otherwise — not a coincidence of flakes (#2791).
 - `next dev` and `next start` differ. Interaction fixes must work in both.
+- Verify a separation claim on the branch merged with main — e2e-hygiene.md.
+- After restoring a planted mutation, BUMP THE FILE'S MTIME. `cp -a` from a
+  backup keeps the original timestamp, the harness's staleness check is
+  mtime-based, and it goes on serving the mutated build — so the restored tree
+  reports the planted red and the control reads as a real failure.
 
 ## Flake evidence
 
@@ -70,6 +79,10 @@
   alone is not a reason to mint a new census issue.
 - Clock-adjacent failures need forced-skew branch/main comparison with
   `ALLOS_TEST_NOW`; minutes-apart runs are insufficient.
+- The weekly census also runs the suite at `ALLOS_TEST_NOW` +3 and +6 months
+  (`e2e-forward-clock`). A red there is a fuse, not a regression on main — fix
+  the fixture, do not revert a merge. Dispatch it on demand with the
+  `forward_clock` input.
 - Repeated failures invalidate a “distinct one-offs” argument.
 - Consult `docs/internals/e2e-hygiene.md` before diagnosing a known failure
   class.

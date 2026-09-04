@@ -181,6 +181,24 @@ export function historyKindFamily(kind: HistoryKind): HistoryFamily {
 export const HISTORY_ROLLUP_KINDS: readonly HistoryKind[] =
   HISTORY_LOG_KINDS.filter((kind) => kind !== "sleep");
 
+// WHICH LOG KINDS OFFER AN ADD CHIP ON THE RECORD'S ADD ROW, given the kinds this
+// profile has ever logged (#4851, presence-gate question, owner ruling 2026-09-03).
+// Every log kind but sleep is presence-gated — a profile that has never logged one
+// does not see a door for it — EXCEPT symptom, which the ruling exempts: "a first
+// symptom is exactly what people backfill", so the door has to exist before the
+// profile has anything for the gate to key on. The other kinds keep the gate.
+export function historyAddKinds(
+  presentKinds: readonly HistoryKind[]
+): HistoryLogKind[] {
+  return HISTORY_LOG_KINDS.filter(
+    (kind) =>
+      kind !== "sleep" &&
+      (kind === "symptom" ||
+        presentKinds.length === 0 ||
+        presentKinds.includes(kind))
+  );
+}
+
 // The noun a rollup counts in. Deliberately NOT the chip label: a chip names a filter
 // ("Food"), a rollup counts things that happened ("4 servings"), and #3958 writes the
 // line as "6 doses · 4 servings" in exactly those words.
@@ -386,6 +404,20 @@ export interface HistoryRow extends MergeableRow {
   detailItems?: TimelineEvent["detailItems"];
   linkedRefs?: TimelineEvent["linkedRefs"];
   linkedScope?: TimelineEvent["linkedRefsScope"];
+  /**
+   * THE ROW'S OWN GLYPH, when its kind's glyph is not specific enough (#4079). A
+   * training row's icon is chosen from its structured sport, not from its kind: an
+   * imported ride is a BIKE and a hand-logged session a barbell, and both are `kind:
+   * "activity"`. The timeline's activity composer has always emitted these three
+   * fields; the row carried everything else across and dropped them, so the Log tab
+   * reading through this substrate lost the distinction #2897 exists to draw.
+   *
+   * Same rule as `detailItems` above: the TIMELINE's own types, not a second spelling.
+   * Absent on every kind whose glyph the closed kind registry answers completely.
+   */
+  iconType?: string;
+  iconTitle?: string;
+  iconSportNames?: string[];
 }
 
 /**

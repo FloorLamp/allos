@@ -258,6 +258,30 @@ export function minutesBetween(start: string, end: string): number | null {
 }
 
 /**
+ * Minutes from `start` to `end`, rolling the end past midnight when it is at or
+ * before its start — a bed time is always FOLLOWED by its wake, never preceded, so
+ * "earlier" means "the next day" rather than "invalid". Mirrors `activityWindow`'s
+ * own rollover rule (`lib/training-zones.ts`: `else if (end < start) end =
+ * addMinutesLocal(end, 1440)`), minus the calendar-date bookkeeping that rule needs
+ * and this one — a same-day-relative span, not a dated window — does not. Null for
+ * missing/invalid input or a same-instant pair (a zero-length reading, same as
+ * `minutesBetween`'s own zero-length refusal).
+ */
+export function overnightMinutesBetween(
+  start: string,
+  end: string
+): number | null {
+  if (!start || !end) return null;
+  const [sh, sm] = start.split(":").map(Number);
+  const [eh, em] = end.split(":").map(Number);
+  if ([sh, sm, eh, em].some((n) => Number.isNaN(n))) return null;
+  const s = sh * 60 + sm;
+  let e = eh * 60 + em;
+  if (e < s) e += 1440;
+  return e > s ? e - s : null;
+}
+
+/**
  * A "HH:MM" time shifted by `deltaMin` minutes, or null when it would fall
  * outside the same day (times are day-local `<input type=time>` values). Powers
  * the activity form's End↔Start derivation (#336): End = Start + duration, or

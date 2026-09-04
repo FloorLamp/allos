@@ -53,6 +53,7 @@ import { PAIRED_OBS_PREFIX } from "./paired-observations";
 import { MED_DUP_PREFIX } from "./medication-family";
 import { DATA_QUALITY_PREFIX } from "./data-quality";
 import { CYCLE_BLEEDING_PREFIX } from "./cycle-observation";
+import { SLEEP_SKEW_PREFIX } from "./sleep-clock-skew";
 import { TTC_WORKUP_PREFIX } from "./ttc";
 import { POOR_SLEEP_OVERRIDE_PREFIX } from "./derived-situations";
 import { DIGEST_TIME_PREFIX } from "./digest-time-suggestion";
@@ -299,6 +300,19 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: DATA_QUALITY_PREFIX,
     tier: "coaching",
     builder: "buildDataQualityFindings",
+    reasons: [],
+  },
+  {
+    // Source-side sleep CLOCK SKEW (#4299): an imported session whose stored instants
+    // disagree with the heart rate the same database holds across them. COACHING tier
+    // (#449) — an observation about a SOURCE's clock carries no obligation, so it never
+    // notifies and never reaches Now; it states the disagreement and offers the delete.
+    // Joins collectCoachingFindings and rides the shared suppression bus keyed on the
+    // OLDEST suspect night of the episode, so a dismissal covers the run of mis-stamped
+    // nights rather than reappearing every morning the source stays broken.
+    prefix: SLEEP_SKEW_PREFIX,
+    tier: "coaching",
+    builder: "buildSleepClockSkewFindings",
     reasons: [],
   },
   {

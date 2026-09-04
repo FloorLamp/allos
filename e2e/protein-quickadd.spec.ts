@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import type { Locator } from "@playwright/test";
 import { loginAs } from "./nav";
-import { settledClick } from "./helpers";
+import { openFoodAdd, settledClick, settledFill } from "./helpers";
 import { E2E_LOGIN_PROTEIN, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // Protein-grams quick-add in the Nutrition Food logging list (issue #824). Protein
@@ -43,6 +43,7 @@ test("logging protein grams sums into the adequacy floor, undo removes it (#824)
     // Local `next dev` compiles the nutrition route on first hit.
     test.slow();
     await page.goto("/nutrition");
+    await openFoodAdd(page);
 
     // The adequacy card starts on the ESTIMATED basis (food groups only, no grams yet).
     const card = page.getByTestId("protein-adequacy");
@@ -61,7 +62,13 @@ test("logging protein grams sums into the adequacy floor, undo removes it (#824)
 
     // Enter 30 g and add — the running total ticks up and the card flips to COMBINED,
     // naming the composition (estimated foods + logged grams).
-    await page.getByTestId("protein-quickadd-input").fill("30");
+    // settledFill, not fill: a bare fill landing before React claims the input never
+    // reaches `setAmount`, so `amount` stays "" and Add renders disabled — and the
+    // GUARDED click on the next line then waits out its budget against a control the
+    // unguarded line above was supposed to arm. #4399 reproduced exactly that on this
+    // control (in offline-food-log.spec.ts, which holds the forced-window regression
+    // test) and fixed the one call site it found; this is the other one.
+    await settledFill(page, page.getByTestId("protein-quickadd-input"), "30");
     await settledClick(page, page.getByTestId("protein-quickadd-add"));
     await expect(total).toHaveText(/30g today/);
     await expect(card).toHaveAttribute("data-basis", "combined");
@@ -79,6 +86,7 @@ test("logging protein grams sums into the adequacy floor, undo removes it (#824)
     // quick-log-overlay.mobile.spec.ts, whose fixture profile never logs protein; this one
     // cannot assert it, because an add records the scoop-size preset for good.)
     await page.reload();
+    await openFoodAdd(page);
     await expect(quickadd).toBeVisible();
     // The rows LAID OUT beside the control, which is what "ranked, not pinned"
     // is about. Since #3362 the "More food groups" disclosure is a citizen of
@@ -125,6 +133,7 @@ test("logging protein grams sums into the adequacy floor, undo removes it (#824)
     ).toBeVisible();
 
     await page.goto("/nutrition");
+    await openFoodAdd(page);
     await expect(total).toHaveText(/30g today/);
 
     // Undo removes the grams from the same day's total → back to the estimated basis.

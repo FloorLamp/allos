@@ -1,6 +1,6 @@
 import Avatar, { type AvatarProfile } from "@/components/Avatar";
 import type { Swimlane } from "@/lib/care-trail-swimlane";
-import VisualizationDetails from "@/components/VisualizationDetails";
+import { SeriesPoint, SeriesSummary } from "@/components/SeriesAccess";
 
 // The care-trail "at-a-glance band" (#1373 Part 2): trailing-window per-member swimlanes,
 // one lane per in-view member, illness episodes as duration bars + visits as point markers
@@ -8,16 +8,15 @@ import VisualizationDetails from "@/components/VisualizationDetails";
 // overlap ("Riley then Sam two days later") reads as geometry. Pure CSS over the
 // pre-computed layout model (lib/care-trail-swimlane.ts); no client JS.
 //
-// The band is a purely VISUAL overview — non-interactive by design (the grouped list below
-// owns navigation), so its tiny absolutely-positioned bars/markers never intercept a click
-// on, or compete for the accessible name of, the list's episode links. House dataviz rules:
-// never color-only — the shared detail disclosure carries every bar/marker label;
-// theme-aware both modes; the band lives in its own overflow-x container so the PAGE
-// body never scrolls horizontally (#1063). Collapses (renders nothing) for sparse data —
-// the caller checks `swimlane.hasData`.
+// The band NAVIGATES nowhere — the grouped list below owns that — so its bars and
+// markers never compete for the accessible name of the list's episode links. Each one
+// is its own door to its label (#4760): never color-only, at every width. Theme-aware
+// both modes; the band lives in its own overflow-x container so the PAGE body never
+// scrolls horizontally (#1063). Collapses (renders nothing) for sparse data — the
+// caller checks `swimlane.hasData`.
 
 // Peak-severity tint for an episode bar: hotter fever → warmer bar. Fever-free episodes
-// stay a neutral illness tint. Labels/tooltips carry the real meaning (never color-only).
+// stay a neutral illness tint. Labels carry the real meaning (never color-only).
 function barTone(maxTempF: number | null): string {
   if (maxTempF != null && maxTempF >= 102)
     return "bg-rose-500/80 dark:bg-rose-500/70";
@@ -25,6 +24,26 @@ function barTone(maxTempF: number | null): string {
     return "bg-amber-500/80 dark:bg-amber-500/70";
   return "bg-sky-500/70 dark:bg-sky-500/60";
 }
+
+// One sentence per mark, the same one the mark carries and the summary lists.
+const visitText = (
+  subject: string,
+  marker: { type: string | null; dayNumber?: number | null }
+) =>
+  `${subject}: Visit${marker.type ? ` — ${marker.type}` : ""}${
+    marker.dayNumber != null ? ` (Day ${marker.dayNumber})` : ""
+  }`;
+const episodeText = (
+  subject: string,
+  bar: { situation: string; ongoing: boolean }
+) => `${subject}: ${bar.situation}${bar.ongoing ? " (ongoing)" : ""}`;
+const courseText = (
+  subject: string,
+  course: { medName: string; overhang: boolean }
+) =>
+  `${subject}: ${course.medName}${
+    course.overhang ? " (continues past illness)" : ""
+  }`;
 
 export default function CareTrailBand({
   swimlane,
@@ -37,6 +56,8 @@ export default function CareTrailBand({
   // A short "past 12 months" style caption for the axis.
   temperatureLabel: string;
 }) {
+  const subjectName = (profileId: number) =>
+    subjectById.get(profileId)?.name ?? "Profile";
   return (
     <section
       className="card"
@@ -56,6 +77,7 @@ export default function CareTrailBand({
         <div className="min-w-xl space-y-3">
           {swimlane.lanes.map((lane) => {
             const subject = subjectById.get(lane.profileId);
+            const name = subjectName(lane.profileId);
             return (
               <div
                 key={lane.profileId}
@@ -68,15 +90,16 @@ export default function CareTrailBand({
                   <span className="truncate">{subject?.name ?? "—"}</span>
                 </div>
                 {/* The lane track. Episode bars are absolutely positioned by percent;
-                the baseline holds unlinked visit markers. Non-interactive overview. */}
+                the baseline holds unlinked visit markers. */}
                 <div className="relative h-8 flex-1 rounded-sm bg-slate-100 dark:bg-ink-800">
                   {/* baseline */}
                   <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-slate-200 dark:bg-ink-700" />
                   {lane.episodes.map((bar) => (
-                    <span
+                    <SeriesPoint
                       key={`e-${bar.episodeId}`}
                       data-testid="care-trail-bar"
                       data-episode-id={bar.episodeId}
+                      label={episodeText(name, bar)}
                       className={`absolute top-1 flex h-3 items-center rounded-xs ${barTone(
                         bar.maxTempF
                       )} ${bar.ongoing ? "ring-1 ring-inset ring-white/70" : ""}`}
@@ -92,10 +115,11 @@ export default function CareTrailBand({
                             ? ((m.pct - bar.leftPct) / bar.widthPct) * 100
                             : 0;
                         return (
-                          <span
+                          <SeriesPoint
                             key={`m-${m.encounterId}`}
                             data-testid="care-trail-visit-marker"
                             data-linked="true"
+                            label={visitText(name, m)}
                             className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white bg-slate-800 dark:border-ink-900 dark:bg-white"
                             style={{
                               left: `${Math.max(0, Math.min(100, rel))}%`,
@@ -103,15 +127,16 @@ export default function CareTrailBand({
                           />
                         );
                       })}
-                    </span>
+                    </SeriesPoint>
                   ))}
                   {/* course sub-bars, beneath their episode bar */}
                   {lane.episodes.flatMap((bar) =>
                     bar.courseBars.map((c) => (
-                      <span
+                      <SeriesPoint
                         key={`c-${c.courseId}`}
                         data-testid="care-trail-course-bar"
                         data-overhang={c.overhang}
+                        label={courseText(name, c)}
                         className={`absolute bottom-1 h-1.5 rounded-full ${
                           c.overhang
                             ? "bg-emerald-500/80 dark:bg-emerald-400/70"
@@ -126,10 +151,11 @@ export default function CareTrailBand({
                   )}
                   {/* unlinked visit markers on the baseline */}
                   {lane.visitMarkers.map((m) => (
-                    <span
+                    <SeriesPoint
                       key={`uv-${m.encounterId}`}
                       data-testid="care-trail-visit-marker"
                       data-linked="false"
+                      label={visitText(name, m)}
                       className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 border border-white bg-slate-400 dark:border-ink-900 dark:bg-slate-500"
                       style={{ left: `${m.pct}%` }}
                     />
@@ -140,30 +166,17 @@ export default function CareTrailBand({
           })}
         </div>
       </div>
-      <VisualizationDetails
-        label="Timeline details"
+      <SeriesSummary
+        label="Illness and visit timeline"
         items={swimlane.lanes.flatMap((lane) => {
-          const subject = subjectById.get(lane.profileId)?.name ?? "Profile";
+          const subject = subjectName(lane.profileId);
           return [
             ...lane.episodes.flatMap((bar) => [
-              `${subject}: ${bar.situation}${bar.ongoing ? " (ongoing)" : ""}`,
-              ...bar.visitMarkers.map(
-                (marker) =>
-                  `${subject}: Visit${marker.type ? ` — ${marker.type}` : ""}${
-                    marker.dayNumber != null ? ` (Day ${marker.dayNumber})` : ""
-                  }`
-              ),
-              ...bar.courseBars.map(
-                (course) =>
-                  `${subject}: ${course.medName}${
-                    course.overhang ? " (continues past illness)" : ""
-                  }`
-              ),
+              episodeText(subject, bar),
+              ...bar.visitMarkers.map((marker) => visitText(subject, marker)),
+              ...bar.courseBars.map((course) => courseText(subject, course)),
             ]),
-            ...lane.visitMarkers.map(
-              (marker) =>
-                `${subject}: Visit${marker.type ? ` — ${marker.type}` : ""}`
-            ),
+            ...lane.visitMarkers.map((marker) => visitText(subject, marker)),
           ];
         })}
       />

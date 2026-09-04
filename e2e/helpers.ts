@@ -7,6 +7,8 @@ import {
   type Request,
 } from "@playwright/test";
 import { AUTO_RELOAD_KEY } from "@/lib/sw-update";
+import { MONTHS_LONG } from "@/lib/date";
+import type { DashboardEverythingGroup } from "@/lib/dashboard-relevance";
 import {
   CONTROL_BOX_PX,
   TAP_FLOOR_FLOAT_EPSILON_PX,
@@ -190,6 +192,43 @@ async function awaitAutosaveSettled(scope: Locator): Promise<void> {
       )
   );
   await expect(scope.getByLabel("Saving")).toHaveCount(0);
+}
+
+// THE PAGE-SCOPED TESTID ROOT (#4890) — where a global getByTestId must NOT start.
+//
+// A page whose Suspense boundary streams (today `/training` and `/trends`, via
+// components/StreamedSection.tsx) delivers the boundary's content twice for a
+// window: React flushes it into a `<div hidden>` appended to `<body>` and an
+// inline `$RC(…)` script relocates it into place. While both exist, every marker
+// inside that boundary exists TWICE with the same testid, so a global
+// `page.getByTestId("x")` resolves to 2 elements and throws a strict-mode
+// violation instead of retrying down to one. Under CI load the window outlives
+// Playwright's retry, and the failure lands on whatever PR happened to be running
+// — three of the four known occurrences were on diffs that could not have caused
+// it (a one-comment diff, a sleep-queries diff).
+//
+// The staged copy's ancestry stops at `<body>`, so ANY scope that lives in the
+// document proper excludes it. `app-content-container` is the app shell's own
+// wrapper around every `(app)` page's children (app/(app)/layout.tsx) — one per
+// document, above every boundary — which makes it the scope that works on every
+// page for every marker, rather than one that covers the markers somebody
+// remembered to put on a helper.
+//
+// Use it as the root of a testid lookup on any `(app)` page:
+//     appContent(page).getByTestId("routine-new")
+// A narrower scope you already hold (a row, a card, a dialog) is better still —
+// this is the floor, not the ceiling.
+//
+// NOT for `/login`, `/onboarding` or anything outside the `(app)` group: those
+// render no `app-content-container` and do not stream. Nor for an overlay that
+// portals to `<body>` (toasts, sheets): a portal is client-only, so it has one
+// copy and no hazard — scope those to the overlay's own testid.
+//
+// The hygiene guard (lib/__tests__/e2e-hygiene.test.ts) freezes today's bare
+// `page.getByTestId(` count per file and fails a NEW one, so the next call site
+// gets this by default.
+export function appContent(page: Page): Locator {
+  return page.getByTestId("app-content-container");
 }
 
 // Wait until React has ATTACHED to this node — the one hydration probe, shared.
@@ -518,50 +557,94 @@ export async function openAllSyncDays(scope: Page | Locator): Promise<void> {
   }
 }
 
-// Mobile clipped-content guard (issue #1063). The app shell deliberately clips
-// horizontal overflow (`<main className="… overflow-x-clip">` in
+// Mobile clipped-content guard (issues #1063, #4534). The app shell deliberately
+// clips horizontal overflow (`<main className="… overflow-x-clip">` in
 // app/(app)/layout.tsx), so broken phone-width layouts never page-scroll — they
 // render as INVISIBLE, unreachable content (copy/token buttons pushed off-screen).
 // That also defeats the naive `document.scrollWidth > clientWidth` check: it
-// reads 0 overflow on every page. So this asserts ELEMENT-level containment:
-// every rendered element's right edge must sit inside the viewport (+2px
-// tolerance), unless it lives inside a functioning `overflow-x: auto|scroll`
-// container that itself fits — the AGENTS.md "wide content scrolls inside its
-// own container" rule, made mechanical. Call it AFTER the page's content is
-// visible (assert a page-specific element first), with the viewport already at
-// phone width. Offenders are reported with tag/testid/class + widths so a
-// failure names the guilty element directly.
+// reads 0 overflow on every page.
+//
+// WHAT IS PAINTED, NOT WHERE A BOX ENDS (#4534). The first cut of this asked only
+// whether an element's right edge cleared the viewport, and "fits the viewport" is
+// not "is visible": every `truncate` cluster in the tree is an `overflow: hidden`
+// ancestor that cuts its children without moving their boxes, so a child sitting
+// entirely inside the viewport can be painted at a third of its width while the
+// box arithmetic looks fine. That is the #4394 shape — a silent cut inside a
+// fitting box — and the guard covering it could not fail on it. So each element's
+// box is intersected with every horizontally CLIPPING ancestor and with the
+// viewport, and a failure reports PAINTED against BOX, naming the element that did
+// the cutting: `right=563 vs viewport=320` is the right input for a box guard and
+// reads as "243px is off-screen" on a page where the cluster had already cut it
+// far shorter, which is how #4394's merge argument got inverted.
+//
+// WHAT IS EXCUSED, three different sentences:
+//   * A WORKING SCROLLER that itself fits — the AGENTS.md "wide content scrolls
+//     inside its own container" rule, made mechanical. The reader can move it, so
+//     nothing is lost. A scroller that overflows only moves the problem up a level
+//     and is reported in its own right.
+//   * A SUBTREE THE LAYOUT GAVE NO ROOM. `width === 0` is a flex item starved to
+//     nothing by its own shrink negotiation (`shrink-[999]` cells do this on
+//     purpose); `<= 1` is the `sr-only` idiom, a 1px box with `overflow: hidden`.
+//     Both are the existing "not rendered" skip read one level up — the layout
+//     withheld the space, rather than a paint going wrong inside space it had.
+//   * OFF-CANVAS BY DESIGN on either side — drawers and toasts parked outside the
+//     viewport entirely, which is why the box is there at all.
+//
+// Call it AFTER the page's content is visible (assert a page-specific element
+// first), with the viewport already at phone width. e2e/mobile-clipping.mobile.spec.ts
+// forges each shape above and proves this can still see the cut and stay quiet on
+// the rest.
 export async function expectNoClippedContent(page: Page): Promise<void> {
   const offenders = await page.evaluate(() => {
     const vw = document.documentElement.clientWidth;
     const TOL = 2;
     const bad: string[] = [];
-    const insideWorkingScroller = (el: Element): boolean => {
-      for (let a = el.parentElement; a; a = a.parentElement) {
-        const o = getComputedStyle(a).overflowX;
-        if (o === "auto" || o === "scroll") {
-          const r = a.getBoundingClientRect();
-          // The scroll container must itself fit the viewport — a scroller that
-          // overflows just moves the problem up a level.
-          if (r.right <= vw + TOL) return true;
-        }
-      }
-      return false;
+    const name = (el: Element): string => {
+      const id = el.getAttribute("data-testid");
+      const cls = typeof el.className === "string" ? el.className : "";
+      return (
+        `<${el.tagName.toLowerCase()}${id ? ` data-testid="${id}"` : ""}` +
+        `${cls ? ` class="${cls.slice(0, 80)}"` : ""}>`
+      );
     };
     for (const el of Array.from(document.body.querySelectorAll("*"))) {
       const r = el.getBoundingClientRect();
       if (r.width === 0 || r.height === 0) continue; // not rendered
-      if (r.right <= vw + TOL) continue; // fits
-      if (r.left >= vw) continue; // fully off-canvas by design (drawers, toasts)
+      if (r.left >= vw || r.right <= 0) continue; // fully off-canvas by design
       const cs = getComputedStyle(el);
       if (cs.visibility === "hidden" || cs.opacity === "0") continue;
-      if (insideWorkingScroller(el)) continue;
-      const id = el.getAttribute("data-testid");
-      const cls = typeof el.className === "string" ? el.className : "";
+      // ONE ancestor walk: it both excuses the element and narrows what is left of
+      // it. `lo`/`hi` are the surviving painted span, `cutBy` the nearest ancestor
+      // that took part of it away — the thing a failure has to name.
+      let lo = r.left;
+      let hi = r.right;
+      let cutBy: Element | null = null;
+      let excused = false;
+      for (let a = el.parentElement; a; a = a.parentElement) {
+        const ar = a.getBoundingClientRect();
+        if (ar.width <= 1) {
+          excused = true;
+          break;
+        }
+        const o = getComputedStyle(a).overflowX;
+        if ((o === "auto" || o === "scroll") && ar.right <= vw + TOL) {
+          excused = true;
+          break;
+        }
+        if (o === "hidden" || o === "clip") {
+          if (!cutBy && (ar.left > lo + TOL || ar.right < hi - TOL)) cutBy = a;
+          lo = Math.max(lo, ar.left);
+          hi = Math.min(hi, ar.right);
+        }
+      }
+      if (excused) continue;
+      const painted = Math.max(0, Math.min(hi, vw) - Math.max(lo, 0));
+      if (painted >= r.width - TOL) continue;
       bad.push(
-        `<${el.tagName.toLowerCase()}${id ? ` data-testid="${id}"` : ""}` +
-          `${cls ? ` class="${cls.slice(0, 80)}"` : ""}> ` +
-          `right=${Math.round(r.right)} vs viewport=${vw}`
+        `${name(el)} paints ${Math.round(painted)}px of its ` +
+          `${Math.round(r.width)}px box (${Math.round(r.left)}→${Math.round(
+            r.right
+          )}), cut by ${cutBy ? name(cutBy) : `the viewport (${vw}px)`}`
       );
     }
     // Belt-and-braces: the PR #1249 document-level check too, for surfaces
@@ -865,14 +948,89 @@ export async function hydratedClick(
   await button.click();
 }
 
+/**
+ * OPEN THE NUTRITION PAGE'S `+ Add` DOOR (#4477), where there is one.
+ *
+ * The Food tab's add layer folds behind a single door and expands in place; the
+ * quick-log sheet mounts the SAME bar with no day above it and is itself the door, so
+ * there is nothing there to open. This is therefore surface-agnostic and idempotent by
+ * construction — the door unmounts once it is open — which is what lets a spec that
+ * reaches a food-group control call it unconditionally, on either surface, before it
+ * looks for the control.
+ */
+export async function openFoodAdd(page: Page): Promise<void> {
+  // WAIT FOR THE SURFACE BEFORE ASKING WHETHER IT HAS A DOOR. `food-quick-log` is the
+  // add layer on BOTH mounts, so its arrival is what makes the question below
+  // answerable; asked earlier, "no door here" and "no page yet" are the same empty
+  // count and the helper returns having opened nothing. e2e/offline-food-log.spec.ts
+  // navigates with `waitUntil: "commit"` on purpose, which returns before the document
+  // is parsed, so that spec asks this question at its very earliest.
+  await page.getByTestId("food-quick-log").waitFor({ state: "attached" });
+  const fold = page.getByTestId("food-add");
+  if ((await fold.count()) === 0) return;
+  // ALREADY OPEN IS DONE, not "click it again": the summary stays in the DOM once the
+  // fold is open, so a second click would CLOSE the door this helper exists to open.
+  if (await fold.evaluate((el) => (el as HTMLDetailsElement).open)) return;
+  // A NATIVE `<details>` NEEDS NO HYDRATION, and this deliberately does not wait for
+  // any: e2e/offline-food-log.spec.ts opens this door inside a forced pre-hydration
+  // window on purpose (#4399), and an `awaitHydrated` here would make that spec wait
+  // for the thing it is holding back.
+  await page.getByTestId("food-add-door").click();
+  await expect(page.getByTestId("food-add-panel")).toBeVisible();
+  // AND WAIT FOR THE FOLD TO FINISH OPENING. `.motion-disclose` transitions
+  // `::details-content`'s block-size and clips it while it runs (app/globals.css); a
+  // probe against the just-opened door counts four running animations. So the caller
+  // measures a settled panel rather than one mid-open.
+  await fold.evaluate((el) =>
+    Promise.all(
+      el.getAnimations({ subtree: true }).map((a) => a.finished.catch(() => {}))
+    )
+  );
+}
+
+// The OUTER "Show everything" control, addressed by its own testid rather than by
+// walking down from `dashboard-all` to "the first summary inside" (#4065). Each
+// capped Everything band (`EverythingBand`, DashboardPlacementCanvas.tsx) nests its
+// own `<Disclosure>` inside `dashboard-all` once it has more than three blocks, so
+// `page.getByTestId("dashboard-all").locator("summary")` resolves to one summary on
+// a fresh profile and to two or more once any band is capped — a strict-mode
+// violation that is really "this locator no longer names the control it used to
+// name uniquely". `dashboard-all-summary` is the outer `<details>`'s own testid, so
+// it stays unique regardless of how many bands nest a fold beneath it.
+export function dashboardAllSummary(page: Page): Locator {
+  return page.getByTestId("dashboard-all-summary");
+}
+
 /** Opens the dashboard's remembered exhaustive remainder when it exists. */
 export async function openDashboardAll(page: Page): Promise<void> {
   const details = page.getByTestId("dashboard-all");
   await expect(details).toHaveCount(1);
   if ((await details.getAttribute("open")) == null) {
-    await hydratedClick(page, details.locator("summary"));
+    await hydratedClick(page, dashboardAllSummary(page));
   }
   await expect(details).toHaveAttribute("open", "");
+}
+
+// Opens one capped Everything band's own fold (#4065 "fold with a cap"): Understand
+// and Setup admit every block but keep only the front three open, the rest behind a
+// per-band `<Disclosure>` nested inside `dashboard-all` — so a spec whose target row
+// isn't among a capped band's three newest blocks must open THIS fold, not just the
+// outer one, before the row is anywhere but the DOM. Call after openDashboardAll.
+// Stateless and always closed on arrival by design (the component comment on
+// `EverythingBand` explains why), so every caller opens it fresh; a no-op when the
+// band didn't cap on this render (three or fewer blocks) or the fold is already open.
+export async function openEverythingFold(
+  page: Page,
+  group: Extract<DashboardEverythingGroup, "understand" | "setup">
+): Promise<void> {
+  const fold = page.getByTestId(`dashboard-everything-${group}-fold`);
+  if ((await fold.count()) === 0) return;
+  if (await fold.evaluate((el) => (el as HTMLDetailsElement).open)) return;
+  await hydratedClick(
+    page,
+    page.getByTestId(`dashboard-everything-${group}-fold-summary`)
+  );
+  await expect(fold).toHaveAttribute("open", "");
 }
 
 // Playwright surfaces a click on a link that a prior iteration already navigated
@@ -917,6 +1075,30 @@ export async function openCareOverviewSection(
     await expect(section).toHaveJSProperty("open", true, { timeout: 1000 });
   }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-toggle a <details> whose hash-reveal effect races the click — a native disclosure with no POST and no navigation to settle on; guarded on `open`, so an already-open section is never clicked shut
   return section;
+}
+
+// Open one channel row of Settings → Notifications' status strip (#2565 A) and return
+// it. The four channel configurations moved behind their rows' disclosures, so a spec
+// that wants a control inside one has to open it first.
+//
+// Same shape as openCareOverviewSection above, and for the same reason: the row is a
+// native `<details>` with a SECOND writer on its open state — RememberedDetails restores
+// this device's remembered state, from a pre-paint script and then from the hydrated
+// store — so a read-then-click races that restore and a bare click can toggle SHUT what
+// the restore just opened. Guarded on the element's own `open`, so an already-open row
+// (an erroring one is forced open every render) is never clicked closed.
+export async function openChannelRow(
+  page: Page,
+  channel: "telegram" | "push" | "email" | "home-assistant"
+): Promise<Locator> {
+  const row = page.getByTestId(`notify-channel-${channel}`);
+  await expect(row).toBeVisible();
+  await expect(async () => {
+    const open = await row.evaluate((el) => (el as HTMLDetailsElement).open);
+    if (!open) await row.locator("summary").click();
+    await expect(row).toHaveJSProperty("open", true, { timeout: 1000 });
+  }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-toggle a <details> whose per-device open memory restores asynchronously and races the click — a native disclosure with no POST and no navigation to settle on; guarded on `open`, so an already-open row is never clicked shut
+  return row;
 }
 
 // Tap a control whose handler calls `useConfirm()`, and return the confirm dialog
@@ -2913,6 +3095,50 @@ async function dragToEnd(
   await consumeSuppressedTap(cdp, to);
 }
 
+/**
+ * A two-finger PINCH, through the same CDP channel `touchSwipe` uses (#4852).
+ *
+ * Both fingers move symmetrically about `center`: `from` is each one's starting
+ * distance from it and `to` its finishing one, so `to > from` spreads the fingers
+ * (zoom in) and `to < from` closes them.
+ *
+ * EVERY TOUCH POINT CARRIES AN `id`, and that is not decoration: without one
+ * Chromium treats the second point as a replacement for the first, the page sees
+ * an ordinary one-finger drag, and a pinch spec passes or fails on the drag-select
+ * path instead — the exact confusion this helper exists to make impossible.
+ */
+export async function touchPinch(
+  page: Page,
+  center: { x: number; y: number },
+  from: number,
+  to: number,
+  steps = 8
+): Promise<void> {
+  const cdp = await page.context().newCDPSession(page);
+  const fingers = (gap: number) => [
+    { x: center.x - gap, y: center.y, id: 1 },
+    { x: center.x + gap, y: center.y, id: 2 },
+  ];
+  try {
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: fingers(from),
+    });
+    for (let i = 1; i <= steps; i++) {
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: fingers(from + ((to - from) * i) / steps),
+      });
+    }
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+  } finally {
+    await cdp.detach();
+  }
+}
+
 // ── A DRAG LEAVES ONE SWALLOWED TAP BEHIND, AND SPENDS IT HERE (#3262) ───────
 //
 // After a touch drag whose STARTING element forbids the axis the drag travels on,
@@ -3710,6 +3936,19 @@ export async function expectAtomicCardPairs(
  *
  * Idempotent by construction — it opens only the groups reading `aria-expanded="false"`
  * — so a spec may call it after any navigation without tracking what it already did.
+ *
+ * hydratedClick, not click (#4905): this is the SAME control `dose-skip.spec.ts:39`
+ * already reaches for with hydratedClick, because it is the first interaction after a
+ * goto — a tap that lands before hydration is swallowed. And a click alone doesn't say
+ * the group opened: a swallowed tap left this returning successfully with the group
+ * still shut, and the failure would surface later as "the dose row is missing" —
+ * reading like a data problem rather than a tap that never landed. Reading `aria-expanded`
+ * back after the click is what fails it here instead.
+ *
+ * The button itself is a stable member of the list — expanding one group only toggles
+ * its own sibling `<ul>` (DayLedger.tsx), it does not add, remove or reorder any
+ * `ledger-due-group-*` button — so re-resolving `groups.nth(i)` against the live
+ * locator each iteration addresses the same buttons throughout the loop.
  */
 export async function expandLedgerDueGroups(page: Page): Promise<void> {
   const groups = page.locator('[data-testid^="ledger-due-group-"]');
@@ -3717,7 +3956,8 @@ export async function expandLedgerDueGroups(page: Page): Promise<void> {
   for (let i = 0; i < count; i++) {
     const group = groups.nth(i);
     if ((await group.getAttribute("aria-expanded")) === "false") {
-      await group.click();
+      await hydratedClick(page, group);
+      await expect(group).toHaveAttribute("aria-expanded", "true");
     }
   }
 }
@@ -3739,4 +3979,112 @@ export function ledgerDoseRow(page: Page, name: string): Locator {
       'li[data-testid^="ledger-due-dose-"], li[data-testid^="ledger-dose-"]'
     )
     .filter({ hasText: name });
+}
+
+/**
+ * State a day and a minute through `WhenControl`'s COMPOSED DOOR (#4218).
+ *
+ * A `state` mount that requires a time on a day the user may still change renders
+ * ONE field — `{testId}-when` — over one panel holding the calendar and the time
+ * wheel, instead of the split date and time boxes. So a spec that used to
+ * `.fill()` two inputs opens one door here and picks in it, which is what the
+ * user now does; there is no text box to fill.
+ *
+ * The panel is portaled to `<body>` in both presentations (anchored popover from
+ * `md` up, bottom sheet below), so it is addressed off `page` rather than off the
+ * form — the form does not contain it. Everything else is presentation-agnostic
+ * on purpose: the same call drives either host, which is the #2305 guarantee the
+ * fork is built on.
+ */
+export async function pickComposedWhen(
+  page: Page,
+  testId: string,
+  { date, hhmm }: { date?: string; hhmm?: string }
+): Promise<void> {
+  await hydratedClick(page, page.getByTestId(`${testId}-when`));
+  // The CONTENT wrapper, which `AnchoredPanel` marks with the same testid in
+  // both presentations (the sheet's own host testid names the sheet around it).
+  // One locator for both hosts is the point: a spec that had to know which host
+  // it was in would be the `hidden md:` twin the fork exists to avoid.
+  const panel = page.getByTestId(`${testId}-when-panel`);
+  await expect(panel).toBeVisible();
+
+  // Reading a pick back is what makes a dropped composition fail HERE (#4902). Done
+  // is a pure client dismissal: it posts nothing and validates nothing, so a
+  // composition that did NOT take closes the panel exactly like one that did and this
+  // helper returns successfully having stated nothing. The caller then fails far from
+  // here — on `medications-followups.spec.ts:317` it surfaced ~100 lines later as an
+  // assertion about a PRN course start, whose received value (the fixture's untouched
+  // original) is also exactly what a dose logged on the DEFAULT day produces.
+  //
+  // The calendar paints the chosen day and only the chosen day, so asking which day
+  // is painted asks the control what it believes its value is.
+  let expectPickedDay: ((stage: string) => Promise<void>) | null = null;
+
+  if (date) {
+    const [year, month, day] = date.split("-").map(Number);
+    // Year before month: the month options are DISABLED outside the control's
+    // bounds, and a month that is out of range in the year on screen may be in
+    // range in the year being moved to.
+    // Exact names: the calendar's own previous/next buttons are "Previous month"
+    // and "Next month", which a substring match on "Month" also picks up.
+    await panel.getByLabel("Year", { exact: true }).selectOption(String(year));
+    await panel
+      .getByLabel("Month", { exact: true })
+      .selectOption(String(month - 1));
+    // By the cell's own accessible date name (#3744), not the bare numeral — the
+    // grid shows the neighbouring months' days too.
+    const cellName = `${MONTHS_LONG[month - 1]} ${day}, ${year}`;
+    await panel.getByRole("button", { name: cellName, exact: true }).click();
+    expectPickedDay = async (stage: string) =>
+      expect(
+        panel.locator("button[data-calendar-day]:has(span.bg-brand-600)"),
+        stage
+      ).toHaveAttribute("aria-label", cellName);
+    await expectPickedDay("the day pick did not take");
+  }
+
+  if (hhmm) {
+    const hour24 = Number(hhmm.slice(0, 2));
+    const meridiem = panel.getByRole("listbox", { name: "AM or PM" });
+    // The wheel's columns follow the profile's clock, so which hour row to tap
+    // is a question about the preference and not about the value.
+    const twelve = (await meridiem.count()) > 0;
+    const shownHour = twelve ? (hour24 % 12 === 0 ? 12 : hour24 % 12) : hour24;
+    await panel
+      .getByRole("listbox", { name: "Hour" })
+      .getByRole("option", { name: String(shownHour).padStart(2, "0") })
+      .click();
+    await panel
+      .getByRole("listbox", { name: "Minute" })
+      .getByRole("option", { name: hhmm.slice(3) })
+      .click();
+    if (twelve)
+      await meridiem
+        .getByRole("option", { name: hour24 >= 12 ? "PM" : "AM" })
+        .click();
+    // The same read-back for the clock: each column marks its chosen row
+    // `aria-selected`, so the composed value is readable without re-deriving the
+    // profile's clock format.
+    const chosen = (name: string) =>
+      panel
+        .getByRole("listbox", { name })
+        .getByRole("option", { selected: true });
+    await expect(chosen("Hour")).toHaveText(String(shownHour).padStart(2, "0"));
+    await expect(chosen("Minute")).toHaveText(hhmm.slice(3));
+    if (twelve)
+      await expect(chosen("AM or PM")).toHaveText(hour24 >= 12 ? "PM" : "AM");
+    // AND THE DAY AGAIN, because the clock is the half that can undo it: every wheel
+    // column writes the whole `{ date, statedAt }` pair, so a time committed against a
+    // render that predates the day pick would carry the old day back with it. Asking
+    // twice is also what tells the two apart — a failure here says the wheel clobbered
+    // the day, a failure above says the day never took.
+    if (expectPickedDay)
+      await expectPickedDay("the clock wrote over the day pick");
+  }
+
+  // Done is a pure client dismissal — it posts nothing, so what it is waited on
+  // for is the panel going away.
+  await hydratedClick(page, page.getByTestId(`${testId}-when-done`));
+  await expect(panel).toHaveCount(0);
 }

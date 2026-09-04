@@ -6,6 +6,7 @@
 
 import { utcInstant } from "../date";
 import { db, today } from "../db";
+import { cache } from "../request-cache";
 import { now as clockNow } from "../clock";
 import { getCurrentFlaggedBiomarkers } from "./medical";
 import {
@@ -382,18 +383,31 @@ export function getFoodLedgerPage(
     untilDate?: string | null;
     groupKey?: string;
     /**
-     * Drop the servings that are SUBSTANCES — today, alcohol (#860/#944 put a
-     * standard drink on this store because a drink IS one serving of the curated
-     * `alcohol` group, which is a STORAGE decision and not a claim that a drink is
-     * a meal). Off by default: this reader answers "what servings are on the food
-     * log", and a drink is one. `/history` turns it on because the record asks a
-     * different question — see the food composer in lib/history.ts.
+     * Drop the DRINKS (#860/#944 put a standard drink on this store because a drink
+     * IS one serving of the curated `alcohol` group, which is a STORAGE decision and
+     * not a claim that a drink is a meal). Off by default: this reader answers "what
+     * servings are on the food log", and a drink is one.
+     *
+     * NAMED FOR WHAT IT DROPS (#3295). It was `excludeSubstanceGroups`, which reads
+     * as a rule about substances in general and is a promise this clause cannot
+     * keep: it pushes exactly one argument, `ALCOHOL_FOOD_GROUP`, and alcohol is the
+     * only substance that can ever be here — `substanceDef(key).ledger` is `food-log`
+     * for alcohol and `substance-log` for nicotine, cannabis and every custom key,
+     * and neither `nicotine` nor `cannabis` is a food group at all. Phase 2 gives the
+     * others their own event ledger; it does not widen this one, and the name should
+     * not have implied that it would.
+     *
+     * `/history` turns it on so a drink is filed ONCE. The record reads this same
+     * function again for the alcohol group alone and composes those rows under the
+     * `substance` kind (see the drinks composer in lib/history.ts), because the age
+     * gate and the person's own terms both belong to that kind — so without this
+     * clause the same drink would be two rows.
      *
      * IN SQL AND NOT AT THE CALL SITE, because `total` is what "Load more" reads:
      * filtering the returned rows in memory would leave the count claiming rows the
      * bound had already dropped.
      */
-    excludeSubstanceGroups?: boolean;
+    excludeAlcohol?: boolean;
   },
   page: number,
   pageSize: number
@@ -401,11 +415,11 @@ export function getFoodLedgerPage(
   const requestedPage = Math.max(1, Math.floor(page));
   const boundedSize = Math.max(1, Math.floor(pageSize));
   const where = ["date >= ?", "substr(group_key, 1, 2) != '__'"];
-  if (options.excludeSubstanceGroups) {
+  if (options.excludeAlcohol) {
     where.push("group_key != ?");
   }
   const args: Array<string | number> = [profileId, from];
-  if (options.excludeSubstanceGroups) args.push(ALCOHOL_FOOD_GROUP);
+  if (options.excludeAlcohol) args.push(ALCOHOL_FOOD_GROUP);
   if (options.untilDate) {
     where.push("date <= ?");
     args.push(options.untilDate);
@@ -443,18 +457,27 @@ export function getFoodLedgerPage(
 
 // The profile's food-log rows on/after `since` (inclusive), as FoodDailyServingTotal[] for the
 // pure rollup. Profile-scoped.
-export function getFoodDailyServingTotals(
-  profileId: number,
-  since: string
-): FoodDailyServingTotal[] {
-  return db
-    .prepare(
-      `SELECT date, group_key, servings FROM food_daily_totals
+//
+// REQUEST-CACHED (#3369 item 2): the weekly rollup, the food-habit target progress and
+// the paired-observation factor reader each open the same window on one render, and one
+// render asks twice over two different `since` days. Keyed on (profileId, since), so
+// the two windows stay two reads and a household render still reads once per profile.
+// NO WRITER CAN INTERVENE (lib/queries/AGENTS.md): nothing that writes food logs reads
+// these totals in the same request. Callers iterate or filter what they get back.
+export const getFoodDailyServingTotals = cache(
+  function getFoodDailyServingTotals(
+    profileId: number,
+    since: string
+  ): FoodDailyServingTotal[] {
+    return db
+      .prepare(
+        `SELECT date, group_key, servings FROM food_daily_totals
         WHERE profile_id = ? AND date >= ? AND servings > 0
         ORDER BY date DESC`
-    )
-    .all(profileId, since) as FoodDailyServingTotal[];
-}
+      )
+      .all(profileId, since) as FoodDailyServingTotal[];
+  }
+);
 
 // The weekly rollup — servings per group over the profile's "this week" window (the
 // SAME week definition the weekly-routine counters use, #223). The ONE computation the
@@ -1152,12 +1175,11 @@ export function getRecentFoodTaps(
   }));
 }
 
-// `getFoodCorrectionBursts` — the unfiltered taps-to-bursts pairing — lived here until
-// #3330. Every one of its production callers was a CHAT surface, and every one of them
-// now takes `consentedFoodTaps` (lib/notifications/food.ts) so the substance opt-in is
-// asked in the gather rather than at each site. Keeping the neutral wrapper would have
-// advertised a consumer that no longer exists, and left the ungated pairing one import
-// away from the surface it leaked through (#2227's rule, applied to itself).
+// `getFoodCorrectionBursts` — the taps-to-bursts pairing — lived here until #3330 moved
+// its chat callers onto a consent-filtered wrapper. That wrapper is gone again: alcohol
+// rides the food nudge under the food-buttons consent like any other group (owner
+// ruling 2026-09-02), so every chat surface pairs bursts from `getRecentFoodTaps`
+// directly and there is nothing left to filter between the ledger and the message.
 
 // ---- Food-habit N-week consistency trend (issue #954) ----
 

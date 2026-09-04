@@ -197,6 +197,18 @@ export const SEND_MARKER_REGISTRY: readonly SendMarkerEntry[] = [
       "None, and the id-keyed class is what makes that safe: an activity id never recycles, so a marker outliving its activity can never suppress another session's reminder. The MERGE case is an IDENTITY question rather than a retention one (#2570) — a merge deletes the keyed row and can make a brand-new, unmarked row the keeper, so the fold carries the announcement fact onto the survivor and the dispatch additionally declines when a high-confidence duplicate twin has already been announced. The dropped rows' markers are left as inert orphans deliberately: deleting them would make an ingest-time fold a destructive settings write for no gain.",
   },
   {
+    key: "notify_last_practice_recap_",
+    markerClass: "id-keyed",
+    cadence: "one-shot",
+    store: "profile_settings",
+    shape: "`<practiceLogId>`",
+    value:
+      "the practice row's own profile-local date, the day the note was sent for",
+    writer: "lib/notifications/practice-recap-dispatch.ts",
+    retention:
+      "None: one note per practice row (#4775 §3), keyed on an id that never recycles. It is stamped ONLY on delivery, so a row that aged out of the two-hour bound without the stream ever covering it leaves the key unset — the marker records a send that happened, and there was none.",
+  },
+  {
     key: "notify_stale_workout_",
     markerClass: "id-keyed",
     cadence: "one-shot",
@@ -495,6 +507,10 @@ export const NON_MARKER_NOTIFY_KEYS: readonly {
   {
     key: "notify_digest_recon",
     what: "the digest prose reconciler's last-rebuild record (#2069): `date|dependency stamp|epoch ms`, written by lib/notifications/reconcile.ts and read back by its own pre-check. Nothing is ever suppressed by it — it only decides whether a REBUILD is worth paying for, and its floor forces one regardless once the record is old enough",
+  },
+  {
+    key: "notify_recap_keeper_",
+    what: "where a merge moved a delivered recap's SUBJECT (#4996): `notify_recap_keeper_<droppedActivityId>` holds the keeper's id, written by carryPostWorkoutMarker (lib/notifications/post-workout-marker.ts) inside writeActivityFold at the moment the announced row is destroyed, and read by the workout-recap prose reconciler so the sweep can start from the `actype:<profile>:<droppedId>` token the delivered message still carries. It gates a silent EDIT and never a send — the session's one send is deduped by notify_last_post_workout_ above, which this key is written beside, so it can neither cause a contact nor suppress one. Id-keyed, so an unread link is an inert dead row (#203)",
   },
   {
     key: "notify_wear_reminder_claim",

@@ -10,7 +10,7 @@ closed taxonomy, and `needs-human` handling.
   that exact SHA—not moving `origin/main`—for any reset or history rewrite.
 - Cluster two to six related issues by domain and files. Avoid file overlap;
   sequence work when overlap cannot be fenced. `claims <path>` names the active
-  lane holding a path; CANNOT TELL is NOT clear — answer before the lane edits.
+  lane holding a path; CANNOT TELL is NOT clear: answer before the lane edits.
 - Claim before dispatch: a `Dispatched:` note on each issue, and a fence
   check against any other orchestrator's branches (`multi-orchestrator.md`).
   The note outlives the container, so it applies with one orchestrator too.
@@ -77,10 +77,10 @@ closed taxonomy, and `needs-human` handling.
 - `agent-gates.sh`: lint, typecheck, unit, DB, E2E hygiene, PHI scan, format.
   DB and E2E-hygiene run only when the diff touches them; a format rewrite
   re-verifies the directive-reading gates. 60 s per-test ceiling here; CI 15 s.
-- `ci-watch.mjs`: wait for settled CI; exit 0 green, 1 red, 2 unsettled, 3
-  conflict-blocked.
-- `pm-digest.sh`: the owner's catch-up — shipped for people, incidents and
-  the workflow changes they caused, progress. The PM runs it, not an orchestrator.
+- `ci-watch.mjs`: wait for settled CI; exit 0 green, 1 red, 2 unsettled (a
+  `cancelled` run is no verdict — re-run it, not red), 3 conflict-blocked.
+- `pm-digest.sh`: the owner's catch-up (shipped for people, incidents and the
+  workflow changes they caused, progress). The PM runs it, not an orchestrator.
 - `dependabot-eval-brief.mjs`: evaluate major dependency updates.
 - `queue-snapshot.mjs`: the dispatchable queue in `$SCRATCH/.queue`, refreshed
   4-hourly, `[lane:B]` on rows the ledger holds. A "thin" claim answers it.
@@ -94,6 +94,7 @@ closed taxonomy, and `needs-human` handling.
 - Orchestrator bookkeeping in `lib/release-notes.json`: one batch a day at
   most, entries append-only, upgrade actions in the day's `operatorNotes`.
 - One bullet per user-visible change: ≤80 characters, product words, and a
-  `category` from `RELEASE_NOTE_CATEGORIES` — `lib/release-notes.ts` validates
-  both; the app groups each day by category, most visible first.
-- `release-notes-gather.mjs --check` prints the uncovered lag; non-zero = due.
+  `category` from `RELEASE_NOTE_CATEGORIES`; the schema validates both.
+- A `perf` note needs a measured time on a surface a person waits for, not
+  less work: #5043 (−0.53 s on Trends) yes; #5055 (fewer reads, same view) no.
+- The digest prints the uncovered lag (`--check`); non-zero = the batch is due.

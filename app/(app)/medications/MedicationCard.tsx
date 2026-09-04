@@ -82,6 +82,7 @@ import {
 import { IconX } from "@tabler/icons-react";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { isOnDemand } from "@/lib/intake-schedule";
+import CardSectionHeader from "@/components/CardSectionHeader";
 import { symptomLabelOptions } from "@/lib/symptoms";
 
 // A side effect is described in the SAME human vocabulary a symptom is (#1676), so
@@ -128,6 +129,7 @@ export default function MedicationCard({
   historyMaxDate,
   defaultHistoryTime,
   canWrite = true,
+  subjectProfileId,
   initialAction,
   conditions = [],
   ingredients = [],
@@ -183,7 +185,7 @@ export default function MedicationCard({
     product: string | null;
   }[];
   // The redose-window status line (#798): "Redose OK — min interval passed · 2 of 4
-  // today" / "Next dose in ~2h · …" / "Max reached · …", or null when not configured.
+  // in 24h" / "Next dose in ~2h · …" / "Max reached · …", or null when not configured.
   // Pre-formatted server-side via the shared redoseCardLabel.
   prnRedoseLine?: string | null;
   prnRedosePrimary?: boolean;
@@ -200,10 +202,22 @@ export default function MedicationCard({
   historyMaxDate: string;
   defaultHistoryTime: string;
   // A medication reached through another accessible profile's illness episode is
-  // readable without switching profiles. Writes remain tied to the acting profile, so
-  // the cross-profile detail view hides every mutation control until the user explicitly
-  // chooses "Act as …" in the page identity banner.
+  // readable without switching profiles. Every control that changes the medication
+  // ITSELF — edit, stop, retire, side effects — stays tied to the acting profile and
+  // hides until the user chooses "Act as …" in the page identity banner.
   canWrite?: boolean;
+  // THE SURFACE'S SUBJECT (#4693, widened by #4429). The detail page is a
+  // subject-scoped container, so the affordances that ACT ON A DAY follow the
+  // surface's subject rather than the switcher: the dose-history add/amend, today's
+  // scheduled check-off, and the PRN log. Present ⇒ this card renders another
+  // profile's medication AND the login holds write on that profile, so each of those
+  // posts this id and the server re-gates it (requireProfileWriteAccess).
+  //
+  // IT IS STILL NOT A LICENCE TO EDIT THE DEFINITION. Edit, stop, restart, retire,
+  // side effects, refill and the ⋯ menu all stay switcher-bound on `canWrite` — the
+  // #4429 gap was a caregiver who could confirm a member's dose from the board but not
+  // from the med's own page, and that is exactly what widens here.
+  subjectProfileId?: number;
   // List-row overflow actions land on this detail view with the relevant form open.
   initialAction?: "edit" | "stop";
   // The profile's conditions for the "For condition…" indication picker (#1052).
@@ -238,6 +252,10 @@ export default function MedicationCard({
   // so the card can never contradict scheduling; `open` still comes from the
   // courses so a captured side effect links to the live course.
   const current = isMedicationCurrent(s);
+  // The day-acting reach, named once (the board's `confirmProfileId` twin): the acting
+  // profile's own card, or another member's card the login may write. Both post through
+  // the same gate; only the second carries an explicit target.
+  const canConfirm = canWrite || subjectProfileId != null;
   const open = currentCourse(courses);
   const ordered = sortCourses(courses);
   const unresolved = unresolvedCount(sideEffects);
@@ -260,7 +278,6 @@ export default function MedicationCard({
             closeInitialAction();
           }}
           pediatric={pediatric}
-          age={age}
           conditions={conditions}
           ingredients={ingredients}
           purposes={parseItemPurposes(s.purposes_json)}
@@ -528,7 +545,7 @@ export default function MedicationCard({
             className="mt-4 border-t border-black/5 pt-4 dark:border-white/5"
             data-testid="prn-administrations"
           >
-            {canWrite ? (
+            {canConfirm ? (
               <QuickLogPrnControl
                 itemId={s.id}
                 name={s.name}
@@ -538,15 +555,15 @@ export default function MedicationCard({
                 redoseLine={prnRedoseLine}
                 redosePrimary={prnRedosePrimary}
                 layout="detail"
+                profileId={subjectProfileId}
                 tz={timezone}
               />
             ) : (
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <span className="section-label">Today</span>
+              <CardSectionHeader title="Today" variant="label">
                 <span className="text-sm text-slate-600 dark:text-slate-300">
                   {prnDayLabel ?? "None today"}
                 </span>
-              </div>
+              </CardSectionHeader>
             )}
             {prnAdministrations.length > 0 && (
               <ul
@@ -617,7 +634,8 @@ export default function MedicationCard({
                   }
                   taken={takenDoseIds.has(dose.id)}
                   skipped={skippedDoseIds.has(dose.id)}
-                  readOnly={!canWrite}
+                  readOnly={!canConfirm}
+                  profileId={subjectProfileId}
                   tz={timezone}
                   takenTime={formatGivenAtClockWithRelativeAge(
                     timezone,
@@ -859,7 +877,13 @@ export default function MedicationCard({
             minDate={historyMinDate}
             maxDate={historyMaxDate}
             defaultTime={defaultHistoryTime}
-            canWrite={canWrite}
+            canWrite={canConfirm}
+            subjectProfileId={subjectProfileId}
+            // The card's `timezone` is `loadMedicationsData(profileId)`'s, so on a
+            // cross-profile detail page it already IS the subject's zone — the panel's
+            // forms collect their wall clock on the calendar the write re-anchors it
+            // against, rather than on the caregiver's.
+            tz={timezone}
             backfillDisabledReason={
               doses.length === 0
                 ? "This medication has no dose to log against"
@@ -917,10 +941,10 @@ export default function MedicationCard({
 
           {/* Side effects. */}
           <div>
-            <div className="mb-1 flex items-center justify-between">
-              <span className="section-label">
-                Side effects ({sideEffects.length})
-              </span>
+            <CardSectionHeader
+              title={`Side effects (${sideEffects.length})`}
+              variant="label"
+            >
               {canWrite ? (
                 <button
                   type="button"
@@ -933,7 +957,7 @@ export default function MedicationCard({
                   {addingEffect ? "Cancel" : "Add side effect"}
                 </button>
               ) : null}
-            </div>
+            </CardSectionHeader>
 
             {canWrite && addingEffect && (
               <form

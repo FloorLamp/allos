@@ -1,6 +1,10 @@
 import type { ActivityType } from "@/lib/types";
-import { boundedOrNull, inMetricBounds } from "@/lib/ingest-bounds";
-import { toKm } from "@/lib/units";
+import {
+  boundedOrNull,
+  canonicalDistanceKm,
+  canonicalDurationMin,
+  inMetricBounds,
+} from "@/lib/ingest-bounds";
 import type {
   NormActivity,
   NormBodyMetric,
@@ -62,10 +66,6 @@ const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 function dayStr(v: unknown): string | null {
   const s = str(v);
   return s && DAY_RE.test(s) ? s : null;
-}
-
-function secToMin(sec: number | null): number | null {
-  return sec == null ? null : Math.round(sec / 60);
 }
 
 // ---- vendor daily scores (issue #1069) ----
@@ -144,7 +144,7 @@ export function mapOuraSleep(
   const end = str(rec.bedtime_end);
   const totalMin = boundedOrNull(
     "sleep_min",
-    secToMin(num(rec.total_sleep_duration))
+    canonicalDurationMin(num(rec.total_sleep_duration), "s")
   );
   // A period without a usable window, day, or total duration is unmappable.
   if (!date || !start || !end || totalMin == null) return null;
@@ -163,7 +163,10 @@ export function mapOuraSleep(
     awake: rec.awake_time,
   };
   for (const [stage, metric] of Object.entries(OURA_STAGE_METRIC)) {
-    push(metric, boundedOrNull(metric, secToMin(num(stageSecs[stage]))));
+    push(
+      metric,
+      boundedOrNull(metric, canonicalDurationMin(num(stageSecs[stage]), "s"))
+    );
   }
   // Nightly HRV (average RMSSD, ms) → the shared hrv_ms sample metric.
   push("hrv_ms", boundedOrNull("hrv_ms", num(rec.average_hrv)));
@@ -291,13 +294,13 @@ export function mapOuraWorkout(
   const endMs = instantMs(endDt);
   const durationMin =
     startMs != null && endMs != null && endMs > startMs
-      ? Math.round((endMs - startMs) / 60000)
+      ? canonicalDurationMin(endMs - startMs, "ms")
       : null;
   const meters = num(rec.distance);
-  // Oura reports workout distance in METRES; this division is the unit boundary, so
-  // the canonical value is minted here (#2149) — see the same pattern in strava.ts.
-  const distanceKm =
-    meters != null ? toKm(Math.round((meters / 1000) * 100) / 100, "km") : null;
+  // Oura reports workout distance in METRES. Converted, rounded and minted by the one
+  // shared unit boundary (#4537) — no longer "the same pattern as strava.ts", the same
+  // call as strava.ts.
+  const distanceKm = canonicalDistanceKm(meters, "m");
 
   // Core-field plausibility: an impossible distance/duration makes the whole workout
   // untrustworthy (#132). Optional fields (calories) are sanitized individually below.

@@ -28,18 +28,21 @@ export interface ButtonProps {
   "aria-controls"?: string;
   "data-testid"?: string;
   /**
-   * The ONE rank a caller may state (#3982). Absence IS the secondary treatment,
-   * so there is no third value to spell and no size axis to compose — the type is
-   * the admission rule. Use it for the action a surface exists for, at most once
-   * per surface.
+   * The ONE rank plus the one destructive paint a caller may state (#3982,
+   * `danger` added #4978). Absence IS the secondary treatment, so there is no
+   * third value to spell and no size axis to compose — the type is the
+   * admission rule. `primary` marks the action a surface exists for, at most
+   * once per surface. `danger` tells a destructive action apart from its
+   * neighbour before the tap, since undo happens after.
    */
-  variant?: "primary";
+  variant?: "primary" | "danger";
 }
 
-// The ordinary secondary action, plus the ONE primary variant the owner ruled for
-// (#3982). Callers supply meaning, behavior and — only now — RANK; never geometry
-// and never paint of their own. `variant="primary"` adds a paint-only utility on
-// top of `button-control` rather than swapping the class, so both treatments carry
+// The ordinary secondary action, the ONE primary variant the owner ruled for
+// (#3982), and the ONE destructive paint (#4978). Callers supply meaning,
+// behavior and — only now — RANK; never geometry and never paint of their own.
+// `variant="primary"` / `variant="danger"` each add a paint-only utility on top
+// of `button-control` rather than swapping the class, so every treatment carries
 // the same box, the same focus ring and the same pending spinner by construction.
 // The control is a full 44px effective target on a coarse pointer; navigational
 // actions use DestinationActionLink instead.
@@ -84,7 +87,9 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
       className={
         variant === "primary"
           ? "button-control button-control-primary"
-          : "button-control"
+          : variant === "danger"
+            ? "button-control button-control-danger"
+            : "button-control"
       }
     >
       {busy && (

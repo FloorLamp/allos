@@ -66,6 +66,19 @@ import type { IntegrationId } from "./types";
 //               COACHING TIER: it renders where the user goes looking and never travels
 //               a send. It also yields to the two above, so a source is still one row.
 //
+// A FOURTH KIND since #4956, and it belongs on the ESCALATING side of the gate:
+//   "dropping" — the connection is fine, the runs are `ok`, rows are landing — and one
+//               RECORD TYPE has been arriving and being discarded for the whole of the
+//               source's silence tolerance, because the sender renamed a field. It
+//               escalates for the same reason "stale" does: the person is losing data
+//               they believe they are collecting, and only we can see it. It differs
+//               from "quiet-stream" on exactly the fact the exclusion above turns on —
+//               a quiet stream means nothing was SENT, which nobody promised, while
+//               this means it WAS sent and we threw it away, which is our defect and
+//               not an observation about the user's behaviour. Escalating it increases
+//               no contact: it rides the digest section and the review grouping that
+//               already exist, and adds no channel.
+//
 // So `kind` now names the TIER as well as the copy, and the difference is enforced
 // rather than documented: `isEscalatingIntegration` below is the one gate,
 // `buildAttentionModel` and the digest's own integration section both apply it, and
@@ -75,7 +88,7 @@ export interface AttentionIntegration {
   id: IntegrationId | null;
   sourceName: string;
   detail: string | null;
-  kind?: "failing" | "stale" | "quiet-stream";
+  kind?: "failing" | "stale" | "quiet-stream" | "dropping";
 }
 
 /**
@@ -171,18 +184,26 @@ export function buildFlaggedItem(
 export function integrationToItem(i: AttentionIntegration): UpcomingItem {
   const reconnectHref = i.id ? integrationDetailHref(i.id) : null;
   const stale = i.kind === "stale";
+  const dropping = i.kind === "dropping";
   const detail =
     i.detail ??
     (stale
       ? "No recent data from this source."
-      : "Reconnect to resume syncing.");
+      : dropping
+        ? "Some records from this source aren't being stored."
+        : "Reconnect to resume syncing.");
   return {
     key: `integration:${i.id ?? i.sourceName}`,
     domain: "integration",
     signalGroup: "review",
+    // A dropping source must NOT be told to reconnect and has not stopped: the
+    // connection is working and the loss is in what we do with what it sends. Its
+    // detail — minted by the query, which is what knows the types — names them.
     title: stale
       ? `${i.sourceName} sync has stopped`
-      : `${i.sourceName} sync needs attention`,
+      : dropping
+        ? `${i.sourceName} is dropping records`
+        : `${i.sourceName} sync needs attention`,
     detail,
     // The digest's named line asks for the WHY beside the what (#1913 item 6), and
     // this producer's detail is it — whatever the source recorded, or the observation

@@ -588,6 +588,7 @@ describe("pairSleepMood", () => {
         sleepEditHours: null,
         sleepSampleId: null,
         moodLogId: null,
+        sleepSuspect: false,
       },
       {
         date: "2026-03-18",
@@ -605,6 +606,7 @@ describe("pairSleepMood", () => {
         sleepEditHours: null,
         sleepSampleId: null,
         moodLogId: null,
+        sleepSuspect: false,
       },
       {
         date: "2026-03-19",
@@ -622,6 +624,7 @@ describe("pairSleepMood", () => {
         sleepEditHours: null,
         sleepSampleId: null,
         moodLogId: null,
+        sleepSuspect: false,
       },
       {
         date: "2026-03-20",
@@ -634,6 +637,7 @@ describe("pairSleepMood", () => {
         sleepEditHours: null,
         sleepSampleId: null,
         moodLogId: null,
+        sleepSuspect: false,
       },
     ]);
   });
@@ -712,5 +716,106 @@ describe("pairSleepMood", () => {
       sleepEditable: false,
       sleepEditHours: null,
     });
+  });
+});
+
+// ── one zone per night, and it is the wake's (#5018) ──────────────────────────
+//
+// #4820 made the sleep readers resolve each instant through the zone in force at THAT
+// instant. Right for a stamp read alone, wrong for a PAIR read against each other: a
+// night spanning a recorded switch took its bedtime from the old zone and its wake from
+// the new one, so the bar between them was drawn from two clocks with different offsets
+// and its width was not the session's length.
+//
+// `ProfileDayZone` is `string | ((at: Date) => string)`, so a switching profile is a
+// plain function here — the fixture says what the resolver would say and nothing else.
+describe("a night that straddles a timezone switch (#5018)", () => {
+  const at = (iso: string) => Date.parse(iso);
+
+  // The prod sighting: the 08-21 night, stored 01:15Z → 08:59Z (464 minutes), with the
+  // New York → Los Angeles switch recorded at 02:11:41Z — INSIDE the night.
+  const westward = (when: Date) =>
+    when.getTime() < at("2026-08-21T02:11:41Z")
+      ? "America/New_York"
+      : "America/Los_Angeles";
+  const westwardNight = [
+    {
+      start: "2026-08-21T01:15:00Z",
+      end: "2026-08-21T08:59:00Z",
+      value: 464,
+    } as SleepSession,
+  ];
+
+  it("draws a bar as wide as the session, not as wide as two clocks", () => {
+    const rows = consistencyNights(
+      mainSleepNights(westwardNight, westward),
+      westward
+    );
+    expect(rows).toHaveLength(1);
+    const [n] = rows;
+    // Both ends in Los Angeles: 6:15 PM → 1:59 AM, unwrapped past midnight.
+    expect(n.bedHour).toBeCloseTo(18.25, 5);
+    expect(n.wakeHour).toBeCloseTo(25.9833, 3);
+    // THE PROPERTY, stated as the thing that was wrong: the bar's width is the
+    // session's own length. Read through two zones it was 4.73 h for a 7.73 h night.
+    expect((n.wakeHour - n.bedHour) * 60).toBeCloseTo(464, 1);
+  });
+
+  it("gives the hero the same night through the same one zone", () => {
+    const s = lastNightSummary(westwardNight, westward)!;
+    expect(s.durationMin).toBe(464);
+    expect(s.bedMinutes).toBe(18 * 60 + 15);
+    expect(s.wakeMinutes).toBe(1 * 60 + 59);
+    // The pair agrees with the duration the session reports, which is what the two-clock
+    // reading could not do: 1:59 AM minus 6:15 PM, wrapped, is 464 minutes.
+    expect(((s.wakeMinutes! - s.bedMinutes! + 1440) % 1440) as number).toBe(
+      s.durationMin
+    );
+  });
+
+  it("holds the same way eastward", () => {
+    // Los Angeles → New York inside the night, the other direction, so a fix that only
+    // happened to work westward fails here.
+    const eastward = (when: Date) =>
+      when.getTime() < at("2026-08-25T07:00:00Z")
+        ? "America/Los_Angeles"
+        : "America/New_York";
+    const sessions = [
+      {
+        start: "2026-08-25T05:00:00Z",
+        end: "2026-08-25T13:00:00Z",
+        value: 480,
+      } as SleepSession,
+    ];
+    const [n] = consistencyNights(
+      mainSleepNights(sessions, eastward),
+      eastward
+    );
+    // Both ends in New York: 1:00 AM → 9:00 AM.
+    expect(n.bedHour).toBeCloseTo(1, 5);
+    expect(n.wakeHour).toBeCloseTo(9, 5);
+    expect((n.wakeHour - n.bedHour) * 60).toBeCloseTo(480, 1);
+
+    const s = lastNightSummary(sessions, eastward)!;
+    expect(s.bedMinutes).toBe(60);
+    expect(s.wakeMinutes).toBe(9 * 60);
+  });
+
+  it("leaves a night with no switch inside it exactly as it was", () => {
+    // A plain string zone is the overwhelming case and cannot resolve two ways, so this
+    // is the control: whatever the readers said before, they still say.
+    const plain = [
+      {
+        start: "2026-03-13T23:00:00Z",
+        end: "2026-03-14T07:00:00Z",
+        value: 480,
+      } as SleepSession,
+    ];
+    const [n] = consistencyNights(mainSleepNights(plain, "UTC"), "UTC");
+    expect(n.bedHour).toBeCloseTo(23, 5);
+    expect(n.wakeHour).toBeCloseTo(31, 5);
+    const s = lastNightSummary(plain, "UTC")!;
+    expect(s.bedMinutes).toBe(23 * 60);
+    expect(s.wakeMinutes).toBe(7 * 60);
   });
 });

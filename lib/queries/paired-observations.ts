@@ -35,6 +35,7 @@ import { getFoodDailyServingTotalsInRange } from "./nutrition";
 import { getActivityDates } from "./training/activities";
 import { getBodyMetricDailySeries, getMetricDailyTotals } from "./metrics";
 import { getSleepDurationTrend } from "./sleep";
+import { getOvernightHrMinSeries } from "./event-physiology";
 
 // What the factor side of one entry knows about the window: the days the factor was
 // LOGGED on, and the days that can legitimately join the control arm.
@@ -108,6 +109,11 @@ function outcomeSeries(
       // body_metrics keys on (profile_id, date, source), so this goes through the
       // shared daily fold rather than raw rows (#1615).
       return getBodyMetricDailySeries(profileId, "resting_hr", limitDays);
+    case "overnight-hr-min":
+      // The night's FLOOR over its own sleep-session window (#4775 §5), never a
+      // clock-hour slice — the same scoping the digest's overnight line uses, so the
+      // pair and that line can never disagree about what "overnight" meant.
+      return getOvernightHrMinSeries(profileId, limitDays);
     case "main-sleep-minutes":
       // MAIN overnight sleep per wake-day (#1118) — never the raw `sleep_min` total,
       // which sums a same-day nap into the night and would double-count it.
@@ -121,13 +127,19 @@ export function gatherPairedNights(
   profileId: number,
   entry: PairedObservationEntry,
   today: string,
-  series: (stream: PairedOutcomeStream) => { date: string; value: number }[]
+  series: (stream: PairedOutcomeStream) => { date: string; value: number }[],
+  // The factor side's memo, for the same reason `series` is passed rather than read:
+  // several entries share one factor over one window, and the read is the FIRST thing
+  // every entry does. Optional so a caller with one entry — the tests — needs no
+  // ceremony; the builder passes a shared reader across the registry.
+  readFactorDays: FactorDaysReader = factorDaysReader(profileId)
 ): PairedNight[] {
   // Factor days span the window; the outcome day is `offsetDays` later, so the last
   // factor day that can pair with a same-window outcome is `today - offsetDays`.
   const factorTo = shiftDateStr(today, -entry.outcome.offsetDays);
   const factorFrom = shiftDateStr(factorTo, -(PAIRED_WINDOW_DAYS - 1));
-  const days = factorDays(entry.factor.source, profileId, factorFrom, factorTo);
+
+  const days = readFactorDays(entry.factor.source, factorFrom, factorTo);
   // Short-circuit before touching the outcome stream: the with-arm can only shrink
   // from here (a factor day whose outcome is missing drops out), so a factor that is
   // already below the minimum can never produce a verdict.
@@ -159,6 +171,35 @@ export function gatherPairedNights(
     nights.push({ date: outcomeDate, factor: present, value });
   }
   return nights;
+}
+
+/** The factor side's reader, memoized per gather — see `factorDaysReader`. */
+export type FactorDaysReader = (
+  source: PairedFactorSource,
+  from: string,
+  to: string
+) => FactorDays;
+
+/**
+ * A per-call memo over the FACTOR readers, the twin of `outcomeSeriesReader` below.
+ *
+ * Three registry entries share the `alcohol-servings` factor over one 90-day window,
+ * and the factor read is the first thing every entry does — before the short-circuit,
+ * which is the whole point of reading it first. Without this, adding an entry on an
+ * existing factor costs a full `food_daily_totals` range scan on every dashboard
+ * render; with it, a factor is read once however many pairs are declared on it, so the
+ * registry can grow in the direction it is meant to grow.
+ */
+export function factorDaysReader(profileId: number): FactorDaysReader {
+  const cache = new Map<string, FactorDays>();
+  return (source, from, to) => {
+    const key = `${source}:${from}:${to}`;
+    const hit = cache.get(key);
+    if (hit) return hit;
+    const days = factorDays(source, profileId, from, to);
+    cache.set(key, days);
+    return days;
+  };
 }
 
 // A per-call memo over the outcome readers, so two entries on one stream read it once.

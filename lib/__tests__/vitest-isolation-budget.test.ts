@@ -54,7 +54,22 @@ import { specsNeedingIsolation } from "@/vitest.isolation";
 // file rather than another case in the manifest spec because the manifest spec is a
 // QUERY BUDGET pinned at one frozen instant, and a second render at a different hour
 // would move the number it exists to measure.
-const DB_ISOLATED = 32;
+// 33 since #2565: delivery-lifecycle substitutes the web-push transport so ONE send can
+// hold two per-endpoint outcomes at once — which is what the partial-success and
+// all-failed owner states are made of. The tier cannot install that shared: a stub that
+// routes by endpoint suffix would change what every other DB spec's push send does.
+// 34 since #5010: dashboard-profile.test.ts mocks the request the way the query meter
+// does (session, scope, request cache), so the isolation scan routes it here; it is
+// skipped entirely without PROBE_DB and only runs from scripts/profile-dashboard.ts.
+// 35 since #3369: request-cached-reads-are-profile-scoped proves the eight reads that
+// joined the request cache key on profile_id, and it can only do that by running them
+// through a REAL memoizing cache() — the same harness stand-in the query meter counts
+// through, installed over lib/request-cache. Production's cache() is identity outside a
+// Next request by design, so without that substitution the spec would assert nothing.
+// It is a separate file rather than another describe in the manifest spec for the same
+// reason entry 32 is: that file is a query budget pinned at one instant, and seeding two
+// more profiles beside it risks moving the number it exists to measure.
+const DB_ISOLATED = 35;
 // 7 since #3065: Longevity's server-component FitnessSection is tested directly with
 // controlled session, age, and assembler boundaries. It must prove that minor and unknown
 // profiles return null before assembling adult population data; sharing those module stubs

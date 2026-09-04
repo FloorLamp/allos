@@ -46,12 +46,14 @@
 // A bare `title=` tooltip is NATIVE BROWSER CHROME. It is drawn by the browser
 // outside the page, it is not in the DOM, and it does not appear in a screenshot at
 // any viewport. #3489's deliverable text names "the sparkline titles" alongside the
-// Standing doors; the sparkline titles are `title=` attributes
+// Standing doors; at the time those were SVG `<title>` children
 // (components/dashboard/StandingSparkline.tsx) and registering them here would
-// produce a shot that shows nothing while sitting in the contact sheet looking like
-// evidence, which is the failure mode this whole deliverable exists to avoid.
-// #3375 owns that class and its fix is to stop using `title=`, not to photograph
-// it. REGISTER ONLY hover states the PAGE renders: a CSS rule on a page element, or
+// have produced a shot that shows nothing while sitting in the contact sheet
+// looking like evidence, which is the failure mode this whole deliverable exists to
+// avoid. #3375 owns that class and its fix is to stop using `title=`, not to
+// photograph it. (#4760 since moved the sparkline's readout onto a page-rendered
+// CSS rule — `series-point` — so it is now the registrable kind; it is not yet
+// registered.) REGISTER ONLY hover states the PAGE renders: a CSS rule on a page element, or
 // a JS/React panel. If you register a `title=` the mechanism does not lie — it
 // reports a no-op and skips the shot — but it costs a BLIND SPOT line every run.
 //

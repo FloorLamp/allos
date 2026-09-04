@@ -86,8 +86,10 @@ import {
   withDoseCorrections,
 } from "./intake";
 import { type IntakeSendSlot } from "./intake-format";
-import { buildFoodNudge, consentedFoodTaps } from "./food";
+import { buildFoodNudge } from "./food";
+import { getRecentFoodTaps } from "../queries/nutrition";
 import { keyboardChatOrigin, withChatOrigin } from "./chat-origin";
+import { composeForSend } from "./compose";
 import { now as clockNow } from "../clock";
 import { correctionBursts, correctionTokenAnchor } from "../correction-time";
 import {
@@ -109,6 +111,7 @@ import { buildDigest, renderDigestMessage } from "./digest";
 import { gatherDigestInput } from "./digest-data";
 import { digestDependencyStamp, DIGEST_REGATHER_FLOOR_MS } from "./digest-deps";
 import { rebuildWearReminder } from "./wear-reminder";
+import { rebuildWorkoutRecap } from "./workout-recap-build";
 import {
   closingTallyDetail,
   decideProseGather,
@@ -723,7 +726,7 @@ const food: FamilyReconciler = {
       FOOD_TIME_PREFIXES,
       new Set(
         correctionBursts(
-          consentedFoodTaps(profileId, clockNow()),
+          getRecentFoodTaps(profileId, clockNow()),
           clockNow(),
           correctionMessageBinding(profileId, "food", {
             chatId: p.chatId,
@@ -770,7 +773,7 @@ const food: FamilyReconciler = {
       const picker =
         anchor != null
           ? correctionBursts(
-              consentedFoodTaps(profileId, now),
+              getRecentFoodTaps(profileId, now),
               now,
               correctionMessageBinding(profileId, "food", ref)
             ).find((b) => b.fromId === anchor)
@@ -1248,6 +1251,19 @@ const PROSE: Record<ProseReconciler, ProseClaim> = {
     stamp: null,
     floorMs: 0,
   },
+  // The post-workout recap (#4996). Like the wear reminder and unlike the digest, it
+  // declares NO pre-check: `rebuildWorkoutRecap` answers null in one keyboard scan for a
+  // recap that carries no `actype` address, and the rebuild it does pay for is bounded
+  // twice over — at most one live pointer per unclassified finish, and the prose arm
+  // DROPS the pointer at the day boundary rather than tracking it to the retention
+  // horizon. A dependency stamp here would be a second model of what the recap's facts
+  // are derived from (the row, the minute stream, the weekly rollup) for a message that
+  // lives hours, which is the shape #2069 built for a message that lives all day.
+  "workout-recap": {
+    rebuild: rebuildWorkoutRecap,
+    stamp: null,
+    floorMs: 0,
+  },
 };
 
 // The profile's display name, which the digest title carries. Read here rather than
@@ -1613,7 +1629,13 @@ async function reconcileProse(
       })
     );
   if (!rebuilt) return;
-  const hash = messageBodyHash(rebuilt);
+  // COMPOSED BEFORE IT IS HASHED (#4538), for the same reason the bundle is attached
+  // before the keyboard plan is made: the stored hash was taken on the message as
+  // DELIVERED and `messageBodyHash` covers the title, so a raw rebuild would differ on
+  // the "[Name] " label alone and every multi-profile digest would draw one edit that
+  // changed nothing. The RAW message still goes to `rebuildMessage`, which composes it
+  // there, exactly once.
+  const hash = messageBodyHash(composeForSend(profileId, rebuilt));
   // THE IDEMPOTENCE PIN. Nothing changed ⇒ no Telegram call at all, which is what keeps
   // an hourly sweep over the most-read message in the app off the rate limiter.
   if (pointer.bodyHash === hash) return;

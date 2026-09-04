@@ -173,4 +173,16 @@ describe("closed dashboard reading promotions", () => {
     expect(sleepArrivedInWakeWindow("recent", 1, 1380, 121)).toBe(false);
     expect(sleepArrivedInWakeWindow("recent", 2, 1380, 60)).toBe(false);
   });
+
+  // #4299: the arrival that WOULD promote, withheld because the night's synced
+  // session disagrees with the heart rate recorded across it. The pair is the
+  // proof — the same inputs promote when the session is not contradicted.
+  it("withholds the arrival on a clock-skew-contradicted night", () => {
+    expect(sleepArrivedInWakeWindow("last-night", 0, 1380, 1380, false)).toBe(
+      true
+    );
+    expect(sleepArrivedInWakeWindow("last-night", 0, 1380, 1380, true)).toBe(
+      false
+    );
+  });
 });

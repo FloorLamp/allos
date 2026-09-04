@@ -34,7 +34,7 @@ import { EmptyState } from "@/components/ui";
 import StackedBarCard from "@/components/StackedBarCard";
 import ChartCard from "@/components/ChartCard";
 import DayHistory from "@/components/DayHistory";
-import VisualizationDetails from "@/components/VisualizationDetails";
+import { SeriesPoint, SeriesSummary } from "@/components/SeriesAccess";
 
 // Trends → Nutrition (issue #1166): the OVER-TIME nutrition view. `/nutrition` keeps the
 // log + today's adequacy + the raw servings rollup; this tab is the trend layer, re-homing
@@ -48,6 +48,13 @@ import VisualizationDetails from "@/components/VisualizationDetails";
 
 // One week's hit-rate → a tint. High adherence green, partial amber, none slate; a
 // no-applicable-target week reads as a faint dashed placeholder (never a 0% miss).
+// One sentence per week — the cell's name and the summary's line are the same string.
+function adherenceWeekText(w: AdherenceWeek): string {
+  return `${w.label}: ${
+    w.rate == null ? "no goal tracked" : `${w.met} of ${w.applicable} goals met`
+  }`;
+}
+
 function adherenceCellClass(w: AdherenceWeek): string {
   if (w.rate == null)
     return "border border-dashed border-black/15 bg-transparent dark:border-white/20";
@@ -317,7 +324,7 @@ export default async function NutritionSection({
         title="Macros & fiber"
         detailHref="/nutrition"
         detailTitle="macros"
-        note="Protein, carbs, fat, and fiber per day. Informational — the intake trend, not a prescription."
+        about="Protein, carbs, fat, and fiber per day. Informational — the intake trend, not a prescription."
       >
         {macroFiber.length === 0 ? (
           <EmptyState
@@ -369,30 +376,18 @@ export default async function NutritionSection({
                 data-rate={w.rate == null ? "" : w.rate.toFixed(2)}
                 className="flex flex-col items-center gap-1"
               >
-                <span
-                  className={`h-8 w-6 rounded-xs ${adherenceCellClass(w)}`}
-                  role="img"
-                  aria-label={`${w.label}: ${
-                    w.rate == null
-                      ? "no goal tracked"
-                      : `${w.met} of ${w.applicable} goals met`
-                  }`}
+                <SeriesPoint
+                  className={`relative h-8 w-6 rounded-xs ${adherenceCellClass(w)}`}
+                  label={adherenceWeekText(w)}
                 />
                 <span className="text-xs tabular-nums text-slate-400">
                   {w.label.split(" – ")[0].replace(/^[A-Za-z]+ /, "")}
                 </span>
               </div>
             ))}
-            <VisualizationDetails
-              label="Weekly details"
-              items={adherence.map(
-                (week) =>
-                  `${week.label} · ${
-                    week.rate == null
-                      ? "no goal tracked"
-                      : `${week.met} of ${week.applicable} goals met`
-                  }`
-              )}
+            <SeriesSummary
+              label="Food-goal adherence by week"
+              items={adherence.map(adherenceWeekText)}
             />
           </div>
         )}

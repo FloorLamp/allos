@@ -28,6 +28,7 @@ import type { ActivityType } from "../types/training";
 import { activityTypeAskCallback } from "./callback-data";
 import { formatMessageLine } from "./message-line";
 import { GLYPH } from "./glyphs";
+import { zoneMinutesClause } from "../event-physiology";
 
 // The workout-affectable frequency scopes (#1122): the target kinds a lifting/cardio
 // session can actually advance. `food_group` (a nutrition scope, #580) and
@@ -196,6 +197,41 @@ export function importedRecapLine(facts: ImportedSessionFacts): string | null {
   return [`${lead} done`, ...segs].join(" · ");
 }
 
+// ---- The in-session physiology clause (#4775 §2) ----
+
+// What the MINUTE STREAM says this session did, as a clause on the recap line:
+// "Z2 24 min · Z3 11 min · peak 168". It is the same `event-physiology` result the
+// activity page renders, formatted for a chat line — no second computation, and no
+// number here that the page would state differently.
+//
+// TWO REASONS IT CAN BE NULL, and neither is an error:
+//   • NOT COVERED. The Health Connect pipeline runs 30–61 min behind the wrist, so at
+//     the finish tap the session's own minutes are usually not in yet. A clause built
+//     then would describe a partial window in the confident register of a measurement.
+//     The caller keeps the import's own avg/max HR in that case — a figure the SOURCE
+//     stands behind, which is a different claim from one this app derived.
+//   • NOTHING MEASURED. A session worn without the watch has no minutes to split.
+//
+// It never creates a line. With no recap line to ride, the finish message is exactly
+// what it was before this issue — the contact-consent posture the type ask (#2272)
+// already follows: the system may add to a message going out, never make one exist.
+export function sessionPhysiologyClause(physiology: {
+  covered: boolean;
+  zoneMinutes: number[] | null;
+  inWindow: { peakBpm: number } | null;
+}): string | null {
+  if (!physiology.covered) return null;
+  const zones = physiology.zoneMinutes
+    ? zoneMinutesClause(physiology.zoneMinutes)
+    : null;
+  const peak =
+    physiology.inWindow != null
+      ? `peak ${Math.round(physiology.inWindow.peakBpm)}`
+      : null;
+  const parts = [zones, peak].filter((p): p is string => p != null);
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
 // ---- The finish message's own title (#2503) ----
 
 // WHAT FINISHED, named by the row's own type. The title was one hardcoded string —
@@ -264,11 +300,34 @@ export function activityTypeAskActions(
   }));
 }
 
+// WHAT THE ASK IS WAITING FOR (#4996), when the app can name it.
+//
+// The finish message is sent on ARRIVAL, and for a twin-upload rider the first arrival
+// is the poorest one: Health Connect lands 30-45 min ahead of Strava on every ride and
+// declines to say what the session was. Until #4996 the reader had no way to tell a
+// recap that will be superseded from one that will not — "🏋️ Session complete" reads
+// the same either way.
+//
+// It is a LINE ON A MESSAGE ALREADY GOING OUT, exactly like the ask it rides: it changes
+// what is SHOWN and nothing about what is SENT, so no send is delayed, added or held for
+// it. And it is keyed on a FACT — the profile really has that source connected — never
+// on "riders usually do", because a profile with no richer source will never get the
+// details this promises and the type ask is honestly its whole state.
+export const STRAVA_DETAILS_FOLLOW_LINE = "Details follow when Strava syncs.";
+
 // The type ask's two halves, as the composition takes them: the prompt sentence that
-// follows the recap line, and the inline buttons that answer it.
+// follows the recap line, and the inline buttons that answer it — plus, when the app
+// knows a richer source is coming, the provisional line (#4996).
+//
+// The provisional line lives HERE rather than beside the recap line because the two are
+// one state: both stand exactly while the announced row is `unclassified`, and the fold's
+// reconciler drops both in the same edit. Making that structural is what stops a later
+// change removing the ask and leaving "Details follow" under a message that is already
+// as detailed as it will get.
 export interface FinishTypeAsk {
   prompt: string;
   actions: NotificationAction[];
+  provisional?: string;
 }
 
 // Compose the finish nudge: the recap line (when present) LEADS, then the due
@@ -296,7 +355,10 @@ export function composeFinishNudge(
     // emphasis (#1720) when it has any — never stringifies runs into "[object Object]".
     const merged =
       recapLine || ask
-        ? joinBody([recapLine, doseMessage.body, ask?.prompt], "\n\n")
+        ? joinBody(
+            [recapLine, doseMessage.body, ask?.prompt, ask?.provisional],
+            "\n\n"
+          )
         : doseMessage.body;
     return {
       ...doseMessage,
@@ -308,7 +370,9 @@ export function composeFinishNudge(
   }
   return {
     title: finishNudgeTitle(type),
-    body: ask ? joinBody([recapLine!, ask.prompt], "\n\n") : recapLine!,
+    body: ask
+      ? joinBody([recapLine!, ask.prompt, ask.provisional], "\n\n")
+      : recapLine!,
     ...(ask ? { actions: ask.actions } : {}),
     kind: "workout-recap",
   };

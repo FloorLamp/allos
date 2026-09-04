@@ -7,7 +7,7 @@ import {
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
-import { openDashboardAll } from "./helpers";
+import { openDashboardAll, openEverythingFold } from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 
 // Cross-item PRN safety counters (issue #1027). The dedicated fixture profile tracks
@@ -56,7 +56,7 @@ test("the OTC ibuprofen card shows the family-held redose line (no false GO)", a
   const redoseLine = main.getByTestId("prn-redose-line").first(); // first-ok: the family-held redose line on this spec's DEDICATED fixture profile (E2E_LOGIN_PRN_FAMILY) — deterministic
   await expect(redoseLine).toBeVisible();
   await expect(redoseLine).toContainText("Next dose in ~");
-  await expect(redoseLine).toContainText("1 of 4 today");
+  await expect(redoseLine).toContainText("1 of 4 in 24h");
   await expect(redoseLine).toContainText("across 2 items");
   // No surface (Today panel or med row) shows a false green light.
   await expect(
@@ -86,7 +86,10 @@ test("the therapeutic-duplication note surfaces on the dashboard coaching rollup
   await page.goto("/");
   await openDashboardAll(page);
   // The rollup is a folded BLOCK of rows since #4076 — one observation, one row,
-  // all of them under one "Coaching observations" header.
+  // all of them under one "Coaching observations" header. Coaching observations
+  // are Understand's statements, and this seeded fixture's Understand band crosses
+  // the three-block cap (#4065), so the rollup sits behind Understand's own fold.
+  await openEverythingFold(page, "understand");
   const rollup = page.locator('[data-moment-key="coaching.observation"]');
   await expect(rollup).toBeVisible();
   await expect(rollup).toContainText(

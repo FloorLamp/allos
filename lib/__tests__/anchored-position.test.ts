@@ -21,9 +21,10 @@ function field(top: number, left = 20, width = 200): AnchorRect {
   return { top, bottom: top + 40, left, right: left + width, width };
 }
 
-// The panel's bottom edge, given a position and how tall it ended up.
-const bottomOf = (pos: { top: number; maxHeight?: number }, height: number) =>
-  pos.top + (pos.maxHeight ?? height);
+// The panel's bottom edge: it renders at whichever is smaller of the height it
+// wanted and the cap it was given, which is what `max-height` means.
+const bottomOf = (pos: { top: number; maxHeight: number }, height: number) =>
+  pos.top + Math.min(height, pos.maxHeight);
 
 describe("anchoredPosition — which side, and how tall", () => {
   it("sits below the anchor when the panel fits there", () => {
@@ -47,17 +48,18 @@ describe("anchoredPosition — which side, and how tall", () => {
     expect(pos.top).toBe(anchor.top - ANCHOR_GAP - 224);
   });
 
-  it("leaves an UNCAPPED panel below when it fits neither side", () => {
-    // A panel taller than the viewport: flipping it up only moves the problem,
-    // so a menu/calendar stays where it has always been.
+  it("sends a panel that declared no cap to the roomier side too (#4776)", () => {
+    // 400/440 of 800: 352 below, 388 above. A menu taller than either used to
+    // stay below on the reasoning that flipping only moved the overflow — but
+    // the panel now scrolls, so the roomier side is where more of it is legible.
     const anchor = field(400);
     const pos = anchoredPosition({
       anchor,
       panel: { height: 900, width: 200 },
       viewport: VIEWPORT,
     });
-    expect(pos.top).toBe(anchor.bottom + ANCHOR_GAP);
-    expect(pos.maxHeight).toBeUndefined();
+    expect(pos.maxHeight).toBe(anchor.top - ANCHOR_GAP - ANCHOR_MARGIN);
+    expect(pos.top).toBe(ANCHOR_MARGIN);
   });
 
   it("sends a CAPPED panel to the roomier side when it fits neither", () => {
@@ -81,22 +83,30 @@ describe("anchoredPosition — containment", () => {
   // viewport's, and never with its top edge above it. This is the assertion the
   // bug could not have passed — a clipped panel's box ran straight off its
   // ancestor, and off the screen with it.
-  it("keeps a capped panel wholly on screen from every anchor position", () => {
-    // Every position where the FIELD itself is on screen. (An anchor scrolled out
-    // of view is the next case, and it is deliberately different.)
-    for (let top = 0; top <= VIEWPORT.height - 40; top += 20) {
-      const anchor = field(top);
-      const pos = anchoredPosition({
-        anchor,
-        panel: { height: 224, width: 200 },
-        viewport: VIEWPORT,
-        preferredMaxHeight: 224,
-      });
-      expect(pos.maxHeight).not.toBeUndefined();
-      expect(pos.top).toBeGreaterThanOrEqual(0);
-      expect(bottomOf(pos, 224)).toBeLessThanOrEqual(VIEWPORT.height);
+  // #4776 made this the guarantee for EVERY panel rather than only for one that
+  // declared a preferred height, so the cases run over both — a 900px menu that
+  // asked for nothing is the shape that used to run off the edge.
+  it.each([
+    { what: "a panel that declared a cap", height: 224, preferred: 224 },
+    { what: "a panel that declared none", height: 224, preferred: undefined },
+    { what: "one taller than the viewport", height: 900, preferred: undefined },
+  ])(
+    "keeps $what on screen from every anchor position",
+    ({ height, preferred }) => {
+      // Every position where the FIELD itself is on screen. (An anchor scrolled out
+      // of view is the next case, and it is deliberately different.)
+      for (let top = 0; top <= VIEWPORT.height - 40; top += 20) {
+        const pos = anchoredPosition({
+          anchor: field(top),
+          panel: { height, width: 200 },
+          viewport: VIEWPORT,
+          ...(preferred == null ? {} : { preferredMaxHeight: preferred }),
+        });
+        expect(pos.top).toBeGreaterThanOrEqual(0);
+        expect(bottomOf(pos, height)).toBeLessThanOrEqual(VIEWPORT.height);
+      }
     }
-  });
+  );
 
   it("shrinks rather than overflowing when the room is smaller than the panel", () => {
     // A short viewport — a landscape phone, or a small window. 300 tall, field
@@ -126,7 +136,7 @@ describe("anchoredPosition — containment", () => {
     expect(bottomOf(pos, 224)).toBeGreaterThan(VIEWPORT.height);
   });
 
-  it("never reports a negative height when there is no room at all", () => {
+  it("never reports a negative height when the anchor is at the very bottom", () => {
     const pos = anchoredPosition({
       anchor: field(795),
       panel: { height: 224, width: 200 },
@@ -174,6 +184,80 @@ describe("anchoredPosition — horizontal placement", () => {
       viewport: VIEWPORT,
     });
     expect(offLeft.left).toBe(ANCHOR_MARGIN);
+  });
+
+  // THE TOOLTIP ALIGNMENT (#4511, owner ruling 2026-08-31). Both tooltip kinds ask
+  // this function, so "below the control, centred on it, above only when there is no
+  // room below" is decided here and nowhere else. A tooltip is small and its anchor is
+  // a glyph, so the interesting cases are the ones where centring would push it off
+  // an edge: the margin has to win there exactly as it does for `start` and `end`.
+  it.each([
+    // [what, anchor left, anchor width, panel width, expected left]
+    ["centres a wide tooltip on a narrow glyph", 180, 44, 200, 180 + 22 - 100],
+    [
+      "clamps at the right edge rather than centring",
+      370,
+      24,
+      200,
+      400 - 200 - 8,
+    ],
+    ["clamps at the left edge rather than centring", 4, 24, 200, 8],
+  ])("%s", (_what, left, width, panelWidth, expected) => {
+    expect(
+      anchoredPosition({
+        anchor: field(100, left, width),
+        panel: { height: 40, width: panelWidth },
+        viewport: VIEWPORT,
+        align: "center",
+      }).left
+    ).toBe(expected);
+  });
+
+  it("puts a centred tooltip BELOW its anchor, and flips it up only with no room", () => {
+    // The side placements the info tooltip used to prefer are gone: this asks for the
+    // one axis the ruling is about, at both ends of the viewport.
+    const roomy = field(100, 180, 44);
+    expect(
+      anchoredPosition({
+        anchor: roomy,
+        panel: { height: 40, width: 200 },
+        viewport: VIEWPORT,
+        align: "center",
+      }).top
+    ).toBe(roomy.bottom + ANCHOR_GAP);
+
+    // 4px of room below a 40px panel, and the whole viewport above it.
+    const pinned = field(VIEWPORT.height - 60, 180, 44);
+    expect(
+      anchoredPosition({
+        anchor: pinned,
+        panel: { height: 40, width: 200 },
+        viewport: VIEWPORT,
+        align: "center",
+      }).top
+    ).toBe(pinned.top - ANCHOR_GAP - 40);
+  });
+
+  // THE EXEMPTION (#4917). `capHeight: false` is the tooltip's only way to opt
+  // out of the #4776 bound, and it must show up in what comes back rather than
+  // in a value the caller happens not to read.
+  it("reports maxHeight: null when asked for capHeight: false, and still places the panel", () => {
+    const anchor = field(700); // little room below, forcing the same flip logic
+    const bounded = anchoredPosition({
+      anchor,
+      panel: { height: 224, width: 200 },
+      viewport: VIEWPORT,
+    });
+    const unbounded = anchoredPosition({
+      anchor,
+      panel: { height: 224, width: 200 },
+      viewport: VIEWPORT,
+      capHeight: false,
+    });
+    expect(unbounded.maxHeight).toBeNull();
+    // Placement — the part a height cap has nothing to do with — is unaffected.
+    expect(unbounded.top).toBe(bounded.top);
+    expect(unbounded.left).toBe(bounded.left);
   });
 
   it("takes the anchor's width only when asked, and reports it", () => {

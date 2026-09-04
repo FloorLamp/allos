@@ -81,30 +81,74 @@ record reads both stores, so before the ruling of 2026-08-29 one drink appeared
 twice: a `food` row ("Alcohol · Evening") and a `substance` row ("Alcohol · 1
 standard drink"), and the day header counted **2 records** for one act.
 
-**Alcohol is a substance here, and the food kind excludes it**
-(`excludeSubstanceGroups` on `getFoodLedgerPage`). Three reasons, in the order that
-decides it:
+**Alcohol is a substance here, and the food kind excludes it** (`excludeAlcohol` on
+`getFoodLedgerPage` — named for what it drops, since that clause has only ever
+dropped the one group). Three reasons, in the order that decides it:
 
 1. **The age gate.** The substance kind is gated on `isMinor`; the food kind is not,
    and correctly is not. Measured before the change: a known minor's `?kind=food`
    returned that drink as a row titled "Alcohol" while `?kind=substance` returned
    nothing — so the gate was decorative for exactly the rows it exists to cover.
-2. The record's day count is a count of things that **happened**, and one drink is
-   one thing.
+2. ~~The record's day count is a count of things that **happened**, and one drink is
+   one thing.~~ **Amended 2026-09-04 — see below.** The count is still a count of
+   things that happened; what changed is that the thing is the EVENT, so the count
+   is derived from the events rather than read off a day total.
 3. The substance row describes the act in the person's own terms.
 
-**Two consequences follow from the ruling and are decided, not accidents.** A drink
-renders **date-only** and sinks to the bottom of its day, because `food_daily_totals`
-carries no instant while the food event did — the row used to show a clock. And a day's
-drinks are one editable **day count**, so a single mistyped drink can no longer be
-corrected or deleted on its own from the record; that correction lives on the substance
-surface, which owns the counter.
+## A consumable is an event (owner ruling, 2026-09-04)
+
+**Substances are consumables, like food and intake, and behave the same way.** A
+drink, a cigarette or a joint is an EVENT with an instant, exactly as a food serving
+or a dose is; the day total is a **rollup**, not the editable thing.
+
+This **amends** the 2026-08-29 consequence that a day's drinks are one editable **day
+count**. They are not. One record row per event:
+
+- **One row per drink**, read through `getFoodLedgerPage` — the food gather's own
+  reader, asked for the one group the food gather excludes, so there is no second
+  query shape and no second idea of what a serving row is. A day with drinks at 21:00
+  and 23:00 shows **two rows and two ticks**.
+- **Corrected where a serving is corrected.** The row carries the FOOD edit payload
+  addressed to its own event, so `HistoryRows` mounts `FoodServingForm` and the ⋯
+  delete runs `removeFoodServing` — re-time, re-file, delete. `correctionGroups`
+  already keeps a row that is IN a substance group able to name its own group, so
+  that plumbing was built for this and needed nothing.
+- **It stays a `substance` row.** Reasons 1 and 3 above are NOT amended, so the drink
+  keeps the substance kind, its chip, its glyph and its life-stage gate. `edit.kind`
+  is the correction _door_; `kind` is what the thing _is_. The ruling asks for exactly
+  that split, and it is why a drink files under Substances while correcting like food.
+- **The day total does not disappear** — `food_daily_totals` is still the cap's
+  substrate and still what the substance card counts. It is simply no longer what the
+  record renders.
+
+**The row's clock and the rail's minute are different questions**, and this file's
+practice loop had already ruled on it. The ROW reads `bestKnownInstant`, so an untimed
+drink says "logged 23:50" exactly as the serving row beside it does — the `logged`
+prefix is the grammar admitting the clock is a filing time. The CHART reads the EVENT
+instant only: a drink backfilled at 23:50 for last Tuesday would otherwise draw on
+Tuesday's rail at a minute that describes the typing and nothing else, which is the
+whole argument `EXCLUDED_TICK_CATEGORIES` makes about an insight's `created_at`. A
+drink with no event instant draws nothing.
+
+**Nicotine, cannabis and custom substances are still day rows**, date-only, sinking
+below the day's timed rows, corrected through the day-count form. Their ledger is
+`substance_daily_totals` — UNIQUE per (profile, date, substance) and declaring no event
+column — so there is nowhere to put an instant. That is the trap to know:
+`bestKnownInstant` on that table answers with `recorded_at`, the FILING stamp, which
+would hand them a minute they never claimed. **#3295 phase 2** gives them per-event
+rows on this same model and that branch goes with it.
+
+**A drink can state its minute (#3295 phase 1).** The substance add door offers alcohol
+the shared `WhenControl` (`grain="minute"`), gated by `judgeStatedAt` at the action —
+not future, and on the entry's own day — and the statement rides every unit of the
+entry as `occurred_at` with `time_source = 'stated'`. Nothing invents one: a drink
+nobody timed keeps a NULL instant.
 
 **The drink does not disappear, and the totals do not move.** The food door writes
-the `food_daily_totals` counter as well as the event, and the substance read is over
-that counter — so a serving logged from Nutrition still reaches the record, once,
-under Substances. What changes for a reader is where they find it. Food _totals_ and
-the nutrition arithmetic are untouched: this is the record's row set.
+the `food_daily_totals` counter as well as the event, and both the cap and the
+substance card read that counter — so a serving logged from Nutrition still reaches
+the record, once, under Substances. What changes for a reader is where they find it.
+Food _totals_ and the nutrition arithmetic are untouched: this is the record's row set.
 
 ## The read
 
@@ -187,9 +231,26 @@ the query. Open on #3958.
 `?day=YYYY-MM-DD` is the app's one "that day" anchor, and the same mount: the page
 server-selects the day presentation rather than routing anywhere. Rows are flat — a day
 view lists everything, so no rollups. It carries what `/timeline`'s single-day view
-carried: the **intraday panel** (#1068), the day **context chips** (daylight, UV,
-weather, cycle phase), **prev/next nav** with its swipe (#1425), and the
-**`SymptomLogBar`** mount (#799) — which is why a symptom is not an Add-door kind.
+carried: the **intraday panel** (#1068), the day's **context** (daylight, UV, weather,
+cycle phase — see below), and **prev/next nav** with its swipe (#1425). It carries no
+symptom bar: #4851 retired that card, so symptom is an add-door kind everywhere and
+the day's Add row offers it beside its siblings.
+
+**Order, top to bottom** (#4918): day bar → chart → add layer → rows. The chart is
+CONTENT the day view inherits — #3958 lists it beside the rows — so moving it above
+the add layer does not spend the chrome budget below; what it fixes is that the day's
+own content had the weakest position on its own page, under three frames of three
+styles. The add layer sits directly above the rows it creates, offers first (#4832).
+
+**The day bar names the day** (#4918): `TimelineDayNav` prints
+`Wed, September 3 — 15 records` between its arrows, in the #3958 header grammar and
+with "0 records" on an empty day. The per-group `<h2>` is the FEED's only — on the day
+view it rendered once per group of rows, so a day with none named no day at all, and a
+day with rows named it below the chart as a link to the page already open. `next` is
+optional and absent on today, so neither the arrow nor the leftward swipe exists there;
+the arrow's comment had claimed that since #4168 while the code passed today's own
+href. The page subtitle ("Everything recorded, newest first.") describes the feed and
+is not rendered on the day view.
 
 Two rules decide what it draws. Context is **single-subject**: daylight, UV, weather
 and cycle phase are one body's, so `?view=everyone&day=` lists the rows and draws no
@@ -197,6 +258,60 @@ chips. And the panel reads the **resolved row set** (`HistoryGather.dayEvents`),
 a second query, so a tick can never name something the list below does not show; the
 ticks carry the row's own `feed:`-namespaced anchor, built by the same
 `timelineEntryAnchorId` the row is.
+
+**The chart card owns the day's context now** (#4918 ruling 3). The standalone
+`history-day-context` strip retired: `DaylightChip`, `CyclePhaseChip` and the weather
+line moved into `IntradayPanel`'s own context area, under the title and above the
+plot — each chip stays quiet by default, so a quiet day still draws nothing there.
+Sunrise→sunset (`lib/sun.ts`'s `solarDay`) also feeds the chart itself, as a subtle
+background band on the plot (`lib/intraday-layout.ts`'s `daylightBandX`) — a
+BACKGROUND fact, not a row: it reserves no lane, so adding or removing it never moves
+the row stack, the axis ticks or any x-projection.
+
+**The chart card always renders on a day view** (single-subject; the owner's
+2026-09-03 ruling on the empty-day gap #4923 found). `getIntradayDay` now always
+returns a model — a day with no HR, sleep, workout or clock-timed event gets one
+whose four data layers are simply empty, so the card still draws the daylight band
+and its context line; only the rows are missing.
+
+**Today names its own sleep wait, in words and on the plot** (#4918 ruling 7). On
+`day === todayStr`, `getSleepWaitingState` decides whether last night is still
+outstanding; when it is, the context line states the headline and its detail (the
+freshness sentence stays — the two lines say different things), and the chart draws
+the profile's `typicalBedTime` → `typicalWakeTime` window (the same pair the
+dashboard's usual band reads, #3253) as a hatched **expected** band in the sleep
+lane. The band shares that lane with a real session — it reserves the row the moment
+either exists — and draws only while waiting: never on a day whose session is in
+hand, and never on a past day (the window is clock-relative and means nothing there).
+
+**The add row opens on the window the chart is already showing** (#4950, as amended).
+There is no mode to arm and no second selection: the chart's two existing interactions
+ARE the window. Zoomed, the view is the window and the row reads `Add at 19:10–20:40`;
+at full day a crosshair is a start alone and it reads `Add at 19:10`; with neither it
+reads `Add`. Zoom itself stays ephemeral — the URL learns the window only when a kind
+chip is tapped, and the chips carry it as `?from=HH:MM&to=HH:MM` (`to` optional) on top
+of the params `chipHref` already decided. `lib/intraday-window.ts` parses the pair back:
+it snaps to `INTRADAY_BUCKET_MINUTES`, requires `to` to follow `from` by at least
+`MIN_ZOOM_MINUTES`, and REFUSES rather than repairs — a malformed or inverted pair is
+dropped. With a window in the URL the chart draws it from the server render, so it stays
+under the open form and survives a reload.
+
+Each kind's form then opens on it, through the time control it already had. The
+practice form takes both clocks; a dose, a serving, a body sitting and a movement take
+the start (one stated instant, built once by the door, so they cannot disagree about
+what `19:10` on this day means — and a serving's meal follows that hour as it does
+anywhere else). A check-in and a symptom have a day and no event instant, so there is
+nothing for a window to open and they ignore it; a substance use waits on #3295. The
+practice picker also opens on the practice whose weekly rhythm predicts the window's
+weekday and hour, tie-broken by the usual duration nearest its length — habit matching
+and never physiology, and a practice with no rhythm can never fit. Every one of these is
+a DEFAULT the person changes or confirms; a stated window is a stated time, not a claim
+about what happened.
+
+**And a `Workouts` door joins that row on the day view** — the training hub keeps its
+own log (below), so this opens the shared activity editor with the day and the window
+rather than adding a tenth kind. It carries no activity type: heart rate cannot tell a
+run from a sauna. A profile that does not train sees no door.
 
 A future `?day=` clamps to today and the nav cannot advance past it — the record ends
 at now.
@@ -212,8 +327,11 @@ only see `addEventListener` recognizers, and a JSX-prop one had landed unlisted.
 
 `lib/hrefs.ts`'s `historyHref` owns the whole grammar: `?family`, `?kind` (which
 implies its family), `?class` (the old two-door dose pre-filter), `?item`,
-`?media`, `?day`, `?view=everyone`, `?open` (repeatable), `?show`. There is **no**
-`from`/`to`/`range`/`page` — those concepts died with the range row and the pager.
+`?media`, `?day`, `?from`/`?to`, `?view=everyone`, `?open` (repeatable), `?show`.
+There is **no** `range`/`page` — those concepts died with the range row and the pager,
+and `?from`/`?to` are not their return: they are a WINDOW WITHIN ONE DAY (#4950, below),
+profile-local `HH:MM` clocks on the `?day=` in view, meaningless without it and dropped
+on the feed.
 
 An invalid `?kind`, `?family`, `?day`, `?item` or an unsatisfiable `?media` **falls
 back to All**. The item axis
@@ -235,9 +353,14 @@ buys it: no h1/subtitle below `sm` (the nav names the page), ONE filter row, no
 range chrome at all, sticky day headers, and the Add bar as the only other
 chrome. **A proposed addition to the header stack has to name what it displaces.**
 
+On the day view the day bar's name displaces the per-group header it replaced — the
+trade #4918 names honestly: the bar was already on screen, and the header it retired
+was the one that self-linked.
+
 ## What is deliberately elsewhere
 
 Per-item panels keep their bounded recent window plus a door (`DoseHistoryPanel`,
 the metric detail page's readings — #3505/#3959). `lib/day-history.ts`'s
 group×bucket matrices answer "how consistently?", which is analysis, not a
-record. The training hub keeps its own log.
+record. The training hub keeps its own log — the day view has a DOOR onto its editor
+(#4950 item 5), which is not the same thing as the record carrying workouts.

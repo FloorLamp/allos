@@ -8,6 +8,7 @@ import StandingSparkline, {
 } from "./StandingSparkline";
 import {
   STANDING_READING_ORDER,
+  type StandingFamilyKey,
   type StandingRenderedBand,
   type StandingReadingFamily,
   type StandingSectionKey,
@@ -22,11 +23,6 @@ export interface DashboardStandingPresentation {
   href?: AppRoute;
   actionLabel?: string;
   presence?: "never" | "current" | "dormant";
-  /**
-   * The row's existing trend read, drawn in the desktop column (#3252). Absent for
-   * every row whose domain has no trend read — that is the rule, not an omission.
-   */
-  series?: StandingSparklineSeries;
   /** Touch- and keyboard-accessible explanatory detail. */
   disclosure?: string;
   /**
@@ -49,6 +45,37 @@ export interface DashboardStandingPresentation {
    * to stay in cards until now.
    */
   control?: ReactNode;
+}
+
+/**
+ * THE DRAWING BELONGS TO THE FAMILY, NOT TO A MEMBER (#4969). One row declares
+ * one: `series` is the 176×32 desktop-only glance at where a number has been
+ * (#3252), `figure` is a drawing the row *is* — today's clock-axis chart, with
+ * the day's own windows and marks on it, rendered full width on every viewport
+ * under the facts (#4767 item 2) — and neither has a slot on
+ * `DashboardStandingPresentation` any more: a member has nowhere to put one, so
+ * two members trying to supply a series cannot be expressed. The page resolves
+ * each family's drawing once, in a map keyed by `StandingFamilyKey` beside the
+ * presentation map, instead of hanging it off whichever member happened to
+ * carry it.
+ *
+ * The figure sits OUTSIDE every member's link for the same reason `control`
+ * does: it is interactive (its ticks are anchors, its drag is a zoom), and
+ * nesting that in an `<a>` is invalid markup browsers reparent. The family's
+ * members keep their own doors.
+ *
+ * A FIGURE DECLARES WHERE IT LEADS (#4969 ruling, 2026-09-03): the figure leads
+ * to what it pictures. `node` and `door` are ONE field because the pair is the
+ * rule — a figure cannot be mounted without saying where it goes, which is a
+ * type rather than a convention someone has to remember. The row's stretched
+ * surface reaches under the figure, so THAT surface is the member whose own
+ * href is this door: the family's primary door is declared, and the figure gets
+ * no second link of its own (two links to one page on one row is a second tab
+ * stop saying the same thing).
+ */
+export interface StandingFamilyDrawing {
+  series?: StandingSparklineSeries;
+  figure?: { node: ReactNode; door: AppRoute };
 }
 
 // The door's label: the DESTINATION's own name, taken from the one list that already
@@ -97,12 +124,17 @@ export function DashboardFactRow({
   // WHERE THE DOOR GOES WHEN THE ROW CANNOT BE ONE (see the link-wrap suppression
   // below). EXACTLY ONE element carries the href: the row's own CTA words if it has
   // any — "Fix it", "Log", "Continue" — because those name the destination better
-  // than anything else on the row; otherwise the label, which is its identity. Two
-  // links to one page on one row is a second tab stop saying the same thing.
+  // than anything else on the row; otherwise its identity — the label, or on a row
+  // with no label of its own (a `composed` family's one member, named by the family)
+  // the value, since a stale vital that earns a door (#4757) must not lose its history
+  // with it. Two links to one page on one row is a second tab stop saying the same
+  // thing.
   const unwrapped = presentation.control != null && presentation.href != null;
-  const labelLink =
+  const identityLink =
     unwrapped && !presentation.actionLabel ? presentation.href : undefined;
   const actionLink = unwrapped && presentation.actionLabel;
+  const identityLinkClass =
+    "hover:text-brand-700 hover:underline dark:hover:text-brand-400";
   const content = (
     <>
       {presentation.label && (
@@ -118,11 +150,8 @@ export function DashboardFactRow({
               : "text-xs text-slate-500 dark:text-slate-400"
           }
         >
-          {labelLink ? (
-            <Link
-              href={labelLink}
-              className="hover:text-brand-700 hover:underline dark:hover:text-brand-400"
-            >
+          {identityLink ? (
+            <Link href={identityLink} className={identityLinkClass}>
               {presentation.label}
             </Link>
           ) : (
@@ -135,7 +164,13 @@ export function DashboardFactRow({
           data-testid="standing-value"
           className="font-semibold tabular-nums text-slate-900 dark:text-slate-100"
         >
-          {presentation.value}
+          {identityLink && !presentation.label ? (
+            <Link href={identityLink} className={identityLinkClass}>
+              {presentation.value}
+            </Link>
+          ) : (
+            presentation.value
+          )}
         </span>
       )}
       {presentation.detail != null && (
@@ -251,25 +286,36 @@ function StandingFamilyRow({
   family,
   members,
   presentations,
+  drawing,
 }: {
   family: StandingReadingFamily;
   members: readonly StandingPlacement[];
   presentations: ReadonlyMap<string, DashboardStandingPresentation>;
+  drawing: StandingFamilyDrawing | undefined;
 }) {
-  // ONE sparkline per FAMILY, in a fixed trailing column, which is what
-  // makes the column ALIGNED rather than a plot tucked after each
-  // member's text: every family's third cell starts at the same x. The
-  // family's series is its primary reading's — the weight family's
-  // "Latest" row carries it, its "Trend" row is a link.
-  const series = members
-    .map(
-      (placement) => presentations.get(placement.candidate.candidateId)?.series
-    )
-    .find((entry) => entry != null);
+  // ONE sparkline per FAMILY, in a fixed trailing column, which is what makes the
+  // column ALIGNED rather than a plot tucked after each member's text: every
+  // family's third cell starts at the same x. The page resolves it once per
+  // family (#4969) — there is no member scan here to find it.
+  const series = drawing?.series;
+  const figure = drawing?.figure;
   const stacked = family.composition === "members";
-  const surfaceId = members.find(
-    (placement) => presentations.get(placement.candidate.candidateId)?.href
-  )?.candidate.candidateId;
+  // THE FAMILY'S PRIMARY DOOR IS DECLARED, NEVER THE FIRST-ORDERED MEMBER'S
+  // (#4969 ruling, 2026-09-03). The primary surface is the one whose stretch
+  // reaches the whole family box — the label's line on a phone, the sparkline
+  // column, and everything under the members list, the FIGURE included — so it
+  // is the family's door and not just one member's. Taking it from display order
+  // was an invisible tie-break while every member of a family led to one place
+  // (sleep's `/sleep`, weight's `/trends#body`); `day-so-far` is the first family
+  // whose members disagree, and it read: a reader tapped the intraday chart and
+  // landed on `/sleep`, because a sleep member sorts first. So a family that
+  // draws a figure declares where the figure leads, and the member already going
+  // there carries the surface — reordering the members cannot move it.
+  const declaredDoor = figure?.door;
+  const surfaceId = members.find((placement) => {
+    const href = presentations.get(placement.candidate.candidateId)?.href;
+    return declaredDoor ? href === declaredDoor : href != null;
+  })?.candidate.candidateId;
   return (
     // THE BREAKPOINT IS IN rem AND MUST STAY IN rem (#3459).
     // 45rem is 720px at the root default — the same seam #3252
@@ -301,9 +347,8 @@ function StandingFamilyRow({
           element is exactly one LINE wide for the hovered member, so
           the door's y stays on the row you are pointing at: a
           `members` family stacks, so each `li` is that line; a
-          `single`/`composed` family puts every member on ONE line, so
-          the `ul` is. Both have the dd's right edge, which is the
-          whole point. */}
+          `composed` family puts every member on ONE line, so the `ul`
+          is. Both have the dd's right edge, which is the whole point. */}
         <ul
           className={`flex min-w-0 gap-1.5 ${
             family.composition === "members"
@@ -337,6 +382,37 @@ function StandingFamilyRow({
             );
           })}
         </ul>
+        {figure != null && (
+          // THE FAMILY'S FIGURE (#4969), full width under the facts on every
+          // viewport — never only from 45rem, that seam is the sparkline's
+          // alone. A CHILD OF `<dd>`, deliberately: `<dd>` is the door's own
+          // containing block (`relative`, below), so nesting the figure here —
+          // where a member's figure always lived, just one level higher, on the
+          // family rather than on whichever `<li>` used to carry it — is what
+          // lets `<dd>`'s box grow to include it. A sibling of `<dd>` would sit
+          // outside that box and the door beneath it would go dark.
+          //
+          // `inert`, and it is the whole design of this slot rather than a
+          // caveat. The declared door's member link carries `standing-stretch`,
+          // whose `::after` insets to THIS cell — measured, not assumed:
+          // `elementFromPoint` at the chart's centre resolves inside that door —
+          // so a POINTER already lands on the day view wherever it falls on the
+          // figure, which is what "tap → the day view" means. Without this the
+          // KEYBOARD disagreed: the drawing's own interior anchors (a tick
+          // naming `#timeline-entry-…`) stayed in the tab order, and those
+          // fragments name feed rows that exist on the day view and NOT here,
+          // so tabbing into them activated a link that scrolls nowhere. `inert`
+          // makes the two agree — on this surface the figure is a picture and a
+          // member row is the door; the exploring happens on the day view, one
+          // tap away.
+          <div
+            className="mt-2 w-full"
+            data-testid="dashboard-family-figure"
+            inert
+          >
+            {figure.node}
+          </div>
+        )}
       </dd>
       {/* Only plotted families reserve the trailing track. */}
       {series && <StandingSparkline series={series} />}
@@ -375,9 +451,11 @@ function familiesInBand(
 function BandRows({
   placements,
   presentations,
+  drawings,
 }: {
   placements: readonly StandingPlacement[];
   presentations: ReadonlyMap<string, DashboardStandingPresentation>;
+  drawings: ReadonlyMap<StandingFamilyKey, StandingFamilyDrawing>;
 }) {
   return (
     <dl>
@@ -387,6 +465,7 @@ function BandRows({
           family={family}
           members={members}
           presentations={presentations}
+          drawing={drawings.get(family.key)}
         />
       ))}
     </dl>
@@ -396,9 +475,11 @@ function BandRows({
 export default function DashboardStandingCluster({
   placements,
   presentations,
+  drawings,
 }: {
   placements: readonly StandingPlacement[];
   presentations: ReadonlyMap<string, DashboardStandingPresentation>;
+  drawings: ReadonlyMap<StandingFamilyKey, StandingFamilyDrawing>;
 }) {
   const inBand = (band: StandingRenderedBand) =>
     placements.filter((placement) => placement.standingBand === band);
@@ -436,7 +517,11 @@ export default function DashboardStandingCluster({
             >
               Attention
             </h3>
-            <BandRows placements={attention} presentations={presentations} />
+            <BandRows
+              placements={attention}
+              presentations={presentations}
+              drawings={drawings}
+            />
           </section>
         )}
         {SECTIONS.map((section) => {
@@ -458,7 +543,11 @@ export default function DashboardStandingCluster({
               >
                 {section.label}
               </h3>
-              <BandRows placements={members} presentations={presentations} />
+              <BandRows
+                placements={members}
+                presentations={presentations}
+                drawings={drawings}
+              />
             </section>
           );
         })}

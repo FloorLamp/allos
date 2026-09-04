@@ -107,7 +107,13 @@ async function expectEffectiveTargetsDisjoint(name: string, group: Locator) {
 
 test.use({ viewport: PHONE, hasTouch: true });
 
-test("Dashboard ordinary actions render through Button at the phone floor", async ({
+// THE DASHBOARD'S ORDINARY NOW ACTION IS A CHIP NOW (#4752 item 7). "Mark taken"
+// was a bare verb beside a row that already said everything except WHEN, so the
+// payload moved onto the control and the verb became one word: `Due today · from
+// 11:00 · [Take]`. It is no longer a `Button` adopter — but `chip-base` and
+// `button-control` compile to the SAME 34px box and the same coarse-pointer reach,
+// which is why the floor claims below are unchanged by the swap.
+test("Dashboard ordinary actions render at the phone floor", async ({
   page,
 }) => {
   await page.goto("/");
@@ -121,16 +127,15 @@ test("Dashboard ordinary actions render through Button at the phone floor", asyn
   ).toHaveCount(0);
 
   await openDashboardAll(page);
-  const markTakenActions = page.getByTestId("attention-mark-taken");
-  const markTakenCount = await markTakenActions.count();
-  expect(markTakenCount, "Dashboard Mark taken adopter corpus").toBeGreaterThan(
-    0
-  );
-  for (let index = 0; index < markTakenCount; index += 1) {
-    const markTaken = markTakenActions.nth(index);
-    await expect(markTaken).toHaveAttribute("data-button-control", "");
-    await expect(markTaken).toHaveAccessibleName("Mark taken");
-    await expectEffectiveFloor(`Dashboard Mark taken ${index}`, markTaken);
+  const takeActions = page.getByTestId("attention-mark-taken");
+  const takeCount = await takeActions.count();
+  expect(takeCount, "Dashboard dose-action corpus").toBeGreaterThan(0);
+  for (let index = 0; index < takeCount; index += 1) {
+    const take = takeActions.nth(index);
+    await expect(take).toHaveAttribute("data-chip-verb", "Take");
+    // The whole sentence for a reader, where the visible pill abbreviates it.
+    await expect(take).toHaveAccessibleName(/^Take /);
+    await expectEffectiveFloor(`Dashboard Take ${index}`, take);
   }
 });
 
@@ -238,7 +243,10 @@ test("Button and destination actions wear the same box above sm", async ({
   expect(buttonCount, "desktop Button adopter corpus").toBeGreaterThan(0);
   for (let index = 0; index < buttonCount; index += 1) {
     const button = buttons.nth(index);
-    await expect(button).toHaveAttribute("data-button-control", "");
+    // A chip since #4752 item 7, and the point of the assertion below is that the
+    // box did not move with the primitive: `chip-base` and `button-control` are one
+    // rule in app/globals.css.
+    await expect(button).toHaveAttribute("data-chip-verb", "Take");
     const [buttonBox] = await settledBoxes([button]);
     expect(buttonBox.height, `desktop Button ${index} height`).toBe(
       CONTROL_BOX_PX

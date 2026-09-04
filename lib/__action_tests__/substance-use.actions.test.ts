@@ -47,6 +47,30 @@ function scoreRow(profileId: number, canon: string) {
     .get(profileId, canon) as { value_num: number } | undefined;
 }
 
+/** Every SQL statement prepared while `run` executes, with the spy always restored
+ *  (this tier shares one module registry, so a leaked spy would follow the next file). */
+async function statementsDuring<T>(
+  run: () => Promise<T>
+): Promise<{ result: T; sql: string[] }> {
+  const sql: string[] = [];
+  const original = db.prepare.bind(db);
+  const spy = vi
+    .spyOn(db, "prepare")
+    .mockImplementation(
+      ((text: string) => (sql.push(text), original(text))) as typeof db.prepare
+    );
+  try {
+    return { result: await run(), sql };
+  } finally {
+    spy.mockRestore();
+  }
+}
+
+/** The statements `captureDelete` issues once a write core lets it run: its root
+ *  read, the capture insert, and the deletes. Absent means the core refused first. */
+const capturePath = (sql: string[]) =>
+  sql.filter((text) => /SELECT \*|deleted_rows|^\s*DELETE /i.test(text));
+
 function targetRow(profileId: number) {
   return db
     .prepare(
@@ -560,7 +584,12 @@ describe("setSubstanceTargetAction / clearSubstanceTargetAction", () => {
 });
 
 describe("substance consumption history actions (#2009)", () => {
-  it("adds a past alcohol day, edits date/amount/notes, deletes with undo, and weekly state follows", async () => {
+  // THE EDIT HALF IS GONE FROM THIS ROUND-TRIP, and that is the subject (#5026 item
+  // 1): a drink is an EVENT, so it corrects on its own record row and this day-count
+  // action refuses it. What used to append the second surface's tap was that
+  // correction; a second ADD does it now, which is what a person filing another drink
+  // actually posts, so the provenance claim keeps its fixture.
+  it("adds a past alcohol day twice, refuses the day-count correction, and deletes with undo", async () => {
     const login = createLogin();
     const profile = createProfile("su-history-alcohol", login.id);
     actAs(login, profile);
@@ -587,33 +616,53 @@ describe("substance consumption history actions (#2009)", () => {
         notes: "Dinner with friends",
       },
     ]);
-    const updated = await updateSubstanceDailyTotalAction(
-      fd({
-        id: String(added.id),
-        substance: "alcohol",
-        date: td,
-        amount: "3",
-        notes: "Corrected amount",
-        logged_via: "dashboard-widget",
-      })
-    );
-    // `capProgress` since #4424's substance leg — null here because this profile
-    // opted into no weekly cap. Its own test is below.
-    expect(updated).toEqual({
-      kind: "updated",
-      id: added.id,
-      capProgress: null,
-    });
-    expect(getSubstanceWeekState(profile.id, "alcohol").count).toBe(3);
+    // A third drink, filed from another surface onto the same day — ADDITIVE, and the
+    // event it creates carries its own provenance.
+    expect(
+      (
+        await addSubstanceDailyTotalAction(
+          fd({
+            substance: "alcohol",
+            date: past,
+            amount: "1",
+            logged_via: "dashboard-widget",
+          })
+        )
+      ).kind
+    ).toBe("added");
     const eventCount = db
       .prepare(
         `SELECT COUNT(*) AS n, GROUP_CONCAT(DISTINCT logged_via) AS via FROM food_log_events
          WHERE profile_id = ? AND group_key = 'alcohol' AND date = ?`
       )
-      .get(profile.id, td) as { n: number; via: string };
+      .get(profile.id, past) as { n: number; via: string };
     expect(eventCount.n).toBe(3);
     expect(eventCount.via).toBe("quick-log,dashboard-widget");
 
+    // The day-count correction is refused, and the day it addressed does not move.
+    expect(
+      await updateSubstanceDailyTotalAction(
+        fd({
+          id: String(added.id),
+          substance: "alcohol",
+          date: td,
+          amount: "9",
+          notes: "Corrected amount",
+        })
+      )
+    ).toEqual({ kind: "corrected-per-event" });
+    expect(getSubstanceDailyTotals(profile.id, "alcohol")).toEqual([
+      {
+        id: added.id,
+        substance: "alcohol",
+        date: past,
+        amount: 3,
+        notes: "Dinner with friends",
+      },
+    ]);
+
+    // THE DAY'S DELETE IS NOT THE DAY'S CORRECTION and is unchanged: it removes the
+    // entry whole, undoably, rather than restating what the events under it say.
     const deleted = await deleteSubstanceDailyTotalAction(
       fd({ id: String(added.id), substance: "alcohol" })
     );
@@ -621,11 +670,10 @@ describe("substance consumption history actions (#2009)", () => {
     expect(getSubstanceWeekState(profile.id, "alcohol").count).toBe(0);
     if (deleted.kind !== "deleted") throw new Error("entry was not deleted");
     expect(await undoDelete(deleted.undoId)).toEqual({ ok: true });
-    expect(getSubstanceWeekState(profile.id, "alcohol").count).toBe(3);
     expect(getSubstanceDailyTotals(profile.id, "alcohol")[0]).toMatchObject({
-      date: td,
+      date: past,
       amount: 3,
-      notes: "Corrected amount",
+      notes: "Dinner with friends",
     });
   });
 
@@ -827,7 +875,12 @@ describe("substance consumption history actions (#2009)", () => {
 // than by inspection: one ledger each, asserting the typed `not-found` AND that the
 // victim's row (and, for alcohol, its per-tap events) is byte-identical afterwards.
 describe("substance history actions refuse another profile's row (#2072)", () => {
-  it("alcohol (food-log ledger): update and delete are not-found, the row and its taps survive", async () => {
+  // ALCOHOL'S UPDATE IS REFUSED BEFORE OWNERSHIP IS ASKED (#5026 item 1) — a drink is
+  // corrected on its own event, so there is no cross-profile reconcile left to run and
+  // the answer cannot depend on whose row the id names. The boundary this describe
+  // exists for is still asserted on alcohol's DELETE, which does take the id and does
+  // carry the profile filter, and on nicotine's update below.
+  it("alcohol (food-log ledger): the row and its taps survive an intruder's edit and delete", async () => {
     const owner = createLogin();
     const ownerProfile = createProfile("su-history-owner-alcohol", owner.id);
     actAs(owner, ownerProfile);
@@ -854,7 +907,7 @@ describe("substance history actions refuse another profile's row (#2072)", () =>
           notes: "Rewritten by another profile",
         })
       )
-    ).toEqual({ kind: "not-found" });
+    ).toEqual({ kind: "corrected-per-event" });
     expect(
       await deleteSubstanceDailyTotalAction(
         fd({ id: String(added.id), substance: "alcohol" })
@@ -930,6 +983,64 @@ describe("substance history actions refuse another profile's row (#2072)", () =>
     expect(getSubstanceDailyTotals(intruderProfile.id, "nicotine")).toEqual([]);
     expect(getSubstanceWeekState(intruderProfile.id, "nicotine").count).toBe(0);
   });
+
+  // ONE HALF AT A TIME, because the two halves hide each other. The delete path
+  // checks the acting profile TWICE — the core's own `SELECT … AND profile_id = ?`,
+  // and again inside `captureDelete`, whose root read is profile-scoped too. That
+  // redundancy is deliberate and it is also why a regression in either half is
+  // INVISIBLE to the two tests above: drop the core's filter and `captureDelete`
+  // still refuses, drop `captureDelete`'s and the core's `SELECT` still refuses, and
+  // in both worlds the intruder gets the same `not-found` over the same untouched
+  // row. Measured by mutation: dropping either filter alone left every other test in
+  // this file green, and only removing BOTH reds them — by which point the boundary
+  // is already gone. The two cases below are what each single-filter drop reds.
+  //
+  // So this observes the core's half alone, by the one thing that does differ — WHERE
+  // the refusal happens. With the filter, the intruder's delete issues its scoped
+  // lookup and stops; without it, execution runs on into the capture. #5026 item 1
+  // made that worth pinning: DELETE is now the only door a drink has on this card.
+  it.each([
+    ["alcohol", "food_daily_totals"],
+    ["nicotine", "substance_daily_totals"],
+  ])(
+    "%s: an intruder's delete refuses AT the profile-scoped read, before any capture",
+    async (substance, table) => {
+      const owner = createLogin();
+      const ownerProfile = createProfile(`su-del-scope-${substance}`, owner.id);
+      actAs(owner, ownerProfile);
+      const added = await addSubstanceDailyTotalAction(
+        fd({ substance, date: today(ownerProfile.id), amount: "2" })
+      );
+      if (added.kind !== "added") throw new Error("entry was not added");
+
+      const intruder = createLogin();
+      const intruderProfile = createProfile(
+        `su-del-scope-int-${substance}`,
+        intruder.id
+      );
+      actAs(intruder, intruderProfile);
+      const refused = await statementsDuring(() =>
+        deleteSubstanceDailyTotalAction(fd({ id: String(added.id), substance }))
+      );
+      expect(refused.result.kind).toBe("not-found");
+      // The scoped lookup ran and answered no…
+      expect(refused.sql[0]).toContain(table);
+      expect(refused.sql[0]).toMatch(/profile_id = \?/);
+      // …and nothing past it did. A leaked statement is printed by name here, which
+      // is the whole point: `not-found` alone cannot tell the two worlds apart.
+      expect(capturePath(refused.sql)).toEqual([]);
+
+      // THE CONTROL, through the SAME collector and the SAME predicate: the owner's
+      // own delete does reach the capture, so the empty list above is a refusal that
+      // happened early and not a detector that cannot see one.
+      actAs(owner, ownerProfile);
+      const allowed = await statementsDuring(() =>
+        deleteSubstanceDailyTotalAction(fd({ id: String(added.id), substance }))
+      );
+      expect(allowed.result.kind).toBe("deleted");
+      expect(capturePath(allowed.sql).length).toBeGreaterThan(0);
+    }
+  );
 });
 
 // #1279 — the life-stage (minor) gate lives on the SURFACE (hidden nav + page

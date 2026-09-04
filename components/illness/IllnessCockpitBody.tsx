@@ -1,29 +1,48 @@
 import { PICKER_SYMPTOMS } from "@/lib/symptoms";
-import type { AssembledEpisode } from "@/lib/illness-episode-format";
+import type {
+  AssembledEpisode,
+  EpisodeCollapsedStatus,
+} from "@/lib/illness-episode-format";
 import SymptomLogBar from "./SymptomLogBar";
 import CockpitEndEpisode from "@/components/dashboard/CockpitEndEpisode";
+import CockpitRecoveryHeader, {
+  type CockpitFactIdentity,
+} from "@/components/illness/CockpitRecoveryHeader";
 import IllnessMedicationLogger from "@/components/illness/IllnessMedicationLogger";
 import { IntakeOptionsProvider } from "@/components/IntakeOptionsContext";
 import StaleEpisodeNudge from "@/components/illness/StaleEpisodeNudge";
-import EpisodeLatestReadings from "@/components/illness/EpisodeLatestReadings";
 import type { DashboardIllnessCockpitModel } from "@/lib/dashboard-illness-cockpit";
 import { CockpitDayProvider } from "@/components/illness/CockpitDayContext";
 
-// The full illness-cockpit BODY for one patient (issue #858) — the expanded content the
-// illness Now group reveals under the named header. It is the SAME machinery the
-// dashboard Symptoms card gathered (the one-tap SymptomLogBar with symptoms + temp) plus
-// the PRN dose log (the SAME redose computation QuickLogPrnContent uses — one
-// question, one computation) and the end-episode action. Rendered server-side (it needs
-// profile-scoped reads) and passed into the client shell as a node, so ONE component
-// serves the acting profile's cockpit and every household member's accordion cockpit.
+// The full illness-cockpit BODY for one patient (issue #858), recovery-led and compact
+// since #4752. It is the SAME machinery it always was — the one-tap SymptomLogBar with
+// symptoms + temperature, the PRN dose controls over the SAME redose computation
+// QuickLogPrnContent uses, and the end-episode action — rearranged so the thing a
+// caregiver came for leads:
 //
-// `crossProfile` is true for a household member (not the acting profile): the bar + PRN
-// control + end button then carry the target `profileId` so their writes gate on THAT
-// profile (requireProfileWriteAccess) without switching. On the acting profile's own
-// cockpit it is false and every write takes the plain active-profile path.
+//   1. THE HEADER IS THE STATUS. The fever-free ring, the sentence about the person,
+//      the Illness · Day-N tag, one prose line folding last-temp and last-meds, and
+//      "Feeling better" beside the countdown rather than at the card's bottom edge.
+//   2. A READABLE MEASURE. ~880px, centered — declared on the cockpit container in
+//      `IllnessNowGroup` so the collapsed accordion line and this body share one
+//      column. The stat-spread and the eye-travel from a med's name to its own button
+//      dissolve by construction rather than by a desktop rule.
+//   3. EXPANSIONS OPEN IN PLACE. The symptom picker, the temperature entry and the med
+//      panel each open into a quiet inset panel beneath their own row. Nothing
+//      navigates and nothing outside the panel moves.
+//
+// Rendered server-side (it needs profile-scoped reads) and passed into the client
+// shell as a node, so ONE component serves the acting profile's cockpit and every
+// household member's accordion cockpit.
+//
+// `crossProfile` is true for a household member (not the acting profile): the bar +
+// med controls + end button then carry the target `profileId` so their writes gate on
+// THAT profile (requireProfileWriteAccess) without switching. On the acting profile's
+// own cockpit it is false and every write takes the plain active-profile path.
 export default function IllnessCockpitBody({
   profileId,
   episode,
+  status,
   crossProfile,
   canWrite,
   ownsSharedProfileControls,
@@ -35,22 +54,18 @@ export default function IllnessCockpitBody({
 }: {
   profileId: number;
   episode: AssembledEpisode;
+  // The SAME collapsed reading the accordion line above this body renders (#4752
+  // item 1) — passed in rather than recomputed, so the header and the line it
+  // expands from can never state two different last doses.
+  status: EpisodeCollapsedStatus;
   crossProfile: boolean;
   canWrite: boolean;
   ownsSharedProfileControls: boolean;
   hasPluralOpenEpisodes: boolean;
   profileDisplayName: string;
   model: DashboardIllnessCockpitModel;
-  temperatureIdentity?: {
-    candidateId: string;
-    factKey: string;
-    groupKey: string;
-  } | null;
-  medicationIdentity?: {
-    candidateId: string;
-    factKey: string;
-    groupKey: string;
-  } | null;
+  temperatureIdentity?: CockpitFactIdentity | null;
+  medicationIdentity?: CockpitFactIdentity | null;
 }) {
   const { date, temperatureUnit, timeZone, nowIso, feverFree } = model;
   const controls = model.controls;
@@ -60,35 +75,38 @@ export default function IllnessCockpitBody({
 
   // THE SEAMS STEP DOWN ONE UNIT ON A PHONE (#3460). The cockpit is the single
   // tallest block on a sick day's dashboard, and its internal rhythm was 16px at
-  // every seam. Below `sm` each `*-4` seam becomes `*-3` and the section headers'
-  // `mb-3` becomes `mb-2`; from `sm` up the rhythm is unchanged. NOTHING is removed
-  // — every symptom, med, reading, temperature and footer control is still here,
-  // which is the safety ruling this spacing pass is explicitly not allowed to touch
-  // — and no row loses its tap floor (the declared `min-h-*` is untouched
-  // everywhere; it reads `min-h-11` since #3514 ruled the floor at 44).
+  // every seam. Below `sm` each `*-4` seam becomes `*-3`; from `sm` up the rhythm is
+  // unchanged. NOTHING is removed — every symptom, med, reading, temperature and
+  // footer control is still here, which is the safety ruling this spacing pass is
+  // explicitly not allowed to touch — and no row loses its tap floor.
   return (
     <CockpitDayProvider date={date} altDate={controls?.altDate} tz={timeZone}>
-      <div className="mt-3 flex flex-col" data-testid="illness-cockpit-body">
-        <EpisodeLatestReadings
-          episode={episode}
-          temperatureUnit={temperatureUnit}
-          timeZone={timeZone}
-          nowIso={nowIso}
-          linkMedication
-          feverFree={feverFree}
-          className="mb-3 border-b border-black/5 pb-3 sm:mb-4 sm:pb-4 dark:border-white/5"
+      <div
+        className="mt-3 flex w-full flex-col"
+        data-testid="illness-cockpit-body"
+      >
+        <CockpitRecoveryHeader
+          name={profileDisplayName}
+          status={status}
+          recovery={feverFree}
           temperatureIdentity={temperatureIdentity}
           medicationIdentity={medicationIdentity}
+          action={
+            canWrite && controls && episode.id != null ? (
+              <CockpitEndEpisode
+                episodeId={episode.id}
+                profileId={target}
+                meds={controls.medReconciliation}
+              />
+            ) : undefined
+          }
         />
 
         {canWrite && controls ? (
-          <section>
-            <h3 className="mb-2 text-sm font-semibold text-slate-700 sm:mb-3 dark:text-slate-200">
-              Symptoms
-            </h3>
+          <section className="mt-3 border-t border-black/5 pt-3 sm:mt-4 sm:pt-4 dark:border-white/5">
             {ownsSharedProfileControls && hasPluralOpenEpisodes ? (
               <p
-                className="mb-3 text-xs text-slate-500 dark:text-slate-400"
+                className="mb-2 text-xs text-slate-500 dark:text-slate-400"
                 data-testid="illness-shared-profile-controls-context"
               >
                 Temperature and medications are shared across{" "}
@@ -114,6 +132,16 @@ export default function IllnessCockpitBody({
               episodeId={episode.id ?? undefined}
               showTitle={false}
               analysisHref={crossProfile ? undefined : "/trends/symptoms"}
+              // NO DOSE OFFER HERE (#4712 judgement 1, corrected). This body's own
+              // Meds section below (`cockpit-prn`) renders whenever `controls.prnMeds`
+              // is non-empty — which is EVERY time `controls.antipyreticPrnMeds`
+              // would be too, since it is that same list narrowed. Feeding the fold's
+              // dose offer real meds here would therefore always duplicate a chip the
+              // persistent section is already showing, one situation group holding two
+              // `cockpit-med-chip-<id>` for one medication — the ruling offers what
+              // isn't already on screen, not a second copy of what is. The Meds
+              // section IS this cockpit's durable dose surface; the offer stays
+              // episode-only on this mount.
             />
           </section>
         ) : null}
@@ -146,23 +174,13 @@ export default function IllnessCockpitBody({
                   meds={controls.prnMeds}
                   tz={timeZone}
                   profileId={target}
-                  pediatric={controls.pediatric}
+                  intakeContext={controls.intakeForm}
                   canAdd={!crossProfile}
                   nowIso={nowIso}
                 />
               </IntakeOptionsProvider>
             </div>
           )}
-
-        {canWrite && controls && episode.id != null && (
-          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-black/5 pt-3 sm:mt-4 sm:pt-4 dark:border-white/5">
-            <CockpitEndEpisode
-              episodeId={episode.id}
-              profileId={target}
-              meds={controls.medReconciliation}
-            />
-          </div>
-        )}
       </div>
     </CockpitDayProvider>
   );

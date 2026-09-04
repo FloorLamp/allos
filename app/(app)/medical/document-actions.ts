@@ -7,10 +7,12 @@
 // lib/medical-pipeline.ts, where the DB test tier can reach it. Two "use server"
 // files coexist per route, so callers import each action from whichever file owns it.
 import {
+  requireSession,
   requireWriteAccess,
   getAccessibleProfiles,
   accessForProfile,
 } from "@/lib/auth";
+import { gateItemProfile } from "../gate-item";
 
 import fs from "node:fs";
 import path from "node:path";
@@ -93,7 +95,12 @@ export interface UploadMedicalResult {
 export async function uploadMedicalDocument(
   formData: FormData
 ): Promise<UploadMedicalResult> {
-  const { login, profile } = await requireWriteAccess();
+  // #4932: the quick-log sheet's subject chip mounts this SAME form cross-profile,
+  // so the write follows `gateItemProfile` like every other sheet body — posted
+  // `profile_id` → requireProfileWriteAccess, absent → acting profile. `login` is
+  // resolved separately (it stamps who ingested the file, not who it is for).
+  const { login } = await requireSession();
+  const profileId = await gateItemProfile(formData);
   // A multi-file submit holds several values under the one "file" key; keep only
   // real, non-empty Files (an empty file input can yield a zero-byte File).
   const files = formData
@@ -111,7 +118,7 @@ export async function uploadMedicalDocument(
   // batch lands per-file outcomes with no special handling here.
   let restored = 0;
   for (const file of toIngest) {
-    const out = await ingestMedicalUpload(login.id, profile.id, file);
+    const out = await ingestMedicalUpload(login.id, profileId, file);
     if (out.restored) restored++;
   }
   // ingestMedicalUpload already revalidates /data per file; one revalidate after the

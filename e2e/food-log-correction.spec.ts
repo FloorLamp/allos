@@ -1,6 +1,11 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
-import { hydratedClick, settledClick, settledSelect } from "./helpers";
+import {
+  hydratedClick,
+  openFoodAdd,
+  settledClick,
+  settledSelect,
+} from "./helpers";
 import { frozenNow } from "./worker-env";
 import { shiftDateStr } from "@/lib/date";
 
@@ -31,6 +36,9 @@ import { shiftDateStr } from "@/lib/date";
 // again — so it leaves the shared profile exactly as it found it.
 
 async function revealFoodGroup(page: Page, slug: string) {
+  // The add layer folds behind one `+ Add` door (#4477) and the overflow is a
+  // second fold inside it, so reaching a row means opening both.
+  await openFoodAdd(page);
   const row = page.getByTestId(`food-group-${slug}`);
   if (!(await row.isVisible())) {
     await hydratedClick(page, page.getByTestId("food-more-groups-summary"));
@@ -96,10 +104,19 @@ test("a mis-slotted serving is corrected from the log and the meal tallies follo
 }) => {
   test.slow(); // the nutrition route compiles on first hit
   await page.goto("/nutrition");
+  await openFoodAdd(page);
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
   // Log into Morning explicitly, so the correction has a known source window.
-  await page.getByTestId("food-slot-morning").click();
+  // hydratedClick, not click: the meal selector is a CONTROLLED React button
+  // (components/SegmentedControl.tsx renders `<button type="button" onClick>` with no
+  // href and no form), so a tap dispatched before the handler attaches is lost with no
+  // native fallback and no error — the chip assertion below then retries against the
+  // unchanged slot and reports the derived window as wrong (#4830 on `e2e (4)`:
+  // `Expected: "Evening" Received: "Midday"`, 14 retries). This is why #4339's
+  // clearing of the `food-more-groups` taps does not transfer: THAT is an uncontrolled
+  // `<details>` that toggles natively, so a pre-hydration tap survives it.
+  await hydratedClick(page, page.getByTestId("food-slot-morning"));
   await expect(page.getByTestId("food-slot-chip")).toHaveText("Morning");
   await revealFoodGroup(page, "nuts_seeds");
 
@@ -162,11 +179,12 @@ test("the ⋯ menu removes the corrected row it names, and Undo restores that ro
 }) => {
   test.slow(); // the nutrition route compiles on first hit
   await page.goto("/nutrition");
+  await openFoodAdd(page);
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
   // Capture the Evening baselines FIRST: `count-<slug>` always reads the active slot, so
   // the group's Evening figure has to be taken while Evening is selected.
-  await page.getByTestId("food-slot-evening").click();
+  await hydratedClick(page, page.getByTestId("food-slot-evening"));
   await expect(page.getByTestId("food-slot-chip")).toHaveText("Evening");
   await revealFoodGroup(page, "shellfish");
   const eveningCountBefore = Number(
@@ -231,7 +249,15 @@ test("the ⋯ menu removes the corrected row it names, and Undo restores that ro
 
   // #2038: the precise row control is forgiving too. Undo restores the corrected
   // serving under a new id, while preserving the Evening slot it had when removed.
-  await settledClick(page, page.getByRole("button", { name: "Undo" }));
+  //
+  // EXACT, because `name` is a SUBSTRING match and this page also renders the day
+  // ledger. A taken dose's control is named "Undo take" (#4753 renamed it from
+  // "Mark not taken"), so a bare "Undo" resolves the toast AND every taken dose row
+  // — three elements here, and a strict-mode violation rather than a wrong click.
+  await settledClick(
+    page,
+    page.getByRole("button", { name: "Undo", exact: true })
+  );
   await expect(page.getByText("Restored.")).toBeVisible();
   await expect.poll(() => slotTotal(page, "Evening")).toBe(eveningBefore + 2);
   await expect(page.getByTestId("count-shellfish")).toHaveText(
@@ -270,9 +296,10 @@ test("the sheet corrects a serving's eating time; Meal follows the hour until to
 }) => {
   test.slow(); // the nutrition route compiles on first hit
   await page.goto("/nutrition");
+  await openFoodAdd(page);
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
-  await page.getByTestId("food-slot-morning").click();
+  await hydratedClick(page, page.getByTestId("food-slot-morning"));
   await expect(page.getByTestId("food-slot-chip")).toHaveText("Morning");
   await revealFoodGroup(page, "legumes");
   const idsBefore = await loggedIds(page);

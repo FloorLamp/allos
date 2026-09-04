@@ -14,20 +14,19 @@ import {
   DOCUMENTS_SOURCE_CLASS,
   DOCUMENTS_SOURCE_LABEL,
   documentSourceId,
-  documentSourceLabel,
   hasDocumentSeries,
+  metricSourceLabel,
   sourceSeriesColorMap,
   withDocumentsClassSeries,
   SOURCE_FALLBACK_COLOR,
   type ComparableMetric,
   type DocumentMeta,
 } from "@/lib/metric-source-priority";
-import { getIntegration } from "@/lib/integrations/registry";
 import { dispWeight, round } from "@/lib/units";
-import type { BodyMetricKind, IntegrationId } from "@/lib/types";
+import type { BodyMetricKind } from "@/lib/types";
 import type { WeightUnit } from "@/lib/settings";
 import type { DateRange } from "@/lib/timeline-format";
-import type { CompareSeries } from "@/components/SourceCompareChartInner";
+import type { CompareSeries } from "@/components/SourceCompareChart";
 import type { ReactNode } from "react";
 import SourceCompareChart from "@/components/SourceCompareChart";
 import PrimarySourcePicker from "./PrimarySourcePicker";
@@ -39,18 +38,8 @@ import PrimarySourcePicker from "./PrimarySourcePicker";
 // Document series (#533): a metric extracted from two documents stays two DISTINCT
 // series (foldSourceSeries keeps document:5 and document:7 apart), so each carries
 // the document's OWN label (filename/date/#id) and its own de-collided color rather
-// than both collapsing to one "Document" / one teal line.
-
-function labelForSource(
-  source: string,
-  docs: Record<number, DocumentMeta>
-): string {
-  if (source === "manual") return "Manual";
-  if (source === DOCUMENTS_SOURCE_CLASS) return DOCUMENTS_SOURCE_LABEL;
-  if (documentSourceId(source) != null)
-    return documentSourceLabel(source, docs);
-  return getIntegration(source as IntegrationId)?.name ?? source;
-}
+// than both collapsing to one "Document" / one teal line. Naming a source is
+// `metricSourceLabel` (lib/metric-source-priority), shared with the chart caption.
 
 // Convert a canonical series value to its display value for the card.
 function displayValue(
@@ -128,7 +117,7 @@ export default function SourceComparison({
   const unit = metric.key === "weight" ? ` ${weightUnit}` : metric.unit;
   const series: CompareSeries[] = plotted.map((s) => ({
     key: s.source,
-    label: labelForSource(s.source, docMeta),
+    label: metricSourceLabel(s.source, docMeta),
     color: colorByKey.get(s.source) ?? SOURCE_FALLBACK_COLOR,
     data: s.data.map((d) => ({
       date: d.date,

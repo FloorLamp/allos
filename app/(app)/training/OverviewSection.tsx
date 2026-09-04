@@ -1,9 +1,11 @@
 import DestinationLink from "@/components/DestinationLink";
+import CardSectionHeader from "@/components/CardSectionHeader";
 import {
   getActivityDates,
   getActivitySuggestions,
   getCardioByActivity,
   getDayLoadInputs,
+  getActiveDaysStrip,
   getFrequencyTargetProgressForHome,
   getIllnessCoachingContext,
   getTrainingWeekDayTypes,
@@ -68,7 +70,13 @@ import {
 } from "@/lib/situations";
 import { exerciseInjuryVerdict, injuryReviewDue } from "@/lib/injury-model";
 import { resolveTrainingTemper } from "@/lib/niggle-model";
-import { getEndurancePlanCards, getEnduranceArm } from "@/lib/queries";
+import { getEnduranceEvents, getEnduranceArm } from "@/lib/queries";
+import {
+  disciplineLabel,
+  eventKindLabel,
+  eventTitle,
+  EVENT_KIND_SUGGESTIONS,
+} from "@/lib/endurance-plan";
 import TodaysSessionCard from "./TodaysSessionCard";
 import InjuryBar from "./InjuryBar";
 import EndurancePlanBar, { type EndurancePlanView } from "./EndurancePlanBar";
@@ -78,10 +86,8 @@ import PrCard from "@/components/PrCard";
 import { WeeklyTargets } from "@/components/WeeklyTargets";
 import TrainingFindings from "./TrainingFindings";
 import WeekSpine from "./WeekSpine";
-import RecentSessions from "./RecentSessions";
+import ActiveDaysStrip from "@/components/ActiveDaysStrip";
 import { buildWeekSpine } from "@/lib/training-week-spine";
-import { buildTrainingLogFeedPage } from "@/lib/training-log-feed";
-import { recentSessionsView } from "@/lib/training-recent-sessions";
 import TrainingContextChips from "./TrainingContextChips";
 import FitnessCheckStrip from "./FitnessCheckStrip";
 import MuscleCoverageCard from "./MuscleCoverageCard";
@@ -146,23 +152,6 @@ export default async function OverviewSection() {
     today: todayStr,
     rows: weekDays.rows,
   });
-  // …and what those blocks actually WERE (#2566). The band says a session
-  // happened; it cannot say the run was 8 km. This reads the Training Log's own
-  // newest page and folds it — same cards, same numbers, same wording (#221) —
-  // so the week's sessions are legible here without opening the Log.
-  //
-  // Seven ACTIVE days is the widest a week can be, so the window is the smallest
-  // one that can still COUNT what it cut. The cheaper-looking option is to take
-  // the count from `spine.sessions`, which is already computed above — but the
-  // spine tallies activity rows and the feed drops create-at-start drafts
-  // (#2870 step 3), so a live draft would make the card offer "1 more in Log"
-  // over a Log that has none. An overview may show less than the whole; it may
-  // not miscount it. Nothing older is read except when the week is empty and the
-  // fallback needs the last session.
-  const recentSessions = recentSessionsView(
-    buildTrainingLogFeedPage(profile.id, null, units, formatPrefs, 7).groups,
-    { weekStart: weekDays.start, today: todayStr }
-  );
   // The weekly routine, scoped to the targets whose home IS this page (#2888) —
   // strength regions and groups, activity types, and mobility regions. A food habit or
   // a wellness practice is a real target on a real page; that page is not this one.
@@ -352,45 +341,46 @@ export default async function OverviewSection() {
     ? getActivitySuggestions(profile.id).lifts
     : [];
 
-  // Endurance event plans (#839): the active plans' recomputed this-week trajectory,
-  // shaped into the display view (distances formatted server-side in the login's unit).
-  const endurancePlans: EndurancePlanView[] = getEndurancePlanCards(
+  // Events (#839, generalized by #3285): every ACTIVE upcoming event, with its
+  // recomputed this-week trajectory where the cardio pair makes one derivable —
+  // shaped into the display view (distances formatted server-side in the login's
+  // unit). An event with no discipline (a lifting meet, a tournament) renders the
+  // same card without the trajectory block, which is why the view's trajectory half
+  // is optional rather than the card being a second component.
+  const endurancePlans: EndurancePlanView[] = getEnduranceEvents(
     profile.id,
     todayStr
-  ).map((c) => {
-    const t = c.trajectory;
-    return {
-      id: c.plan.id,
-      title:
-        c.plan.eventName?.trim() ||
-        `${fmtDistance(c.plan.targetDistanceKm, du)} ${c.plan.discipline}`,
-      disciplineLabel:
-        c.plan.discipline === "run"
-          ? "Run"
-          : c.plan.discipline === "ride"
-            ? "Ride"
-            : "Swim",
-      eventDate: formatRelativeDate(c.plan.eventDate, todayStr),
-      weeksToEvent: t.weeksToEvent,
-      feasible: t.feasible,
-      message: t.message,
-      targetVolume: fmtDistance(c.thisWeek.targetVolumeKm, du),
-      actualVolume: fmtDistance(c.actualVolumeKm, du),
+  ).map(({ plan, card, weeksToEvent }) => ({
+    id: plan.id,
+    title: eventTitle(plan),
+    badge: plan.discipline
+      ? disciplineLabel(plan.discipline)
+      : eventKindLabel(plan.kind),
+    eventDate: formatRelativeDate(plan.eventDate, todayStr),
+    weeksToEvent,
+    trajectory: card && {
+      weeksToEvent: card.trajectory.weeksToEvent,
+      feasible: card.trajectory.feasible,
+      message: card.trajectory.message,
+      targetVolume: fmtDistance(card.thisWeek.targetVolumeKm, du),
+      actualVolume: fmtDistance(card.actualVolumeKm, du),
       progressPct: Math.max(
         0,
         Math.min(
           100,
-          c.thisWeek.targetVolumeKm > 0
-            ? Math.round((c.actualVolumeKm / c.thisWeek.targetVolumeKm) * 100)
+          card.thisWeek.targetVolumeKm > 0
+            ? Math.round(
+                (card.actualVolumeKm / card.thisWeek.targetVolumeKm) * 100
+              )
             : 0
         )
       ),
-      longSession: fmtDistance(c.thisWeek.longSessionKm, du),
-      longSessionDone: c.longSessionDone,
-      hasLongSession: c.thisWeek.longSessionKm > 0,
-      notes: c.plan.notes,
-    };
-  });
+      longSession: fmtDistance(card.thisWeek.longSessionKm, du),
+      longSessionDone: card.longSessionDone,
+      hasLongSession: card.thisWeek.longSessionKm > 0,
+    },
+    notes: plan.notes,
+  }));
   const sessionCard = session
     ? {
         label:
@@ -562,15 +552,17 @@ export default async function OverviewSection() {
         </h3>
         <WeekSpine spine={spine} />
 
-        {/* What those blocks were. The band is the shape, this is the content —
-            one card, so "which days / what I did / what the routine still wants"
-            is one read. Nothing here recomputes: the rows ARE the Training Log's
-            cards, capped and folded (#221). */}
-        <RecentSessions view={recentSessions} />
+        {/* THE ACTIVE-DAYS BAND, HOME AT LAST (#4079's anti-drop census). It used to
+            head the Log tab, where it answered "how often lately" beside a feed that
+            answers "what, exactly" — two questions, one surface. It belongs to the
+            week card, next to the spine it extends: the spine is this week, the band
+            is the run-up to it, and both read the same activity days. */}
+        <div className="mt-4">
+          <ActiveDaysStrip data={getActiveDaysStrip(profile.id, 21)} />
+        </div>
 
         <div className="mt-5 border-t border-black/10 pt-4 dark:border-white/10">
-          <div className="flex items-baseline justify-between gap-2">
-            <h4 className="section-label">Weekly targets</h4>
+          <CardSectionHeader title="Weekly targets" variant="label">
             {/* The chips RENDER here and are EDITED in Plan (#2892) — one home. */}
             <DestinationLink
               href="/training?tab=plan#targets"
@@ -578,7 +570,7 @@ export default async function OverviewSection() {
             >
               Edit targets
             </DestinationLink>
-          </div>
+          </CardSectionHeader>
           {targets.length === 0 ? (
             <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
               No weekly targets set yet.
@@ -667,7 +659,11 @@ export default async function OverviewSection() {
         />
       )}
 
-      <EndurancePlanBar plans={endurancePlans} distanceUnit={du} />
+      <EndurancePlanBar
+        plans={endurancePlans}
+        distanceUnit={du}
+        kindSuggestions={EVENT_KIND_SUGGESTIONS}
+      />
 
       {/* 6. RECENT CARDIO PRs — strength progress is already visible in the
           standards ladder; this remains the cardio hand-off to Analyze. */}

@@ -88,6 +88,7 @@ import {
   getProfileAge,
   getProfileSubstanceTelegram,
 } from "../settings";
+import { substanceDef } from "../substance-use";
 import {
   isAdultForClinical,
   isStrengthTrainingRelevant,
@@ -127,14 +128,24 @@ function asWorkout(a: { date: string; type: string }): RecapWorkout {
   return { date: a.date, type };
 }
 
-// IntakeItem adherence (taken / skipped / due) across the window, using the same
-// due-dose derivation as the digest (isDueOn honoring workout-day + active
-// situations). Deliberate skips (#232) are tallied separately so the recap can
+// IntakeItem adherence (taken / skipped / due) across the window's COMPLETED days,
+// using the same due-dose derivation as the digest (isDueOn honoring workout-day +
+// active situations). Deliberate skips (#232) are tallied separately so the recap can
 // show them alongside taken and exclude them from the percentage denominator.
+//
+// RATE LINES COVER COMPLETED DAYS ONLY (#4228 A). A dose is countable once its day has
+// ended. The walk used to run through `today`, so on the dashboard's in-progress window
+// every dose not taken YET was a miss, and the week's first morning read "Adherence 0% ·
+// 12 missed". The walk now stops BEFORE today: the notification's completed window
+// (#1021) already ends before today and is untouched; the card's window loses its last
+// day, and a window with no completed day walks no day and yields nothing — no line,
+// rather than a rate over zero days. The count lines (workouts) still cover the whole
+// window, so the #223 counter match is unchanged.
 function windowAdherence(
   profileId: number,
   start: string,
-  end: string
+  end: string,
+  today: string
 ): {
   total: { taken: number; skipped: number; due: number };
   days: RecapAdherenceDay[];
@@ -159,7 +170,7 @@ function windowAdherence(
   // The per-day rows the month/quarter PATTERN line reads (#2178). Produced by this
   // SAME loop, so the percentage and the shape can never describe different days.
   const days: RecapAdherenceDay[] = [];
-  for (let d = start; d <= end; d = shiftDateStr(d, 1)) {
+  for (let d = start; d <= end && d < today; d = shiftDateStr(d, 1)) {
     const isWorkoutDay = getActivitiesByDate(profileId, d).length > 0;
     const dueIds = doses
       .filter((dose) =>
@@ -280,15 +291,17 @@ export function gatherRecapInput(
   // WHICH TARGETS BOTH CAP READERS MAY SEE — one predicate, because a target dropped
   // from the week verdict and kept in the cap-weeks sentence would be named anyway.
   //
-  // The substance half (#3900) is the consent `buildFoodNudge` already asks (#3330):
-  // `cadenceScopeNoun` names a substance cap by its own noun — the curated label for a
-  // curated key, the profile's OWN free-text name for a custom one — so these two lines
-  // carried substance content into a chat, a push body and an inbox. Alcohol included:
-  // its ledger is a food group but its cap is an ordinary `scope_kind: "substance"`.
-  // Removing, not redacting; the rest of the recap still sends.
-  const includeTarget = (target: { scope_kind: string }) =>
+  // The substance half (#3900, #3330): `cadenceScopeNoun` names a substance cap by its
+  // own noun — the curated label for a curated key, the profile's OWN free-text name for a
+  // custom one — so these two lines carry substance content into a chat, a push body and
+  // an inbox, and do so only behind the per-profile consent. ALCOHOL IS EXEMPT (owner
+  // ruling 2026-09-02): its ledger is a food group, so its cap is named like any food cap
+  // and the consent covers the substance-log ledger only — the same line `isSubstanceLogged`
+  // draws for writes. Removing, not redacting; the rest of the recap still sends.
+  const includeTarget = (target: { scope_kind: string; scope_value: string }) =>
     (trainingRelevant || !isTrainingFrequencyScope(target)) &&
     (target.scope_kind !== "substance" ||
+      substanceDef(target.scope_value).ledger === "food-log" ||
       !forSend ||
       getProfileSubstanceTelegram(profileId));
 
@@ -431,7 +444,7 @@ export function gatherRecapInput(
   // two gathers that could disagree. Skipped entirely when neither line speaks here.
   const adh =
     speaks("adherence") || speaks("adherence-pattern")
-      ? windowAdherence(profileId, win.start, win.end)
+      ? windowAdherence(profileId, win.start, win.end, td)
       : null;
 
   return {

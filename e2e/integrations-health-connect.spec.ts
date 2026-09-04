@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
+import { settledCheckSave } from "./helpers";
 import { E2E_LOGIN_HC, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // /integrations/health-connect (issue #391, gap 4; hash-at-rest reveal-once #1209).
@@ -108,6 +109,48 @@ test.describe("Health Connect integration (#391)", () => {
       await expect(
         member.getByTestId("sync-status-health-connect")
       ).toBeVisible();
+    } finally {
+      await member.context().close();
+    }
+  });
+
+  // Issue #3182: the ONE glucose switch. Off by default and nothing asks at setup —
+  // a fingerstick meter and a CGM push the same Health Connect record type, so the
+  // safe answer for someone who has not thought about it keeps a discrete reading a
+  // discrete reading. Flipping it persists across a reload.
+  test("the continuous-sensor glucose switch is off by default and persists", async ({
+    browser,
+  }) => {
+    test.slow();
+    const member = await loginAs(browser, {
+      username: E2E_LOGIN_HC,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await member.goto("/integrations/health-connect");
+      const generate = member.getByTestId("health-connect-generate");
+      if (await generate.count()) await generate.click();
+      await expect(member.getByTestId("health-connect-status")).toBeVisible();
+
+      const card = member.getByTestId("hc-cgm-glucose");
+      const toggle = member.getByTestId("hc-cgm-glucose-toggle");
+      await expect(toggle).not.toBeChecked();
+      // The reload must reach a SETTLED page rather than race one (#4972). The box
+      // paints the new value in the same frame, so it is not evidence the write
+      // landed; the card's autosave spinner is, and a reload issued while it is up
+      // CANCELS the write — which is how this spec's restore step went red on main.
+      // settledCheckSave waits on that spinner: a rendered state, not a sleep.
+      await settledCheckSave(member, toggle, true, card);
+      await expect(toggle).toBeChecked();
+
+      await member.reload();
+      await expect(toggle).toBeChecked();
+
+      // Leave the fixture profile as it was found — this spec shares its member with
+      // the token test above, and a latched switch is state the next run inherits.
+      await settledCheckSave(member, toggle, false, card);
+      await member.reload();
+      await expect(toggle).not.toBeChecked();
     } finally {
       await member.context().close();
     }

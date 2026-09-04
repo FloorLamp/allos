@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { db, writeTx } from "../db";
 import type { NotificationKind } from "../notifications/types";
+import { invalidateDeliveryOutcome } from "../notifications/delivery-marker";
 import {
   managingLoginIdsForProfile,
   profilesManagedByLogin,
@@ -103,6 +104,7 @@ export function setLoginTelegram(
   loginId: number,
   cfg: { telegramEnabled: boolean; telegramChatId: string }
 ): LoginTelegram {
+  const before = getLoginTelegram(loginId);
   writeTx(() => {
     setLoginSetting(
       loginId,
@@ -110,6 +112,13 @@ export function setLoginTelegram(
       cfg.telegramEnabled ? "1" : "0"
     );
     setLoginSetting(loginId, "telegram_chat_id", cfg.telegramChatId.trim());
+    // A changed target out-dates what the old one did (#2565): the row returns to
+    // Ready until something is sent to the new chat.
+    if (
+      before.telegramEnabled !== cfg.telegramEnabled ||
+      before.telegramChatId !== cfg.telegramChatId.trim()
+    )
+      invalidateDeliveryOutcome("telegram", loginId);
   });
   return getLoginTelegram(loginId);
 }
@@ -145,6 +154,7 @@ export function setLoginEmailNotify(
   loginId: number,
   cfg: LoginEmailNotify
 ): LoginEmailNotify {
+  const before = getLoginEmailNotify(loginId);
   writeTx(() => {
     setLoginSetting(
       loginId,
@@ -156,6 +166,10 @@ export function setLoginEmailNotify(
       "email_notify_full_content",
       cfg.emailFullContent ? "1" : "0"
     );
+    // Turning the channel off or on is a configuration change (#2565); the content
+    // mode only changes what a mail says, not whether it arrives.
+    if (before.emailEnabled !== cfg.emailEnabled)
+      invalidateDeliveryOutcome("email", loginId);
   });
   return getLoginEmailNotify(loginId);
 }
@@ -272,10 +286,12 @@ export function setProfileFoodTelegram(
 }
 
 // ---- Substance content over Telegram (issue #3330) — per-profile opt-in ----
-// Whether this profile's SUBSTANCE consumption may appear in a chat message. Off by
-// default: `substance_telegram_enabled` absent reads as "0", so no profile — including
-// one that already has Telegram wired up and alcohol in its ledger — carries substance
-// content into a chat until someone ticks the box for that profile. There is
+// Whether this profile's SUBSTANCE consumption — nicotine, cannabis, a custom substance
+// — may be named in an outbound message. ALCOHOL IS NOT UNDER THIS FLAG (owner ruling
+// 2026-09-02): its ledger is a food group, so it rides the food nudge under the
+// food-buttons consent and is named on the recap's cap lines like any food cap. Off by
+// default: `substance_telegram_enabled` absent reads as "0", so no profile carries the
+// other substances into a chat until someone ticks the box for that profile. There is
 // deliberately NO migration backfilling "1" for existing profiles: a send is the
 // irreversible act (a message on a lock screen cannot be recalled by a later settings
 // change), so the only safe direction for the flag's first read is silence, and the cost
@@ -286,10 +302,10 @@ export function setProfileFoodTelegram(
 // to every managing login's chat. Consent belongs to the data subject whose consumption
 // it is, so a household member ticking their own box says nothing about anyone else's.
 //
-// It is NOT a delivery toggle and does not suppress a message: the gate lives in
-// `buildFoodNudge` (lib/notifications/food.ts), which drops the substance-ledger rows
-// from the keyboard and the tally and sends the rest. Nothing safety-class is downstream
-// of it — see the comment at the gate.
+// It is NOT a delivery toggle and does not suppress a message: the one gate is the
+// recap's cap-line predicate (lib/notifications/recap-data.ts), which drops the
+// substance-log caps from an outbound recap and sends the rest. Nothing safety-class is
+// downstream of it.
 export function getProfileSubstanceTelegram(profileId: number): boolean {
   return getProfileSetting(profileId, "substance_telegram_enabled") === "1";
 }
@@ -673,6 +689,7 @@ export function setProfileHomeAssistant(
     disabledKinds: readonly NotificationKind[];
   }
 ): ProfileHomeAssistant {
+  const before = getProfileHomeAssistant(profileId);
   writeTx(() => {
     setProfileSetting(profileId, "ha_notify_enabled", cfg.enabled ? "1" : "0");
     setProfileSetting(
@@ -686,6 +703,14 @@ export function setProfileHomeAssistant(
       "ha_notify_disabled_kinds",
       serializeDisabledKinds(cfg.disabledKinds)
     );
+    // The TARGET changed (#2565) — not the routing, which the matrix's HA column
+    // writes through this same function and which says nothing about the webhook.
+    if (
+      before.enabled !== cfg.enabled ||
+      before.webhookUrl !== cfg.webhookUrl.trim() ||
+      before.secret !== cfg.secret.trim()
+    )
+      invalidateDeliveryOutcome("home-assistant", profileId);
   });
   return getProfileHomeAssistant(profileId);
 }
@@ -821,11 +846,16 @@ export function setTelegramBotConfig(cfg: {
   telegramBotToken: string;
   telegramMode: TelegramMode;
 }): TelegramBotConfig {
+  const before = getTelegramBotConfig();
   // Write the token, mode, and one-time webhook secret as one transaction (mirrors
   // setUnitPrefs) so a partial failure can't leave the config half-updated.
   writeTx(() => {
     setSetting("telegram_bot_token", cfg.telegramBotToken.trim());
     setSetting("telegram_mode", cfg.telegramMode);
+    // A new bot is a new configuration for EVERY Telegram owner (#2565); the inbound
+    // mode changes how taps arrive, not whether a send lands.
+    if (before.telegramBotToken !== cfg.telegramBotToken.trim())
+      invalidateDeliveryOutcome("telegram");
     // Generate a stable webhook secret once, so inbound calls can be authenticated.
     if (!getSetting("telegram_webhook_secret")) {
       setSetting("telegram_webhook_secret", crypto.randomUUID());

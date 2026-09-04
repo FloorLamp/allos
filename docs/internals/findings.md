@@ -79,6 +79,22 @@ collectCoachingFindings builder is classified rollup-only (annotation enforced)
 or origin-tab (the claimed surface verified), and a new builder must choose a
 side.
 
+**A surface that HEDGES a fact is not that finding's origin tab (#4299).** The
+sleep clock-skew observation is rollup-only, and the distinction is the one a
+future builder will get wrong: the Sleep page does react to a suspect night — it
+stops stating the times as fact and offers the delete — but it renders no
+`Finding`, so the observation itself, its evidence line and its dismiss are
+reachable only through the rollup. "My domain page changed because of this" is
+not the origin-tab claim; "my domain page renders this finding" is.
+
+**A finding over a RUN of bad rows is keyed to the run, not to the row (#4299).**
+A source whose clock reference has gone stale mis-stamps every night until it
+heals, so a per-night key would mint a replacement the morning after a dismissal
+and the fan-out would need a cap to hold it. The key is anchored to the OLDEST
+suspect night still in the window instead: later nights join the episode, and the
+family is bounded by construction. This is the stale-exercise episode anchor
+above, applied to a source's defect rather than to a person's lapse.
+
 Profile-entity fan-out is bounded before suppression, per family, in
 `COACHING_ENTITY_FINDING_LIMITS` (and the food–drug variance family's adjacent
 declaration). That ordering means dismissing the generated set cannot promote the
@@ -300,7 +316,21 @@ null case is exercised end to end.
 **Reach.** Coaching tier, registered under `PAIRED_OBS_PREFIX`; joins
 `collectCoachingFindings` and renders as a calm coaching-observation candidate in
 Show everything.
-Never Upcoming, never a notification, never dashboard Now, never an obligation. Keys
+Never Upcoming, never dashboard Now, never an obligation, and never a notification —
+**with one recorded exception**.
+
+> **The exception (owner decision, 2026-09-02, #4775 §5).** The `alcohol-*` entries may
+> render **one** line in the morning digest, behind `substance_telegram_enabled` (off by
+> default, #3330) and only above the pair's own effect floor. This overrules #2177's
+> "never a send" for that pair family and for nothing else; `docs/internals/substances.md`
+> §Reach records the same exception from the substance side. It is a ride-along, not a
+> send: `gatherSubstanceObservationLine` appends it to a Sleep section that already
+> exists, so it can never be the thing that makes a digest go out. The pair's monthly
+> dismissal silences the line exactly as it silences the card, the copy is the verdict's
+> own sentence (both arms' n, no advice verb, no direction word), and at most one
+> `alcohol-*` line goes out however many pairs clear their floors on the page.
+
+Keys
 are `paired-obs:<pair>:<YYYY-MM>` and declare their stem as `episodeFamily`
 (#2543), so a dismissal is per-month and repeat declines are read as an answer
 (#2386). Substance-conditioned pairs declare `adultOnly` and are withheld from a
