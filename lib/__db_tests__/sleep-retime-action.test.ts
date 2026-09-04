@@ -2,8 +2,11 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { db, today } from "@/lib/db";
 import { setTimezone } from "@/lib/settings";
 import { shiftDateStr, utcInstant } from "@/lib/date";
+import { setProfileSetting } from "@/lib/settings/kv";
+import { serializeTimezoneSwitches } from "@/lib/travel-timezone";
 import { seedActor, fd } from "@/lib/__action_tests__/harness";
 import { retimeSleepSession } from "@/app/(app)/sleep/actions";
+import { getSleepMoodData } from "@/lib/queries/sleep";
 
 // DB INTEGRATION TIER — the Fix times action (#5021).
 //
@@ -170,5 +173,88 @@ describe("retimeSleepSession", () => {
 
     expect(result.error).toBe("Enter a bed time and a wake time.");
     expect(rowOf(sessionId)).toEqual(before);
+  });
+});
+
+describe("which zone reads the typed clocks (#5125)", () => {
+  // THE RULE: the zone in force at the night's own stored wake, not the profile's zone
+  // today. The dialog prints the stored window through the historical zone
+  // (`getSleepMoodData`, #3428 / `cc7a4c3b`), the person edits against that printed
+  // line, and a display and its interpretation have to be inverses. Read through the
+  // CURRENT zone instead, a one-hour nudge moved this row NINE hours — and because the
+  // fold preserves elapsed length, `length-changed` and every other refusal stayed
+  // silent. `resolveSleepWindow`'s current-zone rule is unchanged for manual entry and
+  // the offline replay, which state a window nobody read back first.
+  it("moves the row ONE hour for a one-hour nudge, after a recorded zone switch", async () => {
+    setTimezone(profileId, "Europe/London");
+    const prev = shiftDateStr(day, -1);
+    // The night ran while the profile's day was in Tokyo; it flew home afterwards.
+    setProfileSetting(
+      profileId,
+      "timezone_switches",
+      serializeTimezoneSwitches([
+        { at: `${day}T18:00:00Z`, from: "Asia/Tokyo", to: "Europe/London" },
+      ])
+    );
+    const sessionId = sample(
+      "sleep_min",
+      `${prev}T20:30:00Z`,
+      `${day}T03:40:00Z`,
+      430
+    );
+    trace(`${prev}T06:00:00Z`, `${day}T12:00:00Z`, {
+      from: `${prev}T14:00:00Z`,
+      to: `${prev}T21:10:00Z`,
+    });
+
+    // The two clocks the dialog puts on screen, read off the same projection it uses.
+    const shown = getSleepMoodData(profileId).history.find(
+      (r) => r.date === day
+    )?.sleepClaimedWindow;
+    expect(shown).toBeTruthy();
+    /** The displayed clock, one hour later — what a person nudging both fields types. */
+    const nudged = (minutes: number) => {
+      const at = (minutes + 60) % 1440;
+      return `${String(Math.floor(at / 60)).padStart(2, "0")}:${String(
+        at % 60
+      ).padStart(2, "0")}`;
+    };
+
+    const result = await retimeSleepSession(
+      fd({
+        sample_id: sessionId,
+        date: day,
+        bed_time: nudged(shown!.startMinutes),
+        wake_time: nudged(shown!.endMinutes),
+      })
+    );
+    expect(result.error).toBeUndefined();
+    // One hour later than it was, not nine.
+    expect(rowOf(sessionId).started_at).toBe(`${prev}T21:30:00Z`);
+    expect(rowOf(sessionId).ended_at).toBe(`${day}T04:40:00Z`);
+  });
+});
+
+describe("a night stored twice, through this door (#5125)", () => {
+  it("refuses, and names the door that resolves the duplicate", async () => {
+    const { sessionId, stageId } = hedgedNight();
+    sample("sleep_min", `${day}T09:41:00Z`, `${day}T14:35:00Z`, 294);
+    const before = { session: rowOf(sessionId), stage: rowOf(stageId) };
+
+    const result = await retimeSleepSession(
+      fd({
+        sample_id: sessionId,
+        date: day,
+        bed_time: "03:39",
+        wake_time: "08:37",
+      })
+    );
+
+    expect(result.undoId).toBeNull();
+    expect(result.error).toContain("stored twice");
+    // Nothing moved, so the dialog's "The sleep stages move with the session." is not
+    // contradicted by the one path that used to contradict it.
+    expect(rowOf(sessionId)).toEqual(before.session);
+    expect(rowOf(stageId)).toEqual(before.stage);
   });
 });

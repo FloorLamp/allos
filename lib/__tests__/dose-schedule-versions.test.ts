@@ -448,7 +448,7 @@ describe("the pattern bound's two halves resolve one day (#4030)", () => {
   // This profile's day ran in New York until 2026-05-01; it is standing in Tokyo now.
   const dayZone = (at: Date) =>
     zoneAtInstant(
-      [{ at: "2026-05-01T00:00:00Z", from: NY, to: TOKYO }],
+      [{ at: "2026-05-01T00:00:00Z", from: NY, to: TOKYO, kind: "travel" }],
       TOKYO,
       at
     );
