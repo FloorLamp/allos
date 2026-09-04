@@ -343,9 +343,7 @@ export function intakeItemFormStateFrom(seed: {
     maxDailyCount:
       item?.max_daily_count != null ? String(item.max_daily_count) : "",
     maxDailyAmountMg:
-      item?.max_daily_amount_mg != null
-        ? String(item.max_daily_amount_mg)
-        : "",
+      item?.max_daily_amount_mg != null ? String(item.max_daily_amount_mg) : "",
     redoseNotice: item?.redose_notice === 1,
     rx: item?.rx === 1,
     prescriber: item?.prescriber ?? "",
