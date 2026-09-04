@@ -175,6 +175,7 @@ describe("the setup carve-out (#2010)", () => {
             everRan: false,
             mappedPatients,
             lastCheckedAt,
+            lastAskedAt: null,
             today: "2026-03-04",
           })
         ).toBe(false);
@@ -186,6 +187,7 @@ describe("the setup carve-out (#2010)", () => {
         everRan: false,
         mappedPatients: 1,
         lastCheckedAt: "2026-03-01 09:00:00",
+        lastAskedAt: null,
         today: "2026-03-31",
         cadenceDays: 1,
       })
@@ -201,6 +203,7 @@ describe("the setup carve-out (#2010)", () => {
         everRan: true,
         mappedPatients: 1,
         lastCheckedAt: null,
+        lastAskedAt: null,
         today: "2026-03-04",
       })
     ).toBe(true);
@@ -216,6 +219,7 @@ describe("staleness evaluation", () => {
         everRan: true,
         mappedPatients: 0,
         lastCheckedAt: null,
+        lastAskedAt: null,
         today: "2026-03-04",
       })
     ).toBe(false);
@@ -224,6 +228,7 @@ describe("staleness evaluation", () => {
         everRan: true,
         mappedPatients: 0,
         lastCheckedAt: "2020-01-01 00:00:00",
+        lastAskedAt: null,
         today: "2026-03-04",
       })
     ).toBe(false);
@@ -234,6 +239,7 @@ describe("staleness evaluation", () => {
     const base = {
       everRan: true,
       mappedPatients: 2,
+      lastAskedAt: null,
       today: "2026-03-31",
     };
     // 29 days — not yet.
@@ -255,6 +261,7 @@ describe("staleness evaluation", () => {
         everRan: true,
         mappedPatients: 1,
         lastCheckedAt: "2026-03-25 09:00:00",
+        lastAskedAt: null,
         today: "2026-03-31",
         cadenceDays: 5,
       })
@@ -264,10 +271,63 @@ describe("staleness evaluation", () => {
         everRan: true,
         mappedPatients: 1,
         lastCheckedAt: "2026-03-25 09:00:00",
+        lastAskedAt: null,
         today: "2026-03-31",
         cadenceDays: 30,
       })
     ).toBe(false);
+  });
+
+  it("asks ONCE per cadence, however stale the portal stays", () => {
+    // The loop this pins: an ask expires after a week, the portal is still unchecked,
+    // and the next tick used to raise the same ask again with a fresh clock and a fresh
+    // dismiss key. Now the ask clock counts too — an expired ask from 8 days ago is a
+    // reason to stay silent; one from a whole cadence ago is not.
+    const base = {
+      everRan: true,
+      mappedPatients: 1,
+      today: "2026-03-31",
+    };
+    for (const lastCheckedAt of [null, "2026-01-01 09:00:00"]) {
+      expect(
+        isStalenessDue({
+          ...base,
+          lastCheckedAt,
+          lastAskedAt: "2026-03-23 09:00:00",
+        })
+      ).toBe(false);
+      expect(
+        isStalenessDue({
+          ...base,
+          lastCheckedAt,
+          lastAskedAt: "2026-03-02 09:00:00",
+        })
+      ).toBe(false);
+      expect(
+        isStalenessDue({
+          ...base,
+          lastCheckedAt,
+          lastAskedAt: "2026-03-01 09:00:00",
+        })
+      ).toBe(true);
+    }
+    // The ask clock never makes a FRESH portal stale.
+    expect(
+      isStalenessDue({
+        ...base,
+        lastCheckedAt: "2026-03-30 09:00:00",
+        lastAskedAt: "2026-01-01 09:00:00",
+      })
+    ).toBe(false);
+    // And it follows the same knob as the check clock.
+    expect(
+      isStalenessDue({
+        ...base,
+        lastCheckedAt: null,
+        lastAskedAt: "2026-03-23 09:00:00",
+        cadenceDays: 5,
+      })
+    ).toBe(true);
   });
 
   it("treats a mapped login whose RUNS never succeed as stale", () => {
@@ -278,6 +338,7 @@ describe("staleness evaluation", () => {
         everRan: true,
         mappedPatients: 1,
         lastCheckedAt: null,
+        lastAskedAt: null,
         today: "2026-03-04",
       })
     ).toBe(true);
