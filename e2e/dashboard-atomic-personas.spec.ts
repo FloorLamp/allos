@@ -76,7 +76,7 @@ test("segmented sleep composes in one fixed family without regularity duplicatio
   });
   try {
     await page.goto("/");
-    const family = page.locator('[data-standing-family="last-night-sleep"]');
+    const family = page.locator('[data-standing-family="day-so-far"]');
     const ids = await family
       .getByTestId("dashboard-candidate")
       .evaluateAll((nodes) =>
