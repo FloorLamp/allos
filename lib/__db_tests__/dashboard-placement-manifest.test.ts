@@ -1267,8 +1267,26 @@ describe("actual atomic dashboard manifests", () => {
   // baselines down. Leaving it at 290 would have parked 35 statements of slack over
   // the heaviest persona — room for a 20-query regression to be pasted in without
   // anyone having the conversation this bound exists to force, which is the exact
-  // decay the 535 suffered. Item 1 (deferring the closed tail's gathers) will move
-  // these numbers again; re-deriving is one line and is meant to happen every time.
+  // decay the 535 suffered. Re-deriving is one line and is meant to happen every
+  // time a gather moves these numbers.
+  //
+  // WHAT IS NOT COMING: #3369 item 1 said the closed Show-everything tail's node
+  // payloads would move behind the disclosure and take a bite out of the table
+  // above. Measured on 5045340d by attributing every statement to the page frame
+  // that issued it — one stack capture per statement, six personas, the per-line
+  // counts summing to exactly the six baselines — the tail's payloads are not what
+  // this page spends. The whole candidate-and-row region of `app/(app)/page.tsx`,
+  // every `add(...)` and every presentation built for one, issues ONE statement per
+  // persona (`getLastSleepRecordDate`, itself a dormancy date and so candidacy) and
+  // none at all on biohacker. Every other statement comes from the shared gathers
+  // ABOVE the first candidate — which is also where the candidate IDS come from.
+  // Six of those gathers do feed nothing but everything-lane candidates and are
+  // worth 32-47% of a render (collectCoachingFindings 38-44, gatherCoachingInput
+  // 17-22, getRecapCard 8-16, getHealthspanPillars 10-18, getActiveProtocolSummaries
+  // 1-13, getScheduledAppointments 1), but each MINTS the ids it feeds —
+  // `data-quality.finding:<dedupeKey>`, `recap.<line>`, `healthspan.pillar:<key>` —
+  // so deferring one defers CANDIDACY, not a payload, and that is the #3077
+  // exact-once partition rather than a cost question.
   const QUERY_CEILING = 275;
 
   it("dashboard query budget: each persona matches its recorded main baseline", () => {
