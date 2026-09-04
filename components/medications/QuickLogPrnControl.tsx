@@ -75,6 +75,7 @@ export default function QuickLogPrnControl({
   layout = "row",
   compactActions = false,
   tz: tzProp,
+  onLogged,
 }: {
   itemId: number;
   name: string;
@@ -102,6 +103,11 @@ export default function QuickLogPrnControl({
   // — the shared WhenControl's day/time must be that profile's, not the viewer's.
   // Defaults to the app-wide TimezoneProvider (the acting profile).
   tz?: string;
+  // Fired once a dose is RECORDED — used by the illness fold's dose offer, which the
+  // ruling ends when the offer is "taken" (#4712, 2026-09-04 11:20 UTC part 2). It
+  // fires on the duplicate outcome too: the dose the offer existed to get is on the
+  // ledger either way, so the prompt has been answered.
+  onLogged?: () => void;
 }) {
   const contextTz = useTimezone();
   const tz = tzProp ?? contextTz;
@@ -183,6 +189,7 @@ export default function QuickLogPrnControl({
         // now-tap keeps a live statement on screen instead of hiding one.
         if (consumed) statement.setOpen(false);
         statement.spend(consumed);
+        onLogged?.();
         return { kind: "keep" };
       },
       onError: () => {

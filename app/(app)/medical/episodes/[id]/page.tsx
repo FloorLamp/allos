@@ -38,10 +38,7 @@ import CardSectionHeader from "@/components/CardSectionHeader";
 import IllnessMedicationLogger from "@/components/illness/IllnessMedicationLogger";
 import { antipyreticPrnMeds } from "@/lib/prn-defaults";
 import { IntakeOptionsProvider } from "@/components/IntakeOptionsContext";
-import {
-  DoseOfferProvider,
-  YieldToDoseOffer,
-} from "@/components/illness/DoseOfferContext";
+import { DoseOfferProvider } from "@/components/illness/DoseOfferContext";
 import { loadIntakeFormContext } from "@/lib/intake-form-context";
 import { PICKER_SYMPTOMS, symptomLabel } from "@/lib/symptoms";
 import { dateStrInTz, isRealIsoDate } from "@/lib/date";
@@ -195,6 +192,9 @@ export default async function EpisodePage(props: {
           );
         })
       : [];
+  // The subset the fold offers and the Meds section below therefore yields, computed
+  // ONCE so the two can never name different chips (#4712 ruling 2026-09-04 part 2).
+  const antipyretics = antipyreticPrnMeds(prnMeds);
   const canAddMedication = assembled.ongoing && canWrite && !crossProfile;
   // The add door's context comes from the ONE loader, keyed on the EPISODE's profile
   // (#4609). This page used to hand its form the pediatric figures alone and wrap it in
@@ -402,10 +402,11 @@ export default async function EpisodePage(props: {
                   // THE FOLD OFFERS THE DOSE (#4712, owner ruling 2026-09-04 11:20
                   // UTC part 2) — see the matching note in IllnessCockpitBody.tsx.
                   // `antipyreticPrnMeds` is `prnMeds` narrowed, so this would be a
-                  // duplicate of the section below rather than an offer; the section
-                  // YIELDS while the offer is live, which is what makes it one dose
-                  // prompt at a time instead of two chips for one medication.
-                  antipyreticMeds={antipyreticPrnMeds(prnMeds)}
+                  // duplicate of the section below rather than an offer; that
+                  // section's chip for the SAME med yields while the offer is live,
+                  // which is what makes it one prompt for one dose instead of two
+                  // chips for one medication.
+                  antipyreticMeds={antipyretics}
                   intakeContext={intakeContext}
                   nowIso={clockNow().toISOString()}
                   photoControl={
@@ -422,40 +423,39 @@ export default async function EpisodePage(props: {
               )}
 
               {(prnMeds.length > 0 || canAddMedication) && (
-                <YieldToDoseOffer>
-                  <div
-                    className={
-                      canWrite
-                        ? "mt-5 border-t border-black/5 pt-5 dark:border-white/5"
-                        : undefined
-                    }
-                  >
-                    {/* THE HOST STATES ITS OWN SECTION (#4752 item 4). The med
+                <div
+                  className={
+                    canWrite
+                      ? "mt-5 border-t border-black/5 pt-5 dark:border-white/5"
+                      : undefined
+                  }
+                >
+                  {/* THE HOST STATES ITS OWN SECTION (#4752 item 4). The med
                       logger draws a chip row and nothing above it: on the illness
                       cockpit the card's own recovery header already says what this
                       is, and a "Meds" heading over three chips was the boilerplate
                       that rebuild removed. Here the logger IS a section among
                       sections, so this page says so — the same split
                       QuickLogPrnContent's `title` note describes. */}
-                    <CardSectionHeader
-                      title="Meds"
-                      href="/medications"
-                      variant="section"
+                  <CardSectionHeader
+                    title="Meds"
+                    href="/medications"
+                    variant="section"
+                  />
+                  <IntakeOptionsProvider
+                    options={getIntakeCatalogOptions(profileId)}
+                  >
+                    <IllnessMedicationLogger
+                      meds={prnMeds}
+                      tz={getTimezone(profileId)}
+                      profileId={target}
+                      intakeContext={intakeContext}
+                      canAdd={canAddMedication}
+                      nowIso={clockNow().toISOString()}
+                      yieldsTo={antipyretics}
                     />
-                    <IntakeOptionsProvider
-                      options={getIntakeCatalogOptions(profileId)}
-                    >
-                      <IllnessMedicationLogger
-                        meds={prnMeds}
-                        tz={getTimezone(profileId)}
-                        profileId={target}
-                        intakeContext={intakeContext}
-                        canAdd={canAddMedication}
-                        nowIso={clockNow().toISOString()}
-                      />
-                    </IntakeOptionsProvider>
-                  </div>
-                </YieldToDoseOffer>
+                  </IntakeOptionsProvider>
+                </div>
               )}
             </DoseOfferProvider>
           ) : undefined

@@ -4,6 +4,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SymptomLogBar from "@/components/illness/SymptomLogBar";
@@ -310,7 +311,7 @@ describe("the row grammar: primary episode action, dose beside it, Not now as a 
   });
 });
 
-// ONE DOSE PROMPT AT A TIME (#4712, owner ruling 2026-09-04 11:20 UTC part 2).
+// ONE PROMPT FOR ONE DOSE (#4712, owner ruling 2026-09-04 11:20 UTC part 2).
 //
 // The cockpit's persistent Meds section (`cockpit-prn`) renders a
 // `cockpit-med-chip-<id>` for every active PRN, and `antipyreticPrnMeds` is that same
@@ -318,13 +319,15 @@ describe("the row grammar: primary episode action, dose beside it, Not now as a 
 // screen. CI found it as a strict-mode violation (`dashboard-illness-phase5.spec.ts`):
 // two elements for one medication inside one situation group. It was fixed by
 // suppressing the DOSE half, which left the ruled block's dose side rendering nowhere
-// at all; the ruling resolves it the other way — the PERSISTENT SECTION YIELDS while
-// the offer is live.
+// at all; the ruling resolves it the other way — the section yields its claim to that
+// prompt while the offer is live.
 //
-// The chip count is the assertion either way, and it is the one that would have caught
-// the original defect: exactly ONE `cockpit-med-chip-501` at every moment, moving
-// between the two surfaces rather than appearing on both.
-describe("the Meds section yields to the fold's dose offer (#4712 ruling part 2)", () => {
+// WHAT YIELDS IS THE CHIP. The section itself stays: its "Add medication" door and its
+// other medications are not dose prompts, and taking controls off a safety surface is
+// the worse error. So the assertions come in pairs — the antipyretic's chip MOVES
+// (exactly ONE `cockpit-med-chip-501` at every moment, never two and never none),
+// and everything beside it STAYS.
+describe("the Meds chip yields to the fold's dose offer (#4712 ruling part 2)", () => {
   const EPISODE: AssembledEpisode = {
     id: 900,
     situation: "Stomach bug",
@@ -354,8 +357,9 @@ describe("the Meds section yields to the fold's dose offer (#4712 ruling part 2)
     worsening: false,
   };
 
-  // A PRN that is NOT a fever reducer, so the fold has no dose to offer for it — the
-  // fixture that must NOT reach the yielding state the assertions above forbid.
+  // A PRN that is NOT a fever reducer. It is in the section and never in the offer, so
+  // it is the control for "only the offered chip yields" — and, on its own, the
+  // fixture that must NOT reach the yielding state at all.
   const ANTACID: PrnMedForQuickLog = {
     ...ANTIPYRETIC,
     id: 502,
@@ -413,59 +417,91 @@ describe("the Meds section yields to the fold's dose offer (#4712 ruling part 2)
     );
   }
 
-  const chips = () =>
-    screen.queryAllByTestId(`cockpit-med-chip-${ANTIPYRETIC.id}`);
+  const chips = (id = ANTIPYRETIC.id) =>
+    screen.queryAllByTestId(`cockpit-med-chip-${id}`);
+  const section = () => screen.getByTestId("cockpit-prn");
 
-  it("moves the antipyretic's chip into the offer rather than showing a second one", async () => {
-    renderCockpit();
-    // Before the reading: the persistent section owns the chip.
+  it("moves the antipyretic's chip into the offer and leaves the section standing", async () => {
+    renderCockpit(
+      EPISODE.id,
+      cockpitModel([ANTIPYRETIC, ANTACID], [ANTIPYRETIC])
+    );
+    // Before the reading: the persistent section owns both chips.
+    expect(section().contains(chips()[0])).toBe(true);
     expect(chips()).toHaveLength(1);
-    expect(screen.getByTestId("cockpit-prn")).toBeTruthy();
 
     await openFold();
     await logReading("102.1");
     // The dose half is now reachable — the thing that rendered nowhere before this
-    // ruling — and the persistent section has stepped aside for it.
+    // ruling — and the antipyretic's ONE chip has moved into it.
     expect(screen.getByTestId("fever-offer-dose")).toBeTruthy();
-    expect(screen.queryByTestId("cockpit-prn")).toBeNull();
     expect(chips()).toHaveLength(1);
     expect(screen.getByTestId("fever-offer").contains(chips()[0])).toBe(true);
+
+    // AND THE SECTION IS STILL THERE, with everything that is not that dose prompt:
+    // the other medication, and the door that adds one.
+    expect(section()).toBeTruthy();
+    expect(section().contains(chips(ANTACID.id)[0])).toBe(true);
+    expect(
+      section().contains(screen.getByTestId("illness-add-medication"))
+    ).toBe(true);
   });
 
-  it("gives the section back when the offer is dismissed", async () => {
+  it("gives the chip back when the offer is dismissed", async () => {
     renderCockpit();
     await openFold();
     await logReading("102.1");
+    expect(chips()).toHaveLength(1);
+    expect(section().contains(chips()[0])).toBe(false);
     await act(async () =>
       fireEvent.click(screen.getByTestId("fever-offer-dismiss"))
     );
-    expect(screen.getByTestId("cockpit-prn")).toBeTruthy();
     expect(chips()).toHaveLength(1);
+    expect(section().contains(chips()[0])).toBe(true);
   });
 
-  it("gives the section back when the fold closes", async () => {
+  it("gives the chip back when the fold closes", async () => {
     renderCockpit();
     await openFold();
     await logReading("102.1");
-    expect(screen.queryByTestId("cockpit-prn")).toBeNull();
-    await openFold(); // the same toggle, now closing the fold
-    expect(screen.getByTestId("cockpit-prn")).toBeTruthy();
     expect(chips()).toHaveLength(1);
+    expect(section().contains(chips()[0])).toBe(false);
+    await openFold(); // the same toggle, now closing the fold
+    expect(chips()).toHaveLength(1);
+    expect(section().contains(chips()[0])).toBe(true);
+  });
+
+  // TAKEN ENDS THE OFFER, which is the ruling's own word and the one state that did
+  // not happen before: the offer used to survive its own acceptance.
+  it("gives the chip back when the dose is TAKEN through the offer", async () => {
+    renderCockpit();
+    await openFold();
+    await logReading("102.1");
+    const offerChip = within(screen.getByTestId("fever-offer")).getByTestId(
+      `cockpit-med-chip-${ANTIPYRETIC.id}`
+    );
+    await act(async () => fireEvent.click(offerChip));
+    await act(async () =>
+      fireEvent.click(
+        within(screen.getByTestId("fever-offer")).getByTestId("prn-log-now")
+      )
+    );
+    expect(posted.dose).toHaveLength(1);
+    expect(screen.queryByTestId("fever-offer")).toBeNull();
+    expect(chips()).toHaveLength(1);
+    expect(section().contains(chips()[0])).toBe(true);
   });
 
   // THE SECTION YIELDS TO A DOSE, NEVER TO THE EPISODE HALF ALONE. With no eligible
-  // antipyretic the offer takes nothing off the screen — otherwise a fever reading
-  // would hide the meds a caregiver came for and offer nothing in their place.
-  it("does not yield when the offer carries no dose", async () => {
+  // antipyretic the offer takes nothing off the screen.
+  it("yields nothing when the offer carries no dose", async () => {
     renderCockpit(null, cockpitModel([ANTACID], []));
     await openFold();
     await logReading("102.1");
     expect(screen.getByTestId("fever-offer-open-episode")).toBeTruthy();
     expect(screen.queryByTestId("fever-offer-dose")).toBeNull();
-    expect(screen.getByTestId("cockpit-prn")).toBeTruthy();
-    expect(
-      screen.getAllByTestId(`cockpit-med-chip-${ANTACID.id}`)
-    ).toHaveLength(1);
+    expect(chips(ANTACID.id)).toHaveLength(1);
+    expect(section().contains(chips(ANTACID.id)[0])).toBe(true);
   });
 
   // BOTH HALVES AT ONCE, on one surface, for the first time: the 16:47Z comment
@@ -476,7 +512,7 @@ describe("the Meds section yields to the fold's dose offer (#4712 ruling part 2)
     await logReading("102.1");
     const row = screen.getByTestId("fever-offer-open-episode").parentElement!;
     expect(row.contains(screen.getByTestId("fever-offer-dose"))).toBe(true);
-    expect(screen.queryByTestId("cockpit-prn")).toBeNull();
     expect(chips()).toHaveLength(1);
+    expect(section().contains(chips()[0])).toBe(false);
   });
 });

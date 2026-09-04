@@ -9,9 +9,15 @@ import { createContext, useContext, useState, type ReactNode } from "react";
 // `antipyreticPrnMeds` is `prnMeds` narrowed (lib/prn-defaults.ts), so the fold's dose
 // offer could never show a chip the section was not already showing. That is why the
 // dose half of the ruled block was suppressed on both mounts and rendered nowhere.
-// The ruling resolves it the other way round: the PERSISTENT SECTION YIELDS while the
-// fold is offering, so the antipyretic's chip is in exactly one place at any moment,
-// and the section comes back when the offer is taken or dismissed.
+// The ruling resolves it the other way round: the persistent section YIELDS ITS CLAIM
+// TO THAT PROMPT while the fold is offering, so the antipyretic's chip is in exactly
+// one place at any moment and comes back when the offer is taken or dismissed.
+//
+// WHAT YIELDS IS THE CHIP, NOT THE SECTION. The ruling names the concrete thing that
+// hides — "the Meds chip for that antipyretic" — and the status line, the "N more"
+// fold and "Add medication" are not dose prompts, so the principle does not reach
+// them. Removing controls from a safety surface is the worse error where the wording
+// leaves room, so this removes as little as says the ruling's sentence.
 //
 // The fold's offer is client state inside `SymptomLogBar` and the Meds section is a
 // server-rendered sibling, so the signal lives ABOVE both — the same shape
@@ -20,7 +26,8 @@ import { createContext, useContext, useState, type ReactNode } from "react";
 //
 // FALLBACK, NOT A FLAG. A bar mounted without a provider (the quick-entry sheet, the
 // day view, the cycles page) has no persistent Meds section beside it, so there is
-// nothing to yield and `useDoseOfferSignal` hands it a no-op.
+// nothing to yield: `useDoseOfferSignal` hands it a no-op and `useDoseOfferLive`
+// answers false.
 interface DoseOfferSignal {
   live: boolean;
   setLive: (live: boolean) => void;
@@ -43,11 +50,10 @@ export function useDoseOfferSignal(): (live: boolean) => void {
   return useContext(DoseOfferContext)?.setLive ?? (() => {});
 }
 
-// The persistent Meds section, wrapped by its host. It is REMOVED while the fold's
-// dose offer is live rather than hidden, because a hidden chip is still a second
-// `cockpit-med-chip-<id>` in the tree for one medication — the strict-mode collision
-// that found this conflict in the first place.
-export function YieldToDoseOffer({ children }: { children: ReactNode }) {
-  const signal = useContext(DoseOfferContext);
-  return signal?.live ? null : <>{children}</>;
+// Whether the fold's dose offer is on screen. Read by `IllnessMedicationLogger`, whose
+// host names the chips it yields (`yieldsTo`) — the yielded chip is REMOVED rather than
+// hidden, because a hidden chip is still a second `cockpit-med-chip-<id>` in the tree
+// for one medication, which is the strict-mode collision that found this conflict.
+export function useDoseOfferLive(): boolean {
+  return useContext(DoseOfferContext)?.live ?? false;
 }

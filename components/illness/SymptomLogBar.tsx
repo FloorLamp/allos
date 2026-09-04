@@ -1026,6 +1026,11 @@ export default function SymptomLogBar({
                       intakeContext={intakeContext}
                       canAdd={false}
                       nowIso={nowIso}
+                      // TAKEN ENDS THE OFFER (#4712 ruling part 2's own words). The
+                      // dose is on the ledger and the host's Meds chip comes straight
+                      // back; the fold itself stays open, exactly as accepting the
+                      // episode half leaves it.
+                      onLogged={() => showFeverOffer(null)}
                     />
                   </div>
                 )}

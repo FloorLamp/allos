@@ -13,10 +13,7 @@ import { IntakeOptionsProvider } from "@/components/IntakeOptionsContext";
 import StaleEpisodeNudge from "@/components/illness/StaleEpisodeNudge";
 import type { DashboardIllnessCockpitModel } from "@/lib/dashboard-illness-cockpit";
 import { CockpitDayProvider } from "@/components/illness/CockpitDayContext";
-import {
-  DoseOfferProvider,
-  YieldToDoseOffer,
-} from "@/components/illness/DoseOfferContext";
+import { DoseOfferProvider } from "@/components/illness/DoseOfferContext";
 
 // The full illness-cockpit BODY for one patient (issue #858), recovery-led and compact
 // since #4752. It is the SAME machinery it always was — the one-tap SymptomLogBar with
@@ -144,8 +141,8 @@ export default function IllnessCockpitBody({
                 // fed nobody for a while, because `antipyreticPrnMeds` is
                 // `controls.prnMeds` narrowed and the persistent section was already
                 // showing every one of those chips — two `cockpit-med-chip-<id>` for
-                // one medication inside one situation group. `YieldToDoseOffer` below
-                // is the other half of this: one dose prompt at a time, so wiring
+                // one medication inside one situation group. The section's `yieldsTo`
+                // below is the other half of this: one prompt for one dose, so wiring
                 // these without it is what would put the second chip back.
                 antipyreticMeds={controls.antipyreticPrnMeds}
                 intakeContext={controls.intakeForm}
@@ -170,26 +167,25 @@ export default function IllnessCockpitBody({
             controls &&
             ownsSharedProfileControls &&
             (controls.prnMeds.length > 0 || !crossProfile) && (
-              <YieldToDoseOffer>
-                <div
-                  className="mt-3 border-t border-black/5 pt-3 sm:mt-4 sm:pt-4 dark:border-white/5"
-                  data-testid="cockpit-prn"
-                >
-                  {/* Its inline quick-add reads the SAME ranked medication options the
+              <div
+                className="mt-3 border-t border-black/5 pt-3 sm:mt-4 sm:pt-4 dark:border-white/5"
+                data-testid="cockpit-prn"
+              >
+                {/* Its inline quick-add reads the SAME ranked medication options the
               Medications page offers (#1677) — resolved for the patient whose cockpit
               this is, not for whoever is looking at it. */}
-                  <IntakeOptionsProvider options={controls.intakeOptions}>
-                    <IllnessMedicationLogger
-                      meds={controls.prnMeds}
-                      tz={timeZone}
-                      profileId={target}
-                      intakeContext={controls.intakeForm}
-                      canAdd={!crossProfile}
-                      nowIso={nowIso}
-                    />
-                  </IntakeOptionsProvider>
-                </div>
-              </YieldToDoseOffer>
+                <IntakeOptionsProvider options={controls.intakeOptions}>
+                  <IllnessMedicationLogger
+                    meds={controls.prnMeds}
+                    tz={timeZone}
+                    profileId={target}
+                    intakeContext={controls.intakeForm}
+                    canAdd={!crossProfile}
+                    nowIso={nowIso}
+                    yieldsTo={controls.antipyreticPrnMeds}
+                  />
+                </IntakeOptionsProvider>
+              </div>
             )}
         </div>
       </DoseOfferProvider>
