@@ -151,17 +151,87 @@ for my page" does not.
 
 ---
 
-## 3. Mark specs — and the scaffold that owns them
+## 3. Two renderers, a spec, and the scaffold that owns the marks
 
-**`components/chart-scaffold.tsx` is the chokepoint.** Every card consumes its
-prop bags; the conventions below are its defaults, not per-file copies. This is
-the point: eight cards each hand-copying `<CartesianGrid strokeDasharray="3 3">`
-is why the mark conventions could not be fixed once.
+**`components/chart-scaffold.tsx` is the chokepoint.** Every chart consumes its
+prop bags; the conventions in the table below are its defaults, not per-file
+copies. This is the point: eight cards each hand-copying
+`<CartesianGrid strokeDasharray="3 3">` is why the mark conventions could not be
+fixed once.
 
 It exports **prop bags, not wrapper components** — recharts identifies children
 by component type, so a `<ChartGrid/>` wrapping a `<CartesianGrid/>` renders no
 grid at all. (`ChartLegend` is a real component only because it sits outside the
 recharts tree.)
+
+### The tree is a spec (#4925)
+
+The marks were settled and **nobody owned the tree**. Nine cards each hand-built
+root element, axes, tooltip, grid, series, reference marks and gap handling, and
+the only thing that stopped them drifting was that someone read all nine — which
+is how five copies of one `<XAxis>` and three spellings of "draw a horizontal
+target" survived until #4924 went looking. The day-fill and sparse machinery
+lived inside one of them, so the other four could not draw a gap band at all.
+
+So there are **two renderers**, and every chart is a spec over one:
+
+| Renderer                               | Draws                                                                               | Specs                                                                                  |
+| -------------------------------------- | ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `components/TimeSeriesChartInner.tsx`  | every line chart                                                                    | `LineChartCard`, `BiomarkerChart`, `CompareChart`, `GrowthChart`, `SourceCompareChart` |
+| `components/BarSeriesChartInner.tsx`   | every bar chart                                                                     | `StackedBarCard`, `ZoneMinutesCard`, `BarSparkline`                                    |
+| `components/ScatterChartCardInner.tsx` | two-variable relationship — one form, one consumer, nothing shared with a time axis | itself                                                                                 |
+
+**A new chart on a page is a spec. A new chart FORM is a renderer.** If the
+answer is "a line chart, but for my page", write a `TimeSeriesSpec`.
+
+**The spec is plain data** (`components/chart-spec.ts`): no React, no recharts,
+no prop bags, no render functions. That is a constraint and not a style. A spec
+is built by the PUBLIC card — the module a server page imports — and recharts is
+code-split behind the renderer, so a spec carrying a scaffold bag would drag
+recharts back across that seam and a page drawing no chart would load it. A spec
+NAMES a mark; `chart-scaffold`'s resolving half (`chartSpecDots`,
+`chartReferenceMarks`, `chartSpecXAxisProps`, …) turns the name back into a bag.
+
+**The x axis has four kinds**, and each is a different question about what x
+means:
+
+| Kind       | x is                           | Ticks                                  | Used by                           |
+| ---------- | ------------------------------ | -------------------------------------- | --------------------------------- |
+| `day`      | a calendar day, as a category  | `categoryDateTicks` — the day policy   | `LineChartCard`                   |
+| `instant`  | an epoch, time-proportional    | `timeAxisTicks` (#402)                 | Biomarker, Compare, SourceCompare |
+| `numeric`  | a plain number (age in months) | the caller's own words ("18m", "1.5y") | Growth                            |
+| `category` | a category that is not a day   | recharts' own fit                      | ZoneMinutes (WEEKS), StackedBar   |
+
+**A day axis must declare its gaps, and the TYPE is what enforces it.** `gap` is
+required on the `day` arm and has no default: a chart whose x is a calendar day
+either names the runs it has no data for or writes `{ none: true }` and means it.
+That is why it is a type and not a scan — the wrong state cannot be written down.
+The renderer draws the bands, so every day-kind chart is gap-capable rather than
+only the one card that used to own the machinery.
+
+**The code-split seam is one per renderer**, not one per card:
+`TimeSeriesChart` / `BarSeriesChart` are the `dynamic()` boundaries with the
+loading and offline placeholders, and both honor the spec's own height so a
+chunk arriving late does not jump the layout.
+
+**The four hand-drawn SVG panels stay hand-drawn.** `IntradayChart`,
+`illness/FeverChart`, `dashboard/StandingSparkline` and `EquipmentTrend` keep
+their fixed-viewBox SVG — bespoke lanes, zoom, a per-row cached sparkline —
+because rebuilding them on a renderer was offered and declined (owner,
+2026-09-03). What they share is the POLICY, not the tree: the label-size floor
+through `lib/chart-svg.ts` (Intraday via `intradayGeometry`'s `viewBoxFontSize`,
+Fever directly; the other two draw no text at all, so there is nothing for them
+to adopt). The date-tick ladder in `lib/chart-time-axis.ts` reaches none of them
+today — Intraday's x is a clock, not a calendar, and Fever samples four dates by
+index rather than by a named calendar step. Fever is the one panel the ladder
+would fit, and adopting it moves which dates that panel labels.
+
+**Reference marks are a vocabulary of six**, replacing nine hand-written
+`<ReferenceLine>` / `<ReferenceArea>` blocks: `event` (a medication start, an
+appointment), `window` (a protocol's intervention span), `unlogged` (a silence in
+the data, in neutral ink with its own class), `now` ("you are here"), `target` (a
+horizontal line — "reach this") and `band` (a horizontal range — "stay inside
+this").
 
 | Decision         | Rule                                                                                                                        | Export                             |
 | ---------------- | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
@@ -589,15 +659,16 @@ at once:
 
 ## 6. The guards, and what each one catches
 
-| Test                                        | Catches                                                                                                                                                               |
-| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `lib/__tests__/chart-palette.test.ts`       | a palette edit that breaks any of the six checks, in either theme; a ramp that stops reading as a ramp                                                                |
-| `lib/__tests__/chart-colors-scan.test.ts`   | a raw hex in `app/`/`components/`; a hand-rolled same-hue `bg-*` ladder                                                                                               |
-| `lib/__tests__/chart-scaffold-scan.test.ts` | a raw `strokeDasharray="…"`; a hand-built tooltip `contentStyle={{`; a `recharts` import outside the blessed cards; a card that imports recharts but not the scaffold |
-| `lib/__tests__/micro-text-size.test.ts`     | `text-[9px]`, numeric `fontSize: 9`, **and** a viewBox size that _renders_ under 9px (below)                                                                          |
-| `lib/__tests__/chart-detail-href.test.ts`   | a Trends chart drawn outside `ChartCard` (a dead end); a `detailHref={null}` with no `detail-none:` justification; a registry kind the detail page can't resolve      |
-| `lib/__tests__/chart-svg.test.ts`           | the shared viewBox text math itself: the scale ratio, the computed floor, the label clamp and the row-collision rule                                                  |
-| `lib/__tests__/day-fill-scan.test.ts`       | a day-grain chart card with neither `gapFill` nor a `gap-exempt:` reason; a metric with no declared gap policy; a stale registry entry                                |
+| Test                                             | Catches                                                                                                                                                                                                  |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lib/__tests__/chart-palette.test.ts`            | a palette edit that breaks any of the six checks, in either theme; a ramp that stops reading as a ramp                                                                                                   |
+| `lib/__tests__/chart-colors-scan.test.ts`        | a raw hex in `app/`/`components/`; a hand-rolled same-hue `bg-*` ladder                                                                                                                                  |
+| `lib/__tests__/chart-scaffold-scan.test.ts`      | a raw `strokeDasharray="…"`; a hand-built tooltip `contentStyle={{`; a `recharts` import outside the scaffold, the two renderers and Scatter; a curve literal                                            |
+| `lib/__tests__/micro-text-size.test.ts`          | `text-[9px]`, numeric `fontSize: 9`, **and** a viewBox size that _renders_ under 9px (below)                                                                                                             |
+| `lib/__tests__/chart-detail-href.test.ts`        | a Trends chart drawn outside `ChartCard` (a dead end); a `detailHref={null}` with no `detail-none:` justification; a registry kind the detail page can't resolve                                         |
+| `lib/__tests__/chart-svg.test.ts`                | the shared viewBox text math itself: the scale ratio, the computed floor, the label clamp and the row-collision rule                                                                                     |
+| `lib/__tests__/day-fill-scan.test.ts`            | a day-grain chart card with neither `gapFill` nor a `gap-exempt:` reason; a metric with no declared gap policy; a stale registry entry; **and, at typecheck, a `day`-kind spec with no gap declaration** |
+| `components/__tests__/chart-tree-shape.test.tsx` | a card whose rendered tree changed shape — a dropped series, a lost reference mark, a moved tick, a gap band that stopped drawing, marks in a different layer order                                      |
 
 ### Hand-drawn fixed-viewBox panels get a COMPUTED floor, not an exemption
 
