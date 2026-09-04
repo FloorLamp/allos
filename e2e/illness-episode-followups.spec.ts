@@ -72,14 +72,26 @@ async function openEpisodeEditor(page: Page) {
     page,
     controls.getByRole("button", { name: "More episode actions" })
   );
+  // By ROLE: the panel declares `role="menu"`, so its items answer to
+  // `menuitem` — and an item that stops being one is a real regression rather
+  // than a styling detail (#5181). The episode is either promoted or not, so
+  // exactly one of the two condition items is on offer.
   await expect(
-    page.getByText(/Promote to condition|Remove condition/, { exact: true })
-  ).toBeVisible();
+    page.getByRole("menuitem", {
+      name: /^(Promote to condition|Remove condition)$/,
+    })
+  ).toHaveCount(1);
   await page.getByTestId("episode-edit-open").click();
   await expect(page.getByTestId("episode-editor")).toBeVisible();
 }
 
-async function openEpisodeActions(page: Page) {
+// Returns the OPEN MENU, not the row it hangs off. From `md` up AnchoredPanel
+// portals the panel to <body>, so no item inside it is a descendant of the
+// controls div — a locator scoped to the row matched nothing at all, and the one
+// caller that guarded on `isVisible()` took its else branch every run. The menu
+// is addressed by the role it declares, which is also how its items are
+// addressed (#5181).
+async function openEpisodeActions(page: Page): Promise<Locator> {
   const controls = page
     .getByTestId("episode-illness-timeline")
     .getByTestId("episode-controls");
@@ -87,7 +99,9 @@ async function openEpisodeActions(page: Page) {
     page,
     controls.getByRole("button", { name: "More episode actions" })
   );
-  return controls;
+  const menu = page.getByRole("menu");
+  await expect(menu).toBeVisible();
+  return menu;
 }
 
 // Illness-episode follow-ups (#856). The seed makes profile 1 currently sick with an
@@ -524,8 +538,13 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     expect(lifecycleBox?.y).toBeGreaterThan(lifecyclePhotosBox?.y ?? 0);
 
     // Promoting creates a durable Conditions record, so it uses the shared confirm.
-    const controls = await openEpisodeActions(page);
-    const promote = controls.getByRole("button", {
+    const menu = await openEpisodeActions(page);
+    await expect(
+      menu.getByRole("menuitem", {
+        name: /^(Promote to condition|Remove condition)$/,
+      })
+    ).toHaveCount(1);
+    const promote = menu.getByRole("menuitem", {
       name: "Promote to condition",
     });
     if (await promote.isVisible()) {
