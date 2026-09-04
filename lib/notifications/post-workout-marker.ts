@@ -76,6 +76,55 @@ export function postWorkoutFinishMarkerKey(activityId: number): string {
   return `${POST_WORKOUT_MARKER_PREFIX}${activityId}`;
 }
 
+// ── The follow-up the fold registers (#4996) ─────────────────────────────────
+//
+// The announcement is keyed on ARRIVAL ORDER and nothing corrected it. Health Connect
+// lands 30-45 min before Strava on every ride, untyped, so a twin-upload rider's one
+// message is always the poorest twin's: "🏋️ Session complete" with the type ask, while
+// the app goes on to learn the ride was "Morning Ride, cardio, 51 min, 18.25 km".
+// #2570's fold is what makes that ONE message (and it stays untouched — no second send
+// is ever added here); this is what lets the message it kept be CORRECTED.
+//
+// The record is the one fact the fold destroys and nothing else remembers: which row
+// the keeper took the announcement from. `notify_recap_keeper_<droppedId>` holds the
+// keeper's id, so the sweep can start from the `actype:<profile>:<droppedId>` token the
+// delivered message still carries — the address the reconciler already uses — and end
+// at the row the app now knows about.
+//
+// A CHAIN, not a single hop, because the issue's own orderings produce one: a
+// same-source twin fold (A into B) followed by the Strava fold (B into D) leaves the
+// message naming A and the truth at D. Each fold writes one link and the read walks
+// them, so no fold has to know about a fold that has not happened yet.
+function recapKeeperKey(droppedId: number): string {
+  return `notify_recap_keeper_${droppedId}`;
+}
+
+// One session's rows are twin uploads of one ride, and each fold spends at least one of
+// them, so the chain is short by construction. The bound is here so a corrupt or
+// self-referential value cannot spin the sweep, not because a real chain approaches it.
+const RECAP_KEEPER_MAX_HOPS = 8;
+
+/**
+ * The row a delivered recap is now ABOUT, given the row it announced.
+ *
+ * Returns the announced id unchanged when no fold has moved it — which is the common
+ * case and the reason the rebuild is a no-op for most messages.
+ */
+export function recapRebuildTarget(
+  profileId: number,
+  announcedId: number
+): number {
+  let id = announcedId;
+  for (let hop = 0; hop < RECAP_KEEPER_MAX_HOPS; hop++) {
+    const next = getProfileSetting(profileId, recapKeeperKey(id));
+    if (next == null) return id;
+    const parsed = Number(next);
+    if (!Number.isInteger(parsed) || parsed <= 0 || parsed === id) return id;
+    id = parsed;
+  }
+  return id;
+}
+
 /** The stored value (the profile-local date of the send), or null when unannounced. */
 export function postWorkoutAnnouncedOn(
   profileId: number,
@@ -102,6 +151,11 @@ export function postWorkoutAnnouncedOn(
  *    AUTOINCREMENT id never recycles (#203), so a marker for a deleted row can never
  *    suppress another session's reminder — and deleting them would make this fold a
  *    destructive settings write inside an ingest transaction for no gain.
+ *  - IT ALSO REGISTERS THE RECAP FOLLOW-UP (#4996). Carrying the marker is what makes
+ *    the keeper unannounced-but-covered; the same moment is the only one that knows
+ *    which row's delivered message is now about the keeper, so the redirect is written
+ *    here rather than reconstructed later from a merge trace that records signatures
+ *    rather than ids.
  *  - UNDO DOES NOT REVERSE IT. `revertActivityMerge` restores a drop under a NEW id,
  *    which has no marker of its own, so the inherited one on the keeper is all that
  *    remembers the session was announced. Reversing it could only ever cause a second
@@ -118,6 +172,9 @@ export function carryPostWorkoutMarker(
     const value = postWorkoutAnnouncedOn(profileId, dropId);
     if (value == null) continue;
     setProfileSetting(profileId, postWorkoutFinishMarkerKey(keepId), value);
+    // The announced row is being destroyed and its message is not: register where the
+    // sentence's subject went (#4996), in the same transaction that moves the marker.
+    setProfileSetting(profileId, recapKeeperKey(dropId), String(keepId));
     return dropId;
   }
   return null;

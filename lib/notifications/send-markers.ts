@@ -509,6 +509,10 @@ export const NON_MARKER_NOTIFY_KEYS: readonly {
     what: "the digest prose reconciler's last-rebuild record (#2069): `date|dependency stamp|epoch ms`, written by lib/notifications/reconcile.ts and read back by its own pre-check. Nothing is ever suppressed by it — it only decides whether a REBUILD is worth paying for, and its floor forces one regardless once the record is old enough",
   },
   {
+    key: "notify_recap_keeper_",
+    what: "where a merge moved a delivered recap's SUBJECT (#4996): `notify_recap_keeper_<droppedActivityId>` holds the keeper's id, written by carryPostWorkoutMarker (lib/notifications/post-workout-marker.ts) inside writeActivityFold at the moment the announced row is destroyed, and read by the workout-recap prose reconciler so the sweep can start from the `actype:<profile>:<droppedId>` token the delivered message still carries. It gates a silent EDIT and never a send — the session's one send is deduped by notify_last_post_workout_ above, which this key is written beside, so it can neither cause a contact nor suppress one. Id-keyed, so an unread link is an inert dead row (#203)",
+  },
+  {
     key: "notify_wear_reminder_claim",
     what: "what the delivered bedtime wear reminder CLAIMED (#3027): `profile-local date|ISO frontier instant`, written on delivery by scripts/notify.ts and read by the prose reconciler to ask whether a later push has falsified the sentence. It gates a silent EDIT and never a send — the night's single send is deduped by notify_last_wear_reminder above, and this key is written after that one, so it cannot affect whether anything is sent. It exists because the claimed instant is UNRECOVERABLE afterwards: the falsifying event is data arriving with timestamps EARLIER than now, so re-reading the stream gives the frontier as it is and never as it was",
   },

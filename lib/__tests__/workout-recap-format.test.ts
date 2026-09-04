@@ -5,6 +5,7 @@ import {
   activityTypeAskActions,
   composeFinishNudge,
   finishNudgeTitle,
+  STRAVA_DETAILS_FOLLOW_LINE,
   importedRecapLine,
   recapNudgeLine,
   weeklyRemainingLine,
@@ -444,5 +445,61 @@ describe("the type ask rides an existing message (#2272)", () => {
     expect(composeFinishNudge("Workout done", doseMsg)!.actions).toEqual(
       doseMsg.actions
     );
+  });
+});
+
+// ── #4996: the provisional line rides the ask ────────────────────────────────
+//
+// It is part of the SAME send — a line on a message already going out — so it changes
+// what is shown and nothing about what is sent. It hangs off `FinishTypeAsk` because the
+// two stand and fall together: both are true exactly while the announced row is
+// `unclassified`, and the fold's reconciler drops both in one edit.
+describe("the provisional line says details follow (#4996)", () => {
+  const withLine = {
+    prompt: ACTIVITY_TYPE_ASK_PROMPT,
+    actions: activityTypeAskActions(1, 414),
+    provisional: STRAVA_DETAILS_FOLLOW_LINE,
+  };
+  const withoutLine = {
+    prompt: ACTIVITY_TYPE_ASK_PROMPT,
+    actions: activityTypeAskActions(1, 414),
+  };
+
+  it.each([
+    ["recap-only", null as NotificationMessage | null],
+    ["riding a dose message", doseMsg],
+  ])("ends the message with it — %s", (_name, dose) => {
+    const msg = composeFinishNudge(
+      "Morning Ride done · 51 min",
+      dose,
+      withLine
+    );
+    expect(plainBody(msg!.body).endsWith(STRAVA_DETAILS_FOLLOW_LINE)).toBe(
+      true
+    );
+    // It follows the ask rather than displacing it: the question is still asked.
+    expect(plainBody(msg!.body)).toContain(ACTIVITY_TYPE_ASK_PROMPT);
+  });
+
+  it("is absent when the ask carries none — the type ask is the whole state", () => {
+    const msg = composeFinishNudge(
+      "Morning Ride done · 51 min",
+      null,
+      withoutLine
+    );
+    expect(plainBody(msg!.body)).toBe(
+      `Morning Ride done · 51 min\n\n${ACTIVITY_TYPE_ASK_PROMPT}`
+    );
+  });
+
+  it("cannot appear without the ask — no ask, no message change at all", () => {
+    // The absence ruling in its sharpest form: with no ask there is no state to be
+    // provisional about, and the type makes that unrepresentable rather than guarded.
+    const msg = composeFinishNudge("Morning Ride done · 51 min", null, null);
+    expect(plainBody(msg!.body)).toBe("Morning Ride done · 51 min");
+  });
+
+  it("still sends nothing when there is nothing to ride", () => {
+    expect(composeFinishNudge(null, null, withLine)).toBeNull();
   });
 });
