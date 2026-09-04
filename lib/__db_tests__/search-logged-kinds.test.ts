@@ -28,6 +28,7 @@ import { zonedWallTimeToUtc } from "@/lib/date";
 import { setLoginSetting, setProfileSetting } from "@/lib/settings";
 import { timelineEntryAnchorId } from "@/lib/timeline-format";
 import type { SearchHit } from "@/lib/search-rank";
+import { machineDateHits } from "@/lib/machine-date-census";
 import type { SearchLoggedKind } from "@/lib/queries/search-logged";
 
 const TZ = "America/Los_Angeles";
@@ -212,7 +213,8 @@ const FIXTURES: LoggedFixture[] = [
 // assertion — the cap's own fixture lives in its own describe, on its own profile.
 function loggedHits(profileId: number, query: string): SearchHit[] {
   return (
-    searchAll(profileId, query).find((g) => g.domain === "logged")?.hits ?? []
+    searchAll(profileId, query, loginId).find((g) => g.domain === "logged")
+      ?.hits ?? []
   );
 }
 
@@ -299,7 +301,7 @@ describe("the logged kinds in global search (#5006)", () => {
   });
 
   it("shows the entries above the practice that names them, and above its list entry", () => {
-    const groups = searchAll(mine, "sauna").map((g) => g.domain);
+    const groups = searchAll(mine, "sauna", loginId).map((g) => g.domain);
     // The catalog entity is built from these very sessions (`getPracticeSearchRows`),
     // so this query really does render both groups — which is what makes the
     // comparison below an assertion about ORDER rather than about presence.
@@ -316,7 +318,23 @@ describe("the logged kinds in global search (#5006)", () => {
     // boundary, so the hit is matchable on 70.4 and titled with the measure alone.
     const found = loggedHits(mine, "70.4");
     expect(found[0].title).toBe("Weight");
-    expect(found[0].subtitle).toBe(`Reading · ${DAYS[DAYS.length - 1]}`);
+    // `<kind> · <date>`, with the date in the LOGIN'S shape — the issue pinned the
+    // shape, and a storage-format date in user copy is the #3492/#3545 defect. The
+    // hit's `date` field keeps the ISO day; that one is never printed.
+    expect(found[0].subtitle).toMatch(/^Reading · Aug 29\b/);
+    expect(found[0].date).toBe(DAYS[DAYS.length - 1]);
+  });
+
+  // The rule module itself, not a second spelling of it: no logged subtitle may carry
+  // a machine date, whatever kind or day it came from.
+  it.each(FIXTURES)("$kind: no subtitle states a machine date", (fixture) => {
+    const found = hitsOf(mine, fixture);
+    expect(found).not.toHaveLength(0);
+    for (const hit of found) {
+      expect(machineDateHits(hit.subtitle ?? ""), hit.subtitle ?? "").toEqual(
+        []
+      );
+    }
   });
 });
 
@@ -412,13 +430,17 @@ describe("the five-across-all-kinds cap (#5006)", () => {
       ...CAP_DAYS.practice.slice(0, 3),
       ...CAP_DAYS.dose.slice(0, 2),
     ]);
-    // The kind lives in the SUBTITLE, which is the only place it lives now.
+    // The kind lives in the SUBTITLE, which is the only place it lives now — beside
+    // the day in the login's date shape, never the stored one.
+    // Year-tolerant on purpose: `formatMonthDay` appends the year only outside the
+    // current calendar year, so pinning "Aug 31" exactly would go red in 2027 for a
+    // reason that has nothing to do with the cap.
     expect(hits.map((h) => h.subtitle)).toEqual([
-      `Practice · ${CAP_DAYS.practice[0]}`,
-      `Practice · ${CAP_DAYS.practice[1]}`,
-      `Practice · ${CAP_DAYS.practice[2]}`,
-      `Dose · ${CAP_DAYS.dose[0]}`,
-      `Dose · ${CAP_DAYS.dose[1]}`,
+      expect.stringMatching(/^Practice · Aug 31\b/),
+      expect.stringMatching(/^Practice · Aug 30\b/),
+      expect.stringMatching(/^Practice · Aug 29\b/),
+      expect.stringMatching(/^Dose · Aug 28\b/),
+      expect.stringMatching(/^Dose · Aug 27\b/),
     ]);
     // The symptom matches this query on six days and reaches none of them: its newest
     // is sixth overall. A round-robin would have shown it.
@@ -426,7 +448,7 @@ describe("the five-across-all-kinds cap (#5006)", () => {
   });
 
   it("is one group, so a kind's own rows never get a group of their own", () => {
-    const logged = searchAll(capper, CAP_QUERY).filter(
+    const logged = searchAll(capper, CAP_QUERY, loginId).filter(
       (g) => g.domain === "logged"
     );
     expect(logged).toHaveLength(1);

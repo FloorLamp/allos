@@ -49,7 +49,7 @@ describe("getClinicalObservations free-text search matches the canonical name (#
   });
 
   it("normalizes a micro unit in the precomposed global-search subtitle", () => {
-    const hit = searchAll(profileId, "selenium")
+    const hit = searchAll(profileId, "selenium", null)
       .flatMap((group) => group.hits)
       .find((candidate) => candidate.domain === "clinical-result");
     expect(hit?.subtitle).toBe("45 µg / L");

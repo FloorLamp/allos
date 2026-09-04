@@ -11,8 +11,8 @@ import type { SearchGroup } from "@/lib/search-rank";
 // profile from the session (requireSession) and searches ONLY that profile's
 // data — never a login's other accessible profiles. Read-only.
 export async function runGlobalSearch(query: string): Promise<SearchGroup[]> {
-  const { profile } = await requireSession();
-  return searchAll(profile.id, query);
+  const { login, profile } = await requireSession();
+  return searchAll(profile.id, query, login.id);
 }
 
 export type AskRecordsResult =
@@ -42,7 +42,7 @@ export async function askRecordsAction(
     .slice(0, 200);
   if (!question) return { ok: false, error: "Type a question first." };
 
-  const citations = retrieveRecordCitations(profile.id, question);
+  const citations = retrieveRecordCitations(profile.id, question, login.id);
   const result = await withAiLogContext(
     { loginId: login.id, profileId: profile.id },
     () => answerRecordQuestion({ question, citations })
