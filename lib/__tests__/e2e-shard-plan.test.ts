@@ -86,6 +86,13 @@ function walkSpecFiles(dir = E2E_DIR, out: string[] = []): string[] {
   return out.sort();
 }
 
+/** The manifest as it ships, keyed the way the planner reads it. */
+function readManifest(): DurationMap {
+  return JSON.parse(
+    readFileSync(path.join(E2E_DIR, "spec-durations.json"), "utf8")
+  ) as DurationMap;
+}
+
 describe("the shipped manifest", () => {
   // An unmeasured spec is the failure nothing reports. It is still planned —
   // `planShards` estimates it and the partition holds — so no shard reds; its
@@ -95,14 +102,24 @@ describe("the shipped manifest", () => {
   // question, asked where a merge runs it. (#5053, which found one spec that had
   // been planned on the guess since it landed.)
   it("measures every spec file the planner walks", () => {
-    const manifest = JSON.parse(
-      readFileSync(path.join(E2E_DIR, "spec-durations.json"), "utf8")
-    ) as DurationMap;
     // Shard count does not affect `unknown`; 12 is what CI splits into.
     expect(
-      planShards(walkSpecFiles(), manifest, 12).unknown,
+      planShards(walkSpecFiles(), readManifest(), 12).unknown,
       "planned on a guess — measure on a RUNNER and refresh the manifest " +
         "(docs/internals/e2e-hygiene.md), never with a local number"
+    ).toEqual([]);
+  });
+
+  // The other direction, and the quieter one: a row whose file is gone costs the
+  // plan nothing — it is never walked, so it is never planned — but it means a
+  // spec was deleted and the manifest was not refreshed, which is the same
+  // staleness the assertion above catches from the other end.
+  it("carries no row for a spec file that no longer exists", () => {
+    const walked = new Set(walkSpecFiles());
+    expect(
+      Object.keys(readManifest()).filter((f) => !walked.has(f)),
+      "stale row(s) for deleted spec(s) — refresh the manifest " +
+        "(docs/internals/e2e-hygiene.md)"
     ).toEqual([]);
   });
 });
