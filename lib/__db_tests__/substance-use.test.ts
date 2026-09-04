@@ -38,7 +38,6 @@ import {
   addSubstanceDailyTotalCore,
   updateSubstanceDailyTotalCore,
 } from "@/lib/substance-daily-totals-write";
-import { restoreDeletedRow } from "@/lib/undo-delete-db";
 import {
   collectUpcoming,
   getInferredPreventiveSatisfactions,
@@ -574,155 +573,112 @@ describe("no gamification for the new substances (#1078) — structural exemptio
   });
 });
 
-// #2073 — a historical correction that LOWERS a day's drink count has to decide
-// which per-tap `food_log_events` rows survive. They are not interchangeable: each
-// carries its own `recorded_at`, so the choice is what any timing surface over the
-// alcohol group (a "last drink at HH:MM", mirroring the food-log timing work in
-// lib/correction-time.ts) will read. The rule is drop the EARLIEST taps and keep
-// the latest, so the day's last-drink instant survives a correction.
-describe("alcohol event reconciliation trims the oldest taps (#2073)", () => {
-  // Give the day's taps distinct instants. addSubstanceDailyTotalCore stamps a
-  // whole batch with one clock read, so a fixture that wants tap ORDER must say so.
-  function stampTapHours(profileId: number, date: string, hours: number[]) {
-    const ids = db
+// #5026 item 1 — THE DAY-COUNT CORRECTION IS FOR DAY COUNTS. This describe replaces
+// the #2073 one, whose whole subject was which of a day's alcohol taps a shrinking
+// day-count correction kept; a consumable is an EVENT (owner ruling, 2026-09-04), so
+// that correction no longer exists and its rule has nothing left to decide.
+//
+// BOTH DIRECTIONS, because each is a real defect and they fail opposite ways. A drink
+// corrected through the day form loses what its events carry — MEASURED on the core
+// before it went: two drinks stated at 21:00 and 23:00, moved to the next day, both
+// came out with `occurred_at` and `time_source` NULL, and a shrink from 2 to 1 deleted
+// whichever was filed first. A day-count substance this core stopped serving would be
+// correctable NOWHERE, since `substance_daily_totals` has no event to correct instead.
+describe("the day-count correction is for day counts (#5026 item 1)", () => {
+  function drinks(profileId: number) {
+    return db
       .prepare(
-        `SELECT id FROM food_log_events
-         WHERE profile_id = ? AND group_key = 'alcohol' AND date = ?
-         ORDER BY id`
+        `SELECT date, occurred_at, time_source FROM food_log_events
+         WHERE profile_id = ? AND group_key = 'alcohol' ORDER BY id`
       )
-      .all(profileId, date) as { id: number }[];
-    expect(ids.length).toBe(hours.length);
-    const stamp = db.prepare(
-      "UPDATE food_log_events SET recorded_at = ? WHERE id = ?"
-    );
-    ids.forEach((row, i) => {
-      stamp.run(`${date}T${String(hours[i]).padStart(2, "0")}:00:00Z`, row.id);
-    });
+      .all(profileId) as {
+      date: string;
+      occurred_at: string | null;
+      time_source: string | null;
+    }[];
   }
 
-  function tapHours(profileId: number, date: string): string[] {
-    return (
+  it("refuses a drink, and the day it was asked to restate does not move", () => {
+    const p = newProfile("SU drink not day-editable");
+    const date = shiftDateStr(today(p), -3);
+    const added = addSubstanceDailyTotalCore(
+      p,
+      "alcohol",
+      { date, amount: 1, statedAt: `${date}T21:00:00Z`, notes: "night out" },
+      "page"
+    );
+    if (added.kind !== "added") throw new Error("first drink was not added");
+    addSubstanceDailyTotalCore(
+      p,
+      "alcohol",
+      { date, amount: 1, statedAt: `${date}T23:00:00Z` },
+      "page"
+    );
+    const before = drinks(p);
+    expect(before).toEqual([
+      { date, occurred_at: `${date}T21:00:00Z`, time_source: "stated" },
+      { date, occurred_at: `${date}T23:00:00Z`, time_source: "stated" },
+    ]);
+
+    // The correction that flattened: a new day AND a smaller count, in one post.
+    expect(
+      updateSubstanceDailyTotalCore(p, "alcohol", added.id, {
+        date: shiftDateStr(date, 1),
+        amount: 1,
+        notes: null,
+      })
+    ).toEqual({ kind: "corrected-per-event" });
+
+    // NOTHING MOVED — the two clocks, the two days, the counter and the day's note.
+    // Asserted as the whole before/after pair rather than as "the refusal came back",
+    // because a refusal returned AFTER a partial write reads identically at the seam.
+    expect(drinks(p)).toEqual(before);
+    expect(
       db
         .prepare(
-          `SELECT recorded_at FROM food_log_events
-           WHERE profile_id = ? AND group_key = 'alcohol' AND date = ?
-           ORDER BY recorded_at`
+          `SELECT date, servings, notes FROM food_daily_totals WHERE profile_id = ?`
         )
-        .all(profileId, date) as { recorded_at: string }[]
-    ).map((row) => row.recorded_at);
-  }
-
-  it("keeps the latest taps when an edit shrinks the day", () => {
-    const p = newProfile("SU trim oldest");
-    const date = "2026-03-14";
-    const added = addSubstanceDailyTotalCore(
-      p,
-      "alcohol",
-      {
-        date,
-        amount: 4,
-      },
-      "page"
-    );
-    if (added.kind !== "added") throw new Error("history entry was not added");
-    stampTapHours(p, date, [18, 19, 20, 21]);
-
+        .all(p)
+    ).toEqual([{ date, servings: 2, notes: "night out" }]);
+    // And no drink was captured on its way out, because none left.
     expect(
-      updateSubstanceDailyTotalCore(
-        p,
-        "alcohol",
-        added.id,
-        {
-          date,
-          amount: 2,
-        },
-        "page"
-      )
-    ).toEqual({ kind: "updated", id: added.id });
-
-    // The two EARLIEST taps are gone; the 20:00/21:00 pair — including the day's
-    // last drink — is intact and untouched.
-    expect(tapHours(p, date)).toEqual([
-      `${date}T20:00:00Z`,
-      `${date}T21:00:00Z`,
-    ]);
-    const servings = db
-      .prepare(
-        `SELECT servings FROM food_daily_totals
-         WHERE profile_id = ? AND group_key = 'alcohol' AND date = ?`
-      )
-      .get(p, date) as { servings: number };
-    expect(servings.servings).toBe(2);
+      db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM deleted_rows WHERE profile_id = ?`
+        )
+        .get(p)
+    ).toEqual({ n: 0 });
   });
 
-  it("keeps the surviving taps when the corrected day also MOVES", () => {
-    const p = newProfile("SU trim oldest moved");
-    const from = "2026-03-14";
-    const to = "2026-03-15";
-    const added = addSubstanceDailyTotalCore(
-      p,
-      "alcohol",
-      {
-        date: from,
-        amount: 3,
-      },
-      "page"
-    );
-    if (added.kind !== "added") throw new Error("history entry was not added");
-    stampTapHours(p, from, [17, 18, 19]);
-
-    expect(
-      updateSubstanceDailyTotalCore(
+  // THE CONVERSE, and it is not the same test with a different key: for these the day
+  // IS the stored fact, so this core is the only door they have.
+  it.each(["nicotine", "cannabis", "Energy drinks"])(
+    "still corrects %s's day count, which is the thing that happened",
+    (substance) => {
+      const p = newProfile(`SU day count ${substance}`);
+      const date = shiftDateStr(today(p), -3);
+      const added = addSubstanceDailyTotalCore(
         p,
-        "alcohol",
-        added.id,
-        {
-          date: to,
-          amount: 1,
-        },
+        substance,
+        { date, amount: 2, notes: "as filed" },
         "page"
-      )
-    ).toEqual({ kind: "updated", id: added.id });
-
-    expect(tapHours(p, from)).toEqual([]);
-    expect(tapHours(p, to)).toEqual([`${from}T19:00:00Z`]);
-  });
-
-  it("still APPENDS when a correction raises the day, leaving the existing taps alone", () => {
-    const p = newProfile("SU trim grow");
-    const date = "2026-03-14";
-    const added = addSubstanceDailyTotalCore(
-      p,
-      "alcohol",
-      {
-        date,
-        amount: 2,
-      },
-      "page"
-    );
-    if (added.kind !== "added") throw new Error("history entry was not added");
-    stampTapHours(p, date, [18, 19]);
-
-    expect(
-      updateSubstanceDailyTotalCore(
-        p,
-        "alcohol",
-        added.id,
-        {
-          date,
-          amount: 4,
-        },
-        "page"
-      )
-    ).toEqual({ kind: "updated", id: added.id });
-
-    const hours = tapHours(p, date);
-    expect(hours.length).toBe(4);
-    expect(hours.slice(0, 2)).toEqual([
-      `${date}T18:00:00Z`,
-      `${date}T19:00:00Z`,
-    ]);
-  });
+      );
+      if (added.kind !== "added") throw new Error("entry was not added");
+      const moved = shiftDateStr(date, 1);
+      expect(
+        updateSubstanceDailyTotalCore(p, substance, added.id, {
+          date: moved,
+          amount: 5,
+          notes: "corrected",
+        })
+      ).toEqual({ kind: "updated", id: added.id });
+      expect(
+        getAllSubstanceDailyTotals(p).filter((r) => r.substance === substance)
+      ).toEqual([
+        { id: added.id, substance, date: moved, amount: 5, notes: "corrected" },
+      ]);
+    }
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -855,16 +811,10 @@ describe("custom substances (#3279)", () => {
     ]);
 
     expect(
-      updateSubstanceDailyTotalCore(
-        p,
-        "Energy drinks",
-        added.id,
-        {
-          date,
-          amount: 5,
-        },
-        "page"
-      )
+      updateSubstanceDailyTotalCore(p, "Energy drinks", added.id, {
+        date,
+        amount: 5,
+      })
     ).toEqual({ kind: "updated", id: added.id });
     // The correction flows through the shared cadence ledger, so the trend sees it —
     // the row's day may be in the current week or the previous one depending on where
@@ -929,20 +879,13 @@ describe("custom substances (#3279)", () => {
 
 // ---------------------------------------------------------------------------
 // #4435 — the historical substance write core used to re-spell food insertion and
-// broke four contracts every other food path holds. One block, four demonstrations:
-// a backfill ADDS, a re-date never leaves an instant on the day the row left, a
-// correction that shrinks a day is undoable, and a substance write says which
-// surface filed it.
-
-/** Every alcohol tap this profile holds, in ledger order. */
-function alcoholTaps(profileId: number) {
-  return db
-    .prepare(
-      `SELECT date, occurred_at, time_source FROM food_log_events
-        WHERE profile_id = ? AND group_key = 'alcohol' ORDER BY id`
-    )
-    .all(profileId);
-}
+// broke four contracts every other food path holds. Two of the four were about its
+// day-count CORRECTION of alcohol — a re-date leaving no instant behind, and a shrink
+// being undoable — and that correction is gone (#5026 item 1), so what those two
+// demonstrated is now asserted where it is still reachable: on the food event cores
+// themselves, in lib/__db_tests__/food-log-event-correction.test.ts and
+// food-log-event-delete.test.ts. What is left here is the ADD, on both ledgers, and
+// the surface stamp.
 
 /** The day rows the record renders, for one day. */
 function historyOn(profileId: number, date: string) {
@@ -975,113 +918,6 @@ describe("the substance write core keeps the shared food contracts (#4435)", () 
       ]);
     }
   );
-
-  it("never leaves a tap's instant on the day its row left", () => {
-    const p = newProfile("SU redate instant");
-    const from = shiftDateStr(today(p), -5);
-    const to = shiftDateStr(today(p), -4);
-    const added = addSubstanceDailyTotalCore(
-      p,
-      "alcohol",
-      { date: from, amount: 1 },
-      "page"
-    );
-    if (added.kind !== "added") throw new Error("backfill was refused");
-    // A stated instant on the row's own day — what a correction chip or a picker
-    // leaves behind, and the only shape judgeEatenAt accepts anywhere else.
-    db.prepare(
-      `UPDATE food_log_events SET occurred_at = ?, time_source = 'stated'
-        WHERE profile_id = ? AND group_key = 'alcohol' AND date = ?`
-    ).run(`${from}T21:30:00Z`, p, from);
-
-    expect(
-      updateSubstanceDailyTotalCore(
-        p,
-        "alcohol",
-        added.id,
-        { date: to, amount: 1 },
-        "page"
-      )
-    ).toEqual({ kind: "updated", id: added.id });
-
-    // The day moved, so the hour nobody restated cannot survive it: an instant
-    // sitting on the previous day would be the cross-day pair every other write
-    // refuses to create.
-    expect(alcoholTaps(p)).toEqual([
-      { date: to, occurred_at: null, time_source: null },
-    ]);
-  });
-
-  it("captures the drinks a shrinking correction drops, so they can come back", () => {
-    const p = newProfile("SU shrink undo");
-    const date = shiftDateStr(today(p), -6);
-    const added = addSubstanceDailyTotalCore(
-      p,
-      "alcohol",
-      { date, amount: 3 },
-      "page"
-    );
-    if (added.kind !== "added") throw new Error("backfill was refused");
-
-    expect(
-      updateSubstanceDailyTotalCore(
-        p,
-        "alcohol",
-        added.id,
-        { date, amount: 1 },
-        "page"
-      )
-    ).toEqual({ kind: "updated", id: added.id });
-    expect(alcoholTaps(p).length).toBe(1);
-
-    // Two taps went; two captures exist, and restoring them puts the day back —
-    // the #2642 contract every other food-row removal already holds.
-    const captured = db
-      .prepare(
-        `SELECT id FROM deleted_rows
-          WHERE profile_id = ? AND kind = 'food-serving' ORDER BY id`
-      )
-      .all(p) as { id: number }[];
-    expect(captured.length).toBe(2);
-    for (const row of captured) expect(restoreDeletedRow(p, row.id)).toBe(true);
-    expect(alcoholTaps(p).length).toBe(3);
-  });
-
-  it("re-bases a pre-ledger day whose counter outran its taps", () => {
-    const p = newProfile("SU pre-ledger day");
-    const date = shiftDateStr(today(p), -7);
-    // A counter row from before the per-tap ledger existed (migration 056 backfilled
-    // nothing): three servings, no events to move or drop.
-    const id = Number(
-      db
-        .prepare(
-          `INSERT INTO food_daily_totals (profile_id, date, group_key, servings)
-           VALUES (?, ?, 'alcohol', 3)`
-        )
-        .run(p, date).lastInsertRowid
-    );
-    const moved = shiftDateStr(date, 1);
-    expect(
-      updateSubstanceDailyTotalCore(
-        p,
-        "alcohol",
-        id,
-        { date: moved, amount: 2 },
-        "page"
-      )
-    ).toEqual({ kind: "updated", id });
-
-    // The correction states what the day held, so the counter comes back from the
-    // taps rather than carrying phantom ticks onto the new day.
-    expect(
-      db
-        .prepare(
-          `SELECT date, servings FROM food_daily_totals WHERE profile_id = ?`
-        )
-        .all(p)
-    ).toEqual([{ date: moved, servings: 2 }]);
-    expect(alcoholTaps(p).length).toBe(2);
-  });
 
   // A DAY TOTAL carries the surface of the tap that last filed into it, exactly as
   // it already carries that tap's `recorded_at`. Both doors, because the one-tap
