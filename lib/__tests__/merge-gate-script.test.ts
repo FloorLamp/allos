@@ -1004,7 +1004,7 @@ describe("merge-gate-core: quoting a marker does not place one (#5183)", () => {
   // NOT SILENTLY. A fence that swallows a marker without saying so is the other
   // way to lose a hold, and this gate's whole rule is that it never goes quiet
   // about a precondition it saw.
-  it.each(quotings)("and the gate SAYS the %s line went unread", (_c, quote) => {
+  it.each(quotings)("and the gate SAYS a hold inside %s went unread", (_c, quote) => {
     const message = holdVerdict([note(quote(QUOTED_HOLD))]).message;
     expect(message).toContain("NOT read");
     expect(message).toContain(QUOTED_HOLD);

@@ -38,3 +38,9 @@ so every coordination fact here is a MARKER a script reads, not a relayed line.
   `FALSIFYING-PASS: SURVIVES <sha>` or `FALSIFYING-PASS: FALSIFIED <sha>`.
 - A head change VOIDS a pass verdict exactly as it voids a receipt. A label
   cannot: it is not on the head, which is why neither of these is one.
+- QUOTING a marker does not place one (#5183): a fenced, indented-as-code, or
+  blockquoted line is an example, so the grammar can be written down on a PR
+  without arming it. Emphasis is not quotation; a bolded marker still counts.
+- An unclosed fence quotes to the end of the comment, as GitHub renders it.
+  Nothing is swallowed in silence: the gate names a marker-shaped line it
+  read as quotation.
