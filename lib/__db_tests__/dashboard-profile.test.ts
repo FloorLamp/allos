@@ -15,8 +15,13 @@ import {
   allProfileIds,
   installStatementTrace,
   loadDashboard,
+  loadPage,
+  pageProps,
   profilesForIds,
   renderDashboard,
+  renderPage,
+  resolveAsyncTree,
+  requestCache,
   session,
   withCpuProfile,
 } from "@/lib/__db_tests__/dashboard-render-harness";
@@ -80,18 +85,39 @@ describe.skipIf(!PROBE_DB)("dashboard profile over a database copy", () => {
     const out = process.env.PROBE_OUT ?? path.dirname(PROBE_DB!);
     const renders = Number(process.env.PROBE_RENDERS ?? 3);
     const trace = installStatementTrace({ timing: true });
-    const Dashboard = await loadDashboard();
-    const timings: { wall: number; statements: number; sqlMs: number }[] = [];
+    const pagePath = process.env.PROBE_PAGE;
+    const render = pagePath
+      ? (() => {
+          const props = pageProps(
+            JSON.parse(process.env.PROBE_ROUTE_PARAMS ?? "{}"),
+            JSON.parse(process.env.PROBE_PARAMS ?? "{}")
+          );
+          return async () => renderPage(await loadPage(pagePath), props);
+        })()
+      : await (async () => {
+          const Dashboard = await loadDashboard();
+          return async () => renderDashboard(Dashboard);
+        })();
+    const timings: {
+      wall: number;
+      statements: number;
+      sqlMs: number;
+      components: number;
+      skipped: string[];
+    }[] = [];
     const renderOnce = async () => {
       trace.clear();
       const started = performance.now();
-      await renderDashboard(Dashboard);
+      const tree = await render();
+      const resolved = await requestCache.during(() => resolveAsyncTree(tree));
       const wall = performance.now() - started;
       const stats = trace.stats();
       timings.push({
         wall: Math.round(wall),
         statements: trace.count(),
         sqlMs: Math.round(stats.reduce((sum, s) => sum + s.ms, 0)),
+        components: resolved.components,
+        skipped: resolved.skipped,
       });
     };
     await renderOnce();
@@ -100,6 +126,7 @@ describe.skipIf(!PROBE_DB)("dashboard profile over a database copy", () => {
     });
     const stats = trace.stats();
     const report = {
+      page: pagePath ?? "app/(app)/page",
       db: PROBE_DB,
       now: process.env.ALLOS_TEST_NOW,
       profileId: session.profile!.id,

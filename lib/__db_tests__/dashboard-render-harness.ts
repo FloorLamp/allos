@@ -48,7 +48,12 @@
 // A single module-level slot rather than AsyncLocalStorage, for the same reason
 // `lib/tick-cache.ts` uses one: callers await one render at a time.
 import inspector from "node:inspector";
-import type { ReactElement } from "react";
+import {
+  Children,
+  isValidElement,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import { vi } from "vitest";
 import { db } from "@/lib/db";
 import { authorizedProfileSubset } from "@/lib/cross-profile";
@@ -231,7 +236,14 @@ export interface StatementStat {
   callers: Map<string, number>;
 }
 function callerFrame(): string {
-  const lines = (new Error().stack ?? "").split("\n").slice(1);
+  // Capturing a stack per statement is the trace's own cost; twelve frames reach
+  // the first app frame from any query helper and keep it under a tenth of the
+  // work being measured on a 1,500-statement page.
+  const limit = Error.stackTraceLimit;
+  Error.stackTraceLimit = 12;
+  const stack = new Error().stack ?? "";
+  Error.stackTraceLimit = limit;
+  const lines = stack.split("\n").slice(1);
   for (const line of lines) {
     if (/lib\/db\.ts|node_modules|dashboard-render-harness/.test(line))
       continue;
@@ -299,10 +311,42 @@ export async function loadDashboard() {
   const { default: Dashboard } = await import("../../app/(app)/page");
   return Dashboard;
 }
+/**
+ * Any App Router page under `app/`, by module path (`app/(app)/trends/page`).
+ * The profiler's `--page`; pages that read Next's request APIs directly (rather
+ * than through the mocked session/scope) throw here and say so.
+ */
+export async function loadPage(
+  modulePath: string
+): Promise<(props: PageProps) => Promise<ReactElement>> {
+  const mod = (await import(/* @vite-ignore */ `../../${modulePath}`)) as {
+    default: (props: PageProps) => Promise<ReactElement>;
+  };
+  return mod.default;
+}
+export interface PageProps {
+  params: Promise<Record<string, string>>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}
+export function pageProps(
+  params: Record<string, string> = {},
+  searchParams: Record<string, string | string[] | undefined> = {}
+): PageProps {
+  return {
+    params: Promise.resolve(params),
+    searchParams: Promise.resolve(searchParams),
+  };
+}
 export async function renderDashboard(
   Dashboard: () => Promise<ReactElement>
 ): Promise<ReactElement> {
   return requestCache.during(async () => await Dashboard());
+}
+export async function renderPage(
+  Page: (props: PageProps) => Promise<ReactElement>,
+  props: PageProps
+): Promise<ReactElement> {
+  return requestCache.during(async () => await Page(props));
 }
 
 // ── A CPU profile around a stretch of the same process (works inside vitest's
@@ -332,4 +376,67 @@ export async function withCpuProfile<T>(
   } finally {
     inspectorSession.disconnect();
   }
+}
+
+// ── RESOLVE THE ASYNC TREE. A page function returns an element tree; the work of a
+// route that streams its sections lives in nested async server components that
+// React would run during rendering. Nothing in this tier is a React server
+// renderer, so this walks the tree and runs every function-typed element itself:
+// an async component is awaited and its result walked; a sync one is called and
+// its result walked; one that throws (a client component reaching for a hook, a
+// server-only API with no request) is left as it was and counted. The gathers
+// inside the sections are what this measures; the markup is irrelevant.
+export interface ResolvedTree {
+  components: number;
+  awaited: number;
+  skipped: string[];
+}
+type AnyProps = { children?: ReactNode } & Record<string, unknown>;
+export async function resolveAsyncTree(
+  root: ReactNode,
+  stats: ResolvedTree = { components: 0, awaited: 0, skipped: [] }
+): Promise<ResolvedTree> {
+  const visit = async (node: ReactNode): Promise<void> => {
+    if (node == null || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      for (const child of node) await visit(child);
+      return;
+    }
+    if (node instanceof Promise) {
+      await visit(await node);
+      return;
+    }
+    if (!isValidElement(node)) return;
+    const element = node as ReactElement<AnyProps>;
+    const type = element.type;
+    if (typeof type === "function") {
+      const name = (type as { name?: string }).name || "(anon)";
+      try {
+        stats.components += 1;
+        let rendered = (type as (props: AnyProps) => unknown)(element.props);
+        if (rendered instanceof Promise) {
+          stats.awaited += 1;
+          rendered = await rendered;
+        }
+        await visit(rendered as ReactNode);
+      } catch (error) {
+        stats.skipped.push(
+          `${name}: ${String((error as Error)?.message ?? error).slice(0, 80)}`
+        );
+        // A client component that could not run still WRAPS server work — a
+        // provider around a page's sections is the usual case — so its children
+        // are walked as if it were transparent.
+        const wrapped = element.props?.children;
+        if (wrapped !== undefined)
+          for (const child of Children.toArray(wrapped)) await visit(child);
+      }
+      return;
+    }
+    const children = element.props?.children;
+    if (children !== undefined) {
+      for (const child of Children.toArray(children)) await visit(child);
+    }
+  };
+  await visit(root);
+  return stats;
 }

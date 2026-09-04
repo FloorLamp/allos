@@ -17,7 +17,8 @@ The meter and the profiler render through the same harness, so what one counts i
 
 1. Take a read-only snapshot of the database you want to measure (production: `VACUUM INTO` a copy, never the live file, and rewrite the admin login if you will also run the server).
 2. `npm run profile:dashboard -- --db <snapshot> --profile <id> --now <iso instant>`. The script copies the file first (a render may write), runs one warm-up render and `--renders` profiled ones, and prints renders, statements by time, SQLite time by caller, and the CPU profile's self time by function and file plus inclusive time for app frames. Everything lands under `--out` (default `data/profiles/dashboard-<stamp>/`): `summary.txt`, `profile.json`, `render.cpuprofile` (open in a browser's Performance panel), `vitest.log`.
-3. For wall-clock as a browser sees it: `ALLOS_DB_PATH=<a writable copy> npm run dev -- -p 3123`, then `node scripts/time-page.mjs --base http://localhost:3123 --path / --runs 6`. The dev log prints `application-code:` per request beside the browser's numbers; against `next dev` discount the first run.
+3. Any other page: `--page "app/(app)/trends/page" --params '{"tab":"overview"}' --route-params '{"id":"417"}'`. The probe resolves the page's async component tree itself (there is no React server renderer in this tier), so streamed sections are measured; client components that reach for a hook are skipped and listed, and their children are walked as if the wrapper were transparent. A page that reads Next's request APIs directly fails with that message in `vitest.log`.
+4. For wall-clock as a browser sees it: `ALLOS_DB_PATH=<a writable copy> npm run dev -- -p 3123`, then `node scripts/time-page.mjs --base http://localhost:3123 --path / --runs 6`. The dev log prints `application-code:` per request beside the browser's numbers; against `next dev` discount the first run.
 
 ## Reading it
 

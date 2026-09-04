@@ -3,6 +3,13 @@
 //   npm run profile:dashboard -- --db ~/snapshots/allos.db
 //   npm run profile:dashboard -- --db ~/snapshots/allos.db --profile 1 \
 //       --now 2026-09-04T01:10:00Z --renders 3 --out data/profiles/today
+//   npm run profile:dashboard -- --db ~/snapshots/allos.db \
+//       --page "app/(app)/trends/page" --params '{"tab":"overview"}'
+//
+// ANY PAGE, NOT ONLY THE DASHBOARD. `--page` names a page module under `app/`;
+// `--params` / `--route-params` are its searchParams and params as JSON. A page that
+// reads Next's request APIs directly (headers(), cookies()) rather than through the
+// session and scope the harness fakes cannot render here and the log says which.
 //
 // WHAT IT MEASURES. One `Dashboard()` render per pass, through the same harness the
 // query meter (`lib/__db_tests__/dashboard-placement-manifest.test.ts`) counts with,
@@ -27,6 +34,9 @@ import { spawnSync } from "node:child_process";
 
 interface Args {
   db: string;
+  page?: string;
+  params?: string;
+  routeParams?: string;
   now?: string;
   profile?: string;
   renders: string;
@@ -65,6 +75,18 @@ function parseArgs(argv: string[]): Args {
         args.top = Number(value);
         i += 1;
         break;
+      case "--page":
+        args.page = value;
+        i += 1;
+        break;
+      case "--params":
+        args.params = value;
+        i += 1;
+        break;
+      case "--route-params":
+        args.routeParams = value;
+        i += 1;
+        break;
       case "--keep-copy":
         args.keepCopy = true;
         break;
@@ -87,10 +109,17 @@ interface StatementReport {
   callers: { caller: string; ms: number }[];
 }
 interface Report {
+  page: string;
   db: string;
   now: string;
   profileId: number;
-  renders: { wall: number; statements: number; sqlMs: number }[];
+  renders: {
+    wall: number;
+    statements: number;
+    sqlMs: number;
+    components?: number;
+    skipped?: string[];
+  }[];
   statements: StatementReport[];
 }
 interface CpuNode {
@@ -177,6 +206,9 @@ function main(): void {
     PROBE_RENDERS: args.renders,
     ...(args.now ? { PROBE_NOW: args.now } : {}),
     ...(args.profile ? { PROBE_PROFILE: args.profile } : {}),
+    ...(args.page ? { PROBE_PAGE: args.page } : {}),
+    ...(args.params ? { PROBE_PARAMS: args.params } : {}),
+    ...(args.routeParams ? { PROBE_ROUTE_PARAMS: args.routeParams } : {}),
   };
   const run = spawnSync(
     process.execPath,
@@ -211,9 +243,18 @@ function main(): void {
   out.push("renders (the first warms the module graph)");
   report.renders.forEach((r, i) =>
     out.push(
-      `  ${i + 1}: wall ${r.wall} ms · ${r.statements} statements · ${r.sqlMs} ms in SQLite`
+      `  ${i + 1}: wall ${r.wall} ms · ${r.statements} statements · ${r.sqlMs} ms in SQLite` +
+        (r.components != null ? ` · ${r.components} components resolved` : "") +
+        (r.skipped?.length ? ` · ${r.skipped.length} skipped` : "")
     )
   );
+  const skipped = report.renders.at(-1)?.skipped ?? [];
+  if (skipped.length) {
+    out.push(
+      "components left unrendered (client components, or request APIs with no request)"
+    );
+    for (const s of [...new Set(skipped)].slice(0, 12)) out.push(`  ${s}`);
+  }
   out.push(`statements by time (last render)`);
   for (const s of report.statements.slice(0, args.top))
     out.push(
