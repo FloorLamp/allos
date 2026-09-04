@@ -1051,8 +1051,11 @@ morning digest) both read. A summary counts as an acting surface: the digest sta
 "💊 Medications: 0/1 taken" in a push, and the demotion suggestion puts a one-tap Accept
 under its evidence. Giving the summaries a declared-only resolver made the app report a
 paused day as missed and discard a dose logged through an offer it had just made.
-`situationHistoryResolver` keeps the declared-only reconstruction for the question that
-really is about declarations — which bands the chart annotations draw.
+There is no declared-only dueness resolver left: `situationHistoryResolver` had no
+production caller once the summaries moved, so it is deleted rather than kept exported.
+The pure `situationsActiveOn` still dates the declared half for the questions that really
+are about declarations — the chart annotation bands, symptom-episode spans, and the
+pooled situation-impact windows.
 
 The resolver takes the WINDOW it is about to score and gathers the derived inputs once
 for it, not once per day: only three of them depend on the day (the nights before it, the

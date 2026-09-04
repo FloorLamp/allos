@@ -437,10 +437,16 @@ function bedtimeSupplementsByWakeDay(
   // Per-day DUENESS resolver (#654/#3993): each wake-day's bedtime doses are scored
   // against what held THAT day, declared AND derived — the same answer the surfaces that
   // offered those doses gave.
-  const wakeDayList = [...sleepDateByWakeDay.keys()].sort();
+  //
+  // THE WINDOW IS DECLARED IN THE DAYS IT IS ASKED ABOUT, which here are the SLEEP
+  // dates, not the wake days: the loop below resolves each night's supplements on
+  // `sleepDate`, normally `wakeDay − 1`. Declaring the wake-day span left the earliest
+  // sleep date one day outside it — still answered correctly, since the window is a
+  // cost hint, but off its own re-read rather than the window's single gather.
+  const sleepDateList = [...sleepDateByWakeDay.values()].sort();
   const situationsOn = effectiveSituationResolver(profileId, {
-    from: wakeDayList[0],
-    to: wakeDayList[wakeDayList.length - 1],
+    from: sleepDateList[0],
+    to: sleepDateList[sleepDateList.length - 1],
   });
   const summaries = new Map<string, BedtimeSupplementSummary>();
 

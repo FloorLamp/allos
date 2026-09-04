@@ -27,12 +27,8 @@ import {
   getIntakeAdherenceEvidence,
   getMedicationCourses,
 } from "@/lib/queries";
-import {
-  getActiveSituations,
-  getSituationEvents,
-  getTimezone,
-} from "@/lib/settings";
-import { situationHistoryResolver } from "@/lib/trend-annotations";
+import { getTimezone } from "@/lib/settings";
+import { effectiveSituationResolver } from "@/lib/queries/derived-situations";
 import { medicationStartDate } from "@/lib/profile-summary";
 import { lastNDates, shiftDateStr } from "@/lib/date";
 import {
@@ -172,10 +168,15 @@ function calendarTheOldWay(
   );
   const dates = lastNDates(today(profileId), days);
   const workoutDays = new Set(getActivityDates(profileId));
-  const situationsOn = situationHistoryResolver(
-    new Set(getActiveSituations(profileId)),
-    getSituationEvents(profileId)
-  );
+  // The DUENESS resolver the page passes, not a declared-only reconstruction of it
+  // (#3993): `med-data.ts` builds `effectiveSituationResolver` over the month window the
+  // calendar draws, so a fixture on any other resolver would stop mirroring the gather
+  // it claims to reproduce — and would agree with it only on profiles with no derived
+  // context, which is a fixture asserting its own silence.
+  const situationsOn = effectiveSituationResolver(profileId, {
+    from: dates[0],
+    to: dates[dates.length - 1],
+  });
   const takenByDose = indexTakenByDose(
     getIntakeAdherenceEvidence(profileId, days)
   );

@@ -213,21 +213,26 @@ export function weatherSituationsResolver(
   const series = getWeatherDays(home.lat, home.lng, seriesFrom, to);
   return (date) => {
     const covered = date >= from && date <= to;
+    // RELEVANCE IS BOUNDED BY THE DAY ITSELF, AT BOTH ENDS. The gathered set spans
+    // [from − 180, to], so it holds symptoms logged AFTER `date` as well as before it,
+    // and a day may not be told it was weather-relevant by a headache its person had
+    // not had yet. Both bounds are the single-day read's own range — [date − 180, date]
+    // — which is what makes a windowed answer and a single-day answer the same answer,
+    // and what stops a symptom logged today from rewriting a closed day's dueness (and
+    // with it a recap and a reminder rebuild the app already sent).
+    const since = shiftDateStr(date, -WEATHER_RELEVANCE_SYMPTOM_DAYS);
     const relevant =
       keyed ||
       (covered
-        ? symptomDates.some(
-            (d) => d >= shiftDateStr(date, -WEATHER_RELEVANCE_SYMPTOM_DAYS)
-          )
-        : weatherRelevantSymptomDates(
-            profileId,
-            shiftDateStr(date, -WEATHER_RELEVANCE_SYMPTOM_DAYS),
-            date
-          ).length > 0);
+        ? symptomDates.some((d) => d >= since && d <= date)
+        : weatherRelevantSymptomDates(profileId, since, date).length > 0);
     if (!relevant) return NO_WEATHER_SITUATIONS;
-    const since = shiftDateStr(date, -WEATHER_SERIES_LOOKBACK_DAYS);
+    // The series slice is bounded at both ends for the same reason, and always was:
+    // `evaluateSeries` backfills a spell's entering run retroactively, so a series
+    // running past `date` can turn a day on that the app could not have known about.
+    const seriesSince = shiftDateStr(date, -WEATHER_SERIES_LOOKBACK_DAYS);
     const slice = covered
-      ? series.filter((d) => d.date >= since && d.date <= date)
+      ? series.filter((d) => d.date >= seriesSince && d.date <= date)
       : getWeatherSeries(profileId, date);
     const active = evaluateWeatherSituations(slice, date);
     return {

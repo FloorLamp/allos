@@ -9,7 +9,8 @@
 // chart annotations stay declared-only"). A DERIVED situation (#1292 Poor sleep, #1298
 // Period) writes NO transitions, so it contributes NO windows through THIS module and never
 // yields an impact card from the log. Analytics ride the same declared window source the
-// chart annotations read (situationHistoryResolver), never a re-derived span. THE
+// chart annotations read (`situationsActiveOn` over situation_events), never a re-derived
+// span. THE
 // ADHERENCE STRIP IS NOT ON THAT SOURCE (#3993): dueness asks declared ∪ derived per day,
 // through `effectiveSituationResolver`. Membership over a span and dueness on a day are
 // different questions, and this module answers only the first.

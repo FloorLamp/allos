@@ -130,9 +130,9 @@ export function getSleepSignal(
 // for one day and for fifty-six.
 //
 // Per-day answers are IDENTICAL to `getSleepSignal`'s by construction: the same
-// filter-and-slice, over the same rows. The resolver holds a snapshot for its lifetime,
-// exactly as `situationHistoryResolver` does, so a caller wanting a fresh read builds a
-// fresh resolver.
+// filter-and-slice, over the same rows. The resolver holds a snapshot for its lifetime —
+// the same rule `effectiveSituationResolver` states — so a caller wanting a fresh read
+// builds a fresh resolver.
 export function sleepSignalResolver(
   profileId: number
 ): (wakeDay: string) => SleepSignal | null {
