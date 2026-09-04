@@ -1,7 +1,6 @@
 import { Fragment } from "react";
 import { measurementsQuickEntry } from "@/lib/quick-entry-measurements";
 import Link from "next/link";
-import { IconChevronDown } from "@tabler/icons-react";
 import PageContainer from "@/components/PageContainer";
 import DestinationLink from "@/components/DestinationLink";
 import { PageHeader, EmptyState } from "@/components/ui";
@@ -10,11 +9,11 @@ import FilterPills from "@/components/FilterPills";
 import JumpRailScrubber, {
   type ScrubberStop,
 } from "@/components/JumpRailScrubber";
-import TimelineFilterLink from "@/components/TimelineFilterLink";
 import EventCalendar from "@/components/EventCalendar";
 import type { DoseLedgerItem } from "@/components/intake/dose-ledger-entry";
 import HistoryRows from "./HistoryRows";
 import HistoryAddDoor, { HistoryUsualOffers } from "./HistoryAddDoor";
+import HistoryFoldCard from "./HistoryFoldCard";
 import { requireScope } from "@/lib/scope";
 import { today } from "@/lib/db";
 import {
@@ -97,10 +96,8 @@ import { mergeMemberTimelines } from "@/lib/timeline-multi";
 import {
   parseTimelineOpen,
   renderedTimelineDays,
-  timelineFoldCounts,
   toggledTimelineOpen,
   windowTimelineDays,
-  type TimelineFold,
 } from "@/lib/timeline-window";
 import {
   SCRUBBER_GUTTER_CLASS,
@@ -154,84 +151,11 @@ export const dynamic = "force-dynamic";
 // shared control — a second shape of one component selected by a prop. Raised rather
 // than built.
 
-// One collapsed period — a month of the current year, or an earlier year (#2657).
-// The `timeline-fold-` anchor id is INHERITED, not restated: the rail's stops are
-// computed from those ids in lib/timeline-scrubber.ts, which survived the route.
-// Phase 2 moved the feed onto this page rather than reconciling two vocabularies.
-function FoldCard({
-  fold,
-  href,
-  gutter,
-  nested = false,
-}: {
-  fold: TimelineFold<{ date: string; events: unknown[] }> & {
-    monthCount?: number;
-  };
-  href: AppRoute;
-  /** The rail's lane, when the rail renders — see the feed container's note. */
-  gutter: string;
-  nested?: boolean;
-}) {
-  return (
-    <section
-      id={`timeline-fold-${fold.key}`}
-      data-testid={`history-fold-${fold.key}`}
-      data-fold-key={fold.key}
-      data-fold-open={fold.open ? "true" : "false"}
-      // NESTING IS MACHINE-READABLE, not only a left inset. A month card inside an
-      // opened year is a level DOWN, and the whole point of the year roll-up is that
-      // the two levels stay distinguishable — a nested card that rendered flush with
-      // its parent would read as a second name for the same level, which is exactly
-      // the compression #2657 bought being given back. The `pl-4` says it visually;
-      // this is what a test can name.
-      data-fold-nested={nested ? "true" : undefined}
-      className={`scroll-mt-24 py-1.5 ${nested ? "pl-4" : ""} ${gutter}`}
-    >
-      {/* THE POSITION-PRESERVING LINK, NOT A PLAIN ONE (#4045 §4). This shipped as a
-          `next/link` with default scroll, so every fold tap navigated to `?open=…` and
-          jumped to the top of the page: the reader tapped a card, landed above their
-          own recent history, saw nothing new, and read the card as dead. The retired
-          `/timeline`'s fold cards never did that: they went through this component, which
-          carries `scroll={false}` and the #2657 scroll-target capture — the re-housing
-          simply dropped it. Reused rather than re-spelled: a second copy of a
-          scroll-preserving link is the duplication #2816 was filed about.
-
-          `scroll={false}` ALONE IS NOT THE FIX; the other half is where the revealed
-          days render, below. */}
-      <TimelineFilterLink
-        href={href}
-        testId={`history-fold-${fold.key}-toggle`}
-        label={fold.label}
-        ariaExpanded={fold.open}
-        className="flex items-center gap-3 rounded-lg border border-(--border) bg-surface px-3 py-2 transition hover:bg-(--ghost-hover)"
-      >
-        <span
-          aria-hidden
-          className={`inline-flex h-5 w-5 shrink-0 items-center justify-center text-slate-500 transition dark:text-slate-400 ${
-            fold.open ? "rotate-180" : ""
-          }`}
-        >
-          <IconChevronDown className="h-3.5 w-3.5" stroke={2} />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-sm font-medium text-slate-900 dark:text-slate-100">
-            {fold.label}
-          </span>
-          {/* THE COUNT IS ADDRESSABLE (#1504's grammar): the amount never hides,
-              only the vertical cost of it does — so it is a claim the fold makes
-              about content it is not showing, and a test has to be able to name it
-              rather than matching its text against a page full of other numbers. */}
-          <span
-            data-testid={`history-fold-${fold.key}-counts`}
-            className="block text-xs text-slate-500 dark:text-slate-400"
-          >
-            {timelineFoldCounts(fold)}
-          </span>
-        </span>
-      </TimelineFilterLink>
-    </section>
-  );
-}
+// The fold card itself is `./HistoryFoldCard.tsx` (#4365) — a CLIENT component,
+// because its navigation now wraps a browser View Transition and a hook cannot
+// cross the server/client boundary this async page renders across. Its own header
+// carries the "why here, why nested" notes that used to live on this inline
+// function.
 
 export default async function HistoryPage(props: {
   searchParams: Promise<{
@@ -741,12 +665,20 @@ export default async function HistoryPage(props: {
   // was holding it. Written once because the fold arrangement renders it from three
   // places (recent, an open month, an open month inside an open year), and three copies
   // of a sticky header is how two of them drift.
-  const daySection = (group: (typeof days)[number]) => (
+  //
+  // `nested` MATCHES `FoldCard`'s OWN FLAG, not a new idea (#4365). A month card inside
+  // an open year carries `pl-4` because it is a level down; the days that card reveals
+  // are that level's CONTENTS, so they carry the identical `pl-4` — same left inset,
+  // same class, so the two boxes' left edges are the same number by construction and
+  // not by two authors agreeing on 16px. A top-level month's days pass `nested={false}`,
+  // same as their own un-inset card, so nothing here changes for them.
+  const daySection = (group: (typeof days)[number], nested = false) => (
     <section
       key={group.date}
       id={`timeline-day-${group.date}`}
       data-testid="history-day"
-      className={`scroll-mt-24 pb-2 pt-1 ${dayGutter}`}
+      data-day-nested={nested ? "true" : undefined}
+      className={`scroll-mt-24 pb-2 pt-1 ${nested ? "pl-4" : ""} ${dayGutter}`}
     >
       {/* THE DAY HEADER STICKS ON THE FEED, AND ONLY ON THE FEED (#4918 ruling 1).
           It is the "which day am I in" affordance for a page that lists MANY days.
@@ -1178,7 +1110,7 @@ export default async function HistoryPage(props: {
           headers instead — "the band fill stays full-bleed while row content ends
           short of the edge". */}
       <div data-testid="history-feed">
-        {(windowed ? windowed.recent : days).map(daySection)}
+        {(windowed ? windowed.recent : days).map((group) => daySection(group))}
         {/* READING ORDER: the recent band first, then this year's older months, then
             one card per earlier year. A fold card above the days would put a stack of
             shut doors between the reader and their own recent history, which is the
@@ -1197,17 +1129,17 @@ export default async function HistoryPage(props: {
             reader on the card they tapped. */}
         {windowed?.months.map((fold) => (
           <Fragment key={fold.key}>
-            <FoldCard
+            <HistoryFoldCard
               fold={fold}
               gutter={railGutter}
               href={foldHref(fold.key)}
             />
-            {fold.open ? fold.days.map(daySection) : null}
+            {fold.open ? fold.days.map((group) => daySection(group)) : null}
           </Fragment>
         ))}
         {windowed?.years.map((year) => (
           <Fragment key={year.key}>
-            <FoldCard
+            <HistoryFoldCard
               fold={year}
               gutter={railGutter}
               href={foldHref(year.key, {
@@ -1218,13 +1150,15 @@ export default async function HistoryPage(props: {
             {year.open
               ? year.months.map((month) => (
                   <Fragment key={month.key}>
-                    <FoldCard
+                    <HistoryFoldCard
                       fold={month}
                       gutter={railGutter}
                       href={foldHref(month.key)}
                       nested
                     />
-                    {month.open ? month.days.map(daySection) : null}
+                    {month.open
+                      ? month.days.map((group) => daySection(group, true))
+                      : null}
                   </Fragment>
                 ))
               : null}
