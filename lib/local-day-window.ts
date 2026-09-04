@@ -215,8 +215,6 @@ interface UtcDay {
 // datetime() spells the separator as a space, and both are read by index below.
 const STORED_STAMP = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/;
 
-const pad2 = (n: number): string => (n < 10 ? `0${n}` : String(n));
-
 // The profile-local MINUTE stamp ('YYYY-MM-DDTHH:MM') of every stored instant in one
 // window, derived from the window's offset segments instead of from `Intl` per row.
 //
@@ -317,7 +315,11 @@ export function localMinuteProjector(
           local -= 1440;
           dayIndex = 2;
         }
-        return `${day.dates[dayIndex]}T${pad2((local / 60) | 0)}:${pad2(local % 60)}`;
+        return (
+          `${day.dates[dayIndex]}T` +
+          `${String((local / 60) | 0).padStart(2, "0")}:` +
+          `${String(local % 60).padStart(2, "0")}`
+        );
       }
     }
     // Any other shape `Date` understands goes the long way; true garbage yields null,
