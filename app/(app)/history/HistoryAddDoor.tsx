@@ -12,6 +12,8 @@ import {
   type DoseLedgerItem,
 } from "@/components/intake/dose-ledger-entry";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import { useTimezone } from "@/components/TimezoneProvider";
+import { statedInstantOnDate } from "@/lib/stated-time";
 import PracticeSessionForm from "@/components/practices/PracticeSessionForm";
 import SubstanceForm from "@/components/substances/SubstanceForm";
 import SymptomForm from "@/components/illness/SymptomForm";
@@ -193,7 +195,17 @@ export default function HistoryAddDoor({
 }) {
   const router = useRouter();
   const formatPrefs = useFormatPrefs();
+  const tz = useTimezone();
   const toast = useToast();
+  // THE WINDOW AS THE `WhenControl` KINDS SPELL IT (#4950 item 3): one stated instant
+  // on the day in hand, built once here rather than in each form, so food, body and a
+  // movement cannot disagree about what `19:10` on this day means. Null when no window
+  // was stated, and null when the clock does not exist on this day — a spring-forward
+  // gap is refused rather than settled onto a different reading (`statedInstantOnDate`).
+  const windowStatedAt =
+    window == null
+      ? null
+      : (statedInstantOnDate(date, window.from, tz)?.toISOString() ?? null);
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -219,6 +231,7 @@ export default function HistoryAddDoor({
             date={date}
             slotBoundaries={vocabulary.foodSlotBoundaries}
             maxDate={maxDate}
+            defaultStatedAt={windowStatedAt}
             testId="history-add-food"
             onSaved={() => {
               toast("Added to the record.");
@@ -291,6 +304,10 @@ export default function HistoryAddDoor({
           />
         );
       case "mood":
+        // NO WINDOW HERE, and none missing: a check-in has a day and no event instant,
+        // so there is no time control for a stated window to open (#4950 item 3, "a
+        // form with no time control ignores the window"). Same for `symptom` below,
+        // whose store is UNIQUE(profile_id, date, symptom).
         return (
           <MoodForm
             days={[vocabulary.moodDay]}
@@ -332,6 +349,7 @@ export default function HistoryAddDoor({
           <StoolForm
             date={date}
             maxDate={maxDate}
+            defaultStatedAt={windowStatedAt}
             onSaved={() => {
               close();
               router.refresh();
@@ -358,6 +376,12 @@ export default function HistoryAddDoor({
             // weight, body fat and resting HR onto the feed), so the door opens on the
             // group holding them rather than on the form's own default.
             defaultGroup="body"
+            /* The window beats the day's existing manual instant (#4950): a person who
+               framed 19:10 on the trace has said when, and the seed is what to offer
+               when nobody has. */
+            defaultStatedAt={
+              windowStatedAt ?? vocabulary.measurements.defaultStatedAt
+            }
             onSaved={() => router.refresh()}
           />
         );
