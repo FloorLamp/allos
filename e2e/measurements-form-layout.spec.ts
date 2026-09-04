@@ -423,3 +423,146 @@ test("a stated time the gate refuses costs the time, not the reading — and SAY
     clearTodayManualBodyRow();
   }
 });
+
+// ── THE HOST DECLARES THE WIDTH THE GRID WAS BUILT FOR (#4977) ───────────────
+//
+// #2014 (above) made the grid ask its CONTAINER. The quick-entry sheet then never
+// answered: it mounted every form in one `BottomSheet` with no `size`, so it took
+// the default `sm` bucket and the form laid two fields a row inside a panel the
+// same grid fills four-up in the Trends modal. The fix is a declared bucket on the
+// host, so these assertions are about the DECLARATION and the TRACKS it produces —
+// never about a class on the grid, which is the thing #2014 exists to keep out.
+const BUCKET_PX = { sm: 448, md: 672, lg: 896 } as const;
+
+/** The sheet panel that carries the declared size — the box the grid measures. */
+function quickEntryPanel(page: Page): Locator {
+  return page.getByTestId("quick-entry-sheet").locator("[data-sheet-panel]");
+}
+
+test("the quick-entry sheet declares `lg` for measurements and leaves its siblings alone (#4977 item 1)", async ({
+  page,
+}) => {
+  await page.goto("/?quick=log-measurements");
+  const sheet = page.getByTestId("quick-entry-sheet");
+  await expect(sheet).toBeVisible();
+  const form = sheet.getByTestId("measurements-quick-add");
+  // WAIT FOR THE FORM, never the panel: `quick-entry-body` renders a loading
+  // paragraph, and a paragraph fits any width (#3384).
+  await expect(form).toBeVisible();
+
+  // The DECISION, read off the host that made it.
+  await expect(quickEntryPanel(page)).toHaveAttribute("data-size", "lg");
+
+  // AND ITS CONSEQUENCE, which is the thing the owner saw: the Vitals group's
+  // eight track-cells (seven fields, blood pressure taking two) lay out four to a
+  // row, so the group is two rows rather than four. Track count and row count,
+  // because "the panel is at least N px wide" would pass at every width including
+  // the one that was wrong.
+  await openMeasurementGroup(page, form, "vitals");
+  const vitals = form.locator("#measurements-group-vitals-fields");
+  const layout = await vitals.evaluate((node) => ({
+    tracks: getComputedStyle(node)
+      .gridTemplateColumns.split(" ")
+      .filter(Boolean).length,
+    rows: new Set(
+      Array.from(node.children).map((cell) =>
+        Math.round(cell.getBoundingClientRect().top)
+      )
+    ).size,
+  }));
+  expect(layout).toEqual({ tracks: 4, rows: 2 });
+
+  // THE SIBLING FORMS ARE UNTOUCHED. One sheet hosts them all, so a width taken at
+  // the mount would have moved every one of them; the registry declares per form.
+  await page.goto("/?quick=log-food");
+  await expect(
+    page.getByTestId("quick-entry-sheet").getByTestId("food-log-bar")
+  ).toBeVisible();
+  await expect(quickEntryPanel(page)).toHaveAttribute("data-size", "sm");
+});
+
+test("blood pressure gets two tracks, so both inputs clear their own placeholders at every bucket (#4977 item 2)", async ({
+  page,
+}) => {
+  await page.goto("/?quick=log-measurements");
+  const sheet = page.getByTestId("quick-entry-sheet");
+  const form = sheet.getByTestId("measurements-quick-add");
+  await expect(form).toBeVisible();
+  await openMeasurementGroup(page, form, "vitals");
+
+  const panel = quickEntryPanel(page);
+  try {
+    for (const [bucket, px] of Object.entries(BUCKET_PX)) {
+      // The panel's own width is the ONLY variable moved: the three buckets are
+      // three numbers on one host, which is what "at every host width" means for a
+      // form whose grid reads its container.
+      await panel.evaluate((node, width) => {
+        (node as HTMLElement).style.maxWidth = `${width}px`;
+      }, px);
+
+      const reading = await form.evaluate((root) => {
+        const measure = (input: HTMLInputElement) => {
+          const cs = getComputedStyle(input);
+          // The placeholder's own painted width, taken in the input's own type —
+          // an empty input's scrollWidth equals its clientWidth whatever the
+          // placeholder says, so the obvious reading is silent about the defect.
+          const probe = document.createElement("span");
+          probe.style.cssText = `position:absolute;visibility:hidden;white-space:pre;font-family:${cs.fontFamily};font-size:${cs.fontSize};font-weight:${cs.fontWeight};font-style:${cs.fontStyle};letter-spacing:${cs.letterSpacing}`;
+          probe.textContent = input.placeholder;
+          document.body.append(probe);
+          const needs = probe.getBoundingClientRect().width;
+          probe.remove();
+          return {
+            placeholder: input.placeholder,
+            needs: Math.round(needs),
+            room: Math.round(
+              input.clientWidth -
+                parseFloat(cs.paddingLeft) -
+                parseFloat(cs.paddingRight)
+            ),
+          };
+        };
+        const cell = root
+          .querySelector<HTMLElement>("#m-systolic")!
+          .closest("div.min-w-0")!;
+        const neighbour = root
+          .querySelector<HTMLElement>("#m-resting-hr")!
+          .closest("div.min-w-0")!;
+        return {
+          systolic: measure(
+            root.querySelector<HTMLInputElement>("#m-systolic")!
+          ),
+          diastolic: measure(
+            root.querySelector<HTMLInputElement>("#m-diastolic")!
+          ),
+          cellWidth: Math.round(cell.getBoundingClientRect().width),
+          neighbourWidth: Math.round(neighbour.getBoundingClientRect().width),
+        };
+      });
+
+      // The placeholders say the words. Without this the fit assertion below is
+      // satisfiable by shortening them back to "Sys" and "Dia".
+      expect([
+        reading.systolic.placeholder,
+        reading.diastolic.placeholder,
+      ]).toEqual(["Systolic", "Diastolic"]);
+      for (const side of [reading.systolic, reading.diastolic]) {
+        expect(
+          side.room,
+          `${bucket} (${px}px): "${side.placeholder}" needs ${side.needs}px and its box gives ${side.room}px`
+        ).toBeGreaterThanOrEqual(side.needs);
+      }
+      // THE RELATIONSHIP, not an absolute: the pair's cell against a one-control
+      // cell in the same grid. A width bound alone passes on any panel wide enough,
+      // including the wide panel the truncation survived in.
+      expect(
+        reading.cellWidth,
+        `${bucket} (${px}px): the pair's cell is ${reading.cellWidth}px beside a ${reading.neighbourWidth}px single-control cell`
+      ).toBeGreaterThan(reading.neighbourWidth * 1.5);
+    }
+  } finally {
+    await panel.evaluate((node) => {
+      (node as HTMLElement).style.maxWidth = "";
+    });
+  }
+});

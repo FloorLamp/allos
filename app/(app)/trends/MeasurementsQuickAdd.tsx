@@ -43,6 +43,7 @@ import {
 import type { TemperatureUnit, WeightUnit } from "@/lib/settings";
 import { TREND_METRIC_META } from "@/lib/trend-metrics";
 import InlineError from "@/components/InlineError";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import {
   addMeasurements,
   type MeasurementsSaveResult,
@@ -80,8 +81,9 @@ function refusedMessage(
 // itself after a save; the page mounts simply reset and stay put.
 //
 // ── The layout is INTRINSIC, never a viewport breakpoint (issue #2014) ───────
-// Those three hosts are ~400px (the quick-entry BottomSheet, `sm:max-w-md` less its
-// padding), ~912px (the Trends modal, `max-w-5xl`) and a page column. The grid used
+// Those three hosts are the quick-entry BottomSheet, the Trends modal and a page
+// column — and the first two are the SAME declared bucket since #4977, which is a
+// fact about the hosts and not about this file. The grid used
 // `sm:grid-cols-2 lg:grid-cols-4` — VIEWPORT queries, which read the window and know
 // nothing about the box the form is in. At a 1024px window the sheet therefore laid
 // four columns into 400px: 91px each, three-line label wraps, inputs at four
@@ -90,8 +92,15 @@ function refusedMessage(
 // screen got BIGGER, which is why it survived.
 //
 // `repeat(auto-fit, minmax(10.5rem, 1fr))` asks the CONTAINER instead, so it is
-// right in all three hosts and in any host nobody has thought of yet. Two things
-// follow from the same reasoning and are part of the same fix:
+// right in all three hosts and in any host nobody has thought of yet. THAT IS ALSO
+// WHY #4977 IS A ONE-LINE CHANGE SOMEWHERE ELSE: the quick-entry sheet was narrow
+// because its host declared no size and took the default bucket, and declaring `lg`
+// there (components/QuickEntryProvider.tsx's `SHEET`) flows this grid to four
+// fields a row with nothing in this file touched. A breakpoint added here would be
+// the defect above coming back — if a fix for a HOST's width wants a `md:` or `lg:`
+// on the grid below, the host is the thing to fix.
+//
+// Two things follow from the same reasoning and are part of the same fix:
 //   • a unit is not a peer control — it is a suffix INSIDE the field (`bpm`, `%`)
 //     or a two-state toggle on the field's trailing edge (°F/°C, mg/dL) — because
 //     the `input` + `select` flex row is precisely what overflowed;
@@ -909,8 +918,20 @@ export default function MeasurementsQuickAdd({
     // A blood pressure is ONE reading typed as two numbers — one field, two inputs
     // and a slash. Adjacency used to be an ordering convention against a grid that
     // reflows freely; here it is structural.
+    //
+    // AND IT IS THE ONE CELL THAT HOLDS TWO CONTROLS, so it takes two tracks
+    // (#4977 item 2). A track is sized for one input; splitting one between two of
+    // them plus a slash and a unit left each under the length of its own
+    // placeholder, which then truncated mid-word — the field said "Sy" and "Dia"
+    // where it means systolic and diastolic. Two tracks give each input a track's
+    // room at every host width, and the placeholders can say the words.
     bloodPressure: (
-      <Field key="blood-pressure" label="Blood Pressure" htmlFor="m-systolic">
+      <Field
+        key="blood-pressure"
+        label="Blood Pressure"
+        htmlFor="m-systolic"
+        tracks={2}
+      >
         <div className="flex items-center gap-1.5">
           <input
             id="m-systolic"
@@ -919,7 +940,7 @@ export default function MeasurementsQuickAdd({
             min="0"
             name="systolic"
             aria-label="Systolic"
-            placeholder="Sys"
+            placeholder="Systolic"
             className="input min-w-0 flex-1"
           />
           <span aria-hidden className="text-slate-400">
@@ -932,7 +953,7 @@ export default function MeasurementsQuickAdd({
             min="0"
             name="diastolic"
             aria-label="Diastolic"
-            placeholder="Dia"
+            placeholder="Diastolic"
             className="input min-w-0 flex-1"
           />
           <span className="shrink-0 text-xs font-medium text-slate-500 dark:text-slate-400">
@@ -1173,6 +1194,12 @@ export default function MeasurementsQuickAdd({
     sleep: [field.sleepWindow, field.sleep, ...(showHrv ? [field.hrv] : [])],
   };
 
+  // ONE sentence for what this form is (#4977 item 3): the same string whichever
+  // presentation renders it, and whichever mount is rendering.
+  const about = metric
+    ? `Add one manual ${metric.label.toLowerCase()} reading. It will appear alongside synced readings.`
+    : "Today’s body and vitals readings — fill in only what you measured. Shows up alongside synced readings.";
+
   return (
     <form
       id="measurements-quick-add"
@@ -1186,26 +1213,26 @@ export default function MeasurementsQuickAdd({
       data-life-stage={showGrowth ? "minor" : "adult"}
     >
       <input type="hidden" name="weight_unit" value={weightUnit} />
+      {/* WHAT THE FORM IS FOR, AS THE TITLE'S GLYPH (#4977 item 3, on #4918
+          ruling 4's precedent). It was a paragraph, and it said the same sentence
+          on every visit forever while holding the widest line under the title — the
+          shape that rule moves to an info affordance. `about` is authored ONCE and
+          read by both branches below; the two hosts used to carry their own copy of
+          it, which is how a sentence gets edited in one place and not the other.
+
+          IN A DIALOG THE HEADING IS THE HOST'S (#3361), so the glyph is the whole
+          of what this form contributes to that row — a heading of its own here
+          would print the panel's name twice, which is the thing #3361 removed. */}
       {presentation === "card" ? (
         <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-              {metric ? `Log ${metric.label}` : "Log measurements"}
-            </h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              {metric
-                ? `Add one manual ${metric.label.toLowerCase()} reading. It will appear alongside synced readings.`
-                : "Today’s body and vitals readings — fill in only what you measured. Shows up alongside synced readings."}
-            </p>
-          </div>
+          <h2 className="flex items-center gap-1 font-semibold text-slate-800 dark:text-slate-100">
+            {metric ? `Log ${metric.label}` : "Log measurements"}
+            <InfoTooltipIcon label={about} data-testid="measurements-help" />
+          </h2>
           {headerSlot}
         </div>
       ) : (
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          {metric
-            ? `Add one manual ${metric.label.toLowerCase()} reading. It will appear alongside synced readings.`
-            : "Today’s body and vitals readings — fill in only what you measured. Shows up alongside synced readings."}
-        </p>
+        <InfoTooltipIcon label={about} data-testid="measurements-help" />
       )}
 
       {/* The submission's one date + one optional Time (#2235 decision 3): the
@@ -1322,13 +1349,20 @@ function Field({
   label,
   htmlFor,
   children,
+  tracks = 1,
 }: {
   label: string;
   htmlFor: string;
   children: ReactNode;
+  // How many of the grid's tracks this field's cell takes. One, unless the cell
+  // holds more than one control (#4977 item 2). Safe against the intrinsic grid at
+  // every width: measured in Chromium, a `span 2` in a container narrow enough to
+  // fit a SINGLE `auto-fit` track adds an implicit track that resolves to 0px, so
+  // the cell is exactly the container width and nothing escapes it.
+  tracks?: 1 | 2;
 }) {
   return (
-    <div className="min-w-0">
+    <div className={tracks === 2 ? "col-span-2 min-w-0" : "min-w-0"}>
       <label className="label" htmlFor={htmlFor}>
         {label}
       </label>
