@@ -598,3 +598,123 @@ describe("copy", () => {
     );
   });
 });
+
+// #3428 item 2. `setTimezone` writes every zone move now, so one history carries two
+// kinds of record and two readers with opposite needs read it. The owner's constraint
+// (2026-08-23T01:01:51Z): the excusal predicates read TRAVEL only — a Settings
+// correction must never start excusing or repeating a dose slot — while the
+// zone-at-instant resolver and the Health Connect body-metric reconcile read BOTH,
+// because either kind genuinely moved the zone a day was keyed under.
+describe("kind: travel | settings — one history, two readers (#3428 item 2)", () => {
+  const correction = (sw: Omit<TimezoneSwitch, "kind">): TimezoneSwitch => ({
+    ...sw,
+    kind: "settings",
+  });
+  const RETURN_UTC = "2026-05-08T14:00:00Z";
+
+  it.each([
+    {
+      why: "an absent kind is TRAVEL, because every record written before item 2 came from switchProfileTimezone",
+      stored: `[{"at":"${NOON_UTC}","from":"${NY}","to":"${TOKYO}"}]`,
+      valid: true,
+      kinds: ["travel"],
+    },
+    {
+      why: "a stored settings record round-trips",
+      stored: `[{"at":"${NOON_UTC}","from":"${NY}","to":"${TOKYO}","kind":"settings"}]`,
+      valid: true,
+      kinds: ["settings"],
+    },
+    {
+      why: "an unrecognised kind taints the whole history rather than being guessed at",
+      stored: `[{"at":"${NOON_UTC}","from":"${NY}","to":"${TOKYO}","kind":"holiday"}]`,
+      valid: false,
+      kinds: [],
+    },
+  ])("decode: $why", ({ stored, valid, kinds }) => {
+    const decoded = decodeTimezoneSwitchHistory(stored);
+    expect(decoded.valid).toBe(valid);
+    expect(decoded.switches.map((sw) => sw.kind)).toEqual(kinds);
+  });
+
+  // EVENING (20:00) sits inside the New York 10:00 → Tokyo 23:00 span this instant
+  // skips, so the first row is the positive control: over a travel record the predicate
+  // really does fire. Every row below it is the same seam declining to.
+  it.each([
+    {
+      why: "a travel record excuses the slot it skipped",
+      history: [leg({ at: NOON_UTC, from: NY, to: TOKYO })],
+      currentZone: TOKYO,
+      excused: true,
+    },
+    {
+      why: "the identical seam recorded as a correction excuses nothing",
+      history: [correction({ at: NOON_UTC, from: NY, to: TOKYO })],
+      currentZone: TOKYO,
+      excused: false,
+    },
+    {
+      why: "a correction after the trip leaves the travel legs not reaching the profile, so they fail open",
+      history: [
+        leg({ at: NOON_UTC, from: NY, to: TOKYO }),
+        correction({ at: RETURN_UTC, from: TOKYO, to: HONOLULU }),
+      ],
+      currentZone: HONOLULU,
+      excused: false,
+    },
+  ])("isExcusedSlot: $why", ({ history, currentZone, excused }) => {
+    expect(
+      isExcusedSlot(
+        resolveSwitchHistory(history, currentZone),
+        "2026-05-01",
+        EVENING
+      )
+    ).toBe(excused);
+  });
+
+  // WHY THE KIND FILTER RUNS BEFORE THE TRUST GATE, stated as the property that makes
+  // it safe: the excusal predicates see exactly the history #3263 would have stored,
+  // because before item 2 a Settings edit wrote nothing and the stored history WAS the
+  // travel sub-list. So this change cannot move a dose in or out of any denominator.
+  //
+  // Filtering after the gate would not have this property — it would keep the travel
+  // legs either side of a correction while dropping the crossing between them, and the
+  // arithmetic over that pair describes a trajectory nobody took.
+  it("hands the excusal predicates exactly what #3263 would have stored", () => {
+    const mixed: TimezoneSwitch[] = [
+      leg({ at: NOON_UTC, from: NY, to: TOKYO }),
+      correction({ at: RETURN_UTC, from: TOKYO, to: HONOLULU }),
+    ];
+    const asBeforeItem2 = mixed.filter((sw) => sw.kind === "travel");
+    for (const zone of [TOKYO, HONOLULU]) {
+      expect(resolveSwitchHistory(mixed, zone)).toEqual(
+        resolveSwitchHistory(asBeforeItem2, zone)
+      );
+    }
+  });
+
+  // THE OTHER READER, and the reason the record exists at all. `zoneAtInstant` walks the
+  // WHOLE history: the mid-trip instant below answers Tokyo only because the correction
+  // that followed is on the chain. With the travel leg alone — which is all main stored
+  // before item 2 — the chain would not reach Honolulu, the history would be rejected
+  // whole, and every one of these instants would answer Honolulu.
+  const mixedHistory: TimezoneSwitch[] = [
+    leg({ at: NOON_UTC, from: NY, to: TOKYO }),
+    correction({ at: RETURN_UTC, from: TOKYO, to: HONOLULU }),
+  ];
+  it.each([
+    { at: "2026-04-30T00:00:00Z", expected: NY, why: "before the outbound" },
+    { at: "2026-05-04T00:00:00Z", expected: TOKYO, why: "mid-trip" },
+    { at: "2026-06-01T00:00:00Z", expected: HONOLULU, why: "after the correction" },
+  ])("zoneAtInstant reads both kinds: $why → $expected", ({ at, expected }) => {
+    expect(zoneAtInstant(mixedHistory, HONOLULU, new Date(at))).toBe(expected);
+    // The control: the same instants over the travel leg alone.
+    expect(
+      zoneAtInstant(
+        mixedHistory.filter((sw) => sw.kind === "travel"),
+        HONOLULU,
+        new Date(at)
+      )
+    ).toBe(HONOLULU);
+  });
+});

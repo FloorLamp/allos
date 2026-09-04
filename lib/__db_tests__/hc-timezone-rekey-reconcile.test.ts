@@ -32,7 +32,8 @@ import { describe, it, expect, afterEach } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { getTimezone, setTimezone } from "@/lib/settings";
-import { switchProfileTimezone } from "@/lib/settings/travel";
+import { getTravelSwitches, switchProfileTimezone } from "@/lib/settings/travel";
+import { resolveSwitchHistory } from "@/lib/travel-timezone";
 import { parseHealthConnectPayload } from "@/lib/integrations/health-connect";
 import { ingestHealthConnectPayload } from "@/lib/integrations/health-connect-ingest";
 import { HEALTH_CONNECT_ID } from "@/lib/integrations/health-connect";
@@ -482,28 +483,39 @@ describe("what the reconcile refuses to touch", () => {
     ]);
   });
 
-  // THE GAP THIS CHANGE LEAVES, pinned rather than left to be discovered. The reconcile
-  // reads `timezone_switches`, and only the TRAVEL paths write it (lib/settings/travel.ts
-  // records a switch; the Settings profile form and onboarding call `setTimezone`
-  // directly, which #3263 deliberately left alone). So a zone moved through the Settings
-  // form has nothing to reconcile against, and #608's duplicate survives there — where
-  // the old sweep would have prevented it by deleting three days. Losing a duplicate row
-  // is the trade this whole change makes on purpose; losing a day of readings is not.
+  // THE GAP THIS CHANGE LEFT, NOW CLOSED — and the assertion is inverted rather than
+  // deleted, because which way it reads is the whole record of why item 2 existed.
   //
-  // The owner ruled this SHIPS OPEN (#3524, 2026-08-23): routing Settings into
-  // `timezone_switches` here would change #3263's dose-excusal semantics unasked, so the
-  // destination is #3428's item 2 — `setTimezone` becomes the writer, the record carries
-  // its kind, and the excusal predicates read travel-kind switches only. If this
-  // assertion ever has to change, that is why.
-  it("leaves the duplicate when the zone moved WITHOUT recording a switch", () => {
+  // #3524 shipped with this open and pinned: the reconcile reads `timezone_switches`,
+  // only the TRAVEL paths wrote it, so a zone moved through the Settings form had
+  // nothing to reconcile against and #608's duplicate survived there. The owner ruled
+  // it SHIPS OPEN (2026-08-23) because routing Settings into that history without a
+  // discriminator would have changed #3263's dose-excusal semantics unasked, and named
+  // the destination: #3428 item 2 — `setTimezone` becomes the writer, every record
+  // carries its kind, and the excusal predicates read travel-kind only.
+  //
+  // That landed. A Settings move now records a `kind: "settings"` seam, the reconcile
+  // reads BOTH kinds because either one genuinely re-keys a day, and the duplicate is
+  // re-keyed away exactly as a trip's would be. The dose slots are untouched: this
+  // profile's history holds no travel record at all, so there is nothing for
+  // `isExcusedSlot` to read — which is the half the discriminator exists to protect.
+  it("re-keys the duplicate when the zone moved through Settings", () => {
     freeze("2026-05-02T05:00:00Z");
     const p = newProfile("Settings-form move", LA);
     pushWeight(p, "2026-05-01T04:30:00Z", 80.4);
     expect(dates(p)).toEqual(["2026-04-30"]);
 
-    setTimezone(p, NY); // the Settings form's own path — no switch recorded
+    setTimezone(p, NY); // the Settings form's own path — a settings-kind seam
+    expect(getTravelSwitches(p)).toEqual([
+      { at: "2026-05-02T05:00:00Z", from: LA, to: NY, kind: "settings" },
+    ]);
     pushWeight(p, "2026-05-01T04:30:00Z", 80.4);
-    expect(dates(p)).toEqual(["2026-04-30", "2026-05-01"]);
+    // One reading, one day. Before item 2 this profile kept both.
+    expect(dates(p)).toEqual(["2026-05-01"]);
+    // And the correction excuses nothing: no travel record, no excusal input.
+    expect(resolveSwitchHistory(getTravelSwitches(p), getTimezone(p))).toEqual(
+      []
+    );
   });
 });
 

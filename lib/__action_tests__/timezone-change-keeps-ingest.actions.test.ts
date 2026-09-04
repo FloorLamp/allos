@@ -108,6 +108,37 @@ describe("a timezone change deletes no ingest rows (#3524)", () => {
     expect(bodyMetricDates(profile.id, "health-connect")).toEqual([recent]);
   });
 
+  // #3428 item 2: the Settings form leaves a record even with no trip in progress, which
+  // is what gives the zone-at-instant resolver and the body-metric reconcile a complete
+  // history. The kind is `settings`, so nothing about the dose denominator moves.
+  it("records a settings-kind seam for an ordinary Settings zone change", async () => {
+    const admin = createLogin({ role: "admin" });
+    const profile = createProfile("Ordinary correction");
+    actAs(admin, profile);
+    setTimezone(profile.id, "America/New_York"); // first-ever: records nothing
+    expect(getTravelSwitches(profile.id)).toEqual([]);
+    expect(getHomeTimezone(profile.id)).toBeNull(); // no trip in progress
+
+    const previousNow = process.env.ALLOS_TEST_NOW;
+    try {
+      process.env.ALLOS_TEST_NOW = "2026-05-01T14:00:00Z";
+      await saveProfileSettings(fd({ timezone: "Asia/Tokyo" }));
+    } finally {
+      if (previousNow == null) delete process.env.ALLOS_TEST_NOW;
+      else process.env.ALLOS_TEST_NOW = previousNow;
+    }
+
+    expect(getTimezone(profile.id)).toBe("Asia/Tokyo");
+    expect(getTravelSwitches(profile.id)).toEqual([
+      {
+        at: "2026-05-01T14:00:00Z",
+        from: "America/New_York",
+        to: "Asia/Tokyo",
+        kind: "settings",
+      },
+    ]);
+  });
+
   it("records a compensating seam when Settings returns an active trip home", async () => {
     const login = createLogin();
     const profile = createProfile("Settings return", login.id);
@@ -136,11 +167,16 @@ describe("a timezone change deletes no ingest rows (#3524)", () => {
         at: "2026-05-01T14:00:00Z",
         from: "America/New_York",
         to: "Asia/Tokyo",
+        kind: "travel",
       },
+      // TRAVEL, though it came through the Settings form: the trip was live, so this
+      // edit crossed the same wall-clock seam the one-tap switch does and must be able
+      // to un-suppress the slot the outbound leg suppressed (#3428 item 2).
       {
         at: "2026-05-01T14:01:00Z",
         from: "Asia/Tokyo",
         to: "America/New_York",
+        kind: "travel",
       },
     ]);
   });
