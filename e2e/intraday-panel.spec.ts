@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Locator } from "@playwright/test";
 import { loginAs } from "./nav";
 import {
+  appContent,
   expectSvgTextInsidePlot,
   expectSvgTextLegible,
   followLink,
@@ -634,7 +635,7 @@ test.describe("the day view's intraday panel (#1068)", () => {
       // The day view's panel is unchanged at this viewport — the same wide box it
       // has always drawn here, now for a reason its own card can state.
       await openFixtureDay(member);
-      const panel = member.getByTestId("intraday-panel");
+      const panel = appContent(member).getByTestId("intraday-panel");
       await expect(panel.getByTestId("intraday-chart")).toHaveCount(1);
       const day = panel.locator(WIDE);
       await expect(day.getByTestId("intraday-hr")).toBeVisible();
