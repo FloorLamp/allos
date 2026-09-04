@@ -234,8 +234,10 @@ function moodEntries(profileId: number, q: LoggedQuery): LoggedEntry[] {
 function bodyEntries(profileId: number, q: LoggedQuery): LoggedEntry[] {
   const labelled = BODY_METRIC_COLUMNS.filter(
     (column) =>
-      matchTier(TREND_METRIC_META[BODY_METRIC_MEASURE_SLUG[column]].title, q.query) >
-      0
+      matchTier(
+        TREND_METRIC_META[BODY_METRIC_MEASURE_SLUG[column]].title,
+        q.query
+      ) > 0
   );
   const rows = db
     .prepare(

@@ -29,15 +29,15 @@ its kind, the noun its subtitle names, and the read that finds it — and one
 mapping builds the hit, so an eighth kind is a table row rather than an eighth
 copy.
 
-| Kind | Vocabulary the query matches | Entry id the anchor is built from |
-| --- | --- | --- |
-| `dose` | item name, amount taken | `dose:<log id>` |
-| `food` | food group's name (and its stored key) | `food:<event id>` |
-| `practice` | practice name | `practice:<session id>` |
-| `symptom` | symptom label (and its stored key) | `symptom:<day>:<symptom>` |
-| `mood` | "mood"/"check-in", and the day | `mood:<row id>` |
-| `body` | measure label, and the value AS STORED | `body:<column>:<row id>` |
-| `sleep` | "sleep", and the wake day | `sleep:<wake day>` |
+| Kind       | Vocabulary the query matches           | Entry id the anchor is built from |
+| ---------- | -------------------------------------- | --------------------------------- |
+| `dose`     | item name, amount taken                | `dose:<log id>`                   |
+| `food`     | food group's name (and its stored key) | `food:<event id>`                 |
+| `practice` | practice name                          | `practice:<session id>`           |
+| `symptom`  | symptom label (and its stored key)     | `symptom:<day>:<symptom>`         |
+| `mood`     | "mood"/"check-in", and the day         | `mood:<row id>`                   |
+| `body`     | measure label, and the value AS STORED | `body:<column>:<row id>`          |
+| `sleep`    | "sleep", and the wake day              | `sleep:<wake day>`                |
 
 Four rules hold across all seven:
 

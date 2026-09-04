@@ -221,9 +221,12 @@ function anchorsOn(
   day: string,
   kind: SearchLoggedKind
 ): string[] {
-  return gatherHistoryLog(profileId, { loginId, limit: 200, day, kind }).rows.map(
-    (row) => timelineEntryAnchorId(row.id)
-  );
+  return gatherHistoryLog(profileId, {
+    loginId,
+    limit: 200,
+    day,
+    kind,
+  }).rows.map((row) => timelineEntryAnchorId(row.id));
 }
 
 beforeAll(() => {

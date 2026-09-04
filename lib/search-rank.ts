@@ -29,9 +29,7 @@ export const SEARCH_LOGGED_KINDS = [
 export type SearchLoggedKind = (typeof SEARCH_LOGGED_KINDS)[number];
 export type LoggedSearchDomain = `log-${SearchLoggedKind}`;
 
-export function loggedSearchDomain(
-  kind: SearchLoggedKind
-): LoggedSearchDomain {
+export function loggedSearchDomain(kind: SearchLoggedKind): LoggedSearchDomain {
   return `log-${kind}`;
 }
 
