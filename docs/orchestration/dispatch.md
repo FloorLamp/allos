@@ -43,10 +43,10 @@ closed taxonomy, and `needs-human` handling.
 - A refuted PR re-enters the review queue; count rework when judging depth.
 - Every brief uses the generated template and the gate order from
   `scripts/orchestration/agent-gates.sh`.
-- Push meaningful checkpoints. A branch not next to land stays branch-only —
-  no PR at all, and a draft is not a banking state. The candidate's PR opens
-  READY (environment.md §GitHub access), never for CI a pending merge will
-  invalidate.
+- Push meaningful checkpoints. A branch not next to land stays branch-only — no
+  PR at all, and a draft is not a banking state. The candidate's PR opens READY
+  (environment.md §GitHub access), never for CI a pending merge will invalidate.
+- Claim the issue, naming the branch, BEFORE briefing — [claims.md](claims.md).
 - Parallelize banked implementation/local pre-review; serialize the sole
   candidate's remote review, CI, and merge.
 - A census meant to be EXHAUSTIVE passes ripgrep's `--binary` (`-a`). Several

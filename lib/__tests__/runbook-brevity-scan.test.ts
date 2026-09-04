@@ -134,6 +134,10 @@ const FILE_BUDGETS = {
   "lib/migrations/AGENTS.md": { lines: 80, genre: "prose" },
   "lib/queries/AGENTS.md": { lines: 60, genre: "prose" },
   "docs/orchestration.md": { lines: 80, genre: "runbook" },
+  // The markers two orchestrator sessions coordinate through (#5153). A focused
+  // document because dispatch.md and review-merge.md are both AT their budgets,
+  // and this gate's answer to that is to move detail out, never to raise one.
+  "docs/orchestration/claims.md": { lines: 50, genre: "runbook" },
   "docs/orchestration/dispatch.md": { lines: 100, genre: "runbook" },
   "docs/orchestration/e2e-ci.md": { lines: 100, genre: "runbook" },
   "docs/orchestration/environment.md": { lines: 100, genre: "runbook" },

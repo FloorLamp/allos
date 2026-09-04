@@ -37,8 +37,8 @@
   agent to execute falsifying attacks; prose alone only ever reaches CONSULT.
 - On CONSULT, read the file and hunk it quotes, not the matched terms; dispatch
   when it moves what a shared surface shows about another profile.
-- The merge waits for that report. Fix each refuted claim or record a reasoned
-  override in the thread.
+- The merge waits for that report — a MARKER the gate reads (claims.md). Fix
+  each refuted claim or record a reasoned override in the thread.
 - A blocking finding fixed by changing the MECHANISM, not the value, earns a
   fresh pass. The test: does the fix create a surface the last pass could not
   have attacked? A new store, key, lifetime, or owning row is yes; a corrected
@@ -79,10 +79,10 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
   2026-08-26, #3710): a non-author reviews the candidate commit; the COMMENT
   review states SHA and reviewer — on a shared bot account, also that the
   reviewer did not author the change (#4258). A head change voids it.
-- **Run `scripts/orchestration/merge-gate.mjs <pr>` before every merge
-  call** — receipt on current head, checks green, no unresolved threads;
-  exit 0 is the precondition. CI mirrors it as the `merge-gate` COMMIT
-  STATUS, which check-runs does not list: all-green can still be `unstable`.
+- **Run `merge-gate.mjs <pr>` before every merge call** — receipt, green checks,
+  no threads, no hold, the mandated pass, this session's own PR (claims.md);
+  exit 0 is the precondition. CI mirrors it as the `merge-gate` COMMIT STATUS,
+  which check-runs does not list: all-green can still be `unstable`.
 - A later conflicting PR rebases only after the last earlier conflict lands.
 - Resume the author for semantic conflict resolution; do not hand-integrate
   feature code.
