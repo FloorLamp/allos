@@ -16,7 +16,14 @@ export const sleepCandidates = {
       `sleep.waiting:${day}`,
       `sleep.waiting-state:${day}`,
       "sleep.last-night",
-      { timing, rankReasons: changed }
+      // profile-data / current (#4969): this atom joins the day-so-far family
+      // now, in the sleep members' own seat — it needs the same relevance kind
+      // every other Standing-eligible candidate carries.
+      {
+        timing,
+        rankReasons: changed,
+        relevance: profileDataRelevance("current"),
+      }
     );
   },
   bootstrap(ctx: DomainCandidateContext) {
@@ -44,7 +51,10 @@ export const sleepCandidates = {
       "sleep.refresh",
       `sleep.refresh-offer:${day}`,
       "sleep.last-night",
-      "may"
+      "may",
+      // profile-data / current (#4969): joins the day-so-far family, same as
+      // `waiting` above.
+      { relevance: profileDataRelevance("current") }
     );
   },
   reading(

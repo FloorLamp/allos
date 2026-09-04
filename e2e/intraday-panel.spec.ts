@@ -459,18 +459,23 @@ test.describe("the day view's intraday panel (#1068)", () => {
     });
     try {
       await member.goto("/");
-      const family = member.locator('[data-standing-family="intraday-today"]');
+      // THE FAMILY, NOT THE MEMBER (#4969): the chart mounts on the Day-so-far
+      // family row now, alongside this fixture's own last-night sleep members —
+      // there is no single-purpose "intraday-today" family left to scope to.
+      const family = member.locator('[data-standing-family="day-so-far"]');
       await expect(family).toBeVisible();
       // It is in TODAY and nowhere else — the band the issue names.
       await expect(
         member
           .locator('[data-standing-section="today"]')
-          .locator('[data-standing-family="intraday-today"]')
+          .locator('[data-standing-family="day-so-far"]')
       ).toHaveCount(1);
 
       // The figure, in the compact geometry the day view's phone variant uses —
-      // one implementation, selected by the prop that file already had.
-      const figure = family.getByTestId("dashboard-row-figure");
+      // one implementation, selected by the prop that file already had. It is the
+      // FAMILY's drawing now, not the member's — rendered once under every
+      // member's facts rather than inside the intraday candidate's own `<li>`.
+      const figure = family.getByTestId("dashboard-family-figure");
       const chart = figure.locator('[data-variant="compact"]');
       await expect(chart).toBeVisible();
       // WAIT FOR THE CONTENT, NOT THE BOX: the HR band is what makes this a chart
@@ -480,23 +485,36 @@ test.describe("the day view's intraday panel (#1068)", () => {
       // beside the morning practice's on the row below it (#4852).
       await expect(chart.getByTestId("intraday-block")).toHaveCount(2);
 
-      // The lag sentence, on the row's own facts. Compared against the PANEL's
-      // rather than against a literal: both mounts read one `intradayFreshness`
-      // over one model, so a drift between them is the only failure worth
-      // catching here — and the run's frozen clock moves the minute, not the
-      // sentence's construction.
-      const rowValue = family.getByTestId("standing-value");
+      // The lag sentence, on the intraday member's OWN facts — scoped to that one
+      // candidate, because the family now also carries the night's sleep members,
+      // each with their own `standing-value`.
+      const rowValue = family
+        .locator('[data-candidate-id^="activity.intraday:"]')
+        .getByTestId("standing-value");
       await expect(rowValue).toHaveText(/^Synced .+ ago$/);
       const dashboardLag = (await rowValue.textContent())!.trim();
 
       // THE WHOLE ROW IS ONE DOOR, THE CHART INCLUDED — a decision, so it is
-      // MEASURED. The row's link carries `standing-stretch`, whose `::after` insets
-      // to the family's facts cell, and the figure renders inside that cell: a
-      // pointer anywhere on the drawing lands on the door. That is what this mount
-      // is for ("tap → today's day view"), and it is why the figure is `inert` —
-      // the chart's own tick anchors name `#timeline-entry-…` fragments that exist
-      // on the day view and NOT here, so without it the keyboard would reach a link
-      // that scrolls nowhere while the pointer could not.
+      // MEASURED. RETARGETED FROM THE MEMBER'S LINK TO THE FAMILY ROW (#4969),
+      // and the destination is now DECLARED rather than inherited (#4969 ruling,
+      // 2026-09-03): the figure leads to what it pictures. The door that reaches
+      // under the figure is the family's primary surface (`.standing-primary`),
+      // which is the member whose own href IS the family's declared door — the
+      // intraday candidate's, whatever order the night's sleep and today's steps
+      // members take above it. It used to be whichever member sorted first, so
+      // this same tap landed on `/sleep`.
+      //
+      // WHAT IS ASSERTED IS THE HREF THE POINTER FINDS, not merely that it finds
+      // a door: "the hit is inside `.standing-primary`" is green on the tree this
+      // ruling fixed AND on the tree where that class sits on a sleep member. The
+      // row's link carries `standing-stretch`, whose `::after` insets to the WHOLE
+      // family's relatively-positioned box — which is why this reaches the figure
+      // at all, sitting below every member's `<li>` in the very same box.
+      //
+      // It is also why the figure is `inert` — the chart's own tick anchors name
+      // `#timeline-entry-…` fragments that exist on the day view and NOT here, so
+      // without it the keyboard would reach a link that scrolls nowhere while the
+      // pointer could not.
       //
       // NOT asserted with a click: Playwright refuses to click an element that
       // another element intercepts, so `click(chart)` fails whether the figure is
@@ -507,10 +525,10 @@ test.describe("the day view's intraday panel (#1068)", () => {
           '[data-variant="compact"]'
         ) as HTMLElement | null;
         const door = el.querySelector(
-          'a[href*="day-at-a-glance"]'
+          "a.standing-primary"
         ) as HTMLElement | null;
         if (!plot || !door)
-          return { hitInsideDoor: false, ticks: 0, focusable: true };
+          return { hitHref: null, doors: 0, ticks: 0, focusable: true };
         const box = plot.getBoundingClientRect();
         const hit = document.elementFromPoint(
           box.x + box.width / 2,
@@ -520,7 +538,7 @@ test.describe("the day view's intraday panel (#1068)", () => {
         // not a fresh query written to check the work.
         const ticks = Array.from(
           el.querySelectorAll<HTMLElement>(
-            '[data-testid="dashboard-row-figure"] a[href^="#"]'
+            '[data-testid="dashboard-family-figure"] a[href^="#"]'
           )
         );
         const focusable = ticks.some((tick) => {
@@ -528,7 +546,10 @@ test.describe("the day view's intraday panel (#1068)", () => {
           return document.activeElement === tick;
         });
         return {
-          hitInsideDoor: door.contains(hit),
+          // The href of the door the pointer actually landed in, read THROUGH the
+          // same element the reach is measured against.
+          hitHref: door.contains(hit) ? door.getAttribute("href") : null,
+          doors: el.querySelectorAll("a.standing-primary").length,
           ticks: ticks.length,
           focusable,
         };
@@ -536,7 +557,12 @@ test.describe("the day view's intraday panel (#1068)", () => {
       // The control that keeps the focus claim from being vacuous: the figure really
       // does render tick anchors, so "none is focusable" is about something.
       expect(doorReach.ticks).toBeGreaterThan(0);
-      expect(doorReach.hitInsideDoor).toBe(true);
+      // ONE primary surface on the row — the family declares one door, not one per
+      // member — and a tap on the drawing lands on the day the drawing is of.
+      expect(doorReach.doors).toBe(1);
+      expect(doorReach.hitHref).toMatch(
+        /\/history\?day=\d{4}-\d{2}-\d{2}#day-at-a-glance/
+      );
       expect(doorReach.focusable).toBe(false);
 
       await followLink(

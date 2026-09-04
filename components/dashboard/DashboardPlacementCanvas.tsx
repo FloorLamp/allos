@@ -15,7 +15,9 @@ import DashboardAhead, { type DashboardAheadBucket } from "./DashboardAhead";
 import DashboardStandingCluster, {
   DashboardFactRow,
   type DashboardStandingPresentation,
+  type StandingFamilyDrawing,
 } from "./DashboardStandingCluster";
+import type { StandingFamilyKey } from "@/lib/dashboard-standing";
 
 export interface DashboardPlacementCanvasProps {
   dateLabel: string;
@@ -27,6 +29,14 @@ export interface DashboardPlacementCanvasProps {
    * (exact-once completeness is a claim about what is ON SCREEN).
    */
   presentations: ReadonlyMap<string, DashboardStandingPresentation>;
+  /**
+   * THE DRAWING BELONGS TO THE FAMILY (#4969), resolved once per family
+   * alongside `presentations` rather than hung off whichever member happened to
+   * carry it. Standing is the only lane with families, so this is consulted
+   * there and nowhere else. Optional: a caller with no plotted family (most
+   * fixtures) may omit it rather than pass an empty map at every call site.
+   */
+  drawings?: ReadonlyMap<StandingFamilyKey, StandingFamilyDrawing>;
   /**
    * AHEAD SAYS WHEN, NOT WHAT (#4076). One row RENDERER serves every zone, but Ahead
    * is a schedule: its facts column states when a thing is due, where the same
@@ -267,10 +277,14 @@ function EverythingBand({
   );
 }
 
+const NO_DRAWINGS: ReadonlyMap<StandingFamilyKey, StandingFamilyDrawing> =
+  new Map();
+
 export default function DashboardPlacementCanvas({
   dateLabel,
   placements,
   presentations,
+  drawings = NO_DRAWINGS,
   aheadPresentations,
   attentionBadgeCount,
   illnessGroupNode,
@@ -420,6 +434,7 @@ export default function DashboardPlacementCanvas({
         <DashboardStandingCluster
           placements={standing}
           presentations={presentations}
+          drawings={drawings}
         />
       )}
 

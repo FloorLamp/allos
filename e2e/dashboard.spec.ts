@@ -790,13 +790,29 @@ test("the shared rail answers with the row's primary door", async ({
   // Paired with a PRESENCE check on purpose: an absence assertion that never had
   // a door to suppress would pass against a page with no doors at all.
   await page.goto("/");
-  const family = page
+  // "composed" no longer implies more than one member (#4969: `single` folded
+  // into it, so a lone reading is `composed` too) — so this test needs a family
+  // that genuinely SHARES its rail, not merely the first composed one with a
+  // door. Walk the composed, doored families in DOM order and take the first
+  // that actually stacks more than one.
+  const candidates = page
     .locator('[data-standing-family][data-standing-composition="composed"]')
-    .filter({ has: page.getByTestId("standing-door") })
-    .first(); // first-ok: composed families all share one rail the same way
+    .filter({ has: page.getByTestId("standing-door") });
+  const candidateCount = await candidates.count();
+  let family = candidates.first(); // first-ok: throwaway default the loop below always overwrites when a stacked composed family exists (asserted next)
+  let doorCount = 0;
+  for (let index = 0; index < candidateCount; index++) {
+    const entry = candidates.nth(index);
+    const count = await entry.getByTestId("standing-door").count();
+    if (count > 1) {
+      family = entry;
+      doorCount = count;
+      break;
+    }
+  }
   await expect(family).toBeVisible();
   const doors = family.getByTestId("standing-door");
-  expect(await doors.count()).toBeGreaterThan(1);
+  expect(doorCount).toBeGreaterThan(1);
   const opacities = () =>
     doors.evaluateAll((nodes) =>
       nodes.map((node) => getComputedStyle(node).opacity)

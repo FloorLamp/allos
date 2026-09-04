@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import DashboardStandingCluster, {
   DashboardFactRow,
   type DashboardStandingPresentation,
+  type StandingFamilyDrawing,
 } from "@/components/dashboard/DashboardStandingCluster";
+import { historyDayIntradayHref } from "@/lib/hrefs";
 import type { DashboardPlacement } from "@/lib/dashboard-relevance";
 import type {
   StandingFamilyKey,
@@ -65,7 +67,7 @@ const BEHIND = placement(
   "attention",
   0
 );
-const STEPS = placement("activity.steps:d", "steps-today", "today", "rest", 1);
+const STEPS = placement("activity.steps:d", "day-so-far", "today", "rest", 1);
 const BP = placement(
   "vitals.blood-pressure:2026-08-19",
   "blood-pressure",
@@ -101,6 +103,56 @@ const PRESENTATIONS = new Map<string, DashboardStandingPresentation>([
   [RHR.candidate.candidateId, { value: "54 bpm", presence: "current" }],
 ]);
 
+const NO_DRAWINGS = new Map();
+
+// The Day so far family as the page hands it over (#4969): three members that
+// lead to three different places, and a figure that declares its own.
+const SLEEP_NIGHT = placement(
+  "sleep.duration:2026-09-03",
+  "day-so-far",
+  "today",
+  "rest",
+  4
+);
+const INTRADAY = placement(
+  "activity.intraday:2026-09-03",
+  "day-so-far",
+  "today",
+  "rest",
+  5
+);
+const DAY_VIEW = historyDayIntradayHref("2026-09-03");
+const DAY_PRESENTATIONS = new Map<string, DashboardStandingPresentation>([
+  [
+    SLEEP_NIGHT.candidate.candidateId,
+    {
+      label: "Sleep duration",
+      value: "7h 50m",
+      href: "/sleep",
+      presence: "current",
+    },
+  ],
+  [
+    STEPS.candidate.candidateId,
+    { value: "8,000", href: "/trends#body", presence: "current" },
+  ],
+  [
+    INTRADAY.candidate.candidateId,
+    { value: "Synced 1h 12m ago", href: DAY_VIEW, presence: "current" },
+  ],
+]);
+const DAY_DRAWINGS = new Map<StandingFamilyKey, StandingFamilyDrawing>([
+  [
+    "day-so-far",
+    {
+      figure: {
+        node: <div data-testid="intraday-chart-stub" />,
+        door: DAY_VIEW,
+      },
+    },
+  ],
+]);
+
 const cluster = (
   placements: readonly StandingPlacement[],
   presentations = PRESENTATIONS
@@ -108,6 +160,7 @@ const cluster = (
   <DashboardStandingCluster
     placements={placements}
     presentations={presentations}
+    drawings={NO_DRAWINGS}
   />
 );
 
@@ -232,4 +285,57 @@ describe("Standing's rendered bands", () => {
     expect(door.classList.contains("absolute")).toBe(true);
     expect(door.classList.contains("right-0")).toBe(true);
   });
+
+  // THE FAMILY'S PRIMARY DOOR IS DECLARED, NOT INHERITED FROM MEMBER ORDER (#4969
+  // ruling). `standing-primary` is the surface whose stretch reaches the WHOLE
+  // family box — the label's line on a phone, the trailing column, and everything
+  // under the members list, the figure included — so it is the family's door, and
+  // `day-so-far` is the first family whose members disagree about where that
+  // should go (sleep `/sleep`, steps `/trends#body`, the chart the day view).
+  //
+  // THE ASSERTION IS THE INVARIANCE, not the destination. "The door points at the
+  // day view" is green on the tree this fixes AND on the tree where the chart is
+  // simply the member that happens to sort first, so it says nothing on its own.
+  // Feeding the same three members in two orders is what separates them.
+  it.each([
+    ["identity order", () => [SLEEP_NIGHT, STEPS, INTRADAY]],
+    ["reversed", () => [INTRADAY, STEPS, SLEEP_NIGHT]],
+  ])(
+    "keeps Day so far's stretched surface on the figure's declared door, %s",
+    (_order, members) => {
+      const placements = members();
+      const { container } = render(
+        <DashboardStandingCluster
+          placements={placements}
+          presentations={DAY_PRESENTATIONS}
+          drawings={DAY_DRAWINGS}
+        />
+      );
+      const primary = container.querySelectorAll("a.standing-primary");
+      expect(primary).toHaveLength(1);
+      expect(primary[0].getAttribute("href")).toBe(DAY_VIEW);
+      // …and it is the intraday member's OWN link: the figure earns no second
+      // anchor to the page its neighbour already links to.
+      expect(
+        primary[0]
+          .closest("[data-candidate-id]")
+          ?.getAttribute("data-candidate-id")
+      ).toBe(INTRADAY.candidate.candidateId);
+
+      // Members keep their own doors, in the order they were handed over.
+      expect(
+        [...container.querySelectorAll("[data-candidate-id] a[href]")].map(
+          (node) => node.getAttribute("href")
+        )
+      ).toEqual(
+        placements.map(
+          (member) => DAY_PRESENTATIONS.get(member.candidate.candidateId)!.href
+        )
+      );
+      // One figure, drawn once, under the members list.
+      expect(
+        container.querySelectorAll('[data-testid="dashboard-family-figure"]')
+      ).toHaveLength(1);
+    }
+  );
 });
