@@ -119,6 +119,8 @@ node scripts/orchestration/dispatch-brief.mjs new --branch <branch> \
   [--worktree wt-x] [--issues 1,2] [--task "..."] [--e2e] [--port-base N]
 ```
 
+Claim the issue, naming the branch, before briefing — `claims.md` has the rule.
+
 Every agent goes through this — Agent-tool runs included — and any live
 dispatch found unrecorded is ADOPTED immediately (the `adopt` subcommand):
 the roster is what makes a restart survivable.
