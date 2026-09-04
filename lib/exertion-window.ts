@@ -14,8 +14,16 @@
 // The ceiling is `restingCeilingBpm` — that profile's baseline plus its own spread —
 // and the bound is `usualRecoveryMin` over their own recent sessions. There is no
 // published band for "how hard a workout should be", and inventing one would be the
-// clinical-cutoff language #4775 and AGENTS.md both refuse. The floors below exist
-// only for a profile with no history to compare against, and they say so.
+// clinical-cutoff language #4775 and AGENTS.md both refuse.
+//
+// So the constants below are DEFAULTS, not minimums, and the `??` that reads them is
+// the whole of that claim. `lib/usual.ts` hands back null for exactly one person —
+// the one with no recorded usual and nothing declared, whose habit the app refuses to
+// invent — and that null is what these stand in for. A number that is NOT null is
+// that profile's own measured usual, and it wins even when it is SMALLER than the
+// default: clamping it upward would be the invented band, applied to precisely the
+// people this module exists to answer for. Someone who comes back down in six minutes
+// gets six.
 //
 // ── COVERAGE IS NOT RECOVERY ─────────────────────────────────────────────────
 // A wrist that comes off mid-session reads as ABSENCE. The honest answer to "did they
@@ -47,18 +55,20 @@ const MINUTE_MS = 60_000;
 
 /**
  * The quiet stretch that closes a span, for a profile with no measured recovery of
- * their own. Ten minutes is the issue's own figure and it is a FLOOR, not a rule: a
- * profile with priors uses `usualRecoveryMin`, which is the whole point.
+ * their own. Ten minutes is the issue's own figure and it is a DEFAULT, not a rule: a
+ * profile with priors uses `usualRecoveryMin` whether that is longer or shorter, which
+ * is the whole point.
  */
-export const EXERTION_RECOVERY_FLOOR_MIN = 10;
+export const EXERTION_RECOVERY_DEFAULT_MIN = 10;
 
 /**
  * The shortest stretch that counts as a session, for a profile with nothing logged to
  * compare against. "A brisk walk to the car is under it for anyone who has logged a
  * session" — and for anyone who has not, ten minutes is the honest guess and it is
- * stated as one.
+ * stated as one. Anyone who HAS logged sessions is measured against those instead,
+ * including the person whose own shortest sessions run seven minutes.
  */
-export const EXERTION_MIN_WINDOW_MIN = 10;
+export const EXERTION_MIN_WINDOW_DEFAULT_MIN = 10;
 
 /**
  * The longest run of unmeasured minutes a span may contain and still be read.
@@ -120,17 +130,14 @@ export interface ExertionWindowInput {
   claimed: readonly ExertionSpan[];
 }
 
-/** How long a span must run to be a session, for this profile. */
+/** How long a span must run to be a session, FOR THIS PROFILE — theirs, else the default. */
 export function exertionFloorMin(minWindowMin: number | null): number {
-  return Math.max(EXERTION_MIN_WINDOW_MIN, Math.round(minWindowMin ?? 0));
+  return Math.round(minWindowMin ?? EXERTION_MIN_WINDOW_DEFAULT_MIN);
 }
 
-/** How long the quiet either side of a span must run, for this profile. */
+/** How long the quiet either side of a span must run, FOR THIS PROFILE. */
 export function exertionRecoveryMin(usualRecoveryMin: number | null): number {
-  return Math.max(
-    EXERTION_RECOVERY_FLOOR_MIN,
-    Math.round(usualRecoveryMin ?? 0)
-  );
+  return Math.round(usualRecoveryMin ?? EXERTION_RECOVERY_DEFAULT_MIN);
 }
 
 /**

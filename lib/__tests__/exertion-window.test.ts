@@ -140,6 +140,51 @@ describe("exertionWindows", () => {
       exertionWindows({ ...BASE, samples: out, usualRecoveryMin: 20 })
     ).toEqual([]);
   });
+
+  it("uses a recovery SHORTER than the no-history default, and the person gets both efforts", () => {
+    // The case above only exercises usuals at or above the default, where a default
+    // read as a minimum and a default read as a default agree. This is the one that
+    // tells them apart, and it is the harm: two efforts eight quiet minutes apart, on
+    // someone whose own measured recovery is six. Their own number closes both spans.
+    // Floored up to ten, NEITHER span finds its quiet — the second effort sits inside
+    // the first's recovery and vice versa — and a fast-recovering person gets nothing
+    // at all from a module whose whole claim is that it answers per person.
+    const out: ExertionSample[] = [];
+    minutes(out, 0, 30, 55);
+    minutes(out, 30, 60, 120);
+    minutes(out, 60, 68, 55);
+    minutes(out, 68, 100, 120);
+    minutes(out, 100, 130, 55);
+    expect(
+      exertionWindows({ ...BASE, samples: out, usualRecoveryMin: 6 })
+    ).toEqual([
+      { from: at(30), to: at(60) },
+      { from: at(68), to: at(100) },
+    ]);
+    // And the SAME trace says nothing for a profile with no recovery of their own,
+    // who is held to the ten-minute default. That is the answer the person above was
+    // being given, and the only person it is honest to give it to.
+    expect(
+      exertionWindows({ ...BASE, samples: out, usualRecoveryMin: null })
+    ).toEqual([]);
+  });
+
+  it("uses a floor SHORTER than the no-history default, for someone whose sessions are that short", () => {
+    // Seven minutes is a session for a profile whose own shortest logged sessions run
+    // seven. `EXERTION_MIN_WINDOW_DEFAULT_MIN` is what someone with nothing logged
+    // gets, not a bar everyone else has to clear as well.
+    const out: ExertionSample[] = [];
+    minutes(out, 0, 30, 55);
+    minutes(out, 30, 37, 120);
+    minutes(out, 37, 70, 55);
+    expect(
+      exertionWindows({ ...BASE, samples: out, minWindowMin: 7 })
+    ).toEqual([{ from: at(30), to: at(37) }]);
+    // Same trace, a profile with nothing logged: the default applies and says no.
+    expect(
+      exertionWindows({ ...BASE, samples: out, minWindowMin: null })
+    ).toEqual([]);
+  });
 });
 
 describe("detectedWorkoutEnd", () => {
