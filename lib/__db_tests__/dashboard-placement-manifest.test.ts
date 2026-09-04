@@ -213,6 +213,14 @@ const aheadPresentations = new Map<
   DashboardPlacementCanvasProps["aheadPresentations"]
 >();
 const queryCounts = new Map<string, number>();
+// THE WARM READING BESIDE THE COLD ONE (#5073). A second render of the same persona
+// with no write in between, so the six Show-everything gathers are answered from the
+// commit-scoped memo instead of the database.
+const warmQueryCounts = new Map<string, number>();
+const warmManifests = new Map<
+  string,
+  DashboardPlacementCanvasProps["placements"]
+>();
 const personaProfileIds = new Map<string, number>();
 let switchedHouseholdManifest: DashboardPlacementCanvasProps["placements"] = [];
 let switchedHouseholdProfileId = 0;
@@ -294,6 +302,14 @@ describe("actual atomic dashboard manifests", () => {
       queryCounts.set(persona.name, trace.count());
       hrWindowReads.set(persona.name, windowsRead(trace));
       personaProfileIds.set(persona.name, profileId);
+      // THE WARM RENDER (#5073), immediately after the cold one and before anything
+      // writes again. A dashboard render writes nothing — measured with
+      // `total_changes()` around three persona renders, 0 rows each — so the memo
+      // survives its own first load, which is the whole premise.
+      trace.clear();
+      const warmElement = await renderDashboard();
+      warmQueryCounts.set(persona.name, trace.count());
+      warmManifests.set(persona.name, warmElement.props.placements);
       if (persona.name === "household") {
         const switched = session.accessible.find(
           (profile) => profile.name === "Riley"
@@ -1205,17 +1221,25 @@ describe("actual atomic dashboard manifests", () => {
     // left four personas a query short with nothing to show for it. The numbers below
     // came from running the gate on the merged tree, which is the only thing that can
     // tell "we agree" from "we both landed on 227 by coincidence".
-    bodybuilder: 206,
-    "marathon-runner": 207,
-    household: 254,
-    pregnant: 202,
-    "diabetic-cgm": 213,
+    // −2 EACH (#5073), and the sign is the surprise: this change ADDS one statement
+    // per render (`SELECT total_changes()`, the memo's own version read) and still
+    // comes out negative, because three of the six memoized gathers' calls inside ONE
+    // render were duplicates. `getScheduledAppointments` is reached four times on a
+    // dashboard render — the page's Upcoming list, `kindedScheduled` from the Upcoming
+    // generators, the intake warnings and the surgery bridge — and it was request-
+    // cached by nobody. The commit memo collapses those to one, so −3 +1 = −2. The
+    // WARM table below is where this change's actual subject shows up.
+    bodybuilder: 204,
+    "marathon-runner": 205,
+    household: 252,
+    pregnant: 200,
+    "diabetic-cgm": 211,
     // +9 (#4424 ruling 7): Upcoming's practice rows mount the shared row control, so
     // the row now resolves what that control renders — `getTrackedPractices`, which is
     // one grouped today-tally and one live sweep however many practices there are,
     // plus the usual-duration vote per practice. Assembling the same four fields
     // per-target instead measured +13.
-    biohacker: 233,
+    biohacker: 231,
     // −1 each (#5061): `getDayLoadInputs` and `getIntensitySignal` ask the same
     // question of the same 42 days — the shared HR read, kept to the activity windows
     // that bound it — and only the READ was request-cached (#5010), so each one still
@@ -1307,7 +1331,12 @@ describe("actual atomic dashboard manifests", () => {
   // `data-quality.finding:<dedupeKey>`, `recap.<line>`, `healthspan.pillar:<key>` —
   // so deferring one defers CANDIDACY, not a payload, and that is the #3077
   // exact-once partition rather than a cost question.
-  const QUERY_CEILING = 274;
+  //
+  // 274 → 272 (#5073), the same rule a fourth time. The commit-scoped memo takes
+  // household 254 → 252, so the derivation above re-runs as 252 + 20 = 272. Note it
+  // still tracks the COLD number: a ceiling derived from the warm one would be a bound
+  // on a render nobody's first load ever gets.
+  const QUERY_CEILING = 272;
 
   it("dashboard query budget: each persona matches its recorded main baseline", () => {
     // THE BACKSTOP ASKS ABOUT THE TABLE, NOT THE MEASUREMENT — which is the only
@@ -1361,6 +1390,85 @@ describe("actual atomic dashboard manifests", () => {
         "commit message, then refresh QUERY_BASELINE in this file with:\n\n" +
         `  const QUERY_BASELINE: Record<string, number> = {\n${refreshed}\n  };\n`
     ).toEqual([]);
+  });
+
+  // THE WARM METER (#5073). The cold table above says what a first load costs; this
+  // says what the SECOND one costs when nothing has been written in between, which is
+  // the whole point of the commit-scoped memo. Same paste-the-refresh ritual as the
+  // cold table, and the same reason for having numbers rather than a ratio: a move
+  // here has to be accounted for, in either direction.
+  //
+  // WHAT IS LEFT is everything the memo does not cover: the Now/Standing/Ahead gathers,
+  // the suppression bus and `routineOrder` (deliberately unmemoized — a dismissal taken
+  // since the last commit must still be read fresh), and one `SELECT total_changes()`
+  // for the memo's own version read.
+  const WARM_BASELINE: Record<string, number> = {
+    bodybuilder: 119,
+    "marathon-runner": 121,
+    household: 177,
+    pregnant: 119,
+    "diabetic-cgm": 128,
+    biohacker: 134,
+  };
+
+  it("dashboard query budget: a second load with no write in between matches its warm baseline (#5073)", () => {
+    // THE COLD COUNT IS THE CONTROL. "The warm render issues none of the six gathers'
+    // statements" is only evidence if the cold render DID issue them — a memo that
+    // returned nothing at all would satisfy the warm half exactly as well.
+    const notCheaper = [...warmQueryCounts].flatMap(([persona, warm]) => {
+      const cold = queryCounts.get(persona)!;
+      return warm < cold
+        ? []
+        : [`${persona}: warm ${warm} is not below cold ${cold}`];
+    });
+    expect(
+      notCheaper,
+      "A warm dashboard load cost as much as the cold one.\n" +
+        "Either the commit-scoped memo (lib/commit-cache.ts) stopped holding the six\n" +
+        "tail gathers, or something wrote between the two renders — a render itself\n" +
+        "writes nothing, so a write here is a regression rather than noise."
+    ).toEqual([]);
+
+    const drift = [...warmQueryCounts].flatMap(([persona, count]) => {
+      const baseline = WARM_BASELINE[persona];
+      if (baseline === undefined)
+        return [`${persona}: ${count} warm queries, but no recorded baseline`];
+      if (count === baseline) return [];
+      const delta = count - baseline;
+      return [
+        `${persona}: ${count} warm queries, baseline ${baseline} ` +
+          `(${delta > 0 ? `+${delta}` : `${delta}`})`,
+      ];
+    });
+    const refreshed = [...warmQueryCounts]
+      .map(([persona, count]) => `    ${JSON.stringify(persona)}: ${count},`)
+      .join("\n");
+    expect(
+      drift,
+      "Warm dashboard query counts moved off the recorded baseline.\n" +
+        "Refresh WARM_BASELINE in this file with:\n\n" +
+        `  const WARM_BASELINE: Record<string, number> = {\n${refreshed}\n  };\n`
+    ).toEqual([]);
+  });
+
+  it("places exactly the same candidates on a warm load (#3077 through #5073)", () => {
+    // #3077's partition is what the memo must not touch: every candidate the ranker
+    // sees on a cold load it sees on a warm one, in the same lane and the same order.
+    // Compared as the ordered lane+candidateId census rather than by deep equality, so
+    // this reads the identity the partition is actually about.
+    const census = (
+      placements: DashboardPlacementCanvasProps["placements"]
+    ): string[] =>
+      placements.map(
+        (placement) => `${placement.lane}:${placement.candidate.candidateId}`
+      );
+    for (const persona of PERSONAS) {
+      const cold = census(manifests.get(persona.name)!);
+      expect(cold.length).toBeGreaterThan(0);
+      expect(census(warmManifests.get(persona.name)!), persona.name).toEqual(
+        cold
+      );
+    }
   });
 
   it("reads each hr_minutes window once per render (#5010)", () => {
