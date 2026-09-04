@@ -51,13 +51,26 @@ vi.mock("@/app/(app)/log-sheet-actions", () => ({
 function OverlayStandIn({
   onClose,
   onLiveFinished,
+  initialDate,
+  initialStartTime,
+  initialEndTime,
 }: {
   onClose: () => void;
   onLiveFinished?: () => void;
+  initialDate?: string;
+  initialStartTime?: string;
+  initialEndTime?: string;
 }) {
   editorRegion.push(useLoggedVia());
   return (
     <>
+      {/* What the provider handed the overlay to open a CREATE on (#4950 item 5).
+          Rendered rather than pushed to module scope so a re-render cannot lose it. */}
+      <span data-testid="create-opens-on">
+        {[initialDate, initialStartTime, initialEndTime]
+          .map((value) => value ?? "-")
+          .join(" ")}
+      </span>
       <button data-testid="activity-overlay" onClick={onClose}>
         close
       </button>
@@ -319,5 +332,70 @@ describe("a domain page's own opener, which has no region and must not invent on
       });
       await waitFor(() => expect(region()).toBe("quick-log"));
     });
+  });
+});
+
+// ── THE WINDOW A DAY CHART STATED (#4950 item 5) ─────────────────────────────
+//
+// The record's workouts door calls this same `openCreate` with a day and two clocks.
+// What is pinned here is the PROVIDER's plumbing — what reaches the overlay that opens
+// the create form. That the form then opens on those clocks is one line beside the one
+// `initialDate` already takes, and the lane's e2e case saves through it.
+describe("openCreate carrying a window", () => {
+  function WindowOpener() {
+    const { openCreate } = useActivityEditor();
+    return (
+      <>
+        <button
+          data-testid="open-window"
+          onClick={() =>
+            openCreate({
+              date: "2026-09-03",
+              startTime: "19:10",
+              endTime: "20:40",
+            })
+          }
+        >
+          Workouts
+        </button>
+        <button
+          data-testid="open-start-alone"
+          onClick={() => openCreate({ date: "2026-09-03", startTime: "19:10" })}
+        >
+          Workouts, start alone
+        </button>
+        <button data-testid="open-plain" onClick={() => openCreate()}>
+          Log activity
+        </button>
+      </>
+    );
+  }
+
+  const opensOn = () => screen.getByTestId("create-opens-on").textContent;
+
+  const open = async (which: string) => {
+    renderShell(<WindowOpener />);
+    await act(async () => {
+      screen.getByTestId(which).click();
+    });
+    await screen.findByTestId("activity-overlay");
+  };
+
+  it("hands the create form the day and both clocks", async () => {
+    await open("open-window");
+    expect(opensOn()).toBe("2026-09-03 19:10 20:40");
+  });
+
+  it("takes a start alone and states no end", async () => {
+    // An end nobody stated is a length nobody gave.
+    await open("open-start-alone");
+    expect(opensOn()).toBe("2026-09-03 19:10 -");
+  });
+
+  it("states no clocks at all when no window was stated", async () => {
+    // Every other opener in the app calls `openCreate` with no window and must keep
+    // the create form it has always opened.
+    await open("open-plain");
+    expect(opensOn()).toBe("- - -");
   });
 });

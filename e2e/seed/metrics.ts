@@ -642,6 +642,25 @@ export function seedIntradayPanel(): void {
        VALUES (?, ?, ?, '07:00', '07:30', 30, 'manual')`
     ).run(idId, INTRADAY_PRACTICE, idToday);
 
+    // …and the TARGET that makes it a tracked practice (#4950). The record's add row
+    // offers a practice door only where the profile tracks one — `getTrackedPractices`
+    // reads targets, not history — so the window case below the chart has nothing to
+    // open without this. One row, on the practice this profile already logs.
+    if (
+      !db
+        .prepare(
+          `SELECT 1 FROM frequency_targets
+            WHERE profile_id = ? AND scope_kind = 'practice' AND scope_value = ?`
+        )
+        .get(idId, INTRADAY_PRACTICE)
+    ) {
+      db.prepare(
+        `INSERT INTO frequency_targets
+           (profile_id, scope_kind, scope_value, scope_identity, per_week)
+         VALUES (?, 'practice', ?, ?, 3)`
+      ).run(idId, INTRADAY_PRACTICE, practiceIdentity(INTRADAY_PRACTICE));
+    }
+
     // Layer 4 — clock-timed feed events for the tick rail. Two document uploads at
     // known LOCAL wall times (the timeline derives an event's clock time from
     // uploaded_at in the profile's zone), one of them in a terminal failed state so a
