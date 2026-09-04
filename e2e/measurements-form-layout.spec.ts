@@ -585,11 +585,11 @@ test("blood pressure gets two tracks, so both inputs clear their own placeholder
       ).toBeGreaterThanOrEqual(side.needs);
     }
 
-    // A SPAN MUST NOT COST THE ROW ITS EDGE. Where the container fits a single
-    // `auto-fit` track, a two-track span adds an IMPLICIT track — measured in
-    // Chromium (the only engine this suite runs), that track resolves to 0px, so
-    // the cell is exactly the container and the row still ends where the panel
-    // does. This is the assertion that would catch it doing anything else.
+    // A SPAN MUST NOT COST THE ROW ITS EDGE. A grid does not clip, so a cell wider
+    // than its container paints over the panel edge. This is the COARSE half of
+    // the reading and it stays for that: it catches the loud failure. It does not
+    // catch the quiet one below, where the grid still fits and a field inside it
+    // is squeezed instead.
     expect(
       reading.escapes,
       `${label} (${width}px): the vitals grid overflows its own box by ${reading.escapes}px`
