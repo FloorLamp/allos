@@ -878,7 +878,8 @@ export default async function HistoryPage(props: {
   // legibility AT 1409 and not only at a comfortable width: every term above is an
   // integer this file or the shell owns, so a single pixel added to the gap, the
   // gutters or the card's padding puts the first rail width under the floor. That
-  // is a red in e2e/history-day-view.spec.ts rather than 8.99px type on a screen.
+  // is checked rather than asserted — `gap-6` widened to `gap-7` was run against the
+  // spec, and the 1409 case reds at 8.89px.
   //
   // THE RAIL COMES FIRST IN THE DOCUMENT, and is placed into column 2 explicitly.
   // Source order is what the stacked layout below the threshold reads, and there the
