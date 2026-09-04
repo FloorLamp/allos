@@ -50,6 +50,23 @@ export function sleepClockSkewSignalKey(firstWakeDay: string): string {
 export const SLEEP_SKEW_HEDGE =
   "These times disagree with your heart rate — the source clock may be off.";
 
+// The second line, beneath the hedge: WHEN the body settled, as information (#5021's
+// owner ruling, 2026-09-04).
+//
+// It is deliberately not a bedtime and does not read like one. `troughStart` is where
+// the heart rate reached its lowest comparable window, which is sleep ONSET — a person
+// who lay awake first did not go to bed then, and "your bedtime was 03:00" would be a
+// claim this module has no way to make. Saying what was measured, and leaving the
+// inference to the person, is the same discipline as the hedge above it: #4299 ruled
+// that a silent 6-hour rewrite is a bigger lie than the one it fixes, and a
+// confidently-worded wrong bedtime is that lie in one sentence.
+//
+// Takes the clock already formatted, because the zone in force at that instant and the
+// login's 12h/24h preference are both the surface's to resolve — this module is pure.
+export function sleepSkewSettledLine(clock: string): string {
+  return `Your heart rate settled around ${clock}.`;
+}
+
 // One per-minute HR bucket as stored: `ts` is a canonical UTC instant (hr_minutes.ts
 // has been an absolute instant since migration 164 — docs/internals/time-columns.md),
 // `bpm` the count-weighted average.

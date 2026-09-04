@@ -185,6 +185,7 @@ export default async function SleepPage() {
             bedtimeSupplements={lastNightBedtimeSupplements}
             usualSleepBand={usualSleepBand}
             clockSkewSuspect={lastNightRow?.sleepSuspect ?? false}
+            clockSkewSettledMinutes={lastNightRow?.sleepSettledMinutes ?? null}
           />
         )}
 

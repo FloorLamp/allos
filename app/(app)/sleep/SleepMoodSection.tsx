@@ -109,6 +109,7 @@ export default function SleepMoodSection({
       sleepEditHours: null,
       sleepSampleId: null,
       sleepSuspect: false,
+      sleepSettledMinutes: null,
       moodLogId: null,
     });
   }

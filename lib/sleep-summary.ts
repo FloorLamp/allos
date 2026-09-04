@@ -623,6 +623,12 @@ export interface SleepMoodHistoryRow {
   // sleep — the row carries a `sleepSampleId` the ⋯ menu can remove. Editing a synced
   // night stays refused; the detector's mark buys a way OUT, not a way in.
   sleepSuspect: boolean;
+  // WHERE THE BODY SETTLED, in minutes since profile-local midnight (#5021), for the
+  // hedge's second line. Information and not a bedtime: it is the lowest comparable
+  // heart-rate window, which is sleep ONSET, and a person who lay awake first did not
+  // go to bed then. Null on any row that is not suspect, and on a suspect one whose
+  // evidence carries no usable instant.
+  sleepSettledMinutes: number | null;
 }
 
 // Date union for the factual history table. Unlike pairSleepMood, this retains a
@@ -655,6 +661,7 @@ export function buildSleepMoodHistory(
       sleepSampleId: null,
       moodLogId: null,
       sleepSuspect: false,
+      sleepSettledMinutes: null,
     });
   }
   for (const mood of moods) {
@@ -676,6 +683,7 @@ export function buildSleepMoodHistory(
       sleepSampleId: row?.sleepSampleId ?? null,
       moodLogId: mood.id ?? null,
       sleepSuspect: row?.sleepSuspect ?? false,
+      sleepSettledMinutes: row?.sleepSettledMinutes ?? null,
     });
   }
   for (const stageRow of stageRows) {
@@ -697,6 +705,7 @@ export function buildSleepMoodHistory(
       sleepSampleId: row?.sleepSampleId ?? null,
       moodLogId: row?.moodLogId ?? null,
       sleepSuspect: row?.sleepSuspect ?? false,
+      sleepSettledMinutes: row?.sleepSettledMinutes ?? null,
     });
   }
   return [...byDate.values()].sort((a, b) =>
