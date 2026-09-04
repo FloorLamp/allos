@@ -137,6 +137,14 @@ function suspectSleepSessionsUncached(
   //
   // A fragmented night is judged through its representative member, which is the row a
   // repair would name; the other members carry the same claim and the same clock.
+  //
+  // A WAKE DAY WHOSE ONLY SYNCED ROW IS A NAP still has that nap judged, and against
+  // the surrounding day's trough exactly as before. `mainSleepSession` elects the
+  // longest candidate, and nothing in the repo supplies `SleepSession.type`, so the
+  // provider-labeled-nap arm of `candidateSessions` never fires and a lone nap IS the
+  // day's main session. That is strictly better than judging every nap on every day
+  // and it is a much smaller class, but it is not nothing, and naming it here is
+  // cheaper than someone re-deriving it from a surprising hedge.
   const byWakeDay = new Map<string, SyncedSessionRow[]>();
   for (const row of sessions) {
     const day = byWakeDay.get(row.date);
