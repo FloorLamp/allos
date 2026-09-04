@@ -40,6 +40,7 @@ const cough = {
 
 function episode(symptoms: AssembledEpisode["symptoms"]): AssembledEpisode {
   return {
+    id: 7,
     situation: "Illness",
     start: "2026-06-01",
     end: null,

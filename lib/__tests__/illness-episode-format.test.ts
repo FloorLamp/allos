@@ -575,6 +575,7 @@ describe("deriveFeverSeries", () => {
 describe("illnessTimelineEvents and the derived fever row (#4712)", () => {
   const episodeWith = (symptoms: AssembledEpisode["symptoms"]) =>
     ({
+      id: 7,
       situation: "Illness",
       start: "2026-06-01",
       end: null,
