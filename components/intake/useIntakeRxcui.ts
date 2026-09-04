@@ -12,6 +12,14 @@ import { parseRxcuiIngredients, dominantRxNormCandidate } from "@/lib/rxnorm";
 // CUIs (#279), the candidate list, and the lookup/confirm handlers. The form threads
 // `rxcui`/`rxcuiIngredients` into its hidden fields and the interaction notices, so
 // the ONE matching computation drives both forms identically (the cross-kind rule).
+// A code this form actually confirmed, with the active-ingredient CUIs that resolved
+// with it (#279). Returned rather than only stored, so a caller that needs the code it
+// just confirmed reads it from the confirm instead of from a render that predates it.
+export interface ConfirmedRxcui {
+  rxcui: string;
+  rxcuiIngredients: string[] | null;
+}
+
 export interface RxcuiState {
   rxcui: string | null;
   rxcuiIngredients: string[] | null;
@@ -19,11 +27,13 @@ export interface RxcuiState {
   loading: boolean;
   error: string | null;
   find: (name: string) => Promise<void>;
-  confirm: (code: string) => Promise<void>;
+  confirm: (code: string) => Promise<ConfirmedRxcui | null>;
   // Auto-confirm the RxNorm code for a catalog pick (#851 item 7): look up candidates
   // and adopt an UNAMBIGUOUS top match; surface an ambiguous list for a manual pick;
   // degrade silently offline / on no match. Never auto-confirms an ambiguous candidate.
-  autoConfirm: (name: string) => Promise<void>;
+  // Resolves to the confirmed code, or null when nothing was confirmed (no match,
+  // ambiguous, offline) or a newer confirm superseded this one.
+  autoConfirm: (name: string) => Promise<ConfirmedRxcui | null>;
   clear: () => void;
   // A name edit invalidates a previously-confirmed code (and its ingredients).
   onNameChange: () => void;
@@ -57,18 +67,23 @@ export function useIntakeRxcui(initial?: {
     setRxcuiIngredients(ingredients);
   }
 
-  async function confirm(code: string) {
+  async function confirm(code: string): Promise<ConfirmedRxcui | null> {
     apply(code, null);
     setCandidates(null);
     setError(null);
+    let ingredients: string[] = [];
     try {
-      const ingredients = await lookupRxcuiIngredients(code);
-      if (rxcuiRef.current === code && ingredients.length > 0) {
-        setRxcuiIngredients(ingredients);
-      }
+      ingredients = await lookupRxcuiIngredients(code);
     } catch {
       // Keep product-rxcui + name matching.
     }
+    // A newer confirm already owns the field; this answer is about a code nobody holds.
+    if (rxcuiRef.current !== code) return null;
+    if (ingredients.length > 0) setRxcuiIngredients(ingredients);
+    return {
+      rxcui: code,
+      rxcuiIngredients: ingredients.length > 0 ? ingredients : null,
+    };
   }
 
   async function find(name: string) {
@@ -97,20 +112,19 @@ export function useIntakeRxcui(initial?: {
   // match (single candidate / dominant score) and only surfaces the list when it's
   // ambiguous. Any timeout/offline/no-match degrades silently — the manual "Find
   // RxNorm code" affordance stays available. Never confirms an ambiguous candidate.
-  async function autoConfirm(name: string) {
+  async function autoConfirm(name: string): Promise<ConfirmedRxcui | null> {
     const term = name.trim();
-    if (!term) return;
+    if (!term) return null;
     try {
       const found = await lookupRxcui(term);
-      if (found.length === 0) return; // silent degrade (offline / no match)
+      if (found.length === 0) return null; // silent degrade (offline / no match)
       const dominant = dominantRxNormCandidate(found);
-      if (dominant) {
-        await confirm(dominant);
-      } else {
-        setCandidates(found); // ambiguous → manual pick
-      }
+      if (dominant) return await confirm(dominant);
+      setCandidates(found); // ambiguous → manual pick
+      return null;
     } catch {
       // Silent degrade — keep name-only matching; the manual affordance remains.
+      return null;
     }
   }
 

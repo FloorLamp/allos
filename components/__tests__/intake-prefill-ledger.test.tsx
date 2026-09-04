@@ -1,9 +1,16 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import IntakeItemForm from "@/components/IntakeItemForm";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import MedicationAddWorkspace from "@/app/(app)/medications/MedicationAddWorkspace";
+import AddSupplementModal from "@/components/nutrition/AddSupplementModal";
+import CreateAction from "@/components/CreateAction";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 import { ToastProvider } from "@/components/Toast";
-import type { IntakeItemKind } from "@/lib/types";
 
 // ONE PREFILL DISCIPLINE FOR EVERY SEED PATH (#4665).
 //
@@ -26,8 +33,7 @@ const prnSpy = vi.hoisted(() => ({
   calls: [] as { name: string; rxcui: string | null }[],
 }));
 vi.mock("@/lib/prn-defaults", async (importOriginal) => {
-  const real =
-    await importOriginal<typeof import("@/lib/prn-defaults")>();
+  const real = await importOriginal<typeof import("@/lib/prn-defaults")>();
   return {
     ...real,
     prnDefaultsFor: (item: {
@@ -94,17 +100,48 @@ const TODAY = "2026-09-04";
 // one is visible as a number rather than as an absence.
 const ACETAMINOPHEN = "Acetaminophen (Tylenol)";
 
-function mount(kind: IntakeItemKind) {
+/**
+ * Open one of the shipped add doors. The doors are the mount, not IntakeItemForm
+ * directly: the form's kind is locked at its five shipped call sites and a test that
+ * mounted it itself would be a sixth (lib/__tests__/intake-form-kind-boundary.test.ts).
+ */
+function mount(kind: "medication" | "supplement") {
   render(
     <ToastProvider>
       <ConfirmProvider>
-        <IntakeItemForm
-          action={actions.addIntakeItem}
-          kind={kind}
-          todayStr={TODAY}
-        />
+        {kind === "medication" ? (
+          <MedicationAddWorkspace
+            subtitle=""
+            action={actions.addIntakeItem}
+            allIntakeItems={[]}
+            stackItems={[]}
+            pgxVariants={[]}
+            conditions={[]}
+            todayStr={TODAY}
+          />
+        ) : (
+          <CreateAction
+            declaration={{
+              kind: "supplement",
+              control: (
+                <AddSupplementModal
+                  action={actions.addIntakeItem}
+                  allIntakeItems={[]}
+                  stackItems={[]}
+                  pgxVariants={[]}
+                />
+              ),
+            }}
+            housing="section"
+          />
+        )}
       </ConfirmProvider>
     </ToastProvider>
+  );
+  fireEvent.click(
+    screen.getByTestId(
+      kind === "medication" ? "medication-add-toggle" : "supplement-add-toggle"
+    )
   );
 }
 
