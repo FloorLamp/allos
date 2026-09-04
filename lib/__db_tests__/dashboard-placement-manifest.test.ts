@@ -1205,17 +1205,28 @@ describe("actual atomic dashboard manifests", () => {
     // left four personas a query short with nothing to show for it. The numbers below
     // came from running the gate on the merged tree, which is the only thing that can
     // tell "we agree" from "we both landed on 227 by coincidence".
-    bodybuilder: 207,
-    "marathon-runner": 208,
-    household: 255,
-    pregnant: 203,
-    "diabetic-cgm": 214,
+    bodybuilder: 206,
+    "marathon-runner": 207,
+    household: 254,
+    pregnant: 202,
+    "diabetic-cgm": 213,
     // +9 (#4424 ruling 7): Upcoming's practice rows mount the shared row control, so
     // the row now resolves what that control renders — `getTrackedPractices`, which is
     // one grouped today-tally and one live sweep however many practices there are,
     // plus the usual-duration vote per practice. Assembling the same four fields
     // per-target instead measured +13.
-    biohacker: 234,
+    biohacker: 233,
+    // −1 each (#5061): `getDayLoadInputs` and `getIntensitySignal` ask the same
+    // question of the same 42 days — the shared HR read, kept to the activity windows
+    // that bound it — and only the READ was request-cached (#5010), so each one still
+    // fetched the windows and walked every minute again. `windowScopedBuckets` in
+    // lib/queries/zones.ts caches the scoped answer instead, and the second fetch of
+    // `activities` goes with it. The statement is the only one that moved: diffing the
+    // profiler's per-statement counts over one snapshot render, before and after,
+    // reports exactly `SELECT date, start_time, end_time, duration_min FROM activities`
+    // ×3 → ×2 and nothing else. The walk it also removed is not a statement and so is
+    // invisible here — 144,000 of the render's 295,200 bucket comparisons, counted with
+    // a probe rather than read off this meter.
     // −1 each (#4775): the paired-observation registry gained a third alcohol entry
     // (`alcohol-overnight-hr`), which reads the SAME `food_daily_totals` window the
     // other two already read — and the factor read happens before each entry's
@@ -1236,7 +1247,7 @@ describe("actual atomic dashboard manifests", () => {
   // rather than a bound, and decoration is exactly what the single cap had already
   // decayed into by the time #3164 filed against it. So it is re-derived here:
   //
-  //   household 255 (the heaviest baseline) + 20 headroom = 275
+  //   household 254 (the heaviest baseline) + 20 headroom = 274
   //
   // RE-DERIVED, NOT LEFT BEHIND (#3410/#3316/#3100). This line has read "267 + 23"
   // and then "270 + 20" as the household baseline moved, and it is the one arithmetic
@@ -1270,6 +1281,15 @@ describe("actual atomic dashboard manifests", () => {
   // decay the 535 suffered. Re-deriving is one line and is meant to happen every
   // time a gather moves these numbers.
   //
+  // 275 → 274 (#5061), the same rule again and the smallest it will ever look. The
+  // zone reads stopped fetching the activity windows twice, which is −1 on every
+  // persona, so household is 254 and the derivation above re-runs as 254 + 20 = 274.
+  // A one-statement reduction is exactly the size at which leaving the ceiling alone
+  // feels reasonable, and that is the decay: nothing here ever moves by 15 at once,
+  // it moves by one several times and the slack is what accumulates. The arithmetic
+  // in this comment is the whole product, so it follows the number down or it is
+  // false — which is the same defect #5062 deleted from this file, one paragraph up.
+  //
   // WHAT IS NOT COMING: #3369 item 1 said the closed Show-everything tail's node
   // payloads would move behind the disclosure and take a bite out of the table
   // above. Measured on 5045340d by attributing every statement to the page frame
@@ -1287,7 +1307,7 @@ describe("actual atomic dashboard manifests", () => {
   // `data-quality.finding:<dedupeKey>`, `recap.<line>`, `healthspan.pillar:<key>` —
   // so deferring one defers CANDIDACY, not a payload, and that is the #3077
   // exact-once partition rather than a cost question.
-  const QUERY_CEILING = 275;
+  const QUERY_CEILING = 274;
 
   it("dashboard query budget: each persona matches its recorded main baseline", () => {
     // THE BACKSTOP ASKS ABOUT THE TABLE, NOT THE MEASUREMENT — which is the only
