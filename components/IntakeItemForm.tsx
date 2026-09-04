@@ -55,8 +55,8 @@ import type { InteractionItem } from "@/lib/drug-interactions";
 import type { IntakeItemIngredient } from "@/lib/intake-ingredients";
 import PurposesEditor from "@/components/intake/PurposesEditor";
 import {
+  purposeDraftsSummary,
   purposeToDraft,
-  purposeLabel,
   type IntakeItemPurpose,
   type PurposeDraft,
 } from "@/lib/intake-purposes";
@@ -111,7 +111,7 @@ import {
 } from "@/lib/intake-kind-affordances";
 import {
   intakeFactSummary,
-  type IntakeFactKey,
+  suggestedIntakeFacts,
   INTAKE_FACT_NOUNS,
 } from "@/lib/intake-facts";
 import {
@@ -396,26 +396,8 @@ export default function IntakeItemForm({
       .map(purposeToDraft)
       .filter((d): d is PurposeDraft => d != null)
   );
-  // The declared purposes as one phrase for the fact chip. Built HERE because only the
-  // form holds the live condition names — a purpose row stores the id (#203).
   const purposeSummary = useMemo(
-    () =>
-      purposes
-        .map((d) =>
-          purposeLabel(
-            {
-              kind: d.kind,
-              goal_key: d.kind === "goal" ? d.goalKey : null,
-              biomarker_key: d.kind === "biomarker" ? d.biomarkerKey : null,
-              direction: d.kind === "biomarker" ? (d.direction ?? null) : null,
-            },
-            d.kind === "condition"
-              ? (conditions.find((c) => c.id === d.conditionId)?.name ?? null)
-              : null
-          )
-        )
-        .filter((l): l is string => !!l)
-        .join(" · "),
+    () => purposeDraftsSummary(purposes, conditions),
     [purposes, conditions]
   );
   const [doses, setDoses] = useState<DoseState[]>(
@@ -826,17 +808,10 @@ export default function IntakeItemForm({
     ]
   );
 
-  // Which FACT each still-suggested field belongs to, so the chip carries the #846
-  // marking the old always-visible inputs carried on their labels.
-  const suggestedFacts = useMemo(() => {
-    const out = new Set<IntakeFactKey>();
-    for (const field of ledger.suggested) {
-      if (field === "doseAmount") out.add("dose");
-      else if (field === "asNeeded") out.add("importance");
-      else out.add("timing");
-    }
-    return out;
-  }, [ledger]);
+  const suggestedFacts = useMemo(
+    () => suggestedIntakeFacts(ledger.suggested),
+    [ledger]
+  );
 
   const summary = intakeFactSummary({
     kind,

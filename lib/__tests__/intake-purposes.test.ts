@@ -5,6 +5,7 @@ import {
   isGoalPurposeKey,
   normalizePurposeDrafts,
   parseItemPurposes,
+  purposeDraftsSummary,
   purposeIdentity,
   purposeLabel,
   purposeToDraft,
@@ -314,5 +315,42 @@ describe("the composition feeder", () => {
     expect(
       suggestGoalPurposes({ name: "Absolutein Blend", ingredientNames: [] })
     ).toEqual([]);
+  });
+});
+
+describe("purposeDraftsSummary (#4672)", () => {
+  const conditions = [
+    { id: 51, name: "Ear infection" },
+    { id: 52, name: "Migraine" },
+  ];
+
+  it("joins each draft's label, resolving a condition id to its live name", () => {
+    expect(
+      purposeDraftsSummary(
+        [
+          { kind: "condition", conditionId: 51 },
+          { kind: "goal", goalKey: "sleep" },
+        ],
+        conditions
+      )
+    ).toContain("Ear infection");
+  });
+
+  it("drops a condition whose id this profile no longer has", () => {
+    // POSITIVE CONTROL: the same draft with a KNOWN id does produce a label, so the
+    // empty answer below is the missing name and not a summary that never builds.
+    expect(
+      purposeDraftsSummary([{ kind: "condition", conditionId: 51 }], conditions)
+    ).not.toBe("");
+    expect(
+      purposeDraftsSummary(
+        [{ kind: "condition", conditionId: 999 }],
+        conditions
+      )
+    ).toBe("");
+  });
+
+  it("is empty for no purposes", () => {
+    expect(purposeDraftsSummary([], conditions)).toBe("");
   });
 });
