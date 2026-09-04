@@ -7,6 +7,7 @@ import QuickSymptomPanel from "@/components/quick-entry/QuickSymptomPanel";
 import { PICKER_SYMPTOMS } from "@/lib/symptoms";
 import { LOGGED_VIA_FIELD } from "@/lib/logged-via";
 import { dateStrInTz } from "@/lib/date";
+import { TimezoneProvider } from "@/components/TimezoneProvider";
 
 // NO SECOND WRITE PATH, ASSERTED RATHER THAN PROMISED (#4064/#1633).
 //
@@ -72,11 +73,14 @@ const COCKPIT_EPISODE = 7;
 // The household member the sheet's title-row chip can name (#4932), and the zone the
 // gather resolves for THEM — deliberately not the browser's.
 const SHEET_SUBJECT = 77;
-const SUBJECT_TZ = "Pacific/Auckland";
-// The subject's own today. The fold requires a stated minute on any day that has
-// ended (#4685), so a reading logged without one only goes through when the bar is
-// standing on the day the SUBJECT is having — which is the zone the gather resolves
-// and the panel now passes, not the browser's.
+// TWENTY-FIVE HOURS APART, deliberately: UTC+14 and UTC-11 never share a local
+// date, at any hour of any run. The fold requires a stated minute on a day that has
+// ended (#4685), so a reading saved without one goes through ONLY when the bar is
+// standing on the day the SUBJECT is having — which makes "the panel passes the
+// subject's zone" a claim these tests can fail on, rather than one that happens to
+// hold for the twelve hours a day two nearer zones agree.
+const APP_TZ = "Pacific/Kiritimati";
+const SUBJECT_TZ = "Pacific/Niue";
 const SUBJECT_TODAY = dateStrInTz(SUBJECT_TZ);
 
 /**
@@ -271,12 +275,20 @@ describe("the sheet's symptom row posts what the retired dashboard card posted",
 describe("the sheet's symptom row takes a temperature too (#4712 item 2)", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("posts the reading for the chip's subject, on the quick-log surface", async () => {
-    const view = render(
-      <ToastProvider>
-        {sheetMount([], SHEET_SUBJECT, SUBJECT_TODAY)}
-      </ToastProvider>
+  // The app zone the browser would otherwise fall back to, a day away from the
+  // subject's, so a bar reading the wrong one cannot pass by coincidence.
+  function renderSheet(tracking: string[], subject?: number) {
+    return render(
+      <TimezoneProvider tz={APP_TZ}>
+        <ToastProvider>
+          {sheetMount(tracking, subject, SUBJECT_TODAY)}
+        </ToastProvider>
+      </TimezoneProvider>
     );
+  }
+
+  it("posts the reading for the chip's subject, on the quick-log surface", async () => {
+    const view = renderSheet([], SHEET_SUBJECT);
     fireEvent.click(screen.getByTestId("temp-quick-toggle"));
     fireEvent.change(await screen.findByTestId("temp-quick-input"), {
       target: { value: "101.4" },
@@ -307,11 +319,7 @@ describe("the sheet's symptom row takes a temperature too (#4712 item 2)", () =>
     ["offers the episode when nothing is tracked", [] as string[], true],
     ["offers nothing while an episode is already running", ["Illness"], false],
   ])("%s", async (_name, tracking, offered) => {
-    const view = render(
-      <ToastProvider>
-        {sheetMount(tracking, undefined, SUBJECT_TODAY)}
-      </ToastProvider>
-    );
+    const view = renderSheet(tracking);
     fireEvent.click(screen.getByTestId("temp-quick-toggle"));
     fireEvent.change(await screen.findByTestId("temp-quick-input"), {
       target: { value: "101.4" },
