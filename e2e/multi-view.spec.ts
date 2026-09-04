@@ -920,7 +920,12 @@ test.describe("Medications multi-view regimen boards (issue #1373)", () => {
   // cross-profile take below is repeat-safe (#868 fixture ownership) — that take is
   // the ONE persistent write this fixture carries, and a re-run or retry would
   // otherwise find the dose already taken and have nothing to press.
-  function mvMedsIds(): { selfId: number; roId: number; wardId: number } {
+  function mvMedsIds(): {
+    selfId: number;
+    roId: number;
+    wardId: number;
+    wardMedId: number;
+  } {
     const dbPath = workerDbPath();
     const db = new Database(dbPath);
     try {
@@ -942,6 +947,13 @@ test.describe("Medications multi-view regimen boards (issue #1373)", () => {
         selfId: idOf(MVMEDS_SELF_PROFILE),
         roId: idOf(MVMEDS_RO_PROFILE),
         wardId,
+        wardMedId: (
+          db
+            .prepare(
+              "SELECT id FROM intake_items WHERE name = ? AND profile_id = ?"
+            )
+            .get(MVMEDS_WARD_MED, wardId) as { id: number }
+        ).id,
       };
     } finally {
       db.close();
@@ -1011,7 +1023,7 @@ test.describe("Medications multi-view regimen boards (issue #1373)", () => {
     browser,
   }) => {
     test.slow();
-    const { selfId, roId, wardId } = mvMedsIds();
+    const { selfId, roId, wardId, wardMedId } = mvMedsIds();
     const page = await loginAs(browser, {
       username: E2E_LOGIN_MVMEDS,
       password: E2E_MEMBER_PASSWORD,
@@ -1019,6 +1031,12 @@ test.describe("Medications multi-view regimen boards (issue #1373)", () => {
     try {
       await page.goto("/medications");
       await toggleIntoView(page, roId, 2);
+      // A view toggle leaves the panel OPEN, and the trigger is a toggle — so a second
+      // `openProfileSwitcher` on the same page would CLOSE it. Re-navigating between
+      // the two is what makes the second open deterministic rather than a coin flip on
+      // panel state; the re-navigation after them also proves the three-member view
+      // persisted on the session.
+      await page.goto("/medications");
       await toggleIntoView(page, wardId, 3);
       await page.goto("/medications");
 
@@ -1049,6 +1067,23 @@ test.describe("Medications multi-view regimen boards (issue #1373)", () => {
       await expect(
         page.getByTestId(`med-board-${selfId}`).getByTestId("dose-take")
       ).toHaveAttribute("aria-pressed", "false");
+
+      // AND THE WARD'S OWN MEDICATION PAGE OFFERS THE SAME TAP (#4429's second mount).
+      // That page is a subject-scoped container reached WITHOUT switching — the actor
+      // is unchanged, the banner names the ward — and until now its Today row was the
+      // read-only receipt whatever the grant said. The take above is what it reads back,
+      // which is the two mounts agreeing about one dose rather than two claims.
+      await page.goto(`/medications/${wardMedId}`);
+      await expect(page.getByTestId("medication-identity-banner")).toBeVisible();
+      await expect(page.getByTestId("profile-identity-bar")).toHaveAttribute(
+        "data-acting-profile-id",
+        String(selfId)
+      );
+      await expect(page.getByTestId("scheduled-dose-readonly")).toHaveCount(0);
+      await expect(page.getByTestId("dose-take")).toHaveAttribute(
+        "aria-pressed",
+        "true"
+      );
     } finally {
       await page.context().close();
     }
