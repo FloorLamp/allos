@@ -215,10 +215,13 @@ function windowStats(
 // same objection MIN_MEDIAN_BPM_GAP's own comment raises. Together they describe one
 // shape: part of the claim is the trough and part of it is daytime.
 //
-// Known reach: a real night stamped as ONE session across a full two-hour arousal reads
-// the same way and carries the same hedge. That is the cost of the bound the repo
-// declares — and `mainSleepPeriod` already treats a gap that long as two nights, so a
-// source that stamps one session across it is itself unusual.
+// AND THE RUN MUST TOUCH AN EDGE of the claim — its first or last quarter-hour (owner
+// ruling, 2026-09-04 13:05 UTC). A clock error MOVES A BOUNDARY, so the awake stretch a
+// shift produces is always against one end of the claimed window; every shifted night
+// still flags. What the condition removes is the one shape this reading reached and
+// should not have: a real night stamped as ONE session across a two-hour wake in the
+// MIDDLE, which is a person who was awake at 3 a.m. and not a source with a wrong
+// clock. It no longer receives the hedge or the doors.
 function awakeRunInside(
   samples: readonly { at: number; bpm: number }[],
   start: number,
@@ -228,6 +231,11 @@ function awakeRunInside(
 ): { median: number; at: number } | null {
   const floor = awakeMedian - MIN_MEDIAN_BPM_GAP;
   const needed = AWAKE_RUN_MINUTES * MINUTE_MS;
+  // Where the last whole block ends. A claim is rarely a whole number of quarter-hours,
+  // so the trailing edge is this rather than `end` — a run judged against `end` could
+  // never touch it.
+  const lastBlockTo =
+    start + Math.floor((end - start) / SEARCH_STEP_MS) * SEARCH_STEP_MS;
   let run: { at: number; to: number; bpm: number[] } | null = null;
   let longest: { at: number; to: number; bpm: number[] } | null = null;
   for (let from = start; from + SEARCH_STEP_MS <= end; from += SEARCH_STEP_MS) {
@@ -241,8 +249,12 @@ function awakeRunInside(
       run == null
         ? { at: from, to, bpm: block }
         : { at: run.at, to, bpm: [...run.bpm, ...block] };
+    // The edge test is applied HERE and not to the winner, because a night can hold a
+    // longer run in the middle and a shorter one against an edge: judging the longest
+    // and then rejecting it would drop the qualifying run the ruling keeps.
     if (
       run.to - run.at >= needed &&
+      (run.at === start || run.to === lastBlockTo) &&
       (longest == null || run.to - run.at > longest.to - longest.at)
     ) {
       longest = run;
