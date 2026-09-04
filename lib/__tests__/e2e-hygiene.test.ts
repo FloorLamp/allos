@@ -642,14 +642,35 @@ const CONFIRM_DELETE_CLICK_ALLOW: Record<string, number> = {};
 // boundary sits inside. Do not add a root that could itself land inside a
 // streamed section — that would bless the very duplicate this guard is about.
 //
+// `training-page` is TRANSITIONAL: it is here to keep #4833's shipped fixes legal,
+// buys nothing `appContent(page)` does not, and works on one page only. Converge
+// those call sites on `appContent(page)` when they are next touched; the root goes
+// when the last one has.
+//
 // THE ALLOWLIST IS THE HONEST RECORD. 5,422 unscoped lookups across 435 files exist
 // today, and a rule that started as "scope all of them" would be 5,422 hand edits
-// with nothing preventing the 5,423rd. So today's per-file counts are frozen in
+// with nothing preventing the 5,423rd. Burn down the 158 files that reach a
+// streaming route first (2,309 of the lookups) — they are the only ones that can
+// race today; the other 277 are frozen for uniformity and can wait. No file is
+// excluded: every allowlisted file reaches the `(app)` shell, including the five
+// that name no route, because a spec hands them an already-navigated page. So
+// today's per-file counts are frozen in
 // __fixtures__/e2e-testid-scope-allow.json — immutable-downward like every other
 // list here — and the list says what has NOT been checked rather than claiming
 // everything has. A NEW bare locator anywhere fails; scope it, or mark the line
 // `testid-scope-ok: <why>` when the marker provably cannot be inside a streamed
 // boundary (a `/login` page, an overlay portalled to `<body>`).
+// THE COUNTS ARE A READING OF ONE BASE, and the base is named so a reader can check
+// it: they were derived at ec474f5e (main, 2026-09-04). That is what a frozen manifest
+// can honestly claim — a coverage number is true against the tree it was measured on,
+// and a reader who does not know which tree cannot verify it.
+//
+// SO A REBASE RE-READS THE WHOLE LIST, in both directions. A spec that landed on main
+// after the reading carries lookups this rule never saw; a spec someone scoped in the
+// meantime carries fewer. Run the guard after rebasing and it names every file whose
+// count moved and which way. Raising an entry is legitimate ONLY there — re-deriving
+// against a new base — and NEVER as a way to land a new bare lookup, which is the
+// whole ratchet. Lowering is always legitimate and always wanted.
 const TESTID_SCOPE_ROOTS = ["app-content-container", "training-page"];
 // The argument test, as a NEGATIVE lookahead with the whitespace INSIDE it. Written
 // as `\s*(?!…)` the `\s*` is greedy and backtracks until the lookahead succeeds, so

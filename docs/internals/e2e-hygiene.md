@@ -270,6 +270,12 @@ the guard blesses — which is why the `training-page` form #4833 shipped stays
 legal. A root has to exist ONCE per document and sit ABOVE every boundary; do not
 bless one that could itself land inside a streamed section.
 
+`training-page` is TRANSITIONAL. It is blessed to keep #4833's shipped fixes
+legal, not because a per-hub root is the shape to reach for — it buys nothing
+`appContent(page)` does not, and it only works on one page. When one of those
+call sites is next touched, converge it on `appContent(page)`; the root can go
+when the last one has.
+
 **It reads a second page under any name.** `page` is the fixture, but a spec that
 opens a second context names it `member`, `tabB`, `anon`, `otherPage` — 298 of the
 lookups in the suite are on one of those, and a rule anchored on the literal
@@ -288,14 +294,45 @@ claiming everything has. A NEW lookup anywhere fails: scope it, or mark the line
 boundary (a `/login` page outside the `(app)` shell, an overlay portalled to
 `<body>` — a portal is client-only, so it has exactly one copy).
 
+**The counts are a reading of one base, and the base is named.** They were derived
+at `ec474f5e` (main, 2026-09-04). A coverage number is only true against the tree
+it was measured on, and a reader who does not know which tree cannot check it. A
+rebase therefore re-reads the whole list in both directions — a spec that landed
+since carries lookups the rule never saw, a spec someone scoped in the meantime
+carries fewer — and the guard names every file whose count moved and which way.
+Raising an entry is legitimate only there; never as a way to land a new bare
+lookup. Lowering is always legitimate and always wanted.
+
+**Burn down the 158 files that reach a streaming route first.** They hold 2,309
+of the 5,422 lookups and they are the only ones that can race today; the other
+277 files / 3,113 lookups are frozen for uniformity and can wait indefinitely.
+The freeze is immutable-downward like every other list here, so scoping a site
+and lowering its number happen in the same PR — that is the ratchet, and it is
+worth the friction to keep one guard file consistent with itself.
+
+**No file is excluded from the freeze, and that was measured rather than
+assumed.** An entry that could never burn down would make the number lie — it
+would read as "not yet checked" while meaning "unreachable" — so the obvious move
+is to drop the specs that never enter the `(app)` shell. There are none. Every
+allowlisted file naming `/login`, `/set-password`, `/offline` or `/share` also
+navigates into the shell, because signing in and landing on the dashboard is the
+point of most of them; and the five files naming no `(app)` route at all are
+shared helper MODULES (`symptom-helpers.ts`, `cycle-helpers.ts`,
+`log-sheet-helpers.ts`, `intake-form-helpers.ts`, `trends-chrome.ts`) that receive
+an already-navigated page from a spec that did — the exact shape that put one
+occurrence inside `e2e/helpers.ts`. Excluding those would hide files that CAN
+race, which is worse than an honest overcount. What is permanent is per-LINE, not
+per-file: a lookup at a `/login` control or a body-portalled overlay takes the
+`testid-scope-ok` marker and leaves the rest of its file burnable.
+
 **The streaming surface is frozen with it.** `components/StreamedSection.tsx` is
 what makes a section genuinely suspend — every read here is synchronous
 better-sqlite3, so an `async` Server Component resolves in microtasks and a bare
 `<Suspense>` never flushes early — and its call sites are the whole hazard
 surface. Today that is two routes: `/training` (the tab panel) and `/trends` (the
 Body census). The guard freezes both that list and every `<Suspense>` in `app/` and
-`components/`, so a third streaming hub cannot land without someone re-reading the specs that
-assert against it. `loading.tsx` is the other way in; `app/(app)/layout.tsx`
+`components/`, so a third streaming hub cannot land without someone re-reading
+the specs that assert against it. `loading.tsx` is the other way in; `app/(app)/layout.tsx`
 refuses it in prose (#530) and the guard now freezes it at zero.
 
 **`/history` and the household feed do NOT have this exposure.** They share the
