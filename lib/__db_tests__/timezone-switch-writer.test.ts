@@ -175,6 +175,24 @@ describe("one recorded seam, read two ways", () => {
     expect(zoneOf(zone, new Date("2026-05-04T12:00:00Z"))).toBe(TOKYO);
   });
 
+  // ALREADY-STORED PROD RECORDS CARRY NO `kind` — every one of them was written by
+  // `switchProfileTimezone`, i.e. by a trip. They must keep excusing what they excused
+  // before this landed, so the decoder reads an absent kind as travel. Seeded as raw
+  // storage rather than through the writer, because the writer can no longer produce
+  // this shape and the shape is exactly what is on disk (profile 1 holds two of them).
+  it("keeps excusing over a pre-item-2 record that carries no kind", () => {
+    freeze("2026-04-01T00:00:00Z");
+    const p = bareProfile("Legacy history");
+    setTimezone(p, TOKYO); // where the recorded chain must end
+    setProfileSetting(
+      p,
+      "timezone_switches",
+      `[{"at":"${SEAM}","from":"${NY}","to":"${TOKYO}"}]`
+    );
+    expect(getTravelSwitches(p).map((sw) => sw.kind)).toEqual(["travel"]);
+    expect(travelExcusalResolver(p)(MIDDAY_SLOT, DAY)).toBe(true);
+  });
+
   // The reader a profile that never moved gets: a plain string, byte-identical to the
   // pre-#4025 path, with nothing extra to go wrong.
   it("hands an unmoved profile its bare zone", () => {
