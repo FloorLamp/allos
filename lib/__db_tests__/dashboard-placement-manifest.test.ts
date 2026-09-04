@@ -1004,6 +1004,24 @@ describe("actual atomic dashboard manifests", () => {
   // window on one render, so the memo collapses two identical reads into one. It moves
   // every persona, including those with no `hr_minutes` at all, because the second read
   // was issued regardless of what it returned.
+  // −20 on every persona and −21 on household (#3369 item 2): eight reads that one
+  // render asked the SAME question of, more than once, joined the request cache at
+  // their existing author. Measured LEAVE-ONE-OUT on this file — each wrap disabled
+  // alone against the other seven — so these are contributions, not a split of the
+  // total guessed after the fact; they sum to exactly the move above, so the eight
+  // compose rather than overlap. Per persona: getActiveRoutine 4, getWeights 3,
+  // getOutcomeGoals 3, getEpisodeRowForDate 3, getLatestBodyMetricDated 2 (3 on
+  // household), getFoodDailyServingTotals 2, mostRecentClosedEpisodeRow 2,
+  // getActiveMedicationFamilies 1.
+  //
+  // WHAT WAS DELIBERATELY NOT WRAPPED, because a memo there would have hidden real
+  // work rather than removed it: `getEpisodeRowsForDate` runs 4× on household and
+  // its four executions carry FOUR DIFFERENT profile ids — the household's own
+  // per-profile fan-out — and `preloadProfileSettings` is likewise one read per
+  // profile already. Both would have shown a green count and cost the same queries.
+  // Every wrap above keys on `profile_id`, so what collapses is one profile asking
+  // twice and never one profile answering for another; the two-profile assertion
+  // below is what holds that.
   const QUERY_BASELINE: Record<string, number> = {
     // +1 on four personas and +3 on two (#4956): the attention read now also asks
     // whether a live source is DROPPING a record type. That is one scan of this
@@ -1084,17 +1102,17 @@ describe("actual atomic dashboard manifests", () => {
     // left four personas a query short with nothing to show for it. The numbers below
     // came from running the gate on the merged tree, which is the only thing that can
     // tell "we agree" from "we both landed on 227 by coincidence".
-    bodybuilder: 227,
-    "marathon-runner": 228,
-    household: 276,
-    pregnant: 223,
-    "diabetic-cgm": 234,
+    bodybuilder: 207,
+    "marathon-runner": 208,
+    household: 255,
+    pregnant: 203,
+    "diabetic-cgm": 214,
     // +9 (#4424 ruling 7): Upcoming's practice rows mount the shared row control, so
     // the row now resolves what that control renders — `getTrackedPractices`, which is
     // one grouped today-tally and one live sweep however many practices there are,
     // plus the usual-duration vote per practice. Assembling the same four fields
     // per-target instead measured +13.
-    biohacker: 254,
+    biohacker: 234,
     // −1 each (#4775): the paired-observation registry gained a third alcohol entry
     // (`alcohol-overnight-hr`), which reads the SAME `food_daily_totals` window the
     // other two already read — and the factor read happens before each entry's
@@ -1138,6 +1156,14 @@ describe("actual atomic dashboard manifests", () => {
   // the residual duplicates) are each expected to take a bite out of these numbers;
   // when they do, this number follows them down. A ceiling left behind by a
   // reduction stops being able to fire, and then it is decoration again.
+  //
+  // HELD AT 290 THROUGH ITEM 2, ON PURPOSE, AND THIS IS THE ONE PLACE THAT SAYS SO.
+  // Item 2 took household 276 → 255, which by the derivation above would read
+  // 255 + 20 = 275. It is not moved here because #3369 sequences the cap's descent
+  // after BOTH items and item 1 has not landed: re-deriving twice would spend a
+  // conversation on an intermediate number nobody renders. So the headroom is 35
+  // rather than 20 until item 1 lands, which is the one thing a reader could
+  // otherwise mistake for the rule above having been forgotten.
   const QUERY_CEILING = 290;
 
   it("dashboard query budget: each persona matches its recorded main baseline", () => {
