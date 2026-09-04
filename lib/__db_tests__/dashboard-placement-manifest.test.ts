@@ -1133,13 +1133,14 @@ describe("actual atomic dashboard manifests", () => {
   // rather than a bound, and decoration is exactly what the single cap had already
   // decayed into by the time #3164 filed against it. So it is re-derived here:
   //
-  //   household 270 (the heaviest baseline) + 20 headroom = 290
+  //   household 255 (the heaviest baseline) + 20 headroom = 275
   //
-  // RE-DERIVED, NOT LEFT BEHIND (#3410/#3316/#3100). The line above read
-  // "267 + 23 = 290" after the household baseline moved to 270, which is the one
-  // arithmetic this comment cannot afford to get wrong: the whole subject here is
-  // that these numbers are honest. The CEILING did not move — only the split of it
-  // into "what a render costs" and "what is left".
+  // RE-DERIVED, NOT LEFT BEHIND (#3410/#3316/#3100). This line has read "267 + 23"
+  // and then "270 + 20" as the household baseline moved, and it is the one arithmetic
+  // this comment cannot afford to get wrong: the whole subject here is that these
+  // numbers are honest. What changes is the split of the ceiling into "what a render
+  // costs" and "what is left", and the split has to be re-done every time either half
+  // moves — including, as below, when it moves DOWN.
   //
   // WHAT THE HEADROOM IS FOR: one household-shaped addition landing without a
   // conversation. The integrated household fixture carries four profiles, so an
@@ -1157,14 +1158,15 @@ describe("actual atomic dashboard manifests", () => {
   // when they do, this number follows them down. A ceiling left behind by a
   // reduction stops being able to fire, and then it is decoration again.
   //
-  // HELD AT 290 THROUGH ITEM 2, ON PURPOSE, AND THIS IS THE ONE PLACE THAT SAYS SO.
-  // Item 2 took household 276 → 255, which by the derivation above would read
-  // 255 + 20 = 275. It is not moved here because #3369 sequences the cap's descent
-  // after BOTH items and item 1 has not landed: re-deriving twice would spend a
-  // conversation on an intermediate number nobody renders. So the headroom is 35
-  // rather than 20 until item 1 lands, which is the one thing a reader could
-  // otherwise mistake for the rule above having been forgotten.
-  const QUERY_CEILING = 290;
+  // 290 → 275 (#3369 item 2), WHICH IS THAT RULE BEING FOLLOWED RATHER THAN AN
+  // OPTIMISATION BANKED. Wrapping the eight repeated reads took household 276 → 255,
+  // so the derivation above re-runs as 255 + 20 = 275 and the ceiling follows the
+  // baselines down. Leaving it at 290 would have parked 35 statements of slack over
+  // the heaviest persona — room for a 20-query regression to be pasted in without
+  // anyone having the conversation this bound exists to force, which is the exact
+  // decay the 535 suffered. Item 1 (deferring the closed tail's gathers) will move
+  // these numbers again; re-deriving is one line and is meant to happen every time.
+  const QUERY_CEILING = 275;
 
   it("dashboard query budget: each persona matches its recorded main baseline", () => {
     // THE BACKSTOP ASKS ABOUT THE TABLE, NOT THE MEASUREMENT — which is the only
