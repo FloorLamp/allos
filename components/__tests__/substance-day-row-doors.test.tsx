@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import ConsumptionSection from "@/app/(app)/medical/substance-use/ConsumptionSection";
 import { DEFAULT_FORMAT_PREFS } from "@/lib/format-date";
@@ -78,9 +84,7 @@ describe("a substance card's day row opens the door its ledger has (#5026 item 1
     card("alcohol");
     // The ⋯ still works and still deletes: a closed door, not a disabled row.
     expect(
-      screen
-        .getAllByRole("menuitem")
-        .map((item) => item.textContent)
+      screen.getAllByRole("menuitem").map((item) => item.textContent)
     ).toEqual(["Delete"]);
     const signpost = screen.getByTestId(
       "substance-history-correct-elsewhere-alcohol"

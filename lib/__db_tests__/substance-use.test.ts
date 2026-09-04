@@ -643,9 +643,7 @@ describe("the day-count correction is for day counts (#5026 item 1)", () => {
     // And no drink was captured on its way out, because none left.
     expect(
       db
-        .prepare(
-          `SELECT COUNT(*) AS n FROM deleted_rows WHERE profile_id = ?`
-        )
+        .prepare(`SELECT COUNT(*) AS n FROM deleted_rows WHERE profile_id = ?`)
         .get(p)
     ).toEqual({ n: 0 });
   });

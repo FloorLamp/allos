@@ -476,12 +476,18 @@ describe("a drink is corrected on its own row, never through the day count (#502
   }
 
   it("refuses the day-count correction, and neither clock moves", async () => {
-    const { login, profile, date, dayId } = await twoStatedDrinks("clock-day-door");
+    const { login, profile, date, dayId } =
+      await twoStatedDrinks("clock-day-door");
     const moved = shiftDateStr(date, 1);
 
     expect(
       await updateSubstanceDailyTotalAction(
-        fd({ id: String(dayId), substance: "alcohol", date: moved, amount: "1" })
+        fd({
+          id: String(dayId),
+          substance: "alcohol",
+          date: moved,
+          amount: "1",
+        })
       )
     ).toEqual({ kind: "corrected-per-event" });
 
