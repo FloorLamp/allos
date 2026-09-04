@@ -1945,7 +1945,10 @@ Two failure modes it is deliberately built to survive:
   the manifest is still planned, weighted at 1.25× the mean measured file (erring
   high, so a new spec lands in a lighter bucket), and every run prints its
   coverage — a manifest that has rotted says so in the job log instead of quietly
-  unbalancing the matrix.
+  unbalancing the matrix. That is the PLANNER's tolerance, and it is not a
+  licence to ship an unmeasured spec: the pure tier fails when the manifest does
+  not cover the walk (#5053, `lib/__tests__/e2e-shard-plan.test.ts`), because a
+  degradation nothing reports is one nobody fixes.
 
 The manifest holds seconds per spec file. **Measure it on a RUNNER, not on a
 laptop** — the first version of this was measured locally on the claim that only
@@ -2015,6 +2018,16 @@ rather than an empty contribution, because a shard that silently adds nothing
 understates every file it owned and reshuffles the plan around a number nobody
 measured.
 
+### Adding a spec takes two pushes
+
+The manifest must cover every spec file, and the number has to come off a
+runner — so a spec you have just written cannot be measured until CI has run
+it. That is two pushes, not a workaround: push the spec, let its e2e shard run,
+read your own file's `e2e-durations` line out of that shard's job log
+(`mcp__github__get_job_logs`, `return_content: true`), add the entry in seconds
+as the generator would write it (`6932` ms → `6.932`), and push again. Do NOT
+substitute a local number to clear the red; the table above is what that costs.
+
 ### Feed ONE run's inputs
 
 Merging is additive — that is the whole point, since one run's twelve shards
@@ -2043,14 +2056,17 @@ npx tsx scripts/gen-e2e-durations.ts --from-log shard-*.log --allow-rerun
 
 Which bucket a spec lands in falls out of the duration manifest and the spec
 list together. Both move. A manifest refresh reshuffles almost everything —
-#5017 moved 443 of 477 specs — and so does adding ONE spec, because an unlisted
-spec is planned in on an estimate and displaces its neighbours.
+greedy LPT assigns in descending weight order, so any weight change cascades
+through every later assignment — and so does adding ONE spec, because an
+unlisted spec is planned in on an estimate and displaces its neighbours.
 
 The planner is deterministic, so the same tree always gives the same answer —
 what moves is the TREE. Asked on two trees the same night, one pair of specs
-sat in different buckets each time. So **do not write a bucket number down**:
-it is a fact about a tree that no longer exists by the next merge, and a rule
-that quotes one teaches the next reader to trust it.
+sat in different buckets each time. So **do not write a bucket number down**,
+and that includes a count of how many moved: it is a fact about a tree that no
+longer exists by the next merge, and a rule that quotes one teaches the next
+reader to trust it. This section quoted such a count until #5053, and it had
+been computed over a file list `main` had already moved past.
 
 Two consequences, both of which cost something on 2026-09-04:
 
