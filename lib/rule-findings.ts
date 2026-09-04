@@ -38,11 +38,13 @@ import {
   getProteinAdequacy,
   getFiberAdequacy,
   getFindingSuppressions,
-  effectiveSituationResolver,
 } from "./queries";
+import { situationHistoryResolver } from "./trend-annotations";
 import { activeFindings } from "./findings";
 import { exerciseHistoryKey } from "./lifts";
 import {
+  getActiveSituations,
+  getSituationEvents,
   getHomeLocation,
   getProfileSex,
   getProfileAge,
@@ -1653,11 +1655,27 @@ export function buildAdherencePatternFindings(
   const dates = lastNDates(today, ADHERENCE_PATTERN_DAYS);
   const workoutDays = new Set(getActivityDates(profileId));
   const isExcused = travelExcusalResolver(profileId);
-  // Per-day DUENESS resolver (#654/#3993): a past day is scored against the situations
-  // that held THAT day, declared AND derived — so a situational item's pattern
-  // observations aren't distorted by a situation activated today, and a day the app
-  // really did ask for a dose counts as one.
-  const situationsOn = effectiveSituationResolver(profileId);
+  // Per-day situation resolver (#654): a past day is scored against the situations
+  // DECLARED that day, not today's toggle applied retroactively.
+  //
+  // THE ONE DUENESS SURFACE #3993 DID NOT DATE, and it is a cost decision rather than a
+  // judgement that this surface is different. Dating it means one derived gather per day
+  // over ADHERENCE_PATTERN_DAYS = 56, and this walk runs on the DASHBOARD: measured at
+  // +96 queries per persona (+112 for the two with cycle rows) against a recorded
+  // backstop of 274 in lib/__db_tests__/dashboard-placement-manifest.test.ts, whose own
+  // message calls growth of that size "a design conversation about what the dashboard
+  // gathers — not a number to raise so CI goes green". So it stays declared-only until
+  // that conversation happens, and the consequence is written down rather than left to
+  // be discovered: a Poor-sleep item's rough-night days score `na` here while the strip
+  // this summarizes now calls them missed, so a pattern can under-count exactly the days
+  // the strip counts. The fix that removes the cost rather than accepting it is to read
+  // the derived half's DATE-INDEPENDENT inputs once per window — the nights, the period
+  // log, the weather series — and evaluate each day against them purely, which the pure
+  // half of lib/derived-situations.ts is already shaped for.
+  const situationsOn = situationHistoryResolver(
+    getActiveSituations(profileId),
+    getSituationEvents(profileId)
+  );
 
   const inputs: DoseAdherenceInput[] = [];
   for (const d of doses) {

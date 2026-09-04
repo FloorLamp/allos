@@ -39,7 +39,8 @@ import {
   zonedDateParts,
 } from "../date";
 import { getTimezone, getSituationEvents, getFreeDays } from "../settings";
-import { effectiveSituationResolver } from "./derived-situations";
+import { situationHistoryResolver } from "../trend-annotations";
+import { getActiveSituations } from "../settings";
 import { doseWindowSince, indexTakenByDose } from "../intake-adherence";
 import { profileDayZone } from "../travel-excusal";
 import { zoneOf } from "../travel-timezone";
@@ -434,7 +435,11 @@ function bedtimeSupplementsByWakeDay(
     getIntakeLogsInRange(profileId, windowDays + 1)
   );
   const workoutDays = new Set(getActivityDates(profileId));
-  const situationsOn = effectiveSituationResolver(profileId);
+  // Declared-only (#654), for the cost reason recorded in lib/intake-history.ts.
+  const situationsOn = situationHistoryResolver(
+    getActiveSituations(profileId),
+    getSituationEvents(profileId)
+  );
   const summaries = new Map<string, BedtimeSupplementSummary>();
 
   for (const [wakeDay, sleepDate] of sleepDateByWakeDay) {

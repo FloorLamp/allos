@@ -43,8 +43,22 @@ import {
   pendingDayDoses,
 } from "@/lib/queries/usual-routine";
 import { createCycleRow } from "@/lib/cycle-store";
-import { getIntakeHistory } from "@/lib/intake-history";
-import { missedDoseDays } from "@/lib/intake-adherence";
+import {
+  intakeAdherenceStrip,
+  indexTakenByDose,
+  missedDoseDays,
+  type AdherenceDot,
+} from "@/lib/intake-adherence";
+import { effectiveSituationResolver } from "@/lib/queries/derived-situations";
+import { travelExcusalResolver } from "@/lib/travel-excusal";
+import { lastNDates } from "@/lib/date";
+import {
+  getIntakeItems,
+  getIntakeDoses,
+  getIntakeAdherenceEvidence,
+  getActivityDates,
+} from "@/lib/queries";
+import { getTimezone } from "@/lib/settings";
 import { setHomeLocation } from "@/lib/settings";
 import { runWeatherSync } from "@/lib/integrations/weather-sync";
 import type {
@@ -493,27 +507,50 @@ describe("the routine offer answers a past day's SITUATIONS as the reminder does
 
 // ── ONE ANSWER PER DAY, ACROSS BOTH CATCH-UP SURFACES (#221/#3993) ───────────────────
 //
-// Dating the union is only half the fix. The reminder rebuild and the catch-up sheet
-// ask "was this owed on that day"; so does the adherence strip beside them, through
-// `getIntakeHistory`. Give those two questions different resolvers and the sheet offers
-// a dose the strip scores `na` — and a dose logged through that offer is dropped from
-// the percentage entirely, because the strip returns `na` before it ever consults the
-// log. So every dueness surface now reads the SAME dated resolver.
+// Dating the union is only half the fix. The reminder rebuild and the catch-up sheet ask
+// "was this owed on that day"; so does the adherence strip rendered beside them. Give
+// those two questions different resolvers and the sheet offers a dose the strip scores
+// `na` — and a dose logged through that offer is dropped from the percentage entirely,
+// because the strip returns `na` before it ever consults the log. So every surface a
+// person can ACT on reads the same dated resolver.
+//
+// The long-window SUMMARY surfaces (the recap, the demotion evidence, the adherence
+// patterns) stay declared-only for a measured cost reason recorded in
+// lib/intake-history.ts, and that split is stated there rather than hidden here.
 //
 // THE PAUSE IS THE DIRECTION THAT BITES. #1296's hold reads the same active set, so
 // widening the set SILENCES: a `daily` `must` medication held by Poor sleep drops out
 // of a rough day. That is what the app did live on that day, and the strip now agrees
 // instead of calling the day missed — which is the whole point. It is also why the
 // pause case below asserts the strip cell, not just the two gathers.
+// EVERY INPUT PAIRED WITH THE ONE THE SUBJECT READS — the discipline
+// lib/__action_tests__/past-dose-day.actions.test.ts writes down. This builds the strip
+// the way the medications page builds it, so what it asserts is the arrangement that
+// ships rather than one assembled to agree with the gathers beside it.
+function stripFor(profileId: number, itemName: string): AdherenceDot[] {
+  const item = getIntakeItems(profileId).find((i) => i.name === itemName)!;
+  const doses = getIntakeDoses(profileId).filter((d) => d.item_id === item.id);
+  return intakeAdherenceStrip(
+    item,
+    doses,
+    lastNDates(today(profileId), 14),
+    new Set(getActivityDates(profileId)),
+    effectiveSituationResolver(profileId),
+    indexTakenByDose(getIntakeAdherenceEvidence(profileId, 3650)),
+    getTimezone(profileId),
+    travelExcusalResolver(profileId)
+  );
+}
+
 function stripCellOn(
   profileId: number,
   date: string,
   itemName: string
 ): string {
-  const entry = getIntakeHistory(profileId, today(profileId), 14).find(
-    (e) => e.item.name === itemName
+  return (
+    stripFor(profileId, itemName).find((d) => d.date === date)?.state ??
+    "absent"
   );
-  return entry?.strip.find((d) => d.date === date)?.state ?? "absent";
 }
 
 describe("the strip, the reminder and the sheet answer a day the same way (#3993)", () => {
@@ -586,11 +623,7 @@ describe("the strip, the reminder and the sheet answer a day the same way (#3993
       heldReminder: morningNames(p, d2).includes("Levothyroxine"),
       heldSheet: pendingDayDoses(p, d2).some((d) => d.name === "Levothyroxine"),
       heldStrip: stripCellOn(p, d2, "Levothyroxine"),
-      heldMissed: missedDoseDays(
-        getIntakeHistory(p, anchor, 14).find(
-          (e) => e.item.name === "Levothyroxine"
-        )!.strip
-      ).includes(d2),
+      heldMissed: missedDoseDays(stripFor(p, "Levothyroxine")).includes(d2),
       controlReminder: morningNames(p, d3).includes("Levothyroxine"),
       controlStrip: stripCellOn(p, d3, "Levothyroxine"),
     }).toEqual({
