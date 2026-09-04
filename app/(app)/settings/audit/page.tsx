@@ -13,6 +13,7 @@ import { AUDIT_PAGE_SIZE } from "@/lib/audit-actions";
 import { clampPage, pageCount } from "@/lib/pagination";
 import type { AppRoute } from "@/lib/hrefs";
 import LogTable from "@/components/LogTable";
+import SubmitButton from "@/components/SubmitButton";
 
 export const dynamic = "force-dynamic";
 
@@ -124,9 +125,7 @@ export default async function AuditLogPage(props: {
             ))}
           </select>
         </label>
-        <button type="submit" className="btn">
-          Filter
-        </button>
+        <SubmitButton>Filter</SubmitButton>
         {(searchParams.login ||
           searchParams.action ||
           searchParams.profile) && (

@@ -87,7 +87,9 @@ export default function ProfilePathChoices({
                 data-testid="onboarding-primary-action"
                 className="grid w-36"
               >
-                <SubmitButton pendingLabel="Continuing…">Next</SubmitButton>
+                <SubmitButton pendingLabel="Continuing…" variant="primary">
+                  Next
+                </SubmitButton>
               </div>
             </div>
           ) : (
