@@ -119,9 +119,7 @@ node scripts/orchestration/dispatch-brief.mjs new --branch <branch> \
   [--worktree wt-x] [--issues 1,2] [--task "..."] [--e2e] [--port-base N]
 ```
 
-Claim the issue by commenting on it, naming the branch, BEFORE briefing —
-`dispatch.md` §Claiming an issue has the convention, the two spellings and the
-branch-is-the-discriminator rule that `new`'s refusal rests on.
+Claim the issue, naming the branch, before briefing — `claims.md` has the rule.
 
 Every agent goes through this — Agent-tool runs included — and any live
 dispatch found unrecorded is ADOPTED immediately (the `adopt` subcommand):

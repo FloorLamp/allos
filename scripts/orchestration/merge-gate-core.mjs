@@ -431,7 +431,7 @@ export function normaliseSession(raw) {
 }
 
 /**
- * @param {{ body?: string }} pr
+ * @param {{ body?: string | null }} pr
  * @param {string|null} self the running session, already normalised
  * @param {boolean} adopted whether --adopt-pr was passed
  */

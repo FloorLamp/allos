@@ -43,42 +43,16 @@ closed taxonomy, and `needs-human` handling.
 - A refuted PR re-enters the review queue; count rework when judging depth.
 - Every brief uses the generated template and the gate order from
   `scripts/orchestration/agent-gates.sh`.
-- Push meaningful checkpoints. A branch not next to land stays branch-only —
-  no PR at all, and a draft is not a banking state. The candidate's PR opens
-  READY (environment.md §GitHub access), never for CI a pending merge will
-  invalidate.
+- Push meaningful checkpoints. A branch not next to land stays branch-only — no
+  PR at all, and a draft is not a banking state. The candidate's PR opens READY
+  (environment.md §GitHub access), never for CI a pending merge will invalidate.
+- Claim the issue, naming the branch, BEFORE briefing — [claims.md](claims.md).
 - Parallelize banked implementation/local pre-review; serialize the sole
   candidate's remote review, CI, and merge.
 - A census meant to be EXHAUSTIVE passes ripgrep's `--binary` (`-a`). Several
   source files carry a deliberate NUL separator, so rg calls them binary and
   skips them — a plain `rg` reports a clean sweep it never took.
   `lib/__tests__/nul-byte-census.test.ts` names them.
-
-## Claiming an issue
-
-Two orchestrator sessions run against this repo and post as one GitHub account,
-so nothing about a comment's author says which session wrote it.
-
-- **Claim by commenting on the issue, before briefing**, naming the branch you
-  are about to create. Both spellings in use, quoted off the tracker:
-  - `` Dispatched: B, branch `live-practice-self-complete-5091` `` (#5091)
-  - ``Dispatched: branch `dispatch-claim-refusal-5108` (orchestrator A, …)``
-    (#5108)
-- **The branch is the discriminator, not the author.** A claim naming the
-  branch you are about to create is your own; a claim naming any other branch
-  is another lane's. That is the fact `dispatch-brief.mjs new` refuses on.
-- **Read the issue WHOLE first** — `issue-read.mjs <n>`, body and every
-  comment, unpiped. #5091 collided because the claim was printed and then
-  filtered out of a `sed` pipe; #5125 collided because no claim was written at
-  all. Being first is not the same as having claimed.
-- `new` refuses a claimed issue, and refuses DISTINCTLY when a claim could not
-  be READ — unreachable is CANNOT TELL, not CLEAR (#5108). `--adopt-claim` is
-  the override, for a claim you have read and judged stale.
-- The same question about a PR (#5177): a PR body's session footer, not its
-  author, says whose landing slot it is. `new` and `adopt` refuse a branch that
-  already heads another session's open PR, under the same `--adopt-claim`;
-  `merge-gate.mjs` asks again before the merge, where the escape is
-  `--adopt-pr`.
 
 ## Per-unit pipeline
 
