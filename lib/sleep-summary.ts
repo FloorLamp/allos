@@ -629,6 +629,18 @@ export interface SleepMoodHistoryRow {
   // go to bed then. Null on any row that is not suspect, and on a suspect one whose
   // evidence carries no usable instant.
   sleepSettledMinutes: number | null;
+  // The contradicted session's STORED window (#5021), for the Fix times door: the two
+  // local minutes it states as the times about to move, and the elapsed length it
+  // offers as the ± — which is also the length the move may not change, because a
+  // stated window of a different length has no single delta (lib/sleep-retime-db.ts).
+  // `elapsedMin` comes from the instants, so a night across a zone transition carries
+  // the length it really had rather than its wall-clock difference. Null on a row that
+  // is not suspect.
+  sleepClaimedWindow: {
+    startMinutes: number;
+    endMinutes: number;
+    elapsedMin: number;
+  } | null;
 }
 
 // Date union for the factual history table. Unlike pairSleepMood, this retains a
@@ -662,6 +674,7 @@ export function buildSleepMoodHistory(
       moodLogId: null,
       sleepSuspect: false,
       sleepSettledMinutes: null,
+      sleepClaimedWindow: null,
     });
   }
   for (const mood of moods) {
@@ -684,6 +697,7 @@ export function buildSleepMoodHistory(
       moodLogId: mood.id ?? null,
       sleepSuspect: row?.sleepSuspect ?? false,
       sleepSettledMinutes: row?.sleepSettledMinutes ?? null,
+      sleepClaimedWindow: row?.sleepClaimedWindow ?? null,
     });
   }
   for (const stageRow of stageRows) {
@@ -706,6 +720,7 @@ export function buildSleepMoodHistory(
       moodLogId: row?.moodLogId ?? null,
       sleepSuspect: row?.sleepSuspect ?? false,
       sleepSettledMinutes: row?.sleepSettledMinutes ?? null,
+      sleepClaimedWindow: row?.sleepClaimedWindow ?? null,
     });
   }
   return [...byDate.values()].sort((a, b) =>

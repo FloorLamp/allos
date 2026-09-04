@@ -39,6 +39,7 @@ import SleepTrendsSection from "./SleepTrendsSection";
 import NapCard from "./NapCard";
 import SourceComparison from "../trends/SourceComparison";
 import PageContainer from "@/components/PageContainer";
+import { getTimezone } from "@/lib/settings";
 
 // Load-bearing beyond freshness of the sleep reads themselves: this page also
 // renders bedtime-supplement context, and no dose-write path revalidates
@@ -358,6 +359,7 @@ export default async function SleepPage() {
             naps={naps.history}
             windowDays={sleepMood.windowDays}
             formatPrefs={formatPrefs}
+            tz={getTimezone(profile.id)}
           />
         </div>
       </div>

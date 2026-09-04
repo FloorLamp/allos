@@ -590,6 +590,7 @@ describe("pairSleepMood", () => {
         moodLogId: null,
         sleepSuspect: false,
         sleepSettledMinutes: null,
+        sleepClaimedWindow: null,
       },
       {
         date: "2026-03-18",
@@ -609,6 +610,7 @@ describe("pairSleepMood", () => {
         moodLogId: null,
         sleepSuspect: false,
         sleepSettledMinutes: null,
+        sleepClaimedWindow: null,
       },
       {
         date: "2026-03-19",
@@ -628,6 +630,7 @@ describe("pairSleepMood", () => {
         moodLogId: null,
         sleepSuspect: false,
         sleepSettledMinutes: null,
+        sleepClaimedWindow: null,
       },
       {
         date: "2026-03-20",
@@ -642,6 +645,7 @@ describe("pairSleepMood", () => {
         moodLogId: null,
         sleepSuspect: false,
         sleepSettledMinutes: null,
+        sleepClaimedWindow: null,
       },
     ]);
   });

@@ -282,6 +282,30 @@ export function overnightMinutesBetween(
 }
 
 /**
+ * The same shift for a pair that CROSSES MIDNIGHT by design (#5021), where
+ * `shiftHHMM`'s in-day refusal is the wrong answer: a bed time plus a night's length
+ * is a wake time on the next day, and returning null there is what left the overnight
+ * pair with no ± offer at all. Wraps on the same rule `overnightMinutesBetween` reads
+ * in the other direction, so a derivation and the span it implies agree.
+ *
+ * Bounded to one day either way: past that a "HH:MM" no longer names one clock a
+ * person could mean, and no caller states a window longer than a day.
+ */
+export function shiftHHMMOvernight(
+  hhmm: string,
+  deltaMin: number
+): string | null {
+  if (!hhmm) return null;
+  const [h, m] = hhmm.split(":").map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  if (deltaMin <= -1440 || deltaMin >= 1440) return null;
+  const total = (((h * 60 + m + deltaMin) % 1440) + 1440) % 1440;
+  const hh = String(Math.floor(total / 60)).padStart(2, "0");
+  const mm = String(total % 60).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
+/**
  * A "HH:MM" time shifted by `deltaMin` minutes, or null when it would fall
  * outside the same day (times are day-local `<input type=time>` values). Powers
  * the activity form's End↔Start derivation (#336): End = Start + duration, or
