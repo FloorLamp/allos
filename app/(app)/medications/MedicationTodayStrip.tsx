@@ -81,7 +81,10 @@ export default function MedicationTodayStrip({
                   <a
                     href={medBoardAnchor(subject.profileId)}
                     data-testid="med-everyone-due"
-                    className="inline-flex max-w-full items-start gap-1 rounded-lg border border-black/10 bg-slate-50 py-1 pl-1.5 pr-2 text-xs font-medium text-slate-600 transition hover:border-brand-400 dark:border-white/10 dark:bg-ink-850 dark:text-slate-300"
+                    // `min-w-0` because the chip now has a SIBLING: without it the
+                    // anchor refuses to shrink below its text and the pair overflows
+                    // the row on a phone. The inner span already wraps.
+                    className="inline-flex min-w-0 max-w-full items-start gap-1 rounded-lg border border-black/10 bg-slate-50 py-1 pl-1.5 pr-2 text-xs font-medium text-slate-600 transition hover:border-brand-400 dark:border-white/10 dark:bg-ink-850 dark:text-slate-300"
                   >
                     <IconPill className="h-3.5 w-3.5 shrink-0" stroke={1.75} />
                     <span className="min-w-0 wrap-break-word">
