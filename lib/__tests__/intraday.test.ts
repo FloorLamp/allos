@@ -633,6 +633,38 @@ describe("buildIntradayModel — practice sessions", () => {
     expect(model!.ticks.map((t) => t.minute)).toEqual([390]);
   });
 
+  // #5091 — THE CHART READS THE SAME BOUND THE STORE DOES. A live row carrying a
+  // derived duration is over at start + that duration, so the running branch must stop
+  // there: the owner's fifteen-minute red light session, started 06:28 and read at
+  // 10:52, drew from 388 to 652 and grew on every load. The two rows below are ONE row
+  // at two instants — same start, same derived duration, only `elapsed_min` moves —
+  // which is the same two-reading control the store's tier runs.
+  it.each([
+    ["still running at +10", 10, 388 + 10, true],
+    ["complete at +20, not four hours wide", 264, 388 + 15, false],
+  ])("bounds a live derived block: %s", (_label, elapsedMin, endMinute, running) => {
+    const model = buildIntradayModel(
+      input({
+        nowMinute: 388 + elapsedMin,
+        events: [
+          practiceEvent("practice:redlight", {
+            ...win("06:28", null, 15),
+            live: true,
+            derived_duration: true,
+            elapsed_min: elapsedMin,
+          }),
+        ],
+      })
+    );
+    expect(model!.blocks).toHaveLength(1);
+    expect(model!.blocks[0]).toMatchObject({
+      startMinute: 388,
+      endMinute,
+      running,
+    });
+    expect(model!.ticks).toEqual([]);
+  });
+
   it("stays data-gated: a day of untimed practice rows draws no blocks or ticks", () => {
     const model = buildIntradayModel(
       input({ events: [practiceEvent("practice:5", win(null, null, 20))] })

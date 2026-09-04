@@ -374,20 +374,23 @@ describe("Start now stamps the practice's usual duration (owner ruling 2026-09-0
     });
   });
 
-  it("leaves a swept live row its derived duration, so it still has a window", () => {
+  // WAS the abandoned derived row #4900 named: swept at the six-hour bound with a
+  // duration and no end, still voting in the usual. #5091 made that row unreachable
+  // for a practice that HAS a usual — it completed at start + 20, five and a half
+  // hours before the bound could reach it — so the fixture asserts the absence.
+  it("has no abandoned derived row left to sweep, only a completed one", () => {
     const p = newProfile("PracSwept");
     const date = today(p);
     seedPractice(p, date, "Sauna");
     const started = startLivePracticeSession(p, "Sauna", "page");
     const liveId = started.kind === "started" ? started.session.id : 0;
 
-    // Seven hours on: past LIVE_PRACTICE_STALE_HOURS, so the sweep closes it without
-    // inventing an end. The duration it was started with survives.
     vi.setSystemTime(new Date(NOW.getTime() + 7 * 60 * 60_000));
     expect(settleLivePracticeSessions(p)).toBe(1);
     expect(getPracticeSession(p, liveId)).toMatchObject({
       duration_min: 20,
-      end_time: null,
+      end_time: "18:20",
+      derived_window: 1,
       live: 0,
     });
   });

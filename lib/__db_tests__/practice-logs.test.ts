@@ -19,6 +19,7 @@ import {
   endLivePracticeSession,
   settleLivePracticeSessions,
   getPracticeUsualDuration,
+  getPracticeSession,
   inferPracticeSchedule,
   getPracticeDayCount,
   getPracticeSessions,
@@ -1004,6 +1005,175 @@ describe("a live session survives the edges of its own day", () => {
       start_time: "12:00",
       end_time: null,
       duration_min: null,
+      live: 0,
+    });
+  });
+});
+
+// #5091 — A LIVE PRACTICE WITH A KNOWN DURATION COMPLETES ITSELF, BY THE CLOCK.
+//
+// Owner-reported from prod: a red light session started at 06:28 was still "running" at
+// 10:52, so the day chart drew a fifteen-minute practice as a four-hour block that grew
+// on every load. The row carried the derived duration #4897 stamps on it and nothing
+// read that duration as an end.
+//
+// THERE IS NO TIMER, so the clock is this suite's independent variable and every case
+// below is two explicit instants under the tier-wide freeze (#4509) rather than a wait.
+const LIVE_START = new Date("2026-08-31T06:28:00Z");
+
+/** The Red light identity with one demonstrated duration, then a Start-now tap on it. */
+function startWithUsual(
+  name: string,
+  usualMin: number | null
+): { pid: number; id: number } {
+  const pid = makeProfile(name);
+  setTimezone(pid, "UTC");
+  practiceTarget(pid, "Red light", 3, null);
+  // One prior session is what makes the duration KNOWN. Nothing here declares it —
+  // this reads whatever `getPracticeUsualDuration` already answers (#4951 is elsewhere).
+  if (usualMin != null)
+    logPracticeSession(pid, "Red light", shiftDateStr(today(pid), -1), "page", {
+      durationMin: usualMin,
+    });
+  const started = startLivePracticeSession(pid, "Red light", "page");
+  if (started.kind !== "started") throw new Error("Start now did not open a row");
+  return { pid, id: started.session.id };
+}
+
+/**
+ * ONE READER, AND THE SAME ONE BOTH TIMES. A page gather settles before it reads, so
+ * this is what a page load does — and re-using this exact function for the second
+ * reading is what makes the control a control: a fresher query written to check the
+ * work would only prove that SOME query can see the change.
+ */
+function readAsPageLoad(pid: number, id: number) {
+  settleLivePracticeSessions(pid);
+  return getPracticeSession(pid, id);
+}
+
+describe("a live practice with a known duration completes itself (#5091)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(LIVE_START);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  // THE CONTROL THE ISSUE TURNS ON: one row, two readings, NO write in between — no
+  // tap, no edit, nothing but the clock moving. If completion were an event rather
+  // than a computation, the second reading would answer exactly what the first did.
+  it("reads live at +10 and complete at +20 with nothing written in between", () => {
+    const { pid, id } = startWithUsual("live-two-readings", 15);
+
+    vi.setSystemTime(new Date(LIVE_START.getTime() + 10 * 60_000));
+    expect(readAsPageLoad(pid, id)).toMatchObject({
+      live: 1,
+      start_time: "06:28",
+      end_time: null,
+      duration_min: 15,
+      derived_window: 1,
+    });
+
+    vi.setSystemTime(new Date(LIVE_START.getTime() + 20 * 60_000));
+    // `derived_window` STAYS: the end is computed, not observed, and the chart and the
+    // practice note keep hedging it (#4948).
+    expect(readAsPageLoad(pid, id)).toMatchObject({
+      live: 0,
+      start_time: "06:28",
+      end_time: "06:43",
+      duration_min: 15,
+      derived_window: 1,
+    });
+  });
+
+  it.each([
+    // Before the derived end the second tap still owns the row and writes what it saw.
+    ["before its derived end", 10, { live: 0, end_time: "06:38", duration_min: 10 }],
+    // The owner's own reading, 4h24m in: the row completed four hours ago, so a stale
+    // mount's tap cannot stamp a four-hour session onto a fifteen-minute practice.
+    ["after it", 264, { live: 0, end_time: "06:43", duration_min: 15 }],
+  ])("takes an End tap %s", (label, afterMin, expected) => {
+    const { pid, id } = startWithUsual(`live-tap-${afterMin}`, 15);
+    vi.setSystemTime(new Date(LIVE_START.getTime() + afterMin * 60_000));
+    expect(endLivePracticeSession(pid, id).kind).toBe(
+      label === "before its derived end" ? "ended" : "not-live"
+    );
+    expect(getPracticeSession(pid, id)).toMatchObject({
+      ...expected,
+      derived_window: 1,
+    });
+  });
+
+  it.each([
+    ["inside the plausibility bound", 20, { live: 1 }],
+    ["past it", 6 * 60 + 1, { live: 0 }],
+  ])("leaves a no-usual row live %s", (_label, afterMin, expected) => {
+    const { pid, id } = startWithUsual(`live-no-usual-${afterMin}`, null);
+    vi.setSystemTime(new Date(LIVE_START.getTime() + afterMin * 60_000));
+    // Byte-identical to before this issue: no duration, so no end to reach.
+    expect(readAsPageLoad(pid, id)).toMatchObject({
+      ...expected,
+      start_time: "06:28",
+      end_time: null,
+      duration_min: null,
+    });
+  });
+
+  // #4900's case — a live row abandoned WITH a duration and no end, still voting in the
+  // usual — is unreachable for a practice that has a usual, because such a row completes
+  // hours before the bound. The fixture asserts the absence rather than being deleted.
+  it("leaves no abandoned derived row for a practice that has a usual", () => {
+    const { pid, id } = startWithUsual("live-no-abandoned", 15);
+    // Seven hours on, past LIVE_PRACTICE_STALE_HOURS: it was never abandoned, only
+    // unwitnessed for six and three quarter hours.
+    vi.setSystemTime(new Date(LIVE_START.getTime() + 7 * 60 * 60_000));
+    expect(readAsPageLoad(pid, id)).toMatchObject({
+      live: 0,
+      end_time: "06:43",
+      duration_min: 15,
+      derived_window: 1,
+    });
+    expect(
+      getPracticeSessions(pid, "Red light").filter(
+        (row) =>
+          row.derived_window === 1 &&
+          row.duration_min != null &&
+          row.end_time == null
+      )
+    ).toEqual([]);
+    expect(getPracticeUsualDuration(pid, "Red light")).toBe(15);
+  });
+
+  it("stops offering End on both surfaces once the row completed", () => {
+    const { pid, id } = startWithUsual("live-offer", 15);
+    vi.setSystemTime(new Date(LIVE_START.getTime() + 10 * 60_000));
+    settleLivePracticeSessions(pid);
+    expect(getWellnessPractices(pid)[0].liveSession).toMatchObject({ id });
+    expect(getTrackedPractices(pid)[0].liveSession).toMatchObject({ id });
+
+    vi.setSystemTime(new Date(LIVE_START.getTime() + 20 * 60_000));
+    settleLivePracticeSessions(pid);
+    expect(getWellnessPractices(pid)[0].liveSession).toBeNull();
+    expect(getTrackedPractices(pid)[0].liveSession).toBeNull();
+  });
+
+  // The end is an INSTANT plus a duration, not wall-clock arithmetic, so it lands on
+  // the next local day when the session crosses midnight — the row keeps the day it
+  // was filed on, exactly as an End tap leaves it.
+  it("writes a crossing end for a session that starts before local midnight", () => {
+    const pid = makeProfile("live-crosses-midnight");
+    setTimezone(pid, "UTC");
+    vi.setSystemTime(new Date("2026-08-31T23:50:00Z"));
+    logPracticeSession(pid, "Red light", "2026-08-30", "page", {
+      durationMin: 15,
+    });
+    const started = startLivePracticeSession(pid, "Red light", "page");
+    if (started.kind !== "started") throw new Error("Start now did not open a row");
+
+    vi.setSystemTime(new Date("2026-09-01T00:10:00Z"));
+    expect(readAsPageLoad(pid, started.session.id)).toMatchObject({
+      date: "2026-08-31",
+      start_time: "23:50",
+      end_time: "00:05",
       live: 0,
     });
   });
