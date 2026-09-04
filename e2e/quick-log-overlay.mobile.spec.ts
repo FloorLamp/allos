@@ -1647,7 +1647,9 @@ test("the sheet's Care segment takes a household member's fever, with no profile
 
     // Three: the dock puck, the Care segment, the "Log symptom" row. Counted as the
     // helper's own three rather than re-spelled, so this census cannot drift from the
-    // path every other test in this file walks.
+    // path every other test in this file walks. The count is of the CANONICAL path —
+    // `openLogSheet` re-taps the puck past a pre-hydration swallow, and a retry is
+    // not a tap a person makes.
     const overlay = await openQuickEntry(page, "log-symptom");
     taps += 3;
     const panel = overlay.getByTestId("quick-symptom-panel");
