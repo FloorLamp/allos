@@ -201,6 +201,41 @@ describe("the record reports the drink's instant (#3295 part 2)", () => {
     ]);
   });
 
+  // THE ONE VISIBILITY PREDICATE, in the direction that can break: a drink the
+  // reader's filter dropped must not reach the chart either. The push sits inside the
+  // substance block, so `?kind=food` — which shows no substance rows — contributes no
+  // substance marks, and the block's own life-stage gate is inherited with it.
+  it("draws no tick for a drink whose row the reader's filter dropped", async () => {
+    const { login, profile } = seat("clock-filtered");
+    const date = shiftDateStr(today(profile.id), -1);
+    await addSubstanceDailyTotalAction(
+      fd({
+        substance: "alcohol",
+        date,
+        amount: "1",
+        stated_at: `${date}T21:30:00Z`,
+      })
+    );
+    const filtered = gatherHistoryLog(profile.id, {
+      loginId: login.id,
+      day: date,
+      limit: 50,
+      kind: "food",
+    });
+    expect(filtered.dayEvents).toEqual([]);
+    expect(getIntradayDay(profile.id, date, filtered.dayEvents).ticks).toEqual(
+      []
+    );
+
+    // AND THE SCROLLING READ CARRIES NOTHING EITHER — the panel is a day-view
+    // surface, so a read with no day in hand must not pay for, or hand back, chart
+    // events. (The shipped assertion of this rule is seeded with a practice and
+    // could not have seen a substance row cross it.)
+    expect(
+      gatherHistoryLog(profile.id, { loginId: login.id, limit: 50 }).dayEvents
+    ).toEqual([]);
+  });
+
   it("keeps the day row date-only when nobody stated a time", async () => {
     const { login, profile } = seat("clock-untimed");
     const date = shiftDateStr(today(profile.id), -1);
