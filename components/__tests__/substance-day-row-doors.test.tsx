@@ -56,7 +56,7 @@ const ENTRY = { date: "2026-08-18", amount: 2, notes: "with dinner" };
 
 afterEach(cleanup);
 
-function card(substance: string) {
+function card(substance: string, history = [{ id: 4, substance, ...ENTRY }]) {
   render(
     <ConsumptionSection
       substance={substance}
@@ -65,12 +65,13 @@ function card(substance: string) {
       cap={null}
       capProgress={null}
       capAttention={false}
-      history={[{ id: 4, substance, ...ENTRY }]}
+      history={history}
       trend={[]}
       defaultDate={TODAY}
       formatPrefs={DEFAULT_FORMAT_PREFS}
     />
   );
+  if (history.length === 0) return null;
   const row = screen.getByTestId(`substance-history-row-${substance}-4`);
   // Reached by the trigger's own testid, not by its accessible name: the sentence is
   // composed in one place (#3501) and lib/__tests__/overflow-menu-identity.test.ts
@@ -92,6 +93,13 @@ describe("a substance card's day row opens the door its ledger has (#5026 item 1
     expect(within(signpost).getByRole("link").getAttribute("href")).toBe(
       "/history?kind=substance&item=alcohol"
     );
+
+    // …and it names nothing on a card with no days, so it is not said there.
+    cleanup();
+    card("alcohol", []);
+    expect(
+      screen.queryByTestId("substance-history-correct-elsewhere-alcohol")
+    ).toBeNull();
   });
 
   it.each(["nicotine", "cannabis", "Kratom"])(

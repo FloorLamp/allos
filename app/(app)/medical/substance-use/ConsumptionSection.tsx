@@ -222,10 +222,11 @@ export default function ConsumptionSection({
         <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
           History
         </h3>
-        {eventLedgered ? (
+        {eventLedgered && history.length > 0 ? (
           // WHERE THE CORRECTION WENT, said once rather than left to be found. The
-          // rows above are a day's rollup; each drink is its own row in the record,
-          // with its own time.
+          // rows below are a day's rollup; each drink is its own row in the record,
+          // with its own time. Only where there ARE rows: on an empty card the
+          // sentence names nothing.
           <p
             className="mt-1 text-xs text-slate-500 dark:text-slate-400"
             data-testid={`substance-history-correct-elsewhere-${substance}`}
