@@ -219,12 +219,18 @@ export interface ChartLineSeries {
   /** The demoted stroke of a sparse series: thin, dashed, low opacity. */
   sparseStroke?: boolean;
   dots: ChartDots;
+  /** The hover dot's colour, or omitted for a line with no hover mark of its
+   *  own — a per-run stroke, whose hover belongs to the strokeless line carrying
+   *  the readings. */
   activeDot?: string;
   connectNulls: boolean;
-  /** Keep this line out of the legend and out of the tooltip — a per-run stroke
-   *  is a fragment of one series, not a series. */
-  silent?: boolean;
-  /** Bands never animate: they are reference material, not the reading. */
+  /** A fragment of a series is not a series: a per-run stroke and a companion
+   *  mark stay out of the legend, and a per-run stroke out of the tooltip too,
+   *  so a reader still gets one value per day. */
+  hideFromLegend?: boolean;
+  hideFromTooltip?: boolean;
+  /** Reference material does not animate in — the growth chart's percentile
+   *  bands are the paper the trajectory is drawn on. */
   animate?: boolean;
 }
 
