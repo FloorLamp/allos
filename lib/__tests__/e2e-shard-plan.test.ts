@@ -1,6 +1,13 @@
 import { spawnSync } from "node:child_process";
-import { chmodSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { makeTmpDir } from "./tmp-dir";
 import {
@@ -61,6 +68,38 @@ if (!output) process.stdout.write(report);
     } finally {
       rmSync(bin, { recursive: true, force: true });
     }
+  });
+});
+
+const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+const E2E_DIR = path.join(REPO, "e2e");
+
+/** The planner's real universe — the walk `scripts/e2e-shard-plan.ts` performs. */
+function walkSpecFiles(dir = E2E_DIR, out: string[] = []): string[] {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) walkSpecFiles(full, out);
+    else if (isSpecFile(entry.name))
+      out.push(path.relative(REPO, full).split(path.sep).join("/"));
+  }
+  return out.sort();
+}
+
+describe("the shipped manifest", () => {
+  // An unmeasured spec is the failure nothing reports. It is still planned —
+  // `planShards` estimates it and the partition holds — so no shard reds; its
+  // bucket is simply balanced on a guess. `scripts/e2e-shard-plan.ts --verify`
+  // cannot see it either: that compares the walk against Playwright's own
+  // resolution, never the manifest against the walk. This is that second
+  // question, asked where a merge runs it. (#5053, which found one spec that had
+  // been planned on the guess since it landed.)
+  it("measures every spec file the planner walks", () => {
+    const manifest = JSON.parse(
+      readFileSync(path.join(E2E_DIR, "spec-durations.json"), "utf8")
+    ) as DurationMap;
+    // Shard count does not affect `unknown`; 12 is what CI splits into.
+    expect(planShards(walkSpecFiles(), manifest, 12).unknown).toEqual([]);
   });
 });
 
