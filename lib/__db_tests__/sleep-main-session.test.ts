@@ -826,6 +826,32 @@ describe("getSleepSignal freshness — the night must BE the day asked about", (
     );
   });
 
+  // A ROW STAMPED FOR A DAY THAT HAS NOT HAPPENED, and this one CHANGED with #3993 —
+  // recorded here rather than smoothed over. The reader used to take the newest night
+  // in the record and refuse if it was not the day asked about, so a single future-
+  // dated row (clock skew, a bad import — lib/sleep-clock-skew.ts documents sources
+  // that write fabricated instants) silenced the signal entirely: no rest nudge, no
+  // digest sleep card, no derived poor-sleep verdict, for as long as the row sat there.
+  // Now the day asked about selects its own night, so the junk row is simply not the
+  // night ending today. One bad row can no longer hide a real one.
+  it("a night stamped for TOMORROW no longer silences today's real night", () => {
+    const id = staleProfile("SleepFutureRow", 0);
+    upsertMetricSamples(
+      id,
+      [
+        {
+          metric: "sleep_min",
+          date: shiftDateStr(today(id), 1),
+          started_at: `${today(id)}T23:00:00Z`,
+          ended_at: `${shiftDateStr(today(id), 1)}T08:00:00Z`,
+          value: 480,
+        },
+      ],
+      "health-connect"
+    );
+    expect(getSleepSignal(id, today(id))?.lastNightMin ?? null).toBe(180);
+  });
+
   // The same reader answers a PAST wake-day with the night that ended THAT day — what
   // lets the derived poor-sleep situation be dated (#3993). This fixture's rough 3h
   // night is on day-1 and every night before it is a healthy 8h, so both days are read

@@ -100,7 +100,14 @@ function spread(values: number[]): number | undefined {
 // against the profile's today), which is why the derived poor-sleep situation could only
 // ever speak for today. It is the same question with its subject named, so a past-day
 // dueness surface can ask what the night ending THAT day was, against the baseline of
-// the nights before it. Today's callers pass today(profileId) and get the same answer.
+// the nights before it.
+//
+// TODAY'S ANSWER MOVED IN EXACTLY ONE CASE, written down rather than claimed away: the
+// old reader took the NEWEST recorded night and refused if it was not the day asked
+// about, so a single future-dated row (clock skew, a bad import — see
+// lib/sleep-clock-skew.ts) silenced the signal entirely. The day asked about now selects
+// its own night, so junk stamped ahead of today cannot hide the night that really ended
+// it. Every other call answers exactly as before.
 //
 // The baseline is the RECOVERY_BASELINE_DAYS nights ending at `wakeDay`, drawn from the
 // reader's own most-recent window — so a `wakeDay` older than that window holds no night

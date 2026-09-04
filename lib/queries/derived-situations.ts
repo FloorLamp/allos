@@ -357,8 +357,28 @@ export function getEffectiveActiveSituations(
   return set;
 }
 
+//
+// IT MEMOIZES PER DATE, and that is not an optimization — it is the difference between
+// this being shippable and not. `intakeAdherenceStrip` asks its resolver once per ITEM
+// per DAY, so a 20-item page over a 14-day window asks 280 times; the derived gather
+// costs ~3.5 ms a call and `tickCached` calls straight through outside a tick scope
+// (lib/tick-cache.ts), so a page render would have paid it every time. The declared
+// resolver this replaces hoisted its two reads out of the loop by construction; this
+// one hoists the whole answer, which is the same move.
+//
+// The snapshot lifetime is the RESOLVER, exactly as `situationHistoryResolver`'s is:
+// each call site builds one for the window it is about to score, so a caller that wants
+// a fresh read builds a fresh resolver.
 export function effectiveSituationResolver(
   profileId: number
 ): (date: string) => Set<string> {
-  return (date) => getEffectiveActiveSituations(profileId, date);
+  const byDate = new Map<string, Set<string>>();
+  return (date) => {
+    let set = byDate.get(date);
+    if (!set) {
+      set = getEffectiveActiveSituations(profileId, date);
+      byDate.set(date, set);
+    }
+    return set;
+  };
 }
