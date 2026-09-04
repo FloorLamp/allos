@@ -24,6 +24,10 @@ import { actAs, createLogin, createProfile, fd } from "./harness";
 import { setProfileSetting } from "@/lib/settings";
 import { shiftDateStr } from "@/lib/date";
 import { gatherHistoryLog } from "@/lib/history";
+import {
+  deleteFoodLogEventCore,
+  updateFoodLogEventCore,
+} from "@/lib/food-log-write";
 import { getIntradayDay, getSubstanceDailyTotals } from "@/lib/queries";
 
 const TZ = "UTC";
@@ -238,6 +242,43 @@ describe("the record reports the drink's instant (#3295 part 2)", () => {
     // one: the 2026-08-29 defect, which the event ruling did not reopen. Ticks alone
     // cannot see it — food rows contribute none — so the row set is asserted.
     expect(rows.filter((r) => r.kind === "food")).toEqual([]);
+  });
+
+  // THE CORRECTION SHAPE, EXERCISED RATHER THAN DESCRIBED (the ruling's question 1).
+  // The row hands `HistoryRows` a food edit; this is the core behind that door, asked
+  // to re-time one drink of three and then delete another. The rollup follows both,
+  // which is the whole reason the day total may stop being the editable thing.
+  it("re-times and deletes ONE drink of a day, and the rollup follows", async () => {
+    const { login, profile } = seat("clock-correct-one");
+    const date = shiftDateStr(today(profile.id), -1);
+    await addSubstanceDailyTotalAction(
+      fd({
+        substance: "alcohol",
+        date,
+        amount: "3",
+        stated_at: `${date}T21:00:00Z`,
+      })
+    );
+    const eventIds = () =>
+      dayView(login.id, profile.id, date)
+        .rows.filter((r) => r.kind === "substance")
+        .map((r) => (r.edit as { eventId: number }).eventId);
+    const [first, , third] = eventIds();
+
+    expect(
+      updateFoodLogEventCore(profile.id, first, {
+        date,
+        eatenAt: new Date(`${date}T23:15:00Z`),
+      }).kind
+    ).toBe("updated");
+    expect(deleteFoodLogEventCore(profile.id, third).kind).toBe("deleted");
+
+    const { rows, ticks } = dayView(login.id, profile.id, date);
+    expect(rows.filter((r) => r.kind === "substance")).toHaveLength(2);
+    expect(ticks.map((t) => t.minute)).toEqual([21 * 60, 23 * 60 + 15]);
+    // THE ROLLUP IS DERIVED: the counter the cap and the substance card read moved
+    // with the delete, so the two never disagree about how many drinks the day held.
+    expect(dayServings(profile.id, date)).toBe(2);
   });
 
   // THE AGE GATE IS WHY A DRINK IS STILL A SUBSTANCE ROW, and it is the reason the
