@@ -27,7 +27,7 @@ import {
   markDoseSkipped,
   setDoseStatusCore,
 } from "@/lib/queries";
-import { newDoseBundle } from "@/lib/dose-bundle";
+import { newBundle } from "@/lib/bundle";
 
 let seq = 0;
 
@@ -354,7 +354,7 @@ describe("the confirm's named tail reaches its own columns (#4742)", () => {
         )
         .run(profileId, date).lastInsertRowid
     );
-    const bundle = newDoseBundle();
+    const bundle = newBundle();
     const bare = seedDose(itemId, "1 cap");
     const untimed = seedDose(itemId, "1 cap");
     const attributed = seedDose(itemId, "1 cap");
@@ -402,7 +402,7 @@ describe("the confirm's named tail reaches its own columns (#4742)", () => {
     const profileId = seedProfileRow();
     const itemId = seedItem(profileId);
     const date = today(profileId);
-    const bundle = newDoseBundle();
+    const bundle = newBundle();
     const composed = seedDose(itemId, "1 cap");
     const alone = seedDose(itemId, "1 cap");
 
