@@ -32,6 +32,7 @@ import { getTimezone } from "../settings";
 import { historyHref, type AppRoute } from "../hrefs";
 import { timelineEntryAnchorId } from "../timeline-format";
 import { normalizePracticeName } from "../practice";
+import { searchMoodDays } from "./mood";
 import { FOOD_GROUPS, foodGroupBySlug } from "../food-groups";
 import { SYMPTOMS, symptomLabel } from "../symptoms";
 import { ALCOHOL_FOOD_GROUP } from "../substance-use";
@@ -210,25 +211,15 @@ function symptomEntries(profileId: number, q: LoggedQuery): LoggedEntry[] {
 // Check-ins: a mood row states no instant at all, so its whole vocabulary is the words
 // for the thing plus the day it names. `date` IS the profile-local day column.
 function moodEntries(profileId: number, q: LoggedQuery): LoggedEntry[] {
-  const rows = db
-    .prepare(
-      `SELECT id, date AS day
-         FROM mood_logs
-        WHERE profile_id = ?
-          AND ('mood check-in' LIKE ? ESCAPE '\\' OR date LIKE ? ESCAPE '\\')
-        ORDER BY date DESC
-        LIMIT ?`
-    )
-    .all(profileId, q.like, q.like, LOGGED_ENTRY_LIMIT) as {
-    id: number;
-    day: string;
-  }[];
-  return rows.map((r) => ({
+  // THROUGH THE MOOD STORE, not a statement of our own: the check-in table is
+  // store-private (#992, pinned by lib/__tests__/mood-guardrails.test.ts), so its
+  // read layer owns the profile-scoped, bounded query and hands back the day.
+  return searchMoodDays(profileId, q.like, LOGGED_ENTRY_LIMIT).map((r) => ({
     entryId: `mood:${r.id}`,
     // The record's title for the row. Its valence, scales, factors and note are the
     // row's detail, and a palette hit is a door, not a second rendering of it.
     title: "Mood",
-    day: r.day,
+    day: r.date,
   }));
 }
 
