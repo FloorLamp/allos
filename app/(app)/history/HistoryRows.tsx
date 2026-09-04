@@ -1122,7 +1122,10 @@ export default function HistoryRows({
     // value, so nothing above `sm` moves. Without `band` this list would draw the
     // per-surface card frame the flat ban removed, on the one page built to be
     // scanned.
-    <ul className={`${LOGGED_EVENT_LIST} band`} data-testid="history-rows">
+    <ul
+      className={`${LOGGED_EVENT_LIST} band px-0!`}
+      data-testid="history-rows"
+    >
       {rows.map(renderRow)}
       {/* THE DAY'S FIXED LAST LINES (#3958). An aggregate has no honest single instant,
           so it takes a fixed position rather than competing for one in the sort — and

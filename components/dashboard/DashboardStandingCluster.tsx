@@ -497,7 +497,7 @@ export default function DashboardStandingCluster({
         Standing
       </h2>
       <div
-        className="band overflow-hidden rounded-xl border border-(--border) bg-surface"
+        className="band overflow-hidden rounded-xl border border-(--border) bg-surface px-0!"
         data-testid="dashboard-standing"
       >
         {/* THE ATTENTION TIER (#3548). Membership is a live claim — a behind

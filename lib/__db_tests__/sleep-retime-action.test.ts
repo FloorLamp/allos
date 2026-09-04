@@ -193,8 +193,11 @@ describe("which zone reads the typed clocks (#5125)", () => {
       profileId,
       "timezone_switches",
       serializeTimezoneSwitches([
-        // TRAVEL, not a settings correction (#5129's discriminator). Ported from
-        // PR #5148, which clears the same red on main; it no-ops once main carries it.
+        // TRAVEL, not a settings correction (#5129's discriminator). The fixture's own
+        // sentence is "it flew home afterwards" — the person crossed the seam, and a
+        // stretch of their wall clock really did repeat. A `settings` record here
+        // would describe the app's belief changing rather than the person moving, and
+        // the excusal predicates read the travel sub-chain only.
         {
           at: `${day}T18:00:00Z`,
           from: "Asia/Tokyo",

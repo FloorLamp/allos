@@ -1000,7 +1000,7 @@ export default async function ManageTab({
             >
               <div
                 data-testid="supplement-sidebar-surface"
-                className="band divide-y divide-(--divider) overflow-hidden rounded-xl border border-(--border) bg-surface shadow-xs"
+                className="band divide-y divide-(--divider) overflow-hidden rounded-xl border border-(--border) bg-surface px-0! shadow-xs"
               >
                 {supplementItems.length > 0 && (
                   <SupplementWeeklyAdherence

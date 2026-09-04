@@ -219,6 +219,10 @@ test("a logged day is a door to that day's log, and an empty one is not", async 
           date: cell.getAttribute("data-date"),
           sessions: cell.getAttribute("data-sessions"),
           link: cell.tagName === "A",
+          // #5133: an explicit role would OVERRIDE the anchor's implicit `link`, and
+          // the door would announce itself as a list item. The listitem is the
+          // wrapper's now, and this cell carries no role of its own.
+          role: cell.getAttribute("role"),
           // The one approved rightward cue, drawn by DestinationLink. Visible at this
           // width and every other — it is not a hover state to wait for.
           cue: cell.querySelector("svg") != null,
@@ -227,10 +231,16 @@ test("a logged day is a door to that day's log, and an empty one is not", async 
     expect(doors).toHaveLength(7);
     for (const cell of doors) {
       const hasSessions = cell.sessions !== "0";
-      expect({ date: cell.date, link: cell.link, cue: cell.cue }).toEqual({
+      expect({
+        date: cell.date,
+        link: cell.link,
+        cue: cell.cue,
+        role: cell.role,
+      }).toEqual({
         date: cell.date,
         link: hasSessions,
         cue: hasSessions,
+        role: hasSessions ? null : "img",
       });
       expect(logged.has(cell.date!)).toBe(hasSessions);
     }
