@@ -34,6 +34,21 @@ export interface ArrivalWaitInput {
   /** The hard bound. Past it the state stops being "waiting", measured or not. */
   maxMin: number;
   /**
+   * The shortest this wait may ever be, whatever the measurement says. Default 0.
+   *
+   * A MEASUREMENT MUST NOT BE ABLE TO SILENCE A CONSUMER (#5127 review). Where the
+   * bound exists to give a pipeline time to deliver, a profile whose pipeline is
+   * QUICKER needs no shorter wait — the consumer already acts the moment its evidence
+   * arrives — so shortening it buys nothing and costs the send. The practice recap's
+   * two hours were read off the pipeline's p99 "and then some" for exactly that
+   * reason, and a measured 20-minute lag turning them into 20 minutes would stop a
+   * finish note reaching the profiles whose data arrived soonest.
+   *
+   * A consumer whose bound is instead about how long the thing stays WORTH SAYING
+   * leaves this at 0 and states that limit as `maxMin`.
+   */
+  minWindowMin?: number;
+  /**
    * Minutes since the awaited thing's own origin — a night's wake anchor, a practice
    * window's end. NEGATIVE before it, which is a state of its own: nothing is late
    * yet, because nothing is due yet.
@@ -53,11 +68,14 @@ export type ArrivalWait =
 export function arrivalWaitWindowMin(
   input: Pick<
     ArrivalWaitInput,
-    "measuredLagMin" | "defaultLagMin" | "graceMin" | "maxMin"
+    "measuredLagMin" | "defaultLagMin" | "graceMin" | "maxMin" | "minWindowMin"
   >
 ): number {
   return Math.min(
-    (input.measuredLagMin ?? input.defaultLagMin) + input.graceMin,
+    Math.max(
+      (input.measuredLagMin ?? input.defaultLagMin) + input.graceMin,
+      input.minWindowMin ?? 0
+    ),
     input.maxMin
   );
 }

@@ -26,7 +26,7 @@ import {
   USUAL_RECENT_EVENTS,
 } from "../event-physiology";
 import { activityWindow, type ActivityWindow } from "../training-zones";
-import { arrivalWait } from "../arrival-wait";
+import { arrivalWait, ARRIVAL_LAG_MAX_MIN } from "../arrival-wait";
 import { getArrivalLagMinutes } from "../queries/integrations";
 import { HEALTH_CONNECT_ID } from "../integrations/health-connect";
 import {
@@ -71,12 +71,19 @@ function recentlyFinishedPractices(
     .all(profileId, shiftDateStr(todayStr, -1)) as PracticeRow[];
   // THIS PROFILE'S OWN BOUND (#5001), measured once per pass rather than per row.
   //
-  // `PRACTICE_RECAP_BOUND_MIN` was read off the pipeline's p99 in a doc (#2560) "and
-  // then some". It is the DEFAULT now and also the MAX, which is what makes reading a
-  // measurement safe here: a profile whose pipeline is quicker than the doc gets a
-  // shorter wait, and one that is slower is still cut off at two hours, because
-  // "a message about a sauna three hours ago is a bulletin, not a finish note" is a
-  // rule about the moment and not about the pipeline.
+  // THE MEASUREMENT MAY ONLY LENGTHEN THIS WAIT (#5127 review). `PRACTICE_RECAP_BOUND_MIN`
+  // was read off the pipeline's p99 in a doc (#2560) "and then some" — it is a number
+  // about how long the app must WAIT for coverage, and a profile whose pipeline is
+  // quicker needs no shorter wait, because the send already fires the moment coverage
+  // arrives. Shortening it buys nothing and costs the send: a practice that ended 25
+  // minutes ago on a profile measuring a 20-minute lag would read `overdue`, and
+  // `overdue` sends nothing and burns no marker. That would silence the finish note
+  // for exactly the profiles whose data arrived soonest.
+  //
+  // So the constant is the FLOOR and the default, and a genuinely slower pipeline is
+  // what the measurement is for. The cap is the sample's own declared plausibility
+  // bound rather than a new number — `getArrivalLagMinutes` already drops any arrival
+  // beyond it, so no measurement can reach past it by construction.
   //
   // WHAT IS MEASURED, and why it is not literally the heart rate. The recap needs HR
   // coverage over the window, but `hr_minutes` is not one of the tables
@@ -98,7 +105,8 @@ function recentlyFinishedPractices(
       measuredLagMin,
       defaultLagMin: PRACTICE_RECAP_BOUND_MIN,
       graceMin: 0,
-      maxMin: PRACTICE_RECAP_BOUND_MIN,
+      minWindowMin: PRACTICE_RECAP_BOUND_MIN,
+      maxMin: ARRIVAL_LAG_MAX_MIN,
       elapsedMin: localMinutesBetween(window.end, nowLocal),
     });
     if (wait.kind !== "waiting") continue;

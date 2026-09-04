@@ -314,32 +314,36 @@ describe("the practice finish message waits for the stream", () => {
     }
   }
 
-  it("waits the profile's OWN measured bound, not the constant", async () => {
-    const p = newProfile("PracMeasured");
+  it("never lets a QUICK pipeline shorten the wait (#5127 review)", async () => {
+    // THE DEFECT THIS PINS. With the measurement as the whole window, a profile whose
+    // Health Connect pushes land in 20 minutes stopped being eligible at 21 — so the
+    // finish note went silent for exactly the profiles whose data arrived soonest,
+    // which inverts the point. The send already fires the moment coverage arrives; a
+    // shorter bound buys nothing and costs the send.
+    const p = newProfile("PracQuickPipeline");
     const date = today(p);
     seedPractice(p, date);
     seedHrMinutes(p, date, 30);
-    seedArrivals(p, 30, 5);
+    seedArrivals(p, 20, 5);
     const fetchMock = stubFetch();
-    // 17:50 is 30 minutes after the 17:20 end — the last minute this pipeline needs.
-    expect((await tick(p, new Date("2026-07-17T17:50:00Z"))).sent).toBe(1);
+    // 17:45 — 25 minutes after the 17:20 end, past a 20-minute measurement and well
+    // inside the two hours this row is still news for.
+    expect((await tick(p, new Date("2026-07-17T17:45:00Z"))).sent).toBe(1);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("stops at the measured bound, well inside the constant", async () => {
-    const p = newProfile("PracMeasuredPast");
+  it("lets a SLOW pipeline lengthen it, which is what the measurement is for", async () => {
+    const p = newProfile("PracSlowMeasured");
     const date = today(p);
-    const rowId = seedPractice(p, date);
+    seedPractice(p, date);
     seedHrMinutes(p, date, 30);
-    seedArrivals(p, 30, 5);
+    // Three hours: this profile's coverage genuinely does not arrive inside the doc's
+    // two, so giving up at two would mean it never gets a finish note at all.
+    seedArrivals(p, 180, 5);
     const fetchMock = stubFetch();
-    // 17:51 — one minute past this profile's measured 30, and 89 minutes short of the
-    // constant that would still have called it news.
-    expect((await tick(p, new Date("2026-07-17T17:51:00Z"))).sent).toBe(0);
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(
-      getProfileSetting(p, practiceRecapMarkerKey(rowId)) ?? null
-    ).toBeNull();
+    // 19:21 is one minute past the constant and well inside this profile's own bound.
+    expect((await tick(p, new Date("2026-07-17T19:21:00Z"))).sent).toBe(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the constant as the bound when the sample is thin", async () => {
@@ -355,17 +359,22 @@ describe("the practice finish message waits for the stream", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("never lets a slow pipeline outrun the constant", async () => {
-    const p = newProfile("PracSlowPipeline");
+  it("stops at the sample's own plausibility bound, not at nothing", async () => {
+    // A wait that a measurement may lengthen still ends. The cap is not a new number:
+    // `getArrivalLagMinutes` drops any arrival beyond ARRIVAL_LAG_MAX_MIN, so the
+    // window cannot reach past it however slow a pipeline looks.
+    const p = newProfile("PracVerySlow");
     const date = today(p);
-    seedPractice(p, date);
+    const rowId = seedPractice(p, date);
     seedHrMinutes(p, date, 30);
-    // A six-hour measured lag. The bound is about the MOMENT, not the pipeline — a
-    // message about a sauna three hours ago is a bulletin — so the constant caps it.
-    seedArrivals(p, 360, 5);
+    seedArrivals(p, 660, 5);
     const fetchMock = stubFetch();
-    expect((await tick(p, new Date("2026-07-17T19:21:00Z"))).sent).toBe(0);
+    // 17:20 + 12h + 1min. Past the bound the sample itself declares.
+    expect((await tick(p, new Date("2026-07-18T05:21:00Z"))).sent).toBe(0);
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(
+      getProfileSetting(p, practiceRecapMarkerKey(rowId)) ?? null
+    ).toBeNull();
   });
 
   it("is not eligible before the window has finished", async () => {
