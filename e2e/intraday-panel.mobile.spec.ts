@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
 import {
+  appContent,
   expectNoClippedContent,
   expectSvgTextInsidePlot,
   expectSvgTextLegible,
@@ -211,7 +212,7 @@ test.describe("the day chart at phone width (#1512 F / #1518)", () => {
     });
     try {
       const date = await openFixtureDay(member);
-      const chart = member
+      const chart = appContent(member)
         .getByTestId("intraday-panel")
         .locator('[data-variant="compact"]');
       await expect(chart).toBeVisible();
@@ -228,7 +229,7 @@ test.describe("the day chart at phone width (#1512 F / #1518)", () => {
       await expect(chart).toHaveAttribute("data-zoomed", "true");
 
       // The row states the span it would write into, in the profile's own format.
-      const label = member.getByTestId("history-add-label");
+      const label = appContent(member).getByTestId("history-add-label");
       await expect(label).toHaveText(/^Add at \d{2}:\d{2}–\d{2}:\d{2}$/);
       const [from, to] = (await label.textContent())!
         .replace("Add at ", "")
@@ -236,7 +237,7 @@ test.describe("the day chart at phone width (#1512 F / #1518)", () => {
 
       // The chip carries it. The URL learns the window HERE and not on the drag:
       // zoom itself stays ephemeral.
-      await member.getByTestId("history-add-practice").click();
+      await appContent(member).getByTestId("history-add-practice").click();
       await expect(member).toHaveURL(
         new RegExp(`day=${date}.*from=${from.replace(":", "%3A")}`)
       );
@@ -244,7 +245,7 @@ test.describe("the day chart at phone width (#1512 F / #1518)", () => {
 
       // And the form behind that door opens on both clocks — a default the person
       // confirms. The door is a toggle, as every kind's is (#4045 §1).
-      await member.getByTestId("history-add-open-practice").click();
+      await appContent(member).getByTestId("history-add-open-practice").click();
       await expect(member.locator("#practice-start-time")).toHaveValue(from);
       await expect(member.locator("#practice-end-time")).toHaveValue(to);
     } finally {
@@ -263,7 +264,7 @@ test.describe("the day chart at phone width (#1512 F / #1518)", () => {
     });
     try {
       await openFixtureDay(member);
-      const chart = member
+      const chart = appContent(member)
         .getByTestId("intraday-panel")
         .locator('[data-variant="compact"]');
       await expect(chart).toBeVisible();
@@ -275,16 +276,16 @@ test.describe("the day chart at phone width (#1512 F / #1518)", () => {
       await member.keyboard.press("ArrowRight");
       await expect(chart).toHaveAttribute("data-zoomed", "false");
 
-      const label = member.getByTestId("history-add-label");
+      const label = appContent(member).getByTestId("history-add-label");
       await expect(label).toHaveText(/^Add at \d{2}:\d{2}$/);
       const from = (await label.textContent())!.replace("Add at ", "");
 
-      await member.getByTestId("history-add-practice").click();
+      await appContent(member).getByTestId("history-add-practice").click();
       await expect(member).toHaveURL(
         new RegExp(`from=${from.replace(":", "%3A")}`)
       );
       await expect(member).not.toHaveURL(/[?&]to=/);
-      await member.getByTestId("history-add-open-practice").click();
+      await appContent(member).getByTestId("history-add-open-practice").click();
       await expect(member.locator("#practice-start-time")).toHaveValue(from);
       // The End shortcut's job, not this window's: an end nobody stated is a length
       // nobody gave.
