@@ -136,7 +136,9 @@ test("a live workout finishes from the sticky footer, and Save closes the worksp
   await expect(page.getByTestId("activity-overlay-panel")).toBeFocused();
 
   // Give the session something to keep, so the close below is a finish and not
-  // the empty-row discard.
+  // the empty-row discard, and a title this spec can find it by afterwards.
+  const title = "E2E Phone Finish";
+  await page.getByLabel("Activity name").fill(title);
   await pickActivity(page, "Barbell Bench Press");
   await page
     .getByTestId("next-set-card")
@@ -154,8 +156,18 @@ test("a live workout finishes from the sticky footer, and Save closes the worksp
   await expect(page.getByTestId("activity-form")).toHaveCount(0);
   await expect(dock).toHaveCount(0);
 
-  // The tab stands on the session's own page (create-at-start, #2870). Reopening
-  // it proves the end time was stamped and persisted through the close.
+  // Closing pops the history entry the phone workspace holds (so the hardware
+  // Back button closes the form rather than leaving the page), which lands the
+  // tab back where it opened from. Read the finished session off the log instead:
+  // a reopen through the server is a stronger reading of the end stamp than the
+  // collapsed editor's own field was.
+  await page.goto("/training?tab=log");
+  const row = page
+    .getByTestId("history-row")
+    .filter({ hasText: title })
+    .first(); // first-ok: the activity row THIS spec created, filtered by its own title
+  await expect(row).toBeVisible();
+  await hydratedClick(page, row.getByTestId("history-row-title"));
   await page.waitForURL(/\/training\/activity\/\d+$/);
   await hydratedClick(page, page.getByTestId("activity-page-edit"));
   await expect(page.getByTestId("end-time-input")).toHaveValue(/^\d\d:\d\d$/);
