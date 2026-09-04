@@ -371,6 +371,9 @@ describe("the record reports the drink's instant (#3295 part 2)", () => {
         stated_at: `${date}T21:30:00Z`,
       })
     );
+    // Nicotine is the narrowing target BECAUSE its ledger is timeless: phase 2 gives it
+    // per-event rows, and whoever moves it must re-seat this case on a day-total
+    // substance or it stops exercising the arm the guard protects.
     await addSubstanceDailyTotalAction(
       fd({ substance: "nicotine", date, amount: "2" })
     );
