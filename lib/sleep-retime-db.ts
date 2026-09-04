@@ -14,7 +14,7 @@ import {
 } from "@/lib/integrations/tombstones";
 import { metricSampleTombstoneKey } from "@/lib/integrations/tombstone-keys";
 import {
-  getSuspectSleepWakeDays,
+  getSuspectSleepSessions,
   SLEEP_SKEW_HISTORY_DAYS,
 } from "@/lib/queries/sleep-clock-skew";
 import { SLEEP_RETIME_KIND } from "@/lib/sleep-retime-kind";
@@ -53,7 +53,9 @@ export type SleepRetimeOutcome =
   /** The lock stays on a session the detector has not contradicted (#5021 scope). */
   | { kind: "not-hedged" }
   | { kind: "invalid-window" }
-  | { kind: "length-changed"; storedMinutes: number };
+  | { kind: "length-changed"; storedMinutes: number }
+  /** A stage in this session's band is claimed by another row on the same wake day. */
+  | { kind: "stages-shared" };
 
 interface CapturedSleepRetime {
   sampleId: number;
@@ -77,13 +79,20 @@ interface CapturedSleepRetime {
 const SESSION_COLUMNS =
   "id, date, metric, origin, started_at, ended_at, edited";
 
-/** The stage rows filed under this session, by the same question the collapse asks. */
+/**
+ * The stage rows filed under this session, by the same question the collapse asks —
+ * and whether ANOTHER row on the same wake day claims one of them too.
+ *
+ * `stagesOwnedBy`'s same-day veto is the only thing that can separate the two answers
+ * below, so asking it twice — once with this session's rivals and once with none — is
+ * the whole test, with no second ownership rule to keep in step with the first.
+ */
 function stagesOf(
   profileId: number,
   session: SleepSessionRow & { source: string },
   startMs: number,
   endMs: number
-): SleepSessionRow[] {
+): { owned: SleepSessionRow[]; shared: boolean } {
   const from = shiftDateStr(session.date, -1);
   const to = shiftDateStr(session.date, 1);
   const others = db
@@ -108,7 +117,52 @@ function stagesOf(
       from,
       to
     ) as SleepSessionRow[];
-  return stagesOwnedBy({ date: session.date, startMs, endMs }, others, stages);
+  const band = { date: session.date, startMs, endMs };
+  const owned = stagesOwnedBy(band, others, stages);
+  return {
+    owned,
+    shared: stagesOwnedBy(band, [], stages).length !== owned.length,
+  };
+}
+
+/**
+ * THE ZONE THAT READS THIS SESSION'S CLOCKS, both ways (#5125).
+ *
+ * The zone in force at the night's own stored wake — not the profile's zone today.
+ *
+ * `resolveSleepWindow`'s rule is that a stated window resolves where the person is
+ * standing, and that is right for every path writing a window nobody read back first:
+ * manual entry and the offline replay state a night de novo, so "23:30" means 23:30
+ * here. The Fix times door is not that. It prints the stored window from
+ * `getSleepMoodData`, which projects the claimed instants through the zone in force AT
+ * them (#3428; `cc7a4c3b`/#4820 is what made the sleep path read historical zones), and
+ * the person edits against that printed line. Display and interpretation have to be
+ * inverses, or a one-hour nudge is not a one-hour move: on a profile that slept in
+ * Tokyo and is now in London, the current-zone fold moved the row NINE hours, and
+ * because the fold preserves elapsed length every refusal stayed silent.
+ *
+ * The store half below already agrees, re-deriving the new wake day through the same
+ * historical zone, so this leaves ONE zone in the feature rather than two.
+ *
+ * The wake is the anchor because the stated clocks are stated against the WAKE day and
+ * the row is filed under it. A recorded switch landing INSIDE a single night would
+ * split the two clocks across two zones; the printed line has that same seam and
+ * neither half of it is this door's to invent.
+ */
+export function sleepRetimeZone(profileId: number, sampleId: number): string {
+  const row = db
+    .prepare(
+      `SELECT ended_at FROM metric_samples
+        WHERE id = ? AND profile_id = ? AND metric = 'sleep_min'`
+    )
+    .get(sampleId, profileId) as { ended_at: string } | undefined;
+  const wake = new Date(row?.ended_at ?? "");
+  // No such row, or an unreadable stamp: fall back to the zone in force NOW, which is
+  // the current one. The core refuses the move with `not-found` either way.
+  return zoneOf(
+    profileDayZone(profileId),
+    Number.isFinite(wake.getTime()) ? wake : new Date()
+  );
 }
 
 /**
@@ -132,40 +186,78 @@ export function retimeSleepSessionCore(
   // the night this one really was.
   if (newEnd > Date.now()) return { kind: "invalid-window" };
 
-  const session = db
-    .prepare(
-      `SELECT ${SESSION_COLUMNS}, source FROM metric_samples
-        WHERE id = ? AND profile_id = ? AND metric = 'sleep_min'`
-    )
-    .get(sampleId, profileId) as
-    (SleepSessionRow & { source: string }) | undefined;
-  if (!session) return { kind: "not-found" };
-
-  // ONLY A HEDGED NIGHT. #5021's out-of-scope line is explicit — the edit lock stays on
-  // a session the detector has not contradicted — and asking the detector is the only
-  // way to know, so it is asked here rather than trusted from the caller.
-  const suspect = getSuspectSleepWakeDays(
-    profileId,
-    shiftDateStr(today(profileId), -SLEEP_SKEW_HISTORY_DAYS)
-  );
-  if (!suspect.has(session.date)) return { kind: "not-hedged" };
-
-  const oldStart = Date.parse(session.started_at);
-  const oldEnd = Date.parse(session.ended_at);
-  if (!Number.isFinite(oldStart) || !Number.isFinite(oldEnd))
-    return { kind: "not-found" };
-  const storedMs = oldEnd - oldStart;
-  if (newEnd - newStart !== storedMs)
-    return {
-      kind: "length-changed",
-      storedMinutes: Math.round(storedMs / 60_000),
-    };
-
-  const delta = newStart - oldStart;
-  if (delta === 0) return { kind: "invalid-window" };
-
+  // EVERY READ THIS DECISION RESTS ON IS INSIDE THE TRANSACTION (#5125).
+  // The session, the detector's verdict, the stored length and the stage set used to be
+  // read before `writeTx` opened. Nobody could turn that into a wrong row — two
+  // concurrent posts compute the same delta from the same stale `started_at` and write
+  // identical absolute instants — but a decision's read set belongs in the same
+  // immediate transaction as the write it authorises, and moving it in costs nothing.
   return writeTx((): SleepRetimeOutcome => {
-    const stages = stagesOf(profileId, session, oldStart, oldEnd);
+    const session = db
+      .prepare(
+        `SELECT ${SESSION_COLUMNS}, source FROM metric_samples
+          WHERE id = ? AND profile_id = ? AND metric = 'sleep_min'`
+      )
+      .get(sampleId, profileId) as
+      (SleepSessionRow & { source: string }) | undefined;
+    if (!session) return { kind: "not-found" };
+
+    // ONLY THE SESSION THE DETECTOR CONTRADICTED — not merely its wake day (#5125).
+    //
+    // #5021's out-of-scope line is explicit: the edit lock stays on a session the
+    // detector has not contradicted. Asking whether the DAY was hedged answers a
+    // different question, because the detector's population is narrower than the day.
+    // It judges the day's MAIN session only (#5019: a nap always reads as a
+    // contradiction against its own overnight trough, so judging naps flagged good
+    // nights) and it never sees a `source = 'manual'` row at all. A nap or a
+    // hand-logged row on a hedged day therefore passed a lock whose own sentence says
+    // the detector had not contradicted it — it had never looked.
+    //
+    // The identity is the sample id, which is the same one `getSleepMoodData` hands the
+    // dialog, so the row this door offers is exactly the row it accepts.
+    const judged = getSuspectSleepSessions(
+      profileId,
+      shiftDateStr(today(profileId), -SLEEP_SKEW_HISTORY_DAYS)
+    );
+    if (!judged.some((s) => s.sampleId === session.id))
+      return { kind: "not-hedged" };
+
+    const oldStart = Date.parse(session.started_at);
+    const oldEnd = Date.parse(session.ended_at);
+    if (!Number.isFinite(oldStart) || !Number.isFinite(oldEnd))
+      return { kind: "not-found" };
+    const storedMs = oldEnd - oldStart;
+    if (newEnd - newStart !== storedMs)
+      return {
+        kind: "length-changed",
+        storedMinutes: Math.round(storedMs / 60_000),
+      };
+
+    const delta = newStart - oldStart;
+    if (delta === 0) return { kind: "invalid-window" };
+
+    const { owned: stages, shared } = stagesOf(
+      profileId,
+      session,
+      oldStart,
+      oldEnd
+    );
+    // EITHER THE STAGES MOVE WITH THE SESSION OR NOTHING MOVES (#5125).
+    //
+    // On a night stored TWICE the twin overlaps the same hours, and `stagesOwnedBy`
+    // vetoes every stage a second row on the wake day also covers — deliberately, so a
+    // collapse never takes a breakdown off the copy it is keeping. Through this door
+    // that veto stranded the breakdown: the session moved six hours and its stages
+    // stayed, which is precisely the orphaned breakdown `length-changed` exists to
+    // prevent, arriving through the path that refusal allows.
+    //
+    // Claiming them anyway is the alternative and it is worse — it would strip the twin
+    // of a breakdown that overlaps it just as well, on no evidence about which copy
+    // scored them. So this refuses, and the dialog's promise that the stages move with
+    // the session stays true wherever the move happens at all. "Keep this one" in
+    // Review is the door for the duplicate, and it comes first.
+    if (shared) return { kind: "stages-shared" };
+
     const moving = [session as SleepSessionRow, ...stages];
     const captured: CapturedSleepRetime = {
       sampleId,
