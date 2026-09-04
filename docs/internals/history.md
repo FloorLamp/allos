@@ -267,14 +267,21 @@ further 42px of padding, so the DRAWING gets `viewport - 1114`. Each chart geome
 computes its label size from the narrowest container it declares, so the type clears
 #1518's 9px floor there and nowhere narrower (`lib/intraday-layout.ts`). Since #4973
 the chart picks its geometry from THAT box rather than from the viewport, so the
-binding floor is the compact one: `11 × container ÷ 360`, which needs 294.55px. Swept
-in the browser:
+binding floor is the compact one: `11 × container ÷ 360`, which needs 294.55px.
+
+The table below is what the RAIL ARRANGEMENT would hand the chart at each viewport —
+that is the question the threshold answers, so it has to be asked at widths where the
+rail does not open. Rows at and above the threshold are measured in the browser; the
+rows beneath it are the derivation, and they are why the rail does not open there. At
+those widths the shipped page has no rail at all and the chart takes the whole reading
+column instead (726px, 12.60px measured), so do not read them as a description of what
+1409 renders today.
 
 | viewport                 | drawing container | variant | smallest label                        |
 | ------------------------ | ----------------- | ------- | ------------------------------------- |
-| 1280 (`xl`)              | 166px             | compact | 5.07px                                |
-| 1400                     | 286px             | compact | 8.74px                                |
-| 1409                     | 295px             | compact | 9.01px — the first width that pays    |
+| 1280 (`xl`), derived     | 166px             | compact | 5.07px                                |
+| 1400, derived            | 286px             | compact | 8.74px                                |
+| 1409, derived            | 295px             | compact | 9.01px — the first width that pays    |
 | **1440** (the threshold) | 326px             | compact | **9.96px**                            |
 | 1600                     | 486px             | compact | 12.83px                               |
 | **1634**                 | 520px             | wide    | **9.03px** — the tightest width above |

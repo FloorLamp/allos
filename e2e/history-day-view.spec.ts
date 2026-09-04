@@ -618,7 +618,9 @@ test.describe("the record day view's phone chrome (#1517, inherited)", () => {
 // the gap, and the chart's card a further 42px of padding, so the DRAWING gets
 // `viewport - 1114`. Since #4973 the chart picks its geometry from THAT box, so the
 // binding floor is the compact one — `11 × container ÷ 360` against #1518's 9px
-// minimum, which needs 294.55px. Swept in this browser:
+// minimum, which needs 294.55px. What the RAIL would hand the chart at each viewport,
+// which is the question the threshold answers and so is asked at widths where the rail
+// does not open — 1440 measured, beneath it the arithmetic:
 //
 //     viewport 1280 → container 166 → 5.07px     viewport 1409 → 295 → 9.01px
 //     viewport 1400 → container 286 → 8.74px     viewport 1440 → 326 → 9.96px

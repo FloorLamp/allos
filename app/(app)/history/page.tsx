@@ -865,8 +865,10 @@ export default async function HistoryPage(props: {
   // Since #4973 the chart picks its geometry from THAT box rather than from the
   // viewport, so the binding floor is the COMPACT one: 11 label units in a 360-unit
   // viewBox paint `11 × container ÷ 360`, and #1518's 9px minimum needs 294.55px of
-  // container. Measured in the browser across the whole range (the sweep is the
-  // table in docs/internals/history.md):
+  // container. What the RAIL would hand the chart at each viewport — asked at widths
+  // where it does not open, because that is the question the threshold answers (the
+  // full sweep is the table in docs/internals/history.md; 1440 and up are measured,
+  // beneath it is this arithmetic, and the shipped page has no rail there at all):
   //
   //     viewport 1280 → container 166 → 5.07px      viewport 1409 → 295 → 9.01px
   //     viewport 1400 → container 286 → 8.74px      viewport 1440 → 326 → 9.96px
