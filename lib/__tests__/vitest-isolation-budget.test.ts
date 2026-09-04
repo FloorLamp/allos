@@ -58,7 +58,10 @@ import { specsNeedingIsolation } from "@/vitest.isolation";
 // hold two per-endpoint outcomes at once — which is what the partial-success and
 // all-failed owner states are made of. The tier cannot install that shared: a stub that
 // routes by endpoint suffix would change what every other DB spec's push send does.
-const DB_ISOLATED = 33;
+// 34 since #5010: dashboard-profile.test.ts mocks the request the way the query meter
+// does (session, scope, request cache), so the isolation scan routes it here; it is
+// skipped entirely without PROBE_DB and only runs from scripts/profile-dashboard.ts.
+const DB_ISOLATED = 34;
 // 7 since #3065: Longevity's server-component FitnessSection is tested directly with
 // controlled session, age, and assembler boundaries. It must prove that minor and unknown
 // profiles return null before assembling adult population data; sharing those module stubs

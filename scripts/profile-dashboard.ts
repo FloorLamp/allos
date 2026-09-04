@@ -28,6 +28,7 @@
 // because the page reads Next's request cookies and the harness fakes those with
 // `vi.mock`; this script is the front door that sets the PROBE_* environment, runs
 // that one file, and reads its output back.
+import "./load-env";
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
