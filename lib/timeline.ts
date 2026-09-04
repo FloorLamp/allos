@@ -1,4 +1,9 @@
 import { activityComponentSportNames } from "./activity-icon";
+import {
+  eventDetail,
+  eventTitle,
+  type EndurancePlanDiscipline,
+} from "./endurance-plan";
 import { trainingActivityPageHref } from "./hrefs";
 import { isDraftActivityRow } from "./activity-draft";
 import { shiftDateStr } from "./date";
@@ -1232,7 +1237,7 @@ function collectEvents(
     const planBounds = exact("event_date");
     const plans = db
       .prepare(
-        `SELECT id, event_name, discipline, event_date, target_distance_km, status, created_at
+        `SELECT id, kind, event_name, discipline, event_date, target_distance_km, status, created_at
            FROM endurance_plans
           WHERE profile_id = ? AND status != 'abandoned'${planBounds.clause}
           ORDER BY event_date DESC, id DESC
@@ -1240,23 +1245,25 @@ function collectEvents(
       )
       .all(profileId, ...planBounds.params, perTableLimit) as {
       id: number;
+      kind: string;
       event_name: string | null;
-      discipline: string;
+      discipline: EndurancePlanDiscipline | null;
       event_date: string;
-      target_distance_km: number;
+      target_distance_km: number | null;
       status: string;
       created_at: string;
     }[];
     for (const p of plans) {
-      const disc =
-        p.discipline === "run"
-          ? "Run"
-          : p.discipline === "ride"
-            ? "Ride"
-            : "Swim";
-      const name =
-        p.event_name?.trim() ||
-        `${Math.round(p.target_distance_km * 10) / 10} km ${disc}`;
+      // Through the shared naming rules (#3285), not a local ternary: the cardio pair
+      // is nullable now, and a chained `run ? … : ride ? … : "Swim"` would have read a
+      // lifting meet as "Swim · NaN km" while every column-set assertion stayed green.
+      const event = {
+        kind: p.kind,
+        eventName: p.event_name,
+        discipline: p.discipline,
+        targetDistanceKm: p.target_distance_km,
+      };
+      const name = eventTitle(event);
       pushLimited(
         events,
         {
@@ -1264,7 +1271,7 @@ function collectEvents(
           date: p.event_date,
           category: "endurance",
           title: `Event: ${name}`,
-          subtitle: `${disc} · ${Math.round(p.target_distance_km * 10) / 10} km`,
+          subtitle: eventDetail(event),
           href: "/training",
           sortTime: timeFromCreatedAt(p.created_at, tz),
           tone: p.status === "completed" ? "good" : "default",

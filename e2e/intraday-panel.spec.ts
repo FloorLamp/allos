@@ -582,7 +582,13 @@ test.describe("the day view's intraday panel (#1068)", () => {
     }
   });
 
-  test("is absent on a day with no intraday data", async ({ browser }) => {
+  // #4918's empty-day ruling (owner, 2026-09-03): `getIntradayDay` returning
+  // "nothing to plot" is a card with no rows now, never no card. This test used to
+  // pin the OLD behavior (the panel absent); it now pins the new one, on the same
+  // fixture day.
+  test("renders with no rows on a day with no intraday data", async ({
+    browser,
+  }) => {
     test.slow();
 
     const member = await loginAs(browser, {
@@ -591,8 +597,7 @@ test.describe("the day view's intraday panel (#1068)", () => {
     });
     try {
       // Three days back the fixture profile has ONLY a weigh-in — a real feed
-      // event with no clock time, no HR, no sleep, no windowed workout. The day
-      // renders; the panel is data-gated away (no empty frame).
+      // event with no clock time, no HR, no sleep, no windowed workout.
       await member.goto("/history");
       const dayIds = await member
         .locator("[id^='timeline-day-']")
@@ -602,17 +607,36 @@ test.describe("the day view's intraday panel (#1068)", () => {
       const quiet = dayIds.at(-1)!;
 
       await member.goto(`/history?day=${quiet}`);
-      // THE POSITIVE CONTROL, RE-POINTED. It named the heading "Body metrics logged"
-      // — `/timeline`'s card title for its day-aggregate body event. The record reads
+      // THE POSITIVE CONTROL. It named the heading "Body metrics logged" —
+      // `/timeline`'s card title for its day-aggregate body event. The record reads
       // body natively as its own Logs kind (one row per reading, titled by the
       // measure, one line and therefore no heading), so that locator now resolves to
-      // nothing and "the panel is absent" would have passed on a page that rendered
-      // no day at all. Keyed on the row's kind, which is what the day is being
-      // asserted to contain.
+      // nothing and every assertion below would pass on a page that rendered no day
+      // at all. Keyed on the row's kind, which is what the day is being asserted to
+      // contain.
       await expect(
         member.locator('[data-testid="history-row"][data-history-kind="body"]')
       ).not.toHaveCount(0);
-      await expect(member.getByTestId("intraday-panel")).toHaveCount(0);
+
+      // THE CARD ITSELF — present, titled, same as any other day.
+      const panel = member.getByTestId("intraday-panel");
+      await expect(panel).toBeVisible();
+      await expect(panel.getByText("The day at a glance")).toBeVisible();
+
+      // BUT GENUINELY NO ROWS: none of the four data layers drew anything. Each is
+      // its own assertion rather than one absence check over the panel, because a
+      // panel that kept drawing three of the four layers would still read "empty"
+      // to a check that only asked about one.
+      await expect(panel.locator('[data-testid="intraday-hr"]')).toHaveCount(0);
+      await expect(
+        panel.locator('[data-testid="intraday-sleep-block"]')
+      ).toHaveCount(0);
+      await expect(panel.locator('[data-testid="intraday-block"]')).toHaveCount(
+        0
+      );
+      await expect(panel.locator('[data-testid="intraday-tick"]')).toHaveCount(
+        0
+      );
     } finally {
       await member.context().close();
     }

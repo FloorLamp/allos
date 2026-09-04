@@ -110,3 +110,104 @@ export function formatTimeTick(epoch: number, withYear: boolean): string {
   const day = String(d.getUTCDate()).padStart(2, "0");
   return withYear ? `${y}-${mo}` : `${mo}-${day}`;
 }
+
+// ── THE SAME POLICY, ON A CATEGORY AXIS (#4924) ─────────────────────────────
+//
+// The daily cards keep a CATEGORY x — every category is a calendar day since
+// #2258 — and they handed recharts no tick policy at all, so the step came from
+// its greedy end-anchored `preserveEnd` fit: 4 days on the wide cards, 3 on the
+// narrow one, on the same page, from the same window. A reader comparing two
+// cards is reading two different rulers.
+//
+// So the rule above extends down here rather than a second one being invented:
+// at most `CHART_DATE_AXIS_TICKS` positions across the domain, spaced by TIME
+// and never repeating a label. The one thing that changes on a category axis is
+// that a tick must land on a category the axis actually has, so the step is a
+// whole number of DAYS off a small calendar ladder — a week, a fortnight, a
+// month, a quarter — which is also what makes the MM-DD labels fall into a
+// rhythm instead of at 17.8-day intervals.
+//
+// ANCHORED AT THE LAST DAY, walking backwards. Two reasons, both load-bearing:
+// the window's last day carries a tick even when nothing was logged on it (the
+// #2258 guarantee that a trailing outage is visible, pinned by
+// e2e/trends-day-gaps.spec.ts), and the end is where recharts' own fit anchored,
+// so the last label's clearance from the svg edge (#4866) is exactly what it was.
+
+/** At most this many labelled positions on a date axis. */
+export const CHART_DATE_AXIS_TICKS = 7;
+
+// A day, a two-day pair, a week, a fortnight, a four-week month, a quarter, a
+// half-year, a year. Steps a reader can name; nothing lands on 17 days.
+const CALENDAR_TICK_STEPS_DAYS = [1, 2, 7, 14, 28, 91, 182, 364];
+
+/**
+ * The calendar step a span takes its ticks at: the smallest one that fits inside
+ * `maxTicks`. A span past the ladder's end falls back to an even division, which
+ * is the numeric axis' own answer.
+ */
+export function calendarTickStepDays(
+  spanDays: number,
+  maxTicks = CHART_DATE_AXIS_TICKS
+): number {
+  const span = Math.max(0, Math.floor(spanDays));
+  const most = Math.max(2, maxTicks);
+  for (const step of CALENDAR_TICK_STEPS_DAYS) {
+    if (Math.floor(span / step) + 1 <= most) return step;
+  }
+  return Math.ceil(span / (most - 1));
+}
+
+/**
+ * The explicit tick set for a CATEGORY axis of ISO dates, in axis order.
+ *
+ * Each position is snapped to the nearest category that exists — a densified
+ * daily series has every day, an aggregated one has bucket starts — so the ticks
+ * stay time-proportional without asking recharts to place a label on a value the
+ * axis does not hold. Fewer categories than ticks means every category is a tick,
+ * which is the honest answer for a five-day window.
+ */
+export function categoryDateTicks(
+  dates: readonly string[],
+  maxTicks = CHART_DATE_AXIS_TICKS
+): string[] {
+  const epochs = dates.map(dateToEpoch);
+  const dated = dates.filter((_, i) => Number.isFinite(epochs[i]));
+  if (dated.length <= 2) return [...dated];
+  const first = dateToEpoch(dated[0]);
+  const last = dateToEpoch(dated[dated.length - 1]);
+  const step = calendarTickStepDays((last - first) / MS_PER_DAY, maxTicks);
+  const nearest = (target: number) =>
+    dated.reduce((best, d) =>
+      Math.abs(dateToEpoch(d) - target) < Math.abs(dateToEpoch(best) - target)
+        ? d
+        : best
+    );
+  const picked = new Set<string>();
+  for (let at = last; at >= first; at -= step * MS_PER_DAY) {
+    picked.add(nearest(at));
+  }
+  return dated.filter((d) => picked.has(d));
+}
+
+// ── THE VALUE AXIS (#4924) ──────────────────────────────────────────────────
+//
+// The numbers down the SIDE were recharts' defaults too, and its default fit
+// divides the data range rather than snapping to a step a person would choose:
+// the Sleep card printed 4.75 / 5.7 / 6.65 / 7.6 / 8.55 hours and the Heart Rate
+// card 55 / 66 / 77 / 88 / 99 bpm. Nobody reads a chart in ninths.
+//
+// `snap125` is recharts' opt-in step algorithm — 1 / 2 / 2.5 / 5 at each order of
+// magnitude — and SIX ticks is what makes it land tightly: at five, the same
+// sleep domain snaps out to 4 / 6 / 8 / 10 / 12 and a third of the plot is spent
+// on hours nobody slept. The two travel together, which is why they are one pair
+// of constants and not two independent knobs. lib/__tests__/chart-tick-policy.test.ts
+// runs them over the three domains the screenshot actually had.
+//
+// They live HERE, beside the date-axis policy, so a chart's two axes are one
+// decision in one module; `chartAxisProps` spreads them onto whichever axis is
+// numeric (recharts ignores both on a category axis).
+
+/** recharts' nice-number step algorithm: 1 / 2 / 2.5 / 5 per order of magnitude. */
+export const CHART_VALUE_AXIS_NICE_TICKS = "snap125" as const;
+/** How many ticks a value axis asks for. */
+export const CHART_VALUE_AXIS_TICKS = 6;

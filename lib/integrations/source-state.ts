@@ -17,7 +17,7 @@
 
 import type { IntegrationKind } from "@/lib/types/integrations";
 import { formatSplitLabel, formatWindow } from "./sync-log";
-import { isTruncatedSyncEvent } from "./sync-details";
+import { isTruncatedSyncEvent, metricLabel } from "./sync-details";
 import { formatTolerance, isSyncStale } from "./staleness";
 import { parseSyncEventAt } from "./pull-cadence";
 import type { IntegrationDelivery } from "./delivery";
@@ -149,9 +149,16 @@ export type ScheduledStanding =
   // the tolerance is what catches it.
   | "intermittent"
   // Connected and genuinely broken: NO successful run inside the source's silence
-  // tolerance (#2263) — however that silence was recorded. The ONLY standing that
-  // escalates besides needs-reauth.
+  // tolerance (#2263) — however that silence was recorded.
   | "failing"
+  // Connected, syncing, returning `ok` — and DISCARDING a record type it is being
+  // sent (#4975). The state the rest of this vocabulary cannot express: nothing
+  // failed and data did arrive, so "failing" and "stale" are both false, while a
+  // type the person believes they are collecting has landed nothing for the whole
+  // silence tolerance. Derived from the SAME per-run tally the `dropping` attention
+  // row reads (#4956/#4967), never a second derivation of it, and it clears the
+  // moment one record of that type lands.
+  | "dropping"
   // The credential died / was revoked (#326) — actionable, and distinct from the
   // benign never-configured case.
   | "needs-reauth"
@@ -233,6 +240,12 @@ export interface SourceStandingFacts {
   recentRuns?: readonly SyncEventFacts[];
   lastSuccessAt?: string | null;
   toleranceMinutes?: number | null;
+  // The record types this source has RECEIVED and never LANDED over that same
+  // tolerance (#4975) — handed in already derived, from `droppedTypes` over the
+  // source's own tolerance-bounded runs, because this module is pure and because the
+  // attention row reads the identical list. A non-empty list IS the dropping verdict;
+  // omitting the field is how every non-Health-Connect caller says "no tally to read".
+  droppedTypes?: readonly string[];
   // NOW, as an instant — resolved by the caller through the lib/clock.ts seam
   // (`instantNow`), never hand-built and never SQL's own datetime('now').
   now?: string | null;
@@ -307,6 +320,14 @@ function scheduledStanding(s: SourceStandingFacts): ScheduledStanding {
       s.now
     );
   if (silent) return "failing";
+  // BELOW `failing` and ABOVE the rest (#4975). Below, because a source already
+  // reported broken must not be re-described as dropping — that is the same yielding
+  // `droppingIntegrations` does one rung up, and its "yields to a source that is
+  // already reported broken" case asserts exactly one row. Above, because
+  // `intermittent` is deliberately non-escalating calm amber (#1880) while this
+  // escalates: a source silently discarding a type is losing data whether or not it
+  // is also flapping, so the escalating verdict outranks the calm one.
+  if (s.droppedTypes?.length) return "dropping";
   if (s.latest.ok && isTruncatedSyncEvent(s.latest)) return "partial";
   if (runs.some((ev) => !ev.ok)) return "intermittent";
   return "healthy";
@@ -356,6 +377,11 @@ export function standingBadge(
       return { label: "Intermittent", tone: "caution" };
     case "failing":
       return { label: "Sync failing", tone: "bad" };
+    // `bad`, not `caution`: the grid's StatusCard paints its rose border off
+    // `standingEscalates`, so an amber chip inside a red card would be the two-dialect
+    // defect #2301 exists to prevent.
+    case "dropping":
+      return { label: "Dropping records", tone: "bad" };
     case "needs-reauth":
       return { label: "Needs reconnect", tone: "bad" };
     case "not-connected":
@@ -387,14 +413,23 @@ export function standingBadge(
 // gate on this. Everything else — including `intermittent` — is a rendered fact on
 // calm surfaces only; the reach of a flapping source may only ever narrow.
 //
-// EXACTLY the two scheduled states, still — which since #2301 means NO attended or
-// outbound state can ever escalate, and that is the property that makes the split
-// worth doing rather than three more members on a flat union. Allos cannot claim an
-// attended source is *still* broken: only the user knows whether they will run the
-// tool again, and a morning digest line about a portal tool last touched on someone's
-// laptop is the crying-wolf failure #1880 exists to prevent.
+// SCHEDULED STATES ONLY, which since #2301 means NO attended or outbound state can
+// ever escalate, and that is the property that makes the split worth doing rather
+// than three more members on a flat union. Allos cannot claim an attended source is
+// *still* broken: only the user knows whether they will run the tool again, and a
+// morning digest line about a portal tool last touched on someone's laptop is the
+// crying-wolf failure #1880 exists to prevent.
+//
+// THREE of them since #4975, and the third is why this list is not "the connection
+// is down". `dropping` is a live, healthy connection losing a record type, and it
+// escalates for the reason a quiet stop does: the person is losing data they believe
+// they are collecting, and only they can fix the sender.
 export function standingEscalates(standing: SourceStanding): boolean {
-  return standing === "failing" || standing === "needs-reauth";
+  return (
+    standing === "failing" ||
+    standing === "needs-reauth" ||
+    standing === "dropping"
+  );
 }
 
 // Does this source render EXPANDED with its reason and its action, or collapse to
@@ -513,6 +548,11 @@ export function standingHeadline(
       return INTERMITTENT_HEADLINE;
     case "failing":
       return noun === "push" ? "Not receiving" : "Not syncing";
+    // Not "Not syncing": it IS syncing. The dropped types are named on the line
+    // below, in the wording #4956 already ruled on, rather than in a third phrasing
+    // here.
+    case "dropping":
+      return "Some records aren't being stored";
     case "needs-reauth":
       return "Needs reconnecting";
     case "not-connected":
@@ -605,6 +645,20 @@ export function failureConsequence(
   declared?: string | null
 ): string {
   return declared ?? `New data from ${name} has stopped arriving.`;
+}
+
+// WHAT A LIVE SOURCE IS SWALLOWING, named (#4975) — the one sentence every dropping
+// surface renders: the grid card's fact, the source page's reason line, and Review's
+// consequence line. `failureConsequence` is FALSE for this standing in both halves —
+// data has not stopped arriving, and a registry `stoppedConsequence` describes the
+// source going quiet — so the escalated card needs its own sentence rather than the
+// generic one, and this is it.
+//
+// The list is the standing's own evidence, so it is non-empty wherever this is
+// reached: `scheduledStanding` returns `dropping` only for a non-empty one.
+export function droppingConsequence(types: readonly string[]): string {
+  const labels = types.map(metricLabel).join(", ");
+  return `${labels} ${types.length === 1 ? "is" : "are"} arriving but not being stored.`;
 }
 
 // ---- Outcome ---------------------------------------------------------------

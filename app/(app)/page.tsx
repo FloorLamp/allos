@@ -9,6 +9,7 @@ import {
   frequencyTargetLogWindowOpen,
   getStrengthByExercise,
   getCardioByActivity,
+  getRideBestRecaps,
   getBodyMetricDailySeries,
   getBodyMetricSeriesBySource,
   getDashboardClinicalObservations,
@@ -269,8 +270,18 @@ import {
   episodeHref,
   encounterHref,
   historyDayIntradayHref,
+  trainingActivityPageHref,
   type AppRoute,
 } from "@/lib/hrefs";
+import {
+  formatSessionElapsed,
+  powerCurveLabel,
+  SPLIT_INTERVALS_M,
+} from "@/lib/cycling-analytics";
+import {
+  rideBestStatementDetail,
+  segmentPrStatement,
+} from "@/lib/cycling-bests";
 import { formatRecordDateTime } from "@/lib/record-format";
 import { isHouseholdRecentlySickFromStates } from "@/lib/household-history";
 import { visibleRecentlyResolved } from "@/lib/recently-resolved";
@@ -1108,6 +1119,13 @@ async function renderDashboard(
       )
     : [];
 
+  // THE POST-RIDE CELEBRATION (#3195). What today's rides placed against the rides
+  // before them, read from the cached stream summaries — the day's rides cost one
+  // statement, and a profile with no cycling telemetry today pays only that.
+  const todayRideBests = trainingRelevant
+    ? getRideBestRecaps(profile.id, on, SPLIT_INTERVALS_M[units.distanceUnit])
+    : [];
+
   // coaching-observations (#449) + data-quality (#1045): BOTH read the ONE
   // collectCoachingFindings computation (data-quality joins it, #1045), filtered
   // through the SAME findings-bus store — so a dismiss on either atom (or a tab)
@@ -1698,6 +1716,53 @@ async function renderDashboard(
         href: "/training?tab=analyze",
       }
     );
+  });
+
+  // The ride's own verdict, through the SAME training-best promotion the strength
+  // and cardio records already use — a ride best is a training result, not a fourth
+  // kind of thing — and perishable the same way, decaying at the end of its day.
+  // The sentence is fixed template text assembled from the ranked facts
+  // (lib/cycling-bests.ts): no learned or generated phrasing, and it states the
+  // population it was best of rather than saying "ever" (#2385).
+  todayRideBests.forEach((recap) => {
+    const rideHref = trainingActivityPageHref(recap.activityId);
+    const headline = recap.headline;
+    if (headline) {
+      add(
+        progressCandidates.trainingResult(
+          { subject: profileSubject, sourceOrder: sourceOrder++ },
+          `ride-best:${recap.activityId}`,
+          on,
+          0
+        ),
+        {
+          label: recap.activityName,
+          value:
+            headline.kind === "power"
+              ? `${headline.watts} W`
+              : formatSessionElapsed(headline.timeSec),
+          detail: rideBestStatementDetail(
+            headline.kind === "power"
+              ? `${powerCurveLabel(headline.seconds) ?? `${headline.seconds} sec`} power`
+              : `${fmtDistance(SPLIT_INTERVALS_M[units.distanceUnit] / 1000, units.distanceUnit)} split`,
+            headline
+          ),
+          href: rideHref,
+        }
+      );
+    }
+    const segments = segmentPrStatement(recap.segmentPrNames);
+    if (segments) {
+      add(
+        progressCandidates.trainingResult(
+          { subject: profileSubject, sourceOrder: sourceOrder++ },
+          `ride-segment-pr:${recap.activityId}`,
+          on,
+          0
+        ),
+        { label: recap.activityName, ...segments, href: rideHref }
+      );
+    }
   });
 
   if (onboardingState && onboardingPresence) {

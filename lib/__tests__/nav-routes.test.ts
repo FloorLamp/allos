@@ -215,9 +215,13 @@ describe("nav ↔ route consistency", () => {
   //
   // Text, not behavior, on purpose: this tier is DB- and JSX-free, and the
   // registry it guards is a literal array in a client component.
+  //
+  // "/trends", not "/history": #4965 swapped the two — the day view's #4918
+  // promotion earned History a top-level row, and Trends took the vacated
+  // group slot. Six members either way.
   const GROUPED_HREFS = [
     "/upcoming",
-    "/history",
+    "/trends",
     "/wellness",
     "/longevity",
     "/household",

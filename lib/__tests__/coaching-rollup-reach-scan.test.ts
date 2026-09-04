@@ -141,7 +141,11 @@ const ORIGIN_TAB: ReadonlyArray<{
   {
     builder: "buildEndurancePlanFindings",
     surface: "app/(app)/training/OverviewSection.tsx",
-    symbol: "getEndurancePlanCards",
+    // #3285 widened the Overview's read from getEndurancePlanCards to
+    // getEnduranceEvents — the same coached cards, plus the events that have no
+    // trajectory. The finding's origin tab still renders the card it links to; the
+    // symbol that puts it there is the wider reader now.
+    symbol: "getEnduranceEvents",
   },
   {
     // The Training overview renders the same suggestions (title, detail,

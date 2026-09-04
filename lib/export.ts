@@ -683,13 +683,16 @@ export const DATASETS: ExportDataset[] = [
     countSql: `SELECT COUNT(*) AS n FROM niggles WHERE profile_id = ?`,
   }),
   tableDataset({
-    // Endurance event plans (#839) — user-entered training goals a migrating family keeps
-    // (event, discipline, target distance/time, status). The weekly trajectory is derived,
-    // never stored, so nothing but the goal is exported here.
+    // Events (#839, generalized by #3285) — user-entered events a migrating family
+    // keeps (kind, name, date, the optional cardio target, status). The weekly
+    // trajectory is derived, never stored, so nothing but the goal is exported here.
+    // `kind` leads because it is what the row IS; without it a re-imported meet and a
+    // re-imported marathon are one indistinguishable shape.
     key: "endurance_plans",
-    label: "Event plans",
+    label: "Events",
     table: "endurance_plans",
     columns: [
+      "kind",
       "event_name",
       "discipline",
       "event_date",
@@ -700,7 +703,7 @@ export const DATASETS: ExportDataset[] = [
       "completed_on",
       "created_at",
     ],
-    select: `SELECT id, event_name, discipline, event_date, target_distance_km, target_time_sec,
+    select: `SELECT id, kind, event_name, discipline, event_date, target_distance_km, target_time_sec,
               status, notes, completed_on, created_at
        FROM endurance_plans WHERE profile_id = ? ORDER BY event_date DESC, id DESC`,
     countSql: `SELECT COUNT(*) AS n FROM endurance_plans WHERE profile_id = ?`,

@@ -422,6 +422,15 @@ export function dataSectionHref(section: DataSection, hash?: string): AppRoute {
   return hash ? `/data?section=${section}#${hash}` : `/data?section=${section}`;
 }
 
+/**
+ * The bulk-correction panel with one field pre-selected (#1603). The `fix=` key
+ * is a `CorrectionFieldId`; the review page validates it and falls back to no
+ * pre-selection, so a key the panel does not know lands on an ordinary Review.
+ */
+export function bulkCorrectionHref(field: string): AppRoute {
+  return `/data?section=review&fix=${field}#bulk-correction`;
+}
+
 // A provider's setup / detail page. Each CONNECTABLE provider has its OWN static
 // page (`/integrations/<id>`); a still-"planned" provider (Garmin) has none, so
 // this returns null for it — which makes a dead `/integrations/garmin` link

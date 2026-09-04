@@ -1,6 +1,5 @@
 "use server";
 
-import { requireWriteAccess } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { revalidateRoute } from "@/lib/revalidate";
 import { logBristolStool } from "@/lib/offline/writes";
@@ -44,7 +43,11 @@ export type LogStoolFormOutcome =
 export async function logStoolForm(
   formData: FormData
 ): Promise<LogStoolFormOutcome> {
-  const { profile } = await requireWriteAccess();
+  // #4932: the quick-log sheet's subject chip mounts this SAME control cross-profile,
+  // so the tap follows `gateItemProfile` like every other sheet body — posted
+  // `profile_id` → requireProfileWriteAccess, absent → acting profile (every other
+  // mount today).
+  const profileId = await gateItemProfile(formData);
   const type = parseBristolType(formData.get("type"));
   if (type === null) return { ok: false, error: "Pick a type from 1 to 7." };
 
@@ -54,7 +57,7 @@ export async function logStoolForm(
   // write core's shared invariant (`isPastWriteAccepted`): any real past day, never the
   // future. Nothing is re-checked here, because the core refuses what it refuses.
   const posted = String(formData.get("date") ?? "").trim();
-  const date = posted && isRealIsoDate(posted) ? posted : today(profile.id);
+  const date = posted && isRealIsoDate(posted) ? posted : today(profileId);
   // The optional STATED wall time (#3273's "Happened earlier?"), profile-local
   // "HH:MM". Absent — the one-tap path, and the overwhelming majority — is `null`,
   // which the write core reads as "the moment IS now" exactly as it did when the
@@ -62,7 +65,7 @@ export async function logStoolForm(
   // #4425 the core also JUDGES it, so a crafted or mistyped stamp cannot smuggle a
   // future instant onto a row whose natural key IS that instant.
   const at = String(formData.get("at") ?? "").trim() || null;
-  const written = logBristolStool(profile.id, date, type, at);
+  const written = logBristolStool(profileId, date, type, at);
   // The type parsed and the date is a real day, so the core's only remaining refusal is
   // the shared never-the-future bound — said in those words rather than as a retry.
   if (!written.wrote) {
@@ -73,7 +76,7 @@ export async function logStoolForm(
   return {
     ok: true,
     type,
-    dayCount: getBristolReadings(profile.id, date, date).length,
+    dayCount: getBristolReadings(profileId, date, date).length,
     ...(written.statedTimeRefused
       ? { statedTimeRefused: written.statedTimeRefused }
       : {}),

@@ -13,10 +13,13 @@ import {
   staleSyncs,
   staleSyncDetail,
   silenceToleranceMinutes,
+  silenceMinutes,
+  formatTolerance,
   isStaleSyncEvent,
   STALE_SYNC_EVENT_ID,
   type StaleSync,
 } from "@/lib/integrations/staleness";
+import { droppedTypes, metricLabel } from "@/lib/integrations/sync-details";
 import type { AttentionIntegration } from "@/lib/attention";
 import {
   shouldShowConnectedSource,
@@ -303,6 +306,11 @@ interface SourceFacts {
   // for the "no data since" copy. Null otherwise.
   stale: StaleSync | null;
   standing: SourceStanding;
+  // The types this source received and never landed over its silence tolerance
+  // (#4975) — the standing's own evidence, carried so the surfaces can NAME what is
+  // being dropped instead of saying only that something is. Empty for every source
+  // that is not `dropping`.
+  droppedTypes: string[];
   // WHO MOVES THE DATA (#2301) — resolved from the registry kind here and carried, so
   // the standing and every surface reading it agree on which family it came from.
   delivery: IntegrationDelivery;
@@ -348,6 +356,14 @@ function resolveSourceFacts(
       )[0] ?? null)
     : null;
   const delivery = integrationDelivery(def);
+  // Only a CONNECTED, SCHEDULED source can be dropping: an attended import and an
+  // outbound feed record no per-run tally and declare no tolerance, so nothing else
+  // pays this read. It is the SAME read the attention row makes — memoized per
+  // request, so asking here costs the render nothing it was not already spending.
+  const droppedTypesList =
+    connected && delivery === "scheduled"
+      ? droppedTypesForSource(profileId, sourceId)
+      : [];
   return {
     connected,
     needsReauth,
@@ -356,6 +372,7 @@ function resolveSourceFacts(
     lastSuccessAt,
     stale,
     delivery,
+    droppedTypes: droppedTypesList,
     standing: sourceStanding({
       delivery,
       connected,
@@ -365,6 +382,7 @@ function resolveSourceFacts(
       lastSuccessAt,
       toleranceMinutes,
       now: nowAt,
+      droppedTypes: droppedTypesList,
     }),
   };
 }
@@ -702,6 +720,15 @@ export function getImportIssues(profileId: number): IntegrationSyncEvent[] {
       // the observation. One row per source either way.
       failing.push(syntheticStaleIssue(profileId, def.id, facts.stale));
     }
+    // A `dropping` source (#4975) passes the gate above and matches NEITHER arm — its
+    // latest run succeeded and it is not stale — so it contributes no row here, ON
+    // PURPOSE and not by accident. This function's currency is a sync EVENT, and a
+    // drop is not an event: it is a pattern across runs that every one of them
+    // recorded as `ok`, so there is no honest row to push and a synthetic one would
+    // have to invent a failure that did not happen. `droppingIntegrations` emits the
+    // row instead, in the vocabulary that can carry it — and this silence is exactly
+    // what keeps #4967 working, because a source absent from `failing` is absent from
+    // `represented`, which is what lets the dropping row through.
   }
   // Fold in the expired-Health-Connect-token signal (#607), but only when a real HC
   // failure event isn't already representing the source (a rotated-token push
@@ -762,7 +789,7 @@ export const getIntegrationAttention = cache(
 function getIntegrationAttentionUncached(
   profileId: number
 ): AttentionIntegration[] {
-  return getImportIssues(profileId).map((ev) => {
+  const issues = getImportIssues(profileId).map((ev) => {
     const integration = getIntegration(ev.source_id as IntegrationId);
     return {
       id: integration?.id ?? null,
@@ -771,6 +798,107 @@ function getIntegrationAttentionUncached(
       kind: isStaleSyncEvent(ev) ? ("stale" as const) : ("failing" as const),
     };
   });
+  // A source already reported as broken is not ALSO reported as dropping: one row per
+  // source is the rule every one of these signals obeys, and "reconnect it" outranks
+  // "one of its types isn't landing" — you cannot act on the second until the first is
+  // fixed. This is the same yielding `quiet-stream` does, applied one rung up.
+  const represented = new Set(issues.map((i) => i.id));
+  return [
+    ...issues,
+    ...droppingIntegrations(profileId).filter((i) => !represented.has(i.id)),
+  ];
+}
+
+// How many recent runs the dropping derivation reads per source. A CAP on the ROWS, not
+// the window — the window is the source's own silence tolerance (#2263) — and it exists
+// because `details` is up to 4 KB per run and this read is on the dashboard and digest
+// paths. 60 runs covers a 12 h tolerance at one run every 12 minutes, comfortably past
+// the Health Connect exporter's ~20-minute re-push, the densest source here.
+//
+// If a source ever DOES out-push it, the verdict is taken from its 60 most recent runs
+// inside the tolerance, which is the honest reading rather than a degraded one: sixty
+// consecutive pushes that all received a type and landed none of it is a live drop
+// whatever happened before them.
+const DROPPING_RUN_CAP = 60;
+
+// The profile's CONNECTED sources, which is exactly the set a dropping verdict can be
+// about. Asked directly rather than through getLatestSyncEventPerSource: that reader's
+// DISTINCT scan is already issued once per tick by getImportIssues, and asking it a
+// second time here doubled it (#2283's memo guard catches precisely that).
+const DROPPING_SOURCES_STMT = hoistedStatement(
+  `SELECT source_id FROM integration_connections
+    WHERE profile_id = ? AND status = 'connected'`
+);
+
+const DROPPING_RUNS_STMT = hoistedStatement(
+  `SELECT at, ok, details FROM integration_sync_events
+    WHERE profile_id = ? AND source_id = ?
+    ORDER BY at DESC, id DESC
+    LIMIT ${DROPPING_RUN_CAP}`
+);
+
+// THE TYPES ONE SOURCE HAS RECEIVED AND NEVER LANDED, over its own silence tolerance
+// (#4956). Read ONCE per source per request, because since #4975 there are TWO askers
+// and they must be looking at the same window: the STANDING (`resolveSourceFacts`,
+// which is what the grid card, the source page and Review's escalated card render)
+// and the ATTENTION ROW (`droppingIntegrations`, which is what the dashboard, Upcoming
+// and the digest render). Two windows would let a source carry the badge without the
+// row, or the row without the badge, about one question — the #221 disease this whole
+// module exists to avoid.
+//
+// NOW is read INSIDE rather than passed, so the memo keys on (profile, source) alone:
+// `cache()` keys by argument identity, and two callers reading the clock a
+// millisecond apart would miss it and pay the read twice. Sound for the same reason
+// #2283's tick memo is — the quantity compared is a silence tolerance in HOURS.
+//
+// A source with no declared tolerance has no window to judge over — the same
+// exemption the staleness rule takes — and never issues the read at all.
+const droppedTypesForSource = cache(
+  (profileId: number, sourceId: IntegrationId): string[] => {
+    const tolerance = silenceToleranceMinutes(getIntegration(sourceId));
+    if (tolerance == null) return [];
+    const nowAt = instantNow();
+    const runs = DROPPING_RUNS_STMT.all(profileId, sourceId) as {
+      at: string;
+      ok: number;
+      details: string | null;
+    }[];
+    return droppedTypes(
+      runs.filter((r) => (silenceMinutes(r.at, nowAt) ?? Infinity) <= tolerance)
+    );
+  }
+);
+
+// SOURCES THAT ARE ALIVE AND SWALLOWING A RECORD TYPE (#4956).
+//
+// Every run `ok`, rows landing, the card green — and one type arriving in every push
+// and being discarded, because the sender renamed the field the parser reads. Three
+// types went that way for six days across 405 `ok` pushes, and the only trace was one
+// line on one history page. `droppedTypes` reads the per-type tally each run recorded;
+// this decides whether the source has been doing it long enough to say so, over the
+// SAME silence tolerance the quiet-stop rule uses, so a source has one window and not
+// two. A type that lands once clears itself on the next read.
+function droppingIntegrations(profileId: number): AttentionIntegration[] {
+  const out: AttentionIntegration[] = [];
+  const connected = DROPPING_SOURCES_STMT.all(profileId) as {
+    source_id: string;
+  }[];
+  for (const row of connected) {
+    const def = getIntegration(row.source_id as IntegrationId);
+    const tolerance = silenceToleranceMinutes(def);
+    // No declared tolerance means no window to judge over — the same exemption the
+    // staleness rule takes for a source whose cadence we cannot state.
+    if (!def || tolerance == null) continue;
+    const dropped = droppedTypesForSource(profileId, def.id);
+    if (!dropped.length) continue;
+    out.push({
+      id: def.id,
+      sourceName: def.name,
+      detail: `${dropped.map(metricLabel).join(", ")} arrived in every sync for the last ${formatTolerance(tolerance)} and none were stored. Check the sync history.`,
+      kind: "dropping" as const,
+    });
+  }
+  return out;
 }
 
 // The single most recent event (any outcome) for a source, or null — the grid
@@ -836,6 +964,10 @@ export interface IntegrationState {
   // The pure derivations, resolved once here so no surface re-derives them: which
   // shape the source is in, and which words its counts are reported in.
   standing: SourceStanding;
+  // The record types this LIVE source is discarding (#4975) — the `dropping`
+  // standing's own evidence, so a surface can say WHICH data is being lost instead of
+  // only that some is. Empty for every other standing.
+  droppedTypes: string[];
   vocabulary: SyncVocabulary;
   // The quiet-stop facts when the silence rule fires (a `failing` standing whose
   // latest run SUCCEEDED long ago) — the "no data since <date>" copy's ingredients.
@@ -946,6 +1078,7 @@ export function getIntegrationState(
       : {},
     lastSuccessAt: facts.lastSuccessAt,
     standing: facts.standing,
+    droppedTypes: facts.droppedTypes,
     vocabulary: syncVocabularyForKind(def.kind),
     stale: facts.stale,
     recentRuns: {

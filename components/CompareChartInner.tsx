@@ -13,29 +13,24 @@ import {
 } from "recharts";
 import { useChartColors } from "./useChartColors";
 import {
-  ChartLegend,
   chartActiveDot,
+  chartAnnotationLineProps,
   chartAxisProps,
-  chartDash,
+  chartCurve,
   chartGridProps,
+  chartInstantAxisProps,
+  ChartLegend,
   chartLineDot,
   chartMarkMotion,
   chartTooltipProps,
+  chartWindowAreaProps,
   useChartMotion,
 } from "./chart-scaffold";
 import { formatLongDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { roundChartValue } from "@/lib/chart-format";
+import { dateToEpoch, epochToISO } from "@/lib/chart-time-axis";
 import {
-  dateToEpoch,
-  epochToISO,
-  formatTimeTick,
-  spansYearBoundary,
-  timeAxisDomain,
-  timeAxisTicks,
-} from "@/lib/chart-time-axis";
-import {
-  ANNOTATION_KIND_META,
   annotationTooltipLabel,
   snapAnnotationsToDates,
   type TrendAnnotation,
@@ -111,9 +106,7 @@ export default function CompareChart({
   // gaps — distorting the very shape it's meant to show. Map each date to an epoch
   // so both series sit at their true time position; annotations map the same way.
   const rows = data.map((d) => ({ ...d, t: dateToEpoch(d.date) }));
-  const xDomain = timeAxisDomain(data.map((d) => d.date));
-  const xTicks = timeAxisTicks(xDomain);
-  const withYear = spansYearBoundary(xDomain);
+  const xDates = data.map((d) => d.date);
   return (
     <div
       className="flex h-72 w-full flex-col"
@@ -143,15 +136,7 @@ export default function CompareChart({
           margin={{ top: 10, right: 16, bottom: 0, left: -8 }}
         >
           <CartesianGrid {...chartGridProps(c)} />
-          <XAxis
-            dataKey="t"
-            type="number"
-            scale="time"
-            domain={xDomain ?? ["auto", "auto"]}
-            ticks={xTicks.length ? xTicks : undefined}
-            tickFormatter={(v: number) => formatTimeTick(v, withYear)}
-            {...chartAxisProps(c)}
-          />
+          <XAxis {...chartInstantAxisProps(c, xDates)} />
           {/* Axis ticks stay in the TEXT token even in the dual-axis case (issue
               #1445): identity belongs to the marks and the legend above, and a
               tick painted in the series color is a number wearing a data color.
@@ -189,34 +174,26 @@ export default function CompareChart({
             }}
             {...chartTooltipProps(c, motion)}
           />
-          {windowAreas.map((w, i) => {
-            const color = ANNOTATION_KIND_META.protocol.color;
-            return (
-              <ReferenceArea
-                key={`win-${w.x1}-${w.x2}-${i}`}
-                yAxisId="left"
-                x1={w.x1}
-                x2={w.x2}
-                fill={color}
-                fillOpacity={0.08}
-                stroke={color}
-                strokeOpacity={0.3}
-              />
-            );
-          })}
+          {windowAreas.map((w, i) => (
+            <ReferenceArea
+              key={`win-${w.x1}-${w.x2}-${i}`}
+              yAxisId="left"
+              x1={w.x1}
+              x2={w.x2}
+              {...chartWindowAreaProps("protocol")}
+            />
+          ))}
           {snapped.map((a, i) => (
             <ReferenceLine
               key={`ann-${a.kind}-${a.date}-${i}`}
               yAxisId="left"
               x={dateToEpoch(a.date)}
-              stroke={ANNOTATION_KIND_META[a.kind].color}
-              strokeDasharray={chartDash.annotation}
-              strokeOpacity={0.6}
+              {...chartAnnotationLineProps(a.kind)}
             />
           ))}
           <Line
             yAxisId="left"
-            type="monotone"
+            type={chartCurve}
             dataKey="a"
             name={labelA}
             stroke={colorA}
@@ -228,7 +205,7 @@ export default function CompareChart({
           />
           <Line
             yAxisId={dualAxis ? "right" : "left"}
-            type="monotone"
+            type={chartCurve}
             dataKey="b"
             name={labelB}
             stroke={colorB}

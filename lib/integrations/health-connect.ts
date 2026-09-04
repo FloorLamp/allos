@@ -31,6 +31,18 @@ export {
 // it into source-agnostic normalized records (see normalize.ts). Parsing is
 // tolerant: unknown keys and malformed records are skipped and counted, and field
 // names are matched defensively so a minor app version bump doesn't break ingest.
+//
+// EVERY SAMPLE-SERIES TYPE ARRIVES IN ONE OF TWO SHAPES, per record, and a reader that
+// knows only one of them drops the type in silence. When a series is bucketed the
+// exporter emits `avg`/`min`/`max` in place of the raw field — spelled
+// `avg_delta_celsius`/`min_`/`max_` for skin temperature — and it emits the raw field
+// otherwise (SyncManager.kt, the `if (x.min != null)` branches). v1.9.17 made bucketing
+// the DEFAULT for all five sample series, and because each type carried its own
+// hand-written field list, HRV, respiratory rate and skin temperature vanished for six
+// days across 405 `ok` pushes (#4956; #1100 was the same mechanism a month earlier).
+// So both shapes go through ONE reader, `sampleSeriesValue` below, and every consumed
+// type's `{ received, landed }` ride `out.details.tally` — which is what makes "this
+// type arrived and none of it landed" derivable instead of hand-placed.
 
 export const HEALTH_CONNECT_ID = "health-connect";
 
@@ -430,6 +442,14 @@ export interface NormGlucoseTrace {
   origin: string | null;
 }
 
+// Per-type record accounting for ONE push (#4956): payload key → how many records of
+// that type arrived and how many the parser accepted. Only types that ARRIVED get an
+// entry, so an absent key means "none in this push" and never "none recognised".
+export type SyncTypeTally = Record<
+  string,
+  { received: number; landed: number }
+>;
+
 export interface HealthConnectOriginChoice {
   date: string;
   metric: string;
@@ -440,6 +460,12 @@ export interface HealthConnectOriginChoice {
 export interface HealthConnectSyncDetails {
   warnings: string[];
   origins: HealthConnectOriginChoice[];
+  // Per-consumed-type accounting for THIS push (#4956), keyed by payload key and
+  // carrying only the types that actually arrived. `landed` is records the parser
+  // accepted; `received - landed` is what it dropped. It is what turns the
+  // all-skipped diagnosis from two hand-placed warnings into one derivation over
+  // every type, and it is the durable evidence the `dropping` attention row reads.
+  tally: SyncTypeTally;
 }
 
 // ---- local time helpers (day/minute attribution in the PROFILE's IANA timezone) ----
@@ -472,6 +498,19 @@ function num(...vals: unknown[]): number | null {
     if (typeof v === "number" && Number.isFinite(v)) return v;
   }
   return null;
+}
+
+// The ONE accessor for a sample-series record's value, covering the exporter's two
+// shapes (see the header). `bucketKey` is the name the BUCKETED shape uses; the raw
+// names follow, most specific first, and the historical aliases stay so an older
+// exporter keeps landing. Preferring the bucket key matches what heart rate has always
+// done — a record carrying both is a bucket, and its `avg` is the value.
+function sampleSeriesValue(
+  rec: Record<string, unknown>,
+  rawKeys: readonly string[],
+  bucketKey = "avg"
+): number | null {
+  return num(rec[bucketKey], ...rawKeys.map((k) => rec[k]));
 }
 
 function asArray(v: unknown): Record<string, unknown>[] {
@@ -799,7 +838,7 @@ export function parseHealthConnectPayload(
     vitals: [],
     glucoseTrace: [],
     skipped: 0,
-    details: { warnings: [], origins: [] },
+    details: { warnings: [], origins: [], tally: {} },
     pushedAt: null,
   };
   if (!body || typeof body !== "object") {
@@ -814,6 +853,18 @@ export function parseHealthConnectPayload(
   // so the Review feed's received/skipped tally reflects them instead of silently
   // vanishing them (mirrors the plausibility skip path #132).
   out.skipped += countUnknownRecords(payload);
+
+  // EVERY SKIP BELOW NAMES ITS TYPE (#4956). The aggregate `out.skipped` is unchanged —
+  // this only remembers which key each drop came from, so `landed = received - skipped`
+  // is exact per type and the all-skipped diagnosis stops depending on somebody having
+  // hand-written a warning for that particular type. A record is reachable by at most
+  // one of these calls (the glucose observation and trace loops `continue` past each
+  // other's rows), so the two counts cannot double.
+  const skippedByKey = new Map<string, number>();
+  const skip = (key: string) => {
+    out.skipped++;
+    skippedByKey.set(key, (skippedByKey.get(key) ?? 0) + 1);
+  };
 
   // --- weight / body fat % / resting HR → one body_metrics row per local day ---
   // All three share the body_metrics home: weight is last-wins per day;
@@ -882,7 +933,7 @@ export function parseHealthConnectPayload(
     const p = parts(w.time, tz);
     const kg = boundedOrNull("weight_kg", num(w.kilograms, w.kg, w.weight));
     if (!p || kg == null) {
-      out.skipped++;
+      skip("weight");
       continue;
     }
     const t = noteInstant(w.time);
@@ -902,7 +953,7 @@ export function parseHealthConnectPayload(
       num(b.percentage, b.percent, b.value)
     );
     if (!p || pct == null) {
-      out.skipped++;
+      skip("body_fat");
       continue;
     }
     const t = noteInstant(b.time);
@@ -918,7 +969,7 @@ export function parseHealthConnectPayload(
       num(r.bpm, r.beatsPerMinute, r.value)
     );
     if (!p || bpm == null) {
-      out.skipped++;
+      skip("resting_heart_rate");
       continue;
     }
     const t = noteInstant(r.time);
@@ -972,7 +1023,7 @@ export function parseHealthConnectPayload(
       // out-of-range reading folds into the same skip path as a missing one (#132).
       const value = boundedOrNull(metric, valueOf(rec));
       if (!p || !start || !end || value == null) {
-        out.skipped++;
+        skip(key);
         continue;
       }
       // THE DAY A DAY BUCKET IS FILED UNDER IS THE ONE ITS OWN ANCHOR NAMES (#3901).
@@ -1031,7 +1082,7 @@ export function parseHealthConnectPayload(
     const end = typeof rec.end_time === "string" ? rec.end_time : start;
     const p = parts(start, tz);
     if (!p || !start || !end) {
-      out.skipped++;
+      skip("nutrition");
       continue;
     }
     for (const [field, metric] of NUTRIENTS) {
@@ -1059,7 +1110,7 @@ export function parseHealthConnectPayload(
       const p = parts(t, tz);
       const value = boundedOrNull(metric, valueOf(rec));
       if (!p || !t || value == null) {
-        out.skipped++;
+        skip(key);
         continue;
       }
       out.samples.push({
@@ -1107,7 +1158,7 @@ export function parseHealthConnectPayload(
       const p = parts(t, tz);
       const value = boundedOrNull(canonical, valueOf(rec));
       if (!p || !t || value == null) {
-        out.skipped++;
+        skip(key);
         continue;
       }
       out.vitals.push({
@@ -1138,7 +1189,7 @@ export function parseHealthConnectPayload(
       num(rec.diastolic, rec.diastolic_mmhg)
     );
     if (!p || !t || (sys == null && dia == null)) {
-      out.skipped++;
+      skip("blood_pressure");
       continue;
     }
     if (sys != null)
@@ -1189,7 +1240,7 @@ export function parseHealthConnectPayload(
     // decides the store, never how hard a value is checked.
     const mgdl = boundedOrNull("Glucose", toMgdl(rec));
     if (!t || !parts(t, tz) || mgdl == null) {
-      out.skipped++;
+      skip("blood_glucose");
       continue;
     }
     out.glucoseTrace.push({
@@ -1199,14 +1250,14 @@ export function parseHealthConnectPayload(
     });
   }
   vital("oxygen_saturation", "Oxygen Saturation", "vitals", "%", (r) =>
-    num(r.percentage, r.percent, r.value)
+    sampleSeriesValue(r, ["percentage", "percent", "value"])
   );
   vital("body_temperature", "Body Temperature", "vitals", "degF", (r) => {
     const c = num(r.celsius, r.value);
     return c == null ? null : Math.round(((c * 9) / 5 + 32) * 10) / 10;
   });
   vital("respiratory_rate", "Respiratory Rate", "vitals", "breaths/min", (r) =>
-    num(r.rate, r.value)
+    sampleSeriesValue(r, ["rate", "value"])
   );
   // VO2 Max files as `vitals` — the canonical registry's own classification for it
   // (#2479 part 2). It used to write the legacy `biomarker` catch-all, which gave a
@@ -1216,17 +1267,21 @@ export function parseHealthConnectPayload(
   );
 
   // HRV: a point measurement → metric_samples (start == end == time).
-  const hrvRecords = asArray(payload.heart_rate_variability);
-  const hrvBefore = out.samples.length;
-  for (const h of hrvRecords) {
+  for (const h of asArray(payload.heart_rate_variability)) {
     const t = typeof h.time === "string" ? h.time : undefined;
     const p = parts(t, tz);
     const ms = boundedOrNull(
       "hrv_ms",
-      num(h.rmssd_millis, h.milliseconds, h.ms, h.rmssd, h.value)
+      sampleSeriesValue(h, [
+        "rmssd_millis",
+        "milliseconds",
+        "ms",
+        "rmssd",
+        "value",
+      ])
     );
     if (!p || !t || ms == null) {
-      out.skipped++;
+      skip("heart_rate_variability");
       continue;
     }
     out.samples.push({
@@ -1238,12 +1293,6 @@ export function parseHealthConnectPayload(
       origin: dataOrigin(h),
     });
   }
-  if (hrvRecords.length > 0 && out.samples.length === hrvBefore) {
-    out.details.warnings.push(
-      "heart_rate_variability records were all skipped — exporter shape not recognized"
-    );
-  }
-
   // Sleep: total duration (minutes) per session → metric_samples 'sleep_min', plus a
   // per-stage breakdown → 'sleep_deep_min' / '_rem_' / '_light_' / '_awake_'. A
   // session spans midnight, so everything (total + every stage) is attributed to the
@@ -1275,7 +1324,7 @@ export function parseHealthConnectPayload(
       canonicalDurationMin(secs, "s")
     );
     if (!p || !start || !end || secs == null || secs <= 0 || sleepMin == null) {
-      out.skipped++;
+      skip("sleep");
       continue;
     }
     const wakeDay = p.date;
@@ -1372,10 +1421,14 @@ export function parseHealthConnectPayload(
     const p = parts(t, tz);
     const delta = boundedOrNull(
       SKIN_TEMP_DELTA_METRIC,
-      num(rec.delta_celsius, rec.delta, rec.celsius, rec.value)
+      sampleSeriesValue(
+        rec,
+        ["delta_celsius", "delta", "celsius", "value"],
+        "avg_delta_celsius"
+      )
     );
     if (!p || !t || delta == null) {
-      out.skipped++;
+      skip("skin_temperature");
       continue;
     }
     const ms = new Date(t).getTime();
@@ -1395,19 +1448,16 @@ export function parseHealthConnectPayload(
     string,
     { sum: number; n: number; min: number; max: number }
   >();
-  const heartRateRecords = asArray(payload.heart_rate);
-  let acceptedHeartRate = 0;
-  for (const s of heartRateRecords) {
+  for (const s of asArray(payload.heart_rate)) {
     const p = parts(s.time, tz);
     const bpm = boundedOrNull(
       "heart_rate_bpm",
-      num(s.avg, s.bpm, s.beatsPerMinute, s.value)
+      sampleSeriesValue(s, ["bpm", "beatsPerMinute", "value"])
     );
     if (!p || bpm == null) {
-      out.skipped++;
+      skip("heart_rate");
       continue;
     }
-    acceptedHeartRate++;
     const statedN = num(s.n, s.count, s.sample_count);
     const n =
       statedN != null && statedN > 0 ? Math.max(1, Math.round(statedN)) : 1;
@@ -1423,11 +1473,6 @@ export function parseHealthConnectPayload(
       b.min = Math.min(b.min, min);
       b.max = Math.max(b.max, max);
     }
-  }
-  if (heartRateRecords.length > 0 && acceptedHeartRate === 0) {
-    out.details.warnings.push(
-      "heart_rate records were all skipped — exporter shape not recognized"
-    );
   }
   for (const [ts, b] of buckets) {
     out.hrMinutes.push({
@@ -1450,7 +1495,7 @@ export function parseHealthConnectPayload(
     const end = typeof e.end_time === "string" ? e.end_time : undefined;
     const p = parts(start, tz);
     if (!p || !start) {
-      out.skipped++;
+      skip("exercise");
       continue;
     }
     const { type, title } = classifyExercise(e.type);
@@ -1493,6 +1538,24 @@ export function parseHealthConnectPayload(
   }
 
   out.details.origins = originChoices(out.samples);
+
+  // THE ALL-SKIPPED DIAGNOSIS, DERIVED (#4956). Every consumed type that carried
+  // records reports what arrived and what landed, and any type that landed NOTHING
+  // says so in the same sentence the two hand-placed warnings used to. Structural, so
+  // a type added below can no longer drop in silence for want of someone remembering
+  // to write it a warning — which is how HRV, respiratory rate and skin temperature
+  // went missing across 405 `ok` pushes.
+  for (const key of KNOWN_HEALTH_CONNECT_KEYS) {
+    const received = asArray(payload[key]).length;
+    if (received === 0) continue;
+    const landed = received - (skippedByKey.get(key) ?? 0);
+    out.details.tally[key] = { received, landed };
+    if (landed === 0) {
+      out.details.warnings.push(
+        `${key} records were all skipped — exporter shape not recognized`
+      );
+    }
+  }
 
   // Wrong-granularity diagnostics (#1065): read the raw payload shape and append any
   // actionable hints to the warnings surfaced in Data → Review. Informational only —

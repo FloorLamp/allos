@@ -1,5 +1,6 @@
 "use server";
-import { requireWriteAccess } from "@/lib/auth";
+import { requireSession } from "@/lib/auth";
+import { gateItemProfile } from "../gate-item";
 
 import { revalidateRoute } from "@/lib/revalidate";
 import { getUnitPrefs } from "@/lib/settings";
@@ -66,7 +67,14 @@ export interface MeasurementsSaveResult {
 export async function addMeasurements(
   formData: FormData
 ): Promise<MeasurementsSaveResult> {
-  const { login, profile } = await requireWriteAccess();
+  // #4932: the quick-log sheet's subject chip mounts this SAME form cross-profile,
+  // so the write follows `gateItemProfile` like every other sheet body — posted
+  // `profile_id` → requireProfileWriteAccess, absent → acting profile. `login` is
+  // resolved separately because unit prefs are login-scoped, not profile-scoped, and
+  // must not gate on a subject that might not be the acting profile.
+  const { login } = await requireSession();
+  const profileId = await gateItemProfile(formData);
+  const profile = { id: profileId };
   const date = String(formData.get("date") ?? "").trim();
   const prefs = getUnitPrefs(login.id);
 

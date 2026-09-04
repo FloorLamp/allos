@@ -41,13 +41,15 @@ const TOP_LEVEL_ORDER: (string | RegExp)[] = [
   "Dashboard",
   "Training",
   "Nutrition",
-  "Trends",
+  // History took Trends' slot here in #4965: #4918 made `/history?day=` a
+  // deliberate daily visit, and Trends lost its dock slot to the same
+  // 2026-08-29 review (#4102) — so the ORDER rule ranks them the other way now.
+  "History",
   "Sleep",
-  // #3079: Timeline (now History), Upcoming, Household, Wellness, Longevity and
-  // Progress photos
-  // are children of this group now, so the top level carries ONE row where it used
-  // to carry six. Collapsed on "/" (no child route is active), which is why the
-  // group's whole text content here is its header label.
+  // Trends is a child of this group now (#4965), alongside Upcoming, Household,
+  // Wellness, Longevity and Progress photos — six children where it used to be
+  // History plus five. Collapsed on "/" (no child route is active), which is
+  // why the group's whole text content here is its header label.
   "Plan & review",
   "Medical",
   // The Data entry carries the import-review badge since #1801 (it is Data →
@@ -202,10 +204,9 @@ test("a registry route reached from its consumers highlights its PARENT entry (#
   await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
 
   // Sanity: an ordinary route still highlights itself, so the map didn't swallow
-  // the normal rule. Since #3079 this ALSO exercises group auto-expansion — the
-  // History row is only in the DOM at all because navigating to a grouped child
-  // force-expands its group (isGroupActive). It is the row Timeline vacated when
-  // #3958 phase 2 retired that route (#3343).
+  // the normal rule. History is a top-level row since #4965 (it used to be a
+  // grouped child reached via auto-expansion — group auto-expansion is exercised
+  // below, in the episodic-group cases, by its swap partner Trends instead).
   await page.goto("/history");
   await expect(nav.getByRole("link", { name: "History" })).toHaveAttribute(
     "aria-current",
@@ -232,14 +233,15 @@ test("a registry route reached from its consumers highlights its PARENT entry (#
 // e2e/progress-photos.spec.ts, which watches the row appear inside this group the
 // moment that profile's first photo lands (and, being on /progress at the time,
 // proves the same auto-expansion the case below asserts for the others).
-// History INHERITED Timeline's place here when #3958 phase 2 deleted that route
-// (#3343: "when phase 2 absorbs the timeline and vacates its slot, History inherits
-// it"). The list is the group's whole membership, so the substitution is the
-// assertion — a row added beside the inherited one, rather than in place of it,
-// fails this.
+// Trends took History's place here in #4965 — History earned a top-level row
+// (#4918 made `/history?day=` a deliberate daily visit) and Trends lost its
+// dock slot to the same 2026-08-29 review that took its permanent row (#4102).
+// The list is the group's whole membership, so the substitution is the
+// assertion — a row added beside the swapped-in one, rather than in place of
+// it, fails this.
 const PLAN_REVIEW_CHILDREN = [
   "Upcoming",
-  "History",
+  "Trends",
   "Wellness",
   "Longevity",
   "Household",
@@ -328,7 +330,7 @@ test("the phone drawer renders the group inline while the desktop sidebar still 
   await expect(drawer.locator("nav > *")).toHaveCount(TOP_LEVEL_ORDER.length);
   const [headerLabel, childLabel] = await settledBoxes([
     group.getByText("Plan & review", { exact: true }),
-    group.getByText("History", { exact: true }),
+    group.getByText("Trends", { exact: true }),
   ]);
   expect(
     childLabel.x,
@@ -342,7 +344,7 @@ test("navigating to any grouped child auto-expands its group and lights exactly 
   const nav = page.locator("aside nav");
   const HREFS: Record<string, string> = {
     Upcoming: "/upcoming",
-    History: "/history",
+    Trends: "/trends",
     Wellness: "/wellness",
     Longevity: "/longevity",
     Household: "/household",

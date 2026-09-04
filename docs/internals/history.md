@@ -187,8 +187,8 @@ the query. Open on #3958.
 `?day=YYYY-MM-DD` is the app's one "that day" anchor, and the same mount: the page
 server-selects the day presentation rather than routing anywhere. Rows are flat — a day
 view lists everything, so no rollups. It carries what `/timeline`'s single-day view
-carried: the **intraday panel** (#1068), the day **context chips** (daylight, UV,
-weather, cycle phase), and **prev/next nav** with its swipe (#1425). It carries no
+carried: the **intraday panel** (#1068), the day's **context** (daylight, UV, weather,
+cycle phase — see below), and **prev/next nav** with its swipe (#1425). It carries no
 symptom bar: #4851 retired that card, so symptom is an add-door kind everywhere and
 the day's Add row offers it beside its siblings.
 
@@ -214,6 +214,31 @@ chips. And the panel reads the **resolved row set** (`HistoryGather.dayEvents`),
 a second query, so a tick can never name something the list below does not show; the
 ticks carry the row's own `feed:`-namespaced anchor, built by the same
 `timelineEntryAnchorId` the row is.
+
+**The chart card owns the day's context now** (#4918 ruling 3). The standalone
+`history-day-context` strip retired: `DaylightChip`, `CyclePhaseChip` and the weather
+line moved into `IntradayPanel`'s own context area, under the title and above the
+plot — each chip stays quiet by default, so a quiet day still draws nothing there.
+Sunrise→sunset (`lib/sun.ts`'s `solarDay`) also feeds the chart itself, as a subtle
+background band on the plot (`lib/intraday-layout.ts`'s `daylightBandX`) — a
+BACKGROUND fact, not a row: it reserves no lane, so adding or removing it never moves
+the row stack, the axis ticks or any x-projection.
+
+**The chart card always renders on a day view** (single-subject; the owner's
+2026-09-03 ruling on the empty-day gap #4923 found). `getIntradayDay` now always
+returns a model — a day with no HR, sleep, workout or clock-timed event gets one
+whose four data layers are simply empty, so the card still draws the daylight band
+and its context line; only the rows are missing.
+
+**Today names its own sleep wait, in words and on the plot** (#4918 ruling 7). On
+`day === todayStr`, `getSleepWaitingState` decides whether last night is still
+outstanding; when it is, the context line states the headline and its detail (the
+freshness sentence stays — the two lines say different things), and the chart draws
+the profile's `typicalBedTime` → `typicalWakeTime` window (the same pair the
+dashboard's usual band reads, #3253) as a hatched **expected** band in the sleep
+lane. The band shares that lane with a real session — it reserves the row the moment
+either exists — and draws only while waiting: never on a day whose session is in
+hand, and never on a past day (the window is clock-relative and means nothing there).
 
 A future `?day=` clamps to today and the nav cannot advance past it — the record ends
 at now.

@@ -16,6 +16,9 @@ import {
 import {
   isTrendMetricSlug,
   savedMetricIdForTrendSlug,
+  trendMetricChartScale,
+  TREND_METRIC_META,
+  type TrendMetricSlug,
 } from "@/lib/trend-metrics";
 import { metricSeriesKey } from "@/lib/saved-items";
 import type { DayFillWindow } from "@/lib/day-fill";
@@ -42,7 +45,9 @@ export interface TrendChartSpec {
   // #1533 double-render shape, ~700px apart on a phone. The title stays in the
   // document outline (sr-only), so the card is still named for a screen reader.
   hideTitle?: boolean;
-  data: { date: string; value: number | null }[];
+  // `partial` marks a bucket the profile's local day has not finished filling
+  // (#4924) — today's step total, today's HR average.
+  data: { date: string; value: number | null; partial?: boolean }[];
   unit: string;
   color: string;
   // A goal's target line (already in this chart's display unit), when the metric
@@ -74,11 +79,6 @@ export interface TrendChartSpec {
   // pinned by chart-tap-through.spec), so an affordance must not take width from
   // it.
   footerAction?: ReactNode;
-  // Axis treatment for a COUNT metric (#1541) — a zero-floored domain and grouped
-  // ticks. Composed by lib/trend-metrics' trendMetricChartScale() from the ONE
-  // registry, never re-decided per surface.
-  yDomain?: [number | "auto", number | "auto"];
-  groupYTicks?: boolean;
   // The chart's tap-through destination (#1488) — REQUIRED, `null` only with a
   // same-line `detail-none:` justification at the call site. Every registered body
   // metric has one via `metricDetailHref(slug)`; the metric detail page's OWN chart
@@ -100,6 +100,11 @@ export interface TrendChartSpec {
   // The gap-registry series this chart densifies as, when its key is not a registry
   // slug (sleep's shared per-night key). A slug-keyed chart derives its own.
   gapSeriesKey?: string;
+  // WHICH registry metric this card is, for the two body cards whose key spells it
+  // differently (`bodyfat`, `resting_hr`). Identity, not behaviour: what the card
+  // then GETS from the registry — the axis treatment, the bulk-correction key — is
+  // the registry's to decide, never a per-card prop.
+  slug?: TrendMetricSlug;
 }
 
 // ONE member of the body census flat ranked stack (#1674).
@@ -139,8 +144,9 @@ export interface TrendStackItem {
 // attached — so the reading's own day travels beside the number and the header decides
 // whether to say it.
 function latestHeadline(
-  chart: TrendChartSpec
-): { text: string; date: string } | null {
+  chart: TrendChartSpec,
+  grouped: boolean | undefined
+): { text: string; date: string; partial: boolean } | null {
   for (let i = chart.data.length - 1; i >= 0; i--) {
     const point = chart.data[i];
     // A count metric groups its headline the way it groups its axis and tooltip
@@ -148,11 +154,12 @@ function latestHeadline(
     if (point.value != null)
       return {
         text: `${
-          chart.groupYTicks
+          grouped
             ? groupChartValue(point.value, chart.decimals)
             : roundChartValue(point.value, chart.decimals)
         }${chart.unit}`,
         date: point.date,
+        partial: point.partial === true,
       };
   }
   return null;
@@ -235,10 +242,44 @@ export default function TrendMetricCharts({
   //
   // A non-registry card (the sleep chart, a check-in node) declares no floor, so it is
   // left exactly as it was rather than guessed at.
+  // The axis treatment a card takes, read off its own metric rather than spread in
+  // by every call site (#4924). WHICH treatment applies was already a registry
+  // question (`trendMetricChartScale`) and the answer travelled as two props that
+  // four builders had to remember to pass; a card that forgot got recharts'
+  // defaults silently. Derived here from the same `key` the gap policy is derived
+  // from, so the domain a metric declares reaches every surface that draws it.
+  const metricOf = (chart: TrendChartSpec): TrendMetricSlug | null =>
+    chart.slug ?? (isTrendMetricSlug(chart.key) ? chart.key : null);
+
+  const scaleFor = (chart: TrendChartSpec) => {
+    const slug = metricOf(chart);
+    return slug
+      ? trendMetricChartScale(TREND_METRIC_META[slug])
+      : { yDomain: undefined, groupYTicks: undefined };
+  };
+
   const headlineFor = (chart: TrendChartSpec): ReactNode => {
     if (chart.hideTitle) return null;
-    const latest = latestHeadline(chart);
+    const latest = latestHeadline(chart, scaleFor(chart).groupYTicks);
     if (!latest) return null;
+    // TODAY'S NUMBER SAYS SO (#4924). The headline is current-shaped copy — "59
+    // bpm" with nothing attached reads as your heart rate — and over a bucket the
+    // day is still filling that is a claim about a finished day that has not
+    // finished. The as-of stamp below cannot say it: staleness is the opposite
+    // question, and a today-dated reading passes it at full confidence.
+    if (latest.partial) {
+      return (
+        <span className="flex flex-wrap items-baseline gap-x-1.5">
+          {latest.text}
+          <span
+            data-testid="chart-card-headline-partial"
+            className="text-xs font-normal text-slate-500 dark:text-slate-400"
+          >
+            · so far today
+          </span>
+        </span>
+      );
+    }
     const slug = isTrendMetricSlug(chart.key) ? chart.key : null;
     const freshness =
       slug && today
@@ -270,6 +311,7 @@ export default function TrendMetricCharts({
   };
 
   const chartCard = (chart: TrendChartSpec) => {
+    const scale = scaleFor(chart);
     // ONE reading is a marker, not a plot (#2615 item 3) — the same degrade the
     // Overview tiles have drawn since #1485 G, over the same predicate, so a tile and
     // the card it taps through to cannot render the identical situation two ways.
@@ -291,22 +333,26 @@ export default function TrendMetricCharts({
         testid={chart.testid}
         headerAction={chart.headerAction}
         detailHref={chart.detailHref}
+        // The card owns the whole band (#4924): this hands it the pieces and
+        // composes nothing of its own, so the chart's captions, the projection
+        // note and the action cannot arrive in three wrappers with three margins.
         footer={
-          chart.projectionNote || chart.footer || chart.footerAction ? (
+          chart.projectionNote || chart.footer ? (
             <>
               {chart.projectionNote && (
-                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   {chart.projectionNote}
                 </p>
               )}
               {chart.footer}
-              {chart.footerAction && (
-                <div className="mt-2 flex justify-end">
-                  {chart.footerAction}
-                </div>
-              )}
             </>
           ) : null
+        }
+        footerAction={chart.footerAction}
+        fixRangeField={
+          metricOf(chart)
+            ? TREND_METRIC_META[metricOf(chart)!].correctionField
+            : undefined
         }
       >
         {lone ? (
@@ -333,8 +379,8 @@ export default function TrendMetricCharts({
             annotations={shown}
             windows={shownWindows}
             referenceValue={chart.referenceValue ?? null}
-            yDomain={chart.yDomain}
-            groupYTicks={chart.groupYTicks}
+            yDomain={scale.yDomain}
+            groupYTicks={scale.groupYTicks}
             decimals={chart.decimals}
             singleReadingAsChart={chart.singleReadingAsChart}
             gapFill={gapFillFor(chart)}

@@ -64,7 +64,7 @@ export default function GrowthChartsCard({
             }
             detailTitle={view.percentileTitle}
             footer={
-              <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Reference curves (WHO 0–2 y, CDC 2–20 y).
               </p>
             }

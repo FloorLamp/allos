@@ -1107,6 +1107,18 @@ const marathonRunner: SeedPersona = {
     "/integrations",
     "/data",
   ],
+  gaps: [
+    "The Coastal City Marathon event carries no LINKED ACTIVITIES (#3285 " +
+      "item 2): the event day's logged run and the event are two rows with " +
+      "nothing joining them, so the event reads as a plan and a date rather " +
+      "than plan, day and result in one place. Unbuilt — the persona records " +
+      "the absence so the census sees it.",
+    "The event carries no MEDIA (#3285 item 3): no bib, podium or venue " +
+      "photo attaches to an event, and no photo attaches to an activity at " +
+      "all. `activity_videos` is a tenant of the VIDEO core (lib/video/*), " +
+      "not the #1119 photo core, so photos cannot simply join it — see the " +
+      "issue thread. Unbuilt; the absence is recorded, not designed around.",
+  ],
   dashboard: {
     expect: ["checkin.mood", "activity.steps"],
     absent: ["weight.bootstrap"],
@@ -1184,9 +1196,12 @@ const marathonRunner: SeedPersona = {
 
     ctx.db
       .prepare(
+        // The event store's `kind` is stated rather than left to the column default
+        // (#3285), so the persona exercises the generalized shape a meet also uses
+        // instead of only the pre-#3285 one every existing row happens to have.
         `INSERT INTO endurance_plans
-           (profile_id, event_name, discipline, event_date, target_distance_km, target_time_sec, status)
-         VALUES (?, ?, 'run', ?, 42.2, 13500, 'active')`
+           (profile_id, kind, event_name, discipline, event_date, target_distance_km, target_time_sec, status)
+         VALUES (?, 'race', ?, 'run', ?, 42.2, 13500, 'active')`
       )
       .run(ctx.profileId, "Coastal City Marathon", ctx.daysAgo(-42));
 
