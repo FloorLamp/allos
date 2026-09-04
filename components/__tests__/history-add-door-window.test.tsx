@@ -79,4 +79,33 @@ describe("a chart window prefills the practice form", () => {
     expect(startInput().value).toBe("06:00");
     expect(endInput().value).toBe("06:45");
   });
+
+  it("opens on the practice the window looks like, when one was found", () => {
+    // Habit, decided server-side: the form is handed a name, never a rhythm, so
+    // nothing here can turn a heart rate into a claim about which practice this was.
+    render(
+      form({
+        practices: ["Rowing", "Sauna"],
+        defaultStartTime: "19:10",
+        defaultEndTime: "20:40",
+        defaultPractice: "Sauna",
+      })
+    );
+    expect(document.querySelector<HTMLSelectElement>("select")!.value).toBe(
+      "Sauna"
+    );
+  });
+
+  it("opens on the first practice when no fit was found", () => {
+    render(
+      form({
+        practices: ["Rowing", "Sauna"],
+        defaultStartTime: "19:10",
+        defaultEndTime: "20:40",
+      })
+    );
+    expect(document.querySelector<HTMLSelectElement>("select")!.value).toBe(
+      "Rowing"
+    );
+  });
 });

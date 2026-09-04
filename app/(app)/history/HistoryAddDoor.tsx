@@ -176,6 +176,7 @@ export default function HistoryAddDoor({
   maxDate,
   vocabulary,
   window = null,
+  defaultPractice = null,
 }: {
   kind: HistoryAddKind;
   /** The day the reader is looking at, or today. */
@@ -192,6 +193,13 @@ export default function HistoryAddDoor({
    * window is a stated time, not a claim about what happened.
    */
   window?: { from: string; to?: string } | null;
+  /**
+   * The practice this profile usually does at the window's moment (#4950 item 4),
+   * decided server-side from its own weekly rhythm and always one of `practices`. A
+   * prefill a tap confirms, never a claim about what happened — and null whenever the
+   * rhythm is unknown, which leaves the picker exactly as it is without a window.
+   */
+  defaultPractice?: string | null;
 }) {
   const router = useRouter();
   const formatPrefs = useFormatPrefs();
@@ -280,6 +288,7 @@ export default function HistoryAddDoor({
             maxDate={maxDate}
             defaultStartTime={window?.from ?? null}
             defaultEndTime={window?.to ?? null}
+            defaultPractice={defaultPractice}
             onSaved={() => {
               close();
               router.refresh();

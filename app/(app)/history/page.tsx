@@ -31,7 +31,11 @@ import {
   getSymptomLogOrder,
   isAnxietyScaleRelevant,
 } from "@/lib/queries";
-import { getTrackedPractices } from "@/lib/queries/wellness";
+import {
+  getPracticeRhythms,
+  getTrackedPractices,
+} from "@/lib/queries/wellness";
+import { practiceFittingWindow } from "@/lib/practice";
 import { getTimelineDates } from "@/lib/timeline";
 import { usualRoutineDayOffers } from "@/lib/queries/usual-routine";
 import { profileFoodSlotBoundaries } from "@/lib/profile-food-slot";
@@ -486,13 +490,41 @@ export default async function HistoryPage(props: {
     getTimezone(actingProfileId),
     new Date()
   ).hhmm;
+  const trackedPractices =
+    canWrite && addKind === "practice"
+      ? getTrackedPractices(actingProfileId)
+      : [];
+  // WHICH PRACTICE THE WINDOW LOOKS LIKE (#4950 item 4), read only when there IS a
+  // window and a practice door to prefill — so no other view of this page pays for it.
+  // Habit, never physiology: `practiceFittingWindow` never sees a heart rate, and a
+  // practice with no rhythm cannot fit, which leaves the picker exactly as it is today.
+  const practiceRhythms =
+    day && chartWindow && trackedPractices.length > 0
+      ? getPracticeRhythms(actingProfileId)
+      : null;
+  const windowPractice =
+    day && chartWindow && practiceRhythms
+      ? practiceFittingWindow(
+          trackedPractices.flatMap((practice) => {
+            const rhythm = practiceRhythms.get(practice.identity);
+            return rhythm
+              ? [
+                  {
+                    name: practice.name,
+                    rhythm,
+                    usualDurationMin: practice.previousDurationMin,
+                  },
+                ]
+              : [];
+          }),
+          day,
+          chartWindow
+        )
+      : null;
   const addVocabulary =
     canWrite && addKind
       ? {
-          practices:
-            addKind === "practice"
-              ? getTrackedPractices(actingProfileId).map((p) => p.name)
-              : [],
+          practices: trackedPractices.map((p) => p.name),
           substances:
             addKind === "substance"
               ? getProfileSubstanceKeys(actingProfileId).map((key) => ({
@@ -1091,6 +1123,9 @@ export default async function HistoryPage(props: {
                  one (#4950). It rides the URL rather than client state, so it survives
                  a reload with the form open. */
               window={chartWindow ? intradayWindowParams(chartWindow) : null}
+              /* The practice this profile usually does at that moment — a prefill a tap
+                 confirms, never a claim about what happened. */
+              defaultPractice={windowPractice}
               // THE DAY THE READER WAS LOOKING AT. Finding a gap is the reason to open
               // this door at all, so the form opens on that day rather than on today —
               // the context the redirect used to throw away.
