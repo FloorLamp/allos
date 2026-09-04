@@ -27,6 +27,11 @@ import ZoneMinutesCard from "@/components/ZoneMinutesCard";
 // channels a chart carries its facts in, so a spec that drops a series, loses a
 // reference mark, moves a tick or stops drawing a gap band fails here.
 //
+// EVERY LITERAL BELOW IS A READING OF `main`, and that is checked rather than
+// asserted: the whole file was run at the pinned base commit 81633f1ba, with all
+// nine hand-built Inner cards still in the tree, and passed 13/13 there before it
+// passed 13/13 over the renderers.
+//
 // WHAT IT CANNOT. Tooltip ROWS: recharts computes its hover state from
 // `getBoundingClientRect`, which jsdom answers with zeros, so a synthesised
 // mousemove leaves the tooltip empty however it is stubbed (measured, not
@@ -237,6 +242,38 @@ const CASES: ReadonlyArray<{
       legend: [],
       xTicks: ["01-02", "01-04", "01-06", "01-08", "01-10", "01-12"],
       yTicks: ["1", "2", "3", "4", "5"],
+      box: "h-64 max-w-full min-w-0",
+    },
+  },
+  {
+    // The LONG-RANGE plot (#1938): past 180 days a dense daily series becomes
+    // calendar-bucket means with a low-high spread band, which is the only case
+    // in this table that draws an `<Area>` at all — and the mark
+    // e2e/trends-metric-pages.spec.ts finds by `.recharts-area`.
+    name: "line aggregated to weekly buckets with a spread band",
+    plot: (
+      <LineChartCard
+        label="Weight"
+        unit=" kg"
+        data={Array.from({ length: 200 }, (_, i) => ({
+          date: day(i),
+          value: 80 + (i % 5),
+        }))}
+      />
+    ),
+    shape: {
+      lines: 1,
+      areas: 1,
+      bars: 0,
+      scatters: 0,
+      marks: 30,
+      refLines: 0,
+      refAreas: 0,
+      gapBands: 0,
+      layers: ["recharts-area", "recharts-line"],
+      legend: [],
+      xTicks: ["01-18", "04-19", "07-19"],
+      yTicks: ["80", "81", "82", "83", "84", "85"],
       box: "h-64 max-w-full min-w-0",
     },
   },
