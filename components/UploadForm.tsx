@@ -250,6 +250,7 @@ export default function UploadForm({
             disabled={demo || selected.length === 0}
             pendingLabel="Uploading…"
             data-testid="medical-upload-submit"
+            variant="primary"
           >
             Upload
           </SubmitButton>

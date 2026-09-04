@@ -307,7 +307,7 @@ export default function ImagingStudyForm({
           className="grid w-full sm:w-auto"
           data-testid="imaging-study-primary-action"
         >
-          <SubmitButton pendingLabel="Saving…">
+          <SubmitButton pendingLabel="Saving…" variant="primary">
             {editing ? "Save" : "Add"}
           </SubmitButton>
         </div>

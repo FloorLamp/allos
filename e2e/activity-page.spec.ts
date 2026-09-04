@@ -212,6 +212,12 @@ test("Edit uses the same activity workspace at desktop and phone widths", async 
   await page.getByTestId("activity-page-edit").click();
   await expect(page.getByTestId("activity-overlay-panel")).toBeVisible();
   await expect(page.getByTestId("activity-form")).toBeVisible();
+  // The trap declares the dialog as its landing spot (#5095). Left to its
+  // fallback it takes the panel's first focusable, which on this width is the
+  // editable heading — a caret in a title the form generated and nobody is
+  // about to type over.
+  await expect(page.getByTestId("activity-overlay-panel")).toBeFocused(); // testid-scope-ok: ActivityOverlay portals to <body>, one copy
+  await expect(page.getByLabel("Activity name")).not.toBeFocused();
   await expect(page.getByTestId("activity-page-dock")).toHaveCount(0);
   const desktopPanel = await page
     .getByTestId("activity-overlay-panel")

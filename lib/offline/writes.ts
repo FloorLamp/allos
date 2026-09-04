@@ -439,7 +439,15 @@ function upsertManualSleep(
 // for it.) The bed clock sits on the previous calendar day whenever it is at or
 // after noon — the anchoring lib/sleep-regularity.ts indexes by — and the wake clock
 // is on the row's own wake day, which is how every sleep session here is dated.
-function resolveSleepWindow(
+// EXPORTED for the sleep re-time (#5021), which asks this module's question and must
+// not answer it a second way: a person states two wall clocks against a wake day, and
+// the pair becomes one UTC window. That lane hands it the zone in force at the night's
+// own stored WAKE, not the current one (#5125) — it is correcting a window it has just
+// printed through that historical zone, and a display and its interpretation have to be
+// inverses or a one-hour nudge is not a one-hour move. The CURRENT-zone rule above is
+// unchanged, and stays the rule for every caller that writes a window nobody read back
+// first; `sleepRetimeZone` in lib/sleep-retime-db.ts carries the distinction.
+export function resolveSleepWindow(
   tz: string,
   date: string,
   window: StatedSleepWindow

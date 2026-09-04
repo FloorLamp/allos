@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { openCommandPalette } from "./nav";
 import {
+  appContent,
   comboboxRows,
   deleteActivityFromForm,
   hydratedClick,
@@ -19,7 +20,7 @@ import {
 //   2. The rest timer is a client-side countdown — a lift-appropriate default,
 //      preset chips, and a start/pause toggle.
 //   3. Checking off a set (adding the next set) auto-starts the rest timer.
-//   4. "Finish workout" stamps end=now and collapses back to the plain form.
+//   4. "Finish workout" stamps end=now, and the recap's Save closes the workspace.
 
 // Create-at-start means every started session gets a row up front. Leaving a
 // live workspace only minimizes it; specs explicitly delete their own draft.
@@ -120,13 +121,28 @@ test("checking off a set auto-starts rest, and Finish stamps the end time (#340)
     "Pause rest timer"
   );
 
+  // The session's own page, held before the finish: create-at-start put the tab
+  // here (#2870) and the workspace opened above it.
+  const sessionUrl = new URL(page.url()).pathname;
+
   // Finish now opens the "Session complete" recap step (#924); Save from there
-  // stamps end=now and collapses the live strip back to the plain form.
+  // stamps end=now and CLOSES the workspace (#5111) rather than collapsing back
+  // to the editor for the session it just ended.
   await page.getByTestId("finish-workout").click();
   await expect(page.getByTestId("session-complete-step")).toBeVisible();
   await page.getByTestId("recap-save").click();
-  await expect(page.getByTestId("live-workout-panel")).toHaveCount(0);
-  await expect(page.getByTestId("session-complete-step")).toHaveCount(0);
+  await expect(page.getByTestId("activity-form")).toHaveCount(0);
+
+  // The end stamp survived the close, read back through a FRESH load of the
+  // session's page rather than through whatever the close left on screen. The
+  // close consumes the history entry the workspace holds for the phone's Back
+  // button (useHistoryBackClose), and that back() keeps the SAME url — the
+  // sentinel is a bare pushState — so there is no navigation to wait for and a
+  // click issued straight afterwards races the restore. Re-navigating is both
+  // the wait and the stronger reading: it costs a server round trip instead of
+  // the state still in the form.
+  await page.goto(sessionUrl);
+  await hydratedClick(page, appContent(page).getByTestId("activity-page-edit"));
   await expect(page.getByTestId("end-time-input")).toHaveValue(/^\d\d:\d\d$/);
 
   // Clean up the auto-saved draft so the shared seed DB is left untouched.
@@ -161,16 +177,18 @@ test("editing another activity resumes an empty live workout without stranding i
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();
 
   await page.getByTestId("finish-workout").click();
-  await page.getByTestId("recap-save").click();
-  await page.getByRole("button", { name: "Done", exact: true }).click();
   const discarded = page.waitForResponse(
     (response) => response.request().method() === "POST" && response.ok()
   );
+  // Save closes the workspace itself now (#5111), through the same guard Done
+  // took — and this session logged nothing, so the guard still asks.
+  await page.getByTestId("recap-save").click();
   await page
     .getByTestId("confirm-dialog")
     .getByRole("button", { name: "Close anyway", exact: true })
     .click();
   await discarded;
+  await expect(page.getByTestId("activity-form")).toHaveCount(0);
 
   // Closing from the older activity leaves that page in place. A hard navigation
   // proves the empty live row was deleted server-side, not merely hidden locally.

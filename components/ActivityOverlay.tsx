@@ -108,17 +108,14 @@ export default function ActivityOverlay({
   const minimizeRunningWorkout = workoutRunning ? onMinimize : undefined;
   const panelRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<HTMLButtonElement>(null);
-  const dismissWorkspace = workoutRunning && onMinimize ? onMinimize : onClose;
   const closeRequestRef =
-    useRef<(beforeClose?: () => void) => void | Promise<boolean>>(
-      dismissWorkspace
-    );
+    useRef<(beforeClose?: () => void) => void | Promise<boolean>>(onClose);
   const registerCloseRequest = useCallback(
     (requestClose: ((beforeClose?: () => void) => Promise<boolean>) | null) => {
-      closeRequestRef.current = requestClose ?? dismissWorkspace;
+      closeRequestRef.current = requestClose ?? onClose;
       onCloseRequestReady?.(requestClose);
     },
-    [dismissWorkspace, onCloseRequestReady]
+    [onClose, onCloseRequestReady]
   );
   const dismissFromOverlay = useCallback(() => {
     if (minimizeRunningWorkout) {
@@ -133,6 +130,13 @@ export default function ActivityOverlay({
   useLockBodyScroll(!hidden);
   useFocusTrap({
     panelRef,
+    // The dialog itself is the landing spot (#5095). Left to the fallback the
+    // trap takes the panel's first focusable on every open AND every restore
+    // from the dock — the generated title on desktop, the minimize handle on a
+    // phone. The panel carries `tabIndex={-1}`, so focus lands on the dialog and
+    // Tab still reaches the first field. Nothing moves focus afterwards, so
+    // #4037's deferred-focus race does not apply here.
+    initialFocusRef: panelRef,
     onClose: dismissFromOverlay,
     active: !hidden,
   });
@@ -242,7 +246,11 @@ export default function ActivityOverlay({
           recoveringContext={recoveringContext}
           plateauHints={plateauHints}
           rpeTracking={rpeTracking}
-          onClose={dismissWorkspace}
+          // CLOSE AND PARK ARE TWO ROUTES, not one overloaded callback (#5111).
+          // `onClose` used to be minimize whenever a workout was running, so the
+          // form's only reachable commit made a live session vanish into the dock.
+          onClose={onClose}
+          onMinimize={minimizeRunningWorkout}
           onCloseRequestReady={registerCloseRequest}
           onDeleted={onDeleted}
           stickyFooter

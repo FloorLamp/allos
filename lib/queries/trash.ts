@@ -11,7 +11,8 @@
 import { db } from "../db";
 import { getTimezone } from "../settings/display";
 import {
-  TRASH_EXCLUDED_KIND,
+  TRASH_EXCLUDED_KINDS,
+  TRASH_EXCLUDED_PLACEHOLDERS,
   trashEntry,
   type TrashCapture,
   type TrashEntry,
@@ -26,10 +27,10 @@ export function listTrash(
     .prepare(
       `SELECT id, kind, label, payload, deleted_at AS deletedAt
          FROM deleted_rows
-        WHERE profile_id = ? AND kind <> ?
+        WHERE profile_id = ? AND kind NOT IN (${TRASH_EXCLUDED_PLACEHOLDERS})
         ORDER BY deleted_at DESC, id DESC`
     )
-    .all(profileId, TRASH_EXCLUDED_KIND) as TrashCapture[];
+    .all(profileId, ...TRASH_EXCLUDED_KINDS) as TrashCapture[];
   // `deleted_at` is an instant and the row prints a DAY, so the profile's zone is
   // resolved HERE — the one place that already knows whose captures these are
   // (#3546). `getTimezone` is request-cached, so this is one read per render.
@@ -43,8 +44,8 @@ export function countTrash(profileId: number): number {
   const row = db
     .prepare(
       `SELECT COUNT(*) AS c FROM deleted_rows
-        WHERE profile_id = ? AND kind <> ?`
+        WHERE profile_id = ? AND kind NOT IN (${TRASH_EXCLUDED_PLACEHOLDERS})`
     )
-    .get(profileId, TRASH_EXCLUDED_KIND) as { c: number };
+    .get(profileId, ...TRASH_EXCLUDED_KINDS) as { c: number };
   return row.c;
 }

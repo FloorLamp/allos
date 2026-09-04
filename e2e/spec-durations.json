@@ -2,6 +2,7 @@
   "e2e/active-sessions.spec.ts": 4.991,
   "e2e/activity-equipment.spec.ts": 27.531,
   "e2e/activity-page.spec.ts": 21.423,
+  "e2e/activity-workspace-exit.mobile.spec.ts": 11.203,
   "e2e/adherence-patterns.spec.ts": 3.457,
   "e2e/advance-directives.spec.ts": 4.861,
   "e2e/ai-logs-access.spec.ts": 3.753,

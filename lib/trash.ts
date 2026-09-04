@@ -24,19 +24,35 @@
 import { BULK_CORRECTION_KIND } from "./bulk-correction";
 import { dateFromCreatedAt } from "./timeline-format";
 import { UNDO_KINDS, type Payload, type Row } from "./undo-delete";
+import { SLEEP_RETIME_KIND } from "./sleep-retime-kind";
 
-// `deleted_rows` has three writers, and only two of them capture a DELETED ROW:
+// `deleted_rows` has four writers, and only two of them capture a DELETED ROW:
 // captureDelete (the kind registry) and the bespoke `administration` ledger capture —
 // both restored by restoreDeletedRow, which is the Trash's Restore button.
 //
-// The third is a bulk correction (#1603), which snapshots the INVERSE OF AN EDIT into
-// the same store to reuse its purge timer. It is not a deleted row, its undo is
-// `undoBulkCorrection` (a guarded per-row UPDATE that SKIPS rows changed since, and
-// reports how many), and it already has its own affordance on Data → Review. Listing
-// it under "Recently deleted" would misname it and offer a Restore button that cannot
-// work; emptying the trash would silently destroy an undo the user can still see
-// elsewhere. So every Trash read AND both by-hand purges exclude this kind.
-export const TRASH_EXCLUDED_KIND = BULK_CORRECTION_KIND;
+// The other two snapshot the INVERSE OF AN EDIT into the same store to reuse its purge
+// timer, and neither is a deleted row:
+//
+//   * a bulk correction (#1603), undone by `undoBulkCorrection` — a guarded per-row
+//     UPDATE that SKIPS rows changed since, and reports how many — with its own
+//     affordance on Data → Review;
+//   * a sleep re-time (#5021), undone by `restoreSleepRetime`, which MOVES the session
+//     and its stage rows back and withdraws the tombstone the move wrote. The row was
+//     never deleted; it is standing at different instants.
+//
+// Listing either under "Recently deleted" would misname it and offer a Restore button
+// under a heading for something that did not happen; emptying the trash would silently
+// destroy an undo the user can still reach elsewhere. So every Trash read AND both
+// by-hand purges exclude these kinds.
+export const TRASH_EXCLUDED_KINDS = [
+  BULK_CORRECTION_KIND,
+  SLEEP_RETIME_KIND,
+] as const;
+
+/** `kind NOT IN (…)` placeholders for the list above. */
+export const TRASH_EXCLUDED_PLACEHOLDERS = TRASH_EXCLUDED_KINDS.map(
+  () => "?"
+).join(",");
 
 // One holding row as stored, before any derivation.
 export interface TrashCapture {
