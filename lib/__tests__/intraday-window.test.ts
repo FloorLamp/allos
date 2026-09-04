@@ -5,6 +5,7 @@ import {
   parseClockMinute,
   parseIntradayWindow,
   snapToBucket,
+  windowFromView,
 } from "@/lib/intraday-window";
 import { INTRADAY_BUCKET_MINUTES } from "@/lib/intraday";
 import { MIN_ZOOM_MINUTES } from "@/lib/intraday-layout";
@@ -123,5 +124,55 @@ describe("the round trip closes", () => {
   ])("writes %s in the spelling it reads back", (_label, window) => {
     const params = intradayWindowParams(window);
     expect(parseIntradayWindow(params.from, params.to)).toEqual(window);
+  });
+});
+
+// The amendment's derivation: the window is what the chart already shows (#4950).
+describe("windowFromView", () => {
+  it("takes the zoomed view as the window", () => {
+    expect(
+      windowFromView({ from: 19 * 60 + 10, to: 20 * 60 + 40 }, null)
+    ).toEqual({ from: 1150, to: 1240 });
+  });
+
+  it("prefers the view over the cursor, because a zoom is the more specific answer", () => {
+    // A cursor survives inside a zoom; the span the person framed is what they meant.
+    expect(
+      windowFromView({ from: 19 * 60 + 10, to: 20 * 60 + 40 }, 19 * 60 + 30)
+    ).toEqual({ from: 1150, to: 1240 });
+  });
+
+  it("takes the crosshair as a start alone at full day", () => {
+    expect(windowFromView(null, 19 * 60 + 10)).toEqual({
+      from: 1150,
+      to: null,
+    });
+  });
+
+  it("offers nothing when the chart shows nothing", () => {
+    expect(windowFromView(null, null)).toBeNull();
+  });
+
+  it("snaps both a view and a cursor to the chart's bucket", () => {
+    expect(windowFromView({ from: 1152, to: 1241 }, null)).toEqual({
+      from: 1150,
+      to: 1240,
+    });
+    expect(windowFromView(null, 1152)).toEqual({ from: 1150, to: null });
+  });
+
+  it("refuses a view narrower than the chart's own minimum drag", () => {
+    // Zoom cannot produce one, but a wheel or a pinch can land on it. It is not a
+    // window, and — as everywhere in this module — it is not widened into one.
+    expect(windowFromView({ from: 1150, to: 1155 }, null)).toBeNull();
+  });
+
+  it("round-trips through the params, so what the chart shows is what a chip carries", () => {
+    const shown = windowFromView(
+      { from: 19 * 60 + 10, to: 20 * 60 + 40 },
+      null
+    );
+    const params = intradayWindowParams(shown!);
+    expect(parseIntradayWindow(params.from, params.to)).toEqual(shown);
   });
 });

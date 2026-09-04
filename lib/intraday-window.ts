@@ -108,3 +108,34 @@ export function intradayWindowParams(window: IntradayWindow): {
     ...(window.to == null ? {} : { to: formatClockMinute(window.to) }),
   };
 }
+
+// ── What the chart is currently OFFERING (#4950, owner amendment 2026-09-03) ──
+//
+// "The armed mode goes. The window is what the chart already shows." There is no
+// selection gesture of its own: the chart's two existing interactions ARE the window,
+// so this is a derivation over state the chart already owns rather than a third thing
+// to keep in step with them.
+//
+//   * ZOOMED, THE VIEW IS THE WINDOW. A person who zoomed to 19:10–20:40 has already
+//     said which span they mean, with the trace under it as the evidence.
+//   * AT FULL DAY, THE CROSSHAIR IS THE START. No zoom and a cursor set is a person
+//     pointing at a minute, which is a start with its length left to the form.
+//   * Neither is an offer of nothing, and the add row says only "Add".
+//
+// Escape and the zoom-reset both clear the view, and clearing the view is what clears
+// the window — there is no second path to keep in step, which is the whole reason the
+// amendment prefers this to a mode.
+export function windowFromView(
+  view: { from: number; to: number } | null,
+  cursor: number | null
+): IntradayWindow | null {
+  if (view) {
+    const from = snapToBucket(view.from);
+    const to = snapToBucket(view.to);
+    // A view narrower than the chart's own minimum drag cannot be produced by zooming,
+    // but a wheel or pinch can land on one; it is not a window and is not repaired.
+    return to - from < MIN_ZOOM_MINUTES ? null : { from, to };
+  }
+  if (cursor == null) return null;
+  return { from: snapToBucket(cursor), to: null };
+}

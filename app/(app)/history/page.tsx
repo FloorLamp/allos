@@ -47,6 +47,7 @@ import {
 import { shiftDateStr, zonedDateParts } from "@/lib/date";
 import TimelineDayNav from "@/components/TimelineDayNav";
 import IntradayPanel from "@/components/IntradayPanel";
+import { IntradayInteractionProvider } from "@/components/IntradayInteraction";
 import { parseIntradayWindow } from "@/lib/intraday-window";
 import { getIntradayDay } from "@/lib/queries/intraday";
 import { solarDay } from "@/lib/sun";
@@ -1002,30 +1003,37 @@ export default async function HistoryPage(props: {
           on the plot, draw regardless: `intraday` is non-null whenever a day is
           open (see above), rows or none. */}
       {intraday ? (
-        <div className={railGutter}>
-          <IntradayPanel
-            model={intraday}
-            formatPrefs={prefs}
-            profileId={actingProfileId}
-            home={home}
-            timezone={profileTimezone}
-            daylightOutdoor={daylightOutdoor}
-            uv={dayUv}
-            cyclePhase={dayCyclePhase}
-            cyclePeriod={dayCyclePeriod}
-            weather={dayWeather}
-            waiting={sleepWaiting}
-            waitingDetail={
-              sleepWaiting
-                ? sleepWaitingDetail(sleepWaiting, {
-                    clock: (min) => formatClockMinutes(prefs.timeFormat, min),
-                    when: (iso) => formatRelativeTime(iso),
-                  })
-                : null
-            }
-            selectedWindow={chartWindow}
-          />
-        </div>
+        // ONE ZOOM AND ONE CROSSHAIR FOR THE DAY (#4950). The panel mounts the chart
+        // twice — compact and wide, both in the DOM at once — and the add row below is
+        // about to read "the current view" off them. Two owners would mean two views
+        // and no way for this page to know which variant the viewport is showing, so
+        // the state lives here and both charts read it.
+        <IntradayInteractionProvider>
+          <div className={railGutter}>
+            <IntradayPanel
+              model={intraday}
+              formatPrefs={prefs}
+              profileId={actingProfileId}
+              home={home}
+              timezone={profileTimezone}
+              daylightOutdoor={daylightOutdoor}
+              uv={dayUv}
+              cyclePhase={dayCyclePhase}
+              cyclePeriod={dayCyclePeriod}
+              weather={dayWeather}
+              waiting={sleepWaiting}
+              waitingDetail={
+                sleepWaiting
+                  ? sleepWaitingDetail(sleepWaiting, {
+                      clock: (min) => formatClockMinutes(prefs.timeFormat, min),
+                      when: (iso) => formatRelativeTime(iso),
+                    })
+                  : null
+              }
+              selectedWindow={chartWindow}
+            />
+          </div>
+        </IntradayInteractionProvider>
       ) : null}
 
       {/* THE ADD LAYER SITS ABOVE THE ROWS IT CREATES (#4918 ruling 2) — under the
