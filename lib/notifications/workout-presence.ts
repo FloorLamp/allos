@@ -21,35 +21,20 @@
 // keyed by the activity id — #203-safe: AUTOINCREMENT ids never recycle, so a
 // stale marker is a harmless dead row needing no rename cleanup).
 
-import { db, today, writeTx } from "../db";
+import { today, writeTx } from "../db";
 import { now as clockNow } from "../clock";
 import { isCompletedSessionRow } from "../workout-presence";
 import { getWorkoutPresence } from "../queries/presence";
-import { getSessionRecap } from "../queries/session-recap";
 import {
   getProfileSetting,
   setProfileSetting,
   getPublicUrl,
-  getLoginTelegramDisabledKinds,
-  getProfileHomeAssistant,
 } from "../settings";
-import { isKindEnabled } from "./home-assistant-core";
-import { resolveTelegramRecipients } from "./fan-out";
+import { composeFinishNudge } from "./workout-recap-format";
 import {
-  ACTIVITY_TYPE_ASK_PROMPT,
-  activityTypeAskActions,
-  composeFinishNudge,
-  importedRecapLine,
-  recapNudgeLine,
-  sessionPhysiologyClause,
-  weeklyRemainingLine,
-  type FinishTypeAsk,
-  type ImportedSessionFacts,
-} from "./workout-recap-format";
-import { getFrequencyTargetProgress } from "../queries";
-import { getEventPhysiology } from "../queries/event-physiology";
-import { getSessionCadenceFacts } from "../queries/cadence-ledger";
-import type { ActivityType } from "../types/training";
+  finishRecapParts,
+  loadFinishRow,
+} from "./workout-recap-build";
 import { collectWindowDoses } from "./intake";
 import {
   notifiableWindowDoses,
@@ -184,53 +169,6 @@ export function buildPostWorkoutFinishReminder(
   );
 }
 
-// The imported row's own facts, for the #2272 recap line, plus the two fields the
-// composition branches on: `source` (is this an import at all) and `type` (is it the
-// stated absence the ask is for). One read; profile-scoped.
-interface FinishRow {
-  date: string;
-  start_time: string | null;
-  end_time: string | null;
-  duration_min: number | null;
-  elapsed_min: number | null;
-  distance_km: number | null;
-  avg_hr: number | null;
-  max_hr: number | null;
-  relative_effort: number | null;
-  title: string;
-  // The column's CHECK enum, which is the declared tuple (#2272) — carried as the type
-  // so the ask's `unclassified` test and the title map read the same vocabulary.
-  type: ActivityType;
-  source: string | null;
-}
-
-function loadFinishRow(
-  profileId: number,
-  activityId: number
-): FinishRow | null {
-  const row = db
-    .prepare(
-      `SELECT date, start_time, end_time, duration_min, elapsed_min, distance_km,
-              avg_hr, max_hr, relative_effort, title, type, source
-         FROM activities WHERE id = ? AND profile_id = ?`
-    )
-    .get(activityId, profileId) as FinishRow | undefined;
-  return row ?? null;
-}
-
-function importedFacts(row: FinishRow): ImportedSessionFacts {
-  return {
-    title: row.title,
-    // Active minutes are the pace/volume source (#1202); an import that carried only a
-    // wall-clock span still has something honest to say, so fall back to elapsed.
-    durationMin: row.duration_min ?? row.elapsed_min,
-    distanceKm: row.distance_km,
-    avgHr: row.avg_hr,
-    maxHr: row.max_hr,
-    relativeEffort: row.relative_effort,
-  };
-}
-
 // How one call to the claim-owning core resolved (#3058). `sent` is the only
 // arm that contacted anyone. The losing arms are typed rather than folded into
 // a boolean so a caller — and a test — can tell "another caller owns this send"
@@ -335,81 +273,15 @@ export async function runPostWorkoutForActivity(
   // kind (below); the dose section by dueness. Either alone still sends; both
   // absent ⇒ no send (and the one-shot is not burned).
   const doseMsg = buildPostWorkoutFinishReminder(profileId, date);
-  const recap = getSessionRecap(profileId, activityId);
-  // Recap-line inclusion (#924) is gated by the `workout-recap` row of the #928
-  // kind×channel matrix — included unless it's turned OFF on EVERY delivery path.
-  // Telegram is now LOGIN-scoped (#1072) and fans out to the managing logins, so the
-  // line is enabled on Telegram if ANY managing login left it on; Home Assistant
-  // stays per-profile. The push channel gates its own copy at dispatch; a recap-only
-  // message additionally carries kind "workout-recap" so each channel's matrix gate
-  // applies at send time.
-  const recapEnabled =
-    resolveTelegramRecipients(profileId).some((r) =>
-      isKindEnabled("workout-recap", getLoginTelegramDisabledKinds(r.loginId))
-    ) ||
-    isKindEnabled(
-      "workout-recap",
-      getProfileHomeAssistant(profileId).disabledKinds
-    );
-  // WHAT THE MINUTE STREAM SAYS (#4775 §2). The same event-physiology result the
-  // activity page renders, formatted as a clause on whatever recap line is already
-  // going out. Read only when the recap line is enabled at all and the row can be
-  // bounded, so a profile with the kind off pays nothing for it.
-  const physiology =
-    recapEnabled && finishRow ? getEventPhysiology(profileId, finishRow) : null;
-  const hrClause = physiology ? sessionPhysiologyClause(physiology) : null;
-  // #2272: an IMPORTED finish has no `exercise_sets`, so the strength recap declines
-  // and the message had nothing to say. Its own facts stand in — EXCEPT its avg/max
-  // HR when the stream has covered the window, because then the two would state the
-  // same quantity twice from two sources and invite the reader to reconcile them. The
-  // stream's split is the more specific claim, so it wins and the import's summary
-  // steps aside; with no coverage the import's figure is all there is and is kept.
-  const importedLine =
-    recapEnabled && finishRow?.source
-      ? importedRecapLine(
-          hrClause
-            ? { ...importedFacts(finishRow), avgHr: null, maxHr: null }
-            : importedFacts(finishRow)
-        )
-      : null;
-  const baseLine = recapNudgeLine(recap, recapEnabled) ?? importedLine;
-  // The clause RIDES a line and never makes one: a manual row with nothing to recap
-  // sends exactly what it sent before this issue.
-  const recapLine =
-    baseLine && hrClause ? `${baseLine} · ${hrClause}` : baseLine;
-  // §3 (#981): the recap line gains a forward-looking weekly-remaining status, from the
-  // SAME weekly rollup the reminder reads (#221). It rides WITH the recap line (the
-  // congratulatory moment) — omitted when there's no recap line to lead it, no targets,
-  // or the message is dose-only.
-  //
-  // The rollup is profile-wide, so the facts of THIS session go with it (#2503): without
-  // them the line led with the closest-to-done target anywhere, and a walk's recap
-  // reported a chest target a barbell session had advanced earlier in the week.
-  const weeklyLine = recapLine
-    ? weeklyRemainingLine(
-        getFrequencyTargetProgress(profileId),
-        getSessionCadenceFacts(profileId, activityId)
-      )
-    : null;
-  const leadLine =
-    recapLine && weeklyLine ? `${recapLine}\n${weeklyLine}` : recapLine;
-  // THE ASK (#2272). Offered only when the finishing row is the stated absence itself,
-  // and only ON a message already going out — it adds no send of its own. One offer per
-  // activity, carried by the same one-shot marker the nudge already burns: if it is
-  // ignored the row stays `unclassified` and stays correctable in the app forever. A
-  // queue that re-asks is how a signal gets trained into noise.
-  const ask: FinishTypeAsk | null =
-    finishRow?.type === "unclassified"
-      ? {
-          prompt: ACTIVITY_TYPE_ASK_PROMPT,
-          actions: activityTypeAskActions(profileId, activityId),
-        }
-      : null;
+  // WHAT THE MESSAGE SAYS ABOUT THE SESSION is gathered by ./workout-recap-build, which
+  // the #4996 prose reconciler re-runs to correct this very message after a merge
+  // replaces its subject. One builder, two callers — the prose-claim class's rule.
+  const parts = finishRecapParts(profileId, activityId);
   const msg = composeFinishNudge(
-    leadLine,
+    parts.leadLine,
     doseMsg,
-    ask,
-    finishRow?.type ?? null
+    parts.ask,
+    parts.type
   );
   // Nothing to send — don't burn the one-shot, and don't claim a dispatch that
   // will never happen.

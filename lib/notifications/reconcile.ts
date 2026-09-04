@@ -111,6 +111,7 @@ import { buildDigest, renderDigestMessage } from "./digest";
 import { gatherDigestInput } from "./digest-data";
 import { digestDependencyStamp, DIGEST_REGATHER_FLOOR_MS } from "./digest-deps";
 import { rebuildWearReminder } from "./wear-reminder";
+import { rebuildWorkoutRecap } from "./workout-recap-build";
 import {
   closingTallyDetail,
   decideProseGather,
@@ -1247,6 +1248,19 @@ const PROSE: Record<ProseReconciler, ProseClaim> = {
   // "no pre-check declared ⇒ rebuild every tick" rule.
   "wear-reminder": {
     rebuild: (profileId, p) => rebuildWearReminder(profileId, p.date),
+    stamp: null,
+    floorMs: 0,
+  },
+  // The post-workout recap (#4996). Like the wear reminder and unlike the digest, it
+  // declares NO pre-check: `rebuildWorkoutRecap` answers null in one keyboard scan for a
+  // recap that carries no `actype` address, and the rebuild it does pay for is bounded
+  // twice over — at most one live pointer per unclassified finish, and the prose arm
+  // DROPS the pointer at the day boundary rather than tracking it to the retention
+  // horizon. A dependency stamp here would be a second model of what the recap's facts
+  // are derived from (the row, the minute stream, the weekly rollup) for a message that
+  // lives hours, which is the shape #2069 built for a message that lives all day.
+  "workout-recap": {
+    rebuild: rebuildWorkoutRecap,
     stamp: null,
     floorMs: 0,
   },
