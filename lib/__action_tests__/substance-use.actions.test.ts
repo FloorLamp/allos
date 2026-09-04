@@ -47,6 +47,30 @@ function scoreRow(profileId: number, canon: string) {
     .get(profileId, canon) as { value_num: number } | undefined;
 }
 
+/** Every SQL statement prepared while `run` executes, with the spy always restored
+ *  (this tier shares one module registry, so a leaked spy would follow the next file). */
+async function statementsDuring<T>(
+  run: () => Promise<T>
+): Promise<{ result: T; sql: string[] }> {
+  const sql: string[] = [];
+  const original = db.prepare.bind(db);
+  const spy = vi
+    .spyOn(db, "prepare")
+    .mockImplementation(
+      ((text: string) => (sql.push(text), original(text))) as typeof db.prepare
+    );
+  try {
+    return { result: await run(), sql };
+  } finally {
+    spy.mockRestore();
+  }
+}
+
+/** The statements `captureDelete` issues once a write core lets it run: its root
+ *  read, the capture insert, and the deletes. Absent means the core refused first. */
+const capturePath = (sql: string[]) =>
+  sql.filter((text) => /SELECT \*|deleted_rows|^\s*DELETE /i.test(text));
+
 function targetRow(profileId: number) {
   return db
     .prepare(
@@ -959,6 +983,64 @@ describe("substance history actions refuse another profile's row (#2072)", () =>
     expect(getSubstanceDailyTotals(intruderProfile.id, "nicotine")).toEqual([]);
     expect(getSubstanceWeekState(intruderProfile.id, "nicotine").count).toBe(0);
   });
+
+  // ONE HALF AT A TIME, because the two halves hide each other. The delete path
+  // checks the acting profile TWICE — the core's own `SELECT … AND profile_id = ?`,
+  // and again inside `captureDelete`, whose root read is profile-scoped too. That
+  // redundancy is deliberate and it is also why a regression in either half is
+  // INVISIBLE to the two tests above: drop the core's filter and `captureDelete`
+  // still refuses, drop `captureDelete`'s and the core's `SELECT` still refuses, and
+  // in both worlds the intruder gets the same `not-found` over the same untouched
+  // row. Measured by mutation: dropping either filter alone left every other test in
+  // this file green, and only removing BOTH reds them — by which point the boundary
+  // is already gone. The two cases below are what each single-filter drop reds.
+  //
+  // So this observes the core's half alone, by the one thing that does differ — WHERE
+  // the refusal happens. With the filter, the intruder's delete issues its scoped
+  // lookup and stops; without it, execution runs on into the capture. #5026 item 1
+  // made that worth pinning: DELETE is now the only door a drink has on this card.
+  it.each([
+    ["alcohol", "food_daily_totals"],
+    ["nicotine", "substance_daily_totals"],
+  ])(
+    "%s: an intruder's delete refuses AT the profile-scoped read, before any capture",
+    async (substance, table) => {
+      const owner = createLogin();
+      const ownerProfile = createProfile(`su-del-scope-${substance}`, owner.id);
+      actAs(owner, ownerProfile);
+      const added = await addSubstanceDailyTotalAction(
+        fd({ substance, date: today(ownerProfile.id), amount: "2" })
+      );
+      if (added.kind !== "added") throw new Error("entry was not added");
+
+      const intruder = createLogin();
+      const intruderProfile = createProfile(
+        `su-del-scope-int-${substance}`,
+        intruder.id
+      );
+      actAs(intruder, intruderProfile);
+      const refused = await statementsDuring(() =>
+        deleteSubstanceDailyTotalAction(fd({ id: String(added.id), substance }))
+      );
+      expect(refused.result.kind).toBe("not-found");
+      // The scoped lookup ran and answered no…
+      expect(refused.sql[0]).toContain(table);
+      expect(refused.sql[0]).toMatch(/profile_id = \?/);
+      // …and nothing past it did. A leaked statement is printed by name here, which
+      // is the whole point: `not-found` alone cannot tell the two worlds apart.
+      expect(capturePath(refused.sql)).toEqual([]);
+
+      // THE CONTROL, through the SAME collector and the SAME predicate: the owner's
+      // own delete does reach the capture, so the empty list above is a refusal that
+      // happened early and not a detector that cannot see one.
+      actAs(owner, ownerProfile);
+      const allowed = await statementsDuring(() =>
+        deleteSubstanceDailyTotalAction(fd({ id: String(added.id), substance }))
+      );
+      expect(allowed.result.kind).toBe("deleted");
+      expect(capturePath(allowed.sql).length).toBeGreaterThan(0);
+    }
+  );
 });
 
 // #1279 — the life-stage (minor) gate lives on the SURFACE (hidden nav + page
