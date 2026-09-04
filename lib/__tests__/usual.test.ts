@@ -98,5 +98,36 @@ describe("the table states what shipped", () => {
       minSamples: 1,
       centre: "mode",
     });
+    expect(USUAL_KINDS.recapSleepNight).toEqual({
+      recentCount: null,
+      windowDays: null,
+      minSamples: 3,
+      centre: "median",
+    });
+    expect(USUAL_KINDS.recapWeeklyWorkouts).toEqual({
+      recentCount: null,
+      windowDays: null,
+      minSamples: 1,
+      centre: "median",
+    });
+    expect(USUAL_KINDS.illnessDuration).toEqual({
+      recentCount: null,
+      windowDays: null,
+      minSamples: 1,
+      centre: "median",
+    });
+  });
+
+  it("names every kind the table holds, so a new one cannot arrive unstated", () => {
+    // The assertions above are per-kind, so a kind added without a line of its own
+    // would pass them all. This is the line that fails.
+    expect(Object.keys(USUAL_KINDS).sort()).toEqual([
+      "eventPhysiology",
+      "illnessDuration",
+      "practiceDuration",
+      "recapSleepNight",
+      "recapWeeklyWorkouts",
+      "sleepClock",
+    ]);
   });
 });
