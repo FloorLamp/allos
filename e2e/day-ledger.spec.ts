@@ -35,7 +35,7 @@ const SKIP_REASON = "felt queasy";
 // BUNDLE is what makes two rows one write — the ledger keys the collapse on the
 // recorded composed action, never on the bucket and no longer on the shared minute.
 //
-// SIXTEEN HEX CHARACTERS, because that is what `newDoseBundle` mints and what the
+// SIXTEEN HEX CHARACTERS, because that is what `newBundle` mints and what the
 // collapse key's comment relies on being true of every bundle in production. Nothing in
 // the schema enforces the width, so a seed writing a wider value would be this file
 // quietly contradicting the invariant it exists to demonstrate. Low-entropy on purpose.

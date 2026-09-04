@@ -6,7 +6,7 @@ import {
 } from "@/lib/auth";
 import { gateItemProfile } from "../gate-item";
 import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
-import { newDoseBundle } from "@/lib/dose-bundle";
+import { newBundle } from "@/lib/bundle";
 import { requireScope } from "@/lib/scope";
 
 import { revalidateRoute } from "@/lib/revalidate";
@@ -1452,7 +1452,7 @@ export async function resolveDayDoses(
   // rows it writes ARE one composed action and say so, rather than leaving the reader
   // to infer it from the minute they happened to land in. Only the taken arm carries
   // one — a skip is its own statement and never joins a collapsed row.
-  const bundleId = newDoseBundle();
+  const bundleId = newBundle();
   const doses = pendingDayDoses(profileId, date)
     .filter((dose) => named.has(dose.doseId))
     .map((dose) => ({
