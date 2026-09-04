@@ -7,6 +7,8 @@ import type { TemperatureUnit } from "@/lib/settings";
 import DateField from "@/components/DateField";
 import { CockpitDayProvider } from "@/components/illness/CockpitDayContext";
 import type { ReactNode } from "react";
+import type { PrnMedForQuickLog } from "@/lib/queries";
+import type { IntakeFormContext } from "@/lib/intake-form-context";
 
 // In-place symptom + temperature logging on the episode page (issue #856 item 11). This
 // mounts the SAME SymptomLogBar the dashboard card uses — ZERO forked logging logic (the
@@ -41,6 +43,9 @@ export default function EpisodeLogPanel({
   rangeEnd,
   profileId,
   photoControl,
+  antipyreticMeds,
+  intakeContext,
+  nowIso,
 }: {
   episodeId: number;
   ongoing: boolean;
@@ -63,6 +68,13 @@ export default function EpisodeLogPanel({
   // caregiver logs a household member's symptoms/temperature from THEIR episode page
   // without switching. Absent on the acting profile's own page.
   profileId?: number;
+  // THE FOLD'S DOSE OFFER (#4712, owner ruling 2026-09-04 11:20 UTC part 2), passed
+  // straight through to the bar. The page's own Meds section yields while the offer
+  // is live (its `yieldsTo` prop there), which is what makes offering the antipyretic
+  // here a second PLACE for one chip rather than a second COPY of it.
+  antipyreticMeds?: PrnMedForQuickLog[];
+  intakeContext?: IntakeFormContext;
+  nowIso?: string;
 }) {
   const router = useRouter();
 
@@ -134,12 +146,9 @@ export default function EpisodeLogPanel({
           profileId={profileId}
           showTitle={false}
           analysisHref={profileId == null ? "/trends/symptoms" : undefined}
-          // NO DOSE OFFER ON THIS MOUNT (#4712 judgement 1, corrected). This page's
-          // own Meds section (below, in page.tsx) renders whenever it has PRNs to
-          // show — which is every time the fold's dose offer would too — so feeding
-          // the offer real meds data here would duplicate a chip the persistent
-          // section already renders. The offer stays episode-only here.
-          //
+          antipyreticMeds={antipyreticMeds}
+          intakeContext={intakeContext}
+          nowIso={nowIso}
           // ONGOING IS THE ANSWER for the episode half, not the id this bar omits
           // above (established newest-open default association): viewing the open
           // episode itself IS having one; a closed/backfilled episode is not.
