@@ -30,7 +30,6 @@ import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { lastNDates, shiftDateStr, weekdayOfDateStr } from "@/lib/date";
 import {
-  getTimezone,
   setTimezone,
   setWeekMode,
   setWeekStart,
@@ -221,12 +220,9 @@ function everySurfaceOn(
   date: string,
   itemName: string
 ): Record<string, unknown> {
-  const recapDay = gatherRecapInput(
-    profileId,
-    "kg",
-    "week",
-    false
-  ).adherenceDays.find((d) => d.date === date);
+  const recapDay = (
+    gatherRecapInput(profileId, "kg", "week", false).adherenceDays ?? []
+  ).find((d) => d.date === date);
   return {
     reminderRebuild: collectWindowDoses(profileId, "Morning", date).map(
       (e) => e.item.name
