@@ -20,6 +20,8 @@ import {
 } from "@/lib/document-tombstones";
 import { parseOverrideChoices } from "@/lib/import-review/conflicts";
 import { mergeBodyMetric } from "@/lib/body-metric-extract";
+import { deleteMetricRow } from "@/lib/metric-readings";
+import { getOverlappingSleepSessions } from "@/lib/queries/sleep";
 import type { PairDecision } from "@/lib/import-review/detect";
 import { formError, formOk, type FormResult } from "@/lib/types";
 import {
@@ -464,4 +466,62 @@ export async function allowDocumentReacquisition(
     status: "done",
     message: "Allowed — portal sync can bring this document back again.",
   };
+}
+
+/**
+ * KEEP THIS ONE, on a listed overlapping sleep pair (#5021, deferred from #3628's
+ * decision 5).
+ *
+ * The pair is a night stored twice, and the person is the only one who knows which copy
+ * is real — the ingest collapse already tried and could not settle it from the device's
+ * own heart rate. Review could only say "Delete the wrong one" and point at Manage data,
+ * which is a correct instruction and a bad door: it makes someone leave the page that
+ * found the problem and identify the row again by hand.
+ *
+ * NOT A SECOND MECHANISM. Keeping one row is deleting the other, so this is
+ * `deleteMetricRow` — the one per-reading delete (#2032), with the re-import tombstone
+ * that stops the dropped copy landing again (#507/#508) and the undo capture behind the
+ * same toast every other delete offers. There is no decision table and nothing stored:
+ * the pair stops being listed because a row is gone, which is exactly what
+ * `getOverlappingSleepSessions` already documents about itself.
+ *
+ * THE PAIR IS RE-DERIVED, not trusted. Both ids are posted, and "a sleep_min row of this
+ * profile" would let a crafted post drop a night that Review never listed — a delete the
+ * person never saw an offer for. So the two ids must be one of the pairs this profile's
+ * Review is listing right now, which is also what makes a stale tab a no-op rather than
+ * a surprise.
+ */
+export async function keepSleepSession(
+  formData: FormData
+): Promise<{ undoId: number | null; error?: string }> {
+  const { profile } = await requireWriteAccess();
+  const keepId = Number(formData.get("keep_id"));
+  const dropId = Number(formData.get("drop_id"));
+  if (
+    !Number.isInteger(keepId) ||
+    !Number.isInteger(dropId) ||
+    keepId <= 0 ||
+    dropId <= 0 ||
+    keepId === dropId
+  ) {
+    return { undoId: null, error: "That pair is no longer listed." };
+  }
+  const listed = getOverlappingSleepSessions(profile.id).some(
+    (pair) =>
+      pair.sessions.some((s) => s.id === keepId) &&
+      pair.sessions.some((s) => s.id === dropId)
+  );
+  if (!listed) return { undoId: null, error: "That pair is no longer listed." };
+
+  const outcome = deleteMetricRow(profile.id, {
+    store: "metric_samples",
+    id: dropId,
+    metric: "sleep_min",
+  });
+  if (!outcome.ok) return { undoId: null, error: "That pair is no longer listed." };
+  revalidateRoute("/data");
+  revalidateRoute("/sleep");
+  revalidateRoute("/trends");
+  revalidateRoute("/");
+  return { undoId: outcome.undoId };
 }

@@ -51,6 +51,23 @@ export function sleepClockSkewSignalKey(firstWakeDay: string): string {
 export const SLEEP_SKEW_HEDGE =
   "These times disagree with your heart rate — the source clock may be off.";
 
+// The second line, beneath the hedge: WHEN the body settled, as information (#5021's
+// owner ruling, 2026-09-04).
+//
+// It is deliberately not a bedtime and does not read like one. `troughStart` is where
+// the heart rate reached its lowest comparable window, which is sleep ONSET — a person
+// who lay awake first did not go to bed then, and "your bedtime was 03:00" would be a
+// claim this module has no way to make. Saying what was measured, and leaving the
+// inference to the person, is the same discipline as the hedge above it: #4299 ruled
+// that a silent 6-hour rewrite is a bigger lie than the one it fixes, and a
+// confidently-worded wrong bedtime is that lie in one sentence.
+//
+// Takes the clock already formatted, because the zone in force at that instant and the
+// login's 12h/24h preference are both the surface's to resolve — this module is pure.
+export function sleepSkewSettledLine(clock: string): string {
+  return `Your heart rate settled around ${clock}.`;
+}
+
 // One per-minute HR bucket as stored: `ts` is a canonical UTC instant (hr_minutes.ts
 // has been an absolute instant since migration 164 — docs/internals/time-columns.md),
 // `bpm` the count-weighted average.
@@ -77,7 +94,21 @@ export interface SleepClockSkew {
   claimedBpm: number;
   /** Median bpm over the best comparable window elsewhere in the surrounding day. */
   troughBpm: number;
-  /** That window's start instant — the "four hours earlier" the copy can name. */
+  /**
+   * Where the body actually settled: the start of the lowest-median window of the
+   * session's own width anywhere in the surrounding day, overlap with the claim
+   * ALLOWED (#5021).
+   *
+   * Not the same window as `troughBpm`, and deliberately so. `troughBpm` is the
+   * comparison the verdict rests on and excludes anything overlapping the claim; this
+   * is the instant a sentence may quote, and excluding the overlap would displace it
+   * whenever the clock error is shorter than the session — by three hours on a measured
+   * 420-minute night.
+   *
+   * It is INFORMATION, never a bedtime: "your heart rate settled around 03:00" is true
+   * of sleep onset, and a person who lay awake first did not go to bed then (#5021's
+   * owner ruling, 2026-09-04).
+   */
   troughStart: string;
   /**
    * The awake-level run inside the claim, when the RUN reading below is what caught
@@ -346,30 +377,69 @@ export function detectSleepClockSkew(
   }
   if (comparable == null) return null;
 
-  const evidence = {
+  // Reading one: the bulk of the claim sits above a comparable trough.
+  const bulkReadsAwake =
+    claimed.median - comparable.low.median >= MIN_MEDIAN_BPM_GAP;
+  // Reading two: the claim holds an awake-level run no single night could hold awake.
+  const run = bulkReadsAwake
+    ? null
+    : awakeRunInside(
+        samples,
+        start,
+        end,
+        comparable.awakeMedian,
+        claimed.median
+      );
+  // Neither reading spoke, which is the answer for every ordinary night.
+  if (!bulkReadsAwake && run == null) return null;
+
+  // ── WHAT THE COPY MAY NAME, once the finding exists (#5021) ──────────────
+  //
+  // The comparison above excludes every window overlapping the claim, which is right
+  // for the DECISION — an overlapping window is partly the claim, so ranking against it
+  // would compare a thing with itself. It is wrong for the REPORT. When the clock error
+  // is shorter than the session, the real trough overlaps the claim and is excluded, so
+  // `comparable.low.at` is the lowest window that does not touch it — necessarily
+  // displaced away from the onset. Measured on a 420-minute night with a 240-minute
+  // shift, that landed **three hours** before the real onset, 43% of a session width;
+  // on a shift LONGER than the night it is exact, because then the trough does not
+  // overlap at all.
+  //
+  // So the reported instant is re-derived over the same radius with overlap allowed.
+  // Nothing about either verdict moves: `comparable.low` still decides reading one and
+  // still anchors reading two's awake level, with the same rules and the same
+  // threshold. This only chooses which instant the sentence quotes — and BOTH readings
+  // quote it, because a partial shift is exactly the case that displaces it furthest.
+  //
+  // PAID ONLY BY A NIGHT THAT ALREADY FLAGGED, which is why it sits below both
+  // readings rather than inside the scan: the excluded windows are skipped before
+  // `windowStats` up there, so scanning them costs `median` calls — the cost #5035
+  // measures — and a night that says nothing pays none of it.
+  let settled = comparable.low;
+  for (
+    let from = start - SEARCH_RADIUS_MS;
+    from <= start + SEARCH_RADIUS_MS;
+    from += SEARCH_STEP_MS
+  ) {
+    const stats = windowStats(samples, from, from + width);
+    if (stats == null) continue;
+    if (
+      stats.median < settled.median ||
+      (stats.median === settled.median && stats.mean < settled.mean)
+    ) {
+      settled = { ...stats, at: from };
+    }
+  }
+
+  return {
     start: session.start,
     end: session.end,
     claimedBpm: claimed.median,
     troughBpm: comparable.low.median,
-    troughStart: utcInstant(new Date(comparable.low.at)),
-  };
-
-  // Reading one: the bulk of the claim sits above a comparable trough.
-  if (claimed.median - comparable.low.median >= MIN_MEDIAN_BPM_GAP) {
-    return { ...evidence, awakeRun: null };
-  }
-
-  // Reading two: the claim holds an awake-level run no single night could hold awake.
-  const run = awakeRunInside(
-    samples,
-    start,
-    end,
-    comparable.awakeMedian,
-    claimed.median
-  );
-  if (run == null) return null;
-  return {
-    ...evidence,
-    awakeRun: { bpm: run.median, start: utcInstant(new Date(run.at)) },
+    troughStart: utcInstant(new Date(settled.at)),
+    awakeRun:
+      run == null
+        ? null
+        : { bpm: run.median, start: utcInstant(new Date(run.at)) },
   };
 }
