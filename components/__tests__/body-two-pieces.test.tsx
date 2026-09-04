@@ -135,8 +135,11 @@ describe("one form, one field set (#4424 ruling 1)", () => {
       expect(minor).toContain(label);
     }
     // The adult form is untouched by this ruling: the count the corrected manifest
-    // cell and the form's own header state.
-    expect(adult).toHaveLength(17);
+    // cell and the form's own header state. Eighteen, not seventeen, since #4976 —
+    // the bed/wake pair draws its own two labels ("Bed time" / "Wake time") instead
+    // of the one shared "Bed & wake" the outer Field used to draw, so one FIELD now
+    // renders as two labeled boxes.
+    expect(adult).toHaveLength(18);
   });
 
   // ONE LAYOUT, DIFFERING ONLY IN SEED (#4424 ruling 1's line-budget guard). For this

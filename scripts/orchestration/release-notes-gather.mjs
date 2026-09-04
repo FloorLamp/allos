@@ -64,7 +64,13 @@ if (!/^\d{4}-\d{2}-\d{2}$/.test(since ?? "")) {
 const INTERNAL_GUESS = [
   /^(test|chore|docs|ci|build)\b/i,
   /^Runbook\b/i,
+  // The batch's own squash, in BOTH subjects main's history now carries:
+  // `Release notes: the 2026-09-03 batch, …` merged before #4983's title
+  // rule, `Add the release notes for 2026-09-03` after it. Anchored on
+  // purpose — a bare /release notes/ would swallow a genuinely user-visible
+  // PR about the in-app notes surface (lib/release-notes.ts, /whats-new).
   /^Release notes\b/i,
+  /^Add (the )?release notes\b/i,
   /^Bump /,
   /\b(runbook|orchestrat|e2e|flake|shard|worktree|dispatch)\b/i,
   /\b(merge-gate|watermark|reconcil\w*|taxonomy|brevity|catch-up digest)\b/i,
