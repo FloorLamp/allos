@@ -1,4 +1,5 @@
 import { DEFAULT_WAKE_MINUTES } from "./dashboard-relevance";
+import { arrivalWait } from "./arrival-wait";
 
 // The morning waiting window (issue #2097) — ONE pure decision, consumed by the
 // dashboard sleep presentation, the /sleep hero and the Now strip, so the three cannot disagree
@@ -70,12 +71,12 @@ export const ARRIVAL_GRACE_MIN = 30;
 // the answer stops being "waiting" whatever the measured lag says.
 export const MAX_WAITING_WINDOW_MIN = 180;
 
-// How many mornings of measured arrival lag before the ETA may be quoted.
-// `integration_sync_rows` retention reaches back ~12 days on the measured instance,
-// so the arrival sample is often thinner than the 14 nights `typicalWakeTime`
-// demands — under the gate the copy degrades to the plain wording rather than
-// quoting a median built on three mornings.
-export const MIN_ARRIVAL_SAMPLES = 5;
+// How many mornings of measured arrival lag before the ETA may be quoted. It moved to
+// lib/arrival-wait.ts with the model (#5001) — it is the MEASUREMENT's gate rather
+// than sleep's, and the invariant is one measurement per source and row kind with no
+// consumer keeping its own. Re-exported so every reader that already asks this module
+// still gets an answer here.
+export { MIN_ARRIVAL_SAMPLES } from "./arrival-wait";
 
 // ── the tracking predicate: CONSUMED, not re-derived ────────────────────────
 //
@@ -158,14 +159,25 @@ export function sleepWaitingState(
     };
   }
 
-  const window = Math.min(
-    (s.arrivalLagMin ?? DEFAULT_ARRIVAL_LAG_MIN) + ARRIVAL_GRACE_MIN,
-    MAX_WAITING_WINDOW_MIN
-  );
-  if (s.minutesOfDay <= wake + window) {
+  // The arrival half is the SHARED model now (#5001): the four constants above stay
+  // here as sleep's own parameters, and the window arithmetic they feed is one
+  // computation the practice bound reads too. `elapsedMin` is minutes since the wake
+  // anchor, which is this surface's origin; the `ready` arm cannot be reached, because
+  // the clock branch above already returned for every minute before that anchor.
+  const arrival = arrivalWait({
+    measuredLagMin: s.arrivalLagMin,
+    defaultLagMin: DEFAULT_ARRIVAL_LAG_MIN,
+    graceMin: ARRIVAL_GRACE_MIN,
+    maxMin: MAX_WAITING_WINDOW_MIN,
+    elapsedMin: s.minutesOfDay - wake,
+  });
+  if (arrival.kind !== "overdue") {
     return {
       kind: "waiting",
       headline: "Waiting for last night's sleep",
+      // A CLOCK, not a duration: the model answers in minutes after the origin, and
+      // the origin here is the wake anchor. The modulo is the day rollover a late
+      // arrival crosses.
       etaMinutes: eta,
       lastCheckedAt: null,
     };

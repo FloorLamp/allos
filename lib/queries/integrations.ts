@@ -4,6 +4,9 @@ import { tickCached } from "@/lib/tick-cache";
 import { toUtcInstant, utcInstant } from "@/lib/date";
 import { instantNow } from "@/lib/clock";
 import { getTimezone } from "@/lib/settings";
+import { zonedWallTimeToUtc } from "@/lib/date";
+import { activityWindow } from "@/lib/training-zones";
+import { arrivalLagMedian, ARRIVAL_LAG_MAX_MIN } from "@/lib/arrival-wait";
 import type {
   IntegrationId,
   IntegrationKind,
@@ -1300,4 +1303,126 @@ export function getSyncRowProvenance(
     });
   }
   return out;
+}
+
+// ── HOW LONG AFTER AN EVENT ITS ROW ACTUALLY LANDS (#5001) ───────────────────
+//
+// The one arrival measurement, extracted from `getSleepArrivalLagMinutes` where it
+// was a sleep-shaped private (#2097). Nothing in it was about sleep: it joins each
+// INSERTED row to the sync-row provenance that wrote it (#1333) and takes the median
+// gap between the event's own end and the moment the row arrived. Swap the table and
+// the filter and it is the lag of any source for any row kind, which is what the
+// practice bound and the recap's provisional line both need.
+//
+// `inserted` only, and implausible gaps dropped — see ARRIVAL_LAG_MAX_MIN. Null under
+// the sample gate, which is what stops a consumer quoting a median built on three
+// arrivals.
+//
+// TWO TABLES, because the two carry their event instant differently and neither may
+// be faked. `metric_samples` stores a canonical UTC `ended_at`, so the gap is SQL
+// arithmetic. `activities` stores a profile-local day plus a wall clock, so its end
+// is resolved through the profile's zone in JS — `julianday()` over a local string
+// would silently measure the offset as lag.
+export interface ArrivalLagQuery {
+  /** Which table the arriving rows land in. */
+  targetTable: "metric_samples" | "activities";
+  /**
+   * Narrow to ONE integration, by `integration_sync_events.source_id`. Omitted
+   * measures every source that writes this row kind, which is what the sleep tile
+   * has always done — a two-source profile is waiting for whichever pushes first.
+   */
+  sourceId?: string;
+  /** Narrow `metric_samples` to one metric. Meaningless for activities. */
+  metric?: string;
+  /** How many of the newest arrivals the median is taken over. */
+  limit?: number;
+}
+
+const ARRIVAL_SAMPLE_LIMIT = 28;
+
+function sampleArrivalLags(profileId: number, q: ArrivalLagQuery): number[] {
+  const rows = db
+    .prepare(
+      `SELECT (julianday(r.created_at) - julianday(s.ended_at)) * 1440 AS lag
+         FROM integration_sync_rows r
+         JOIN integration_sync_events e ON e.id = r.event_id
+         JOIN metric_samples s ON s.id = r.target_id
+        WHERE e.profile_id = ? AND s.profile_id = ?
+          AND r.target_table = 'metric_samples'
+          AND r.disposition = 'inserted'
+          AND (? IS NULL OR e.source_id = ?)
+          AND (? IS NULL OR s.metric = ?)
+        ORDER BY r.created_at DESC, r.id DESC
+        LIMIT ?`
+    )
+    .all(
+      profileId,
+      profileId,
+      q.sourceId ?? null,
+      q.sourceId ?? null,
+      q.metric ?? null,
+      q.metric ?? null,
+      (q.limit ?? ARRIVAL_SAMPLE_LIMIT) * 4
+    ) as { lag: number | null }[];
+  return rows.map((r) => r.lag).filter((v): v is number => v != null);
+}
+
+function activityArrivalLags(profileId: number, q: ArrivalLagQuery): number[] {
+  const tz = getTimezone(profileId);
+  const rows = db
+    .prepare(
+      `SELECT r.created_at, a.date, a.start_time, a.end_time, a.duration_min
+         FROM integration_sync_rows r
+         JOIN integration_sync_events e ON e.id = r.event_id
+         JOIN activities a ON a.id = r.target_id
+        WHERE e.profile_id = ? AND a.profile_id = ?
+          AND r.target_table = 'activities'
+          AND r.disposition = 'inserted'
+          AND (? IS NULL OR e.source_id = ?)
+        ORDER BY r.created_at DESC, r.id DESC
+        LIMIT ?`
+    )
+    .all(
+      profileId,
+      profileId,
+      q.sourceId ?? null,
+      q.sourceId ?? null,
+      (q.limit ?? ARRIVAL_SAMPLE_LIMIT) * 4
+    ) as {
+    created_at: string;
+    date: string;
+    start_time: string | null;
+    end_time: string | null;
+    duration_min: number | null;
+  }[];
+  const lags: number[] = [];
+  for (const row of rows) {
+    // An activity with no bounded window states no end, and an arrival measured from
+    // a day rather than a moment is not the same quantity.
+    const window = activityWindow(row);
+    if (!window) continue;
+    const [endDay, endClock] = window.end.split("T");
+    const endAt = zonedWallTimeToUtc(tz, endDay, endClock);
+    const arrivedAt = Date.parse(
+      toUtcInstant(row.created_at) ?? row.created_at
+    );
+    if (!endAt || !Number.isFinite(arrivedAt)) continue;
+    lags.push((arrivedAt - endAt.getTime()) / 60_000);
+  }
+  return lags;
+}
+
+export function getArrivalLagMinutes(
+  profileId: number,
+  q: ArrivalLagQuery
+): number | null {
+  const raw =
+    q.targetTable === "activities"
+      ? activityArrivalLags(profileId, q)
+      : sampleArrivalLags(profileId, q);
+  return arrivalLagMedian(
+    raw
+      .filter((v) => v >= 0 && v <= ARRIVAL_LAG_MAX_MIN)
+      .slice(0, q.limit ?? ARRIVAL_SAMPLE_LIMIT)
+  );
 }
