@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   cockpitRecoveryFraction,
   deriveFeverSeries,
+  derivedFeverPeakDay,
   cockpitRecoveryHeadline,
   cockpitSummaryLine,
   doseLaneRoster,
@@ -531,6 +532,82 @@ describe("deriveFeverSeries", () => {
   it("every flagged date stated yields nothing at all, not a fallback row", () => {
     const readings = [reading("2026-06-01", "08:00", 103.4, "high", 1)];
     expect(deriveFeverSeries(readings, new Set(["2026-06-01"]))).toBeNull();
+  });
+
+  // THE EPISODE'S WORST DAY is what the summary's leading row states (#4712 ruling
+  // 2026-09-04 11:20 UTC part 1), so it has to be the same reading the card's own
+  // "Peak temp" figure comes from — not the first day, and not the last one.
+  it.each([
+    {
+      name: "the hottest day wins, wherever it falls in the episode",
+      days: [
+        ["2026-06-01", 100.1],
+        ["2026-06-02", 104.0],
+        ["2026-06-03", 101.2],
+      ],
+      expected: ["2026-06-02", 104.0],
+    },
+    {
+      name: "a tie keeps the EARLIER day",
+      days: [
+        ["2026-06-01", 102.0],
+        ["2026-06-02", 102.0],
+      ],
+      expected: ["2026-06-01", 102.0],
+    },
+  ])("derivedFeverPeakDay: $name", ({ days, expected }) => {
+    const series = deriveFeverSeries(
+      days.map(([date, degF], i) =>
+        reading(String(date), "08:00", Number(degF), "high", i + 1)
+      )
+    );
+    const peak = derivedFeverPeakDay(series!);
+    expect([peak!.date, peak!.peakDegF]).toEqual(expected);
+  });
+});
+
+// NO SEVERITY EDITOR IS REACHABLE FROM THE DERIVED ROW (#4712 item 4's ruling, and
+// the placement ruling's "rendered as a reading (no severity control)"). The ledger's
+// symptom event is what the episode timeline turns into an editable severity row, so
+// the derived arm contributing none of them is that guarantee at the model tier —
+// and the converse is asserted in the same case, because a builder that emitted NO
+// symptom events at all would satisfy the absence just as well.
+describe("illnessTimelineEvents and the derived fever row (#4712)", () => {
+  const episodeWith = (symptoms: AssembledEpisode["symptoms"]) =>
+    ({
+      situation: "Illness",
+      start: "2026-06-01",
+      end: null,
+      ongoing: true,
+      firstDay: "2026-06-01",
+      lastActiveDay: "2026-06-01",
+      asOf: "2026-06-01",
+      dayCount: 1,
+      symptoms,
+      distinctSymptomCount: symptoms.length,
+      temperatures: [],
+      maxTempF: null,
+      latestTemp: null,
+      medications: [],
+      totalAdministrations: 0,
+      conditions: [],
+      notes: [],
+    }) satisfies AssembledEpisode;
+
+  it("emits a symptom event for the stated row and none for the derived one", () => {
+    const derived = deriveFeverSeries([
+      { id: 5, date: "2026-06-01", time: "19:10", degF: 103.4, flag: "high" },
+    ])!;
+    const stated = {
+      source: "logged" as const,
+      symptom: "cough",
+      label: "Cough",
+      points: [{ date: "2026-06-01", severity: 3, note: null }],
+      maxSeverity: 3,
+    };
+    const events = illnessTimelineEvents(episodeWith([stated, derived]));
+    const symptomEvents = events.filter((e) => e.kind === "symptom");
+    expect(symptomEvents.map((e) => e.label)).toEqual(["Cough"]);
   });
 });
 
