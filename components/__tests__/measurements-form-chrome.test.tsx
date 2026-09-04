@@ -61,7 +61,18 @@ it.each(["card", "modal"] as const)(
     // The pair, against a neighbour in the same group. Asserted as the DIFFERENCE
     // between two real cells: "the BP cell spans two" is also true of a form that
     // spanned every cell, which would be a one-column grid wearing a span.
-    expect(cellOf("#m-systolic").className).toContain("col-span-2");
+    //
+    // AND THE SPAN MUST BE CONTAINER-GATED. An UNGATED `col-span-2` is the defect
+    // measured at 320px in e2e/measurements-form-layout.spec.ts — `auto-fit` counts
+    // one column, the span invents a second sized from content, and the next field
+    // lands in an 82px track. The bare spelling is what that regression looks like
+    // in the markup, so it is named here rather than only caught by geometry.
+    expect(cellOf("#m-systolic").className).toContain(
+      "@min-[21.75rem]:col-span-2"
+    );
+    expect(cellOf("#m-systolic").className).not.toMatch(
+      /(^|\s)col-span-2(\s|$)/
+    );
     expect(cellOf("#m-diastolic")).toBe(cellOf("#m-systolic"));
     expect(cellOf("#m-resting-hr").className).not.toContain("col-span");
   }

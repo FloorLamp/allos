@@ -919,12 +919,17 @@ export default function MeasurementsQuickAdd({
     // and a slash. Adjacency used to be an ordering convention against a grid that
     // reflows freely; here it is structural.
     //
-    // AND IT IS THE ONE CELL THAT HOLDS TWO CONTROLS, so it takes two tracks
+    // AND IT HOLDS TWO CONTROLS, so it takes two tracks WHERE THERE ARE TWO
     // (#4977 item 2). A track is sized for one input; splitting one between two of
     // them plus a slash and a unit left each under the length of its own
     // placeholder, which then truncated mid-word — the field said "Sy" and "Dia"
     // where it means systolic and diastolic. Two tracks give each input a track's
-    // room at every host width, and the placeholders can say the words.
+    // room, and the placeholders can say the words.
+    //
+    // The `sleepWindow` cell above spans two tracks UNCONDITIONALLY (#4991), which
+    // is the same idea one gate short — at a one-column width it invents the narrow
+    // implicit track described on GRID_CLASS. It is left alone here: the Bed & wake
+    // pair is #4976's surface and out of this issue's scope.
     bloodPressure: (
       <Field
         key="blood-pressure"
@@ -1342,8 +1347,19 @@ export default function MeasurementsQuickAdd({
 // INTRINSIC columns (#2014): sized by the CONTAINER, not by the window, because
 // this one form is mounted in hosts ~400px, ~912px and a page column wide. Picking
 // a better breakpoint value only moves which host is wrong.
+//
+// `@container` IS PART OF THE SAME RULE, and it is what makes a two-track cell safe
+// (#4977 item 2). `auto-fit` counts its columns from the container and IGNORES
+// spans, so where only ONE column fits, a cell asking for two makes the grid invent
+// a second — an implicit track, sized `auto` from that cell's content. Measured at a
+// 320px viewport that produced `168px 82px`: a real column beside an invented 82px
+// one, and the next single-control field landed in the 82px. So a span is gated on
+// the CONTAINER having room for a second real column (21.75rem = two 10.5rem tracks
+// and the 0.75rem gap — the same arithmetic `auto-fit` itself does), which is the
+// #2014 rule applied to spans rather than an exception to it. A viewport query here
+// would be the defect above coming back.
 const GRID_CLASS =
-  "grid gap-3 grid-cols-[repeat(auto-fit,minmax(10.5rem,1fr))]";
+  "grid gap-3 @container grid-cols-[repeat(auto-fit,minmax(10.5rem,1fr))]";
 
 function Field({
   label,
@@ -1355,14 +1371,19 @@ function Field({
   htmlFor: string;
   children: ReactNode;
   // How many of the grid's tracks this field's cell takes. One, unless the cell
-  // holds more than one control (#4977 item 2). Safe against the intrinsic grid at
-  // every width: measured in Chromium, a `span 2` in a container narrow enough to
-  // fit a SINGLE `auto-fit` track adds an implicit track that resolves to 0px, so
-  // the cell is exactly the container width and nothing escapes it.
+  // holds more than one control (#4977 item 2). Two is a CEILING, not a promise:
+  // the span is container-gated (see GRID_CLASS), so where the grid has only one
+  // real column the cell takes that column and the row is unchanged from a
+  // single-track field's. Measured across five viewports in
+  // e2e/measurements-form-layout.spec.ts.
   tracks?: 1 | 2;
 }) {
   return (
-    <div className={tracks === 2 ? "col-span-2 min-w-0" : "min-w-0"}>
+    <div
+      className={
+        tracks === 2 ? "@min-[21.75rem]:col-span-2 min-w-0" : "min-w-0"
+      }
+    >
       <label className="label" htmlFor={htmlFor}>
         {label}
       </label>

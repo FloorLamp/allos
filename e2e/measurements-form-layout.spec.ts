@@ -432,7 +432,26 @@ test("a stated time the gate refuses costs the time, not the reading — and SAY
 // same grid fills four-up in the Trends modal. The fix is a declared bucket on the
 // host, so these assertions are about the DECLARATION and the TRACKS it produces —
 // never about a class on the grid, which is the thing #2014 exists to keep out.
-const BUCKET_PX = { sm: 448, md: 672, lg: 896 } as const;
+//
+// WIDTH COMES FROM THE VIEWPORT, NEVER FROM A FORGED PANEL. A declared bucket is a
+// CAP applied from the `sm` breakpoint up (OVERLAY_PANEL_MAX_WIDTH), so a `lg`
+// panel is 896px wide only once the window has 896px to give it and is the window's
+// own width below that. Narrowing the window is therefore the honest way to put
+// this form in a narrow box, and every width below is one a real device has.
+//
+// THE `sm` (448px) AND `md` (672px) CAPS ARE NOT READINGS THIS HOST CAN PRODUCE,
+// and they are deliberately absent rather than forged: this sheet declares `lg`, so
+// a panel capped at 448 exists nowhere in the app and a test pinning one would red
+// on a configuration nobody could go and look at. What the four widths below DO
+// vary — and what the pair actually has to survive — is the COLUMN COUNT the
+// intrinsic grid resolves to, from one track up to four.
+const HOST_WIDTHS = [
+  { label: "small phone", width: 320 },
+  { label: "phone", width: 390 },
+  { label: "large phone", width: 430 },
+  { label: "tablet portrait", width: 768 },
+  { label: "laptop", width: 1280 },
+] as const;
 
 /** The sheet panel that carries the declared size — the box the grid measures. */
 function quickEntryPanel(page: Page): Locator {
@@ -481,7 +500,7 @@ test("the quick-entry sheet declares `lg` for measurements and leaves its siblin
   await expect(quickEntryPanel(page)).toHaveAttribute("data-size", "sm");
 });
 
-test("blood pressure gets two tracks, so both inputs clear their own placeholders at every bucket (#4977 item 2)", async ({
+test("blood pressure gets two tracks, so both inputs clear their own placeholders at every width a device has (#4977 item 2)", async ({
   page,
 }) => {
   await page.goto("/?quick=log-measurements");
@@ -490,79 +509,130 @@ test("blood pressure gets two tracks, so both inputs clear their own placeholder
   await expect(form).toBeVisible();
   await openMeasurementGroup(page, form, "vitals");
 
-  const panel = quickEntryPanel(page);
-  try {
-    for (const [bucket, px] of Object.entries(BUCKET_PX)) {
-      // The panel's own width is the ONLY variable moved: the three buckets are
-      // three numbers on one host, which is what "at every host width" means for a
-      // form whose grid reads its container.
-      await panel.evaluate((node, width) => {
-        (node as HTMLElement).style.maxWidth = `${width}px`;
-      }, px);
+  const seen: string[] = [];
+  for (const { label, width } of HOST_WIDTHS) {
+    await page.setViewportSize({ width, height: 900 });
+    // Re-read the panel after the resize rather than measuring across it: the
+    // reading below has to describe one laid-out instant, not two.
+    await expect(quickEntryPanel(page)).toBeVisible();
 
-      const reading = await form.evaluate((root) => {
-        const measure = (input: HTMLInputElement) => {
-          const cs = getComputedStyle(input);
-          // The placeholder's own painted width, taken in the input's own type —
-          // an empty input's scrollWidth equals its clientWidth whatever the
-          // placeholder says, so the obvious reading is silent about the defect.
-          const probe = document.createElement("span");
-          probe.style.cssText = `position:absolute;visibility:hidden;white-space:pre;font-family:${cs.fontFamily};font-size:${cs.fontSize};font-weight:${cs.fontWeight};font-style:${cs.fontStyle};letter-spacing:${cs.letterSpacing}`;
-          probe.textContent = input.placeholder;
-          document.body.append(probe);
-          const needs = probe.getBoundingClientRect().width;
-          probe.remove();
-          return {
-            placeholder: input.placeholder,
-            needs: Math.round(needs),
-            room: Math.round(
-              input.clientWidth -
-                parseFloat(cs.paddingLeft) -
-                parseFloat(cs.paddingRight)
-            ),
-          };
-        };
-        const cell = root
-          .querySelector<HTMLElement>("#m-systolic")!
-          .closest("div.min-w-0")!;
-        const neighbour = root
-          .querySelector<HTMLElement>("#m-resting-hr")!
-          .closest("div.min-w-0")!;
+    const reading = await form.evaluate((root) => {
+      const measure = (input: HTMLInputElement) => {
+        const cs = getComputedStyle(input);
+        // THE PLACEHOLDER'S OWN PAINTED WIDTH, in the input's own font. The
+        // obvious reading — `scrollWidth <= clientWidth` on the input — is
+        // VACUOUS: an empty input's scrollWidth equals its clientWidth whatever
+        // the placeholder says, so it is true on the truncating tree too. Nor can
+        // the usual workaround be used here (assigning the placeholder as a value
+        // and re-reading), because these are `type="number"` inputs and the
+        // browser rejects a text value outright. So the text is measured beside
+        // the input instead, and compared to the room the input actually has.
+        const probe = document.createElement("span");
+        probe.style.cssText = `position:absolute;visibility:hidden;white-space:pre;font-family:${cs.fontFamily};font-size:${cs.fontSize};font-weight:${cs.fontWeight};font-style:${cs.fontStyle};letter-spacing:${cs.letterSpacing}`;
+        probe.textContent = input.placeholder;
+        document.body.append(probe);
+        const needs = probe.getBoundingClientRect().width;
+        probe.remove();
         return {
-          systolic: measure(
-            root.querySelector<HTMLInputElement>("#m-systolic")!
+          placeholder: input.placeholder,
+          needs: Math.round(needs),
+          room: Math.round(
+            input.clientWidth -
+              parseFloat(cs.paddingLeft) -
+              parseFloat(cs.paddingRight)
           ),
-          diastolic: measure(
-            root.querySelector<HTMLInputElement>("#m-diastolic")!
-          ),
-          cellWidth: Math.round(cell.getBoundingClientRect().width),
-          neighbourWidth: Math.round(neighbour.getBoundingClientRect().width),
         };
-      });
+      };
+      const cellOf = (id: string) =>
+        root
+          .querySelector<HTMLElement>(id)!
+          .closest<HTMLElement>("div.min-w-0")!;
+      const grid = root.querySelector<HTMLElement>(
+        "#measurements-group-vitals-fields"
+      )!;
+      return {
+        systolic: measure(root.querySelector<HTMLInputElement>("#m-systolic")!),
+        diastolic: measure(
+          root.querySelector<HTMLInputElement>("#m-diastolic")!
+        ),
+        trackWidths: getComputedStyle(grid)
+          .gridTemplateColumns.split(" ")
+          .map((track) => Math.round(parseFloat(track)))
+          .filter((px) => px > 0),
+        template: getComputedStyle(grid).gridTemplateColumns,
+        escapes: grid.scrollWidth - grid.clientWidth,
+        cellWidth: Math.round(
+          cellOf("#m-systolic").getBoundingClientRect().width
+        ),
+        neighbourWidth: Math.round(
+          cellOf("#m-resting-hr").getBoundingClientRect().width
+        ),
+      };
+    });
+    const columns = reading.trackWidths.length;
+    seen.push(`${label} ${width}px: ${columns} cols [${reading.template}]`);
 
-      // The placeholders say the words. Without this the fit assertion below is
-      // satisfiable by shortening them back to "Sys" and "Dia".
-      expect([
-        reading.systolic.placeholder,
-        reading.diastolic.placeholder,
-      ]).toEqual(["Systolic", "Diastolic"]);
-      for (const side of [reading.systolic, reading.diastolic]) {
-        expect(
-          side.room,
-          `${bucket} (${px}px): "${side.placeholder}" needs ${side.needs}px and its box gives ${side.room}px`
-        ).toBeGreaterThanOrEqual(side.needs);
-      }
-      // THE RELATIONSHIP, not an absolute: the pair's cell against a one-control
-      // cell in the same grid. A width bound alone passes on any panel wide enough,
-      // including the wide panel the truncation survived in.
+    // The placeholders say the words. Without this the fit assertion below is
+    // satisfiable by shortening them back to "Sys" and "Dia".
+    expect([
+      reading.systolic.placeholder,
+      reading.diastolic.placeholder,
+    ]).toEqual(["Systolic", "Diastolic"]);
+    for (const side of [reading.systolic, reading.diastolic]) {
+      expect(
+        side.room,
+        `${label} (${width}px): "${side.placeholder}" needs ${side.needs}px and its box gives ${side.room}px`
+      ).toBeGreaterThanOrEqual(side.needs);
+    }
+
+    // A SPAN MUST NOT COST THE ROW ITS EDGE. Where the container fits a single
+    // `auto-fit` track, a two-track span adds an IMPLICIT track — measured in
+    // Chromium (the only engine this suite runs), that track resolves to 0px, so
+    // the cell is exactly the container and the row still ends where the panel
+    // does. This is the assertion that would catch it doing anything else.
+    expect(
+      reading.escapes,
+      `${label} (${width}px): the vitals grid overflows its own box by ${reading.escapes}px`
+    ).toBeLessThanOrEqual(0);
+
+    // EVERY COLUMN IS A REAL COLUMN — the assertion that actually watches the gate.
+    // `auto-fit` lays EQUAL `1fr` tracks; a track the grid INVENTED to satisfy a
+    // span is sized `auto` from that one cell's content, so it comes out a
+    // different width from its neighbours and the next single-control field drops
+    // into it. Uniform widths is that defect's absence stated positively, and it is
+    // measured off the laid-out grid rather than asserted about a class. An
+    // ungated `col-span-2` reds here at 320px with `168px 82px`, which an overflow
+    // check cannot see (nothing overflows — a field is simply squeezed) and a
+    // cell-versus-sibling ratio does not reliably catch either.
+    expect(
+      new Set(reading.trackWidths).size,
+      `${label} (${width}px): the vitals grid laid out [${reading.template}] — an odd column out is a track a span invented`
+    ).toBe(1);
+
+    // THE RELATIONSHIP, not an absolute: the pair's cell against a one-control
+    // cell in the same grid. A width bound alone passes on any panel wide enough,
+    // including the wide panel the truncation survived in. Both sides of the
+    // one-track case are stated, because "wider than its neighbour" is FALSE at a
+    // width where every cell is the whole container — and that is correct there,
+    // not a failure.
+    if (columns === 1) {
       expect(
         reading.cellWidth,
-        `${bucket} (${px}px): the pair's cell is ${reading.cellWidth}px beside a ${reading.neighbourWidth}px single-control cell`
+        `${label} (${width}px): one column, so the pair's cell and a single-control cell are both the container`
+      ).toBe(reading.neighbourWidth);
+    } else {
+      expect(
+        reading.cellWidth,
+        `${label} (${width}px): the pair's cell is ${reading.cellWidth}px beside a ${reading.neighbourWidth}px single-control cell`
       ).toBeGreaterThan(reading.neighbourWidth * 1.5);
     }
-  } finally {
-    await panel.evaluate((node) => {
-      (node as HTMLElement).style.maxWidth = "";
-    });
   }
+
+  // CAN THIS SWEEP EVEN REACH THE SHAPES IT CLAIMS TO COVER? Four widths that all
+  // resolved to the same column count would be one reading run four times, and it
+  // would pass exactly as loudly. The layouts have to actually differ.
+  expect(
+    new Set(seen.map((line) => line.split(": ")[1])).size,
+    seen.join("; ")
+  ).toBeGreaterThanOrEqual(3);
 });
