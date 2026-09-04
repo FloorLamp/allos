@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { openCommandPalette } from "./nav";
 import {
+  appContent,
   comboboxRows,
   deleteActivityFromForm,
   hydratedClick,
@@ -132,7 +133,7 @@ test("checking off a set auto-starts rest, and Finish stamps the end time (#340)
   // which is a stronger reading than the collapsed editor's field was, since it
   // costs a reopen off the server rather than the state still in the form.
   await page.waitForURL(/\/training\/activity\/\d+$/);
-  await hydratedClick(page, page.getByTestId("activity-page-edit"));
+  await hydratedClick(page, appContent(page).getByTestId("activity-page-edit"));
   await expect(page.getByTestId("end-time-input")).toHaveValue(/^\d\d:\d\d$/);
 
   // Clean up the auto-saved draft so the shared seed DB is left untouched.
