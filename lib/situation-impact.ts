@@ -12,13 +12,13 @@
 // chart annotations + adherence strip already read (situationHistoryResolver), never a
 // re-derived span.
 //
-// The WEATHER situations (#1726) are the documented exception, and they do not weaken the
-// rule: the reason a derived situation contributes no windows is that a per-day verdict
-// ("last night was rough") leaves no span anyone can reconstruct. A heatwave does — it is a
-// run of days in a cached meteorological series, recomputed identically every time. So
-// weatherSituationWindows (lib/weather-situations.ts) produces those windows from the
-// PREDICATE rather than from a log, and feeds them to the same buildSituationImpact below.
-// Nothing is written either way; the builder is window-source-agnostic by construction.
+// The WEATHER situations (#1726) are the documented exception, and #3993 corrected what the
+// rule rests on: every derived source IS dated per day, so "it cannot be dated" was never
+// the reason. What a derived source lacks is a RECORDED span — nothing writes start/stop
+// transitions for it. Weather derives its windows from the predicate over a cached series
+// instead (weatherSituationWindows), recomputed identically every time, and feeds them to
+// the same buildSituationImpact below. A logged period is a span in the cycle record and
+// could be given that treatment; it has not been, which is a scope choice, not a limit.
 
 import { shiftDateStr } from "./date";
 import { sameSituation } from "./situations";

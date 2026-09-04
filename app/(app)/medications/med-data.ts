@@ -264,10 +264,12 @@ export function loadMedicationsData(
     activeSituations,
     getSituationEvents(profileId)
   );
-  // Derived context (#1292/#1298) widens the active set for TODAY's dueness only (a
-  // medication keyed to Poor sleep / Period goes due while the context holds); the
-  // history resolver above stays declared-only so it can't apply derived names to past
-  // days retroactively.
+  // Derived context (#1292/#1298) widens the active set for the day being surfaced — a
+  // medication keyed to Poor sleep / Period goes due while the context holds — and this
+  // page asks about TODAY, so today is the day it passes. The history resolver above
+  // stays declared-only, NOT because the derived half cannot be dated (#3993: it can),
+  // but because #654's reconstruction is the pure seam the strip and chart annotations
+  // share.
   const effectiveSituations = getEffectiveActiveSituations(profileId, todayStr);
   const todaysActivities = getActivitiesByDate(profileId, todayStr);
   const isWorkoutDay = todaysActivities.length > 0;

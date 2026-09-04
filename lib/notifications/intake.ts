@@ -244,9 +244,9 @@ function gatherWindowDoses(
   const itemById = new Map(items.map((item) => [item.id, item]));
   const taken = getTakenDoseIds(profileId, date);
   const skipped = getSkippedDoseIds(profileId, date);
-  // Per-day situation resolver for the WHOLE gather — the day being reminded about and
-  // every day of the adherence strip below: each is scored against the situations active
-  // THAT day (#654), not today's toggle retroactively. The declared set is only its seed.
+  // Per-day DECLARED resolver for the adherence strip below — each of its days scored
+  // against the situations declared THAT day (#654), not today's toggle retroactively.
+  // The day being reminded about no longer comes through here (#3993, below).
   const situationsOn = situationHistoryResolver(
     getActiveSituations(profileId),
     getSituationEvents(profileId)
@@ -283,8 +283,9 @@ function gatherWindowDoses(
     // existed because the derived widening was said to have no dated form — but a logged
     // period day, a weather spell and the night ending a day are each a fact about that
     // day, so `getEffectiveActiveSituations` dates both halves and one call answers for
-    // whichever day is being rebuilt. Its declared half is the same change-log
-    // reconstruction `situationsOn` applies to the strip below.
+    // whichever day is being rebuilt. The strip below still scores its days through the
+    // declared-only `situationsOn` — the #654 seam it shares with the chart annotations —
+    // so a rough night can make a dose due here without lighting its own strip cell.
     activeSituations: getEffectiveActiveSituations(profileId, date),
     // TODAY ONLY, the same split (#4019). The prediction is a rhythm inferred from a
     // trailing window ending NOW, and `conditionAppliesOn` reads it as

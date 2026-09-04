@@ -233,10 +233,11 @@ export default async function ManageTab({
     todaysActivities.map((a) => a.end_time ?? a.start_time),
     nowMinutes
   );
-  // Derived context (#1292/#1298) widens the active set for TODAY's dueness only (a
-  // surfacing path) — the `situationsOn` history resolver above stays declared-only so
-  // it can't apply derived names to past days. A Poor sleep / Period item goes due
-  // exactly while its derived context holds.
+  // Derived context (#1292/#1298) widens the active set for the day being surfaced, and
+  // this page asks about TODAY. The `situationsOn` history resolver above stays
+  // declared-only, NOT because the derived half cannot be dated (#3993: it can), but
+  // because #654's reconstruction is the pure seam the strip and chart annotations
+  // share.
   const effectiveSituations = getEffectiveActiveSituations(
     profile.id,
     todayStr
