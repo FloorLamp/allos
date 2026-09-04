@@ -1247,7 +1247,7 @@ describe("actual atomic dashboard manifests", () => {
   // rather than a bound, and decoration is exactly what the single cap had already
   // decayed into by the time #3164 filed against it. So it is re-derived here:
   //
-  //   household 255 (the heaviest baseline) + 20 headroom = 275
+  //   household 254 (the heaviest baseline) + 20 headroom = 274
   //
   // RE-DERIVED, NOT LEFT BEHIND (#3410/#3316/#3100). This line has read "267 + 23"
   // and then "270 + 20" as the household baseline moved, and it is the one arithmetic
@@ -1281,6 +1281,15 @@ describe("actual atomic dashboard manifests", () => {
   // decay the 535 suffered. Re-deriving is one line and is meant to happen every
   // time a gather moves these numbers.
   //
+  // 275 → 274 (#5061), the same rule again and the smallest it will ever look. The
+  // zone reads stopped fetching the activity windows twice, which is −1 on every
+  // persona, so household is 254 and the derivation above re-runs as 254 + 20 = 274.
+  // A one-statement reduction is exactly the size at which leaving the ceiling alone
+  // feels reasonable, and that is the decay: nothing here ever moves by 15 at once,
+  // it moves by one several times and the slack is what accumulates. The arithmetic
+  // in this comment is the whole product, so it follows the number down or it is
+  // false — which is the same defect #5062 deleted from this file, one paragraph up.
+  //
   // WHAT IS NOT COMING: #3369 item 1 said the closed Show-everything tail's node
   // payloads would move behind the disclosure and take a bite out of the table
   // above. Measured on 5045340d by attributing every statement to the page frame
@@ -1298,7 +1307,7 @@ describe("actual atomic dashboard manifests", () => {
   // `data-quality.finding:<dedupeKey>`, `recap.<line>`, `healthspan.pillar:<key>` —
   // so deferring one defers CANDIDACY, not a payload, and that is the #3077
   // exact-once partition rather than a cost question.
-  const QUERY_CEILING = 275;
+  const QUERY_CEILING = 274;
 
   it("dashboard query budget: each persona matches its recorded main baseline", () => {
     // THE BACKSTOP ASKS ABOUT THE TABLE, NOT THE MEASUREMENT — which is the only

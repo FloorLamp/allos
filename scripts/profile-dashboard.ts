@@ -5,6 +5,8 @@
 //       --now 2026-09-04T01:10:00Z --renders 3 --out data/profiles/today
 //   npm run profile:dashboard -- --db ~/snapshots/allos.db \
 //       --page "app/(app)/trends/page" --params '{"tab":"overview"}'
+//   npm run profile:dashboard -- --db ~/snapshots/allos.db \
+//       --attribute lib/local-day-window.ts
 //
 // ANY PAGE, NOT ONLY THE DASHBOARD. `--page` names a page module under `app/`;
 // `--params` / `--route-params` are its searchParams and params as JSON. A page that
@@ -16,6 +18,8 @@
 // so the statements it times are the statements the meter budgets. Three readings:
 //   - per render: wall time, statement count, time inside SQLite;
 //   - per statement: total time, count, and the app frame that ran it;
+//   - `--attribute <file>`, repeatable: whose call it was, for one hot file — the
+//     question the file ranking above cannot answer and the one a fix depends on;
 //   - a V8 CPU profile of the renders after the warm-up, summarised here by self
 //     time per function and per file and by inclusive time per app frame, and kept
 //     as `render.cpuprofile` for a browser's Performance panel.
@@ -44,10 +48,16 @@ interface Args {
   out: string;
   keepCopy: boolean;
   top: number;
+  attribute: string[];
 }
 
 function parseArgs(argv: string[]): Args {
-  const args: Partial<Args> = { renders: "3", keepCopy: false, top: 18 };
+  const args: Partial<Args> = {
+    renders: "3",
+    keepCopy: false,
+    top: 18,
+    attribute: [],
+  };
   for (let i = 0; i < argv.length; i += 1) {
     const flag = argv[i];
     const value = argv[i + 1];
@@ -86,6 +96,10 @@ function parseArgs(argv: string[]): Args {
         break;
       case "--route-params":
         args.routeParams = value;
+        i += 1;
+        break;
+      case "--attribute":
+        args.attribute = [...(args.attribute ?? []), value];
         i += 1;
         break;
       case "--keep-copy":
@@ -144,7 +158,76 @@ function frameLabel(node: CpuNode): string {
   return `${functionName || "(anon)"} ${shortUrl(url)}:${lineNumber + 1}`;
 }
 
-function summariseCpu(profile: CpuProfile, top: number): string[] {
+// WHO SPENDS ONE FILE'S TIME (#5061). `summariseCpu` above ranks the files; this
+// answers the next question, which is the one a hot frame is useless without — is the
+// cost one caller or twenty, and is the frame doing real work for someone or the same
+// work twice for two people. Keyed on the SAMPLE, not the node: every sample whose
+// LEAF is in the file lands in exactly one bucket, so the parts sum to the file's self
+// time by construction. Which is why the SUM line is checked against the total
+// `summariseCpu` ABOVE arrived at by its OWN walk rather than one recomputed here: a
+// total derived from the same loop as the parts always agrees with them, so the check
+// would be a tautology and the reassurance free. A sum that does not match is a partial
+// attribution, and a partial attribution reads exactly like a complete one.
+function attributeFile(
+  profile: CpuProfile,
+  file: string,
+  selfTotal: number
+): string[] {
+  const nodes = new Map(profile.nodes.map((n) => [n.id, n]));
+  const parent = new Map<number, number>();
+  for (const n of profile.nodes)
+    for (const child of n.children ?? []) parent.set(child, n.id);
+  const self = new Map<number, number>();
+  profile.samples.forEach((id, i) =>
+    self.set(id, (self.get(id) ?? 0) + profile.timeDeltas[i])
+  );
+  const byLeaf = new Map<string, number>();
+  const byCaller = new Map<string, number>();
+  for (const [id, us] of self) {
+    const node = nodes.get(id);
+    if (!node || shortUrl(node.callFrame.url) !== file) continue;
+    byLeaf.set(frameLabel(node), (byLeaf.get(frameLabel(node)) ?? 0) + us);
+    // The first frame up the stack that is NOT this file: the caller paying for it.
+    let current = parent.get(id);
+    while (
+      current !== undefined &&
+      shortUrl(nodes.get(current)!.callFrame.url) === file
+    )
+      current = parent.get(current);
+    const caller =
+      current === undefined
+        ? "(no caller — root)"
+        : frameLabel(nodes.get(current)!);
+    byCaller.set(caller, (byCaller.get(caller) ?? 0) + us);
+  }
+  const ms = (us: number) => (us / 1000).toFixed(1).padStart(8);
+  const lines = [
+    `attribution: ${file} — ${(selfTotal / 1000).toFixed(1)} ms self`,
+  ];
+  for (const [title, map] of [
+    ["self time by leaf frame", byLeaf],
+    ["self time by caller outside the file", byCaller],
+  ] as const) {
+    lines.push(`  ${title}`);
+    let sum = 0;
+    for (const [k, v] of [...map].sort((a, b) => b[1] - a[1])) {
+      sum += v;
+      lines.push(`  ${ms(v)} ms  ${k}`);
+    }
+    lines.push(
+      `  ${ms(sum)} ms  = SUM, against ${ms(selfTotal)} ms self` +
+        (Math.abs(sum - selfTotal) < 1000
+          ? " — MATCHES"
+          : " — MISMATCH, this attribution is partial")
+    );
+  }
+  return lines;
+}
+
+function summariseCpu(
+  profile: CpuProfile,
+  top: number
+): { lines: string[]; selfByFile: Map<string, number> } {
   const nodes = new Map(profile.nodes.map((n) => [n.id, n]));
   const parent = new Map<number, number>();
   for (const n of profile.nodes)
@@ -190,7 +273,7 @@ function summariseCpu(profile: CpuProfile, top: number): string[] {
     lines.push(`  ${ms(v)} ms  ${k}`);
     if ((shown += 1) >= top + 8) break;
   }
-  return lines;
+  return { lines, selfByFile: byFile };
 }
 
 function main(): void {
@@ -294,7 +377,10 @@ function main(): void {
     .sort((a, b) => b.count - a.count)
     .slice(0, 8))
     out.push(`  x${String(s.count).padEnd(5)} ${s.sql.slice(0, 96)}`);
-  out.push(...summariseCpu(profile, args.top));
+  const cpu = summariseCpu(profile, args.top);
+  out.push(...cpu.lines);
+  for (const file of args.attribute)
+    out.push(...attributeFile(profile, file, cpu.selfByFile.get(file) ?? 0));
   out.push(`written: ${args.out}/profile.json, render.cpuprofile, vitest.log`);
   const text = out.join("\n");
   fs.writeFileSync(path.join(args.out, "summary.txt"), text + "\n");
