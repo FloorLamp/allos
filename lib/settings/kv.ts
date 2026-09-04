@@ -126,6 +126,11 @@ export function getSettingKeysWithPrefix(prefix: string): string[] {
 // /household, where the per-member checks fan out across every accessible
 // profile). Inline, each of those compiled its own copy of the SQL. Value
 // semantics are unchanged outside an explicit operation-scoped read cache.
+/** PROBE-5012 (temporary): is a setting read cache open on this call stack? */
+export function __probeSettingScopeOpen(): boolean {
+  return settingReadCache.getStore() != null;
+}
+
 const PROFILE_SETTING_GET_STMT = hoistedStatement(
   "SELECT value FROM profile_settings WHERE profile_id = ? AND key = ?"
 );
@@ -136,6 +141,8 @@ export function getProfileSetting(
   const scope = settingReadCache.getStore();
   const cache = scope?.profile;
   const cacheKey = `${profileId}:${key}`;
+  if (process.env.PROBE_5012)
+    console.log(`[PROBE-read] store=${scope ? 1 : 0} key=${cacheKey}`);
   if (cache?.has(cacheKey)) return cache.get(cacheKey);
   if (scope?.loadedProfiles.has(profileId)) return undefined;
   const row = PROFILE_SETTING_GET_STMT.get(profileId, key) as

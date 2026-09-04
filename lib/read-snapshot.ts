@@ -11,6 +11,11 @@ export function withReadSnapshot<T>(fn: () => T): T {
   return readSnapshot.run(new Map(), fn);
 }
 
+/** PROBE-5012 (temporary): is a read snapshot open on this call stack? */
+export function __probeReadSnapshotOpen(): boolean {
+  return readSnapshot.getStore() != null;
+}
+
 /** Memoize a read only while an explicit read snapshot is open. */
 export function snapshotCached<A extends unknown[], R>(
   name: string,

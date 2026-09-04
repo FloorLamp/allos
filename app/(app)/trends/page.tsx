@@ -40,6 +40,14 @@ import {
   type TrendsTab,
 } from "@/lib/trends-tabs";
 import { redirect } from "next/navigation";
+import { withReadSnapshot, __probeReadSnapshotOpen } from "@/lib/read-snapshot";
+import { __probeSettingScopeOpen } from "@/lib/settings/kv";
+import {
+  preloadGlobalSettings,
+  preloadProfileSettings,
+  preloadLoginSettings,
+  withSettingReadCache,
+} from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -78,7 +86,14 @@ function firstParam(value: string | string[] | undefined): string | undefined {
 // ordinary unknown-value fallback in `parseTab` already lands an old link on the
 // page that renders it. `?tab=overview` resolves to that same default. The other
 // three tabs' URLs are untouched — those tabs survive.
-export default async function TrendsPage(props: {
+export default async function TrendsPage(props: TrendsPageProps) {
+  return withSettingReadCache(() => {
+    preloadGlobalSettings();
+    return withReadSnapshot(() => renderTrends(props));
+  });
+}
+
+type TrendsPageProps = {
   searchParams: Promise<{
     tab?: string | string[];
     // Retired nested Fitness vocabulary, read only for the explicit Analyze
@@ -97,9 +112,19 @@ export default async function TrendsPage(props: {
     // so nothing else in the query string can bound it.
     bpage?: string | string[];
   }>;
-}) {
+};
+
+async function renderTrends(props: TrendsPageProps) {
+  if (process.env.PROBE_5012)
+    console.log(
+      `[PROBE-component] renderTrends:entry settingScope=${__probeSettingScopeOpen()} readSnapshot=${__probeReadSnapshotOpen()}`
+    );
   const searchParams = await props.searchParams;
   const { profile } = await requireSession();
+  if (process.env.PROBE_5012)
+    console.log(
+      `[PROBE-component] renderTrends:after-await settingScope=${__probeSettingScopeOpen()} readSnapshot=${__probeReadSnapshotOpen()}`
+    );
   const todayStr = today(profile.id);
   const from = timelineDateFromParam(searchParams.from);
   const to = timelineDateFromParam(searchParams.to);

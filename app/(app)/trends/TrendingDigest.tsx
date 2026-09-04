@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { IconX } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
+import { __probeSettingScopeOpen } from "@/lib/settings/kv";
+import { __probeReadSnapshotOpen } from "@/lib/read-snapshot";
 import { today } from "@/lib/db";
 import {
   buildDigestSeries,
@@ -44,6 +46,10 @@ const LEAD_CHIPS = 3;
 // range controls directly above already say which period is active, so a heading
 // band repeating "over this window" only delayed the charts.
 export default async function TrendingDigest({ range }: { range: DateRange }) {
+  if (process.env.PROBE_5012)
+    console.log(
+      `[PROBE-component] TrendingDigest settingScope=${__probeSettingScopeOpen()} readSnapshot=${__probeReadSnapshotOpen()}`
+    );
   const { login, profile } = await requireSession();
   const todayStr = today(profile.id);
   // Metrics + biomarkers, plus wellness-practice CADENCE (#1632): a practice whose

@@ -1,6 +1,8 @@
 import Link from "next/link";
 import DestinationLink from "@/components/DestinationLink";
 import { requireSession } from "@/lib/auth";
+import { __probeSettingScopeOpen } from "@/lib/settings/kv";
+import { __probeReadSnapshotOpen } from "@/lib/read-snapshot";
 import { progressPhotoDoor } from "@/lib/progress-photos";
 import { hasProgressPhotos } from "@/lib/queries/progress-photos";
 import { today } from "@/lib/db";
@@ -197,6 +199,10 @@ export default async function BodySection({
   historyPage: number;
   historyPageHref: (page: number) => AppRoute;
 }) {
+  if (process.env.PROBE_5012)
+    console.log(
+      `[PROBE-component] BodySection settingScope=${__probeSettingScopeOpen()} readSnapshot=${__probeReadSnapshotOpen()}`
+    );
   const { login, profile, access } = await requireSession();
   const units = getUnitPrefs(login.id);
   const formatPrefs = getDisplayFormatPrefs(login.id);
