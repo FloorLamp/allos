@@ -7,7 +7,7 @@ import {
   type LedgerServing,
   type LedgerStack,
 } from "../day-ledger";
-import type { DoseBundleId } from "../dose-bundle";
+import type { BundleId } from "../bundle";
 import type { PendingDayDose } from "../queries/usual-routine";
 import type { TimeBucket } from "../intake-schedule";
 
@@ -17,7 +17,7 @@ import type { TimeBucket } from "../intake-schedule";
 
 // ONE COMPOSED ACTION'S IDENTITY (#4328). Only ever compared, never parsed, so these
 // are the shortest values that stay distinguishable in a failure message.
-const bundle = (n: number) => `bundle${n}` as DoseBundleId;
+const bundle = (n: number) => `bundle${n}` as BundleId;
 
 function serving(
   id: number,
