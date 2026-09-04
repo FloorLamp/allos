@@ -131,10 +131,17 @@ writing here:
   the shortcut and check it filled, then set an explicit value before asserting
   what depends on it.
 - **Prove the decoupling over a whole day, and prove the harness is not vacuous.**
-  Preload a `Date` shim that shifts `Date.now()` by N hours and run the file at all
-  24 offsets. The sweep only means something if the _unpatched_ test still fails
-  somewhere in it — on #4998 it failed at exactly one offset, which is both the
-  confirmation and the reason the bug survived so long.
+  Preload a `Date` shim that shifts `Date.now()` and run the file across the day.
+  The sweep only means something if the _unpatched_ test still fails somewhere in
+  it — on #4998 it failed at exactly one offset, which is both the confirmation and
+  the reason the bug survived so long.
+- **Sweep the minutes, not just the hours.** An hourly grid only finds a window the
+  wall clock's own minute already happens to sit inside, so on a window narrower
+  than an hour it is a coin toss. #4998's opens at **23:30**: a 24-hour sweep run
+  at `:40` finds it, and the identical sweep run at `:10` finds nothing and reports
+  24 clean offsets. Vary the minute — or set the shifted clock to absolute instants
+  instead of offsetting the current one, which removes the dependence on when you
+  happened to run it altogether.
 
 One trap worth naming: **do not bisect a clock-coupled test.** A first bisect on
 #4998 blamed an unrelated commit, because the "good" endpoint was assumed rather
