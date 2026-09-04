@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import {
+  appContent,
   expectSvgTextLegible,
   followLink,
   hydratedClick,
@@ -668,12 +669,13 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
     }) => {
       test.slow();
       const page = await signIn(browser);
+      const app = appContent(page);
       try {
         await page.setViewportSize(viewport);
         await page.goto(dayUrl(TL_CHROME_BUSY_DAY));
 
-        const rail = page.getByTestId("history-day-rail");
-        const feed = page.getByTestId("history-feed");
+        const rail = app.getByTestId("history-day-rail");
+        const feed = app.getByTestId("history-feed");
         const panel = rail.getByTestId("intraday-panel");
         // WAIT FOR THE CONTENT, NOT THE CONTAINER. Every measurement below is about
         // where two boxes sit relative to each other, and an empty column fits beside
@@ -728,7 +730,7 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
         expect(addBox.y).toBeLessThan(calBox.y);
         // The door disappears at this width and nowhere else — the grid it opens is
         // already on screen, so a second way to it is a second copy.
-        await expect(page.getByTestId("history-calendar")).toBeHidden();
+        await expect(app.getByTestId("history-calendar")).toBeHidden();
 
         // THE SCROLL, which is the whole point of the rail: reading the rows must not
         // take the map off screen. Asserted as the two boxes moving DIFFERENTLY —
@@ -781,11 +783,12 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
   }) => {
     test.slow();
     const page = await signIn(browser);
+    const app = appContent(page);
     try {
       await page.setViewportSize(RAIL);
       await page.goto(dayUrl(TL_CHROME_BUSY_DAY));
 
-      const rail = page.getByTestId("history-day-rail");
+      const rail = app.getByTestId("history-day-rail");
       const panel = rail.getByTestId("intraday-panel");
       await expect(panel).toBeVisible();
       // Scoped to the drawing the rail's own box earns (#4973): the panel renders
@@ -794,7 +797,7 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
       // is holding.
       const chart = panel.locator(RAIL_DRAWING);
       await expect(chart).toBeVisible();
-      const firstRow = page
+      const firstRow = app
         .getByTestId("history-feed")
         .getByTestId("history-row")
         .first(); // first-ok: spec-owned fixture, and the claim is the column rather than a particular row
@@ -890,11 +893,12 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
   }) => {
     test.slow();
     const page = await signIn(browser);
+    const app = appContent(page);
     try {
       await page.setViewportSize(RAIL_SHORT);
       await page.goto(dayUrl(TL_CHROME_BUSY_DAY));
-      const rail = page.getByTestId("history-day-rail");
-      const scroller = page.getByTestId("history-day-rail-scroll");
+      const rail = app.getByTestId("history-day-rail");
+      const scroller = app.getByTestId("history-day-rail-scroll");
       const panel = rail.getByTestId("intraday-panel");
       await expect(panel).toBeVisible();
       // WAIT FOR THE CONTENT, not the box: the wheel target is the drawing.
@@ -950,10 +954,11 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
   }) => {
     test.slow();
     const page = await signIn(browser);
+    const app = appContent(page);
     try {
       await page.setViewportSize(RAIL_SHORT);
       await page.goto(dayUrl(TL_CHROME_BUSY_DAY));
-      const rail = page.getByTestId("history-day-rail");
+      const rail = app.getByTestId("history-day-rail");
       await expect(rail.getByTestId("intraday-panel")).toBeVisible();
       await expect(rail.getByTestId("history-calendar-open")).toBeVisible();
 
@@ -962,7 +967,7 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
       // the chart is what scrolls, so the chart's own area has no scrollable
       // ancestor short of the page (the wheel test above is the behaviour that
       // rests on it). So the cap is read off the rail and the overflow off the box.
-      const scroller = page.getByTestId("history-day-rail-scroll");
+      const scroller = app.getByTestId("history-day-rail-scroll");
       const scroll = await scroller.evaluate((el) => ({
         content: el.scrollHeight,
         visible: el.clientHeight,
@@ -997,12 +1002,13 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
     }) => {
       test.slow();
       const page = await signIn(browser);
+      const app = appContent(page);
       try {
         await page.setViewportSize(viewport);
         await page.goto(dayUrl(TL_CHROME_BUSY_DAY));
 
-        const rail = page.getByTestId("history-day-rail");
-        const feed = page.getByTestId("history-feed");
+        const rail = app.getByTestId("history-day-rail");
+        const feed = app.getByTestId("history-feed");
         const panel = rail.getByTestId("intraday-panel");
         const add = rail.getByTestId("history-add");
         await expect(panel).toBeVisible();
@@ -1035,8 +1041,8 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
           .toBe("static");
         // AND THE CALENDAR IS STILL A DOOR (#4102's ruling, kept below xl): the
         // trigger stands in the filter row and the open grid is not on the page.
-        await expect(page.getByTestId("history-calendar")).toBeVisible();
-        await expect(page.getByTestId("history-calendar-open")).toBeHidden();
+        await expect(app.getByTestId("history-calendar")).toBeVisible();
+        await expect(app.getByTestId("history-calendar-open")).toBeHidden();
       } finally {
         await page.context().close();
       }

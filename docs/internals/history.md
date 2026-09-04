@@ -270,13 +270,13 @@ the chart picks its geometry from THAT box rather than from the viewport, so the
 binding floor is the compact one: `11 × container ÷ 360`, which needs 294.55px. Swept
 in the browser at the merged head:
 
-| viewport | drawing container | variant | smallest label |
-|---|---|---|---|
-| 1280 (`xl`) | 166px | compact | 5.07px |
-| 1400 | 286px | compact | 8.74px |
-| **1409** | 295px | compact | **9.01px** — the first width that pays |
-| 1440 (#4974's criterion) | 326px | compact | 9.96px |
-| 1640 | 526px | wide | 9.13px |
+| viewport                 | drawing container | variant | smallest label                         |
+| ------------------------ | ----------------- | ------- | -------------------------------------- |
+| 1280 (`xl`)              | 166px             | compact | 5.07px                                 |
+| 1400                     | 286px             | compact | 8.74px                                 |
+| **1409**                 | 295px             | compact | **9.01px** — the first width that pays |
+| 1440 (#4974's criterion) | 326px             | compact | 9.96px                                 |
+| 1640                     | 526px             | wide    | 9.13px                                 |
 
 So the arrangement starts at 1409 and #4974's 1440 criterion holds as written. **The
 headroom at the threshold is 0.014px**: every term is an integer this page or the
@@ -288,7 +288,7 @@ trusting the arithmetic.
 **The rail's chart is the COMPACT geometry**, which is where #4974's premise — "the
 rail simply gives it 760px" — is wrong: at 1440 it gives 326. Wide needs 520px of
 container and so a 1634px viewport; below that the container query in
-`components/IntradayChart.tsx` picks compact, and the type is *larger* for it. `xl`
+`components/IntradayChart.tsx` picks compact, and the type is _larger_ for it. `xl`
 is payable by neither geometry — a 166px drawing is under the compact variant's own
 300px floor too.
 
