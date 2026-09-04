@@ -840,7 +840,7 @@ describe("the medication card hands the panel both halves (#4693)", () => {
     // The PAIR, in one assertion, because half of it is the whole defect either way:
     // an id with no zone shifts the stated time on a save with nothing edited, and a
     // zone with no id files the caregiver.
-    expect(mount()).toMatch(/subjectProfileId=\{doseHistorySubjectProfileId\}/);
+    expect(mount()).toMatch(/subjectProfileId=\{subjectProfileId\}/);
     expect(mount()).toMatch(/\btz=\{timezone\}/);
   });
 });
