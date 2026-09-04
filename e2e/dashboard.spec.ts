@@ -892,7 +892,13 @@ test("the Standing link covers its phone label and desktop plot without covering
       phoneName.x + phoneName.width / 2,
       phoneName.y + phoneName.height / 2
     );
-    await page.waitForURL((url) => `${url.pathname}${url.hash}` === phoneHref);
+    // The whole door href, QUERY INCLUDED (#5004 comment): `.first()` picks whichever
+    // standing family sorts first, and a family whose door carries a query string
+    // (`/history?day=…#day-at-a-glance`) could never match a pathname+hash comparison —
+    // green today only because the family that happens to sort first has none.
+    await page.waitForURL(
+      (url) => `${url.pathname}${url.search}${url.hash}` === phoneHref
+    );
   } finally {
     await page.context().close();
   }
