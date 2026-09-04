@@ -855,24 +855,30 @@ export default async function HistoryPage(props: {
   // CHANGES: no grid, and the same source order the stack has always had
   // (chart → add → rows).
   //
-  // 1640, NOT `xl`, AND THE NUMBER IS MEASURED RATHER THAN CHOSEN. #4974 rules the
+  // 1409, NOT `xl`, AND THE NUMBER IS MEASURED RATHER THAN CHOSEN. #4974 rules the
   // arrangement "from xl" on the premise that "the rail simply gives it 760px". It
-  // does not. The shell spends 240px on the sidebar and 40px on the page gutters, so
-  // the rail is `viewport - 1072`, and the chart card spends a further 42px of its
-  // own padding: the DRAWING gets `viewport - 1114`. The wide geometry computes its
-  // label size from a declared 520px floor (`INTRADAY_VARIANTS.wide`,
-  // lib/intraday-layout.ts) and needs 518.4px of container to hold #1518's 9px floor,
-  // so the rail needs 1632.4px of viewport before the chart it exists to show is
-  // legible. Measured in the browser at `xl` the labels render at 2.88px, which reds
-  // e2e/intraday-panel.spec.ts's own micro-type case — the desktop project's viewport
-  // IS 1280. 1640 is the first round width that pays the floor (9.13px), and a rail
-  // that cannot show a legible chart is not worth the column.
+  // does not: the shell spends 240px on the sidebar and 40px on the page gutters and
+  // the grid 768 + 24 on the reading column and the gap, so the rail is
+  // `viewport - 1072` and the chart card spends a further 42px of its own padding —
+  // the DRAWING gets `viewport - 1114`, which at `xl` is 166px.
   //
-  // THIS CONTRADICTS #4974'S ACCEPTANCE CRITERIA, which name 1440 as a rail width.
-  // It is raised on the PR rather than settled here. The number drops to ~1409 the
-  // moment the chart picks its geometry from its own box instead of the viewport
-  // (#4973): the compact geometry pays the floor from a 294.5px drawing, which a
-  // 1440 rail clears.
+  // Since #4973 the chart picks its geometry from THAT box rather than from the
+  // viewport, so the binding floor is the COMPACT one: 11 label units in a 360-unit
+  // viewBox paint `11 × container ÷ 360`, and #1518's 9px minimum needs 294.55px of
+  // container. Measured in the browser across the whole range (the sweep is the
+  // table in e2e/history-day-view.spec.ts, re-run at this head):
+  //
+  //     viewport 1280 → container 166 → 5.07px      viewport 1409 → 295 → 9.01px
+  //     viewport 1400 → container 286 → 8.74px      viewport 1440 → 326 → 9.96px
+  //
+  // 1409 is the first width that pays the floor, and it is the threshold. #4974's
+  // 1440 acceptance criterion therefore holds as written, with 0.96px to spare.
+  //
+  // THE HEADROOM AT THE THRESHOLD ITSELF IS 0.014px, which is why the spec asserts
+  // legibility AT 1409 and not only at a comfortable width: every term above is an
+  // integer this file or the shell owns, so a single pixel added to the gap, the
+  // gutters or the card's padding puts the first rail width under the floor. That
+  // is a red in e2e/history-day-view.spec.ts rather than 8.99px type on a screen.
   //
   // THE RAIL COMES FIRST IN THE DOCUMENT, and is placed into column 2 explicitly.
   // Source order is what the stacked layout below the threshold reads, and there the
@@ -881,20 +887,30 @@ export default async function HistoryPage(props: {
   // grid and upside down at every width beneath it.
   //
   // THE LEFT TRACK IS FIXED AT `48rem` — the reading measure — rather than
-  // `minmax(0, 48rem)`. Two flexible tracks share free space equally, which at 1280
-  // would have handed the rows 488px and called it a reading column.
+  // `minmax(0, 48rem)`. Two flexible tracks share free space equally, which at 1409
+  // would have handed the rows 552px and called it a reading column.
   //
   // THE RAIL CANNOT OUTGROW THE VIEWPORT. A sticky element taller than the screen
   // pins its top and strands its own bottom, unreachable at any page scroll — so it
-  // is capped at the viewport minus its two 1.5rem insets and scrolls inside itself
-  // past that. `overflow-y: auto` chains at the ends (no `overscroll-contain`), so
-  // reaching the rail's bottom keeps scrolling the page rather than trapping it.
+  // is capped at the viewport minus its two 1.5rem insets and scrolls past that.
+  //
+  // BUT THE CHART'S BOX IS OUTSIDE THAT SCROLL CONTAINER (owner ruling, 2026-09-04),
+  // which is why the cap and the overflow sit on two elements rather than one. A
+  // wheel finds its nearest scrollable ancestor: with the chart inside the scrolling
+  // box, a reader who put the pointer over the day's map — the largest, most
+  // pointed-at thing in the rail — scrolled the rail instead of the page, and the
+  // chart's own full-day wheel hand-off (#4852) was handed to the rail rather than
+  // to the page it was written for. So the rail caps its height and lays its
+  // children out in a column, and only the layers BELOW the chart scroll.
+  // `overflow-y: auto` chains at the ends (no `overscroll-contain`), so reaching
+  // that box's bottom keeps scrolling the page rather than trapping it.
   const dayGrid =
-    "min-[1640px]:grid min-[1640px]:grid-cols-[48rem_minmax(0,760px)] min-[1640px]:gap-6";
+    "min-[1409px]:grid min-[1409px]:grid-cols-[48rem_minmax(0,760px)] min-[1409px]:gap-6";
   const dayRail =
-    "min-[1640px]:col-start-2 min-[1640px]:row-start-1 min-[1640px]:sticky min-[1640px]:top-6 min-[1640px]:self-start min-[1640px]:max-h-[calc(100dvh-3rem)] min-[1640px]:overflow-y-auto";
+    "min-[1409px]:col-start-2 min-[1409px]:row-start-1 min-[1409px]:sticky min-[1409px]:top-6 min-[1409px]:self-start min-[1409px]:flex min-[1409px]:max-h-[calc(100dvh-3rem)] min-[1409px]:flex-col";
+  const dayRailScroll = "min-[1409px]:min-h-0 min-[1409px]:overflow-y-auto";
   const dayColumn =
-    "min-[1640px]:col-start-1 min-[1640px]:row-start-1 min-[1640px]:min-w-0";
+    "min-[1409px]:col-start-1 min-[1409px]:row-start-1 min-[1409px]:min-w-0";
 
   return (
     <PageContainer
@@ -1013,7 +1029,7 @@ export default async function HistoryPage(props: {
             of it, so where the rail exists the door would be a second way to a thing
             already open. `contents` keeps the button the flex item it has always
             been — the wrapper adds no box of its own to this row at any width. */}
-        <span className={day ? "contents min-[1640px]:hidden" : "contents"}>
+        <span className={day ? "contents min-[1409px]:hidden" : "contents"}>
           <EventCalendar eventDates={eventDates} everyone={everyone} />
         </span>
       </div>
@@ -1160,7 +1176,15 @@ export default async function HistoryPage(props: {
               </div>
             ) : null}
 
-            {/* THE ADD LAYER SITS ABOVE THE ROWS IT CREATES (#4918 ruling 2) — under the
+            {/* ONLY THE LAYERS BELOW THE CHART SCROLL. The rail caps its height (see
+                `dayRail`); the SCROLLING is this box, which the chart is deliberately
+                not in — a wheel takes its nearest scrollable ancestor, and over the
+                day's map that ancestor has to be the page. */}
+            <div
+              className={day ? dayRailScroll : undefined}
+              data-testid={day ? "history-day-rail-scroll" : undefined}
+            >
+              {/* THE ADD LAYER SITS ABOVE THE ROWS IT CREATES (#4918 ruling 2) — under the
           chart, not above it.
 
           THE ADD DOOR, KIND-RESOLVED. Filtered to a kind it IS that kind's backfill,
@@ -1169,74 +1193,75 @@ export default async function HistoryPage(props: {
           shipped (#4045 §1). Log kinds only — clinical, training and life records are
           created on their own surfaces — and never the future: every door here is
           bounded by today. */}
-            {canWrite ? (
-              <div
-                className={`mb-2 text-sm ${railGutter}`}
-                data-testid="history-add"
-              >
-                {/* THE OFFERS LINE FIRST (#4310 ruling), before the per-kind grammar below it,
+              {canWrite ? (
+                <div
+                  className={`mb-2 text-sm ${railGutter}`}
+                  data-testid="history-add"
+                >
+                  {/* THE OFFERS LINE FIRST (#4310 ruling), before the per-kind grammar below it,
                 and silent on a day with no standing offer. */}
-                <HistoryUsualOffers
-                  offers={usualOffers}
-                  date={day ?? todayStr}
-                />
-                {!hasAddDoor ? (
-                  /* IN ALL — AND IN A KIND WITH NOTHING TO OFFER — THE DOOR ASKS THE KIND
+                  <HistoryUsualOffers
+                    offers={usualOffers}
+                    date={day ?? todayStr}
+                  />
+                  {!hasAddDoor ? (
+                    /* IN ALL — AND IN A KIND WITH NOTHING TO OFFER — THE DOOR ASKS THE KIND
                  FIRST, which on a record page is the same act as narrowing to it. It
                  scrolls rather than wraps for the same reason the filter row does. */
-                  /* SYMPTOM IS EXEMPT FROM THE PRESENCE GATE (#4851 owner ruling) —
+                    /* SYMPTOM IS EXEMPT FROM THE PRESENCE GATE (#4851 owner ruling) —
                  `historyAddKinds` is the one computation that knows it, so the exemption
                  cannot drift out of step with the rest of the gate. The row itself is a
                  client component (#4950): it reads the window the chart is showing and
                  adds it to the params these rules produced. */
-                  <HistoryAddRow
-                    timeFormat={prefs.timeFormat}
-                    /* Only the day view has a chart, so only it has a window and a day for
+                    <HistoryAddRow
+                      timeFormat={prefs.timeFormat}
+                      /* Only the day view has a chart, so only it has a window and a day for
                    the workouts door to open on (#4950 item 5). */
-                    workoutsDate={day}
-                    chips={historyAddKinds(presentKinds).map((candidate) => ({
-                      kind: candidate,
-                      label: HISTORY_KIND_LABELS[candidate],
-                      params: chipHrefParams({ kind: candidate }),
-                    }))}
-                  />
-                ) : addVocabulary && addKind ? (
-                  <HistoryAddDoor
-                    kind={addKind}
-                    /* The window the chip carried, already parsed and refused if it was not
+                      workoutsDate={day}
+                      chips={historyAddKinds(presentKinds).map((candidate) => ({
+                        kind: candidate,
+                        label: HISTORY_KIND_LABELS[candidate],
+                        params: chipHrefParams({ kind: candidate }),
+                      }))}
+                    />
+                  ) : addVocabulary && addKind ? (
+                    <HistoryAddDoor
+                      kind={addKind}
+                      /* The window the chip carried, already parsed and refused if it was not
                    one (#4950). It rides the URL rather than client state, so it survives
                    a reload with the form open. */
-                    window={
-                      chartWindow ? intradayWindowParams(chartWindow) : null
-                    }
-                    /* The practice this profile usually does at that moment — a prefill a tap
+                      window={
+                        chartWindow ? intradayWindowParams(chartWindow) : null
+                      }
+                      /* The practice this profile usually does at that moment — a prefill a tap
                    confirms, never a claim about what happened. */
-                    defaultPractice={windowPractice}
-                    // THE DAY THE READER WAS LOOKING AT. Finding a gap is the reason to open
-                    // this door at all, so the form opens on that day rather than on today —
-                    // the context the redirect used to throw away.
-                    date={day ?? todayStr}
-                    maxDate={todayStr}
-                    vocabulary={addVocabulary}
-                  />
-                ) : null}
-              </div>
-            ) : null}
-          </IntradayInteractionProvider>
+                      defaultPractice={windowPractice}
+                      // THE DAY THE READER WAS LOOKING AT. Finding a gap is the reason to open
+                      // this door at all, so the form opens on that day rather than on today —
+                      // the context the redirect used to throw away.
+                      date={day ?? todayStr}
+                      maxDate={todayStr}
+                      vocabulary={addVocabulary}
+                    />
+                  ) : null}
+                </div>
+              ) : null}
 
-          {/* THE MONTH GRID, OPEN, AND ONLY IN THE RAIL (#4974). The SAME grid and
+              {/* THE MONTH GRID, OPEN, AND ONLY IN THE RAIL (#4974). The SAME grid and
           the SAME binding the door opens — `EventMonthGrid` is that binding, split
           out of `EventCalendar` so the two hosts (popover, rail) cannot drift into
           two answers about what a marked day means. No `onNavigate`, because
           nothing here has to close. */}
-          {day ? (
-            <div
-              className="card mb-3 hidden p-3 min-[1640px]:block"
-              data-testid="history-calendar-open"
-            >
-              <EventMonthGrid eventDates={eventDates} everyone={everyone} />
+              {day ? (
+                <div
+                  className="card mb-3 hidden p-3 min-[1409px]:block"
+                  data-testid="history-calendar-open"
+                >
+                  <EventMonthGrid eventDates={eventDates} everyone={everyone} />
+                </div>
+              ) : null}
             </div>
-          ) : null}
+          </IntradayInteractionProvider>
         </div>
         <div className={day ? dayColumn : undefined}>
           {/* THE TWO EMPTY STATES ARE DIFFERENT MESSAGES (#1410), and the difference is

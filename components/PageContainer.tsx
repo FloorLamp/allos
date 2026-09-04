@@ -16,7 +16,7 @@ import type { ReactNode } from "react";
 //                 `gap-6` between the two columns (1.5rem) + the rail's 760px ceiling
 //                 (47.5rem) = 97rem — so both columns can reach their ruled widths
 //                 and the page then stops growing, rather than stretching to whatever
-//                 the monitor is. The 1640px threshold is MEASURED, not chosen; the
+//                 the monitor is. The 1409px threshold is MEASURED, not chosen; the
 //                 derivation lives beside the grid in app/(app)/history/page.tsx.
 //   - "flow"    — a guided multi-step flow: wider than prose so its choice grids
 //                 fit, narrower than a dashboard (max-w-4xl)
@@ -33,7 +33,7 @@ const WIDTHS = {
   form: "max-w-lg",
   narrow: "max-w-2xl",
   reading: "max-w-3xl",
-  rail: "max-w-3xl min-[1640px]:max-w-[97rem]",
+  rail: "max-w-3xl min-[1409px]:max-w-[97rem]",
   flow: "max-w-4xl",
   wide: "max-w-6xl",
   full: "",
