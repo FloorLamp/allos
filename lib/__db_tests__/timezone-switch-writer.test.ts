@@ -107,6 +107,39 @@ describe("what setTimezone records", () => {
     ]);
   });
 
+  // THE TRAVEL PATH IS EXEMPT FROM THE FIRST-EVER-ZONE EXEMPTION, and this is the case
+  // every other fixture in this file misses, because they all call `setTimezone` first
+  // to set the scene. A real traveller usually has NO zone row of their own — they rode
+  // the instance default until the day the banner offered to move them — and that is
+  // exactly when #3263's one tap needs its record most: the return offer and the
+  // switch-day rules are built on it existing. "No row" means nobody had asserted where
+  // this person's day runs; it does not mean their day ran nowhere, and a journey away
+  // from it is still a journey. e2e/travel-timezone.spec.ts drives this through the real
+  // banner, and went red on exactly this before the exemption learned about `kind`.
+  it("records the first travel switch of a profile that had no zone of its own", () => {
+    freeze("2026-05-02T09:00:00Z");
+    const p = bareProfile("Rode the instance default");
+    const inherited = getTimezone(p); // resolved from the instance default, never null
+    expect(switchProfileTimezone(p, TOKYO, inherited)).not.toBeNull();
+    expect(getTravelSwitches(p)).toEqual([
+      {
+        at: "2026-05-02T09:00:00Z",
+        from: inherited,
+        to: TOKYO,
+        kind: "travel",
+      },
+    ]);
+  });
+
+  // The SAME profile shape moved through Settings still records nothing. Only travel
+  // asserts that the person's day used to run somewhere in particular.
+  it("still records nothing for a first-ever zone set through Settings", () => {
+    freeze("2026-05-02T09:00:00Z");
+    const p = bareProfile("Bare correction");
+    expect(setTimezone(p, TOKYO)).toBeNull();
+    expect(getTravelSwitches(p)).toEqual([]);
+  });
+
   // The writer's trust check moved with the append and still refuses to launder a
   // damaged history into a clean one-way chain.
   it("preserves malformed storage instead of appending onto it", () => {

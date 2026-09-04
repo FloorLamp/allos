@@ -156,11 +156,13 @@ export const TIMEZONE_SWITCHES_KEY = "timezone_switches";
 // Travel is the one path that has to say so, and it says so in one place.
 //
 // WHAT IS NOT RECORDED, and both exemptions are about there being no seam:
-//   • A FIRST-EVER ZONE. With no `profile_settings.timezone` row of its own the
-//     profile's day was never asserted to run anywhere — it was inheriting the
-//     instance default, which is not a claim about this person. There is no `from`,
-//     so there is no switch. This is what keeps a fixture's or an onboarding
-//     answer's opening `setTimezone` out of the history.
+//   • A FIRST-EVER ZONE SET BY SETTINGS OR ONBOARDING. With no
+//     `profile_settings.timezone` row of its own, nobody had yet asserted where this
+//     profile's day runs — it was inheriting the instance default, which is not a
+//     claim about this person. Such a call IS that first assertion, not a move, so
+//     there is no `from` and no switch. This is what keeps a fixture's or an
+//     onboarding answer's opening `setTimezone` out of the history. TRAVEL IS
+//     EXEMPT: see the `from` computation below.
 //   • AN EQUAL ZONE. Nothing moved.
 // The zone itself is written either way: the row must exist so the profile stops
 // inheriting an instance default that can later change under it.
@@ -175,10 +177,20 @@ export function setTimezone(
   // Read through getTimezone, not the raw row, so `from` is always a real IANA name:
   // a stored value that is unparseable resolves to the UTC the day was actually
   // running on, and recording the raw garbage would taint the whole history instead.
+  //
+  // TRAVEL IS EXEMPT FROM THE FIRST-EVER-ZONE RULE, and the asymmetry is the point.
+  // Having no `timezone` row means nobody had asserted where this person's day runs —
+  // not that it ran nowhere. A Settings edit or an onboarding answer IS that first
+  // assertion, and crosses no seam. A travel switch is a claim that the person LEFT
+  // the place their day was running, which is a seam whether or not anyone had written
+  // that place down; #3263's return offer and switch-day rules are built on the record
+  // existing. Most real travellers are in exactly this state at their first trip —
+  // riding the instance default until the banner offers to move them — so this is the
+  // common travel case, not an edge one (e2e/travel-timezone.spec.ts drives it).
   const from =
-    getProfileSetting(profileId, "timezone") == null
-      ? null
-      : getTimezone(profileId);
+    kind === "travel" || getProfileSetting(profileId, "timezone") != null
+      ? getTimezone(profileId)
+      : null;
   setProfileSetting(profileId, "timezone", tz);
   if (from == null || from === tz) return null;
 
