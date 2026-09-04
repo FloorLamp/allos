@@ -663,14 +663,14 @@
           "pr": 4966,
           "kind": "feature",
           "category": "Trends",
-          "title": "A chart showing a stopped run links to Review, and offers “Fix a range”",
+          "title": "A chart whose data source has stopped links to Review and offers Fix a range",
           "issues": [4925]
         },
         {
           "pr": 4967,
           "kind": "fix",
           "category": "Connected apps",
-          "title": "Health Connect’s HRV, breathing rate, skin temperature and blood oxygen are back",
+          "title": "HRV, respiratory rate and skin temperature are being stored again",
           "issues": [4956]
         },
         {
