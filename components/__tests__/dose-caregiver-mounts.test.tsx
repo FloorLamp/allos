@@ -1,4 +1,10 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { IntakeItem } from "@/lib/types";
 import type { SubjectInfo } from "@/lib/scope";
@@ -136,7 +142,9 @@ beforeEach(() => {
 });
 
 /** What the one mocked write was actually posted, as a plain object. */
-function postedTo(fn: { mock: { calls: unknown[][] } }): Record<string, string> {
+function postedTo(fn: {
+  mock: { calls: unknown[][] };
+}): Record<string, string> {
   expect(fn.mock.calls).toHaveLength(1);
   const body = fn.mock.calls[0]![0] as FormData;
   return Object.fromEntries(
@@ -183,14 +191,18 @@ function renderPanel(profileId: number | undefined) {
   return render(
     <ToastProvider>
       <MedicationsTodayPanel
-        scheduled={[
-          {
-            med: MED,
-            doses: [DOSE],
-            due: true,
-            takenDoseTimes: {},
-          },
-        ] as unknown as Parameters<typeof MedicationsTodayPanel>[0]["scheduled"]}
+        scheduled={
+          [
+            {
+              med: MED,
+              doses: [DOSE],
+              due: true,
+              takenDoseTimes: {},
+            },
+          ] as unknown as Parameters<
+            typeof MedicationsTodayPanel
+          >[0]["scheduled"]
+        }
         prnToday={[]}
         taken={new Set<number>()}
         skipped={new Set<number>()}
@@ -240,7 +252,10 @@ function strip(doseId: number | null): MedStripMember {
   };
 }
 
-function renderStrip(access: "read" | "write", doseId: number | null = DOSE_ID) {
+function renderStrip(
+  access: "read" | "write",
+  doseId: number | null = DOSE_ID
+) {
   return render(
     <ToastProvider>
       <MedicationTodayStrip

@@ -1074,7 +1074,9 @@ test.describe("Medications multi-view regimen boards (issue #1373)", () => {
       // read-only receipt whatever the grant said. The take above is what it reads back,
       // which is the two mounts agreeing about one dose rather than two claims.
       await page.goto(`/medications/${wardMedId}`);
-      await expect(page.getByTestId("medication-identity-banner")).toBeVisible();
+      await expect(
+        page.getByTestId("medication-identity-banner")
+      ).toBeVisible();
       await expect(page.getByTestId("profile-identity-bar")).toHaveAttribute(
         "data-acting-profile-id",
         String(selfId)
