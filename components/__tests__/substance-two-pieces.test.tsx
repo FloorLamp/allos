@@ -308,3 +308,52 @@ describe("SubstanceUnitControl is ONE row control", () => {
     ).toBeTruthy();
   });
 });
+
+// A DRINK MAY STATE A TIME, AND ONLY A DRINK (#3295 phase 1 part 1). The seam the
+// field-signature test above pins is deliberately broken in exactly one place: the
+// ADD door, for the food-log ledger. Every other combination keeps the bare date,
+// because `substance_daily_totals` has nowhere to put an instant and a control that
+// collects a value the store must throw away is worse than no control.
+describe("the substance add door states a drink's minute", () => {
+  const timeField = () => document.querySelector("#substance-when-time");
+
+  it.each([
+    ["alcohol", undefined, true],
+    ["alcohol", ROW, false],
+    ["nicotine", undefined, false],
+    ["cannabis", undefined, false],
+  ] as const)(
+    "%s (row seeded: %o) offers a time: %s",
+    (substance, row, offered) => {
+      openForm(row && { ...row, substance }, substance);
+      expect(Boolean(timeField())).toBe(offered);
+      // The day is asked for either way — the control owns the PAIR, so replacing the
+      // date field must not lose the date.
+      expect(
+        document.querySelector("#substance-when-date") ??
+          screen.getByLabelText(/^Date/)
+      ).toBeTruthy();
+    }
+  );
+
+  it("posts the stated instant it collected, and posts none when the field is untouched", async () => {
+    openForm(undefined, "alcohol");
+    await save("Add");
+    expect(payload("add").stated_at).toBeUndefined();
+    expect(payload("add").date).toBe(FOUND_DAY);
+
+    cleanup();
+    openForm(undefined, "alcohol");
+    await act(async () =>
+      fireEvent.change(timeField() as HTMLInputElement, {
+        target: { value: "21:30" },
+      })
+    );
+    await save("Add");
+    // The instant's profile-local day IS the entry's date, which is what the shared
+    // control's pair rule guarantees and the action re-checks.
+    const timed = posted.add[1];
+    expect(String(timed.get("stated_at"))).toContain(FOUND_DAY);
+    expect(String(timed.get("date"))).toBe(FOUND_DAY);
+  });
+});
