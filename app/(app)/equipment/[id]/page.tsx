@@ -140,7 +140,7 @@ export default async function EquipmentDetailPage(props: {
       </dl>
 
       {trendPoints.length > 0 ? (
-        <div className="mt-6 rounded-xl border border-(--border) bg-surface p-4">
+        <div className="band mt-6 rounded-xl border border-(--border) bg-surface p-4">
           <EquipmentTrend
             points={trendPoints}
             label={
@@ -174,7 +174,7 @@ export default async function EquipmentDetailPage(props: {
           <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
             Recent sessions
           </h2>
-          <ul className="divide-y divide-black/5 rounded-xl border border-black/5 dark:divide-white/10 dark:border-white/10">
+          <ul className="band divide-y divide-black/5 rounded-xl border border-black/5 dark:divide-white/10 dark:border-white/10">
             {[...sessions]
               .reverse()
               .slice(0, 12)
