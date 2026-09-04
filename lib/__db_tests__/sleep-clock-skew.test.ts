@@ -47,16 +47,20 @@ function session(
   wakeDay: string,
   startUtc: string,
   endUtc: string,
-  source = PROVIDER
+  source = PROVIDER,
+  // Provider-reported minutes asleep. The default is the sighting's own 298; a fixture
+  // that puts two sessions on one wake day has to say which is the longer, because that
+  // is what the shared main-sleep classifier reads.
+  value = 298
 ): number {
   return Number(
     db
       .prepare(
         `INSERT INTO metric_samples
            (profile_id, source, origin, metric, date, started_at, ended_at, value)
-         VALUES (?, ?, NULL, 'sleep_min', ?, ?, ?, 298)`
+         VALUES (?, ?, NULL, 'sleep_min', ?, ?, ?, ?)`
       )
-      .run(profileId, source, wakeDay, startUtc, endUtc).lastInsertRowid
+      .run(profileId, source, wakeDay, startUtc, endUtc, value).lastInsertRowid
   );
 }
 
@@ -441,5 +445,87 @@ describe("deleting a suspect synced session (#4299)", () => {
       trend: getSleepDurationTrend(profileId),
       sri: getSleepRegularity(profileId),
     }).toEqual(before);
+  });
+});
+
+// ── the day's NIGHT is judged, and nothing else on it (#5019) ─────────────────
+//
+// The detector's comparison is the best equal-width window in the surrounding ±12 h,
+// which for a daytime nap is always the overnight trough. A person napping runs above
+// their own overnight trough by definition, so before this every nap of any length read
+// as a contradiction — and the hedge, keyed by wake day, then landed on the night while
+// the delete door beneath it pointed at the nap.
+describe("naps are not judged against the night's own trough", () => {
+  // The 08-31 sighting: a fine night 03:06→08:32 and a 68-minute nap at 17:41. The
+  // trough IS the night, so the night agrees with its clocks and the nap cannot.
+  function nightAndNap(day: string): { night: number; nap: number } {
+    const night = session(
+      day,
+      `${day}T03:06:00Z`,
+      `${day}T08:32:00Z`,
+      PROVIDER,
+      326
+    );
+    const nap = session(
+      day,
+      `${day}T17:41:00Z`,
+      `${day}T18:49:00Z`,
+      PROVIDER,
+      68
+    );
+    trace(`${shiftDateStr(day, -1)}T22:00:00Z`, `${day}T22:00:00Z`, {
+      from: `${day}T03:06:00Z`,
+      to: `${day}T08:32:00Z`,
+    });
+    return { night, nap };
+  }
+
+  it("hedges nothing on a day whose night agrees with its clocks", () => {
+    const day = shiftDateStr(T, -1);
+    nightAndNap(day);
+    expect(getSuspectSleepSessions(profileId, shiftDateStr(T, -30))).toEqual(
+      []
+    );
+    expect(getSuspectSleepWakeDays(profileId, shiftDateStr(T, -30))).toEqual(
+      new Set()
+    );
+  });
+
+  it("names the night's own row when the night is the contradicted one", () => {
+    // The same day, with the night mis-stamped instead: the nap is still there and is
+    // still above the trough, so exactly one row may be reported and it must be the
+    // night's — that id is what the Sleep log's delete door deletes.
+    const day = shiftDateStr(T, -1);
+    const night = session(
+      day,
+      `${day}T09:39:00Z`,
+      `${day}T14:37:00Z`,
+      PROVIDER,
+      298
+    );
+    session(day, `${day}T17:41:00Z`, `${day}T18:49:00Z`, PROVIDER, 68);
+    trace(`${shiftDateStr(day, -1)}T22:00:00Z`, `${day}T22:00:00Z`, {
+      from: `${day}T03:39:00Z`,
+      to: `${day}T08:37:00Z`,
+    });
+    const found = getSuspectSleepSessions(profileId, shiftDateStr(T, -30));
+    expect(found).toHaveLength(1);
+    expect(found[0].sampleId).toBe(night);
+    expect(found[0].wakeDay).toBe(day);
+  });
+
+  it("leaves the Sleep log row unhedged, with no delete door pointed at the nap", () => {
+    // What the first case is FOR. On the 08-31 shape the night was fine and only the nap
+    // flagged, so the hedge — keyed by wake day — landed on the night's row while
+    // `sleepSampleId` beneath it named the NAP: "these times disagree with your heart
+    // rate" over a night that agreed, above a delete that removed a different session.
+    const day = shiftDateStr(T, -1);
+    const { nap } = nightAndNap(day);
+    const row = getSleepMoodData(profileId, 30).history.find(
+      (r) => r.date === day
+    );
+    expect(row).toBeDefined();
+    expect(row!.sleepSuspect).toBe(false);
+    expect(row!.sleepSampleId).not.toBe(nap);
   });
 });
