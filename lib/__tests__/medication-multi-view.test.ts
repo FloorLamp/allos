@@ -89,6 +89,19 @@ describe("medStripMember (#1373 point 6) — medication-only, from the household
     expect(strip.dueDoses[0].dueText).toBe("Morning");
   });
 
+  // THE STRIP'S WHOLE CAPABILITY RIDES ON THIS FIELD (#4429): the row offers the
+  // tri-state only where `item.doseId != null`, so a mapper that dropped the id would
+  // retire the control everywhere and change nothing else on screen. Asked THROUGH
+  // `medStripMember`, because a hand-built `MedStripItem` sets the field itself and
+  // could not see the mapper lose it.
+  it("carries the scheduled dose id through, which is what lets a row host the control", () => {
+    const strip = medStripMember(5, {
+      dueDoses: [item({ key: "dose:1", title: "Amoxicillin", doseId: 91 })],
+      lowRefills: [],
+    });
+    expect(strip.dueDoses[0].doseId).toBe(91);
+  });
+
   it("medStripMemberHasItems is false only when a member is fully quiet", () => {
     const quiet = medStripMember(5, { dueDoses: [], lowRefills: [] });
     expect(medStripMemberHasItems(quiet)).toBe(false);
