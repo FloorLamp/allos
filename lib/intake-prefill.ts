@@ -31,7 +31,10 @@ import type { FoodTiming } from "./types";
 
 // The prefillable fields. Each maps to one form control a seed path may offer a value
 // for; `PREFILL_FIELDS` is the enumeration every ledger operation walks, so a new field
-// is added in exactly one place.
+// is added in exactly one place. A field is only as protected as its control's marking,
+// so the enumeration is also what the form's census walks control by control
+// (components/__tests__/intake-prefill-ledger.test.tsx) — `foodTiming`, whose control is
+// the rules builder rather than an input of its own, went unmarked until it did.
 export type PrefillField =
   | "asNeeded"
   | "doseAmount"

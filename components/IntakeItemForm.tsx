@@ -116,6 +116,7 @@ import {
 } from "@/lib/intake-facts";
 import {
   fieldsFromRules,
+  foodRuleStatement,
   rulesFromFields,
   suggestedRulesForFoodTiming,
   type IntakeRule,
@@ -717,6 +718,19 @@ export default function IntakeItemForm({
   const ruleFields = useMemo(() => fieldsFromRules(rules), [rules]);
   const effectiveCondition = ruleFields.condition ?? condition;
 
+  // THE RULES BUILDER IS THE FOOD-TIMING CONTROL, so it marks the ledger like every
+  // other control does (#4665). `foodTiming` is the one prefillable field with no input
+  // of its own — it is a sentence in this list — and until this existed it was the one
+  // field a later pick could still write over the person's answer: their own food rule
+  // is not `suggested`, so `seedFromPick`'s filter kept it AND appended the new label's
+  // suggested rule after it, and `fieldsFromRules` takes the last one. Every person-made
+  // change to the rules goes through here; a seed's own `setRules` does not.
+  function setRulesFromPerson(next: IntakeRule[]) {
+    if (foodRuleStatement(next) !== foodRuleStatement(rules))
+      markTouched("foodTiming");
+    setRules(next);
+  }
+
   // ---- The state the mapping posts ----
   // Memoized because it IS the draft (#1699): a new object every render would rewrite
   // the local draft on every render rather than on every change.
@@ -1153,7 +1167,7 @@ export default function IntakeItemForm({
             setOpenPanel("rules", focusKey);
           }}
           onRemoveRule={(id) =>
-            setRules((current) => current.filter((r) => r.id !== id))
+            setRulesFromPerson(rules.filter((r) => r.id !== id))
           }
         />
       ) : (
@@ -1500,7 +1514,7 @@ export default function IntakeItemForm({
             <IntakeRulesEditor
               key={rulesStartOnMenu ? "add" : "edit"}
               rules={rules}
-              setRules={setRules}
+              setRules={setRulesFromPerson}
               others={others}
               startOnMenu={rulesStartOnMenu}
             />

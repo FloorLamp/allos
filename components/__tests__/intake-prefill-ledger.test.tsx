@@ -5,7 +5,9 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
+import { PREFILL_FIELDS, type PrefillField } from "@/lib/intake-prefill";
 import MedicationAddWorkspace from "@/app/(app)/medications/MedicationAddWorkspace";
 import AddSupplementModal from "@/components/nutrition/AddSupplementModal";
 import CreateAction from "@/components/CreateAction";
@@ -278,6 +280,15 @@ describe("one PRN computation per name resolution (#4665)", () => {
   // reading a pre-confirm value, is the defect; whether today's dataset happens to make
   // the two agree is not something the form should depend on.
   //
+  // AND THIS IS A STRUCTURAL PIN ON PURPOSE, not a placeholder for a better one. With
+  // the shipped dataset there is NO user-visible divergence to assert: every name whose
+  // stale code resolves at all resolves to the same PRN entry the confirmed code does,
+  // so both resolutions produce identical figures and no number on screen differs. The
+  // count is what is observable. Do not delete it as an implementation detail — a form
+  // that resolves the fact twice, once from a code that has not arrived, is one dataset
+  // entry away from showing the previous drug's label figures, and this is the only
+  // thing standing between here and there.
+  //
   // The confirm is held open for the whole assertion, so what is counted is exactly the
   // resolution the PICK performed.
   it("resolves the picked drug's entry once, before the confirm lands", async () => {
@@ -301,4 +312,204 @@ describe("one PRN computation per name resolution (#4665)", () => {
       "4 hours"
     );
   });
+});
+
+// ── THE CENSUS: every prefillable field's control marks the ledger ────────────
+//
+// The three cases above prove three reported divergences are gone, and
+// lib/__tests__/intake-prefill.test.ts proves the ledger refuses a field it has been
+// TOLD the person touched. Neither proves the thing that was actually broken: that
+// each field's control tells it. Bug 1 was exactly that omission — a hand-typed redose
+// figure was overwritable because the control that set it marked nothing — so a rule
+// that is only as good as its wiring needs the wiring walked, not sampled.
+//
+// This walks `PREFILL_FIELDS` and, per field, drives that field's REAL control and
+// then picks a second label that states the same field. Whatever the person put there
+// has to still be there.
+//
+// WHY THIS TIER AND NOT A SOURCE SCAN over `touchPrefill` call sites. `foodTiming` has
+// no call of its own to find: its control is the rules builder, and its marking goes
+// through one wrapper around that builder's setter. A scan counting the six field
+// names against call sites would be green with that wrapper wired to nothing, which is
+// the same shape of hole as the bug. Reading the control back is the check that cannot
+// be satisfied by a mark nobody reaches.
+//
+// HOW THIS FAILS RATHER THAN SKIPS.
+//  - The table is a total `Record<PrefillField, …>`, so a seventh field cannot join the
+//    enumeration without joining this file.
+//  - The floor case pins the population, so an emptied enumeration cannot generate
+//    zero cases and report that as green.
+//  - Every control is fetched with a throwing query, so a field whose control this
+//    cannot find fails; it is never skipped.
+//  - Every field carries a POSITIVE CONTROL — the same re-seed, with nothing edited,
+//    DOES write its value — so "their value stood" can never be a re-seed that stated
+//    nothing at all.
+
+/** How one prefillable field is driven, end to end, through the shipped form. */
+interface ControlCase {
+  /** A first pick, after which this field's control holds `offered`. */
+  seed: string;
+  /** Put this field's own control on screen. */
+  open: () => void;
+  /** Read that control back. */
+  read: () => string;
+  offered: string;
+  /** The person's edit, made through that same control. */
+  edit: () => void;
+  edited: string;
+  /** A second pick whose label states this field — and states it differently. */
+  reseed: string;
+  reoffered: string;
+}
+
+const select = (name: string) =>
+  screen.getByRole("combobox", { name }) as HTMLSelectElement;
+const textbox = (name: string) =>
+  screen.getByRole("combobox", { name }) as HTMLInputElement;
+const field = (testId: string) =>
+  screen.getByTestId(testId) as HTMLInputElement;
+
+/** Open the rules builder through the food rule's own chip. */
+function openFoodRule() {
+  const chip = screen.getAllByTestId("intake-fact-rule")[0];
+  fireEvent.click(within(chip).getAllByRole("button")[0]);
+}
+
+/**
+ * The food timing the form would SAVE. `fieldsFromRules` reads the food sentences in
+ * list order and keeps the last, and a seed appends its suggested rule to the end — so
+ * reading the first select would report the person's rule as standing while the label's
+ * rule, added after it, is the one that wins.
+ */
+function savedFoodTiming(): string {
+  const all = screen.getAllByRole("combobox", {
+    name: "Food timing",
+  }) as HTMLSelectElement[];
+  return all[all.length - 1].value;
+}
+
+// The labels these cases pick between, and why each pair. Every pair states the field
+// under test in BOTH picks and states it differently, so the re-seed winning and the
+// person's edit standing are two different readings of the same control.
+const CENSUS: Record<PrefillField, ControlCase> = {
+  // Ibuprofen's label is as-needed; simvastatin's is not.
+  asNeeded: {
+    seed: "Simvastatin (Zocor)",
+    open: () => openFact("importance"),
+    read: () => field("intake-obligation").value,
+    offered: "must",
+    edit: () =>
+      fireEvent.change(field("intake-obligation"), {
+        target: { value: "should" },
+      }),
+    edited: "should",
+    reseed: "Ibuprofen (Advil, Motrin)",
+    reoffered: "may",
+  },
+  // The two OTC label figures this file already leans on: 500 mg against 200 mg.
+  doseAmount: {
+    seed: ACETAMINOPHEN,
+    open: () => openFact("dose"),
+    read: () => textbox("Amount").value,
+    offered: "500 mg",
+    edit: () =>
+      fireEvent.change(textbox("Amount"), { target: { value: "12.5 mg" } }),
+    edited: "12.5 mg",
+    reseed: "Ibuprofen (Advil, Motrin)",
+    reoffered: "200 mg",
+  },
+  // Acetaminophen redoses every 4 h up to 6 a day; ibuprofen every 6 h up to 4.
+  minIntervalHours: {
+    seed: ACETAMINOPHEN,
+    open: () => openFact("timing"),
+    read: () => field("redose-interval").value,
+    offered: "4",
+    edit: () =>
+      fireEvent.change(field("redose-interval"), { target: { value: "8" } }),
+    edited: "8",
+    reseed: "Ibuprofen (Advil, Motrin)",
+    reoffered: "6",
+  },
+  maxDailyCount: {
+    seed: ACETAMINOPHEN,
+    open: () => openFact("timing"),
+    read: () => field("redose-max").value,
+    offered: "6",
+    edit: () =>
+      fireEvent.change(field("redose-max"), { target: { value: "2" } }),
+    edited: "2",
+    reseed: "Ibuprofen (Advil, Motrin)",
+    reoffered: "4",
+  },
+  // Statins are evening drugs, levothyroxine a morning one. Neither is as-needed, so
+  // the dose row keeps its time-of-day control.
+  timeOfDay: {
+    seed: "Simvastatin (Zocor)",
+    open: () => openFact("dose"),
+    read: () => select("Time of day").value,
+    offered: "Evening",
+    edit: () =>
+      fireEvent.change(select("Time of day"), {
+        target: { value: "Before sleep" },
+      }),
+    edited: "Before sleep",
+    reseed: "Levothyroxine (Synthroid, Levoxyl, …)",
+    reoffered: "Morning",
+  },
+  // Levothyroxine is an empty-stomach drug, metformin a with-food one.
+  foodTiming: {
+    seed: "Levothyroxine (Synthroid, Levoxyl, …)",
+    open: openFoodRule,
+    read: savedFoodTiming,
+    offered: "empty_stomach",
+    edit: () =>
+      fireEvent.change(
+        screen.getByRole("combobox", {
+          name: "Food timing",
+        }) as HTMLSelectElement,
+        { target: { value: "before_meal" } }
+      ),
+    edited: "before_meal",
+    reseed: "Metformin (Glucophage)",
+    reoffered: "with_food",
+  },
+};
+
+describe("every prefillable field's control marks the ledger (#4665)", () => {
+  // THE FLOOR. The cases below are generated from the enumeration, and a loop over an
+  // empty enumeration is a green suite that asserted nothing — the failure this census
+  // exists to prevent, in the census itself. Six fields today; this number moves when
+  // someone has added a field AND its case.
+  it("walks all six prefillable fields", () => {
+    expect(PREFILL_FIELDS.length).toBe(6);
+  });
+
+  for (const name of PREFILL_FIELDS) {
+    const c = CENSUS[name];
+
+    // POSITIVE CONTROL. The re-seed really does state this field, so the assertion
+    // below is about the ledger refusing it and not about a pick that offered nothing.
+    it(`${name}: the second label states it, over an untouched value`, async () => {
+      mount("medication");
+      await pickName(c.seed);
+      c.open();
+      expect(c.read()).toBe(c.offered);
+
+      await pickName(c.reseed);
+
+      await waitFor(() => expect(c.read()).toBe(c.reoffered));
+    });
+
+    it(`${name}: a value the person set is not written over`, async () => {
+      mount("medication");
+      await pickName(c.seed);
+      c.open();
+      c.edit();
+      expect(c.read()).toBe(c.edited);
+
+      await pickName(c.reseed);
+
+      expect(c.read()).toBe(c.edited);
+    });
+  }
 });
