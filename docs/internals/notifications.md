@@ -3695,6 +3695,55 @@ A **prose-claim class**, declared by message KIND in `KIND_PROSE`
   answers **no**, and says why: it describes seven days that are already over, so its
   claims are history the moment they are made.
 
+#### The second prose claim: the post-workout recap (#4996)
+
+The digest's claims can become false because the LEDGER moves under them. The recap's
+become poorer because a merge replaces the sentence's **subject**.
+
+One ride arrives as four uploaded rows. Health Connect is a hub and lands 30–45 minutes
+ahead of Strava on every ride, untyped, so the finish dispatch announces the Health
+Connect row: **"🏋️ Session complete"** with the `actype` type ask. Strava's sync then
+brings the ride, the auto-merge folds all four, and the keeper is a Strava row under a
+new id — at which point `carryPostWorkoutMarker` (#2570) carries the announcement onto
+it so the good row is never announced. That is **one ride, one message**, working
+exactly as designed, and it is why the correction is an **edit** and never a second
+send: the message the rider is looking at is the only one this session will ever get.
+
+- **The fold registers the follow-up**, at the one place every merge path passes.
+  `carryPostWorkoutMarker` already runs inside `writeActivityFold`, before the drops are
+  deleted, and it is the only moment that knows which row's delivered message the keeper
+  inherited. It writes `notify_recap_keeper_<droppedId>` = the keeper's id — a non-marker
+  in the send-marker registry, because it gates a silent EDIT and can neither cause a
+  contact nor suppress one. It is a **chain**: a same-source twin fold followed by the
+  Strava fold leaves the message naming a row two hops from the truth, and each fold
+  writes one link without needing to know about a fold that has not happened yet.
+- **The message is addressed by its `actype` token**, which is how the reconciler already
+  addresses it. A recap that was CLASSIFIED at send time carries no token, so it carries
+  no address and is left exactly as delivered — which is also the whole of the reported
+  defect, since the untyped first twin is precisely the one that carries the ask.
+- **No second renderer.** `rebuildWorkoutRecap` re-runs the same
+  `finishRecapParts → composeFinishNudge` the send ran, for the row the app now knows the
+  session by. The gather moved into `lib/notifications/workout-recap-build.ts` so both
+  callers reach it; `workout-presence.ts` keeps the dose section, the dispatch claim and
+  the one-shot marker — the parts that are about sending.
+- **A fold whose keeper reads the same costs no Telegram call**, by the body-hash pin the
+  digest already uses. A same-source twin fold before Strava arrives goes through the
+  full rebuild and stops there.
+- **The type ask goes with the correction**: dropped when the keeper is classified,
+  re-addressed to the keeper when it is not, so the buttons cannot outlive the row they
+  name any more than the sentence can. The `actype` compare-and-swap stays the buttons'
+  own defence for the no-op case, where nothing is edited at all.
+- **The unclassified send says details follow (item 3).** When the announced row is
+  `unclassified` and the profile really has a richer source connected — read from
+  `integration_connections`, never assumed — the message ends with **"Details follow when
+  Strava syncs."**, and the reconciled message removes it. It is a line on a message
+  already going out: it changes what is SHOWN and nothing about what is SENT, so no send
+  is delayed, added or held for it. A profile with no richer source gets no line; the type
+  ask is its whole state. The line hangs off `FinishTypeAsk` because the two stand and
+  fall together.
+- **Rollover still drops the pointer.** A recap is honest as history, so a fold that lands
+  the next day corrects nothing — the same rule the digest follows.
+
 **Deliberately out of scope.** No write-path coupling: the Server Action layer
 stays free of Telegram calls. A fire-and-forget edit from the action layer could
 be added on top later, but it cannot replace this (no retry, a second concurrent

@@ -27,6 +27,8 @@ import {
   MVMEDS_RO_PROFILE,
   MVMEDS_SELF_MED,
   MVMEDS_RO_MED,
+  MVMEDS_WARD_PROFILE,
+  MVMEDS_WARD_MED,
   E2E_LOGIN_MVBIO,
   MVBIO_SELF_PROFILE,
   MVBIO_RO_PROFILE,
@@ -469,13 +471,22 @@ export function seedMultiProfile(): void {
   }
 
   // ── Multi-view Medications regimen boards (issue #1373 Part 1) ─────────────────
-  // E2E_LOGIN_MVMEDS: a base profile (WRITE, acting) + a second profile READ-ONLY, each
-  // with one due-today SCHEDULED medication (kind='medication', a daily dose, no taken
-  // log) so both boards render Today content and both feed the leading strip. The self
-  // profile is created FIRST so it holds the lower id → the login lands acting as it.
+  // E2E_LOGIN_MVMEDS: a base profile (WRITE, acting) + a second profile READ-ONLY + a
+  // third profile WRITE that is never the acting one (#4429), each with one due-today
+  // SCHEDULED medication (kind='medication', a daily dose, no taken log) so every board
+  // renders Today content and every member feeds the leading strip. The self profile is
+  // created FIRST so it holds the lower id → the login lands acting as it.
+  //
+  // WHY THREE. The read-only member is what makes the strip's write gate readable as a
+  // DIFFERENCE inside one render; the writable non-acting member is what makes a
+  // cross-profile take reachable at all, since a take on the acting profile's own row
+  // cannot tell "the write followed the row" from "the write followed the session".
+  // Its dose log is the only persistent write in this fixture, and only #4429's test
+  // makes it — reset there, the way the #1096 fixture resets its own.
   {
     const mvSelfId = fixtureProfileId(MVMEDS_SELF_PROFILE);
     const mvRoId = fixtureProfileId(MVMEDS_RO_PROFILE);
+    const mvWardId = fixtureProfileId(MVMEDS_WARD_PROFILE);
     const seedBoardMed = (profileId: number, name: string): void => {
       if (
         !db
@@ -499,10 +510,12 @@ export function seedMultiProfile(): void {
     };
     seedBoardMed(mvSelfId, MVMEDS_SELF_MED);
     seedBoardMed(mvRoId, MVMEDS_RO_MED);
+    seedBoardMed(mvWardId, MVMEDS_WARD_MED);
     const mvLoginId = seedMemberLogin(E2E_LOGIN_MVMEDS, mvSelfId, "write");
     grantProfile(mvLoginId, mvRoId, "read");
+    grantProfile(mvLoginId, mvWardId, "write");
     console.log(
-      `e2e: seeded medications-board fixture — ${E2E_LOGIN_MVMEDS} granted ${MVMEDS_SELF_PROFILE} (${mvSelfId}, write) + ${MVMEDS_RO_PROFILE} (${mvRoId}, read)`
+      `e2e: seeded medications-board fixture — ${E2E_LOGIN_MVMEDS} granted ${MVMEDS_SELF_PROFILE} (${mvSelfId}, write) + ${MVMEDS_RO_PROFILE} (${mvRoId}, read) + ${MVMEDS_WARD_PROFILE} (${mvWardId}, write)`
     );
   }
 

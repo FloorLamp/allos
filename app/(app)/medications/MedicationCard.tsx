@@ -129,7 +129,7 @@ export default function MedicationCard({
   historyMaxDate,
   defaultHistoryTime,
   canWrite = true,
-  doseHistorySubjectProfileId,
+  subjectProfileId,
   initialAction,
   conditions = [],
   ingredients = [],
@@ -206,13 +206,18 @@ export default function MedicationCard({
   // ITSELF — edit, stop, retire, side effects — stays tied to the acting profile and
   // hides until the user chooses "Act as …" in the page identity banner.
   canWrite?: boolean;
-  // The one exception, and the whole of it (#4693): the detail page is a
-  // subject-scoped container, so its DOSE HISTORY follows the surface's subject
-  // rather than the switcher. Present ⇒ this card renders another profile's
-  // medication AND the login holds write on that profile, so the panel is live and
-  // posts this id; the server re-gates it. Nothing else on the card reads it — an add
-  // that inherits the surface is not a licence to edit the definition.
-  doseHistorySubjectProfileId?: number;
+  // THE SURFACE'S SUBJECT (#4693, widened by #4429). The detail page is a
+  // subject-scoped container, so the affordances that ACT ON A DAY follow the
+  // surface's subject rather than the switcher: the dose-history add/amend, today's
+  // scheduled check-off, and the PRN log. Present ⇒ this card renders another
+  // profile's medication AND the login holds write on that profile, so each of those
+  // posts this id and the server re-gates it (requireProfileWriteAccess).
+  //
+  // IT IS STILL NOT A LICENCE TO EDIT THE DEFINITION. Edit, stop, restart, retire,
+  // side effects, refill and the ⋯ menu all stay switcher-bound on `canWrite` — the
+  // #4429 gap was a caregiver who could confirm a member's dose from the board but not
+  // from the med's own page, and that is exactly what widens here.
+  subjectProfileId?: number;
   // List-row overflow actions land on this detail view with the relevant form open.
   initialAction?: "edit" | "stop";
   // The profile's conditions for the "For condition…" indication picker (#1052).
@@ -247,6 +252,10 @@ export default function MedicationCard({
   // so the card can never contradict scheduling; `open` still comes from the
   // courses so a captured side effect links to the live course.
   const current = isMedicationCurrent(s);
+  // The day-acting reach, named once (the board's `confirmProfileId` twin): the acting
+  // profile's own card, or another member's card the login may write. Both post through
+  // the same gate; only the second carries an explicit target.
+  const canConfirm = canWrite || subjectProfileId != null;
   const open = currentCourse(courses);
   const ordered = sortCourses(courses);
   const unresolved = unresolvedCount(sideEffects);
@@ -536,7 +545,7 @@ export default function MedicationCard({
             className="mt-4 border-t border-black/5 pt-4 dark:border-white/5"
             data-testid="prn-administrations"
           >
-            {canWrite ? (
+            {canConfirm ? (
               <QuickLogPrnControl
                 itemId={s.id}
                 name={s.name}
@@ -546,6 +555,7 @@ export default function MedicationCard({
                 redoseLine={prnRedoseLine}
                 redosePrimary={prnRedosePrimary}
                 layout="detail"
+                profileId={subjectProfileId}
                 tz={timezone}
               />
             ) : (
@@ -624,7 +634,8 @@ export default function MedicationCard({
                   }
                   taken={takenDoseIds.has(dose.id)}
                   skipped={skippedDoseIds.has(dose.id)}
-                  readOnly={!canWrite}
+                  readOnly={!canConfirm}
+                  profileId={subjectProfileId}
                   tz={timezone}
                   takenTime={formatGivenAtClockWithRelativeAge(
                     timezone,
@@ -866,8 +877,8 @@ export default function MedicationCard({
             minDate={historyMinDate}
             maxDate={historyMaxDate}
             defaultTime={defaultHistoryTime}
-            canWrite={canWrite || doseHistorySubjectProfileId != null}
-            subjectProfileId={doseHistorySubjectProfileId}
+            canWrite={canConfirm}
+            subjectProfileId={subjectProfileId}
             // The card's `timezone` is `loadMedicationsData(profileId)`'s, so on a
             // cross-profile detail page it already IS the subject's zone — the panel's
             // forms collect their wall clock on the calendar the write re-anchors it

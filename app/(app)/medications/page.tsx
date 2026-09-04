@@ -171,7 +171,12 @@ export default async function MedicationsPage(props: {
               conditions={medConditions}
             />
 
-            {multi && <MedicationTodayStrip members={stripMembers} />}
+            {multi && (
+              <MedicationTodayStrip
+                members={stripMembers}
+                actingProfileId={actingProfileId}
+              />
+            )}
 
             {/* Single-view renders the ONE board with no wrapper (byte-identical to the
           pre-#1373 page body); multi-view stacks the per-member boards. */}
