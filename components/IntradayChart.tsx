@@ -179,31 +179,21 @@ interface IntradayChartProps {
 }
 
 /**
- * THE CHART PICKS ITS GEOMETRY FROM ITS OWN CONTAINER (#4973), once, for every
- * mount.
+ * THE CHART PICKS ITS GEOMETRY FROM ITS OWN CONTAINER (#4973), for every mount.
+ * The day view's panel used to hide one of a pair by VIEWPORT and the dashboard
+ * hard-coded `compact` into a cell that is ~1,700px at xl; neither read the width
+ * the chart was actually given, and a third mount would have invented a third
+ * rule. `@container` because the container is what the type scales against —
+ * `labelSize × (container ÷ viewBox)` knows nothing about the viewport, and these
+ * two mounts' containers differ by 5× at the SAME one.
  *
- * Three mounts used to choose it by three different rules and none of them read
- * the width the chart was actually GIVEN: the day view's panel rendered both and
- * hid one by VIEWPORT, and the dashboard hard-coded `compact` into a cell that is
- * ~1,700px at xl — a phone-sized drawing with phone-sized type in a desktop row.
- * A fourth mount would have invented a fourth rule.
- *
- * `@container`, not a viewport breakpoint, because the container is the thing the
- * type scales against: the label paints at `labelSize × (container ÷ viewBox)`,
- * which knows nothing about the viewport, and these two mounts' containers differ
- * by 5× at the SAME viewport. 520 is `INTRADAY_VARIANTS.wide.minContainerPx` —
- * the width from which the wide box's type clears the legibility floor — written
- * as a literal only because a Tailwind container variant has to be one its scanner
- * can see; `lib/__tests__/intraday-layout.test.ts` holds the literal and the table
- * together, and there is no second breakpoint anywhere.
- *
- * BOTH DRAWINGS ARE IN THE PAYLOAD, and that is the price of a correct FIRST
- * PAINT. Picking on the client — measure the container, then draw — would land
- * the wrong geometry in the first HTML byte and resize it at hydration, on a
- * glance surface rendered on every day view; that is the cost #1515 named as the
- * one this surface cannot spend. What duplicates is the drawing. Each drawing
- * keeps its own zoom window, exactly as the panel's pair did, and only the one
- * its container earns is ever displayed or reachable.
+ * 520 is `INTRADAY_VARIANTS.wide.minContainerPx`, spelled out only because a
+ * Tailwind container variant has to be a literal its scanner can see;
+ * `lib/__tests__/intraday-layout.test.ts` holds the two together, and there is no
+ * second breakpoint. BOTH DRAWINGS SHIP, which is the price of a correct first
+ * paint: measuring the container on the client would put the wrong geometry in
+ * the first HTML byte and resize it at hydration, on the glance surface #1515
+ * named as the one that cannot spend that.
  */
 export default function IntradayChart({
   className,
