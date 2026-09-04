@@ -1,9 +1,9 @@
 // The `test:db` gate's trigger set is a CLAIM ABOUT IMPORTS (#2954), and this is
 // the guard that keeps it true.
 //
-// `scripts/work/agent-gates.sh` runs the DB+action tier only when the diff
+// `scripts/orchestration/agent-gates.sh` runs the DB+action tier only when the diff
 // touches `db_tier_paths` — the expensive gate stops firing for an agent whose work
-// is confined to docs/, e2e/ or scripts/work/. Each entry says "the tier's
+// is confined to docs/, e2e/ or scripts/orchestration/. Each entry says "the tier's
 // inputs live here", which is the same shape of claim as CI's no-runtime-surface
 // skip set, and it fails the same silent way: a wrong set does not go red, it
 // quietly stops running the DB tests for a change that needed them. #2786 settled
@@ -49,7 +49,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const GATES = "scripts/work/agent-gates.sh";
+const GATES = "scripts/orchestration/agent-gates.sh";
 const DB_CONFIG = "vitest.db.config.ts";
 
 type TriggerSet = { include: string[]; exclude: string[] };
@@ -291,7 +291,7 @@ describe("the test:db gate's trigger set", () => {
     // goes quietly green: the first version of this scan read `lib/**` out of a
     // COMMENT in the coverage block, seeded all ~2,900 lib/ files, and then
     // "verified" the trigger set against the pure tier's imports as well — which
-    // reach e2e/ and scripts/work/ for honest reasons, and would have
+    // reach e2e/ and scripts/orchestration/ for honest reasons, and would have
     // argued for widening the set until the gate ran for everyone again.
     const seeds = seedFiles();
     expect(seeds.length).toBeGreaterThan(50);
@@ -306,7 +306,7 @@ describe("the test:db gate's trigger set", () => {
     // the census above and silently repeal #2954 — the gate would fire for a
     // docs-only agent again, which is the cost this change is about.
     for (const rel of [
-      "docs/work.md",
+      "docs/orchestration.md",
       "docs/internals/tracker-reconciliation.md",
       "e2e/smoke.spec.ts",
       ".github/workflows/ci.yml",
@@ -314,7 +314,7 @@ describe("the test:db gate's trigger set", () => {
       "AGENTS.md",
       "README.md",
       GATES,
-      "scripts/work/dispatch-brief.mjs",
+      "scripts/orchestration/dispatch-brief.mjs",
     ])
       expect(covered(rel), `${rel} must stay outside the trigger set`).toBe(
         false
@@ -374,8 +374,11 @@ describe("the trigger-set scan's reach", () => {
       ["lib/probe.ts", "@/e2e/support/factory"],
       // The subtree the exclusion carves out of an otherwise-covered directory —
       // the mistake a plain `scripts/` prefix test would miss.
-      ["lib/probe.ts", "@/scripts/work/reconcile-tracker-core"],
-      ["lib/queries/probe.ts", "../../scripts/work/dispatch-brief.mjs"],
+      ["lib/probe.ts", "@/scripts/orchestration/reconcile-tracker-core"],
+      [
+        "lib/queries/probe.ts",
+        "../../scripts/orchestration/dispatch-brief.mjs",
+      ],
     ] as const;
     for (const [file, spec] of reaches)
       expect(
@@ -396,7 +399,7 @@ describe("the trigger-set scan's reach", () => {
       'import { PERSONAS } from "../../scripts/seed-personas";',
       'import { middleware } from "@/middleware";',
       'import type { View } from "@/components/activity/ActivityMediaStrip";',
-      "// see docs/work.md for the gate order",
+      "// see docs/orchestration.md for the gate order",
       "/* the e2e/ suite covers this path end to end */",
     ];
     for (const src of quiet)
@@ -423,7 +426,8 @@ describe("the trigger-set scan's reach", () => {
     // as surely, with no specifier to resolve. Naming the gap is the honest move; a
     // partial exec-detector would read like a total rule and be the failure this
     // family exists to prevent, one level down.
-    const shelled = 'execFileSync("bash", ["scripts/work/agent-gates.sh"]);';
+    const shelled =
+      'execFileSync("bash", ["scripts/orchestration/agent-gates.sh"]);';
     expect(
       uncoveredIn(
         [{ file: "lib/__db_tests__/probe.test.ts", src: shelled }],

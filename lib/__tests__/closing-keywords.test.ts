@@ -7,11 +7,16 @@ import {
   closingKeywordHits,
   EXIT,
   KEYWORDS,
-} from "../../scripts/work/closing-keywords.mjs";
+} from "../../scripts/orchestration/closing-keywords.mjs";
 import { makeTmpDir } from "./tmp-dir";
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const SCRIPT = path.join(REPO, "scripts", "work", "closing-keywords.mjs");
+const SCRIPT = path.join(
+  REPO,
+  "scripts",
+  "orchestration",
+  "closing-keywords.mjs"
+);
 
 describe("closing keyword syntax", () => {
   it("reports every supported keyword and keeps issue identity", () => {

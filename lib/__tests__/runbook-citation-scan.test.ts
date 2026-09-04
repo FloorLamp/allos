@@ -23,24 +23,24 @@ const REPO = process.cwd();
 
 /** The scanned surface: runbook, skills, PR template, work scripts. */
 function scannedFiles(): string[] {
-  const work = readdirSync(path.join(REPO, "docs/work"))
+  const work = readdirSync(path.join(REPO, "docs/orchestration"))
     .filter((name) => name.endsWith(".md"))
-    .map((name) => path.posix.join("docs/work", name));
+    .map((name) => path.posix.join("docs/orchestration", name));
   const skills = readdirSync(path.join(REPO, ".claude/skills"), {
     withFileTypes: true,
   })
     .filter((entry) => entry.isDirectory())
     .map((entry) => path.posix.join(".claude/skills", entry.name, "SKILL.md"));
-  const scripts = readdirSync(path.join(REPO, "scripts/work")).map((name) =>
-    path.posix.join("scripts/work", name)
+  const scripts = readdirSync(path.join(REPO, "scripts/orchestration")).map(
+    (name) => path.posix.join("scripts/orchestration", name)
   );
   return [
-    "docs/work.md",
+    "docs/orchestration.md",
     ...work,
     ...skills,
     ".github/pull_request_template.md",
     ...scripts,
-    "scripts/work-checkin.sh",
+    "scripts/orchestrator-checkin.sh",
   ].sort();
 }
 
@@ -78,7 +78,7 @@ function anchorRefs(text: string): AnchorRef[] {
 
 /** A cited .md file, resolved as written or against the runbook directory. */
 function resolveDoc(file: string): string | null {
-  for (const candidate of [file, path.posix.join("docs/work", file)]) {
+  for (const candidate of [file, path.posix.join("docs/orchestration", file)]) {
     if (existsSync(path.join(REPO, candidate))) return candidate;
   }
   return null;
@@ -112,9 +112,12 @@ function anchorResolves(anchor: string, heading: string): boolean {
  */
 const DELIBERATE_REFS: Record<string, readonly string[]> = {
   // PROC_PATHS regex fragments: `\.sh` splits one, the other is a prefix.
-  "scripts/work/pm-digest.sh": ["scripts/work-checkin", "docs/internals/e2e"],
+  "scripts/orchestration/pm-digest.sh": [
+    "scripts/orchestrator-checkin",
+    "docs/internals/e2e",
+  ],
   // Doc-comment examples of the path detector's inputs — dead by design.
-  "scripts/work/reconcile-tracker-core.ts": [
+  "scripts/orchestration/reconcile-tracker-core.ts": [
     "app/api/integrations/apple-health/ingest/route.ts",
     "lib/screenings.json",
   ],
@@ -159,9 +162,9 @@ describe("runbook citation scan", () => {
   });
 
   it("scans the whole runbook surface", () => {
-    expect(files).toContain("docs/work/review-merge.md");
-    expect(files).toContain(".claude/skills/work/SKILL.md");
-    expect(files).toContain("scripts/work/merge-gate.mjs");
+    expect(files).toContain("docs/orchestration/review-merge.md");
+    expect(files).toContain(".claude/skills/orchestrate/SKILL.md");
+    expect(files).toContain("scripts/orchestration/merge-gate.mjs");
   });
 
   it("keeps the deliberate-refs allowlist honest in both directions", () => {
@@ -181,9 +184,9 @@ describe("runbook citation scan", () => {
 // over text written to break them.
 describe("the citation scan's reach", () => {
   it("catches a dead rooted path and strips a line suffix first", () => {
-    expect(pathRefs("see `docs/work/vanished.md:12` for why")).toEqual([
-      "docs/work/vanished.md",
-    ]);
+    expect(pathRefs("see `docs/orchestration/vanished.md:12` for why")).toEqual(
+      ["docs/orchestration/vanished.md"]
+    );
   });
 
   it("skips templated and unrooted paths rather than guessing", () => {
@@ -194,10 +197,11 @@ describe("the citation scan's reach", () => {
   });
 
   it("resolves a qualified anchor across a line wrap, prefix + boundary", () => {
-    const wrapped = "per `docs/work/environment.md`\n§GitHub access governs";
+    const wrapped =
+      "per `docs/orchestration/environment.md`\n§GitHub access governs";
     expect(anchorRefs(wrapped)).toEqual([
       {
-        file: "docs/work/environment.md",
+        file: "docs/orchestration/environment.md",
         anchor: "GitHub access governs",
       },
     ]);
@@ -208,7 +212,9 @@ describe("the citation scan's reach", () => {
   });
 
   it("resolves short filenames against the runbook directory", () => {
-    expect(resolveDoc("review-merge.md")).toBe("docs/work/review-merge.md");
+    expect(resolveDoc("review-merge.md")).toBe(
+      "docs/orchestration/review-merge.md"
+    );
     expect(resolveDoc("no-such-doc.md")).toBeNull();
   });
 });

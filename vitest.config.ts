@@ -95,7 +95,7 @@ export default defineConfig({
       // the pure side of the boundary the repo already drew, and folding it in is
       // what makes it IMPOSSIBLE to forget to run. `npm test`, CI's `test-unit` job
       // (`npm run test:coverage`), `CI (main)`'s and
-      // scripts/work/agent-gates.sh's `npm test` all pick it up with no
+      // scripts/orchestration/agent-gates.sh's `npm test` all pick it up with no
       // further wiring — and "configured but never invoked" is the exact failure
       // #3446 exists to end. It earns its own config the day it needs a global
       // setup, a non-hermetic resource, or a coverage denominator of its own.

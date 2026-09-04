@@ -5,7 +5,7 @@ import {
   discoverNodeBin,
   resolveReadToken,
   resolveStateDir,
-} from "../../scripts/work/host.mjs";
+} from "../../scripts/orchestration/host.mjs";
 import { makeTmpDir } from "./tmp-dir";
 
 // HOST RESOLUTION (#3710). The work bootstrap grew up on one Linux

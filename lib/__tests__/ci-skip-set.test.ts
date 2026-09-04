@@ -18,7 +18,7 @@
 // share. The day a non-test consumer reaches into one, the entry has to go, and
 // this test is what says so.
 //
-// `scripts/work/` IS CODE TOO (#2786). It shipped unverified on the
+// `scripts/orchestration/` IS CODE TOO (#2786). It shipped unverified on the
 // argument that nothing imports it today — which is the same argument AGENTS.md
 // made about the three test directories, and precisely why those got a guard
 // rather than a sentence. `dispatch-brief.mjs`, `reconcile-tracker-core.ts` and
@@ -104,7 +104,7 @@ const VERIFIED_DIRS = [
   "lib/__action_tests__/",
   "lib/__db_tests__/",
   "lib/__tests__/",
-  "scripts/work/",
+  "scripts/orchestration/",
 ] as const;
 
 /** The entries this scan deliberately does NOT verify, each with its reason. */
@@ -119,7 +119,7 @@ const UNVERIFIED_ENTRIES: Record<string, string> = {
     "read by Claude Code and one pure test. Deciding what 'reachable' means " +
     "for a skill file is not an import-graph question, and a guard extended to " +
     "something it cannot honestly judge reads as coverage while providing none",
-  "scripts/work-checkin.sh$":
+  "scripts/orchestrator-checkin.sh$":
     "a shell script, which no import specifier in this repo can name. A module " +
     "SHELLING OUT to it is a real reach and is out of this scan's sight — " +
     "asserted as a gap below rather than left to be discovered",
@@ -150,7 +150,7 @@ let walked: string[] | null = null;
  * property that makes one hop enough. CI drops the matrix for a diff whose every
  * path is in the union, so a reach from one skipped directory into another
  * falsifies neither — `lib/__tests__/reconcile-tracker.test.ts` really does import
- * `scripts/work/reconcile-tracker-core`, and both entries are still
+ * `scripts/orchestration/reconcile-tracker-core`, and both entries are still
  * honest. Any path from runtime code into the union must cross the boundary
  * exactly once, and that crossing is what this scans for.
  */
@@ -284,7 +284,7 @@ describe("the CI no-runtime-surface skip set", () => {
     ).toEqual(skipSetEntries().sort());
     // Non-vacuous in the direction that matters: the verified set is not empty of
     // the entry this issue was about, and every reason is a reason.
-    expect(verifiedDirs()).toContain("scripts/work/");
+    expect(verifiedDirs()).toContain("scripts/orchestration/");
     for (const [entry, reason] of Object.entries(UNVERIFIED_ENTRIES))
       expect(reason.length, entry).toBeGreaterThan(20);
   });
@@ -306,19 +306,19 @@ describe("the CI no-runtime-surface skip set", () => {
 // spelled (#2677): each case below is a reach that would have to fail, run through
 // the same `offendersIn` the real census uses.
 describe("the skip-set scan's reach", () => {
-  it("sees a reach into scripts/work, which is CODE", () => {
+  it("sees a reach into scripts/orchestration, which is CODE", () => {
     // #2786's mutation. Against the pre-fix scan — whose verified set was the
     // entries starting with `lib/` — every one of these returned nothing, because
     // the entry was not being checked at all. A `scripts/` sibling importing the
     // dispatch helper is the concrete way this entry goes wrong: the diff touches
-    // only `scripts/work/`, CI drops the twelve-shard browser matrix, and
+    // only `scripts/orchestration/`, CI drops the twelve-shard browser matrix, and
     // a module the app loads changed behaviour underneath it.
     const reaches = [
-      ["scripts/notify.ts", "./work/dispatch-brief.mjs"],
-      ["scripts/seed.ts", "../scripts/work/pr-board.mjs"],
-      ["lib/queries/probe.ts", "@/scripts/work/reconcile-patch"],
-      ["app/api/probe/route.ts", "../../../scripts/work/ci-watch.mjs"],
-      ["components/Probe.tsx", "scripts/work/reconcile-tracker-core"],
+      ["scripts/notify.ts", "./orchestration/dispatch-brief.mjs"],
+      ["scripts/seed.ts", "../scripts/orchestration/pr-board.mjs"],
+      ["lib/queries/probe.ts", "@/scripts/orchestration/reconcile-patch"],
+      ["app/api/probe/route.ts", "../../../scripts/orchestration/ci-watch.mjs"],
+      ["components/Probe.tsx", "scripts/orchestration/reconcile-tracker-core"],
     ] as const;
     const preFix = verifiedDirs().filter((dir) => dir.startsWith("lib/"));
     for (const [file, spec] of reaches) {
@@ -372,11 +372,11 @@ describe("the skip-set scan's reach", () => {
       'import { x } from "../__db_tests_helper/x";',
       "// see lib/__tests__/ci-skip-set.test.ts, which pins this",
       "/* pinned by lib/__db_tests__/migration-child-links.test.ts */",
-      // #2786's near-misses. `scripts/work-checkin.sh` is a DIFFERENT
+      // #2786's near-misses. `scripts/orchestrator-checkin.sh` is a DIFFERENT
       // skip-set entry whose name shares a prefix with the directory, and a
       // sibling directory one character off is the mistake a prefix test makes.
-      'import { x } from "../../scripts/work-checkin";',
-      'import { x } from "../../scripts/work-helpers/x";',
+      'import { x } from "../../scripts/orchestrator-checkin";',
+      'import { x } from "../../scripts/orchestration-helpers/x";',
     ];
     for (const src of quiet)
       expect(
@@ -401,7 +401,7 @@ describe("the skip-set scan's reach", () => {
     // And the new directory really is one of the pruned ones, not a set member
     // that happens to have no files: the walk must have skipped real code.
     expect(
-      fs.readdirSync(path.join(REPO, "scripts/work")).length
+      fs.readdirSync(path.join(REPO, "scripts/orchestration")).length
     ).toBeGreaterThan(0);
   });
 
@@ -413,10 +413,10 @@ describe("the skip-set scan's reach", () => {
     // Non-vacuous, and this is the whole reason to assert it: the reach is real.
     // `lib/__tests__/reconcile-tracker.test.ts` imports the work module
     // it tests. Verify BOTH entries naively, one file at a time, and that honest
-    // import is an offender against `scripts/work/`.
+    // import is an offender against `scripts/orchestration/`.
     const file = "lib/__tests__/reconcile-tracker.test.ts";
     const src = fs.readFileSync(path.join(REPO, file), "utf8");
-    expect(src).toContain("scripts/work/reconcile-tracker-core");
+    expect(src).toContain("scripts/orchestration/reconcile-tracker-core");
     expect(offendersIn([{ file, src }], verifiedDirs()).length).toBeGreaterThan(
       0
     );
@@ -446,16 +446,17 @@ describe("the skip-set scan's reach", () => {
     ).toBe(true);
     // And EXECUTION IS NOT IMPORT (#2786). Shelling out to a script reaches it
     // just as surely, and there is no specifier to resolve — which is also why
-    // `scripts/work-checkin.sh` is declared unverifiable rather than
+    // `scripts/orchestrator-checkin.sh` is declared unverifiable rather than
     // verified. Naming this gap is the honest move; a partial exec-detector that
     // caught the string form and missed the assembled one would read like a total
     // rule and be the #2444 shape all over again.
-    const shelled = 'execFileSync("bash", ["scripts/work/agent-gates.sh"]);';
+    const shelled =
+      'execFileSync("bash", ["scripts/orchestration/agent-gates.sh"]);';
     expect(
       offendersIn([{ file: "scripts/notify.ts", src: shelled }], verifiedDirs())
     ).toEqual([]);
-    expect(fs.existsSync(path.join(REPO, "scripts/work/agent-gates.sh"))).toBe(
-      true
-    );
+    expect(
+      fs.existsSync(path.join(REPO, "scripts/orchestration/agent-gates.sh"))
+    ).toBe(true);
   });
 });

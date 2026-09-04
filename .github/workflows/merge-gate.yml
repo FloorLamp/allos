@@ -1,8 +1,8 @@
 name: Merge gate
 
-# The exact-head merge invariant (docs/work/review-merge.md §Merge)
+# The exact-head merge invariant (docs/orchestration/review-merge.md §Merge)
 # as a COMMIT STATUS, so forgetting to run the gate cannot skip it: the
-# worker's interactive run of scripts/work/merge-gate.mjs
+# orchestrator's interactive run of scripts/orchestration/merge-gate.mjs
 # stays the fast path, and this recomputes the same verdict as the
 # "merge-gate" status on the exact head whenever something that can change
 # the verdict happens — a push, a review (the receipt arrives as one), CI
@@ -78,7 +78,7 @@ jobs:
             "$API/pulls/$pr" | jq -r .head.sha)
 
           set +e
-          gate_output=$(node scripts/work/merge-gate.mjs "$pr" \
+          gate_output=$(node scripts/orchestration/merge-gate.mjs "$pr" \
             --repo "${{ github.repository }}" --ignore-check merge-gate-job)
           rc=$?
           set -e

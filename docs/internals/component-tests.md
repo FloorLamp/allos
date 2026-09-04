@@ -15,7 +15,7 @@ below because its reasoning still governs what belongs in the tier.
 The component tier is the third vitest project in `vitest.config.ts`. It runs
 under `npm test` with the two `lib/**` projects — no separate command, no
 separate CI job — so CI's `test-unit` job, `CI (main)`, and
-`scripts/work/agent-gates.sh` all run it with no further wiring.
+`scripts/orchestration/agent-gates.sh` all run it with no further wiring.
 
 ## What the tier is for, and what it is not for
 

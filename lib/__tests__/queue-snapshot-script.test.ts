@@ -4,19 +4,19 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
 import { makeTmpDir } from "./tmp-dir";
-import { buildSnapshot } from "../../scripts/work/queue-snapshot.mjs";
-import { WATERMARK_ISSUE_TITLE } from "../../scripts/work/reconcile-tracker-core";
+import { buildSnapshot } from "../../scripts/orchestration/queue-snapshot.mjs";
+import { WATERMARK_ISSUE_TITLE } from "../../scripts/orchestration/reconcile-tracker-core";
 
 // THE WRITTEN-DOWN QUEUE (owner, 2026-08-31). A live session with open
 // capacity called the queue thin while four dispatchable items sat in it —
 // candidates get forgotten one at a time when the queue lives in the
-// worker's head. What is pinned here: which items the sweep keeps and
+// orchestrator's head. What is pinned here: which items the sweep keeps and
 // drops (and WHY each exclusion is the runbook's, not a guess), the order
 // that puts owner-filed work first, and that running the script writes the
 // file the check-in cites.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const SCRIPT = path.join(REPO, "scripts/work/queue-snapshot.mjs");
+const SCRIPT = path.join(REPO, "scripts/orchestration/queue-snapshot.mjs");
 
 const NOW = new Date("2026-08-31T12:00:00Z");
 const issue = (

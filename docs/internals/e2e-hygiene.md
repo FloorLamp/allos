@@ -1639,7 +1639,7 @@ problem the audit missed.
 ## Fix (e) — sharded CI, the on-demand full-suite workflow, and flake telemetry
 
 Three CI-shape changes from the flaky-e2e hardening pass (the merge-latency side
-of the problem; the work runbook `docs/work.md` documents the
+of the problem; the work runbook `docs/orchestration.md` documents the
 pain they replace):
 
 - **The CI e2e job is a 4-way shard matrix.** Each shard is a fresh runner + a
@@ -1680,7 +1680,7 @@ fires at 06:23 UTC, so the next run was four hours away and the history was
 indistinguishable from a dead schedule. That is worth recording as its own lesson:
 eyeballing a run list **cannot** tell "one period has elapsed" from "one period was
 skipped" — you need the schedule and the clock together. `scripts/scheduled-run-freshness.mjs`
-asks exactly that, in `work-checkin.sh`'s absent-or-past shape, and runs
+asks exactly that, in `orchestrator-checkin.sh`'s absent-or-past shape, and runs
 from `ci-main.yml` on every push to main rather than from a schedule of its own —
 a scheduled canary watching a schedule shares the failure mode it watches for. It
 also reads the workflow's `state`, because GitHub disabling a workflow after 60

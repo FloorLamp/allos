@@ -51,7 +51,7 @@ const DELIBERATE_NULS: Record<string, string> = {
   "lib/queries/coverage.ts": "composite key: item kind and item key",
   "e2e/video-fixture.ts":
     "literal bytes of a synthetic QuickTime atom, where a zero byte is the format",
-  "scripts/work/reconcile-tracker-core.ts":
+  "scripts/orchestration/reconcile-tracker-core.ts":
     "composite key: issue file and citation path",
   "scripts/phi-scan.ts":
     "a placeholder sentinel, held while a glob's `**` is rewritten, that no glob can itself contain",

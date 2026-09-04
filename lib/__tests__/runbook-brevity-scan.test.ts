@@ -9,7 +9,7 @@ import { makeTmpDir } from "./tmp-dir";
 // This scan is the CI tooth: runbook rules had regrown into inline war
 // stories (one bullet reached 18 lines) within days of each trim, because
 // every incident wants to be institutionalized where the rule lives. The
-// narrative half went first to a receipts file (docs/work-incidents),
+// narrative half went first to a receipts file (docs/orchestration-incidents),
 // then the owner killed that too (2026-08-30): a lesson is encoded in tooling
 // or a runbook rule, and the story behind it lives in git history, nowhere in
 // the tree.
@@ -49,7 +49,7 @@ import { makeTmpDir } from "./tmp-dir";
 // newlines no longer buys anything.
 //
 // THE PARAGRAPH CAP IS PER GENRE (#2784). Two lines was calibrated for
-// `docs/work.md` — terse imperative bullets, where a paragraph is a
+// `docs/orchestration.md` — terse imperative bullets, where a paragraph is a
 // section lead and two lines is generous. #2775 brought eleven more files under the
 // same gate, six of them directory-scoped `AGENTS.md` files carrying ordinary
 // explanatory prose, and the very first paragraph written in the new genre tripped
@@ -77,13 +77,13 @@ import { makeTmpDir } from "./tmp-dir";
 // WHICH GENRE A NEW FILE GETS is decidable without asking anyone, which is the
 // point: a per-genre cap nobody can predict is worse than a wrong single number,
 // because the gate stops being a rule and becomes a surprise. The boundary is
-// `docs/work*` and nothing else — that is the operational runbook, read
+// `docs/orchestration*` and nothing else — that is the operational runbook, read
 // mid-task under time pressure — and the census below pins that membership in
 // BOTH directions, so the genre cannot spread by drift. Everything else is
 // `prose`, including a file that does not obviously belong to either. The
 // default is deliberately the looser cap: the FILE budget still bounds the
 // document, so guessing wrong costs one line of paragraph rather than an
-// uncapped file. Wanting `runbook` for something outside `docs/work/`
+// uncapped file. Wanting `runbook` for something outside `docs/orchestration/`
 // means claiming a second operational surface — a real design question, and it
 // fails the census until someone answers it.
 //
@@ -133,16 +133,16 @@ const FILE_BUDGETS = {
   "lib/__db_tests__/AGENTS.md": { lines: 60, genre: "prose" },
   "lib/migrations/AGENTS.md": { lines: 80, genre: "prose" },
   "lib/queries/AGENTS.md": { lines: 60, genre: "prose" },
-  "docs/work.md": { lines: 80, genre: "runbook" },
-  "docs/work/decision-classes.md": { lines: 60, genre: "runbook" },
-  "docs/work/dispatch.md": { lines: 100, genre: "runbook" },
-  "docs/work/e2e-ci.md": { lines: 100, genre: "runbook" },
-  "docs/work/environment.md": { lines: 100, genre: "runbook" },
-  "docs/work/labels.md": { lines: 40, genre: "runbook" },
-  "docs/work/lifecycle.md": { lines: 80, genre: "runbook" },
-  "docs/work/multi-worker.md": { lines: 60, genre: "runbook" },
-  "docs/work/recovery.md": { lines: 50, genre: "runbook" },
-  "docs/work/review-merge.md": { lines: 100, genre: "runbook" },
+  "docs/orchestration.md": { lines: 80, genre: "runbook" },
+  "docs/orchestration/decision-classes.md": { lines: 60, genre: "runbook" },
+  "docs/orchestration/dispatch.md": { lines: 100, genre: "runbook" },
+  "docs/orchestration/e2e-ci.md": { lines: 100, genre: "runbook" },
+  "docs/orchestration/environment.md": { lines: 100, genre: "runbook" },
+  "docs/orchestration/labels.md": { lines: 40, genre: "runbook" },
+  "docs/orchestration/lifecycle.md": { lines: 80, genre: "runbook" },
+  "docs/orchestration/multi-orchestrator.md": { lines: 60, genre: "runbook" },
+  "docs/orchestration/recovery.md": { lines: 50, genre: "runbook" },
+  "docs/orchestration/review-merge.md": { lines: 100, genre: "runbook" },
 } as const satisfies Record<string, { lines: number; genre: Genre }>;
 
 /**
@@ -157,7 +157,7 @@ const FILE_BUDGETS = {
 const SKILL_BUDGETS = {
   ".claude/skills/file-issue/SKILL.md": { lines: 225, genre: "prose" },
   ".claude/skills/needs-human/SKILL.md": { lines: 205, genre: "prose" },
-  ".claude/skills/work/SKILL.md": { lines: 235, genre: "prose" },
+  ".claude/skills/orchestrate/SKILL.md": { lines: 235, genre: "prose" },
   ".claude/skills/pm/SKILL.md": { lines: 190, genre: "prose" },
   ".claude/skills/reconcile-tracker/SKILL.md": { lines: 250, genre: "prose" },
   ".claude/skills/ux-walkthrough/SKILL.md": { lines: 370, genre: "prose" },
@@ -210,12 +210,15 @@ function guardedFiles(): string[] {
   // untracked instructions without walking build outputs, dependencies or runtime
   // data that cannot contribute a source instruction.
   const agentFiles = repositoryAgentFiles();
-  const workFiles = readdirSync(path.join(process.cwd(), "docs", "work"), {
-    withFileTypes: true,
-  })
+  const workFiles = readdirSync(
+    path.join(process.cwd(), "docs", "orchestration"),
+    {
+      withFileTypes: true,
+    }
+  )
     .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
-    .map((entry) => path.posix.join("docs/work", entry.name));
-  return [...agentFiles, "docs/work.md", ...workFiles].sort();
+    .map((entry) => path.posix.join("docs/orchestration", entry.name));
+  return [...agentFiles, "docs/orchestration.md", ...workFiles].sort();
 }
 
 type Block = {
@@ -388,7 +391,7 @@ describe("runbook brevity", () => {
 
   it("keeps the terse-bullet runbook on the calibration it was bought for", () => {
     // The #2784 loosening reaches the prose one-pagers and NOTHING else. Stated
-    // here so that moving `docs/work.md` — the file whose regrown war
+    // here so that moving `docs/orchestration.md` — the file whose regrown war
     // stories bought this gate — into the prose genre is a deliberate edit with a
     // failing test in front of it, rather than a one-word change in a table.
     const runbookFiles = Object.entries(FILE_BUDGETS)
@@ -397,7 +400,7 @@ describe("runbook brevity", () => {
       .sort();
     expect(runbookFiles).toEqual(
       Object.keys(FILE_BUDGETS)
-        .filter((file) => file.startsWith("docs/work"))
+        .filter((file) => file.startsWith("docs/orchestration"))
         .sort()
     );
     expect(GENRE_PARAGRAPH_LINES.runbook).toBe(2);

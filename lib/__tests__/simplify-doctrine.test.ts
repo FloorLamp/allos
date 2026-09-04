@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 // (owner, 2026-08-31): most work should leave the code smaller or straighter,
 // invariants are enforced with TYPES rather than guards/registries, and
 // adding complexity is the signal to stop and re-ask what the real goal
-// costs in less code. The doctrine is only real where the workers read it,
+// costs in less code. The doctrine is only real where the orchestrators read it,
 // so these pins hold it to all three surfaces: the brief every lane
 // receives, the reviewer's checklist, and the filing skill that shapes
 // proposals before any lane exists.
@@ -16,7 +16,7 @@ const read = (rel: string) =>
 
 describe("the simplify-extract-unify doctrine", () => {
   it("every dispatch brief carries it beside the line budget", () => {
-    const brief = read("scripts/work/dispatch-brief.mjs");
+    const brief = read("scripts/orchestration/dispatch-brief.mjs");
     expect(brief).toContain(
       "SIMPLIFY, EXTRACT, UNIFY — OWNER RULING 2026-08-31"
     );
@@ -27,7 +27,7 @@ describe("the simplify-extract-unify doctrine", () => {
   });
 
   it("the reviewer's checklist enforces types-over-guards", () => {
-    const review = read("docs/work/review-merge.md");
+    const review = read("docs/orchestration/review-merge.md");
     expect(review).toContain("Prefer TYPES over guards (owner 2026-08-31)");
     expect(review).toContain("unrepresentable");
     // The convergence rule now cites its ruling, so the date resolves from

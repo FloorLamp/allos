@@ -14,7 +14,10 @@ import { makeTmpDir } from "./tmp-dir";
 // also source-scans this script's write confinement.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const SCRIPT = path.join(REPO, "scripts/work/delete-unknown-labels.ts");
+const SCRIPT = path.join(
+  REPO,
+  "scripts/orchestration/delete-unknown-labels.ts"
+);
 const TSX = path.join(REPO, "node_modules/.bin/tsx");
 
 /** The stub: serves the label list from a state file, records every call. */

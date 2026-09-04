@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
 import { makeTmpDir } from "./tmp-dir";
-import { WATERMARK_ISSUE_TITLE } from "../../scripts/work/reconcile-tracker-core";
+import { WATERMARK_ISSUE_TITLE } from "../../scripts/orchestration/reconcile-tracker-core";
 
 // THE WATERMARK WRITER, DRIVEN AS A SCRIPT — the same stub-curl construction
 // as the other confined writers' tests. What matters is the control flow: a
@@ -14,7 +14,7 @@ import { WATERMARK_ISSUE_TITLE } from "../../scripts/work/reconcile-tracker-core
 // is source-scanned in `./reconcile-tracker.test.ts`.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const SCRIPT = path.join(REPO, "scripts/work/reconcile-watermark.ts");
+const SCRIPT = path.join(REPO, "scripts/orchestration/reconcile-watermark.ts");
 const TSX = path.join(REPO, "node_modules/.bin/tsx");
 
 const OLD = "2026-08-29T06:00:00Z";

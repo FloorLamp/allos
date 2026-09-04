@@ -14,14 +14,14 @@ name: CI
 # merge_group: the MERGE QUEUE's validation event. A queued PR is re-validated on
 # the speculative merge commit GitHub builds for its position in the queue — the
 # exact commit that will become main — which closes the "CI tests the merge
-# commit, not your branch" gap PRE-merge (docs/work.md): a regression
+# commit, not your branch" gap PRE-merge (docs/orchestration.md): a regression
 # made by the interaction of two green PRs now fails in the queue instead of
 # landing. Only the three cheap tiers run here (the browser jobs are gated to
 # pull_request below): the documented two-green-PRs breakage class is type/unit
 # (#1560/#1562, #2245), and 12 e2e shards per queue group at this merge rate
 # would dwarf the rest of CI. Flip the two `if:` gates below to extend the queue
 # bar to the browser tier. Inert until the main ruleset requires a merge queue —
-# see docs/work.md "The merge queue".
+# see docs/orchestration.md "The merge queue".
 on:
   pull_request:
   merge_group:
@@ -292,7 +292,7 @@ jobs:
   # `npx playwright test --shard=N/TOTAL` invocation → a fresh seeded template and
   # fresh per-worker servers per chunk. This cuts the per-push e2e wall-clock AND removes the
   # long-lived-server cumulative degradation the work runbook documents
-  # for single-process full runs (docs/work.md). fail-fast is off so a
+  # for single-process full runs (docs/orchestration.md). fail-fast is off so a
   # red shard still lets the others finish — one push yields the full failure
   # picture instead of a partial one.
   #
@@ -376,9 +376,9 @@ jobs:
       # The set is deliberately literal, and grows only against the question
       # "what imports this", never "does this look like tooling":
       #   • prose — README/SECURITY/LICENSE/AGENTS.md (+ its CLAUDE.md symlink)/docs
-      #   • the work tooling under scripts/work/ and
-      #     scripts/work-checkin.sh, which the app does not import and the
-      #     e2e harness never loads. Every rule in docs/work.md that can
+      #   • the work tooling under scripts/orchestration/ and
+      #     scripts/orchestrator-checkin.sh, which the app does not import and the
+      #     e2e harness never loads. Every rule in docs/orchestration.md that can
       #     become a script does, so these are a steady trickle of PRs; each one
       #     used to buy ~25 minutes of twelve-shard Playwright to exercise a UI it
       #     cannot have changed.
@@ -422,7 +422,7 @@ jobs:
       - name: Detect changes with a runtime surface
         id: changes
         run: |
-          if git diff --name-only HEAD^1 HEAD | grep -qvE '^(README\.md|SECURITY\.md|LICENSE|AGENTS\.md|CLAUDE\.md|docs/|\.claude/skills/|lib/__tests__/|lib/__db_tests__/|lib/__action_tests__/|components/__tests__/|scripts/work/|scripts/work-checkin\.sh$)'; then
+          if git diff --name-only HEAD^1 HEAD | grep -qvE '^(README\.md|SECURITY\.md|LICENSE|AGENTS\.md|CLAUDE\.md|docs/|\.claude/skills/|lib/__tests__/|lib/__db_tests__/|lib/__action_tests__/|components/__tests__/|scripts/orchestration/|scripts/orchestrator-checkin\.sh$)'; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
             echo "code=false" >> "$GITHUB_OUTPUT"

@@ -80,7 +80,7 @@ describe("scheduled-run freshness (#2968)", () => {
   });
 
   it("does not collapse an unparseable timestamp into stale", () => {
-    // work-checkin.sh's rule, one tier over: both answers say "act", but
+    // orchestrator-checkin.sh's rule, one tier over: both answers say "act", but
     // re-running the schedule cannot fix a format the reader cannot parse, so an
     // alarm that cannot tell them apart repeats after the fix and gets skipped.
     const v = assessFreshness({ ...base, lastRunCreatedAt: "last Tuesday" });

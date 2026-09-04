@@ -3,7 +3,7 @@
 How verification has lied here, and what each spelling cost. Every entry was
 found the expensive way and has since caught a second instance.
 
-`docs/work/review-merge.md` is the runbook — when a lens is mandatory,
+`docs/orchestration/review-merge.md` is the runbook — when a lens is mandatory,
 how to merge. This file is the reference it draws on: aim a lens at the shapes a
 diff's own construction invites, not at all of them by rote.
 
@@ -41,7 +41,7 @@ not at all five by rote.
   LOCAL BEHIND REMOTE, and it must be tested with `git ls-remote`, not the
   remote-tracking ref: a rollback rewinds `.git/` too, so `origin/<branch>` is
   rolled back alongside everything else and comparing against it reports that the
-  tree agrees with itself. `scripts/work-checkin.sh` now asks this.
+  tree agrees with itself. `scripts/orchestrator-checkin.sh` now asks this.
 
 - **Copy that explains a mechanism can be falsified by the action it explains.**
   #3537 put _"Any warnings on this med follow its name — a new name can change

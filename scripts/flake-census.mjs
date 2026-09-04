@@ -9,7 +9,7 @@
 // how often that many clean runs would happen by chance if nothing had changed.
 //
 // It lives in the repo rather than in a scratch directory for the same reason
-// `work-checkin.sh` does: an experiment that spans days cannot have its
+// `orchestrator-checkin.sh` does: an experiment that spans days cannot have its
 // instrument deleted by a container restart.
 //
 // WHAT COUNTS AS AN EXPOSURE. Only a run where all twelve `e2e (N)` shards reached

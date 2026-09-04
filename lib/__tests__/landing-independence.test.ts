@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   independenceNotice,
   judgeIndependence,
-} from "../../scripts/work/landing-independence-core.mjs";
+} from "../../scripts/orchestration/landing-independence-core.mjs";
 
 // MERGES ARE SERIAL, PRs ARE NOT (owner, 2026-09-02). Every merge stales the
 // other open PRs' CI, and re-running each one at ~16 minutes serialised the

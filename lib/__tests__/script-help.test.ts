@@ -5,7 +5,7 @@ import { describe, it, expect } from "vitest";
 
 // EVERY ENTRY SCRIPT ANSWERS --help, AND ANSWERING IT DOES NOTHING ELSE.
 //
-// Workers probe unfamiliar scripts with `--help`, and before 2026-08-30
+// Orchestrators probe unfamiliar scripts with `--help`, and before 2026-08-30
 // the flag was silently ignored: the DEFAULT action ran instead. Mostly that
 // wasted a network round-trip; for the stateful scripts (the check-in flight
 // recorder, the dispatch ledger) it performed a real state transition the
@@ -23,28 +23,28 @@ const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const HELP_RUNS = new Map<string, SpawnSyncReturns<string>>();
 
 const ENTRY_SCRIPTS = [
-  "scripts/work-checkin.sh",
-  "scripts/work/adversarial-review-brief.mjs",
-  "scripts/work/agent-gates.sh",
-  "scripts/work/pm-digest.sh",
-  "scripts/work/ci-watch.mjs",
-  "scripts/work/closing-keywords.mjs",
-  "scripts/work/delete-unknown-labels.ts",
-  "scripts/work/dependabot-eval-brief.mjs",
-  "scripts/work/dispatch-brief.mjs",
-  "scripts/work/host.mjs",
-  "scripts/work/landing-independence.mjs",
-  "scripts/work/ledger.mjs",
-  "scripts/work/merge-gate.mjs",
-  "scripts/work/post-merge-census.mjs",
-  "scripts/work/pr-board.mjs",
-  "scripts/work/queue-snapshot.mjs",
-  "scripts/work/reconcile-apply.ts",
-  "scripts/work/reconcile-labels.ts",
-  "scripts/work/reconcile-tracker.ts",
-  "scripts/work/reconcile-watermark.ts",
-  "scripts/work/release-notes-gather.mjs",
-  "scripts/work/session-metrics.mjs",
+  "scripts/orchestrator-checkin.sh",
+  "scripts/orchestration/adversarial-review-brief.mjs",
+  "scripts/orchestration/agent-gates.sh",
+  "scripts/orchestration/pm-digest.sh",
+  "scripts/orchestration/ci-watch.mjs",
+  "scripts/orchestration/closing-keywords.mjs",
+  "scripts/orchestration/delete-unknown-labels.ts",
+  "scripts/orchestration/dependabot-eval-brief.mjs",
+  "scripts/orchestration/dispatch-brief.mjs",
+  "scripts/orchestration/host.mjs",
+  "scripts/orchestration/landing-independence.mjs",
+  "scripts/orchestration/ledger.mjs",
+  "scripts/orchestration/merge-gate.mjs",
+  "scripts/orchestration/post-merge-census.mjs",
+  "scripts/orchestration/pr-board.mjs",
+  "scripts/orchestration/queue-snapshot.mjs",
+  "scripts/orchestration/reconcile-apply.ts",
+  "scripts/orchestration/reconcile-labels.ts",
+  "scripts/orchestration/reconcile-tracker.ts",
+  "scripts/orchestration/reconcile-watermark.ts",
+  "scripts/orchestration/release-notes-gather.mjs",
+  "scripts/orchestration/session-metrics.mjs",
 ] as const;
 
 function runHelp(rel: string) {
@@ -91,17 +91,17 @@ describe("--help belongs to the invoked script, not to its imports", () => {
   // an absence assertion keyed on the filename then fails on correct prose.
   it.each([
     [
-      "scripts/work/queue-snapshot.mjs",
+      "scripts/orchestration/queue-snapshot.mjs",
       "Queue snapshot —",
       "folded in ONE place",
     ],
     [
-      "scripts/work/dispatch-brief.mjs",
+      "scripts/orchestration/dispatch-brief.mjs",
       "Dispatch-brief generator",
       "folded in ONE place",
     ],
     [
-      "scripts/work/ledger.mjs",
+      "scripts/orchestration/ledger.mjs",
       "The dispatch ledger, folded",
       "Host resolution for work",
     ],

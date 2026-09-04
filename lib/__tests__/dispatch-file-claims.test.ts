@@ -5,7 +5,7 @@
 // checked the three lanes its brief named before extending a type brand into
 // `app/(app)/nutrition/DayLedger.tsx`, saw no conflict, and `write-pipeline-3276`
 // had been dispatched into that exact file since. It was stopped by ASKING the
-// worker, which is not a control.
+// orchestrator, which is not a control.
 //
 // So the fixture below is a REAL one — a git repo, real linked worktrees, a real
 // uncommitted edit — because the question is entirely about what is on disk, and
@@ -28,11 +28,11 @@ import { describe, expect, it } from "vitest";
 import {
   claimsVerdict,
   pathOverlaps,
-} from "../../scripts/work/dispatch-brief.mjs";
+} from "../../scripts/orchestration/dispatch-brief.mjs";
 import { makeTmpDir } from "./tmp-dir";
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const SCRIPT = path.join(REPO, "scripts/work/dispatch-brief.mjs");
+const SCRIPT = path.join(REPO, "scripts/orchestration/dispatch-brief.mjs");
 
 /** The file the near-miss was about, one held by a COMMITTED edit, and one
  * nobody is touching at all. */

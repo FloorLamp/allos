@@ -28,7 +28,7 @@ import {
 import {
   EXIT_REFUSED,
   EXIT_SEEDED,
-} from "../../scripts/work/seed-next-build.mjs";
+} from "../../scripts/orchestration/seed-next-build.mjs";
 import { makeTmpDir } from "./tmp-dir";
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));

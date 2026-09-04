@@ -1,7 +1,7 @@
 // When a lane may be RETIRED (#3212).
 //
 // Retiring is not tidying. `done` closes the ledger entry AND the roster row,
-// and between them those are the worker's whole board — so retiring a lane
+// and between them those are the orchestrator's whole board — so retiring a lane
 // whose PR is still open deletes the only record that the PR exists. On
 // 2026-08-19 that happened to agent/3180-3206-test-hygiene: PR #3212 was open
 // and green, the lane was retired, and the PR went untracked for an hour until a
@@ -24,7 +24,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { retireVerdict } from "../../scripts/work/dispatch-brief.mjs";
+import { retireVerdict } from "../../scripts/orchestration/dispatch-brief.mjs";
 
 describe("retireVerdict", () => {
   it("refuses while the remote branch survives a prune — the work has not landed", () => {

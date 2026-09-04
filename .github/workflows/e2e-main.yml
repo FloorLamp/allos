@@ -15,7 +15,7 @@ name: E2E (main)
 #
 # This makes a base regression attributable to the merge that caused it, and
 # gives the "unrelated failure" exoneration path something that actually covers
-# the failing tier to exonerate against (docs/work/e2e-ci.md).
+# the failing tier to exonerate against (docs/orchestration/e2e-ci.md).
 #
 # A DETECTOR, NOT A GATE — same standing as ci-main.yml. A red here means: stop
 # merging, attribute it, fix main first (a follow-up PR or a revert), resume.
@@ -97,7 +97,7 @@ jobs:
           if [ -z "$before" ] || ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
             echo "code=true" >> "$GITHUB_OUTPUT"
             echo "Cannot resolve the pushed range - running the matrix rather than guessing."
-          elif git diff --name-only "$before" HEAD | grep -qvE '^(README\.md|SECURITY\.md|LICENSE|AGENTS\.md|CLAUDE\.md|docs/|\.claude/skills/|lib/__tests__/|lib/__db_tests__/|lib/__action_tests__/|components/__tests__/|scripts/work/|scripts/work-checkin\.sh$)'; then
+          elif git diff --name-only "$before" HEAD | grep -qvE '^(README\.md|SECURITY\.md|LICENSE|AGENTS\.md|CLAUDE\.md|docs/|\.claude/skills/|lib/__tests__/|lib/__db_tests__/|lib/__action_tests__/|components/__tests__/|scripts/orchestration/|scripts/orchestrator-checkin\.sh$)'; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
             echo "code=false" >> "$GITHUB_OUTPUT"

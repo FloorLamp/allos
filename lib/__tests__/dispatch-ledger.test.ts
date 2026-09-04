@@ -8,10 +8,10 @@ import {
   activeDispatches,
   laneIssues,
   readLedger,
-} from "../../scripts/work/ledger.mjs";
+} from "../../scripts/orchestration/ledger.mjs";
 
 // ONE READER FOR THE DISPATCH LEDGER (#4460). It had three — dispatch-brief,
-// queue-snapshot, and a python block in work-checkin.sh — and they
+// queue-snapshot, and a python block in orchestrator-checkin.sh — and they
 // disagreed about the same file: the shell's let ANY row win per branch, so
 // an `update` row (a re-prioritised lane) erased that branch's issues and
 // dropped it out of the live set, while queue-snapshot deliberately kept it.
@@ -26,7 +26,7 @@ import {
 // while looking entirely correct.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const SCRIPT = path.join(REPO, "scripts/work/ledger.mjs");
+const SCRIPT = path.join(REPO, "scripts/orchestration/ledger.mjs");
 
 const row = (entry: Record<string, unknown>) => JSON.stringify(entry);
 const LEDGER = [
@@ -126,7 +126,7 @@ describe("readLedger", () => {
   });
 });
 
-describe("ledger.mjs, driven the way work-checkin.sh drives it", () => {
+describe("ledger.mjs, driven the way orchestrator-checkin.sh drives it", () => {
   // Same bytes as the fixture above, on disk, through the same CLI the shell
   // calls — so what is asserted here is the check-in's actual answer.
   const dir = makeTmpDir("dispatch-ledger");
@@ -153,7 +153,7 @@ describe("ledger.mjs, driven the way work-checkin.sh drives it", () => {
   });
 
   // AND `?` IS NOT 0 (owner, 2026-08-31). The shell prints `?` when this exits
-  // non-zero, and `?` sends the worker to LOOK. A missing ledger printed
+  // non-zero, and `?` sends the orchestrator to LOOK. A missing ledger printed
   // as 0 reads "no lanes are running", and an empty roster is a dispatch order
   // — so a wrong STATE_DIR or a restart would dispatch on top of live lanes
   // nobody can see. Only a present-but-EMPTY ledger is genuinely zero. Each
@@ -188,7 +188,7 @@ describe("ledger.mjs, driven the way work-checkin.sh drives it", () => {
 });
 
 // THE FOURTH READER, finished (#4473). #4460 converged dispatch-brief,
-// queue-snapshot and work-checkin, and pm-digest.sh kept its own
+// queue-snapshot and orchestrator-checkin, and pm-digest.sh kept its own
 // inline `live.set(branch, row)` fold — last row per branch wins, the exact
 // read this file's header was written about. Its consequence is worse than the
 // others: the digest decides WHAT TO DISPATCH NEXT, so an `update` row on a

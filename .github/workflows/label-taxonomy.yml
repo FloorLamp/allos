@@ -1,7 +1,7 @@
 name: label-taxonomy
 
 # Deletes repo labels outside the closed taxonomy — `KNOWN_LABELS` in
-# scripts/work/reconcile-tracker-core.ts, the same canon
+# scripts/orchestration/reconcile-tracker-core.ts, the same canon
 # `checkLabelHygiene` checks issues against.
 #
 # WHY THIS EXISTS: GitHub's add-labels endpoint silently CREATES any label it
@@ -63,4 +63,4 @@ jobs:
         run: |
           args=(--apply)
           if [ "$DRY_RUN" = "true" ]; then args=(); fi
-          npx tsx scripts/work/delete-unknown-labels.ts "${args[@]}"
+          npx tsx scripts/orchestration/delete-unknown-labels.ts "${args[@]}"
