@@ -208,7 +208,7 @@ allowlist entry happen in the same PR.
 
 The guard freezes a THIRD pattern: **`.first()`**. On a SHARED seeded surface
 (an offer list, a dose list, a review inbox) "the first row" is whatever a
-neighbor spec or a retry of this spec left on top — the work runbook's
+neighbor spec or a retry of this spec left on top — the orchestration runbook's
 \#1 recurring failure class. The full fixture-ownership rule stays a convention
 gate (below — exact-count assertions can't be linted honestly), but `.first()`
 IS mechanically detectable, so its growth is frozen with the same
@@ -1790,7 +1790,7 @@ problem the audit missed.
 ## Fix (e) — sharded CI, the on-demand full-suite workflow, and flake telemetry
 
 Three CI-shape changes from the flaky-e2e hardening pass (the merge-latency side
-of the problem; the work runbook `docs/orchestration.md` documents the
+of the problem; the orchestration runbook `docs/orchestration.md` documents the
 pain they replace):
 
 - **The CI e2e job is a 4-way shard matrix.** Each shard is a fresh runner + a

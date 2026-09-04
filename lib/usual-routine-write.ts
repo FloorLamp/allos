@@ -117,7 +117,7 @@ import { zonedDateParts } from "./date";
 import { statedInstantOnDate } from "./stated-time";
 import { getTimezone } from "./settings";
 import { USUAL_BACKFILL, type LoggedVia } from "./logged-via";
-import { newDoseBundle, type DoseBundleId } from "./dose-bundle";
+import { newBundle, type BundleId } from "./bundle";
 import { logUsualFoodCore, type UsualFoodLogged } from "./food-usual-write";
 import { isUsualBackfillDateAccepted } from "./food-regularity";
 import { addProteinGramsCore } from "./protein-daily-totals-write";
@@ -194,7 +194,7 @@ function datedDoseWrite(
   date: string,
   dose: PendingDayDose,
   loggedVia: LoggedVia,
-  bundleId: DoseBundleId
+  bundleId: BundleId
 ): UsualRoutineDoseOutcome {
   const hhmm =
     parseClockHhmm(dose.timeOfDay) ?? zonedDateParts(tz, clockNow()).hhmm;
@@ -281,6 +281,17 @@ export function logUsualRoutineCore(
   const writesProtein =
     promisedProteinGrams != null &&
     getUsualFoodOffer(profileId, window, date).some(isProteinNudgeKey);
+  // ONE BUNDLE FOR THE WHOLE TAP (#4328, generalised by #5082), minted HERE — before
+  // the first row of any half is written — and stamped on every row this one action
+  // writes, in every table it touches. The servings, the scoop and the dose confirms
+  // are one act, so they carry one id and the ledger reads the composition instead of
+  // inferring it from the minute they share. It used to be minted between the two
+  // halves, which is why the food rows had nothing to offer a reader.
+  //
+  // Minted unconditionally, exactly as the dose half always did: a bundle that ends up
+  // with one member is dissolved by the reader, so nothing here has to decide in
+  // advance whether the intersection will still be plural.
+  const bundleId = newBundle();
   // Food first, in its own transaction, exactly as the Food tab runs it.
   const food =
     namedGroups.length > 0
@@ -291,7 +302,7 @@ export function logUsualRoutineCore(
           namedGroups,
           loggedVia,
           undefined,
-          { notifyMessageId }
+          { notifyMessageId, bundleId }
         )
       : ({ kind: "nothing-to-log" } as const);
   const groups = food.kind === "logged" ? food.groups : [];
@@ -305,13 +316,9 @@ export function logUsualRoutineCore(
   // WHICH WRITER (#4305). One question, asked once for the whole bundle, because the
   // day is the same for every dose in it. Inside the stale-tap window nothing moves.
   const dated = !isDoseDateAccepted(t, date);
-  // ONE BUNDLE FOR THE WHOLE TAP (#4328), minted before the loop and stamped on every
-  // row it writes — including through the dated writer, because which writer the day
-  // routes to is not a fact about how many taps happened. This is what the Day ledger
-  // reads instead of inferring a composed write from a shared minute; a bundle that
-  // ends up with one member is dissolved by the reader, so nothing here has to decide
-  // in advance whether the intersection will still be plural.
-  const bundleId = newDoseBundle();
+  // The dose rows carry the SAME `bundleId` the food half already wrote — including
+  // through the dated writer, because which writer the day routes to is not a fact
+  // about how many taps happened.
   const tz = getTimezone(profileId);
   const doses: UsualRoutineDoseResult[] = [];
   for (const doseId of namedDoseIds) {
@@ -363,7 +370,10 @@ export function logUsualRoutineCore(
       undefined,
       // The window is a DECLARATION here exactly as it is for the servings beside it
       // (#1704), and no eating instant is invented to sit under it.
-      window
+      window,
+      // The tap's one act id (#5082) — the scoop was part of the same gesture as the
+      // servings, so its ledger event says so rather than sitting beside them unlinked.
+      { bundleId }
     );
     if (outcome.kind === "logged") protein = promisedProteinGrams;
   }

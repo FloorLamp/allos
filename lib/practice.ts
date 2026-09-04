@@ -10,7 +10,8 @@ import { WEEKDAYS_SHORT } from "./date";
 import { frequencyPace, type FrequencyPace } from "./frequency-targets";
 import { inWakingWindow } from "./notifications/schedule";
 import type { PracticeLogOutcome } from "./types";
-import { modalValue, rhythmMomentOpen } from "./weekly-rhythm";
+import { rhythmMomentOpen } from "./weekly-rhythm";
+import { usual, USUAL_KINDS } from "./usual";
 import type { WeeklyRhythm } from "./weekly-rhythm";
 
 // The stable suppression/identity key namespace for a wellness-practice weekly target:
@@ -150,21 +151,22 @@ export function practiceDurationPrefill(
   sessions: readonly { duration_min: number | null }[],
   declaredDefaultMin: number | null = null
 ): number | null {
-  const usual = modalValue(
+  // ALL THREE LEGS ARE `usual`'s NOW (#5143) — this header stated the order every
+  // other derivation should have followed, and it is the shared function's contract.
+  // The mode and the newest-wins tie-break are `USUAL_KINDS.practiceDuration`'s, and
+  // the declared leg's positive-only guard moved with it: a zero or negative
+  // declaration degrades to blank rather than seeding an impossible session.
+  const answer = usual(
     sessions.flatMap((session) => {
       const value = session.duration_min;
       return value != null && Number.isFinite(value) && value > 0
         ? [Math.round(value)]
         : [];
-    })
+    }),
+    declaredDefaultMin,
+    USUAL_KINDS.practiceDuration
   );
-  if (usual != null) return usual;
-  // Leg 2 — no history at all; a declared default may speak. Guarded so a zero or a
-  // negative declaration degrades to blank rather than seeding an impossible session.
-  if (declaredDefaultMin != null && declaredDefaultMin > 0)
-    return Math.round(declaredDefaultMin);
-  // Leg 3.
-  return null;
+  return answer == null ? null : Math.round(answer);
 }
 
 // ── HOW LONG A LIVE SESSION ALREADY KNOWS IT IS (#5091) ──────────────────────

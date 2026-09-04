@@ -1,10 +1,10 @@
 ---
 name: orchestrate
-description: Run an agent-run development session on FloorLamp/allos — check in, triage the queue, cluster issues, dispatch coding agents through the brief tooling, review every diff, merge green heads serially, and keep the pipeline full until the queue is blocked or the owner winds it down. Use when the owner says "work", "run a session", "work the queue", "dispatch agents", "keep merging", or hands over the repo for autonomous development — and for resuming after a restart or gap. NOT for doing the feature work yourself (the orchestrator never writes feature code) and NOT for one-off issue filing or tracker maintenance (file-issue and reconcile-tracker own those).
+description: Run an agent-orchestrated development session on FloorLamp/allos — check in, triage the queue, cluster issues, dispatch coding agents through the brief tooling, review every diff, merge green heads serially, and keep the pipeline full until the queue is blocked or the owner winds it down. Use when the owner says "orchestrate", "run a session", "work the queue", "dispatch agents", "keep merging", or hands over the repo for autonomous development — and for resuming after a restart or gap. NOT for doing the feature work yourself (the orchestrator never writes feature code) and NOT for one-off issue filing or tracker maintenance (file-issue and reconcile-tracker own those).
 allowed-tools: Read, Grep, Glob, Bash, Agent, TaskCreate, TaskUpdate, TaskList, mcp__github__merge_pull_request, mcp__github__update_pull_request
 ---
 
-# work — run the development session
+# orchestrate — run the development session
 
 `docs/orchestration.md` and its procedure files are CANONICAL — this skill
 sequences them and carries the posture; it restates nothing it can cite. Read
@@ -115,12 +115,11 @@ node scripts/orchestration/dispatch-brief.mjs new --branch <branch> \
   [--worktree wt-x] [--issues 1,2] [--task "..."] [--e2e] [--port-base N]
 ```
 
+Claim the issue, naming the branch, before briefing — `claims.md` has the rule.
+
 Every agent goes through this — Agent-tool runs included — and any live
 dispatch found unrecorded is ADOPTED immediately (the `adopt` subcommand):
 the roster is what makes a restart survivable.
-
-Claim first: a `Dispatched:` note on each issue, and a fence check against
-any other orchestrator's branches (`docs/orchestration/multi-orchestrator.md`).
 
 Every brief uses the generated template and `agent-gates.sh`'s gate order.
 Record the branch in the task list at dispatch time; require agents to merge

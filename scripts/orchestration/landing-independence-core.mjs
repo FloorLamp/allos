@@ -45,7 +45,7 @@ export function independenceNotice(pr, verdict, landedCount) {
   if (landedCount === 0)
     return `#${pr}: nothing landed since its CI base — merge on its own checks.`;
   if (verdict.independent)
-    return `#${pr}: INDEPENDENT of the ${landedCount} merge(s) since its CI base — merge without a re-run.`;
+    return `#${pr}: no shared paths with the ${landedCount} merge(s) since its CI base — a type or contract change on either side is not visible here (#5138 broke main this way); merge without a re-run only if none is in play.`;
   const why = [];
   if (verdict.overlap.length)
     why.push(`paths changed on both sides: ${verdict.overlap.join(", ")}`);

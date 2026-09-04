@@ -18,7 +18,7 @@ Status: **shipped** · Tracking issue:
 
 The sequential integer was the one piece of this design that fought the way the
 repo actually develops: with many agents working in parallel, the next free
-number was a contended, session-held reservation (the work runbook
+number was a contended, session-held reservation (the orchestration runbook
 grew a whole slot-map protocol, a renumber recipe used three times, and an
 "unhonorable until the earlier one merges" rule), and `assertContiguousIds`
 made a numbering gap fail every DB test file at import. None of that contention

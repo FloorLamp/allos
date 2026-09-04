@@ -14,6 +14,7 @@ import { today } from "./db";
 import { daysBetweenDateStr } from "./date";
 import { getEpisodeRow } from "./illness-episode-store";
 import { summarizeEpisodesForProfile } from "./illness-episode-summary";
+import { USUAL_KINDS, recordedUsual } from "./usual";
 
 export interface EpisodeComparison {
   currentDay: number; // day N of the open episode (start day = 1)
@@ -21,12 +22,6 @@ export interface EpisodeComparison {
   minDays: number;
   maxDays: number;
   medianDays: number;
-}
-
-function median(xs: number[]): number {
-  const s = [...xs].sort((a, b) => a - b);
-  const mid = Math.floor(s.length / 2);
-  return s.length % 2 ? s[mid] : Math.round((s[mid - 1] + s[mid]) / 2);
 }
 
 // Comparison for the open episode `episodeId`, or null when it isn't open, has no known
@@ -47,14 +42,19 @@ export function episodeComparisonFor(
   const priorDurations = summarizeEpisodesForProfile(profileId)
     .filter((e) => e.id !== episodeId && !e.ongoing && e.dayCount != null)
     .map((e) => e.dayCount as number);
-  if (priorDurations.length === 0) return null;
+  // How long this person's illnesses USUALLY run, through the shared habit model
+  // (#5143) rather than a second median of this module's own. It is rounded here
+  // because the line counts days: an even number of priors averaging 4.5 says five,
+  // which is what the private median spelled inline.
+  const medianDays = recordedUsual(priorDurations, USUAL_KINDS.illnessDuration);
+  if (medianDays == null) return null;
 
   return {
     currentDay,
     priorCount: priorDurations.length,
     minDays: Math.min(...priorDurations),
     maxDays: Math.max(...priorDurations),
-    medianDays: median(priorDurations),
+    medianDays: Math.round(medianDays),
   };
 }
 

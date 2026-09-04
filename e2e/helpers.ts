@@ -231,6 +231,31 @@ export function appContent(page: Page): Locator {
   return page.getByTestId("app-content-container");
 }
 
+// THE TWO READINGS A `band` ASSERTION IS MADE OF (#3899), in one place because the
+// assertion and the control that proves it can red have to go through the SAME
+// object. A frame read here and re-queried there proves that A query can see a
+// border, never that THIS one can.
+//
+// The frame is the border and the corner together: `border-x-0` alone leaves a
+// radius drawing a curve on a full-bleed fill, which is the shape #3673 shipped.
+export function bandFrame(locator: Locator): Promise<[number, number]> {
+  return locator.evaluate((node) => {
+    const style = getComputedStyle(node);
+    return [
+      Number.parseFloat(style.borderLeftWidth),
+      Number.parseFloat(style.borderTopLeftRadius),
+    ] as [number, number];
+  });
+}
+
+// A left edge in viewport pixels, for comparing one real element against another.
+// Never against a constant: a band that lost its frame AND its gutter still puts
+// every run at the page gutter measured this way, which is exactly the tree #3673
+// shipped and #3920 had to undo.
+export function leftEdge(locator: Locator): Promise<number> {
+  return locator.evaluate((node) => node.getBoundingClientRect().left);
+}
+
 // Wait until React has ATTACHED to this node — the one hydration probe, shared.
 //
 // React tags every host node it owns with `__reactFiber$…`/`__reactProps$…`. Their
@@ -1193,7 +1218,7 @@ export async function openConfirm(
 // the worker DATABASE in teardown, so it sees the row the client had already stopped
 // drawing, and it fails the spec that started the session — correctly. The failure
 // therefore arrives with a GREEN BODY: the decisive CI sighting (PR #3269, whose diff
-// is a JSON data file and a work script, `e2e (2)`) reported `1 failed`
+// is a JSON data file and an orchestration script, `e2e (2)`) reported `1 failed`
 // with the only annotation at `fixtures.ts:248` and every assertion in the spec
 // passed. There was no timed-out click to find, which is why reading the guard's own
 // advice — "dispose the draft from a `finally`" — would have silenced a guard that

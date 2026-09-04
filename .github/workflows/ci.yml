@@ -291,7 +291,7 @@ jobs:
   # SHARDED (flaky-e2e hardening): each shard is a fresh runner + fresh
   # `npx playwright test --shard=N/TOTAL` invocation → a fresh seeded template and
   # fresh per-worker servers per chunk. This cuts the per-push e2e wall-clock AND removes the
-  # long-lived-server cumulative degradation the work runbook documents
+  # long-lived-server cumulative degradation the orchestration runbook documents
   # for single-process full runs (docs/orchestration.md). fail-fast is off so a
   # red shard still lets the others finish — one push yields the full failure
   # picture instead of a partial one.
@@ -376,7 +376,7 @@ jobs:
       # The set is deliberately literal, and grows only against the question
       # "what imports this", never "does this look like tooling":
       #   • prose — README/SECURITY/LICENSE/AGENTS.md (+ its CLAUDE.md symlink)/docs
-      #   • the work tooling under scripts/orchestration/ and
+      #   • the orchestration tooling under scripts/orchestration/ and
       #     scripts/orchestrator-checkin.sh, which the app does not import and the
       #     e2e harness never loads. Every rule in docs/orchestration.md that can
       #     become a script does, so these are a steady trickle of PRs; each one

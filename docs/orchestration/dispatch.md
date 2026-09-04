@@ -11,9 +11,6 @@ closed taxonomy, and `needs-human` handling.
 - Cluster two to six related issues by domain and files. Avoid file overlap;
   sequence work when overlap cannot be fenced. `claims <path>` names the active
   lane holding a path; CANNOT TELL is NOT clear: answer before the lane edits.
-- Claim before dispatch: a `Dispatched:` note on each issue, and a fence
-  check against any other orchestrator's branches (`multi-orchestrator.md`).
-  The note outlives the container, so it applies with one orchestrator too.
 - A `design` issue is dispatchable only when its body records the owner
   decision (the #2701 shape) or a direction with stated falsifiers (#2641).
   One still carrying the design question is owner-gated; agents never explore.
@@ -43,10 +40,12 @@ closed taxonomy, and `needs-human` handling.
   an ASSERTION failure included, not only a timeout (#3436).
 - Every brief uses the generated template and the gate order from
   `scripts/orchestration/agent-gates.sh`.
-- Push meaningful checkpoints. A branch that has not passed its gates stays
-  branch-only — no PR, and a draft is not a banking state. A verified branch
-  opens READY at once (environment.md §GitHub access); CI and review run in
-  parallel across PRs, and only the merge itself is serial.
+- Push meaningful checkpoints. A branch not next to land stays branch-only — no
+  PR at all, and a draft is not a banking state. The candidate's PR opens READY
+  (environment.md §GitHub access), never for CI a pending merge will invalidate.
+- Claim the issue, naming the branch, BEFORE briefing — [claims.md](claims.md).
+- Parallelize banked implementation/local pre-review; serialize the sole
+  candidate's remote review, CI, and merge.
 - A census meant to be EXHAUSTIVE passes ripgrep's `--binary` (`-a`). Several
   source files carry a deliberate NUL separator, so rg calls them binary and
   skips them — a plain `rg` reports a clean sweep it never took.

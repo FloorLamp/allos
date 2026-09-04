@@ -1,4 +1,4 @@
-// Host resolution for work tooling — one answer per question, however
+// Host resolution for orchestration tooling — one answer per question, however
 // many harnesses ask it (#3710).
 //
 //   node scripts/orchestration/host.mjs state-dir   # print (and create) the state dir

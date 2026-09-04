@@ -4,7 +4,7 @@ import { meetsMinLifeStage, meetsMinAge } from "@/lib/life-stage";
 import { dominantRxNormCandidate } from "@/lib/rxnorm";
 import { collapseOnDemandDoses } from "@/lib/intake-schedule";
 import { prnDefaultsFor, redoseLabelDefaults } from "@/lib/prn-defaults";
-import { resolveIntakePrefill } from "@/lib/intake-prefill";
+import { emptyPrefillLedger, resolveIntakePrefill } from "@/lib/intake-prefill";
 import {
   medicationCatalogLabel,
   medicationCatalogOptions,
@@ -107,27 +107,30 @@ describe("#851 item 12 — redose interval/max prefill is age-aware or refuses",
     // Ingredient WITH pediatric figures → child gets the pediatric ones (labeled).
     const acet = prnDefaultsFor({ name: "Acetaminophen", rxcui: null })!;
     const kidAcet = resolveIntakePrefill({
-      info: null,
-      prn: acet,
+      source: { vocabulary: "medication", info: null, prn: acet },
       pediatric: child,
+      ledger: emptyPrefillLedger(),
     });
-    expect(kidAcet.maxDailyCount).toBe(acet.pediatric?.maxDailyCount);
-    expect(kidAcet.maxDailyCount).not.toBe(acet.adult.maxDailyCount);
+    expect(kidAcet.writes.maxDailyCount).toBe(acet.pediatric?.maxDailyCount);
+    expect(kidAcet.writes.maxDailyCount).not.toBe(acet.adult.maxDailyCount);
 
     // Ingredient WITHOUT pediatric figures → child gets NO interval/max prefill.
     const kidNaproxen = resolveIntakePrefill({
-      info: null,
-      prn: naproxen,
+      source: { vocabulary: "medication", info: null, prn: naproxen },
       pediatric: child,
+      ledger: emptyPrefillLedger(),
     });
-    expect(kidNaproxen.minIntervalHours).toBeUndefined();
-    expect(kidNaproxen.maxDailyCount).toBeUndefined();
-    expect(kidNaproxen.marked).not.toContain("minIntervalHours");
-    expect(kidNaproxen.marked).not.toContain("maxDailyCount");
+    expect(kidNaproxen.writes.minIntervalHours).toBeUndefined();
+    expect(kidNaproxen.writes.maxDailyCount).toBeUndefined();
+    expect(kidNaproxen.ledger.suggested.has("minIntervalHours")).toBe(false);
+    expect(kidNaproxen.ledger.suggested.has("maxDailyCount")).toBe(false);
 
     // An adult still gets the adult figures.
-    const adultNaproxen = resolveIntakePrefill({ info: null, prn: naproxen });
-    expect(adultNaproxen.minIntervalHours).toBe(
+    const adultNaproxen = resolveIntakePrefill({
+      source: { vocabulary: "medication", info: null, prn: naproxen },
+      ledger: emptyPrefillLedger(),
+    });
+    expect(adultNaproxen.writes.minIntervalHours).toBe(
       naproxen.adult.minIntervalHours
     );
   });

@@ -23,7 +23,7 @@ import {
 //      every one of its sets (#2359: a field the form omits is a field it clears). The
 //      activity form composes its payload from React state rather than from mounted
 //      inputs — but that is a fact about this form TODAY, not about the pattern (see
-//      the worker's correction on #3334), so it is pinned as behaviour through a
+//      the lane's correction on #3334), so it is pinned as behaviour through a
 //      real save with none of the set inputs in the document.
 //   3. A NON-UNIFORM PART NEVER COLLAPSES. Editing one set out of line takes the
 //      sentence away AND takes the collapse control with it, because "8, 8, 7" is a

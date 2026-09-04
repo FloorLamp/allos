@@ -64,7 +64,7 @@ describe("judgeIndependence", () => {
         judgeIndependence({ candidate: ["a"], landed: ["b"] }),
         2
       )
-    ).toMatch(/INDEPENDENT of the 2 merge/);
+    ).toMatch(/no shared paths with the 2 merge.*not visible here/);
     expect(
       independenceNotice(
         12,

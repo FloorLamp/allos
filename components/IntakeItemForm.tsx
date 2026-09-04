@@ -55,8 +55,8 @@ import type { InteractionItem } from "@/lib/drug-interactions";
 import type { IntakeItemIngredient } from "@/lib/intake-ingredients";
 import PurposesEditor from "@/components/intake/PurposesEditor";
 import {
+  purposeDraftsSummary,
   purposeToDraft,
-  purposeLabel,
   type IntakeItemPurpose,
   type PurposeDraft,
 } from "@/lib/intake-purposes";
@@ -72,8 +72,8 @@ import { prnDefaultsFor, redoseLabelDefaults } from "@/lib/prn-defaults";
 import type { PediatricBand } from "@/lib/datasets/prn-defaults";
 import {
   formulationSlugForProduct,
+  isChildProfileAge,
   pediatricAgeYears,
-  PEDIATRIC_MAX_AGE_MONTHS,
   pediatricDoseSuggestion,
   type PediatricFormContext,
 } from "@/lib/prn-dosing";
@@ -85,13 +85,23 @@ import {
   formulationRedosePreset,
   pediatricContextLine,
 } from "@/lib/intake-formulations";
-import { resolveIntakePrefill, type PrefillField } from "@/lib/intake-prefill";
+import {
+  applyPrefill,
+  emptyPrefillLedger,
+  resolveIntakePrefill,
+  touchPrefill,
+  withdrawPrefill,
+  type IntakeLabelSource,
+  type IntakePrefillSource,
+  type PrefillField,
+  type PrefillLedger,
+  type PrefillValues,
+} from "@/lib/intake-prefill";
 import {
   CONDITION_LABELS,
   OBLIGATIONS,
   OBLIGATION_HINTS,
   OBLIGATION_LABELS,
-  defaultFoodTiming,
   pauseLinkNeedsConfirm,
 } from "@/lib/intake-schedule";
 import {
@@ -101,11 +111,12 @@ import {
 } from "@/lib/intake-kind-affordances";
 import {
   intakeFactSummary,
-  type IntakeFactKey,
+  suggestedIntakeFacts,
   INTAKE_FACT_NOUNS,
 } from "@/lib/intake-facts";
 import {
   fieldsFromRules,
+  foodRuleStatement,
   rulesFromFields,
   suggestedRulesForFoodTiming,
   type IntakeRule,
@@ -323,25 +334,50 @@ export default function IntakeItemForm({
   const [supplyLabel, setSupplyLabel] = useState<string | null>(
     s?.supply_name ?? initialSupply?.name ?? null
   );
-  // Selection-prefill bookkeeping (#846). `suggested` marks facts still showing the
-  // datasets' offer; `touched` records what the person edited, so a LATER pick never
-  // clobbers a value they typed. Both survive the merge because both were guarantees,
-  // not decorations — the marking is what keeps a prefill from reading as a fact.
-  const [suggestedFields, setSuggestedFields] = useState<Set<PrefillField>>(
-    new Set()
-  );
-  const [touched, setTouched] = useState<Set<PrefillField>>(new Set());
+  // Selection-prefill bookkeeping (#846, #4665). ONE ledger answers "may I overwrite
+  // this field?" for all seven seed paths, and marks everything it lets through: before
+  // it there were four mechanisms and the places they disagreed were bugs. The rules
+  // themselves are pure and tested in lib/intake-prefill.ts; this holds the state.
+  //
+  // MIRRORED IN A REF because a name pick now awaits its own RxNorm confirm before it
+  // seeds (below), so the ledger it consults must be the one that stands WHEN it seeds
+  // and not the one captured by the render that started the pick.
+  const [ledger, setLedgerState] = useState<PrefillLedger>(emptyPrefillLedger);
+  const ledgerRef = useRef(ledger);
+  function setLedger(next: PrefillLedger) {
+    ledgerRef.current = next;
+    setLedgerState(next);
+  }
   function markTouched(...fields: PrefillField[]) {
-    setSuggestedFields((prev) => {
-      const next = new Set(prev);
-      for (const f of fields) next.delete(f);
-      return next;
-    });
-    setTouched((prev) => {
-      const next = new Set(prev);
-      for (const f of fields) next.add(f);
-      return next;
-    });
+    setLedger(touchPrefill(ledgerRef.current, ...fields));
+  }
+  // Offer these values to the ledger and return the ones it permits, already marked.
+  function offerPrefill(offer: PrefillValues): PrefillValues {
+    const applied = applyPrefill(ledgerRef.current, offer);
+    setLedger(applied.ledger);
+    return applied.writes;
+  }
+  // The ONE writer for a permitted prefill. Every seed path ends here, so a field is
+  // written the same way whichever vocabulary or control offered it.
+  function writePrefill(writes: PrefillValues) {
+    if (writes.asNeeded !== undefined)
+      setObligation(writes.asNeeded ? "may" : "must");
+    if (writes.minIntervalHours !== undefined)
+      setMinIntervalHours(String(writes.minIntervalHours));
+    if (writes.maxDailyCount !== undefined)
+      setMaxDailyCount(String(writes.maxDailyCount));
+    if (writes.doseAmount !== undefined || writes.timeOfDay !== undefined)
+      setDoses((ds) =>
+        ds.map((d, i) =>
+          i === 0
+            ? {
+                ...d,
+                amount: writes.doseAmount ?? d.amount,
+                time_of_day: writes.timeOfDay ?? d.time_of_day,
+              }
+            : d
+        )
+      );
   }
   const [formulationSlug, setFormulationSlug] = useState("");
   const [selectedPediatricBandMinLbs, setSelectedPediatricBandMinLbs] =
@@ -361,26 +397,8 @@ export default function IntakeItemForm({
       .map(purposeToDraft)
       .filter((d): d is PurposeDraft => d != null)
   );
-  // The declared purposes as one phrase for the fact chip. Built HERE because only the
-  // form holds the live condition names — a purpose row stores the id (#203).
   const purposeSummary = useMemo(
-    () =>
-      purposes
-        .map((d) =>
-          purposeLabel(
-            {
-              kind: d.kind,
-              goal_key: d.kind === "goal" ? d.goalKey : null,
-              biomarker_key: d.kind === "biomarker" ? d.biomarkerKey : null,
-              direction: d.kind === "biomarker" ? (d.direction ?? null) : null,
-            },
-            d.kind === "condition"
-              ? (conditions.find((c) => c.id === d.conditionId)?.name ?? null)
-              : null
-          )
-        )
-        .filter((l): l is string => !!l)
-        .join(" · "),
+    () => purposeDraftsSummary(purposes, conditions),
     [purposes, conditions]
   );
   const [doses, setDoses] = useState<DoseState[]>(
@@ -462,9 +480,14 @@ export default function IntakeItemForm({
     supplementBrands: SUPPLEMENT_BRANDS,
   });
 
-  const isChildProfile =
-    pediatricContext?.ageMonths != null &&
-    pediatricContext.ageMonths < PEDIATRIC_MAX_AGE_MONTHS;
+  // MEMOIZED for the compiler, not for the arithmetic. The rule is one comparison, but
+  // it is now a CALL (the one spelling, #4672), and the compiler treats an opaque call
+  // whose result feeds `activeSlug` as something that may change later — which makes it
+  // abandon the `pediatricResult` memo below. Stating the boundary here keeps the memo.
+  const isChildProfile = useMemo(
+    () => isChildProfileAge(pediatricContext?.ageMonths),
+    [pediatricContext]
+  );
   // The age-aware label figures to OFFER (#851 item 12) — pediatric for a child where
   // the label differs, else adult, and NULL for a child whose ingredient has no
   // pediatric figure (a deliberate refusal to prefill adult numbers below a child's
@@ -509,7 +532,7 @@ export default function IntakeItemForm({
       pediatricContext.ageMonths == null
     )
       return null;
-    if (pediatricContext.ageMonths >= PEDIATRIC_MAX_AGE_MONTHS) return null;
+    if (!isChildProfileAge(pediatricContext.ageMonths)) return null;
     return pediatricDoseSuggestion({
       entry: prnDefaults,
       ageMonths: pediatricContext.ageMonths,
@@ -528,134 +551,125 @@ export default function IntakeItemForm({
     const choice = choices.find((c) => c.slug === slug) ?? null;
     setProduct(choice?.product ?? "");
     const preset = formulationRedosePreset(prnDefaults, choice);
-    if (preset) {
-      setMinIntervalHours(String(preset.minIntervalHours));
-      setMaxDailyCount(String(preset.maxDailyCount));
-    }
     // The amount stays in milligrams; the VOLUME is derived from the product at every
     // display boundary, so a switch re-derives the product and the reader does the rest.
     const mg =
       pediatricResult?.kind === "dose"
         ? pediatricResult.mg
         : (prnDefaults?.adult.doseMgLow ?? null);
-    if (mg != null && !touched.has("doseAmount"))
-      setDoses((ds) =>
-        ds.map((d, i) =>
-          i === 0 ? { ...d, amount: formulationDoseAmount(mg) } : d
-        )
-      );
+    // Everything here follows from the PRODUCT, so it is an offer like any other: the
+    // ledger refuses whichever figures the person set themselves, and marks the rest.
+    writePrefill(
+      offerPrefill({
+        ...(preset
+          ? {
+              minIntervalHours: preset.minIntervalHours,
+              maxDailyCount: preset.maxDailyCount,
+            }
+          : {}),
+        ...(mg != null ? { doseAmount: formulationDoseAmount(mg) } : {}),
+      })
+    );
   }
 
   // ---- Picks ----
-  function onPickName(picked: string, query?: string) {
+  //
+  // ONE RESOLVER FOR THREE VOCABULARIES (#4665). The name field offers medications,
+  // supplement catalog entries and the household's bottles; each used to have its own
+  // seeding code, and the two that were not `resolveIntakePrefill` wrote values without
+  // marking them. Now every arm builds a source and hands it to the one resolver.
+  //
+  // Generation-guarded because the medication arm awaits its own RxNorm confirm: a
+  // second pick during that wait owns the form, and the first must not land on top of it.
+  const pickGeneration = useRef(0);
+
+  async function onPickName(picked: string, query?: string) {
+    const generation = ++pickGeneration.current;
     setSelectedPediatricBandMinLbs(null);
     setFormulationSlug("");
     // A BOTTLE row. It seeds the product facts the pool is authoritative for, rides as
     // supply_id on this item's own save. The locked door filters the bottle choices
     // to its own kind before this point.
     const bottle = bottleForOptionLabel(bottles, picked);
-    const name = bottle ? itemSeedFromPool(bottle).name : picked;
+    const bottleSeed = bottle ? itemSeedFromPool(bottle) : null;
+    const pickedName = bottleSeed ? bottleSeed.name : picked;
     if (bottle) {
       onPickSupply(bottle);
     }
+    // A bottle pick answers the strength itself; whatever vocabulary its name also
+    // resolves to answers the conventions around it. One source, so one offer (#4608).
+    const withBottle = (label: IntakeLabelSource): IntakePrefillSource =>
+      bottleSeed
+        ? { vocabulary: "bottle", amount: bottleSeed.amount, label }
+        : label;
 
-    const supplementEntry = CATALOG_BY_NAME.get(name.toLowerCase());
+    const supplementEntry = CATALOG_BY_NAME.get(pickedName.toLowerCase());
     if (
       supplementEntry &&
-      (bottle ? lockedKind === "supplement" : !getMedicationInfo(name))
+      (bottle ? lockedKind === "supplement" : !getMedicationInfo(pickedName))
     ) {
-      setName(name);
-      seedFromCatalog(name, supplementEntry);
+      setName(pickedName);
+      seedFromPick(
+        withBottle({ vocabulary: "catalog", entry: supplementEntry })
+      );
       return;
     }
 
-    const resolved = resolveMedicationPick(name, bottle ? undefined : query);
-    const generic = bottle ? name : resolved.name || name;
+    const resolved = resolveMedicationPick(
+      pickedName,
+      bottle ? undefined : query
+    );
+    const generic = bottle ? pickedName : resolved.name || pickedName;
     setName(generic);
     setProduct("");
     if (resolved.brand) setBrand(resolved.brand);
-    void rx.autoConfirm(generic);
 
-    const info = getMedicationInfo(generic);
-    const prn = prnDefaultsFor({
-      name: generic,
-      rxcui: rx.rxcui,
-      rxcuiIngredients: rx.rxcuiIngredients,
-    });
-    const touchedRec: Partial<Record<PrefillField, boolean>> = {};
-    for (const f of touched) touchedRec[f] = true;
+    // ONE PRN resolution per name resolution, from the code THIS pick confirmed. It
+    // used to be resolved here from `rx.rxcui` as it stood before the pick — a value the
+    // confirm had not produced yet — and resolved again by the `prnDefaults` memo once
+    // it landed: two computations of one fact, one of them reading a stale code (#4665).
+    const confirmed = await rx.autoConfirm(generic);
+    if (pickGeneration.current !== generation) return;
+    seedFromPick(
+      withBottle({
+        vocabulary: "medication",
+        info: getMedicationInfo(generic),
+        prn: prnDefaultsFor({
+          name: generic,
+          rxcui: confirmed?.rxcui ?? null,
+          rxcuiIngredients: confirmed?.rxcuiIngredients ?? null,
+        }),
+      })
+    );
+  }
+
+  // What a pick writes, once the ledger has said which parts of the offer it may.
+  function seedFromPick(source: IntakePrefillSource) {
     const pf = resolveIntakePrefill({
-      info,
-      prn,
+      source,
       pediatric: pediatricContext,
-      touched: touchedRec,
+      ledger: ledgerRef.current,
     });
+    setLedger(pf.ledger);
+    writePrefill(pf.writes);
     setBrandNarrowing(
-      pf.brandSuggestions?.length
+      pf.brandSuggestions.length
         ? medicationBrandOptions(pf.brandSuggestions)
         : null
     );
-    if (pf.asNeeded !== undefined) setObligation(pf.asNeeded ? "may" : "must");
-    if (pf.minIntervalHours !== undefined)
-      setMinIntervalHours(String(pf.minIntervalHours));
-    if (pf.maxDailyCount !== undefined)
-      setMaxDailyCount(String(pf.maxDailyCount));
-    if (pf.doseAmount !== undefined || pf.timeOfDay !== undefined) {
-      setDoses((ds) =>
-        ds.map((d, i) =>
-          i === 0
-            ? {
-                ...d,
-                amount: pf.doseAmount ?? d.amount,
-                time_of_day: pf.timeOfDay ?? d.time_of_day,
-              }
-            : d
-        )
-      );
-    }
-    setSuggestedFields(new Set(pf.marked));
     // The label's food relationship arrives as a SUGGESTED rule — an offer that
-    // renders marked and deletable, never a silent write (#1505).
+    // renders marked and deletable, never a silent write (#1505). A pick that states
+    // none clears the previous pick's offer rather than leaving it standing.
     setRules((current) => [
       ...current.filter((r) => !(r.type === "food" && r.suggested)),
-      ...suggestedRulesForFoodTiming(pf.foodTiming ?? null),
+      ...suggestedRulesForFoodTiming(pf.writes.foodTiming ?? null),
     ]);
-  }
-
-  function seedFromCatalog(
-    picked: string,
-    entry: (typeof SUPPLEMENT_CATALOG)[number]
-  ) {
-    const seeded = entry.ingredients ?? [];
-    const food = defaultFoodTiming(
-      picked,
-      entry.defaultFoodTiming,
-      seeded.map((g) => g.name)
-    );
-    setDoses((ds) =>
-      ds.map((d, i) =>
-        i === 0
-          ? {
-              ...d,
-              amount: d.amount || entry.dosages[0] || "",
-              time_of_day: entry.defaultTimeOfDay ?? d.time_of_day,
-            }
-          : d
-      )
-    );
-    setRules((current) => [
-      ...current.filter((r) => !(r.type === "food" && r.suggested)),
-      ...suggestedRulesForFoodTiming(food),
-    ]);
-    if (seeded.length === 0 || !ingredientsAreEmpty(ingredients)) return;
-    setIngredients(
-      seeded.map((g) => ({ name: g.name, amount: g.amount ?? "" }))
-    );
-    setIngredientSeedNote(
-      entry.ingredientsPartial
-        ? `Prefilled with the part of the ${picked} label these checks use — not the whole label. Check it against your own bottle and add anything missing.`
-        : `Prefilled from a typical ${picked} label. Check it against your own bottle.`
-    );
+    // A catalogued blend's label composition (#2856). The repeater owns these rows, so
+    // they are seeded only into an empty list — the person's own rows are never replaced.
+    if (pf.ingredients.length > 0 && ingredientsAreEmpty(ingredients)) {
+      setIngredients(pf.ingredients);
+      setIngredientSeedNote(pf.ingredientNote);
+    }
   }
 
   // Picking a shared bottle (#1705), promoted from the refill fold to the front door:
@@ -665,23 +679,20 @@ export default function IntakeItemForm({
   function onPickSupply(supply: SupplyOption | null): void {
     const seed = supply ? itemSeedFromPool(supply) : null;
     const previous = seededRef.current;
+    // The NAME is product identity rather than a label figure, so it keeps the pool's
+    // own previous-seed rule; the STRENGTH is an offer about a dose, so it goes through
+    // the ledger with every other offer and is marked like every other offer.
     setName((current) =>
       applyProductSeed(current, previous?.name ?? null, seed?.name ?? "")
     );
-    setDoses((ds) =>
-      ds.map((d, i) =>
-        i === 0
-          ? {
-              ...d,
-              amount: applyProductSeed(
-                d.amount,
-                previous?.amount ?? null,
-                seed?.amount ?? ""
-              ),
-            }
-          : d
-      )
-    );
+    if (seed) {
+      writePrefill(offerPrefill({ doseAmount: seed.amount }));
+    } else if (ledgerRef.current.suggested.has("doseAmount")) {
+      // Unlinked: the bottle that stated this strength is gone, so the offer goes with
+      // it. A figure the person typed is theirs and is never withdrawn.
+      setDoses((ds) => ds.map((d, i) => (i === 0 ? { ...d, amount: "" } : d)));
+      setLedger(withdrawPrefill(ledgerRef.current, "doseAmount"));
+    }
     onLinkSupply(supply);
     seededRef.current = seed;
   }
@@ -706,6 +717,19 @@ export default function IntakeItemForm({
   // ---- The rule sentences decide the fields they own ----
   const ruleFields = useMemo(() => fieldsFromRules(rules), [rules]);
   const effectiveCondition = ruleFields.condition ?? condition;
+
+  // THE RULES BUILDER IS THE FOOD-TIMING CONTROL, so it marks the ledger like every
+  // other control does (#4665). `foodTiming` is the one prefillable field with no input
+  // of its own — it is a sentence in this list — and until this existed it was the one
+  // field a later pick could still write over the person's answer: their own food rule
+  // is not `suggested`, so `seedFromPick`'s filter kept it AND appended the new label's
+  // suggested rule after it, and `fieldsFromRules` takes the last one. Every person-made
+  // change to the rules goes through here; a seed's own `setRules` does not.
+  function setRulesFromPerson(next: IntakeRule[]) {
+    if (foodRuleStatement(next) !== foodRuleStatement(rules))
+      markTouched("foodTiming");
+    setRules(next);
+  }
 
   // ---- The state the mapping posts ----
   // Memoized because it IS the draft (#1699): a new object every render would rewrite
@@ -798,17 +822,10 @@ export default function IntakeItemForm({
     ]
   );
 
-  // Which FACT each still-suggested field belongs to, so the chip carries the #846
-  // marking the old always-visible inputs carried on their labels.
-  const suggestedFacts = useMemo(() => {
-    const out = new Set<IntakeFactKey>();
-    for (const field of suggestedFields) {
-      if (field === "doseAmount") out.add("dose");
-      else if (field === "asNeeded") out.add("importance");
-      else out.add("timing");
-    }
-    return out;
-  }, [suggestedFields]);
+  const suggestedFacts = useMemo(
+    () => suggestedIntakeFacts(ledger.suggested),
+    [ledger]
+  );
 
   const summary = intakeFactSummary({
     kind,
@@ -994,8 +1011,7 @@ export default function IntakeItemForm({
     setDoses([emptyDose()]);
     setCadence(emptyIntakeCadence());
     setRules([]);
-    setSuggestedFields(new Set());
-    setTouched(new Set());
+    setLedger(emptyPrefillLedger());
     closePanel();
   }
 
@@ -1151,7 +1167,7 @@ export default function IntakeItemForm({
             setOpenPanel("rules", focusKey);
           }}
           onRemoveRule={(id) =>
-            setRules((current) => current.filter((r) => r.id !== id))
+            setRulesFromPerson(rules.filter((r) => r.id !== id))
           }
         />
       ) : (
@@ -1245,7 +1261,7 @@ export default function IntakeItemForm({
                       // new band — and is CLEARED when the new weight has no band,
                       // because leaving the old weight's figure standing would be a
                       // dose attributed to a measurement that no longer supports it.
-                      if (!prnDefaults || touched.has("doseAmount")) return;
+                      if (!prnDefaults) return;
                       const nextResult = pediatricDoseSuggestion({
                         entry: prnDefaults,
                         ageMonths: next.ageMonths as number,
@@ -1254,23 +1270,20 @@ export default function IntakeItemForm({
                         today: next.today,
                         formulationSlug: activeSlug || null,
                       });
-                      const offered = suggestedFields.has("doseAmount");
+                      // The ledger refuses a figure the caregiver typed. The extra
+                      // empty-check is the one thing it cannot answer: a stored row's
+                      // amount is neither offered nor marked touched, and a new weight
+                      // must not rewrite what was already saved.
+                      const offered =
+                        ledgerRef.current.suggested.has("doseAmount");
                       if (
                         nextResult.kind === "dose" &&
                         (offered || !doses[0]?.amount.trim())
                       ) {
-                        setDoses((current) =>
-                          current.map((dose, index) =>
-                            index === 0
-                              ? {
-                                  ...dose,
-                                  amount: formulationDoseAmount(nextResult.mg),
-                                }
-                              : dose
-                          )
-                        );
-                        setSuggestedFields((current) =>
-                          new Set(current).add("doseAmount")
+                        writePrefill(
+                          offerPrefill({
+                            doseAmount: formulationDoseAmount(nextResult.mg),
+                          })
                         );
                       } else if (nextResult.kind !== "dose" && offered) {
                         setDoses((current) =>
@@ -1278,11 +1291,9 @@ export default function IntakeItemForm({
                             index === 0 ? { ...dose, amount: "" } : dose
                           )
                         );
-                        setSuggestedFields((current) => {
-                          const nextSet = new Set(current);
-                          nextSet.delete("doseAmount");
-                          return nextSet;
-                        });
+                        setLedger(
+                          withdrawPrefill(ledgerRef.current, "doseAmount")
+                        );
                       }
                     }}
                   />
@@ -1503,7 +1514,7 @@ export default function IntakeItemForm({
             <IntakeRulesEditor
               key={rulesStartOnMenu ? "add" : "edit"}
               rules={rules}
-              setRules={setRules}
+              setRules={setRulesFromPerson}
               others={others}
               startOnMenu={rulesStartOnMenu}
             />

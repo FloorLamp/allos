@@ -115,7 +115,7 @@ test.describe("protocol facts-with-editors (#3219)", () => {
     );
     await page
       .getByRole("menu")
-      .getByRole("button", { name: "Delete", exact: true })
+      .getByRole("menuitem", { name: "Delete", exact: true })
       .click();
     await settledClick(
       page,
@@ -384,7 +384,7 @@ test.describe("protocol facts-with-editors (#3219)", () => {
     );
     await page
       .getByRole("menu")
-      .getByRole("button", { name: "Edit", exact: true })
+      .getByRole("menuitem", { name: "Edit", exact: true })
       .click();
     const editDialog = page.getByRole("dialog", { name: "Edit protocol" });
     const editForm = editDialog.getByTestId("protocol-form");
@@ -422,7 +422,7 @@ test.describe("protocol facts-with-editors (#3219)", () => {
     );
     await page
       .getByRole("menu")
-      .getByRole("button", { name: "Delete", exact: true })
+      .getByRole("menuitem", { name: "Delete", exact: true })
       .click();
     await settledClick(
       page,

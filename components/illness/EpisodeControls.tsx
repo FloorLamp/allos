@@ -130,11 +130,12 @@ export default function EpisodeControls({
           open={menuOpen}
           onOpenChange={setMenuOpen}
         >
-          {({ close }) => (
+          {({ close, runAction }) => (
             <>
               {editor && (
                 <button
                   type="button"
+                  role="menuitem"
                   className={MENU_ITEM}
                   data-testid="episode-edit-open"
                   onClick={() => {
@@ -146,11 +147,30 @@ export default function EpisodeControls({
                 </button>
               )}
               {promoted ? (
+                // THE LAST HAND-ROLLED MENU WRITE, ON THE SHARED PATH (#2641).
+                //
+                // This was `action={async (fd) => { await unpromote…(fd);
+                // close(); }}` — the one kebab write in the app that did not go
+                // through `runAction`. What that cost was not the panel —
+                // `runAction` closes on the same beat this did, which
+                // components/OverflowMenu.tsx now measures — but the OUTCOME:
+                // `unpromoteEpisodeConditionAction`
+                // returns a `FormResult` and refuses an episode that is no
+                // longer there, and this discarded it. The menu closed, the item
+                // still read "Remove condition", and a refused write was
+                // indistinguishable from a lost tap — the inline-action rule
+                // (#2133), broken at the one site nothing was watching.
+                //
+                // `runAction` reports it, and reports a throw as well instead of
+                // escalating to the route error boundary (#477).
                 <form
-                  action={async (fd) => {
-                    await unpromoteEpisodeConditionAction(fd);
-                    close();
-                  }}
+                  action={(fd) =>
+                    runAction(
+                      unpromoteEpisodeConditionAction,
+                      fd,
+                      "Condition removed"
+                    )
+                  }
                 >
                   <input type="hidden" name="episodeId" value={episodeId} />
                   {profileId != null && (
@@ -163,6 +183,7 @@ export default function EpisodeControls({
               ) : (
                 <button
                   type="button"
+                  role="menuitem"
                   className={MENU_ITEM}
                   disabled={conditionBusy}
                   onClick={() => {
