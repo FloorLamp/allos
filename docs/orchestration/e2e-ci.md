@@ -65,12 +65,14 @@
   run says otherwise — not a coincidence of flakes (#2791).
 - `next dev` and `next start` differ. Interaction fixes must work in both.
 - WHICH SHARD A SPEC LANDS IN IS AN OUTCOME, NOT A PROPERTY. A duration-manifest
-  refresh reshuffles buckets, and so does adding ONE spec: a manifest measured on
-  yesterday's suite separates two specs at 4 and 12 shards, and the same manifest
-  with one new spec planned in on an estimate moves one of them two buckets. So
-  verify a separation claim on the tree that will actually land (branch merged
-  with current main), never on the branch alone — and treat the separation as a
-  coincidence that buys nothing: the fix is the spec owning the state it asserts.
+  refresh reshuffles buckets, and so does adding ONE spec planned in on an
+  estimate — measured twice on 2026-09-04, moving the same pair by different
+  amounts each time, which is the point: do not write the amount down, it is
+  stale before the next merge. So verify a separation claim on the tree that will
+  actually land (branch merged with current main), never on the branch alone —
+  and treat the separation as a coincidence that buys nothing: the fix is the
+  spec owning the state it asserts. Main went red on exactly this the same night
+  (#5032), in a spec whose bucket-mates share its database.
 - A manifest's "covers main exactly" is true against the base it was MEASURED on.
   Re-run the coverage check against current main before believing it; every spec
   merged since is unlisted and planned on an estimate, which is inherent rather

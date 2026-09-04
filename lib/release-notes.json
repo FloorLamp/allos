@@ -11,13 +11,6 @@
           "issues": [4976]
         },
         {
-          "pr": 4991,
-          "kind": "fix",
-          "category": "Reminders",
-          "title": "Notification times are no longer forced onto a five-minute grid",
-          "issues": [4976]
-        },
-        {
           "pr": 4992,
           "kind": "feature",
           "category": "Connected apps",
@@ -677,7 +670,7 @@
           "pr": 4967,
           "kind": "fix",
           "category": "Connected apps",
-          "title": "Health Connect’s HRV, respiratory rate and skin temperature are stored again",
+          "title": "Health Connect’s HRV, breathing rate, skin temperature and blood oxygen are back",
           "issues": [4956]
         },
         {
@@ -698,7 +691,7 @@
           "pr": 4971,
           "kind": "fix",
           "category": "General",
-          "title": "The dashboard’s Understand and Set up show three rows, the rest behind a fold",
+          "title": "The dashboard’s Understand and Set up show three groups, the rest folded",
           "issues": [4065]
         },
         {
