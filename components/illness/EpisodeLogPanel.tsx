@@ -70,7 +70,7 @@ export default function EpisodeLogPanel({
   profileId?: number;
   // THE FOLD'S DOSE OFFER (#4712, owner ruling 2026-09-04 11:20 UTC part 2), passed
   // straight through to the bar. The page's own Meds section yields while the offer
-  // is live (`YieldToDoseOffer` there), which is what makes offering the antipyretic
+  // is live (its `yieldsTo` prop there), which is what makes offering the antipyretic
   // here a second PLACE for one chip rather than a second COPY of it.
   antipyreticMeds?: PrnMedForQuickLog[];
   intakeContext?: IntakeFormContext;

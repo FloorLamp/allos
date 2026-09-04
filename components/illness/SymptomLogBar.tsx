@@ -162,9 +162,9 @@ export default function SymptomLogBar({
   // It was fed by nobody for a while: the same antipyretic was already a chip in the
   // host's persistent Meds section a few lines below, so the offer could only ever
   // duplicate it. The ruling makes the PERSISTENT SECTION yield instead — one dose
-  // prompt at a time — which the host arranges with `DoseOfferProvider` +
-  // `YieldToDoseOffer` around this bar and that section, and this bar signals through
-  // `useDoseOfferSignal`. A host that wires the props without the provider would show
+  // prompt at a time — which the host arranges with a `DoseOfferProvider` around this
+  // bar and that section plus the section's `yieldsTo` prop, and this bar signals
+  // through `useDoseOfferSignal`. A host that wires the props without the provider would show
   // two chips again, so the two arrive together on both mounts.
   antipyreticMeds?: PrnMedForQuickLog[];
   // Required alongside antipyreticMeds to mount IllnessMedicationLogger (its own
