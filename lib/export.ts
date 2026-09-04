@@ -12,6 +12,15 @@ export { toCsv };
 // column order used for both the on-screen preview and the CSV download. Every
 // row also carries an `id` (the primary key of `table`) — not shown in `columns`
 // or the CSV, but used by the management UI to select and delete rows.
+//
+// WHAT MAKES A COLUMN EXPORTABLE (#5117). Every column of a table that has a
+// dataset here is exported, unless it is named in COLUMN_EXPORT_ALLOWLIST in
+// lib/__db_tests__/export-completeness.test.ts with the reason a migrating family
+// is not losing health data by its absence. There is no third option: a column
+// added to one of these tables either joins its dataset (`columns` AND `select`)
+// or gets written down as a deliberate omission, and the guard is red until one
+// of those happens. That is the rule `bundle_id` was missing for four datasets —
+// the export CARRIES provenance, and precedent is not a decision.
 // The Data page shows PAGE_SIZE rows per dataset table; the same size drives the
 // bounded `page()` reads below so a visit ships one page, not the whole table
 // (issue #113 — /data used to serialize every dataset in full).
@@ -23,6 +32,15 @@ export interface ExportDataset {
   // Underlying table whose primary key `id` identifies each row for deletion.
   table: string;
   columns: string[];
+  // The profile-scoped SELECT this dataset's rows come from, complete through its
+  // WHERE — exactly the statement `rows`/`page` execute (page only appends
+  // LIMIT/OFFSET). It is here so the column-completeness guard
+  // (lib/__db_tests__/export-completeness.test.ts) can prepare it and let SQLite
+  // attribute every emitted column back to its origin table + column, instead of
+  // reading this file's source text. A dataset that folds a CHILD table into a
+  // summary cell gives the PARENT select here; the child's coverage is argued
+  // against its own dataset (or the guard's column allowlist).
+  select: string;
   // FULL dataset — every row, unbounded. Used ONLY by the export routes
   // (/api/export/*), which stream/serialize the complete table. The Data page
   // must NOT call this (it's the 22.5 MB / 2.1 s stall in #113); it reads the
@@ -95,6 +113,7 @@ function tableDataset(cfg: {
     label: cfg.label,
     table: cfg.table,
     columns: cfg.columns,
+    select: cfg.select,
     deletable: cfg.deletable,
     rows: q(cfg.select),
     page: qPage(cfg.select),
@@ -132,6 +151,10 @@ type ActivitySet = SetRow & { activity_id: number; exercise: string };
 const ACTIVITY_COLUMNS = `id, date, type, title, duration_min, distance_km, intensity,
           start_time, end_time, avg_hr, max_hr, elevation_m, avg_power_w, avg_cadence,
           kilojoules, est_calories, workout_type, source, external_id, notes`;
+// The activities read itself, complete through its WHERE — one const so the full
+// read, the bounded page read and the dataset's `select` are the same statement.
+const ACTIVITIES_SELECT = `SELECT ${ACTIVITY_COLUMNS}
+           FROM activities WHERE profile_id = ? ORDER BY date DESC, id DESC`;
 // Exercise-sets read, scoped to the profile through the activities JOIN. The page
 // reader appends `AND s.activity_id IN (...)` to fetch only the shown activities'
 // sets; the export reader takes them all. Kept as one const so both share the
@@ -286,16 +309,22 @@ const PROVIDER_COLUMNS = [
   "address",
 ];
 
+// The providers read, parameterised by its `IN (...)` placeholder list: one row per
+// provider some exported record actually references. `providersSelect("?")` is the
+// dataset's `select` (a preparable statement of the same shape), so the guard reads
+// the columns this function emits rather than a copy that can drift from it.
+const providersSelect = (placeholders: string) =>
+  `SELECT id, name, type, npi, identifier, phone, address
+         FROM providers WHERE id IN (${placeholders}) ORDER BY name, id`;
+
 function providerRows(profileId: number): Record<string, unknown>[] {
   const ids = referencedProviderIds(profileId);
   if (ids.length === 0) return [];
   const ph = ids.map(() => "?").join(",");
-  return db
-    .prepare(
-      `SELECT id, name, type, npi, identifier, phone, address
-         FROM providers WHERE id IN (${ph}) ORDER BY name, id`
-    )
-    .all(...ids) as Record<string, unknown>[];
+  return db.prepare(providersSelect(ph)).all(...ids) as Record<
+    string,
+    unknown
+  >[];
 }
 
 const providersDataset: ExportDataset = {
@@ -304,6 +333,7 @@ const providersDataset: ExportDataset = {
   table: "providers",
   deletable: false,
   columns: PROVIDER_COLUMNS,
+  select: providersSelect("?"),
   rows: providerRows,
   count: (profileId) => referencedProviderIds(profileId).length,
   page: (profileId, limit, offset) =>
@@ -319,6 +349,7 @@ export const DATASETS: ExportDataset[] = [
     key: "activities",
     label: "Activities",
     table: "activities",
+    select: ACTIVITIES_SELECT,
     columns: [
       "date",
       "type",
@@ -344,10 +375,7 @@ export const DATASETS: ExportDataset[] = [
     count: qCount(`SELECT COUNT(*) AS n FROM activities WHERE profile_id = ?`),
     rows: (profileId: number) => {
       const acts = db
-        .prepare(
-          `SELECT ${ACTIVITY_COLUMNS}
-           FROM activities WHERE profile_id = ? ORDER BY date DESC, id DESC`
-        )
+        .prepare(ACTIVITIES_SELECT)
         .all(profileId) as ActivityRow[];
       const sets = db
         .prepare(
@@ -358,11 +386,7 @@ export const DATASETS: ExportDataset[] = [
     },
     page: (profileId: number, limit: number, offset: number) => {
       const acts = db
-        .prepare(
-          `SELECT ${ACTIVITY_COLUMNS}
-           FROM activities WHERE profile_id = ? ORDER BY date DESC, id DESC
-           LIMIT ? OFFSET ?`
-        )
+        .prepare(`${ACTIVITIES_SELECT} LIMIT ? OFFSET ?`)
         .all(profileId, limit, offset) as ActivityRow[];
       if (acts.length === 0) return [];
       // Fetch sets only for the shown activities (still profile-scoped via the
@@ -527,7 +551,8 @@ export const DATASETS: ExportDataset[] = [
     label: "Body metrics",
     table: "body_metrics",
     // source + edited carry provenance (which integration wrote it, whether a hand
-    // edit locked it) that the export used to drop (#466).
+    // edit locked it) that the export used to drop (#466); bundle_id says which rows
+    // one act wrote (#5117).
     columns: [
       "date",
       "weight_kg",
@@ -536,8 +561,10 @@ export const DATASETS: ExportDataset[] = [
       "source",
       "edited",
       "notes",
+      "bundle_id",
     ],
-    select: `SELECT id, date, weight_kg, body_fat_pct, resting_hr, source, edited, notes
+    select: `SELECT id, date, weight_kg, body_fat_pct, resting_hr, source, edited, notes,
+              bundle_id
        FROM body_metrics WHERE profile_id = ? ORDER BY date DESC`,
     countSql: `SELECT COUNT(*) AS n FROM body_metrics WHERE profile_id = ?`,
   }),
@@ -756,8 +783,10 @@ export const DATASETS: ExportDataset[] = [
       "duration_min",
       "notes",
       "created_at",
+      "bundle_id",
     ],
-    select: `SELECT id, practice, date, start_time, end_time, duration_min, notes, created_at
+    select: `SELECT id, practice, date, start_time, end_time, duration_min, notes,
+              created_at, bundle_id
        FROM practice_logs WHERE profile_id = ? ORDER BY date DESC, id DESC`,
     countSql: `SELECT COUNT(*) AS n FROM practice_logs WHERE profile_id = ?`,
   }),
@@ -772,6 +801,7 @@ export const DATASETS: ExportDataset[] = [
     key: "intake_items",
     label: "Supplements & Medications",
     table: "intake_items",
+    select: ITEMS_SELECT,
     columns: [
       "name",
       "kind",
@@ -839,9 +869,10 @@ export const DATASETS: ExportDataset[] = [
       "recorded_at",
       "amount",
       "skip_reason",
+      "bundle_id",
     ],
     select: `SELECT l.id, l.date, ii.name AS item, l.status, l.occurred_at,
-              l.recorded_at, l.amount, l.skip_reason
+              l.recorded_at, l.amount, l.skip_reason, l.bundle_id
        FROM intake_item_logs l JOIN intake_items ii ON ii.id = l.item_id
        WHERE ii.profile_id = ? ORDER BY l.date DESC, ii.name`,
     countSql: `SELECT COUNT(*) AS n
@@ -1353,8 +1384,8 @@ export const DATASETS: ExportDataset[] = [
     key: "food_log_events",
     label: "Food log events",
     table: "food_log_events",
-    columns: ["date", "group_key", "recorded_at", "meal_slot"],
-    select: `SELECT id, date, group_key, recorded_at, meal_slot
+    columns: ["date", "group_key", "recorded_at", "meal_slot", "bundle_id"],
+    select: `SELECT id, date, group_key, recorded_at, meal_slot, bundle_id
        FROM food_log_events WHERE profile_id = ? ORDER BY recorded_at DESC`,
     countSql: `SELECT COUNT(*) AS n FROM food_log_events WHERE profile_id = ?`,
   }),
