@@ -161,6 +161,28 @@ describe("retimeSleepSession", () => {
     expect(rowOf(sessionId)).toEqual(before);
   });
 
+  it("names the door that settles a night stored twice (#5125)", async () => {
+    const { sessionId } = hedgedNight();
+    // The same night, stored a second time by the same source. The core refuses; what
+    // is pinned here is that the refusal a person reads points somewhere.
+    sample("sleep_min", `${day}T09:45:00Z`, `${day}T14:43:00Z`, 298);
+    const before = rowOf(sessionId);
+
+    const result = await retimeSleepSession(
+      fd({
+        sample_id: sessionId,
+        date: day,
+        bed_time: "03:39",
+        wake_time: "08:37",
+      })
+    );
+
+    expect(result.error).toBe(
+      "This night is stored twice. Settle the pair under Data → Review first."
+    );
+    expect(rowOf(sessionId)).toEqual(before);
+  });
+
   it("refuses a half-stated window before it reaches the store", async () => {
     const { sessionId } = hedgedNight();
     const before = rowOf(sessionId);

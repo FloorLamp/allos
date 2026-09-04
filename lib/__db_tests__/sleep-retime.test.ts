@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { db, today } from "@/lib/db";
-import { setTimezone } from "@/lib/settings";
+import { setProfileSetting, setTimezone } from "@/lib/settings";
+import { serializeTimezoneSwitches } from "@/lib/travel-timezone";
 import { shiftDateStr, utcInstant } from "@/lib/date";
 import {
   retimeSleepSessionCore,
@@ -10,6 +11,7 @@ import { SLEEP_RETIME_KIND } from "@/lib/sleep-retime-kind";
 import { metricSampleTombstoneKey } from "@/lib/integrations/tombstone-keys";
 import { getSuspectSleepWakeDays } from "@/lib/queries/sleep-clock-skew";
 import { countTrash, listTrash } from "@/lib/queries/trash";
+import { getOverlappingSleepSessions } from "@/lib/queries/sleep";
 
 // DB INTEGRATION TIER — re-timing a hedged sleep session (#5021).
 //
@@ -146,8 +148,9 @@ describe("retimeSleepSessionCore", () => {
     );
 
     const outcome = retimeSleepSessionCore(profileId, sessionId, {
-      bedAt: `${day}T03:39:00Z`,
-      wakeAt: `${day}T08:37:00Z`,
+      date: day,
+      bed: "03:39",
+      wake: "08:37",
     });
     expect(outcome.kind).toBe("retimed");
 
@@ -177,28 +180,34 @@ describe("retimeSleepSessionCore", () => {
   });
 
   it("re-derives the wake day from the new wake", () => {
-    // Stamped as waking on `day`; corrected, the night wakes the day BEFORE — so the
-    // row has to be filed there rather than left where the wrong instants put it.
-    // A five-hour night stamped eleven hours late keeps the real trough inside the
-    // detector's own reach, which is what makes it hedged in the first place.
-    const before = shiftDateStr(day, -1);
+    // Stamped as waking on `day`; corrected, the night wakes across local midnight and
+    // so belongs to the NEXT day — the row has to be filed there rather than left where
+    // the wrong instants put it. Only a two-hour correction, which keeps the real
+    // trough inside the detector's own 12-hour reach.
     const sessionId = sample(
       "sleep_min",
       day,
-      `${day}T05:00:00Z`,
-      `${day}T10:00:00Z`,
-      300
+      `${day}T20:00:00Z`,
+      `${day}T23:00:00Z`,
+      180
     );
-    trace(`${before}T12:00:00Z`, `${day}T22:00:00Z`, {
-      from: `${before}T18:00:00Z`,
-      to: `${before}T23:00:00Z`,
+    trace(`${day}T10:00:00Z`, `${T}T06:00:00Z`, {
+      from: `${day}T22:00:00Z`,
+      to: `${T}T01:00:00Z`,
     });
+    // The stated wake day is `T`; a bed clock at or after noon belongs to the evening
+    // before it, which is the shared fold's rule for every stated sleep window.
     const outcome = retimeSleepSessionCore(profileId, sessionId, {
-      bedAt: `${before}T18:00:00Z`,
-      wakeAt: `${before}T23:00:00Z`,
+      date: T,
+      bed: "22:00",
+      wake: "01:00",
     });
     expect(outcome.kind).toBe("retimed");
-    expect(rowOf(sessionId)?.date).toBe(before);
+    expect(rowOf(sessionId)).toMatchObject({
+      date: T,
+      started_at: `${day}T22:00:00Z`,
+      ended_at: `${T}T01:00:00Z`,
+    });
   });
 
   it("refuses a session the detector has not contradicted", () => {
@@ -217,8 +226,9 @@ describe("retimeSleepSessionCore", () => {
     });
     expect(
       retimeSleepSessionCore(profileId, id, {
-        bedAt: `${day}T03:39:00Z`,
-        wakeAt: `${day}T08:37:00Z`,
+        date: day,
+        bed: "03:39",
+        wake: "08:37",
       }).kind
     ).toBe("not-hedged");
     expect(rowOf(id)?.started_at).toBe(`${day}T09:39:00Z`);
@@ -232,8 +242,9 @@ describe("retimeSleepSessionCore", () => {
     const before = rowOf(stageId);
     expect(
       retimeSleepSessionCore(profileId, sessionId, {
-        bedAt: `${day}T03:39:00Z`,
-        wakeAt: `${day}T09:37:00Z`,
+        date: day,
+        bed: "03:39",
+        wake: "09:37",
       })
     ).toEqual({ kind: "length-changed", storedMinutes: 298 });
     // Refused BEFORE anything moved, which is what makes a refusal safe.
@@ -245,17 +256,201 @@ describe("retimeSleepSessionCore", () => {
     const { sessionId } = hedgedNight();
     expect(
       retimeSleepSessionCore(profileId, sessionId, {
-        bedAt: `${day}T08:37:00Z`,
-        wakeAt: `${day}T03:39:00Z`,
+        date: day,
+        bed: "08:37",
+        wake: "03:39",
       }).kind
     ).toBe("invalid-window");
     const ahead = shiftDateStr(T, 90);
     expect(
       retimeSleepSessionCore(profileId, sessionId, {
-        bedAt: `${ahead}T03:39:00Z`,
-        wakeAt: `${ahead}T08:37:00Z`,
+        date: ahead,
+        bed: "03:39",
+        wake: "08:37",
       }).kind
     ).toBe("invalid-window");
+  });
+});
+
+// ── #5125: three defects a falsifying pass found on the merged feature ────────
+//
+// Every one was a coverage gap rather than a regression — both tiers were green on the
+// head that shipped them — so each case below is written from the state it forbids
+// rather than from the branch that now forbids it.
+describe("the lock reads the SESSION, not the wake day (#5125 item 1)", () => {
+  // The detector judges the day's MAIN session only (#5019's nap exclusion) and never
+  // looks at a `source='manual'` row. Keying the lock on the wake DAY therefore let
+  // every other row on a hedged day through a lock whose own comment says the opposite.
+  function unjudgedRowOnAHedgedDay(kind: "nap" | "manual"): number {
+    hedgedNight();
+    if (kind === "nap") {
+      return sample(
+        "sleep_min",
+        day,
+        `${day}T16:00:00Z`,
+        `${day}T17:00:00Z`,
+        60
+      );
+    }
+    return Number(
+      db
+        .prepare(
+          `INSERT INTO metric_samples
+             (profile_id, source, origin, metric, date, started_at, ended_at, value)
+           VALUES (?, 'manual', NULL, 'sleep_min', ?, ?, ?, 60)`
+        )
+        .run(profileId, day, `${day}T16:00:00Z`, `${day}T17:00:00Z`)
+        .lastInsertRowid
+    );
+  }
+
+  for (const kind of ["nap", "manual"] as const) {
+    it(`refuses a ${kind} row sharing a hedged day, and writes NOTHING`, () => {
+      const id = unjudgedRowOnAHedgedDay(kind);
+      const before = rowOf(id);
+
+      expect(
+        retimeSleepSessionCore(profileId, id, {
+          date: day,
+          bed: "11:00",
+          wake: "12:00",
+        }).kind
+      ).toBe("not-hedged");
+
+      expect(rowOf(id)).toEqual(before);
+      // THE TAIL THAT MATTERS. The write tombstones the moved row's natural key
+      // unconditionally, so a refusal that reached it would stop the source ever
+      // re-sending this row — invisible until someone went looking. Asserted as the
+      // TABLE's state, not as a branch that was not taken.
+      expect(tombstones()).toEqual([]);
+      expect(
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM deleted_rows
+                WHERE profile_id = ? AND kind = ?`
+            )
+            .get(profileId, SLEEP_RETIME_KIND) as { c: number }
+        ).c
+      ).toBe(0);
+    });
+  }
+
+  it("still moves the session the detector DID judge", () => {
+    // The other side of the same lock: narrowing it must not close the door it exists
+    // to open.
+    const { sessionId } = hedgedNight();
+    sample("sleep_min", day, `${day}T16:00:00Z`, `${day}T17:00:00Z`, 60);
+    expect(
+      retimeSleepSessionCore(profileId, sessionId, {
+        date: day,
+        bed: "03:39",
+        wake: "08:37",
+      }).kind
+    ).toBe("retimed");
+  });
+});
+
+describe("a night stored twice is refused, not stranded (#5125 item 2)", () => {
+  it("refuses rather than moving a session whose stages another row also covers", () => {
+    // `stagesOwnedBy` vetoes every stage a second same-day session also covers, so this
+    // row would have moved and left its whole breakdown behind — the orphaned breakdown
+    // `length-changed` exists to prevent, arriving through the path it allows.
+    const { sessionId, stageId } = hedgedNight();
+    // The SAME night stored twice, at instants that overlap but are not the same key.
+    const twin = sample(
+      "sleep_min",
+      day,
+      `${day}T09:45:00Z`,
+      `${day}T14:43:00Z`,
+      298
+    );
+    const before = { session: rowOf(sessionId), stage: rowOf(stageId) };
+
+    expect(
+      retimeSleepSessionCore(profileId, sessionId, {
+        date: day,
+        bed: "03:39",
+        wake: "08:37",
+      }).kind
+    ).toBe("stored-twice");
+
+    expect(rowOf(sessionId)).toEqual(before.session);
+    expect(rowOf(stageId)).toEqual(before.stage);
+    expect(tombstones()).toEqual([]);
+    // And the pair really is the one Review lists, which is the door the refusal names.
+    expect(getOverlappingSleepSessions(profileId)).toHaveLength(1);
+    expect(twin).toBeGreaterThan(0);
+  });
+
+  it("moves again once the pair is settled", () => {
+    // The refusal is a redirection, not a dead end: delete the duplicate — which is
+    // what Review's "Keep this one" does — and the door opens.
+    const { sessionId, stageId } = hedgedNight();
+    const twin = sample(
+      "sleep_min",
+      day,
+      `${day}T09:45:00Z`,
+      `${day}T14:43:00Z`,
+      298
+    );
+    db.prepare(`DELETE FROM metric_samples WHERE id = ?`).run(twin);
+
+    expect(
+      retimeSleepSessionCore(profileId, sessionId, {
+        date: day,
+        bed: "03:39",
+        wake: "08:37",
+      }).kind
+    ).toBe("retimed");
+    expect(rowOf(stageId)?.started_at).toBe(`${day}T04:00:00Z`);
+  });
+});
+
+describe("one zone displays and interprets the window (#5125 item 3)", () => {
+  it("nudges a night by an hour on a profile that has since moved zones", () => {
+    // The surface projects the stored window through the zone in force AT those
+    // instants; the fold used to read the profile's CURRENT zone. On a Tokyo→London
+    // move that made a one-hour nudge a NINE-hour move, with every refusal silent
+    // because the fold preserves elapsed length.
+    //
+    // Stored 13:00Z–18:00Z is 22:00 → 03:00 in Tokyo, a night that crosses midnight.
+    const sessionId = sample(
+      "sleep_min",
+      day,
+      `${day}T13:00:00Z`,
+      `${day}T18:00:00Z`,
+      300
+    );
+    trace(`${shiftDateStr(day, -1)}T22:00:00Z`, `${T}T04:00:00Z`, {
+      from: `${day}T05:00:00Z`,
+      to: `${day}T10:00:00Z`,
+    });
+
+    // The move happened AFTER the night: the profile stands in London now and lived
+    // that night in Tokyo. Written through the setting the switch path writes, because
+    // there is no test-only door to it.
+    setTimezone(profileId, "Europe/London");
+    setProfileSetting(
+      profileId,
+      "timezone_switches",
+      serializeTimezoneSwitches([
+        { at: `${T}T09:00:00Z`, from: "Asia/Tokyo", to: "Europe/London" },
+      ])
+    );
+
+    // One hour earlier on the clock the person actually kept: 21:00 → 02:00 Tokyo.
+    const outcome = retimeSleepSessionCore(profileId, sessionId, {
+      date: T,
+      bed: "21:00",
+      wake: "02:00",
+    });
+
+    expect(outcome.kind).toBe("retimed");
+    expect(rowOf(sessionId)).toMatchObject({
+      started_at: `${day}T12:00:00Z`,
+      ended_at: `${day}T17:00:00Z`,
+    });
   });
 });
 
@@ -264,8 +459,9 @@ describe("the undo, which MOVES rather than re-inserts", () => {
     const { sessionId, stageId } = hedgedNight();
     const before = { session: rowOf(sessionId), stage: rowOf(stageId) };
     const outcome = retimeSleepSessionCore(profileId, sessionId, {
-      bedAt: `${day}T03:39:00Z`,
-      wakeAt: `${day}T08:37:00Z`,
+      date: day,
+      bed: "03:39",
+      wake: "08:37",
     });
     expect(outcome.kind).toBe("retimed");
     const undoId = outcome.kind === "retimed" ? outcome.undoId : 0;
@@ -285,8 +481,9 @@ describe("the undo, which MOVES rather than re-inserts", () => {
   it("is not offered in the Trash, because nothing was deleted", () => {
     const { sessionId } = hedgedNight();
     retimeSleepSessionCore(profileId, sessionId, {
-      bedAt: `${day}T03:39:00Z`,
-      wakeAt: `${day}T08:37:00Z`,
+      date: day,
+      bed: "03:39",
+      wake: "08:37",
     });
     expect(
       (

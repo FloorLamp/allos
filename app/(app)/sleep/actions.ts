@@ -6,22 +6,14 @@ import { today, writeTx } from "@/lib/db";
 import { isRealIsoDate, shiftDateStr } from "@/lib/date";
 import { normalizeMoodInput } from "@/lib/mood";
 import { deleteMetricRow } from "@/lib/metric-readings";
-import {
-  insertVitals,
-  resolveSleepWindow,
-  upsertMoodLog,
-} from "@/lib/offline/writes";
+import { insertVitals, upsertMoodLog } from "@/lib/offline/writes";
 import { canEditManualSleepOnDate } from "@/lib/queries/metrics";
 import { SLEEP_MOOD_HISTORY_DAYS } from "@/lib/queries/sleep";
 import { parseReadingTarget } from "@/lib/reading-placement";
 import { formError, formOk, type FormResult } from "@/lib/types";
-import { getTimezone } from "@/lib/settings";
 import { formatHm } from "@/lib/sleep-summary";
 import { retimeSleepSessionCore } from "@/lib/sleep-retime-db";
-import {
-  normalizeVitalsInput,
-  sleepWindowFromClocks,
-} from "@/lib/vitals-input";
+import { normalizeVitalsInput } from "@/lib/vitals-input";
 
 // The `metric_samples` key nightly sleep duration is stored under. Spelled here
 // because this action must REFUSE any other metric: the target token is posted by
@@ -176,20 +168,22 @@ export async function retimeSleepSession(
   if (!Number.isInteger(sampleId) || sampleId <= 0 || !isRealIsoDate(date)) {
     return { undoId: null, error: "That sleep session is no longer there." };
   }
-  const stated = sleepWindowFromClocks(
-    String(formData.get("bed_time") ?? ""),
-    String(formData.get("wake_time") ?? "")
-  );
-  const resolved = stated
-    ? resolveSleepWindow(getTimezone(profile.id), date, stated)
-    : null;
-  if (!resolved) {
+  const bed = String(formData.get("bed_time") ?? "").trim();
+  const wake = String(formData.get("wake_time") ?? "").trim();
+  if (!bed || !wake) {
     return { undoId: null, error: "Enter a bed time and a wake time." };
   }
 
+  // THE CLOCKS GO THROUGH UNFOLDED (#5125 item 3). This boundary used to resolve them
+  // against the profile's CURRENT zone, while the surface DISPLAYS the stored window
+  // through the zone in force at those instants — so on a profile with a recorded
+  // Tokyo→London switch a one-hour nudge moved the row nine hours, with every refusal
+  // silent because the fold preserves elapsed length. The fold lives with the session
+  // read now, which is the only place that knows which zone this night was lived in.
   const outcome = retimeSleepSessionCore(profile.id, sampleId, {
-    bedAt: resolved.startedAt,
-    wakeAt: resolved.endedAt,
+    date,
+    bed,
+    wake,
   });
   switch (outcome.kind) {
     case "not-found":
@@ -206,6 +200,14 @@ export async function retimeSleepSession(
         undoId: null,
         error:
           "Enter a window in the past, with a wake time after the bed time.",
+      };
+    case "stored-twice":
+      // Named as the door that settles it, not as a dead end: Data → Review lists the
+      // pair and "Keep this one" is the action that ends it.
+      return {
+        undoId: null,
+        error:
+          "This night is stored twice. Settle the pair under Data → Review first.",
       };
     case "length-changed":
       // The one refusal a person can act on, so it says the number they have to match.

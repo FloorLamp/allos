@@ -8,13 +8,16 @@ import {
   stagesOwnedBy,
   type SleepSessionRow,
 } from "@/lib/sleep-overlap";
+import { windowsOverlap } from "@/lib/metric-window-overlap";
+import { sleepWindowFromClocks } from "@/lib/vitals-input";
+import { resolveSleepWindow } from "@/lib/offline/writes";
 import {
   removeImportTombstone,
   writeImportTombstone,
 } from "@/lib/integrations/tombstones";
 import { metricSampleTombstoneKey } from "@/lib/integrations/tombstone-keys";
 import {
-  getSuspectSleepWakeDays,
+  getSuspectSleepSessions,
   SLEEP_SKEW_HISTORY_DAYS,
 } from "@/lib/queries/sleep-clock-skew";
 import { SLEEP_RETIME_KIND } from "@/lib/sleep-retime-kind";
@@ -53,6 +56,15 @@ export type SleepRetimeOutcome =
   /** The lock stays on a session the detector has not contradicted (#5021 scope). */
   | { kind: "not-hedged" }
   | { kind: "invalid-window" }
+  /**
+   * The wake day holds a SECOND session of the same source overlapping this one — a
+   * night stored twice (#5125). Refused rather than moved, because `stagesOwnedBy`
+   * vetoes every stage a second session also covers: the row would move and its whole
+   * breakdown would stay behind, which is exactly what `length-changed` exists to
+   * prevent, arriving through the path that refusal allows. Settling the pair is
+   * Review's "Keep this one" and it is the door this refusal names.
+   */
+  | { kind: "stored-twice" }
   | { kind: "length-changed"; storedMinutes: number };
 
 interface CapturedSleepRetime {
@@ -111,60 +123,123 @@ function stagesOf(
   return stagesOwnedBy({ date: session.date, startMs, endMs }, others, stages);
 }
 
+/** Another `sleep_min` row of the same source covering this one — a night stored twice. */
+function overlappingTwin(
+  profileId: number,
+  session: SleepSessionRow & { source: string }
+): boolean {
+  const from = shiftDateStr(session.date, -1);
+  const to = shiftDateStr(session.date, 1);
+  const others = db
+    .prepare(
+      `SELECT ${SESSION_COLUMNS} FROM metric_samples
+        WHERE profile_id = ? AND metric = 'sleep_min' AND source = ?
+          AND date >= ? AND date <= ? AND id != ?`
+    )
+    .all(profileId, session.source, from, to, session.id) as SleepSessionRow[];
+  return others.some((other) =>
+    windowsOverlap(
+      session.started_at,
+      session.ended_at,
+      other.started_at,
+      other.ended_at
+    )
+  );
+}
+
 /**
  * Move a hedged sleep session, and the stage rows under it, onto the window a person
  * stated. Returns the undo token, or the refusal that stopped it.
+ *
+ * THE WINDOW ARRIVES AS TWO WALL CLOCKS, not as instants (#5125 item 3). The surface
+ * DISPLAYS the stored window through the zone in force at those instants
+ * (`lib/queries/sleep.ts` projects it through `zoneOf(profileDayZone(…), at)`), and a
+ * person types against what they see — so the same zone has to interpret what they
+ * typed. It used to be folded at the action boundary through the profile's CURRENT
+ * zone, and on a profile with a recorded Tokyo→London switch a one-hour nudge moved the
+ * row NINE hours with every refusal silent.
+ *
+ * The fold lives here rather than beside the display because two call sites that must
+ * agree about a zone will drift again. This one already reads the session row, which is
+ * what names the instant the zone is taken at, and there is no signature left that
+ * accepts instants which skipped the rule.
+ *
+ * EVERYTHING IS INSIDE ONE TRANSACTION, including the reads (#5125's PLAUSIBLE note).
+ * The session read, the detector call and the length check used to sit outside it; two
+ * concurrent posts could not produce a wrong row, but a check whose subject can move
+ * before the write is not worth keeping once the code is open anyway.
  */
 export function retimeSleepSessionCore(
   profileId: number,
   sampleId: number,
-  window: { bedAt: string; wakeAt: string }
+  stated: { date: string; bed: string; wake: string }
 ): SleepRetimeOutcome {
-  const newStart = Date.parse(window.bedAt);
-  const newEnd = Date.parse(window.wakeAt);
-  if (
-    !Number.isFinite(newStart) ||
-    !Number.isFinite(newEnd) ||
-    newEnd <= newStart
-  )
-    return { kind: "invalid-window" };
-  // Never the future, the record's own rule: a night that has not happened cannot be
-  // the night this one really was.
-  if (newEnd > Date.now()) return { kind: "invalid-window" };
-
-  const session = db
-    .prepare(
-      `SELECT ${SESSION_COLUMNS}, source FROM metric_samples
-        WHERE id = ? AND profile_id = ? AND metric = 'sleep_min'`
-    )
-    .get(sampleId, profileId) as
-    (SleepSessionRow & { source: string }) | undefined;
-  if (!session) return { kind: "not-found" };
-
-  // ONLY A HEDGED NIGHT. #5021's out-of-scope line is explicit — the edit lock stays on
-  // a session the detector has not contradicted — and asking the detector is the only
-  // way to know, so it is asked here rather than trusted from the caller.
-  const suspect = getSuspectSleepWakeDays(
-    profileId,
-    shiftDateStr(today(profileId), -SLEEP_SKEW_HISTORY_DAYS)
-  );
-  if (!suspect.has(session.date)) return { kind: "not-hedged" };
-
-  const oldStart = Date.parse(session.started_at);
-  const oldEnd = Date.parse(session.ended_at);
-  if (!Number.isFinite(oldStart) || !Number.isFinite(oldEnd))
-    return { kind: "not-found" };
-  const storedMs = oldEnd - oldStart;
-  if (newEnd - newStart !== storedMs)
-    return {
-      kind: "length-changed",
-      storedMinutes: Math.round(storedMs / 60_000),
-    };
-
-  const delta = newStart - oldStart;
-  if (delta === 0) return { kind: "invalid-window" };
-
   return writeTx((): SleepRetimeOutcome => {
+    const session = db
+      .prepare(
+        `SELECT ${SESSION_COLUMNS}, source FROM metric_samples
+        WHERE id = ? AND profile_id = ? AND metric = 'sleep_min'`
+      )
+      .get(sampleId, profileId) as
+      (SleepSessionRow & { source: string }) | undefined;
+    if (!session) return { kind: "not-found" };
+
+    // ONLY THE SESSION THE DETECTOR JUDGED (#5125 item 1). This used to ask for the
+    // hedged wake DAYS and test `has(session.date)` — but the detector judges the day's
+    // MAIN session only (#5019's nap exclusion) and never looks at a `source='manual'`
+    // row at all. So a nap or a manual duration sharing a hedged day passed a lock whose
+    // own comment says the opposite, got moved, and — worse — got its natural key
+    // tombstoned, which stops the source re-sending it with nothing on screen to say so.
+    //
+    // `sampleId` is the identity the detector already carries, so the lock asks the
+    // question it always meant: is THIS row the one that was contradicted.
+    const judged = getSuspectSleepSessions(
+      profileId,
+      shiftDateStr(today(profileId), -SLEEP_SKEW_HISTORY_DAYS)
+    ).some((s) => s.sampleId === sampleId);
+    if (!judged) return { kind: "not-hedged" };
+
+    // A NIGHT STORED TWICE cannot be moved with its breakdown, so it is not moved at all.
+    // See the outcome's own note: `stagesOwnedBy` vetoes every stage a second session
+    // also covers, and a session that arrives at new hours with its stages left at the
+    // old ones is the orphaned breakdown this whole feature refuses elsewhere.
+    if (overlappingTwin(profileId, session)) return { kind: "stored-twice" };
+
+    const oldStart = Date.parse(session.started_at);
+    const oldEnd = Date.parse(session.ended_at);
+    if (!Number.isFinite(oldStart) || !Number.isFinite(oldEnd))
+      return { kind: "not-found" };
+
+    // The person's two clocks, through the zone this night was actually lived in — the
+    // one the surface displayed the stored window in.
+    const zone = profileDayZone(profileId);
+    const statedWindow = sleepWindowFromClocks(stated.bed, stated.wake);
+    const resolved = statedWindow
+      ? resolveSleepWindow(
+          zoneOf(zone, new Date(oldEnd)),
+          stated.date,
+          statedWindow
+        )
+      : null;
+    if (!resolved) return { kind: "invalid-window" };
+    const newStart = Date.parse(resolved.startedAt);
+    const newEnd = Date.parse(resolved.endedAt);
+    if (!Number.isFinite(newStart) || !Number.isFinite(newEnd))
+      return { kind: "invalid-window" };
+    // Never the future, the record's own rule: a night that has not happened cannot be
+    // the night this one really was.
+    if (newEnd > Date.now()) return { kind: "invalid-window" };
+
+    const storedMs = oldEnd - oldStart;
+    if (newEnd - newStart !== storedMs)
+      return {
+        kind: "length-changed",
+        storedMinutes: Math.round(storedMs / 60_000),
+      };
+
+    const delta = newStart - oldStart;
+    if (delta === 0) return { kind: "invalid-window" };
+
     const stages = stagesOf(profileId, session, oldStart, oldEnd);
     const moving = [session as SleepSessionRow, ...stages];
     const captured: CapturedSleepRetime = {
@@ -197,10 +272,8 @@ export function retimeSleepSessionCore(
 
     // The DATE follows the new WAKE, through the zone that was in force at that
     // instant — the same rule the ingest applies (`parts(end, tz)` in
-    // lib/integrations/health-connect.ts) and the same one #5042 taught the summary.
-    // Resolving it through the profile's CURRENT zone would file a corrected night
-    // under the day the traveller is standing in rather than the one they woke on.
-    const zone = profileDayZone(profileId);
+    // lib/integrations/health-connect.ts) and the same one #5042 taught the summary,
+    // and the same `zone` the stated clocks were interpreted through above.
     const move = db.prepare(
       `UPDATE metric_samples SET date = ?, started_at = ?, ended_at = ?, edited = 1
         WHERE id = ? AND profile_id = ?`
