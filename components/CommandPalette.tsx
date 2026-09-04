@@ -867,7 +867,15 @@ function SearchResults({
   return (
     <>
       {groups.map((group, groupIndex) => (
-        <div key={group.domain} className="mb-2">
+        // Named by its DOMAIN, so a test can address the group a hit came from: the
+        // record's rows and the entity that names them share a title on purpose
+        // ("Moonlight breathwork" is a session and a practice), and which one a tap
+        // opens is the difference between the entry and its list.
+        <div
+          key={group.domain}
+          data-testid={`palette-group-${group.domain}`}
+          className="mb-2"
+        >
           <div className="px-2 pb-1 pt-2 section-label">{group.label}</div>
           <ul>
             {group.hits.map((hit, hitIndex) => {

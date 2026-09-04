@@ -4,8 +4,11 @@ import {
   sortHits,
   rankAndGroup,
   flattenHits,
+  isLoggedSearchDomain,
+  loggedSearchDomain,
   SEARCH_DOMAIN_ORDER,
   SEARCH_DOMAIN_LABELS,
+  SEARCH_LOGGED_KINDS,
   type SearchDomain,
   type SearchHit,
 } from "@/lib/search-rank";
@@ -306,5 +309,74 @@ describe("flattenHits", () => {
       ""
     );
     expect(flattenHits(groups).map((h) => h.key)).toEqual(["b1", "b2", "s1"]);
+  });
+});
+
+// #5006: the record's seven row-only Logs kinds became domains of their own. They are
+// ordered and labelled like every other domain — and they invert the first two sort
+// keys, because "my latest sauna" is a question about WHEN, not about spelling.
+describe("the logged domains (#5006)", () => {
+  const LOGGED = SEARCH_LOGGED_KINDS.map(loggedSearchDomain);
+
+  it("orders and labels every logged domain, ahead of the static page entries", () => {
+    for (const domain of LOGGED) {
+      expect(SEARCH_DOMAIN_ORDER).toContain(domain);
+      expect(SEARCH_DOMAIN_LABELS[domain]).toBeTruthy();
+      expect(SEARCH_DOMAIN_ORDER.indexOf(domain)).toBeLessThan(
+        SEARCH_DOMAIN_ORDER.indexOf("page")
+      );
+      expect(isLoggedSearchDomain(domain)).toBe(true);
+    }
+    // The entity domains they sit beside keep their own names.
+    expect(isLoggedSearchDomain("practice")).toBe(false);
+    expect(LOGGED).not.toContain("practice");
+  });
+
+  it("sorts a logged group by date first, an entity group by match quality first", () => {
+    const cases = [
+      ["log-practice", ["newer-sub", "older-exact"]],
+      ["practice", ["older-exact", "newer-sub"]],
+    ] as const;
+    for (const [domain, order] of cases) {
+      const out = sortHits(
+        [
+          hit({
+            domain,
+            title: "Sauna",
+            key: "older-exact",
+            date: "2026-01-02",
+          }),
+          hit({
+            domain,
+            title: "Sauna, infrared",
+            key: "newer-sub",
+            date: "2026-08-29",
+          }),
+        ],
+        "sauna"
+      );
+      expect(out.map((h) => h.key)).toEqual(order);
+    }
+  });
+
+  it("still breaks a same-day tie by match quality", () => {
+    const out = sortHits(
+      [
+        hit({
+          domain: "log-food",
+          title: "Berries and cream",
+          key: "sub",
+          date: "2026-08-29",
+        }),
+        hit({
+          domain: "log-food",
+          title: "Berries",
+          key: "exact",
+          date: "2026-08-29",
+        }),
+      ],
+      "berries"
+    );
+    expect(out.map((h) => h.key)).toEqual(["exact", "sub"]);
   });
 });
