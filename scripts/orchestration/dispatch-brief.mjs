@@ -17,7 +17,7 @@
 //   node scripts/orchestration/dispatch-brief.mjs new --branch <branch> \
 //     [--worktree wt-<name>] [--issues 123,456] [--task "one line"] \
 //     [--e2e] [--port-base N] [--candidate] [--priority P1] \
-//     [--lane user-data]
+//     [--lane user-data] [--adopt-claim]
 //   node scripts/orchestration/dispatch-brief.mjs list
 //   node scripts/orchestration/dispatch-brief.mjs brief <branch>
 //   node scripts/orchestration/dispatch-brief.mjs promote <branch>
@@ -29,7 +29,11 @@
 //     [--issues 123,456] [--task "one line"] [--e2e] [--port-base N]
 //   node scripts/orchestration/dispatch-brief.mjs claims <path>
 //
-// `new` prints a complete brief block (stdout) and appends a ledger entry.
+// `new` prints a complete brief block (stdout) and appends a ledger entry. It
+//   REFUSES an issue another lane already claimed with a `Dispatched:` comment,
+//   and refuses just as firmly when those comments cannot be READ — an
+//   unreachable claim is not an absent one (#5108). `--adopt-claim` is the
+//   explicit override for a claim you have judged stale.
 // `list` shows active dispatches with ages, flagging anything that has not
 //   MOVED in 3x the median completed-dispatch duration (the runbook's stall
 //   threshold, applied to idleness rather than to age — see cmdList).
@@ -1319,6 +1323,7 @@ function parseArgs(argv) {
     candidate: false,
     priority: "unclassified",
     lane: "unclassified",
+    adoptClaim: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -1337,6 +1342,7 @@ function parseArgs(argv) {
     else if (a === "--e2e") opts.e2e = true;
     else if (a === "--port-base") opts.portBase = Number(argv[++i]);
     else if (a === "--candidate") opts.candidate = true;
+    else if (a === ADOPT_CLAIM) opts.adoptClaim = true;
     else if (a === "--priority") opts.priority = argv[++i];
     else if (a === "--lane") opts.lane = argv[++i];
     else throw new Error(`unknown flag: ${a}`);
@@ -1439,6 +1445,164 @@ function issueStates(
       };
     }
   });
+}
+
+// A CLAIM IS PUBLIC, AND NOTHING BETWEEN READING AN ISSUE AND WRITING A
+// DISPATCH LOOKED AT IT (#5108).
+//
+// Twice in three hours on 2026-09-04 two orchestrators dispatched onto one
+// bug. On #5091 the claim was posted at 15:18:42Z, printed by issue-read.mjs,
+// and filtered out of a `sed` pipe; on #5125 no claim was written at all, so
+// the other orchestrator read an unclaimed issue and behaved correctly. Being
+// first is not the same as having claimed. A convention that cannot be held by
+// remembering it has to be held here, at the point that can refuse.
+//
+// NOT A LOCK. This reads what is already public and refuses on it. It writes
+// no claim, reserves nothing, and asks the other orchestrator for nothing
+// beyond the convention already in use — a script that claimed on your behalf
+// would claim for dry runs and abandoned drafts.
+//
+// AND IT REFUSES WHERE THE STALENESS CHECK ABOVE ONLY WARNS. #4460 ruled that
+// a check that cannot run must not block, and that ruling still governs the
+// OPEN/CLOSED read: its failure costs a lane an empty diff. This one's failure
+// costs two lanes one bug, so an unreadable claim is CANNOT TELL, not CLEAR —
+// the verdict `claims` gives an unreadable worktree (#4473). The override is
+// the door out, and it is explicit.
+
+/** The override: skip the claim check for a claim you have judged stale. */
+const ADOPT_CLAIM = "--adopt-claim";
+
+// Spelled `--adopt-claim`, not the issue's illustrative `--adopt`, because
+// `dispatch-brief.mjs adopt <branch>` already means something else entirely —
+// bring a RUNNING agent under the ledger. `new --adopt` would read as that.
+
+// How the claim is actually written here, sampled from the tracker rather than
+// from the issue's prose: "Dispatched: B, branch `live-practice-self-complete-5091`"
+// and "Dispatched: branch `dispatch-claim-refusal-5108` (orchestrator A, …)".
+// The opener is the stable part; markdown emphasis and quoting are not.
+const CLAIM_OPENER = /^[*_>\s]*dispatched\s*:/i;
+
+/** The claim's own first line, emphasis stripped, short enough to read. */
+const claimQuote = (body) =>
+  (body.split("\n").find((l) => l.trim()) ?? "")
+    .replace(/\*\*|__/g, "")
+    .trim()
+    .slice(0, 160);
+
+/**
+ * Per-issue claim verdicts, with the reader injected so the refusal paths are
+ * drivable without a network (the #4473 shape).
+ *
+ * WHOSE CLAIM IS IT: the discriminator is the BRANCH, never the author. Both
+ * orchestrators post as the same account, so `user.login` cannot separate them
+ * — but a claim names the branch it dispatched, and `new --branch X` is about
+ * to create X. A claim naming X IS this dispatch's own claim, posted by the
+ * convention that says claim before briefing; a claim naming anything else is
+ * somebody else's lane. The one way this reads CLEAR wrongly is another
+ * orchestrator writing your exact branch name into their claim, which would
+ * make it the same lane anyway.
+ *
+ * @param {string[]} numbers issue numbers being dispatched
+ * @param {string} branch the branch `new` is about to create
+ * @param {(n: string) => { comments: { at: string, body: string }[] } | { unknown: string }} commentsFor
+ */
+export function issueClaims(numbers, branch, commentsFor) {
+  return numbers.map((number) => {
+    const got = commentsFor(number);
+    if ("unknown" in got)
+      return { number, verdict: "unknown", why: got.unknown };
+    const held = got.comments.find(
+      (c) => CLAIM_OPENER.test(c.body) && !c.body.includes(branch)
+    );
+    return held
+      ? {
+          number,
+          verdict: "claimed",
+          at: held.at,
+          quote: claimQuote(held.body),
+        }
+      : { number, verdict: "clear" };
+  });
+}
+
+/** Refusal text when another lane already holds one of these, else null. */
+export function claimedIssueRefusal(rows) {
+  const held = rows.filter((r) => r.verdict === "claimed");
+  if (!held.length) return null;
+  return (
+    "REFUSED: " +
+    held
+      .map((r) => `#${r.number} was claimed ${r.at} — "${r.quote}"`)
+      .join("; ") +
+    ". One bug, one lane; the earlier claim holds. Re-read it WHOLE with " +
+    "issue-read.mjs (no pipe — filtering the claim out of one is how #5091 " +
+    `collided), drop it from --issues, and dispatch the rest. Use ${ADOPT_CLAIM} ` +
+    "if you are taking over a claim that is genuinely stale."
+  );
+}
+
+/** Refusal text when a claim could not be READ, else null. */
+export function unreadableClaimRefusal(rows) {
+  const blind = rows.filter((r) => r.verdict === "unknown");
+  if (!blind.length) return null;
+  return (
+    "REFUSED: could not read the claims on " +
+    blind.map((r) => `#${r.number}: ${r.why}`).join("; ") +
+    ". AN UNREACHABLE CLAIM IS NOT AN ABSENT ONE — this is CANNOT TELL, not " +
+    "CLEAR (#5108). Retry when GitHub answers, or read the issue yourself and " +
+    `pass ${ADOPT_CLAIM} once you have seen that nobody holds it.`
+  );
+}
+
+/** `commentsFor` over the live API. Every failure names itself; none is CLEAR. */
+function issueCommentsReader(
+  repo = process.env.RECONCILE_REPO || "FloorLamp/allos"
+) {
+  const token = resolveReadToken();
+  return (number) => {
+    if (!token)
+      return { unknown: "no read token in $GH_TOKEN or $GITHUB_TOKEN" };
+    const url =
+      "https://api.github.com/repos/" +
+      repo +
+      "/issues/" +
+      number +
+      "/comments?per_page=100";
+    let raw;
+    try {
+      raw = execFileSync(
+        "curl",
+        [
+          "-sS",
+          "--fail-with-body",
+          "-H",
+          "Authorization: Bearer " + token,
+          "-H",
+          "Accept: application/vnd.github+json",
+          url,
+        ],
+        { encoding: "utf8", timeout: 30_000 }
+      );
+    } catch (err) {
+      // Quote the BODY, never err.message: execFileSync puts the whole command
+      // in it, Bearer token included (the lesson issueStates above carries).
+      const body = String(err.stdout ?? "").trim();
+      return { unknown: body.slice(0, 200) || "curl exited " + err.status };
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed))
+        return {
+          comments: parsed.map((c) => ({
+            at: c.created_at,
+            body: String(c.body ?? ""),
+          })),
+        };
+    } catch {
+      // fall through to the one honest answer: we did not get comments.
+    }
+    return { unknown: "unreadable reply: " + raw.trim().slice(0, 120) };
+  };
 }
 
 function cmdNew(argv) {
@@ -1551,6 +1715,24 @@ function cmdNew(argv) {
     const stale = closedIssueRefusal(states);
     if (stale) {
       console.error(stale);
+      process.exit(1);
+    }
+  }
+
+  // And is it already someone else's? Still before anything is written.
+  if (opts.adoptClaim) {
+    console.error(
+      `*** ${ADOPT_CLAIM}: claim check SKIPPED — you are asserting that any ` +
+        `existing claim on ${opts.issues.join(", ") || "these issues"} is stale. ***`
+    );
+  } else if (opts.issues.length) {
+    const claims = issueClaims(opts.issues, opts.branch, issueCommentsReader());
+    const refusals = [
+      claimedIssueRefusal(claims),
+      unreadableClaimRefusal(claims),
+    ].filter(Boolean);
+    if (refusals.length) {
+      for (const refusal of refusals) console.error(refusal);
       process.exit(1);
     }
   }

@@ -5,11 +5,12 @@ import ActivityProvenance from "@/components/ActivityProvenance";
 import { activityProvenanceLabel } from "@/lib/training-log-format";
 import { formatLongDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
-import { IconMinus, IconPencil } from "@tabler/icons-react";
+import { IconMinus, IconPencil, IconX } from "@tabler/icons-react";
 import type { ActivityType } from "@/lib/types";
 import type { ActivityEditData } from "./model";
 import SaveStatus from "@/components/SaveStatus";
 import Button from "@/components/Button";
+import IconButton from "@/components/IconButton";
 import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 
 // The activity form's header section: the type icon + live title, the date
@@ -28,7 +29,7 @@ export default function ActivityFormHeader({
   saveError,
   blocker,
   overlay,
-  showMinimize = false,
+  onMinimize,
   onTitleChange,
   onClose,
 }: {
@@ -44,8 +45,10 @@ export default function ActivityFormHeader({
   saveError: boolean;
   blocker: string | null;
   overlay: boolean;
-  showMinimize?: boolean;
+  /** Parks a running workout. Absent ⇒ nothing to park, so no Minimize. */
+  onMinimize?: () => void;
   onTitleChange: (value: string) => void;
+  /** The ✕ — the workspace's exit, on every viewport and in every mode (#5111). */
   onClose: () => void;
 }) {
   const formatPrefs = useFormatPrefs();
@@ -145,13 +148,13 @@ export default function ActivityFormHeader({
           )}
           <SaveStatus pending={pending} savedAt={savedAt} error={saveError} />
         </div>
-        {showMinimize ? (
+        {onMinimize ? (
           // The activity workspace's drag handle owns phone minimization. This
           // layout wrapper keeps the ordinary labelled action desktop-only.
           <span className="hidden sm:inline-flex">
             <Button
               type="button"
-              onClick={() => void onClose()}
+              onClick={() => void onMinimize()}
               aria-label="Minimize workout"
             >
               {/* `h-4`, the control's own line box: a 20px glyph in a 16px line
@@ -161,6 +164,18 @@ export default function ActivityFormHeader({
             </Button>
           </span>
         ) : null}
+        {/* The exit, unconditional: below `sm` the panel is the full screen, so
+            there is no backdrop pixel to tap and no keyboard to press Escape on,
+            and the phone had no way out at all (#5111). Named "Close activity"
+            rather than "Close" because the footer's plain dismissal already owns
+            that word beside a Finish. */}
+        <IconButton
+          label="Close activity"
+          onClick={() => void onClose()}
+          data-testid="close-activity"
+        >
+          <IconX className="h-5 w-5" />
+        </IconButton>
       </div>
     </div>
   );
