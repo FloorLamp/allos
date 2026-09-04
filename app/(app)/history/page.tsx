@@ -768,38 +768,25 @@ export default async function HistoryPage(props: {
   const hasMore = feeds.some((feed) => feed.gather.hasMore);
 
   // EVERY DAY THE VIEWED MEMBERS HAVE AN EVENT ON, read ONCE (#4280). The day view
-  // has two mounts for this month grid — the door in the filter row, the open grid
-  // in the rail — and only one of them is ever visible, so reading the union
+  // has two mounts for this month grid — the door below `xl`, the open grid in the
+  // rail from `xl` — and only one of them is ever visible, so reading the union
   // twice would double ~20 queries per viewed member to render nothing extra.
   const eventDates = memberIds.flatMap((id) => getTimelineDates(id));
 
-  // THE DAY VIEW'S SECOND COLUMN (#4974).
+  // THE DAY VIEW'S SECOND COLUMN, FROM `xl` ONLY (#4974).
   //
   // The reading column is the right measure for one-line rows and the wrong one for
-  // the day's map: on a wide screen it left half the viewport empty while the chart
-  // card sat capped inside it. So above the threshold the day view is a grid — the
-  // rows in a column that keeps its reading width, and beside them a sticky rail
-  // holding the chart, the add layer and the month calendar. BELOW IT NOTHING
-  // CHANGES: no grid, and the same source order the stack has always had (chart
-  // → add → rows).
-  //
-  // 1600, NOT `xl`, AND THE NUMBER IS DERIVED RATHER THAN CHOSEN. #4974 rules the
-  // arrangement "from xl" on the premise that "the rail simply gives it 760px".
-  // MEASURED, it does not: the shell spends 240px on the sidebar and 40px on the
-  // page gutters, so the rail is `viewport - 1072` and runs 208px at 1280, 368 at
-  // 1440, 528 at 1600 and 760 at 1920. The chart declares its own floor —
-  // `INTRADAY_VARIANTS.wide.minContainerPx` is 520 (lib/intraday-layout.ts) — and
-  // below it the label type falls under the 9px floor #1518's guard enforces: at
-  // 1280 the plot's labels measure 2.88px, which reds e2e/intraday-panel.spec.ts's
-  // own legibility case. 1600 is the first round width where the rail can pay that
-  // floor. `xl` becomes correct the moment the chart picks its variant from its own
-  // box rather than from the viewport, which is #4973 and out of scope here.
+  // the day's map: at `xl` it left half the viewport empty while the chart card sat
+  // capped inside it. So from `xl` the day view is a grid — the rows in a column
+  // that keeps its reading width, and beside them a sticky rail holding the chart,
+  // the add layer and the month calendar. BELOW `xl` NOTHING CHANGES: no grid, and
+  // the same source order the stack has always had (chart → add → rows).
   //
   // THE RAIL COMES FIRST IN THE DOCUMENT, and is placed into column 2 explicitly.
-  // Source order is what the stacked layout below the threshold reads, and there the
-  // chart and the add layer belong ABOVE the rows they map and create (#4918 ruling
-  // 2); an order that put the rail after the column would have been correct in the
-  // grid and upside down at every width beneath it.
+  // Source order is what the stacked layout below `xl` reads, and there the chart
+  // and the add layer belong ABOVE the rows they map and create (#4918 ruling 2);
+  // an order that put the rail after the column would have been correct at `xl` and
+  // upside down at every width beneath it.
   //
   // THE LEFT TRACK IS FIXED AT `48rem` — the reading measure — rather than
   // `minmax(0, 48rem)`. Two flexible tracks share free space equally, which at 1280
@@ -810,18 +797,15 @@ export default async function HistoryPage(props: {
   // is capped at the viewport minus its two 1.5rem insets and scrolls inside itself
   // past that. `overflow-y: auto` chains at the ends (no `overscroll-contain`), so
   // reaching the rail's bottom keeps scrolling the page rather than trapping it.
-  const dayGrid =
-    "min-[1600px]:grid min-[1600px]:grid-cols-[48rem_minmax(0,760px)] min-[1600px]:gap-6";
+  const dayGrid = "xl:grid xl:grid-cols-[48rem_minmax(0,760px)] xl:gap-6";
   const dayRail =
-    "min-[1600px]:col-start-2 min-[1600px]:row-start-1 min-[1600px]:sticky min-[1600px]:top-6 min-[1600px]:self-start min-[1600px]:max-h-[calc(100dvh-3rem)] min-[1600px]:overflow-y-auto";
-  const dayColumn =
-    "min-[1600px]:col-start-1 min-[1600px]:row-start-1 min-[1600px]:min-w-0";
+    "xl:col-start-2 xl:row-start-1 xl:sticky xl:top-6 xl:self-start xl:max-h-[calc(100dvh-3rem)] xl:overflow-y-auto";
+  const dayColumn = "xl:col-start-1 xl:row-start-1 xl:min-w-0";
 
   return (
     <PageContainer
       // The day view is the rail arrangement; the feed is a reading column at every
-      // width, and `rail` IS `reading` below the rail's threshold, so the feed and
-      // every narrower day view are unchanged.
+      // width, and `rail` IS `reading` below `xl`, so this changes nothing there.
       width={day ? "rail" : "reading"}
       className="mx-auto"
       data-testid="history-page"
@@ -928,13 +912,13 @@ export default async function HistoryPage(props: {
             until now, which read as one body's marks beside a merged record.
             Under `?view=everyone` that is ~20 queries per viewed member on this
             page; single view is unchanged. */}
-        {/* THE DOOR STANDS EVERYWHERE EXCEPT THE DAY VIEW WITH A RAIL (#4974). It
-            is a door because the grid could not spend the ~140px chrome budget above
-            the first record; in the rail the grid is BESIDE the rows and spends none
-            of it, so where the rail exists the door would be a second way to a thing
+        {/* THE DOOR STANDS EVERYWHERE EXCEPT THE DAY VIEW AT `xl` (#4974). It is a
+            door because the grid could not spend the ~140px chrome budget above the
+            first record; in the rail the grid is BESIDE the rows and spends none of
+            it, so at that one width the door would be a second way to the thing
             already open. `contents` keeps the button the flex item it has always
             been — the wrapper adds no box of its own to this row at any width. */}
-        <span className={day ? "contents min-[1600px]:hidden" : "contents"}>
+        <span className={day ? "contents xl:hidden" : "contents"}>
           <EventCalendar eventDates={eventDates} everyone={everyone} />
         </span>
       </div>
@@ -1133,7 +1117,7 @@ export default async function HistoryPage(props: {
           nothing here has to close. */}
           {day ? (
             <div
-              className="card mb-3 hidden p-3 min-[1600px]:block"
+              className="card mb-3 hidden p-3 xl:block"
               data-testid="history-calendar-open"
             >
               <EventMonthGrid eventDates={eventDates} everyone={everyone} />

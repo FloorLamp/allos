@@ -10,14 +10,12 @@ import type { ReactNode } from "react";
 //   - "form"    — compact settings-style forms (max-w-lg)
 //   - "narrow"  — a single centered card/artifact on a chrome-less page (max-w-2xl)
 //   - "reading" — detail / reading pages (max-w-3xl)
-//   - "rail"    — "reading" on a narrow screen, and a reading column with a rail
-//                 beside it once there is room for one (#4974). The wide cap is that
-//                 arrangement's own sum — reading (48rem) + the `gap-6` between the
-//                 two columns (1.5rem) + the rail's 760px ceiling (47.5rem) = 97rem
-//                 — so both columns can reach their ruled widths and the page then
-//                 stops growing, rather than stretching to whatever the monitor is.
-//                 The 1600px threshold is derived, not chosen; the derivation lives
-//                 beside the grid in app/(app)/history/page.tsx.
+//   - "rail"    — "reading" below `xl`, and from `xl` a reading column with a rail
+//                 beside it (#4974). The wide cap is that arrangement's own sum —
+//                 reading (48rem) + the `gap-6` between the two columns (1.5rem) +
+//                 the rail's 760px ceiling (47.5rem) = 97rem — so both columns can
+//                 reach their ruled widths and the page then stops growing, rather
+//                 than stretching to whatever the monitor is.
 //   - "flow"    — a guided multi-step flow: wider than prose so its choice grids
 //                 fit, narrower than a dashboard (max-w-4xl)
 //   - "wide"    — dense multi-column pages that still want a measure inside the
@@ -33,7 +31,7 @@ const WIDTHS = {
   form: "max-w-lg",
   narrow: "max-w-2xl",
   reading: "max-w-3xl",
-  rail: "max-w-3xl min-[1600px]:max-w-[97rem]",
+  rail: "max-w-3xl xl:max-w-[97rem]",
   flow: "max-w-4xl",
   wide: "max-w-6xl",
   full: "",
