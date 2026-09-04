@@ -8,6 +8,7 @@ import { ACTIVITY_TYPES } from "@/lib/types";
 import { trainingLogHref } from "@/lib/hrefs";
 import type { TrainingLogQuery } from "@/lib/training-log-format";
 import { trainingLogQueryActive } from "@/lib/training-log-format";
+import SubmitButton from "@/components/SubmitButton";
 
 // ── THE LOG'S LAYERED REFINEMENTS (#4079) ───────────────────────────────────
 //
@@ -136,9 +137,7 @@ export default function TrainingLogFilterBar({
                 className="input appearance-none pl-9 [&::-webkit-search-cancel-button]:appearance-none"
               />
             </div>
-            <button type="submit" className="btn-ghost btn-sm">
-              Search
-            </button>
+            <SubmitButton>Search</SubmitButton>
           </form>
 
           <div className="flex flex-wrap items-center gap-2">

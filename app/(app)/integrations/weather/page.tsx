@@ -16,6 +16,7 @@ import SyncHistoryTable from "@/components/integrations/SyncHistoryTable";
 import SyncNowButton from "@/components/SyncNowButton";
 import { enableWeatherAction, disconnectWeatherAction } from "./actions";
 import BackLink from "@/components/BackLink";
+import SubmitButton from "@/components/SubmitButton";
 import SetupStepsCard from "@/components/integrations/SetupStepsCard";
 
 export const dynamic = "force-dynamic";
@@ -168,9 +169,9 @@ export default async function WeatherPage(props: {
                 activities you already logged.
               </p>
               <form action={enableWeatherAction}>
-                <button className="btn" data-testid="weather-enable">
+                <SubmitButton variant="primary" data-testid="weather-enable">
                   Enable weather &amp; UV
-                </button>
+                </SubmitButton>
               </form>
             </div>
           )}

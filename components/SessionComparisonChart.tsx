@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import DestinationIndicator from "@/components/DestinationIndicator";
-import SegmentedControl from "@/components/SegmentedControl";
+import FilterPills from "@/components/FilterPills";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { CYCLING_METRICS } from "@/lib/cycling-metrics";
 import { roundChartValue } from "@/lib/chart-format";
@@ -71,22 +71,41 @@ export default function SessionComparisonChart({
   return (
     <div className="mt-4 min-w-0" data-testid={`${testIdPrefix}-chart`}>
       {metrics.length > 1 && (
-        <SegmentedControl
+        /* A STRIP THAT NARROWS WHAT IS ALREADY ON SCREEN, which the registry's
+           decision table gives to FilterPills rather than to SegmentedControl
+           (#3724/#2730). Fill mode was ruled for four equal segments over a 390px
+           sheet (#3675 part 4); seven metrics in a 342px track leave about 25px of
+           label each, and a segment's label WRAPS rather than truncates — the rule
+           that replaced hover-only titles with visible text (#3375) — so the only
+           wrap left was inside the word: "Weigh ted powe r". Pills scroll on a
+           phone and wrap from `sm`, so every label stays whole.
+
+           WRAP, NOT THE RESPONSIVE (scroll-below-`sm`) LAYOUT. That one bleeds
+           `-mx-2 … px-2` so a strip can scroll to the screen edge, which is right on a
+           full-bleed page and wrong inside a card: it makes this card's own box wider
+           than its content, and #3500's "the ride summary uses the whole phone"
+           asserts exactly that this element does not overflow. Wrapping keeps every
+           label whole at every width and every option one control box tall, which is
+           the defect this fixes; nothing here needs the extra 16px. */
+        <FilterPills
+          mode="button"
           options={metrics.map((metric) => ({
             value: metric.key,
             label: metric.shortLabel,
           }))}
           value={selected.key}
-          onChange={setSelectedKey}
-          ariaLabel="Comparison metric"
+          onSelect={setSelectedKey}
+          label="Comparison metric"
           testId={`${testIdPrefix}-metrics`}
-          fill
+          layout="wrap"
         />
       )}
 
       <div className="mt-3" data-testid={`${testIdPrefix}-ranking`}>
         <div className="mb-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-          <span>{noun} ranked highest to lowest</span>
+          {/* One sentence, sentence case: a lowercase fragment standing alone under
+            the picker read as a caption that had lost its beginning. */}
+          <span>Ranked highest to lowest</span>
           <span data-testid={`${testIdPrefix}-range`}>
             Peer range{" "}
             {formattedValue(peerMin, selected.decimals, selected.unit)}–

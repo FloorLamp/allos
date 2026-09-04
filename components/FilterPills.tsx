@@ -31,6 +31,13 @@ export type FilterPillButtonOption<T extends FilterPillValue> =
   FilterPillBaseOption<T> & {
     href?: never;
     disabled?: boolean;
+    /**
+     * What a reader hears instead of the visible label, where they differ. There is
+     * deliberately no `title` beside it: `lib/__tests__/raw-title-boundary.test.ts`
+     * keeps production free of hover-only explanatory titles (#3375), and a hint only
+     * a pointer can reach is what that ratchet exists to refuse.
+     */
+    accessibleLabel?: string;
     data?: Readonly<
       Record<`data-${string}`, string | number | boolean | undefined>
     >;
@@ -89,7 +96,11 @@ export default function FilterPills<T extends FilterPillValue>(
               key={optionKey(o.value)}
               role="filter"
               pressed={active}
-              accessibleLabel={o.content ? o.label : undefined}
+              /* A stated accessible label wins; otherwise a custom `content` pill
+                 falls back to its own label, which is the rule that was here. */
+              accessibleLabel={
+                o.accessibleLabel ?? (o.content ? o.label : undefined)
+              }
               disabled={o.disabled}
               testId={o.testId ?? props.optionTestId?.(o.value)}
               data={o.data}

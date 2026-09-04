@@ -72,7 +72,7 @@ describe("acceptTravelTimezone", () => {
     expect(getTimezone(profile.id)).toBe(TOKYO);
     expect(getHomeTimezone(profile.id)).toBe(NY);
     expect(getTravelSwitches(profile.id)).toEqual([
-      { at: "2026-05-01T14:00:00Z", from: NY, to: TOKYO },
+      { at: "2026-05-01T14:00:00Z", from: NY, to: TOKYO, kind: "travel" },
     ]);
     expect(today(profile.id)).toBe("2026-05-01");
   });

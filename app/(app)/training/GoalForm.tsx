@@ -1181,6 +1181,7 @@ export default function GoalForm({
                 ? !bioOption
                 : false
           }
+          variant="primary"
         >
           {submitLabel}
         </SubmitButton>

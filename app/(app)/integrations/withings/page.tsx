@@ -16,6 +16,7 @@ import SyncHistoryTable from "@/components/integrations/SyncHistoryTable";
 import SyncNowButton from "@/components/SyncNowButton";
 import { withingsCallbackUrl } from "./url";
 import BackLink from "@/components/BackLink";
+import SubmitButton from "@/components/SubmitButton";
 import SetupStepsCard from "@/components/integrations/SetupStepsCard";
 import {
   saveWithingsCredentials,
@@ -188,9 +189,9 @@ export default async function WithingsPage(props: {
                 />
               </div>
               <div>
-                <button className="btn" data-testid="withings-save">
+                <SubmitButton variant="primary" data-testid="withings-save">
                   {hasCreds ? "Update credentials" : "Save credentials"}
-                </button>
+                </SubmitButton>
               </div>
             </form>
 
@@ -201,9 +202,12 @@ export default async function WithingsPage(props: {
                   syncing.
                 </p>
                 <form action={connectWithings}>
-                  <button className="btn" data-testid="withings-connect">
+                  <SubmitButton
+                    variant="primary"
+                    data-testid="withings-connect"
+                  >
                     Connect with Withings
-                  </button>
+                  </SubmitButton>
                 </form>
               </div>
             )}
