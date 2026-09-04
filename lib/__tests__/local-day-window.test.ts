@@ -286,6 +286,38 @@ describe("localMinuteProjector — equivalence with the per-row Intl projection"
     }
   });
 
+  // The row loop reads the stamp by CHARACTER INDEX (#5061) rather than through
+  // `Date`, so every shape an instant column actually holds — and every shape that
+  // only looks like one — has to come out where the `Date` path put it. A stamp whose
+  // calendar date does not exist reaches the memo, not the arithmetic, and is the case
+  // an index-reading loop would otherwise date rather than refuse.
+  it.each([
+    ["canonical", "2026-03-08T06:59:00Z", "2026-03-08T01:59"],
+    ["SQLite datetime()", "2026-03-08 06:59:00", "2026-03-08T01:59"],
+    ["minute only, no zone", "2026-03-08T06:59", "2026-03-08T01:59"],
+    [
+      "a minute that rolls back a day",
+      "2026-03-08T02:30:00Z",
+      "2026-03-07T21:30",
+    ],
+    ["not an instant at all", "not-an-instant", null],
+    // `Date` rolls this one over to 2026-03-02 and always has; the arithmetic must
+    // roll it over too rather than dating the row from the characters it read.
+    [
+      "a calendar date `Date` rolls over",
+      "2026-02-30T06:59:00Z",
+      "2026-03-02T01:59",
+    ],
+    ["an hour that does not exist", "2026-03-08T25:00:00Z", null],
+  ])("reads a %s stamp as %s", (_label, ts, expected) => {
+    const project = localMinuteProjector(
+      NY,
+      "2026-03-01T05:00:00Z",
+      "2026-03-15T04:00:00Z"
+    );
+    expect(project(ts)).toBe(expected);
+  });
+
   it("returns null for an unparseable stamp rather than dating it", () => {
     const project = localMinuteProjector(
       NY,
