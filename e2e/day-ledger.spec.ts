@@ -533,12 +533,29 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     for (const layer of [record, due, door]) await expect(layer).toBeVisible();
     // THE DOOR TRANSITIONS ITS OWN BACKGROUND (it lifts on hover), so a colour written
     // onto it ARRIVES OVER TIME: the control below forged the plan's fill and read back
-    // the same rgb at alpha 0.694 and 0.92 on two of six repeats. Stopping the
+    // the same rgb at a partial alpha — 0.694 and 0.92 when this was first seen, then
+    // 0.03 on main's own e2e-main run for 81633f1b and 0.176 on #4991. Stopping the
     // transition removes the race rather than sampling it — every read here is then of
     // a settled value, and the assertions are about which colour the box wears, never
     // about how it got there.
-    await door.evaluate((el) => {
-      (el as HTMLElement).style.transitionProperty = "none";
+    //
+    // AS A DOCUMENT RULE, NOT AN INLINE STYLE, which is the whole of #5000. The inline
+    // `style.transitionProperty = "none"` this replaces was in force on exactly ONE
+    // NODE — the one it was written to — while every read and every write below
+    // resolves the locator again, so a door the disable never reached transitions the
+    // forged fill in and the read lands part-way through. Measured as an A/B here:
+    // forcing that node to be replaced between the disable and the forge brought the
+    // forged read back as rgba(220, 234, 211, 0.46) on three repeats; with this rule
+    // and the same forced replacement it came back rgb(220, 234, 211) three times. A
+    // sheet holds for whatever node the locator resolves, for the rest of the test.
+    //
+    // `animation` rides along with `transition` because they are the two ways a
+    // rendered colour can still be arriving when it is read. No keyframe interpolates
+    // `background-color` today, so that half buys nothing now and buys immunity to the
+    // first one that does — and freezing motion is what this case already asks for.
+    await page.addStyleTag({
+      content:
+        "*, *::before, *::after { transition: none !important; animation: none !important; }",
     });
 
     type Dress = { fill: string; edge: string };

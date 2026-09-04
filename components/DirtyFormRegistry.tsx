@@ -107,6 +107,20 @@ const NON_INPUT_TYPES = new Set([
   "file",
 ]);
 
+// THE NARROW OPT-IN OUT OF `hidden`'s EXCLUSION (#4976). Most hidden inputs are
+// plumbing — a CSRF token, a record id, a machine value pasted in at submit — and
+// tracking them would be noise, which is the whole reason `hidden` sits in
+// NON_INPUT_TYPES above. `TimeField` is the one shape that is not that: its
+// VISIBLE input shows the profile's own clock ("7:30 am"), so it cannot carry the
+// record's `name` — the canonical "HH:MM" a Server Action reads lives in a
+// SIBLING hidden input instead, and THAT one is not plumbing, it is the whole
+// value. A hidden input opts in by carrying this dataset key itself; nothing
+// widens the exclusion for hidden inputs generally, and every other hidden field
+// in the tree (ids, tokens, DateField's own — its identical hole is pre-existing
+// and tracked separately, deliberately not fixed by this same mechanism here)
+// keeps the old, silent exclusion.
+const DIRTY_TRACK_HIDDEN = "dirtyTrackHidden";
+
 // Separator for comparing a multi-select's selected values as one string. A NUL
 // cannot occur inside an option value, so the join is unambiguous. Written as an
 // escape on purpose: a literal NUL byte in a source file makes git treat it as
@@ -162,7 +176,15 @@ function isTrackable(el: EventTarget | null): el is TrackableElement {
   const field = el as TrackableElement;
   if (!field.name) return false;
   if (field.disabled) return false;
-  if (field instanceof HTMLInputElement && NON_INPUT_TYPES.has(field.type)) {
+  if (
+    field instanceof HTMLInputElement &&
+    NON_INPUT_TYPES.has(field.type) &&
+    // The one exception: a hidden field that has marked ITSELF value-bearing
+    // (see DIRTY_TRACK_HIDDEN above). Every other NON_INPUT_TYPES member —
+    // submit/reset/button/image/file, and a hidden field without the marker —
+    // is excluded exactly as before.
+    !(field.type === "hidden" && field.dataset[DIRTY_TRACK_HIDDEN] === "true")
+  ) {
     return false;
   }
   if (field instanceof HTMLInputElement && field.readOnly) return false;

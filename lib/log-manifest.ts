@@ -689,9 +689,12 @@ export const LOG_MANIFEST = {
       //
       // THE CELL'S FIGURES DID NOT SURVIVE MEASUREMENT and are corrected here rather
       // than inherited. The form defines NINETEEN fields (eighteen plus Notes) and
-      // renders SEVENTEEN at either life stage, not thirteen; the stale number traces
-      // to a comment in the form itself, written before #1850, #1851 and #2322 added
-      // seven more, and is fixed at that source too. `PediatricWeightUpdate` was the
+      // renders EIGHTEEN labeled boxes at the adult life stage, SIXTEEN at the minor's
+      // — not thirteen; the stale number traces to a comment in the form itself,
+      // written before #1850, #1851 and #2322 added seven more, and is fixed at that
+      // source too. (#4976 moved the rendered count off the field count by one: the
+      // bed/wake pair draws its own two labels now rather than one shared "Bed &
+      // wake".) `PediatricWeightUpdate` was the
       // THIRD weight form, not the fourth: the count reached four by including the
       // one-field row edit, which ruling 3 classes as row-control-grade and which edits
       // any metric's value rather than a weight. The door's three measures,

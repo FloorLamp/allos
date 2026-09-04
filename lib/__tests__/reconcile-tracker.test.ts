@@ -611,6 +611,63 @@ describe("gatherEvidence", () => {
     expect(evidence.findings[0].bucket).toBe("unverifiable");
   });
 
+  // THE TITLE RULE (#4983), reconcile's half: FLAG, never fix. Three fixtures
+  // straddle the bound in the two ways that matter — length, and state.
+  it("lists a long OPEN title as a judgement item, and nothing else", () => {
+    const long = `The ${"reader ".repeat(10)}drops types`;
+    const evidence = gatherEvidence(
+      {
+        issues: [
+          issue({ number: 1, title: long }),
+          issue({ number: 2, title: "R".repeat(72) }),
+          issue({ number: 3, title: long, state: "closed" }),
+        ],
+        mergedPrs: [],
+        issueStates: new Map(),
+      },
+      index,
+      watermark
+    );
+    const titles = evidence.findings.filter((f) => f.kind === "long-title");
+    // #2 is exactly at the bound and #3 is closed — a closed issue's title is
+    // a record the ruling leaves alone.
+    expect(titles.map((f) => f.issue)).toEqual([1]);
+    expect(titles[0].bucket).toBe("unverifiable");
+    expect(titles[0].anchor).toBe(long);
+    expect(titles[0].detail).toContain("the title is 85 characters");
+    expect(titles[0].detail).toContain("this tool never writes a title");
+    // NO CORRECTION. A correction is what makes a finding patchable, so its
+    // absence is what stops this ever becoming a retitle — and the applier's
+    // only write is the issue BODY in any case.
+    expect(titles[0].correction).toBeUndefined();
+    expect(renderReport(evidence)).toContain(
+      "### Titles over the 72-character rule"
+    );
+  });
+
+  it("keeps a long title out of the citation verdict", () => {
+    // `verifiedClean` answers "did this issue's claims about main hold". A
+    // title is not one of those claims, and 96% of open titles are over the
+    // rule today, so folding the two in would empty the list.
+    const evidence = gatherEvidence(
+      {
+        issues: [
+          issue({
+            number: 7,
+            title: `The ${"reader ".repeat(10)}drops types`,
+            body: "`components/RecordTable.tsx` renders the rows.",
+          }),
+        ],
+        mergedPrs: [],
+        issueStates: new Map(),
+      },
+      index,
+      watermark
+    );
+    expect(evidence.verifiedClean).toEqual([7]);
+    expect(evidence.findings.map((f) => f.kind)).toEqual(["long-title"]);
+  });
+
   it("publishes denominators so an empty report can be told from a blind one", () => {
     const clean = gatherEvidence(
       {
