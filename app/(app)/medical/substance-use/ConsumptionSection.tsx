@@ -33,6 +33,7 @@ import {
   setSubstanceTargetAction,
 } from "./actions";
 import Disclosure from "@/components/Disclosure";
+import Link from "next/link";
 
 export default function ConsumptionSection({
   substance,
@@ -58,6 +59,9 @@ export default function ConsumptionSection({
   formatPrefs: DisplayFormatPrefs;
 }) {
   const def = substanceDef(substance);
+  // WHETHER THIS SUBSTANCE'S UNITS ARE EVENTS. Alcohol's are `food_log_events` rows
+  // with their own instants; every other key rides the timeless day counter.
+  const eventLedgered = def.ledger === "food-log";
   const confirm = useConfirm();
   // The Records page's own consumption section — declared, not assumed (#3087):
   // the shared pieces post the same actions from the quick-log sheet and the record.
@@ -218,6 +222,25 @@ export default function ConsumptionSection({
         <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
           History
         </h3>
+        {eventLedgered && history.length > 0 ? (
+          // WHERE THE CORRECTION WENT, said once rather than left to be found. The
+          // rows below are a day's rollup; each drink is its own row in the record,
+          // with its own time. Only where there ARE rows: on an empty card the
+          // sentence names nothing.
+          <p
+            className="mt-1 text-xs text-slate-500 dark:text-slate-400"
+            data-testid={`substance-history-correct-elsewhere-${substance}`}
+          >
+            Change a single {def.countSingular} on its own row in the{" "}
+            <Link
+              className="text-brand-700 hover:underline dark:text-brand-300"
+              href={`/history?kind=substance&item=${substance}`}
+            >
+              record
+            </Link>
+            .
+          </p>
+        ) : null}
         {history.length === 0 ? (
           <div className="mt-2">
             <EmptyState
@@ -249,23 +272,34 @@ export default function ConsumptionSection({
               deleteTestId={(entry) =>
                 `substance-history-delete-${substance}-${entry.id}`
               }
-              renderEditForm={(entry, done) => (
-                <SubstanceForm
-                  substances={[{ key: substance, label: def.label }]}
-                  date={entry.date}
-                  maxDate={defaultDate}
-                  row={{
-                    id: entry.id,
-                    substance,
-                    date: entry.date,
-                    amount: entry.amount,
-                    notes: entry.notes,
-                  }}
-                  onSaved={done}
-                  onCancel={done}
-                  testId={`substance-history-edit-form-${substance}`}
-                />
-              )}
+              renderEditForm={
+                // A DAY COUNT IS CORRECTED HERE; AN EVENT IS NOT (#5026 item 1).
+                // These rows are one per DAY, and for a day-count substance the day
+                // IS the stored fact, so its own form corrects it. Alcohol's units
+                // are `food_log_events` rows with their own clocks: correcting the
+                // day would restate one date onto every drink under it and level the
+                // stated hours it holds — so the drink is corrected on its own record
+                // row, and this ⋯ offers Delete alone. Phase 2 moves the rest here.
+                eventLedgered
+                  ? undefined
+                  : (entry, done) => (
+                      <SubstanceForm
+                        substances={[{ key: substance, label: def.label }]}
+                        date={entry.date}
+                        maxDate={defaultDate}
+                        row={{
+                          id: entry.id,
+                          substance,
+                          date: entry.date,
+                          amount: entry.amount,
+                          notes: entry.notes,
+                        }}
+                        onSaved={done}
+                        onCancel={done}
+                        testId={`substance-history-edit-form-${substance}`}
+                      />
+                    )
+              }
               confirmDelete={() => ({
                 title: `Delete ${def.label.toLowerCase()} entry?`,
                 message: "This changes the weekly count and can be undone.",

@@ -776,7 +776,11 @@ panel static in the first place:
   hydration and with JS off; the block's zoom is an `onClick` layered over the
   anchor, so the pre-hydration behavior is the fallback by construction.
 - **Zoom is ephemeral.** No route param, no history entry: reload or back returns
-  to the full day.
+  to the full day. What the day view's add row reads is that same live view, not a
+  param (#4950): zoomed, the view IS the window it would write into, and at full day
+  the crosshair is a start alone. The URL learns it only when a kind chip is tapped —
+  the chip mints `?from`/`?to`, and the chart then draws the window from the server
+  render. So the gesture gained a second reader and no second meaning, and no mode.
 
 Per-minute data is deliberately NOT shipped for the whole day (the reason is in
 `MAX_FINE_WINDOW_MINUTES`): at 0.47 units per minute it is sub-pixel and would be

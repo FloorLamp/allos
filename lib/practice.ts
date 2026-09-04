@@ -10,7 +10,7 @@ import { WEEKDAYS_SHORT } from "./date";
 import { frequencyPace, type FrequencyPace } from "./frequency-targets";
 import { inWakingWindow } from "./notifications/schedule";
 import type { PracticeLogOutcome } from "./types";
-import { modalValue } from "./weekly-rhythm";
+import { modalValue, rhythmMomentOpen } from "./weekly-rhythm";
 import type { WeeklyRhythm } from "./weekly-rhythm";
 
 // The stable suppression/identity key namespace for a wellness-practice weekly target:
@@ -165,6 +165,82 @@ export function practiceDurationPrefill(
     return Math.round(declaredDefaultMin);
   // Leg 3.
   return null;
+}
+
+// ── HOW LONG A LIVE SESSION ALREADY KNOWS IT IS (#5091) ──────────────────────
+//
+// A Start now stamps the practice's usual duration on the row with `derived_window = 1`
+// (#4897), and until now nothing read it as an END: the only automatic close was the
+// six-hour abandonment sweep, which gives up without an end. So a 15-minute red-light
+// session started at 06:28 was still "running" at 10:52 and drew four hours wide,
+// growing on every page load.
+//
+// A row that knows its own length does not need a second tap. This is the ONE reading
+// of that length, and both halves take it: the sweep completes the row at start plus
+// this, and the day chart's running branch refuses to draw past it — because the sweep
+// runs on page loads, and a chart rendered before one would otherwise keep growing a
+// block past an end the row already knew.
+//
+// Null for a row with no usual duration, which stays live until End or the six-hour
+// bound exactly as before: a practice with no history has no length to complete at, and
+// inventing one is what the derived window exists to avoid.
+export function derivedSessionMinutes(session: {
+  durationMin: number | null;
+  derivedWindow: boolean;
+}): number | null {
+  if (!session.derivedWindow) return null;
+  const minutes = session.durationMin;
+  if (minutes == null || !Number.isFinite(minutes) || minutes <= 0) return null;
+  return Math.max(1, Math.round(minutes));
+}
+
+// ── WHICH PRACTICE A WINDOW ON THE DAY CHART LOOKS LIKE (#4950 item 4) ───────
+//
+// HABIT MATCHING, NEVER PHYSIOLOGY. Heart rate cannot tell a run from a sauna, and this
+// function never sees any: it reads the same weekly rhythm the Wellness card's "usually
+// a session day" note reads, asked of the window's own weekday and minute. The person
+// pointed at the trace; the app only offers the practice they usually do then.
+//
+// IT IS A PREFILL A TAP CONFIRMS, and nothing is stored, sent or worded as what
+// happened. Returning the wrong practice costs one tap on a picker that is open anyway;
+// returning null costs nothing, which is why every uncertainty resolves to null.
+//
+// THE HONESTY GATE IS `rhythmMomentOpen`'s FIRST LINE. A practice with no pattern
+// (`hasPattern` false, the every-day fallback) is UNKNOWN, not "every day" — so it can
+// never fit, and a profile whose practices have no rhythm gets the picker it has today.
+export interface PracticeWindowCandidate {
+  /** The name the door's picker holds, so what comes back is always one of its options. */
+  name: string;
+  rhythm: WeeklyRhythm;
+  /** `practiceDurationPrefill`'s answer for this practice, or null with no history. */
+  usualDurationMin: number | null;
+}
+
+export function practiceFittingWindow(
+  candidates: readonly PracticeWindowCandidate[],
+  date: string,
+  window: { from: number; to: number | null }
+): string | null {
+  const fitting = candidates.filter((candidate) =>
+    rhythmMomentOpen(candidate.rhythm, date, window.from)
+  );
+  if (fitting.length === 0) return null;
+  // A start alone says nothing about length, so there is nothing to break a tie WITH;
+  // the profile's own order decides, which is the order the picker already lists.
+  if (window.to === null) return fitting[0].name;
+  const length = window.to - window.from;
+  // Nearest usual duration. A practice with no usual duration says nothing about
+  // length either, so one that DOES speak is preferred over one that cannot — and when
+  // none of them can, the first fitting practice stands.
+  const distance = (candidate: PracticeWindowCandidate): number =>
+    candidate.usualDurationMin === null
+      ? Number.POSITIVE_INFINITY
+      : Math.abs(candidate.usualDurationMin - length);
+  let best = fitting[0];
+  for (const candidate of fitting.slice(1)) {
+    if (distance(candidate) < distance(best)) best = candidate;
+  }
+  return best.name;
 }
 
 // One tap of the inline stepper's − / +. Pure so the sheet, and anything that later

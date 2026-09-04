@@ -1,9 +1,12 @@
 import {
+  derivedFeverPeakDay,
   episodeDayNumber,
   feverTrend,
   feverTrendLabel,
+  isDerivedSymptomSeries,
   isLoggedSymptomSeries,
   type AssembledEpisode,
+  type DerivedSymptomDay,
   type LoggedSymptomSeries,
 } from "@/lib/illness-episode-format";
 import { severityLabel } from "@/lib/symptoms";
@@ -17,10 +20,11 @@ import type { EpisodeInRangeEvents } from "@/lib/illness-episode-events";
 import EpisodeLatestReadings from "@/components/illness/EpisodeLatestReadings";
 import {
   DEFAULT_FORMAT_PREFS,
+  formatClockValue,
   formatDateShape,
   type DisplayFormatPrefs,
 } from "@/lib/format-date";
-import { RECORDS_CONDITIONS_HREF } from "@/lib/hrefs";
+import { historyDayHref, RECORDS_CONDITIONS_HREF } from "@/lib/hrefs";
 import Disclosure from "@/components/Disclosure";
 
 // The printable / shareable illness-episode summary (issue #801). A pure
@@ -78,6 +82,61 @@ function SymptomPill({ symptom }: { symptom: LoggedSymptomSeries }) {
   );
 }
 
+// THE DERIVED FEVER ROW, FIRST IN THE LIST (#4712, owner ruling 2026-09-04 11:20 UTC
+// part 1). It is drawn as the READING it is — the peak degrees and the clock they were
+// taken at — and NOT as a symptom pill: no severity dots, no severity word, and no
+// control of any kind, because there is no severity here that anybody stated. Its tap
+// goes to the reading's own day; a severity editor is not reachable from it, which is
+// the whole point of the union's derived arm carrying no `points` to edit.
+function DerivedFeverRow({
+  label,
+  day,
+  temperatureUnit,
+  formatPrefs,
+  linkDay,
+  testId,
+}: {
+  label: string;
+  day: DerivedSymptomDay;
+  temperatureUnit: TemperatureUnit;
+  formatPrefs: DisplayFormatPrefs;
+  linkDay: boolean;
+  // The print copy of a collapsed list repeats this row, so it carries its own id
+  // rather than a second element answering to the screen row's.
+  testId: string;
+}) {
+  const when = day.time
+    ? `${fmtDate(day.date, formatPrefs)}, ${formatClockValue(day.time, formatPrefs.timeFormat)}`
+    : fmtDate(day.date, formatPrefs);
+  const reading = `peaked ${fmtTemp(day.peakDegF, temperatureUnit)} · ${when}`;
+  return (
+    <li
+      className="inline-flex items-center gap-2 rounded-full bg-rose-50 px-3 py-1.5 text-sm dark:bg-rose-950/50"
+      data-testid={testId}
+    >
+      <span className="font-medium text-rose-700 dark:text-rose-300">
+        {label}
+      </span>
+      {linkDay ? (
+        <Link
+          href={historyDayHref(day.date)}
+          className="text-xs text-link"
+          data-testid={`${testId}-reading`}
+        >
+          {reading}
+        </Link>
+      ) : (
+        <span
+          className="text-xs text-slate-600 dark:text-slate-300"
+          data-testid={`${testId}-reading`}
+        >
+          {reading}
+        </span>
+      )}
+    </li>
+  );
+}
+
 export default function EpisodeSummary({
   episode,
   note,
@@ -98,6 +157,7 @@ export default function EpisodeSummary({
   linkLatestMedication = false,
   linkConditions = false,
   collapsePeakSymptoms = false,
+  linkReadingDay = false,
   formatPrefs = DEFAULT_FORMAT_PREFS,
 }: {
   episode: AssembledEpisode;
@@ -135,6 +195,11 @@ export default function EpisodeSummary({
   // the public share stays plain text and never points into a login-gated surface.
   linkConditions?: boolean;
   collapsePeakSymptoms?: boolean;
+  // Whether the derived fever row's reading may link to its day (#4712 ruling part 1).
+  // Off by default for the same reason `linkConditions` is: the public /share render
+  // has no login-gated day view to land on, and a household member's day link would
+  // land on the ACTING profile's day (lib/hrefs.ts, the retired `subject` param).
+  linkReadingDay?: boolean;
   formatPrefs?: DisplayFormatPrefs;
 }) {
   const day = episodeDayNumber(
@@ -143,10 +208,17 @@ export default function EpisodeSummary({
   );
   const trend = feverTrendLabel(feverTrend(episode.temperatures));
   const peakSymptomLimit = 5;
-  // "Peak symptoms" is a worst-severity pill list, so it reads the LOGGED arm only —
-  // the derived fever row states a reading, not a severity, and this card already
-  // renders the peak temperature above (#4712 item 4 leaves its placement unruled).
+  // "Peak symptoms" is a worst-severity PILL list, so the pills read the LOGGED arm
+  // only. The derived fever row leads that list (#4712, owner ruling 2026-09-04 11:20
+  // UTC part 1): it sits FIRST, on this card that already prints the peak temperature
+  // above, drawn as a reading. It carries no severity to sort on, so it neither joins
+  // the worst-first order nor counts against the collapse limit — the limit exists to
+  // stop a long stated list crowding the card, and this row is never part of that list.
   const loggedSymptoms = episode.symptoms.filter(isLoggedSymptomSeries);
+  const derivedFever = episode.symptoms.find(isDerivedSymptomSeries);
+  const derivedFeverPeak = derivedFever
+    ? derivedFeverPeakDay(derivedFever)
+    : null;
   const collapseSymptoms =
     collapsePeakSymptoms && loggedSymptoms.length > peakSymptomLimit;
   const leadingSymptoms = collapseSymptoms
@@ -252,7 +324,7 @@ export default function EpisodeSummary({
             />
           </div>
         ) : null}
-        {loggedSymptoms.length > 0 && (
+        {(derivedFeverPeak || loggedSymptoms.length > 0) && (
           <div
             className="mt-4 border-t border-black/5 pt-4 dark:border-white/5"
             data-testid="episode-symptoms"
@@ -261,6 +333,16 @@ export default function EpisodeSummary({
             <ul
               className={`flex flex-wrap gap-2 ${collapseSymptoms ? "print:hidden" : ""}`}
             >
+              {derivedFever && derivedFeverPeak ? (
+                <DerivedFeverRow
+                  label={derivedFever.label}
+                  day={derivedFeverPeak}
+                  temperatureUnit={temperatureUnit}
+                  formatPrefs={formatPrefs}
+                  linkDay={linkReadingDay}
+                  testId="episode-derived-fever"
+                />
+              ) : null}
               {leadingSymptoms.map((symptom) => (
                 <SymptomPill key={symptom.symptom} symptom={symptom} />
               ))}
@@ -281,6 +363,16 @@ export default function EpisodeSummary({
                   className="hidden flex-wrap gap-2 print:flex"
                   data-testid="episode-print-symptoms"
                 >
+                  {derivedFever && derivedFeverPeak ? (
+                    <DerivedFeverRow
+                      label={derivedFever.label}
+                      day={derivedFeverPeak}
+                      temperatureUnit={temperatureUnit}
+                      formatPrefs={formatPrefs}
+                      linkDay={linkReadingDay}
+                      testId="episode-print-derived-fever"
+                    />
+                  ) : null}
                   {loggedSymptoms.map((symptom) => (
                     <SymptomPill key={symptom.symptom} symptom={symptom} />
                   ))}

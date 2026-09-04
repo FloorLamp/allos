@@ -273,8 +273,10 @@ function assembleIllnessEpisodeFromFacts(
   // Composed here, from the readings assembled just above, so every surface that
   // reads `episode.symptoms` sees the same row from the same facts (#221). It is
   // APPENDED after the worst-first logged sort rather than sorted into it: the
-  // derived arm carries no severity to sort ON, and where the row should sit beside
-  // stated symptoms is a presentation question the owner has not ruled.
+  // derived arm carries no severity to sort ON, so this order is the LOGGED sort with
+  // the derived row parked at the end of it, not a claim about where the row belongs
+  // on screen. Placement is the surface's (owner-ruled 2026-09-04 11:20 UTC, #4712):
+  // the episode summary puts it FIRST, drawn as a reading.
   //
   // A day that already carries a STATED `fever` row yields the derived one for that
   // day (owner-ruled 2026-09-03, judgement 3) — `bySymptom` above already holds the

@@ -140,6 +140,25 @@ export function deriveFeverSeries(
   };
 }
 
+// The episode's WORST derived-fever day — the one the summary's leading row states,
+// so the row and the "Peak temp" figure printed a few lines above it come from the
+// same readings. Ties keep the EARLIER day, the same rule the per-day peak uses.
+export function derivedFeverPeakDay(
+  series: DerivedSymptomSeries
+): DerivedSymptomDay | null {
+  let peak: DerivedSymptomDay | null = null;
+  for (const day of series.days) {
+    if (!peak || day.peakDegF > peak.peakDegF) peak = day;
+  }
+  return peak;
+}
+
+// The union's other narrowing, for the surfaces that render the READING arm. Callers
+// asking for the derived row want the one series that carries days and no severity.
+export const isDerivedSymptomSeries = (
+  series: SymptomSeries
+): series is DerivedSymptomSeries => series.source === "derived";
+
 // One PRN administration (#797) within the episode, with its snapshotted dose.
 export interface AdministrationPoint {
   // Present for DB-backed episode assemblies; optional for synthetic summaries/tests.

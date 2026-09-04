@@ -318,17 +318,36 @@ describe("detectSleepClockSkew, the awake-level run", () => {
     expect(detectSleepClockSkew(session, hr)).toBeNull();
   });
 
-  it("also flags a real night stamped across a full two-hour arousal", () => {
-    // The declared reach, recorded rather than hidden. FRAGMENT_MERGE_GAP_MAX_MIN is
-    // the repo's bound on the longest awake gap still inside ONE night, so a source
-    // that stamps a single session across a longer one is contradicted by the repo's
-    // own number. `mainSleepPeriod` would already have called this two nights.
+  it("flags a shift the other way, whose awake stretch is at the START", () => {
+    // A clock error moves a BOUNDARY, so the awake stretch lands against one end or the
+    // other. This is a night stamped three hours EARLY: the claim opens on the evening
+    // and closes inside the real trough.
     const found = detectSleepClockSkew(
-      { start: "2026-08-27T02:00:00Z", end: "2026-08-27T10:00:00Z" },
+      { start: "2026-08-27T00:00:00Z", end: "2026-08-27T06:38:00Z" },
       segmentTrace(LATE_DAY_FROM, LATE_DAY_TO, [
         {
-          from: "2026-08-27T05:00:00Z",
-          to: "2026-08-27T07:00:00Z",
+          from: "2026-08-27T03:00:00Z",
+          to: "2026-08-27T09:30:00Z",
+          bpm: ASLEEP,
+        },
+      ])
+    );
+    expect(found).not.toBeNull();
+    expect(found!.awakeRun!.start).toBe("2026-08-27T00:00:00Z");
+  });
+
+  it("takes the run at the edge even when a longer one sits mid-claim", () => {
+    // A night stamped two hours late AND holding a long wake in the middle. The
+    // mid-claim run is longer, and it is not the evidence: only the stretch against the
+    // boundary is what a moved boundary produces. Judging the LONGEST run and then
+    // asking whether it touches an edge would drop this night entirely, which is why
+    // the condition is applied to each run rather than to the winner.
+    const found = detectSleepClockSkew(
+      { start: "2026-08-27T02:00:00Z", end: "2026-08-27T12:00:00Z" },
+      segmentTrace(LATE_DAY_FROM, LATE_DAY_TO, [
+        {
+          from: "2026-08-27T04:00:00Z",
+          to: "2026-08-27T06:30:00Z",
           bpm: AWAKE,
         },
         {
@@ -339,7 +358,31 @@ describe("detectSleepClockSkew, the awake-level run", () => {
       ])
     );
     expect(found).not.toBeNull();
-    expect(found!.awakeRun!.start).toBe("2026-08-27T05:00:00Z");
+    expect(found!.awakeRun!.start).toBe("2026-08-27T10:00:00Z");
+  });
+
+  it("says nothing about a real night stamped across a two-hour arousal", () => {
+    // THE RUN MUST TOUCH AN EDGE (owner ruling, 2026-09-04 13:05 UTC). A wake in the
+    // MIDDLE of a night is a person awake at 3 a.m., not a source with a wrong clock —
+    // a shift moves a boundary, so it always lands its awake stretch against one. This
+    // night was hedged and offered the delete door before that condition.
+    expect(
+      detectSleepClockSkew(
+        { start: "2026-08-27T02:00:00Z", end: "2026-08-27T10:00:00Z" },
+        segmentTrace(LATE_DAY_FROM, LATE_DAY_TO, [
+          {
+            from: "2026-08-27T05:00:00Z",
+            to: "2026-08-27T07:00:00Z",
+            bpm: AWAKE,
+          },
+          {
+            from: "2026-08-27T02:00:00Z",
+            to: "2026-08-27T10:00:00Z",
+            bpm: ASLEEP,
+          },
+        ])
+      )
+    ).toBeNull();
   });
 });
 

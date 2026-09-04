@@ -4,7 +4,7 @@
 
 import { useState } from "react";
 import LineChartCard from "@/components/LineChartCard";
-import SegmentedControl from "@/components/SegmentedControl";
+import FilterPills from "@/components/FilterPills";
 import { chartNeutral, chartSeries } from "@/lib/chart-colors";
 import { CYCLING_METRICS } from "@/lib/cycling-metrics";
 import type { SessionTrace, SessionTraceKey } from "@/lib/cycling-analytics";
@@ -62,22 +62,37 @@ export default function SessionTelemetryChart({
   return (
     <div className="mt-4" data-testid="session-telemetry">
       {traces.length > 1 ? (
-        <SegmentedControl
+        /* The same registry rule the comparison strip follows (#5002): six traces
+           narrowing one chart is FilterPills, not six equal segments whose labels
+           can only wrap inside the word. Wrapped rather than scrolled, for the
+           reason the comparison card states — the scrolling layout bleeds past
+           its container, and this strip sits inside a card that asserts it does
+           not overflow. */
+        <FilterPills
+          mode="button"
           options={traces.map((trace) => {
             const zeroOnly = hasOnlyZeroValues(trace);
             return {
               value: trace.key,
               label: trace.shortLabel,
+              // THE `title` THAT WAS HERE IS GONE, AND IT WAS ALREADY GONE:
+              // `SegmentedControlOption` has no `title` field, and this options array
+              // is built by `.map()`, so the excess key was inferred away and never
+              // reached the DOM. `lib/__tests__/raw-title-boundary.test.ts` is why the
+              // control has no such field — production is kept free of hover-only
+              // explanatory titles (#3375) — so restoring it here would have meant
+              // widening `Chip` past that ratchet to re-add something no reader ever
+              // had. The accessible label says the same thing, and does reach them.
               accessibleLabel: zeroOnly
                 ? `${trace.shortLabel}, all recorded values are 0`
                 : undefined,
-              title: zeroOnly ? "All recorded values are 0" : undefined,
             };
           })}
           value={selected.key}
-          onChange={setSelectedKey}
-          ariaLabel="Recorded metrics"
-          fill
+          onSelect={setSelectedKey}
+          label="Recorded metrics"
+          testId="session-telemetry-metrics"
+          layout="wrap"
         />
       ) : null}
       <div className="mt-3" data-testid="session-telemetry-chart">
