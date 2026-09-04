@@ -73,9 +73,9 @@ describe("the episode kebab's items (#5181)", () => {
     mount(promoted as boolean);
     const panel = openMenu();
     expect(panel.getAttribute("role")).toBe("menu");
-    expect(
-      screen.getAllByRole("menuitem").map((el) => el.textContent)
-    ).toEqual(names);
+    expect(screen.getAllByRole("menuitem").map((el) => el.textContent)).toEqual(
+      names
+    );
   });
 
   it("leaves no command in the panel outside the menu", () => {

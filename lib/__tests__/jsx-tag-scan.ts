@@ -155,7 +155,12 @@ function parseTag(text: string, start: number, out: JsxTag[]): JsxTag | null {
   };
 }
 
-function scanRange(text: string, from: number, to: number, out: JsxTag[]): void {
+function scanRange(
+  text: string,
+  from: number,
+  to: number,
+  out: JsxTag[]
+): void {
   let i = from;
   while (i < to) {
     const c = text[i];

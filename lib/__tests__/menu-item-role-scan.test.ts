@@ -54,7 +54,10 @@ export function menuPanelRegions(text: string): [number, number][] {
         i += close.length;
         continue;
       }
-      if (text.startsWith(open, i) && !/[\w.]/.test(text[i + open.length] ?? "")) {
+      if (
+        text.startsWith(open, i) &&
+        !/[\w.]/.test(text[i + open.length] ?? "")
+      ) {
         depth++;
         i += open.length;
         continue;
@@ -108,7 +111,7 @@ function sourceFiles(): { rel: string; text: string }[] {
   return files;
 }
 
-describe("every command in a role=\"menu\" panel is an item of it (#5181)", () => {
+describe('every command in a role="menu" panel is an item of it (#5181)', () => {
   it("no menu panel holds a role-less button or link", () => {
     const offenders: string[] = [];
     for (const { rel, text } of sourceFiles()) {
@@ -158,30 +161,42 @@ describe("every command in a role=\"menu\" panel is an item of it (#5181)", () =
 
     // The defect: a command in the panel with no role.
     expect(
-      menuItemsWithoutRole(menu(`<button type="button" onClick={close}>Edit</button>`))
+      menuItemsWithoutRole(
+        menu(`<button type="button" onClick={close}>Edit</button>`)
+      )
     ).toEqual([1]);
     // A link is a menu item too when the menu is what it is inside.
-    expect(menuItemsWithoutRole(menu(`<Link href={h}>Open</Link>`))).toEqual([1]);
+    expect(menuItemsWithoutRole(menu(`<Link href={h}>Open</Link>`))).toEqual([
+      1,
+    ]);
     // The fix, in each of its three spellings.
     expect(
-      menuItemsWithoutRole(menu(`<button type="button" role="menuitem">Edit</button>`))
+      menuItemsWithoutRole(
+        menu(`<button type="button" role="menuitem">Edit</button>`)
+      )
     ).toEqual([]);
     expect(
-      menuItemsWithoutRole(menu(`<button type="button" role="menuitemradio">Day</button>`))
+      menuItemsWithoutRole(
+        menu(`<button type="button" role="menuitemradio">Day</button>`)
+      )
     ).toEqual([]);
     expect(
-      menuItemsWithoutRole(menu(`<button type="button" role="menuitemcheckbox">Bands</button>`))
+      menuItemsWithoutRole(
+        menu(`<button type="button" role="menuitemcheckbox">Bands</button>`)
+      )
     ).toEqual([]);
 
     // A hand-rolled panel that declares the role itself is held to the same rule.
     expect(
-      menuItemsWithoutRole(`<div role="menu"><button type="button">Edit</button></div>`)
+      menuItemsWithoutRole(
+        `<div role="menu"><button type="button">Edit</button></div>`
+      )
     ).toEqual([1]);
 
     // A button OUTSIDE any menu is not this scan's business.
-    expect(menuItemsWithoutRole(`<div><button type="button">Save</button></div>`)).toEqual(
-      []
-    );
+    expect(
+      menuItemsWithoutRole(`<div><button type="button">Save</button></div>`)
+    ).toEqual([]);
     // Nor is one after the panel has closed.
     expect(
       menuItemsWithoutRole(
