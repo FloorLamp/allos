@@ -7,6 +7,7 @@ import { makeTmpDir } from "./tmp-dir";
 import {
   baseDetectorNotice,
   checkRunsVerdict,
+  independenceClaim,
   closedStatusDescription,
   falsifyingPassVerdict,
   holdVerdict,
@@ -784,6 +785,16 @@ describe("merge-gate-core: the shared-identity receipt reads MARKDOWN (#5166)", 
     expect(result.message).toContain("BLOCKQUOTED");
   });
 
+  // Fences quote as surely as a `>` does, once both readers share one splitter
+  // (#5183) — a receipt that SHOWS the sentence as an example has not said it.
+  it("refuses a claim that is only shown as a fenced example", () => {
+    const result = sharedReceipt(
+      `Reviewed ${HEAD}. The receipt sentence goes:\n\n\`\`\`\nI did not author this change.\n\`\`\`\n`
+    );
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("BLOCKQUOTED");
+  });
+
   it("refuses a HEDGED claim, and says so", () => {
     const result = sharedReceipt(
       `Reviewed ${HEAD}. I could **not** establish that I did not author this change.`
@@ -821,9 +832,12 @@ describe("merge-gate-core: the general hold (#5126)", () => {
     );
   });
 
-  it("reads a hold written as an emphasised, blockquoted PR comment", () => {
+  // The emphasis half of #5126's blockquoted-and-emphasised case. The
+  // blockquote half was RULED THE OTHER WAY by #5183 and lives below with the
+  // rest of the quoting forms.
+  it("reads a hold written as an emphasised PR comment", () => {
     const result = holdVerdict([
-      note("> **MERGE-HOLD:** waiting on #5112's refuter"),
+      note("**MERGE-HOLD:** waiting on #5112's refuter"),
     ]);
     expect(result.held).toBe(true);
   });
@@ -952,6 +966,142 @@ describe("merge-gate-core: the mandated falsifying pass (#5126)", () => {
       GROUNDS
     );
     expect(result.ok).toBe(true);
+  });
+});
+
+// #5183. The grammar could not be WRITTEN DOWN on the surface it is read from:
+// a PR comment explaining it, with the examples fenced, placed a live hold and
+// a stale pass verdict on two of another session's PRs. Every form below is one
+// the repo actually writes; each also carries the control that keeps a "nothing
+// matched" from passing for the wrong reason.
+
+const QUOTED_HOLD = "MERGE-HOLD: an example, not a hold";
+const QUOTED_PASS = `FALSIFYING-PASS: SURVIVES ${HEAD}`;
+const PASS_GROUNDS = "declared path lib/offline/writes.ts";
+
+/** Every way this repo quotes a line, applied to one marker. */
+const quotings: [string, (line: string) => string][] = [
+  ["a ``` fence", (line) => `How it reads:\n\n\`\`\`\n${line}\n\`\`\`\n\ndone.`],
+  [
+    "a fence with an info string",
+    (line) => `How it reads:\n\n\`\`\`text\n${line}\n\`\`\`\n\ndone.`,
+  ],
+  ["a ~~~ fence", (line) => `How it reads:\n\n~~~\n${line}\n~~~\n\ndone.`],
+  ["four spaces of indent", (line) => `How it reads:\n\n    ${line}\n\ndone.`],
+  ["a tab of indent", (line) => `How it reads:\n\n\t${line}\n\ndone.`],
+  ["a blockquote", (line) => `How it reads:\n\n> ${line}\n\ndone.`],
+  [
+    "a blockquote around an indent",
+    (line) => `How it reads:\n\n>     ${line}\n\ndone.`,
+  ],
+];
+
+describe("merge-gate-core: quoting a marker does not place one (#5183)", () => {
+  it.each(quotings)("a hold inside %s is not read", (_case, quote) => {
+    expect(holdVerdict([note(quote(QUOTED_HOLD))]).held).toBe(false);
+  });
+
+  // NOT SILENTLY. A fence that swallows a marker without saying so is the other
+  // way to lose a hold, and this gate's whole rule is that it never goes quiet
+  // about a precondition it saw.
+  it.each(quotings)("and the gate SAYS the %s line went unread", (_c, quote) => {
+    const message = holdVerdict([note(quote(QUOTED_HOLD))]).message;
+    expect(message).toContain("NOT read");
+    expect(message).toContain(QUOTED_HOLD);
+  });
+
+  // The permissive direction, and the reason blockquotes were ruled to quote:
+  // a pass verdict OPENS a merge, so a reader that honours a quoted marker lets
+  // anybody quote somebody else's pass into existence.
+  it.each(quotings)(
+    "a pass verdict inside %s does not open the merge",
+    (_case, quote) => {
+      const result = falsifyingPassVerdict(
+        [note(quote(QUOTED_PASS))],
+        HEAD,
+        PASS_GROUNDS
+      );
+      expect(result.ok).toBe(false);
+      expect(result.kind).toBe("missing");
+    }
+  );
+
+  // THE CONTROL for all three above: the same two lines, unquoted, still work.
+  // Without it every case here would also pass against a reader that had
+  // stopped reading markers altogether.
+  it("still reads both markers when they are not quoted", () => {
+    expect(holdVerdict([note(QUOTED_HOLD)]).held).toBe(true);
+    expect(
+      falsifyingPassVerdict([note(QUOTED_PASS)], HEAD, PASS_GROUNDS).ok
+    ).toBe(true);
+  });
+
+  // The comment #5183 was actually filed over: examples AND a real marker, in
+  // one body. The examples must not arm, and the real one must still fire.
+  it("holds on the real marker that follows a fenced example", () => {
+    const result = holdVerdict([
+      note(
+        `How it reads:\n\n\`\`\`\n${QUOTED_HOLD}\n\`\`\`\n\n` +
+          "MERGE-HOLD: and this one I mean"
+      ),
+    ]);
+    expect(result.held).toBe(true);
+    expect(result.message).toContain("and this one I mean");
+  });
+
+  // An indented code block cannot interrupt a paragraph, in CommonMark and on
+  // GitHub — so an indented CONTINUATION line is still prose, and a marker
+  // wrapped onto one still speaks.
+  it("reads an indented line that continues a paragraph", () => {
+    const result = holdVerdict([
+      note("Blocking this, because:\n    MERGE-HOLD: the refuter is still out"),
+    ]);
+    expect(result.held).toBe(true);
+  });
+});
+
+describe("merge-gate-core: an unterminated fence (#5183)", () => {
+  const opened = (tail: string) =>
+    `How it reads:\n\n\`\`\`\n${QUOTED_HOLD}\n\nnothing closes that fence.\n\n${tail}`;
+  const real = "MERGE-HOLD: and this one I mean";
+
+  // CommonMark runs an unclosed fence to the end of the document, and that is
+  // what GitHub renders — so what the writer SEES as code is read as code. The
+  // alternative, reading an unpaired fence as ordinary text, would re-arm every
+  // example under it.
+  it("runs to the end of the body, as GitHub renders it", () => {
+    expect(holdVerdict([note(opened(real))]).held).toBe(false);
+  });
+
+  it("names both swallowed lines rather than going quiet", () => {
+    const message = holdVerdict([note(opened(real))]).message;
+    expect(message).toContain("NOT read");
+    expect(message).toContain("2 MERGE-HOLD line(s)");
+  });
+
+  // THE CONTROL: close the fence and the same trailing marker fires. The case
+  // above must fail because the fence is open, not because the body never
+  // carried a marker.
+  it("reads the trailing marker once the fence is closed", () => {
+    const closed = opened(`\`\`\`\n\n${real}`);
+    expect(holdVerdict([note(closed)]).held).toBe(true);
+  });
+});
+
+describe("merge-gate-core: both readers agree what quoting means (#5183)", () => {
+  const CLAIM = "I did not author this change.";
+
+  it.each(quotings)("%s speaks for neither reader", (_case, quote) => {
+    expect(holdVerdict([note(quote(QUOTED_HOLD))]).held).toBe(false);
+    const claim = independenceClaim(quote(CLAIM));
+    expect(claim.asserts).toBe(false);
+    expect(claim.why).toBe("quoted");
+  });
+
+  // THE CONTROL, again: unquoted, both readers hear the same lines.
+  it("and both read the unquoted line", () => {
+    expect(holdVerdict([note(QUOTED_HOLD)]).held).toBe(true);
+    expect(independenceClaim(CLAIM).asserts).toBe(true);
   });
 });
 
