@@ -2,7 +2,8 @@
 //
 // Search indexed every entity with a page and none of the rows people actually log, so
 // "sauna" found the practice card and never this morning's session. Seven bounded reads
-// now join the fan-out, and only a live schema can prove the four things that matter:
+// now join the fan-out as ONE `logged` group, and only a live schema can prove the five
+// things that matter:
 //
 //   1. each source returns AT MOST FIVE entries, newest first;
 //   2. no entry ever crosses a profile — every fixture below is seeded on a SECOND
@@ -11,7 +12,10 @@
 //   3. the href is `/history?day=…&kind=…#timeline-entry-…` and its fragment RESOLVES —
 //      checked against `gatherHistoryLog`'s own rows for that day, never a re-typed
 //      string, because a drifted id spelling is a link that scrolls nowhere;
-//   4. the entries outrank the kind's static list entry ("Practice history").
+//   4. the entries sit ABOVE the practice that names them and above the kind's static
+//      list entry ("Practice history");
+//   5. the group is capped at FIVE ACROSS ALL KINDS, ranked date-first over the union —
+//      the last describe seeds the fixture that can tell that apart from five per kind.
 //
 // Runs against a throwaway DB redirected by lib/__db_tests__/setup.ts. Synthetic,
 // clearly fictional fixtures only (no PHI).
@@ -23,11 +27,8 @@ import { gatherHistoryLog } from "@/lib/history";
 import { zonedWallTimeToUtc } from "@/lib/date";
 import { setLoginSetting, setProfileSetting } from "@/lib/settings";
 import { timelineEntryAnchorId } from "@/lib/timeline-format";
-import {
-  loggedSearchDomain,
-  type SearchHit,
-  type SearchLoggedKind,
-} from "@/lib/search-rank";
+import type { SearchHit } from "@/lib/search-rank";
+import type { SearchLoggedKind } from "@/lib/queries/search-logged";
 
 const TZ = "America/Los_Angeles";
 // Six days, oldest first: one more than the bound, so "at most five, newest first" is
@@ -206,12 +207,17 @@ const FIXTURES: LoggedFixture[] = [
   },
 ];
 
-function hitsOf(profileId: number, fixture: LoggedFixture): SearchHit[] {
-  const domain = loggedSearchDomain(fixture.kind);
+// The one `logged` group. Every query below is chosen so exactly one kind matches it,
+// which is what keeps a five-across-all-kinds cap from mixing two fixtures into one
+// assertion — the cap's own fixture lives in its own describe, on its own profile.
+function loggedHits(profileId: number, query: string): SearchHit[] {
   return (
-    searchAll(profileId, fixture.query).find((g) => g.domain === domain)
-      ?.hits ?? []
+    searchAll(profileId, query).find((g) => g.domain === "logged")?.hits ?? []
   );
+}
+
+function hitsOf(profileId: number, fixture: LoggedFixture): SearchHit[] {
+  return loggedHits(profileId, fixture.query);
 }
 
 // The anchors the record actually renders on one day, for one kind — the row ids
@@ -287,28 +293,144 @@ describe("the logged kinds in global search (#5006)", () => {
       `INSERT INTO practice_logs (profile_id, date, practice, duration_min)
        VALUES (?, '2026-08-30', 'Sauna, infrared', 25)`
     ).run(mine);
-    const found = searchAll(mine, "sauna").find(
-      (g) => g.domain === "log-practice"
-    )!.hits;
+    const found = loggedHits(mine, "sauna");
     expect(found[0].title).toBe("Sauna, infrared");
     expect(found[0].date).toBe("2026-08-30");
   });
 
-  it("shows the entries above the kind's static list entry", () => {
+  it("shows the entries above the practice that names them, and above its list entry", () => {
     const groups = searchAll(mine, "sauna").map((g) => g.domain);
-    // "Equipment"/"Practice history" and the rest of the jump-to-page entries are the
-    // `page` domain, and it is last — an entry never sits below the list it came from.
-    expect(groups.indexOf("log-practice")).toBeLessThan(groups.indexOf("page"));
+    // The catalog entity is built from these very sessions (`getPracticeSearchRows`),
+    // so this query really does render both groups — which is what makes the
+    // comparison below an assertion about ORDER rather than about presence.
+    expect(groups).toContain("practice");
+    expect(groups.indexOf("logged")).toBeLessThan(groups.indexOf("practice"));
+    // "Practice history" and the rest of the jump-to-page entries are the `page`
+    // domain, and it is last — an entry never sits below the list it came from.
+    expect(groups.indexOf("logged")).toBeLessThan(groups.indexOf("page"));
     expect(groups.indexOf("page")).toBe(groups.length - 1);
   });
 
   it("finds a body reading by the value as it is STORED, and never prints a unit", () => {
     // Canonical storage is kilograms and the conversion belongs to the render
     // boundary, so the hit is matchable on 70.4 and titled with the measure alone.
-    const found = searchAll(mine, "70.4").find(
-      (g) => g.domain === "log-body"
-    )!.hits;
+    const found = loggedHits(mine, "70.4");
     expect(found[0].title).toBe("Weight");
     expect(found[0].subtitle).toBe(`Reading · ${DAYS[DAYS.length - 1]}`);
+  });
+});
+
+// THE CAP IS FIVE ACROSS ALL KINDS, RANKED DATE-FIRST OVER THE UNION (owner ruling,
+// 2026-09-04) — and a fixture where each kind holds five or fewer matching rows cannot
+// tell that apart from five per kind, or from a round-robin over the kinds. So: three
+// kinds, SIX matching rows each, on days chosen so the union's newest five are three
+// practice sessions and two doses. Five-per-kind returns fifteen rows; a round-robin
+// reaches the symptom whose newest row is only sixth overall and drops the third
+// session. Only the ruling's answer is the one asserted below.
+describe("the five-across-all-kinds cap (#5006)", () => {
+  const CAP_QUERY = "birch";
+  const CAP_DAYS: Record<"practice" | "dose" | "symptom", string[]> = {
+    practice: [
+      "2026-08-31",
+      "2026-08-30",
+      "2026-08-29",
+      "2026-08-20",
+      "2026-08-19",
+      "2026-08-18",
+    ],
+    dose: [
+      "2026-08-28",
+      "2026-08-27",
+      "2026-08-17",
+      "2026-08-16",
+      "2026-08-15",
+      "2026-08-14",
+    ],
+    symptom: [
+      "2026-08-26",
+      "2026-08-25",
+      "2026-08-24",
+      "2026-08-23",
+      "2026-08-22",
+      "2026-08-21",
+    ],
+  };
+  let capper = 0;
+
+  beforeAll(() => {
+    capper = newProfile("SEARCHLOG-CAP");
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, condition, obligation, active, source)
+           VALUES (?, 'Birch tonic', 'as needed', 'may', 1, 'manual')`
+        )
+        .run(capper).lastInsertRowid
+    );
+    const doseId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+           VALUES (?, '5 ml', '08:00', 'any', 0)`
+        )
+        .run(itemId).lastInsertRowid
+    );
+    for (const day of CAP_DAYS.practice) {
+      db.prepare(
+        `INSERT INTO practice_logs (profile_id, date, practice, duration_min)
+         VALUES (?, ?, 'Birch sauna', 20)`
+      ).run(capper, day);
+    }
+    for (const day of CAP_DAYS.dose) {
+      db.prepare(
+        `INSERT INTO intake_item_logs (item_id, dose_id, date, status, amount)
+         VALUES (?, ?, ?, 'taken', '5 ml')`
+      ).run(itemId, doseId, day);
+    }
+    for (const day of CAP_DAYS.symptom) {
+      db.prepare(
+        `INSERT INTO symptom_logs (profile_id, date, symptom, severity)
+         VALUES (?, ?, 'Birch pollen', 2)`
+      ).run(capper, day);
+    }
+  });
+
+  // The instrument, committed rather than thrown away: every kind really does hold
+  // more matching rows than the cap, so a per-kind implementation really would return
+  // a different answer here. Without this, the test below could pass against a fixture
+  // that never reached the state it forbids.
+  it("gives each kind more matching rows than the cap", () => {
+    for (const [kind, days] of Object.entries(CAP_DAYS)) {
+      expect(days.length, kind).toBeGreaterThan(5);
+    }
+  });
+
+  it("returns the newest five of the union, not five of each kind", () => {
+    const hits = loggedHits(capper, CAP_QUERY);
+    expect(hits.map((h) => h.date)).toEqual([
+      ...CAP_DAYS.practice.slice(0, 3),
+      ...CAP_DAYS.dose.slice(0, 2),
+    ]);
+    // The kind lives in the SUBTITLE, which is the only place it lives now.
+    expect(hits.map((h) => h.subtitle)).toEqual([
+      `Practice · ${CAP_DAYS.practice[0]}`,
+      `Practice · ${CAP_DAYS.practice[1]}`,
+      `Practice · ${CAP_DAYS.practice[2]}`,
+      `Dose · ${CAP_DAYS.dose[0]}`,
+      `Dose · ${CAP_DAYS.dose[1]}`,
+    ]);
+    // The symptom matches this query on six days and reaches none of them: its newest
+    // is sixth overall. A round-robin would have shown it.
+    expect(hits.map((h) => h.title)).not.toContain("Birch pollen");
+  });
+
+  it("is one group, so a kind's own rows never get a group of their own", () => {
+    const logged = searchAll(capper, CAP_QUERY).filter(
+      (g) => g.domain === "logged"
+    );
+    expect(logged).toHaveLength(1);
+    expect(logged[0].label).toBe("Logged");
+    expect(logged[0].hits).toHaveLength(5);
   });
 });

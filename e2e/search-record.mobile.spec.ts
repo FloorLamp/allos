@@ -23,8 +23,9 @@ import {
 //
 // WHICH GROUP THE HIT CAME FROM IS PART OF THE ASSERTION. A practice's session and
 // the practice itself share a title on purpose, and only one of them opens the
-// record — so every pick below is made inside `palette-group-log-*`, never on a
-// title alone.
+// record — so every pick below is made inside `palette-group-logged`, never on a
+// title alone. That one group holds all seven logged kinds (owner ruling,
+// 2026-09-04); the kind is in the hit's subtitle.
 //
 // EVERY `getByTestId` HERE IS SCOPED TO A CONTAINER (the dock, the dialog, the feed).
 // The app streams its Suspense boundaries: a boundary's content first lands in a
@@ -115,7 +116,7 @@ test.describe("search into the record (#5006)", () => {
         .fill(record.query);
 
       // The LOGGED group, not the entity group that may share this title.
-      const group = palette.getByTestId(`palette-group-log-${record.kind}`);
+      const group = palette.getByTestId("palette-group-logged");
       const hit = group.getByRole("option", { name: record.title });
       await expect(hit).toBeVisible();
       // The subtitle says which day the entry is on, so the reader knows what they
@@ -143,4 +144,40 @@ test.describe("search into the record (#5006)", () => {
       await page.context().close();
     });
   }
+
+  // THE ORDER IS THE RULING (2026-09-04): typing "sauna" shows your sessions before
+  // the practice card. Both groups are on screen for this query — the catalog entity
+  // is built from these very sessions — so this is a comparison between two real
+  // elements, not an assertion that one of them renders.
+  test("puts the rows you logged above the practice that names them", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_SEARCH_RECORD,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    await page.goto("/");
+
+    const palette = await openSearchFromDock(page);
+    await palette
+      .getByRole("combobox", { name: "Search or run a command" })
+      .fill(SEARCH_RECORD_PRACTICE);
+
+    const logged = palette.getByTestId("palette-group-logged");
+    const practice = palette.getByTestId("palette-group-practice");
+    await expect(logged).toBeVisible();
+    await expect(practice).toBeVisible();
+    // Wait for the hit itself before measuring: a group whose rows have not landed
+    // yet has a box, and it is not the box this test is about (#3384).
+    await expect(
+      logged.getByRole("option", { name: SEARCH_RECORD_PRACTICE })
+    ).toBeVisible();
+
+    const loggedBox = await logged.boundingBox();
+    const practiceBox = await practice.boundingBox();
+    expect(loggedBox).not.toBeNull();
+    expect(practiceBox).not.toBeNull();
+    expect(loggedBox!.y).toBeLessThan(practiceBox!.y);
+    await page.context().close();
+  });
 });

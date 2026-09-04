@@ -1,4 +1,4 @@
-// SEARCH INTO THE RECORD (#5006) — the seven row-only Logs kinds, as search hits.
+// SEARCH INTO THE RECORD (#5006) — the seven row-only Logs kinds, as ONE search group.
 //
 // The record's other domains are ENTITIES with a page of their own, so a hit lands on
 // that page. These seven are ROWS: a serving, a dose, a session, a symptom-day, a
@@ -6,6 +6,14 @@
 // them a stable address — `/history?day=<day>&kind=<kind>` opens the day scoped to the
 // kind, and the row carries `id={timelineEntryAnchorId(row.id)}` — so the hit's href is
 // that address with the row's own anchor as the fragment. No new route, no new page.
+//
+// ONE GROUP, CAPPED AT FIVE ACROSS ALL SEVEN KINDS (owner ruling, 2026-09-04). Every
+// hit carries the single `logged` domain and names its kind in the SUBTITLE
+// (`<kind> · <date>`), so the palette shows the five newest rows you logged whatever
+// mix of kinds they are — not five of each. Each source still reads its own five
+// newest, which is enough: no row outside a source's newest five can be inside the
+// union's newest five. The ranker does the rest (`rankAndGroup`, lib/search-rank.ts),
+// sorting the union date-first and slicing to five.
 //
 // ONE SHAPE, SEVEN DECLARATIONS. Every source hands back the same `LoggedEntry`
 // (the record row's own id, its title, the profile-local day it is filed under) and
@@ -42,15 +50,29 @@ import {
   type BodyMetricRow,
 } from "../body-metric-measures";
 import { TREND_METRIC_META } from "../trend-metrics";
-import {
-  loggedSearchDomain,
-  matchTier,
-  type SearchHit,
-  type SearchLoggedKind,
-} from "../search-rank";
+import { matchTier, type SearchHit } from "../search-rank";
+import type { HistoryKind } from "../history-format";
 
-/** Each source's bound, and the palette's: the five newest matching entries. */
+/**
+ * Each source's read bound, and the group's cap: five.
+ *
+ * `as const satisfies readonly HistoryKind[]` is the whole guard on the kinds — a kind
+ * that is not one of the record's own is a type error here rather than a hit whose
+ * `?kind=` opens on nothing.
+ */
 const LOGGED_ENTRY_LIMIT = 5;
+
+const SEARCH_LOGGED_KINDS = [
+  "dose",
+  "food",
+  "practice",
+  "symptom",
+  "mood",
+  "body",
+  "sleep",
+] as const satisfies readonly HistoryKind[];
+
+export type SearchLoggedKind = (typeof SEARCH_LOGGED_KINDS)[number];
 
 /** One record row, as every source hands it back. */
 interface LoggedEntry {
@@ -317,7 +339,7 @@ function sleepEntries(profileId: number, q: LoggedQuery): LoggedEntry[] {
   return entries;
 }
 
-// The seven, in the order the palette groups them.
+// The seven. Declaration order is not display order — the ranker sorts the union.
 const LOGGED_SOURCES: readonly LoggedSource[] = [
   { kind: "dose", noun: "Dose", read: doseEntries },
   { kind: "food", noun: "Serving", read: foodEntries },
@@ -332,7 +354,7 @@ const LOGGED_SOURCES: readonly LoggedSource[] = [
 function loggedHit(source: LoggedSource, entry: LoggedEntry): SearchHit {
   const day = historyHref({ day: entry.day, kind: source.kind });
   return {
-    domain: loggedSearchDomain(source.kind),
+    domain: "logged",
     key: `logged:${entry.entryId}`,
     title: entry.title,
     subtitle: `${source.noun} · ${entry.day}`,
@@ -346,7 +368,8 @@ function loggedHit(source: LoggedSource, entry: LoggedEntry): SearchHit {
  * Every logged-kind hit for one query, acting profile only.
  *
  * Seven statements, each `LIMIT 5` and each capped again after any in-memory fan-out,
- * so the whole group costs a bounded seven reads however dense the record is.
+ * so the whole group costs a bounded seven reads however dense the record is. Up to 35
+ * candidates come back; the ranker keeps the five newest of them.
  */
 export function loggedEntryHits(
   profileId: number,

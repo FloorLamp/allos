@@ -2835,8 +2835,9 @@ providers, illness episodes, dental records, skin lesions, activities,
 supplements and medications, protocols, wellness practices, equipment, family
 history, care plan, care goals, goals** — plus **the rows you logged**: doses,
 food servings, practice sessions, symptoms, mood check-ins, body readings and
-sleep nights, five newest each, which open the record on that entry rather than
-on the kind's list. Every page is searchable too, so the palette doubles as a
+sleep nights, the five newest whatever mix of kinds they are, above the cards
+that name them, and each opening the record on that entry rather than on the
+kind's list. Every page is searchable too, so the palette doubles as a
 jump-to-page bar. A hit is named exactly as its own page names it
 ("MRI Left Knee", "Composite filling · #14"), carries the attribute that tells
 near-identical rows apart (a study's date, a lesion's side and size, a

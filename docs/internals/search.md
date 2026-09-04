@@ -16,13 +16,20 @@ documents, medications, providers, episodes, protocols, practices, equipment —
 the href is the most precise destination the row supports (#1568).
 
 **A logged row has no page, so the hit lands on the record's day view, scrolled
-to the row.** Seven of the record's Logs kinds are row-only (#5006): **doses ·
+to the row.** Seven of the record's Logs kinds are row-only (#5006), and they
+share one `Logged` group: **doses ·
 food servings · practice sessions · symptoms · mood check-ins · body readings ·
 sleep nights**. `/history?day=<day>&kind=<kind>` is that address (#3958), and the
 row already carries `id={timelineEntryAnchorId(row.id)}`, so the fragment lands
 on the entry itself. No new route, no new page.
 
 ## The logged group
+
+**One group, `Logged`, for all seven kinds** (owner ruling, 2026-09-04). The kind
+is not a group name; it is the hit's subtitle, `<kind> · <date>`. The alternative
+— a group per kind — could put 35 logged hits ahead of the catalog on a broad
+query, and the question this feature exists to answer ("my latest sauna") is
+answered in five rows.
 
 `lib/queries/search-logged.ts` holds all seven. Each declares only what differs —
 its kind, the noun its subtitle names, and the read that finds it — and one
@@ -41,9 +48,14 @@ copy.
 
 Four rules hold across all seven:
 
-- **Five, newest first.** Every statement is `ORDER BY date DESC LIMIT 5`, and
-  the result is capped again after any in-memory fan-out (a `body_metrics` row
-  carries up to three measures), so the group costs a bounded seven reads.
+- **Five, newest first — per read, and again for the group.** Every statement is
+  `ORDER BY date DESC LIMIT 5`, and the result is capped again after any in-memory
+  fan-out (a `body_metrics` row carries up to three measures), so the group costs a
+  bounded seven reads. Up to 35 candidates reach the ranker, which sorts the UNION
+  date-first and keeps five. Three doses and two sessions is a correct answer, and so
+  is five servings; five of each is not, and neither is one of each in turn. The
+  per-read bound cannot lose the right answer: a row outside its own source's newest
+  five is outside the union's newest five too.
 - **Acting profile only**, filtered `profile_id = ?` in the statement text — the
   dose ledger through its parent `intake_items`, which is where a dose log's
   owner lives. The day view these open is acting-profile-only by ruling.
@@ -93,14 +105,17 @@ rather than a second rendering of the row).
 ## Ranking
 
 Within a domain the ranker sorts by match quality (exact > prefix > substring),
-then recency, then title. **The logged domains invert the first two keys**: an
-entity is asked for by name, a logged row by recency — "my latest sauna" — and
-tier-first put a year-old `Sauna` above this morning's `Sauna, infrared`. A
-same-day tie still falls back to match quality.
+then recency, then title. **`logged` inverts the first two keys**: an entity is
+asked for by name, a logged row by recency — "my latest sauna" — and tier-first
+put a year-old `Sauna` above this morning's `Sauna, infrared`. A same-day tie
+still falls back to match quality. The sort runs over the whole group before the
+cap, which is what makes the cap global rather than per kind.
 
-Across groups the fixed `SEARCH_DOMAIN_ORDER` stands. The logged domains sit with
-`activity` (the other "things that happened") and above the catalog entities that
-name what they were logged against. `page` is last, always, so the kind's static
-list entry ("Food history", "Dose history") sits below the entries it would have
-shown — a query matching both gets the entries first, newest first, the list
-entry last.
+Across groups the fixed `SEARCH_DOMAIN_ORDER` stands. `logged` sits with
+`activity` (the other "things that happened") and **above the catalog entities**
+`supplement`, `protocol`, `practice` and `equipment` that name what the rows were
+logged against — typing "sauna" shows your sessions before the practice card
+(owner ruling, 2026-09-04). `page` is last, always, so the kind's static list
+entry ("Food history", "Dose history") sits below the entries it would have shown
+— a query matching both gets the entries first, newest first, the list entry
+last.

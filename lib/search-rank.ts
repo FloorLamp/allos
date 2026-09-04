@@ -6,45 +6,15 @@
 // DB/React so it can be unit-tested (lib/__tests__/search-rank.test.ts).
 
 import type { AppRoute } from "./hrefs";
-import type { HistoryKind } from "./history-format";
-
-// THE RECORD'S OWN ROWS, AS SEARCH DOMAINS (#5006). Seven of the record's Logs kinds
-// are row-only — no page of their own — so a hit lands on the day view scrolled to the
-// row it names (lib/queries/search-logged.ts builds them). The domain IS the record
-// kind, prefixed so the entity domain beside it keeps its name: `practice` is the
-// wellness practice you track, `log-practice` is a session of it.
-//
-// `satisfies readonly HistoryKind[]` is the whole guard: a kind that is not one of the
-// record's own is a type error here rather than a hit whose `?kind=` opens on nothing.
-export const SEARCH_LOGGED_KINDS = [
-  "dose",
-  "food",
-  "practice",
-  "symptom",
-  "mood",
-  "body",
-  "sleep",
-] as const satisfies readonly HistoryKind[];
-
-export type SearchLoggedKind = (typeof SEARCH_LOGGED_KINDS)[number];
-export type LoggedSearchDomain = `log-${SearchLoggedKind}`;
-
-export function loggedSearchDomain(kind: SearchLoggedKind): LoggedSearchDomain {
-  return `log-${kind}`;
-}
-
-const LOGGED_DOMAINS: ReadonlySet<string> = new Set(
-  SEARCH_LOGGED_KINDS.map(loggedSearchDomain)
-);
-
-export function isLoggedSearchDomain(
-  domain: SearchDomain
-): domain is LoggedSearchDomain {
-  return LOGGED_DOMAINS.has(domain);
-}
 
 export type SearchDomain =
-  | LoggedSearchDomain
+  // THE RECORD'S OWN ROWS (#5006). The record's row-only Logs kinds — doses, food
+  // servings, practice sessions, symptoms, check-ins, body readings, sleep nights —
+  // have no page, so a hit lands on the day view scrolled to the row it names
+  // (lib/queries/search-logged.ts builds them). ONE domain for all of them: the kind
+  // lives in the subtitle (`<kind> · <date>`), so `practice` stays the wellness
+  // practice you track and a session of it is a `logged` hit.
+  | "logged"
   | "clinical-result"
   | "imaging"
   | "genomic"
@@ -142,17 +112,11 @@ export const SEARCH_DOMAIN_ORDER: SearchDomain[] = [
   "skin",
   "activity",
   // THE LOGGED ROWS (#5006) sit with the activity they read like — things that
-  // happened, newest first — and above the catalog entities (`supplement`,
-  // `practice`, `equipment`) that name what they were logged against. Every one of
-  // them is ahead of `page`, which is what puts an entry above the kind's own
-  // static list entry ("Food history") for a query matching both.
-  "log-dose",
-  "log-food",
-  "log-practice",
-  "log-symptom",
-  "log-mood",
-  "log-body",
-  "log-sleep",
+  // happened, newest first — and ABOVE the catalog entities (`supplement`,
+  // `protocol`, `practice`, `equipment`) that name what they were logged against, so
+  // typing "sauna" shows your sessions before the practice card. Ahead of `page` too,
+  // which puts an entry above the kind's own static list entry ("Food history").
+  "logged",
   "supplement",
   "protocol",
   "practice",
@@ -180,16 +144,9 @@ export const SEARCH_DOMAIN_LABELS: Record<SearchDomain, string> = {
   dental: "Dental",
   skin: "Skin",
   activity: "Activities",
-  // The record's own words for these rows (#5006), and not the record's CHIP labels:
-  // a chip names a filter ("Practices"), a palette group names what the rows are, and
-  // "Practices" is already the wellness-practice group one row down.
-  "log-dose": "Doses",
-  "log-food": "Food servings",
-  "log-practice": "Practice sessions",
-  "log-symptom": "Symptoms",
-  "log-mood": "Check-ins",
-  "log-body": "Body readings",
-  "log-sleep": "Sleep nights",
+  // One word for all seven kinds (#5006): the group says these are things you logged,
+  // and each hit's subtitle says which kind it is.
+  logged: "Logged",
   supplement: "Supplements",
   protocol: "Protocols",
   practice: "Practices",
@@ -216,7 +173,7 @@ export function matchTier(text: string, query: string): number {
 // Order hits within one domain: match quality desc, then recency (later date
 // first, undated last), then title/key for a stable, deterministic order.
 //
-// THE LOGGED DOMAINS INVERT THE FIRST TWO KEYS (#5006), and only they do. An entity
+// THE `logged` DOMAIN INVERTS THE FIRST TWO KEYS (#5006), and only it does. An entity
 // is asked for by NAME, so the best-named match wins; a logged row is asked for by
 // RECENCY — "my latest sauna" — and the words are how you narrow to the kind, not how
 // you choose between two rows of it. Tier-first put a year-old "Sauna" above this
@@ -228,8 +185,7 @@ export function sortHits(hits: SearchHit[], query: string): SearchHit[] {
     // Recency: compare ISO date strings lexically; "" (undated) sorts last.
     const da = a.date ?? "";
     const db = b.date ?? "";
-    const dateFirst =
-      isLoggedSearchDomain(a.domain) && isLoggedSearchDomain(b.domain);
+    const dateFirst = a.domain === "logged" && b.domain === "logged";
     if (dateFirst && da !== db) return da < db ? 1 : -1;
     if (ta !== tb) return tb - ta;
     if (da !== db) return da < db ? 1 : -1;
@@ -240,6 +196,11 @@ export function sortHits(hits: SearchHit[], query: string): SearchHit[] {
 
 // Merge a flat hit list into grouped, ranked results: each domain sorted and
 // capped, emitted in SEARCH_DOMAIN_ORDER, dropping empty groups.
+//
+// THE SORT RUNS BEFORE THE SLICE, OVER THE WHOLE DOMAIN. That is what makes `logged`
+// a cap of five ACROSS all seven kinds (#5006) rather than five per kind or one kind
+// in turn: the union is ranked date-first and the newest five survive, so three
+// doses and two sessions is a correct answer and so is five servings.
 export function rankAndGroup(
   hits: SearchHit[],
   query: string,
