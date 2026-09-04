@@ -62,11 +62,20 @@ export interface DashboardStandingPresentation {
  * The figure sits OUTSIDE every member's link for the same reason `control`
  * does: it is interactive (its ticks are anchors, its drag is a zoom), and
  * nesting that in an `<a>` is invalid markup browsers reparent. The family's
- * members keep their own doors; the figure has none of its own.
+ * members keep their own doors.
+ *
+ * A FIGURE DECLARES WHERE IT LEADS (#4969 ruling, 2026-09-03): the figure leads
+ * to what it pictures. `node` and `door` are ONE field because the pair is the
+ * rule — a figure cannot be mounted without saying where it goes, which is a
+ * type rather than a convention someone has to remember. The row's stretched
+ * surface reaches under the figure, so THAT surface is the member whose own
+ * href is this door: the family's primary door is declared, and the figure gets
+ * no second link of its own (two links to one page on one row is a second tab
+ * stop saying the same thing).
  */
 export interface StandingFamilyDrawing {
   series?: StandingSparklineSeries;
-  figure?: ReactNode;
+  figure?: { node: ReactNode; door: AppRoute };
 }
 
 // The door's label: the DESTINATION's own name, taken from the one list that already
@@ -291,9 +300,22 @@ function StandingFamilyRow({
   const series = drawing?.series;
   const figure = drawing?.figure;
   const stacked = family.composition === "members";
-  const surfaceId = members.find(
-    (placement) => presentations.get(placement.candidate.candidateId)?.href
-  )?.candidate.candidateId;
+  // THE FAMILY'S PRIMARY DOOR IS DECLARED, NEVER THE FIRST-ORDERED MEMBER'S
+  // (#4969 ruling, 2026-09-03). The primary surface is the one whose stretch
+  // reaches the whole family box — the label's line on a phone, the sparkline
+  // column, and everything under the members list, the FIGURE included — so it
+  // is the family's door and not just one member's. Taking it from display order
+  // was an invisible tie-break while every member of a family led to one place
+  // (sleep's `/sleep`, weight's `/trends#body`); `day-so-far` is the first family
+  // whose members disagree, and it read: a reader tapped the intraday chart and
+  // landed on `/sleep`, because a sleep member sorts first. So a family that
+  // draws a figure declares where the figure leads, and the member already going
+  // there carries the surface — reordering the members cannot move it.
+  const declaredDoor = figure?.door;
+  const surfaceId = members.find((placement) => {
+    const href = presentations.get(placement.candidate.candidateId)?.href;
+    return declaredDoor ? href === declaredDoor : href != null;
+  })?.candidate.candidateId;
   return (
     // THE BREAKPOINT IS IN rem AND MUST STAY IN rem (#3459).
     // 45rem is 720px at the root default — the same seam #3252
@@ -371,10 +393,10 @@ function StandingFamilyRow({
           // outside that box and the door beneath it would go dark.
           //
           // `inert`, and it is the whole design of this slot rather than a
-          // caveat. A member's link still carries `standing-stretch`, whose
-          // `::after` insets to THIS cell — measured, not assumed:
-          // `elementFromPoint` at the chart's centre resolves inside a door —
-          // so a POINTER already lands on a door wherever it falls on the
+          // caveat. The declared door's member link carries `standing-stretch`,
+          // whose `::after` insets to THIS cell — measured, not assumed:
+          // `elementFromPoint` at the chart's centre resolves inside that door —
+          // so a POINTER already lands on the day view wherever it falls on the
           // figure, which is what "tap → the day view" means. Without this the
           // KEYBOARD disagreed: the drawing's own interior anchors (a tick
           // naming `#timeline-entry-…`) stayed in the tab order, and those
@@ -388,7 +410,7 @@ function StandingFamilyRow({
             data-testid="dashboard-family-figure"
             inert
           >
-            {figure}
+            {figure.node}
           </div>
         )}
       </dd>

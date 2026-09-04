@@ -298,6 +298,20 @@ follows the same rule as everywhere else in Standing — a family renders when
 any member is placed — so a family's drawing is never the reason it appears or
 disappears.
 
+**A figure declares where it leads.** The row's stretched surface reaches the
+whole family box — the label's line on a phone, the trailing column, and the
+figure under the members list — so it is the FAMILY's door, and a family that
+draws a figure declares it: `figure` is `{ node, door }`, one field, so a
+figure cannot be mounted without saying where it goes. The member already
+leading there carries that surface, which is why the figure earns no second
+anchor to a page its neighbour already links to. Members keep their own doors —
+the Day so far row's sleep members lead to `/sleep`, its steps member to
+`/trends#body`, its chart to that day's day view. The door was resolved from
+display order until the 2026-09-03 ruling on #4969: every family's members had
+led to one place, so the tie-break was invisible until `day-so-far` composed
+three that disagreed, and a reader who tapped the intraday chart landed on
+`/sleep` because a sleep member sorts first.
+
 ### A headline is a claim about NOW (#2615)
 
 A chart card's header carries the latest plotted value in large type. That is

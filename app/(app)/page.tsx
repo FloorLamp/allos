@@ -2257,6 +2257,11 @@ async function renderDashboard(
     );
 
   if (intradayToday) {
+    // ONE ROUTE, NAMED ONCE: the intraday member's own door and the family's
+    // declared door are the same destination by construction, which is what puts
+    // the row's stretched surface on that member (#4969 ruling) instead of on two
+    // literals that have to keep agreeing.
+    const dayViewHref = historyDayIntradayHref(on);
     add(
       dailyCandidates.intraday(
         { subject: profileSubject, sourceOrder: sourceOrder++ },
@@ -2266,22 +2271,28 @@ async function renderDashboard(
         // The lag sentence is the row's FACTS — the one thing the drawing cannot
         // say about itself (#4767 item 5).
         value: intradayFreshness(intradayToday) ?? undefined,
-        href: historyDayIntradayHref(on),
+        href: dayViewHref,
         presence: "current",
       }
     );
     // THE FAMILY'S FIGURE (#4969), not this member's: the Day-so-far row draws it
-    // full width under every member's facts, not inside this one's `<li>`.
+    // full width under every member's facts, not inside this one's `<li>`. It is
+    // declared WITH its door — the figure leads to what it pictures, which is
+    // today's day view, whatever order the night's sleep and today's steps take
+    // above it (#4969 ruling, 2026-09-03).
     setDrawing("day-so-far", {
-      figure: (
-        <IntradayChart
-          model={intradayToday}
-          formatPrefs={formatPrefs}
-          profileId={profile.id}
-          variant="compact"
-          className="w-full"
-        />
-      ),
+      figure: {
+        node: (
+          <IntradayChart
+            model={intradayToday}
+            formatPrefs={formatPrefs}
+            profileId={profile.id}
+            variant="compact"
+            className="w-full"
+          />
+        ),
+        door: dayViewHref,
+      },
     });
   }
 
