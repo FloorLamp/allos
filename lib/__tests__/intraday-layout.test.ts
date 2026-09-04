@@ -131,6 +131,32 @@ describe("the variant size contract (#1518 / #1512 F)", () => {
     expect(intradayLabelPx(variant, spec.maxWidthPx)).toBeLessThanOrEqual(14);
   });
 
+  // #4973 — WHICH VARIANT A CONTAINER EARNS, and the breakpoint is a column of the
+  // table above rather than a number of its own. `IntradayChart` renders the pair
+  // behind `@container` with `@min-[520px]:` on the switch; a Tailwind container
+  // variant has to be a literal its scanner can see, so this is where that literal
+  // and `wide.minContainerPx` are held together. Move the column and this reds.
+  it("switches geometry at the wide variant's own narrowest container", () => {
+    const compact = INTRADAY_VARIANTS.compact;
+    const wide = INTRADAY_VARIANTS.wide;
+    expect(wide.minContainerPx).toBe(520);
+    // No gap and no overlap of intent: every container from compact's floor up to
+    // the switch draws compact, everything from the switch draws wide.
+    expect(compact.minContainerPx).toBeLessThan(wide.minContainerPx);
+    // …and each is legible across the range it is handed. Below the switch the
+    // WIDE box would not be — which is the whole reason the column is the
+    // breakpoint.
+    expect(
+      intradayLabelPx("compact", wide.minContainerPx - 1)
+    ).toBeGreaterThanOrEqual(MIN_LABEL_PX);
+    expect(intradayLabelPx("wide", wide.minContainerPx)).toBeGreaterThanOrEqual(
+      MIN_LABEL_PX
+    );
+    expect(intradayLabelPx("wide", compact.minContainerPx)).toBeLessThan(
+      MIN_LABEL_PX
+    );
+  });
+
   it("reproduces the bug the compact variant exists to fix", () => {
     // The shipped geometry: 720 units into a 358px phone column.
     expect(

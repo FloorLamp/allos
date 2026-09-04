@@ -1,10 +1,12 @@
 "use client";
 
-// One variant of the Timeline day chart: the hand-drawn SVG (issue #1068) plus
-// the scrub + zoom interaction layer (#1515), over the pure geometry in
-// `lib/intraday-layout.ts`. Every decision — downsampling, clipping, layer gating,
-// row stacking, label placement, axis steps, the window clamp — already happened
-// in `lib/`; this file maps a placement to an element and a gesture to a window.
+// The Timeline day chart: the hand-drawn SVG (issue #1068) plus the scrub + zoom
+// interaction layer (#1515), over the pure geometry in `lib/intraday-layout.ts`.
+// A mount hands over a day and gets the geometry its own container earns (#4973
+// — see `IntradayChart` below); `IntradayDrawing` is one of those geometries.
+// Every decision — downsampling, clipping, layer gating, row stacking, label
+// placement, axis steps, the window clamp — already happened in `lib/`; this file
+// maps a placement to an element and a gesture to a window.
 //
 // WHY THIS IS A CLIENT COMPONENT, AND WHAT THAT DOESN'T COST. #1515's constraint
 // was never "no JS" — it was NO LOADING BOX on a glance surface rendered every day
@@ -169,18 +171,12 @@ function intradaySummary(model: IntradayModel): string {
   return `Intraday view for ${model.date}: ${parts.join(", ") || "no intraday data"}`;
 }
 
-export default function IntradayChart({
-  model,
-  formatPrefs,
-  variant,
-  className,
-  profileId,
-  selectedWindow = null,
-}: {
+/** What a mount hands over: a day, who it belongs to, and any window already
+ *  stated for it. No geometry. */
+interface IntradayChartProps {
   model: IntradayModel;
   formatPrefs: DisplayFormatPrefs;
-  variant: IntradayVariant;
-  className: string;
+  className?: string;
   profileId: number;
   /**
    * A window stated in the URL (#4950), in minutes since profile-local midnight.
@@ -193,6 +189,58 @@ export default function IntradayChart({
    * window highlighted under the new gesture.
    */
   selectedWindow?: { from: number; to: number | null } | null;
+}
+
+/**
+ * THE CHART PICKS ITS GEOMETRY FROM ITS OWN CONTAINER (#4973), for every mount.
+ * The day view's panel used to hide one of a pair by VIEWPORT and the dashboard
+ * hard-coded `compact` into a cell that is ~1,700px at xl; neither read the width
+ * the chart was actually given, and a third mount would have invented a third
+ * rule. `@container` because the container is what the type scales against —
+ * `labelSize × (container ÷ viewBox)` knows nothing about the viewport, and these
+ * two mounts' containers differ by 5× at the SAME one.
+ *
+ * 520 is `INTRADAY_VARIANTS.wide.minContainerPx`, spelled out only because a
+ * Tailwind container variant has to be a literal its scanner can see;
+ * `lib/__tests__/intraday-layout.test.ts` holds the two together, and there is no
+ * second breakpoint. BOTH DRAWINGS SHIP, which is the price of a correct first
+ * paint: measuring the container on the client would put the wrong geometry in
+ * the first HTML byte and resize it at hydration, on the glance surface #1515
+ * named as the one that cannot spend that.
+ */
+export default function IntradayChart({
+  className,
+  ...drawing
+}: IntradayChartProps) {
+  return (
+    <div
+      className={`@container${className ? ` ${className}` : ""}`}
+      data-testid="intraday-chart"
+    >
+      <IntradayDrawing
+        {...drawing}
+        variant="compact"
+        className="@min-[520px]:hidden"
+      />
+      <IntradayDrawing
+        {...drawing}
+        variant="wide"
+        className="hidden @min-[520px]:block"
+      />
+    </div>
+  );
+}
+
+function IntradayDrawing({
+  model,
+  formatPrefs,
+  variant,
+  className,
+  profileId,
+  selectedWindow = null,
+}: IntradayChartProps & {
+  variant: IntradayVariant;
+  className: string;
 }) {
   // Shared with the day page's add row when a provider is above (#4950); private
   // otherwise, so a chart mounted on its own still zooms and scrubs.
@@ -263,9 +311,9 @@ export default function IntradayChart({
   // computed without looking at `solarDay`/`expectedSleep` at all.
   const daylightBand = daylightBandX(geo, model);
   const expectedSleepBand = expectedSleepBandX(geo, model);
-  // A hatch `<pattern>` needs an id, and this chart mounts TWICE per panel
-  // (compact + wide, both in the DOM at once) — `useId()` keeps the two from
-  // colliding the way a hardcoded id would.
+  // A hatch `<pattern>` needs an id, and every chart draws this pair (compact +
+  // wide, both in the DOM at once) — `useId()` keeps the two from colliding the
+  // way a hardcoded id would.
   const reactId = useId();
   const hatchId = `intraday-expected-sleep-${reactId}`;
 
@@ -532,7 +580,6 @@ export default function IntradayChart({
   return (
     <div
       className={className}
-      data-testid="intraday-chart"
       data-variant={variant}
       data-zoomed={zoomed ? "true" : "false"}
       // The visible window in MINUTES — the machine-readable form of what the
