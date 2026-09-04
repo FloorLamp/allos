@@ -6,6 +6,7 @@
 // the profile's settings (max-HR override, Zone 2 target, week-start, timezone).
 import { db, today } from "../db";
 import { shiftDateStr } from "../date";
+import { cache } from "../request-cache";
 import { weekWindow } from "../week-window";
 import { getHrMinutesInRange, getLatestBodyMetric } from "./metrics";
 import {
@@ -63,6 +64,28 @@ function hrBuckets(
 ): HrBucket[] {
   return getHrMinutesInRange(profileId, since, until);
 }
+
+// The buckets a zone question actually counts: the shared read, kept to the activity
+// windows that bound it. Every zone read below asked this in the same three lines, so
+// it is asked in one place now.
+//
+// REQUEST-CACHED for the same reason the read under it is (#5010, #5061). The scoping
+// is a pass over EVERY minute in the window — `getHrMinutesInRange` joining the request
+// cache made the four dashboard reads share one materialisation, but each still walked
+// it again. Two of them, `getDayLoadInputs` and `getIntensitySignal`, walk the SAME 42
+// days: measured on a snapshot with 144,000 minutes in the window, two passes over all
+// of them for the 86 buckets each kept. `cache()` is identity outside a Next request,
+// so the notify tick and the DB tier behave exactly as before.
+const windowScopedBuckets = cache(function windowScopedBuckets(
+  profileId: number,
+  since: string,
+  until?: string
+): HrBucket[] {
+  return scopeBucketsToWindows(
+    hrBuckets(profileId, since, until),
+    activityWindows(activityWindowInputs(profileId, since))
+  );
+});
 
 // The profile's zone model, or null when no max HR can be resolved (no age and no
 // override). Resting HR (latest body_metrics reading) enables Karvonen.
@@ -128,8 +151,7 @@ export function getTrainingZoneData(
   }
 
   const weekStart = getWeekStart(profileId);
-  const windows = activityWindows(activityWindowInputs(profileId, since));
-  const scoped = scopeBucketsToWindows(buckets, windows);
+  const scoped = windowScopedBuckets(profileId, since, end);
   // weeklyZoneMinutes returns only weeks with data; zero-fill the gaps so a
   // training pause renders as empty weeks instead of compressing away (issue #406)
   // — otherwise a January and a May bar sit adjacent and the Zone-2 target line
@@ -172,9 +194,7 @@ export function getZone2MinutesInWindow(
 ): number | null {
   const model = getProfileZoneModel(profileId);
   if (!model) return null;
-  const buckets = hrBuckets(profileId, start, end);
-  const windows = activityWindows(activityWindowInputs(profileId, start));
-  const scoped = scopeBucketsToWindows(buckets, windows);
+  const scoped = windowScopedBuckets(profileId, start, end);
   return zoneMinuteTotals(scoped, model)[AEROBIC_THRESHOLD_ZONE - 1];
 }
 
@@ -220,9 +240,7 @@ export function getDayLoadInputs(profileId: number, days = 42): DayLoadInput[] {
   // Per-day easy/hard split from window-scoped HR buckets, when a zone model exists.
   const model = getProfileZoneModel(profileId);
   if (model) {
-    const buckets = hrBuckets(profileId, since);
-    const windows = activityWindows(activityWindowInputs(profileId, since));
-    const scoped = scopeBucketsToWindows(buckets, windows);
+    const scoped = windowScopedBuckets(profileId, since);
     const byDay = new Map<string, HrBucket[]>();
     for (const b of scoped) {
       const day = b.ts.slice(0, 10);
@@ -253,8 +271,5 @@ export function getIntensitySignal(
   if (!model) return null;
   const td = today(profileId);
   const since = shiftDateStr(td, -(days - 1));
-  const buckets = hrBuckets(profileId, since);
-  const windows = activityWindows(activityWindowInputs(profileId, since));
-  const scoped = scopeBucketsToWindows(buckets, windows);
-  return polarizedSplit(scoped, model);
+  return polarizedSplit(windowScopedBuckets(profileId, since), model);
 }

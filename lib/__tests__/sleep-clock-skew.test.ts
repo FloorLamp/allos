@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  AWAKE_RUN_MINUTES,
   detectSleepClockSkew,
   MIN_MEDIAN_BPM_GAP,
   type HrMinuteSample,
@@ -14,29 +15,55 @@ const ASLEEP = 58;
 const AWAKE = 74;
 const MIN = 60_000;
 
-// A per-minute trace over [from, to), asleep inside `trough` and awake outside it.
-// `everyNthMinute` thins the trace: 1 is a complete minute-by-minute record, 3 leaves
-// coverage at a third, which is how the no-concurrent-coverage case is built.
+// A per-minute trace over [from, to). Each minute takes the bpm of the first segment
+// that contains it, or AWAKE when none does. `everyNthMinute` thins the trace: 1 is a
+// complete minute-by-minute record, 3 leaves coverage at a third, which is how the
+// no-concurrent-coverage case is built.
+interface Segment {
+  from: string;
+  to: string;
+  bpm: number;
+}
+
+function segmentTrace(
+  from: string,
+  to: string,
+  segments: Segment[],
+  everyNthMinute = 1
+): HrMinuteSample[] {
+  const start = Date.parse(from);
+  const end = Date.parse(to);
+  const bounds = segments.map((s) => ({
+    lo: Date.parse(s.from),
+    hi: Date.parse(s.to),
+    bpm: s.bpm,
+  }));
+  const out: HrMinuteSample[] = [];
+  for (let i = 0; start + i * MIN < end; i++) {
+    if (i % everyNthMinute !== 0) continue;
+    const at = start + i * MIN;
+    const hit = bounds.find((b) => at >= b.lo && at < b.hi);
+    out.push({
+      ts: new Date(at).toISOString().slice(0, 19) + "Z",
+      bpm: hit ? hit.bpm : AWAKE,
+    });
+  }
+  return out;
+}
+
+// The common shape: one trough, awake either side of it.
 function trace(
   from: string,
   to: string,
   trough: { from: string; to: string } | null,
   everyNthMinute = 1
 ): HrMinuteSample[] {
-  const start = Date.parse(from);
-  const end = Date.parse(to);
-  const lo = trough ? Date.parse(trough.from) : 0;
-  const hi = trough ? Date.parse(trough.to) : 0;
-  const out: HrMinuteSample[] = [];
-  for (let i = 0; start + i * MIN < end; i++) {
-    if (i % everyNthMinute !== 0) continue;
-    const at = start + i * MIN;
-    out.push({
-      ts: new Date(at).toISOString().slice(0, 19) + "Z",
-      bpm: trough && at >= lo && at < hi ? ASLEEP : AWAKE,
-    });
-  }
-  return out;
+  return segmentTrace(
+    from,
+    to,
+    trough ? [{ ...trough, bpm: ASLEEP }] : [],
+    everyNthMinute
+  );
 }
 
 // The sighting, in UTC. The exporter stamped the night +6h, so the stored session
@@ -145,6 +172,174 @@ describe("detectSleepClockSkew", () => {
       to: "2026-08-29T15:00:00Z",
     });
     expect(detectSleepClockSkew(SKEWED_SESSION, far)).toBeNull();
+  });
+});
+
+// The SECOND reading (#5020). A shift shorter than the night is long leaves the real
+// trough overlapping the claim, so the median reading above has no comparable window
+// left to stand the claim against. These fixtures differ only in what the claimed
+// window HOLDS: the clocks and the durations are ordinary in every one of them.
+describe("detectSleepClockSkew, the awake-level run", () => {
+  // The 08-27 night on prod: stamped three hours late, so the first two-thirds of the
+  // claim really is the trough and the last three hours are the afternoon.
+  const LATE_SESSION = {
+    start: "2026-08-27T09:53:00Z",
+    end: "2026-08-27T16:31:00Z",
+  };
+  const LATE_DAY_FROM = "2026-08-26T18:00:00Z";
+  const LATE_DAY_TO = "2026-08-27T22:00:00Z";
+  const lateTrace = (everyNthMinute = 1): HrMinuteSample[] =>
+    segmentTrace(
+      LATE_DAY_FROM,
+      LATE_DAY_TO,
+      [
+        {
+          from: "2026-08-27T07:00:00Z",
+          to: "2026-08-27T13:30:00Z",
+          bpm: ASLEEP,
+        },
+      ],
+      everyNthMinute
+    );
+
+  it("flags a shift shorter than the session, which the median reading cannot see", () => {
+    const found = detectSleepClockSkew(LATE_SESSION, lateTrace());
+    expect(found).not.toBeNull();
+    // The median reading really is blind here: the bulk of the claim IS the trough, so
+    // its median sits BELOW every comparable window in the day. Only the run speaks.
+    expect(found!.claimedBpm).toBe(ASLEEP);
+    expect(found!.claimedBpm - found!.troughBpm).toBeLessThan(
+      MIN_MEDIAN_BPM_GAP
+    );
+    expect(found!.awakeRun).not.toBeNull();
+    expect(found!.awakeRun!.bpm).toBe(AWAKE);
+    // The run it names is the afternoon inside the claim, not the night before it.
+    // Runs are found on the quarter-hour grid, so the first block can straddle the
+    // moment the body woke and the start can sit up to one block before it.
+    const runAt = Date.parse(found!.awakeRun!.start);
+    expect(runAt).toBeGreaterThanOrEqual(
+      Date.parse("2026-08-27T13:30:00Z") - 15 * MIN
+    );
+    expect(runAt + AWAKE_RUN_MINUTES * MIN).toBeLessThanOrEqual(
+      Date.parse(LATE_SESSION.end)
+    );
+  });
+
+  it("names no run on a night the median reading catches on its own", () => {
+    // The already-shipped case. Its copy quotes an equally long window holding the
+    // overnight low, and that window exists, so the finding must not switch sentences.
+    const found = detectSleepClockSkew(
+      SKEWED_SESSION,
+      trace(DAY_FROM, DAY_TO, {
+        from: "2026-08-30T03:39:00Z",
+        to: "2026-08-30T08:37:00Z",
+      })
+    );
+    expect(found!.awakeRun).toBeNull();
+  });
+
+  it.each([
+    [
+      // THE DISCRIMINATING NEGATIVE. A real night that ends with the person awake in
+      // bed. The tail is real awake-level heart rate inside the claimed window — it is
+      // just far short of a run, which is the whole reason the length is a declared
+      // number and not a judgement call.
+      "a real night with a 30-minute awake tail",
+      { start: "2026-08-27T02:00:00Z", end: "2026-08-27T08:00:00Z" },
+      segmentTrace(LATE_DAY_FROM, LATE_DAY_TO, [
+        {
+          from: "2026-08-27T02:00:00Z",
+          to: "2026-08-27T07:30:00Z",
+          bpm: ASLEEP,
+        },
+      ]),
+    ],
+    [
+      // One quarter-hour short of the bound. The run length is load-bearing: widen the
+      // awake block to AWAKE_RUN_MINUTES and this same shape flags.
+      "an awake block a quarter-hour short of the bound",
+      { start: "2026-08-27T02:00:00Z", end: "2026-08-27T10:00:00Z" },
+      segmentTrace(LATE_DAY_FROM, LATE_DAY_TO, [
+        {
+          from: "2026-08-27T05:00:00Z",
+          to: "2026-08-27T06:45:00Z",
+          bpm: AWAKE,
+        },
+        {
+          from: "2026-08-27T02:00:00Z",
+          to: "2026-08-27T10:00:00Z",
+          bpm: ASLEEP,
+        },
+      ]),
+    ],
+    [
+      // The AWAKE ANCHOR is load-bearing. This person's day runs at 90, so a two-hour
+      // stretch at 70 inside the night is elevated against the night — 12 bpm above its
+      // median, clear of MIN_MEDIAN_BPM_GAP — and still nowhere near their daytime. An
+      // ordinary night's own variation must never be enough on its own.
+      "a raised stretch that never reaches the person's own daytime level",
+      { start: "2026-08-27T02:00:00Z", end: "2026-08-27T10:00:00Z" },
+      segmentTrace(
+        LATE_DAY_FROM,
+        LATE_DAY_TO,
+        [
+          { from: "2026-08-27T05:00:00Z", to: "2026-08-27T07:00:00Z", bpm: 70 },
+          {
+            from: "2026-08-27T02:00:00Z",
+            to: "2026-08-27T10:00:00Z",
+            bpm: ASLEEP,
+          },
+        ],
+        1
+      ).map((s) =>
+        s.ts < "2026-08-27T02:00:00Z" || s.ts >= "2026-08-27T10:00:00Z"
+          ? { ...s, bpm: 90 }
+          : s
+      ),
+    ],
+    [
+      // Coverage gates the second reading exactly as it gates the first: a trace this
+      // thin can never flag, however the claimed hours look.
+      "the same late night with no concurrent HR coverage",
+      LATE_SESSION,
+      lateTrace(3),
+    ],
+    [
+      // The claim carries coverage overall and the stretch that WOULD be the run does
+      // not. A run is gated block by block, so a run cannot become a way around the
+      // coverage rule the first reading already obeys.
+      "a claim covered overall but sparse exactly where the run would be",
+      LATE_SESSION,
+      lateTrace().filter(
+        (s, i) => s.ts < "2026-08-27T13:30:00Z" || i % 3 === 0
+      ),
+    ],
+  ])("stays silent on %s", (_case, session, hr) => {
+    expect(detectSleepClockSkew(session, hr)).toBeNull();
+  });
+
+  it("also flags a real night stamped across a full two-hour arousal", () => {
+    // The declared reach, recorded rather than hidden. FRAGMENT_MERGE_GAP_MAX_MIN is
+    // the repo's bound on the longest awake gap still inside ONE night, so a source
+    // that stamps a single session across a longer one is contradicted by the repo's
+    // own number. `mainSleepPeriod` would already have called this two nights.
+    const found = detectSleepClockSkew(
+      { start: "2026-08-27T02:00:00Z", end: "2026-08-27T10:00:00Z" },
+      segmentTrace(LATE_DAY_FROM, LATE_DAY_TO, [
+        {
+          from: "2026-08-27T05:00:00Z",
+          to: "2026-08-27T07:00:00Z",
+          bpm: AWAKE,
+        },
+        {
+          from: "2026-08-27T02:00:00Z",
+          to: "2026-08-27T10:00:00Z",
+          bpm: ASLEEP,
+        },
+      ])
+    );
+    expect(found).not.toBeNull();
+    expect(found!.awakeRun!.start).toBe("2026-08-27T05:00:00Z");
   });
 });
 

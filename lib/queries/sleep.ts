@@ -23,6 +23,7 @@ import {
   OURA_READINESS_SCORE_METRIC,
 } from "../integrations/oura";
 import { HEALTH_CONNECT_ID } from "../integrations/health-connect";
+import { restampedTwinPairs } from "../integrations/sleep-overlap-db";
 import { sleepOverlapPairs, type SleepSessionRow } from "../sleep-overlap";
 import { getMoodLogs } from "./mood";
 import { getSuspectSleepSessions } from "./sleep-clock-skew";
@@ -927,7 +928,13 @@ export function getOverlappingSleepSessions(
       HEALTH_CONNECT_ID,
       shiftDateStr(today(profileId), -SLEEP_OVERLAP_REVIEW_DAYS)
     ) as (SleepSessionRow & { date: string; value: number })[];
-  return sleepOverlapPairs(rows).map(({ a, b }) => ({
+  // The twin rule needs the stage read, so it lives with the store half; Review lists
+  // what the collapse pairs, or a pair it left undecided would never reach the person
+  // (#5020).
+  return [
+    ...sleepOverlapPairs(rows),
+    ...restampedTwinPairs(profileId, HEALTH_CONNECT_ID, rows),
+  ].map(({ a, b }) => ({
     // `sleepOverlapPairs` only pairs rows of one non-null origin, so either side names it.
     origin: a.origin as string,
     sessions: [a, b].map((s) => ({
