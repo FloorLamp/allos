@@ -386,3 +386,100 @@ describe("what the rule may never touch", () => {
     expect(getOverlappingSleepSessions(profileId)).toEqual([]);
   });
 });
+
+// ── the twin shifted further than it is long (#5020) ──────────────────────────
+//
+// The prod shape: Fitbit re-sent one 298-minute night stamped six hours late, and
+// because the shift is longer than the night the two rows never touch. `windowsOverlap`
+// is blind to that by construction, so before this the pair was not a pair — the ingest
+// rule never looked at it, and Data → Review never listed it.
+//
+// Nothing about the DECISION changes here. These cases are about which rows reach it,
+// and the second one is the point: reaching the decision is not the same as the decision
+// being able to answer.
+describe("a re-timed night whose shift is longer than the night", () => {
+  // 03:39 → 08:37, and the same 298 minutes stamped +6h.
+  const early = () => ({ start: at(day1, "03:39"), end: at(day1, "08:37") });
+  const late = () => ({ start: at(day1, "09:39"), end: at(day1, "14:37") });
+
+  /** Awake at 76 across the day, with the body's trough where it is given. */
+  const dayWithTrough = (from: string, to: string) => [
+    ...hrRun(at(day1, "00:00"), from, 76),
+    ...hrRun(from, to, 55),
+    ...hrRun(to, at(day1, "18:00"), 76),
+  ];
+
+  function pushTwin(second: { start: string; end: string }, hr: Rec[]) {
+    push({
+      timestamp: at(day1, "19:00"),
+      sleep: [session(early().start, early().end, 4)],
+      heart_rate: hr,
+    });
+    return push({
+      timestamp: at(day1, "20:00"),
+      sleep: [session(second.start, second.end, 4)],
+    });
+  }
+
+  it("collapses to the window the heart rate corroborates", () => {
+    // The trough ends where the late copy begins, so that copy is awake end to end and
+    // exactly one window reads as sleep — the condition the rule has always required.
+    pushTwin(late(), dayWithTrough(at(day1, "04:00"), at(day1, "09:39")));
+    const stored = sessionsInStore();
+    expect(stored).toHaveLength(1);
+    expect(stored[0].started_at).toBe(early().start);
+    // The loser's key is tombstoned, so a re-send cannot resurrect it.
+    expect(
+      tombstones().has(
+        metricSampleTombstoneKey("sleep_min", HC, ORIGIN, late().start)
+      )
+    ).toBe(true);
+    // Its stages went with it: one wake day of stage rows, the winner's.
+    expect(stageDates()).toHaveLength(1);
+    expect(getOverlappingSleepSessions(profileId)).toEqual([]);
+  });
+
+  it("lists the prod pair rather than deciding it, because both windows read as sleep", () => {
+    // THE 08-30 SIGHTING, unretouched: trough 04:00 → 11:00 against a late copy starting
+    // at 09:39. The late copy carries 81 minutes of the real trough, which drags its mean
+    // under the person's own awake reference, so BOTH windows corroborate and the rule
+    // refuses — correctly, by its own standard. Widening the pairing makes this pair
+    // VISIBLE; it does not make it decidable, and it was worth measuring rather than
+    // assuming: `mainSleepPeriod` still merges these two edges 62 minutes apart into one
+    // 596-minute night, which is #5020's third mechanism and is not fixed here.
+    pushTwin(late(), dayWithTrough(at(day1, "04:00"), at(day1, "11:00")));
+    expect(sessionsInStore()).toHaveLength(2);
+    expect(tombstones().size).toBe(0);
+    const pairs = getOverlappingSleepSessions(profileId);
+    expect(pairs).toHaveLength(1);
+    expect(pairs[0].origin).toBe(ORIGIN);
+    expect(pairs[0].sessions.map((s) => s.started_at).sort()).toEqual(
+      [early().start, late().start].sort()
+    );
+  });
+
+  it("is not a pair when the shift is off the zone grid", () => {
+    // 6 h 07 m. A clock error lands on a quarter-hour because every zone offset does;
+    // a translation that does not is two different spans that happen to be equally long.
+    pushTwin(
+      { start: at(day1, "09:46"), end: at(day1, "14:44") },
+      dayWithTrough(at(day1, "04:00"), at(day1, "09:39"))
+    );
+    expect(sessionsInStore()).toHaveLength(2);
+    expect(tombstones().size).toBe(0);
+    expect(getOverlappingSleepSessions(profileId)).toEqual([]);
+  });
+
+  it("is not a pair when the two windows are different lengths", () => {
+    // The same six-hour shift, but a minute shorter. A re-write carries the session's
+    // own duration; two spans of different length are not one span twice, which is what
+    // keeps #1191's uneven fragments out of this arm.
+    pushTwin(
+      { start: at(day1, "09:39"), end: at(day1, "14:36") },
+      dayWithTrough(at(day1, "04:00"), at(day1, "09:39"))
+    );
+    expect(sessionsInStore()).toHaveLength(2);
+    expect(tombstones().size).toBe(0);
+    expect(getOverlappingSleepSessions(profileId)).toEqual([]);
+  });
+});

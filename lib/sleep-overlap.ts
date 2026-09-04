@@ -83,15 +83,61 @@ export interface SleepOverlapPair<T extends SleepSessionRow = SleepSessionRow> {
   bEndMs: number;
 }
 
+// A zone offset is a whole number of quarter-hours — every IANA offset in use is, so
+// the DIFFERENCE between two of them is too. This is the grid a mis-stamp lands on, and
+// nothing finer: a translation that is not a multiple of it is not a clock error.
+const ZONE_STEP_MS = 15 * 60_000;
+
+/**
+ * Are these two windows the SAME session translated by a clock error?
+ *
+ * The pure translation test, and it is the exact complement of `windowsOverlap` rather
+ * than a second opinion about the same span: an overlap can only happen when the shift
+ * is SHORTER than the session, so a re-stamp shifted further than the session is long
+ * leaves two windows that never touch and there is no other rule that can see them
+ * (#5020 — a 6-hour Fitbit error on a night under 6 hours long). Together the two tests
+ * cover every shift once.
+ *
+ * Both terms are about the shift, not about sleep:
+ *
+ *   * IDENTICAL LENGTH, to the millisecond. A re-write carries the same session — the
+ *     duration is a property of the sleep and the clock error moves both ends equally —
+ *     so a pair whose lengths differ at all is two different spans and not one span
+ *     twice. This is also what keeps #1191's fragmented night out: its pieces are a
+ *     four-hour block and a ninety-minute one, and two fragments of EXACTLY equal
+ *     length are the coincidence, not the rule.
+ *   * A SHIFT ON THE ZONE GRID. `ZONE_STEP_MS` above.
+ *
+ * Neither term asks whether either window looks like sleep, and this function must not:
+ * that is `decideSleepOverlap`'s question, asked of the person's own heart rate, and a
+ * pair this widening admits wrongly reaches it with both windows corroborated and is
+ * left standing. The cost of being too generous here is a pair LISTED in Data → Review
+ * that a person can dismiss, never a deletion.
+ */
+function sameSessionTranslated(
+  aStartMs: number,
+  aEndMs: number,
+  bStartMs: number,
+  bEndMs: number
+): boolean {
+  if (aEndMs - aStartMs !== bEndMs - bStartMs) return false;
+  const shift = Math.abs(bStartMs - aStartMs);
+  return shift > 0 && shift % ZONE_STEP_MS === 0;
+}
+
 /**
  * The pairs of stored sessions that cannot both be real.
  *
- * SAME ORIGIN, OVERLAPPING, DIFFERENT KEYS. One person, recorded by one package, cannot
- * be asleep in two overlapping sessions — so an overlap inside an origin is a re-write.
- * A NULL origin is UNKNOWN and is never treated as shared: two packages that set no
- * `metadata.data_origin` both parse to NULL, and pairing them would let one device's
- * session delete another's. The #1191 fragmented night is untouched by construction —
- * fragments are separated by an awake gap, so they do not overlap.
+ * SAME ORIGIN, DIFFERENT KEYS, AND EITHER OVERLAPPING OR THE SAME WINDOW TRANSLATED. One
+ * person, recorded by one package, cannot be asleep in two overlapping sessions — so an
+ * overlap inside an origin is a re-write. A NULL origin is UNKNOWN and is never treated
+ * as shared: two packages that set no `metadata.data_origin` both parse to NULL, and
+ * pairing them would let one device's session delete another's.
+ *
+ * The second arm is `sameSessionTranslated` above (#5020): the re-write whose shift is
+ * longer than the session, which overlap can never see. The #1191 fragmented night stays
+ * untouched under both — its pieces are separated by an awake gap so they do not
+ * overlap, and they are different lengths so they are not one window twice.
  */
 export function sleepOverlapPairs<T extends SleepSessionRow>(
   sessions: readonly T[]
@@ -115,7 +161,10 @@ export function sleepOverlapPairs<T extends SleepSessionRow>(
         bEndMs === null
       )
         continue;
-      if (!windowsOverlap(a.started_at, a.ended_at, b.started_at, b.ended_at))
+      if (
+        !windowsOverlap(a.started_at, a.ended_at, b.started_at, b.ended_at) &&
+        !sameSessionTranslated(aStartMs, aEndMs, bStartMs, bEndMs)
+      )
         continue;
       pairs.push({ a, b, aStartMs, aEndMs, bStartMs, bEndMs });
     }
