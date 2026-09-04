@@ -1091,13 +1091,36 @@ test("canonical activity navigation stays compact on a ride", async ({
   for (const groupName of ["Comparison metric", "Recorded metrics"]) {
     const group = page.getByRole("group", { name: groupName });
     await expect(group).toBeVisible();
-    const widths = await group
-      .getByRole("button")
-      .evaluateAll((buttons) =>
-        buttons.map((button) => button.getBoundingClientRect().width)
-      );
-    expect(widths.length).toBeGreaterThan(1);
-    expect(widths.every((width) => width >= TAP_FLOOR_PX)).toBe(true);
+    const boxes = await group.getByRole("button").evaluateAll((buttons) =>
+      buttons.map((button) => {
+        const box = button.getBoundingClientRect();
+        return { width: box.width, height: box.height };
+      })
+    );
+    expect(boxes.length).toBeGreaterThan(1);
+    expect(boxes.every((box) => box.width >= TAP_FLOOR_PX)).toBe(true);
+    // EVERY OPTION IS ONE CONTROL BOX TALL (#5002). A label that has wrapped is a
+    // label that broke — these strips held seven metrics in a 342px track as equal
+    // segments, so the only wrap available was inside the word ("Weigh ted powe r").
+    // Asserting the TEXT is intact would pass on a broken word; the HEIGHT is what a
+    // reader actually experiences.
+    //
+    // Equality with the shortest is the whole test, and it is not vacuous: both groups
+    // carry a one-word label ("Speed", "Power") that cannot break, so a group whose
+    // options are all the same height is a group where nothing wrapped. Pinning an
+    // absolute height instead would pin the chip's own geometry, which is the design
+    // system's to change.
+    const shortest = Math.min(...boxes.map((box) => box.height));
+    expect(boxes.every((box) => Math.abs(box.height - shortest) <= 1)).toBe(
+      true
+    );
+    // And it WRAPS rather than scrolling, so the card it sits in still does not
+    // overflow — the assertion two blocks up, which a bleeding scroll strip breaks.
+    expect(
+      await group.evaluate(
+        (element) => element.scrollWidth <= element.clientWidth + 1
+      )
+    ).toBe(true);
   }
   expect(
     await page
