@@ -26,9 +26,10 @@ import { getTravelSwitches } from "./settings/travel";
 import {
   connectedTimezoneSwitchHistory,
   isExcusedSlot,
+  resolveSwitchHistory,
   zoneInChainAt,
   type ProfileDayZone,
-  type TimezoneSwitch,
+  type ResolvedSwitch,
 } from "./travel-timezone";
 
 // The profile-local minute a reminder window fires at: the configured time, or the
@@ -44,7 +45,7 @@ export function windowSlotMinute(
 
 // Whether a dose in `bucket` was excused on profile-local day `date`.
 export function isDoseSlotExcused(
-  switches: readonly TimezoneSwitch[],
+  history: readonly ResolvedSwitch[],
   slotMinutes: Record<ReminderWindow, number | null>,
   bucket: TimeBucket,
   date: string
@@ -52,7 +53,7 @@ export function isDoseSlotExcused(
   if (bucket === "Anytime") return false;
   const window = bucketWindow(bucket);
   return isExcusedSlot(
-    switches,
+    history,
     date,
     windowSlotMinute(window, slotMinutes[window])
   );
@@ -67,16 +68,18 @@ export type DoseExcusalResolver = (
 ) => boolean;
 
 export function travelExcusalResolver(profileId: number): DoseExcusalResolver {
-  const switches = connectedTimezoneSwitchHistory(
+  // Gated AND resolved once (#5010): every switch's two local positions are computed
+  // here rather than per dose slot, which is what the strip was paying `Intl` for.
+  const history = resolveSwitchHistory(
     getTravelSwitches(profileId),
     getTimezone(profileId)
   );
   // The overwhelmingly common case: nobody has travelled, so nothing is excused and
   // neither the schedule read nor the per-day work is worth doing.
-  if (switches.length === 0) return () => false;
+  if (history.length === 0) return () => false;
   const slotMinutes = getNotifySchedule(profileId).supplementMinutes;
   return (timeOfDay, date) =>
-    isDoseSlotExcused(switches, slotMinutes, timeBucket(timeOfDay), date);
+    isDoseSlotExcused(history, slotMinutes, timeBucket(timeOfDay), date);
 }
 
 // The profile's day zone for DATED reads (#4025) — the sibling of the excusal
@@ -100,9 +103,9 @@ export function profileDayZone(profileId: number): ProfileDayZone {
 // this profile-local day? Same switches, same minute, so a slot the denominator
 // forgives is a slot the tick stays silent about.
 export function isReminderSlotExcused(
-  switches: readonly TimezoneSwitch[],
+  history: readonly ResolvedSwitch[],
   date: string,
   slotMinute: number
 ): boolean {
-  return isExcusedSlot(switches, date, slotMinute);
+  return isExcusedSlot(history, date, slotMinute);
 }

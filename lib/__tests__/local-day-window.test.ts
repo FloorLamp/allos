@@ -3,9 +3,11 @@ import {
   localDayOf,
   localDayRange,
   localDaySpan,
+  localMinuteProjector,
   offsetModifier,
   offsetSegments,
 } from "../local-day-window";
+import { zonedMinuteStr } from "../date";
 
 // The read-time day attribution behind the hr_minutes conversion (#2205 / #94).
 // These pin the two properties the SQL depends on: a local day maps to the RIGHT
@@ -188,5 +190,77 @@ describe("localDayOf", () => {
 
   it("is null on an unparseable stamp rather than guessing a day", () => {
     expect(localDayOf(NY, "not-a-time")).toBeNull();
+  });
+});
+
+// ---- localMinuteProjector: the arithmetic must BE the Intl answer (#5010) ----
+//
+// The projector replaces ~350,000 per-render `formatToParts` calls with addition, and
+// the only thing that makes that safe is that the two agree EXACTLY. So the guard is
+// equivalence against `zonedMinuteStr` itself — the function it replaces — swept minute
+// by minute ACROSS each boundary rather than sampled inside a segment, because a wrong
+// offset derivation is invisible mid-segment and only shows at the seam.
+describe("localMinuteProjector — equivalence with the per-row Intl projection", () => {
+  // Every minute of a 3-day span centred on the seam, so the sweep contains the
+  // transition instant itself, the repeated hour, and the skipped hour.
+  const sweep = (tz: string, fromUtc: string, hours: number) => {
+    const start = Date.parse(fromUtc);
+    const endUtc = new Date(start + hours * 3_600_000).toISOString().slice(0, 19) + "Z";
+    const project = localMinuteProjector(tz, fromUtc, endUtc);
+    const disagreements: string[] = [];
+    for (let m = 0; m < hours * 60; m++) {
+      const at = new Date(start + m * 60_000);
+      const ts = at.toISOString().slice(0, 19) + "Z";
+      const arithmetic = project(ts);
+      const intl = zonedMinuteStr(tz, at);
+      if (arithmetic !== intl) disagreements.push(`${ts}: ${arithmetic} != ${intl}`);
+    }
+    return disagreements;
+  };
+
+  // Both DST directions, a 30-minute DST step, two non-hour standard offsets, and a
+  // zone that never transitions — the offset shapes the arithmetic has to survive.
+  it.each([
+    ["America/New_York spring forward", "America/New_York", "2026-03-07T00:00:00Z", 72],
+    ["America/New_York fall back", "America/New_York", "2026-10-31T00:00:00Z", 72],
+    ["Australia/Lord_Howe 30-minute step", "Australia/Lord_Howe", "2026-04-03T00:00:00Z", 72],
+    ["Pacific/Chatham +12:45/+13:45", "Pacific/Chatham", "2026-04-03T00:00:00Z", 72],
+    ["Asia/Kathmandu +05:45, no transition", "Asia/Kathmandu", "2026-03-07T00:00:00Z", 72],
+    ["UTC", "UTC", "2026-03-07T00:00:00Z", 72],
+  ])("agrees every minute across %s", (_label, tz, fromUtc, hours) => {
+    expect(sweep(tz, fromUtc, hours as number)).toEqual([]);
+  });
+
+  // The seam itself, named rather than left to the sweep: a row stamped at the exact
+  // transition instant must read the INCOMING offset. This is the case a segment cut
+  // that is even one second late gets wrong, and the sweep would report it as one line
+  // among 4320 — so it is asserted on its own.
+  it("dates the row ON the transition instant under the offset that just began", () => {
+    const project = localMinuteProjector(
+      "America/New_York",
+      "2026-03-07T00:00:00Z",
+      "2026-03-10T00:00:00Z"
+    );
+    // 07:00Z is the instant EST(-05:00) becomes EDT(-04:00): 02:00 becomes 03:00.
+    expect(project("2026-03-08T06:59:00Z")).toBe("2026-03-08T01:59");
+    expect(project("2026-03-08T07:00:00Z")).toBe("2026-03-08T03:00");
+    expect(zonedMinuteStr("America/New_York", new Date("2026-03-08T07:00:00Z"))).toBe(
+      "2026-03-08T03:00"
+    );
+  });
+
+  // A travel switch moves the profile's zone, and this reader projects a whole span
+  // through ONE zone (the current one) — so a switch does not segment the span, it
+  // re-reads it. Both sides must equal the per-row projection under that same zone,
+  // which is what keeps #3428's "zone resolved at the instant" honesty unchanged.
+  it("re-reads a span identically under each side of a travel switch", () => {
+    for (const tz of ["Asia/Tokyo", "Pacific/Honolulu"]) {
+      expect(sweep(tz, "2026-05-01T00:00:00Z", 48)).toEqual([]);
+    }
+  });
+
+  it("returns null for an unparseable stamp rather than dating it", () => {
+    const project = localMinuteProjector(NY, "2026-01-01T05:00:00Z", "2026-01-02T05:00:00Z");
+    expect(project("not-an-instant")).toBeNull();
   });
 });

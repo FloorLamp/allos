@@ -10,6 +10,7 @@ import {
   localPositionIn,
   neverOccurred,
   occurredTwice,
+  resolveSwitchHistory,
   parseTimezoneSwitches,
   resolveSwitch,
   serializeTimezoneSwitches,
@@ -97,25 +98,30 @@ describe("resolveSwitch", () => {
   });
 });
 
+// The predicates take a switch ALREADY resolved (#5010) — the resolution is hoisted to
+// the profile so a strip does not pay `Intl` per slot. A single switch is always a
+// connected chain, so this is the one-switch spelling of resolveSwitchHistory.
+const resolved = (sw: TimezoneSwitch) => resolveSwitchHistory([sw])[0];
+
 describe("neverOccurred — the eastward vanished span", () => {
   const flight: TimezoneSwitch = { at: NOON_UTC, from: NY, to: TOKYO };
 
   it("covers the wall clock the switch jumped over", () => {
     // 10:00 → 23:00 on the same local date: midday, evening and bedtime all
     // vanished for this traveller.
-    expect(neverOccurred(flight, { day: "2026-05-01", minute: MIDDAY })).toBe(
+    expect(neverOccurred(resolved(flight), { day: "2026-05-01", minute: MIDDAY })).toBe(
       true
     );
-    expect(neverOccurred(flight, { day: "2026-05-01", minute: EVENING })).toBe(
+    expect(neverOccurred(resolved(flight), { day: "2026-05-01", minute: EVENING })).toBe(
       true
     );
-    expect(neverOccurred(flight, { day: "2026-05-01", minute: BEDTIME })).toBe(
+    expect(neverOccurred(resolved(flight), { day: "2026-05-01", minute: BEDTIME })).toBe(
       true
     );
   });
 
   it("leaves the wall clock BEFORE the jump alone — that morning happened", () => {
-    expect(neverOccurred(flight, { day: "2026-05-01", minute: MORNING })).toBe(
+    expect(neverOccurred(resolved(flight), { day: "2026-05-01", minute: MORNING })).toBe(
       false
     );
   });
@@ -123,25 +129,25 @@ describe("neverOccurred — the eastward vanished span", () => {
   it("is open at BOTH ends: the minute left and the minute landed on both happened", () => {
     // The traveller was reading 10:00 when they switched, and 23:00 immediately
     // after. Closing either end would excuse a dose they could have taken.
-    expect(neverOccurred(flight, { day: "2026-05-01", minute: 10 * 60 })).toBe(
+    expect(neverOccurred(resolved(flight), { day: "2026-05-01", minute: 10 * 60 })).toBe(
       false
     );
-    expect(neverOccurred(flight, { day: "2026-05-01", minute: 23 * 60 })).toBe(
+    expect(neverOccurred(resolved(flight), { day: "2026-05-01", minute: 23 * 60 })).toBe(
       false
     );
     expect(
-      neverOccurred(flight, { day: "2026-05-01", minute: 10 * 60 + 1 })
+      neverOccurred(resolved(flight), { day: "2026-05-01", minute: 10 * 60 + 1 })
     ).toBe(true);
     expect(
-      neverOccurred(flight, { day: "2026-05-01", minute: 23 * 60 - 1 })
+      neverOccurred(resolved(flight), { day: "2026-05-01", minute: 23 * 60 - 1 })
     ).toBe(true);
   });
 
   it("does not reach the next local day — the day after a switch is ordinary", () => {
-    expect(neverOccurred(flight, { day: "2026-05-02", minute: MORNING })).toBe(
+    expect(neverOccurred(resolved(flight), { day: "2026-05-02", minute: MORNING })).toBe(
       false
     );
-    expect(neverOccurred(flight, { day: "2026-04-30", minute: EVENING })).toBe(
+    expect(neverOccurred(resolved(flight), { day: "2026-04-30", minute: EVENING })).toBe(
       false
     );
   });
@@ -154,22 +160,22 @@ describe("neverOccurred — the eastward vanished span", () => {
       to: TOKYO,
     };
     expect(
-      neverOccurred(dateLine, { day: "2026-05-01", minute: EVENING })
+      neverOccurred(resolved(dateLine), { day: "2026-05-01", minute: EVENING })
     ).toBe(true);
-    expect(neverOccurred(dateLine, { day: "2026-05-02", minute: 5 * 60 })).toBe(
+    expect(neverOccurred(resolved(dateLine), { day: "2026-05-02", minute: 5 * 60 })).toBe(
       true
     );
     expect(
-      neverOccurred(dateLine, { day: "2026-05-02", minute: MORNING })
+      neverOccurred(resolved(dateLine), { day: "2026-05-02", minute: MORNING })
     ).toBe(false);
     expect(
-      neverOccurred(dateLine, { day: "2026-05-01", minute: MORNING })
+      neverOccurred(resolved(dateLine), { day: "2026-05-01", minute: MORNING })
     ).toBe(false);
   });
 
   it("never fires for a westward or a level switch", () => {
     const westward: TimezoneSwitch = { at: NOON_UTC, from: TOKYO, to: NY };
-    expect(neverOccurred(westward, { day: "2026-05-01", minute: MIDDAY })).toBe(
+    expect(neverOccurred(resolved(westward), { day: "2026-05-01", minute: MIDDAY })).toBe(
       false
     );
     const level: TimezoneSwitch = {
@@ -177,7 +183,7 @@ describe("neverOccurred — the eastward vanished span", () => {
       from: "Europe/Paris",
       to: "Europe/Berlin",
     };
-    expect(neverOccurred(level, { day: "2026-05-01", minute: MIDDAY })).toBe(
+    expect(neverOccurred(resolved(level), { day: "2026-05-01", minute: MIDDAY })).toBe(
       false
     );
   });
@@ -188,31 +194,31 @@ describe("occurredTwice — the westward repeated span", () => {
 
   it("covers the wall clock the profile lives through a second time", () => {
     // 23:00 back to 10:00 on the same local date.
-    expect(occurredTwice(flight, { day: "2026-05-01", minute: MIDDAY })).toBe(
+    expect(occurredTwice(resolved(flight), { day: "2026-05-01", minute: MIDDAY })).toBe(
       true
     );
-    expect(occurredTwice(flight, { day: "2026-05-01", minute: EVENING })).toBe(
+    expect(occurredTwice(resolved(flight), { day: "2026-05-01", minute: EVENING })).toBe(
       true
     );
   });
 
   it("is closed at BOTH ends: the clock stands on one and runs back through the other", () => {
-    expect(occurredTwice(flight, { day: "2026-05-01", minute: 10 * 60 })).toBe(
+    expect(occurredTwice(resolved(flight), { day: "2026-05-01", minute: 10 * 60 })).toBe(
       true
     );
-    expect(occurredTwice(flight, { day: "2026-05-01", minute: 23 * 60 })).toBe(
+    expect(occurredTwice(resolved(flight), { day: "2026-05-01", minute: 23 * 60 })).toBe(
       true
     );
     expect(
-      occurredTwice(flight, { day: "2026-05-01", minute: 10 * 60 - 1 })
+      occurredTwice(resolved(flight), { day: "2026-05-01", minute: 10 * 60 - 1 })
     ).toBe(false);
     expect(
-      occurredTwice(flight, { day: "2026-05-01", minute: 23 * 60 + 1 })
+      occurredTwice(resolved(flight), { day: "2026-05-01", minute: 23 * 60 + 1 })
     ).toBe(false);
   });
 
   it("leaves the morning already taken before the jump outside the span", () => {
-    expect(occurredTwice(flight, { day: "2026-05-01", minute: MORNING })).toBe(
+    expect(occurredTwice(resolved(flight), { day: "2026-05-01", minute: MORNING })).toBe(
       false
     );
   });
@@ -225,19 +231,19 @@ describe("occurredTwice — the westward repeated span", () => {
       to: HONOLULU,
     };
     expect(
-      occurredTwice(dateLine, { day: "2026-05-01", minute: EVENING })
+      occurredTwice(resolved(dateLine), { day: "2026-05-01", minute: EVENING })
     ).toBe(true);
-    expect(occurredTwice(dateLine, { day: "2026-05-02", minute: 5 * 60 })).toBe(
+    expect(occurredTwice(resolved(dateLine), { day: "2026-05-02", minute: 5 * 60 })).toBe(
       true
     );
     expect(
-      occurredTwice(dateLine, { day: "2026-05-02", minute: MORNING })
+      occurredTwice(resolved(dateLine), { day: "2026-05-02", minute: MORNING })
     ).toBe(false);
   });
 
   it("never fires for an eastward switch", () => {
     const eastward: TimezoneSwitch = { at: NOON_UTC, from: NY, to: TOKYO };
-    expect(occurredTwice(eastward, { day: "2026-05-01", minute: MIDDAY })).toBe(
+    expect(occurredTwice(resolved(eastward), { day: "2026-05-01", minute: MIDDAY })).toBe(
       false
     );
   });
@@ -251,7 +257,7 @@ describe("isExcusedSlot / isRepeatedSlot over a history", () => {
   ];
 
   it("excuses a slot the complete trip trajectory never contained", () => {
-    expect(isExcusedSlot(history, "2026-05-01", EVENING)).toBe(true);
+    expect(isExcusedSlot(resolveSwitchHistory(history), "2026-05-01", EVENING)).toBe(true);
   });
 
   it("re-arms a skipped slot when a later reverse switch makes it occur", () => {
@@ -261,8 +267,8 @@ describe("isExcusedSlot / isRepeatedSlot over a history", () => {
     ];
     // 10:00 -> 23:00 skips noon, then 23:01 -> 10:01 puts noon back ahead
     // of the profile. Across the combined trajectory it occurs exactly once.
-    expect(isExcusedSlot(quickReturn, "2026-05-01", MIDDAY)).toBe(false);
-    expect(isRepeatedSlot(quickReturn, "2026-05-01", MIDDAY)).toBe(false);
+    expect(isExcusedSlot(resolveSwitchHistory(quickReturn), "2026-05-01", MIDDAY)).toBe(false);
+    expect(isRepeatedSlot(resolveSwitchHistory(quickReturn), "2026-05-01", MIDDAY)).toBe(false);
   });
 
   it("ignores a duplicate crossing instead of cancelling a legitimate return", () => {
@@ -271,8 +277,8 @@ describe("isExcusedSlot / isRepeatedSlot over a history", () => {
       { at: "2026-05-01T14:00:00Z", from: NY, to: TOKYO },
       { at: "2026-05-01T14:01:00Z", from: TOKYO, to: NY },
     ];
-    expect(isExcusedSlot(duplicatedOutbound, "2026-05-01", MIDDAY)).toBe(false);
-    expect(isRepeatedSlot(duplicatedOutbound, "2026-05-01", MIDDAY)).toBe(
+    expect(isExcusedSlot(resolveSwitchHistory(duplicatedOutbound), "2026-05-01", MIDDAY)).toBe(false);
+    expect(isRepeatedSlot(resolveSwitchHistory(duplicatedOutbound), "2026-05-01", MIDDAY)).toBe(
       false
     );
   });
@@ -285,7 +291,7 @@ describe("isExcusedSlot / isRepeatedSlot over a history", () => {
     // Paris 16:01 → Tokyo 23:01 appears to skip 20:00, but the unrecorded
     // boundary that put the profile in Paris can cancel that crossing. The
     // retained history is uncertain, so even an in-gap slot must fail open.
-    expect(isExcusedSlot(disconnected, "2026-05-01", EVENING)).toBe(false);
+    expect(isExcusedSlot(resolveSwitchHistory(disconnected), "2026-05-01", EVENING)).toBe(false);
     expect(connectedTimezoneSwitchHistory(history, NY)).toEqual(history);
     expect(connectedTimezoneSwitchHistory([history[0]], NY)).toEqual([]);
   });
@@ -293,20 +299,20 @@ describe("isExcusedSlot / isRepeatedSlot over a history", () => {
   it("does not excuse a slot the westward leg merely repeated", () => {
     // 2026-05-08: Tokyo 23:00 → New York 10:00. The evening slot repeats; it did
     // not vanish, so it stays in the denominator and must be answered.
-    expect(isExcusedSlot(history, "2026-05-08", EVENING)).toBe(false);
-    expect(isRepeatedSlot(history, "2026-05-08", EVENING)).toBe(true);
+    expect(isExcusedSlot(resolveSwitchHistory(history), "2026-05-08", EVENING)).toBe(false);
+    expect(isRepeatedSlot(resolveSwitchHistory(history), "2026-05-08", EVENING)).toBe(true);
   });
 
   it("leaves every other day untouched", () => {
     for (const minute of [MORNING, MIDDAY, EVENING, BEDTIME]) {
-      expect(isExcusedSlot(history, "2026-05-04", minute)).toBe(false);
-      expect(isRepeatedSlot(history, "2026-05-04", minute)).toBe(false);
+      expect(isExcusedSlot(resolveSwitchHistory(history), "2026-05-04", minute)).toBe(false);
+      expect(isRepeatedSlot(resolveSwitchHistory(history), "2026-05-04", minute)).toBe(false);
     }
   });
 
   it("excuses nothing when there is no history at all", () => {
-    expect(isExcusedSlot([], "2026-05-01", EVENING)).toBe(false);
-    expect(isRepeatedSlot([], "2026-05-01", EVENING)).toBe(false);
+    expect(isExcusedSlot(resolveSwitchHistory([]), "2026-05-01", EVENING)).toBe(false);
+    expect(isRepeatedSlot(resolveSwitchHistory([]), "2026-05-01", EVENING)).toBe(false);
   });
 });
 

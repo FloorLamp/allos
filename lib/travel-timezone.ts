@@ -102,9 +102,8 @@ export function resolveSwitch(sw: TimezoneSwitch): ResolvedSwitch | null {
 // profile really did live through, which is the same class of lie in the opposite
 // direction: a dose silently dropped from the denominator that the person could have
 // taken and we never asked about.
-export function neverOccurred(sw: TimezoneSwitch, p: LocalPosition): boolean {
-  const r = resolveSwitch(sw);
-  if (!r || r.direction !== "forward") return false;
+export function neverOccurred(r: ResolvedSwitch, p: LocalPosition): boolean {
+  if (r.direction !== "forward") return false;
   return comparePositions(r.left, p) < 0 && comparePositions(p, r.landed) < 0;
 }
 
@@ -116,9 +115,8 @@ export function neverOccurred(sw: TimezoneSwitch, p: LocalPosition): boolean {
 // on its own — a repeat is already harmless, because a dose log is keyed by dose +
 // profile-local DATE and a reminder slot's per-day marker is keyed by that same date.
 // This predicate is what lets that claim be ASSERTED rather than assumed.
-export function occurredTwice(sw: TimezoneSwitch, p: LocalPosition): boolean {
-  const r = resolveSwitch(sw);
-  if (!r || r.direction !== "backward") return false;
+export function occurredTwice(r: ResolvedSwitch, p: LocalPosition): boolean {
+  if (r.direction !== "backward") return false;
   return comparePositions(r.landed, p) <= 0 && comparePositions(p, r.left) <= 0;
 }
 
@@ -164,6 +162,31 @@ export function connectedTimezoneSwitchHistory(
   return connected;
 }
 
+// A profile's stored history through the trust gate AND through `resolveSwitch`, so
+// the two positions each switch joined are computed ONCE (#5010).
+//
+// The gate and the resolution are both `Intl` work — `connectedTimezoneSwitchHistory`
+// validates two zone names per switch and `resolveSwitch` reads two wall clocks — and
+// the slot predicates below used to redo all of it PER POSITION ASKED. An adherence
+// strip asks per dose slot: the dashboard's intake strip and the pattern findings
+// together drove this into four `Intl` calls per switch per slot. The positions do not
+// depend on the position being asked about, so they are hoisted to the profile.
+//
+// Returning ResolvedSwitch rather than TimezoneSwitch is what makes that
+// non-negotiable at the type level: a caller cannot hand the predicates an unresolved
+// history and quietly pay per slot again, and an unusable record is dropped here, once.
+export function resolveSwitchHistory(
+  switches: readonly TimezoneSwitch[],
+  currentZone?: string
+): ResolvedSwitch[] {
+  const out: ResolvedSwitch[] = [];
+  for (const sw of connectedTimezoneSwitchHistory(switches, currentZone)) {
+    const r = resolveSwitch(sw);
+    if (r) out.push(r);
+  }
+  return out;
+}
+
 // How many times this position occurred after the ordered switch history adjusts
 // the ordinary once-per-day wall clock. A forward crossing removes an occurrence;
 // a backward crossing adds one. Counting the whole trajectory matters: a quick
@@ -171,13 +194,13 @@ export function connectedTimezoneSwitchHistory(
 // the same day. Treating the forward spans as a union would still call that real
 // noon impossible.
 function positionOccurrences(
-  switches: readonly TimezoneSwitch[],
+  history: readonly ResolvedSwitch[],
   p: LocalPosition
 ): number {
   let occurrences = 1;
-  for (const sw of connectedTimezoneSwitchHistory(switches)) {
-    if (neverOccurred(sw, p)) occurrences -= 1;
-    else if (occurredTwice(sw, p)) occurrences += 1;
+  for (const r of history) {
+    if (neverOccurred(r, p)) occurrences -= 1;
+    else if (occurredTwice(r, p)) occurrences += 1;
   }
   return occurrences;
 }
@@ -188,23 +211,21 @@ function positionOccurrences(
 // planet refused, and it is out of the day's adherence denominator for exactly
 // that reason.
 export function isExcusedSlot(
-  switches: readonly TimezoneSwitch[],
+  history: readonly ResolvedSwitch[],
   day: string,
   minute: number
 ): boolean {
-  const p = { day, minute };
-  return positionOccurrences(switches, p) <= 0;
+  return positionOccurrences(history, { day, minute }) <= 0;
 }
 
 // The mirror predicate, for the westward pins: after the complete trajectory this
 // slot's wall clock came round more than once on this local day.
 export function isRepeatedSlot(
-  switches: readonly TimezoneSwitch[],
+  history: readonly ResolvedSwitch[],
   day: string,
   minute: number
 ): boolean {
-  const p = { day, minute };
-  return positionOccurrences(switches, p) > 1;
+  return positionOccurrences(history, { day, minute }) > 1;
 }
 
 // ---- The zone a past instant was lived in (#4025) --------------------------
