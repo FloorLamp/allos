@@ -4,89 +4,27 @@ import path from "node:path";
 import ts from "typescript-api";
 import { findTags, scanDirs, walkTsx, REPO } from "./jsx-tag-scan";
 
-// One "when" control (issue #2236), ratcheted in the repo's established
-// source-scan idiom (`icon-button-tooltip-scan.test.ts`, `page-width-scan.
-// test.ts`): read the app's own TSX as TEXT — no DB, no network, so it stays
-// "pure" — and fail the build when a NEW raw `<input type="time">` ships
-// outside the shared control.
+// One "when" control (issue #2236). A raw <input type="time"> asks "when did this
+// happen?" without the shared rules that question carries — the pair moves
+// together, null means "not stated", a stated time is never seeded from a record
+// stamp, never default to now but offer it, absolute local times only, and it
+// renders the login's own 12h/24h preference rather than the browser's locale.
+// `components/WhenControl.tsx` (an observed event's date+time pair) and
+// `components/TimeField.tsx` (the styled clock every other surface renders now,
+// a plan's or an event's alike) own those rules, so a raw time input has nowhere
+// left to hide. Read the app's own TSX as TEXT — no DB, no network, so it stays
+// "pure" — for a literal `type="time"`, and fail the build on any match.
 //
-// WHY. "When did this happen?" was asked by ten hand-rolled controls in four
-// vocabularies, and every one privately re-decided the five behavioural rules
-// the question carries (the pair moves together; null means "not stated"; a
-// stated time is never seeded from a record stamp; never default to now, offer
-// "now"; absolute local times only). `components/WhenControl.tsx` owns those
-// rules now, and the raw time input lives THERE and nowhere else.
-//
-// #4976 TOOK THE LIST FROM FOUR FILES TO ONE. `TimeRangeFields.tsx` (the house
-// Start/End pair) and the two PLAN forms — `NotificationPrefs.tsx`,
-// `AppointmentForm.tsx` — all mount `TimeField` now and left this list. The one
-// entry remaining, `MeasurementsQuickAdd.tsx`'s bed↔wake pair, was CLAIMED by a
-// concurrent lane (`quicklog-subject-4932`) for the whole of #4976's own dispatch,
-// so it could not be touched here without two writers on one file. THE BAN IS
-// THEREFORE NOT YET ARMED: the list is a single frozen entry rather than the
-// empty one #4976's acceptance criteria ask for, and the two `it`s below still
-// read as a ratchet rather than a bare ban. Whoever lands the bed↔wake pair onto
-// `TimeRangeFields` next removes this entry, and at THAT point — with the map
-// empty — turn `HANDROLLED_ALLOW` into a literal ban (fail on ANY match, no map to
-// consult) and delete the `event`/`plan` vocabulary this comment still describes.
+// #4976 TOOK THE LAST FOUR FILES / EIGHT INPUTS TO ZERO: `TimeRangeFields.tsx`
+// (the house Start/End pair, and through it the measurements Bed & wake pair in
+// its `overnight` mode) and the two plan forms — `NotificationPrefs.tsx`,
+// `AppointmentForm.tsx` — all mount `TimeField` now. This is therefore a straight
+// ban, not a ratchet: no allowlist to consult, and the ONE exemption is
+// `TimeField.tsx` itself — the element every other file's raw input used to be,
+// wrapped once here rather than restyled per host.
 
 const SCAN_DIRS = ["app", "components"];
-
-/** The frozen hand-rolled set: file → { count, kind, reason }. */
-const HANDROLLED_ALLOW = new Map<
-  string,
-  { count: number; kind: "event" | "plan"; reason: string }
->([
-  // MeasurementsQuickAdd.tsx left the list with #2154's write half: the two
-  // per-measure time inputs (temperature, peak flow) folded into the form's one
-  // shared Time control, whose statement now lands on occurred_at.
-  // HistoricalDoseForm.tsx and EpisodeTimeline.tsx left the list with #2228's
-  // write half: both adopt the shared control (backfill = state + timeRequired,
-  // amend = correct with "Not stated" reachable).
-  // SymptomLogBar.tsx left it on the touch its own entry named (#4424 ruling 5): the
-  // temperature reading time is WhenControl's now, day-fixed to the card's date.
-  // PracticeSessionHistory.tsx left it on #4424 ruling 1's touch: its edit form spelled
-  // the same five fields the log form did, so it now MOUNTS that form and the pair it
-  // carried is GONE rather than migrated.
-  //
-  // components/TimeRangeFields.tsx left the list on #4384 fix 6's touch — NOT by
-  // adopting `WhenControl`, but by mounting the one shared pair (PracticeSessionForm
-  // and activity-form/DateTimeFields both mount it, so the count shrank because two
-  // spellings became one, not because a surface migrated to `WhenControl`) — and left
-  // it a SECOND time on #4218/#4976's touch, when that pair's own two inputs became
-  // `TimeField` mounts. app/(app)/settings/notifications/NotificationPrefs.tsx and
-  // app/(app)/encounters/AppointmentForm.tsx left it the same way (#4976): a
-  // notification slot and an appointment time state a PLAN rather than an
-  // observation, permanently out of `WhenControl`'s scope, but `TimeField` styles a
-  // plan's clock exactly as it styles an event's — the ratchet was never about WHICH
-  // control a time belongs to, only about whether it is drawn raw.
-  //
-  // THE ONE ENTRY LEFT is CLAIMED debt, not modelled debt: #4976 dispatched with this
-  // file owned by a concurrent lane (quicklog-subject-4932, mid-CI at the time) and
-  // could not touch it without two writers on one file. Its own fix is already
-  // written — mount `TimeRangeFields` in an `overnight` mode (an end earlier than the
-  // start means the next day, the same rollover `activityWindow` already applies) —
-  // and is unblocked the moment that lane lands. When it does, THIS MAP GOES EMPTY
-  // and the scan becomes a literal ban: no map to consult, any `type="time"` outside
-  // `components/TimeField.tsx` fails the build, and the `event`/`plan` vocabulary
-  // above goes with it.
-  [
-    "app/(app)/trends/MeasurementsQuickAdd.tsx",
-    {
-      count: 2,
-      kind: "event",
-      reason:
-        "the #1851 bed\u2192wake pair — a start/end shape `TimeRangeFields` " +
-        "already models, unmodelled here for a reason of its own: NEITHER clock " +
-        "states a date. The wake day is the sitting's, the bed day is DERIVED " +
-        "from the clock against the noon anchor, and the pair resolves to " +
-        "instants in the PROFILE's zone at the write boundary rather than the " +
-        "browser's. Migrates onto `TimeRangeFields`'s `overnight` mode (#4976) " +
-        "once its file is free of the concurrent lane holding it. The form's own " +
-        "sitting Time is WhenControl's and is not counted here.",
-    },
-  ],
-]);
+const TIME_FIELD = "components/TimeField.tsx";
 
 /**
  * Every `<input …>` opening tag whose attributes carry `type="time"`, as line
@@ -103,59 +41,25 @@ export function rawTimeInputs(text: string): number[] {
 
 const scanRepo = () => scanDirs(SCAN_DIRS, rawTimeInputs);
 
-const HOW = [
-  'A raw <input type="time"> asks "when did this happen?" without the shared',
-  "rules that question carries. Render <WhenControl> (components/WhenControl",
-  '.tsx) instead — it owns the date+time pair, the null = "not stated" value,',
-  'the never-default-to-now rule and the one-tap "now". A time that states a',
-  'PLAN rather than an observation may be allowlisted here as kind: "plan",',
-  "with the reason said.",
-].join("\n");
-
-describe('raw <input type="time"> ratchet (issue #2236)', () => {
-  const found = scanRepo();
-
-  // THE CONTROL'S OWN EXEMPTION RETIRED WITH THE INPUT IT COVERED (#4218).
-  // `components/WhenControl.tsx` was the one legitimate home of a raw time input,
-  // and it no longer renders one: its minute grain is `components/TimeField.tsx`,
-  // a text field plus an authored wheel, so there is nothing left here to exempt.
-  // Deleting the entry means the control is now held to the same rule as
-  // everything else — a raw time input reappearing there fails the build.
-  //
-  // AND THE POSITIVE CONTROL MOVED RATHER THAN GOING AWAY. The retired case
-  // ("the shared control itself renders one") existed so a scan that had stopped
-  // matching anything could not read as a clean sweep. The allowlist-currency
-  // case below is that control now: it asserts a real LINE COUNT in the one
-  // remaining shipped file (#4976 took the other four off this list), so a
-  // reader that matched nothing still fails there.
-  it("every raw time input is a frozen, reasoned entry", () => {
+describe('raw <input type="time"> is banned (issue #2236 / #4976)', () => {
+  // THE ONE EXEMPTION IS THE WRAPPER ITSELF. Every other match is an offender —
+  // there is no count to allow and no reason to record, because there is no
+  // legitimate reason left: render `TimeField` (a single clock) or
+  // `TimeRangeFields` (a Start/End pair, plain or `overnight`) instead.
+  it("renders nowhere outside the field that wraps it", () => {
     const offenders: string[] = [];
-    for (const [rel, lines] of found) {
-      const allowed = HANDROLLED_ALLOW.get(rel);
-      if (!allowed) {
-        offenders.push(`${rel}:${lines.join(",")} — not in HANDROLLED_ALLOW`);
-      } else if (lines.length > allowed.count) {
-        offenders.push(
-          `${rel} grew: ${lines.length} raw time inputs, allowlisted at ` +
-            `${allowed.count} — the count only shrinks`
-        );
-      }
+    for (const [rel, lines] of scanRepo()) {
+      if (rel === TIME_FIELD) continue;
+      offenders.push(`${rel}:${lines.join(",")}`);
     }
-    expect(offenders, `${HOW}\n\n${offenders.join("\n")}`).toEqual([]);
-  });
-
-  it("the allowlist counts are current — a migrated surface leaves the list", () => {
-    const stale: string[] = [];
-    for (const [rel, allowed] of HANDROLLED_ALLOW) {
-      const lines = found.get(rel) ?? [];
-      if (lines.length < allowed.count) {
-        stale.push(
-          `${rel}: allowlisted at ${allowed.count} but ${lines.length} remain ` +
-            "— shrink (or remove) its entry so the ratchet holds"
-        );
-      }
-    }
-    expect(stale, stale.join("\n")).toEqual([]);
+    expect(
+      offenders,
+      'A raw <input type="time"> asks "when did this happen?" without the shared ' +
+        "rules that question carries, and ignores the login's 12h/24h preference. " +
+        "Render <TimeField> (components/TimeField.tsx), or <TimeRangeFields> for " +
+        "a Start/End pair, instead:\n\n" +
+        offenders.join("\n")
+    ).toEqual([]);
   });
 });
 
