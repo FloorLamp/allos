@@ -300,11 +300,34 @@ export function activityTypeAskActions(
   }));
 }
 
+// WHAT THE ASK IS WAITING FOR (#4996), when the app can name it.
+//
+// The finish message is sent on ARRIVAL, and for a twin-upload rider the first arrival
+// is the poorest one: Health Connect lands 30-45 min ahead of Strava on every ride and
+// declines to say what the session was. Until #4996 the reader had no way to tell a
+// recap that will be superseded from one that will not — "🏋️ Session complete" reads
+// the same either way.
+//
+// It is a LINE ON A MESSAGE ALREADY GOING OUT, exactly like the ask it rides: it changes
+// what is SHOWN and nothing about what is SENT, so no send is delayed, added or held for
+// it. And it is keyed on a FACT — the profile really has that source connected — never
+// on "riders usually do", because a profile with no richer source will never get the
+// details this promises and the type ask is honestly its whole state.
+export const STRAVA_DETAILS_FOLLOW_LINE = "Details follow when Strava syncs.";
+
 // The type ask's two halves, as the composition takes them: the prompt sentence that
-// follows the recap line, and the inline buttons that answer it.
+// follows the recap line, and the inline buttons that answer it — plus, when the app
+// knows a richer source is coming, the provisional line (#4996).
+//
+// The provisional line lives HERE rather than beside the recap line because the two are
+// one state: both stand exactly while the announced row is `unclassified`, and the fold's
+// reconciler drops both in the same edit. Making that structural is what stops a later
+// change removing the ask and leaving "Details follow" under a message that is already
+// as detailed as it will get.
 export interface FinishTypeAsk {
   prompt: string;
   actions: NotificationAction[];
+  provisional?: string;
 }
 
 // Compose the finish nudge: the recap line (when present) LEADS, then the due
@@ -332,7 +355,10 @@ export function composeFinishNudge(
     // emphasis (#1720) when it has any — never stringifies runs into "[object Object]".
     const merged =
       recapLine || ask
-        ? joinBody([recapLine, doseMessage.body, ask?.prompt], "\n\n")
+        ? joinBody(
+            [recapLine, doseMessage.body, ask?.prompt, ask?.provisional],
+            "\n\n"
+          )
         : doseMessage.body;
     return {
       ...doseMessage,
@@ -344,7 +370,9 @@ export function composeFinishNudge(
   }
   return {
     title: finishNudgeTitle(type),
-    body: ask ? joinBody([recapLine!, ask.prompt], "\n\n") : recapLine!,
+    body: ask
+      ? joinBody([recapLine!, ask.prompt, ask.provisional], "\n\n")
+      : recapLine!,
     ...(ask ? { actions: ask.actions } : {}),
     kind: "workout-recap",
   };

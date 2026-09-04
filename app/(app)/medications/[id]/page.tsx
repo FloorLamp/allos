@@ -80,13 +80,21 @@ export default async function MedicationDetailPage(props: {
   const subject = accessible.find((profile) => profile.id === profileId)!;
   const crossProfile = profileId !== activeProfile.id;
   const canWrite = !crossProfile && activeAccess === "write";
-  // THIS PAGE IS A SUBJECT-SCOPED CONTAINER (#4693): it names one profile in the
-  // identity banner above, so the dose history it shows is unambiguously that
-  // profile's — and an add there follows the surface instead of asking the reader to
-  // switch. Everything else on the card stays switcher-bound (`canWrite`), which is
-  // why this is a separate fact and not a wider `canWrite`. Write access is asked of
-  // the SUBJECT, not of the acting profile, and the actions re-gate the posted id.
-  const doseHistorySubjectProfileId =
+  // THIS PAGE IS A SUBJECT-SCOPED CONTAINER (#4693, widened by #4429): it names one
+  // profile in the identity banner above, so the doses it shows are unambiguously that
+  // profile's — and the affordances that act on a DAY (the dose-history add/amend,
+  // today's scheduled check-off, the PRN log) follow the surface instead of asking the
+  // reader to switch. Everything that edits the medication ITSELF stays switcher-bound
+  // (`canWrite`), which is why this is a separate fact and not a wider `canWrite`.
+  //
+  // REACHABILITY FIRST, THEN THE GRANT — the ordering requireProfileWriteAccess itself
+  // depends on, because `accessForProfile` defaults an UNGRANTED member to 'write' and
+  // so decides nothing on its own. Reachability is settled above by construction:
+  // `profileId` came out of `resolveMedicationAcrossProfiles(accessible…)`, so a
+  // profile this login cannot reach 404s before this line. Write access is then asked
+  // of the SUBJECT rather than of the acting profile — and this is only what the page
+  // OFFERS: every action re-gates the posted id server-side.
+  const subjectProfileId =
     crossProfile &&
     accessForProfile(login.id, login.role, profileId) === "write"
       ? profileId
@@ -249,7 +257,7 @@ export default async function MedicationDetailPage(props: {
                 className="mb-4 text-sm text-slate-500 dark:text-slate-400"
                 data-testid="medication-cross-profile-note"
               >
-                {doseHistorySubjectProfileId != null ? (
+                {subjectProfileId != null ? (
                   <>
                     Viewing {subject.name}&apos;s medication. Doses you log here
                     are {subject.name}&apos;s. Act as {subject.name} to change
@@ -333,7 +341,7 @@ export default async function MedicationDetailPage(props: {
               historyMaxDate={historyMaxDate}
               defaultHistoryTime={data.nowHhmm}
               canWrite={canWrite}
-              doseHistorySubjectProfileId={doseHistorySubjectProfileId}
+              subjectProfileId={subjectProfileId}
               initialAction={initialAction}
               conditions={medConditions}
               ingredients={m.ingredients}
