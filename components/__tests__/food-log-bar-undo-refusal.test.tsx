@@ -389,6 +389,77 @@ describe("FoodLogBar projection publication", () => {
     expect(submitted.get("date")).toBe(yesterday);
   });
 
+  // THE TYPED AMOUNT IS THE TYPIST'S; THE TOTAL IS THE DAY'S (#4934, owner ruling
+  // 2026-09-03). Driven through the real provider and day picker: whatever is in the
+  // box survives a day move and posts against the day now shown, while the readout
+  // re-seeds to the day moved to. The cleared row is the other half of "only a submit
+  // or an explicit clear discards them" — an emptied box must stay empty across the
+  // move rather than being re-seeded from `lastPreset` or from the day's total.
+  it.each([
+    { typed: "17", posts: "17" },
+    { typed: "", posts: null },
+  ])(
+    "carries a $typed-gram box across a day move and logs it on the day now shown",
+    async ({ typed, posts }) => {
+      const yesterday = "2026-08-23";
+      mountBar({
+        days: [DAY, { ...DAY, date: yesterday, label: "Yesterday" }],
+        proteinQuickAdd: {
+          initialGramsByDate: { [DATE]: 5, [yesterday]: 0 },
+          lastPreset: 30,
+        },
+      });
+
+      const input = screen.getByTestId(
+        "protein-quickadd-input"
+      ) as HTMLInputElement;
+      fireEvent.change(input, { target: { value: typed } });
+      expect(screen.getByTestId("protein-quickadd-grams").textContent).toBe(
+        "5"
+      );
+
+      fireEvent.click(screen.getByTestId("food-day-yesterday"));
+
+      // The SAME node, not a fresh one: a remount is what discarded the value, and
+      // a value-only check would pass against a remount that happened to re-seed
+      // the same string.
+      expect(screen.getByTestId("protein-quickadd-input")).toBe(input);
+      expect(input.value).toBe(typed);
+      // The day's own datum still follows the day.
+      expect(screen.getByTestId("protein-quickadd-grams").textContent).toBe(
+        "0"
+      );
+
+      const add = screen.getByTestId(
+        "protein-quickadd-add"
+      ) as HTMLButtonElement;
+      fireEvent.click(add);
+
+      if (posts === null) {
+        // An emptied box offers nothing to log, so the add door stays shut.
+        expect(add.disabled).toBe(true);
+        await waitFor(() =>
+          expect(actions.addProteinGrams).not.toHaveBeenCalled()
+        );
+        return;
+      }
+      await waitFor(() =>
+        expect(actions.addProteinGrams).toHaveBeenCalledOnce()
+      );
+      const submitted = actions.addProteinGrams.mock.calls[0][0] as FormData;
+      expect(submitted.get("grams")).toBe(posts);
+      expect(submitted.get("date")).toBe(yesterday);
+      // And the readout then holds the server's authoritative total for the day
+      // moved to. A seed that re-applied on any render rather than on a day change
+      // would drag this back to the day's starting 0.
+      await waitFor(() =>
+        expect(screen.getByTestId("protein-quickadd-grams").textContent).toBe(
+          "30"
+        )
+      );
+    }
+  );
+
   it("publishes the authoritative receipt for a tap committed before passive effects", async () => {
     const outcome = {
       ok: true,
