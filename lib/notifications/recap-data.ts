@@ -159,20 +159,10 @@ function windowAdherence(
   if (doses.length === 0) return null;
   // Per-day situation resolver (#654): each past day in the recap window is scored
   // against the situations DECLARED that day, not today's toggle retroactively.
-  // NOT DATED (#3993), and it is a COST decision, not a claim that this surface differs.
-  // The dated resolver runs one derived gather per DAY; this walks a window, and these
-  // walks run on the DASHBOARD. Measured with the whole seam dated: +96 queries per
-  // persona (+112 for the two with cycle rows) against the 274 backstop recorded in
-  // lib/__db_tests__/dashboard-placement-manifest.test.ts, whose own message calls growth
-  // of that size "a design conversation about what the dashboard gathers — not a number
-  // to raise so CI goes green". So the surfaces a person can ACT on are dated (the
-  // reminder rebuild, the catch-up sheet and the strips beside them) and the ones that
-  // only SUMMARISE wait for that conversation. The consequence, written down rather than
-  // discovered: a Poor-sleep item's rough-night days score `na` here while those surfaces
-  // call them due. The fix that removes the cost instead of accepting it is to read the
-  // derived half's DATE-INDEPENDENT inputs once per window — the nights, the period log,
-  // the weather series — and evaluate each day purely against them, which the pure half
-  // of lib/derived-situations.ts is already shaped for.
+  // NOT DATED (#3993): a cost decision, stated once with its measurement over
+  // `getIntakeHistory` in lib/intake-history.ts. The consequence here is that a
+  // Poor-sleep item's rough-night days score `na` while the surfaces a person can act on
+  // call them due.
   const situationsOn = situationHistoryResolver(
     getActiveSituations(profileId),
     getSituationEvents(profileId)
