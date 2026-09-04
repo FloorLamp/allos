@@ -118,15 +118,36 @@ export function getManualBodyMetricStatedAt(
 // in SQL: a JS filter after a LIMIT would let a run of weightless days starve the
 // window (e.g. a daily-HR syncer with weekly weigh-ins). weight_kg is non-null on
 // every returned row. Backs the dashboard + weight-page weight/BMI charts.
-export function getWeights(
+//
+// REQUEST-CACHED because one dashboard render asks for the same window five times
+// (#3369 item 2): the nutrition bodyweight reads, the training-detail series and the
+// per-day source election all want the profile's weight history, and none of them can
+// see that another already read it. Keyed on the arguments, so the 60-day window and
+// the 365-day one stay separate reads. NO WRITER CAN INTERVENE (lib/queries/AGENTS.md):
+// nothing that writes `body_metrics` reads this within one request — the fitness and
+// goal actions read the latest value BEFORE their insert and never re-read after it.
+// Callers may not mutate what they get back; today every one of them maps or filters
+// first, which is what makes a shared array safe to hand out.
+//
+// The default lives on the EXPORTED wrapper rather than inside the memo. React's
+// `cache()` keys on positional arguments, so `getWeights(p)` and `getWeights(p, 365)`
+// would be two entries for one question; normalizing the arity here means the callers
+// that pass the default explicitly and the ones that omit it share a read.
+const getWeightsCached = cache(function getWeights(
   profileId: number,
-  limit = 365
+  limit: number
 ): (BodyMetric & { weight_kg: number })[] {
   return db
     .prepare(
       "SELECT * FROM body_metrics WHERE profile_id = ? AND weight_kg IS NOT NULL ORDER BY date DESC LIMIT ?"
     )
     .all(profileId, limit) as (BodyMetric & { weight_kg: number })[];
+});
+export function getWeights(
+  profileId: number,
+  limit = 365
+): (BodyMetric & { weight_kg: number })[] {
+  return getWeightsCached(profileId, limit);
 }
 
 // Weight rows collapsed to ONE source per day (the profile's primary source first,
@@ -1354,28 +1375,34 @@ export function getHrMinutes(profileId: number, date: string): HrMinute[] {
   );
 }
 
-// Per-minute HR buckets (ts + bpm) within an inclusive [since, until] date range
-// (until omitted = open-ended), one source per day — the shared read behind the
-// training-zone aggregations (lib/queries/zones.ts), so zone minutes can't
-// double-count a workout recorded by two HR sources at once (issue #14).
+// Per-minute HR buckets (ts + bpm) within an inclusive [since, until] date range, one
+// source per day — the shared read behind the training-zone aggregations
+// (lib/queries/zones.ts), so zone minutes can't double-count a workout recorded by two
+// HR sources at once (issue #14). Both bounds are profile-local days.
+//
+// `until` IS REQUIRED (#5069). It used to default to the day of the profile's LAST
+// STORED instant, which reads as "to now" only while the last row is roughly now — a
+// coincidence, not a bound. A device stamping ahead (#5035) widened this scan with
+// nothing saying so: #5069 records a snapshot whose rows ran into the future, where the
+// zone reads materialised 144,000 minutes and kept 86. Every caller already knew the
+// window it meant, so the open-ended form is DELETED rather than guarded — the
+// parameter is the bound, and a caller that forgets one no longer compiles.
 //
 // REQUEST-CACHED because a dashboard asks for the SAME window more than once (#5010):
-// `getDayLoadInputs` and `getIntensitySignal` both open-endedly read the same 42 days
-// on one render, and each read is a wide materialisation. `cache()` is identity outside
-// a Next request (lib/request-cache.ts says so deliberately), so a notify tick and the
-// DB tier behave exactly as before. Keyed on the arguments, so the open-ended form
-// (`until` undefined) and a bounded one stay separate reads, as they must.
+// `getDayLoadInputs` and `getIntensitySignal` read the same 42 days on one render, and
+// each read is a wide materialisation. `cache()` is identity outside a Next request
+// (lib/request-cache.ts says so deliberately), so a notify tick and the DB tier behave
+// exactly as before. Keyed on the arguments, so two spellings of one span would stay
+// separate reads — with `until` required, the trailing window has one spelling.
 export const getHrMinutesInRange = cache(function getHrMinutesInRange(
   profileId: number,
   since: string,
-  until?: string
+  until: string
 ): { ts: string; bpm: number }[] {
   const tz = getTimezone(profileId);
-  const bounds = hrInstantBounds(profileId);
-  if (!bounds) return [];
-  const lastDay = until ?? localDayOf(tz, bounds.last);
-  if (!lastDay || lastDay < since) return [];
-  const { startUtc, endUtc } = localDaySpan(tz, since, lastDay);
+  if (!hrInstantBounds(profileId)) return [];
+  if (until < since) return [];
+  const { startUtc, endUtc } = localDaySpan(tz, since, until);
   const rows = db
     .prepare(
       `SELECT ts, bpm, source FROM hr_minutes
@@ -1421,7 +1448,16 @@ function bodyMetricColumn(metric: BodyMetricKind): string {
 // source is returned, as before. With the 'documents' class (#1640) this is
 // "the newest scan, whichever report it came from". A STRICT choice (#1642)
 // keeps the honest empty state instead of falling back to another source.
-export function getLatestBodyMetricDated(
+//
+// REQUEST-CACHED (#3369 item 2): three of the profile's body stats are asked for by
+// the passport, the weight-band dosing context and the dashboard's own summary within
+// one render, each unaware of the others, and a `chosen` primary source makes it two
+// statements rather than one. Keyed on (profileId, metric), so a household render
+// still pays one read per profile per metric — the fan-out is real work and stays.
+// NO WRITER CAN INTERVENE (lib/queries/AGENTS.md): the two actions that read this
+// (a fitness entry's VO2 estimate, a measured goal's baseline) read it before their
+// own insert and never again.
+export const getLatestBodyMetricDated = cache(function getLatestBodyMetricDated(
   profileId: number,
   metric: BodyMetricKind
 ): { value: number; date: string } | null {
@@ -1446,7 +1482,7 @@ export function getLatestBodyMetricDated(
     )
     .get(profileId) as { value: number; date: string } | undefined;
   return row ?? null;
-}
+});
 
 // The most recent (non-null) recorded value for a body metric, or null.
 export function getLatestBodyMetric(

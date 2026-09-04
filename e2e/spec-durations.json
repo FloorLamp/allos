@@ -166,6 +166,7 @@
   "e2e/history-day-view.spec.ts": 14.53,
   "e2e/history-empty-state.spec.ts": 6.115,
   "e2e/history-everyone.spec.ts": 10.361,
+  "e2e/history-fold-inset.spec.ts": 6.932,
   "e2e/history-linked-context.spec.ts": 0.727,
   "e2e/history-scrubber.spec.ts": 10.551,
   "e2e/history-windowing.spec.ts": 8.562,

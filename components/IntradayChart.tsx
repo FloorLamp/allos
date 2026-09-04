@@ -26,6 +26,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useIntradayInteraction } from "@/components/IntradayInteraction";
 import ActivityIcon from "@/components/ActivityIcon";
 import { chartDash } from "@/components/chart-scaffold";
 import { useResettableState } from "@/components/useResettableState";
@@ -174,15 +175,28 @@ export default function IntradayChart({
   variant,
   className,
   profileId,
+  selectedWindow = null,
 }: {
   model: IntradayModel;
   formatPrefs: DisplayFormatPrefs;
   variant: IntradayVariant;
   className: string;
   profileId: number;
+  /**
+   * A window stated in the URL (#4950), in minutes since profile-local midnight.
+   *
+   * DRAWN FROM THE SERVER RENDER, which is the whole reason it is a prop rather than
+   * client state: the selection has to stay under the add form while the person fills
+   * it in, and survive a reload of the link they were sent. A live drag is the other
+   * source and stays local — the two are different marks with the same paint, and
+   * `dragSpan` below prefers the live one so releasing a drag never leaves the old
+   * window highlighted under the new gesture.
+   */
+  selectedWindow?: { from: number; to: number | null } | null;
 }) {
-  const [view, setView] = useState<IntradayView | null>(null);
-  const [cursor, setCursor] = useState<number | null>(null);
+  // Shared with the day page's add row when a provider is above (#4950); private
+  // otherwise, so a chart mounted on its own still zooms and scrubs.
+  const { view, setView, cursor, setCursor } = useIntradayInteraction();
   const [drag, setDrag] = useState<{ from: number; to: number } | null>(null);
   const fineRequestKey = useMemo(
     () =>
@@ -309,18 +323,25 @@ export default function IntradayChart({
     return minuteAtX(geo, userX);
   };
 
-  const applyZoom = useCallback((from: number, to: number) => {
-    const lo = Math.min(from, to);
-    const hi = Math.max(from, to);
-    if (hi - lo < MIN_ZOOM_MINUTES) return;
-    setView({ from: Math.floor(lo), to: Math.ceil(hi) });
-    setCursor(null);
-  }, []);
+  const applyZoom = useCallback(
+    (from: number, to: number) => {
+      const lo = Math.min(from, to);
+      const hi = Math.max(from, to);
+      if (hi - lo < MIN_ZOOM_MINUTES) return;
+      setView({ from: Math.floor(lo), to: Math.ceil(hi) });
+      setCursor(null);
+      // The two setters are `useState`'s and referentially stable for this component's
+      // life, whether they arrive through the provider or from the local fallback — so
+      // listing them satisfies the rule without ever re-creating these callbacks, and the
+      // effect below that depends on `applyZoom` keeps its identity.
+    },
+    [setView, setCursor]
+  );
 
   const resetZoom = useCallback(() => {
     setView(null);
     setCursor(null);
-  }, []);
+  }, [setView, setCursor]);
 
   // ── Wheel and trackpad (#4852) ───────────────────────────────────────────
   // Registered by hand, NOT as an `onWheel` prop: React attaches wheel at the root
@@ -491,10 +512,22 @@ export default function IntradayChart({
           .filter(Boolean)
           .join(" · ");
 
-  const dragSpan =
+  // The live drag wins over the stated window: while a gesture is in flight, the mark
+  // under the pointer must be the gesture's, or the person is looking at the last answer
+  // while giving a new one.
+  const liveDrag =
     drag && Math.abs(drag.to - drag.from) >= 1
       ? { from: Math.min(drag.from, drag.to), to: Math.max(drag.from, drag.to) }
       : null;
+  // A start alone (a tap, `to: null`) is drawn as a hairline rather than a band — the
+  // `Math.max(1, …)` on the width below is what makes one pixel of it visible.
+  const statedSpan = selectedWindow
+    ? {
+        from: selectedWindow.from,
+        to: selectedWindow.to ?? selectedWindow.from,
+      }
+    : null;
+  const dragSpan = liveDrag ?? statedSpan;
 
   return (
     <div

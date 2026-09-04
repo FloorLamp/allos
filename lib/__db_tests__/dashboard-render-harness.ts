@@ -258,8 +258,31 @@ function callerFrame(): string {
   }
   return "?";
 }
-export function installStatementTrace(options: { timing?: boolean } = {}) {
+/**
+ * The `hr_minutes` range read (`getHrMinutesInRange`), which both readings watch: the
+ * meter asserts one execution per distinct window and the profiler prints the windows
+ * beside the timing. Here rather than in either file because it is the one statement
+ * they name in common, and two copies of it would drift apart silently. The day reader
+ * (`getHrMinutes`, `SELECT *`) is a different question and is deliberately not matched.
+ */
+export const HR_RANGE_READ = /SELECT ts, bpm, source\s+FROM hr_minutes/;
+
+/** One execution of a watched statement, with the values it was actually run on. */
+export interface BoundExecution {
+  sql: string;
+  args: unknown[];
+}
+export function installStatementTrace(
+  options: { timing?: boolean; bindings?: RegExp } = {}
+) {
   const stats = new Map<string, StatementStat>();
+  // THE TRACE OTHERWISE SEES PLACEHOLDERS, NOT WINDOWS (#5010). Both readings above
+  // key on SQL TEXT, so a reader that asks the same question of two spans and one
+  // that asks one question twice are the same row with count 2 — which is exactly
+  // the distinction #5010's last criterion is about. `bindings` names the statements
+  // whose ARGUMENTS are worth keeping, and only those: retaining every statement's
+  // parameters on a 600-statement render would make the trace a memory profile.
+  const bound: BoundExecution[] = [];
   let executed = 0;
   const realPrepare = db.prepare.bind(db);
   vi.spyOn(db, "prepare").mockImplementation(((sql: string) => {
@@ -273,6 +296,8 @@ export function installStatementTrace(options: { timing?: boolean } = {}) {
         ) {
           return (...args: unknown[]) => {
             executed += 1;
+            if (options.bindings?.test(sql))
+              bound.push({ sql: sql.replace(/\s+/g, " ").trim(), args });
             if (!options.timing) return value.apply(target, args);
             const started = process.hrtime.bigint();
             try {
@@ -300,9 +325,11 @@ export function installStatementTrace(options: { timing?: boolean } = {}) {
     clear: () => {
       executed = 0;
       stats.clear();
+      bound.length = 0;
     },
     count: () => executed,
     stats: () => [...stats.values()],
+    bindings: (): BoundExecution[] => [...bound],
   };
 }
 

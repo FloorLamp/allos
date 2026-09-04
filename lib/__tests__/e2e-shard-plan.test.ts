@@ -1,6 +1,13 @@
 import { spawnSync } from "node:child_process";
-import { chmodSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { makeTmpDir } from "./tmp-dir";
 import {
@@ -61,6 +68,59 @@ if (!output) process.stdout.write(report);
     } finally {
       rmSync(bin, { recursive: true, force: true });
     }
+  });
+});
+
+const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+const E2E_DIR = path.join(REPO, "e2e");
+
+/** The planner's real universe — the walk `scripts/e2e-shard-plan.ts` performs. */
+function walkSpecFiles(dir = E2E_DIR, out: string[] = []): string[] {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) walkSpecFiles(full, out);
+    else if (isSpecFile(entry.name))
+      out.push(path.relative(REPO, full).split(path.sep).join("/"));
+  }
+  return out.sort();
+}
+
+/** The manifest as it ships, keyed the way the planner reads it. */
+function readManifest(): DurationMap {
+  return JSON.parse(
+    readFileSync(path.join(E2E_DIR, "spec-durations.json"), "utf8")
+  ) as DurationMap;
+}
+
+describe("the shipped manifest", () => {
+  // An unmeasured spec is the failure nothing reports. It is still planned —
+  // `planShards` estimates it and the partition holds — so no shard reds; its
+  // bucket is simply balanced on a guess. `scripts/e2e-shard-plan.ts --verify`
+  // cannot see it either: that compares the walk against Playwright's own
+  // resolution, never the manifest against the walk. This is that second
+  // question, asked where a merge runs it. (#5053, which found one spec that had
+  // been planned on the guess since it landed.)
+  it("measures every spec file the planner walks", () => {
+    // Shard count does not affect `unknown`; 12 is what CI splits into.
+    expect(
+      planShards(walkSpecFiles(), readManifest(), 12).unknown,
+      "planned on a guess — measure on a RUNNER and refresh the manifest " +
+        "(docs/internals/e2e-hygiene.md), never with a local number"
+    ).toEqual([]);
+  });
+
+  // The other direction, and the quieter one: a row whose file is gone costs the
+  // plan nothing — it is never walked, so it is never planned — but it means a
+  // spec was deleted and the manifest was not refreshed, which is the same
+  // staleness the assertion above catches from the other end.
+  it("carries no row for a spec file that no longer exists", () => {
+    const walked = new Set(walkSpecFiles());
+    expect(
+      Object.keys(readManifest()).filter((f) => !walked.has(f)),
+      "stale row(s) for deleted spec(s) — refresh the manifest " +
+        "(docs/internals/e2e-hygiene.md)"
+    ).toEqual([]);
   });
 });
 

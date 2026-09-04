@@ -6,6 +6,7 @@
 
 import { utcInstant } from "../date";
 import { db, today } from "../db";
+import { cache } from "../request-cache";
 import { now as clockNow } from "../clock";
 import { getCurrentFlaggedBiomarkers } from "./medical";
 import {
@@ -456,18 +457,27 @@ export function getFoodLedgerPage(
 
 // The profile's food-log rows on/after `since` (inclusive), as FoodDailyServingTotal[] for the
 // pure rollup. Profile-scoped.
-export function getFoodDailyServingTotals(
-  profileId: number,
-  since: string
-): FoodDailyServingTotal[] {
-  return db
-    .prepare(
-      `SELECT date, group_key, servings FROM food_daily_totals
+//
+// REQUEST-CACHED (#3369 item 2): the weekly rollup, the food-habit target progress and
+// the paired-observation factor reader each open the same window on one render, and one
+// render asks twice over two different `since` days. Keyed on (profileId, since), so
+// the two windows stay two reads and a household render still reads once per profile.
+// NO WRITER CAN INTERVENE (lib/queries/AGENTS.md): nothing that writes food logs reads
+// these totals in the same request. Callers iterate or filter what they get back.
+export const getFoodDailyServingTotals = cache(
+  function getFoodDailyServingTotals(
+    profileId: number,
+    since: string
+  ): FoodDailyServingTotal[] {
+    return db
+      .prepare(
+        `SELECT date, group_key, servings FROM food_daily_totals
         WHERE profile_id = ? AND date >= ? AND servings > 0
         ORDER BY date DESC`
-    )
-    .all(profileId, since) as FoodDailyServingTotal[];
-}
+      )
+      .all(profileId, since) as FoodDailyServingTotal[];
+  }
+);
 
 // The weekly rollup — servings per group over the profile's "this week" window (the
 // SAME week definition the weekly-routine counters use, #223). The ONE computation the

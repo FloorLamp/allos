@@ -10,7 +10,7 @@ import { WEEKDAYS_SHORT } from "./date";
 import { frequencyPace, type FrequencyPace } from "./frequency-targets";
 import { inWakingWindow } from "./notifications/schedule";
 import type { PracticeLogOutcome } from "./types";
-import { modalValue } from "./weekly-rhythm";
+import { modalValue, rhythmMomentOpen } from "./weekly-rhythm";
 import type { WeeklyRhythm } from "./weekly-rhythm";
 
 // The stable suppression/identity key namespace for a wellness-practice weekly target:
@@ -165,6 +165,55 @@ export function practiceDurationPrefill(
     return Math.round(declaredDefaultMin);
   // Leg 3.
   return null;
+}
+
+// ── WHICH PRACTICE A WINDOW ON THE DAY CHART LOOKS LIKE (#4950 item 4) ───────
+//
+// HABIT MATCHING, NEVER PHYSIOLOGY. Heart rate cannot tell a run from a sauna, and this
+// function never sees any: it reads the same weekly rhythm the Wellness card's "usually
+// a session day" note reads, asked of the window's own weekday and minute. The person
+// pointed at the trace; the app only offers the practice they usually do then.
+//
+// IT IS A PREFILL A TAP CONFIRMS, and nothing is stored, sent or worded as what
+// happened. Returning the wrong practice costs one tap on a picker that is open anyway;
+// returning null costs nothing, which is why every uncertainty resolves to null.
+//
+// THE HONESTY GATE IS `rhythmMomentOpen`'s FIRST LINE. A practice with no pattern
+// (`hasPattern` false, the every-day fallback) is UNKNOWN, not "every day" — so it can
+// never fit, and a profile whose practices have no rhythm gets the picker it has today.
+export interface PracticeWindowCandidate {
+  /** The name the door's picker holds, so what comes back is always one of its options. */
+  name: string;
+  rhythm: WeeklyRhythm;
+  /** `practiceDurationPrefill`'s answer for this practice, or null with no history. */
+  usualDurationMin: number | null;
+}
+
+export function practiceFittingWindow(
+  candidates: readonly PracticeWindowCandidate[],
+  date: string,
+  window: { from: number; to: number | null }
+): string | null {
+  const fitting = candidates.filter((candidate) =>
+    rhythmMomentOpen(candidate.rhythm, date, window.from)
+  );
+  if (fitting.length === 0) return null;
+  // A start alone says nothing about length, so there is nothing to break a tie WITH;
+  // the profile's own order decides, which is the order the picker already lists.
+  if (window.to === null) return fitting[0].name;
+  const length = window.to - window.from;
+  // Nearest usual duration. A practice with no usual duration says nothing about
+  // length either, so one that DOES speak is preferred over one that cannot — and when
+  // none of them can, the first fitting practice stands.
+  const distance = (candidate: PracticeWindowCandidate): number =>
+    candidate.usualDurationMin === null
+      ? Number.POSITIVE_INFINITY
+      : Math.abs(candidate.usualDurationMin - length);
+  let best = fitting[0];
+  for (const candidate of fitting.slice(1)) {
+    if (distance(candidate) < distance(best)) best = candidate;
+  }
+  return best.name;
 }
 
 // One tap of the inline stepper's − / +. Pure so the sheet, and anything that later

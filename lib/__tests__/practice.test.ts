@@ -21,7 +21,10 @@ import {
   practiceSpellingsFor,
   practiceDisplayName,
   practiceLogOutcomeText,
+  practiceFittingWindow,
+  type PracticeWindowCandidate,
 } from "@/lib/practice";
+import { RHYTHM_MOMENT_MIN, type WeeklyRhythm } from "@/lib/weekly-rhythm";
 import { dedupeKeyHasKnownPrefix } from "@/lib/rule-finding-prefixes";
 import { resolveSuppressedKeyDisplay } from "@/lib/suppression-display";
 
@@ -319,5 +322,129 @@ describe("practice nudge copy (#1722)", () => {
     expect(practiceShortfallLine(behind({ count: 3 }))).toBe(
       "Meditation — 3 of 3 this week"
     );
+  });
+});
+
+// ── THE PRACTICE A WINDOW ON THE DAY CHART LOOKS LIKE (#4950 item 4) ─────────
+//
+// HABIT, NEVER PHYSIOLOGY: nothing below carries a heart rate, and the function cannot
+// take one. What it reads is the weekly rhythm the Wellness card already reads, asked
+// of the window's own weekday and minute.
+describe("practiceFittingWindow", () => {
+  // 2026-09-03 is a Thursday (weekday 4), which is the day every rhythm below predicts.
+  const THURSDAY = "2026-09-03";
+  const FRIDAY = "2026-09-04";
+  const rhythm = (hour: number, weekdays = [4]): WeeklyRhythm => ({
+    weekdays,
+    hour,
+    hasPattern: true,
+  });
+  const candidate = (
+    name: string,
+    hour: number,
+    usualDurationMin: number | null = null,
+    weekdays = [4]
+  ): PracticeWindowCandidate => ({
+    name,
+    rhythm: rhythm(hour, weekdays),
+    usualDurationMin,
+  });
+  const at = (hhmm: string): number => {
+    const [h, m] = hhmm.split(":").map(Number);
+    return h * 60 + m;
+  };
+
+  it("picks the practice whose rhythm predicts the window's day and hour", () => {
+    expect(
+      practiceFittingWindow(
+        [candidate("Rowing", 6), candidate("Sauna", 19)],
+        THURSDAY,
+        { from: at("19:10"), to: at("20:40") }
+      )
+    ).toBe("Sauna");
+  });
+
+  it("says nothing on a day the rhythm does not predict", () => {
+    expect(
+      practiceFittingWindow([candidate("Sauna", 19)], FRIDAY, {
+        from: at("19:10"),
+        to: at("20:40"),
+      })
+    ).toBeNull();
+  });
+
+  it("says nothing at an hour outside the rhythm's reach", () => {
+    // The band is RHYTHM_MOMENT_MIN either side of the typical hour, so a window this
+    // far from 19:00 is not that moment however right the day is.
+    const outside = 19 * 60 + RHYTHM_MOMENT_MIN + 30;
+    expect(
+      practiceFittingWindow([candidate("Sauna", 19)], THURSDAY, {
+        from: outside,
+        to: outside + 90,
+      })
+    ).toBeNull();
+  });
+
+  it("says nothing when the practice has no rhythm to speak of", () => {
+    // #558's honesty rule: no pattern means UNKNOWN, and the every-day fallback must
+    // never be read as "every day". A profile whose practices have no rhythm gets the
+    // picker it has today.
+    expect(
+      practiceFittingWindow(
+        [
+          {
+            name: "Sauna",
+            rhythm: {
+              weekdays: [0, 1, 2, 3, 4, 5, 6],
+              hour: 19,
+              hasPattern: false,
+            },
+            usualDurationMin: 90,
+          },
+        ],
+        THURSDAY,
+        { from: at("19:10"), to: at("20:40") }
+      )
+    ).toBeNull();
+  });
+
+  it("breaks a tie on the usual duration nearest the window's length", () => {
+    expect(
+      practiceFittingWindow(
+        [candidate("Rowing", 19, 30), candidate("Sauna", 19, 85)],
+        THURSDAY,
+        { from: at("19:10"), to: at("20:40") } // 90 minutes
+      )
+    ).toBe("Sauna");
+  });
+
+  it("prefers a practice that declares a usual length over one that cannot", () => {
+    // A practice with no history says nothing about length, so it cannot win a
+    // tie-break it is not equipped to enter.
+    expect(
+      practiceFittingWindow(
+        [candidate("Rowing", 19, null), candidate("Sauna", 19, 85)],
+        THURSDAY,
+        { from: at("19:10"), to: at("20:40") }
+      )
+    ).toBe("Sauna");
+  });
+
+  it("keeps the profile's own order when a start alone leaves nothing to weigh", () => {
+    // A tap on the plot marks when something began and says nothing about how long it
+    // ran, so there is no length for the tie-break to read.
+    expect(
+      practiceFittingWindow(
+        [candidate("Rowing", 19, 30), candidate("Sauna", 19, 85)],
+        THURSDAY,
+        { from: at("19:10"), to: null }
+      )
+    ).toBe("Rowing");
+  });
+
+  it("offers nothing when the profile tracks nothing", () => {
+    expect(
+      practiceFittingWindow([], THURSDAY, { from: at("19:10"), to: null })
+    ).toBeNull();
   });
 });

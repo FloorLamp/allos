@@ -56,6 +56,9 @@ export default function PracticeSessionForm({
   minDate,
   maxDate,
   defaultDurationMin = null,
+  defaultStartTime = null,
+  defaultEndTime = null,
+  defaultPractice = null,
   row,
   subjectProfileId,
   onSaved,
@@ -74,6 +77,25 @@ export default function PracticeSessionForm({
   /** What the duration starts at in ADD mode — `practiceDurationPrefill`, never
    *  re-derived here. A seeded row's own duration wins. */
   defaultDurationMin?: number | null;
+  /**
+   * The clocks a window selected on the day chart states (#4950), `HH:MM` in the
+   * subject's own zone. A SUGGESTION the person can change before submitting, exactly
+   * like `defaultDurationMin` beside it — and, like it, a seeded row's own clocks win,
+   * because a correction is about the session that exists rather than about what the
+   * chart is showing behind the dialog.
+   *
+   * A start with no end is a whole answer: `TimeRangeFields`' `+{n}m` shortcut then
+   * offers the practice's usual duration off `derivableDurationMin`, so one tap and one
+   * shortcut log a session at its usual length.
+   */
+  defaultStartTime?: string | null;
+  defaultEndTime?: string | null;
+  /**
+   * Which practice the picker opens on, when a caller knows one (#4950 item 4). Null —
+   * and every mount that does not pass it — opens on the first, as before. Like the
+   * clocks beside it this is a SUGGESTION: nothing is written until the person submits.
+   */
+  defaultPractice?: string | null;
   row?: PracticeSessionRow;
   subjectProfileId?: number;
   /** The write as the SERVER settled it: the day's running count in add mode, `null`
@@ -91,13 +113,17 @@ export default function PracticeSessionForm({
   const tz = useTimezone();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [practice, setPractice] = useState(practices[0] ?? "");
+  const [practice, setPractice] = useState(
+    defaultPractice ?? practices[0] ?? ""
+  );
   // The window and the duration are CONTROLLED because they read each other (#336):
   // an uncoupled trio cannot offer a shortcut, cannot derive a third, and cannot know
   // that its end precedes its start. A seeded row's own values win, exactly as the
   // uncontrolled defaults they replace did.
-  const [startTime, setStartTime] = useState(row?.startTime ?? "");
-  const [endTime, setEndTime] = useState(row?.endTime ?? "");
+  const [startTime, setStartTime] = useState(
+    row?.startTime ?? defaultStartTime ?? ""
+  );
+  const [endTime, setEndTime] = useState(row?.endTime ?? defaultEndTime ?? "");
   const [duration, setDuration] = useState(
     String(row?.durationMin ?? defaultDurationMin ?? "")
   );

@@ -629,9 +629,23 @@ export function buildSleepClockSkewFindings(
       dedupeKey: sleepClockSkewSignalKey(firstWakeDay),
       title: `${nights} sleep times disagree with your heart rate`,
       detail:
-        `Across the newest of them your heart rate sat at ${newest.evidence.claimedBpm} bpm, ` +
-        `while an equally long window earlier the same day sat at ${newest.evidence.troughBpm} bpm — ` +
-        `the overnight low. The durations look right; the clock times ${source} recorded may not be.` +
+        // Two readings caught these nights, and each has its own true sentence. The
+        // median reading can name an equally long window elsewhere holding the
+        // overnight low; on a run finding no such window exists — that absence is why
+        // the median reading missed it — so it names the stretch inside the window
+        // instead (#5020).
+        (newest.evidence.awakeRun
+          ? // No duration in this sentence, for the same reason there is no offset in
+            // the other one: "a two-hour stretch" beside "the clock times may not be"
+            // reads as a claim about how far off the clock is, and nothing here
+            // measures that.
+            `Across the newest of them part of the recorded window ran at ` +
+            `${newest.evidence.awakeRun.bpm} bpm — a daytime level — while the window ` +
+            `as a whole sat at ${newest.evidence.claimedBpm} bpm. ` +
+            `The durations look right; the clock times ${source} recorded may not be.`
+          : `Across the newest of them your heart rate sat at ${newest.evidence.claimedBpm} bpm, ` +
+            `while an equally long window earlier the same day sat at ${newest.evidence.troughBpm} bpm — ` +
+            `the overnight low. The durations look right; the clock times ${source} recorded may not be.`) +
         (newest.nearTimezoneSwitch
           ? " Your travel log records a timezone change around then."
           : ""),

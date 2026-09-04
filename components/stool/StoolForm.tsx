@@ -44,6 +44,7 @@ export default function StoolForm({
   maxDate,
   row,
   subjectProfileId,
+  defaultStatedAt = null,
   onSaved,
   onCancel,
 }: {
@@ -53,6 +54,12 @@ export default function StoolForm({
   maxDate: string;
   row?: StoolReadingRow;
   subjectProfileId?: number;
+  /**
+   * A stated instant to OPEN on, spelled as `MeasurementsQuickAdd` spells it — the
+   * window a day chart was showing when this door was opened (#4950). A default a
+   * person can change, never a write.
+   */
+  defaultStatedAt?: string | null;
   onSaved: () => void;
   onCancel: () => void;
 }) {
@@ -64,9 +71,13 @@ export default function StoolForm({
   const [error, setError] = useState<string | null>(null);
   const [type, setType] = useState(row?.type ?? 4);
   // THE PAIR, held as one value (#2236 invariant 1). `date` opens on the day the reader
-  // was looking at and `statedAt` opens EMPTY — never defaulted to now, so a backfill
-  // that states no minute still states none and the record renders it honestly.
-  const [when, setWhen] = useState<WhenValue>({ date, statedAt: null });
+  // was looking at and `statedAt` opens on the instant the door was opened at, or EMPTY
+  // — never defaulted to now, so a backfill that states no minute still states none and
+  // the record renders it honestly.
+  const [when, setWhen] = useState<WhenValue>(() => ({
+    date,
+    statedAt: defaultStatedAt,
+  }));
 
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();

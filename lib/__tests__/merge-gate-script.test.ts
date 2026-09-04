@@ -718,3 +718,60 @@ describe("merge-gate.mjs source confinement", () => {
     expect(source).not.toContain("mutation");
   });
 });
+
+// THE TITLE RULE AS A COMMAND (#5068). title-rule.mjs shipped as exports and
+// nothing else: run as a command it printed nothing and exited 0 for every
+// string, while dispatch briefs told lanes to run it as THE check that a title
+// is one clause within budget. Titles were still caught, but by the merge gate
+// an hour later on an already-open PR. A guard that exits 0 on everything is
+// worse than no guard — it turns a check into a ritual and the person running
+// it reasonably believes they have checked.
+//
+// So the REFUSAL direction is what this describe exists for. A test that only
+// asserted a good title exits 0 would pass unchanged against the broken file
+// and reproduce the very defect; every case below therefore pins an exit code
+// AND the output that goes with it, and the two that must be non-zero come
+// first. The colon-tail control is the string from the issue.
+describe("title-rule.mjs as a command", () => {
+  const TITLE_RULE = path.join(REPO, "scripts/orchestration/title-rule.mjs");
+  const runTitle = (...args: string[]) =>
+    spawnSync(process.execPath, [TITLE_RULE, ...args], {
+      cwd: REPO,
+      encoding: "utf8",
+      timeout: 30_000,
+    });
+
+  it.each([
+    [
+      "a colon tail",
+      "Fix: dashboard performance - assert one read per window",
+      ["title carries a colon tail"],
+    ],
+    // Both halves arrive together, one to a line, so a rewrite fixes both at
+    // once rather than meeting the same gate twice.
+    [
+      "a length and a tail at once",
+      `Fix the reader: ${"R".repeat(70)}`,
+      ["title is 86 characters", "title carries a colon tail"],
+    ],
+  ])("exits 1 on %s and names it", (_case, title, lines) => {
+    const run = runTitle(title);
+    expect(run.status).toBe(1);
+    expect(run.stdout.trim().split("\n")).toEqual([
+      ...lines,
+      "the rule is 72 characters max, one clause, no colon or dash tail (#4983); the detail is the body's first line",
+    ]);
+  });
+
+  it("explains itself and exits non-zero with no title to check", () => {
+    const run = runTitle();
+    expect(run.status).toBe(2);
+    expect(run.stderr).toContain('usage: title-rule.mjs "<title>"');
+  });
+
+  it("accepts a conforming title, and says so rather than going quiet", () => {
+    const run = runTitle("Rank a ride against the rides that came before it");
+    expect(run.status).toBe(0);
+    expect(run.stdout.trim()).toBe("title is one clause of 49 characters");
+  });
+});
