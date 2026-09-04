@@ -2,6 +2,13 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 const readSnapshot = new AsyncLocalStorage<Map<string, unknown>>();
 
+// PROBE-5012 (temporary): this module's instance number in this process.
+const PROBE_MODULE_INSTANCE: number = (() => {
+  const g = globalThis as unknown as { __probe5012Snap?: number };
+  g.__probe5012Snap = (g.__probe5012Snap ?? 0) + 1;
+  return g.__probe5012Snap;
+})();
+
 /**
  * Open a read-only snapshot for a bounded server operation. Values are
  * discarded when the aggregation returns; callers that can write must not open
@@ -12,8 +19,8 @@ export function withReadSnapshot<T>(fn: () => T): T {
 }
 
 /** PROBE-5012 (temporary): is a read snapshot open on this call stack? */
-export function __probeReadSnapshotOpen(): boolean {
-  return readSnapshot.getStore() != null;
+export function __probeReadSnapshotOpen(): string {
+  return `${readSnapshot.getStore() != null}/snapModule=${PROBE_MODULE_INSTANCE}`;
 }
 
 /** Memoize a read only while an explicit read snapshot is open. */

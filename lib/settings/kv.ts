@@ -12,6 +12,15 @@ interface SettingReadCache {
 
 const settingReadCache = new AsyncLocalStorage<SettingReadCache>();
 
+// PROBE-5012 (temporary): how many times has THIS module been instantiated in
+// this process, and which instance is this one? Rules out the dev-bundler
+// module-duplication explanation for a scope that reads as closed.
+const PROBE_MODULE_INSTANCE: number = (() => {
+  const g = globalThis as unknown as { __probe5012Kv?: number };
+  g.__probe5012Kv = (g.__probe5012Kv ?? 0) + 1;
+  return g.__probe5012Kv;
+})();
+
 /** Deduplicate scalar setting reads inside one server operation. */
 export function withSettingReadCache<T>(fn: () => T): T {
   return settingReadCache.run(
@@ -127,8 +136,8 @@ export function getSettingKeysWithPrefix(prefix: string): string[] {
 // profile). Inline, each of those compiled its own copy of the SQL. Value
 // semantics are unchanged outside an explicit operation-scoped read cache.
 /** PROBE-5012 (temporary): is a setting read cache open on this call stack? */
-export function __probeSettingScopeOpen(): boolean {
-  return settingReadCache.getStore() != null;
+export function __probeSettingScopeOpen(): string {
+  return `${settingReadCache.getStore() != null}/kvModule=${PROBE_MODULE_INSTANCE}`;
 }
 
 const PROFILE_SETTING_GET_STMT = hoistedStatement(
@@ -142,7 +151,9 @@ export function getProfileSetting(
   const cache = scope?.profile;
   const cacheKey = `${profileId}:${key}`;
   if (process.env.PROBE_5012)
-    console.log(`[PROBE-read] store=${scope ? 1 : 0} key=${cacheKey}`);
+    console.log(
+      `[PROBE-read] store=${scope ? 1 : 0} kvModule=${PROBE_MODULE_INSTANCE} key=${cacheKey}`
+    );
   if (cache?.has(cacheKey)) return cache.get(cacheKey);
   if (scope?.loadedProfiles.has(profileId)) return undefined;
   const row = PROFILE_SETTING_GET_STMT.get(profileId, key) as
