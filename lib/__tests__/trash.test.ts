@@ -1,13 +1,14 @@
 import { describe, it, expect } from "vitest";
 import {
   DATE_COLUMNS,
-  TRASH_EXCLUDED_KIND,
+  TRASH_EXCLUDED_KINDS,
   parseSqliteUtc,
   trashEntry,
   trashEntryCopy,
   trashEntryHeadline,
   type TrashCapture,
 } from "@/lib/trash";
+import { SLEEP_RETIME_KIND } from "@/lib/sleep-retime-kind";
 import { UNDO_KINDS, serializePayload } from "@/lib/undo-delete";
 import { machineDateHits } from "@/lib/machine-date-census";
 import { DEFAULT_FORMAT_PREFS, formatDateWithYear } from "@/lib/format-date";
@@ -553,12 +554,17 @@ describe("trashEntryCopy — the headline and subtitle derived together", () => 
   });
 });
 
-describe("TRASH_EXCLUDED_KIND", () => {
-  it("is the bulk-correction kind — an inverted EDIT, not a deleted row", () => {
-    // It shares deleted_rows to reuse the purge timer, but its undo is
-    // undoBulkCorrection (guarded, partial, reported), not restoreDeletedRow — so
-    // listing it would offer a Restore button that cannot work.
-    expect(TRASH_EXCLUDED_KIND).toBe(BULK_CORRECTION_KIND);
+describe("TRASH_EXCLUDED_KINDS", () => {
+  it("holds every capture that is an inverted EDIT rather than a deleted row", () => {
+    // Both share deleted_rows to reuse the purge timer, and neither is restored by
+    // restoreDeletedRow's generic path — the bulk correction's undo is
+    // undoBulkCorrection (guarded, partial, reported) and the sleep re-time's MOVES
+    // the session back. Listing either would offer a Restore button under a heading
+    // that misnames what happened.
+    expect([...TRASH_EXCLUDED_KINDS]).toEqual([
+      BULK_CORRECTION_KIND,
+      SLEEP_RETIME_KIND,
+    ]);
   });
 });
 

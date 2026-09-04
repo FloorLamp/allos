@@ -33,6 +33,7 @@ import {
   setFitnessCadence,
   type SaveFitnessTestResult,
 } from "./fitness-actions";
+import SubmitButton from "@/components/SubmitButton";
 
 const DOMAIN_LABEL: Record<string, string> = {
   endurance: "Endurance",
@@ -266,9 +267,7 @@ function RetestCadence({ cadenceDays }: { cadenceDays: number }) {
         className="input w-20"
       />
       <span>days</span>
-      <button type="submit" className="btn-ghost px-3">
-        Save
-      </button>
+      <SubmitButton variant="primary">Save</SubmitButton>
       {saved && (
         <span className="text-emerald-600 dark:text-emerald-400">Saved</span>
       )}
@@ -791,14 +790,13 @@ function EntryModal({
           {error && (
             <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>
           )}
-          <button
-            type="submit"
+          <SubmitButton
+            variant="primary"
             disabled={pending}
-            className="btn"
             data-testid={`fitness-submit-${def.key}`}
           >
             {pending ? "Saving…" : "Save"}
-          </button>
+          </SubmitButton>
         </form>
       </>
     );

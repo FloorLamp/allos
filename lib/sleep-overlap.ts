@@ -49,6 +49,18 @@ import { instantMs, windowsOverlap } from "./metric-window-overlap";
 // says so — and a person can delete either row in Data → Manage. A night this rule
 // deletes wrongly is gone.
 
+// The four metrics a sleep session's breakdown is filed under. ONE list: the collapse
+// reads it to find the stage rows that go with a deleted session, and the re-time
+// (#5021) reads it to find the ones that move with a corrected one. Two spellings of
+// "which rows are this night's stages" could disagree, and the row a disagreement
+// stranded would belong to a night that no longer exists at those instants.
+export const SLEEP_STAGE_METRICS = [
+  "sleep_deep_min",
+  "sleep_rem_min",
+  "sleep_light_min",
+  "sleep_awake_min",
+] as const;
+
 /** One stored `sleep_min` row, in the columns this rule reads. */
 export interface SleepSessionRow {
   id: number;

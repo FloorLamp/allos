@@ -6,12 +6,22 @@ import { today, writeTx } from "@/lib/db";
 import { isRealIsoDate, shiftDateStr } from "@/lib/date";
 import { normalizeMoodInput } from "@/lib/mood";
 import { deleteMetricRow } from "@/lib/metric-readings";
-import { insertVitals, upsertMoodLog } from "@/lib/offline/writes";
+import {
+  insertVitals,
+  resolveSleepWindow,
+  upsertMoodLog,
+} from "@/lib/offline/writes";
 import { canEditManualSleepOnDate } from "@/lib/queries/metrics";
 import { SLEEP_MOOD_HISTORY_DAYS } from "@/lib/queries/sleep";
 import { parseReadingTarget } from "@/lib/reading-placement";
 import { formError, formOk, type FormResult } from "@/lib/types";
-import { normalizeVitalsInput } from "@/lib/vitals-input";
+import { getTimezone } from "@/lib/settings";
+import { formatHm } from "@/lib/sleep-summary";
+import { retimeSleepSessionCore } from "@/lib/sleep-retime-db";
+import {
+  normalizeVitalsInput,
+  sleepWindowFromClocks,
+} from "@/lib/vitals-input";
 
 // The `metric_samples` key nightly sleep duration is stored under. Spelled here
 // because this action must REFUSE any other metric: the target token is posted by
@@ -132,6 +142,87 @@ export async function deleteSleepMoodRow(
   if (!outcome.ok) return { undoId: null };
   // The same fan-out `saveSleepMoodEntry` uses: the scatter and the log above are
   // rendered from these rows, and both Trends and Results chart them.
+  revalidateRoute("/");
+  revalidateRoute("/sleep");
+  revalidateRoute("/trends");
+  revalidateRoute("/results");
+  return { undoId: outcome.undoId };
+}
+
+/**
+ * Move a hedged sleep session onto the window a person states (issue #5021).
+ *
+ * #4299 left a contradicted night two states, hedged or deleted, and a person who KNEW
+ * when they slept had to lose the night to keep the record honest. This is the third,
+ * and the person is the only thing that triggers it — the ruling that forbade a SILENT
+ * shift stands, and nothing here infers a window.
+ *
+ * The clocks arrive as two wall clocks against the row's wake day, which is how every
+ * stated sleep window reaches this app, so they fold through the same
+ * `sleepWindowFromClocks` + `resolveSleepWindow` pair the manual entry uses rather than
+ * a second reading of what "23:30 to 06:40" means. The MOVE, the refusals and the undo
+ * capture are `retimeSleepSessionCore`'s (lib/sleep-retime-db.ts); what lives here is
+ * the gate, the fold and the revalidation.
+ *
+ * Returns the undo token in the shape `useUndoableDelete` expects, so a re-time offers
+ * the same Undo as a delete and through the same toast.
+ */
+export async function retimeSleepSession(
+  formData: FormData
+): Promise<{ undoId: number | null; error?: string }> {
+  const { profile } = await requireWriteAccess();
+  const sampleId = Number(formData.get("sample_id"));
+  const date = String(formData.get("date") ?? "").trim();
+  if (!Number.isInteger(sampleId) || sampleId <= 0 || !isRealIsoDate(date)) {
+    return { undoId: null, error: "That sleep session is no longer there." };
+  }
+  const stated = sleepWindowFromClocks(
+    String(formData.get("bed_time") ?? ""),
+    String(formData.get("wake_time") ?? "")
+  );
+  const resolved = stated
+    ? resolveSleepWindow(getTimezone(profile.id), date, stated)
+    : null;
+  if (!resolved) {
+    return { undoId: null, error: "Enter a bed time and a wake time." };
+  }
+
+  const outcome = retimeSleepSessionCore(profile.id, sampleId, {
+    bedAt: resolved.startedAt,
+    wakeAt: resolved.endedAt,
+  });
+  switch (outcome.kind) {
+    case "not-found":
+      return { undoId: null, error: "That sleep session is no longer there." };
+    case "not-hedged":
+      // The lock is the default and this door is the exception to it, so the refusal
+      // names the exception rather than the lock.
+      return {
+        undoId: null,
+        error: "Only a night flagged against your heart rate can be re-timed.",
+      };
+    case "invalid-window":
+      return {
+        undoId: null,
+        error:
+          "Enter a window in the past, with a wake time after the bed time.",
+      };
+    case "length-changed":
+      // The one refusal a person can act on, so it says the number they have to match.
+      // Why it exists is in lib/sleep-retime-db.ts: a different length has no single
+      // delta, and both alternatives fabricate the stage breakdown.
+      return {
+        undoId: null,
+        error: `Keep the same length — this session is ${formatHm(
+          outcome.storedMinutes
+        )}. To log a different amount, delete it and add the hours.`,
+      };
+    case "retimed":
+      break;
+  }
+
+  // The same fan-out the delete uses: the hero, the log and the scatter read these
+  // rows, and both Trends and Results chart them.
   revalidateRoute("/");
   revalidateRoute("/sleep");
   revalidateRoute("/trends");
