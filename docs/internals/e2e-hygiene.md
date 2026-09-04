@@ -1923,9 +1923,9 @@ Two consequences, both of which cost something on 2026-09-04:
 
 - **A separation claim is verified on the tree that will LAND**, never on the
   branch alone. #5017's body stated a correct separation for its own branch;
-  merged with main, both buckets had moved. The claim survived, the arrangement
-  did not — and this sentence deliberately names no number, for the reason
-  above.
+  merged with main, one of the pair had moved. The claim survived, the
+  arrangement did not — and this sentence deliberately names no number, for
+  the reason above.
 - **A separation buys nothing.** Two specs in different buckets today are a
   coincidence of the current partition. The fix for a co-residency defect is
   the spec owning the state it asserts (#5014's shape) — never an arrangement
