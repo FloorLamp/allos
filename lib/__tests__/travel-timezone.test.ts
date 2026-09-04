@@ -85,8 +85,7 @@ describe("resolveSwitch", () => {
     expect(
       resolveSwitch(
         leg({ at: NOON_UTC, from: "Europe/Paris", to: "Europe/Berlin" })
-      )
-        ?.direction
+      )?.direction
     ).toBe("level");
   });
 
@@ -705,7 +704,11 @@ describe("kind: travel | settings — one history, two readers (#3428 item 2)", 
   it.each([
     { at: "2026-04-30T00:00:00Z", expected: NY, why: "before the outbound" },
     { at: "2026-05-04T00:00:00Z", expected: TOKYO, why: "mid-trip" },
-    { at: "2026-06-01T00:00:00Z", expected: HONOLULU, why: "after the correction" },
+    {
+      at: "2026-06-01T00:00:00Z",
+      expected: HONOLULU,
+      why: "after the correction",
+    },
   ])("zoneAtInstant reads both kinds: $why → $expected", ({ at, expected }) => {
     expect(zoneAtInstant(mixedHistory, HONOLULU, new Date(at))).toBe(expected);
     // The control: the same instants over the travel leg alone.

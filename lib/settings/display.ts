@@ -175,9 +175,10 @@ export function setTimezone(
   // Read through getTimezone, not the raw row, so `from` is always a real IANA name:
   // a stored value that is unparseable resolves to the UTC the day was actually
   // running on, and recording the raw garbage would taint the whole history instead.
-  const from = getProfileSetting(profileId, "timezone") == null
-    ? null
-    : getTimezone(profileId);
+  const from =
+    getProfileSetting(profileId, "timezone") == null
+      ? null
+      : getTimezone(profileId);
   setProfileSetting(profileId, "timezone", tz);
   if (from == null || from === tz) return null;
 

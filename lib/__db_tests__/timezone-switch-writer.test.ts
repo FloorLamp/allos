@@ -163,17 +163,17 @@ describe("one recorded seam, read two ways", () => {
     expect(travelExcusalResolver(p)(MIDDAY_SLOT, DAY)).toBe(false);
   });
 
-  it.each([
-    { kind: "travel" as const },
-    { kind: "settings" as const },
-  ])("resolves a pre-seam instant to New York for kind $kind", ({ kind }) => {
-    const p = seamProfile(`Zone-at ${kind}`, kind);
-    const zone = profileDayZone(p);
-    // The whole-history reader does NOT discriminate: the day really was keyed under
-    // New York before the seam, whichever reason moved it.
-    expect(zoneOf(zone, new Date("2026-04-20T12:00:00Z"))).toBe(NY);
-    expect(zoneOf(zone, new Date("2026-05-04T12:00:00Z"))).toBe(TOKYO);
-  });
+  it.each([{ kind: "travel" as const }, { kind: "settings" as const }])(
+    "resolves a pre-seam instant to New York for kind $kind",
+    ({ kind }) => {
+      const p = seamProfile(`Zone-at ${kind}`, kind);
+      const zone = profileDayZone(p);
+      // The whole-history reader does NOT discriminate: the day really was keyed under
+      // New York before the seam, whichever reason moved it.
+      expect(zoneOf(zone, new Date("2026-04-20T12:00:00Z"))).toBe(NY);
+      expect(zoneOf(zone, new Date("2026-05-04T12:00:00Z"))).toBe(TOKYO);
+    }
+  );
 
   // ALREADY-STORED PROD RECORDS CARRY NO `kind` — every one of them was written by
   // `switchProfileTimezone`, i.e. by a trip. They must keep excusing what they excused

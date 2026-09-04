@@ -22,10 +22,7 @@ import {
 } from "./kv";
 import { getTimezone, setTimezone, TIMEZONE_SWITCHES_KEY } from "./display";
 import { isValidTimezone } from "../timezone";
-import {
-  parseTimezoneSwitches,
-  type TimezoneSwitch,
-} from "../travel-timezone";
+import { parseTimezoneSwitches, type TimezoneSwitch } from "../travel-timezone";
 
 const HOME_KEY = "timezone_home";
 const DISMISSED_KEY = "timezone_travel_dismissed";

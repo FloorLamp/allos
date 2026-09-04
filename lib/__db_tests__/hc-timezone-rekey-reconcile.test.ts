@@ -32,7 +32,10 @@ import { describe, it, expect, afterEach } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { getTimezone, setTimezone } from "@/lib/settings";
-import { getTravelSwitches, switchProfileTimezone } from "@/lib/settings/travel";
+import {
+  getTravelSwitches,
+  switchProfileTimezone,
+} from "@/lib/settings/travel";
 import { resolveSwitchHistory } from "@/lib/travel-timezone";
 import { parseHealthConnectPayload } from "@/lib/integrations/health-connect";
 import { ingestHealthConnectPayload } from "@/lib/integrations/health-connect-ingest";
