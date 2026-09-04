@@ -1123,16 +1123,43 @@ test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)
   // (`activity-autosave-retriable`, measured on this case). Both end at
   // `setStatus("error")`, so both raise this indicator — which is why the case is
   // honest, and why the count below is what says the abort actually happened.
+  //
+  // WHAT THE HANDLER SAW, RECORDED AS IT RAN (#4741). This case has now reded three
+  // times on CI, twice on diffs that cannot reach a route handler, and never once on
+  // this box across 27 runs — so the one thing nobody has is the interception state
+  // inside the runner's browser. Playwright can be asked afterwards for the requests
+  // a PAGE made; it cannot be asked what THIS handler matched, which is the question.
+  // So every field below is written by the handler as it runs, and read at the moment
+  // the poll gives up. Do not delete it because the poll is green: green is when it
+  // costs nothing, and the one run it has to speak for is one nobody can watch.
   let abortedActionPosts = 0;
+  let routeInstalled = false;
+  const seen = {
+    requests: 0,
+    posts: 0,
+    nextActionHeaders: 0,
+    postPaths: [] as string[],
+  };
   await page.route("**/*", async (route) => {
     const req = route.request();
-    if (req.method() === "POST" && req.headers()["next-action"]) {
-      abortedActionPosts += 1;
-      await route.abort("failed");
-      return;
+    seen.requests += 1;
+    // Counted over EVERY method rather than only POST: an action arriving as
+    // something this discriminator rejects is a shape that would explain a miss, and
+    // a POST-scoped count could not tell that apart from no action at all.
+    const nextAction = Boolean(req.headers()["next-action"]);
+    if (nextAction) seen.nextActionHeaders += 1;
+    if (req.method() === "POST") {
+      seen.posts += 1;
+      seen.postPaths.push(new URL(req.url()).pathname);
+      if (nextAction) {
+        abortedActionPosts += 1;
+        await route.abort("failed");
+        return;
+      }
     }
     await route.continue();
   });
+  routeInstalled = true;
 
   // Open a fresh create form and fill it enough to be savable (same flow as the
   // est-calories spec — see its note on why fields are addressed by testid/role).
@@ -1157,13 +1184,42 @@ test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)
   // its ceiling is free: waiting longer cannot invent a POST that was never made.
   // It comes FIRST so that when this case reds, the report already says whether the
   // interception applied — the question #4741 was opened to settle.
-  await expect
-    .poll(() => abortedActionPosts, {
-      message:
-        "no Server Action POST was intercepted — the forced failure never fired, " +
-        "so nothing below this line is a test of #332 (see #4741)",
-    })
-    .toBeGreaterThan(0);
+  //
+  // The report is assembled INSIDE the polled function, so the failure prints the
+  // state at the poll's LAST READ rather than a reading taken afterwards.
+  //
+  // READ "installed" HONESTLY: `routeInstalled` is near-vacuous by construction —
+  // the `await page.route(...)` above precludes false — so it is there to be visibly
+  // true, not to discriminate. The halves that carry weight are `page.isClosed()`,
+  // which really can be false and takes the handler with it, and `requests`, which
+  // says whether an installed handler is still being REACHED. An installed handler
+  // that saw zero requests is the deaf case; one that saw dozens of them, none
+  // carrying a next-action header, is a different bug entirely — and today both
+  // print "Received: 0" and nothing else.
+  let interception = "the poll never read the handler";
+  const readAbortedActionPosts = () => {
+    interception =
+      `route handler installed=${routeInstalled && !page.isClosed()}; ` +
+      `requests seen=${seen.requests}, of them POSTs=${seen.posts}, ` +
+      `carrying a next-action header=${seen.nextActionHeaders}; ` +
+      `POST paths: ${seen.postPaths.join(" ") || "(none)"}`;
+    return abortedActionPosts;
+  };
+  try {
+    await expect
+      .poll(readAbortedActionPosts, {
+        message:
+          "no Server Action POST was intercepted — the forced failure never fired, " +
+          "so nothing below this line is a test of #332 (see #4741)",
+      })
+      .toBeGreaterThan(0);
+  } catch (failure) {
+    // expect.poll's `message` is fixed when the assertion is CONSTRUCTED, so this is
+    // the only place the state at the miss can reach the failure line.
+    throw new Error(
+      `${(failure as Error).message}\n  interception at the moment of the miss: ${interception}`
+    );
+  }
 
   // The failure must surface as the error indicator (SaveStatus, aria-label
   // "Couldn’t save"), and the success check must never appear.
