@@ -62,6 +62,34 @@ conversion to the login's unit belongs to the render boundary, so the hit's titl
 is the measure label alone. The stored number is still matchable — typing `70.4`
 finds the reading — and the row itself states it in the reader's own unit.
 
+The consequence, stated rather than discovered: **several readings of one measure
+on one day are indistinguishable in the palette.** Three weigh-ins on the 29th are
+three hits reading "Weight · Reading · 2026-08-29", telling apart only once the day
+view is open. That is accepted, because the alternative is worse — a converted
+value inside a query-layer string is the boundary crossing the project's unit rule
+forbids, and the subtitle's shape is `<kind> · <date>` by the issue's own spec. If
+it ever bites, the fix is a RENDER-side subtitle (the palette holding the login's
+unit and formatting the hit), never a conversion moved into this layer.
+
+## Two stated narrowings
+
+**A date-typed sleep query can miss a night.** Sleep is filtered on
+`metric_samples.date` — the SOURCE's own wake-day stamp — while the hit's day, and
+therefore its address, is computed from `ended_at` in the profile's zone. The two
+disagree for a provider that stamps the BEDTIME day (#3958 records this; the phase-2
+gather fixture seeds exactly that shape), so typing `2026-08-28` finds the night
+only if the provider stamped it that way. **The href is always right** — a hit that
+IS returned lands on the correct profile-local wake day — and the word the
+vocabulary actually carries, "sleep", reaches every night regardless. Closing the gap would mean resolving each
+candidate's local day before filtering, which is a scan rather than a bounded LIKE;
+it is deliberately not done here.
+
+**The vocabulary is the title's, not the row's whole detail.** A dose matches its
+item name and amount, not its product or its note; a practice matches its name, not
+its notes; a check-in matches the words for the thing and its day, never the note or
+the factors (the mood table is store-private, #992, and a palette hit is a door
+rather than a second rendering of the row).
+
 ## Ranking
 
 Within a domain the ranker sorts by match quality (exact > prefix > substring),
