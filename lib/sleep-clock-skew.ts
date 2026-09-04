@@ -76,7 +76,21 @@ export interface SleepClockSkew {
   claimedBpm: number;
   /** Median bpm over the best comparable window elsewhere in the surrounding day. */
   troughBpm: number;
-  /** That window's start instant — the "four hours earlier" the copy can name. */
+  /**
+   * Where the body actually settled: the start of the lowest-median window of the
+   * session's own width anywhere in the surrounding day, overlap with the claim
+   * ALLOWED (#5021).
+   *
+   * Not the same window as `troughBpm`, and deliberately so. `troughBpm` is the
+   * comparison the verdict rests on and excludes anything overlapping the claim; this
+   * is the instant a sentence may quote, and excluding the overlap would displace it
+   * whenever the clock error is shorter than the session — by three hours on a measured
+   * 420-minute night.
+   *
+   * It is INFORMATION, never a bedtime: "your heart rate settled around 03:00" is true
+   * of sleep onset, and a person who lay awake first did not go to bed then (#5021's
+   * owner ruling, 2026-09-04).
+   */
   troughStart: string;
 }
 
@@ -209,11 +223,46 @@ export function detectSleepClockSkew(
     return null;
   }
 
+  // ── WHAT THE COPY MAY NAME, once the finding exists (#5021) ──────────────
+  //
+  // The comparison above excludes every window overlapping the claim, which is right
+  // for the DECISION — an overlapping window is partly the claim, so ranking against it
+  // would compare a thing with itself. It is wrong for the REPORT. When the clock error
+  // is shorter than the session, the real trough overlaps the claim and is excluded, so
+  // `best.at` is the lowest window that does not touch it — necessarily displaced away
+  // from the onset. Measured on a 420-minute night with a 240-minute shift, that landed
+  // **three hours** before the real onset, 43% of a session width; on a shift LONGER
+  // than the night it is exact, because then the trough does not overlap at all.
+  //
+  // So the reported instant is re-derived over the same radius with overlap allowed.
+  // Nothing about the verdict moves: `best` above still decides, with the same rule and
+  // the same threshold, and this only chooses which instant the sentence quotes.
+  //
+  // PAID ONLY BY A NIGHT THAT ALREADY FLAGGED. The excluded windows are skipped before
+  // `windowStats` today, so scanning them costs `median` calls — the cost #5035
+  // measures. Running the second pass after the verdict means suspect nights pay it and
+  // the rest do not.
+  let settled = best;
+  for (
+    let from = start - SEARCH_RADIUS_MS;
+    from <= start + SEARCH_RADIUS_MS;
+    from += SEARCH_STEP_MS
+  ) {
+    const stats = windowStats(samples, from, from + width);
+    if (stats == null) continue;
+    if (
+      stats.median < settled.median ||
+      (stats.median === settled.median && stats.mean < settled.mean)
+    ) {
+      settled = { ...stats, at: from };
+    }
+  }
+
   return {
     start: session.start,
     end: session.end,
     claimedBpm: claimed.median,
     troughBpm: best.median,
-    troughStart: utcInstant(new Date(best.at)),
+    troughStart: utcInstant(new Date(settled.at)),
   };
 }
