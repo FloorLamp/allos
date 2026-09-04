@@ -130,6 +130,8 @@ export default function BottomSheet({
   closeDisabled = false,
   fullScreenBelowMd = false,
   onGestureDismiss,
+  titleAdornment,
+  belowTitle,
 }: {
   open: boolean;
   onClose: () => void;
@@ -138,6 +140,14 @@ export default function BottomSheet({
   title: string;
   description?: string;
   children: React.ReactNode;
+  // Rendered in the SAME title row as the heading, after it (#4932's quick-log
+  // subject chip is the first consumer). Purely presentational — this component
+  // decides nothing about what it is.
+  titleAdornment?: React.ReactNode;
+  // Rendered directly under the title row, before `description`/the content
+  // region (#4932's "Who is this for?" household block). Absent by default, so
+  // every other consumer of this sheet is unaffected.
+  belowTitle?: React.ReactNode;
   testId?: string;
   initialFocusRef?: React.RefObject<HTMLElement | null>;
   // #1425 seam: the drag layer takes the panel element from here.
@@ -396,7 +406,14 @@ export default function BottomSheet({
     : `font-semibold text-slate-900 dark:text-slate-100 ${
         asDialog || asCentered ? "text-lg" : "text-base"
       }${titleTruncates ? " min-w-0 truncate" : ""}`;
-  const heading = (
+  const heading = titleAdornment ? (
+    <span className="flex min-w-0 items-center gap-2">
+      <h2 id={titleId} className={titleClass}>
+        {title}
+      </h2>
+      {titleAdornment}
+    </span>
+  ) : (
     <h2 id={titleId} className={titleClass}>
       {title}
     </h2>
@@ -547,6 +564,7 @@ export default function BottomSheet({
         ) : (
           heading
         )}
+        {belowTitle}
         {description && (
           <p
             id={descriptionId}

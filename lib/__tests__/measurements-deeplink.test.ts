@@ -69,6 +69,15 @@ describe("field → group", () => {
     const rendered = new Set(
       [...read(FORM).matchAll(/id="(m-[a-z0-9-]+)"/g)].map((m) => m[1])
     );
+    // TimeRangeFields (#4976) builds its own two ids from ONE `idPrefix="m-…"` the
+    // form hands it (`${idPrefix}-start-time` / `${idPrefix}-end-time`) rather than
+    // spelling either literally — expand any idPrefix the scan finds the same way
+    // the component does, so this text scan still sees both without matching the
+    // component's own internals.
+    for (const m of read(FORM).matchAll(/idPrefix="(m-[a-z0-9-]+)"/g)) {
+      rendered.add(`${m[1]}-start-time`);
+      rendered.add(`${m[1]}-end-time`);
+    }
     const known = new Set([
       ...GROUPED_MEASUREMENT_FIELD_IDS,
       ...UNGROUPED_MEASUREMENT_FIELD_IDS,

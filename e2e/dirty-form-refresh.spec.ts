@@ -2,7 +2,11 @@ import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { hydratedClick, settledFill } from "./helpers";
 import { frozenNow, workerDbPath } from "./worker-env";
-import { openVisitFact, withVisitFact } from "./visit-form-helpers";
+import {
+  closeVisitFact,
+  openVisitFact,
+  withVisitFact,
+} from "./visit-form-helpers";
 
 // The dirty-form registry, end to end (issue #1878).
 //
@@ -243,6 +247,39 @@ test.describe("Chrome refreshes wait for a half-typed record form (#1878)", () =
     } finally {
       handle.close();
     }
+  });
+
+  // TimeField's hidden input is a NAMED field the registry has to see (#4976),
+  // and every existing test above types into "Reason / title" — which is why a
+  // regression here would be invisible. TIME ONLY, nothing else touched: the
+  // visible input a person actually types into carries no `name` at all (it
+  // shows a formatted clock, not the "HH:MM" the hidden sibling posts), so a
+  // fix that only reached the visible input would leave this red.
+  test("typing only the appointment time makes the Add-visit form dirty (#4976)", async ({
+    page,
+  }) => {
+    await page.goto("/records/history/visits");
+    const upcoming = page.getByTestId("visits-upcoming");
+    await expect(upcoming).toBeVisible();
+
+    const registry = page.getByTestId("dirty-form-registry");
+    await expect(registry).toHaveAttribute("data-dirty", "0");
+
+    await hydratedClick(page, page.getByTestId("add-visit-panel-toggle"));
+    const dialog = page.getByRole("dialog", { name: "Add visit" });
+    await openVisitFact(dialog, "when");
+    const time = dialog.getByLabel("Time (optional)");
+    await expect(time).toBeVisible();
+    await expect(registry).toHaveAttribute("data-dirty", "0");
+
+    await settledFill(page, time, "14:30");
+    await expect(registry).toHaveAttribute("data-dirty", "1");
+
+    // Read back: it is what the visible field and the chip both say — proof this
+    // asserts the real edit path, not a registry side effect divorced from it.
+    await expect(time).toHaveValue("14:30");
+    await closeVisitFact(dialog);
+    await expect(dialog.getByTestId("visit-fact-when")).toContainText("14:30");
   });
 
   test("a poll that observes a finished job does not repaint the tree under a dirty form", async ({

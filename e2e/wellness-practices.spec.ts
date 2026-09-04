@@ -653,8 +653,13 @@ test("a practice logged with Start and End draws a block on the day chart (#3142
     // The pair the owner decision put here in place of one "Time". Both are
     // PROFILE-LOCAL wall clocks, so they need no zone conversion — which is exactly
     // why the block's minutes below can be asserted as literals.
-    await settledFill(page, form.locator('input[name="start_time"]'), "19:00");
-    await settledFill(page, form.locator('input[name="end_time"]'), "19:25");
+    //
+    // TimeField (#4976) posts "start_time"/"end_time" through a hidden input, so
+    // `input[name=...]` now resolves to that — never visible, never fillable. The
+    // visible field a person actually types into is `#practice-start-time` / the
+    // `end-time-input` testid, same as every other TimeRangeFields host.
+    await settledFill(page, form.locator("#practice-start-time"), "19:00");
+    await settledFill(page, form.getByTestId("end-time-input"), "19:25");
     await settledClick(page, page.getByTestId("practice-log-detailed-submit"));
     await dismissToast(page, "Logged today's session");
 
@@ -684,6 +689,62 @@ test("a practice logged with Start and End draws a block on the day chart (#3142
         .prepare(
           `DELETE FROM frequency_targets
             WHERE scope_kind = 'practice' AND profile_id IN (${ids})`
+        )
+        .run(PRACTICE_ZERO_PROFILE);
+    } finally {
+      handle.close();
+    }
+    await page.context().close();
+  }
+});
+
+// TimeRangeFields' hidden input is a NAMED field the dirty-form registry has to see
+// (#4976), the same gap AppointmentForm's Time had and the same fix — landed inside
+// `TimeField` itself, so this pair regained it for free the moment that fix did.
+// "For free" is exactly how it would silently stop working again: the next change to
+// the marker, the dispatch, or this mount has nothing here to fail against it. START
+// ONLY, nothing else touched — the visible field a person types into carries no
+// `name` at all (it shows a formatted clock, not the "HH:MM" the hidden sibling
+// posts as `start_time`), so a fix that only reached the visible input would leave
+// this red exactly as it did for the appointment form's Time.
+test("typing only the practice form's Start time makes it dirty (#4976)", async ({
+  browser,
+}) => {
+  test.slow(); // a sign-in, a create, and a detailed log open
+  const practiceName = `E2E Dirty Start ${frozenNow().getTime()}`;
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_PRACTICE_ZERO,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    await page.goto("/wellness");
+    const create = await openPracticeCreate(page);
+    await settledFill(page, create.getByLabel("Practice"), practiceName);
+    await settledClick(page, create.getByRole("button", { name: "Save" }));
+    await dismissToast(page, "Practice added");
+
+    const registry = page.getByTestId("dirty-form-registry");
+    await expect(registry).toHaveAttribute("data-dirty", "0");
+
+    const card = page
+      .getByTestId("wellness-practice-card")
+      .filter({ hasText: practiceName });
+    await hydratedClick(page, card.getByTestId("practice-log-details-trigger"));
+    const form = page.getByTestId("practice-log-details");
+    await expect(form).toBeVisible();
+    await expect(registry).toHaveAttribute("data-dirty", "0");
+
+    await settledFill(page, form.locator("#practice-start-time"), "19:00");
+    await expect(registry).toHaveAttribute("data-dirty", "1");
+    await expect(form.locator("#practice-start-time")).toHaveValue("19:00");
+  } finally {
+    const handle = new Database(workerDbPath());
+    handle.pragma("busy_timeout = 5000");
+    try {
+      handle
+        .prepare(
+          `DELETE FROM practice_logs WHERE profile_id IN
+             (SELECT id FROM profiles WHERE name = ?)`
         )
         .run(PRACTICE_ZERO_PROFILE);
     } finally {

@@ -11,6 +11,8 @@ import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { useTemperatureUnitDetection } from "@/components/useTemperatureUnitDetection";
 import TemperatureField from "@/components/vitals/TemperatureField";
 import WeightField from "@/components/vitals/WeightField";
+import TimeRangeFields from "@/components/TimeRangeFields";
+import { useTimezone } from "@/components/TimezoneProvider";
 import {
   measurementsSavedText,
   validateBodyMetricInput,
@@ -99,14 +101,18 @@ function refusedMessage(
 //     time are one field for the same reason.
 //
 // ── Progressive disclosure: three groups, one open ───────────────────────────
-// SEVENTEEN always-empty boxes to collect the one or two readings someone actually
+// EIGHTEEN always-empty boxes to collect the one or two readings someone actually
 // took is what the copy already argues against. (This comment said THIRTEEN, which was
 // the count before #1850, #1851 and #2322 added peak flow, the bed/wake pair,
-// respiratory rate, lean and bone mass, hydration and the waist tape. `LOG_MANIFEST`
-// inherited the stale figure and #4424's body leg corrected both. The form DEFINES
-// nineteen fields — the eighteen in `field` below plus Notes — and renders seventeen at
-// either life stage, since the growth pair swaps in exactly as body fat and HRV swap
-// out; `components/__tests__/body-two-pieces.test.tsx` asserts the pair.) Exactly one group is open on mount,
+// respiratory rate, lean and bone mass, hydration and the waist tape, then SEVENTEEN
+// once those landed. `LOG_MANIFEST` inherited each stale figure and #4424's body leg
+// corrected it in its turn. The form DEFINES nineteen fields — the eighteen in `field`
+// below plus Notes — and renders eighteen labeled boxes at the adult life stage (#4976:
+// the bed/wake pair draws its own two labels, "Bed time" / "Wake time", rather than
+// one shared "Bed & wake" — one field, two boxes, so the rendered count is no longer
+// the field count) and sixteen at the minor's, since the growth pair swaps in exactly
+// as body fat and HRV swap out; `components/__tests__/body-two-pieces.test.tsx` asserts
+// the pair.) Exactly one group is open on mount,
 // chosen by where the person came from: the vitals card opens Vitals, Trends → Overview → body census
 // opens Body, a `?focus=`/`?new=` deep link opens the group holding its field, and
 // the quick-log sheet opens whatever this profile last wrote to (seeded to Vitals).
@@ -192,8 +198,20 @@ export interface MeasurementsQuickAddProps {
   // hydration mismatch.
   defaultGroup?: MeasurementGroup;
   // Scopes that memory to the data subject, so switching profiles doesn't inherit
-  // the other one's open group. Omitted where no memory is wanted.
+  // the other one's open group. Omitted where no memory is wanted. This is a
+  // MEMORY key, not a write signal — it is present on every mount, including an
+  // ordinary acting-profile one, and answers "whose localStorage group" rather
+  // than "is this a cross-profile write." `subjectProfileId` below answers that
+  // second question; do not read this field for it (#4932 postmortem).
   profileId?: number;
+  // The quick-log sheet's chosen subject (#4932), set ONLY when it differs from
+  // the acting profile — distinct from `profileId` above, which is present on
+  // every mount for the memory key regardless of subject. This is the one field
+  // that means "a non-acting subject was chosen": it gates the offline refusal
+  // and is the id stamped as `profile_id` on the write, so `addMeasurements`'s
+  // `gateItemProfile` re-gates THAT profile rather than defaulting to the acting
+  // one. Omitted (not just falsy) on every mount outside the quick-entry sheet.
+  subjectProfileId?: number;
 }
 
 // The last-written group, per profile. A device-local UI preference — which
@@ -231,6 +249,11 @@ function rememberGroup(
   }
 }
 
+// bed_time / wake_time are NOT here (#4976): TimeRangeFields' TimeField mounts hold
+// them as controlled React state (bedTime/wakeTime below), the same reason DateField
+// hosts never appear in this list either — a controlled field keeps its own value
+// across a form action's commit with no pinning trick needed, and resetForm() clears
+// it explicitly rather than relying on the DOM's own reset.
 const UNCONTROLLED_VITAL_FIELDS = [
   "systolic",
   "diastolic",
@@ -238,8 +261,6 @@ const UNCONTROLLED_VITAL_FIELDS = [
   "spo2",
   "temperature",
   "sleep_hours",
-  "bed_time",
-  "wake_time",
   "hrv",
   "respiratory_rate",
   "peak_flow",
@@ -260,6 +281,7 @@ export default function MeasurementsQuickAdd({
   presentation = "card",
   defaultGroup,
   profileId,
+  subjectProfileId,
 }: MeasurementsQuickAddProps) {
   const toast = useToast();
   const { enqueue } = useOfflineQueue();
@@ -277,6 +299,13 @@ export default function MeasurementsQuickAdd({
     date: defaultDate,
     statedAt: defaultStatedAt,
   }));
+  const tz = useTimezone();
+  // The night's two clocks (#1851, #4976), controlled the same way `when` is —
+  // `TimeRangeFields` posts them through its own hidden inputs (`bed_time`/
+  // `wake_time`, unchanged names), so the write below reads the pair exactly as
+  // it always has.
+  const [bedTime, setBedTime] = useState("");
+  const [wakeTime, setWakeTime] = useState("");
   const tempUnitDetection = useTemperatureUnitDetection(temperatureUnit);
   // HRV is an adult measure here for the same reason body fat is (#493): a
   // growth-tracked profile's Body surfaces don't carry it, so the field doesn't
@@ -383,6 +412,14 @@ export default function MeasurementsQuickAdd({
       return v === null || String(v).trim() === "" ? null : String(v);
     };
     const date = String(formData.get("date") ?? "").trim();
+    // #4932: the quick-log sheet's subject chip mounts this SAME form cross-profile.
+    // `subjectProfileId` present means a non-acting subject was chosen; stamp it
+    // so `addMeasurements`'s `gateItemProfile` re-gates THAT profile rather than
+    // defaulting to the acting one. NOT `profileId` — that field is present on
+    // every mount (it is the memory-key scope) and would stamp an explicit
+    // subject onto an ordinary acting-profile write.
+    if (subjectProfileId != null)
+      formData.set("profile_id", String(subjectProfileId));
 
     const body = {
       weight: s("weight"),
@@ -511,6 +548,10 @@ export default function MeasurementsQuickAdd({
         waistUnit.options[0].defaultSelected = true;
       }
       form.reset();
+      // form.reset() only reaches uncontrolled fields — the night's two clocks are
+      // React state now (#4976) and clear themselves here instead.
+      setBedTime("");
+      setWakeTime("");
     };
     const clearQueuedBodyFields = (): void => {
       const form = formRef.current;
@@ -621,6 +662,19 @@ export default function MeasurementsQuickAdd({
       return "queued";
     };
 
+    // The queue is stamped to the acting profile and carries no subject (same as
+    // MoodForm's identical guard) — a non-acting subject's save must fail honestly
+    // offline rather than queue a write that could replay onto somebody else.
+    // `subjectProfileId`, not `profileId`: the latter is set on every mount (the
+    // memory-key scope) and would refuse the acting profile's own offline save.
+    if (
+      subjectProfileId != null &&
+      typeof navigator !== "undefined" &&
+      navigator.onLine === false
+    ) {
+      setError("You're offline — reconnect to save these measurements.");
+      return;
+    }
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
       const captured = await queueOffline();
       if (captured === "queued") return;
@@ -635,7 +689,10 @@ export default function MeasurementsQuickAdd({
     try {
       saved = await addMeasurements(stampLoggedVia(formData));
     } catch (err) {
-      if (shouldQueueOffline(navigator.onLine !== false, err)) {
+      if (
+        subjectProfileId == null &&
+        shouldQueueOffline(navigator.onLine !== false, err)
+      ) {
         const captured = await queueOffline();
         if (captured === "queued") return;
         if (captured !== "unqueueable") {
@@ -942,30 +999,34 @@ export default function MeasurementsQuickAdd({
     // structural pairing a blood pressure gets. This is the whole of what the Sleep
     // Regularity Index needs; the hours field below cannot give it, because a
     // duration says nothing about WHEN.
+    //
+    // TimeRangeFields in its `overnight` mode (#4976 item 2): a bed time is always
+    // followed, never preceded, by its wake, so a wake clock earlier than bed means
+    // the next day rather than a refusal. The pair's own two labels ("Bed time" /
+    // "Wake time", the issue's own ruling) replace the outer "Bed & wake" label this
+    // Field used to draw — `e2e/manual-vitals.spec.ts` locates them by those labels
+    // either way, so its locators are untouched. `col-span-2`: this grid's own
+    // per-field column is 10.5rem at its narrowest (`GRID_CLASS` below), too tight
+    // for two styled clocks side by side — the two native inputs this replaces
+    // didn't need the room a real text input plus its picker button does.
     sleepWindow: (
-      <Field key="sleep-window" label="Bed & wake" htmlFor="m-bed-time">
-        <div className="flex items-center gap-1.5">
-          <input
-            id="m-bed-time"
-            type="time"
-            name="bed_time"
-            aria-label="Bed time"
-            data-testid="measurements-bed-time"
-            className="input min-w-0 flex-1"
-          />
-          <span aria-hidden className="text-slate-400">
-            –
-          </span>
-          <input
-            id="m-wake-time"
-            type="time"
-            name="wake_time"
-            aria-label="Wake time"
-            data-testid="measurements-wake-time"
-            className="input min-w-0 flex-1"
-          />
-        </div>
-      </Field>
+      <div key="sleep-window" className="col-span-2 min-w-0">
+        <TimeRangeFields
+          idPrefix="m-sleep"
+          startTime={bedTime}
+          endTime={wakeTime}
+          tz={tz}
+          timeError={false}
+          derivableDurationMin={null}
+          startName="bed_time"
+          endName="wake_time"
+          startLabel="Bed time"
+          endLabel="Wake time"
+          overnight
+          onStartTime={setBedTime}
+          onEndTime={setWakeTime}
+        />
+      </div>
     ),
     sleep: (
       <Field key="sleep" label="Sleep" htmlFor="m-sleep">

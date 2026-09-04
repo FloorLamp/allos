@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   POWER_CURVE_DURATIONS,
+  SPLIT_INTERVALS_M,
   powerCurve,
   powerCurveLabel,
   powerZoneTimes,
@@ -70,12 +71,26 @@ describe("summarizeCyclingStreams", () => {
 });
 
 describe("streamSummarySignature (the anti-rot guard)", () => {
-  it("names the logic version AND the durations the curve was taken at", () => {
+  // v2 folded the SPLIT INTERVALS in beside the durations (#3195): a stored split
+  // candidate is only comparable against splits taken at the same interval, so
+  // moving one has to invalidate every stored summary exactly as moving a duration
+  // does.
+  it("names the logic version, the curve's durations AND the split intervals", () => {
     expect(streamSummarySignature()).toBe(
-      `${STREAM_SUMMARY_LOGIC_VERSION}:${POWER_CURVE_DURATIONS.map(
-        (d) => d.seconds
-      ).join(",")}`
+      [
+        STREAM_SUMMARY_LOGIC_VERSION,
+        POWER_CURVE_DURATIONS.map((d) => d.seconds).join(","),
+        Object.values(SPLIT_INTERVALS_M).map(Math.round).join(","),
+      ].join(":")
     );
+  });
+
+  it("changing a split interval invalidates every stored summary too", () => {
+    const stored = JSON.parse(
+      serializeCyclingStreamSummary(summarizeCyclingStreams(STREAMS, ZONES))
+    ) as { sig: string };
+    stored.sig = stored.sig.replace(/5000/, "4000");
+    expect(parseCyclingStreamSummary(JSON.stringify(stored))).toBeNull();
   });
 
   it("changing the durations invalidates every stored summary without a manual bump", () => {
@@ -88,13 +103,19 @@ describe("streamSummarySignature (the anti-rot guard)", () => {
     expect(parseCyclingStreamSummary(stored)).not.toBeNull();
 
     const withExtraBucket = JSON.parse(stored) as { sig: string };
-    withExtraBucket.sig = `${STREAM_SUMMARY_LOGIC_VERSION}:5,30,60,300,1200`;
+    withExtraBucket.sig = `${STREAM_SUMMARY_LOGIC_VERSION}:5,30,60,300,1200:${Object.values(
+      SPLIT_INTERVALS_M
+    )
+      .map(Math.round)
+      .join(",")}`;
     expect(
       parseCyclingStreamSummary(JSON.stringify(withExtraBucket))
     ).toBeNull();
 
     const olderLogic = JSON.parse(stored) as { sig: string };
-    olderLogic.sig = `${STREAM_SUMMARY_LOGIC_VERSION - 1}:${POWER_CURVE_DURATIONS.map((d) => d.seconds).join(",")}`;
+    olderLogic.sig = `${STREAM_SUMMARY_LOGIC_VERSION - 1}:${POWER_CURVE_DURATIONS.map(
+      (d) => d.seconds
+    ).join(",")}:${Object.values(SPLIT_INTERVALS_M).map(Math.round).join(",")}`;
     expect(parseCyclingStreamSummary(JSON.stringify(olderLogic))).toBeNull();
   });
 });

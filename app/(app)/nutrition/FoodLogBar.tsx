@@ -242,6 +242,7 @@ export default function FoodLogBar({
   proteinQuickAdd,
   ledgerDoor,
   dayLedger,
+  subjectProfileId,
 }: {
   // The acting profile's today (YYYY-MM-DD) and bounded recent meal history.
   today: string;
@@ -308,6 +309,14 @@ export default function FoodLogBar({
     keepApart: { bucket: string; content: ReactNode }[];
     dayContext: string | null;
   };
+  // The quick-log sheet's chosen subject (#4932), when it is not the acting
+  // profile. Takes over from `activeProfileId` at every write and correction
+  // site below — posted as `profile_id` and re-gated by `logFoodServing` /
+  // `undoFoodServing`'s own `gateItemProfile` call. Offline capture REFUSES
+  // rather than queues (`queueOffline` below): the queue carries no subject
+  // separate from the acting profile, and a replay of somebody else's serving
+  // must never land on the wrong person.
+  subjectProfileId?: number;
 }) {
   const {
     activeDate,
@@ -865,8 +874,8 @@ export default function FoodLogBar({
     const form = new FormData();
     form.set("group_key", slug);
     form.set("date", date);
-    if (activeProfileId != null)
-      form.set("profile_id", String(activeProfileId));
+    const truthProfileId = subjectProfileId ?? activeProfileId;
+    if (truthProfileId != null) form.set("profile_id", String(truthProfileId));
     let truth: FoodServingTruthResult;
     try {
       truth = await readFoodServingTruth(form);
@@ -1266,7 +1275,14 @@ export default function FoodLogBar({
     // in for the server total until then. UNDO stays online-only — a decrement is
     // not a capture (see the lib/offline/queue.ts scope comment) — so an offline
     // "−" rolls back with an honest message instead of pretending.
+    //
+    // #4932: the queue is stamped to the acting profile and carries no subject
+    // separate from it — a non-acting subject's tap must refuse offline rather
+    // than queue a serving that could replay onto somebody else (the same guard
+    // MoodForm/StoolTypeControl carry).
     const queueOffline = async (): Promise<boolean> => {
+      if (subjectProfileId != null && subjectProfileId !== activeProfileId)
+        return false;
       const kept =
         (await enqueue("food", activeDate, {
           entry: "serving",
@@ -1391,8 +1407,9 @@ export default function FoodLogBar({
           fd.set("expected_servings", String(expectedServings));
         if (expectedEventId != null)
           fd.set("event_id", String(expectedEventId));
-        if (activeProfileId != null)
-          fd.set("profile_id", String(activeProfileId));
+        const writeProfileId = subjectProfileId ?? activeProfileId;
+        if (writeProfileId != null)
+          fd.set("profile_id", String(writeProfileId));
         // The absolute local WALL TIME, not an instant: the server resolves it against
         // its own clock and the profile's timezone, so this island never converts a
         // profile-local hour with its own locale. It is also what a page open since
@@ -1629,8 +1646,9 @@ export default function FoodLogBar({
       const truthForm = new FormData();
       truthForm.set("group_key", slug);
       truthForm.set("date", activeDate);
-      if (activeProfileId != null)
-        truthForm.set("profile_id", String(activeProfileId));
+      const truthProfileId = subjectProfileId ?? activeProfileId;
+      if (truthProfileId != null)
+        truthForm.set("profile_id", String(truthProfileId));
       const isStillLatest = () => {
         const currentBurst =
           servingBursts.current.get(receiptKey) ?? emptyFoodServingBurst();
@@ -2412,7 +2430,9 @@ export default function FoodLogBar({
                 eatenAt: editing.eatenAt,
                 loggedAt: editing.loggedTime,
               }}
-              subjectProfileId={activeProfileId ?? undefined}
+              subjectProfileId={
+                subjectProfileId ?? activeProfileId ?? undefined
+              }
               testId="food-correct"
               onSaved={settleCorrection}
               onCancel={closeCorrection}

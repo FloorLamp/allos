@@ -39,10 +39,13 @@
 // inconsistency someone should tidy up.
 
 import {
+  comparableSplits,
+  distanceSplits,
   parseActivityStreams,
   powerCurve,
   powerZoneTimes,
   POWER_CURVE_DURATIONS,
+  SPLIT_INTERVALS_M,
   type PowerZoneRange,
 } from "./cycling-analytics";
 
@@ -51,16 +54,22 @@ import {
 // signature automatically below, so adding a 30-second bucket needs no bump here.
 //
 // v1: initial summary (#2292) — power curve bests and per-zone seconds.
-export const STREAM_SUMMARY_LOGIC_VERSION = 1;
+// v2: split candidate times (#3195) — what a ride contributes to the lifetime
+//     best-effort comparison as a PRIOR ride.
+export const STREAM_SUMMARY_LOGIC_VERSION = 2;
 
 // What a stored summary must say to be believed. Anything else — an older logic
 // version, a curve taken at durations the app no longer shows — is treated as
 // absent, and lib/cycling-stream-summary-db.ts re-derives it on the next boot.
 // Short and readable on purpose: it is stamped onto every telemetry row.
 export function streamSummarySignature(): string {
-  return `${STREAM_SUMMARY_LOGIC_VERSION}:${POWER_CURVE_DURATIONS.map(
-    (d) => d.seconds
-  ).join(",")}`;
+  return [
+    STREAM_SUMMARY_LOGIC_VERSION,
+    POWER_CURVE_DURATIONS.map((d) => d.seconds).join(","),
+    // Rounded only for the signature string; the stored `intervalM` keeps the
+    // exact value the splits were taken at.
+    Object.values(SPLIT_INTERVALS_M).map(Math.round).join(","),
+  ].join(":");
 }
 
 export interface CyclingStreamSummary {
@@ -72,6 +81,16 @@ export interface CyclingStreamSummary {
   // Seconds in each power zone, by zone index. Empty when the row carries no
   // zone snapshot or no usable power samples.
   powerZoneSeconds: number[];
+  // WHAT THIS RIDE OFFERS THE LIFETIME COMPARISON AS A *PRIOR* RIDE (#3195).
+  // Every full-interval split it recorded, per interval — each split is its own
+  // candidate effort, so a ride holding the three fastest 5 km splits ever holds
+  // all three places rather than one.
+  //
+  // The ride's power contribution needs no separate field: `powerCurve` above is
+  // already the ride's own maximum per duration, which is exactly its candidate.
+  // A ride with no device watts summarises to an EMPTY curve, so estimated-power
+  // rides are excluded structurally — there is no filter to forget.
+  splitTimesSec: { intervalM: number; timesSec: number[] }[];
 }
 
 // The telemetry row's stored power-zone bands. Moved here from the ride query
@@ -113,6 +132,13 @@ export function summarizeCyclingStreams(
       streams,
       parsePowerZones(powerZonesJson)
     ).map((zone) => zone.seconds),
+    splitTimesSec: Object.values(SPLIT_INTERVALS_M).map((intervalM) => ({
+      intervalM,
+      timesSec: comparableSplits(
+        distanceSplits(streams, intervalM),
+        intervalM
+      ).map((split) => split.timeSec),
+    })),
   };
 }
 
@@ -155,5 +181,22 @@ export function parseCyclingStreamSummary(
     powerZoneSeconds: zoneSeconds.map((seconds) =>
       typeof seconds === "number" && Number.isFinite(seconds) ? seconds : 0
     ),
+    splitTimesSec: (Array.isArray(rec.splitTimesSec)
+      ? rec.splitTimesSec
+      : []
+    ).flatMap((entry) => {
+      if (!entry || typeof entry !== "object") return [];
+      const e = entry as Record<string, unknown>;
+      if (typeof e.intervalM !== "number" || !Array.isArray(e.timesSec))
+        return [];
+      return [
+        {
+          intervalM: e.intervalM,
+          timesSec: e.timesSec.filter(
+            (t): t is number => typeof t === "number" && Number.isFinite(t)
+          ),
+        },
+      ];
+    }),
   };
 }

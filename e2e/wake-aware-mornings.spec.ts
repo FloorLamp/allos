@@ -165,12 +165,16 @@ test.describe("wake-aware mornings (issue #1117, minute grain #2121)", () => {
     );
   });
 
-  // #2216: the time picker's grid follows the scheduler's OBSERVED cadence — as
-  // guidance (the input's step), never validation (a typed off-grid time is
-  // saved, and the warning names it rather than any control refusing it).
+  // #2216: the time picker's grid used to follow the scheduler's OBSERVED cadence
+  // as GUIDANCE on the native input's `step` — never validation, since a typed
+  // off-grid time was always saved regardless. `TimeField` (#4976) has no `step`
+  // (its wheel always shows every minute), so that native-picker steering is gone
+  // along with the input it steered; what this test still pins is the half of the
+  // contract that was never about the picker at all — a typed off-grid time saves
+  // and the warning names it, reading the same `gridMinutes` the picker used to.
   // BLAST RADIUS: `notify_tick_interval_min` (global settings; restored to its
   // prior state in the finally) and the Morning slot (reset to Auto).
-  test("picker grid follows the observed cadence; an off-grid typed time saves and warns", async ({
+  test("an off-grid typed time saves and warns, at the observed cadence", async ({
     page,
   }) => {
     test.slow(); // local `next dev` compiles the route on first hit
@@ -204,19 +208,14 @@ test.describe("wake-aware mornings (issue #1117, minute grain #2121)", () => {
         scheduleCard
       );
       const morningTime = page.getByTestId("intake-morning-hour-time");
-      // The observed 5-minute cadence renders a 5-minute grid (step is seconds).
-      await expect(morningTime).toHaveAttribute("step", "300");
 
       // A typed off-grid time is SAVED — it round-trips a reload — and the
-      // warning then NAMES it, with the grid the steps copy points at.
+      // warning then NAMES it, with the observed 5-minute cadence it copies.
       await settledFillSave(page, morningTime, "07:42", scheduleCard);
       await page.reload();
       await expect(page.getByTestId("intake-morning-hour-time")).toHaveValue(
         "07:42"
       );
-      await expect(
-        page.getByTestId("intake-morning-hour-time")
-      ).toHaveAttribute("step", "300");
       const warning = page.getByTestId("sub-hourly-tick-warning");
       await expect(warning).toContainText("07:42");
       await expect(warning).toContainText("5-minute steps");
