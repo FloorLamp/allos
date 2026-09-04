@@ -642,16 +642,20 @@ const CONFIRM_DELETE_CLICK_ALLOW: Record<string, number> = {};
 // boundary sits inside. Do not add a root that could itself land inside a
 // streamed section — that would bless the very duplicate this guard is about.
 //
-// THE ALLOWLIST IS THE HONEST RECORD. 4,970 unscoped lookups across 431 files exist
-// today, and a rule that started as "scope all of them" would be 4,970 hand edits
-// with nothing preventing the 4,971st. So today's per-file counts are frozen in
+// THE ALLOWLIST IS THE HONEST RECORD. 5,422 unscoped lookups across 435 files exist
+// today, and a rule that started as "scope all of them" would be 5,422 hand edits
+// with nothing preventing the 5,423rd. So today's per-file counts are frozen in
 // __fixtures__/e2e-testid-scope-allow.json — immutable-downward like every other
 // list here — and the list says what has NOT been checked rather than claiming
 // everything has. A NEW bare locator anywhere fails; scope it, or mark the line
 // `testid-scope-ok: <why>` when the marker provably cannot be inside a streamed
 // boundary (a `/login` page, an overlay portalled to `<body>`).
 const TESTID_SCOPE_ROOTS = ["app-content-container", "training-page"];
-const TESTID_ROOT_ARG = `\\s*(?![\"'\`](?:${TESTID_SCOPE_ROOTS.join("|")})[\"'\`]\\s*\\))`;
+// The argument test, as a NEGATIVE lookahead with the whitespace INSIDE it. Written
+// as `\s*(?!…)` the `\s*` is greedy and backtracks until the lookahead succeeds, so
+// `page.getByTestId(  "training-page")` would read as unscoped — a guard that fires on
+// the one form it exists to bless.
+const TESTID_ROOT_ARG = `(?!\\s*[\"'\`](?:${TESTID_SCOPE_ROOTS.join("|")})[\"'\`]\\s*\\))`;
 
 // A Playwright `Page` under any name. `page` is the fixture, but a spec that opens a
 // second context names it whatever the story needs — `member`, `tabB`, `anon`,
@@ -681,7 +685,11 @@ export function countUnscopedTestIds(scanned: string, code = scanned): number {
   let n = 0;
   for (const id of pageIdentifiers(code)) {
     const re = new RegExp(
-      `\\b${id.replace(/\$/g, "\\$")}\\.getByTestId\\(` + TESTID_ROOT_ARG,
+      // Whitespace around the dot: prettier wraps a long chain as `page\n  .getByTestId(`,
+      // and 443 lookups in the suite are written that way. An `\bpage\.` anchored rule
+      // read every one of them as absent — the hole this guard's own mutation test found.
+      `\\b${id.replace(/\$/g, "\\$")}\\s*\\.\\s*getByTestId\\(` +
+        TESTID_ROOT_ARG,
       "g"
     );
     n += (scanned.match(re) ?? []).length;
@@ -1105,6 +1113,19 @@ describe("the testid-scope pattern discriminates a scoped locator from a bare on
       count(
         '// A bare page.getByTestId("routine-new") would match the staged copy too.\n' +
           'await appContent(page).getByTestId("routine-new").click();\n'
+      )
+    ).toBe(0);
+  });
+
+  it("reads the wrapped chain prettier actually writes", () => {
+    // 443 lookups in the suite are wrapped this way; an `\bpage\.`-anchored rule saw none.
+    expect(
+      count('await page\n  .getByTestId("history-row")\n  .click();\n')
+    ).toBe(1);
+    // And the root test survives the same wrapping, in both directions.
+    expect(
+      count(
+        'await page\n  .getByTestId(\n    "training-page"\n  )\n  .getByTestId("routine-new");\n'
       )
     ).toBe(0);
   });

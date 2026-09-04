@@ -7,7 +7,8 @@ the sharded CI e2e matrix, retries=0 end-to-end #1160, the on-demand +
 weekly-census full-suite workflow, pass-on-retry flake telemetry, the opt-in
 `mobile` phone-viewport project #1420, the #1534 SQL clock seam + UTC-midnight
 CI backstop, the #1543 document-level-overflow freeze + the #1545
-degenerate-input convention, the #1858 `settledClickApplied` contract; the
+degenerate-input convention, the #1858 `settledClickApplied` contract, the #4890
+unscoped-`getByTestId` freeze + the frozen streaming surface; the
 grandfathered `.first()`, `.toPass(`, and wall-clock burn-downs are COMPLETE —
 their allowlists are empty)
 
@@ -123,6 +124,12 @@ mechanically-detectable settle anti-patterns per file and fails a NEW one:
 - `test.skip(...)` — frozen at ZERO. A committed skip makes the same revision run
   different coverage depending on time or environment. Delete obsolete coverage,
   or make the boundary deterministic in the fixture.
+- an unscoped testid lookup — `page.getByTestId(x)` (or a second page under any
+  name) where `x` is not a document-unique root. On a streamed route it matches
+  the staged copy too and throws strict mode (#4890). Scope it —
+  `appContent(page)`, a row/card/dialog you hold — or mark the line
+  `testid-scope-ok: <why>`. Frozen per-file in
+  `lib/__tests__/__fixtures__/e2e-testid-scope-allow.json`; see below.
 - a bare fixed year in `toContainText` — frozen at ZERO. A relative fixture will
   eventually leave that year, and the negated form then passes vacuously. Derive the
   complete displayed date from the fixture, or use a year-shape regex when the
@@ -230,6 +237,73 @@ locator to something that exists only on the page being clicked (here the row's
 `episode-index-row` testid) and write the note about how many elements match
 **on that page**. A justification about which profile owns the fixture answers a
 question no `.first()` was ever asking.
+
+### The unscoped-`getByTestId` freeze (the streamed staged copy, #4890)
+
+The guard freezes a further pattern: a testid lookup that starts from a whole
+**page**. On a route whose Suspense boundary streams, React flushes the
+boundary's content into a `<div hidden>` appended to `<body>` and an inline
+`$RC(…)` script relocates it. While both copies exist, every marker inside that
+boundary exists twice with the same testid, so a global `page.getByTestId("x")`
+resolves to 2 elements and throws a strict-mode violation instead of retrying
+down to one. Under CI load the window outlives Playwright's retry, so it is a
+property of the page rather than a flake.
+
+**Why a rule and not a helper.** This was read one marker at a time three times
+— `history-row`, then `routine-new`, then `training-log-clear-filters`, across
+four specs — and each reading fixed the marker in front of it and left the page
+exposed. A `trainingRow()` helper covers the markers somebody thought to put on
+it; a rule covers the NEXT call site by default and forces an exemption to be
+written down. It matters that one occurrence reached the failure INSIDE
+`e2e/helpers.ts` (`hydratedClick(page, page.getByTestId("routine-new"))` throws at
+the helper's line, reading like a hydration problem), where the call site could
+not have scoped its way out at all — so this is the one guard here that also reads
+the blessed helper module.
+
+**What counts as scoped.** The staged copy's ancestry stops at `<body>`, so any
+scope living in the document proper excludes it. A lookup whose receiver is a
+Locator you already hold — a row, a card, a dialog — is scoped and is not
+counted. `appContent(page)` (e2e/helpers.ts) is the blessed floor: the `(app)`
+shell's own wrapper around every page's children, one per document, above every
+boundary. `page.getByTestId(<root>).getByTestId(x)` is scoped too, for the roots
+the guard blesses — which is why the `training-page` form #4833 shipped stays
+legal. A root has to exist ONCE per document and sit ABOVE every boundary; do not
+bless one that could itself land inside a streamed section.
+
+**It reads a second page under any name.** `page` is the fixture, but a spec that
+opens a second context names it `member`, `tabB`, `anon`, `otherPage` — 298 of the
+lookups in the suite are on one of those, and a rule anchored on the literal
+`page.` would have called every one of them clean. It also reads the WRAPPED chain
+prettier actually writes (`page\n  .getByTestId(`): 443 lookups are formatted that
+way, and an unwrapped-only rule saw none of them. Both holes were found by
+mutating the rule, not by reading it.
+
+**The allowlist is the honest record.** 5,422 unscoped lookups across 435 files
+exist today; a rule that started as "scope all of them" would be 5,422 hand edits
+with nothing preventing the 5,423rd. Today's per-file counts are frozen in
+`lib/__tests__/__fixtures__/e2e-testid-scope-allow.json`, immutable-downward like
+every other list here, and the list says what has NOT been checked rather than
+claiming everything has. A NEW lookup anywhere fails: scope it, or mark the line
+`testid-scope-ok: <why>` when the marker provably cannot sit inside a streamed
+boundary (a `/login` page outside the `(app)` shell, an overlay portalled to
+`<body>` — a portal is client-only, so it has exactly one copy).
+
+**The streaming surface is frozen with it.** `components/StreamedSection.tsx` is
+what makes a section genuinely suspend — every read here is synchronous
+better-sqlite3, so an `async` Server Component resolves in microtasks and a bare
+`<Suspense>` never flushes early — and its call sites are the whole hazard
+surface. Today that is two routes: `/training` (the tab panel) and `/trends` (the
+Body census). The guard freezes both that list and every `<Suspense>` in `app/`,
+so a third streaming hub cannot land without someone re-reading the specs that
+assert against it. `loading.tsx` is the other way in; `app/(app)/layout.tsx`
+refuses it in prose (#530) and the guard now freezes it at zero.
+
+**`/history` and the household feed do NOT have this exposure.** They share the
+history substrate and the refine-by-navigation shape, which is why they were worth
+checking, but `app/(app)/history/page.tsx` and `app/(app)/household/page.tsx`
+render no `<Suspense>` and no `StreamedSection`, so their content arrives inline in
+the shell with nothing staged. Their bare lookups are frozen for uniformity, not
+because they are racing today.
 
 ### The family-create freeze + `e2e/family-helpers.ts` (phase-2 create-member hardening)
 
@@ -493,8 +567,13 @@ What this means when writing a spec:
 
 - Assert census content directly after a navigation — no per-spec reveal wait
   exists, and none should be reintroduced.
-- The rule generalizes: any FUTURE streamed boundary on any page is covered by
-  the same guard, because it keys on React's staging nodes, not on Trends ids.
+- The rule generalizes ACROSS PAGES but not across ways of arriving: the guard
+  wraps `goto`/`reload`/`goBack`/`goForward`, so a full-document navigation the
+  BROWSER starts — a GET-form submit, a plain link click — returns without it. That
+  is the gap #4890 lives in: the Training Log's search became a GET form (#4079),
+  submitting it is a real document navigation, and no wrapped method ran. Scope the
+  locator (see the unscoped-`getByTestId` freeze above); do not assume the harness
+  settled it.
 - Do NOT reach for `waitForTimeout` or `networkidle` if a streamed surface
   seems racy — if the guard's ceiling is ever exceeded, its error names the
   stuck page; that is a finding, not a flake to sleep past.
