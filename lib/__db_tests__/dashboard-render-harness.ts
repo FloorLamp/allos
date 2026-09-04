@@ -258,6 +258,15 @@ function callerFrame(): string {
   }
   return "?";
 }
+/**
+ * The `hr_minutes` range read (`getHrMinutesInRange`), which both readings watch: the
+ * meter asserts one execution per distinct window and the profiler prints the windows
+ * beside the timing. Here rather than in either file because it is the one statement
+ * they name in common, and two copies of it would drift apart silently. The day reader
+ * (`getHrMinutes`, `SELECT *`) is a different question and is deliberately not matched.
+ */
+export const HR_RANGE_READ = /SELECT ts, bpm, source\s+FROM hr_minutes/;
+
 /** One execution of a watched statement, with the values it was actually run on. */
 export interface BoundExecution {
   sql: string;

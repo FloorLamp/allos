@@ -26,6 +26,7 @@ import {
 import { PERSONAS, type PersonaContext } from "../../scripts/seed-personas";
 import {
   allProfileIds,
+  HR_RANGE_READ,
   installStatementTrace,
   loadDashboard,
   profilesForIds as profiles,
@@ -140,8 +141,8 @@ function ctxFor(profileId: number): PersonaContext {
 // the memo. What the memo cannot see is two DIFFERENT spellings resolving to one span
 // (the open-ended form and the bounded one are the case its own comment names), and
 // that is a second full materialisation of the same rows. Keying on the statement's
-// parameters catches both that and a memo that stopped collapsing at all.
-const HR_RANGE_READ = /SELECT ts, bpm, source\s+FROM hr_minutes/;
+// parameters catches both that and a memo that stopped collapsing at all. The pattern
+// itself lives in the harness, because the profiler prints the same read's windows.
 /** Render name → the windows its `hr_minutes` range reads were bound to, in order. */
 const hrWindowReads = new Map<string, string[]>();
 /**
