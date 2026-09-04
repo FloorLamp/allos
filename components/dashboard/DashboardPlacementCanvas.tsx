@@ -225,7 +225,7 @@ function EverythingBand({
   );
   return (
     <div
-      className="band overflow-hidden rounded-xl border border-(--border) bg-surface"
+      className="band overflow-hidden rounded-xl border border-(--border) bg-surface px-0!"
       data-testid={`dashboard-everything-${group}`}
     >
       {openBlocks.map((block) => (
