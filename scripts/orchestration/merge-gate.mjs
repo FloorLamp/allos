@@ -25,7 +25,16 @@
 //      still counts, because the finding may still apply to the new head).
 //      Where this host's proxy refuses GraphQL outright (#4231), zero REST
 //      comment threads proves the same thing; any threads fail the gate as
-//      resolution-unknown rather than blocking every merge on exit 2.
+//      resolution-unknown rather than blocking every merge on exit 2;
+//   6. no MERGE-HOLD standing, and — when
+//      `adversarial-review-brief.mjs --check` says MANDATORY — a falsifying
+//      pass that SURVIVED this exact head (#5126). Both are notes on the PR,
+//      in merge-gate-core.mjs's one marker grammar, read from reviews AND PR
+//      comments because that is where the #5112 hold was actually written;
+//   7. that the PR belongs to the SESSION running the gate (#5177), where the
+//      host says which session that is. Two orchestrators post as one GitHub
+//      account, so the body's session footer is the only discriminator there
+//      is; a PR with no footer is reported as UNKNOWN, never as yours.
 //
 // It also PRINTS, without gating on it, what `e2e-main` says about the base
 // branch (#4722): that workflow reports on main, never on a PR head, so main
@@ -33,7 +42,14 @@
 //
 // Usage:
 //   node scripts/orchestration/merge-gate.mjs <pr-number> [--repo owner/name]
-//     [--ignore-check <name>]
+//     [--ignore-check <name>] [--session <id>] [--adopt-pr]
+//
+// --session names the running orchestrator session for check 7; without it the
+// gate reads $CLAUDE_CODE_REMOTE_SESSION_ID, and where neither exists it says
+// the check went UNRUN rather than reporting a pass it never computed.
+// --adopt-pr is the deliberate escape for landing the other session's PR — the
+// shape #5152's --adopt-claim already established. Landing it is sometimes
+// right; the point is that it be a decision someone takes.
 //
 // --ignore-check excludes one check run by name from step 4. It exists for
 // the CI wrapper (.github/workflows/merge-gate.yml), whose own job is a
@@ -47,13 +63,18 @@
 //   re-invoke) · 3 blocked (no/bad token: an unauthenticated gate that
 //   silently passes reads as safe — the ci-watch lesson).
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { helpGuard } from "./usage.mjs";
 import { resolveReadToken } from "./host.mjs";
 import {
   baseDetectorNotice,
   checkRunsVerdict,
   closedStatusDescription,
+  falsifyingPassVerdict,
+  holdVerdict,
+  normaliseSession,
+  ownershipVerdict,
   readinessVerdict,
   receiptVerdict,
 } from "./merge-gate-core.mjs";
@@ -81,6 +102,13 @@ const repoFlag = args.indexOf("--repo");
 const repo = repoFlag === -1 ? "FloorLamp/allos" : args[repoFlag + 1];
 const ignoreFlag = args.indexOf("--ignore-check");
 const ignoreCheck = ignoreFlag === -1 ? null : args[ignoreFlag + 1];
+const sessionFlag = args.indexOf("--session");
+const selfSession = normaliseSession(
+  sessionFlag === -1
+    ? process.env.CLAUDE_CODE_REMOTE_SESSION_ID
+    : args[sessionFlag + 1]
+);
+const adoptPr = args.includes("--adopt-pr");
 
 // curl, not fetch: node's fetch ignores HTTP(S)_PROXY and the managed
 // environments route GitHub through an agent proxy (ci-watch.mjs says why).
@@ -204,6 +232,17 @@ const titleRefusal = titleRuleRefusal("PR", pr.title);
 if (titleRefusal) fail(titleRefusal);
 else pass(`PR title is one clause of ${titleLength(pr.title)} characters`);
 
+// WHOSE PR IS THIS (#5177). Checked here for the same reason the title is:
+// it is a property of the PR itself, and it is the question that has to be
+// answered BEFORE any of the evidence below is worth gathering. `note` covers
+// the two cases that are not answers — no session link in the body, and no
+// running session to compare it to — and neither prints as a PASS.
+const ownership = ownershipVerdict(pr, selfSession, adoptPr);
+if (ownership.severity === "fail") fail(ownership.message);
+else if (ownership.severity === "note")
+  console.log(`NOTE: ${ownership.message}`);
+else pass(ownership.message);
+
 // The receipt: a stated-SHA review, because stating the SHA is what the
 // review contract requires — review.commit_id records where GitHub filed it,
 // but the RECEIPT is the reviewer's own claim about what they reviewed.
@@ -229,6 +268,83 @@ if (standing.length)
   fail(
     `standing CHANGES_REQUESTED from ${standing.map((r) => r.user.login).join(", ")}`
   );
+
+// The markers (#5126). Reviews AND top-level PR comments, because the #5112
+// hold was written in both and reading only one would have missed it in
+// exactly the case the issue is about.
+const prComments = paged(`repos/${repo}/issues/${prNumber}/comments`);
+const notes = [
+  ...reviews.map((r) => ({
+    body: r.body,
+    at: r.submitted_at ?? "",
+    user: r.user?.login ?? "someone",
+  })),
+  ...prComments.map((c) => ({
+    body: c.body,
+    at: c.created_at ?? "",
+    user: c.user?.login ?? "someone",
+  })),
+];
+
+const hold = holdVerdict(notes);
+if (hold.held) fail(hold.message);
+else if (hold.message) pass(hold.message);
+
+// The MANDATORY verdict, computed HERE rather than remembered. `--check` is the
+// same tool the runbook tells the orchestrator to run; running it from inside
+// the gate is what turns its answer from a thing someone has to act on into a
+// precondition that cannot be skipped.
+//
+// A GUARD MUST NOT FAIL INTO ITS PERMISSIVE ANSWER — the rule
+// adversarial-review-brief.mjs states for its own exit codes governs the
+// caller too. Exit 2 there means "I could not read the PR", which is not
+// "ordinary": it closes this gate with that named as the reason. #4231 is why
+// it closes rather than exiting 2 for a re-invoke that may never terminate.
+function mandatoryGrounds() {
+  if (repo !== "FloorLamp/allos")
+    return {
+      grounds: null,
+      refusal:
+        `adversarial-review-brief.mjs reads FloorLamp/allos only, and this run ` +
+        `is --repo ${repo} — the MANDATORY question is UNANSWERED here, which ` +
+        "is not the same as answered 'ordinary' (#5126)",
+    };
+  const script = fileURLToPath(
+    new URL("./adversarial-review-brief.mjs", import.meta.url)
+  );
+  const run = spawnSync(process.execPath, [script, prNumber, "--check"], {
+    encoding: "utf8",
+    timeout: 120_000,
+  });
+  const said = (run.stderr ?? "").trim();
+  if (run.status === 0)
+    return {
+      grounds: said.split("\n").slice(0, 6).join(" · ") || "MANDATORY",
+      refusal: null,
+    };
+  if (run.status === 1 || run.status === 3)
+    return { grounds: null, refusal: null };
+  return {
+    grounds: null,
+    refusal:
+      `adversarial-review-brief.mjs --check could not answer (exit ` +
+      `${run.status ?? "no exit code"}${said ? `: ${said.split("\n")[0]}` : ""}) — ` +
+      "so whether a falsifying pass is mandated is UNKNOWN, and unknown is not " +
+      "ordinary (#5126). Re-run it by hand and merge on what it says",
+  };
+}
+
+const mandate = mandatoryGrounds();
+if (mandate.refusal) fail(mandate.refusal);
+const falsifying = falsifyingPassVerdict(notes, head, mandate.grounds);
+if (falsifying.kind === "not-required") {
+  if (!mandate.refusal)
+    console.log(
+      "NOTE: adversarial-review-brief.mjs --check does not say MANDATORY on " +
+        "this head — no falsifying pass is required"
+    );
+} else if (falsifying.ok) pass(falsifying.message);
+else fail(falsifying.message);
 
 const all_runs = [];
 let fetched_count = 0;

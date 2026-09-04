@@ -45,6 +45,12 @@ export const MENU_ITEM_DANGER =
 
 type MenuSubmitProps = { children: ReactNode; pendingLabel?: ReactNode };
 
+// A menu item that POSTS, and says so while it is posting. The panel is still up
+// for the whole round trip (`runAction` below carries the measurement — its close
+// is a transition update that does not commit until the action settles), so this
+// spinner is the only answer a kebab write gives to "did my tap land?" until the
+// toast arrives. Reachable at every one of its mounts; #2641 planned to delete it
+// as unreachable, on a reading of `runAction` the browser does not agree with.
 export function OverflowMenuSubmitItem({
   children,
   pendingLabel,
@@ -77,9 +83,10 @@ export type MenuActionResult =
 
 export interface MenuHelpers {
   close: () => void;
-  // Run a menu item's server action, then close the menu and toast. Awaiting the
-  // action first is load-bearing: closing the menu (which unmounts the <form>)
-  // before React dispatches the action would silently drop it.
+  // Run a menu item's server action, close the menu, and toast the outcome. The
+  // close is REQUESTED before the await and TAKES EFFECT after it — see the
+  // measurement below — so the order of the two statements is not the tap-time
+  // paint it reads as.
   runAction: (
     action: (fd: FormData) => Promise<MenuActionResult>,
     fd: FormData,
@@ -128,26 +135,39 @@ export default function OverflowMenu({
   const close = () => {
     onOpenChange(false);
   };
-  // THE MENU CLOSES ON THE TAP, NOT ON THE RESPONSE (#2641 gap 2).
+  // THE MENU DOES NOT CLOSE ON THE TAP, AND THIS IS WHERE IT WAS THOUGHT TO
+  // (#2641 gap 2). Measured, because the sentence that used to stand here was the
+  // opposite and a lot was built on it.
   //
-  // Every tap-shaped write behind a kebab — snooze, dismiss, the preventive
-  // overrides, a goal's status, retire/restore, a trend tile's reorder — used to
-  // hold the panel open, spinning over the row it acts on, for the whole round
-  // trip AND its revalidations. That is the one place in the app where the answer
-  // to "did my tap land?" was a control that had not moved yet, and it is the
-  // same defect `StarButton` fixed for the star.
+  // `close()` is called before the `await`, so this reads as an optimistic paint:
+  // the panel goes on the tap, the write settles afterwards. It is not one. A
+  // form's `action` runs inside a React transition, and a state update made inside
+  // an async transition — `onOpenChange(false)` reaching the caller's `useState` —
+  // is not committed until the whole action settles. Writing `close()` first
+  // changes when the close is REQUESTED, not when it is SEEN.
   //
-  // Closing first is the optimistic paint the MENU can honestly make: the panel is
-  // a transient surface, and dismissing it claims only that the tap was taken, not
-  // that the write succeeded. The outcome still arrives in full — a typed refusal
-  // toasts its own error, a throw toasts the failure sentence — so nothing is
-  // confirmed unconditionally (the inline-action rule, #2133) and the deploy-skew
-  // classification each action returns is untouched.
+  // What it actually looks like: /upcoming, a snooze whose Server Action POST is
+  // held for five seconds. Two seconds in, the panel is still open with all four
+  // items, and the tapped one is `aria-busy`, disabled and spinning. Identical to
+  // the behaviour this comment claimed to have removed.
   //
-  // WHAT WOULD SHOW IT WRONG: a refusal that leaves no trace because the panel it
-  // would have been reported in is gone. It cannot: the toast is raised from this
-  // component, which outlives the panel, and `OverflowMenuSubmitItem`'s pending
-  // state was never the thing carrying the refusal.
+  // SO THE PENDING AFFORDANCE IS THE ONE THING ANSWERING "DID MY TAP LAND?" —
+  // `OverflowMenuSubmitItem` at the top of this file, at all ten of its mounts,
+  // not the one it was measured at. #2641's phase-2 plan to delete it as dead
+  // rests on the sentence that used to stand here;
+  // it is not dead, and deleting it would leave every kebab write in the app with
+  // no in-flight feedback at all for the length of the round trip. Making the
+  // close actually land on the tap is a real change (it needs a paint outside the
+  // transition, and it would then genuinely retire the affordance) — but it is a
+  // change, not a comment, and nobody has made it.
+  //
+  // WHAT `runAction` DOES CARRY, and why every menu write still belongs on it: the
+  // outcome. A typed refusal toasts its own error, a throw toasts the failure
+  // sentence, and both are raised from THIS component, which outlives the panel —
+  // so nothing is confirmed unconditionally (the inline-action rule, #2133) and
+  // the deploy-skew classification each action returns is untouched. A hand-rolled
+  // `await action(fd); close();` gets none of that, which is what
+  // components/illness/EpisodeControls.tsx lost until it moved here.
   const runAction: MenuHelpers["runAction"] = async (action, fd, message) => {
     close();
     let result: MenuActionResult;

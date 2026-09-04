@@ -10,6 +10,7 @@ This is the entrypoint. Read only the procedure needed for the current job:
 - [Queue labels](orchestration/labels.md)
 - [E2E and CI](orchestration/e2e-ci.md)
 - [Review and merge](orchestration/review-merge.md)
+- [Cross-session markers](orchestration/claims.md)
 - [Cadence and lifecycle](orchestration/lifecycle.md)
 
 ## Standing contract
