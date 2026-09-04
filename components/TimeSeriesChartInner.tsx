@@ -1,5 +1,6 @@
 "use client";
 
+import type { ComponentProps } from "react";
 import {
   Area,
   CartesianGrid,
@@ -29,7 +30,8 @@ import {
   chartSpecYAxisProps,
   useChartMotion,
 } from "./chart-scaffold";
-import type { TimeSeriesSpec } from "./chart-spec";
+import { useChartCaptions } from "./ChartCaptionBand";
+import type { ChartReference, TimeSeriesSpec } from "./chart-spec";
 
 // THE TIME-SERIES RENDERER (#4925).
 //
@@ -57,7 +59,28 @@ export default function TimeSeriesChartInner({
 }) {
   const c = useChartColors();
   const motion = useChartMotion();
+  // THE CAPTIONS GO UP TO THE CARD (#4924). What crosses the boundary is a
+  // DESCRIPTOR: the sentences are the chart's, because only it knows its own
+  // gaps, its aggregation and its sources; the layout is the card's, because it
+  // owns the height and the padding.
+  useChartCaptions(spec.captions ?? null);
   const sparkline = spec.sparkline ?? false;
+  // THE UNLOGGED RUNS, DRAWN. A day axis DECLARES its gaps (see chart-spec's
+  // `ChartXAxis`), and drawing them is the renderer's, not the card's — which is
+  // what makes every day-kind chart gap-capable rather than only the one card
+  // that happened to own the machinery. Appended AFTER the card's own marks, so
+  // a hole shades over a protocol window rather than under it.
+  const references: ChartReference[] = [
+    ...(spec.references ?? []),
+    ...(spec.x.kind === "day" && !("none" in spec.x.gap)
+      ? spec.x.gap.holes.map((h): ChartReference => ({
+          mark: "unlogged",
+          x1: h.from,
+          x2: h.to,
+          label: h.label,
+        }))
+      : []),
+  ];
   return (
     <div className={spec.frame.boxClass} {...(spec.frame.data ?? {})}>
       {spec.legend ? <ChartLegend items={[...spec.legend]} /> : null}
@@ -71,7 +94,11 @@ export default function TimeSeriesChartInner({
         <ComposedChart
           data={spec.rows as Record<string, unknown>[]}
           syncId={spec.syncId}
-          syncMethod={spec.syncMethod}
+          syncMethod={
+            spec.syncMethod as ComponentProps<
+              typeof ComposedChart
+            >["syncMethod"]
+          }
           onMouseMove={
             spec.onActiveLabelChange
               ? (state: MouseHandlerDataParam) =>
@@ -96,7 +123,7 @@ export default function TimeSeriesChartInner({
             />
           ))}
           <Tooltip {...chartSpecTooltipProps(c, motion, spec.tooltip)} />
-          {chartReferenceMarks(c, spec.references ?? [], spec.y[0].id)}
+          {chartReferenceMarks(c, references, spec.y[0].id)}
           {/* The spread band, UNDER the mean line — each bucket's low–high as a
               range in the series' own colour, so noise reads as visible spread
               instead of a scribble. */}

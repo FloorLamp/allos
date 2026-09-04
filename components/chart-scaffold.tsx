@@ -1194,7 +1194,7 @@ export function chartReferenceMarks(
             x={r.x}
             stroke={r.color}
             strokeDasharray={chartDash.now}
-            label={chartAnnotationLabel(r.label, c.tick, "top")}
+            label={chartAnnotationLabel(r.label, r.labelColor ?? c.tick, "top")}
           />
         );
       case "target":

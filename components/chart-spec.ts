@@ -1,3 +1,4 @@
+import type { ChartCaptionSet } from "./ChartCaptionBand";
 import type { AnnotationKind } from "@/lib/trend-annotations";
 
 // THE CHART SPEC (#4925).
@@ -142,7 +143,16 @@ export type ChartReference =
    */
   | { mark: "unlogged"; x1: string; x2: string; label: string | null }
   /** "You are here" on the x axis — the current ride, the child's age today. */
-  | { mark: "now"; x: string | number; label: string; color: string }
+  | {
+      mark: "now";
+      x: string | number;
+      label: string;
+      color: string;
+      /** The words' colour, which is not always the rule's: a growth chart's
+       *  "now" is scaffolding and takes the tick token, a progression chart's is
+       *  the reader's own ride and takes the series colour. */
+      labelColor?: string;
+    }
   /** A horizontal target LINE: "reach this". */
   | {
       mark: "target";
@@ -296,6 +306,21 @@ export interface ChartFrame {
 
 // ── the two specs ───────────────────────────────────────────────────────────
 
+/**
+ * recharts' sync contract, restated so a card can name it without importing
+ * recharts. A FUNCTION because value sync needs exact categories: telemetry is
+ * sampled every few seconds while wearable HR is one point per minute, so the
+ * activity page selects the nearest elapsed category rather than pretending two
+ * arrays' indexes are one time.
+ */
+export type ChartSyncMethod =
+  | "index"
+  | "value"
+  | ((
+      ticks: ReadonlyArray<{ value?: string | number }>,
+      data: { activeLabel?: string | number }
+    ) => number);
+
 export interface TimeSeriesSpec {
   frame: ChartFrame;
   rows: readonly Record<string, unknown>[];
@@ -315,9 +340,16 @@ export interface TimeSeriesSpec {
    *  colour-alone and it survives the code split. Every >= 2-series chart has
    *  one: colour is a channel roughly 1 in 12 men cannot fully read. */
   legend?: readonly ChartLegendEntry[];
+  /**
+   * The sentences under this plot: what the chart knows about its own gaps, its
+   * aggregation and its sources. The LAYOUT is the card's (#4924) — this only
+   * hands the words up, and the renderer does the handing so the timing is the
+   * chart chunk's, exactly as it was when the chart owned the hook.
+   */
+  captions?: ChartCaptionSet | null;
   /** Charts sharing an id share hover position (the paired sleep + mood panels). */
   syncId?: string;
-  syncMethod?: "index" | "value";
+  syncMethod?: ChartSyncMethod;
   onActiveLabelChange?: (label: string | null) => void;
 }
 
