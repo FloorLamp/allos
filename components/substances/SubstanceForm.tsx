@@ -11,6 +11,7 @@ import {
   addSubstanceDailyTotalAction,
   updateSubstanceDailyTotalAction,
 } from "@/app/(app)/medical/substance-use/actions";
+import SubmitButton from "@/components/SubmitButton";
 
 // THE SUBSTANCE DOMAIN'S ONE FORM (#4424 ruling 1), named by
 // `LOG_MANIFEST.substance.pieces.form`, replacing the `/history` add door's spelling,
@@ -41,10 +42,14 @@ import {
 // field emits null — a drink with no stated time is still a drink, and nothing invents
 // one (#2053).
 //
-// THE ADD DOOR ONLY. A correction addresses the DAY's count (its core reconciles the
-// day's taps), so one time collected there would be restated onto every drink the day
-// holds and would silently flatten two drinks stated at two hours into one. The day's
-// clock is therefore stated when the entry is made; see the open question on #3295.
+// THE ADD DOOR ONLY, AND A DRINK IS NEVER CORRECTED HERE AT ALL (#5026 item 1). A
+// consumable is an EVENT (owner ruling, 2026-09-04): a drink's units are
+// `food_log_events` rows with their own clocks, so it corrects on its own record row
+// through the food serving's form, and `updateSubstanceDailyTotalCore` refuses a
+// food-log ledger outright. What this form's edit mode still corrects is a DAY COUNT
+// — nicotine, cannabis and every custom key — where the day IS the stored fact. So an
+// edit mount is never a drink, and the `!row` in `timed` says that rather than
+// discovering it.
 
 export interface SubstanceChoice {
   key: string;
@@ -218,9 +223,9 @@ export default function SubstanceForm({
       </label>
       <InlineError>{error}</InlineError>
       <div className="flex items-end gap-2 sm:col-span-2">
-        <button className="btn" type="submit" disabled={pending}>
+        <SubmitButton variant="primary" disabled={pending}>
           {pending ? "Saving…" : row ? "Save" : "Add"}
-        </button>
+        </SubmitButton>
         <button className="btn-ghost" type="button" onClick={onCancel}>
           Cancel
         </button>

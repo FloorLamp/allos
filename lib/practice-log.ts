@@ -23,7 +23,7 @@ import {
 } from "./correction-time";
 import { eventInstant, recordInstant } from "./row-instants";
 import { getTimezone } from "./settings";
-import { normalizePracticeName } from "./practice";
+import { derivedSessionMinutes, normalizePracticeName } from "./practice";
 import type {
   PracticeLogOutcome,
   PracticeLiveEndOutcome,
@@ -357,26 +357,74 @@ function liveElapsedMin(
   return minutes;
 }
 
-// Close every unfinished lifecycle the bound above has given up on, without inventing
-// an end. The row keeps exactly what was observed — `live` cleared, no end, no
-// duration. Request gathers that render the offer state call this first; the
-// transition is idempotent.
+// Settle every live lifecycle this profile holds. TWO transitions, and they are
+// different claims about the same row:
+//
+//   * ABANDONED — the six-hour bound above gave up. Nothing is invented: `live` is
+//     cleared and the row keeps exactly what was observed, no end and no duration.
+//   * COMPLETE (#5091) — the row KNOWS its own length. A Start now stamps the
+//     practice's usual duration with `derived_window = 1` (#4897), and a row that
+//     carries one does not need a second tap to say when it finished: at start plus
+//     that duration it completes itself, keeping the duration and keeping
+//     `derived_window` so the chart and the note go on hedging the end (#4948). A
+//     15-minute session was otherwise "running" four hours later and drawing that wide.
+//
+// A live row with NO usual duration is untouched by the second branch and behaves
+// exactly as before: live until End or the six-hour bound.
+//
+// Request gathers that render the offer state call this first; both transitions are
+// idempotent. The day chart applies the same completion bound as a READ
+// (`lib/intraday.ts`), because a chart rendered before any gather ran would otherwise
+// keep growing a block past an end the row already knew.
 export function closeAbandonedPracticeSessions(profileId: number): number {
   const tz = getTimezone(profileId);
   const at = now();
   return writeTx(() => {
     const rows = db
       .prepare(
-        `SELECT id, date, start_time FROM practice_logs
+        `SELECT id, date, start_time, duration_min, derived_window
+           FROM practice_logs
           WHERE profile_id = ? AND live = 1`
       )
       .all(profileId) as {
       id: number;
       date: string;
       start_time: string | null;
+      duration_min: number | null;
+      derived_window: number;
     }[];
     let closed = 0;
     for (const row of rows) {
+      const started = eventInstant("practice_logs", row, tz);
+      const startedAt = started.known ? Date.parse(started.at) : null;
+      const derived = derivedSessionMinutes({
+        durationMin: row.duration_min,
+        derivedWindow: row.derived_window === 1,
+      });
+      // COMPLETE IS CHECKED FIRST, AND NOT BOUNDED BY THE SIX HOURS. A row that knew
+      // its own end still knew it whether or not a gather ran in time to write it —
+      // a Start at 06:28 on a 15-minute practice ended at 06:43 even if nothing swept
+      // until the evening. Letting the abandonment branch reach it would clear `live`
+      // and discard an end the row already had, which is the defect one step removed.
+      if (
+        startedAt != null &&
+        derived != null &&
+        at.getTime() - startedAt >= derived * 60_000
+      ) {
+        // THE ROW'S OWN START PLUS ITS OWN DURATION, read as instants so a session
+        // across a DST jump lands on the wall clock it actually ended at — the same
+        // quantity `endLivePracticeSession` derives from. The row keeps the DAY it
+        // started on; an end earlier than the start is the midnight crossing
+        // `activityWindow` already reads.
+        const endsAt = new Date(startedAt + derived * 60_000);
+        closed += db
+          .prepare(
+            `UPDATE practice_logs SET live = 0, end_time = ?
+              WHERE id = ? AND profile_id = ?`
+          )
+          .run(zonedDateParts(tz, endsAt).hhmm, row.id, profileId).changes;
+        continue;
+      }
       if (liveElapsedMin(tz, row, at) != null) continue;
       closed += db
         .prepare(

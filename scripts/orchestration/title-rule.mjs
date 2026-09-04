@@ -41,6 +41,13 @@
 // A TRAILING `(#N …)` REFERENCE is excepted from the clause scan and ONLY from
 // it: removed before the separators are counted, still counted in the length,
 // because the squash subject carries it and the reader pays for it.
+//
+// Usage:  node scripts/orchestration/title-rule.mjs "<title>"
+// Exit 0 = the title holds. Exit 1 = it breaks the rule, one violation to a
+// line. Exit 2 = there was no title to check.
+
+import { helpGuard, isMain } from "./usage.mjs";
+helpGuard(process.argv, import.meta.url);
 
 export const TITLE_MAX_CHARACTERS = 72;
 
@@ -81,13 +88,45 @@ export function titleRuleViolations(title) {
   return violations;
 }
 
+/** The rule in one sentence, quoted to every reader so nobody looks it up. */
+const RULE =
+  `the rule is ${TITLE_MAX_CHARACTERS} characters max, one clause, no colon ` +
+  "or dash tail (#4983); the detail is the body's first line";
+
 /** The refusal a human reads, or null when the title holds. */
 export function titleRuleRefusal(subject, title) {
   const violations = titleRuleViolations(title);
   if (violations.length === 0) return null;
-  return (
-    `${subject} title ${violations.join(" and ")} — the rule is ` +
-    `${TITLE_MAX_CHARACTERS} characters max, one clause, no colon or dash ` +
-    "tail (#4983); the detail is the body's first line"
-  );
+  return `${subject} title ${violations.join(" and ")} — ${RULE}`;
 }
+
+// THE COMMAND — the same rule read a third way, by a lane checking a title
+// BEFORE it opens the PR, which is where the dispatch brief points it.
+//
+// This file shipped without any of it (#5068). Run as a command it defined its
+// exports and fell off the end: nothing printed and the exit was 0 for every
+// string, including the colon tails the merge gate then refused an hour later
+// on an open PR. A check that cannot fail is worse than no check, because the
+// person who ran it reasonably believes they have checked — so the EXIT CODE
+// is the deliverable here, not the printing.
+function main(argv) {
+  const title = argv[0];
+  if (title === undefined || title.trim() === "") {
+    console.error('usage: title-rule.mjs "<title>"  (--help prints the rule)');
+    return 2;
+  }
+  const violations = titleRuleViolations(title);
+  // A conforming title says so out loud rather than exiting silently: silence
+  // and 0 is exactly what the broken version did, and a reader cannot tell a
+  // working check from a dead one by its absence of output.
+  if (violations.length === 0) {
+    console.log(`title is one clause of ${titleLength(title)} characters`);
+    return 0;
+  }
+  for (const violation of violations) console.log(`title ${violation}`);
+  console.log(RULE);
+  return 1;
+}
+
+if (isMain(process.argv, import.meta.url))
+  process.exitCode = main(process.argv.slice(2));

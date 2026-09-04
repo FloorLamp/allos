@@ -128,7 +128,10 @@ export function sleepSessionDurationMinutes(s: SleepSession): number {
 // genuine nap and stays apart — so an afternoon nap can NEVER mask a deficient
 // overnight (the exact #1118 anti-masking concern), because a masking nap is by
 // definition hours away from the night, never adjacent to it.
-const FRAGMENT_MERGE_GAP_MAX_MIN = 120; // ≤2h awake gap between blocks → one night
+// Exported because lib/sleep-clock-skew.ts reads the same bound from the other side:
+// a stretch of awake-level heart rate at least this long INSIDE a window claimed as
+// sleep is longer than any awake gap this repo still counts as one night (#5020).
+export const FRAGMENT_MERGE_GAP_MAX_MIN = 120; // ≤2h awake gap between blocks → one night
 // A single block already reaching a full core night is a complete night on its own;
 // nothing else that day merges into it (the siesta guard — a ≥6h core keeps its nap
 // classification, and a well-behaved single overnight is byte-for-byte unchanged).

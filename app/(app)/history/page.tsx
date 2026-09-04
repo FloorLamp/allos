@@ -31,7 +31,11 @@ import {
   getSymptomLogOrder,
   isAnxietyScaleRelevant,
 } from "@/lib/queries";
-import { getTrackedPractices } from "@/lib/queries/wellness";
+import {
+  getPracticeRhythms,
+  getTrackedPractices,
+} from "@/lib/queries/wellness";
+import { practiceFittingWindow } from "@/lib/practice";
 import { getTimelineDates } from "@/lib/timeline";
 import { usualRoutineDayOffers } from "@/lib/queries/usual-routine";
 import { profileFoodSlotBoundaries } from "@/lib/profile-food-slot";
@@ -47,6 +51,12 @@ import {
 import { shiftDateStr, zonedDateParts } from "@/lib/date";
 import TimelineDayNav from "@/components/TimelineDayNav";
 import IntradayPanel from "@/components/IntradayPanel";
+import { IntradayInteractionProvider } from "@/components/IntradayInteraction";
+import HistoryAddRow from "./HistoryAddRow";
+import {
+  intradayWindowParams,
+  parseIntradayWindow,
+} from "@/lib/intraday-window";
 import { getIntradayDay } from "@/lib/queries/intraday";
 import { solarDay } from "@/lib/sun";
 import {
@@ -65,7 +75,11 @@ import {
 import { listCyclePeriods } from "@/lib/cycle-store";
 import { cyclePhaseOnDate, periodOnDate } from "@/lib/cycle";
 import { PICKER_SYMPTOMS, symptomLabel } from "@/lib/symptoms";
-import { historyHref, type AppRoute } from "@/lib/hrefs";
+import {
+  historyHref,
+  type HistoryHrefParams,
+  type AppRoute,
+} from "@/lib/hrefs";
 import { historyMemberFeed } from "@/lib/history";
 import {
   HISTORY_DEFAULT_SHOW,
@@ -157,6 +171,15 @@ export const dynamic = "force-dynamic";
 // carries the "why here, why nested" notes that used to live on this inline
 // function.
 
+// The first value of a repeatable query param. A private copy, matching the ones in
+// `app/(app)/trends/page.tsx:46` and `components/DataExport.tsx:7` rather than inventing
+// a fourth spelling — converging the three is #4553's, not this lane's.
+function firstQueryParam(
+  value: string | string[] | undefined
+): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
 export default async function HistoryPage(props: {
   searchParams: Promise<{
     family?: string | string[];
@@ -169,6 +192,9 @@ export default async function HistoryPage(props: {
     open?: string | string[];
     expand?: string | string[];
     show?: string | string[];
+    /** A window selected on the day chart (#4950) — see lib/intraday-window.ts. */
+    from?: string | string[];
+    to?: string | string[];
   }>;
 }) {
   const searchParams = await props.searchParams;
@@ -193,6 +219,15 @@ export default async function HistoryPage(props: {
       ? searchParams.media[0]
       : searchParams.media) === "1";
   const day = clampHistoryDay(searchParams.day, todayStr);
+  // THE WINDOW THE CHART STATED (#4950), and only ON a day. The chart that writes it is
+  // the day view's, so a `?from=` arriving on the feed names a window over nothing —
+  // dropped here rather than carried to a door that could not use it anyway.
+  const chartWindow = day
+    ? parseIntradayWindow(
+        firstQueryParam(searchParams.from),
+        firstQueryParam(searchParams.to)
+      )
+    : null;
   const show = parseHistoryShow(searchParams.show);
   const openFolds = parseTimelineOpen(searchParams.open);
   // THE ROLLUP LINES THE READER HAS OPENED (#3958 phase 2). A second param beside
@@ -266,11 +301,14 @@ export default async function HistoryPage(props: {
   // pre-filter and means nothing on any other kind, so a chip that leaves doses must
   // not carry it: a row of chips whose "All" still says `class=medication` is a
   // control that does not do what it is called.
-  const chipHref = (next: {
+  // Split from the speller (#4950) so a client surface can take the PARAMS these rules
+  // produce and add to them, rather than re-deriving the rules or editing a finished
+  // URL. `historyHref` stays the one place a history URL is spelled.
+  const chipHrefParams = (next: {
     kind?: HistoryKind;
     family?: HistoryFamily;
     media?: boolean;
-  }): AppRoute => {
+  }): HistoryHrefParams => {
     const nextKind = "kind" in next ? next.kind : kind;
     // A FAMILY CHIP DROPS THE KIND INSIDE IT. Moving to Clinical while `?kind=dose` was
     // set would produce a URL that contradicts itself (a kind implies its family), and
@@ -278,7 +316,7 @@ export default async function HistoryPage(props: {
     // have navigated back to Doses.
     const nextFamily =
       "family" in next ? next.family : "kind" in next ? undefined : family;
-    return historyHref({
+    return {
       family: nextKind ? undefined : nextFamily,
       kind: nextKind,
       class: nextKind === "dose" ? doseClass : undefined,
@@ -287,8 +325,14 @@ export default async function HistoryPage(props: {
       day,
       everyone,
       show: show === HISTORY_DEFAULT_SHOW ? undefined : show,
-    });
+    };
   };
+
+  const chipHref = (next: {
+    kind?: HistoryKind;
+    family?: HistoryFamily;
+    media?: boolean;
+  }): AppRoute => historyHref(chipHrefParams(next));
 
   // THE DAY NAV'S TWO DESTINATIONS. Same day, one step either way, and every other
   // filter the reader has set rides across — walking days inside `?kind=dose` stays
@@ -446,13 +490,41 @@ export default async function HistoryPage(props: {
     getTimezone(actingProfileId),
     new Date()
   ).hhmm;
+  const trackedPractices =
+    canWrite && addKind === "practice"
+      ? getTrackedPractices(actingProfileId)
+      : [];
+  // WHICH PRACTICE THE WINDOW LOOKS LIKE (#4950 item 4), read only when there IS a
+  // window and a practice door to prefill — so no other view of this page pays for it.
+  // Habit, never physiology: `practiceFittingWindow` never sees a heart rate, and a
+  // practice with no rhythm cannot fit, which leaves the picker exactly as it is today.
+  const practiceRhythms =
+    day && chartWindow && trackedPractices.length > 0
+      ? getPracticeRhythms(actingProfileId)
+      : null;
+  const windowPractice =
+    day && chartWindow && practiceRhythms
+      ? practiceFittingWindow(
+          trackedPractices.flatMap((practice) => {
+            const rhythm = practiceRhythms.get(practice.identity);
+            return rhythm
+              ? [
+                  {
+                    name: practice.name,
+                    rhythm,
+                    usualDurationMin: practice.previousDurationMin,
+                  },
+                ]
+              : [];
+          }),
+          day,
+          chartWindow
+        )
+      : null;
   const addVocabulary =
     canWrite && addKind
       ? {
-          practices:
-            addKind === "practice"
-              ? getTrackedPractices(actingProfileId).map((p) => p.name)
-              : [],
+          practices: trackedPractices.map((p) => p.name),
           substances:
             addKind === "substance"
               ? getProfileSubstanceKeys(actingProfileId).map((key) => ({
@@ -979,33 +1051,45 @@ export default async function HistoryPage(props: {
           draws no context row at all — but the CARD itself, and the daylight band
           on the plot, draw regardless: `intraday` is non-null whenever a day is
           open (see above), rows or none. */}
-      {intraday ? (
-        <div className={railGutter}>
-          <IntradayPanel
-            model={intraday}
-            formatPrefs={prefs}
-            profileId={actingProfileId}
-            home={home}
-            timezone={profileTimezone}
-            daylightOutdoor={daylightOutdoor}
-            uv={dayUv}
-            cyclePhase={dayCyclePhase}
-            cyclePeriod={dayCyclePeriod}
-            weather={dayWeather}
-            waiting={sleepWaiting}
-            waitingDetail={
-              sleepWaiting
-                ? sleepWaitingDetail(sleepWaiting, {
-                    clock: (min) => formatClockMinutes(prefs.timeFormat, min),
-                    when: (iso) => formatRelativeTime(iso),
-                  })
-                : null
-            }
-          />
-        </div>
-      ) : null}
+      {/* ONE ZOOM AND ONE CROSSHAIR FOR THE DAY (#4950). The panel mounts the chart
+          twice — compact and wide, both in the DOM at once — and the add row BELOW
+          reads "the current view" off them. Two owners would mean two views and no way
+          for this page to know which variant the viewport is showing, so the state
+          lives here and both charts read it.
 
-      {/* THE ADD LAYER SITS ABOVE THE ROWS IT CREATES (#4918 ruling 2) — under the
+          IT WRAPS THE CHART AND THE ADD LAYER TOGETHER, which is the whole point and
+          was the defect the e2e caught: closed around the chart alone, the add row fell
+          back to its own private pair and its label could never leave "Add". A provider
+          that does not span both readers is not a shared state. */}
+      <IntradayInteractionProvider>
+        {intraday ? (
+          <div className={railGutter}>
+            <IntradayPanel
+              model={intraday}
+              formatPrefs={prefs}
+              profileId={actingProfileId}
+              home={home}
+              timezone={profileTimezone}
+              daylightOutdoor={daylightOutdoor}
+              uv={dayUv}
+              cyclePhase={dayCyclePhase}
+              cyclePeriod={dayCyclePeriod}
+              weather={dayWeather}
+              waiting={sleepWaiting}
+              waitingDetail={
+                sleepWaiting
+                  ? sleepWaitingDetail(sleepWaiting, {
+                      clock: (min) => formatClockMinutes(prefs.timeFormat, min),
+                      when: (iso) => formatRelativeTime(iso),
+                    })
+                  : null
+              }
+              selectedWindow={chartWindow}
+            />
+          </div>
+        ) : null}
+
+        {/* THE ADD LAYER SITS ABOVE THE ROWS IT CREATES (#4918 ruling 2) — under the
           chart, not above it.
 
           THE ADD DOOR, KIND-RESOLVED. Filtered to a kind it IS that kind's backfill,
@@ -1014,50 +1098,55 @@ export default async function HistoryPage(props: {
           shipped (#4045 §1). Log kinds only — clinical, training and life records are
           created on their own surfaces — and never the future: every door here is
           bounded by today. */}
-      {canWrite ? (
-        <div className={`mb-2 text-sm ${railGutter}`} data-testid="history-add">
-          {/* THE OFFERS LINE FIRST (#4310 ruling), before the per-kind grammar below it,
+        {canWrite ? (
+          <div
+            className={`mb-2 text-sm ${railGutter}`}
+            data-testid="history-add"
+          >
+            {/* THE OFFERS LINE FIRST (#4310 ruling), before the per-kind grammar below it,
               and silent on a day with no standing offer. */}
-          <HistoryUsualOffers offers={usualOffers} date={day ?? todayStr} />
-          {!hasAddDoor ? (
-            /* IN ALL — AND IN A KIND WITH NOTHING TO OFFER — THE DOOR ASKS THE KIND
+            <HistoryUsualOffers offers={usualOffers} date={day ?? todayStr} />
+            {!hasAddDoor ? (
+              /* IN ALL — AND IN A KIND WITH NOTHING TO OFFER — THE DOOR ASKS THE KIND
                FIRST, which on a record page is the same act as narrowing to it. It
                scrolls rather than wraps for the same reason the filter row does. */
-            <div className="-mx-2 flex items-center gap-3 overflow-x-auto px-2 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
-              {/* "Add", not "Add past" (#4918 ruling 5): on the day view the day
-                  bar states the day being written to, and on the feed the door is
-                  bounded by today anyway, so "past" was answering a question the
-                  frame answers. */}
-              <span className="shrink-0 text-slate-500 dark:text-slate-400">
-                Add
-              </span>
-              {/* SYMPTOM IS EXEMPT FROM THE PRESENCE GATE (#4851 owner ruling) —
-                  `historyAddKinds` is the one computation that knows it, so the
-                  exemption cannot drift out of step with the rest of the gate. */}
-              {historyAddKinds(presentKinds).map((candidate) => (
-                <Link
-                  key={candidate}
-                  className="btn-ghost btn-sm shrink-0"
-                  href={chipHref({ kind: candidate })}
-                  data-testid={`history-add-${candidate}`}
-                >
-                  {HISTORY_KIND_LABELS[candidate]}
-                </Link>
-              ))}
-            </div>
-          ) : addVocabulary && addKind ? (
-            <HistoryAddDoor
-              kind={addKind}
-              // THE DAY THE READER WAS LOOKING AT. Finding a gap is the reason to open
-              // this door at all, so the form opens on that day rather than on today —
-              // the context the redirect used to throw away.
-              date={day ?? todayStr}
-              maxDate={todayStr}
-              vocabulary={addVocabulary}
-            />
-          ) : null}
-        </div>
-      ) : null}
+              /* SYMPTOM IS EXEMPT FROM THE PRESENCE GATE (#4851 owner ruling) —
+               `historyAddKinds` is the one computation that knows it, so the exemption
+               cannot drift out of step with the rest of the gate. The row itself is a
+               client component (#4950): it reads the window the chart is showing and
+               adds it to the params these rules produced. */
+              <HistoryAddRow
+                timeFormat={prefs.timeFormat}
+                /* Only the day view has a chart, so only it has a window and a day for
+                 the workouts door to open on (#4950 item 5). */
+                workoutsDate={day}
+                chips={historyAddKinds(presentKinds).map((candidate) => ({
+                  kind: candidate,
+                  label: HISTORY_KIND_LABELS[candidate],
+                  params: chipHrefParams({ kind: candidate }),
+                }))}
+              />
+            ) : addVocabulary && addKind ? (
+              <HistoryAddDoor
+                kind={addKind}
+                /* The window the chip carried, already parsed and refused if it was not
+                 one (#4950). It rides the URL rather than client state, so it survives
+                 a reload with the form open. */
+                window={chartWindow ? intradayWindowParams(chartWindow) : null}
+                /* The practice this profile usually does at that moment — a prefill a tap
+                 confirms, never a claim about what happened. */
+                defaultPractice={windowPractice}
+                // THE DAY THE READER WAS LOOKING AT. Finding a gap is the reason to open
+                // this door at all, so the form opens on that day rather than on today —
+                // the context the redirect used to throw away.
+                date={day ?? todayStr}
+                maxDate={todayStr}
+                vocabulary={addVocabulary}
+              />
+            ) : null}
+          </div>
+        ) : null}
+      </IntradayInteractionProvider>
 
       {/* THE TWO EMPTY STATES ARE DIFFERENT MESSAGES (#1410), and the difference is
           the whole design: an EMPTY ACCOUNT is fixed by putting data in, a FILTERED

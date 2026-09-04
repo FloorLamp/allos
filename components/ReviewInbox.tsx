@@ -5,7 +5,6 @@ import type { UnitPrefs } from "@/lib/settings";
 import { getIntegration } from "@/lib/integrations/registry";
 import { isStaleSyncEvent } from "@/lib/integrations/staleness";
 import {
-  dataSectionHref,
   integrationDetailHref,
   medicationEditHref,
   nutritionTabHref,
@@ -17,6 +16,7 @@ import SyncTimestamp from "@/components/integrations/SyncTimestamp";
 import RawPayloadViewer from "@/components/RawPayloadViewer";
 import DuplicateReview from "@/components/DuplicateReview";
 import UnitMislabelReview from "@/components/UnitMislabelReview";
+import SleepOverlapKeep from "@/components/SleepOverlapKeep";
 import BulkCorrectionCard from "@/app/(app)/data/BulkCorrectionCard";
 import type { CorrectionFieldId } from "@/lib/bulk-correction";
 import type { CorrectionSourcesByField } from "@/lib/bulk-correction-db";
@@ -246,22 +246,10 @@ export default function ReviewInbox({
                   </p>
                   <p className="mt-1 text-sm text-rose-700 dark:text-rose-300">
                     These two sleep sessions from {pair.origin} overlap, so a
-                    day shows a night that did not happen. Delete the wrong one.
+                    day shows a night that did not happen. Keep the one that
+                    really happened — the other is deleted, and you can undo it.
                   </p>
-                  <ul className="mt-2 space-y-1 text-sm text-slate-700 dark:text-slate-200">
-                    {pair.sessions.map((session) => (
-                      <li key={session.id}>
-                        <SyncTimestamp value={session.started_at} /> ·{" "}
-                        {session.minutes} min
-                      </li>
-                    ))}
-                  </ul>
-                  <DestinationLink
-                    href={dataSectionHref("manage")}
-                    className="mt-2 inline-block text-sm text-link"
-                  >
-                    Delete a sleep session
-                  </DestinationLink>
+                  <SleepOverlapKeep pair={pair} />
                 </li>
               ))}
             </ul>

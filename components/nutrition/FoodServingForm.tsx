@@ -22,6 +22,7 @@ import {
   updateFoodLogEvent,
   type FoodEventEditResult,
 } from "@/app/(app)/nutrition/actions";
+import SubmitButton from "@/components/SubmitButton";
 
 // THE FOOD DOMAIN'S ONE FORM (#4424 ruling 1), named by `LOG_MANIFEST.food.pieces.form`.
 // `row` absent posts `logFoodServing`; `row` present seeds from that row and posts
@@ -83,6 +84,7 @@ export default function FoodServingForm({
   maxDate,
   row,
   subjectProfileId,
+  defaultStatedAt = null,
   tz: tzProp,
   onSaved,
   onCancel,
@@ -100,6 +102,13 @@ export default function FoodServingForm({
   maxDate: string;
   row?: FoodServingRow;
   subjectProfileId?: number;
+  /**
+   * A stated instant to OPEN on, spelled as `MeasurementsQuickAdd` spells it — the
+   * window a day chart was showing when this door was opened (#4950). A default a
+   * person can change, never a write; a seeded row's own instant beats it, and the
+   * meal follows this hour exactly as it follows an hour the person picks.
+   */
+  defaultStatedAt?: string | null;
   /** The SUBJECT's zone (#4009 item 1); the acting profile's when a mount omits it. */
   tz?: string;
   onSaved: (saved: FoodServingSaved) => void;
@@ -122,19 +131,40 @@ export default function FoodServingForm({
   const [groupKey, setGroupKey] = useState(
     row?.groupKey ?? groups[0]?.slug ?? ""
   );
+  // The meal a stated instant falls in. ONE reading of that question, so the meal an
+  // opening instant lands in and the meal a picked hour moves to cannot drift apart.
+  function slotForStated(statedAt: string, onDate: string): FoodSlot {
+    const offered = eatingHoursOnDate(
+      onDate,
+      tz,
+      new Date(),
+      slotBoundaries
+    ).find((option) => option.iso === statedAt);
+    return (
+      offered?.slot ?? foodSlotForHhmm(statedHhmm(statedAt, tz), slotBoundaries)
+    );
+  }
+  // The row's stated instant, rebuilt from its local wall clock on its own day, or the
+  // instant this mount was opened on. An untouched time is omitted from the save,
+  // precisely so this reconstruction is never written back over a second-precision
+  // original.
+  const openingStatedAt = row
+    ? row.eatenAt
+      ? (statedInstantOnDate(row.date, row.eatenAt, tz)?.toISOString() ?? null)
+      : null
+    : defaultStatedAt;
   const [mealSlot, setMealSlot] = useState<FoodSlot>(
-    row?.mealSlot ?? slot ?? FOOD_SLOTS[0]
+    () =>
+      row?.mealSlot ??
+      (openingStatedAt !== null
+        ? slotForStated(openingStatedAt, row?.date ?? date)
+        : (slot ?? FOOD_SLOTS[0]))
   );
   const [mealTouched, setMealTouched] = useState(false);
-  const [when, setWhen] = useState<WhenValue>({
+  const [when, setWhen] = useState<WhenValue>(() => ({
     date: row?.date ?? date,
-    // The row's stated instant, rebuilt from its local wall clock on its own day. An
-    // untouched time is omitted from the save, precisely so this reconstruction is
-    // never written back over a second-precision original.
-    statedAt: row?.eatenAt
-      ? (statedInstantOnDate(row.date, row.eatenAt, tz)?.toISOString() ?? null)
-      : null,
-  });
+    statedAt: openingStatedAt,
+  }));
 
   function moveWhen(next: WhenValue): void {
     if (
@@ -142,16 +172,7 @@ export default function FoodServingForm({
       next.statedAt !== null &&
       next.statedAt !== when.statedAt
     ) {
-      const offered = eatingHoursOnDate(
-        next.date,
-        tz,
-        new Date(),
-        slotBoundaries
-      ).find((option) => option.iso === next.statedAt);
-      setMealSlot(
-        offered?.slot ??
-          foodSlotForHhmm(statedHhmm(next.statedAt, tz), slotBoundaries)
-      );
+      setMealSlot(slotForStated(next.statedAt, next.date));
     }
     setWhen(next);
   }
@@ -280,14 +301,13 @@ export default function FoodServingForm({
       </div>
       <InlineError>{error}</InlineError>
       <div className="flex items-end gap-2 sm:col-span-2">
-        <button
-          className="btn"
-          type="submit"
+        <SubmitButton
+          variant="primary"
           data-testid={`${testId}-save`}
           disabled={pending}
         >
           {pending ? "Saving…" : row ? "Save" : "Add"}
-        </button>
+        </SubmitButton>
         <button
           className="btn-ghost"
           type="button"

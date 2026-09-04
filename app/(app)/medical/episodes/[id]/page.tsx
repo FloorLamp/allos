@@ -36,7 +36,9 @@ import {
 } from "@/lib/settings";
 import CardSectionHeader from "@/components/CardSectionHeader";
 import IllnessMedicationLogger from "@/components/illness/IllnessMedicationLogger";
+import { antipyreticPrnMeds } from "@/lib/prn-defaults";
 import { IntakeOptionsProvider } from "@/components/IntakeOptionsContext";
+import { DoseOfferProvider } from "@/components/illness/DoseOfferContext";
 import { loadIntakeFormContext } from "@/lib/intake-form-context";
 import { PICKER_SYMPTOMS, symptomLabel } from "@/lib/symptoms";
 import { dateStrInTz, isRealIsoDate } from "@/lib/date";
@@ -190,6 +192,9 @@ export default async function EpisodePage(props: {
           );
         })
       : [];
+  // The subset the fold offers and the Meds section below therefore yields, computed
+  // ONCE so the two can never name different chips (#4712 ruling 2026-09-04 part 2).
+  const antipyretics = antipyreticPrnMeds(prnMeds);
   const canAddMedication = assembled.ongoing && canWrite && !crossProfile;
   // The add door's context comes from the ONE loader, keyed on the EPISODE's profile
   // (#4609). This page used to hand its form the pediatric figures alone and wrap it in
@@ -324,6 +329,10 @@ export default async function EpisodePage(props: {
         canEdit={canWrite}
         linkLatestMedication
         linkConditions={!crossProfile}
+        // The derived fever row's reading links to its day (#4712 ruling part 1) —
+        // for the acting profile only, since `/history?day=` lands on whoever is
+        // active and a member's day is reached by switching to them.
+        linkReadingDay={!crossProfile}
         collapsePeakSymptoms
         eventProfileId={target}
         identity={
@@ -360,7 +369,10 @@ export default async function EpisodePage(props: {
         }
         timelineTools={
           hasUpdateWorkspace ? (
-            <>
+            /* The fold's dose offer and the persistent Meds section are siblings
+               here too, so the "one dose prompt at a time" signal lives above both
+               (#4712 ruling 2026-09-04 11:20 UTC part 2). */
+            <DoseOfferProvider>
               {canWrite && (
                 <EpisodeLogPanel
                   episodeId={episodeId}
@@ -387,13 +399,16 @@ export default async function EpisodePage(props: {
                   rangeStart={rangeStart}
                   rangeEnd={rangeEnd}
                   profileId={target}
-                  // NO DOSE OFFER HERE (#4712 judgement 1, corrected) — see the
-                  // matching note in IllnessCockpitBody.tsx. This page's own Meds
-                  // section below renders whenever `prnMeds` is non-empty, which is
-                  // every time the fold's dose offer would have anything to show
-                  // (antipyreticPrnMeds is that same list narrowed), so feeding it
-                  // real data here would duplicate a chip the persistent section
-                  // already renders.
+                  // THE FOLD OFFERS THE DOSE (#4712, owner ruling 2026-09-04 11:20
+                  // UTC part 2) — see the matching note in IllnessCockpitBody.tsx.
+                  // `antipyreticPrnMeds` is `prnMeds` narrowed, so this would be a
+                  // duplicate of the section below rather than an offer; that
+                  // section's chip for the SAME med yields while the offer is live,
+                  // which is what makes it one prompt for one dose instead of two
+                  // chips for one medication.
+                  antipyreticMeds={antipyretics}
+                  intakeContext={intakeContext}
+                  nowIso={clockNow().toISOString()}
                   photoControl={
                     <label
                       htmlFor="episode-symptom-photo-input"
@@ -437,11 +452,12 @@ export default async function EpisodePage(props: {
                       intakeContext={intakeContext}
                       canAdd={canAddMedication}
                       nowIso={clockNow().toISOString()}
+                      yieldsTo={antipyretics}
                     />
                   </IntakeOptionsProvider>
                 </div>
               )}
-            </>
+            </DoseOfferProvider>
           ) : undefined
         }
         timelineAfterHistory={

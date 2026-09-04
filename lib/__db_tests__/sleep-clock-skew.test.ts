@@ -93,6 +93,25 @@ function skewedNight(day: string): number {
   return id;
 }
 
+// The 08-27 night in #5020: stamped THREE hours late, so the shift is shorter than the
+// night is long. The real trough overlaps the claim, which is exactly what hides this
+// night from the median reading — every comparable window that does not overlap the
+// claim is awake time. Only the run inside the claim's own hours can speak.
+function partialShiftNight(day: string): number {
+  const id = session(
+    day,
+    `${day}T09:53:00Z`,
+    `${day}T16:31:00Z`,
+    PROVIDER,
+    398
+  );
+  trace(`${shiftDateStr(day, -1)}T18:00:00Z`, `${day}T22:00:00Z`, {
+    from: `${day}T07:00:00Z`,
+    to: `${day}T13:30:00Z`,
+  });
+  return id;
+}
+
 // The same clocks, the same duration, the same schedule break — and the HR agrees.
 function jetLagNight(day: string): number {
   const id = session(day, `${day}T09:39:00Z`, `${day}T14:37:00Z`);
@@ -115,6 +134,7 @@ function recordReturnEast(day: string): void {
         at: `${day}T12:00:00Z`,
         from: "Pacific/Honolulu",
         to: "America/New_York",
+        kind: "travel",
       },
     ])
   );
@@ -148,6 +168,22 @@ describe("getSuspectSleepSessions", () => {
       troughBpm: ASLEEP,
       start: `${day}T09:39:00Z`,
     });
+    expect(getSuspectSleepWakeDays(profileId, shiftDateStr(T, -30))).toEqual(
+      new Set([day])
+    );
+  });
+
+  it("finds a shift shorter than the session, which the median reading misses", () => {
+    const day = shiftDateStr(T, -1);
+    const id = partialShiftNight(day);
+    const found = getSuspectSleepSessions(profileId, shiftDateStr(T, -30));
+    expect(found).toHaveLength(1);
+    expect(found[0].sampleId).toBe(id);
+    // The gather hands the pure reading the SAME raw UTC minutes on both sides, and
+    // the evidence that comes back is the run — the claim's own median sits at trough
+    // level, below every comparable window in the day.
+    expect(found[0].evidence.claimedBpm).toBe(ASLEEP);
+    expect(found[0].evidence.awakeRun).toMatchObject({ bpm: AWAKE });
     expect(getSuspectSleepWakeDays(profileId, shiftDateStr(T, -30))).toEqual(
       new Set([day])
     );
@@ -277,6 +313,20 @@ describe("buildSleepClockSkewFindings", () => {
       FINDING_DASHBOARD_RELEVANCE.review
     );
     expect(findings[0].detail).not.toContain("timezone");
+  });
+
+  it("says what a run finding measured, not what the median finding did", () => {
+    // A partial shift has NO equally long window elsewhere holding the overnight low —
+    // that absence is why the median reading missed it — so the copy must not claim
+    // one. It quotes the run and the window instead, and it names no duration, for the
+    // same reason it names no offset: nothing here measures how far off the clock is.
+    const day = shiftDateStr(T, -1);
+    partialShiftNight(day);
+    const detail = buildSleepClockSkewFindings(profileId, T)[0].detail;
+    expect(detail).toContain(`${AWAKE} bpm`);
+    expect(detail).toContain(`${ASLEEP} bpm`);
+    expect(detail).not.toContain("the overnight low");
+    expect(detail).not.toMatch(/\bhours?\b/);
   });
 
   it("adds the travel sentence when a switch is recorded — wording, not a trigger", () => {

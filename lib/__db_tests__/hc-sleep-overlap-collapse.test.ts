@@ -386,3 +386,156 @@ describe("what the rule may never touch", () => {
     expect(getOverlappingSleepSessions(profileId)).toEqual([]);
   });
 });
+
+// ── THE RE-STAMPED TWIN THAT NEVER TOUCHES (#5020) ────────────────────────────
+//
+// A zone error larger than the night is long leaves two rows that do not overlap, so the
+// geometry rule forms no pair and `mainSleepPeriod` glues them into one 11-hour night.
+// The 08-30 pair on prod is two 298-minute rows six hours apart. What identifies them is
+// the stage breakdown they share, shifted whole.
+describe("a re-stamped twin that never touches its own night", () => {
+  const early = () => ({ start: at(day1, "03:39"), end: at(day1, "08:37") });
+  const late = () => ({ start: at(day1, "09:39"), end: at(day1, "14:37") });
+
+  // The mis-zoned write, plus the day's awake reference.
+  function pushLate(hr: Rec[] = hrRun(late().start, late().end, 78)) {
+    return push({
+      timestamp: at(day1, "15:40"),
+      sleep: [session(late().start, late().end, 4)],
+      heart_rate: [...hrRun(at(day0, "12:00"), at(day0, "20:00"), 68), ...hr],
+    });
+  }
+
+  // The corrected write, a push later — the SAME recording, shifted six hours.
+  function pushEarly(hr: Rec[] = hrRun(early().start, early().end, 58)) {
+    return push({
+      timestamp: at(day1, "16:42"),
+      sleep: [session(early().start, early().end, 4)],
+      heart_rate: hr,
+    });
+  }
+
+  it("collapses to the corroborated window even though the two do not overlap", () => {
+    pushLate();
+    pushEarly();
+    // One night stands where the merge would otherwise have reported eleven hours, and
+    // the loser's key is dead so the exporter's 48-hour re-send cannot restore it.
+    expect(sessionsInStore()).toEqual([
+      { date: day0, started_at: early().start },
+    ]);
+    expect(tombstones().size).toBeGreaterThan(0);
+    expect(getOverlappingSleepSessions(profileId)).toEqual([]);
+  });
+
+  it("leaves the pair for a person when both windows read as sleep", () => {
+    pushLate(hrRun(late().start, late().end, 57));
+    pushEarly();
+    expect(sessionsInStore()).toHaveLength(2);
+    expect(tombstones().size).toBe(0);
+    // Review has to list it, or a pair the collapse declined would never reach anyone.
+    const pairs = getOverlappingSleepSessions(profileId);
+    expect(pairs).toHaveLength(1);
+    expect(pairs[0].sessions.map((x) => x.started_at).sort()).toEqual(
+      [early().start, late().start].sort()
+    );
+  });
+
+  // Every row here must leave the store alone AND stay out of Review: they are the
+  // shapes a twin rule must never claim. The heart rate is arranged so that exactly one
+  // window would be corroborated, which is what a pair would need to delete a row — so
+  // each row proves the PAIRING refused, not that a later gate caught it.
+  it.each([
+    [
+      // Two nights on an identical schedule sit exactly a day apart, and a person who
+      // keeps one can carry the same breakdown twice. A day is the bound.
+      "two nights on an identical schedule, exactly a day apart",
+      () => [
+        session(at(day0, "03:39"), at(day0, "08:37"), 4),
+        session(at(day1, "03:39"), at(day1, "08:37"), 4),
+      ],
+      () => [
+        ...hrRun(at(day0, "03:39"), at(day0, "08:37"), 58),
+        ...hrRun(at(day1, "03:39"), at(day1, "08:37"), 78),
+      ],
+    ],
+    [
+      // Two real naps of the same length a few hours apart. Same duration, same origin,
+      // shift well under a day — and different sleep inside them.
+      "two equal-length naps on one day, scored differently",
+      () => [
+        session(at(day1, "01:00"), at(day1, "01:30"), 2),
+        session(at(day1, "04:30"), at(day1, "05:00"), 3),
+      ],
+      () => [
+        ...hrRun(at(day1, "01:00"), at(day1, "01:30"), 58),
+        ...hrRun(at(day1, "04:30"), at(day1, "05:00"), 78),
+      ],
+    ],
+    [
+      // The same two naps a day short of a day apart, so the shift bound cannot be what
+      // keeps them out — only the breakdown can.
+      "equal-length naps on consecutive days, scored differently",
+      () => [
+        session(at(day0, "02:00"), at(day0, "02:30"), 2),
+        session(at(day1, "01:00"), at(day1, "01:30"), 3),
+      ],
+      () => [
+        ...hrRun(at(day0, "02:00"), at(day0, "02:30"), 58),
+        ...hrRun(at(day1, "01:00"), at(day1, "01:30"), 78),
+      ],
+    ],
+    [
+      // One metric repeated is a duration, not a shape. These two match each other
+      // exactly and are still two naps.
+      "two naps whose whole breakdown is a single stage",
+      () => [
+        session(at(day1, "01:00"), at(day1, "01:30"), 1),
+        session(at(day1, "04:30"), at(day1, "05:00"), 1),
+      ],
+      () => [
+        ...hrRun(at(day1, "01:00"), at(day1, "01:30"), 58),
+        ...hrRun(at(day1, "04:30"), at(day1, "05:00"), 78),
+      ],
+    ],
+    [
+      // The scored part matches and the WINDOW does not: same stage offsets and lengths,
+      // but the second session runs half an hour past its last stage. One delta means
+      // both edges moved together — a window that grew is a different sleep.
+      "a session whose stages match but whose window is longer",
+      () => [
+        session(at(day1, "01:00"), at(day1, "02:00"), 4),
+        {
+          ...session(at(day1, "05:00"), at(day1, "06:00"), 4),
+          end_time: at(day1, "06:30"),
+          duration_seconds: 90 * 60,
+        },
+      ],
+      () => [
+        ...hrRun(at(day1, "01:00"), at(day1, "02:00"), 58),
+        ...hrRun(at(day1, "05:00"), at(day1, "06:30"), 78),
+      ],
+    ],
+    [
+      // #1191's fragmented night: two blocks of DIFFERENT lengths across one awake gap.
+      // The window did not move as a whole, so there is no one delta.
+      "a fragmented night's two unequal blocks",
+      () => [
+        session(at(day0, "23:00"), at(day1, "03:00"), 4),
+        session(at(day1, "04:00"), at(day1, "05:30"), 4),
+      ],
+      () => [
+        ...hrRun(at(day0, "23:00"), at(day1, "03:00"), 58),
+        ...hrRun(at(day1, "04:00"), at(day1, "05:30"), 78),
+      ],
+    ],
+  ])("is not a twin: %s", (_case, sleep, hr) => {
+    push({
+      timestamp: at(day1, "20:00"),
+      sleep: sleep(),
+      heart_rate: [...hrRun(at(day0, "12:00"), at(day0, "20:00"), 68), ...hr()],
+    });
+    expect(sessionsInStore()).toHaveLength(2);
+    expect(tombstones().size).toBe(0);
+    expect(getOverlappingSleepSessions(profileId)).toEqual([]);
+  });
+});

@@ -26,6 +26,7 @@ import {
 import { getProfileAge } from "@/lib/settings";
 import { isTrainingRelevant } from "@/lib/life-stage";
 import BackLink from "@/components/BackLink";
+import SubmitButton from "@/components/SubmitButton";
 import SetupStepsCard from "@/components/integrations/SetupStepsCard";
 
 export const dynamic = "force-dynamic";
@@ -207,9 +208,9 @@ export default async function StravaPage(props: {
                 />
               </div>
               <div>
-                <button className="btn">
+                <SubmitButton variant="primary">
                   {hasCreds ? "Update credentials" : "Save credentials"}
-                </button>
+                </SubmitButton>
               </div>
             </form>
 
@@ -220,7 +221,9 @@ export default async function StravaPage(props: {
                   syncing.
                 </p>
                 <form action={connectStrava}>
-                  <button className="btn">Connect with Strava</button>
+                  <SubmitButton variant="primary">
+                    Connect with Strava
+                  </SubmitButton>
                 </form>
               </div>
             )}

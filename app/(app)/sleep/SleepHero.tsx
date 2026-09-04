@@ -7,7 +7,8 @@ import {
   type LastNightSummary,
   type SleepRecordPresentation,
 } from "@/lib/sleep-summary";
-import { SLEEP_SKEW_HEDGE } from "@/lib/sleep-clock-skew";
+import { formatClockMinutes } from "@/lib/format-date";
+import { SLEEP_SKEW_HEDGE, sleepSkewSettledLine } from "@/lib/sleep-clock-skew";
 import type { TimeFormat } from "@/lib/format-date";
 import { historyDayHref } from "@/lib/hrefs";
 import { chartSeries } from "@/lib/chart-colors";
@@ -79,6 +80,7 @@ export default function SleepHero({
   bedtimeSupplements,
   usualSleepBand,
   clockSkewSuspect = false,
+  clockSkewSettledMinutes = null,
 }: {
   summary: LastNightSummary;
   timeFormat: TimeFormat;
@@ -90,6 +92,9 @@ export default function SleepHero({
   // would leave nothing to recognise as wrong — but it is no longer stated as fact, and
   // the usual band it would be compared against is withheld.
   clockSkewSuspect?: boolean;
+  /** Minutes since profile-local midnight where the heart rate settled, for the hedge's
+   *  second line (#5021). Null when the evidence carries no usable instant. */
+  clockSkewSettledMinutes?: number | null;
 }) {
   const delta = baselineDeltaPhrase(summary);
   const source = activityProvenanceLabel(summary.source);
@@ -151,6 +156,16 @@ export default function SleepHero({
               data-testid="sleep-clock-skew-hedge"
             >
               {SLEEP_SKEW_HEDGE}
+              {clockSkewSettledMinutes != null && (
+                /* WHAT was measured, on its own line — never phrased as a bedtime.
+                   The person is the one who knows whether they lay awake first. */
+                <span data-testid="sleep-clock-skew-settled">
+                  {" "}
+                  {sleepSkewSettledLine(
+                    formatClockMinutes(timeFormat, clockSkewSettledMinutes)
+                  )}
+                </span>
+              )}
             </p>
           ) : (
             usualSleepBand && (
