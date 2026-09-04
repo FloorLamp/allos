@@ -193,7 +193,12 @@ describe("which zone reads the typed clocks (#5125)", () => {
       profileId,
       "timezone_switches",
       serializeTimezoneSwitches([
-        { at: `${day}T18:00:00Z`, from: "Asia/Tokyo", to: "Europe/London" },
+        {
+          at: `${day}T18:00:00Z`,
+          from: "Asia/Tokyo",
+          to: "Europe/London",
+          kind: "travel",
+        },
       ])
     );
     const sessionId = sample(
