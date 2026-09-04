@@ -5,6 +5,7 @@ import { useToast } from "@/components/Toast";
 import AddEntryPanel from "@/components/AddEntryPanel";
 import { substanceNameError, validateSubstanceName } from "@/lib/substance-use";
 import { trackSubstanceUseAction } from "./actions";
+import SubmitButton from "@/components/SubmitButton";
 
 // THE ENTRY POINT FOR A CUSTOM SUBSTANCE (#3326, part 2 of #3279).
 //
@@ -122,14 +123,13 @@ export default function TrackSubstanceControl() {
             {error}
           </p>
         ) : null}
-        <button
-          type="submit"
-          className="btn"
+        <SubmitButton
+          variant="primary"
           disabled={pending}
           data-testid="track-substance-save"
         >
           {pending ? "Logging…" : "Log a use"}
-        </button>
+        </SubmitButton>
       </form>
     </AddEntryPanel>
   );

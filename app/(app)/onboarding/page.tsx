@@ -308,6 +308,7 @@ export default async function OnboardingPage({
                   <SubmitButton
                     pendingLabel="Continuing…"
                     requireSelection="focus"
+                    variant="primary"
                   >
                     Next
                   </SubmitButton>
@@ -420,7 +421,9 @@ export default async function OnboardingPage({
               {!readOnly && (
                 <div className="sm:col-span-2">
                   <WizardActions backStep={2}>
-                    <SubmitButton pendingLabel="Saving…">Next</SubmitButton>
+                    <SubmitButton pendingLabel="Saving…" variant="primary">
+                      Next
+                    </SubmitButton>
                   </WizardActions>
                 </div>
               )}
@@ -508,7 +511,9 @@ export default async function OnboardingPage({
             <div className="mt-4">
               <form action={continueOnboardingData}>
                 <WizardActions backStep={3}>
-                  <SubmitButton pendingLabel="Continuing…">Next</SubmitButton>
+                  <SubmitButton pendingLabel="Continuing…" variant="primary">
+                    Next
+                  </SubmitButton>
                 </WizardActions>
               </form>
             </div>
@@ -563,6 +568,7 @@ export default async function OnboardingPage({
                   <SubmitButton
                     pendingLabel="Saving…"
                     requireSelection="notification_intent"
+                    variant="primary"
                   >
                     Next
                   </SubmitButton>
@@ -610,7 +616,7 @@ export default async function OnboardingPage({
               {!readOnly && (
                 <form action={completeOnboarding}>
                   <WizardActions backStep={5} showExit={false}>
-                    <SubmitButton pendingLabel="Finishing…">
+                    <SubmitButton pendingLabel="Finishing…" variant="primary">
                       View dashboard
                     </SubmitButton>
                   </WizardActions>

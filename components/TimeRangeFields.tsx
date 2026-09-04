@@ -1,7 +1,11 @@
 "use client";
 
 import { nowHHMM } from "@/lib/activity-form-model";
-import { overnightMinutesBetween, shiftHHMM } from "@/lib/activity-meta";
+import {
+  overnightMinutesBetween,
+  shiftHHMM,
+  shiftHHMMOvernight,
+} from "@/lib/activity-meta";
 import TimeField from "@/components/TimeField";
 
 // THE HOUSE START/END PAIR (#4384 fix 6), extracted from the activity form's
@@ -81,13 +85,19 @@ export default function TimeRangeFields({
     : timeError;
   // Derive End = Start + duration (or Start = End − duration) when two of the
   // three are known and the result stays in-day (#336).
+  //
+  // OVERNIGHT WRAPS INSTEAD (#5021). In that mode crossing midnight is the point, so
+  // the in-day refusal above answers "no offer" to nearly every real pair — a bed time
+  // plus a night's length is a wake time tomorrow. Same rule as this mode's own span,
+  // read in the other direction; the default mode is untouched.
+  const shift = overnight ? shiftHHMMOvernight : shiftHHMM;
   const derivedEnd =
     startTime && !endTime && derivableDurationMin != null
-      ? shiftHHMM(startTime, derivableDurationMin)
+      ? shift(startTime, derivableDurationMin)
       : null;
   const derivedStart =
     endTime && !startTime && derivableDurationMin != null
-      ? shiftHHMM(endTime, -derivableDurationMin)
+      ? shift(endTime, -derivableDurationMin)
       : null;
   return (
     <div data-testid="time-range-fields">

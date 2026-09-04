@@ -15,6 +15,7 @@ import type { AppRoute } from "@/lib/hrefs";
 import SettingsGroupLayout from "../SettingsGroupLayout";
 import NotifyRunTable from "./NotifyRunTable";
 import { clearNotifyEvents } from "./actions";
+import SubmitButton from "@/components/SubmitButton";
 
 export const dynamic = "force-dynamic";
 
@@ -163,9 +164,7 @@ export default async function NotifyLogPage(props: {
           />
           Declines only
         </label>
-        <button type="submit" className="btn">
-          Filter
-        </button>
+        <SubmitButton>Filter</SubmitButton>
         {filtered && (
           <Link href="/settings/notify-log" className="btn-ghost">
             Clear filters
