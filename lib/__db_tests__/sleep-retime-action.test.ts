@@ -250,8 +250,8 @@ describe("a night stored twice, through this door (#5125)", () => {
       })
     );
 
-    expect(result.error).toContain("stored twice");
     expect(result.undoId).toBeNull();
+    expect(result.error).toContain("stored twice");
     // Nothing moved, so the dialog's "The sleep stages move with the session." is not
     // contradicted by the one path that used to contradict it.
     expect(rowOf(sessionId)).toEqual(before.session);
