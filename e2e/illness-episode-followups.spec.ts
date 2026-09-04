@@ -412,7 +412,7 @@ test.describe("Illness-episode follow-ups (#856)", () => {
         page,
         page
           .getByRole("menu")
-          .getByRole("button", { name: "Edit", exact: true })
+          .getByRole("menuitem", { name: "Edit", exact: true })
       );
       const editor = historicalSymptom.locator(
         "xpath=following-sibling::tr[@data-testid='illness-event-editor'][1]"
@@ -482,7 +482,7 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     // Historical readings and doses have a real correction path from the ledger.
     const tempRow = page.getByTestId("illness-event-temperature").first(); // first-ok: a temperature event row (has a correction path) — order-agnostic
     await hydratedClick(page, tempRow.getByTestId("overflow-menu-trigger"));
-    await page.getByRole("button", { name: "Edit", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
     const eventEditor = page.getByTestId("illness-event-editor");
     await expect(eventEditor).toBeVisible();
     const dateTime = eventEditor.getByTestId("illness-event-date-time");

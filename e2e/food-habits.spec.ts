@@ -131,7 +131,7 @@ test("untracking a habit a protocol measures confirms first (#748 item 6)", asyn
   );
   await page
     .getByRole("menu")
-    .getByRole("button", { name: "Delete", exact: true })
+    .getByRole("menuitem", { name: "Delete", exact: true })
     .click();
   await settledClick(
     page,
