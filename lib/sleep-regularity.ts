@@ -48,6 +48,7 @@
 // even across a spring-forward, where the absolute duration of that night is 23h.
 
 import { shiftDateStr, weekdayOfDateStr, zonedDateParts } from "./date";
+import { recordedUsual, USUAL_KINDS } from "./usual";
 import { zoneOf, type ProfileDayZone } from "./travel-timezone";
 
 // One recorded sleep session. `start`/`end` are absolute ISO instants (the same
@@ -360,14 +361,6 @@ export function napSessions<T extends SleepSession>(
   return naps.sort((a, b) => b.end.localeCompare(a.end));
 }
 
-// Median of a numeric array (population median; even length averages the two
-// middle values). Callers pass a non-empty array.
-function median(values: number[]): number {
-  const s = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(s.length / 2);
-  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
-}
-
 // ── Typical wake time (issue #1117) ──────────────────────────────────────────
 // Median wake clock-minute-of-day (0..1439, profile-local) of the MAIN overnight
 // session (#1118 — same-day naps excluded) over the SRI rolling window, or null
@@ -384,8 +377,10 @@ function typicalSleepClockTime(
   boundary: "start" | "end",
   opts: SleepRegularityOptions = {}
 ): number | null {
-  const windowDays = opts.windowDays ?? 28;
-  const minNights = opts.minNights ?? 14;
+  // The window and the floor are `USUAL_KINDS.sleepClock`'s (#5143) — the caller may
+  // still override either, which is what `SleepRegularityOptions` is for.
+  const windowDays = opts.windowDays ?? USUAL_KINDS.sleepClock.windowDays;
+  const minNights = opts.minNights ?? USUAL_KINDS.sleepClock.minSamples;
   const nights = mainSleepNights(sessions, zone); // main overnight per wake-day, oldest→newest
   if (nights.length === 0) return null;
   const asOf = opts.asOf ?? nights[nights.length - 1].wakeDay;
@@ -393,13 +388,26 @@ function typicalSleepClockTime(
   const inWindow = nights.filter(
     (n) => n.wakeDay >= windowStart && n.wakeDay <= asOf
   );
-  if (inWindow.length < minNights) return null;
   // Clock-minute per night, noon-anchored so the median is well-defined across
   // midnight; convert the median back to a familiar clock minute-of-day.
+  //
+  // THE DAY WINDOW IS APPLIED ABOVE AND THE CENTRE BELOW (#5143). `usual`'s count
+  // window is not this kind's — 28 NIGHTS is a span, and a profile with two nights in
+  // it must fail the floor rather than pass on two samples — so the filtering stays
+  // here and `recordedUsual` is handed exactly the nights that survived it, with the
+  // floor it declares doing the gate.
   const relativeMinutes = inWindow.map((night) =>
     noonRelative(localParts(night[boundary], zone).min)
   );
-  return (Math.round(median(relativeMinutes)) + NOON) % EPOCHS_PER_DAY;
+  // The caller may still raise or lower the floor (`SleepRegularityOptions.minNights`),
+  // so the kind is taken with that override applied rather than read flat — the table
+  // supplies the default, not a ceiling on what a caller may ask for.
+  const centre = recordedUsual(relativeMinutes, {
+    ...USUAL_KINDS.sleepClock,
+    minSamples: minNights,
+  });
+  if (centre == null) return null;
+  return (Math.round(centre) + NOON) % EPOCHS_PER_DAY;
 }
 
 export function typicalWakeTime(

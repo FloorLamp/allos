@@ -15,9 +15,8 @@ import { canEditManualSleepOnDate } from "@/lib/queries/metrics";
 import { SLEEP_MOOD_HISTORY_DAYS } from "@/lib/queries/sleep";
 import { parseReadingTarget } from "@/lib/reading-placement";
 import { formError, formOk, type FormResult } from "@/lib/types";
-import { getTimezone } from "@/lib/settings";
 import { formatHm } from "@/lib/sleep-summary";
-import { retimeSleepSessionCore } from "@/lib/sleep-retime-db";
+import { retimeSleepSessionCore, sleepRetimeZone } from "@/lib/sleep-retime-db";
 import {
   normalizeVitalsInput,
   sleepWindowFromClocks,
@@ -180,8 +179,12 @@ export async function retimeSleepSession(
     String(formData.get("bed_time") ?? ""),
     String(formData.get("wake_time") ?? "")
   );
+  // WHICH ZONE READS THE TYPED CLOCKS. Not this profile's zone today: the one the
+  // night's own stored window was printed in. `sleepRetimeZone` carries the argument
+  // (lib/sleep-retime-db.ts) — this door corrects a window it just displayed, so its
+  // display and its interpretation have to be inverses (#5125).
   const resolved = stated
-    ? resolveSleepWindow(getTimezone(profile.id), date, stated)
+    ? resolveSleepWindow(sleepRetimeZone(profile.id, sampleId), date, stated)
     : null;
   if (!resolved) {
     return { undoId: null, error: "Enter a bed time and a wake time." };
@@ -206,6 +209,14 @@ export async function retimeSleepSession(
         undoId: null,
         error:
           "Enter a window in the past, with a wake time after the bed time.",
+      };
+    case "stages-shared":
+      // Why the move is refused rather than made without the breakdown is in
+      // lib/sleep-retime-db.ts. The message names the door that fixes the duplicate.
+      return {
+        undoId: null,
+        error:
+          "This night is stored twice, so its sleep stages can\u2019t move with it. Keep one copy under Review first.",
       };
     case "length-changed":
       // The one refusal a person can act on, so it says the number they have to match.

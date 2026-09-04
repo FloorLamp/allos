@@ -228,8 +228,11 @@ describe("the one-tap switch answers in the new zone (#3263 §2)", () => {
     const profileId = makeProfile("switch-records", NY);
     switchProfileTimezone(profileId, TOKYO, NY);
     expect(getHomeTimezone(profileId)).toBe(NY);
+    // KIND "travel" is the load-bearing half (#3428 item 2). `setTimezone` writes every
+    // record now, and only this path asks for the travel kind — which is the only kind
+    // the excusal predicates below read.
     expect(getTravelSwitches(profileId)).toEqual([
-      { at: "2026-05-01T14:00:00Z", from: NY, to: TOKYO },
+      { at: "2026-05-01T14:00:00Z", from: NY, to: TOKYO, kind: "travel" },
     ]);
   });
 
@@ -247,6 +250,7 @@ describe("the one-tap switch answers in the new zone (#3263 §2)", () => {
       at: "2026-05-01T14:00:00Z",
       from: TOKYO,
       to: NY,
+      kind: "travel",
     });
   });
 });

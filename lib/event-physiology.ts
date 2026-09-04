@@ -36,6 +36,7 @@
 // #4775 and AGENTS.md both forbid. Below `USUAL_MIN_EVENTS` priors there is no usual
 // and the fact renders alone.
 
+import { recordedUsual, USUAL_KINDS } from "./usual";
 import {
   scopeBucketsToWindows,
   zoneMinuteTotals,
@@ -69,8 +70,11 @@ export const RECOVERY_BOUND_MIN = 120;
 // which there is no usual at all. Ten is a recent habit rather than a life history;
 // three is the smallest number for which "usually" is not a description of one
 // occasion. Below the floor the fact renders with no comparison clause.
-export const USUAL_RECENT_EVENTS = 10;
-export const USUAL_MIN_EVENTS = 3;
+// DERIVED from the one table (#5143), not restated. The copy quotes both numbers, so
+// they stay exported from here — but a second literal would be the duplication that
+// issue exists to remove, and the two could then drift apart silently.
+export const USUAL_RECENT_EVENTS = USUAL_KINDS.eventPhysiology.recentCount;
+export const USUAL_MIN_EVENTS = USUAL_KINDS.eventPhysiology.minSamples;
 
 // ── The result ───────────────────────────────────────────────────────────────
 
@@ -255,9 +259,10 @@ export function eventPhysiology(input: EventPhysiologyInput): EventPhysiology {
 export function usualValue(
   priorsNewestFirst: readonly number[]
 ): number | null {
-  const recent = priorsNewestFirst.slice(0, USUAL_RECENT_EVENTS);
-  if (recent.length < USUAL_MIN_EVENTS) return null;
-  return meanOf(recent);
+  // ONE `usual` (#5143). The window, the floor and the MEAN this kind takes are
+  // declared in `USUAL_KINDS.eventPhysiology`; the numbers are the ones that shipped.
+  // The constants above stay exported because the copy quotes them.
+  return recordedUsual(priorsNewestFirst, USUAL_KINDS.eventPhysiology);
 }
 
 // ── The two derived quantities the sends state ───────────────────────────────

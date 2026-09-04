@@ -12,7 +12,13 @@ interface SettingReadCache {
 
 const settingReadCache = new AsyncLocalStorage<SettingReadCache>();
 
-/** Deduplicate scalar setting reads inside one server operation. */
+/**
+ * Deduplicate scalar setting reads inside one server operation.
+ *
+ * Same reach as `withReadSnapshot`, and read its note before opening this at a
+ * page: an AsyncLocalStorage scope covers this call's own frame, not the child
+ * Server Components React renders below it (#5012).
+ */
 export function withSettingReadCache<T>(fn: () => T): T {
   return settingReadCache.run(
     {
