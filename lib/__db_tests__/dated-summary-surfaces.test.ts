@@ -26,7 +26,7 @@
 //
 // Runs via `npm run test:db` (vitest.db.config.ts).
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { lastNDates, shiftDateStr, weekdayOfDateStr } from "@/lib/date";
 import {
@@ -481,11 +481,13 @@ describe("a closed day is not rewritten by a later day's symptom (#3993)", () =>
     });
     // …and the day AFTER the spell, with the same symptom in reach, is owed again — so
     // the answer above is a reading of the day rather than of the profile.
-    expect(everySurfaceOn(q, shiftDateStr(td, -1), "Lisinopril")).toMatchObject({
-      reminderRebuild: ["Lisinopril"],
-      pageStrip: "missed",
-      evidenceStrip: "missed",
-    });
+    expect(everySurfaceOn(q, shiftDateStr(td, -1), "Lisinopril")).toMatchObject(
+      {
+        reminderRebuild: ["Lisinopril"],
+        pageStrip: "missed",
+        evidenceStrip: "missed",
+      }
+    );
   });
 });
 
@@ -602,5 +604,61 @@ describe("the bedtime-supplement summary reads the night's own context (#3993)",
       taken: 0,
       state: "missed",
     });
+  });
+});
+
+describe("the bedtime gather declares the window it asks about (#3993)", () => {
+  // The window a resolver is handed is a COST HINT: a day outside it is answered off its
+  // own re-read, correctly but not for free. This gather asks about SLEEP dates while it
+  // used to declare WAKE days, so the earliest night — the one the page shows at the
+  // bottom of its history — fell outside the span and re-read the weather series for
+  // itself. Only the WEATHER half is window-shaped, so the cost is zero for a profile
+  // with no home location and exactly one extra series read for one with.
+  it("reads the weather series once for the whole history, not twice", async () => {
+    const p = newProfile();
+    const td = today(p);
+    seedNights(p, 9, []);
+    await seedHeatSpell(p, shiftDateStr(td, -2), 7);
+    logSymptom(p, shiftDateStr(td, -8), "Headache");
+    // A bedtime dose, so the gather actually asks its resolver about every night.
+    const born = `${shiftDateStr(td, -60)}T00:00:00Z`;
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, kind, condition, obligation, active, created_at)
+           VALUES (?, 'Glycine', 'supplement', 'daily', 'should', 1, ?)`
+        )
+        .run(p, born).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO intake_item_doses
+         (item_id, amount, time_of_day, food_timing, sort, created_at)
+       VALUES (?, '1 cap', 'Before sleep', 'any', 0, ?)`
+    ).run(itemId, born);
+
+    let seriesReads = 0;
+    const realPrepare = db.prepare.bind(db);
+    const spy = vi.spyOn(db, "prepare").mockImplementation(((sql: string) => {
+      const statement = realPrepare(sql);
+      if (!/FROM weather_days/i.test(sql)) return statement;
+      return new Proxy(statement, {
+        get(target, property) {
+          const value = Reflect.get(target, property, target);
+          if (typeof value === "function" && property === "all")
+            return (...args: unknown[]) => {
+              seriesReads += 1;
+              return value.apply(target, args);
+            };
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+    }) as typeof db.prepare);
+    try {
+      getSleepMoodData(p, 7);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(seriesReads).toBe(1);
   });
 });
