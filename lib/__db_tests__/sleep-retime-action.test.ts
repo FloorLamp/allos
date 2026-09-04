@@ -193,7 +193,14 @@ describe("which zone reads the typed clocks (#5125)", () => {
       profileId,
       "timezone_switches",
       serializeTimezoneSwitches([
-        { at: `${day}T18:00:00Z`, from: "Asia/Tokyo", to: "Europe/London" },
+        // TRAVEL, not a settings correction (#5129's discriminator). Ported from
+        // PR #5148, which clears the same red on main; it no-ops once main carries it.
+        {
+          at: `${day}T18:00:00Z`,
+          from: "Asia/Tokyo",
+          to: "Europe/London",
+          kind: "travel",
+        },
       ])
     );
     const sessionId = sample(

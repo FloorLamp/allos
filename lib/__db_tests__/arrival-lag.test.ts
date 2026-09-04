@@ -174,6 +174,16 @@ describe("getArrivalLagMinutes over activities", () => {
     // clock; `julianday()` over "2026-09-03T08:00" would read it as UTC and report
     // the zone offset as lag — here that is five hours of pure fiction, on every row.
     setTimezone(profileId, "America/New_York");
+    // A PROFILE THAT HAS ALWAYS BEEN IN NEW YORK. Since #5129 `setTimezone` is the one
+    // writer of the switch history, so setting a zone here RECORDS a move — and a
+    // recorded move at "now" makes every earlier instant resolve to the zone BEFORE
+    // it, which is not what this fixture means. The rides below were ridden in New
+    // York and nobody went anywhere.
+    setProfileSetting(
+      profileId,
+      "timezone_switches",
+      serializeTimezoneSwitches([])
+    );
     for (const [i, lag] of [30, 40, 50, 60, 70].entries()) {
       const date = shiftDateStr(day, -(i + 1));
       const id = ride(date, "08:00");
@@ -254,10 +264,13 @@ describe("getArrivalLagMinutes over activities", () => {
       profileId,
       "timezone_switches",
       serializeTimezoneSwitches([
+        // TRAVEL, not a settings correction (#5129's discriminator): the rider moved,
+        // so a stretch of their wall clock really did repeat.
         {
           at: `${today(profileId)}T09:00:00Z`,
           from: "America/New_York",
           to: "Europe/London",
+          kind: "travel",
         },
       ])
     );
