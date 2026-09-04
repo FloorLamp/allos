@@ -1,5 +1,6 @@
 import { IconPill, IconRefresh } from "@tabler/icons-react";
 import Avatar from "@/components/Avatar";
+import DoseStatusControl from "@/components/DoseStatusControl";
 import type { SubjectInfo } from "@/lib/scope";
 import {
   medBoardAnchor,
@@ -13,10 +14,23 @@ import {
 // computation, #221/#1108), filtered to medications, and each item jumps to its
 // member's board below. Rendered only in multi-view; a member with nothing due is
 // dropped (no empty rows). Returns null when the whole household is quiet.
+//
+// AND A DUE DOSE HERE IS TAKEABLE (#4429). The strip used to be jump links only, so a
+// caregiver reading "everyone" had to travel to a board to answer the row they were
+// already looking at, while the board beneath offered the very same tap. These are
+// FOUND rows on a page the caregiver has already reached — the one-profile-switcher
+// ruling is untouched: no subject picker, no acting switch, and the write is gated on
+// the TARGET (`setDoseStatus` → requireProfileWriteAccess) exactly as the board's is.
+// A read-only-granted member keeps the link and gets no control, which is the same
+// per-member reach `MedicationBoard` applies.
 export default function MedicationTodayStrip({
   members,
+  actingProfileId,
 }: {
   members: { subject: SubjectInfo; strip: MedStripMember }[];
+  // The acting profile, so a row that IS the actor posts no `profileId` and stays
+  // byte-identical to the board's own tap on the same dose (#1373's `confirmProfileId`).
+  actingProfileId: number;
 }) {
   const active = members.filter((m) => medStripMemberHasItems(m.strip));
   if (active.length === 0) return null;
@@ -60,22 +74,47 @@ export default function MedicationTodayStrip({
             </a>
             <span className="flex min-w-0 flex-wrap items-center gap-1.5">
               {strip.dueDoses.map((item) => (
-                <a
+                <span
                   key={item.key}
-                  href={medBoardAnchor(subject.profileId)}
-                  data-testid="med-everyone-due"
-                  className="inline-flex max-w-full items-start gap-1 rounded-lg border border-black/10 bg-slate-50 py-1 pl-1.5 pr-2 text-xs font-medium text-slate-600 transition hover:border-brand-400 dark:border-white/10 dark:bg-ink-850 dark:text-slate-300"
+                  className="inline-flex max-w-full items-center gap-1.5"
                 >
-                  <IconPill className="h-3.5 w-3.5 shrink-0" stroke={1.75} />
-                  <span className="min-w-0 wrap-break-word">
-                    <span className="block">{item.title}</span>
-                    {item.dueText && (
-                      <span className="block font-normal opacity-80">
-                        {item.dueText}
-                      </span>
-                    )}
-                  </span>
-                </a>
+                  <a
+                    href={medBoardAnchor(subject.profileId)}
+                    data-testid="med-everyone-due"
+                    // `min-w-0` because the chip now has a SIBLING: without it the
+                    // anchor refuses to shrink below its text and the pair overflows
+                    // the row on a phone. The inner span already wraps.
+                    className="inline-flex min-w-0 max-w-full items-start gap-1 rounded-lg border border-black/10 bg-slate-50 py-1 pl-1.5 pr-2 text-xs font-medium text-slate-600 transition hover:border-brand-400 dark:border-white/10 dark:bg-ink-850 dark:text-slate-300"
+                  >
+                    <IconPill className="h-3.5 w-3.5 shrink-0" stroke={1.75} />
+                    <span className="min-w-0 wrap-break-word">
+                      <span className="block">{item.title}</span>
+                      {item.dueText && (
+                        <span className="block font-normal opacity-80">
+                          {item.dueText}
+                        </span>
+                      )}
+                    </span>
+                  </a>
+                  {subject.access === "write" && item.doseId != null ? (
+                    <DoseStatusControl
+                      doseId={item.doseId}
+                      taken={false}
+                      skipped={false}
+                      variant="pill"
+                      compact
+                      // WHICH DOSE, spoken: this control sits beside a chip in a
+                      // household-wide list, so the icon-only arms need the row's own
+                      // name in their accessible label (#2615 item 2).
+                      itemName={`${item.title} — ${subject.name}`}
+                      profileId={
+                        subject.profileId === actingProfileId
+                          ? undefined
+                          : subject.profileId
+                      }
+                    />
+                  ) : null}
+                </span>
               ))}
               {strip.lowRefills.map((item) => (
                 <a
