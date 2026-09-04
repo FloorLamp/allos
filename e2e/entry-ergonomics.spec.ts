@@ -1186,11 +1186,16 @@ test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)
   // interception applied — the question #4741 was opened to settle.
   //
   // The report is assembled INSIDE the polled function, so the failure prints the
-  // state at the poll's LAST READ rather than a reading taken afterwards. "Installed"
-  // is the pair of facts that can each be false on their own: the route call resolved,
-  // and the page that owns the handler is still open. `requests` then says whether the
-  // installed handler is still being reached at all — an installed handler seeing zero
-  // requests and one seeing hundreds without a next-action header are different bugs.
+  // state at the poll's LAST READ rather than a reading taken afterwards.
+  //
+  // READ "installed" HONESTLY: `routeInstalled` is near-vacuous by construction —
+  // the `await page.route(...)` above precludes false — so it is there to be visibly
+  // true, not to discriminate. The halves that carry weight are `page.isClosed()`,
+  // which really can be false and takes the handler with it, and `requests`, which
+  // says whether an installed handler is still being REACHED. An installed handler
+  // that saw zero requests is the deaf case; one that saw dozens of them, none
+  // carrying a next-action header, is a different bug entirely — and today both
+  // print "Received: 0" and nothing else.
   let interception = "the poll never read the handler";
   const readAbortedActionPosts = () => {
     interception =
