@@ -22,6 +22,8 @@
     "reconcile:apply": "tsx scripts/orchestration/reconcile-apply.ts",
     "schema:dump": "tsx scripts/schema-dump.ts",
     "census:dose-amounts": "tsx scripts/dose-amount-census.ts",
+    "profile:dashboard": "tsx scripts/profile-dashboard.ts",
+    "time:page": "node scripts/time-page.mjs",
     "census:hc-overlaps": "tsx scripts/hc-origin-overlap-census.ts",
     "census:migration-replay": "tsx scripts/migration-replay-census.ts",
     "seed": "tsx scripts/seed.ts",
