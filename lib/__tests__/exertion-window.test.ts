@@ -177,9 +177,9 @@ describe("exertionWindows", () => {
     minutes(out, 0, 30, 55);
     minutes(out, 30, 37, 120);
     minutes(out, 37, 70, 55);
-    expect(
-      exertionWindows({ ...BASE, samples: out, minWindowMin: 7 })
-    ).toEqual([{ from: at(30), to: at(37) }]);
+    expect(exertionWindows({ ...BASE, samples: out, minWindowMin: 7 })).toEqual(
+      [{ from: at(30), to: at(37) }]
+    );
     // Same trace, a profile with nothing logged: the default applies and says no.
     expect(
       exertionWindows({ ...BASE, samples: out, minWindowMin: null })
