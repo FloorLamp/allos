@@ -9,8 +9,6 @@ import { describe, it, expect } from "vitest";
 import {
   computeWorkoutPresence,
   FINISHED_WINDOW_MIN,
-  ACTIVE_MAX_QUIET_MIN,
-  STALE_MIN,
   type PresenceActivityRow,
 } from "@/lib/workout-presence";
 import {
@@ -20,6 +18,10 @@ import {
   type TrackedScope,
 } from "@/lib/workout-presence-gate";
 import { utcSqlString } from "@/lib/date";
+import { EPISODE_BOUNDS } from "@/lib/open-episode";
+
+const STALE_MIN = EPISODE_BOUNDS.workout.staleMin;
+const ACTIVE_MAX_QUIET_MIN = EPISODE_BOUNDS.workout.abandonMin;
 
 const TZ = "UTC";
 const TODAY = "2026-07-17";

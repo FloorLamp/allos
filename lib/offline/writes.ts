@@ -1080,7 +1080,7 @@ function applySetIntent(
   // the live-draft signature (started, unended, duration-less), so workout
   // presence (#921) resurrects it as an ACTIVE workout at whatever moment the
   // device reconnects: the app-wide dock and the 45-min "Still working out?" nag
-  // haunt every page for up to ACTIVE_MAX_QUIET_MIN — hours after the user
+  // haunt every page for as long as the draft is held open — hours after the user
   // walked away (the #1441 class, re-created by replay; caught as cross-spec
   // dock contamination on CI). The capture instant IS when the session closed,
   // so stamp it as the end — wall-clock HH:MM in the profile's timezone, the
