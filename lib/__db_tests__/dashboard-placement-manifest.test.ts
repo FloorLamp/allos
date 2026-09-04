@@ -26,6 +26,7 @@ import {
 import { PERSONAS, type PersonaContext } from "../../scripts/seed-personas";
 import {
   allProfileIds,
+  HR_RANGE_READ,
   installStatementTrace,
   loadDashboard,
   profilesForIds as profiles,
@@ -49,6 +50,7 @@ import { biomarkerFlagDismissalKey } from "@/lib/dismissal-keys";
 import { dashboardAttentionCandidateId } from "@/lib/dashboard-attention-identity";
 import LogPracticeButton from "@/components/practices/LogPracticeButton";
 import { isNotableFlag } from "@/lib/reference-range";
+import { ALCOHOL_FOOD_GROUP } from "@/lib/substance-use";
 import type { MedicalFlag } from "@/lib/types";
 
 vi.mock("@/lib/request-cache", async () =>
@@ -126,6 +128,78 @@ function ctxFor(profileId: number): PersonaContext {
   };
 }
 
+// #5010's last acceptance criterion, and it is a claim about ARGUMENTS rather than
+// about a count. The owner's profile over a production snapshot saw three `hr_minutes`
+// range reads per render, down from four, and could not tell from the trace whether
+// three reads meant three windows or one window asked for three times — both print 3,
+// and only one of them is correct. So each execution is keyed on the span it was BOUND
+// to, the way #5055's probe keyed its reads on their profile ids.
+//
+// THE WINDOW IS THE BOUND SPAN, NOT THE ARGUMENTS THE CALLER SPELLED. `getHrMinutesInRange`
+// is memoized on `(profileId, since, until)`, so a duplicate of that tuple is already
+// impossible under the request cache — an assertion keyed on it could only ever restate
+// the memo. What the memo cannot see is two DIFFERENT spellings resolving to one span
+// (the open-ended form and the bounded one are the case its own comment names), and
+// that is a second full materialisation of the same rows. Keying on the statement's
+// parameters catches both that and a memo that stopped collapsing at all. The pattern
+// itself lives in the harness, because the profiler prints the same read's windows.
+/** Render name → the windows its `hr_minutes` range reads were bound to, in order. */
+const hrWindowReads = new Map<string, string[]>();
+/**
+ * The one render in this file that HAS heart-rate minutes. Rendered after the persona
+ * loop below, on its own profile, so it cannot move a single number in QUERY_BASELINE.
+ */
+const HR_FIXTURE = "hr-minutes fixture";
+
+function windowsRead(
+  trace: ReturnType<typeof installStatementTrace>
+): string[] {
+  return trace.bindings().map((execution) => JSON.stringify(execution.args));
+}
+
+/** Drink and dry evenings, so the alcohol pair reaches its overnight outcome series. */
+function seedDrinkEvenings(profileId: number, days: number): void {
+  const insert = db.prepare(
+    `INSERT INTO food_daily_totals (profile_id, date, group_key, servings)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT (profile_id, date, group_key)
+       DO UPDATE SET servings = excluded.servings`
+  );
+  const td = today(profileId);
+  for (let back = 1; back <= days; back++) {
+    const day = shiftDateStr(td, -back);
+    // A dry evening has to be a LOGGED evening — the pair's `logging-evidence`
+    // control reads a day with no food at all as evidence about logging.
+    insert.run(profileId, day, "whole-grains", 1);
+    if (back % 3 === 0) insert.run(profileId, day, ALCOHOL_FOOD_GROUP, 2);
+  }
+}
+
+/**
+ * A quarter-hourly heart-rate trace over `days` of history. No persona seeds
+ * `hr_minutes` and `npm run seed` writes none (#5034), so without this every reader
+ * on this seam returns before its range read and the criterion above would be asserted
+ * over zero executions.
+ */
+function seedHrMinutes(profileId: number, days: number): void {
+  const insert = db.prepare(
+    `INSERT OR IGNORE INTO hr_minutes (profile_id, ts, bpm, n, source)
+     VALUES (?, ?, ?, 1, 'health-connect')`
+  );
+  const start = Date.parse(
+    `${shiftDateStr(today(profileId), -days)}T00:00:00.000Z`
+  );
+  const steps = days * 24 * 4;
+  for (let step = 0; step < steps; step++) {
+    const at = new Date(start + step * 15 * 60_000);
+    // A plain diurnal swing: low overnight, higher through the day, so the night's
+    // floor and a workout window are different numbers rather than one constant.
+    const hour = at.getUTCHours();
+    const bpm = hour < 7 ? 52 + (step % 5) : 78 + (step % 40);
+    insert.run(profileId, at.toISOString().slice(0, 16), bpm);
+  }
+}
+
 const manifests = new Map<
   string,
   DashboardPlacementCanvasProps["placements"]
@@ -171,7 +245,7 @@ describe("actual atomic dashboard manifests", () => {
         id: number;
       }
     ).id;
-    const trace = installStatementTrace();
+    const trace = installStatementTrace({ bindings: HR_RANGE_READ });
     const Dashboard = await loadDashboard();
     // One call = one request, so one request-cache scope. Everything outside this
     // helper — persona seeding above all — runs unmemoized, exactly as production
@@ -218,6 +292,7 @@ describe("actual atomic dashboard manifests", () => {
       rowPresentations.set(persona.name, element.props.presentations);
       aheadPresentations.set(persona.name, element.props.aheadPresentations);
       queryCounts.set(persona.name, trace.count());
+      hrWindowReads.set(persona.name, windowsRead(trace));
       personaProfileIds.set(persona.name, profileId);
       if (persona.name === "household") {
         const switched = session.accessible.find(
@@ -232,6 +307,34 @@ describe("actual atomic dashboard manifests", () => {
         )!;
       }
     }
+
+    // ── THE ONE RENDER ON THIS FILE THAT HAS HEART-RATE MINUTES (#5010).
+    // After the loop and on its own profile, so no persona's count can move: the
+    // budget above is captured before this line runs, and nothing below reads
+    // `trace.count()`. It reuses a persona's own shape — the trained profile with
+    // synced nights, which is what puts the zone reader, the overnight reader and the
+    // event windows on one render — and adds only the minutes those readers ask for.
+    //
+    // IT REACHES THE STATE THE ASSERTION FORBIDS, which the six personas above do not:
+    // this render issues three range reads — the trailing zone window, the span of the
+    // nights the alcohol pair judges, and the recent event window. The personas issue
+    // NONE, so on them the check below is a claim about an empty list.
+    const hrBefore = new Set(allProfileIds());
+    const hrProfileId = newProfile(`dashboard:${HR_FIXTURE}`);
+    PERSONAS.find((persona) => persona.name === "biohacker")!.apply(
+      ctxFor(hrProfileId)
+    );
+    seedHrMinutes(hrProfileId, 95);
+    seedDrinkEvenings(hrProfileId, 90);
+    session.accessible = profiles(
+      allProfileIds().filter((id) => !hrBefore.has(id))
+    );
+    session.profile = session.accessible.find(
+      (profile) => profile.id === hrProfileId
+    )!;
+    trace.clear();
+    await renderDashboard();
+    hrWindowReads.set(HR_FIXTURE, windowsRead(trace));
   }, MANIFEST_HOOK_MS);
 
   afterAll(() => {
@@ -1248,6 +1351,39 @@ describe("actual atomic dashboard manifests", () => {
         "it removed. Either way the fix is the same: account for the move in the\n" +
         "commit message, then refresh QUERY_BASELINE in this file with:\n\n" +
         `  const QUERY_BASELINE: Record<string, number> = {\n${refreshed}\n  };\n`
+    ).toEqual([]);
+  });
+
+  it("reads each hr_minutes window once per render (#5010)", () => {
+    // THE CONTROL COMES FIRST BECAUSE ZERO IS THE FLATTERING ANSWER. Every window
+    // below is distinct when no window was read at all, which is the state all six
+    // personas are in — and it is what the assertion would report forever if the
+    // statement this watches were renamed or the fixture stopped reaching the reader.
+    expect(
+      hrWindowReads.get(HR_FIXTURE) ?? [],
+      `${HR_FIXTURE} made no hr_minutes range read, so the check below is vacuous.\n` +
+        `Either the fixture stopped reaching a reader on this seam, or the read's\n` +
+        `SQL no longer matches ${HR_RANGE_READ}.`
+    ).not.toEqual([]);
+
+    const repeated = [...hrWindowReads].flatMap(([render, windows]) => {
+      const times = new Map<string, number>();
+      for (const window of windows)
+        times.set(window, (times.get(window) ?? 0) + 1);
+      return [...times]
+        .filter(([, count]) => count > 1)
+        .map(([window, count]) => `${render}: ${count} reads of ${window}`);
+    });
+    expect(
+      repeated,
+      "One render read the same hr_minutes window more than once.\n" +
+        "Each line names the render and the [profile_id, from, to] span it asked for\n" +
+        "twice. A second read of one span is a second full materialisation of the same\n" +
+        "rows — the cost #5010 removed — and it is invisible to a statement COUNT,\n" +
+        "because N reads of N windows and N reads of one window are both N.\n" +
+        "The usual cause is a caller reaching the reader outside the request memo, or\n" +
+        "two callers spelling one span differently (the open-ended form and the bounded\n" +
+        "one key separately, by design, and resolve to the same window)."
     ).toEqual([]);
   });
 });
