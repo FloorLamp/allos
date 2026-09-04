@@ -63,12 +63,11 @@ export default function SessionTelemetryChart({
     <div className="mt-4" data-testid="session-telemetry">
       {traces.length > 1 ? (
         /* The same registry rule the comparison strip follows (#5002): six traces
-           narrowing one chart is FilterPills, not seven equal segments whose labels
-           can only wrap inside the word. Wrapped rather than scrolled, for the reason
-           the comparison card states — the scrolling layout bleeds past its container
-           and this one sits inside a card that asserts it does not overflow. The zero-only trace keeps the announcement
-           that was actually reaching anyone — a reader still hears why a flat line
-           at 0 is not missing data. */
+           narrowing one chart is FilterPills, not six equal segments whose labels
+           can only wrap inside the word. Wrapped rather than scrolled, for the
+           reason the comparison card states — the scrolling layout bleeds past
+           its container, and this strip sits inside a card that asserts it does
+           not overflow. */
         <FilterPills
           mode="button"
           options={traces.map((trace) => {
