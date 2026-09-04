@@ -73,8 +73,7 @@ import {
 } from "../recap-scale";
 import type { ActivityType } from "../types/training";
 import { getRecentPeriodRecaps } from "../queries";
-import { situationHistoryResolver } from "../trend-annotations";
-import { getActiveSituations, getSituationEvents } from "../settings";
+import { effectiveSituationResolver } from "../queries/derived-situations";
 import {
   getWeekMode,
   getProfileMoodRecap,
@@ -157,16 +156,15 @@ function windowAdherence(
     itemById.has(d.item_id)
   );
   if (doses.length === 0) return null;
-  // Per-day situation resolver (#654): each past day in the recap window is scored
-  // against the situations DECLARED that day, not today's toggle retroactively.
-  // NOT DATED (#3993): a cost decision, stated once with its measurement over
-  // `getIntakeHistory` in lib/intake-history.ts. The consequence here is that a
-  // Poor-sleep item's rough-night days score `na` while the surfaces a person can act on
-  // call them due.
-  const situationsOn = situationHistoryResolver(
-    getActiveSituations(profileId),
-    getSituationEvents(profileId)
-  );
+  // Per-day DUENESS resolver (#654/#3993): each past day in the recap window is scored
+  // against what held THAT day, declared AND derived — the same answer the catch-up
+  // sheet gave when it offered the dose. It has to be: the loop below builds `dueIds`
+  // first and intersects the logged set second, so a day this resolver called `na` would
+  // silently discard a dose the person really did take.
+  const situationsOn = effectiveSituationResolver(profileId, {
+    from: start,
+    to: end,
+  });
 
   let taken = 0;
   let skipped = 0;

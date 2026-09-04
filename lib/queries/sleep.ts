@@ -39,8 +39,7 @@ import {
   zonedDateParts,
 } from "../date";
 import { getTimezone, getSituationEvents, getFreeDays } from "../settings";
-import { situationHistoryResolver } from "../trend-annotations";
-import { getActiveSituations } from "../settings";
+import { effectiveSituationResolver } from "./derived-situations";
 import { doseWindowSince, indexTakenByDose } from "../intake-adherence";
 import { profileDayZone } from "../travel-excusal";
 import { zoneOf } from "../travel-timezone";
@@ -435,11 +434,14 @@ function bedtimeSupplementsByWakeDay(
     getIntakeLogsInRange(profileId, windowDays + 1)
   );
   const workoutDays = new Set(getActivityDates(profileId));
-  // Declared-only (#654), for the cost reason recorded in lib/intake-history.ts.
-  const situationsOn = situationHistoryResolver(
-    getActiveSituations(profileId),
-    getSituationEvents(profileId)
-  );
+  // Per-day DUENESS resolver (#654/#3993): each wake-day's bedtime doses are scored
+  // against what held THAT day, declared AND derived — the same answer the surfaces that
+  // offered those doses gave.
+  const wakeDayList = [...sleepDateByWakeDay.keys()].sort();
+  const situationsOn = effectiveSituationResolver(profileId, {
+    from: wakeDayList[0],
+    to: wakeDayList[wakeDayList.length - 1],
+  });
   const summaries = new Map<string, BedtimeSupplementSummary>();
 
   for (const [wakeDay, sleepDate] of sleepDateByWakeDay) {

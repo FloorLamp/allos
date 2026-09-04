@@ -110,10 +110,11 @@ export interface PendingDayDose extends UsualRoutineDose {
 //
 //   INPUT                     TREATMENT
 //   situations (declared)     date-resolved — situationsActiveOn past / effective today
-//   situations (derived)      today only; excluded on a past day (#654). NOTE: on TODAY
-//                             this sheet unions derived names while the strip's own
-//                             today-dot is declared-only — pre-existing, and the reason
-//                             the agreement below is asserted over PAST days.
+//   situations (derived)      date-resolved (#3993) — the night ending the day, the
+//                             period log's view of it, the weather slice through it.
+//                             The strip reads the SAME resolver on every day it draws,
+//                             today's dot included, so the agreement below holds on
+//                             today as well as on the past days it is asserted over.
 //   dose lifetime             date-resolved — doseWindowSince (#430/#1442). Its
 //                             backwards widening reads ALL history, and so does the
 //                             evidence supplied at every site that computes this bound

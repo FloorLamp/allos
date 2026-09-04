@@ -563,7 +563,10 @@ function stripFor(
     doses,
     dates,
     new Set(getActivityDates(profileId)),
-    effectiveSituationResolver(profileId),
+    effectiveSituationResolver(profileId, {
+      from: dates[0],
+      to: dates[dates.length - 1],
+    }),
     indexTakenByDose(getIntakeAdherenceEvidence(profileId, evidenceDays)),
     getTimezone(profileId),
     travelExcusalResolver(profileId)

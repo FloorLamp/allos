@@ -215,8 +215,14 @@ export default async function ManageTab({
   const activeSituations = new Set(getActiveSituations(profile.id));
   // Per-day DUENESS resolver (#654/#3993) for the strip and for today alike: each day
   // is scored against what held THAT day, declared AND derived, never the current toggle
-  // applied retroactively.
-  const situationsOn = effectiveSituationResolver(profile.id);
+  // applied retroactively. The demotion evidence below reads the SAME question through
+  // `getIntakeHistory`, so the suggestion's Accept button and the strip above it can
+  // never be looking at different days.
+  const dates = lastNDates(todayStr, STRIP_DAYS);
+  const situationsOn = effectiveSituationResolver(profile.id, {
+    from: dates[0],
+    to: todayStr,
+  });
   const todaysActivities = getActivitiesByDate(profile.id, todayStr);
   const isWorkoutDay = todaysActivities.length > 0;
   // #558: a pre_workout supplement should surface on a PREDICTED training day
@@ -249,7 +255,6 @@ export default async function ManageTab({
   const showPoorSleepOverride = derivedLines.poorSleepOverridable;
   // Adherence strip inputs.
   const workoutDays = new Set(getActivityDates(profile.id));
-  const dates = lastNDates(todayStr, STRIP_DAYS);
   // The schedule control mirrors Food's bounded recent-day lens: today first,
   // followed by the previous six days. Adherence keeps its wider 14-day window.
   const takenByDose = indexTakenByDose(

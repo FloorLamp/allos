@@ -118,20 +118,42 @@ export function getSleepSignal(
   profileId: number,
   wakeDay: string
 ): SleepSignal | null {
-  const nights = getMainSleepNightlyMinutes(profileId) // oldest → newest, main overnight session per night
-    .filter((n) => n.date <= wakeDay)
-    .slice(-RECOVERY_BASELINE_DAYS);
-  const last = nights[nights.length - 1];
-  if (last?.date !== wakeDay) return null;
-  const lastNightMin = last.value;
-  const prior = nights.slice(0, -1);
-  const baseNights = prior.length ? prior : nights;
-  const baselineMin = mean(baseNights.map((n) => n.value));
-  const baselineSpreadMin = spread(prior.map((n) => n.value));
-  return {
-    lastNightMin,
-    baselineMin,
-    ...(baselineSpreadMin != null ? { baselineSpreadMin } : {}),
+  return sleepSignalResolver(profileId)(wakeDay);
+}
+
+// The same answer for a WINDOW of wake-days, off ONE read of the nightly series.
+//
+// The read was never per-day: `getMainSleepNightlyMinutes` returns the profile's whole
+// recent series and the signal is a filter plus a slice over it. Asking day by day
+// re-read the series once per day, which is what made a dated poor-sleep verdict look
+// expensive enough to be worth a seam (#3993). It is not — the query count is the same
+// for one day and for fifty-six.
+//
+// Per-day answers are IDENTICAL to `getSleepSignal`'s by construction: the same
+// filter-and-slice, over the same rows. The resolver holds a snapshot for its lifetime,
+// exactly as `situationHistoryResolver` does, so a caller wanting a fresh read builds a
+// fresh resolver.
+export function sleepSignalResolver(
+  profileId: number
+): (wakeDay: string) => SleepSignal | null {
+  // oldest → newest, main overnight session per night
+  const series = getMainSleepNightlyMinutes(profileId);
+  return (wakeDay) => {
+    const nights = series
+      .filter((n) => n.date <= wakeDay)
+      .slice(-RECOVERY_BASELINE_DAYS);
+    const last = nights[nights.length - 1];
+    if (last?.date !== wakeDay) return null;
+    const lastNightMin = last.value;
+    const prior = nights.slice(0, -1);
+    const baseNights = prior.length ? prior : nights;
+    const baselineMin = mean(baseNights.map((n) => n.value));
+    const baselineSpreadMin = spread(prior.map((n) => n.value));
+    return {
+      lastNightMin,
+      baselineMin,
+      ...(baselineSpreadMin != null ? { baselineSpreadMin } : {}),
+    };
   };
 }
 

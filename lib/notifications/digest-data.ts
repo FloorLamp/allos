@@ -5,8 +5,6 @@
 // profile from the notify tick; hard-deduped to one send per profile per day.
 
 import { db, today } from "../db";
-import { situationHistoryResolver } from "../trend-annotations";
-import { getActiveSituations, getSituationEvents } from "../settings";
 import { now } from "../clock";
 import {
   parseUtcSql,
@@ -31,6 +29,7 @@ import {
   getSleepArrivals,
   latestSleepSyncAt,
   getEffectiveActiveSituations,
+  effectiveSituationResolver,
   getDerivedSituationLines,
   getStrengthByExercise,
   getCardioByActivity,
@@ -401,16 +400,16 @@ export function gatherDigestInput(
   const doses = getIntakeDoses(profileId).filter((d) =>
     itemById.has(d.item_id)
   );
-  // Per-day situation resolver (#654): "today" sees the current set, while yesterday's
-  // adherence is scored against the situations DECLARED that day.
-  // NOT DATED (#3993): a cost decision, stated once with its measurement over
-  // `getIntakeHistory` in lib/intake-history.ts. The consequence here is that a
-  // Poor-sleep item's rough-night days score `na` while the surfaces a person can act on
-  // call them due.
-  const situationsOn = situationHistoryResolver(
-    getActiveSituations(profileId),
-    getSituationEvents(profileId)
-  );
+  // Per-day DUENESS resolver (#654/#3993): yesterday's adherence is scored against what
+  // held THAT day, declared AND derived — the same answer every surface that could have
+  // offered or removed the dose gave. The digest states this count to the person as
+  // "💊 Medications: 0/1 taken", so scoring it from a different day's facts than the
+  // catch-up sheet is a false miss pushed to a phone about a dose the app itself would
+  // not have offered.
+  const situationsOn = effectiveSituationResolver(profileId, {
+    from: yd,
+    to: yd,
+  });
 
   // Yesterday's adherence still scores against the LOGGED reality of that day, so
   // it keeps its own dueness helper (no predicted-training-day guess for the past).

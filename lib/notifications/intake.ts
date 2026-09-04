@@ -5,7 +5,7 @@
 // renderWindowMessage / renderMergedIntakeMessage in ./intake-format.
 
 import { today } from "../db";
-import { lastNDates, zonedDateParts } from "../date";
+import { lastNDates, shiftDateStr, zonedDateParts } from "../date";
 import {
   getIntakeItems,
   getIntakeDoses,
@@ -242,8 +242,14 @@ function gatherWindowDoses(
   // Per-day DUENESS resolver for the whole gather — the day being reminded about and
   // every day of the strip below, each scored against what held THAT day, declared AND
   // derived (#654/#3993). One resolver, because a line that names a dose as owed and a
-  // strip that scores the same day `na` are the same question answered twice.
-  const situationsOn = effectiveSituationResolver(profileId);
+  // strip that scores the same day `na` are the same question answered twice. The span
+  // is the strip's window widened to reach `date`, which on a late-tapped reminder can
+  // sit before it — so the whole gather costs one read of each derived input.
+  const stripStart = shiftDateStr(today(profileId), -(ADHERENCE_DAYS - 1));
+  const situationsOn = effectiveSituationResolver(profileId, {
+    from: date < stripStart ? date : stripStart,
+    to: today(profileId),
+  });
   const isForToday = date === today(profileId);
   // WHICH ACTIVITY READER, and the two are not interchangeable (#4019):
   // `getActivitiesByDate` is the raw row read, `getActivityDates` the same rows with

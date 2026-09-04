@@ -1205,17 +1205,36 @@ describe("actual atomic dashboard manifests", () => {
     // left four personas a query short with nothing to show for it. The numbers below
     // came from running the gate on the merged tree, which is the only thing that can
     // tell "we agree" from "we both landed on 227 by coincidence".
-    bodybuilder: 206,
-    "marathon-runner": 207,
+    // +24 on four personas and +28 on the two with cycle rows (#3993): the dueness
+    // question is now DATED on every surface that asks it, including the two summary
+    // walks this page runs — `buildAdherencePatternFindings` (56 days) and
+    // `getIntakeHistory` (30). Each builds one `effectiveSituationResolver`, and each
+    // resolver gathers the derived inputs ONCE for its window: the declared set and its
+    // change log, the suppression bus, the nightly sleep series, the cycle relevance
+    // bit, the home location, the weather-keyed gate and the cached weather series —
+    // about twelve reads, twice, plus the cycle log itself on `pregnant` and
+    // `marathon-runner`. `household`'s acting profile has no active intake items, so
+    // both walks return before building a resolver and it pays nothing.
+    //
+    // MEASURED, AND THE MEASUREMENT IS THE POINT. Dating these surfaces by asking the
+    // per-DATE resolver once per day cost +96/+112 — over the backstop, and the reason
+    // an earlier round of this branch left the summaries undated and wrote the
+    // disagreement down as a known cost instead. That was the wrong trade (a push
+    // saying "0/1 taken" about a dose the app itself would not have offered), and it
+    // was also unnecessary: only three of the twelve reads depend on the day at all,
+    // and none of them is a per-day query. Gathering per WINDOW rather than per DAY is
+    // what took the same correctness from +96 to +24.
+    bodybuilder: 230,
+    "marathon-runner": 235,
     household: 254,
-    pregnant: 202,
-    "diabetic-cgm": 213,
+    pregnant: 230,
+    "diabetic-cgm": 237,
     // +9 (#4424 ruling 7): Upcoming's practice rows mount the shared row control, so
     // the row now resolves what that control renders — `getTrackedPractices`, which is
     // one grouped today-tally and one live sweep however many practices there are,
     // plus the usual-duration vote per practice. Assembling the same four fields
     // per-target instead measured +13.
-    biohacker: 233,
+    biohacker: 257,
     // −1 each (#5061): `getDayLoadInputs` and `getIntensitySignal` ask the same
     // question of the same 42 days — the shared HR read, kept to the activity windows
     // that bound it — and only the READ was request-cached (#5010), so each one still
@@ -1280,6 +1299,15 @@ describe("actual atomic dashboard manifests", () => {
   // anyone having the conversation this bound exists to force, which is the exact
   // decay the 535 suffered. Re-deriving is one line and is meant to happen every
   // time a gather moves these numbers.
+  //
+  // HELD AT 274 WHILE THE BASELINES ROSE (#3993), which is the one direction the rule
+  // above does not re-derive in. Dating the summary surfaces spent +24/+28 and made
+  // `biohacker` the heaviest baseline at 257, so "heaviest + 20" would read 277. It is
+  // not re-derived upward: a change that spends queries would then buy back its own
+  // headroom, and the bound exists to be spent AGAINST. The headroom is 17 now, and the
+  // arithmetic below describes how 274 was arrived at, not what it would be re-derived
+  // to today. It follows the baselines DOWN, as the paragraph above says, and a later
+  // reduction re-derives it from whatever the heaviest persona then costs.
   //
   // 275 → 274 (#5061), the same rule again and the smallest it will ever look. The
   // zone reads stopped fetching the activity windows twice, which is −1 on every

@@ -515,8 +515,9 @@ describe("the routine offer answers a past day's SITUATIONS as the reminder does
 // person can ACT on reads the same dated resolver.
 //
 // The long-window SUMMARY surfaces (the recap, the demotion evidence, the adherence
-// patterns) stay declared-only for a measured cost reason recorded in
-// lib/intake-history.ts, and that split is stated there rather than hidden here.
+// patterns, the digest) read the SAME dated resolver, because each of them either puts a
+// button under its evidence or states a miss to the person in a push. Their side of the
+// agreement is asserted in lib/__db_tests__/dated-summary-surfaces.test.ts.
 //
 // THE PAUSE IS THE DIRECTION THAT BITES. #1296's hold reads the same active set, so
 // widening the set SILENCES: a `daily` `must` medication held by Poor sleep drops out
@@ -530,12 +531,16 @@ describe("the routine offer answers a past day's SITUATIONS as the reminder does
 function stripFor(profileId: number, itemName: string): AdherenceDot[] {
   const item = getIntakeItems(profileId).find((i) => i.name === itemName)!;
   const doses = getIntakeDoses(profileId).filter((d) => d.item_id === item.id);
+  const dates = lastNDates(today(profileId), 14);
   return intakeAdherenceStrip(
     item,
     doses,
-    lastNDates(today(profileId), 14),
+    dates,
     new Set(getActivityDates(profileId)),
-    effectiveSituationResolver(profileId),
+    effectiveSituationResolver(profileId, {
+      from: dates[0],
+      to: dates[dates.length - 1],
+    }),
     indexTakenByDose(getIntakeAdherenceEvidence(profileId, 3650)),
     getTimezone(profileId),
     travelExcusalResolver(profileId)

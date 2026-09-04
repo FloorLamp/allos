@@ -1044,6 +1044,21 @@ late changes the verdict for its day — as a dose logged late moves that day's
 adherence. A day that has not happened is refused outright, because the weather
 cache reaches `WEATHER_FORECAST_DAYS` ahead.
 
+ONE DATED ANSWER PER DAY, ON EVERY SURFACE. `effectiveSituationResolver` is what the
+acting surfaces (reminder rebuild, catch-up sheet, medications/supplements rows) and the
+summarising ones (adherence strips, weekly recap, demotion evidence, adherence patterns,
+morning digest) both read. A summary counts as an acting surface: the digest states
+"💊 Medications: 0/1 taken" in a push, and the demotion suggestion puts a one-tap Accept
+under its evidence. Giving the summaries a declared-only resolver made the app report a
+paused day as missed and discard a dose logged through an offer it had just made.
+`situationHistoryResolver` keeps the declared-only reconstruction for the question that
+really is about declarations — which bands the chart annotations draw.
+
+The resolver takes the WINDOW it is about to score and gathers the derived inputs once
+for it, not once per day: only three of them depend on the day (the nights before it, the
+period log's view of it, the weather slice ending on it) and none is a per-day query. That
+is what made dating the whole seam affordable (+24 dashboard queries, not +96).
+
 - **Poor sleep (#1292)** = declared (the Poor sleep situation toggled —
   self-report / no-wearable) **OR** derived-measured (the night ENDING the day
   asked about, vs the baseline before it, trips the SAME `measureRoughNight` threshold the coaching engine's rest-sleep
