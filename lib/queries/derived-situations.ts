@@ -10,23 +10,17 @@
 //     sleep / Period goes due exactly while the derived context holds
 //     (surfacing-paths-only, #558/#1292).
 //
-// EVERY DERIVED SOURCE IS DATED (#3993, owner ruling 2026-08-31). This module used to
-// answer only for NOW, on the stated ground that derived context "cannot be dated". It
-// can, for all three sources, and each is dated from its own record:
+// EVERY DERIVED SOURCE IS DATED (#3993, owner ruling), each from its own record: a
+// period log is a span periodOnDate reads for any day inside its horizon (#2613, which
+// refuses the FUTURE, not the past); a weather spell is a fact in the cached series; a
+// rough night is the night ENDING the day, against the baseline before it, through the
+// threshold the coaching engine calls. The old ground for answering only about NOW —
+// that derived context "cannot be dated" — was never true of any of the three.
 //
-//   • PERIOD — periodOnDate takes the subject day and the `today` horizon as SEPARATE
-//     parameters, and that horizon exists to refuse the FUTURE, not the past (#2613).
-//   • WEATHER — the spell is a fact in the cached daily series, reconstructable and
-//     identical every time it is computed; activeWeatherSituations is already dated.
-//   • POOR SLEEP — the night ENDING that day against the baseline before it, through
-//     the same pure threshold the coaching engine calls (measureRoughNight), and its
-//     "Not today" override is a date-scoped suppression key already.
-//
-// A RETROACTIVE VERDICT READS DATA AS STORED NOW, and this is the honest caveat the
-// ruling recorded rather than smoothed away: a night that syncs late changes the verdict
-// for its day. That is true of every read this app makes of a past day — a dose logged
-// late moves that day's adherence too — and it is why the reminder rebuild re-derives
-// from the record instead of replaying a stored answer.
+// A RETROACTIVE VERDICT READS DATA AS STORED NOW, the caveat the ruling recorded rather
+// than smoothed away: a night that syncs late changes the verdict for its day, as a dose
+// logged late moves that day's adherence. It is why this re-derives from the record
+// instead of replaying a stored answer.
 //
 // Derived context belongs to the profile's LOCAL calendar day (`date` is a day in the
 // profile's timezone, resolved by the caller): a "night" and a "logged period day" are
@@ -155,11 +149,9 @@ function resolveDerivedSituationsUncached(
   date: string
 ): DerivedSituations {
   const horizon = today(profileId);
-  // A day that has not happened leaves no record to read, so there is nothing to claim
-  // about it (#2613's own words: unknowable, not merely uncertain). periodOnDate refuses
-  // its own future and no night ends on a future day — but the weather cache reaches a
-  // week AHEAD for the planning surfaces, so once `date` is a real parameter the refusal
-  // has to be stated once for all three rather than held by two of them accidentally.
+  // A day that has not happened leaves no record to read (#2613: unknowable, not merely
+  // uncertain). periodOnDate refuses its own future and no night ends on one, but the
+  // weather cache reaches a week AHEAD — so with `date` free, all three need the refusal.
   if (date > horizon)
     return {
       poorSleep: { on: false, basis: null },
@@ -167,10 +159,9 @@ function resolveDerivedSituationsUncached(
       weather: [],
       derivedNames: new Set(),
     };
-  // The DECLARED set as it stood on `date` (#654/#3973), so the declared FALLBACK each
-  // verdict below carries is dated with everything else — a Poor sleep chip toggled on
-  // this morning must not report a rough night for last Tuesday. On today the change log
-  // has no transition strictly after the day, so this is the current set exactly.
+  // The DECLARED set as it stood on `date` (#654/#3973), so the fallback each verdict
+  // below carries is dated with the rest — a chip toggled this morning must not report a
+  // rough night for last Tuesday. On today it is the current set exactly.
   const active = situationsActiveOn(
     date,
     getActiveSituations(profileId),
@@ -331,13 +322,10 @@ export function getDerivedSituationLines(
 // situational item goes due exactly while its context holds. Replaces
 // `new Set(getActiveSituations(profileId))` at the dueness-surfacing call sites.
 //
-// BOTH HALVES ARE DATED, which is what lets a past-day caller stop branching (#3993).
-// The declared half is the #654 change-log reconstruction (#3973 — today's toggle must
-// not rewrite last Tuesday), and the derived half is now dated too, so a surface asking
-// about a closed day gets one answer about that day instead of a dated half beside a
-// now half. On today both halves answer exactly what they answered before: the change
-// log holds no transition strictly after today, and every derived source reads the day
-// it is given.
+// BOTH HALVES ARE DATED, which is what lets a past-day caller stop branching (#3993):
+// the declared half through #654's change log, the derived half from each source's own
+// record. A surface asking about a closed day gets one answer about that day rather than
+// a dated half beside a now half, and today's answer is unchanged either way.
 //
 // THE UNION IS ALSO WHAT BOUNDS THE #2724 MEMO. The declared half is re-read here on
 // every call, and only the DERIVED half comes out of the tick-scoped snapshot — so a

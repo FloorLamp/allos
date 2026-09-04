@@ -14,10 +14,8 @@
 //     No override needed: the log IS the control (editing the log is the override).
 //     A declared manual toggle remains a fallback for profiles that don't track cycles.
 //
-// EVERY DERIVED SOURCE IS DATED (#3993). Each of the three answers for a NAMED day, not
-// only for now: a logged period day is a span in the cycle record, a weather spell is a
-// fact in the cached daily series, and a rough night is the night ending that day. So a
-// past-day dueness surface scores the day against the context that actually held on it.
+// Each source answers for a NAMED day, not only for now (#3993) — the dated contract and
+// its one caveat are stated once, over the gather in lib/queries/derived-situations.ts.
 //
 // This module is PURE (no DB) so every rule + formatter is unit-testable. The DB
 // gathers live in lib/queries/derived-situations.ts; the shared rough-night threshold
@@ -194,10 +192,8 @@ export interface PeriodVerdict {
 // prediction — fully inside the cycles page's "informational only" contract (menses
 // only; phase-level keying is deliberately deferred, #1298). Pure.
 //
-// The field is `coversDate`, not `coversToday` (#3993): the caller decides which day is
-// being asked about, and periodOnDate has always taken the subject day and the horizon
-// as two parameters. The old name was the whole of the "period context cannot be dated"
-// case, and it was a name rather than a limit.
+// The field is `coversDate`, not `coversToday` (#3993): periodOnDate has always taken the
+// subject day and the horizon separately, so the old name was a name, not a limit.
 export function periodVerdict(input: {
   coversDate: boolean;
   declared: boolean;
