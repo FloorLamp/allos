@@ -20,7 +20,10 @@ import { utcInstant } from "@/lib/date";
 // serially, so nothing can reach this state between the write and the assertion —
 // which is why the fix is ownership rather than keeping this spec out of some other
 // spec's shard.
-const SEEDED_ERROR = "Telegram API 401: Unauthorized (bot token revoked)";
+// Distinct from the run seed's own text (e2e/seed/prelude.ts), so the assertion below
+// can only be satisfied by the row THIS spec wrote — a marker that renders because the
+// seed happened to survive would fail it.
+const SEEDED_ERROR = "Telegram API 401: Unauthorized (seeded by this spec)";
 
 // The failing Telegram row for the admin login — the same key, shape and canonical
 // instant `recordDeliveryOutcome` writes for a real failed send.
@@ -56,7 +59,7 @@ test.describe("Settings → Server: notification delivery error", () => {
     await expect(marker).toBeVisible();
     await expect(marker).toContainText("Last notification delivery failed");
     await expect(marker).toContainText("telegram");
-    await expect(marker).toContainText("401");
+    await expect(marker).toContainText(SEEDED_ERROR);
     // Points the operator at the remediation path.
     await expect(marker).toContainText("Send test");
   });
