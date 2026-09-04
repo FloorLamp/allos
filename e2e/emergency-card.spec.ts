@@ -1,5 +1,11 @@
 import { test, expect } from "./fixtures";
-import { hydratedClick, readyForOffline, settledClick } from "./helpers";
+import {
+  bandFrame,
+  hydratedClick,
+  leftEdge,
+  readyForOffline,
+  settledClick,
+} from "./helpers";
 import { switchToProfile } from "./family-helpers";
 // Offline Emergency Card (issue #42), living as the #emergency section of the
 // Passport page since the #1042 phase-3 merge (the old /emergency route was
@@ -73,6 +79,35 @@ test("emergency card: opt-in, render on the passport page, offline copy, and log
     section.getByRole("link", { name: /Enable in Medical/ })
   ).toHaveCount(0);
   await expect(page.getByTestId("emergency-card")).toHaveCount(0);
+
+  // 1b. #3899: the prompt is one of the two page-level containers the owner's
+  //     2026-09-04 ruling converted to a `band`, and it is asserted HERE rather
+  //     than in e2e/mobile-density-sweep.mobile.spec.ts because it renders only
+  //     while the card is off — the state this test has just established, and the
+  //     sweep would only have hoped for, over a worker database another spec may
+  //     already have opted in. Read as a pair: the frame is gone at phone width,
+  //     AND the prompt's own heading sits on the same rag as the section heading
+  //     outside it, which is the half a `band` that took the gutter with it fails.
+  const prompt = section.getByTestId("emergency-card-off");
+  const outside = section.getByRole("heading", {
+    name: "Emergency card",
+    exact: true, // the prompt's own "Offline emergency card is off" contains this phrase
+  });
+  const desktop = page.viewportSize()!;
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(prompt).toBeVisible();
+  expect(await bandFrame(prompt)).toEqual([0, 0]);
+  expect(
+    await leftEdge(prompt.getByRole("heading", { name: /Offline emergency/ }))
+  ).toBeCloseTo(await leftEdge(outside), 1);
+  // The converse on the SAME element: a class that never compiled reports the
+  // same missing frame and has nothing to bring back above `sm`.
+  await page.setViewportSize({ width: 900, height: 844 });
+  await page.waitForFunction(() => window.innerWidth === 900);
+  const [wide, wideRadius] = await bandFrame(prompt);
+  expect(wide).toBeGreaterThan(0);
+  expect(wideRadius).toBeGreaterThan(0);
+  await page.setViewportSize(desktop);
 
   // Enable it right here — no navigation away.
   await toggle.check();

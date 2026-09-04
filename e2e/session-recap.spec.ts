@@ -86,8 +86,8 @@ test("plain-form Finish stamps end and opens the shared Session complete step; e
   await startPlainSession(page, title);
 
   // The plain-form Finish button is offered for a today create (not live) — tap it.
-  await expect(page.getByTestId("plain-finish-workout")).toBeVisible();
-  await page.getByTestId("plain-finish-workout").click();
+  await expect(page.getByTestId("form-finish-workout")).toBeVisible();
+  await page.getByTestId("form-finish-workout").click();
 
   // It reaches the SAME SessionCompleteStep the live panel's Finish reaches (#221,
   // the ungating) — one component, two entrypoints.
@@ -96,7 +96,8 @@ test("plain-form Finish stamps end and opens the shared Session complete step; e
   await expect(step.getByTestId("session-recap")).toContainText("working set");
   await step.getByRole("button", { name: "Hard", exact: true }).click();
 
-  // Save stamps the end time + effort through the plain form's auto-save.
+  // Save stamps the end time + effort through the plain form's auto-save, and
+  // closes the workspace with it (#5111).
   const saved = page.waitForResponse(
     (r) => r.request().method() === "POST" && r.ok(),
     { timeout: 15000 }
@@ -118,7 +119,7 @@ test("plain-form Finish stamps end and opens the shared Session complete step; e
     page.getByRole("button", { name: "Hard", exact: true })
   ).toHaveAttribute("aria-pressed", "true");
   // The plain finish button is create-only: an edit surface never shows it.
-  await expect(page.getByTestId("plain-finish-workout")).toHaveCount(0);
+  await expect(page.getByTestId("form-finish-workout")).toHaveCount(0);
 
   await deleteOpenDraft(page);
 });

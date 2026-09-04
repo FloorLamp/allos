@@ -286,11 +286,11 @@ const FAMILIES: Family[] = [
     element: <WeekSpine spine={weekSpine} />,
     summary: "Training day by day this week",
     items: [spineDay],
-    // An EMPTY day is the family's mark: it keeps its list semantics and stays a
-    // focusable point. A day with sessions is a LINK since #5003, which is a door of a
-    // different kind and is asserted on its own below — this harness is about marks
-    // whose value was only ever a hover.
-    points: [{ label: spineEmptyDay, role: "listitem" }],
+    // An EMPTY day is the family's mark, and it is a `role="img"` point like every
+    // other one here since #5133 moved the list semantics out to a wrapper. A day with
+    // sessions is a LINK, which is a door of a different kind and is asserted on its
+    // own below — this harness is about marks whose value was only ever a hover.
+    points: [{ label: spineEmptyDay }],
   },
   {
     name: "strength standards ladder",
@@ -459,21 +459,31 @@ describe("the chart carries its own data access (#4760)", () => {
   it("the week spine's logged days are doors and its empty days are not", () => {
     const { container } = render(<WeekSpine spine={weekSpine} />);
 
-    const door = screen.getByRole("listitem", {
+    // BY ROLE, which is the assertion that can fail (#5133). The first shape here
+    // spread `role="listitem"` onto the anchor; an explicit role overrides the
+    // implicit one, so the door announced itself as a list item and never appeared in
+    // a links list — and a `tagName === "A"` assertion passed the whole time, because
+    // the tag was never what was wrong.
+    const door = screen.getByRole("link", {
       name: `${spineDay} — open the day's log`,
     });
-    expect(door.tagName).toBe("A");
     expect(door.getAttribute("href")).toBe("/training?tab=log&day=2026-08-25");
     // The cue is the primitive's, drawn once and not hand-rolled here.
     expect(door.querySelector("svg")).not.toBeNull();
 
-    // Every other day of this week has no sessions, and none of them is a link.
+    // Every day is still a listitem under the strip's list, logged or empty — the role
+    // moved outward rather than away, because `role="list"` requires them.
+    const strip = screen.getByRole("list", {
+      name: "This week's training days",
+    });
+    expect(within(strip).getAllByRole("listitem")).toHaveLength(7);
+    // …and exactly one of the seven is a link.
     const cells = Array.from(
       container.querySelectorAll<HTMLElement>('[data-testid="week-spine-day"]')
     );
     expect(cells).toHaveLength(7);
     expect(cells.filter((cell) => cell.tagName === "A")).toEqual([door]);
-    const empty = screen.getByRole("listitem", { name: spineEmptyDay });
+    const empty = screen.getByRole("img", { name: spineEmptyDay });
     expect(empty.tagName).not.toBe("A");
     expect(empty.querySelector("svg")).toBeNull();
 

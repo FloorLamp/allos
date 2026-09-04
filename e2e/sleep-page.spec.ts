@@ -310,8 +310,8 @@ async function selectAndSave(
 // the dashboard sleep readings link through. The child fixture profile has NO
 // sleep data, so it proves the nav gate hides the entry.
 //
-// Reads only, apart from the last night the two hero tests seed for themselves
-// (seedOwnedLastNight — a profile-1 wake-day a neighbour writes too, #5032).
+// Reads only, apart from the last night the three tests that assert on it seed for
+// themselves (seedOwnedLastNight — a profile-1 wake-day a neighbour writes too, #5032).
 
 test.describe("Sleep page (#1066)", () => {
   test("renders the last-night hero and every section on a sleep-seeded profile", async ({
@@ -600,6 +600,16 @@ test.describe("Sleep page (#1066)", () => {
   test("the Add entry action opens the shared sleep and mood editor", async ({
     page,
   }) => {
+    // OWNED FOR THE SAME REASON THE HERO IS (#5032), and this test needed it too.
+    // Both assertions below are about TODAY being a night the dialog refuses to give a
+    // manual duration to — which holds only while today's sleep is a WINDOW. A
+    // duration-only manual sample for today makes it editable, correctly: that is a
+    // number the person typed and may correct. `manual-vitals.spec.ts` types exactly
+    // one, 7.5h for today, as this same admin, and `fullyParallel` distributes TESTS
+    // rather than files — so whenever that test ran earlier on this worker and the
+    // hero above did not run in between to clear the wake-day, this test read a
+    // neighbour's manual duration and failed on the state it had assumed.
+    seedOwnedLastNight();
     await page.goto("/sleep");
     await page.getByTestId("sleep-add-entry-header").click();
     const dialog = page.getByTestId("sleep-mood-edit-dialog");

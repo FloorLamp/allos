@@ -32,7 +32,7 @@ const MAX_BLOCKS = 4;
 // days cannot drift apart. The grid stretches every cell to the tallest, and the
 // content starts at the top, so the destination cue a linked day carries underneath
 // its column does not move anybody's weekday label or block box.
-const CELL_CLASS = "relative flex flex-col items-center gap-1";
+const CELL_CLASS = "relative flex w-full flex-col items-center gap-1";
 
 export default function WeekSpine({ spine }: { spine: WeekSpineData }) {
   // The caption states the SAME fold the band draws — `buildWeekSpine` returns both,
@@ -107,14 +107,19 @@ export default function WeekSpine({ spine }: { spine: WeekSpineData }) {
               </div>
             </>
           );
+          // THE LISTITEM IS THE CELL, THE LINK IS INSIDE IT (#5133). Spreading
+          // `role="listitem"` onto the anchor was the first shape here, and an
+          // explicit role OVERRIDES the implicit one — so the door announced itself as
+          // a list item and never appeared in a links list. The role cannot simply be
+          // dropped either: `role="list"` above requires listitem children. It moves
+          // outward instead, and each shape keeps the identity hooks it always had.
           const cell = {
-            role: "listitem",
             "data-testid": "week-spine-day",
             "data-date": day.date,
             "data-state": day.state,
             "data-sessions": day.sessions,
             className: CELL_CLASS,
-          } as const;
+          };
           // A DAY WITH SESSIONS IS A DOOR TO THAT DAY'S LOG (#5003). The block a
           // person points at when they mean "the workout I just did" did nothing when
           // pressed, and the ride was two surfaces away with nothing here saying so.
@@ -134,22 +139,25 @@ export default function WeekSpine({ spine }: { spine: WeekSpineData }) {
           // An empty or ahead day stays a `SeriesPoint` — no cue, because there is
           // nothing behind it, and a door onto an empty log would be a promise the
           // Log then breaks.
-          return day.sessions > 0 ? (
-            <DestinationLink
-              key={day.date}
-              {...cell}
-              href={trainingLogDayHref(day.date)}
-              // The mark's own summary plus where it goes. The whole week is still
-              // announced once by `SeriesSummary` below, so this replaces the hover
-              // readout rather than the keyboard's list.
-              aria-label={`${summary} — open the day's log`}
-            >
-              {marks}
-            </DestinationLink>
-          ) : (
-            <SeriesPoint key={day.date} {...cell} label={summary}>
-              {marks}
-            </SeriesPoint>
+          return (
+            <div key={day.date} role="listitem" className="min-w-0">
+              {day.sessions > 0 ? (
+                <DestinationLink
+                  {...cell}
+                  href={trainingLogDayHref(day.date)}
+                  // The mark's own summary plus where it goes. The whole week is still
+                  // announced once by `SeriesSummary` below, so this replaces the
+                  // hover readout rather than the keyboard's list.
+                  aria-label={`${summary} — open the day's log`}
+                >
+                  {marks}
+                </DestinationLink>
+              ) : (
+                <SeriesPoint {...cell} label={summary}>
+                  {marks}
+                </SeriesPoint>
+              )}
+            </div>
           );
         })}
       </div>
