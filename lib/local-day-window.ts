@@ -71,10 +71,27 @@ const DAY_MS = 86_400_000;
 // offset with two transitions inside it — comparing only the endpoints would report
 // "no change" and silently mis-attribute half a year of days. Instead: scan forward a
 // DAY at a time until the offset differs from the starting one, then binary-search
-// that single day down to the second. The only assumption is that no zone changes
+// that single day down to the MILLISECOND. The only assumption is that no zone changes
 // offset twice within 24 hours, which no real zone does — DST pairs are months apart.
-// Cost is one cached-formatter Intl call per probe: ~365/year scanned plus ~17 to
+// Cost is one cached-formatter Intl call per probe: ~365/year scanned plus ~27 to
 // land the edge, against a query that aggregates hundreds of thousands of rows.
+//
+// THE EXACT EDGE IS HELD HERE, NOT RESTORED DOWNSTREAM. The search used to stop at a
+// 1000 ms interval and return its upper bound, which is the first probe KNOWN to carry
+// the new offset — so the returned cut sat somewhere in [transition, transition+1000).
+// No output ever differed: `offsetSegments` emits every boundary through `instant()`,
+// which truncates to whole seconds, and a real zone transition falls on a whole second,
+// so a cut anywhere in that window truncates back down onto the transition. The
+// segments and the minutes `localMinuteProjector` derives from them were byte-identical
+// at 999, 1000 and 1001 ms.
+//
+// So this is not a bug fix. It moves the exactness into the search, where the comments
+// downstream already claim it is: `localMinuteProjector` says it relies on a
+// "millisecond-exact cut", and what actually made it exact was a truncation two steps
+// away that any future caller reading the cut at a finer grain — or before it is
+// truncated — would bypass without noticing. The loop now ends with offset(lo) === base,
+// offset(hi) !== base and hi === lo + 1, so `hi` IS the transition instant. Cost is
+// about ten more cached-Intl probes per transition found.
 function nextTransition(
   tz: string,
   from: number,
@@ -88,7 +105,7 @@ function nextTransition(
       // Invariant: offset(lo) === base, offset(hi) !== base.
       let lo = a;
       let hi = b;
-      while (hi - lo > 1000) {
+      while (hi - lo > 1) {
         const mid = lo + Math.floor((hi - lo) / 2);
         if (offsetMinutesAt(tz, new Date(mid)) === base) lo = mid;
         else hi = mid;
@@ -183,6 +200,59 @@ export function localDaySpan(
       `localDaySpan: unresolvable local day range ${from}..${to}`
     );
   return { startUtc: instant(start.getTime()), endUtc: instant(end.getTime()) };
+}
+
+// The profile-local MINUTE stamp ('YYYY-MM-DDTHH:MM') of every stored instant in one
+// window, derived from the window's offset segments instead of from `Intl` per row.
+//
+// THE SAME ARGUMENT AS THE SEGMENTS ABOVE, ONE UNIT FINER. `date(ts, modifier)` pushes
+// the DAY question into SQLite because the offset is constant inside a segment. A
+// consumer that needs the MINUTE — the intraday chart, the training-zone windows, the
+// overnight window filter — cannot express that as a GROUP BY, so it materialises rows
+// and used to convert each one through `zonedMinuteStr`, at ~10 µs of `formatToParts`
+// apiece. But the offset it is applying is the SAME constant the segment already
+// carries: inside a segment the local wall clock is exactly `ts + offset`, so the
+// conversion is addition, and `Intl` is needed only to find where the segments are
+// (~90 probes for a 90-day window, against 125,000 conversions).
+//
+// EXACT, NOT APPROXIMATE, and the difference is the whole reason this is safe to do.
+// The offset is piecewise constant with the pieces bounded by `nextTransition`'s
+// millisecond-exact cut, so a row on either side of a transition — including one
+// landing on the transition instant itself — reads the offset actually in force at
+// that instant. Every zone's offset is a whole number of minutes (the sub-minute
+// offsets predate any stored reading), so truncating the shifted instant to its minute
+// is the same truncation `Intl` performs on the wall clock. Non-hour offsets
+// (Kathmandu's +05:45, Chatham's +12:45/+13:45, Lord Howe's 30-minute DST step) fall
+// out of the arithmetic with nothing special done for them.
+//
+// The returned function is for THIS window: the caller's query bounds its rows by the
+// same `startUtc`/`endUtc`, and an instant outside them keeps the nearest segment's
+// offset. Unparseable input yields null, so a surprise row stays visible to the caller
+// rather than being silently dated.
+export function localMinuteProjector(
+  tz: string,
+  startUtc: string,
+  endUtc: string
+): (ts: string) => string | null {
+  const segments = offsetSegments(tz, startUtc, endUtc).map((s) => ({
+    startMs: parseUtcSql(s.startUtc)?.getTime() ?? 0,
+    offsetMs: s.offsetMinutes * 60_000,
+  }));
+  return (ts: string) => {
+    const d = parseUtcSql(ts);
+    if (!d) return null;
+    const t = d.getTime();
+    // Linear over at most `maxSegments` (8) entries, and 1 or 2 for every window the
+    // app asks for — cheaper than a binary search's setup at this length, and the rows
+    // arrive in no guaranteed order so a cursor would not hold.
+    let offsetMs =
+      segments.length > 0 ? segments[0].offsetMs : tzOffsetMs(tz, d);
+    for (const seg of segments) {
+      if (t < seg.startMs) break;
+      offsetMs = seg.offsetMs;
+    }
+    return new Date(t + offsetMs).toISOString().slice(0, 16);
+  };
 }
 
 // The profile-local day a stored instant belongs to. The single-row companion to the

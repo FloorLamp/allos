@@ -612,10 +612,15 @@ function markAsleep(
 // Reduce raw sessions to (a) per-calendar-date asleep bitmaps built from ALL
 // sessions and (b) one "main" (longest) night per wake-day for the companion
 // timing metrics and the observed-night set.
+interface BuiltNights {
+  grid: Map<string, Uint8Array>;
+  nightsByDay: Map<string, Night>;
+}
+
 function buildNights(
   sessions: SleepSession[],
   zone: ProfileDayZone
-): { grid: Map<string, Uint8Array>; nightsByDay: Map<string, Night> } {
+): BuiltNights {
   const grid = new Map<string, Uint8Array>();
   const nightsByDay = new Map<string, Night>();
   for (const s of sessions) {
@@ -666,10 +671,22 @@ export function computeSleepRegularity(
   zone: ProfileDayZone,
   opts: SleepRegularityOptions = {}
 ): SleepRegularity | null {
+  return regularityOver(buildNights(sessions, zone), opts);
+}
+
+// The SCORING half, over nights ALREADY built. Split out because `buildNights` does
+// not depend on `asOf` and `sriTrend` asks for one score per recorded wake-day
+// (#5010): rebuilding the nights inside that loop made the timezone conversion
+// quadratic in the sleep history — measured at 33,540 `formatToParts` calls for 129
+// nights against `computeSleepRegularity`'s own 258, and 320,800 for 400. The
+// conversion per night was never the shape; the REBUILD was.
+function regularityOver(
+  { grid, nightsByDay }: BuiltNights,
+  opts: SleepRegularityOptions
+): SleepRegularity | null {
   const windowDays = opts.windowDays ?? 28;
   const minNights = opts.minNights ?? 14;
 
-  const { grid, nightsByDay } = buildNights(sessions, zone);
   if (nightsByDay.size === 0) return null;
 
   const allDays = [...nightsByDay.keys()].sort();
@@ -763,11 +780,14 @@ export function sriTrend(
   zone: ProfileDayZone,
   opts: SleepRegularityOptions = {}
 ): { date: string; sri: number }[] {
-  const { nightsByDay } = buildNights(sessions, zone);
-  const anchors = [...nightsByDay.keys()].sort();
+  // Built ONCE and scored per anchor. This function already built the nights to find
+  // its anchors and then threw them away, so every point re-derived the same local
+  // wall clock for every session in the history.
+  const built = buildNights(sessions, zone);
+  const anchors = [...built.nightsByDay.keys()].sort();
   const out: { date: string; sri: number }[] = [];
   for (const asOf of anchors) {
-    const r = computeSleepRegularity(sessions, zone, { ...opts, asOf });
+    const r = regularityOver(built, { ...opts, asOf });
     if (r) out.push({ date: asOf, sri: r.sri });
   }
   return out;
