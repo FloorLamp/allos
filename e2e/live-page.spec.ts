@@ -52,8 +52,13 @@ test("live start → set → finish: the record settles at the session's own URL
   );
   expect(identityBox.x + identityBox.width).toBeLessThanOrEqual(minimizeBox.x);
   await expect(page.getByTestId("workout-drag-handle")).toHaveCount(0);
+  // No plain dismissal while a workout runs: the footer's one action is Finish
+  // workout, and the exit is the header's ✕ (#5111).
   await expect(
     page.getByRole("button", { name: "Close", exact: true })
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Done", exact: true })
   ).toHaveCount(0);
   // …and the tab has moved to the session's canonical page: the row exists
   // BEFORE the first set (create-at-start), so the session has an address.
@@ -83,14 +88,14 @@ test("live start → set → finish: the record settles at the session's own URL
     page.getByRole("button", { name: "Delete", exact: true })
   ).toBeVisible();
 
-  // Finish: recap step, save, and the live strip collapses.
+  // Finish: recap step, then Save — which stamps the end, leaves live mode and
+  // CLOSES the workspace in one step (#5111). It used to collapse back to the
+  // plain editor for the session just finished, so ending a workout took a
+  // fourth tap on a Done that was only ever reachable after a scroll.
   await page.getByTestId("finish-workout").click();
   await expect(page.getByTestId("session-complete-step")).toBeVisible();
   await page.getByTestId("recap-save").click();
   await expect(page.getByTestId("live-workout-panel")).toHaveCount(0);
-
-  // The settled editor has one persistent dismissal action in its footer.
-  await page.getByRole("button", { name: "Done", exact: true }).click();
   await expect(page.getByTestId("activity-form")).toHaveCount(0);
   await expect(page.getByTestId("workout-dock")).toHaveCount(0);
   await expect(page.getByTestId("session-in-progress")).toHaveCount(0);
