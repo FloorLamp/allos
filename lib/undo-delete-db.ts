@@ -36,6 +36,8 @@ import {
 } from "./followup-write";
 import { revertActivityMerge } from "./merge-activity";
 import { restoreAdministrationLog } from "./queries/intake/adherence";
+import { restoreSleepRetime } from "./sleep-retime-db";
+import { SLEEP_RETIME_KIND } from "./sleep-retime-kind";
 import { invalidateDoseScheduleVersions } from "./queries/intake/schedule";
 import {
   writeImportTombstoneForRow,
@@ -44,7 +46,7 @@ import {
 } from "./integrations/tombstones";
 import { nullEncounterLinks } from "./queries/visit-links";
 import { practiceIdentity } from "./practice";
-import { TRASH_EXCLUDED_KIND } from "./trash";
+import { TRASH_EXCLUDED_KINDS, TRASH_EXCLUDED_PLACEHOLDERS } from "./trash";
 import { detachConditionIntakeLinks } from "./condition-delete";
 
 // A captured counter row's identity values BESIDE profile_id and date, positional to the
@@ -94,6 +96,10 @@ const KIND_LABELS: Record<string, string> = {
   // row (intake_item_logs) has no profile_id column, so the generic entity-registry
   // capture/restore (which assumes a profile_id root) doesn't apply.
   administration: "administration",
+  // A sleep re-time (#5021) holds its undo here and is excluded from the Trash
+  // (TRASH_EXCLUDED_KINDS) because nothing was deleted. The label is carried anyway:
+  // the retention sweep reads this table whatever the Trash shows.
+  [SLEEP_RETIME_KIND]: "sleep session",
 };
 
 // Substance history is keyed by day. If a user deletes today's aggregate, logs
@@ -440,6 +446,15 @@ export function restoreDeletedRow(profileId: number, undoId: number): boolean {
   if (spec0.kind === "administration") {
     return restoreAdministrationLog(profileId, undoId);
   }
+  // A sleep re-time (#5021): a bespoke restore for the opposite reason to the one
+  // above. Nothing was deleted — the session and its stage rows are standing at
+  // different instants — so the undo MOVES them back and withdraws the tombstone the
+  // move wrote. The generic path re-INSERTS, and a re-time moves the row's natural key,
+  // so its live-row adoption could not fire: it would insert a second session at the
+  // old instants beside the moved one.
+  if (spec0.kind === SLEEP_RETIME_KIND) {
+    return restoreSleepRetime(profileId, undoId);
+  }
 
   const payload = parsePayload(spec0.payload);
   const spec = getKindSpec(payload.kind);
@@ -705,15 +720,15 @@ export function purgeDeletedRow(
     const row = db
       .prepare(
         `SELECT payload FROM deleted_rows
-          WHERE id = ? AND profile_id = ? AND kind <> ?`
+          WHERE id = ? AND profile_id = ? AND kind NOT IN (${TRASH_EXCLUDED_PLACEHOLDERS})`
       )
-      .get(undoId, profileId, TRASH_EXCLUDED_KIND) as
+      .get(undoId, profileId, ...TRASH_EXCLUDED_KINDS) as
       { payload: string } | undefined;
     if (!row) return null;
     const captured = capturedFilesOf([row]);
     db.prepare(
-      `DELETE FROM deleted_rows WHERE id = ? AND profile_id = ? AND kind <> ?`
-    ).run(undoId, profileId, TRASH_EXCLUDED_KIND);
+      `DELETE FROM deleted_rows WHERE id = ? AND profile_id = ? AND kind NOT IN (${TRASH_EXCLUDED_PLACEHOLDERS})`
+    ).run(undoId, profileId, ...TRASH_EXCLUDED_KINDS);
     return captured;
   });
   if (files === null) return { kind: "gone" };
@@ -733,13 +748,15 @@ export function emptyTrash(profileId: number): number {
     const captured = capturedFilesOf(
       db
         .prepare(
-          `SELECT payload FROM deleted_rows WHERE profile_id = ? AND kind <> ?`
+          `SELECT payload FROM deleted_rows WHERE profile_id = ? AND kind NOT IN (${TRASH_EXCLUDED_PLACEHOLDERS})`
         )
-        .all(profileId, TRASH_EXCLUDED_KIND) as { payload: string }[]
+        .all(profileId, ...TRASH_EXCLUDED_KINDS) as { payload: string }[]
     );
     const changes = db
-      .prepare(`DELETE FROM deleted_rows WHERE profile_id = ? AND kind <> ?`)
-      .run(profileId, TRASH_EXCLUDED_KIND).changes;
+      .prepare(
+        `DELETE FROM deleted_rows WHERE profile_id = ? AND kind NOT IN (${TRASH_EXCLUDED_PLACEHOLDERS})`
+      )
+      .run(profileId, ...TRASH_EXCLUDED_KINDS).changes;
     return { purged: changes, files: captured };
   });
   unlinkPurgedFiles(files);

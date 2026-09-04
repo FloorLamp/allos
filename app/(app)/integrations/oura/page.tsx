@@ -15,6 +15,7 @@ import { connectOura, disconnectOuraAction } from "./actions";
 import { getProfileAge } from "@/lib/settings";
 import { isTrainingRelevant } from "@/lib/life-stage";
 import BackLink from "@/components/BackLink";
+import SubmitButton from "@/components/SubmitButton";
 import SetupStepsCard from "@/components/integrations/SetupStepsCard";
 
 export const dynamic = "force-dynamic";
@@ -148,9 +149,9 @@ export default async function OuraPage(props: {
                 />
               </div>
               <div>
-                <button className="btn" data-testid="oura-connect">
+                <SubmitButton variant="primary" data-testid="oura-connect">
                   Connect Oura
-                </button>
+                </SubmitButton>
               </div>
             </form>
           </div>

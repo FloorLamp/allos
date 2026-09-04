@@ -4,6 +4,7 @@ import {
   decideSleepOverlap,
   observeHeartRate,
   sleepOverlapPairs,
+  SLEEP_STAGE_METRICS,
   stagesOwnedBy,
   type HeartRateMinute,
   type SleepOverlapPair,
@@ -46,8 +47,9 @@ const REFERENCE_SPAN_MS = 24 * 60 * 60 * 1000;
 // must not widen what gets deleted.
 const CANDIDATE_DAY_RADIUS = 2;
 
-const STAGE_METRICS_SQL =
-  "('sleep_deep_min','sleep_rem_min','sleep_light_min','sleep_awake_min')";
+// DERIVED from the one list, never restated: a second spelling here could drift from
+// the one the re-time reads (#5021) and strand a stage row on a night that has moved.
+const STAGE_METRICS_SQL = `(${SLEEP_STAGE_METRICS.map((m) => `'${m}'`).join(",")})`;
 
 function dayOffset(date: string, days: number): string {
   const ms = Date.parse(`${date}T00:00:00Z`);

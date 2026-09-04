@@ -547,19 +547,62 @@ export function getSleepMoodData(
   // cannot fight over `sleepSampleId`: a night is either the duration-only manual row
   // that pass identified, or a synced session the detector contradicted — never both, and
   // a suspect night stays UNeditable either way (`sleepEditable` is untouched here).
-  const suspectSampleByWakeDay = new Map(
-    getSuspectSleepSessions(profileId, since).map((s) => [
-      s.wakeDay,
-      s.sampleId,
-    ])
+  //
+  // The evidence's settled instant rides along (#5021): the hedge's second line names
+  // when the body actually settled, and the row is where every surface already looks
+  // for whether to hedge at all. Projected to a profile-local MINUTE here, through the
+  // zone in force at that instant, because this is the boundary that owns the zone —
+  // `lib/sleep-clock-skew.ts` is pure and the components downstream have only a clock
+  // format.
+  //
+  // The CLAIMED window rides along for the same reason (#5021): the Fix times door
+  // states the times it is about to move and offers the stored length as the ± the
+  // person can take, and both are read off the evidence rather than re-queried. The
+  // elapsed length is computed from the INSTANTS, never from the two local minutes —
+  // a night across a zone transition is not `end - start` on a wall clock, and that
+  // length is the one the store half refuses a change to.
+  const skewZone = profileDayZone(profileId);
+  const localMinutes = (at: Date): number | null =>
+    Number.isFinite(at.getTime())
+      ? hhmmToMinutes(zonedDateParts(zoneOf(skewZone, at), at).hhmm)
+      : null;
+  const suspectByWakeDay = new Map(
+    getSuspectSleepSessions(profileId, since).map((s) => {
+      const settledAt = new Date(s.evidence.troughStart);
+      const claimStart = new Date(s.evidence.start);
+      const claimEnd = new Date(s.evidence.end);
+      const startMinutes = localMinutes(claimStart);
+      const endMinutes = localMinutes(claimEnd);
+      return [
+        s.wakeDay,
+        {
+          sampleId: s.sampleId,
+          settledMinutes: localMinutes(settledAt),
+          claimedWindow:
+            startMinutes == null || endMinutes == null
+              ? null
+              : {
+                  startMinutes,
+                  endMinutes,
+                  elapsedMin: Math.round(
+                    (claimEnd.getTime() - claimStart.getTime()) / 60_000
+                  ),
+                },
+        },
+      ] as const;
+    })
   );
   const history = editableHistory.map((row) => {
-    const suspectSampleId = suspectSampleByWakeDay.get(row.date) ?? null;
+    const suspect = suspectByWakeDay.get(row.date) ?? null;
     return {
       ...row,
       bedtimeSupplements: bedtimeByWakeDay.get(row.date) ?? null,
-      sleepSuspect: suspectSampleId != null,
-      sleepSampleId: row.sleepSampleId ?? suspectSampleId,
+      sleepSuspect: suspect != null,
+      sleepSampleId: row.sleepSampleId ?? suspect?.sampleId ?? null,
+      /** Minutes since profile-local midnight where the heart rate settled, for the
+       *  hedge's second line. Null when there is no suspect night on this row. */
+      sleepSettledMinutes: suspect?.settledMinutes ?? null,
+      sleepClaimedWindow: suspect?.claimedWindow ?? null,
     };
   });
   return {

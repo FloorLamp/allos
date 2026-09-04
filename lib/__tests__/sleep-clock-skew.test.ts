@@ -385,3 +385,68 @@ describe("detectSleepClockSkew, the awake-level run", () => {
     ).toBeNull();
   });
 });
+
+// ── What the copy may name (#5021) ───────────────────────────────────────────
+//
+// `troughStart` is the instant a sentence quotes, and it is NOT the window the verdict
+// rests on. The verdict's comparison excludes anything overlapping the claim, which is
+// right for deciding and wrong for reporting: when the clock error is shorter than the
+// session, the real trough overlaps the claim and is excluded, so the reported instant
+// is displaced away from the onset by however far the exclusion pushes it.
+describe("troughStart names where the body settled", () => {
+  // A 420-minute night claimed four hours late. The real trough overlaps the claim, so
+  // the verdict's own comparison cannot see it; the report has to.
+  const CLAIM = { start: "2026-08-29T07:00:00Z", end: "2026-08-29T14:00:00Z" };
+  const REAL = { from: "2026-08-29T03:00:00Z", to: "2026-08-29T10:00:00Z" };
+  const trace4h = trace("2026-08-28T11:00:00Z", "2026-08-30T10:00:00Z", REAL);
+
+  it("names the real onset even when the trough overlaps the claim", () => {
+    const found = detectSleepClockSkew(CLAIM, trace4h);
+    expect(found).not.toBeNull();
+    const at = Date.parse(found!.troughStart);
+    // Inside the real trough, not hours before it. The non-overlapping best for this
+    // shape lands at 00:00Z — three hours early, 43% of the session's width — which is
+    // what this exists to stop the copy quoting.
+    expect(at).toBeGreaterThanOrEqual(Date.parse(REAL.from));
+    expect(at).toBeLessThan(Date.parse(REAL.to));
+  });
+
+  it("leaves the VERDICT's own numbers alone", () => {
+    // Only the quoted instant is re-derived. `claimedBpm` and `troughBpm` are the
+    // comparison the finding rests on and must not move with it.
+    const found = detectSleepClockSkew(CLAIM, trace4h)!;
+    expect(found.claimedBpm).toBe(AWAKE);
+    expect(found.troughBpm).toBe(ASLEEP);
+    expect(found.start).toBe(CLAIM.start);
+    expect(found.end).toBe(CLAIM.end);
+  });
+
+  it("still names the onset when the shift is LONGER than the night", () => {
+    // The case that was already exact, kept as the control: with no overlap the two
+    // derivations agree, so this must not have moved.
+    const found = detectSleepClockSkew(
+      SKEWED_SESSION,
+      trace(DAY_FROM, DAY_TO, {
+        from: "2026-08-30T03:39:00Z",
+        to: "2026-08-30T08:37:00Z",
+      })
+    )!;
+    const at = Date.parse(found.troughStart);
+    expect(at).toBeGreaterThanOrEqual(Date.parse("2026-08-30T03:39:00Z"));
+    expect(at).toBeLessThan(Date.parse("2026-08-30T08:37:00Z"));
+  });
+
+  it("reports nothing extra on a night that does not flag", () => {
+    // The second pass runs only after a verdict, so a quiet night pays none of it and
+    // returns null exactly as before.
+    expect(
+      detectSleepClockSkew(
+        SKEWED_SESSION,
+        trace(DAY_FROM, DAY_TO, {
+          from: SKEWED_SESSION.start,
+          to: SKEWED_SESSION.end,
+        })
+      )
+    ).toBeNull();
+  });
+});

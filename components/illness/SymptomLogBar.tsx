@@ -48,6 +48,7 @@ import IllnessMedicationLogger from "@/components/illness/IllnessMedicationLogge
 import { useDoseOfferSignal } from "@/components/illness/DoseOfferContext";
 import type { PrnMedForQuickLog } from "@/lib/queries/intake/adherence";
 import type { IntakeFormContext } from "@/lib/intake-form-context";
+import SubmitButton from "@/components/SubmitButton";
 
 // One-tap symptom logger (issue #799/#857), modeled on the FoodLogBar one-tap pattern:
 // optimistic local severities, a Server Action per tap, and reconciliation to the
@@ -964,14 +965,12 @@ export default function SymptomLogBar({
                 timeLabel="Reading time"
                 testId="temp-quick"
               />
-              <button
-                type="submit"
+              <SubmitButton
                 data-testid="temp-quick-save"
                 disabled={tempPending}
-                className="btn btn-sm"
               >
                 {tempPending ? "Logging…" : "Log temp"}
-              </button>
+              </SubmitButton>
             </div>
             {tempError && (
               <p

@@ -122,7 +122,7 @@ export default function CycleForm({
           className="grid w-full sm:w-auto"
           data-testid="cycle-form-primary-action"
         >
-          <SubmitButton pendingLabel="Saving…">
+          <SubmitButton pendingLabel="Saving…" variant="primary">
             {editing ? "Save" : "Add period"}
           </SubmitButton>
         </div>

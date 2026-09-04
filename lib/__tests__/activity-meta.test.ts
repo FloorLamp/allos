@@ -9,6 +9,7 @@ import {
   requiresDistance,
   resolveActivityType,
   shiftHHMM,
+  shiftHHMMOvernight,
   showsDistanceField,
   soleComponentDuration,
   workoutActivityLabel,
@@ -267,6 +268,44 @@ describe("shiftHHMM", () => {
   it("returns null for invalid input", () => {
     expect(shiftHHMM("", 30)).toBeNull();
     expect(shiftHHMM("x:y", 30)).toBeNull();
+  });
+});
+
+describe("shiftHHMMOvernight", () => {
+  it("wraps past midnight, which is what the overnight pair is for (#5021)", () => {
+    // The case that has no answer in `shiftHHMM`: a bed time plus a night's length.
+    expect(shiftHHMMOvernight("23:30", 420)).toBe("06:30");
+    expect(shiftHHMMOvernight("06:30", -420)).toBe("23:30");
+    expect(shiftHHMMOvernight("00:00", -1)).toBe("23:59");
+  });
+
+  it("agrees with the span the same pair implies", () => {
+    // The two halves of one rule: derive the wake from the bed, and the pair's own
+    // span must be the length that derived it. A wrap in one and not the other would
+    // put a ± offer on screen that its own field then refuses.
+    for (const [bed, minutes] of [
+      ["23:30", 420],
+      ["01:15", 300],
+      ["22:00", 61],
+    ] as const) {
+      const wake = shiftHHMMOvernight(bed, minutes);
+      expect(wake).not.toBeNull();
+      expect(overnightMinutesBetween(bed, wake!)).toBe(minutes);
+    }
+  });
+
+  it("stays in-day where the ordinary shift does", () => {
+    expect(shiftHHMMOvernight("08:00", 90)).toBe(shiftHHMM("08:00", 90));
+    expect(shiftHHMMOvernight("09:30", -90)).toBe(shiftHHMM("09:30", -90));
+  });
+
+  it("refuses invalid input and a shift of a day or more", () => {
+    expect(shiftHHMMOvernight("", 30)).toBeNull();
+    expect(shiftHHMMOvernight("x:y", 30)).toBeNull();
+    // A day or more no longer names one clock a person could mean, and it would
+    // silently return the time it started from.
+    expect(shiftHHMMOvernight("08:00", 1440)).toBeNull();
+    expect(shiftHHMMOvernight("08:00", -1440)).toBeNull();
   });
 });
 

@@ -20,7 +20,9 @@ type SubmitButtonProps = Omit<
 // destructured away: the type already admitted it (SubmitButtonProps omits only
 // the props a submit may not state), so a caller asking for the one primary rank
 // used to typecheck and then be silently dropped — the demotion #3982 was written
-// against, arriving through the wrapper instead of the call site.
+// against, arriving through the wrapper instead of the call site. `layout` is
+// forwarded for the same reason: both of #4978's first two layout mounts are
+// submits, so a wrapper that dropped it would put the escape straight back.
 export default function SubmitButton({
   children,
   pendingLabel,
@@ -31,6 +33,7 @@ export default function SubmitButton({
   name,
   value,
   variant,
+  layout,
 }: SubmitButtonProps) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const selectionSnapshot = useCallback(() => {
@@ -72,6 +75,7 @@ export default function SubmitButton({
       name={name}
       value={value}
       variant={variant}
+      layout={layout}
     >
       {children}
     </Button>

@@ -7,6 +7,7 @@ import {
 } from "@/app/(app)/visit-link-actions";
 import { episodeHref } from "@/lib/hrefs";
 import type { EncounterEpisodeSuggestion } from "@/lib/visit-link-suggest";
+import SubmitButton from "@/components/SubmitButton";
 
 // The encounter (visit) detail page's illness-episode surface (#1350) — the mirror of
 // the episode page's "Care" line, from the visit side. Two parts:
@@ -125,13 +126,9 @@ export default function VisitEpisodes({
                       name="encounterId"
                       value={encounterId}
                     />
-                    <button
-                      type="submit"
-                      data-testid="link-episode-suggestion"
-                      className="btn btn-sm"
-                    >
+                    <SubmitButton data-testid="link-episode-suggestion">
                       Link
-                    </button>
+                    </SubmitButton>
                   </form>
                   <form action={declineEpisodeVisitAction}>
                     <input type="hidden" name="profileId" value={profileId} />
@@ -141,9 +138,7 @@ export default function VisitEpisodes({
                       name="encounterId"
                       value={encounterId}
                     />
-                    <button type="submit" className="btn-ghost btn-sm">
-                      Dismiss
-                    </button>
+                    <SubmitButton>Dismiss</SubmitButton>
                   </form>
                 </div>
               </li>

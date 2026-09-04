@@ -33,6 +33,7 @@ import { describeCorrelation, pearson } from "@/lib/trends-compare";
 import { readingTargetToken } from "@/lib/reading-placement";
 import { SLEEP_SKEW_HEDGE } from "@/lib/sleep-clock-skew";
 import SleepMoodEditDialog from "./SleepMoodEditDialog";
+import SleepRetimeDialog from "./SleepRetimeDialog";
 import BedtimeSupplementStatus from "./BedtimeSupplementStatus";
 import { deleteSleepMoodRow } from "./actions";
 import type { NapHistoryRow } from "@/lib/queries/sleep";
@@ -61,15 +62,19 @@ export default function SleepMoodSection({
   naps,
   windowDays,
   formatPrefs,
+  tz,
 }: {
   points: SleepMoodPoint[];
   history: SleepMoodHistoryRow[];
   naps: NapHistoryRow[];
   windowDays: number;
   formatPrefs: DisplayFormatPrefs;
+  /** The profile's zone, for the Fix times door's clock fields (#5021). */
+  tz: string;
 }) {
   const [requestedPage, setRequestedPage] = useState(1);
   const [editing, setEditing] = useState<SleepMoodHistoryRow | null>(null);
+  const [retiming, setRetiming] = useState<SleepMoodHistoryRow | null>(null);
   const canPlot = points.length >= MIN_SLEEP_MOOD_SCATTER_POINTS;
   const hasSupplementContext = history.some(
     (row) => row.bedtimeSupplements != null
@@ -109,6 +114,8 @@ export default function SleepMoodSection({
       sleepEditHours: null,
       sleepSampleId: null,
       sleepSuspect: false,
+      sleepSettledMinutes: null,
+      sleepClaimedWindow: null,
       moodLogId: null,
     });
   }
@@ -409,6 +416,7 @@ export default function SleepMoodSection({
                           row={row}
                           dateLabel={formatLongDate(row.date, formatPrefs)}
                           onEdit={() => setEditing(row)}
+                          onRetime={() => setRetiming(row)}
                         />
                       </Td>
                     </tr>
@@ -437,6 +445,16 @@ export default function SleepMoodSection({
           onClose={() => setEditing(null)}
         />
       )}
+      {retiming && (
+        <SleepRetimeDialog
+          key={`retime:${retiming.date}`}
+          row={retiming}
+          dateLabel={formatLongDate(retiming.date, formatPrefs)}
+          tz={tz}
+          formatPrefs={formatPrefs}
+          onClose={() => setRetiming(null)}
+        />
+      )}
     </div>
   );
 }
@@ -459,10 +477,12 @@ function SleepMoodRowMenu({
   row,
   dateLabel,
   onEdit,
+  onRetime,
 }: {
   row: SleepMoodHistoryRow;
   dateLabel: string;
   onEdit: () => void;
+  onRetime: () => void;
 }) {
   const confirm = useConfirm();
   const undoable = useUndoableDelete();
@@ -501,6 +521,28 @@ function SleepMoodRowMenu({
             >
               Edit
             </button>
+            {/* FIX TIMES, above the delete it exists to be an alternative to (#5021).
+                Offered on a hedged night only — a session the detector has NOT
+                contradicted keeps the #133 edit lock, and the store half asks the
+                detector again rather than trusting this menu. The claimed window is
+                what the dialog states and derives its ± from, so a hedged row that
+                somehow carries none has nothing to open onto. */}
+            {row.sleepSuspect &&
+              row.sleepSampleId != null &&
+              row.sleepClaimedWindow != null && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={MENU_ITEM}
+                  data-testid="sleep-history-retime"
+                  onClick={() => {
+                    close();
+                    onRetime();
+                  }}
+                >
+                  Fix times
+                </button>
+              )}
             {/* Close the menu BEFORE the confirm in every branch: a handler that
                 returns without close() leaves the click-away backdrop shielding the
                 whole page. */}
