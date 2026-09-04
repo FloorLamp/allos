@@ -17,6 +17,7 @@ import {
   savedMetricIdForTrendSlug,
 } from "../trend-metrics";
 import { metricSeriesKey } from "../saved-items";
+import type { ChartXAxis } from "@/components/chart-spec";
 
 // The DAY-GRAIN GAP chokepoint (issue #2258), in the repo's source-scan idiom
 // (`chart-scaffold-scan.test.ts`, `chart-colors-scan.test.ts`): read the app's own
@@ -77,6 +78,18 @@ function sourceFiles(): SourceFile[] {
     for (const full of walk(abs)) {
       const rel = path.relative(REPO, full).split(path.sep).join("/");
       if (CARD_WRAPPERS.has(rel)) continue;
+      // A TEST FIXTURE IS NOT A SURFACE. This scan's subject is a call site a
+      // reader ends up looking at: "four missed nights render identically to
+      // four consecutive ones" is a sentence about a page. A fixture mounting a
+      // card to assert what it draws is neither, and asking it to declare a gap
+      // policy would put a false `gap-exempt:` reason in the tree — the exact
+      // shape of decay #3260 records, where an opt-out outlived its stated why.
+      //
+      // Safe in the direction that matters: a test file can only ever ADD sites
+      // to this sweep, never satisfy one, so skipping them cannot hide an app
+      // call site. The sweep's own floor below is what proves it still reaches
+      // the ones it is for.
+      if (rel.includes("/__tests__/")) continue;
       files.push({ rel, text: fs.readFileSync(full, "utf8") });
     }
   }
@@ -149,6 +162,13 @@ describe("day-grain gap chokepoint (issue #2258)", () => {
     expect(found.length).toBeGreaterThan(20);
     expect(found.some((s) => s.card === "StackedBarCard")).toBe(true);
     expect(found.some((s) => s.card === "BarSparkline")).toBe(true);
+    // And that it reaches the app, not only components/ — the skip above is a
+    // narrowing, so what survives it has to be asserted rather than assumed.
+    expect(sourceFiles().some((f) => f.rel.startsWith("app/"))).toBe(true);
+    expect(
+      found.some((s) => s.card === "LineChartCard"),
+      "the sweep no longer finds a single LineChartCard call site"
+    ).toBe(true);
   });
 });
 
@@ -215,5 +235,51 @@ describe("gap registry completeness (issue #2258)", () => {
   it("an unknown namespace is exempt rather than silently densified", () => {
     expect(seriesGapForSeriesKey("cycle:length")).toBe("exempt");
     expect(seriesGapForSeriesKey("")).toBe("exempt");
+  });
+});
+
+// THE OTHER HALF OF THIS CHOKEPOINT IS A TYPE (#4925).
+//
+// The scan above guards the CALL SITE: a page handing a card a day-grain series
+// has to say what its gaps mean. It cannot guard the SPEC, and since #4925 the
+// spec is where a chart's x axis declares its kind — so a day-kind axis that
+// simply omitted its gap declaration would be a chart unable to say a day is
+// missing, with nothing to notice.
+//
+// That one is a TYPE, not a second scan. `gap` is required on the day arm and
+// has no default, so the wrong state cannot be written down: an author writes
+// `{ none: true }` and means it, or names the runs.
+//
+// THIS BLOCK IS CHECKED BY `npm run typecheck`, NOT BY RUNNING IT. A
+// `@ts-expect-error` that stops being an error becomes "Unused '@ts-expect-error'
+// directive" and fails the typecheck — so if the union ever loosened, this file
+// reds without anyone re-deriving anything. That is also why the negatives sit
+// beside positives: an assertion that only ever forbids passes just as happily
+// on a type nothing can satisfy.
+describe("a day-kind x axis cannot be silent about its gaps (#4925)", () => {
+  it("compiles only with a declaration, and this file fails typecheck if not", () => {
+    // @ts-expect-error a day axis with no `gap` is the state the type forbids
+    const silent: ChartXAxis = { kind: "day", dates: ["2026-01-01"] };
+    // Naming the runs, and declaring there are none, are both spellable.
+    const named: ChartXAxis = {
+      kind: "day",
+      dates: ["2026-01-01"],
+      gap: { seriesKey: "metric:mood", holes: [] },
+    };
+    const none: ChartXAxis = {
+      kind: "day",
+      dates: ["2026-01-01"],
+      gap: { none: true },
+    };
+    // The other three kinds are not day-grain and take no gap declaration —
+    // proving the requirement is attached to the arm that has calendar days,
+    // not to every axis.
+    const instant: ChartXAxis = {
+      kind: "instant",
+      dates: [],
+      // @ts-expect-error an instant axis has no gap declaration to make
+      gap: { none: true },
+    };
+    expect([silent, named, none, instant]).toHaveLength(4);
   });
 });
