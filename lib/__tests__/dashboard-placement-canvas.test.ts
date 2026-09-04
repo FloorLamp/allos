@@ -191,7 +191,7 @@ describe("dashboard placement canvas", () => {
         lane: "standing",
         laneOrder: 0,
         timingDisposition: { kind: "active" },
-        standingFamilyKey: "steps-today",
+        standingFamilyKey: "day-so-far",
         standingSection: "today",
         standingBand: "rest",
       },

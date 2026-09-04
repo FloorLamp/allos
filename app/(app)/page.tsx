@@ -152,6 +152,7 @@ import {
 import {
   cappedFamilyGather,
   CLINICAL_RESULTS_CAP,
+  type StandingFamilyKey,
 } from "@/lib/dashboard-standing";
 import {
   attentionCandidates,
@@ -182,7 +183,10 @@ import DashboardPlacementCanvas from "@/components/dashboard/DashboardPlacementC
 import IllnessNowGroup, {
   type IllnessContextCockpit,
 } from "@/components/dashboard/IllnessNowGroup";
-import type { DashboardStandingPresentation } from "@/components/dashboard/DashboardStandingCluster";
+import type {
+  DashboardStandingPresentation,
+  StandingFamilyDrawing,
+} from "@/components/dashboard/DashboardStandingCluster";
 import RecentlyResolvedReopenControls, {
   type RecentlyResolvedItem,
 } from "@/components/dashboard/RecentlyResolvedReopenControls";
@@ -1324,6 +1328,15 @@ async function renderDashboard(
   const candidates: DashboardCandidate[] = [];
   const presentations = new Map<string, DashboardStandingPresentation>();
   const aheadPresentations = new Map<string, DashboardStandingPresentation>();
+  // THE DRAWING BELONGS TO THE FAMILY (#4969), resolved once here beside the
+  // presentation map instead of hanging off whichever member happened to carry
+  // it. `setDrawing` merges rather than replaces because a composed family's
+  // series and figure are declared at two different call sites below (the
+  // Day-so-far family's sparkline is steps', its figure is intraday's).
+  const drawings = new Map<StandingFamilyKey, StandingFamilyDrawing>();
+  const setDrawing = (key: StandingFamilyKey, patch: StandingFamilyDrawing) => {
+    drawings.set(key, { ...drawings.get(key), ...patch });
+  };
   // ONE DECLARATION PER CANDIDATE (#4076): its row. Cards left `/` entirely, so
   // there is no second node to declare and no lane left that would render one — what
   // a fact EARNS goes in the row's trailing slot, its write included. A candidate
@@ -2308,7 +2321,12 @@ async function renderDashboard(
       }
     );
 
-  if (intradayToday)
+  if (intradayToday) {
+    // ONE ROUTE, NAMED ONCE: the intraday member's own door and the family's
+    // declared door are the same destination by construction, which is what puts
+    // the row's stretched surface on that member (#4969 ruling) instead of on two
+    // literals that have to keep agreeing.
+    const dayViewHref = historyDayIntradayHref(on);
     add(
       dailyCandidates.intraday(
         { subject: profileSubject, sourceOrder: sourceOrder++ },
@@ -2318,9 +2336,18 @@ async function renderDashboard(
         // The lag sentence is the row's FACTS — the one thing the drawing cannot
         // say about itself (#4767 item 5).
         value: intradayFreshness(intradayToday) ?? undefined,
-        href: historyDayIntradayHref(on),
+        href: dayViewHref,
         presence: "current",
-        figure: (
+      }
+    );
+    // THE FAMILY'S FIGURE (#4969), not this member's: the Day-so-far row draws it
+    // full width under every member's facts, not inside this one's `<li>`. It is
+    // declared WITH its door — the figure leads to what it pictures, which is
+    // today's day view, whatever order the night's sleep and today's steps take
+    // above it (#4969 ruling, 2026-09-03).
+    setDrawing("day-so-far", {
+      figure: {
+        node: (
           <IntradayChart
             model={intradayToday}
             formatPrefs={formatPrefs}
@@ -2329,10 +2356,12 @@ async function renderDashboard(
             className="w-full"
           />
         ),
-      }
-    );
+        door: dayViewHref,
+      },
+    });
+  }
 
-  if (stepsSummary)
+  if (stepsSummary) {
     add(
       dailyCandidates.steps(
         { subject: profileSubject, sourceOrder: sourceOrder++ },
@@ -2357,27 +2386,30 @@ async function renderDashboard(
           ]
             .filter(Boolean)
             .join(" · ") || undefined,
-        // The desktop column (#3252) draws the window this row's own sentence talks
-        // about: today plus the prior seven days, the same span `summarizeStepsToday`
-        // averages, off the same series it was handed. Steps declare `slot-null`, so a
-        // day nobody measured is a HOLE in the stroke rather than a zero — a total is
-        // not a level and may not be bridged.
-        series: {
-          points: stepsRows.filter(
-            (row) => row.date >= shiftDateStr(on, -STEPS_TRAILING_DAYS)
-          ),
-          seriesKey: "metric:steps",
-          stale: false,
-          name: `Steps, today and the prior ${STEPS_TRAILING_DAYS} days`,
-          pointLabel: (point) =>
-            `${point.value.toLocaleString("en-US")} steps · ${formatLongDate(point.date, formatPrefs)}`,
-          loneCaption: `Single reading · ${formatLongDate(on, formatPrefs)}`,
-        },
         href: "/trends#body",
         presence: "current",
       }
     );
-  else
+    // THE FAMILY'S SERIES (#4969), not this member's: the desktop column (#3252)
+    // draws the window this row's own sentence talks about — today plus the
+    // prior seven days, the same span `summarizeStepsToday` averages, off the
+    // same series it was handed. Steps declare `slot-null`, so a day nobody
+    // measured is a HOLE in the stroke rather than a zero — a total is not a
+    // level and may not be bridged.
+    setDrawing("day-so-far", {
+      series: {
+        points: stepsRows.filter(
+          (row) => row.date >= shiftDateStr(on, -STEPS_TRAILING_DAYS)
+        ),
+        seriesKey: "metric:steps",
+        stale: false,
+        name: `Steps, today and the prior ${STEPS_TRAILING_DAYS} days`,
+        pointLabel: (point) =>
+          `${point.value.toLocaleString("en-US")} steps · ${formatLongDate(point.date, formatPrefs)}`,
+        loneCaption: `Single reading · ${formatLongDate(on, formatPrefs)}`,
+      },
+    });
+  } else
     add(
       dailyCandidates.stepsBootstrap({
         subject: profileSubject,
@@ -2562,20 +2594,6 @@ async function renderDashboard(
             </span>
           );
         })(),
-        // The desktop column (#3252). These are the points the gather ALREADY pulled
-        // to decide this row's arrow (the bounded trend tail, lib/queries/vitals-latest
-        // — two readings, or one), carried through rather than re-read: the plot draws
-        // exactly the movement the arrow claims. The tone follows this row's own glance
-        // age, so a resting HR past its 180-day floor is amber in both places at once.
-        series: {
-          points: vitalsModel.restingHr.points,
-          seriesKey: "metric:resting_hr",
-          stale: vitalsModel.restingHr.freshness === "due",
-          name: "Resting heart rate, latest readings",
-          pointLabel: (point) =>
-            `${point.value} bpm · ${formatLongDate(point.date, formatPrefs)}`,
-          loneCaption: `Single reading · ${formatLongDate(vitalsModel.restingHr.date, formatPrefs)}`,
-        },
         href: "/trends#body",
         disclosure: restingHrAge?.title ?? undefined,
         control:
@@ -2585,6 +2603,25 @@ async function renderDashboard(
         presence: "current",
       }
     );
+  if (vitalsModel?.restingHr && !vitalsModel.restingHr.dormant)
+    // THE FAMILY'S SERIES (#4969), not this member's — member order no longer
+    // decides which row keeps the sparkline (#4969 item 5). These are the points
+    // the gather ALREADY pulled to decide this row's arrow (the bounded trend
+    // tail, lib/queries/vitals-latest — two readings, or one), carried through
+    // rather than re-read: the plot draws exactly the movement the arrow claims.
+    // The tone follows the family's own glance age, so a resting HR past its
+    // 180-day floor is amber in both places at once.
+    setDrawing("resting-heart-rate", {
+      series: {
+        points: vitalsModel.restingHr.points,
+        seriesKey: "metric:resting_hr",
+        stale: vitalsModel.restingHr.freshness === "due",
+        name: "Resting heart rate, latest readings",
+        pointLabel: (point) =>
+          `${point.value} bpm · ${formatLongDate(point.date, formatPrefs)}`,
+        loneCaption: `Single reading · ${formatLongDate(vitalsModel.restingHr.date, formatPrefs)}`,
+      },
+    });
   add(
     setupCandidates.vitalsBootstrap({
       subject: profileSubject,
@@ -2782,25 +2819,28 @@ async function renderDashboard(
           value: `${latestWeight.value} ${units.weightUnit}`,
           // The date stays visible when the destination door appears (#3555).
           detail: <StandingAge age={weightAge} testId="weight-latest-age" />,
-          // The desktop column (#3252): the SAME trailing-90-day series the weight
-          // domain already derived above for this page — not a second read, and not a
-          // second window. The tone follows this row's own glance age, as the resting
-          // HR plot does.
-          series: {
-            points: bodyMetrics,
-            seriesKey: "metric:weight",
-            stale: weightAge.stale,
-            name: `Weight, last ${WEIGHT_TREND_WINDOW_DAYS} days`,
-            pointLabel: (point) =>
-              `${point.value} ${units.weightUnit} · ${formatLongDate(point.date, formatPrefs)}`,
-            loneCaption: `Single reading · ${formatLongDate(latestWeight.date, formatPrefs)}`,
-          },
           href: "/trends#body",
           disclosure: weightAge.title ?? undefined,
           control: staleMeasurementDoor(weightAge, "body", "Log weight"),
           presence: "current",
         }
       );
+      // THE FAMILY'S SERIES (#4969), not the "Latest" member's: the SAME
+      // trailing-90-day series the weight domain already derived above for this
+      // page — not a second read, and not a second window. The tone follows the
+      // family's own glance age, as the resting HR plot does — member order is no
+      // longer what keeps a sparkline on the right member (#4969 item 5).
+      setDrawing("weight", {
+        series: {
+          points: bodyMetrics,
+          seriesKey: "metric:weight",
+          stale: weightAge.stale,
+          name: `Weight, last ${WEIGHT_TREND_WINDOW_DAYS} days`,
+          pointLabel: (point) =>
+            `${point.value} ${units.weightUnit} · ${formatLongDate(point.date, formatPrefs)}`,
+          loneCaption: `Single reading · ${formatLongDate(latestWeight.date, formatPrefs)}`,
+        },
+      });
     }
     add(
       progressCandidates.weightTrend(
@@ -3190,6 +3230,7 @@ async function renderDashboard(
           dateLabel={formatLongDate(on, formatPrefs)}
           placements={dashboardPlacements}
           presentations={presentations}
+          drawings={drawings}
           aheadPresentations={aheadPresentations}
           attentionBadgeCount={attentionBadgeCount}
           nowSubjects={nowSubjects}
