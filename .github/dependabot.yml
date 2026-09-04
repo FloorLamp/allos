@@ -13,6 +13,15 @@ updates:
     # ecosystem label) — `javascript` was retired from the vocabulary 2026-08-15.
     labels:
       - "dependencies"
+    # No prefix, so the title reads "Bump eslint from 9.39.5 to 10.9.1" —
+    # imperative, under 72, no colon. Left to itself Dependabot infers the
+    # repo's conventions and writes `build(deps):`, whose colon is a clause
+    # tail the merge gate refuses (#4983), and the rule has no exceptions.
+    # `prefix-development` is set too: dev bumps otherwise carry their own
+    # inferred `build(deps-dev):`.
+    commit-message:
+      prefix: ""
+      prefix-development: ""
     groups:
       npm-minor-and-patch:
         update-types:
@@ -27,6 +36,10 @@ updates:
     # Same rule as npm: keep `dependencies`, drop the auto ecosystem label.
     labels:
       - "dependencies"
+    # Same reason as npm (#4983). No `prefix-development` here — this
+    # ecosystem has no development dependencies to distinguish.
+    commit-message:
+      prefix: ""
     groups:
       github-actions:
         update-types:

@@ -6,7 +6,9 @@
 // READ-ONLY by construction: no write verb leaves this script (pinned in
 // lib/__tests__/merge-gate-script.test.ts). It answers one question — "may
 // this PR merge RIGHT NOW?" — by checking, on the CURRENT head SHA:
-//   1. the PR is open and READY (never draft — environment.md §GitHub access);
+//   1. the PR is open and READY (never draft — environment.md §GitHub access),
+//      and its TITLE holds the rule the squash subject inherits (#4983):
+//      72 characters, one clause, no colon or dash tail;
 //   2. the RECEIPT: a review from a NON-AUTHOR whose body states this exact
 //      head SHA (8+ hex chars of its prefix). A receipt naming any other SHA
 //      is a review of a head that no longer exists — void, not evidence.
@@ -55,6 +57,7 @@ import {
   readinessVerdict,
   receiptVerdict,
 } from "./merge-gate-core.mjs";
+import { titleLength, titleRuleRefusal } from "./title-rule.mjs";
 helpGuard(process.argv, import.meta.url);
 
 const token = resolveReadToken();
@@ -190,6 +193,16 @@ console.log(`PR #${prNumber} head ${head.slice(0, 8)} (${pr.state})`);
 const readiness = readinessVerdict(pr);
 for (const failure of readiness.failures) fail(failure);
 if (readiness.ready) pass("PR is READY");
+
+// The title rule (#4983). Checked here, before any evidence is gathered,
+// because it is a property of the PR itself and the cheapest failure to fix —
+// and because a squash merge takes this title as the commit subject, so a
+// title nobody refused is one `git log` carries forever. The refusal quotes
+// the rule rather than pointing at it: the reader is about to rewrite the
+// title and should not have to go and look it up first.
+const titleRefusal = titleRuleRefusal("PR", pr.title);
+if (titleRefusal) fail(titleRefusal);
+else pass(`PR title is one clause of ${titleLength(pr.title)} characters`);
 
 // The receipt: a stated-SHA review, because stating the SHA is what the
 // review contract requires — review.commit_id records where GitHub filed it,
