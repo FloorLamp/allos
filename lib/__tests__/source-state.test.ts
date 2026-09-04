@@ -21,6 +21,7 @@ import {
   formatSyncOutcome,
   intermittentReassurance,
   intermittentRunsLabel,
+  droppingConsequence,
   needsAttention,
   observedSuccessCadenceMinutes,
   sourceStanding,
@@ -34,6 +35,7 @@ import {
   syncVocabularyForKind,
   type AttendedStanding,
   type OutboundStanding,
+  type ScheduledStanding,
   type SourceStanding,
   type SyncEventFacts,
 } from "@/lib/integrations/source-state";
@@ -548,15 +550,21 @@ const ATTENDED_STANDINGS: AttendedStanding[] = [
   "not-set-up",
 ];
 const OUTBOUND_STANDINGS: OutboundStanding[] = ["feed-enabled", "feed-off"];
-const SCHEDULED_STANDINGS: SourceStanding[] = [
-  "healthy",
-  "partial",
-  "intermittent",
-  "failing",
-  "needs-reauth",
-  "not-connected",
-  "never-synced",
-];
+// KEYED AS A RECORD, not listed as an array: the denylist below is only worth
+// anything while it names EVERY scheduled state, and an array typed `SourceStanding[]`
+// accepts a short one silently. `dropping` (#4975) is the member that would have gone
+// missing — a hand-written list is exactly the fixture that stops covering the newest
+// boundary while staying green.
+const SCHEDULED_STANDINGS: string[] = Object.keys({
+  healthy: 1,
+  partial: 1,
+  intermittent: 1,
+  failing: 1,
+  dropping: 1,
+  "needs-reauth": 1,
+  "not-connected": 1,
+  "never-synced": 1,
+} satisfies Record<ScheduledStanding, 1>);
 
 // An attended source's facts. The freshness fields are supplied on purpose — an
 // attended source is EXEMPT from them, and the test is that supplying them changes
@@ -655,6 +663,108 @@ describe("outbound standing (#2301) — allos publishes, nothing arrives", () =>
     expect(out(true)).toBe("feed-enabled");
     expect(out(false)).toBe("feed-off");
     expect(SCHEDULED_STANDINGS).not.toContain(out(true));
+  });
+});
+
+// A LIVE SOURCE SWALLOWING A RECORD TYPE (#4975). The evidence arrives already
+// derived — `droppedTypes` over the source's own tolerance-bounded runs, the same list
+// the attention row reads — so what is pinned here is the PRECEDENCE (which verdict
+// wins when a source is in two shapes at once) and the words each surface then says.
+describe("dropping standing (#4975) — alive and not storing", () => {
+  const DROPPED = ["heart_rate_variability"];
+
+  // Each row is a source that qualifies as `dropping` AND as something else. The
+  // ordering claim: below the silence rule, above everything calm.
+  it.each([
+    [
+      "a clean source with a dropped type",
+      { droppedTypes: DROPPED },
+      "dropping",
+    ],
+    ["nothing dropped leaves it alone", { droppedTypes: [] }, "healthy"],
+    ["a source reporting no tally at all", {}, "healthy"],
+    // A SILENT source is already told to reconnect, and you cannot act on "one type
+    // isn't landing" until that is fixed — the same yielding the attention row does
+    // one rung up. UNREACHABLE THROUGH THE QUERY LAYER and pinned anyway: a run
+    // inside the tolerance is what makes a type dropped, and one inside the tolerance
+    // is what makes the source not silent, so the two cannot both be true of real
+    // rows. This function is public and the ordering is its property, not the
+    // caller's.
+    [
+      "a silent source stays failing",
+      { droppedTypes: DROPPED, lastSuccessAt: minutesBefore(20 * HOUR) },
+      "failing",
+    ],
+    [
+      "a dead credential still comes first",
+      { droppedTypes: DROPPED, needsReauth: true },
+      "needs-reauth",
+    ],
+    [
+      "a removed source is not described by its old runs",
+      { droppedTypes: DROPPED, connected: false },
+      "not-connected",
+    ],
+  ])("%s", (_why, over, expected) => {
+    expect(standingOf(runs(0, 4), over)).toBe(expected);
+  });
+
+  it("outranks the calm amber verdicts, which is why it sits above them", () => {
+    // `intermittent` is deliberately non-escalating (#1880) and `partial` is a run
+    // that stopped early — both are "nothing is being lost". A source discarding a
+    // type IS losing data, so the escalating verdict wins.
+    expect(standingOf(runs(3, 3), { droppedTypes: DROPPED })).toBe("dropping");
+    expect(
+      standingOf([ev({ details: truncatedSyncDetails() })], {
+        droppedTypes: DROPPED,
+      })
+    ).toBe("dropping");
+  });
+
+  it("reaches Review's needs-attention card through the one escalation gate", () => {
+    // `isEscalatedSource` (components/ConnectedSources) is `standingEscalates`, so
+    // admitting it here is the whole delivery: the card needs no change.
+    expect(standingEscalates("dropping")).toBe(true);
+    expect(needsAttention("dropping")).toBe(true);
+    // It is a source that IS set up, so the Import grid keeps showing its status card.
+    expect(standingUnconfigured("dropping")).toBe(false);
+  });
+
+  it("states the shape without claiming the connection is down", () => {
+    // `bad`, not `caution`: StatusCard paints its rose border off `standingEscalates`,
+    // and an amber chip inside a red card is the two-dialect defect #2301 prevents.
+    expect(standingBadge("dropping")).toEqual({
+      label: "Dropping records",
+      tone: "bad",
+    });
+    // It IS syncing — "Not syncing" / "Not receiving" would be false in both dialects.
+    for (const noun of ["push", "sync"] as const) {
+      expect(standingHeadline("dropping", noun)).toBe(
+        "Some records aren't being stored"
+      );
+    }
+  });
+
+  it.each([
+    [
+      ["heart_rate_variability"],
+      "Heart rate variability is arriving but not being stored.",
+    ],
+    [
+      ["heart_rate_variability", "sleep_min"],
+      "Heart rate variability, Sleep are arriving but not being stored.",
+    ],
+  ])("names what is being lost: %j", (types, sentence) => {
+    expect(droppingConsequence(types)).toBe(sentence);
+  });
+
+  it("does not reuse the stopped-arriving consequence, which is FALSE here", () => {
+    // Review's escalated card exists to state the cost, and its generic sentence says
+    // new data has stopped arriving. Data is arriving; being discarded is the state.
+    expect(droppingConsequence(["steps"])).not.toContain("stopped arriving");
+    expect(failureConsequence("Google Health Connect")).toContain(
+      "stopped arriving"
+    );
   });
 });
 
