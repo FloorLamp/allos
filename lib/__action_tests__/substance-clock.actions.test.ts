@@ -107,7 +107,10 @@ describe("a drink states a time (#3295 part 1)", () => {
   // The gate is `judgeStatedAt`, re-asked at the action because a Server Action is
   // independently POST-callable. A refusal costs the MINUTE, never the drink.
   it.each([
-    ["an instant on another day", (d: string) => `${shiftDateStr(d, -1)}T21:30:00Z`],
+    [
+      "an instant on another day",
+      (d: string) => `${shiftDateStr(d, -1)}T21:30:00Z`,
+    ],
     ["a far-future instant", () => "2099-01-01T21:30:00Z"],
     ["an unreadable instant", () => "not-an-instant"],
   ])("drops %s and still records the drink", async (_label, build) => {
@@ -116,7 +119,12 @@ describe("a drink states a time (#3295 part 1)", () => {
     expect(
       (
         await addSubstanceDailyTotalAction(
-          fd({ substance: "alcohol", date, amount: "1", stated_at: build(date) })
+          fd({
+            substance: "alcohol",
+            date,
+            amount: "1",
+            stated_at: build(date),
+          })
         )
       ).kind
     ).toBe("added");
@@ -249,7 +257,12 @@ describe("events and the day total stay consistent through a timed correction", 
     // pair the stated-time gate refuses to write anywhere else.
     const moved = shiftDateStr(date, 1);
     await updateSubstanceDailyTotalAction(
-      fd({ id: String(added.id), substance: "alcohol", date: moved, amount: "3" })
+      fd({
+        id: String(added.id),
+        substance: "alcohol",
+        date: moved,
+        amount: "3",
+      })
     );
     expect(taps(profile.id, date)).toEqual([]);
     expect(dayServings(profile.id, date)).toBe(0);

@@ -410,6 +410,17 @@ const WHEN_MOUNTS = new Map<string, WhenMount>([
     "components/stool/StoolForm.tsx",
     { kind: "field", why: "the dated door's own when (#4708)" },
   ],
+  [
+    "components/substances/SubstanceForm.tsx",
+    {
+      kind: "field",
+      why:
+        "the drink's day + drinking-time pair (#3295 phase 1), and the food form's " +
+        "sibling for the same reason: nothing is collapsed, the control IS the " +
+        "form's date field. The ADD door only, and only for the food-log ledger — " +
+        "every other substance rides a day counter with nowhere to put an instant",
+    },
+  ],
 ]);
 
 /**
