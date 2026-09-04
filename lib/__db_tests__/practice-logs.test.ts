@@ -17,7 +17,7 @@ import {
   logFinishedPracticeSession,
   startLivePracticeSession,
   endLivePracticeSession,
-  closeAbandonedPracticeSessions,
+  settleLivePracticeSessions,
   getPracticeUsualDuration,
   inferPracticeSchedule,
   getPracticeDayCount,
@@ -702,7 +702,7 @@ describe("live practice sessions (#3143)", () => {
     const started = startLivePracticeSession(pid, "Meditation", "page");
     expect(started.kind).toBe("started");
     vi.setSystemTime(new Date("2026-09-01T00:05:00Z"));
-    expect(closeAbandonedPracticeSessions(pid)).toBe(1);
+    expect(settleLivePracticeSessions(pid)).toBe(1);
     const [row] = getPracticeSessions(pid, "Meditation");
     expect(row).toMatchObject({
       date: "2026-08-31",
@@ -786,7 +786,7 @@ describe("live practice sessions (#3143)", () => {
     expect(started).toMatchObject({ kind: "started", date: "2026-09-01" });
 
     setTimezone(pid, "Pacific/Honolulu"); // Aug 31 at UTC-10
-    expect(closeAbandonedPracticeSessions(pid)).toBe(1);
+    expect(settleLivePracticeSessions(pid)).toBe(1);
     expect(getPracticeSessions(pid, "Sauna")[0]).toMatchObject({
       date: "2026-09-01",
       live: 0,
@@ -969,7 +969,7 @@ describe("a live session survives the edges of its own day", () => {
     vi.setSystemTime(new Date("2026-09-01T00:10:00Z"));
     // The sweep every page gather runs FIRST must spare it: twenty minutes old is a
     // session, whatever day label it carries.
-    expect(closeAbandonedPracticeSessions(pid)).toBe(0);
+    expect(settleLivePracticeSessions(pid)).toBe(0);
     const asOf = "2026-09-01";
     // Both surfaces render the End button from `liveSession`. A row that answers
     // `ended` but shows no End button is a lifecycle nobody can finish.

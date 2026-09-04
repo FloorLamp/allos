@@ -67,7 +67,7 @@ import {
   getSymptomNotesOnDate,
   getSymptomSeveritiesOnDate,
 } from "@/lib/queries/symptoms";
-import { closeAbandonedPracticeSessions } from "@/lib/practice-log";
+import { settleLivePracticeSessions } from "@/lib/practice-log";
 import { isAnxietyScaleRelevant } from "@/lib/queries/mood-anxiety";
 
 // The quick-entry overlay's DATA half (issue #1468).
@@ -369,7 +369,7 @@ export async function loadQuickEntry(
   }
 
   if (form === "practice") {
-    closeAbandonedPracticeSessions(profile.id);
+    settleLivePracticeSessions(profile.id);
     // The tracked-practice list (a practice-scope frequency target IS the user's
     // declaration that they mean to keep doing it).
     //

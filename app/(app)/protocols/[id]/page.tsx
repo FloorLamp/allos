@@ -32,7 +32,7 @@ import {
   protocolPracticeNoun,
 } from "@/lib/protocol-practice";
 import { protocolRelevantPanels } from "@/lib/protocol-outcome-picker";
-import { closeAbandonedPracticeSessions } from "@/lib/practice-log";
+import { settleLivePracticeSessions } from "@/lib/practice-log";
 import PracticeCardHeader from "@/components/practices/PracticeCardHeader";
 import PracticeHistorySection from "@/components/practices/PracticeHistorySection";
 import PracticeWeeklyProgress from "@/components/practices/PracticeWeeklyProgress";
@@ -78,7 +78,7 @@ export default async function ProtocolDetailPage(props: {
 
   const units = getUnitPrefs(login.id);
   const todayStr = today(profile.id);
-  closeAbandonedPracticeSessions(profile.id);
+  settleLivePracticeSessions(profile.id);
   const { comparison, options } = getProtocolOutcomePickerData(
     profile.id,
     protocol,

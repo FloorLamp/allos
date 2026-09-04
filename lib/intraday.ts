@@ -400,7 +400,22 @@ export function buildIntradayModel(input: IntradayInput): IntradayModel {
     const win = event.clockWindow;
     if (!win) continue;
     const liveStart = win.live ? clockMinute(win.start_time) : null;
+    // A LIVE ROW WITH A KNOWN DURATION IS ALREADY OVER (#5091). Its end is the start
+    // plus that duration, reached by the clock — the SAME bound
+    // `settleLivePracticeSessions` settles the row on, read here so the chart and the
+    // store cannot disagree about one row. Without it the running branch below
+    // outranks the derived window and draws to the current minute: the owner's
+    // fifteen-minute red light session, four hours wide and growing on every load.
+    // Past the bound the row stops running and falls through to the derived window,
+    // which draws exactly start → start + duration.
+    const completed =
+      win.live === true &&
+      win.derived_duration === true &&
+      win.duration_min != null &&
+      win.elapsed_min != null &&
+      win.elapsed_min >= win.duration_min;
     const running =
+      !completed &&
       liveStart != null &&
       input.nowMinute != null &&
       (win.elapsed_min != null || input.nowMinute >= liveStart);

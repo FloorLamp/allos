@@ -20,7 +20,7 @@ import DayHistory from "@/components/DayHistory";
 import PracticeBackfillLauncher from "@/components/practices/PracticeBackfillLauncher";
 import { daysBetweenDateStr, isRealIsoDate, shiftDateStr } from "@/lib/date";
 import {
-  closeAbandonedPracticeSessions,
+  settleLivePracticeSessions,
   PRACTICE_LOG_DATE_WINDOW_DAYS,
 } from "@/lib/practice-log";
 import { historyHref } from "@/lib/hrefs";
@@ -33,7 +33,7 @@ export default async function WellnessPage(props: {
   const searchParams = await props.searchParams;
   const { login, profile } = await requireSession();
   const todayStr = today(profile.id);
-  closeAbandonedPracticeSessions(profile.id);
+  settleLivePracticeSessions(profile.id);
   const weekStart = getWeekStart(profile.id);
   const formatPrefs = getDisplayFormatPrefs(login.id);
   const practices = getWellnessPractices(profile.id, todayStr, weekStart);

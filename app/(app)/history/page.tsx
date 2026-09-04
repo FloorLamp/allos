@@ -104,7 +104,7 @@ import {
   type HistoryRow,
 } from "@/lib/history-format";
 import { TIMELINE_EMPTY_ACTIONS } from "@/lib/timeline-format";
-import { closeAbandonedPracticeSessions } from "@/lib/practice-log";
+import { settleLivePracticeSessions } from "@/lib/practice-log";
 import { isTrainingRelevant } from "@/lib/life-stage";
 import { mergeMemberTimelines } from "@/lib/timeline-multi";
 import {
@@ -201,7 +201,7 @@ export default async function HistoryPage(props: {
   const scope = await requireScope();
   const { loginId, actingProfileId, viewIds } = scope;
   const todayStr = today(actingProfileId);
-  closeAbandonedPracticeSessions(actingProfileId);
+  settleLivePracticeSessions(actingProfileId);
   const prefs = getDisplayFormatPrefs(loginId);
 
   // A kind IMPLIES its family, so `?family=` only matters when no kind is named. Phase

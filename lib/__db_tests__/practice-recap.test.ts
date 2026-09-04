@@ -22,7 +22,7 @@ import {
 import { runPracticeRecaps } from "@/lib/notifications/practice-recap-dispatch";
 import { practiceRecapMarkerKey } from "@/lib/notifications/practice-recap";
 import {
-  closeAbandonedPracticeSessions,
+  settleLivePracticeSessions,
   endLivePracticeSession,
   startLivePracticeSession,
 } from "@/lib/practice-log";
@@ -384,7 +384,7 @@ describe("Start now stamps the practice's usual duration (owner ruling 2026-09-0
     // Seven hours on: past LIVE_PRACTICE_STALE_HOURS, so the sweep closes it without
     // inventing an end. The duration it was started with survives.
     vi.setSystemTime(new Date(NOW.getTime() + 7 * 60 * 60_000));
-    expect(closeAbandonedPracticeSessions(p)).toBe(1);
+    expect(settleLivePracticeSessions(p)).toBe(1);
     expect(getPracticeSession(p, liveId)).toMatchObject({
       duration_min: 20,
       end_time: null,

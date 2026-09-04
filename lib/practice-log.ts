@@ -357,34 +357,68 @@ function liveElapsedMin(
   return minutes;
 }
 
-// Close every unfinished lifecycle the bound above has given up on, without inventing
-// an end. The row keeps exactly what was observed — `live` cleared, no end, no
-// duration. Request gathers that render the offer state call this first; the
-// transition is idempotent.
-export function closeAbandonedPracticeSessions(profileId: number): number {
+// Settle every live lifecycle the CLOCK has finished with, in the two ways a row can be
+// finished without a tap: it reached its own derived end, or the bound above gave up on
+// it. An abandoned row keeps exactly what was observed — `live` cleared, no end, no
+// duration. Request gathers that render the offer state call this first; both
+// transitions are idempotent.
+//
+// THERE IS NO TIMER, and that is the design (#5091). Nothing fires at the completing
+// instant: the row becomes complete because a reader COMPUTES it from the row and the
+// clock, so the same row read before its derived end is live and read after it is
+// complete, with no write in between. Anything scheduled here would be a job runner,
+// which is a far larger thing than the question "is this session over yet".
+export function settleLivePracticeSessions(profileId: number): number {
   const tz = getTimezone(profileId);
   const at = now();
   return writeTx(() => {
     const rows = db
       .prepare(
-        `SELECT id, date, start_time FROM practice_logs
+        `SELECT id, date, start_time, duration_min, derived_window
+           FROM practice_logs
           WHERE profile_id = ? AND live = 1`
       )
       .all(profileId) as {
       id: number;
       date: string;
       start_time: string | null;
+      duration_min: number | null;
+      derived_window: number;
     }[];
-    let closed = 0;
+    let settled = 0;
     for (const row of rows) {
+      // A KNOWN DURATION IS AN END (#5091, the other half of #4897's stamp). A practice
+      // whose usual duration the profile has demonstrated does not owe a second tap:
+      // the end is the start plus that duration, `end_time` states it, and
+      // `derived_window` keeps saying the end is derived rather than observed (#4948).
+      //
+      // This OUTRANKS the abandonment bound below, and that is what retires the
+      // abandoned derived row: a fifteen-minute session first read seven hours later
+      // ended six and three quarter hours ago — it was never abandoned, only
+      // unwitnessed. A row with no known duration reaches neither branch and is
+      // unchanged: live until End or the bound.
+      const started = eventInstant("practice_logs", row, tz);
+      const derivedEnd =
+        started.known && row.derived_window === 1 && row.duration_min != null
+          ? new Date(Date.parse(started.at) + row.duration_min * 60_000)
+          : null;
+      if (derivedEnd != null && at.getTime() >= derivedEnd.getTime()) {
+        settled += db
+          .prepare(
+            `UPDATE practice_logs SET live = 0, end_time = ?
+              WHERE id = ? AND profile_id = ?`
+          )
+          .run(zonedDateParts(tz, derivedEnd).hhmm, row.id, profileId).changes;
+        continue;
+      }
       if (liveElapsedMin(tz, row, at) != null) continue;
-      closed += db
+      settled += db
         .prepare(
           `UPDATE practice_logs SET live = 0 WHERE id = ? AND profile_id = ?`
         )
         .run(row.id, profileId).changes;
     }
-    return closed;
+    return settled;
   });
 }
 
@@ -417,7 +451,7 @@ export function startLivePracticeSession(
   return writeTx(() => {
     const localStart = zonedDateParts(getTimezone(profileId), now());
     const date = localStart.date;
-    closeAbandonedPracticeSessions(profileId);
+    settleLivePracticeSessions(profileId);
     const existing = openPracticeSession(profileId, name);
     if (existing) return { kind: "already-live" as const, session: existing };
     // START NOW STAMPS THE PRACTICE'S USUAL DURATION (#4775, owner ruling
@@ -477,15 +511,15 @@ export function endLivePracticeSession(
   return writeTx(() => {
     const endedAt = now();
     const tz = getTimezone(profileId);
+    // THE CLOCK HAS THE FIRST SAY (#5091). A row whose derived end has passed is
+    // already complete and a row past the plausibility bound is already abandoned, so
+    // settling first is what stops a tap that arrives afterwards from writing a
+    // four-hour observed end onto a fifteen-minute session.
+    settleLivePracticeSessions(profileId);
     const current = getPracticeSession(profileId, id);
     if (!current || current.live !== 1) return { kind: "not-live" as const };
     const elapsed = liveElapsedMin(tz, current, endedAt);
-    if (elapsed == null) {
-      // Abandoned by the rule the sweep applies, so a stale End tap closes the row
-      // rather than leaving it open for the next gather to find.
-      closeAbandonedPracticeSessions(profileId);
-      return { kind: "not-live" as const };
-    }
+    if (elapsed == null) return { kind: "not-live" as const };
     const updated = updatePracticeSession(profileId, id, {
       date: current.date,
       startTime: current.start_time,
