@@ -1,20 +1,44 @@
 # Substances
 
+## Consumables share one event model and one correction shape
+
+**Owner ruling, 2026-09-04.** Substances are consumables, like food and intake, and
+behave the same way. A drink, a cigarette or a joint is an **event with an instant**,
+exactly as a food serving or a dose is. The daily total is a **rollup** — the cap's
+substrate and the card's count — and never the editable thing.
+
+Two consequences, and they are the doctrine rather than a rendering preference:
+
+- **One record row per event.** A day with drinks at 21:00 and 23:00 is two rows and
+  two chart ticks, not one row saying "2 standard drinks". The count derives from the
+  events.
+- **One correction shape.** A substance event is corrected where a food serving is
+  corrected — re-time, re-file, delete, on the event itself — never through a
+  day-count form.
+
+**Phase 1 (#3295) applies it to alcohol, which already had the ledger for it.** Alcohol
+lives in `food_log_events`, so its events existed and only the record was hiding them:
+the add door now mounts `WhenControl` for the food-log ledger, the statement lands on
+each serving event as `occurred_at` / `time_source = 'stated'` through the food ledger's
+own log core, and `/history` composes one `substance` row per drink carrying the FOOD
+edit payload. It stays a `substance` row — the life-stage gate and "the act in the
+person's own terms" are the record's reasons for that and neither is amended;
+`edit.kind` names the correction door, `kind` names what the thing is.
+
+**Phase 2 (#3295) owes the same model to nicotine, cannabis and custom substances**:
+per-event rows with `occurred_at` and `time_source`, with `substance_daily_totals` kept
+as a derived rollup. Until it lands they are day rows, date-only, corrected through the
+day-count form — `substance_daily_totals` is UNIQUE per (profile, date, substance) and
+declares no event column, so there is nowhere to put an instant. The trap to know is
+that the table DOES carry `recorded_at`, so `bestKnownInstant` answers with a filing
+stamp; the read must ask for the EVENT instant and take null for an answer.
+
 The cross-domain Timeline browses alcohol, nicotine, cannabis, and custom
-substances as one per-day `substance` rollup. Alcohol is counted from its shared
-food serving events; the other substances are counted from their current daily
-totals. This is browse-only. #3295 phase 1 gave ALCOHOL a stated minute on the web: the
-substance add door mounts `WhenControl` for the food-log ledger only, the statement
-lands on each serving event as `occurred_at` / `time_source = 'stated'` through the food
-ledger's own log core, and the record's `substance` row reports it as a clock and a day
-chart tick. Every other substance stays day-only until the event ledger lands, because
-`substance_daily_totals` has nowhere to put an instant. #3295 phase 2 owns the later
-event-row schema and writers,
-and its rows must land on the app's one record — the `substance` kind in
-`lib/history.ts`, recorded in `docs/internals/history.md` — rather than creating a
-substance shell beside it. The shared event-ledger frame that sentence used to name is
-gone: #3958 folded the four ledger routes into `/history`, and the substance record's
-first door opens onto it.
+substances as one per-day `substance` rollup, and that is browse-only. Substance rows
+land on the app's one record — the `substance` kind in `lib/history.ts`, recorded in
+`docs/internals/history.md` — rather than creating a substance shell beside it. The
+shared event-ledger frame that sentence used to name is gone: #3958 folded the four
+ledger routes into `/history`, and the substance record's first door opens onto it.
 
 Status: vocabulary shipped (#3279); the surfaces that consume it are in flight
 
@@ -42,7 +66,7 @@ unknowns, and nothing more.
 | **curated key**          | One of the app's authored substances (`alcohol`, `nicotine`, `cannabis`). A closed set that may grow modestly where good defaults exist. `Substance` / `isCuratedSubstance()`.   |
 | **custom key**           | A profile's own substance, stored as its normalized name. Not registered anywhere before use. `isCustomSubstanceKey()`.                                                          |
 | **unit**                 | One countable use: a standard drink, a cigarette, a session. Custom substances always count in generic uses.                                                                     |
-| **episodic consumption** | Countable uses aggregated to one per-day total. What a substance key names.                                                                                                      |
+| **episodic consumption** | Countable uses, each an event with an instant, rolled up to a per-day total. What a substance key names. Alcohol has the events today; phase 2 owes them to the rest.            |
 | **dosed regimen**        | A named substance taken at an amount on a cadence. **Not a substance key** — see the boundary below.                                                                             |
 | **reduction cap**        | An opt-in weekly ceiling on units. A `frequency_targets` row with `scope_kind = 'substance'`.                                                                                    |
 | **screener**             | An opt-in screening instrument administered or entered on the substance page.                                                                                                    |
@@ -122,7 +146,8 @@ Two shapes, two existing stores, no third engine.
 
 - **Episodic consumption** — sessions, drinks, uses — is a substance key on the substance
   ledger. Alcohol on `food_daily_totals`/`food_log_events`, everything else on
-  `substance_daily_totals`.
+  `substance_daily_totals`. Each use is an EVENT (see the doctrine at the top); the
+  daily total is the rollup over them.
 - **A dosed regimen** — 10 µg every 3 days — is an **intake item**: free-text name,
   µg-capable amount, interval cadence, situational holds, linked to a protocol through the
   shipped intake-linked N-of-1 tally (#3144), with outcome metrics like any protocol. This

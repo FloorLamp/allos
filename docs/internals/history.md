@@ -81,42 +81,74 @@ record reads both stores, so before the ruling of 2026-08-29 one drink appeared
 twice: a `food` row ("Alcohol · Evening") and a `substance` row ("Alcohol · 1
 standard drink"), and the day header counted **2 records** for one act.
 
-**Alcohol is a substance here, and the food kind excludes it**
-(`excludeSubstanceGroups` on `getFoodLedgerPage`). Three reasons, in the order that
-decides it:
+**Alcohol is a substance here, and the food kind excludes it** (`excludeAlcohol` on
+`getFoodLedgerPage` — named for what it drops, since that clause has only ever
+dropped the one group). Three reasons, in the order that decides it:
 
 1. **The age gate.** The substance kind is gated on `isMinor`; the food kind is not,
    and correctly is not. Measured before the change: a known minor's `?kind=food`
    returned that drink as a row titled "Alcohol" while `?kind=substance` returned
    nothing — so the gate was decorative for exactly the rows it exists to cover.
-2. The record's day count is a count of things that **happened**, and one drink is
-   one thing.
+2. ~~The record's day count is a count of things that **happened**, and one drink is
+   one thing.~~ **Amended 2026-09-04 — see below.** The count is still a count of
+   things that happened; what changed is that the thing is the EVENT, so the count
+   is derived from the events rather than read off a day total.
 3. The substance row describes the act in the person's own terms.
 
-**Two consequences follow from the ruling and are decided, not accidents.** A day's
-drinks are one editable **day count**, so a single mistyped drink can no longer be
-corrected or deleted on its own from the record; that correction lives on the substance
-surface, which owns the counter. And a drink stated no time at all, so the row rendered
-**date-only** and sank to the bottom of its day.
+## A consumable is an event (owner ruling, 2026-09-04)
 
-**The second consequence is now conditional (#3295 phase 1).** The substance add door
-offers alcohol the shared `WhenControl`, so a drink CAN state its minute — stored on the
-serving event as `occurred_at` with `time_source = 'stated'`, which is the column
-`food_daily_totals` never had. `SubstanceDailyTotal.statedAt` is the day's **earliest**
-such statement, read through the declared `food_log_events` event column, and the row
-takes a stated clock from it and — as category `substance`, at that minute — a tick on
-the day chart's rail. A day nobody stated a time for still renders date-only and sinks,
-and so does every nicotine, cannabis and custom row for ever: `substance_daily_totals`
-is UNIQUE per (profile, date, substance) and declares no event column. That last part is
-the trap — `bestKnownInstant` on that table answers with `recorded_at`, the FILING stamp,
-which would put a use on the chart at the hour somebody typed it. The read asks for the
-EVENT instant and takes null for an answer.
+**Substances are consumables, like food and intake, and behave the same way.** A
+drink, a cigarette or a joint is an EVENT with an instant, exactly as a food serving
+or a dose is; the day total is a **rollup**, not the editable thing.
+
+This **amends** the 2026-08-29 consequence that a day's drinks are one editable **day
+count**. They are not. One record row per event:
+
+- **One row per drink**, read through `getFoodLedgerPage` — the food gather's own
+  reader, asked for the one group the food gather excludes, so there is no second
+  query shape and no second idea of what a serving row is. A day with drinks at 21:00
+  and 23:00 shows **two rows and two ticks**.
+- **Corrected where a serving is corrected.** The row carries the FOOD edit payload
+  addressed to its own event, so `HistoryRows` mounts `FoodServingForm` and the ⋯
+  delete runs `removeFoodServing` — re-time, re-file, delete. `correctionGroups`
+  already keeps a row that is IN a substance group able to name its own group, so
+  that plumbing was built for this and needed nothing.
+- **It stays a `substance` row.** Reasons 1 and 3 above are NOT amended, so the drink
+  keeps the substance kind, its chip, its glyph and its life-stage gate. `edit.kind`
+  is the correction _door_; `kind` is what the thing _is_. The ruling asks for exactly
+  that split, and it is why a drink files under Substances while correcting like food.
+- **The day total does not disappear** — `food_daily_totals` is still the cap's
+  substrate and still what the substance card counts. It is simply no longer what the
+  record renders.
+
+**The row's clock and the rail's minute are different questions**, and this file's
+practice loop had already ruled on it. The ROW reads `bestKnownInstant`, so an untimed
+drink says "logged 23:50" exactly as the serving row beside it does — the `logged`
+prefix is the grammar admitting the clock is a filing time. The CHART reads the EVENT
+instant only: a drink backfilled at 23:50 for last Tuesday would otherwise draw on
+Tuesday's rail at a minute that describes the typing and nothing else, which is the
+whole argument `EXCLUDED_TICK_CATEGORIES` makes about an insight's `created_at`. A
+drink with no event instant draws nothing.
+
+**Nicotine, cannabis and custom substances are still day rows**, date-only, sinking
+below the day's timed rows, corrected through the day-count form. Their ledger is
+`substance_daily_totals` — UNIQUE per (profile, date, substance) and declaring no event
+column — so there is nowhere to put an instant. That is the trap to know:
+`bestKnownInstant` on that table answers with `recorded_at`, the FILING stamp, which
+would hand them a minute they never claimed. **#3295 phase 2** gives them per-event
+rows on this same model and that branch goes with it.
+
+**A drink can state its minute (#3295 phase 1).** The substance add door offers alcohol
+the shared `WhenControl` (`grain="minute"`), gated by `judgeStatedAt` at the action —
+not future, and on the entry's own day — and the statement rides every unit of the
+entry as `occurred_at` with `time_source = 'stated'`. Nothing invents one: a drink
+nobody timed keeps a NULL instant.
 
 **The drink does not disappear, and the totals do not move.** The food door writes
-the `food_daily_totals` counter as well as the event, and the substance read is over
-that counter — so a serving logged from Nutrition still reaches the record, once,
-under Substances. What changes for a reader is where they find it. Food _totals_ and
-the nutrition arithmetic are untouched: this is the record's row set.
+the `food_daily_totals` counter as well as the event, and both the cap and the
+substance card read that counter — so a serving logged from Nutrition still reaches
+the record, once, under Substances. What changes for a reader is where they find it.
+Food _totals_ and the nutrition arithmetic are untouched: this is the record's row set.
 
 ## The read
 

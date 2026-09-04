@@ -1,13 +1,18 @@
 // A DRINK ON THE CLOCK (#3295 phase 1, parts 1 and 2), end to end: the form's stated
 // minute through the action's gate, onto every unit of the entry as `occurred_at`, back
-// out through the record's substance row, and onto the day chart as a `substance` tick.
+// out through the record as ONE ROW PER DRINK, and onto the day chart as one
+// `substance` tick per drink.
 //
-// THE NEGATIVE CASE IS THE POINT OF THIS FILE. `substance_daily_totals` is UNIQUE per
-// (profile, date, substance) and declares no event column, so nicotine, cannabis and
-// custom substances have no minute to claim — but they DO carry `recorded_at`, which is
-// what `bestKnownInstant` would answer with. A permissive read there prints a FILING
-// stamp as a use time and puts a tick on the chart at the hour somebody typed, which
-// nothing on screen would contradict. Every assertion below has that arm.
+// A CONSUMABLE IS AN EVENT (owner ruling, 2026-09-04): the day total is a rollup, not
+// the editable thing, so two drinks at two hours are two rows and two ticks, and each
+// corrects through the food serving's own form.
+//
+// THE DAY-ONLY ARM IS THE POINT OF THE NEGATIVE CASES. `substance_daily_totals` is
+// UNIQUE per (profile, date, substance) and declares no event column, so nicotine,
+// cannabis and custom substances have no minute to claim — but they DO carry
+// `recorded_at`, which is what `bestKnownInstant` would answer with. A permissive read
+// there prints a FILING stamp as a use time and puts a tick on the chart at the hour
+// somebody typed, which nothing on screen would contradict.
 
 import { describe, expect, it } from "vitest";
 import { db, today } from "@/lib/db";
@@ -153,52 +158,119 @@ describe("a drink states a time (#3295 part 1)", () => {
       expect(getSubstanceDailyTotals(profile.id, substance)[0]).toMatchObject({
         date,
         amount: 2,
-        statedAt: null,
       });
       const { rows, ticks } = dayView(login.id, profile.id, date);
       const row = rows.find((r) => r.kind === "substance");
-      // `recorded_at` IS populated on that row — the read must not reach for it.
-      expect(row?.clock).toBeNull();
+      // ONE DAY ROW, DATE-ONLY, AND ITS CORRECTION IS STILL THE DAY-COUNT FORM: these
+      // ledgers have no events until phase 2. `recorded_at` IS populated on the row —
+      // the read must not reach for it.
+      expect(row).toMatchObject({ clock: null, sortTime: null });
+      expect(row?.edit).toMatchObject({ kind: "substance", amount: 2 });
       expect(ticks).toEqual([]);
     }
   );
 });
 
 describe("the record reports the drink's instant (#3295 part 2)", () => {
-  it("gives a timed drink a stated clock and a substance tick at that minute", async () => {
+  it("gives each timed drink its own row, its own clock and its own substance tick", async () => {
     const { login, profile } = seat("clock-read");
     const date = shiftDateStr(today(profile.id), -1);
+    // TWO ENTRIES AT TWO HOURS — the ruling's own example. The second is two units, so
+    // the day holds three drinks and the rows are not merely one per submission.
+    await addSubstanceDailyTotalAction(
+      fd({
+        substance: "alcohol",
+        date,
+        amount: "1",
+        stated_at: `${date}T21:00:00Z`,
+      })
+    );
     await addSubstanceDailyTotalAction(
       fd({
         substance: "alcohol",
         date,
         amount: "2",
-        stated_at: `${date}T21:30:00Z`,
+        stated_at: `${date}T23:00:00Z`,
       })
     );
 
     const { rows, ticks } = dayView(login.id, profile.id, date);
-    const row = rows.find((r) => r.kind === "substance");
-    expect(row).toMatchObject({
-      id: expect.stringContaining("substance:alcohol:"),
-      // BARE, not "logged 21:30" — the grammar's whole distinction between a stated
-      // time and a filing stamp (this seat's login keeps the 24-hour default).
-      clock: "21:30",
-      clockKind: "stated",
-      sortTime: "21:30",
-    });
-
-    // ONE TICK, AT THE STATED MINUTE, AS A SUBSTANCE. The category is asserted rather
-    // than assumed: a drink re-routed through the food rows would arrive as `food` and
-    // read as a meal on the chart.
-    expect(ticks).toEqual([
-      expect.objectContaining({
-        category: "substance",
-        minute: 21 * 60 + 30,
-        label: "Alcohol",
-        eventId: row!.id,
-      }),
+    const drinks = rows.filter((r) => r.kind === "substance");
+    expect(drinks).toHaveLength(3);
+    // BARE, not "logged 21:00" — the grammar's whole distinction between a stated time
+    // and a filing stamp (this seat's login keeps the 24-hour default). The day total
+    // is gone from the record: each row states one drink, and the count derives.
+    expect(drinks.map((r) => [r.clock, r.clockKind, r.detail])).toEqual([
+      ["23:00", "stated", "1 standard drink"],
+      ["23:00", "stated", "1 standard drink"],
+      ["21:00", "stated", "1 standard drink"],
     ]);
+
+    // CORRECTED WHERE A SERVING IS CORRECTED (the ruling's question 1): the row carries
+    // the FOOD edit payload, addressed to its own event, so `HistoryRows` mounts
+    // `FoodServingForm` and the delete removes that one drink.
+    for (const drink of drinks) {
+      expect(drink.edit).toMatchObject({
+        kind: "food",
+        groupKey: "alcohol",
+        clockKind: "stated",
+      });
+      expect(drink.id).toBe(
+        `substance:alcohol:${(drink.edit as { eventId: number }).eventId}`
+      );
+    }
+
+    // TWO MINUTES, THREE MARKS, EVERY ONE A SUBSTANCE. The category is asserted rather
+    // than assumed: a drink arriving as `food` would read as a meal on the chart, and
+    // the row and the tick must answer "what is this" the same way.
+    expect(ticks.map((t) => [t.category, t.minute])).toEqual([
+      ["substance", 21 * 60],
+      ["substance", 23 * 60],
+      ["substance", 23 * 60],
+    ]);
+    // Every mark anchors on a row the list below actually shows.
+    const ids = new Set(drinks.map((r) => r.id));
+    for (const tick of ticks) expect(ids.has(tick.eventId)).toBe(true);
+
+    // ONE ACT, ONE ROW — still. The record reads the alcohol events through the same
+    // reader the food gather uses, so dropping the food gather's own exclusion would
+    // put every drink on the day TWICE, as a `food` row and again as a `substance`
+    // one: the 2026-08-29 defect, which the event ruling did not reopen. Ticks alone
+    // cannot see it — food rows contribute none — so the row set is asserted.
+    expect(rows.filter((r) => r.kind === "food")).toEqual([]);
+  });
+
+  // THE AGE GATE IS WHY A DRINK IS STILL A SUBSTANCE ROW, and it is the reason the
+  // 2026-09-04 ruling did NOT amend. Filing drinks under the food kind — the other
+  // reading of "the exclusion goes" — would hand a known minor's record its own
+  // "Alcohol" rows, because food is gated nowhere.
+  //
+  // WHAT THIS ADDS over the shipped row guard (history-gather.test.ts, "was reachable
+  // past the substance age gate through the food kind"): the CHART. That guard asks
+  // for no day, so it holds no `dayEvents` and could not have seen a mark cross the
+  // gate — and a mark is new here.
+  it("shows a known minor no drink row and no drink mark", async () => {
+    const { login, profile } = seat("clock-minor");
+    const date = shiftDateStr(today(profile.id), -1);
+    await addSubstanceDailyTotalAction(
+      fd({
+        substance: "alcohol",
+        date,
+        amount: "1",
+        stated_at: `${date}T21:00:00Z`,
+      })
+    );
+    // The drink is on the ledger for an adult…
+    expect(dayView(login.id, profile.id, date).rows).not.toEqual([]);
+    // …and the same profile, now a known minor, sees neither the row nor the mark.
+    setProfileSetting(
+      profile.id,
+      "birthdate",
+      `${new Date().getUTCFullYear() - 12}-04-02`
+    );
+    const { rows, ticks } = dayView(login.id, profile.id, date);
+    expect(rows.filter((r) => /alcohol/i.test(r.title))).toEqual([]);
+    expect(ticks).toEqual([]);
   });
 
   // THE ONE VISIBILITY PREDICATE, in the direction that can break: a drink the
@@ -236,17 +308,21 @@ describe("the record reports the drink's instant (#3295 part 2)", () => {
     ).toEqual([]);
   });
 
-  it("keeps the day row date-only when nobody stated a time", async () => {
+  it("renders an untimed drink as a row that admits its clock is a filing time, and marks nothing", async () => {
     const { login, profile } = seat("clock-untimed");
     const date = shiftDateStr(today(profile.id), -1);
     await addSubstanceDailyTotalAction(
       fd({ substance: "alcohol", date, amount: "1" })
     );
     const { rows, ticks } = dayView(login.id, profile.id, date);
-    expect(rows.find((r) => r.kind === "substance")).toMatchObject({
-      clock: null,
-      sortTime: null,
-    });
+    const drink = rows.find((r) => r.kind === "substance");
+    // It is STILL an event row — a drink nobody timed is a drink — and it reads like
+    // the serving row beside it: the record chain's minute, prefixed `logged`.
+    expect(drink?.clockKind).toBe("logged");
+    expect(drink?.clock).toMatch(/^logged /);
+    // BUT IT DRAWS NOTHING. A backfill's `recorded_at` is the minute somebody typed,
+    // on whatever day they typed it; the rail is a map of the person's day, so the
+    // mark reads the event instant only. This is the practice loop's own rule.
     expect(ticks).toEqual([]);
   });
 });
