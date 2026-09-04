@@ -29,6 +29,7 @@ import {
   logFoodServingCore,
   updateFoodLogEventCore,
 } from "./food-log-write";
+import type { FoodPlacement } from "./food-log-write";
 import {
   ALCOHOL_FOOD_GROUP,
   MAX_SUBSTANCE_ENTRY_AMOUNT,
@@ -76,20 +77,47 @@ function alcoholTapIds(profileId: number, date: string): number[] {
 // One tap per unit, through the food ledger's own log core — so a drink filed here is
 // the same row a drink tapped on the bar is: counter bumped, event appended,
 // provenance stamped, and no eating instant invented for a day nobody stated one for.
+//
+// A STATED MINUTE RIDES ON EVERY UNIT OF THE ENTRY (#3295 phase 1). The form collects
+// one time for one submission — "two drinks at nine" — so each tap the submission
+// creates carries that same statement, as `occurred_at` with `time_source = 'stated'`.
+// `statedAt` null is the third answer and the commonest: nobody said, and the placement
+// is omitted so the row keeps a NULL instant rather than inheriting the tap stamp.
 function appendAlcoholTaps(
   profileId: number,
   date: string,
   count: number,
-  loggedVia: LoggedVia
+  loggedVia: LoggedVia,
+  statedAt: string | null = null
 ): void {
+  const placement: FoodPlacement | undefined = statedAt
+    ? { eatenAt: statedAt, source: "stated" }
+    : undefined;
   for (let index = 0; index < count; index += 1)
-    logFoodServingCore(profileId, ALCOHOL_FOOD_GROUP, date, loggedVia);
+    logFoodServingCore(
+      profileId,
+      ALCOHOL_FOOD_GROUP,
+      date,
+      loggedVia,
+      undefined,
+      placement
+    );
 }
 
 export function addSubstanceDailyTotalCore(
   profileId: number,
   substanceInput: string,
-  input: { date: string; amount: number; notes?: string | null },
+  input: {
+    date: string;
+    amount: number;
+    notes?: string | null;
+    // THE STATED DRINKING INSTANT (#3295 phase 1), already gated by the caller (an
+    // instant on `date`, not in the future — `judgeStatedAt`). Read by the food-log
+    // arm only, because it is the only substance ledger with a column to hold one:
+    // `substance_daily_totals` is UNIQUE per (profile, date, substance) and has no
+    // instant to state, so the surface offers no time there and nothing is dropped.
+    statedAt?: string | null;
+  },
   // Which surface filed this entry (#3087). Alcohol rides `food_log_events`, so its
   // per-unit rows carry provenance exactly as a serving tap does.
   loggedVia: LoggedVia
@@ -109,7 +137,13 @@ export function addSubstanceDailyTotalCore(
   // is where a day's note is restated or cleared.
   return writeTx(() => {
     if (substanceDef(substance).ledger === "food-log") {
-      appendAlcoholTaps(profileId, input.date, input.amount, loggedVia);
+      appendAlcoholTaps(
+        profileId,
+        input.date,
+        input.amount,
+        loggedVia,
+        input.statedAt ?? null
+      );
       const day = db
         .prepare(
           `UPDATE food_daily_totals SET notes = COALESCE(?, notes)

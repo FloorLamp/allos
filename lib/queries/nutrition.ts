@@ -382,18 +382,31 @@ export function getFoodLedgerPage(
     untilDate?: string | null;
     groupKey?: string;
     /**
-     * Drop the servings that are SUBSTANCES — today, alcohol (#860/#944 put a
-     * standard drink on this store because a drink IS one serving of the curated
-     * `alcohol` group, which is a STORAGE decision and not a claim that a drink is
-     * a meal). Off by default: this reader answers "what servings are on the food
-     * log", and a drink is one. `/history` turns it on because the record asks a
-     * different question — see the food composer in lib/history.ts.
+     * Drop the DRINKS (#860/#944 put a standard drink on this store because a drink
+     * IS one serving of the curated `alcohol` group, which is a STORAGE decision and
+     * not a claim that a drink is a meal). Off by default: this reader answers "what
+     * servings are on the food log", and a drink is one.
+     *
+     * NAMED FOR WHAT IT DROPS (#3295). It was `excludeSubstanceGroups`, which reads
+     * as a rule about substances in general and is a promise this clause cannot
+     * keep: it pushes exactly one argument, `ALCOHOL_FOOD_GROUP`, and alcohol is the
+     * only substance that can ever be here — `substanceDef(key).ledger` is `food-log`
+     * for alcohol and `substance-log` for nicotine, cannabis and every custom key,
+     * and neither `nicotine` nor `cannabis` is a food group at all. Phase 2 gives the
+     * others their own event ledger; it does not widen this one, and the name should
+     * not have implied that it would.
+     *
+     * `/history` turns it on so a drink is filed ONCE. The record reads this same
+     * function again for the alcohol group alone and composes those rows under the
+     * `substance` kind (see the drinks composer in lib/history.ts), because the age
+     * gate and the person's own terms both belong to that kind — so without this
+     * clause the same drink would be two rows.
      *
      * IN SQL AND NOT AT THE CALL SITE, because `total` is what "Load more" reads:
      * filtering the returned rows in memory would leave the count claiming rows the
      * bound had already dropped.
      */
-    excludeSubstanceGroups?: boolean;
+    excludeAlcohol?: boolean;
   },
   page: number,
   pageSize: number
@@ -401,11 +414,11 @@ export function getFoodLedgerPage(
   const requestedPage = Math.max(1, Math.floor(page));
   const boundedSize = Math.max(1, Math.floor(pageSize));
   const where = ["date >= ?", "substr(group_key, 1, 2) != '__'"];
-  if (options.excludeSubstanceGroups) {
+  if (options.excludeAlcohol) {
     where.push("group_key != ?");
   }
   const args: Array<string | number> = [profileId, from];
-  if (options.excludeSubstanceGroups) args.push(ALCOHOL_FOOD_GROUP);
+  if (options.excludeAlcohol) args.push(ALCOHOL_FOOD_GROUP);
   if (options.untilDate) {
     where.push("date <= ?");
     args.push(options.untilDate);

@@ -33,7 +33,7 @@ import {
   getTimezone,
   getUnitPrefs,
 } from "./settings";
-import { bestKnownInstant, recordInstant } from "./row-instants";
+import { bestKnownInstant, eventInstant, recordInstant } from "./row-instants";
 import { now } from "./clock";
 import { getIntakeDoseLedgerPage } from "./queries";
 import { getFoodLedgerPage } from "./queries/nutrition";
@@ -43,6 +43,7 @@ import { getBodyMetricsOnDate, getBodyMetricsPage } from "./queries/metrics";
 import { bodyMetricMeasures } from "./body-metric-measures";
 import { foodGroupBySlug } from "./food-groups";
 import { foodEventWindow } from "./food-slot-count";
+import type { FoodSlotBoundaries } from "./food-slot";
 import { profileFoodSlotBoundaries } from "./profile-food-slot";
 import { normalizePracticeName } from "./practice";
 import { formatMinutes } from "./duration";
@@ -334,6 +335,12 @@ export function gatherHistoryLog(
   const rows: HistoryRow[] = [];
   const dayEvents: TimelineEvent[] = [];
   let truncated = false;
+  // The SUBJECT's meal-bucket boundaries, read at most once. Two composers need them —
+  // the servings and the drinks, which are the same ledger asked two ways — and a
+  // reader that wants neither must not pay for the read.
+  let boundariesMemo: FoodSlotBoundaries | null = null;
+  const slotBoundaries = (): FoodSlotBoundaries =>
+    (boundariesMemo ??= profileFoodSlotBoundaries(profileId));
 
   // ── DOSES ────────────────────────────────────────────────────────────────
   // The cross-item dose ledger's own reader (#2445), asked for one page the size of
@@ -414,16 +421,21 @@ export function gatherHistoryLog(
   //      titled "Alcohol" while `?kind=substance` correctly returned nothing. The
   //      gate was decorative for exactly the rows it exists to cover.
   //   2. The record's day count is a count of things that HAPPENED, and one drink is
-  //      one thing.
+  //      one thing. AMENDED 2026-09-04 (see the substances block below): the thing is
+  //      the EVENT, so the count is derived from the events rather than read off a day
+  //      total. The reason still decides where a drink is FILED, which is all it is
+  //      doing here; what it no longer decides is that the day is one row.
   //   3. The substance row describes the act in the person's own terms ("1 standard
   //      drink") rather than as a serving of a food group.
   //
   // THE DRINK DOES NOT DISAPPEAR, and that was checked rather than reasoned: the
   // food door writes the `food_daily_totals` counter as well as the event
-  // (lib/food-log-write.ts keeps them as one fact in two shapes), and
-  // `getAllSubstanceDailyTotals` reads that counter — so a serving logged through
-  // Nutrition still reaches the record, once, as a substance. Food TOTALS are
-  // untouched: this is the record's row set, not the nutrition arithmetic.
+  // (lib/food-log-write.ts keeps them as one fact in two shapes). Since 2026-09-04 the
+  // substances block reads the EVENT it wrote rather than the counter beside it, so a
+  // serving logged through Nutrition still reaches the record, once, as a substance —
+  // and now as the row for that one serving. Food TOTALS are untouched: this is the
+  // record's row set, not the nutrition arithmetic, and the counter is still the cap's
+  // substrate and the substance card's count.
   //
   // …EXCEPT FOR A KNOWN MINOR, WHERE IT DISAPPEARS — AN OPEN OWNER QUESTION (#4072).
   // The substance gate below does not run for one, and this exclusion is unconditional,
@@ -438,14 +450,13 @@ export function gatherHistoryLog(
   // it would then refuse to write.
   const substanceShown = !isMinor(getProfileAge(profileId));
   if (wants(opts, "food")) {
-    const boundaries = profileFoodSlotBoundaries(profileId);
     const ledger = getFoodLedgerPage(
       profileId,
       since,
       {
         untilDate: until,
         groupKey: item,
-        excludeSubstanceGroups: true,
+        excludeAlcohol: true,
       },
       1,
       limit
@@ -472,7 +483,7 @@ export function gatherHistoryLog(
           foodEventWindow(
             row.recorded_at,
             tz,
-            boundaries,
+            slotBoundaries(),
             row.meal_slot,
             row.occurred_at
           ),
@@ -485,13 +496,13 @@ export function gatherHistoryLog(
           mealSlot: foodEventWindow(
             row.recorded_at,
             tz,
-            boundaries,
+            slotBoundaries(),
             row.meal_slot,
             row.occurred_at
           ),
           clock: hhmm,
           clockKind: stated ? "stated" : "logged",
-          slotBoundaries: boundaries,
+          slotBoundaries: slotBoundaries(),
           substanceCorrectable: substanceShown,
         },
       });
@@ -637,9 +648,134 @@ export function gatherHistoryLog(
   // minor would be widening exposure past what that profile's own pages show. Asked of
   // the SUBJECT's age, so `?view=everyone` inherits the gate per member — and it is the
   // same `substanceShown` the food correction's offer reads (#4072).
+  //
+  // A CONSUMABLE IS AN EVENT (owner ruling, 2026-09-04). A drink, like a serving and
+  // like a dose, is a thing that happened at an instant; the day total is a ROLLUP and
+  // not the editable thing. That ruling AMENDS two of this file's own: "a day's drinks
+  // are one editable day count" and "the day count is a count of things that happened"
+  // — the count is now DERIVED from the events, and a day with drinks at 21:00 and
+  // 23:00 shows two rows and two ticks.
+  //
+  // IT AMENDS NEITHER OF THE OTHER TWO, which is why a drink is still filed here and
+  // not under Food. The age gate above is the first (a known minor's `?kind=food`
+  // returned that drink as a row titled "Alcohol" — MEASURED, and the reason the
+  // exclusion was written), and "the substance row describes the act in the person's
+  // own terms" is the third. So the drink keeps the `substance` KIND, its chip, its
+  // glyph and its gate; what changes is that it is one row per EVENT, and that it
+  // CORRECTS through the food serving's own form — `edit.kind` is the correction door,
+  // `kind` is what the thing is, and the ruling asks for exactly that split.
   if (wants(opts, "substance") && substanceShown) {
+    // DRINKS, ONE ROW PER EVENT, through the reader that already serves this ledger.
+    // `getFoodLedgerPage` is the food gather's own reader asked for the one group the
+    // food gather excludes, so there is no second query shape and no second idea of
+    // what a serving row is. Alcohol is the ONLY substance with events to read:
+    // `substanceDef(key).ledger` is `food-log` for alcohol and `substance-log` for
+    // nicotine, cannabis and every custom key, and `nicotine`/`cannabis` are not food
+    // groups at all, so nothing else can reach this branch. Phase 2 gives the others
+    // their own events; until then they are day rows below.
+    if (!item || item === "alcohol") {
+      const def = substanceDef("alcohol");
+      const drinks = getFoodLedgerPage(
+        profileId,
+        since,
+        { untilDate: until, groupKey: ALCOHOL_FOOD_GROUP },
+        1,
+        limit
+      );
+      if (drinks.total > drinks.rows.length) truncated = true;
+      for (const row of drinks.rows) {
+        // The same question the food row asks of the same table (#2205 phase 3): the
+        // stated drinking instant when somebody named one, else the record chain —
+        // with the answer saying WHICH, so a tap stamp never prints as a stated hour.
+        const when = bestKnownInstant("food_log_events", { ...row });
+        const hhmm = when.known ? localClock(tz, when.at) : null;
+        const stated = when.known && when.semantic === "event";
+        // THE ROW'S CLOCK AND THE RAIL'S MINUTE ARE DIFFERENT QUESTIONS, and this file
+        // already ruled on it once — see the practice loop above, which places its own
+        // ticks rather than leaving them to the rail for exactly this reason. The ROW
+        // may say "logged 23:50", because the grammar's `logged` prefix admits that the
+        // clock is a filing time and a serving row says the same thing beside it. The
+        // CHART may not: a drink backfilled at 23:50 for last Tuesday would draw on
+        // Tuesday's rail at a minute that describes the typing and nothing else, which
+        // is the whole argument `EXCLUDED_TICK_CATEGORIES` makes about an insight's
+        // `created_at`. So the mark reads the EVENT instant only — a time somebody
+        // stated, or a tap that claimed to be one — and a drink with neither draws
+        // nothing.
+        const drankAt = eventInstant("food_log_events", { ...row });
+        const markMinute = drankAt.known ? localClock(tz, drankAt.at) : null;
+        const id = `substance:alcohol:${row.id}`;
+        rows.push({
+          id,
+          kind: "substance",
+          profileId,
+          tz,
+          date: row.date,
+          ...historyClockFields(hhmm, stated ? "stated" : "logged", prefs),
+          title: def.label,
+          href: null,
+          // ONE EVENT IS ONE UNIT. The day's arithmetic moved to the rows, so the
+          // detail states the act rather than a total the row no longer owns.
+          detail: detailSegment([`1 ${def.countSingular}`]),
+          media: 0,
+          // CORRECTED WHERE A SERVING IS CORRECTED (the ruling's question 1). This is
+          // the food row's own edit payload, so `HistoryRows` mounts `FoodServingForm`
+          // and the ⋯ delete runs `removeFoodServing` on this event — re-time, re-file
+          // and delete, all already built, and `correctionGroups` already keeps a row
+          // that is IN a substance group able to name its own group.
+          edit: {
+            kind: "food",
+            eventId: row.id,
+            groupKey: row.group_key,
+            mealSlot: foodEventWindow(
+              row.recorded_at,
+              tz,
+              slotBoundaries(),
+              row.meal_slot,
+              row.occurred_at
+            ),
+            clock: hhmm,
+            clockKind: stated ? "stated" : "logged",
+            slotBoundaries: slotBoundaries(),
+            substanceCorrectable: substanceShown,
+          },
+        });
+        // THE DRINK, ONTO THE DAY'S CHART. Pushed HERE, beside the row it came from
+        // and with the SAME id, for the reason the practice and feed loops push at
+        // their emit points: a row this reader's `?kind=`/`?item=` dropped never
+        // reaches the array, so the panel cannot mark something the list does not
+        // show, and a tick's anchor is the row it scrolls to.
+        //
+        // CATEGORY `substance`, MATCHING THE ROW'S KIND. The rail is category-driven
+        // and drops only `insight`, so what this field decides is what the mark READS
+        // as — and a drink arriving as `food` would read as a meal on the chart. It is
+        // asserted, not assumed: the row and the tick answer "what is this" the same
+        // way, and only `edit.kind` names the food door.
+        //
+        // DATA-GATED. `buildIntradayModel` draws a tick only where `sortTime` is a
+        // real clock minute, so a drink nobody stated a time for contributes nothing —
+        // the same rule that keeps a weigh-in and a day's dose roll-up off the rail.
+        if (opts.day != null) {
+          dayEvents.push({
+            id,
+            date: row.date,
+            category: "substance",
+            title: def.label,
+            sortTime: markMinute,
+          });
+        }
+      }
+    }
+
+    // THE DAY-COUNT SUBSTANCES — nicotine, cannabis and every custom key, whose
+    // ledger is `substance_daily_totals`: UNIQUE per (profile, date, substance) and
+    // structurally timeless. A DAY TOTAL HAS NO INSTANT and the schema says so, so
+    // these rows are date-only and sink below the day's timed rows, which is the
+    // standing rule rather than a substance special case. Reading `bestKnownInstant`
+    // here would answer with `recorded_at` — the FILING stamp — and hand them a minute
+    // they never claimed. Phase 2 gives them events and this branch goes with it.
     const totals = getAllSubstanceDailyTotals(profileId).filter(
       (row) =>
+        substanceDef(row.substance).ledger !== "food-log" &&
         row.date <= until &&
         row.date >= since &&
         (!item || item === row.substance)
@@ -653,10 +789,6 @@ export function gatherHistoryLog(
         profileId,
         tz,
         date: row.date,
-        // A DAY TOTAL HAS NO INSTANT and the schema says so — `substance_daily_totals`
-        // records when a use was LOGGED and nothing about when it happened. So the row
-        // is date-only and sinks below the day's timed rows, which is the standing rule
-        // rather than a substance special case.
         ...historyClockFields(null, "logged", prefs),
         title: def.label,
         // PLAIN, LIKE THE FOOD GROUPS BESIDE IT (#4045 §5). The title link is a
@@ -680,6 +812,15 @@ export function gatherHistoryLog(
           notes: row.notes,
         },
       });
+      if (opts.day != null) {
+        dayEvents.push({
+          id: `substance:${row.substance}:${row.id}`,
+          date: row.date,
+          category: "substance",
+          title: def.label,
+          sortTime: null,
+        });
+      }
     }
   }
 
