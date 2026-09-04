@@ -388,6 +388,24 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     gate: "gateItemProfile",
   },
   {
+    file: "app/(app)/nutrition/intake-actions.ts",
+    fn: "resolveDayDoses",
+    why: "#4429/#4932: the day-ledger and the quick-log sheet's past-day switcher post a FOUND day's doses for whichever profile is on screen, which may not be the acting one — the per-row confirm (markTaken) already crossed this boundary, this bulk sibling did not. gateItemProfile() → requireProfileWriteAccess(subjectProfileId); every single-subject mount posts none and falls back to the acting-profile gate",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/trends/measurement-actions.ts",
+    fn: "addMeasurements",
+    why: "#4932: the quick-log sheet's subject chip mounts the SAME combined measurements form cross-profile, so the write follows gateItemProfile() → requireProfileWriteAccess(subjectProfileId) like every other sheet body; every other mount (the Trends panel, a metric detail page, the record's add door) posts no subject and falls back to the acting-profile gate",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/medical/document-actions.ts",
+    fn: "uploadMedicalDocument",
+    why: "#4932: the quick-log sheet's subject chip mounts the SAME upload form cross-profile, so the write follows gateItemProfile() → requireProfileWriteAccess(subjectProfileId); the Data page's own mount posts no subject and falls back to the acting-profile gate",
+    gate: "gateItemProfile",
+  },
+  {
     file: "app/(app)/nutrition/actions.ts",
     fn: "logFoodServing",
     why: "one spelling for the subject (#4730): the bar and the record's add door post `profile_id`, so the ADD takes the same gateItemProfile() \u2192 requireProfileWriteAccess(subjectProfileId) reader as the correction below. It hand-rolled that gate around a `profileId` key nothing posts, so a subject-carrying add fell back to the ACTING profile and wrote a caregiver's serving onto themselves",
@@ -466,6 +484,18 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     gate: "gateItemProfile",
   },
   {
+    file: "app/(app)/medical/substance-use/actions.ts",
+    fn: "logSubstanceUnitAction",
+    why: "#4932: the quick-log sheet's subject chip mounts the SAME unit-tap control cross-profile, so the tap follows gateItemProfile() → requireProfileWriteAccess(subjectProfileId) like its own correction siblings above; every other mount posts no subject and falls back to the acting-profile gate",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/medical/substance-use/actions.ts",
+    fn: "undoSubstanceUnitAction",
+    why: "#4932: the add's inverse must resolve the SAME subject the add did, so it reads it through the same gateItemProfile()",
+    gate: "gateItemProfile",
+  },
+  {
     file: "app/(app)/trends/reading-actions.ts",
     fn: "updateMetricReading",
     why: "record correction (#4009): corrects the ROW's body reading via gateItemProfile() → requireProfileWriteAccess(rowProfileId); the display-unit conversion still reads the LOGIN's prefs, which is a formatting question and not a subject one",
@@ -487,6 +517,12 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     file: "app/(app)/stool-actions.ts",
     fn: "deleteStoolReading",
     why: "record correction (#4433): removes the ROW's logged movement via gateItemProfile() → requireProfileWriteAccess(rowProfileId)",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/stool-actions.ts",
+    fn: "logStoolForm",
+    why: "#4932: the quick-log sheet's subject chip mounts the SAME seven-button control cross-profile, so the tap follows gateItemProfile() → requireProfileWriteAccess(subjectProfileId) like its own correction siblings above; every other mount posts no subject and falls back to the acting-profile gate",
     gate: "gateItemProfile",
   },
   {

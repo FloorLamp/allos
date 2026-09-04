@@ -8,12 +8,22 @@
 // drop derivable, and `dropping` gives it the same escalation a quiet stop already has.
 //
 // Built from real rows through the real reads, in the #1685 harness pattern.
+//
+// #4975 adds the second half at the bottom: the same evidence, read as a STANDING, so
+// the source's own row says it too — Review's needs-attention card reads
+// `isEscalatedSource`, never an `AttentionIntegration`, and a new attention KIND is
+// invisible to it by construction.
 
 import { describe, it, expect } from "vitest";
 import { db } from "@/lib/db";
 import { now as clockNow } from "@/lib/clock";
 import { utcInstant } from "@/lib/date";
-import { getIntegrationAttention } from "@/lib/queries/integrations";
+import {
+  getConnectedSources,
+  getIntegrationAttention,
+  getIntegrationState,
+} from "@/lib/queries/integrations";
+import { isEscalatedSource } from "@/components/ConnectedSources";
 import { isEscalatingIntegration, integrationToItem } from "@/lib/attention";
 import { gatherDigestInput } from "@/lib/notifications/digest-data";
 import { buildDigest } from "@/lib/notifications/digest";
@@ -56,6 +66,11 @@ function push(
 const DROPPING_HRV: SyncTypeTally = {
   steps: { received: 4, landed: 4 },
   heart_rate_variability: { received: 12, landed: 0 },
+};
+
+const LANDING_HRV: SyncTypeTally = {
+  steps: { received: 4, landed: 4 },
+  heart_rate_variability: { received: 12, landed: 12 },
 };
 
 // A Health Connect connection whose bearer token has LAPSED (#607) — still
@@ -187,5 +202,84 @@ describe("a live source dropping a record type (#4956)", () => {
       .join("\n");
     expect(text).toContain("Google Health Connect is dropping records");
     expect(text).toContain("Heart rate variability");
+  });
+});
+
+// A source's own row, not the attention list (#4975). Review's needs-attention card
+// filters `getConnectedSources` through `isEscalatedSource` — the standing axis — so
+// the `dropping` KIND above cannot reach it and the standing is what does.
+describe("the standing a live dropping source carries (#4975)", () => {
+  function standingFor(profileId: number) {
+    return getIntegrationState(profileId, HC)?.standing;
+  }
+
+  it("carries the standing, names the types, and lands on the escalated card", () => {
+    const p = newProfile("StandDrop");
+    connect(p);
+    for (const hoursAgo of [11, 6, 2, 0]) push(p, hoursAgo, DROPPING_HRV);
+
+    const state = getIntegrationState(p, HC);
+    expect(state?.standing).toBe("dropping");
+    // The evidence rides with it, so the surfaces can say WHICH data is being lost
+    // rather than only that some is. `steps` lands every push and never appears.
+    expect(state?.droppedTypes).toEqual(["heart_rate_variability"]);
+    // THE DELIVERABLE: the card's own filter, unchanged, now admits it.
+    expect(
+      getConnectedSources(p)
+        .filter(isEscalatedSource)
+        .map((s) => s.id)
+    ).toEqual([HC]);
+  });
+
+  it.each([
+    [
+      "clears the moment one record of the type lands",
+      // No resolution step and nothing to dismiss — the window is re-read.
+      [
+        { h: 11, t: DROPPING_HRV },
+        { h: 0, t: LANDING_HRV },
+      ],
+      "healthy",
+    ],
+    [
+      "says nothing about a source whose type keeps landing",
+      [
+        { h: 6, t: LANDING_HRV },
+        { h: 0, t: LANDING_HRV },
+      ],
+      "healthy",
+    ],
+    [
+      "does not follow a merely STALE source into it",
+      // The drop is real but two days old, so it is outside the window on both
+      // halves: the source is silent, and `failing` is the honest verdict.
+      [
+        { h: 40, t: DROPPING_HRV },
+        { h: 30, t: DROPPING_HRV },
+      ],
+      "failing",
+    ],
+  ])("%s", (_why, pushes, expected) => {
+    const p = newProfile(`Stand${expected}${pushes[0].h}`);
+    connect(p);
+    for (const { h, t } of pushes) push(p, h, t);
+    expect(standingFor(p)).toBe(expected);
+  });
+
+  it("stays needs-reauth while the credential is dead", () => {
+    // The only overlap the query layer can actually produce. `failing`-by-silence
+    // cannot co-occur with `dropping` — a successful run inside the tolerance is what
+    // makes a type dropped, and the same run is what makes the source not silent — so
+    // this is the precedence that has real rows behind it. A source told to reconnect
+    // must not be re-described as one quietly losing a type.
+    const p = newProfile("StandReauth");
+    connect(p);
+    for (const hoursAgo of [11, 6, 2, 0]) push(p, hoursAgo, DROPPING_HRV);
+    db.prepare(
+      `UPDATE integration_connections SET status = 'needs_reauth'
+        WHERE profile_id = ? AND source_id = ?`
+    ).run(p, HC);
+    expect(standingFor(p)).toBe("needs-reauth");
+    expect(getIntegrationState(p, HC)?.droppedTypes).toEqual([]);
   });
 });

@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import type { IntegrationState } from "@/lib/queries/integrations";
 import { staleSyncDetail } from "@/lib/integrations/staleness";
 import {
+  droppingConsequence,
   formatCoverage,
   intermittentReassurance,
   intermittentRunsLabel,
@@ -202,6 +203,20 @@ export default function IntegrationStatusHeader({
           data-testid={`sync-stale-${state.id}`}
         >
           {staleSyncDetail(state.name, state.stale)}
+        </p>
+      ) : null}
+      {/* THE LIVE DROP (#4975): every run `ok`, records landing, and a type being
+          discarded — so the outcome line above honestly reads "Synced · 340 records
+          added" and the stale line never fires, because nothing is late. Without
+          this the header carried a red badge and NO sentence saying what was wrong.
+          Same slot and same tone as the quiet stop, which is the other standing whose
+          reason no event can state. */}
+      {standing === "dropping" ? (
+        <p
+          className="mt-1 wrap-break-word text-sm text-rose-700 dark:text-rose-300"
+          data-testid={`sync-dropping-${state.id}`}
+        >
+          {droppingConsequence(state.droppedTypes)}
         </p>
       ) : null}
       {standing !== "intermittent" && latest && !latest.ok && latest.error && (

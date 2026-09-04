@@ -8,6 +8,7 @@ import type { IntegrationState } from "@/lib/queries/integrations";
 import type { IntegrationDef } from "@/lib/types";
 import {
   formatSyncOutcome,
+  droppingConsequence,
   standingBadge,
   standingEscalates,
   standingHeadline,
@@ -84,6 +85,17 @@ function StatusFact({ state }: { state: IntegrationState }) {
         ) : (
           "No successful run yet"
         )}
+      </p>
+    );
+  }
+  // ALIVE AND DROPPING (#4975): the card is already rose-bordered off
+  // `standingEscalates`, and without this branch it fell past every test to the
+  // generic "Synced · 2 min ago" underneath that border. The one fact its owner would
+  // ask first is WHICH data is being lost.
+  if (standing === "dropping") {
+    return (
+      <p className="mt-2 wrap-break-word text-sm text-rose-700 dark:text-rose-300">
+        {droppingConsequence(state.droppedTypes)}
       </p>
     );
   }

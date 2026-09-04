@@ -25,14 +25,27 @@ export function useDoseDayResolution({
   bulkFailureMessage,
   note,
   resolved,
-}: { date: string; bulkFailureMessage: string } & DoseRowSettlement) {
+  profileId,
+}: {
+  date: string;
+  bulkFailureMessage: string;
+  // #4429/#4932: the subject this day's rows belong to, when it is not the acting
+  // profile (the quick-log sheet's chosen subject). Posted as `profile_id` and
+  // re-gated by `resolveDayDoses`'s own `gateItemProfile` call — never trusted here.
+  profileId?: number;
+} & DoseRowSettlement) {
   const bulk = useWritePipeline("dose-day-stack");
   const row = { note, resolved };
 
   function resolveAll(doseIds: readonly number[]) {
     void bulk.run({
       key: doseIds.join(","),
-      fields: { date, status: "taken", dose_ids: doseIds.join(",") },
+      fields: {
+        date,
+        status: "taken",
+        dose_ids: doseIds.join(","),
+        ...(profileId != null ? { profile_id: String(profileId) } : {}),
+      },
       action: resolveDayDoses,
       settle: (result) => settleDayDoses(result, "taken", row),
       failureMessage: bulkFailureMessage,
