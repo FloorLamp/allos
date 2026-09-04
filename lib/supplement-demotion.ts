@@ -94,6 +94,13 @@ export function demotionItemIdFromKey(key: string): number | null {
 // adherence strip (oldest-first) that `intakeAdherenceStrip` produces — the
 // same per-day aggregation the Supplements page renders, so the suggestion can
 // never disagree with the strip the user is looking at.
+//
+// SAME AGGREGATION AND SAME SITUATION RESOLVER (#3993). The sentence above is about one
+// screen: `<DemotionSuggestions>` renders under the strip and carries a one-tap Accept
+// that demotes the item's obligation. Giving the evidence a declared-only resolver while
+// the strip above it read the dated one put two answers for one day on that screen, with
+// the Accept button under the wrong one. Both read `effectiveSituationResolver` now, and
+// lib/__db_tests__/dated-summary-surfaces.test.ts asserts the two strips day for day.
 export interface DemotionInput {
   itemId: number;
   name: string;

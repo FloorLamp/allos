@@ -11,7 +11,6 @@ import {
   parseSituationEvents,
   serializeSituationEvents,
   situationsActiveOn,
-  situationHistoryResolver,
   SITUATION_LOG_CAP,
   type SituationEvent,
   type TrendAnnotation,
@@ -375,9 +374,9 @@ describe("situationsActiveOn — adherence history reconstruction (#654)", () =>
     expect(active.has("Illness")).toBe(true);
   });
 
-  it("the resolver reproduces the 25-days-off / 3-days-on travel scenario", () => {
+  it("reproduces the 25-days-off / 3-days-on travel scenario day by day", () => {
     const events = [ev("2026-07-26", "Travel", "start")];
-    const on = situationHistoryResolver(["Travel"], events);
+    const on = (date: string) => situationsActiveOn(date, ["Travel"], events);
     // Days 1–25 (before activation): inactive → the item scores "na".
     expect(on("2026-07-10").has("Travel")).toBe(false);
     expect(on("2026-07-25").has("Travel")).toBe(false);

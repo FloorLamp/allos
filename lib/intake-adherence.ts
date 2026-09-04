@@ -285,9 +285,12 @@ export interface AdherenceStripDose extends DoseCadence {
 // skipped on that date. The per-day workout context comes from `workoutDays` (a set
 // of the dates that had activity) so a workout/rest-day item's due-ness varies
 // across the window. `situationsOn` resolves which situations were active ON EACH
-// PAST DAY (#654) — NOT one snapshot of "now" — so a situational item scores "na" on
-// days its situation was inactive and only "due" once it actually turned on (see
-// situationHistoryResolver). `takenByDose` is the per-dose taken/skipped index from
+// PAST DAY (#654/#3993) — NOT one snapshot of "now" — so a situational item scores "na"
+// on days its situation was inactive and only "due" once it actually turned on. Every
+// caller passes `effectiveSituationResolver`, whose answer is declared ∪ derived as of
+// each day; a resolver that saw only declarations would score `na` on a day the app
+// itself offered the dose, and this function returns `na` BEFORE it consults the log, so
+// that day's take would be thrown away. `takenByDose` is the per-dose taken/skipped index from
 // `indexTakenByDose`. `lib/household.intakeAdherenceToday` is the today-only
 // sibling; this is the windowed version a weekly recap or history surface wants.
 //
