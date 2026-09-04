@@ -1913,16 +1913,19 @@ list together. Both move. A manifest refresh reshuffles almost everything —
 #5017 moved 443 of 477 specs — and so does adding ONE spec, because an unlisted
 spec is planned in on an estimate and displaces its neighbours.
 
-Measured twice the same night on the same pair of specs, the answer differed
-both times. So **do not write a bucket number down**: it is stale before the
-next merge, and a rule that quotes one teaches the next reader to trust it.
+The planner is deterministic, so the same tree always gives the same answer —
+what moves is the TREE. Asked on two trees the same night, one pair of specs
+sat in different buckets each time. So **do not write a bucket number down**:
+it is a fact about a tree that no longer exists by the next merge, and a rule
+that quotes one teaches the next reader to trust it.
 
 Two consequences, both of which cost something on 2026-09-04:
 
 - **A separation claim is verified on the tree that will LAND**, never on the
   branch alone. #5017's body stated a correct separation for its own branch;
-  merged with main, one of the pair had moved two buckets. The claim survived,
-  the arrangement did not.
+  merged with main, both buckets had moved. The claim survived, the arrangement
+  did not — and this sentence deliberately names no number, for the reason
+  above.
 - **A separation buys nothing.** Two specs in different buckets today are a
   coincidence of the current partition. The fix for a co-residency defect is
   the spec owning the state it asserts (#5014's shape) — never an arrangement
