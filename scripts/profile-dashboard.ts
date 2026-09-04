@@ -122,6 +122,7 @@ interface Report {
     skipped?: string[];
   }[];
   statements: StatementReport[];
+  hrWindows?: unknown[][];
 }
 interface CpuNode {
   id: number;
@@ -272,6 +273,22 @@ function main(): void {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 12))
     out.push(`  ${Math.round(ms).toString().padStart(6)} ms  ${caller}`);
+  // WHAT A COUNT CANNOT SAY (#5010). Everything above keys on SQL text, so the
+  // heart-rate range read appears as one row with a count — and N reads of N windows
+  // and N reads of one window are both N. These are the spans it was actually bound
+  // to; a repeat here is a second materialisation of rows the render already had.
+  const hrWindows = report.hrWindows ?? [];
+  const perWindow = new Map<string, number>();
+  for (const window of hrWindows) {
+    const key = JSON.stringify(window);
+    perWindow.set(key, (perWindow.get(key) ?? 0) + 1);
+  }
+  out.push(
+    `hr_minutes windows read (last render): ${hrWindows.length} reads over ${perWindow.size} distinct`
+  );
+  for (const [window, count] of perWindow)
+    out.push(`  x${String(count).padEnd(5)} ${window}`);
+
   out.push("most frequent statements");
   for (const s of [...report.statements]
     .sort((a, b) => b.count - a.count)
