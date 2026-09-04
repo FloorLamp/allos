@@ -304,19 +304,26 @@ describe("the medication card's dose controls follow the surface's subject (#442
   // The PRN half of the same widening: a log button that exists only for a subject the
   // login may write, and that names its target when it does.
   it.each([
-    ["a writable subject", { canWrite: false, subjectProfileId: SUBJECT }, true],
-    ["the acting profile", { canWrite: true }, true],
-    ["a read-only cross-profile card", { canWrite: false }, false],
-  ])("%s: PRN log offered = %s", async (_case, props, offered) => {
-    renderCard({ ...props, medication: PRN_MED });
-    const button = screen.queryByTestId("prn-log-now");
-    expect(button != null).toBe(offered);
-    if (!button) return;
-    await act(async () => fireEvent.click(button));
-    expect(postedTo(mocks.logMedicationAdministration).profileId).toBe(
-      props.subjectProfileId != null ? String(SUBJECT) : undefined
-    );
-  });
+    [
+      "a writable subject",
+      { canWrite: false, subjectProfileId: SUBJECT } as const,
+      true,
+    ],
+    ["the acting profile", { canWrite: true } as const, true],
+    ["a read-only cross-profile card", { canWrite: false } as const, false],
+  ] as [string, { canWrite: boolean; subjectProfileId?: number }, boolean][])(
+    "%s: PRN log offered = %s",
+    async (_case, props, offered) => {
+      renderCard({ ...props, medication: PRN_MED });
+      const button = screen.queryByTestId("prn-log-now");
+      expect(button != null).toBe(offered);
+      if (!button) return;
+      await act(async () => fireEvent.click(button));
+      expect(postedTo(mocks.logMedicationAdministration).profileId).toBe(
+        props.subjectProfileId != null ? String(SUBJECT) : undefined
+      );
+    }
+  );
 });
 
 describe("the everyone strip's due rows carry the tri-state (#4429)", () => {

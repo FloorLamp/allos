@@ -38,6 +38,8 @@ import {
   MVMEDS_RO_PROFILE,
   MVMEDS_SELF_MED,
   MVMEDS_RO_MED,
+  MVMEDS_WARD_PROFILE,
+  MVMEDS_WARD_MED,
   E2E_LOGIN_MVBIO,
   MVBIO_SELF_PROFILE,
   MVBIO_RO_PROFILE,
@@ -914,7 +916,11 @@ test.describe("Tier-1b bespoke lists adopt multi-view (issue #1359)", () => {
 // spec (only reads + toggles the view-set), so it never races a neighbor and stays
 // repeat-safe. Fresh cookie-less context (loginAs) so it drives the member's own session.
 test.describe("Medications multi-view regimen boards (issue #1373)", () => {
-  function mvMedsIds(): { selfId: number; roId: number } {
+  // Resolve the three fixture profile ids, and clear the ward's dose log so the
+  // cross-profile take below is repeat-safe (#868 fixture ownership) — that take is
+  // the ONE persistent write this fixture carries, and a re-run or retry would
+  // otherwise find the dose already taken and have nothing to press.
+  function mvMedsIds(): { selfId: number; roId: number; wardId: number } {
     const dbPath = workerDbPath();
     const db = new Database(dbPath);
     try {
@@ -925,19 +931,31 @@ test.describe("Medications multi-view regimen boards (issue #1373)", () => {
             id: number;
           }
         ).id;
+      const wardId = idOf(MVMEDS_WARD_PROFILE);
+      db.prepare(
+        `DELETE FROM intake_item_logs
+          WHERE item_id IN (
+            SELECT id FROM intake_items WHERE name = ? AND profile_id = ?
+          )`
+      ).run(MVMEDS_WARD_MED, wardId);
       return {
         selfId: idOf(MVMEDS_SELF_PROFILE),
         roId: idOf(MVMEDS_RO_PROFILE),
+        wardId,
       };
     } finally {
       db.close();
     }
   }
 
-  async function toggleIntoView(page: Page, id: number): Promise<void> {
+  async function toggleIntoView(
+    page: Page,
+    id: number,
+    inView = 2
+  ): Promise<void> {
     await openProfileSwitcher(page);
     await settledClick(page, page.getByTestId(`view-toggle-${id}`));
-    await expectInView(page, 2);
+    await expectInView(page, inView);
   }
 
   test("single-view stays plain, then multi-view stacks writable and read-only boards", async ({
@@ -978,6 +996,59 @@ test.describe("Medications multi-view regimen boards (issue #1373)", () => {
         roBoard.getByText(MVMEDS_RO_MED, { exact: false }).first() // first-ok: spec-owned board-scoped med, appears in Today + Current
       ).toBeVisible();
       await expect(selfBoard.getByTestId("dose-status").first()).toBeVisible(); // first-ok: spec-owned board-scoped Today panel
+    } finally {
+      await page.context().close();
+    }
+  });
+
+  // THE STRIP ANSWERS THE ROW IT SHOWS (#4429). "Today across everyone" listed each
+  // member's due doses as jump links only, so the one surface that gathers the
+  // household's doses was the one that could not resolve any of them — a caregiver had
+  // to travel to a board for a tap the board was already offering. These are found rows
+  // on a page the caregiver has already reached, so the control is the SHARED
+  // tri-state, write-gated per member, with no subject picker and no acting switch.
+  test("the everyone strip resolves a writable member's due dose and leaves a read-only member's alone", async ({
+    browser,
+  }) => {
+    test.slow();
+    const { selfId, roId, wardId } = mvMedsIds();
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_MVMEDS,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await page.goto("/medications");
+      await toggleIntoView(page, roId, 2);
+      await toggleIntoView(page, wardId, 3);
+      await page.goto("/medications");
+
+      const strip = page.getByTestId("med-today-everyone");
+      await expect(strip).toBeVisible();
+      const wardRow = strip.getByTestId(`med-everyone-${wardId}`);
+      const roRow = strip.getByTestId(`med-everyone-${roId}`);
+
+      // THE PAIR, in one render. The read-only member's row keeps the jump link it
+      // always had and grows no control; asserted BESIDE the writable member's, so an
+      // absence here means the grant rather than a strip that renders no controls at
+      // all — which is the tree a lone absence assertion also passes on.
+      await expect(roRow.getByTestId("med-everyone-due")).toBeVisible();
+      await expect(roRow.getByTestId("dose-status")).toHaveCount(0);
+      const take = wardRow.getByTestId("dose-take");
+      await expect(take).toBeVisible();
+
+      await settledClick(page, take);
+
+      // THE WRITE FOLLOWED THE ROW, NOT THE SESSION — the whole of the capability, and
+      // the half a same-profile take could never show. The ward's own board reads taken
+      // while the acting profile's identically-shaped row does not, so a control that
+      // had silently posted the acting profile would fail here rather than pass by
+      // landing somewhere plausible.
+      await expect(
+        page.getByTestId(`med-board-${wardId}`).getByTestId("dose-take")
+      ).toHaveAttribute("aria-pressed", "true");
+      await expect(
+        page.getByTestId(`med-board-${selfId}`).getByTestId("dose-take")
+      ).toHaveAttribute("aria-pressed", "false");
     } finally {
       await page.context().close();
     }
