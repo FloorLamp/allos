@@ -9,7 +9,7 @@ import FilterPills from "@/components/FilterPills";
 import JumpRailScrubber, {
   type ScrubberStop,
 } from "@/components/JumpRailScrubber";
-import EventCalendar from "@/components/EventCalendar";
+import EventCalendar, { EventMonthGrid } from "@/components/EventCalendar";
 import type { DoseLedgerItem } from "@/components/intake/dose-ledger-entry";
 import HistoryRows from "./HistoryRows";
 import HistoryAddDoor, { HistoryUsualOffers } from "./HistoryAddDoor";
@@ -767,9 +767,46 @@ export default async function HistoryPage(props: {
   const rowCount = renderedDays.reduce((n, d) => n + d.events.length, 0);
   const hasMore = feeds.some((feed) => feed.gather.hasMore);
 
+  // EVERY DAY THE VIEWED MEMBERS HAVE AN EVENT ON, read ONCE (#4280). The day view
+  // has two mounts for this month grid — the door below `xl`, the open grid in the
+  // rail from `xl` — and only one of them is ever visible, so reading the union
+  // twice would double ~20 queries per viewed member to render nothing extra.
+  const eventDates = memberIds.flatMap((id) => getTimelineDates(id));
+
+  // THE DAY VIEW'S SECOND COLUMN, FROM `xl` ONLY (#4974).
+  //
+  // The reading column is the right measure for one-line rows and the wrong one for
+  // the day's map: at `xl` it left half the viewport empty while the chart card sat
+  // capped inside it. So from `xl` the day view is a grid — the rows in a column
+  // that keeps its reading width, and beside them a sticky rail holding the chart,
+  // the add layer and the month calendar. BELOW `xl` NOTHING CHANGES: no grid, and
+  // the same source order the stack has always had (chart → add → rows).
+  //
+  // THE RAIL COMES FIRST IN THE DOCUMENT, and is placed into column 2 explicitly.
+  // Source order is what the stacked layout below `xl` reads, and there the chart
+  // and the add layer belong ABOVE the rows they map and create (#4918 ruling 2);
+  // an order that put the rail after the column would have been correct at `xl` and
+  // upside down at every width beneath it.
+  //
+  // THE LEFT TRACK IS FIXED AT `48rem` — the reading measure — rather than
+  // `minmax(0, 48rem)`. Two flexible tracks share free space equally, which at 1280
+  // would have handed the rows 488px and called it a reading column.
+  //
+  // THE RAIL CANNOT OUTGROW THE VIEWPORT. A sticky element taller than the screen
+  // pins its top and strands its own bottom, unreachable at any page scroll — so it
+  // is capped at the viewport minus its two 1.5rem insets and scrolls inside itself
+  // past that. `overflow-y: auto` chains at the ends (no `overscroll-contain`), so
+  // reaching the rail's bottom keeps scrolling the page rather than trapping it.
+  const dayGrid = "xl:grid xl:grid-cols-[48rem_minmax(0,760px)] xl:gap-6";
+  const dayRail =
+    "xl:col-start-2 xl:row-start-1 xl:sticky xl:top-6 xl:self-start xl:max-h-[calc(100dvh-3rem)] xl:overflow-y-auto";
+  const dayColumn = "xl:col-start-1 xl:row-start-1 xl:min-w-0";
+
   return (
     <PageContainer
-      width="reading"
+      // The day view is the rail arrangement; the feed is a reading column at every
+      // width, and `rail` IS `reading` below `xl`, so this changes nothing there.
+      width={day ? "rail" : "reading"}
       className="mx-auto"
       data-testid="history-page"
     >
@@ -875,10 +912,15 @@ export default async function HistoryPage(props: {
             until now, which read as one body's marks beside a merged record.
             Under `?view=everyone` that is ~20 queries per viewed member on this
             page; single view is unchanged. */}
-        <EventCalendar
-          eventDates={memberIds.flatMap((id) => getTimelineDates(id))}
-          everyone={everyone}
-        />
+        {/* THE DOOR STANDS EVERYWHERE EXCEPT THE DAY VIEW AT `xl` (#4974). It is a
+            door because the grid could not spend the ~140px chrome budget above the
+            first record; in the rail the grid is BESIDE the rows and spends none of
+            it, so at that one width the door would be a second way to the thing
+            already open. `contents` keeps the button the flex item it has always
+            been — the wrapper adds no box of its own to this row at any width. */}
+        <span className={day ? "contents xl:hidden" : "contents"}>
+          <EventCalendar eventDates={eventDates} everyone={everyone} />
+        </span>
       </div>
 
       {/* THE KIND-SCOPED REFINEMENT ROW, PER FAMILY — "never in All" (#3958). It is a
@@ -979,33 +1021,39 @@ export default async function HistoryPage(props: {
           draws no context row at all — but the CARD itself, and the daylight band
           on the plot, draw regardless: `intraday` is non-null whenever a day is
           open (see above), rows or none. */}
-      {intraday ? (
-        <div className={railGutter}>
-          <IntradayPanel
-            model={intraday}
-            formatPrefs={prefs}
-            profileId={actingProfileId}
-            home={home}
-            timezone={profileTimezone}
-            daylightOutdoor={daylightOutdoor}
-            uv={dayUv}
-            cyclePhase={dayCyclePhase}
-            cyclePeriod={dayCyclePeriod}
-            weather={dayWeather}
-            waiting={sleepWaiting}
-            waitingDetail={
-              sleepWaiting
-                ? sleepWaitingDetail(sleepWaiting, {
-                    clock: (min) => formatClockMinutes(prefs.timeFormat, min),
-                    when: (iso) => formatRelativeTime(iso),
-                  })
-                : null
-            }
-          />
-        </div>
-      ) : null}
+      <div className={day ? dayGrid : undefined}>
+        <div
+          className={day ? dayRail : undefined}
+          data-testid={day ? "history-day-rail" : undefined}
+        >
+          {intraday ? (
+            <div className={railGutter}>
+              <IntradayPanel
+                model={intraday}
+                formatPrefs={prefs}
+                profileId={actingProfileId}
+                home={home}
+                timezone={profileTimezone}
+                daylightOutdoor={daylightOutdoor}
+                uv={dayUv}
+                cyclePhase={dayCyclePhase}
+                cyclePeriod={dayCyclePeriod}
+                weather={dayWeather}
+                waiting={sleepWaiting}
+                waitingDetail={
+                  sleepWaiting
+                    ? sleepWaitingDetail(sleepWaiting, {
+                        clock: (min) =>
+                          formatClockMinutes(prefs.timeFormat, min),
+                        when: (iso) => formatRelativeTime(iso),
+                      })
+                    : null
+                }
+              />
+            </div>
+          ) : null}
 
-      {/* THE ADD LAYER SITS ABOVE THE ROWS IT CREATES (#4918 ruling 2) — under the
+          {/* THE ADD LAYER SITS ABOVE THE ROWS IT CREATES (#4918 ruling 2) — under the
           chart, not above it.
 
           THE ADD DOOR, KIND-RESOLVED. Filtered to a kind it IS that kind's backfill,
@@ -1014,52 +1062,70 @@ export default async function HistoryPage(props: {
           shipped (#4045 §1). Log kinds only — clinical, training and life records are
           created on their own surfaces — and never the future: every door here is
           bounded by today. */}
-      {canWrite ? (
-        <div className={`mb-2 text-sm ${railGutter}`} data-testid="history-add">
-          {/* THE OFFERS LINE FIRST (#4310 ruling), before the per-kind grammar below it,
+          {canWrite ? (
+            <div
+              className={`mb-2 text-sm ${railGutter}`}
+              data-testid="history-add"
+            >
+              {/* THE OFFERS LINE FIRST (#4310 ruling), before the per-kind grammar below it,
               and silent on a day with no standing offer. */}
-          <HistoryUsualOffers offers={usualOffers} date={day ?? todayStr} />
-          {!hasAddDoor ? (
-            /* IN ALL — AND IN A KIND WITH NOTHING TO OFFER — THE DOOR ASKS THE KIND
+              <HistoryUsualOffers offers={usualOffers} date={day ?? todayStr} />
+              {!hasAddDoor ? (
+                /* IN ALL — AND IN A KIND WITH NOTHING TO OFFER — THE DOOR ASKS THE KIND
                FIRST, which on a record page is the same act as narrowing to it. It
                scrolls rather than wraps for the same reason the filter row does. */
-            <div className="-mx-2 flex items-center gap-3 overflow-x-auto px-2 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
-              {/* "Add", not "Add past" (#4918 ruling 5): on the day view the day
+                <div className="-mx-2 flex items-center gap-3 overflow-x-auto px-2 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
+                  {/* "Add", not "Add past" (#4918 ruling 5): on the day view the day
                   bar states the day being written to, and on the feed the door is
                   bounded by today anyway, so "past" was answering a question the
                   frame answers. */}
-              <span className="shrink-0 text-slate-500 dark:text-slate-400">
-                Add
-              </span>
-              {/* SYMPTOM IS EXEMPT FROM THE PRESENCE GATE (#4851 owner ruling) —
+                  <span className="shrink-0 text-slate-500 dark:text-slate-400">
+                    Add
+                  </span>
+                  {/* SYMPTOM IS EXEMPT FROM THE PRESENCE GATE (#4851 owner ruling) —
                   `historyAddKinds` is the one computation that knows it, so the
                   exemption cannot drift out of step with the rest of the gate. */}
-              {historyAddKinds(presentKinds).map((candidate) => (
-                <Link
-                  key={candidate}
-                  className="btn-ghost btn-sm shrink-0"
-                  href={chipHref({ kind: candidate })}
-                  data-testid={`history-add-${candidate}`}
-                >
-                  {HISTORY_KIND_LABELS[candidate]}
-                </Link>
-              ))}
+                  {historyAddKinds(presentKinds).map((candidate) => (
+                    <Link
+                      key={candidate}
+                      className="btn-ghost btn-sm shrink-0"
+                      href={chipHref({ kind: candidate })}
+                      data-testid={`history-add-${candidate}`}
+                    >
+                      {HISTORY_KIND_LABELS[candidate]}
+                    </Link>
+                  ))}
+                </div>
+              ) : addVocabulary && addKind ? (
+                <HistoryAddDoor
+                  kind={addKind}
+                  // THE DAY THE READER WAS LOOKING AT. Finding a gap is the reason to open
+                  // this door at all, so the form opens on that day rather than on today —
+                  // the context the redirect used to throw away.
+                  date={day ?? todayStr}
+                  maxDate={todayStr}
+                  vocabulary={addVocabulary}
+                />
+              ) : null}
             </div>
-          ) : addVocabulary && addKind ? (
-            <HistoryAddDoor
-              kind={addKind}
-              // THE DAY THE READER WAS LOOKING AT. Finding a gap is the reason to open
-              // this door at all, so the form opens on that day rather than on today —
-              // the context the redirect used to throw away.
-              date={day ?? todayStr}
-              maxDate={todayStr}
-              vocabulary={addVocabulary}
-            />
+          ) : null}
+
+          {/* THE MONTH GRID, OPEN, AND ONLY IN THE RAIL (#4974). The SAME grid and
+          the SAME binding the door opens — `EventMonthGrid` is that binding, split
+          out of `EventCalendar` so the two hosts (popover, rail) cannot drift into
+          two answers about what a marked day means. No `onNavigate`, because
+          nothing here has to close. */}
+          {day ? (
+            <div
+              className="card mb-3 hidden p-3 xl:block"
+              data-testid="history-calendar-open"
+            >
+              <EventMonthGrid eventDates={eventDates} everyone={everyone} />
+            </div>
           ) : null}
         </div>
-      ) : null}
-
-      {/* THE TWO EMPTY STATES ARE DIFFERENT MESSAGES (#1410), and the difference is
+        <div className={day ? dayColumn : undefined}>
+          {/* THE TWO EMPTY STATES ARE DIFFERENT MESSAGES (#1410), and the difference is
           the whole design: an EMPTY ACCOUNT is fixed by putting data in, a FILTERED
           view is fixed by widening the filter. Offering "log an activity" to someone
           who just tapped the Immunizations chip answers a question they did not ask.
@@ -1068,50 +1134,52 @@ export default async function HistoryPage(props: {
           re-housing brought the messages across without the DOORS — a gap nothing
           caught, because the spec that asserts them was still pointed at the route
           that still had them. Deleting the route is what surfaced it. */}
-      {rowCount === 0 ? (
-        kind || family || media || day ? (
-          /* ON THE DAY VIEW THE EMPTY STATE IS COMPACT AND SAYS WHAT IT MEANS
+          {rowCount === 0 ? (
+            kind || family || media || day ? (
+              /* ON THE DAY VIEW THE EMPTY STATE IS COMPACT AND SAYS WHAT IT MEANS
              (#4918 ruling 5). A `p-10` dashed card reading "Nothing recorded here
              yet." was the LARGEST element on a quiet day — and on today it sat
              under a chart already drawing six hours of recorded heart rate, so its
              copy contradicted the thing above it. "No entries" is about the ROWS,
              which is all this panel ever spoke for. */
-          <EmptyState
-            testId="history-empty-filtered"
-            compact={day != null}
-            message={
-              day == null
-                ? "Nothing recorded here yet."
-                : day === todayStr
-                  ? "No entries yet today."
-                  : "No entries."
-            }
-          />
-        ) : (
-          <EmptyState
-            testId="history-empty"
-            message="Nothing recorded yet. Anything logged shows up here."
-            // The training door is gated on the SUBJECT's life stage, exactly as the
-            // timeline gated it: a next action the profile cannot take is worse than
-            // one fewer door.
-            actions={TIMELINE_EMPTY_ACTIONS.filter(
-              (action) =>
-                isTrainingRelevant(getProfileAge(actingProfileId)) ||
-                !action.href.startsWith("/training")
-            )}
-          />
-        )
-      ) : null}
+              <EmptyState
+                testId="history-empty-filtered"
+                compact={day != null}
+                message={
+                  day == null
+                    ? "Nothing recorded here yet."
+                    : day === todayStr
+                      ? "No entries yet today."
+                      : "No entries."
+                }
+              />
+            ) : (
+              <EmptyState
+                testId="history-empty"
+                message="Nothing recorded yet. Anything logged shows up here."
+                // The training door is gated on the SUBJECT's life stage, exactly as the
+                // timeline gated it: a next action the profile cannot take is worse than
+                // one fewer door.
+                actions={TIMELINE_EMPTY_ACTIONS.filter(
+                  (action) =>
+                    isTrainingRelevant(getProfileAge(actingProfileId)) ||
+                    !action.href.startsWith("/training")
+                )}
+              />
+            )
+          ) : null}
 
-      {/* THE FEED CONTAINER TAKES NO RAIL GUTTER, and that is the #3920 shape rather
+          {/* THE FEED CONTAINER TAKES NO RAIL GUTTER, and that is the #3920 shape rather
           than an oversight: below `sm` the row band is FULL-BLEED, so a gutter on its
           container would stop the fill reaching the edge and leave a 28px strip of
           page beside it. The rail's lane is spent by the row CONTENT and by the day
           headers instead — "the band fill stays full-bleed while row content ends
           short of the edge". */}
-      <div data-testid="history-feed">
-        {(windowed ? windowed.recent : days).map((group) => daySection(group))}
-        {/* READING ORDER: the recent band first, then this year's older months, then
+          <div data-testid="history-feed">
+            {(windowed ? windowed.recent : days).map((group) =>
+              daySection(group)
+            )}
+            {/* READING ORDER: the recent band first, then this year's older months, then
             one card per earlier year. A fold card above the days would put a stack of
             shut doors between the reader and their own recent history, which is the
             defect #2657 exists to prevent — and it would spend the chrome budget on
@@ -1127,46 +1195,46 @@ export default async function HistoryPage(props: {
             and not a re-ordering — and with the fold card holding its place, opening
             lands the revealed days directly beneath the tap and closing leaves the
             reader on the card they tapped. */}
-        {windowed?.months.map((fold) => (
-          <Fragment key={fold.key}>
-            <HistoryFoldCard
-              fold={fold}
-              gutter={railGutter}
-              href={foldHref(fold.key)}
-            />
-            {fold.open ? fold.days.map((group) => daySection(group)) : null}
-          </Fragment>
-        ))}
-        {windowed?.years.map((year) => (
-          <Fragment key={year.key}>
-            <HistoryFoldCard
-              fold={year}
-              gutter={railGutter}
-              href={foldHref(year.key, {
-                open: year.open,
-                descendants: year.months.map((month) => month.key),
-              })}
-            />
-            {year.open
-              ? year.months.map((month) => (
-                  <Fragment key={month.key}>
-                    <HistoryFoldCard
-                      fold={month}
-                      gutter={railGutter}
-                      href={foldHref(month.key)}
-                      nested
-                    />
-                    {month.open
-                      ? month.days.map((group) => daySection(group, true))
-                      : null}
-                  </Fragment>
-                ))
-              : null}
-          </Fragment>
-        ))}
-      </div>
+            {windowed?.months.map((fold) => (
+              <Fragment key={fold.key}>
+                <HistoryFoldCard
+                  fold={fold}
+                  gutter={railGutter}
+                  href={foldHref(fold.key)}
+                />
+                {fold.open ? fold.days.map((group) => daySection(group)) : null}
+              </Fragment>
+            ))}
+            {windowed?.years.map((year) => (
+              <Fragment key={year.key}>
+                <HistoryFoldCard
+                  fold={year}
+                  gutter={railGutter}
+                  href={foldHref(year.key, {
+                    open: year.open,
+                    descendants: year.months.map((month) => month.key),
+                  })}
+                />
+                {year.open
+                  ? year.months.map((month) => (
+                      <Fragment key={month.key}>
+                        <HistoryFoldCard
+                          fold={month}
+                          gutter={railGutter}
+                          href={foldHref(month.key)}
+                          nested
+                        />
+                        {month.open
+                          ? month.days.map((group) => daySection(group, true))
+                          : null}
+                      </Fragment>
+                    ))
+                  : null}
+              </Fragment>
+            ))}
+          </div>
 
-      {/* LOAD MORE, OR THE SENTENCE THAT SAYS WHY THERE ISN'T ONE.
+          {/* LOAD MORE, OR THE SENTENCE THAT SAYS WHY THERE ISN'T ONE.
           `?show` is clamped at `HISTORY_MAX_SHOW`, so at the ceiling the control was a
           button whose URL changed and whose page did not. A control that does nothing
           is worse than no control, because it answers "is there more" with a promise
@@ -1184,37 +1252,39 @@ export default async function HistoryPage(props: {
           So the page says only what it knows: how much it is showing. The ceiling
           stays — it is what keeps one kind's read off the whole store — and phase 2's
           day view is where "further back" gets a real answer. */}
-      {hasMore ? (
-        <div className={`mt-4 ${railGutter}`}>
-          {show < HISTORY_MAX_SHOW ? (
-            <Link
-              className="btn-ghost btn-sm"
-              data-testid="history-load-more"
-              href={historyHref({
-                family: kind ? undefined : family,
-                kind,
-                class: doseClass,
-                item: rawItem,
-                media: mediaApplied,
-                day,
-                everyone,
-                open: [...openFolds],
-                expand: [...expanded].sort(),
-                show: Math.min(show + HISTORY_SHOW_STEP, HISTORY_MAX_SHOW),
-              })}
-            >
-              Load more
-            </Link>
-          ) : (
-            <p
-              className="text-sm text-slate-500 dark:text-slate-400"
-              data-testid="history-show-ceiling"
-            >
-              {`Showing the most recent ${HISTORY_MAX_SHOW} records.`}
-            </p>
-          )}
+          {hasMore ? (
+            <div className={`mt-4 ${railGutter}`}>
+              {show < HISTORY_MAX_SHOW ? (
+                <Link
+                  className="btn-ghost btn-sm"
+                  data-testid="history-load-more"
+                  href={historyHref({
+                    family: kind ? undefined : family,
+                    kind,
+                    class: doseClass,
+                    item: rawItem,
+                    media: mediaApplied,
+                    day,
+                    everyone,
+                    open: [...openFolds],
+                    expand: [...expanded].sort(),
+                    show: Math.min(show + HISTORY_SHOW_STEP, HISTORY_MAX_SHOW),
+                  })}
+                >
+                  Load more
+                </Link>
+              ) : (
+                <p
+                  className="text-sm text-slate-500 dark:text-slate-400"
+                  data-testid="history-show-ceiling"
+                >
+                  {`Showing the most recent ${HISTORY_MAX_SHOW} records.`}
+                </p>
+              )}
+            </div>
+          ) : null}
         </div>
-      ) : null}
+      </div>
 
       {stops.length > 0 ? <JumpRailScrubber stops={stops} /> : null}
     </PageContainer>
