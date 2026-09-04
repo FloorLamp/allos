@@ -70,6 +70,11 @@ export const TRACKED_PAGES: TrackedPage[] = [
   { href: "/profile", label: "Passport" },
   { href: "/equipment", label: "Equipment" },
   { href: "/data", label: "Data" },
+  // Not a nav leaf: `/integrations` itself redirects to Data → Import, but every
+  // per-source setup page is a child of it, and the dashboard's source asks ("Run
+  // the portal tool for…", "Import a fresh … export") land there. Without a name
+  // here those rows are the only ones in Ahead with no door.
+  { href: "/integrations", label: "Integrations" },
   { href: "/settings", label: "Settings" },
 ];
 

@@ -127,7 +127,10 @@ describe("dashboard placement canvas", () => {
         placements,
         presentations: tailRows,
         aheadPresentations: new Map([
-          [horizon.candidateId, { label: "Horizon row" }],
+          [
+            horizon.candidateId,
+            { label: "Horizon row", href: "/training" as const },
+          ],
           [later.candidateId, { label: "Later row" }],
           [laterSecond.candidateId, { label: "Later second row" }],
         ]),
@@ -150,6 +153,15 @@ describe("dashboard placement canvas", () => {
     expect(html).toContain("Later row");
     expect(html).toContain("Later second row");
     expect(html).toContain('href="/upcoming#later"');
+    // The bucket's door is on its HEADING. Its first row keeps its own destination
+    // and the door that names it: a Training row that landed on Upcoming was the bug.
+    expect(html).toMatch(/<h3[^>]*><a [^>]*href="\/upcoming#later"/);
+    expect(html).toMatch(
+      /<a [^>]*href="\/training"[^>]*>(?:(?!<\/a>).)*Horizon row/
+    );
+    expect(html).toMatch(
+      /<a [^>]*href="\/training"[^>]*>(?:(?!<\/a>).)*Training</
+    );
 
     const weekHtml = renderToStaticMarkup(
       createElement(DashboardPlacementCanvas, {
@@ -162,14 +174,20 @@ describe("dashboard placement canvas", () => {
         ),
         presentations: tailRows,
         aheadPresentations: new Map([
-          [horizon.candidateId, { label: "Horizon row" }],
+          [
+            horizon.candidateId,
+            { label: "Horizon row", href: "/training" as const },
+          ],
           [later.candidateId, { label: "Later row" }],
           [laterSecond.candidateId, { label: "Later second row" }],
         ]),
         attentionBadgeCount: 0,
       })
     );
-    expect(weekHtml).toContain('href="/upcoming#week"');
+    expect(weekHtml).toMatch(/<h3[^>]*><a [^>]*href="\/upcoming#week"/);
+    expect(weekHtml).toMatch(
+      /<a [^>]*href="\/training"[^>]*>(?:(?!<\/a>).)*Horizon row/
+    );
   });
 
   // ONE FOLD ON THE WHOLE PAGE, AND ITS CONVERSE (#4232, re-targeting #3934's pair).
