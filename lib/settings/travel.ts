@@ -5,7 +5,9 @@
 //   timezone_home       — the zone the profile left, recorded by the one-tap
 //                         switch so the return can be recognised and reverted.
 //                         Absent means "not away".
-//   timezone_switches   — the bounded switch history the switch-day rules read.
+//   timezone_switches   — the zone-switch history. Owned and written by
+//                         `setTimezone` (lib/settings/display.ts) since #3428 item 2;
+//                         read back here.
 //   timezone_travel_dismissed — the device zone an offer was last dismissed for.
 //
 // PER PROFILE rather than per login, deliberately: every one of them is a fact
@@ -18,20 +20,14 @@ import {
   setProfileSetting,
   deleteProfileSetting,
 } from "./kv";
-import { getTimezone, setTimezone } from "./display";
+import { getTimezone, setTimezone, TIMEZONE_SWITCHES_KEY } from "./display";
 import { isValidTimezone } from "../timezone";
-import { instantNow } from "../clock";
 import {
-  appendTimezoneSwitch,
-  connectedTimezoneSwitchHistory,
-  decodeTimezoneSwitchHistory,
   parseTimezoneSwitches,
-  serializeTimezoneSwitches,
   type TimezoneSwitch,
 } from "../travel-timezone";
 
 const HOME_KEY = "timezone_home";
-const SWITCHES_KEY = "timezone_switches";
 const DISMISSED_KEY = "timezone_travel_dismissed";
 
 // The zone this profile's day came from while it is away, or null when it is home.
@@ -49,8 +45,15 @@ export function clearHomeTimezone(profileId: number): void {
   deleteProfileSetting(profileId, HOME_KEY);
 }
 
+// The profile's WHOLE recorded zone history, both kinds — the name predates #3428
+// item 2, which made `setTimezone` the writer and gave every record a `kind`. Readers
+// that must not see a Settings correction say so themselves: `resolveSwitchHistory`
+// takes the travel sub-chain for the excusal predicates, and it is the only one that
+// needs to.
 export function getTravelSwitches(profileId: number): TimezoneSwitch[] {
-  return parseTimezoneSwitches(getProfileSetting(profileId, SWITCHES_KEY));
+  return parseTimezoneSwitches(
+    getProfileSetting(profileId, TIMEZONE_SWITCHES_KEY)
+  );
 }
 
 // The device zone the person last dismissed an offer for. Suppresses the offer for
@@ -67,59 +70,36 @@ export function clearDismissedTravelZone(profileId: number): void {
   deleteProfileSetting(profileId, DISMISSED_KEY);
 }
 
-// THE TRAVEL CHOKEPOINT. Move a profile's day to `tz` and record the seam that
-// leaves in its wall clock, so the switch-day rules can be asked about it later.
+// THE TRAVEL CHOKEPOINT. Move a profile's day to `tz`, mark the seam as a JOURNEY,
+// and keep the home marker the return offer is recognised against.
 //
-// Deliberately NOT folded into `setTimezone`. That setter is the primitive every
-// seed, fixture and onboarding path binds, and a first-ever zone or a fixture's
-// setup is not a journey — recording those would fill the history with switches
-// nobody took and excuse slots nobody flew over. Travel goes through here. The
-// Settings form uses the helper below so an edit DURING an active trip records the
-// same seam, while ordinary onboarding/correction edits stay bare.
+// The recording itself is `setTimezone`'s (#3428 item 2) and is not repeated here —
+// there is one appender, so a switch cannot be written twice. What stays here is the
+// part that is about travel rather than about the zone: this path, and only this path,
+// says `kind: "travel"`, which is what lets a dose slot be excused for it.
 //
-// Returns the switch it recorded, or null when the zone did not actually move.
+// Returns the switch that was recorded, or null when there was none — the zone did not
+// move, or the profile had no zone of its own to move from (`setTimezone`'s two
+// exemptions). The home marker follows the explicit user choice either way.
 export function switchProfileTimezone(
   profileId: number,
   tz: string,
   homeZone: string | null
 ): TimezoneSwitch | null {
   if (!isValidTimezone(tz)) throw new Error(`Invalid timezone: ${tz}`);
-  const from = getTimezone(profileId);
-  if (from === tz) return null;
-  const at = instantNow();
-  const decodedHistory = decodeTimezoneSwitchHistory(
-    getProfileSetting(profileId, SWITCHES_KEY)
-  );
-  const connectedHistory = connectedTimezoneSwitchHistory(
-    decodedHistory.switches,
-    from
-  );
-  const historyTrusted =
-    decodedHistory.valid &&
-    connectedHistory.length === decodedHistory.switches.length;
-  setTimezone(profileId, tz);
-  const record: TimezoneSwitch = { at, from, to: tz };
-  // Preserve malformed storage instead of laundering it into a clean one-way
-  // history. Consumers continue to fail open; the timezone still moves and the
-  // home marker still follows the explicit user choice.
-  if (historyTrusted) {
-    const history = appendTimezoneSwitch(connectedHistory, record);
-    setProfileSetting(
-      profileId,
-      SWITCHES_KEY,
-      serializeTimezoneSwitches(history)
-    );
-  }
+  if (getTimezone(profileId) === tz) return null;
+  const record = setTimezone(profileId, tz, "travel");
   if (homeZone) setProfileSetting(profileId, HOME_KEY, homeZone);
   else clearHomeTimezone(profileId);
   return record;
 }
 
-// A timezone selected explicitly in Settings is normally a correction, not proof
-// of travel. During an active trip, however, changing the away zone or selecting
-// home crosses the same wall-clock seam as the travel prompt and must be recorded;
-// otherwise a stale outbound jump can keep suppressing a slot after the person has
-// returned. The original home remains stable across intermediate legs.
+// A timezone selected explicitly in Settings is normally a correction, not proof of
+// travel. Both are recorded now (#3428 item 2) — what this decides is the KIND, and
+// with it whether the seam can excuse a dose slot. During an active trip, changing the
+// away zone or selecting home crosses the same wall-clock seam as the travel prompt and
+// counts as travel; otherwise a stale outbound jump can keep suppressing a slot after
+// the person has returned. The original home remains stable across intermediate legs.
 export function setProfileTimezoneFromSettings(
   profileId: number,
   tz: string

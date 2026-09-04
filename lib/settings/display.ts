@@ -10,6 +10,15 @@ import { writeTx } from "../db";
 const cache: typeof React.cache =
   (React as { cache?: typeof React.cache }).cache ?? ((fn) => fn);
 import { isValidTimezone, resolveTimezone } from "../timezone";
+import { instantNow } from "../clock";
+import {
+  appendTimezoneSwitch,
+  connectedTimezoneSwitchHistory,
+  decodeTimezoneSwitchHistory,
+  serializeTimezoneSwitches,
+  type TimezoneSwitch,
+  type TimezoneSwitchKind,
+} from "../travel-timezone";
 import {
   getSetting,
   getProfileSetting,
@@ -131,9 +140,63 @@ export const getTimezone = cache(function getTimezone(
   );
 });
 
-export function setTimezone(profileId: number, tz: string): void {
+// The stored switch history lives beside the zone it is a history OF, because this
+// setter is the only writer of both (lib/settings/travel.ts reads it back).
+export const TIMEZONE_SWITCHES_KEY = "timezone_switches";
+
+// THE ONE DOOR TO A PROFILE'S ZONE, and therefore the writer of its switch history
+// (#3428 item 2). Every path that moves a profile's day comes through here — the
+// Settings form, onboarding, and the travel chokepoint in lib/settings/travel.ts —
+// so recording the seam here is what makes the history COMPLETE. A history with
+// holes in it is worse than none: `zoneAtInstant` reads the gaps as "the zone never
+// moved" and silently re-labels every instant before an unrecorded move.
+//
+// `kind` says why (see TimezoneSwitchKind). It defaults to "settings" because that
+// is what an unannotated call IS — a form, a seed, a fixture, an onboarding answer.
+// Travel is the one path that has to say so, and it says so in one place.
+//
+// WHAT IS NOT RECORDED, and both exemptions are about there being no seam:
+//   • A FIRST-EVER ZONE. With no `profile_settings.timezone` row of its own the
+//     profile's day was never asserted to run anywhere — it was inheriting the
+//     instance default, which is not a claim about this person. There is no `from`,
+//     so there is no switch. This is what keeps a fixture's or an onboarding
+//     answer's opening `setTimezone` out of the history.
+//   • AN EQUAL ZONE. Nothing moved.
+// The zone itself is written either way: the row must exist so the profile stops
+// inheriting an instance default that can later change under it.
+//
+// Returns the record it made, or null when there was nothing to record.
+export function setTimezone(
+  profileId: number,
+  tz: string,
+  kind: TimezoneSwitchKind = "settings"
+): TimezoneSwitch | null {
   if (!isValidTimezone(tz)) throw new Error(`Invalid timezone: ${tz}`);
+  // Read through getTimezone, not the raw row, so `from` is always a real IANA name:
+  // a stored value that is unparseable resolves to the UTC the day was actually
+  // running on, and recording the raw garbage would taint the whole history instead.
+  const from = getProfileSetting(profileId, "timezone") == null
+    ? null
+    : getTimezone(profileId);
   setProfileSetting(profileId, "timezone", tz);
+  if (from == null || from === tz) return null;
+
+  const record: TimezoneSwitch = { at: instantNow(), from, to: tz, kind };
+  const decoded = decodeTimezoneSwitchHistory(
+    getProfileSetting(profileId, TIMEZONE_SWITCHES_KEY)
+  );
+  const connected = connectedTimezoneSwitchHistory(decoded.switches, from);
+  // Preserve malformed storage instead of laundering it into a clean one-way history:
+  // appending a trusted seam onto a history that lost one would manufacture a crossing
+  // nobody made. Consumers already fail open, and the zone still moves.
+  if (decoded.valid && connected.length === decoded.switches.length) {
+    setProfileSetting(
+      profileId,
+      TIMEZONE_SWITCHES_KEY,
+      serializeTimezoneSwitches(appendTimezoneSwitch(connected, record))
+    );
+  }
+  return record;
 }
 
 // ---- Week start (per profile) ----
