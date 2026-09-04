@@ -39,6 +39,7 @@ export default function QuickSymptomPanel({
   customNames,
   rankedKeys,
   temperatureUnit,
+  timeZone,
   textIntakeEnabled,
   trackingIllness,
   subjectProfileId,
@@ -49,6 +50,9 @@ export default function QuickSymptomPanel({
   customNames: string[];
   rankedKeys: string[];
   temperatureUnit: TemperatureUnit;
+  // The SUBJECT's zone, not the browser's — the reading-time control and the
+  // action's stated-minute pair both read it (#4712 item 2).
+  timeZone: string;
   textIntakeEnabled: boolean;
   trackingIllness: string[];
   // The quick-log sheet's chosen subject (#4932), when it is not the acting
@@ -74,10 +78,24 @@ export default function QuickSymptomPanel({
         customNames={customNames}
         rankedKeys={rankedKeys}
         suggestActivateIllness={trackingIllness.length === 0}
+        // ONE ILLNESS PANEL (#4712 item 2). The bar could always draw the
+        // temperature fold; every mount that asked for it was episode-gated, so a
+        // feverish child's reading at 2 AM went through the Body segment's
+        // measurements form instead — which cannot follow this sheet's subject at
+        // all (#4932 invariant 2), so it also meant switching profiles first. The
+        // Body/measurements path stays for non-illness vitals; the illness
+        // statement is whole here.
+        showTemperature
         temperatureUnit={temperatureUnit}
+        timeZone={timeZone}
         textIntakeEnabled={textIntakeEnabled}
         showTitle={false}
         profileId={subjectProfileId}
+        // An active illness situation IS an open episode — `setActiveSituations`
+        // composes `syncOpenIllnessEpisode` in its own write — so the fever offer
+        // never asks to open the one this subject is already in. The same question
+        // `suggestActivateIllness` above answers, from the same list.
+        hasOpenEpisode={trackingIllness.length > 0}
       />
     </div>
   );
