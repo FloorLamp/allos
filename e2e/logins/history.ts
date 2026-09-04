@@ -40,6 +40,15 @@ export const TL_CHROME_SYMPTOM_DAY = "2026-01-15";
 export const TL_CHROME_QUIET_DAY = "2026-01-18";
 // The title every busy-day activity carries, so the spec can count its own rows.
 export const TL_CHROME_ACTIVITY = "TL Chrome Session";
+// THE BUSY DAY'S ONE CLOCK-TIMED EVENT, and the only thing on it the day chart can
+// draw as a tick (#4974). The twenty sessions are day-granular, so before this the
+// chart on the busiest fixture day had an empty tick rail and "a tick tap scrolls
+// the row without moving the chart" had nowhere to be asserted: the other day with
+// ticks (#1068's) is six rows long, too short for its rail to have anywhere to
+// stick. Late in the day on purpose — the feed lists it below the sessions, so the
+// jump is long enough to pass the rail's pinning point.
+export const TL_CHROME_TICK_DOC = "e2e-tl-chrome-evening-panel.pdf";
+export const TL_CHROME_TICK_TIME = "00:20";
 
 // ── Timeline base empty state (issue #1410) ──────────────────────────────────
 // A login granted ONE profile that holds NOTHING — no activities, no metrics, no
