@@ -1,16 +1,11 @@
 // The Timeline day view's intraday panel (issue #1068): the card, the header, and
-// the day chart itself — twice.
+// the day chart.
 //
-// TWO VARIANTS, ONE CONTENT COMPONENT (#1512 F). A fixed viewBox scaled to
-// `width: 100%` renders its type at `fontSize × (container ÷ viewBox)`, so one
-// geometry cannot serve a 358 px phone and a wide monitor: the single 720-unit box
-// painted ~3.5 px labels on a phone (#1518) and ~17 px ones on a desktop.
-// `IntradayChart` is rendered twice with different GEOMETRY — the model, the
-// layers, the labels and every decision are identical, so this is a variant prop
-// over one content component, not a `hidden md:*` content fork. What duplicates in
-// the payload is two path strings; the alternative (picking a variant on the
-// client) would trade first paint for it, which is the one thing this surface
-// cannot spend.
+// THE PANEL NO LONGER CHOOSES A GEOMETRY (#4973). It used to render `IntradayChart`
+// twice — compact under `sm:hidden`, wide under `hidden sm:block` — which decided
+// by VIEWPORT what only the chart's own CONTAINER can answer, and left the dashboard
+// mount hard-coding a third rule. The chart reads its container now, so this file
+// hands over a day and stops there.
 import IntradayChart from "@/components/IntradayChart";
 import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import DaylightChip, { type DaylightUv } from "@/components/DaylightChip";
@@ -149,15 +144,6 @@ export default function IntradayPanel({
         model={model}
         formatPrefs={formatPrefs}
         profileId={profileId}
-        variant="compact"
-        className="sm:hidden"
-      />
-      <IntradayChart
-        model={model}
-        formatPrefs={formatPrefs}
-        profileId={profileId}
-        variant="wide"
-        className="hidden sm:block"
       />
     </div>
   );
