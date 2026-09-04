@@ -24,8 +24,15 @@ import {
   serializeOnboardingState,
 } from "@/lib/onboarding";
 import { PERSONAS, type PersonaContext } from "../../scripts/seed-personas";
-import { accessibleProfileIdsForLogin, type SessionProfile } from "@/lib/auth";
-import { authorizedProfileSubset } from "@/lib/cross-profile";
+import {
+  allProfileIds,
+  installStatementTrace,
+  loadDashboard,
+  profilesForIds as profiles,
+  renderDashboard as renderDashboardPage,
+  requestCache,
+  session,
+} from "@/lib/__db_tests__/dashboard-render-harness";
 import PageContainer from "../../components/PageContainer";
 import { LoggedViaSurface } from "@/components/LoggedViaSurface";
 import DashboardPlacementCanvas, {
@@ -44,157 +51,32 @@ import LogPracticeButton from "@/components/practices/LogPracticeButton";
 import { isNotableFlag } from "@/lib/reference-range";
 import type { MedicalFlag } from "@/lib/types";
 
-const session = vi.hoisted(() => ({
-  loginId: 0,
-  profile: null as SessionProfile | null,
-  accessible: [] as SessionProfile[],
-}));
-
-// A REAL memoizing stand-in for `lib/request-cache`'s `cache()` (#3369).
-//
-// WHY. `lib/request-cache.ts` is `React.cache ?? ((fn) => fn)`, and its own comment
-// says the rest: outside a Next server request React.cache has no dispatcher and
-// simply calls through. So in this tier every `cache()`-wrapped read executes once
-// per CALLER, and the number counted below overstated what a production render pays
-// by roughly 30 statements per persona (#3369 measured household 297 -> 267,
-// biohacker 305 -> 258; the trace's top "offender", `getSleepSessions`' two
-// statements at 9x each, collapses to one). A budget policed by an overstating meter
-// polices a number nobody pays, so the meter gets the memo first and the reductions
-// it is used to measure come after.
-//
-// THE SCOPE IS ONE RENDER, AND NOT ONE BYTE MORE. React's `cache()` lifetime is
-// exactly one server request. Here that scope is opened around each `Dashboard()`
-// call by `renderDashboard` below and closed when it settles; outside it this
-// wrapper calls straight through, which is also what production does outside a
-// request (scripts/seed.ts, the notify sidecar). That matters in both directions:
-// persona seeding runs between renders and must not read through another persona's
-// memo, and a memo that outlived a render would UNDERSTATE the budget — the wrong
-// direction for a meter, because it hides queries someone is really paying for.
-//
-// THE KEYING IS REACT'S KEYING. React memoizes on the positional arguments by
-// identity, so this walks a Map trie of the argument list rather than serializing a
-// key. Two structurally equal but distinct objects miss in React and miss here; a
-// serialized key would have hit, memoized harder than production, and understated.
-// FAITHFUL EXCEPT IN THE SAFE DIRECTION, DELIBERATELY. Exactness against a canary
-// React this tier cannot import is not on offer, so what is guaranteed instead is
-// the DIRECTION of every deviation: this mock may count HIGH but never low. A meter
-// that cannot under-report is the only property a budget actually needs. Errors are
-// the live example — React caches a throw for the request and this does not, so a
-// re-thrown read would count twice here and once in production. Do not "fix" that
-// toward exactness: memoizing throws moves the deviation to the unsafe side, and a
-// read that throws fails the render outright anyway, so there is nothing to buy.
-//
-// A single module-level slot rather than AsyncLocalStorage, for the same reason
-// `lib/tick-cache.ts` uses one: the loop below awaits one render at a time.
-const requestCache = vi.hoisted(() => {
-  interface MemoNode {
-    children: Map<unknown, MemoNode>;
-    filled: boolean;
-    value: unknown;
-  }
-  const node = (): MemoNode => ({
-    children: new Map(),
-    filled: false,
-    value: undefined,
-  });
-  const childOf = (parent: MemoNode, key: unknown): MemoNode => {
-    const existing = parent.children.get(key);
-    if (existing) return existing;
-    const created = node();
-    parent.children.set(key, created);
-    return created;
-  };
-  let open: Map<symbol, MemoNode> | null = null;
-  return {
-    cache: <A extends unknown[], R>(fn: (...args: A) => R) => {
-      const identity = Symbol(fn.name || "cached");
-      return (...args: A): R => {
-        const scope = open;
-        if (!scope) return fn(...args);
-        let root: MemoNode | undefined = scope.get(identity);
-        if (!root) {
-          root = node();
-          scope.set(identity, root);
-        }
-        let current: MemoNode = root;
-        for (const arg of args) current = childOf(current, arg);
-        if (current.filled) return current.value as R;
-        const value = fn(...args);
-        current.filled = true;
-        current.value = value;
-        return value;
-      };
-    },
-    /** Run `fn` with one request's worth of memoization open. */
-    async during<T>(fn: () => Promise<T>): Promise<T> {
-      open = new Map();
-      try {
-        return await fn();
-      } finally {
-        open = null;
-      }
-    },
-  };
-});
-
-vi.mock("@/lib/request-cache", () => ({ cache: requestCache.cache }));
-
-vi.mock("@/lib/auth", async (importActual) => {
-  const actual = await importActual<typeof import("@/lib/auth")>();
-  return {
-    ...actual,
-    requireSession: async () => {
-      if (!session.profile) throw new Error("dashboard test session not set");
-      return {
-        login: {
-          id: session.loginId,
-          username: "dashboard-test",
-          role: "admin",
-        },
-        profile: session.profile,
-        access: "write" as const,
-        deviceSessionKey: "dashboard-test-device",
-      };
-    },
-    getAccessibleProfiles: async () => session.accessible,
-    ownProfileForLogin: () => session.profile?.id ?? null,
-  };
-});
-
-vi.mock("@/lib/scope", async (importActual) => {
-  const actual = await importActual<typeof import("@/lib/scope")>();
-  return {
-    ...actual,
-    requireScope: async () => {
-      if (!session.profile) throw new Error("dashboard test scope not set");
-      const ids = authorizedProfileSubset(
-        accessibleProfileIdsForLogin(session.loginId),
-        session.accessible.map((profile) => profile.id)
-      );
-      return {
-        loginId: session.loginId,
-        role: "admin" as const,
-        actingProfileId: session.profile.id,
-        ownProfileId: session.profile.id,
-        profiles: session.accessible,
-        ids,
-        viewIds: authorizedProfileSubset(ids, [session.profile.id]),
-        access: new Map(ids.map((id) => [id, "write" as const])),
-      };
-    },
-  };
-});
-
-vi.mock("@/lib/ai-log", async (importActual) => {
-  const actual = await importActual<typeof import("@/lib/ai-log")>();
-  return { ...actual, withAiLogContext: () => undefined };
-});
-
-vi.mock("@/lib/recommendation-engine", async (importActual) => {
-  const actual =
-    await importActual<typeof import("@/lib/recommendation-engine")>();
-  return { ...actual, runRecommendation: () => undefined };
-});
+vi.mock("@/lib/request-cache", async () =>
+  (
+    await import("@/lib/__db_tests__/dashboard-render-harness")
+  ).requestCacheModule()
+);
+vi.mock("@/lib/auth", async (importActual) =>
+  (await import("@/lib/__db_tests__/dashboard-render-harness")).authModule(
+    await importActual()
+  )
+);
+vi.mock("@/lib/scope", async (importActual) =>
+  (await import("@/lib/__db_tests__/dashboard-render-harness")).scopeModule(
+    await importActual(),
+    await vi.importActual<typeof import("@/lib/auth")>("@/lib/auth")
+  )
+);
+vi.mock("@/lib/ai-log", async (importActual) =>
+  (await import("@/lib/__db_tests__/dashboard-render-harness")).aiLogModule(
+    await importActual()
+  )
+);
+vi.mock("@/lib/recommendation-engine", async (importActual) =>
+  (
+    await import("@/lib/__db_tests__/dashboard-render-harness")
+  ).recommendationEngineModule(await importActual())
+);
 
 function newProfile(name: string): number {
   return Number(
@@ -244,47 +126,6 @@ function ctxFor(profileId: number): PersonaContext {
   };
 }
 
-function allProfileIds(): number[] {
-  return (
-    db.prepare("SELECT id FROM profiles ORDER BY id").all() as { id: number }[]
-  ).map((row) => row.id);
-}
-
-function profiles(ids: readonly number[]): SessionProfile[] {
-  if (ids.length === 0) return [];
-  const marks = ids.map(() => "?").join(",");
-  return db
-    .prepare(
-      `SELECT id, name, photo_path, photo_version FROM profiles
-       WHERE id IN (${marks}) ORDER BY id`
-    )
-    .all(...ids) as SessionProfile[];
-}
-
-function installStatementTrace() {
-  const executed: string[] = [];
-  const realPrepare = db.prepare.bind(db);
-  vi.spyOn(db, "prepare").mockImplementation(((sql: string) => {
-    const statement = realPrepare(sql);
-    return new Proxy(statement, {
-      get(target, property) {
-        const value = Reflect.get(target, property, target);
-        if (
-          typeof value === "function" &&
-          ["get", "all", "run", "iterate"].includes(String(property))
-        ) {
-          return (...args: unknown[]) => {
-            executed.push(sql.replace(/\s+/g, " ").trim());
-            return value.apply(target, args);
-          };
-        }
-        return typeof value === "function" ? value.bind(target) : value;
-      },
-    });
-  }) as typeof db.prepare);
-  return { clear: () => executed.splice(0), count: () => executed.length };
-}
-
 const manifests = new Map<
   string,
   DashboardPlacementCanvasProps["placements"]
@@ -331,7 +172,7 @@ describe("actual atomic dashboard manifests", () => {
       }
     ).id;
     const trace = installStatementTrace();
-    const { default: Dashboard } = await import("../../app/(app)/page");
+    const Dashboard = await loadDashboard();
     // One call = one request, so one request-cache scope. Everything outside this
     // helper — persona seeding above all — runs unmemoized, exactly as production
     // does outside a request.
@@ -341,9 +182,9 @@ describe("actual atomic dashboard manifests", () => {
     // presentation, and a presentation change must not be able to make the placement
     // meter stop measuring.
     const renderDashboard = async () => {
-      const page = (await requestCache.during(
-        async () => await Dashboard()
-      )) as ReactElement<{ children: ReactElement }>;
+      const page = (await renderDashboardPage(Dashboard)) as ReactElement<{
+        children: ReactElement;
+      }>;
       expect(page.type).toBe(PageContainer);
       // …and the SURFACE DECLARATION inside it (#3087): the dashboard names itself
       // `dashboard-widget` once, at the region root, so every logging control it
