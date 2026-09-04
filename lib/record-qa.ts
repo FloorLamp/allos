@@ -56,6 +56,16 @@ export const DOMAIN_LABEL: Record<SearchDomain, string> = {
   dental: "Dental record",
   skin: "Skin lesion",
   activity: "Activity",
+  // The record's logged rows (#5006). They reach Q&A through the same fan-out every
+  // other domain does, so "when did I last take ibuprofen" can now cite the dose
+  // itself rather than only the medication it came out of; each badge names ONE row.
+  "log-dose": "Logged dose",
+  "log-food": "Logged serving",
+  "log-practice": "Practice session",
+  "log-symptom": "Logged symptom",
+  "log-mood": "Mood check-in",
+  "log-body": "Body reading",
+  "log-sleep": "Sleep night",
   supplement: "Supplement or medication",
   protocol: "Protocol",
   practice: "Wellness practice",

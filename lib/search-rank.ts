@@ -6,8 +6,47 @@
 // DB/React so it can be unit-tested (lib/__tests__/search-rank.test.ts).
 
 import type { AppRoute } from "./hrefs";
+import type { HistoryKind } from "./history-format";
+
+// THE RECORD'S OWN ROWS, AS SEARCH DOMAINS (#5006). Seven of the record's Logs kinds
+// are row-only — no page of their own — so a hit lands on the day view scrolled to the
+// row it names (lib/queries/search-logged.ts builds them). The domain IS the record
+// kind, prefixed so the entity domain beside it keeps its name: `practice` is the
+// wellness practice you track, `log-practice` is a session of it.
+//
+// `satisfies readonly HistoryKind[]` is the whole guard: a kind that is not one of the
+// record's own is a type error here rather than a hit whose `?kind=` opens on nothing.
+export const SEARCH_LOGGED_KINDS = [
+  "dose",
+  "food",
+  "practice",
+  "symptom",
+  "mood",
+  "body",
+  "sleep",
+] as const satisfies readonly HistoryKind[];
+
+export type SearchLoggedKind = (typeof SEARCH_LOGGED_KINDS)[number];
+export type LoggedSearchDomain = `log-${SearchLoggedKind}`;
+
+export function loggedSearchDomain(
+  kind: SearchLoggedKind
+): LoggedSearchDomain {
+  return `log-${kind}`;
+}
+
+const LOGGED_DOMAINS: ReadonlySet<string> = new Set(
+  SEARCH_LOGGED_KINDS.map(loggedSearchDomain)
+);
+
+export function isLoggedSearchDomain(
+  domain: SearchDomain
+): domain is LoggedSearchDomain {
+  return LOGGED_DOMAINS.has(domain);
+}
 
 export type SearchDomain =
+  | LoggedSearchDomain
   | "clinical-result"
   | "imaging"
   | "genomic"
@@ -104,6 +143,18 @@ export const SEARCH_DOMAIN_ORDER: SearchDomain[] = [
   "dental",
   "skin",
   "activity",
+  // THE LOGGED ROWS (#5006) sit with the activity they read like — things that
+  // happened, newest first — and above the catalog entities (`supplement`,
+  // `practice`, `equipment`) that name what they were logged against. Every one of
+  // them is ahead of `page`, which is what puts an entry above the kind's own
+  // static list entry ("Food history") for a query matching both.
+  "log-dose",
+  "log-food",
+  "log-practice",
+  "log-symptom",
+  "log-mood",
+  "log-body",
+  "log-sleep",
   "supplement",
   "protocol",
   "practice",
@@ -131,6 +182,16 @@ export const SEARCH_DOMAIN_LABELS: Record<SearchDomain, string> = {
   dental: "Dental",
   skin: "Skin",
   activity: "Activities",
+  // The record's own words for these rows (#5006), and not the record's CHIP labels:
+  // a chip names a filter ("Practices"), a palette group names what the rows are, and
+  // "Practices" is already the wellness-practice group one row down.
+  "log-dose": "Doses",
+  "log-food": "Food servings",
+  "log-practice": "Practice sessions",
+  "log-symptom": "Symptoms",
+  "log-mood": "Check-ins",
+  "log-body": "Body readings",
+  "log-sleep": "Sleep nights",
   supplement: "Supplements",
   protocol: "Protocols",
   practice: "Practices",
@@ -156,14 +217,23 @@ export function matchTier(text: string, query: string): number {
 
 // Order hits within one domain: match quality desc, then recency (later date
 // first, undated last), then title/key for a stable, deterministic order.
+//
+// THE LOGGED DOMAINS INVERT THE FIRST TWO KEYS (#5006), and only they do. An entity
+// is asked for by NAME, so the best-named match wins; a logged row is asked for by
+// RECENCY — "my latest sauna" — and the words are how you narrow to the kind, not how
+// you choose between two rows of it. Tier-first put a year-old "Sauna" above this
+// morning's "Sauna, infrared" for exactly the query the feature exists to answer.
 export function sortHits(hits: SearchHit[], query: string): SearchHit[] {
   return [...hits].sort((a, b) => {
     const ta = matchTier(a.title, query);
     const tb = matchTier(b.title, query);
-    if (ta !== tb) return tb - ta;
     // Recency: compare ISO date strings lexically; "" (undated) sorts last.
     const da = a.date ?? "";
     const db = b.date ?? "";
+    const dateFirst =
+      isLoggedSearchDomain(a.domain) && isLoggedSearchDomain(b.domain);
+    if (dateFirst && da !== db) return da < db ? 1 : -1;
+    if (ta !== tb) return tb - ta;
     if (da !== db) return da < db ? 1 : -1;
     if (a.title !== b.title) return a.title < b.title ? -1 : 1;
     return a.key < b.key ? -1 : 1;

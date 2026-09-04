@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   IconAlertTriangle,
+  IconApple,
   IconArrowRight,
   IconBandage,
   IconBarbell,
@@ -24,13 +25,17 @@ import {
   IconHeartHandshake,
   IconMedicalCross,
   IconMoodSmile,
+  IconMoon,
   IconPill,
+  IconRipple,
   IconSalad,
   IconScale,
+  IconScaleOutline,
   IconSearch,
   IconSparkles,
   IconStethoscope,
   IconTarget,
+  IconTemperature,
   IconTools,
   IconVaccine,
   IconVirus,
@@ -109,6 +114,16 @@ const DOMAIN_ICONS: Record<
   dental: (p) => <IconDental {...p} />,
   skin: (p) => <IconBandage {...p} />,
   activity: (p) => <IconBarbell {...p} />,
+  // THE RECORD'S OWN GLYPHS (#5006). Each logged domain wears the icon its row wears
+  // on the record (`KIND_GLYPH`, app/(app)/history/HistoryRows.tsx), so a hit and the
+  // row it lands on read as the same thing.
+  "log-dose": (p) => <IconPill {...p} />,
+  "log-food": (p) => <IconApple {...p} />,
+  "log-practice": (p) => <IconRipple {...p} />,
+  "log-symptom": (p) => <IconTemperature {...p} />,
+  "log-mood": (p) => <IconMoodSmile {...p} />,
+  "log-body": (p) => <IconScaleOutline {...p} />,
+  "log-sleep": (p) => <IconMoon {...p} />,
   supplement: (p) => <IconPill {...p} />,
   protocol: (p) => <IconFlask2 {...p} />,
   practice: (p) => <IconSparkles {...p} />,

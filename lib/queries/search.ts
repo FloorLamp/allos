@@ -65,6 +65,7 @@ import {
   providerHitText,
   skinHitText,
 } from "../search-projections";
+import { loggedEntryHits } from "./search-logged";
 import { getProviderRecordCounts } from "./providers";
 import { getPracticeSearchRows } from "./wellness";
 import type {
@@ -1279,6 +1280,11 @@ export function searchAll(profileId: number, rawQuery: string): SearchGroup[] {
     ...careGoalHits(profileId, like),
     ...pageHits(query, trainingRelevant, !isMinor(age)),
     ...activityHits(profileId, like),
+    // THE RECORD'S OWN ROWS (#5006): seven bounded reads, one per row-only Logs kind,
+    // each landing on the day view scrolled to the entry rather than on a hub. The
+    // static list entries above ("Food history", "Dose history") stay and stay last —
+    // `page` is the final domain — so a query matching both shows the entries first.
+    ...loggedEntryHits(profileId, query, like),
     ...(trainingRelevant ? goalHits(profileId, like) : []),
   ];
 
