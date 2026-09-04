@@ -7,6 +7,7 @@ import {
   touchPinch,
 } from "./helpers";
 import { E2E_LOGIN_INTRADAY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import { INTRADAY_VARIANTS } from "@/lib/intraday-layout";
 
 // The day chart at 390px — the surface #1518 and #1512 F were written about.
 //
@@ -41,11 +42,26 @@ test.describe("the day chart at phone width (#1512 F / #1518)", () => {
       const panel = member.getByTestId("intraday-panel");
       await expect(panel).toBeVisible();
 
-      // The COMPACT variant is what a phone gets; the wide one is not displayed.
+      // The COMPACT geometry is what this card's WIDTH earns (#4973 — the chart
+      // reads its own container, and nothing on this page names a variant); the
+      // wide one is not displayed. Asserted as the relationship that decides it:
+      // the container is under the wide variant's own narrowest, and the compact
+      // viewBox is what the browser got.
       const compact = panel.locator('[data-variant="compact"]');
       const wide = panel.locator('[data-variant="wide"]');
       await expect(compact).toBeVisible();
       await expect(wide).toBeHidden();
+      // One chart per mount — the panel used to render a second, hidden one.
+      await expect(panel.getByTestId("intraday-chart")).toHaveCount(1);
+      await expect(compact.getByTestId("intraday-svg")).toHaveAttribute(
+        "viewBox",
+        /^0 0 360 /
+      );
+      expect(
+        await panel
+          .getByTestId("intraday-chart")
+          .evaluate((el) => el.getBoundingClientRect().width)
+      ).toBeLessThan(INTRADAY_VARIANTS.wide.minContainerPx);
 
       // Every layer still renders — the variant is geometry, not a content fork.
       await expect(compact.getByTestId("intraday-hr")).toBeVisible();

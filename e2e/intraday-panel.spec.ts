@@ -13,6 +13,7 @@ import {
   INTRADAY_PRACTICE,
   INTRADAY_TICK_DOC,
 } from "./fixture-logins";
+import { INTRADAY_VARIANTS } from "@/lib/intraday-layout";
 
 // The Timeline day view's intraday panel (issue #1068) — the day rotated 90°: the
 // SAME events the day's feed lists, projected onto a 00:00–24:00 clock axis.
@@ -21,13 +22,18 @@ import {
 // E2E_LOGIN_INTRADAY profile seeded by e2e/seed-events.ts, so no shared-seed row is
 // counted and no other spec's HR/zone numbers move. Reads only.
 //
-// TWO VARIANTS (#1512 F). The panel renders the chart twice with different
-// GEOMETRY — a compact box for phones, a wide one from `sm` — because a fixed
-// viewBox scaled to `width: 100%` cannot keep its type legible across both. Only
-// one is displayed at a time, so every locator below is scoped to the variant this
-// project's viewport actually shows; an unscoped last-resort match would reach
-// into the hidden one.
+// TWO GEOMETRIES (#1512 F), CHOSEN BY THE CONTAINER (#4973). A fixed viewBox
+// scaled to `width: 100%` cannot keep its type legible from a 308px day column to
+// a 1,700px dashboard cell, so the chart draws a compact box and a wide one and a
+// `@container` query displays the one its own width earns — no mount names a
+// variant any more. Only one is displayed at a time, so every locator below is
+// scoped to the geometry this project's containers actually show; an unscoped
+// last-resort match would reach into the hidden one.
 const WIDE = '[data-variant="wide"]';
+const COMPACT = '[data-variant="compact"]';
+
+/** The viewBox each geometry draws — what a container query cannot fake. */
+const WIDE_VIEWBOX = /^0 0 720 /;
 
 /** The fixture's intraday day IS the profile's today. Resolved from the page
  *  rather than by recomputing the run's frozen clock here. */
@@ -471,12 +477,13 @@ test.describe("the day view's intraday panel (#1068)", () => {
           .locator('[data-standing-family="day-so-far"]')
       ).toHaveCount(1);
 
-      // The figure, in the compact geometry the day view's phone variant uses —
-      // one implementation, selected by the prop that file already had. It is the
-      // FAMILY's drawing now, not the member's — rendered once under every
-      // member's facts rather than inside the intraday candidate's own `<li>`.
+      // The figure, in the geometry THIS CELL's width earns (#4973) — which at
+      // 1280 is the wide one, where the mount used to hard-code compact and draw a
+      // phone-sized chart in a desktop row. It is the FAMILY's drawing, not the
+      // member's — rendered once under every member's facts rather than inside the
+      // intraday candidate's own `<li>`.
       const figure = family.getByTestId("dashboard-family-figure");
-      const chart = figure.locator('[data-variant="compact"]');
+      const chart = figure.locator(WIDE);
       await expect(chart).toBeVisible();
       // WAIT FOR THE CONTENT, NOT THE BOX: the HR band is what makes this a chart
       // rather than an axis, and it is the layer the presence gate is about.
@@ -522,7 +529,7 @@ test.describe("the day view's intraday panel (#1068)", () => {
       // behaviour is actually about.
       const doorReach = await family.evaluate((el) => {
         const plot = el.querySelector(
-          '[data-variant="compact"]'
+          '[data-variant="wide"]'
         ) as HTMLElement | null;
         const door = el.querySelector(
           "a.standing-primary"
@@ -577,6 +584,68 @@ test.describe("the day view's intraday panel (#1068)", () => {
       await expect(panel.getByTestId("intraday-freshness")).toHaveText(
         dashboardLag
       );
+    } finally {
+      await member.context().close();
+    }
+  });
+
+  // #4973 — THE GEOMETRY COMES FROM THE CHART'S OWN CONTAINER. Both mounts used to
+  // decide it themselves and neither read the width the chart was given: the panel
+  // rendered both boxes and hid one by VIEWPORT, and this dashboard cell hard-coded
+  // the phone box into a row that is ~1,700px at xl.
+  //
+  // ASSERTED AS A RELATIONSHIP, not against 1280. The viewport is not the width
+  // that decides anything — the CONTAINER is — so this reads the container and the
+  // viewBox off the same mount and pins them to each other. That pair is exactly
+  // what a dead `@container` declaration breaks: without `container-type` the query
+  // never matches, the compact default survives at every width, and the wide
+  // viewBox never appears at either mount.
+  test("draws the geometry its own container earns, once per mount", async ({
+    browser,
+  }) => {
+    test.slow();
+
+    const member = await loginAs(browser, {
+      username: E2E_LOGIN_INTRADAY,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    const widthOf = (chart: Locator) =>
+      chart.evaluate((el) => el.getBoundingClientRect().width);
+    try {
+      await member.goto("/");
+      const figure = member
+        .locator('[data-standing-family="day-so-far"]')
+        .getByTestId("dashboard-family-figure");
+      // ONE chart per mount, which is the count that used to be two on the panel.
+      await expect(figure.getByTestId("intraday-chart")).toHaveCount(1);
+      const dashboard = figure.locator(WIDE);
+      // The DRAWING, not the frame: a viewBox read before the layers land is a
+      // claim about an empty box.
+      await expect(dashboard.getByTestId("intraday-hr")).toBeVisible();
+      await expect(figure.locator(COMPACT)).toBeHidden();
+      await expect(dashboard.getByTestId("intraday-svg")).toHaveAttribute(
+        "viewBox",
+        WIDE_VIEWBOX
+      );
+      expect(
+        await widthOf(figure.getByTestId("intraday-chart"))
+      ).toBeGreaterThanOrEqual(INTRADAY_VARIANTS.wide.minContainerPx);
+
+      // The day view's panel is unchanged at this viewport — the same wide box it
+      // has always drawn here, now for a reason its own card can state.
+      await openFixtureDay(member);
+      const panel = member.getByTestId("intraday-panel");
+      await expect(panel.getByTestId("intraday-chart")).toHaveCount(1);
+      const day = panel.locator(WIDE);
+      await expect(day.getByTestId("intraday-hr")).toBeVisible();
+      await expect(panel.locator(COMPACT)).toBeHidden();
+      await expect(day.getByTestId("intraday-svg")).toHaveAttribute(
+        "viewBox",
+        WIDE_VIEWBOX
+      );
+      expect(
+        await widthOf(panel.getByTestId("intraday-chart"))
+      ).toBeGreaterThanOrEqual(INTRADAY_VARIANTS.wide.minContainerPx);
     } finally {
       await member.context().close();
     }
