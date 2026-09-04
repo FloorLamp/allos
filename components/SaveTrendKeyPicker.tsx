@@ -8,6 +8,7 @@ import {
   SERIES_PICKER_GROUP_ORDER,
   type SeriesPickerInput,
 } from "@/lib/series-picker-options";
+import SubmitButton from "@/components/SubmitButton";
 
 // The ★ picker's control (#1675). It replaces a flat alphabetical `<select>` over
 // metrics + ~200 analytes with the shared Combobox: an empty query is the RELEVANCE
@@ -36,16 +37,14 @@ export default function SaveTrendKeyPicker({
 
   const picked = byLabel.get(label.trim());
   const star = (
-    <button
-      type="submit"
-      disabled={enhanced && !picked}
-      className={`btn-ghost items-center gap-1 py-1.5 disabled:opacity-50 ${
-        enhanced && !picked ? "hidden sm:inline-flex" : "inline-flex"
-      }`}
+    <span
+      className={enhanced && !picked ? "hidden sm:inline-flex" : "inline-flex"}
     >
-      <span aria-hidden>☆</span>
-      Star
-    </button>
+      <SubmitButton disabled={enhanced && !picked}>
+        <span aria-hidden>☆</span>
+        Star
+      </SubmitButton>
+    </span>
   );
 
   if (!enhanced) {

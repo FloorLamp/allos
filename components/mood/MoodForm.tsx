@@ -19,6 +19,7 @@ import {
   OFFLINE_CAPTURE_REFUSED_MESSAGE,
   shouldQueueOffline,
 } from "@/lib/offline/queue";
+import SubmitButton from "@/components/SubmitButton";
 
 export interface MoodFormValue {
   valence: number;
@@ -413,13 +414,12 @@ export default function MoodForm({
               />
             </label>
             <div className="flex items-center gap-2">
-              <button
-                className="btn btn-sm"
-                type="submit"
+              <SubmitButton
+                variant="primary"
                 disabled={busy || valence == null}
               >
                 {busy ? "Saving…" : "Save"}
-              </button>
+              </SubmitButton>
               {onCancel ? (
                 <button
                   className="btn-ghost btn-sm"

@@ -22,6 +22,7 @@ import {
   updateFoodLogEvent,
   type FoodEventEditResult,
 } from "@/app/(app)/nutrition/actions";
+import SubmitButton from "@/components/SubmitButton";
 
 // THE FOOD DOMAIN'S ONE FORM (#4424 ruling 1), named by `LOG_MANIFEST.food.pieces.form`.
 // `row` absent posts `logFoodServing`; `row` present seeds from that row and posts
@@ -280,14 +281,13 @@ export default function FoodServingForm({
       </div>
       <InlineError>{error}</InlineError>
       <div className="flex items-end gap-2 sm:col-span-2">
-        <button
-          className="btn"
-          type="submit"
+        <SubmitButton
+          variant="primary"
           data-testid={`${testId}-save`}
           disabled={pending}
         >
           {pending ? "Saving…" : row ? "Save" : "Add"}
-        </button>
+        </SubmitButton>
         <button
           className="btn-ghost"
           type="button"

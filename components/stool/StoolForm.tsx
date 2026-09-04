@@ -8,6 +8,7 @@ import WhenControl, { type WhenValue } from "@/components/WhenControl";
 import { BRISTOL_STOOL_TYPES } from "@/lib/bristol-stool";
 import { statedHhmm } from "@/lib/stated-time";
 import { correctStoolReading, logStoolForm } from "@/app/(app)/stool-actions";
+import SubmitButton from "@/components/SubmitButton";
 
 // THE STOOL DOMAIN'S ONE FORM (#4424 ruling 1), named by
 // `LOG_MANIFEST.stool.pieces.form`: the record's "Log a movement" door and that row's
@@ -135,14 +136,13 @@ export default function StoolForm({
       </label>
       <InlineError>{error}</InlineError>
       <div className="flex items-end gap-2 sm:col-span-2">
-        <button
-          className="btn"
-          type="submit"
+        <SubmitButton
+          variant="primary"
           data-testid="stool-form-save"
           disabled={pending}
         >
           {pending ? "Saving…" : row ? "Save" : "Add"}
-        </button>
+        </SubmitButton>
         <button className="btn-ghost" type="button" onClick={onCancel}>
           Cancel
         </button>

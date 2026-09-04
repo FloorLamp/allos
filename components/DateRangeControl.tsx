@@ -17,6 +17,7 @@ import {
 } from "./CustomRangeDisclosure";
 import ScrollFade from "./ScrollFade";
 import type { AppRoute } from "@/lib/hrefs";
+import SubmitButton from "@/components/SubmitButton";
 
 export function dateRangeFilterModel(
   range: DateRange,
@@ -128,10 +129,8 @@ export default function DateRangeControl({
                 defaultValue={range.to ?? ""}
               />
             </div>
-            <div className="col-span-2 flex items-end sm:col-span-1">
-              <button type="submit" className="btn w-full px-3">
-                Apply
-              </button>
+            <div className="col-span-2 grid items-end sm:col-span-1">
+              <SubmitButton>Apply</SubmitButton>
             </div>
             <div className="col-span-2 flex items-end sm:col-span-1">
               <Link
