@@ -46,7 +46,18 @@ import type { PracticeType } from "@/lib/protocol-practice";
 // keep one presentation and one lifecycle.
 
 interface ActivityEditorApi {
-  openCreate: (prefill?: { type?: PracticeType; date?: string }) => void;
+  /**
+   * A fresh create form. `startTime` / `endTime` are the clocks a window on the day
+   * chart stated (#4950 item 5) — local `HH:MM`, a DEFAULT the person changes or
+   * confirms, and no claim about what the activity was: heart rate cannot tell a run
+   * from a sauna, so this carries no `type` with them.
+   */
+  openCreate: (prefill?: {
+    type?: PracticeType;
+    date?: string;
+    startTime?: string;
+    endTime?: string;
+  }) => void;
   // Start a LIVE workout (issue #340): opens a fresh create form (date=today,
   // start=now) in the in-gym layout — the rest timer + set check-off flow. A
   //
@@ -255,6 +266,12 @@ export default function ActivityEditorProvider({
   // remount so tapping "Log again" twice on the same source re-seeds cleanly.
   const [prefill, setPrefill] = useState<ActivityEditData | null>(null);
   const [createDate, setCreateDate] = useState<string | null>(null);
+  // The window's clocks, held beside `createDate` and for the same reason: they seed a
+  // create form and mean nothing to an edit, which carries its row's own times.
+  const [createTimes, setCreateTimes] = useState<{
+    start?: string;
+    end?: string;
+  } | null>(null);
   // WHICH SURFACE OPENED THIS EDITOR (#3087) — written by `useActivityEditor`'s
   // wrapper from the OPENER's own region, because this provider sits in the app shell
   // and has no region of its own.
@@ -602,6 +619,11 @@ export default function ActivityEditorProvider({
         commitOpenedFrom();
         setEditData(null);
         setCreateDate(createPrefill?.date ?? null);
+        setCreateTimes(
+          createPrefill?.startTime
+            ? { start: createPrefill.startTime, end: createPrefill.endTime }
+            : null
+        );
         setPrefill(
           createPrefill?.type
             ? buildActivityTypePrefill(createPrefill.type, todayStr(tz))
@@ -612,7 +634,11 @@ export default function ActivityEditorProvider({
         liveOwnedRowIdRef.current = null;
         setLiveStartEpoch(null);
         setMinimized(false);
-        if (createPrefill?.type || createPrefill?.date)
+        if (
+          createPrefill?.type ||
+          createPrefill?.date ||
+          createPrefill?.startTime
+        )
           setRepeatNonce((n) => n + 1);
         setOpen(true);
       },
@@ -806,6 +832,8 @@ export default function ActivityEditorProvider({
             editData={editData}
             prefill={prefill}
             initialDate={createDate ?? undefined}
+            initialStartTime={createTimes?.start}
+            initialEndTime={createTimes?.end}
             live={live}
             adoptRowId={live ? liveRowId : null}
             adoptPending={live && liveCreatePending}

@@ -35,6 +35,7 @@ export default function IntradayPanel({
   weather,
   waiting,
   waitingDetail,
+  selectedWindow = null,
 }: {
   model: IntradayModel;
   formatPrefs: DisplayFormatPrefs;
@@ -42,6 +43,9 @@ export default function IntradayPanel({
    *  day, not only the acting profile's, and #1515's per-minute window has to ask
    *  for the right one. Re-validated against the session server-side. */
   profileId: number;
+  /** A window stated in the URL (#4950), passed to both chart variants so the mark is
+   *  the same one whichever is visible at this width. */
+  selectedWindow?: { from: number; to: number | null } | null;
   /**
    * THE DAY'S CONTEXT (#4918 ruling 3) — DaylightChip's and CyclePhaseChip's own
    * inputs, plus the weather line, all formerly the standalone `history-day-context`
@@ -151,6 +155,7 @@ export default function IntradayPanel({
         profileId={profileId}
         variant="compact"
         className="sm:hidden"
+        selectedWindow={selectedWindow}
       />
       <IntradayChart
         model={model}
@@ -158,6 +163,7 @@ export default function IntradayPanel({
         profileId={profileId}
         variant="wide"
         className="hidden sm:block"
+        selectedWindow={selectedWindow}
       />
     </div>
   );
