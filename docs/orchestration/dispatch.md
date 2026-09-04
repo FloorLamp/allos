@@ -94,7 +94,7 @@ closed taxonomy, and `needs-human` handling.
 
 - Orchestrator bookkeeping in `lib/release-notes.json`: one batch a day at
   most, entries append-only, upgrade actions in the day's `operatorNotes`.
-- One bullet per user-visible change: ≤80 characters, product words, and a
-  `category` from `RELEASE_NOTE_CATEGORIES` — `lib/release-notes.ts` validates
-  both; the app groups each day by category, most visible first.
+- One bullet per user-visible change, in product words; the schema validates.
+- A `perf` note needs a measured time on a surface a person waits for, not
+  less work: #5043 (−0.53 s on Trends) yes; #5055 (−20 reads, same output) no.
 - The digest prints the uncovered lag (`--check`); non-zero = the batch is due.

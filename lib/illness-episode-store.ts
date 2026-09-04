@@ -18,6 +18,7 @@
 // so the active-situation set and the open row never disagree ("never two truths").
 
 import { db, today, writeTx } from "./db";
+import { cache } from "./request-cache";
 import { profileIdsIn, type AuthorizedProfileIds } from "./cross-profile";
 import { shiftDateStr } from "./date";
 import { rangeContainsDate } from "./date-range";
@@ -95,7 +96,16 @@ export function resolveEpisodeAcrossProfiles(
 // of the chassis's inclusive-end predicate (rangeContainsDate, lib/date-range.ts) — SQL
 // can't call the JS matcher, so the two are kept in step by hand (the #394 finite-preimage
 // precedent).
-export function getEpisodeRowForDate(
+//
+// REQUEST-CACHED (#3369 item 2): the illness cockpit, the coaching gather and the
+// derived-episode reader each ask this same question of the SAME profile and the same
+// day on one render — four times, one profile, on every seeded persona. Keyed on
+// (profileId, date), which is what keeps this honest: the sibling read below fans out
+// over a household's profiles and its count is per-profile work, not duplication.
+// NO WRITER CAN INTERVENE (lib/queries/AGENTS.md): every episode writer here goes
+// through `getOpenEpisodeRow`, which is deliberately not cached, and no writer reads
+// this one.
+export const getEpisodeRowForDate = cache(function getEpisodeRowForDate(
   profileId: number,
   date: string
 ): IllnessEpisodeRow | null {
@@ -111,7 +121,7 @@ export function getEpisodeRowForDate(
       )
       .get(profileId, date, date) as IllnessEpisodeRow | undefined) ?? null
   );
-}
+});
 
 // Every episode row covering `date`, in the owning query's stable order. A profile
 // may have more than one simultaneously-open illness situation (#3138), so the
@@ -229,20 +239,29 @@ export function getOpenEpisodeRow(
 // descending — the ease-back ramp's anchor (issue #837). Null when no closed episode
 // exists. Every row here is a flagged-illness episode (syncOpenIllnessEpisode only
 // opens rows for illness-type situations), so no extra filtering is needed.
-export function mostRecentClosedEpisodeRow(
-  profileId: number
-): IllnessEpisodeRow | null {
-  return (
-    (db
-      .prepare(
-        `SELECT ${COLS} FROM illness_episodes
+//
+// REQUEST-CACHED (#3369 item 2): the ease-back ramp, the reopen affordance and the
+// coaching gather all want the same profile's last closed episode on one render. On the
+// household persona this read is 6 executions over 4 profiles — four of them are the
+// household's real per-profile fan-out and two are the acting profile asking twice; the
+// memo keys on profileId so it collapses only the second kind. NO WRITER CAN INTERVENE
+// (lib/queries/AGENTS.md): no episode writer reads it.
+export const mostRecentClosedEpisodeRow = cache(
+  function mostRecentClosedEpisodeRow(
+    profileId: number
+  ): IllnessEpisodeRow | null {
+    return (
+      (db
+        .prepare(
+          `SELECT ${COLS} FROM illness_episodes
           WHERE profile_id = ? AND end_date IS NOT NULL
           ORDER BY end_date DESC, id DESC
           LIMIT 1`
-      )
-      .get(profileId) as IllnessEpisodeRow | undefined) ?? null
-  );
-}
+        )
+        .get(profileId) as IllnessEpisodeRow | undefined) ?? null
+    );
+  }
+);
 
 // The profile's most-recently resolved episode that is STILL within its 7-day reopen
 // window (#1140 Part A) — the dashboard "Recently resolved — reopen?" affordance's

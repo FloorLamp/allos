@@ -6,6 +6,7 @@
 // session read goes through the already profile-scoped getSleepSessions — so the
 // scoping guard is unaffected.
 
+import { cache } from "../request-cache";
 import {
   getDailySleepSessionsSince,
   getSleepSessions,
@@ -22,6 +23,7 @@ import {
   OURA_READINESS_SCORE_METRIC,
 } from "../integrations/oura";
 import { HEALTH_CONNECT_ID } from "../integrations/health-connect";
+import { restampedTwinPairs } from "../integrations/sleep-overlap-db";
 import { sleepOverlapPairs, type SleepSessionRow } from "../sleep-overlap";
 import { getMoodLogs } from "./mood";
 import { getSuspectSleepSessions } from "./sleep-clock-skew";
@@ -674,7 +676,23 @@ export function getSleepRegularityInRange(
 }
 
 // The rolling SRI trend series (oldest→newest) for the Trends sleep chart.
-export function getSleepRegularityTrend(
+//
+// REQUEST-CACHED because several surfaces on one render ask for the same series
+// (#5010): the dashboard reaches it through `sriTrendArrow`, the protocol samples ask
+// again, and `getSleepRegularityInsight` below re-reads it — each a full pass over the
+// profile's sleep history. `cache()` is identity outside a Next request
+// (lib/request-cache.ts says so deliberately), so the notify tick and the DB tier
+// behave exactly as before. Keyed on the arguments, so a caller narrowing the window
+// with its own `opts` still gets its own computation.
+//
+// THE KEY IS ARGUMENT IDENTITY, so a second argument silently costs a full recompute.
+// React memoizes on the positional arguments BY IDENTITY: every call site today passes
+// `profileId` alone, which is why they collapse. A caller that adds an options literal
+// — even `{}`, even one structurally equal to another caller's — misses, and gets its
+// own pass over the whole sleep history with nothing to report that it did. If you are
+// adding a call site and you need `opts`, hoist the object so the callers that share a
+// window share the object too.
+export const getSleepRegularityTrend = cache(function getSleepRegularityTrend(
   profileId: number,
   opts?: SleepRegularityOptions
 ): { date: string; sri: number }[] {
@@ -682,7 +700,7 @@ export function getSleepRegularityTrend(
     freeDays: getFreeDays(profileId),
     ...opts,
   });
-}
+});
 
 // The "regularity dropped since travel" insight note, or null. Reuses the trend
 // above and the profile's dated situation change-log (which already tracks
@@ -891,7 +909,13 @@ export function getOverlappingSleepSessions(
       HEALTH_CONNECT_ID,
       shiftDateStr(today(profileId), -SLEEP_OVERLAP_REVIEW_DAYS)
     ) as (SleepSessionRow & { date: string; value: number })[];
-  return sleepOverlapPairs(rows).map(({ a, b }) => ({
+  // The twin rule needs the stage read, so it lives with the store half; Review lists
+  // what the collapse pairs, or a pair it left undecided would never reach the person
+  // (#5020).
+  return [
+    ...sleepOverlapPairs(rows),
+    ...restampedTwinPairs(profileId, HEALTH_CONNECT_ID, rows),
+  ].map(({ a, b }) => ({
     // `sleepOverlapPairs` only pairs rows of one non-null origin, so either side names it.
     origin: a.origin as string,
     sessions: [a, b].map((s) => ({

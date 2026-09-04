@@ -29,6 +29,7 @@ import { travelExcusalResolver } from "@/lib/travel-excusal";
 import {
   isExcusedSlot,
   isRepeatedSlot,
+  resolveSwitchHistory,
   travelPrompt,
 } from "@/lib/travel-timezone";
 import { buildIntakeReminderForSlots } from "@/lib/notifications/intake";
@@ -259,7 +260,11 @@ describe("eastward: the vanished slot is excused, not missed (#3263 §4)", () =>
     // between them — including this dose's 20:00 slot — never occurred.
     switchProfileTimezone(profileId, TOKYO, NY);
     expect(
-      isExcusedSlot(getTravelSwitches(profileId), SWITCH_DAY, EVENING_MINUTE)
+      isExcusedSlot(
+        resolveSwitchHistory(getTravelSwitches(profileId)),
+        SWITCH_DAY,
+        EVENING_MINUTE
+      )
     ).toBe(true);
 
     const strip = stripFor(profileId, evening.itemId);
@@ -322,7 +327,11 @@ describe("eastward: the vanished slot is excused, not missed (#3263 §4)", () =>
     freeze("2026-05-02T11:00:00Z");
     expect(today(profileId)).toBe("2026-05-02");
     expect(
-      isExcusedSlot(getTravelSwitches(profileId), "2026-05-02", EVENING_MINUTE)
+      isExcusedSlot(
+        resolveSwitchHistory(getTravelSwitches(profileId)),
+        "2026-05-02",
+        EVENING_MINUTE
+      )
     ).toBe(false);
     expect(buildIntakeReminderForSlots(profileId, ["Evening"])).not.toBeNull();
     // Yesterday keeps its excusal; today is judged like any other day.
@@ -343,7 +352,7 @@ describe("westward: the repeated hour is not re-asked (#3263 §4)", () => {
     // 23:00 comes round a second time today, the 08:00 slot among them.
     switchProfileTimezone(profileId, HONOLULU, TOKYO);
     expect(today(profileId)).toBe(SWITCH_DAY);
-    const switches = getTravelSwitches(profileId);
+    const switches = resolveSwitchHistory(getTravelSwitches(profileId));
     expect(isRepeatedSlot(switches, SWITCH_DAY, MORNING_MINUTE)).toBe(true);
     // A repeated hour is emphatically NOT an excused one — it happened twice, not
     // never, so it stays in the denominator and stays answerable.

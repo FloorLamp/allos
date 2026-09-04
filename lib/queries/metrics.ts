@@ -25,6 +25,7 @@ import {
   localDayOf,
   localDayRange,
   localDaySpan,
+  localMinuteProjector,
   offsetSegments,
 } from "../local-day-window";
 import {
@@ -32,7 +33,6 @@ import {
   isDstTransitionDay,
   parseUtcSql,
   zonedDateParts,
-  zonedMinuteStr,
 } from "../date";
 import type { ArrivalNight } from "../notifications/digest-schedule";
 import { metricAggregation } from "../metric-buckets";
@@ -118,15 +118,36 @@ export function getManualBodyMetricStatedAt(
 // in SQL: a JS filter after a LIMIT would let a run of weightless days starve the
 // window (e.g. a daily-HR syncer with weekly weigh-ins). weight_kg is non-null on
 // every returned row. Backs the dashboard + weight-page weight/BMI charts.
-export function getWeights(
+//
+// REQUEST-CACHED because one dashboard render asks for the same window five times
+// (#3369 item 2): the nutrition bodyweight reads, the training-detail series and the
+// per-day source election all want the profile's weight history, and none of them can
+// see that another already read it. Keyed on the arguments, so the 60-day window and
+// the 365-day one stay separate reads. NO WRITER CAN INTERVENE (lib/queries/AGENTS.md):
+// nothing that writes `body_metrics` reads this within one request — the fitness and
+// goal actions read the latest value BEFORE their insert and never re-read after it.
+// Callers may not mutate what they get back; today every one of them maps or filters
+// first, which is what makes a shared array safe to hand out.
+//
+// The default lives on the EXPORTED wrapper rather than inside the memo. React's
+// `cache()` keys on positional arguments, so `getWeights(p)` and `getWeights(p, 365)`
+// would be two entries for one question; normalizing the arity here means the callers
+// that pass the default explicitly and the ones that omit it share a read.
+const getWeightsCached = cache(function getWeights(
   profileId: number,
-  limit = 365
+  limit: number
 ): (BodyMetric & { weight_kg: number })[] {
   return db
     .prepare(
       "SELECT * FROM body_metrics WHERE profile_id = ? AND weight_kg IS NOT NULL ORDER BY date DESC LIMIT ?"
     )
     .all(profileId, limit) as (BodyMetric & { weight_kg: number })[];
+});
+export function getWeights(
+  profileId: number,
+  limit = 365
+): (BodyMetric & { weight_kg: number })[] {
+  return getWeightsCached(profileId, limit);
 }
 
 // Weight rows collapsed to ONE source per day (the profile's primary source first,
@@ -1182,17 +1203,6 @@ function hrDayAggregates(
   return mergeHrDayRows(out);
 }
 
-// A stored instant as the profile-local minute stamp ('YYYY-MM-DDTHH:MM') the pure
-// consumers compare against. The read-time twin of what ingest used to STORE — which
-// is the whole #94 correction: the projection is recomputed from the absolute instant
-// on every read, so changing the profile timezone re-reads history correctly instead
-// of silently re-meaning it. Falls back to the raw stamp if it will not parse, so a
-// surprise row is visible rather than dropped.
-function localMinuteStamp(tz: string, ts: string): string {
-  const d = parseUtcSql(ts);
-  return d ? zonedMinuteStr(tz, d) : ts;
-}
-
 // The profile's newest and oldest stored instants, or null when it has no HR at all.
 // Two indexed seeks — the open-ended readers need real data bounds to build a window
 // from, and scanning to find them would undo the point.
@@ -1341,7 +1351,8 @@ export function getLatestHrDay(profileId: number): string | null {
 export function getHrMinutes(profileId: number, date: string): HrMinute[] {
   // The local day as a half-open UTC range — 23, 24 or 25 hours wide depending on
   // DST, which is precisely what a `substr` day could not express.
-  const { startUtc, endUtc } = localDayRange(getTimezone(profileId), date);
+  const tz = getTimezone(profileId);
+  const { startUtc, endUtc } = localDayRange(tz, date);
   const rows = db
     .prepare(
       `SELECT * FROM hr_minutes
@@ -1354,8 +1365,8 @@ export function getHrMinutes(profileId: number, date: string): HrMinute[] {
   // training-zone windows, the ride series — compares it against activity times that
   // are profile-local wall clocks. Storage is UTC, presentation is local, and the
   // conversion happens HERE, once, instead of each surface guessing.
-  const tz = getTimezone(profileId);
-  const local = rows.map((r) => ({ ...r, ts: localMinuteStamp(tz, r.ts) }));
+  const toLocalMinute = localMinuteProjector(tz, startUtc, endUtc);
+  const local = rows.map((r) => ({ ...r, ts: toLocalMinute(r.ts) ?? r.ts }));
   return pickRowsOneSourcePerDay(
     local,
     resolutionFor(profileId, "heart_rate"),
@@ -1368,7 +1379,14 @@ export function getHrMinutes(profileId: number, date: string): HrMinute[] {
 // (until omitted = open-ended), one source per day — the shared read behind the
 // training-zone aggregations (lib/queries/zones.ts), so zone minutes can't
 // double-count a workout recorded by two HR sources at once (issue #14).
-export function getHrMinutesInRange(
+//
+// REQUEST-CACHED because a dashboard asks for the SAME window more than once (#5010):
+// `getDayLoadInputs` and `getIntensitySignal` both open-endedly read the same 42 days
+// on one render, and each read is a wide materialisation. `cache()` is identity outside
+// a Next request (lib/request-cache.ts says so deliberately), so a notify tick and the
+// DB tier behave exactly as before. Keyed on the arguments, so the open-ended form
+// (`until` undefined) and a bounded one stay separate reads, as they must.
+export const getHrMinutesInRange = cache(function getHrMinutesInRange(
   profileId: number,
   since: string,
   until?: string
@@ -1392,14 +1410,22 @@ export function getHrMinutesInRange(
   // Projected to the profile-local minute before anything groups or compares it —
   // same boundary rule as getHrMinutes above. Once projected, the day is the stamp's
   // own prefix again and the training-zone windows line up as they always did.
-  const local = rows.map((r) => ({ ...r, ts: localMinuteStamp(tz, r.ts) }));
+  //
+  // Through the window's OFFSET SEGMENTS rather than through `Intl` per row (#5010).
+  // The zone's offset is constant inside a segment, so the local minute is the stored
+  // instant plus that constant; the segments cost ~90 `Intl` probes for a 90-day
+  // window against the 125,000 `formatToParts` calls this line used to make. Identical
+  // output, including on the transition instant itself — pinned minute by minute
+  // against `zonedMinuteStr` in lib/__tests__/local-day-window.test.ts.
+  const toLocalMinute = localMinuteProjector(tz, startUtc, endUtc);
+  const local = rows.map((r) => ({ ...r, ts: toLocalMinute(r.ts) ?? r.ts }));
   return pickRowsOneSourcePerDay(
     local,
     resolutionFor(profileId, "heart_rate"),
     (r) => r.ts.slice(0, 10),
     (r) => r.source
   ).map(({ ts, bpm }) => ({ ts, bpm }));
-}
+});
 
 function bodyMetricColumn(metric: BodyMetricKind): string {
   return metric === "weight"
@@ -1416,7 +1442,16 @@ function bodyMetricColumn(metric: BodyMetricKind): string {
 // source is returned, as before. With the 'documents' class (#1640) this is
 // "the newest scan, whichever report it came from". A STRICT choice (#1642)
 // keeps the honest empty state instead of falling back to another source.
-export function getLatestBodyMetricDated(
+//
+// REQUEST-CACHED (#3369 item 2): three of the profile's body stats are asked for by
+// the passport, the weight-band dosing context and the dashboard's own summary within
+// one render, each unaware of the others, and a `chosen` primary source makes it two
+// statements rather than one. Keyed on (profileId, metric), so a household render
+// still pays one read per profile per metric — the fan-out is real work and stays.
+// NO WRITER CAN INTERVENE (lib/queries/AGENTS.md): the two actions that read this
+// (a fitness entry's VO2 estimate, a measured goal's baseline) read it before their
+// own insert and never again.
+export const getLatestBodyMetricDated = cache(function getLatestBodyMetricDated(
   profileId: number,
   metric: BodyMetricKind
 ): { value: number; date: string } | null {
@@ -1441,7 +1476,7 @@ export function getLatestBodyMetricDated(
     )
     .get(profileId) as { value: number; date: string } | undefined;
   return row ?? null;
-}
+});
 
 // The most recent (non-null) recorded value for a body metric, or null.
 export function getLatestBodyMetric(

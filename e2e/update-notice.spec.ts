@@ -470,7 +470,13 @@ test("a keystroke inside the autosave debounce is flushed, not crossed (#3371)",
   await expect(page.getByTestId("routines-section")).toBeVisible();
   // `hydratedClick`: this follows a fresh goto onto a route that rewrites its own URL
   // at hydration, and a click swallowed inside that window leaves the builder closed.
-  await hydratedClick(page, page.getByTestId("routine-new"));
+  // Scoped past the staged copy for the same reason `routines-section` is filtered
+  // below: a streamed boundary lands in a `<div hidden>` before the inline script
+  // relocates it, so a bare id lookup is strict-mode ambiguous in that window.
+  await hydratedClick(
+    page,
+    page.getByTestId("routine-new").filter({ visible: true })
+  );
   const builder = page.getByTestId("routine-builder");
   await expect(builder).toBeVisible();
   await expect(builder).toHaveAttribute("data-unsaved", "false");
@@ -625,7 +631,13 @@ test("a keystroke inside the autosave debounce is flushed, not crossed (#3371)",
   await expect(
     page.getByTestId("routines-section").filter({ visible: true })
   ).toHaveCount(1);
-  await hydratedClick(page, page.getByTestId("routine-new"));
+  // Scoped past the staged copy for the same reason `routines-section` is filtered
+  // below: a streamed boundary lands in a `<div hidden>` before the inline script
+  // relocates it, so a bare id lookup is strict-mode ambiguous in that window.
+  await hydratedClick(
+    page,
+    page.getByTestId("routine-new").filter({ visible: true })
+  );
   const reopened = page.getByTestId("routine-builder");
   await expect(reopened).toBeVisible();
   await expect(

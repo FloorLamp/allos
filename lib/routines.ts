@@ -15,6 +15,7 @@
 // declared targets and a custom routine's day-derived targets can't fork.
 
 import { db, writeTx, today } from "./db";
+import { cache } from "./request-cache";
 import { casUpdate } from "./tx";
 import { unlinkProtocolsFromTargets } from "./frequency-target-delete";
 import {
@@ -93,7 +94,17 @@ export function getRoutines(profileId: number): Routine[] {
     .all(profileId) as Routine[];
 }
 
-export function getActiveRoutine(profileId: number): RoutineWithDays | null {
+// REQUEST-CACHED (#3369 item 2): five readers ask one render which routine is active —
+// the coaching gather, the training overview, the activity list's routine context and
+// the routine engine's own day resolution — and each pays the lookup PLUS the day/
+// exercise expansion behind it. Keyed on profileId, so a household render reads once
+// per profile. NO WRITER CAN INTERVENE (lib/queries/AGENTS.md): activation writes
+// through `activateRoutine` in its own writeTx and nothing in that path re-reads the
+// active routine afterwards; the Server Actions that write routines read the routine
+// by id, not through this.
+export const getActiveRoutine = cache(function getActiveRoutine(
+  profileId: number
+): RoutineWithDays | null {
   const row = db
     .prepare(
       `SELECT id, name, source, template_id, active, started_date, position,
@@ -105,7 +116,7 @@ export function getActiveRoutine(profileId: number): RoutineWithDays | null {
     .get(profileId) as Routine | undefined;
   if (!row) return null;
   return getRoutineWithDays(profileId, row.id);
-}
+});
 
 export function getRoutineWithDays(
   profileId: number,

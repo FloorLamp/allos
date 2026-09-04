@@ -90,25 +90,35 @@ interface FamilyMemberRow {
 
 // The profile's ACTIVE medication items partitioned into ingredient families —
 // shared by the state gather below and the therapeutic-duplication note builder.
-export function getActiveMedicationFamilies(
-  profileId: number
-): MedicationFamily<FamilyMemberRow & { rxcuiIngredients: string[] | null }>[] {
-  const rows = db
-    .prepare(
-      `SELECT id, name, rxcui, rxcui_ingredients, max_daily_count,
+//
+// REQUEST-CACHED (#3369 item 2): the PRN state gather and the therapeutic-duplication
+// note builder both ask for it on one render, and the families are the same partition
+// either way. Keyed on profileId, so a household render keeps one read per profile.
+// NO WRITER CAN INTERVENE (lib/queries/AGENTS.md): the redose-window reader below is
+// uncached for exactly that reason and this one has no writer among its callers.
+export const getActiveMedicationFamilies = cache(
+  function getActiveMedicationFamilies(
+    profileId: number
+  ): MedicationFamily<
+    FamilyMemberRow & { rxcuiIngredients: string[] | null }
+  >[] {
+    const rows = db
+      .prepare(
+        `SELECT id, name, rxcui, rxcui_ingredients, max_daily_count,
               max_daily_amount_mg, obligation
          FROM intake_items
         WHERE profile_id = ? AND active = 1 AND kind = 'medication'
         ORDER BY id`
-    )
-    .all(profileId) as FamilyMemberRow[];
-  return medicationFamilies(
-    rows.map((r) => ({
-      ...r,
-      rxcuiIngredients: parseRxcuiIngredients(r.rxcui_ingredients),
-    }))
-  );
-}
+      )
+      .all(profileId) as FamilyMemberRow[];
+    return medicationFamilies(
+      rows.map((r) => ({
+        ...r,
+        rxcuiIngredients: parseRxcuiIngredients(r.rxcui_ingredients),
+      }))
+    );
+  }
+);
 
 export type RedoseWindowState =
   "current" | "superseded" | "cancelled" | "unavailable";
