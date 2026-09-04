@@ -246,6 +246,43 @@ describe("staleness — the cadence creator", () => {
     );
   });
 
+  it("does not re-raise an EXPIRED ask until a whole cadence has passed", () => {
+    // A stale login, asked about 8 days ago: that ask expired yesterday, and the portal
+    // is still unchecked. The hourly tick used to write the same ask again here, so the
+    // "expires in N days" the row quoted was a countdown to a reset, never to silence.
+    const f = fixture("reask");
+    const momRequest = () =>
+      listSyncRequests().find((r) => r.accountId === f.mom.id);
+    const momOpen = () =>
+      openSyncRequests().some((r) => r.accountId === f.mom.id);
+    reportedRun(
+      f.mom,
+      stamp(shiftDateStr(f.anchor, -(STALENESS_CADENCE_DAYS + 20)))
+    );
+    expect(requestSync(f.mom.id, "staleness").ok).toBe(true);
+    const askedAt = stamp(shiftDateStr(f.anchor, -8));
+    db.prepare(
+      `UPDATE portal_sync_requests SET created_at = ?, expires_at = ? WHERE account_id = ?`
+    ).run(askedAt, stamp(shiftDateStr(f.anchor, -1)), f.mom.id);
+    expect(momOpen()).toBe(false);
+
+    evaluateStalenessRequests(todayFor);
+    expect(momOpen()).toBe(false);
+    expect(momRequest()?.createdAt).toBe(askedAt);
+
+    // A cadence after the ask, the same login is asked again — once.
+    const cadenceAgo = stamp(shiftDateStr(f.anchor, -STALENESS_CADENCE_DAYS));
+    db.prepare(
+      `UPDATE portal_sync_requests SET created_at = ? WHERE account_id = ?`
+    ).run(cadenceAgo, f.mom.id);
+    evaluateStalenessRequests(todayFor);
+    expect(momOpen()).toBe(true);
+    const raisedAt = momRequest()?.createdAt;
+    expect(raisedAt).not.toBe(cadenceAgo);
+    evaluateStalenessRequests(todayFor);
+    expect(momRequest()?.createdAt).toBe(raisedAt);
+  });
+
   it("stays silent for a hand pre-bound login the tool has NEVER run on (#2010)", () => {
     // The reachable state the bug lived in: portal added, one label pre-bound by hand —
     // a supported and encouraged pre-run step, so the first run files records straight
