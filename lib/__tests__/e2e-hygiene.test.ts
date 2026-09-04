@@ -724,6 +724,11 @@ const SUSPENSE_BOUNDARY_FILES = [
   "app/(app)/training/page.tsx",
   "app/(app)/trends/page.tsx",
   "app/layout.tsx",
+  // The three chart wrappers suspend a `dynamic(..., { ssr: false })` import from
+  // inside a "use client" component — client-only, so nothing is ever staged.
+  "components/BarSparkline.tsx",
+  "components/LineChartCard.tsx",
+  "components/ScatterChartCard.tsx",
 ];
 const STREAMED_SECTION_FILES = [
   "app/(app)/training/page.tsx",
@@ -1992,7 +1997,7 @@ describe("e2e suite hygiene guard (issue #868)", () => {
     expect(helpers).toContain('page.getByTestId("app-content-container")');
   });
 
-  it("every Suspense boundary in app/ is registered, and no loading.tsx is back", () => {
+  it("every Suspense boundary in the app tree is registered, and no loading.tsx is back", () => {
     const found: string[] = [];
     const streamed: string[] = [];
     const loaders: string[] = [];
@@ -2012,6 +2017,7 @@ describe("e2e suite hygiene guard (issue #868)", () => {
       }
     };
     walk(path.join(REPO, "app"));
+    walk(path.join(REPO, "components"));
     expect(
       loaders,
       `A route-segment loading.tsx opts its page into streamed rendering, which is ` +
@@ -2027,7 +2033,8 @@ describe("e2e suite hygiene guard (issue #868)", () => {
     ).toEqual([...STREAMED_SECTION_FILES].sort());
     expect(
       found.sort(),
-      `A new <Suspense> in app/ is a new candidate streaming surface (#4890). ` +
+      `A new <Suspense> in app/ or components/ is a new candidate streaming ` +
+        `surface (#4890). ` +
         `Say whether it stages server content, then add it to SUSPENSE_BOUNDARY_FILES.`
     ).toEqual([...SUSPENSE_BOUNDARY_FILES].sort());
   });

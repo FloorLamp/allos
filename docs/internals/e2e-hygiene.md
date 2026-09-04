@@ -293,8 +293,8 @@ what makes a section genuinely suspend — every read here is synchronous
 better-sqlite3, so an `async` Server Component resolves in microtasks and a bare
 `<Suspense>` never flushes early — and its call sites are the whole hazard
 surface. Today that is two routes: `/training` (the tab panel) and `/trends` (the
-Body census). The guard freezes both that list and every `<Suspense>` in `app/`,
-so a third streaming hub cannot land without someone re-reading the specs that
+Body census). The guard freezes both that list and every `<Suspense>` in `app/` and
+`components/`, so a third streaming hub cannot land without someone re-reading the specs that
 assert against it. `loading.tsx` is the other way in; `app/(app)/layout.tsx`
 refuses it in prose (#530) and the guard now freezes it at zero.
 
