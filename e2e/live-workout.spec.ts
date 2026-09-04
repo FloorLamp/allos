@@ -121,6 +121,10 @@ test("checking off a set auto-starts rest, and Finish stamps the end time (#340)
     "Pause rest timer"
   );
 
+  // The session's own page, held before the finish: create-at-start put the tab
+  // here (#2870) and the workspace opened above it.
+  const sessionUrl = new URL(page.url()).pathname;
+
   // Finish now opens the "Session complete" recap step (#924); Save from there
   // stamps end=now and CLOSES the workspace (#5111) rather than collapsing back
   // to the editor for the session it just ended.
@@ -129,10 +133,15 @@ test("checking off a set auto-starts rest, and Finish stamps the end time (#340)
   await page.getByTestId("recap-save").click();
   await expect(page.getByTestId("activity-form")).toHaveCount(0);
 
-  // The end stamp survived the close, read back through the session's own page —
-  // which is a stronger reading than the collapsed editor's field was, since it
-  // costs a reopen off the server rather than the state still in the form.
-  await page.waitForURL(/\/training\/activity\/\d+$/);
+  // The end stamp survived the close, read back through a FRESH load of the
+  // session's page rather than through whatever the close left on screen. The
+  // close consumes the history entry the workspace holds for the phone's Back
+  // button (useHistoryBackClose), and that back() keeps the SAME url — the
+  // sentinel is a bare pushState — so there is no navigation to wait for and a
+  // click issued straight afterwards races the restore. Re-navigating is both
+  // the wait and the stronger reading: it costs a server round trip instead of
+  // the state still in the form.
+  await page.goto(sessionUrl);
   await hydratedClick(page, appContent(page).getByTestId("activity-page-edit"));
   await expect(page.getByTestId("end-time-input")).toHaveValue(/^\d\d:\d\d$/);
 
