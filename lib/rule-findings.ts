@@ -38,12 +38,11 @@ import {
   getProteinAdequacy,
   getFiberAdequacy,
   getFindingSuppressions,
+  effectiveSituationResolver,
 } from "./queries";
 import { activeFindings } from "./findings";
 import { exerciseHistoryKey } from "./lifts";
 import {
-  getActiveSituations,
-  getSituationEvents,
   getHomeLocation,
   getProfileSex,
   getProfileAge,
@@ -81,7 +80,7 @@ import {
   type DataQualityGap,
 } from "./data-quality";
 import { buildFoodDrugVarianceFindings } from "./food-drug-ledger-findings";
-import { situationHistoryResolver } from "./trend-annotations";
+
 import { getIntakeHistory } from "./intake-history";
 import {
   detectDemotionCandidates,
@@ -1654,13 +1653,11 @@ export function buildAdherencePatternFindings(
   const dates = lastNDates(today, ADHERENCE_PATTERN_DAYS);
   const workoutDays = new Set(getActivityDates(profileId));
   const isExcused = travelExcusalResolver(profileId);
-  // Per-day situation resolver (#654): a past day is scored against the situations
-  // active THAT day, not today's toggle applied retroactively — so a situational
-  // item's pattern observations aren't distorted by a situation activated today.
-  const situationsOn = situationHistoryResolver(
-    getActiveSituations(profileId),
-    getSituationEvents(profileId)
-  );
+  // Per-day DUENESS resolver (#654/#3993): a past day is scored against the situations
+  // that held THAT day, declared AND derived — so a situational item's pattern
+  // observations aren't distorted by a situation activated today, and a day the app
+  // really did ask for a dose counts as one.
+  const situationsOn = effectiveSituationResolver(profileId);
 
   const inputs: DoseAdherenceInput[] = [];
   for (const d of doses) {

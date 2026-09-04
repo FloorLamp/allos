@@ -38,8 +38,13 @@ import {
   type NormMetricSample,
 } from "@/lib/integrations/normalize";
 import { collectWindowDoses } from "@/lib/notifications/intake";
-import { getPendingRoutineDoses } from "@/lib/queries/usual-routine";
+import {
+  getPendingRoutineDoses,
+  pendingDayDoses,
+} from "@/lib/queries/usual-routine";
 import { createCycleRow } from "@/lib/cycle-store";
+import { getIntakeHistory } from "@/lib/intake-history";
+import { missedDoseDays } from "@/lib/intake-adherence";
 import { setHomeLocation } from "@/lib/settings";
 import { runWeatherSync } from "@/lib/integrations/weather-sync";
 import type {
@@ -483,5 +488,143 @@ describe("the routine offer answers a past day's SITUATIONS as the reminder does
         [label]: [expected, expected],
       });
     }
+  });
+});
+
+// ── ONE ANSWER PER DAY, ACROSS BOTH CATCH-UP SURFACES (#221/#3993) ───────────────────
+//
+// Dating the union is only half the fix. The reminder rebuild and the catch-up sheet
+// ask "was this owed on that day"; so does the adherence strip beside them, through
+// `getIntakeHistory`. Give those two questions different resolvers and the sheet offers
+// a dose the strip scores `na` — and a dose logged through that offer is dropped from
+// the percentage entirely, because the strip returns `na` before it ever consults the
+// log. So every dueness surface now reads the SAME dated resolver.
+//
+// THE PAUSE IS THE DIRECTION THAT BITES. #1296's hold reads the same active set, so
+// widening the set SILENCES: a `daily` `must` medication held by Poor sleep drops out
+// of a rough day. That is what the app did live on that day, and the strip now agrees
+// instead of calling the day missed — which is the whole point. It is also why the
+// pause case below asserts the strip cell, not just the two gathers.
+function stripCellOn(
+  profileId: number,
+  date: string,
+  itemName: string
+): string {
+  const entry = getIntakeHistory(profileId, today(profileId), 14).find(
+    (e) => e.item.name === itemName
+  );
+  return entry?.strip.find((d) => d.date === date)?.state ?? "absent";
+}
+
+describe("the strip, the reminder and the sheet answer a day the same way (#3993)", () => {
+  it("a rough night makes the day owe the dose, and the strip says so too", () => {
+    const p = newProfile();
+    seedItem(p, ITEM, BUILTIN_POOR_SLEEP_SITUATION, "due-on");
+    const anchor = today(p);
+    const nights: NormMetricSample[] = [];
+    for (let d = 9; d >= 3; d--)
+      nights.push(night(shiftDateStr(anchor, -d), 480));
+    nights.push(night(shiftDateStr(anchor, -2), 300));
+    upsertMetricSamples(p, nights, "health-connect");
+    const d2 = shiftDateStr(anchor, -2);
+
+    // Reminder, sheet and strip in ONE object: any two of them disagreeing is the bug.
+    expect({
+      reminder: morningNames(p, d2).includes(ITEM),
+      sheet: pendingDayDoses(p, d2).some((d) => d.name === ITEM),
+      strip: stripCellOn(p, d2, ITEM),
+    }).toEqual({ reminder: true, sheet: true, strip: "missed" });
+  });
+
+  it("a derived PAUSE removes the day from all three, and nothing calls it missed", () => {
+    const p = newProfile();
+    // A daily `must` medication HELD by Poor sleep (#1296) — the inverse link, so the
+    // derived context takes the dose away rather than adding it.
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, kind, condition, obligation, active, pause_situation_id)
+           VALUES (?, ?, 'medication', 'daily', 'must', 1, ?)`
+        )
+        .run(
+          p,
+          "Levothyroxine",
+          resolveSituationId(p, BUILTIN_POOR_SLEEP_SITUATION)
+        ).lastInsertRowid
+    );
+    const doseId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+           VALUES (?, '1 tab', 'Morning', 'any', 0)`
+        )
+        .run(itemId).lastInsertRowid
+    );
+    const born = `${shiftDateStr(today(p), -30)}T00:00:00Z`;
+    db.prepare("UPDATE intake_items SET created_at = ? WHERE id = ?").run(
+      born,
+      itemId
+    );
+    db.prepare("UPDATE intake_item_doses SET created_at = ? WHERE id = ?").run(
+      born,
+      doseId
+    );
+
+    const anchor = today(p);
+    const nights: NormMetricSample[] = [];
+    for (let d = 9; d >= 3; d--)
+      nights.push(night(shiftDateStr(anchor, -d), 480));
+    nights.push(night(shiftDateStr(anchor, -2), 300));
+    upsertMetricSamples(p, nights, "health-connect");
+    const d2 = shiftDateStr(anchor, -2);
+    const d3 = shiftDateStr(anchor, -3);
+
+    // day-3 is the single-variable control: same medication, healthy night, still owed.
+    // Without it "day-2 is empty" is equally true of a fixture that owes nothing ever.
+    expect({
+      heldReminder: morningNames(p, d2).includes("Levothyroxine"),
+      heldSheet: pendingDayDoses(p, d2).some((d) => d.name === "Levothyroxine"),
+      heldStrip: stripCellOn(p, d2, "Levothyroxine"),
+      heldMissed: missedDoseDays(
+        getIntakeHistory(p, anchor, 14).find(
+          (e) => e.item.name === "Levothyroxine"
+        )!.strip
+      ).includes(d2),
+      controlReminder: morningNames(p, d3).includes("Levothyroxine"),
+      controlStrip: stripCellOn(p, d3, "Levothyroxine"),
+    }).toEqual({
+      heldReminder: false,
+      heldSheet: false,
+      heldStrip: "na",
+      heldMissed: false,
+      controlReminder: true,
+      controlStrip: "missed",
+    });
+  });
+
+  // The reminder LINE carries its own adherence figure, computed from the same strip.
+  // Built through a declared-only resolver it had a zero denominator, so a Poor-sleep
+  // item printed as due with no percentage and no dots — a dose named as owed on a
+  // closed day with nothing on the line saying why.
+  it("the reminder line can state the adherence of a derived-reason dose", () => {
+    const p = newProfile();
+    seedItem(p, ITEM, BUILTIN_POOR_SLEEP_SITUATION, "due-on");
+    const anchor = today(p);
+    const nights: NormMetricSample[] = [];
+    for (let d = 9; d >= 3; d--)
+      nights.push(night(shiftDateStr(anchor, -d), 480));
+    nights.push(night(shiftDateStr(anchor, -2), 300));
+    upsertMetricSamples(p, nights, "health-connect");
+
+    const entry = collectWindowDoses(p, "Morning", shiftDateStr(anchor, -2))[0];
+    expect({
+      name: entry?.item.name,
+      pct: entry?.adherence.pct,
+      applicableDays: entry?.adherence.applicableDays,
+      // 0%, not null: the dose was owed that day and nothing was logged. The figure
+      // being ZERO is the point — a declared-only strip had no applicable day at all,
+      // so `pct` was null and the line printed a due dose with no adherence column.
+    }).toEqual({ name: ITEM, pct: 0, applicableDays: 1 });
   });
 });

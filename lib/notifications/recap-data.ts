@@ -32,6 +32,7 @@ import {
   getFoodDailyServingTotalsInRange,
   getFoodPeriodHabits,
   getNutritionDay,
+  effectiveSituationResolver,
 } from "../queries";
 import {
   getCadenceCapWeeks,
@@ -74,8 +75,6 @@ import {
 import type { ActivityType } from "../types/training";
 import { getRecentPeriodRecaps } from "../queries";
 import {
-  getActiveSituations,
-  getSituationEvents,
   getWeekMode,
   getProfileMoodRecap,
   getWeekStart,
@@ -95,7 +94,7 @@ import {
   isTrainingRelevant,
 } from "../life-stage";
 import { isTrainingFrequencyScope } from "../frequency-targets";
-import { situationHistoryResolver } from "../trend-annotations";
+
 import { illnessDaysInWindow } from "../illness-episode-store";
 import { getLatestFitnessAssessmentDate } from "../fitness-assessment";
 import { assembleFitnessCheckModel } from "../fitness-check-assemble";
@@ -157,12 +156,9 @@ function windowAdherence(
     itemById.has(d.item_id)
   );
   if (doses.length === 0) return null;
-  // Per-day situation resolver (#654): each past day in the recap window is scored
-  // against the situations active THAT day, not today's toggle applied retroactively.
-  const situationsOn = situationHistoryResolver(
-    getActiveSituations(profileId),
-    getSituationEvents(profileId)
-  );
+  // Per-day DUENESS resolver (#654/#3993): each past day in the recap window is scored
+  // against the situations that held THAT day, declared AND derived.
+  const situationsOn = effectiveSituationResolver(profileId);
 
   let taken = 0;
   let skipped = 0;

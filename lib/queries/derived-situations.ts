@@ -327,6 +327,17 @@ export function getDerivedSituationLines(
 // record. A surface asking about a closed day gets one answer about that day rather than
 // a dated half beside a now half, and today's answer is unchanged either way.
 //
+// AND AS A PER-DATE RESOLVER, for the surfaces that score a WINDOW of days rather than
+// one — the adherence strip, the weekly recap, the demotion evidence, the reminder's own
+// in-message strip. "Was this dose owed on that day" is ONE question, so it gets one
+// answer whether a catch-up sheet asks it or the strip beside it does (#3993). Passing
+// two different resolvers to those two surfaces is what let the sheet offer a dose the
+// strip scored `na`, and then drop the log when it was taken.
+//
+// `situationHistoryResolver` (lib/trend-annotations.ts) keeps the DECLARED-only
+// reconstruction for the question that really is about declarations: which bands the
+// chart annotations draw (#654). Membership and derivation are different questions.
+//
 // THE UNION IS ALSO WHAT BOUNDS THE #2724 MEMO. The declared half is re-read here on
 // every call, and only the DERIVED half comes out of the tick-scoped snapshot — so a
 // situation toggled by hand mid-tick reaches this seam immediately, and the memo can
@@ -344,4 +355,10 @@ export function getEffectiveActiveSituations(
   for (const name of resolveDerivedSituations(profileId, date).derivedNames)
     set.add(name);
   return set;
+}
+
+export function effectiveSituationResolver(
+  profileId: number
+): (date: string) => Set<string> {
+  return (date) => getEffectiveActiveSituations(profileId, date);
 }

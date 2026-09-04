@@ -24,7 +24,6 @@ import {
   getSafetyScreeningCoverage,
   getGenomicVariants,
   getFindingSuppressions,
-  getEffectiveActiveSituations,
   getDerivedSituationLines,
   getNavRelevance,
   countVisiblePools,
@@ -69,7 +68,6 @@ import type { DoseHistoryEntry } from "@/components/intake/DoseHistoryPanel";
 import {
   getActiveSituations,
   getDisplayFormatPrefs,
-  getSituationEvents,
   getSituations,
   getTimezone,
   getExcludedFoodGroups,
@@ -82,7 +80,7 @@ import { formatWeekdayDate } from "@/lib/format-date";
 import { weekWindow } from "@/lib/week-window";
 import type { SupplementAdherenceDayInput } from "@/lib/supplement-weekly-adherence";
 import { profileDayZone, travelExcusalResolver } from "@/lib/travel-excusal";
-import { situationHistoryResolver } from "@/lib/trend-annotations";
+import { effectiveSituationResolver } from "@/lib/queries/derived-situations";
 import {
   suggestedSituationsFromConditions,
   situationActivationLine,
@@ -212,14 +210,13 @@ export default async function ManageTab({
     retiredBySupp.set(d.item_id, arr);
   }
 
+  // The DECLARED set, for the condition bridge below — which suggests situations to
+  // TOGGLE, so it must read what the user has declared, never a derived verdict.
   const activeSituations = new Set(getActiveSituations(profile.id));
-  // Per-day situation resolver for the adherence strip: a past day is scored against
-  // the situations active THAT day (#654), reconstructed from the change-log, not the
-  // current toggle applied retroactively.
-  const situationsOn = situationHistoryResolver(
-    activeSituations,
-    getSituationEvents(profile.id)
-  );
+  // Per-day DUENESS resolver (#654/#3993) for the strip and for today alike: each day
+  // is scored against what held THAT day, declared AND derived, never the current toggle
+  // applied retroactively.
+  const situationsOn = effectiveSituationResolver(profile.id);
   const todaysActivities = getActivitiesByDate(profile.id, todayStr);
   const isWorkoutDay = todaysActivities.length > 0;
   // #558: a pre_workout supplement should surface on a PREDICTED training day
@@ -233,15 +230,7 @@ export default async function ManageTab({
     todaysActivities.map((a) => a.end_time ?? a.start_time),
     nowMinutes
   );
-  // Derived context (#1292/#1298) widens the active set for the day being surfaced, and
-  // this page asks about TODAY. The `situationsOn` history resolver above stays
-  // declared-only, NOT because the derived half cannot be dated (#3993: it can), but
-  // because #654's reconstruction is the pure seam the strip and chart annotations
-  // share.
-  const effectiveSituations = getEffectiveActiveSituations(
-    profile.id,
-    todayStr
-  );
+  const effectiveSituations = situationsOn(todayStr);
   const ctx = {
     date: todayStr,
     isWorkoutDay,

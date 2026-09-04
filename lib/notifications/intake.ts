@@ -16,17 +16,12 @@ import {
   isPredictedWorkoutDay,
   inferWorkoutSchedule,
   getIntakeAdherenceEvidence,
-  getEffectiveActiveSituations,
+  effectiveSituationResolver,
   getMinutesSinceLastFoodLog,
 } from "../queries";
 import { foodTimingCheck } from "../food-timing-check";
-import {
-  getActiveSituations,
-  getSituationEvents,
-  getTimezone,
-  getProfileAge,
-} from "../settings";
-import { situationHistoryResolver } from "../trend-annotations";
+import { getTimezone, getProfileAge } from "../settings";
+
 import {
   adherenceSummary,
   doseStrip,
@@ -244,13 +239,11 @@ function gatherWindowDoses(
   const itemById = new Map(items.map((item) => [item.id, item]));
   const taken = getTakenDoseIds(profileId, date);
   const skipped = getSkippedDoseIds(profileId, date);
-  // Per-day DECLARED resolver for the adherence strip below — each of its days scored
-  // against the situations declared THAT day (#654), not today's toggle retroactively.
-  // The day being reminded about no longer comes through here (#3993, below).
-  const situationsOn = situationHistoryResolver(
-    getActiveSituations(profileId),
-    getSituationEvents(profileId)
-  );
+  // Per-day DUENESS resolver for the whole gather — the day being reminded about and
+  // every day of the strip below, each scored against what held THAT day, declared AND
+  // derived (#654/#3993). One resolver, because a line that names a dose as owed and a
+  // strip that scores the same day `na` are the same question answered twice.
+  const situationsOn = effectiveSituationResolver(profileId);
   const isForToday = date === today(profileId);
   // WHICH ACTIVITY READER, and the two are not interchangeable (#4019):
   // `getActivitiesByDate` is the raw row read, `getActivityDates` the same rows with
@@ -282,11 +275,9 @@ function gatherWindowDoses(
     // THERE IS NO TODAY/PAST BRANCH LEFT HERE, and its absence is the fix. The branch
     // existed because the derived widening was said to have no dated form — but a logged
     // period day, a weather spell and the night ending a day are each a fact about that
-    // day, so `getEffectiveActiveSituations` dates both halves and one call answers for
-    // whichever day is being rebuilt. The strip below still scores its days through the
-    // declared-only `situationsOn` — the #654 seam it shares with the chart annotations —
-    // so a rough night can make a dose due here without lighting its own strip cell.
-    activeSituations: getEffectiveActiveSituations(profileId, date),
+    // day, so one resolver answers for whichever day is being rebuilt — and the strip
+    // below is built from that SAME resolver, so the line and its dots agree.
+    activeSituations: situationsOn(date),
     // TODAY ONLY, the same split (#4019). The prediction is a rhythm inferred from a
     // trailing window ending NOW, and `conditionAppliesOn` reads it as
     // `predictedWorkoutDay ?? isWorkoutDay` — so on a closed day a guess made today

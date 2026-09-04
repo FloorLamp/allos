@@ -21,8 +21,7 @@ import {
   getActivityDates,
   getEverLoggedItemIds,
 } from "./queries";
-import { getActiveSituations, getSituationEvents } from "./settings";
-import { situationHistoryResolver } from "./trend-annotations";
+import { effectiveSituationResolver } from "./queries/derived-situations";
 import {
   doseWindowSince,
   indexTakenByDose,
@@ -79,14 +78,11 @@ export function getIntakeHistory(
   const windowStart = dates[0] ?? today;
   const dayZone = profileDayZone(profileId);
   const workoutDays = new Set(getActivityDates(profileId));
-  // Per-day situation resolver (#654): a past day is scored against the situations
-  // active THAT day, never today's toggle applied retroactively — otherwise turning
-  // a situation on this morning would manufacture a month of misses for every item
-  // keyed to it, which is exactly the evidence a demotion suggestion must not invent.
-  const situationsOn = situationHistoryResolver(
-    getActiveSituations(profileId),
-    getSituationEvents(profileId)
-  );
+  // Per-day DUENESS resolver (#654/#3993): a past day is scored against the situations
+  // that held THAT day — declared AND derived — never today's toggle applied
+  // retroactively, which would manufacture a month of misses for every item keyed to a
+  // situation turned on this morning. That is evidence a demotion must not invent.
+  const situationsOn = effectiveSituationResolver(profileId);
   const takenByDose = indexTakenByDose(
     getIntakeAdherenceEvidence(profileId, days)
   );

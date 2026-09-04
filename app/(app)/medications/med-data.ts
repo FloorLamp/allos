@@ -31,7 +31,6 @@ import {
   getAdministrationsForItemsOnDate,
   getPrnMedicationsForQuickLog,
   getMedicationFamilyStates,
-  getEffectiveActiveSituations,
 } from "@/lib/queries";
 import { loadIntakeFormContext } from "@/lib/intake-form-context";
 import {
@@ -66,14 +65,8 @@ import {
 } from "@/lib/medication-list";
 import { parseRxcuiIngredients } from "@/lib/rxnorm";
 import { lastNDates, zonedDateParts, parseUtcSql } from "@/lib/date";
-import {
-  getActiveSituations,
-  getSituationEvents,
-  getTimezone,
-  getProfileAge,
-  type WeightUnit,
-} from "@/lib/settings";
-import { situationHistoryResolver } from "@/lib/trend-annotations";
+import { getTimezone, getProfileAge, type WeightUnit } from "@/lib/settings";
+import { effectiveSituationResolver } from "@/lib/queries/derived-situations";
 import {
   isDueOn,
   isPostWorkoutReady,
@@ -259,18 +252,12 @@ export function loadMedicationsData(
   const takenTimes = getTakenDoseTimes(profileId, todayStr);
   const taken = new Set(takenTimes.keys());
   const skipped = getSkippedDoseIds(profileId, todayStr);
-  const activeSituations = new Set(getActiveSituations(profileId));
-  const situationsOn = situationHistoryResolver(
-    activeSituations,
-    getSituationEvents(profileId)
-  );
-  // Derived context (#1292/#1298) widens the active set for the day being surfaced — a
-  // medication keyed to Poor sleep / Period goes due while the context holds — and this
-  // page asks about TODAY, so today is the day it passes. The history resolver above
-  // stays declared-only, NOT because the derived half cannot be dated (#3993: it can),
-  // but because #654's reconstruction is the pure seam the strip and chart annotations
-  // share.
-  const effectiveSituations = getEffectiveActiveSituations(profileId, todayStr);
+  // Per-day DUENESS resolver (#654/#3993): every day this page scores — today's row and
+  // each past day of the strip — is asked against what held THAT day, declared AND
+  // derived. Today's set is that same resolver asked about today, so the row and the
+  // strip beside it can never disagree about whether a medication was owed.
+  const situationsOn = effectiveSituationResolver(profileId);
+  const effectiveSituations = situationsOn(todayStr);
   const todaysActivities = getActivitiesByDate(profileId, todayStr);
   const isWorkoutDay = todaysActivities.length > 0;
   const predictedWorkoutDay = isPredictedWorkoutDay(profileId, todayStr);
