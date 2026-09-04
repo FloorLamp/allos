@@ -274,6 +274,100 @@ describe("the practice finish message waits for the stream", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  // #5001: THE BOUND IS THE PROFILE'S OWN NOW, measured rather than read off a doc.
+  //
+  // The constant stays the max and the default; what a measurement can do is SHORTEN
+  // the wait. So the pair below is the whole rule: a profile whose Health Connect
+  // pushes land 30 minutes after the event stops being eligible at 31, where the same
+  // row on an unmeasured profile is eligible for two hours (the case above).
+  function seedArrivals(
+    profileId: number,
+    lagMin: number,
+    count: number
+  ): void {
+    const event = db.prepare(
+      `INSERT INTO integration_sync_events (profile_id, source_id, at, ok, inserted)
+       VALUES (?, 'health-connect', ?, 1, 1)`
+    );
+    const link = db.prepare(
+      `INSERT INTO integration_sync_rows
+         (event_id, target_table, target_id, disposition, created_at)
+       VALUES (?, 'metric_samples', ?, 'inserted', ?)`
+    );
+    const sample = db.prepare(
+      `INSERT INTO metric_samples
+         (profile_id, source, metric, date, started_at, ended_at, value)
+       VALUES (?, 'health-connect', 'sleep_min', ?, ?, ?, 420)`
+    );
+    for (let i = 1; i <= count; i++) {
+      const date = `2026-07-${String(10 - i).padStart(2, "0")}`;
+      const endedAt = `${date}T07:00:00Z`;
+      const arrivedAt = new Date(Date.parse(endedAt) + lagMin * 60_000)
+        .toISOString()
+        .replace(/\.\d{3}Z$/, "Z");
+      const sampleId = Number(
+        sample.run(profileId, date, `${date}T00:00:00Z`, endedAt)
+          .lastInsertRowid
+      );
+      const eventId = Number(event.run(profileId, arrivedAt).lastInsertRowid);
+      link.run(eventId, sampleId, arrivedAt);
+    }
+  }
+
+  it("waits the profile's OWN measured bound, not the constant", async () => {
+    const p = newProfile("PracMeasured");
+    const date = today(p);
+    seedPractice(p, date);
+    seedHrMinutes(p, date, 30);
+    seedArrivals(p, 30, 5);
+    const fetchMock = stubFetch();
+    // 17:50 is 30 minutes after the 17:20 end — the last minute this pipeline needs.
+    expect((await tick(p, new Date("2026-07-17T17:50:00Z"))).sent).toBe(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops at the measured bound, well inside the constant", async () => {
+    const p = newProfile("PracMeasuredPast");
+    const date = today(p);
+    const rowId = seedPractice(p, date);
+    seedHrMinutes(p, date, 30);
+    seedArrivals(p, 30, 5);
+    const fetchMock = stubFetch();
+    // 17:51 — one minute past this profile's measured 30, and 89 minutes short of the
+    // constant that would still have called it news.
+    expect((await tick(p, new Date("2026-07-17T17:51:00Z"))).sent).toBe(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(
+      getProfileSetting(p, practiceRecapMarkerKey(rowId)) ?? null
+    ).toBeNull();
+  });
+
+  it("keeps the constant as the bound when the sample is thin", async () => {
+    const p = newProfile("PracThinSample");
+    const date = today(p);
+    seedPractice(p, date);
+    seedHrMinutes(p, date, 30);
+    // Four arrivals is under the gate, so nothing has been measured and the doc's
+    // number is still the answer — this row is news for two hours as before.
+    seedArrivals(p, 30, 4);
+    const fetchMock = stubFetch();
+    expect((await tick(p, new Date("2026-07-17T19:19:00Z"))).sent).toBe(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("never lets a slow pipeline outrun the constant", async () => {
+    const p = newProfile("PracSlowPipeline");
+    const date = today(p);
+    seedPractice(p, date);
+    seedHrMinutes(p, date, 30);
+    // A six-hour measured lag. The bound is about the MOMENT, not the pipeline — a
+    // message about a sauna three hours ago is a bulletin — so the constant caps it.
+    seedArrivals(p, 360, 5);
+    const fetchMock = stubFetch();
+    expect((await tick(p, new Date("2026-07-17T19:21:00Z"))).sent).toBe(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("is not eligible before the window has finished", async () => {
     const p = newProfile("PracRunning");
     const date = today(p);

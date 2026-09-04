@@ -231,6 +231,66 @@ describe("the unclassified send says details follow (#4996 item 3)", () => {
     expect(pointer.bodyHash).toMatch(/^[0-9a-f]{64}$/);
   });
 
+  // #5001: the promise gains a MEASURED wait, or stays exactly as it was.
+  //
+  // Strava polls rather than pushes, so the wait is real and worth quoting — but only
+  // where this profile's own arrivals say what it is. The pair below is the gate: five
+  // arrivals quote it, four do not, and nothing in between invents a number.
+  function seedStravaArrivals(
+    profileId: number,
+    lagMin: number,
+    count: number
+  ): void {
+    const event = db.prepare(
+      `INSERT INTO integration_sync_events (profile_id, source_id, at, ok, inserted)
+       VALUES (?, 'strava', ?, 1, 1)`
+    );
+    const link = db.prepare(
+      `INSERT INTO integration_sync_rows
+         (event_id, target_table, target_id, disposition, created_at)
+       VALUES (?, 'activities', ?, 'inserted', ?)`
+    );
+    for (let i = 1; i <= count; i++) {
+      const rideId = seedRide(profileId, {
+        source: "strava",
+        externalId: `strava:arrival-${i}`,
+        title: `Past ride ${i}`,
+      });
+      // seedRide dates every row today and ends it at 15:04 local (UTC here).
+      const arrivedAt = new Date(
+        Date.parse(`${today(profileId)}T15:04:00Z`) + lagMin * 60_000
+      )
+        .toISOString()
+        .replace(/\.\d{3}Z$/, "Z");
+      const eventId = Number(event.run(profileId, arrivedAt).lastInsertRowid);
+      link.run(eventId, rideId, arrivedAt);
+    }
+  }
+
+  it("quotes the usual wait once this profile's Strava arrivals are measured", async () => {
+    const p = newProfile("REC-measured-wait");
+    connectStrava(p);
+    seedStravaArrivals(p, 45, 5);
+    const hub = seedHub(p);
+
+    await runPostWorkoutForActivity(p, hub, { verifyCompletedToday: true });
+    expect(sentText()).toContain(
+      "Details follow when Strava syncs, usually within an hour."
+    );
+  });
+
+  it("keeps the promise unquantified under the sample gate", async () => {
+    const p = newProfile("REC-thin-wait");
+    connectStrava(p);
+    seedStravaArrivals(p, 45, 4);
+    const hub = seedHub(p);
+
+    await runPostWorkoutForActivity(p, hub, { verifyCompletedToday: true });
+    const text = sentText();
+    expect(text).toContain(STRAVA_DETAILS_FOLLOW_LINE);
+    expect(text).not.toContain("usually within");
+  });
+
   it("says nothing about details for a profile with no richer source", async () => {
     // Keyed on a FACT, never on "riders usually have Strava": a profile that will never
     // receive richer details is not told to wait for them. The type ask is its whole

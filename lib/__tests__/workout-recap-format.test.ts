@@ -6,6 +6,7 @@ import {
   composeFinishNudge,
   finishNudgeTitle,
   STRAVA_DETAILS_FOLLOW_LINE,
+  stravaDetailsFollowLine,
   importedRecapLine,
   recapNudgeLine,
   weeklyRemainingLine,
@@ -501,5 +502,38 @@ describe("the provisional line says details follow (#4996)", () => {
 
   it("still sends nothing when there is nothing to ride", () => {
     expect(composeFinishNudge(null, null, withLine)).toBeNull();
+  });
+});
+
+// #5001 — the provisional line quotes the wait only when the wait was measured.
+describe("stravaDetailsFollowLine", () => {
+  it("says nothing about the wait under the sample gate", () => {
+    // Null is what `getArrivalLagMinutes` returns below MIN_ARRIVAL_SAMPLES. The line
+    // keeps its promise and drops the number, rather than borrowing a default — a
+    // number nobody measured is not a promise anyone may make.
+    expect(stravaDetailsFollowLine(null)).toBe(STRAVA_DETAILS_FOLLOW_LINE);
+  });
+
+  it("rounds the median UP to a whole hour, because half of all rides are later", () => {
+    expect(stravaDetailsFollowLine(45)).toBe(
+      "Details follow when Strava syncs, usually within an hour."
+    );
+    expect(stravaDetailsFollowLine(60)).toBe(
+      "Details follow when Strava syncs, usually within an hour."
+    );
+    expect(stravaDetailsFollowLine(61)).toBe(
+      "Details follow when Strava syncs, usually within 2 hours."
+    );
+    expect(stravaDetailsFollowLine(180)).toBe(
+      "Details follow when Strava syncs, usually within 3 hours."
+    );
+  });
+
+  it("never promises less than an hour, however fast the sample looks", () => {
+    // A ten-minute median would be a promise the tail cannot keep: the same sighting
+    // that produced these numbers has 2 of 18 rides landing the NEXT DAY.
+    expect(stravaDetailsFollowLine(10)).toBe(
+      "Details follow when Strava syncs, usually within an hour."
+    );
   });
 });

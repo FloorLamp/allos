@@ -26,6 +26,9 @@ import {
   USUAL_RECENT_EVENTS,
 } from "../event-physiology";
 import { activityWindow, type ActivityWindow } from "../training-zones";
+import { arrivalWait } from "../arrival-wait";
+import { getArrivalLagMinutes } from "../queries/integrations";
+import { HEALTH_CONNECT_ID } from "../integrations/health-connect";
 import {
   practiceRecapBody,
   practiceRecapFacts,
@@ -66,14 +69,39 @@ function recentlyFinishedPractices(
         ORDER BY id DESC`
     )
     .all(profileId, shiftDateStr(todayStr, -1)) as PracticeRow[];
+  // THIS PROFILE'S OWN BOUND (#5001), measured once per pass rather than per row.
+  //
+  // `PRACTICE_RECAP_BOUND_MIN` was read off the pipeline's p99 in a doc (#2560) "and
+  // then some". It is the DEFAULT now and also the MAX, which is what makes reading a
+  // measurement safe here: a profile whose pipeline is quicker than the doc gets a
+  // shorter wait, and one that is slower is still cut off at two hours, because
+  // "a message about a sauna three hours ago is a bulletin, not a finish note" is a
+  // rule about the moment and not about the pipeline.
+  //
+  // WHAT IS MEASURED, and why it is not literally the heart rate. The recap needs HR
+  // coverage over the window, but `hr_minutes` is not one of the tables
+  // `integration_sync_rows` records provenance for (`ProvenanceTable`), so there is no
+  // per-row arrival to join. Health Connect delivers a pass as one push, so the lag of
+  // its `metric_samples` arrivals IS its push lag — which is the question the bound
+  // actually asks: has this source had its slowest realistic push yet.
+  const measuredLagMin = getArrivalLagMinutes(profileId, {
+    targetTable: "metric_samples",
+    sourceId: HEALTH_CONNECT_ID,
+  });
   const out: { row: PracticeRow; window: ActivityWindow }[] = [];
   for (const row of rows) {
     const window = activityWindow(row);
     if (!window) continue;
-    const since = localMinutesBetween(window.end, nowLocal);
     // Half-open at both ends on purpose: a window that has not finished yet is not a
-    // finish, and one past the bound has stopped being news.
-    if (since < 0 || since > PRACTICE_RECAP_BOUND_MIN) continue;
+    // finish (`ready`), and one past the bound has stopped being news (`overdue`).
+    const wait = arrivalWait({
+      measuredLagMin,
+      defaultLagMin: PRACTICE_RECAP_BOUND_MIN,
+      graceMin: 0,
+      maxMin: PRACTICE_RECAP_BOUND_MIN,
+      elapsedMin: localMinutesBetween(window.end, nowLocal),
+    });
+    if (wait.kind !== "waiting") continue;
     out.push({ row, window });
   }
   return out;

@@ -39,7 +39,15 @@ import {
   type EventPhysiology,
 } from "../event-physiology";
 
-/** Two hours after the window's end. See the header for what this bounds. */
+/**
+ * Two hours after the window's end. See the header for what this bounds.
+ *
+ * Since #5001 it is the DEFAULT and the MAX of a measured wait rather than the whole
+ * bound: a profile whose Health Connect pushes are quicker than the doc's p99 gets its
+ * own, shorter answer, and a slower one is still cut off here — the two hours are a
+ * rule about the MOMENT ("a bulletin, not a finish note"), which no pipeline speed
+ * changes. The dispatch reads it through `arrivalWait`; nothing else may.
+ */
 export const PRACTICE_RECAP_BOUND_MIN = 120;
 
 export const PRACTICE_RECAP_MARKER_PREFIX = "notify_last_practice_recap_";

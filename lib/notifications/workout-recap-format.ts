@@ -315,6 +315,25 @@ export function activityTypeAskActions(
 // details this promises and the type ask is honestly its whole state.
 export const STRAVA_DETAILS_FOLLOW_LINE = "Details follow when Strava syncs.";
 
+// …AND HOW LONG THAT USUALLY TAKES, when this profile's own arrivals say (#5001).
+//
+// Strava polls rather than pushes, so the wait is real: on the measured instance rides
+// land 30–60 min after the ride ends in 12 of the last 18, 60–180 in 4, and next day in
+// 2. A rider who knows to expect an hour is not left checking; one told nothing is.
+//
+// THE NUMBER IS MEASURED OR ABSENT. `medianLagMin` is null under the sample gate, and
+// under it the line stays exactly as it was rather than borrowing a default — the same
+// discipline the sleep tile follows, and the reason `arrivalWait` keeps a default and an
+// ETA apart at all. Rounded UP to a whole hour, because a median is a median and half of
+// all rides are later than it; "usually" is carrying that, and the copy says no more
+// than the sample supports.
+export function stravaDetailsFollowLine(medianLagMin: number | null): string {
+  if (medianLagMin == null) return STRAVA_DETAILS_FOLLOW_LINE;
+  const hours = Math.max(1, Math.ceil(medianLagMin / 60));
+  const span = hours === 1 ? "an hour" : `${hours} hours`;
+  return `Details follow when Strava syncs, usually within ${span}.`;
+}
+
 // The type ask's two halves, as the composition takes them: the prompt sentence that
 // follows the recap line, and the inline buttons that answer it — plus, when the app
 // knows a richer source is coming, the provisional line (#4996).
