@@ -1552,6 +1552,17 @@ consumer restates the predicate in SQL. Migration 146 backfills the clock from t
 the old readers used, so a household upgrading mid-week does not suddenly read as
 never-checked.
 
+**One ask per cadence.** A request expires after a week so that an unacted nudge becomes
+silence, and the staleness creator used to undo that on the next hourly tick: an expired
+ask is not open, supersession only asks "is there an open request", and a still-unchecked
+portal therefore got the same ask again with a fresh seven-day clock and a fresh
+day-anchored dismiss key — every week, indefinitely, with "expires in 3 days" counting down
+to a reset. The staleness candidate query now also reads the login's one request row
+(`lastAskedAt`, whatever its reason and whether or not it is open), and `isStalenessDue`
+stays silent until a whole `STALENESS_CADENCE_DAYS` has passed since that ask. A login
+nobody checks is asked about once every thirty days, for a week. Manual and post-visit
+asks are untouched: neither is re-raised by a timer.
+
 **What a delivery-only report still stamps.** Everything the documents earned: the
 `integration_sync_events` row, the per-identity "Last synced" chips
 (`identitySyncStatuses`), Data → Review's feed, the connection stamp, and the integrations

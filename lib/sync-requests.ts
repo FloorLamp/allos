@@ -17,7 +17,9 @@
 //
 //   IT EXPIRES RATHER THAN HANGS. Every request carries an `expires_at` from creation.
 //   A nudge nobody acted on becomes silence, not a permanent badge — the failure mode
-//   that trains people to ignore badges.
+//   that trains people to ignore badges. And the silence is REAL: the staleness creator
+//   does not ask again until a whole cadence has passed since it last asked, so an
+//   expired ask is not re-raised by the next hourly tick with a fresh clock.
 //
 //   SLUGS ONLY, NEVER A URL. A request names `(portal, account)` by allos-minted slug.
 //   There is no address in this feature, in this module, or in the table it drives.
@@ -309,21 +311,36 @@ export function mayAutoRequestSync(input: { everRan: boolean }): boolean {
 // the two states are different. A login whose tool RUNS and keeps failing has
 // `lastCheckedAt = null` forever, and that household genuinely needs the nudge: doing the
 // first run is the setup step, failing it is a hygiene problem.
+//
+// ONE ASK PER CADENCE. The cadence clock runs from the last ask as well as from the last
+// check: a login that is stale AND was asked about less than a cadence ago is not due.
+// Without this clause an expired ask was re-raised by the next hourly tick — the same
+// errand, a fresh seven-day clock and a fresh dismiss key, every week, for as long as the
+// portal stayed unchecked. "Expires in 3 days" then counted down to a reset rather than to
+// the silence the TTL promises. A login nobody checks now hears about it once every
+// thirty days, for a week, which is what the two constants say when read together.
 export function isStalenessDue(input: {
   // Has the tool ever reported a run on this login at all — any row, including a
   // delivery-only push. See `mayAutoRequestSync`.
   everRan: boolean;
   mappedPatients: number;
   lastCheckedAt: string | null;
+  // When this login was last asked about, whatever the reason; null when never.
+  lastAskedAt: string | null;
   today: string;
   cadenceDays?: number;
 }): boolean {
   if (!mayAutoRequestSync(input)) return false;
   if (input.mappedPatients <= 0) return false;
+  const cadence = input.cadenceDays ?? STALENESS_CADENCE_DAYS;
+  if (input.lastAskedAt) {
+    const sinceAsk = daysBetweenDateStr(dayOf(input.lastAskedAt), input.today);
+    if (sinceAsk == null || sinceAsk < cadence) return false;
+  }
   if (!input.lastCheckedAt) return true;
   const days = daysBetweenDateStr(dayOf(input.lastCheckedAt), input.today);
   if (days == null) return false;
-  return days >= (input.cadenceDays ?? STALENESS_CADENCE_DAYS);
+  return days >= cadence;
 }
 
 // ── Copy ─────────────────────────────────────────────────────────────────────

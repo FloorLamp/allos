@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { AppRoute } from "@/lib/hrefs";
 import type { DashboardPlacement } from "@/lib/dashboard-relevance";
 import {
@@ -21,12 +22,14 @@ export interface DashboardAheadBucket {
 // draw its own member row with its own kind glyph; both are gone. The "+N more"
 // button is gone too, with the `useState` behind it — the only ephemeral disclosure
 // state on the page, never URL-carried, forgetting itself on every visit. Everything
-// in Ahead is by definition relevant-soon, so the bucket renders every member: a lead
-// fact carrying the bucket's door, then the rest. Read-only by construction — Ahead
-// never mounts a write, which is also why nothing here needs to be a client component.
+// in Ahead is by definition relevant-soon, so the bucket renders every member, each
+// going where its own fact goes. The bucket's own door — the Upcoming section it
+// mirrors — is on its heading, not on its first row: a row whose door says "Training"
+// and lands on Upcoming is a lie, and it used to be told to whichever fact ranked
+// first. Read-only by construction — Ahead never mounts a write, which is also why
+// nothing here needs to be a client component.
 function Bucket({ bucket }: { bucket: DashboardAheadBucket }) {
-  const [first, ...rest] = bucket.members;
-  if (!first) return null;
+  if (bucket.members.length === 0) return null;
   const labelId = `dashboard-ahead-${bucket.key}-label`;
   return (
     <section
@@ -38,20 +41,19 @@ function Bucket({ bucket }: { bucket: DashboardAheadBucket }) {
         id={labelId}
         className="mb-2 text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400"
       >
-        {bucket.label}
+        {bucket.primaryHref ? (
+          <Link
+            href={bucket.primaryHref}
+            className="hover:text-brand-700 hover:underline dark:hover:text-brand-400"
+          >
+            {bucket.label}
+          </Link>
+        ) : (
+          bucket.label
+        )}
       </h3>
       <ul className="flex min-w-0 flex-col gap-1.5">
-        <DashboardFactRow
-          candidate={first.candidate}
-          presentation={
-            bucket.primaryHref
-              ? { ...first.presentation, href: bucket.primaryHref }
-              : first.presentation
-          }
-          lane="ahead"
-          className="relative min-w-0"
-        />
-        {rest.map((member) => (
+        {bucket.members.map((member) => (
           <DashboardFactRow
             key={member.candidate.candidateId}
             candidate={member.candidate}
