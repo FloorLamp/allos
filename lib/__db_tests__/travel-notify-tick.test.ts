@@ -19,6 +19,7 @@ import {
 import { db, today } from "@/lib/db";
 import {
   getProfileSetting,
+  getTimezone,
   getTravelSwitches,
   setProfileHouseholdRound,
   setProfileSetting,
@@ -281,6 +282,40 @@ describe("travel excusal at the real notification tick", () => {
 
     await tickProfile(disconnected.receiver, "disconnected", 5, Date.now());
     expectThreeSlotMessages(sentTo(disconnected.chatId));
+  });
+
+  it("anchors the retained history on the profile's CURRENT zone", async () => {
+    const anchored = scenario("anchored", NEW_YORK);
+
+    vi.setSystemTime(new Date("2026-05-01T10:00:00Z")); // New York 06:00
+    switchProfileTimezone(anchored.receiver, ATHENS, NEW_YORK); // Athens 13:00
+    vi.setSystemTime(new Date("2026-05-01T10:01:00Z")); // Athens 13:01
+    setTimezone(anchored.receiver, PARIS); // bare correction: Paris 12:01
+
+    // Read on its own, the single retained record anchors on its OWN destination and
+    // reads as a clean 06:00 → 13:00 skip over Midday. But the profile's day is on
+    // Paris, so that chain does not end where the profile is, and the seam that took
+    // it to Paris was never recorded. The current zone is what both consumers anchor
+    // on, and it is what rejects the history whole.
+    expect(getTravelSwitches(anchored.receiver).at(-1)?.to).toBe(ATHENS);
+    expect(getTimezone(anchored.receiver)).toBe(PARIS);
+    expect(
+      isReminderSlotExcused(
+        resolveSwitchHistory(
+          getTravelSwitches(anchored.receiver),
+          getTimezone(anchored.receiver)
+        ),
+        "2026-05-01",
+        MIDDAY_MINUTE
+      )
+    ).toBe(false);
+    expect(
+      travelExcusalResolver(anchored.receiver)("Midday", "2026-05-01")
+    ).toBe(false);
+
+    vi.setSystemTime(new Date("2026-05-01T10:03:00Z")); // Paris 12:03
+    await tickProfile(anchored.receiver, "anchored", 5, Date.now());
+    expectThreeSlotMessages(sentTo(anchored.chatId));
   });
 
   it("keeps malformed history quarantined through a later real switch", async () => {

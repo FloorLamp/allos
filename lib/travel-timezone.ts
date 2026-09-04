@@ -162,6 +162,16 @@ export function connectedTimezoneSwitchHistory(
   return connected;
 }
 
+// A history that has been through the trust gate AND resolved, in that order. The
+// brand is a `declare`d unique symbol, so no ordinary expression makes one — a bare
+// literal, `map`, `filter`, `concat`, `slice` and spread all fail at the slot
+// predicates. Deliberate laundering (a cast, `Object.assign`) still compiles, as it
+// does for every brand; lib/cross-profile.ts writes that argument out in full.
+declare const GATED_SWITCH_HISTORY: unique symbol;
+export type GatedSwitchHistory = readonly ResolvedSwitch[] & {
+  readonly [GATED_SWITCH_HISTORY]: true;
+};
+
 // A profile's stored history through the trust gate AND through `resolveSwitch`, so
 // the two positions each switch joined are computed ONCE (#5010).
 //
@@ -172,19 +182,29 @@ export function connectedTimezoneSwitchHistory(
 // together drove this into four `Intl` calls per switch per slot. The positions do not
 // depend on the position being asked about, so they are hoisted to the profile.
 //
-// Returning ResolvedSwitch rather than TimezoneSwitch is what makes that
-// non-negotiable at the type level: a caller cannot hand the predicates an unresolved
-// history and quietly pay per slot again, and an unusable record is dropped here, once.
+// The BRAND on the return type is what keeps both halves together for the slot
+// predicates below. `ResolvedSwitch[]` alone would only prove resolution: a caller
+// could map `resolveSwitch` over any array and hand the predicates a history that
+// never went through the gate, which is how a discontinuous chain silently excuses
+// slots. `GatedSwitchHistory` is minted here and nowhere else, so reaching the
+// predicates means having come through the gate — and having paid for the positions
+// once, per profile.
+//
+// The null arm is `resolveSwitch`'s return shape, not a live path: the gate already
+// rejects the WHOLE history on an unparseable instant or an invalid zone, which are
+// the only two things that make `resolveSwitch` null, so a switch that reaches here
+// cannot resolve to null. The branch stays because dropping it would need a non-null
+// assertion, which is worse.
 export function resolveSwitchHistory(
   switches: readonly TimezoneSwitch[],
   currentZone?: string
-): ResolvedSwitch[] {
+): GatedSwitchHistory {
   const out: ResolvedSwitch[] = [];
   for (const sw of connectedTimezoneSwitchHistory(switches, currentZone)) {
     const r = resolveSwitch(sw);
     if (r) out.push(r);
   }
-  return out;
+  return out as unknown as GatedSwitchHistory;
 }
 
 // How many times this position occurred after the ordered switch history adjusts
@@ -194,7 +214,7 @@ export function resolveSwitchHistory(
 // the same day. Treating the forward spans as a union would still call that real
 // noon impossible.
 function positionOccurrences(
-  history: readonly ResolvedSwitch[],
+  history: GatedSwitchHistory,
   p: LocalPosition
 ): number {
   let occurrences = 1;
@@ -211,7 +231,7 @@ function positionOccurrences(
 // planet refused, and it is out of the day's adherence denominator for exactly
 // that reason.
 export function isExcusedSlot(
-  history: readonly ResolvedSwitch[],
+  history: GatedSwitchHistory,
   day: string,
   minute: number
 ): boolean {
@@ -221,7 +241,7 @@ export function isExcusedSlot(
 // The mirror predicate, for the westward pins: after the complete trajectory this
 // slot's wall clock came round more than once on this local day.
 export function isRepeatedSlot(
-  history: readonly ResolvedSwitch[],
+  history: GatedSwitchHistory,
   day: string,
   minute: number
 ): boolean {

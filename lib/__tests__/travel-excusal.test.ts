@@ -14,6 +14,13 @@ const FLIGHT: TimezoneSwitch = {
   from: "America/New_York",
   to: "Asia/Tokyo",
 };
+// New York 06:00 → Tokyo 19:00, same date: this one skips Morning (08:00) too, which
+// is the slot `bucketWindow` gives an Anytime dose.
+const MORNING_FLIGHT: TimezoneSwitch = {
+  at: "2026-05-01T10:00:00Z",
+  from: "America/New_York",
+  to: "Asia/Tokyo",
+};
 const DAY = "2026-05-01";
 
 const DEFAULT_SLOTS = {
@@ -70,6 +77,25 @@ describe("isDoseSlotExcused", () => {
     expect(
       isDoseSlotExcused(
         resolveSwitchHistory([FLIGHT]),
+        DEFAULT_SLOTS,
+        "Anytime",
+        DAY
+      )
+    ).toBe(false);
+    // Against a switch that DOES skip the minute an Anytime dose would be bucketed
+    // to, so the rule is what answers here rather than the fixture: the same flight
+    // excuses a Morning dose.
+    expect(
+      isDoseSlotExcused(
+        resolveSwitchHistory([MORNING_FLIGHT]),
+        DEFAULT_SLOTS,
+        "Morning",
+        DAY
+      )
+    ).toBe(true);
+    expect(
+      isDoseSlotExcused(
+        resolveSwitchHistory([MORNING_FLIGHT]),
         DEFAULT_SLOTS,
         "Anytime",
         DAY

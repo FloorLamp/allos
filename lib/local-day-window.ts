@@ -76,19 +76,22 @@ const DAY_MS = 86_400_000;
 // Cost is one cached-formatter Intl call per probe: ~365/year scanned plus ~27 to
 // land the edge, against a query that aggregates hundreds of thousands of rows.
 //
-// THE EXACT EDGE IS WHAT MAKES A MINUTE PROJECTION SAFE. The search used to stop at a
+// THE EXACT EDGE IS HELD HERE, NOT RESTORED DOWNSTREAM. The search used to stop at a
 // 1000 ms interval and return its upper bound, which is the first probe KNOWN to carry
 // the new offset — so the returned cut sat somewhere in [transition, transition+1000).
-// That is invisible to day attribution, which is all this module had: no zone shifts at
-// local midnight, so a sub-second error never moves the DATE. `localMinuteProjector`
-// below reads the same cut to derive a local MINUTE, where a cut even one second late
-// puts the row exactly ON the transition under the outgoing offset — off by the whole
-// offset delta. Closing to 1 ms makes the boundary exact rather than lucky: the loop
-// ends with offset(lo) === base, offset(hi) !== base and hi === lo + 1, so `hi` IS the
-// transition instant. (Empirically it already landed exact on 7200 realistic window
-// alignments across 5 zones, which is why this was never a live bug — but "measured
-// exact" and "cannot be inexact" are different claims, and only the second is safe to
-// derive a minute from.)
+// No output ever differed: `offsetSegments` emits every boundary through `instant()`,
+// which truncates to whole seconds, and a real zone transition falls on a whole second,
+// so a cut anywhere in that window truncates back down onto the transition. The
+// segments and the minutes `localMinuteProjector` derives from them were byte-identical
+// at 999, 1000 and 1001 ms.
+//
+// So this is not a bug fix. It moves the exactness into the search, where the comments
+// downstream already claim it is: `localMinuteProjector` says it relies on a
+// "millisecond-exact cut", and what actually made it exact was a truncation two steps
+// away that any future caller reading the cut at a finer grain — or before it is
+// truncated — would bypass without noticing. The loop now ends with offset(lo) === base,
+// offset(hi) !== base and hi === lo + 1, so `hi` IS the transition instant. Cost is
+// about ten more cached-Intl probes per transition found.
 function nextTransition(
   tz: string,
   from: number,

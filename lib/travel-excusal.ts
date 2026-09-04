@@ -28,8 +28,8 @@ import {
   isExcusedSlot,
   resolveSwitchHistory,
   zoneInChainAt,
+  type GatedSwitchHistory,
   type ProfileDayZone,
-  type ResolvedSwitch,
 } from "./travel-timezone";
 
 // The profile-local minute a reminder window fires at: the configured time, or the
@@ -45,7 +45,7 @@ export function windowSlotMinute(
 
 // Whether a dose in `bucket` was excused on profile-local day `date`.
 export function isDoseSlotExcused(
-  history: readonly ResolvedSwitch[],
+  history: GatedSwitchHistory,
   slotMinutes: Record<ReminderWindow, number | null>,
   bucket: TimeBucket,
   date: string
@@ -103,7 +103,7 @@ export function profileDayZone(profileId: number): ProfileDayZone {
 // this profile-local day? Same switches, same minute, so a slot the denominator
 // forgives is a slot the tick stays silent about.
 export function isReminderSlotExcused(
-  history: readonly ResolvedSwitch[],
+  history: GatedSwitchHistory,
   date: string,
   slotMinute: number
 ): boolean {
