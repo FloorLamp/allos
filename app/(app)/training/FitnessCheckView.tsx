@@ -267,7 +267,7 @@ function RetestCadence({ cadenceDays }: { cadenceDays: number }) {
         className="input w-20"
       />
       <span>days</span>
-      <SubmitButton>Save</SubmitButton>
+      <SubmitButton variant="primary">Save</SubmitButton>
       {saved && (
         <span className="text-emerald-600 dark:text-emerald-400">Saved</span>
       )}

@@ -16,6 +16,14 @@ import { stripComments } from "./strip-comments";
 // of the RETIRING `btn` class one Records route draws, which is #4978 item 4's
 // burn-down and reaches zero when the family is deleted.
 //
+// AND WHEN IT REACHES ZERO, RETIRE THIS FILE (ruling on #4978, 2026-09-04). A
+// count that can only ever be 0 asserts nothing while looking exactly like a
+// guard, which is worse than no guard: it turns "nobody has done this" into
+// "nobody can do this", and only the first is true. Whoever lands item 3's last
+// pane deletes this scan along with the four `globals.css` rules; do not widen it
+// into a form-unit guard, which would need to parse JSX and a committed AST
+// scanner is not a thing this repo adds.
+//
 // The rank's own unit is the form, and this scan cannot see forms: it reads class
 // tokens and `AddEntryPanel` mounts, neither of which is a form commit. A
 // `SubmitButton variant="primary"` is therefore invisible here BY DESIGN, not by
