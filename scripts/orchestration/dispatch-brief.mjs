@@ -33,7 +33,10 @@
 //   REFUSES an issue another lane already claimed with a `Dispatched:` comment,
 //   and refuses just as firmly when those comments cannot be READ — an
 //   unreachable claim is not an absent one (#5108). `--adopt-claim` is the
-//   explicit override for a claim you have judged stale.
+//   explicit override for a claim you have judged stale. `new` and `adopt`
+//   also REFUSE a branch that already heads an open PR belonging to ANOTHER
+//   orchestrator session, read off that PR's body footer (#5177), under the
+//   same override — and say out loud when they could not ask.
 // `list` shows active dispatches with ages, flagging anything that has not
 //   MOVED in 3x the median completed-dispatch duration (the runbook's stall
 //   threshold, applied to idleness rather than to age — see cmdList).
@@ -82,6 +85,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { helpGuard, isMain } from "./usage.mjs";
 import { discoverNodeBin, resolveReadToken, resolveStateDir } from "./host.mjs";
+import { bodySession, normaliseSession } from "./merge-gate-core.mjs";
 import {
   activeDispatches,
   ledgerPath as resolveLedgerPath,
@@ -1554,6 +1558,104 @@ export function unreadableClaimRefusal(rows) {
   );
 }
 
+// THE SAME QUESTION, ABOUT A PR (#5177). The claim above guards an ISSUE; on
+// 2026-09-04 the collision arrived through the other door — a fix round
+// dispatched onto #5139's branch, which pushed three commits onto the other
+// session's open PR. Every ledger check said CLEAR, correctly: the branch was
+// never in this session's ledger, because it was never this session's lane.
+//
+// The discriminator here is not the branch (the branch is exactly what both
+// sessions would name) and not the author (one account). It is the session
+// footer in the PR's own body, which is the marker `merge-gate.mjs` reads for
+// the same question at merge time — one reader, not a third convention.
+
+/**
+ * Refusal when an OPEN PR already has this branch as its head and its body
+ * names a session other than the one running. Null when it does not, and null
+ * when there is nothing to compare against — those are WARNINGS the caller
+ * prints, because unlike the issue claim this read happens on EVERY dispatch
+ * and #4460 governs a check whose failure would cost every lane its start.
+ *
+ * @param {{ head?: { ref?: string }, number?: number, body?: string }[]} prs
+ * @param {string} branch the branch about to be dispatched onto
+ * @param {string|null} self the running session, normalised
+ */
+export function branchPrRefusal(prs, branch, self) {
+  if (!self) return null;
+  const pr = (prs ?? []).find((p) => p?.head?.ref === branch);
+  const theirs = pr ? normaliseSession(bodySession(pr.body)) : null;
+  if (!theirs || theirs === self) return null;
+  return (
+    `REFUSED: ${branch} is the head of open PR #${pr.number}, whose body names ` +
+    `${theirs} — ANOTHER orchestrator session (this one is ${self}). Pushing ` +
+    "onto it is two writers on one branch, and merging it takes that session's " +
+    "control of its own landing slot (#5177). Dispatch onto a branch of your " +
+    `own, or pass ${ADOPT_CLAIM} if the two sessions have actually agreed.`
+  );
+}
+
+/** Open PRs over the live API, or a stated reason they could not be read. */
+function openPrsReader(repo = process.env.RECONCILE_REPO || "FloorLamp/allos") {
+  const token = resolveReadToken();
+  if (!token) return { unknown: "no read token in $GH_TOKEN or $GITHUB_TOKEN" };
+  try {
+    const raw = execFileSync(
+      "curl",
+      [
+        "-sS",
+        "--fail-with-body",
+        "-H",
+        "Authorization: Bearer " + token,
+        "-H",
+        "Accept: application/vnd.github+json",
+        `https://api.github.com/repos/${repo}/pulls?state=open&per_page=100`,
+      ],
+      { encoding: "utf8", timeout: 30_000 }
+    );
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? { prs: parsed }
+      : { unknown: String(parsed?.message ?? "the PR list was not a list") };
+  } catch (err) {
+    // The BODY, never err.message: execFileSync puts the Bearer token in it.
+    const body = String(err.stdout ?? "").trim();
+    return { unknown: body.slice(0, 200) || "curl exited " + err.status };
+  }
+}
+
+/**
+ * The branch-ownership check as `new` and `adopt` run it. It prints what it
+ * examined either way, so an answer it could not reach never passes for a
+ * clean one, and it exits 1 on a positive finding.
+ */
+function refuseAnotherSessionsBranch(branch, adopted) {
+  if (adopted) return;
+  const self = normaliseSession(process.env.CLAUDE_CODE_REMOTE_SESSION_ID);
+  if (!self) {
+    console.error(
+      `[pr-owner] UNCHECKED: this host exposes no session id, so whether ${branch} ` +
+        "belongs to another session was not asked (#5177)."
+    );
+    return;
+  }
+  const got = openPrsReader();
+  if ("unknown" in got) {
+    console.error(
+      `[pr-owner] CANNOT TELL: could not read the open PRs (${got.unknown}) — ` +
+        `whether ${branch} is another session's landing slot is UNANSWERED (#5177).`
+    );
+    return;
+  }
+  const refusal = branchPrRefusal(got.prs, branch, self);
+  if (refusal) {
+    console.error(refusal);
+    process.exit(1);
+  }
+  console.error(
+    `[pr-owner] ${branch} heads none of the ${got.prs.length} open PRs (#5177).`
+  );
+}
+
 /** `commentsFor` over the live API. Every failure names itself; none is CLEAR. */
 function issueCommentsReader(
   repo = process.env.RECONCILE_REPO || "FloorLamp/allos"
@@ -1736,6 +1838,7 @@ function cmdNew(argv) {
       process.exit(1);
     }
   }
+  refuseAnotherSessionsBranch(opts.branch, opts.adoptClaim);
 
   const { brief, portBase } = buildBrief(opts);
   const entry = {
@@ -2616,6 +2719,7 @@ function cmdAdopt(argv) {
     );
     process.exit(1);
   }
+  refuseAnotherSessionsBranch(branch, opts.adoptClaim);
   // `git worktree list` includes the main checkout, and the orchestrator's own
   // branch lives there — adopting it would roster the orchestrator as an agent.
   //

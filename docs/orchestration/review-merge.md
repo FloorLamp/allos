@@ -37,8 +37,15 @@
   agent to execute falsifying attacks; prose alone only ever reaches CONSULT.
 - On CONSULT, read the file and hunk it quotes, not the matched terms; dispatch
   when it moves what a shared surface shows about another profile.
-- The merge waits for that report. Fix each refuted claim or record a reasoned
-  override in the thread.
+- The merge waits for that report, and the WAIT IS MACHINE-READABLE (#5126) —
+  `merge-gate.mjs` runs `--check` itself and refuses a MANDATORY head with no
+  pass verdict on it. Post the pass's own verdict on the PR, as a review or a
+  comment: `FALSIFYING-PASS: SURVIVES <sha>` or `FALSIFYING-PASS: FALSIFIED
+<sha>`. A head change voids it exactly as it voids a receipt.
+- To stop a merge for any other stated reason, post `MERGE-HOLD: <reason>`, and
+  `MERGE-HOLD LIFTED: <reason>` to release it. A hold is NOT head-bound — a
+  hold a push could lift is one anyone can walk through by pushing.
+- Fix each refuted claim or record a reasoned override in the thread.
 - A blocking finding fixed by changing the MECHANISM, not the value, earns a
   fresh pass. The test: does the fix create a surface the last pass could not
   have attacked? A new store, key, lifetime, or owning row is yes; a corrected
@@ -80,9 +87,15 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
   review states SHA and reviewer — on a shared bot account, also that the
   reviewer did not author the change (#4258). A head change voids it.
 - **Run `scripts/orchestration/merge-gate.mjs <pr>` before every merge
-  call** — receipt on current head, checks green, no unresolved threads;
-  exit 0 is the precondition. CI mirrors it as the `merge-gate` COMMIT
-  STATUS, which check-runs does not list: all-green can still be `unstable`.
+  call** — receipt on current head, checks green, no unresolved threads, no
+  standing `MERGE-HOLD`, a falsifying pass where `--check` says MANDATORY, and
+  the PR's own session; exit 0 is the precondition. CI mirrors it as the
+  `merge-gate` COMMIT STATUS, which check-runs does not list: all-green can
+  still be `unstable`.
+- **Whose PR is it** (#5177): two sessions post as one account, so the body's
+  `claude.ai/code/session_…` footer is the only discriminator. The gate closes
+  on another session's PR; `--adopt-pr` is the escape when the two sessions
+  have agreed. No footer reads as UNKNOWN, never as yours.
 - A later conflicting PR rebases only after the last earlier conflict lands.
 - Resume the author for semantic conflict resolution; do not hand-integrate
   feature code.

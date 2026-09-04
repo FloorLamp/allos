@@ -54,6 +54,32 @@ closed taxonomy, and `needs-human` handling.
   skips them — a plain `rg` reports a clean sweep it never took.
   `lib/__tests__/nul-byte-census.test.ts` names them.
 
+## Claiming an issue
+
+Two orchestrator sessions run against this repo and post as one GitHub account,
+so nothing about a comment's author says which session wrote it.
+
+- **Claim by commenting on the issue, before briefing**, naming the branch you
+  are about to create. Both spellings in use, quoted off the tracker:
+  - `` Dispatched: B, branch `live-practice-self-complete-5091` `` (#5091)
+  - ``Dispatched: branch `dispatch-claim-refusal-5108` (orchestrator A, …)``
+    (#5108)
+- **The branch is the discriminator, not the author.** A claim naming the
+  branch you are about to create is your own; a claim naming any other branch
+  is another lane's. That is the fact `dispatch-brief.mjs new` refuses on.
+- **Read the issue WHOLE first** — `issue-read.mjs <n>`, body and every
+  comment, unpiped. #5091 collided because the claim was printed and then
+  filtered out of a `sed` pipe; #5125 collided because no claim was written at
+  all. Being first is not the same as having claimed.
+- `new` refuses a claimed issue, and refuses DISTINCTLY when a claim could not
+  be READ — unreachable is CANNOT TELL, not CLEAR (#5108). `--adopt-claim` is
+  the override, for a claim you have read and judged stale.
+- The same question about a PR (#5177): a PR body's session footer, not its
+  author, says whose landing slot it is. `new` and `adopt` refuse a branch that
+  already heads another session's open PR, under the same `--adopt-claim`;
+  `merge-gate.mjs` asks again before the merge, where the escape is
+  `--adopt-pr`.
+
 ## Per-unit pipeline
 
 1. Read each issue whole via `issue-read.mjs`; `new` refuses a closed one.
