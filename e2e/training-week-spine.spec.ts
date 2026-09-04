@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
+import { appContent, followLink } from "./helpers";
 import {
   E2E_LOGIN_WEEK_SPINE,
   E2E_MEMBER_PASSWORD,
@@ -173,6 +174,87 @@ test("an empty day states its emptiness rather than a miss", async ({
       );
     }
     await expect(empty.getByTestId("week-spine-block")).toHaveCount(0);
+  } finally {
+    await page.close();
+  }
+});
+
+test("a logged day is a door to that day's log, and an empty one is not", async ({
+  browser,
+}) => {
+  // #5003. The Overview drew the week and none of it was a door: the red block a
+  // person points at when they mean "the workout I just did" did nothing when pressed,
+  // and the session was two surfaces away with nothing on this card saying so.
+  const rows = seededSessions();
+  const logged = new Set(rows.map((r) => r.date));
+  // The same reading of the fixture the first test makes: oldest first, −8 (decoy),
+  // −4, −3, −1, today, +1 (decoy). `at(-1)` would be TOMORROW's decoy, which is not
+  // a cell at all.
+  const dates = [...logged].sort();
+  const todayDay = dates[4];
+
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_WEEK_SPINE,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    // AT PHONE WIDTH, which is where the owner asked the question ("how do I get to
+    // my latest workout"). The cue is `DestinationLink`'s and so is the same at every
+    // width by construction; asserting it here is asserting that this cell did not
+    // hide it, on the viewport that has no hover to fall back on.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/training?tab=overview");
+    const spine = appContent(page)
+      .getByTestId("training-week")
+      .getByTestId("week-spine");
+    await expect(spine).toBeVisible();
+
+    // EVERY logged day is a door and NO empty day is — asserted as two sets rather
+    // than one example, because the failure that matters is a rule applied to the
+    // wrong days, not a link that is missing.
+    const doors = await spine
+      .locator('[data-testid="week-spine-day"]')
+      .evaluateAll((cells) =>
+        cells.map((cell) => ({
+          date: cell.getAttribute("data-date"),
+          sessions: cell.getAttribute("data-sessions"),
+          link: cell.tagName === "A",
+          // The one approved rightward cue, drawn by DestinationLink. Visible at this
+          // width and every other — it is not a hover state to wait for.
+          cue: cell.querySelector("svg") != null,
+        }))
+      );
+    expect(doors).toHaveLength(7);
+    for (const cell of doors) {
+      const hasSessions = cell.sessions !== "0";
+      expect({ date: cell.date, link: cell.link, cue: cell.cue }).toEqual({
+        date: cell.date,
+        link: hasSessions,
+        cue: hasSessions,
+      });
+      expect(logged.has(cell.date!)).toBe(hasSessions);
+    }
+
+    // The cue is really painted, not merely in the DOM. Exactly one — the blocks are
+    // plain spans, so the cell's only svg is the destination indicator.
+    await expect(spine.locator(`[data-date="${todayDay}"] svg`)).toBeVisible();
+
+    // Today's cell says where it goes as well as what it holds.
+    const todayCell = spine.locator(`[data-date="${todayDay}"]`);
+    await expect(todayCell).toHaveAttribute(
+      "aria-label",
+      `${todayDay} — 2 strength — open the day's log`
+    );
+
+    // And pressing it LANDS on that day's log, with the day's own sessions on it.
+    await followLink(page, todayCell, /\/training\?tab=log&day=/);
+    expect(new URL(page.url()).searchParams.get("day")).toBe(todayDay);
+    await expect(
+      appContent(page)
+        .getByTestId("training-log")
+        .getByTestId("history-rows")
+        .getByTestId("history-row")
+    ).toHaveCount(2);
   } finally {
     await page.close();
   }
