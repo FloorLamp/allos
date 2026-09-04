@@ -157,7 +157,11 @@ const weekSpine = buildWeekSpine({
   today: "2026-08-26",
   rows: [{ date: "2026-08-25", type: "strength", count: 2 }],
 });
+// The LOGGED day (index 1) and an EMPTY one (index 0). Since #5003 they are two
+// different shapes: a day with sessions is a door to its log and carries the
+// destination cue, an empty one stays a focusable mark with no promise behind it.
 const spineDay = weekSpineDaySummary(weekSpine.days[1]);
+const spineEmptyDay = weekSpineDaySummary(weekSpine.days[0]);
 
 const FAMILIES: Family[] = [
   {
@@ -282,8 +286,11 @@ const FAMILIES: Family[] = [
     element: <WeekSpine spine={weekSpine} />,
     summary: "Training day by day this week",
     items: [spineDay],
-    // The day keeps its list semantics and gains the door.
-    points: [{ label: spineDay, role: "listitem" }],
+    // An EMPTY day is the family's mark: it keeps its list semantics and stays a
+    // focusable point. A day with sessions is a LINK since #5003, which is a door of a
+    // different kind and is asserted on its own below — this harness is about marks
+    // whose value was only ever a hover.
+    points: [{ label: spineEmptyDay, role: "listitem" }],
   },
   {
     name: "strength standards ladder",
@@ -444,6 +451,35 @@ describe("the chart carries its own data access (#4760)", () => {
     expect(container.querySelectorAll("[tabindex]")).toHaveLength(0);
     expect(container.querySelector("details")).toBeNull();
     expect(within(container).queryByText(/details/i)).toBeNull();
+  });
+
+  // #5003. The block a person points at when they mean "the workout I just did" did
+  // nothing when pressed. What is pinned here is which days became doors and which did
+  // not — an empty day linking to a log with nothing in it is a promise the Log breaks.
+  it("the week spine's logged days are doors and its empty days are not", () => {
+    const { container } = render(<WeekSpine spine={weekSpine} />);
+
+    const door = screen.getByRole("listitem", {
+      name: `${spineDay} — open the day's log`,
+    });
+    expect(door.tagName).toBe("A");
+    expect(door.getAttribute("href")).toBe("/training?tab=log&day=2026-08-25");
+    // The cue is the primitive's, drawn once and not hand-rolled here.
+    expect(door.querySelector("svg")).not.toBeNull();
+
+    // Every other day of this week has no sessions, and none of them is a link.
+    const cells = Array.from(
+      container.querySelectorAll<HTMLElement>('[data-testid="week-spine-day"]')
+    );
+    expect(cells).toHaveLength(7);
+    expect(cells.filter((cell) => cell.tagName === "A")).toEqual([door]);
+    const empty = screen.getByRole("listitem", { name: spineEmptyDay });
+    expect(empty.tagName).not.toBe("A");
+    expect(empty.querySelector("svg")).toBeNull();
+
+    // And the sentence leads where its own numbers live.
+    const caption = screen.getByTestId("week-spine-caption");
+    expect(caption.getAttribute("href")).toBe("/training?tab=log");
   });
 
   it("the practice trend's week cells are their own doors and nothing lists them twice", () => {
