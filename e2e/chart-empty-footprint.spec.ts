@@ -31,16 +31,38 @@ test("chart absences release the 390px plot footprint while chart states retain 
   await page.setViewportSize(PHONE);
   await page.goto("/e2e-fixtures/chart-empty");
 
+  // SETTLE THE PAGE BEFORE MEASURING ANY OF IT (#3384, and #4925 is how it was
+  // found). Every assertion below is geometric, and the one real chart on this
+  // page is still fetching and evaluating its recharts chunk while the loop runs
+  // — a mount that reflows the whole column. Measured 2026-09-04: the first empty
+  // card's `boundingBox()` returned null on one call and 358x102 on the very next,
+  // with the element connected, visible and unmoved, and a document-wide
+  // MutationObserver recording zero node swaps. Adding instrumentation made it
+  // pass, which is the tell that the reading was a sample of a race rather than a
+  // value.
+  //
+  // It survived until now on an accident of TIMING, not on being right. These
+  // empty states used to arrive only after a `dynamic(ssr: false)` chunk
+  // evaluated, so a full client render had always happened before the first
+  // measurement; #4925 made a card's empty and one-reading paths plain
+  // server-rendered markup that loads no recharts at all, and the accidental
+  // delay went with the chunk.
+  //
+  // Scoped to the populated card, exactly as the fill sweep below is: this
+  // harness renders a loading card and an error card ON PURPOSE, and a page-wide
+  // wait would be waiting on a fallback that is supposed to stay.
+  const populated = page.getByTestId("populated-card");
+  await chartsSettled(populated, populated);
+
   for (const [testid, message] of emptyCards) {
     const card = page.getByTestId(testid);
     const empty = plot(card).locator(":scope > [data-empty-state]");
     await expect(empty).toHaveText(message);
     const box = await plot(card).boundingBox();
-    expect(box).not.toBeNull();
-    expect(box!.height).toBeLessThan(box!.width / 2);
+    expect(box, testid).not.toBeNull();
+    expect(box!.height, testid).toBeLessThan(box!.width / 2);
   }
 
-  const populated = page.getByTestId("populated-card");
   await expect(plot(populated).getByRole("application")).toBeVisible();
   await expectSquareFootprint(populated);
 

@@ -26,7 +26,7 @@ import { dispWeight, round } from "@/lib/units";
 import type { BodyMetricKind } from "@/lib/types";
 import type { WeightUnit } from "@/lib/settings";
 import type { DateRange } from "@/lib/timeline-format";
-import type { CompareSeries } from "@/components/SourceCompareChartInner";
+import type { CompareSeries } from "@/components/SourceCompareChart";
 import type { ReactNode } from "react";
 import SourceCompareChart from "@/components/SourceCompareChart";
 import PrimarySourcePicker from "./PrimarySourcePicker";

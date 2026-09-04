@@ -30,47 +30,26 @@ const SCAN_DIRS = ["app", "components", "lib"];
 const SCAFFOLD = "components/chart-scaffold.tsx";
 
 /**
- * The blessed recharts importers (4c). Every entry is a chart CARD: a
- * self-contained, code-split renderer for one chart form, consuming the shared
- * palette and the shared scaffold. Adding a row here is the deliberate act of
- * declaring a new chart FORM — if the answer is "a line chart, but for my page",
- * compose `LineChartCard` instead.
+ * The blessed recharts importers (4c). Three entries and the scaffold, where
+ * there were nine cards: #4925 made the chart TREE a spec, so a chart is a
+ * RENDERER (a form nothing else can draw) or it is a spec over one. Adding a row
+ * here is the deliberate act of declaring a new FORM — if the answer is "a line
+ * chart, but for my page", write a `TimeSeriesSpec` instead.
  */
 const RECHARTS_MODULES = new Map<string, string>([
   [
     SCAFFOLD,
-    "the scaffold itself — owns the shared grid/axis/tooltip/mark props",
+    "the scaffold itself — owns the shared grid/axis/tooltip/mark props and resolves a spec's named marks back to them",
   ],
   [
-    "components/LineChartCardInner.tsx",
-    "form: time series (the default chart)",
+    "components/TimeSeriesChartInner.tsx",
+    "renderer: every line chart — the daily card, biomarkers, compare, growth, per-source",
   ],
   [
-    "components/CompareChartInner.tsx",
-    "form: two-series overlay on one time axis",
-  ],
-  [
-    "components/BiomarkerChartInner.tsx",
-    "form: one analyte over time with reference bands",
+    "components/BarSeriesChartInner.tsx",
+    "renderer: every bar chart — stacked composition, zone minutes, the per-day sparkline",
   ],
   ["components/ScatterChartCardInner.tsx", "form: two-variable relationship"],
-  [
-    "components/SourceCompareChartInner.tsx",
-    "form: one metric, one line per reporting source",
-  ],
-  [
-    "components/GrowthChartInner.tsx",
-    "form: pediatric percentile bands + trajectory",
-  ],
-  ["components/StackedBarCardInner.tsx", "form: composition over time"],
-  [
-    "components/BarSparklineInner.tsx",
-    "form: a per-day quantity as a sparkline (#1485 D) — the bar twin of LineChartCard's sparkline variant, for a series whose rest days are real zeros",
-  ],
-  [
-    "components/ZoneMinutesCardInner.tsx",
-    "form: weekly HR-zone composition + target line",
-  ],
 ]);
 
 /**
