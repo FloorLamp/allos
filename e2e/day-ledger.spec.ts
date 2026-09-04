@@ -548,8 +548,14 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     // forged read back as rgba(220, 234, 211, 0.46) on three repeats; with this rule
     // and the same forced replacement it came back rgb(220, 234, 211) three times. A
     // sheet holds for whatever node the locator resolves, for the rest of the test.
+    //
+    // `animation` rides along with `transition` because they are the two ways a
+    // rendered colour can still be arriving when it is read. No keyframe interpolates
+    // `background-color` today, so that half buys nothing now and buys immunity to the
+    // first one that does — and freezing motion is what this case already asks for.
     await page.addStyleTag({
-      content: "*, *::before, *::after { transition: none !important; }",
+      content:
+        "*, *::before, *::after { transition: none !important; animation: none !important; }",
     });
 
     type Dress = { fill: string; edge: string };
