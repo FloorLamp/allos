@@ -23,7 +23,7 @@ import {
 import { actAs, createLogin, createProfile, fd } from "./harness";
 import { setProfileSetting } from "@/lib/settings";
 import { shiftDateStr } from "@/lib/date";
-import { gatherHistoryLog } from "@/lib/history";
+import { gatherHistoryLog, type HistoryGatherOptions } from "@/lib/history";
 import {
   deleteFoodLogEventCore,
   updateFoodLogEventCore,
@@ -65,11 +65,17 @@ function dayServings(profileId: number, date: string): number {
 }
 
 /** The record's rows for one day, and the chart the same gather feeds. */
-function dayView(loginId: number, profileId: number, date: string) {
+function dayView(
+  loginId: number,
+  profileId: number,
+  date: string,
+  narrow?: Pick<HistoryGatherOptions, "kind" | "item">
+) {
   const gather = gatherHistoryLog(profileId, {
     loginId,
     day: date,
     limit: 50,
+    ...narrow,
   });
   return {
     rows: gather.rows,
@@ -347,6 +353,51 @@ describe("the record reports the drink's instant (#3295 part 2)", () => {
     expect(
       gatherHistoryLog(profile.id, { loginId: login.id, limit: 50 }).dayEvents
     ).toEqual([]);
+  });
+
+  // THE ITEM AXIS, WHICH THE DRINKS LOOP HAS TO ASK FOR ITSELF. Alcohol is the only
+  // substance with events, so that loop reads its food group unconditionally — narrowing
+  // to a different substance drops the day rows below and nothing else. Both halves
+  // leak together, which is why they are asserted as one shape: the row, and the mark
+  // pushed beside it.
+  it("keeps drinks out of another substance's filter, on the rows and on the chart", async () => {
+    const { login, profile } = seat("clock-item-axis");
+    const date = shiftDateStr(today(profile.id), -1);
+    await addSubstanceDailyTotalAction(
+      fd({
+        substance: "alcohol",
+        date,
+        amount: "1",
+        stated_at: `${date}T21:30:00Z`,
+      })
+    );
+    await addSubstanceDailyTotalAction(
+      fd({ substance: "nicotine", date, amount: "2" })
+    );
+
+    const seen = (item?: string) => {
+      const { rows, ticks } = dayView(login.id, profile.id, date, {
+        kind: "substance",
+        item,
+      });
+      return {
+        rows: rows.map((r) => r.title),
+        ticks: ticks.map((t) => t.minute),
+      };
+    };
+    // UNNARROWED FIRST, through the same reader and differing in ONE option, because a
+    // filter's emptiness is otherwise satisfied by a fixture that logged no drink.
+    expect(seen()).toEqual({
+      rows: ["Alcohol", "Nicotine"],
+      ticks: [21 * 60 + 30],
+    });
+    expect(seen("nicotine")).toEqual({ rows: ["Nicotine"], ticks: [] });
+    // AND THE AXIS NARROWS RATHER THAN HIDES: asking for the drinks by name still gets
+    // them, which the guard's other wrong spelling — the item test alone — would not.
+    expect(seen("alcohol")).toEqual({
+      rows: ["Alcohol"],
+      ticks: [21 * 60 + 30],
+    });
   });
 
   it("renders an untimed drink as a row that admits its clock is a filing time, and marks nothing", async () => {
