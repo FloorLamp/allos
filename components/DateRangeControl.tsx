@@ -129,8 +129,8 @@ export default function DateRangeControl({
                 defaultValue={range.to ?? ""}
               />
             </div>
-            <div className="col-span-2 grid items-end sm:col-span-1">
-              <SubmitButton>Apply</SubmitButton>
+            <div className="col-span-2 flex items-end sm:col-span-1">
+              <SubmitButton layout="block">Apply</SubmitButton>
             </div>
             <div className="col-span-2 flex items-end sm:col-span-1">
               <Link

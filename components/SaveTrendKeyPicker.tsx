@@ -37,14 +37,13 @@ export default function SaveTrendKeyPicker({
 
   const picked = byLabel.get(label.trim());
   const star = (
-    <span
-      className={enhanced && !picked ? "hidden sm:inline-flex" : "inline-flex"}
+    <SubmitButton
+      disabled={enhanced && !picked}
+      layout={enhanced && !picked ? "hidden-below-sm" : undefined}
     >
-      <SubmitButton disabled={enhanced && !picked}>
-        <span aria-hidden>☆</span>
-        Star
-      </SubmitButton>
-    </span>
+      <span aria-hidden>☆</span>
+      Star
+    </SubmitButton>
   );
 
   if (!enhanced) {
