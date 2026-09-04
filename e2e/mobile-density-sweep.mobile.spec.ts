@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { settledBoxes } from "./helpers";
+import { appContent, settledBoxes } from "./helpers";
 import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 import { NOTICE_TONE, type NoticeTone } from "@/components/Notice";
 import type { Locator } from "@playwright/test";
@@ -552,9 +552,7 @@ test("#3899 a band's frame is gone at 390, back at 640, and a control keeps its 
   for (const [route, marker] of BANDED) {
     await page.setViewportSize({ width: VIEWPORT_PX, height: 844 });
     await page.goto(route);
-    // first-ok: the marker repeats where the surface repeats, and every copy is
-    // the same element with the same class list — the claim is about the shape.
-    const surface = page.getByTestId(marker).first();
+    const surface = appContent(page).getByTestId(marker).first(); // first-ok: the marker repeats where the surface repeats, and every copy is the same element with the same class list
     await expect(surface).toBeVisible();
     expect(await frame(surface)).toEqual([0, 0]);
 
@@ -570,7 +568,7 @@ test("#3899 a band's frame is gone at 390, back at 640, and a control keeps its 
   // about the band rather than about this viewport. Two real elements, one page.
   await page.setViewportSize({ width: VIEWPORT_PX, height: 844 });
   await page.goto("/records/care/providers");
-  const control = page.getByTestId("provider-search");
+  const control = appContent(page).getByTestId("provider-search");
   await expect(control).toBeVisible();
   const [controlBorder, controlRadius] = await frame(control);
   expect(controlBorder).toBeGreaterThan(0);
