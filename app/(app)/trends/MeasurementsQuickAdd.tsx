@@ -11,6 +11,8 @@ import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { useTemperatureUnitDetection } from "@/components/useTemperatureUnitDetection";
 import TemperatureField from "@/components/vitals/TemperatureField";
 import WeightField from "@/components/vitals/WeightField";
+import TimeRangeFields from "@/components/TimeRangeFields";
+import { useTimezone } from "@/components/TimezoneProvider";
 import {
   measurementsSavedText,
   validateBodyMetricInput,
@@ -99,14 +101,18 @@ function refusedMessage(
 //     time are one field for the same reason.
 //
 // ── Progressive disclosure: three groups, one open ───────────────────────────
-// SEVENTEEN always-empty boxes to collect the one or two readings someone actually
+// EIGHTEEN always-empty boxes to collect the one or two readings someone actually
 // took is what the copy already argues against. (This comment said THIRTEEN, which was
 // the count before #1850, #1851 and #2322 added peak flow, the bed/wake pair,
-// respiratory rate, lean and bone mass, hydration and the waist tape. `LOG_MANIFEST`
-// inherited the stale figure and #4424's body leg corrected both. The form DEFINES
-// nineteen fields — the eighteen in `field` below plus Notes — and renders seventeen at
-// either life stage, since the growth pair swaps in exactly as body fat and HRV swap
-// out; `components/__tests__/body-two-pieces.test.tsx` asserts the pair.) Exactly one group is open on mount,
+// respiratory rate, lean and bone mass, hydration and the waist tape, then SEVENTEEN
+// once those landed. `LOG_MANIFEST` inherited each stale figure and #4424's body leg
+// corrected it in its turn. The form DEFINES nineteen fields — the eighteen in `field`
+// below plus Notes — and renders eighteen labeled boxes at the adult life stage (#4976:
+// the bed/wake pair draws its own two labels, "Bed time" / "Wake time", rather than
+// one shared "Bed & wake" — one field, two boxes, so the rendered count is no longer
+// the field count) and sixteen at the minor's, since the growth pair swaps in exactly
+// as body fat and HRV swap out; `components/__tests__/body-two-pieces.test.tsx` asserts
+// the pair.) Exactly one group is open on mount,
 // chosen by where the person came from: the vitals card opens Vitals, Trends → Overview → body census
 // opens Body, a `?focus=`/`?new=` deep link opens the group holding its field, and
 // the quick-log sheet opens whatever this profile last wrote to (seeded to Vitals).
@@ -243,6 +249,11 @@ function rememberGroup(
   }
 }
 
+// bed_time / wake_time are NOT here (#4976): TimeRangeFields' TimeField mounts hold
+// them as controlled React state (bedTime/wakeTime below), the same reason DateField
+// hosts never appear in this list either — a controlled field keeps its own value
+// across a form action's commit with no pinning trick needed, and resetForm() clears
+// it explicitly rather than relying on the DOM's own reset.
 const UNCONTROLLED_VITAL_FIELDS = [
   "systolic",
   "diastolic",
@@ -250,8 +261,6 @@ const UNCONTROLLED_VITAL_FIELDS = [
   "spo2",
   "temperature",
   "sleep_hours",
-  "bed_time",
-  "wake_time",
   "hrv",
   "respiratory_rate",
   "peak_flow",
@@ -290,6 +299,13 @@ export default function MeasurementsQuickAdd({
     date: defaultDate,
     statedAt: defaultStatedAt,
   }));
+  const tz = useTimezone();
+  // The night's two clocks (#1851, #4976), controlled the same way `when` is —
+  // `TimeRangeFields` posts them through its own hidden inputs (`bed_time`/
+  // `wake_time`, unchanged names), so the write below reads the pair exactly as
+  // it always has.
+  const [bedTime, setBedTime] = useState("");
+  const [wakeTime, setWakeTime] = useState("");
   const tempUnitDetection = useTemperatureUnitDetection(temperatureUnit);
   // HRV is an adult measure here for the same reason body fat is (#493): a
   // growth-tracked profile's Body surfaces don't carry it, so the field doesn't
@@ -532,6 +548,10 @@ export default function MeasurementsQuickAdd({
         waistUnit.options[0].defaultSelected = true;
       }
       form.reset();
+      // form.reset() only reaches uncontrolled fields — the night's two clocks are
+      // React state now (#4976) and clear themselves here instead.
+      setBedTime("");
+      setWakeTime("");
     };
     const clearQueuedBodyFields = (): void => {
       const form = formRef.current;
@@ -979,30 +999,34 @@ export default function MeasurementsQuickAdd({
     // structural pairing a blood pressure gets. This is the whole of what the Sleep
     // Regularity Index needs; the hours field below cannot give it, because a
     // duration says nothing about WHEN.
+    //
+    // TimeRangeFields in its `overnight` mode (#4976 item 2): a bed time is always
+    // followed, never preceded, by its wake, so a wake clock earlier than bed means
+    // the next day rather than a refusal. The pair's own two labels ("Bed time" /
+    // "Wake time", the issue's own ruling) replace the outer "Bed & wake" label this
+    // Field used to draw — `e2e/manual-vitals.spec.ts` locates them by those labels
+    // either way, so its locators are untouched. `col-span-2`: this grid's own
+    // per-field column is 10.5rem at its narrowest (`GRID_CLASS` below), too tight
+    // for two styled clocks side by side — the two native inputs this replaces
+    // didn't need the room a real text input plus its picker button does.
     sleepWindow: (
-      <Field key="sleep-window" label="Bed & wake" htmlFor="m-bed-time">
-        <div className="flex items-center gap-1.5">
-          <input
-            id="m-bed-time"
-            type="time"
-            name="bed_time"
-            aria-label="Bed time"
-            data-testid="measurements-bed-time"
-            className="input min-w-0 flex-1"
-          />
-          <span aria-hidden className="text-slate-400">
-            –
-          </span>
-          <input
-            id="m-wake-time"
-            type="time"
-            name="wake_time"
-            aria-label="Wake time"
-            data-testid="measurements-wake-time"
-            className="input min-w-0 flex-1"
-          />
-        </div>
-      </Field>
+      <div key="sleep-window" className="col-span-2 min-w-0">
+        <TimeRangeFields
+          idPrefix="m-sleep"
+          startTime={bedTime}
+          endTime={wakeTime}
+          tz={tz}
+          timeError={false}
+          derivableDurationMin={null}
+          startName="bed_time"
+          endName="wake_time"
+          startLabel="Bed time"
+          endLabel="Wake time"
+          overnight
+          onStartTime={setBedTime}
+          onEndTime={setWakeTime}
+        />
+      </div>
     ),
     sleep: (
       <Field key="sleep" label="Sleep" htmlFor="m-sleep">

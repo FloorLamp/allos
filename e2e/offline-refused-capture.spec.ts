@@ -345,9 +345,18 @@ test("a measurements save whose vitals half is refused says which half it kept",
     "systolic=118 diastolic=76 glucose=5.6 spo2=98 temperature=98.6 sleep_hours=7.5 bed_time=22:30 wake_time=06:30 hrv=42 respiratory_rate=14 peak_flow=450"
       .split(" ")
       .map((pair) => pair.split("=") as [string, string]);
+  // bed_time / wake_time are named on TimeField's hidden siblings now (#4976),
+  // fillable by name only for the plain inputs below — the pair itself lives
+  // behind the visible Bed time / Wake time labels TimeRangeFields draws. Reach
+  // those two through the label the way `m-time` already does two lines down;
+  // the retention check after the refused save still reads both by name below,
+  // since `toHaveValue` (unlike `fill`) never requires the element visible.
   for (const [name, value] of refusedVitals) {
+    if (name === "bed_time" || name === "wake_time") continue;
     await form.locator(`[name="${name}"]`).fill(value);
   }
+  await form.getByLabel("Bed time", { exact: true }).fill("22:30");
+  await form.getByLabel("Wake time", { exact: true }).fill("06:30");
   await form.getByLabel("Glucose unit").selectOption("mmol/L");
   await form.getByTestId("m-time").fill("08:15");
   await form.getByRole("button", { name: "Save measurements" }).click();

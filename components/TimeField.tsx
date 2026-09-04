@@ -41,6 +41,7 @@ export default function TimeField({
   required = false,
   disabled = false,
   id,
+  name,
   label,
   inputClassName = "",
   "data-testid": testId,
@@ -51,6 +52,12 @@ export default function TimeField({
   required?: boolean;
   disabled?: boolean;
   id?: string;
+  /**
+   * Posts the canonical value through a form's FormData (DateField's own
+   * pattern, below) — the visible field can show a formatted clock, so a
+   * hidden input carries the "HH:MM" a Server Action reads.
+   */
+  name?: string;
   /** The field's accessible name — its visible label is the caller's. */
   label: string;
   inputClassName?: string;
@@ -72,6 +79,7 @@ export default function TimeField({
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const popRef = useRef<HTMLElement | null>(null);
+  const hiddenRef = useRef<HTMLInputElement>(null);
   // WHICH HOST the wheel opens in decides the outside-click policy, and only
   // that — the fork itself is `AnchoredPanel`'s and is not repeated here. Same
   // split, and the same reasons, as `DateField`.
@@ -79,6 +87,51 @@ export default function TimeField({
 
   const shown =
     draft && draft.from === value ? draft.text : formatHhmm(value, timeFormat);
+
+  // THE DIRTY-FORM REGISTRY LISTENS FOR NATIVE EVENTS ON THE NAMED FIELD ITSELF
+  // (#4976), and this field's named element is the hidden sibling below — the
+  // VISIBLE input and picker BUTTON the person actually interacts with carry no
+  // `name`, so nothing either fires natively ever reaches the registry. Two
+  // dispatches stand in, one per event the registry listens for, in the order a
+  // real focus-then-edit always produces them:
+  //
+  //   `focusin`, from `registerDirtyBaseline` below — called from EVERY seam that
+  //   precedes an edit, BEFORE any of them has changed `value`, so the hidden
+  //   input's DOM value the registry reads at that moment is still the PRE-EDIT
+  //   one. That is what lets it register the correct baseline; firing this only
+  //   from a synthetic post-commit effect (after `value` had already moved) would
+  //   register the field against its own just-edited value and it could never
+  //   look dirty. `onFocusIn` is idempotent for an already-registered field, so a
+  //   second call mid-edit does not clobber the first baseline.
+  //
+  //   THE WHEEL IS A SEPARATE SEAM FROM TYPING, and missing it was a real bug
+  //   (caught in review, not by a test that existed): opening the picker moves
+  //   focus to the button, never to the text input, so a value chosen entirely
+  //   by wheel or keyboard never ran through the visible input's `onFocus` at
+  //   all — the hidden field went straight to `onEdit`'s never-focused branch,
+  //   which registers baseline from `domDefaultValue` at THAT moment, and by
+  //   then (a post-commit dispatch) the default had already moved onto the pick.
+  //   A picked time therefore read as clean no matter what was chosen. The fix is
+  //   the same registration call, made from the wheel's own pre-edit moment: the
+  //   button's `onClick`, when it is OPENING (never on close, which precedes no
+  //   edit).
+  //
+  //   `input`, from THIS effect, once per committed `value` change — marks the
+  //   already-registered field touched, whichever seam registered it. Skips the
+  //   mount's own commit: the hidden input's initial value already equals
+  //   `value`, so dispatching then would be a harmless no-op the registry
+  //   discards anyway.
+  const registerDirtyBaseline = () =>
+    hiddenRef.current?.dispatchEvent(new Event("focusin", { bubbles: true }));
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    if (!name) return;
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+    hiddenRef.current?.dispatchEvent(new Event("input", { bubbles: true }));
+  }, [name, value]);
 
   // The native input rejected a malformed time; a text input does not, so the
   // Constraint Validation API carries it (`required` only covers empty).
@@ -134,6 +187,10 @@ export default function TimeField({
         placeholder={timeFormat === "24h" ? "hh:mm" : "h:mm am"}
         inputMode="numeric"
         autoComplete="off"
+        // The TYPING seam's dirty-form registration moment (#4976) — see the
+        // comment above `registerDirtyBaseline` for why it fires here rather
+        // than post-edit, and why the wheel needs its own call at its own seam.
+        onFocus={registerDirtyBaseline}
         onChange={(e) => {
           const text = e.target.value;
           const parsed = parseClockHhmm(text);
@@ -152,9 +209,33 @@ export default function TimeField({
         // 0.5rem — exactly as the date field's calendar button does.
         className={`input pr-9 ${inputClassName}`}
       />
+      {/* The visible field can show a friendly clock, so the canonical value is
+          submitted via a hidden input for `name` usage — DateField's own pattern.
+          `data-dirty-track-hidden` opts THIS hidden input into the dirty-form
+          registry, which excludes `type="hidden"` by default (components/
+          DirtyFormRegistry.tsx) — this one carries the field's whole value
+          rather than plumbing, so it is the one hidden input asking to be seen. */}
+      {name && (
+        <input
+          ref={hiddenRef}
+          type="hidden"
+          name={name}
+          value={value}
+          data-dirty-track-hidden="true"
+        />
+      )}
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        // The WHEEL seam's dirty-form registration moment (#4976): the button
+        // taking focus is the pre-edit moment for a picked value, since nothing
+        // else here ever focuses the visible input. Only on OPEN — closing
+        // precedes no edit, and re-registering on every toggle is needless
+        // (idempotent, but the moment is what matters, not the repetition).
+        onClick={() => {
+          const next = !open;
+          setOpen(next);
+          if (next) registerDirtyBaseline();
+        }}
         disabled={disabled}
         aria-label="Open time picker"
         aria-haspopup="dialog"
