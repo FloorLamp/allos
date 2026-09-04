@@ -1,0 +1,238 @@
+import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
+import { jsxTags, lineAt, walkTsx, REPO } from "./jsx-tag-scan";
+
+// Static guard: every command inside a `role="menu"` panel announces itself as
+// an item of that menu (issue #5181).
+//
+// A `role="menu"` whose children are plain buttons is not a menu to a screen
+// reader. The role tells assistive technology to expect menu items and to state
+// how many there are; a child that carries no menu role is not counted and is
+// not announced as part of the list, so the panel reads as "menu, 1 item" over a
+// kebab that visibly offers three. The panel is right and the children were
+// wrong: components/OverflowMenu.tsx hands `role="menu"` to
+// components/overlay/AnchoredPanel.tsx in BOTH presentations, and ~60 items
+// across the app already answer with `role="menuitem"` — so this is the shared
+// answer being kept, not a new one being minted.
+//
+// THE POPULATION IS THE PANEL'S CHILDREN, not a class. Keying on `MENU_ITEM`
+// would have found the same 18 sites today and been blind tomorrow to an item
+// styled any other way — and menu items ARE written without it (the merge
+// picker's rows, CompactDateMenu's radios). So the scan locates each menu panel
+// and looks at what is inside it.
+//
+// WHAT COUNTS AS AN ITEM: the command elements — `button`, `a`, `Link`. A
+// component (OverflowMenuSubmitItem, SourceDocumentLink, MyChartImport) is
+// scanned where it is DEFINED, at the element it actually renders, so a
+// pass-through prop is never mistaken for a missing role. Non-command content
+// inside a panel — a form wrapping a submit item, a hidden input, the merge
+// picker's checkboxes — is out of this scan's scope.
+
+const SCAN_DIRS = ["app", "components"];
+
+// The trigger promised a menu, so these are the two ways a panel delivers one:
+// the shared kebab, and a hand-rolled panel that declares the role itself.
+const MENU_TAG = "OverflowMenu";
+const COMMANDS = new Set(["button", "a", "Link"]);
+
+/** [start, end) of the CHILDREN of every menu panel opened in `text`. */
+export function menuPanelRegions(text: string): [number, number][] {
+  const out: [number, number][] = [];
+  for (const tag of jsxTags(text)) {
+    const opensMenu =
+      tag.name === MENU_TAG || /\brole\s*=\s*"menu"/.test(tag.attrs);
+    if (!opensMenu || tag.selfClosing) continue;
+    const close = `</${tag.name}>`;
+    const open = `<${tag.name}`;
+    let depth = 1;
+    let i = tag.end;
+    while (i < text.length && depth > 0) {
+      if (text.startsWith(close, i)) {
+        depth--;
+        if (depth === 0) break;
+        i += close.length;
+        continue;
+      }
+      if (
+        text.startsWith(open, i) &&
+        !/[\w.]/.test(text[i + open.length] ?? "")
+      ) {
+        depth++;
+        i += open.length;
+        continue;
+      }
+      i++;
+    }
+    out.push([tag.end, i]);
+  }
+  return out;
+}
+
+/** Line numbers of the commands inside a menu panel that carry no role. */
+export function menuItemsWithoutRole(text: string): number[] {
+  const regions = menuPanelRegions(text);
+  if (regions.length === 0) return [];
+  const inside = (i: number) => regions.some(([s, e]) => i >= s && i < e);
+  return jsxTags(text)
+    .filter(
+      (t) =>
+        COMMANDS.has(t.name) && inside(t.start) && !/\brole\s*=/.test(t.attrs)
+    )
+    .map((t) => lineAt(text, t.start));
+}
+
+/** Line numbers of the commands inside a menu panel that DO carry a menu role. */
+function menuItemsWithRole(text: string): number[] {
+  const regions = menuPanelRegions(text);
+  if (regions.length === 0) return [];
+  const inside = (i: number) => regions.some(([s, e]) => i >= s && i < e);
+  return jsxTags(text)
+    .filter(
+      (t) =>
+        COMMANDS.has(t.name) &&
+        inside(t.start) &&
+        /\brole\s*=\s*"menuitem(checkbox|radio)?"/.test(t.attrs)
+    )
+    .map((t) => lineAt(text, t.start));
+}
+
+function sourceFiles(): { rel: string; text: string }[] {
+  const files: { rel: string; text: string }[] = [];
+  for (const d of SCAN_DIRS) {
+    const abs = path.join(REPO, d);
+    if (!fs.existsSync(abs)) continue;
+    for (const full of walkTsx(abs)) {
+      const rel = path.relative(REPO, full).split(path.sep).join("/");
+      if (rel.includes("__tests__")) continue;
+      files.push({ rel, text: fs.readFileSync(full, "utf8") });
+    }
+  }
+  return files;
+}
+
+describe('every command in a role="menu" panel is an item of it (#5181)', () => {
+  it("no menu panel holds a role-less button or link", () => {
+    const offenders: string[] = [];
+    for (const { rel, text } of sourceFiles()) {
+      for (const line of menuItemsWithoutRole(text)) {
+        offenders.push(`${rel}:${line}`);
+      }
+    }
+    expect(
+      offenders,
+      `These commands sit inside a role="menu" panel without announcing ` +
+        `themselves as items of it, so a screen reader does not count them among ` +
+        `the menu's items. Add role="menuitem" (or menuitemcheckbox / ` +
+        `menuitemradio for a stateful one) — the same answer the rest of the ` +
+        `app's menu items give:\n` +
+        offenders.join("\n")
+    ).toEqual([]);
+  });
+
+  // THE POSITIVE CONTROL FOR THE CENSUS ITSELF. An empty offender list is only
+  // good news if the scan can see the population it is scanning, and this one
+  // could not twice over before #5181 fixed the reader: a menu written inside a
+  // braced attribute and a menu whose opening tag carries a comment were both
+  // invisible. So the census states the size of what it found, and names the two
+  // files whose shapes it used to miss.
+  it("sees the population it is clearing", () => {
+    let panels = 0;
+    let items = 0;
+    const withPanels: string[] = [];
+    for (const { rel, text } of sourceFiles()) {
+      const found = menuPanelRegions(text).length;
+      if (found > 0) withPanels.push(rel);
+      panels += found;
+      items += menuItemsWithRole(text).length;
+    }
+    expect(panels).toBeGreaterThanOrEqual(30);
+    expect(items).toBeGreaterThanOrEqual(60);
+    // The menu inside a braced `action={…}` prop, and the menu whose opening tag
+    // carries a `//` comment containing a backtick. Each was a whole panel the
+    // reader stepped over.
+    expect(withPanels).toContain("app/(app)/protocols/ProtocolControls.tsx");
+    expect(withPanels).toContain("app/(app)/trends/BodyMetricRowMenu.tsx");
+  });
+
+  it("recognises the defect and leaves everything else alone", () => {
+    const menu = (body: string) =>
+      `<OverflowMenu itemName={n} open={o} onOpenChange={s}>{({ close }) => (${body})}</OverflowMenu>`;
+
+    // The defect: a command in the panel with no role.
+    expect(
+      menuItemsWithoutRole(
+        menu(`<button type="button" onClick={close}>Edit</button>`)
+      )
+    ).toEqual([1]);
+    // A link is a menu item too when the menu is what it is inside.
+    expect(menuItemsWithoutRole(menu(`<Link href={h}>Open</Link>`))).toEqual([
+      1,
+    ]);
+    // The fix, in each of its three spellings.
+    expect(
+      menuItemsWithoutRole(
+        menu(`<button type="button" role="menuitem">Edit</button>`)
+      )
+    ).toEqual([]);
+    expect(
+      menuItemsWithoutRole(
+        menu(`<button type="button" role="menuitemradio">Day</button>`)
+      )
+    ).toEqual([]);
+    expect(
+      menuItemsWithoutRole(
+        menu(`<button type="button" role="menuitemcheckbox">Bands</button>`)
+      )
+    ).toEqual([]);
+
+    // A hand-rolled panel that declares the role itself is held to the same rule.
+    expect(
+      menuItemsWithoutRole(
+        `<div role="menu"><button type="button">Edit</button></div>`
+      )
+    ).toEqual([1]);
+
+    // A button OUTSIDE any menu is not this scan's business.
+    expect(
+      menuItemsWithoutRole(`<div><button type="button">Save</button></div>`)
+    ).toEqual([]);
+    // Nor is one after the panel has closed.
+    expect(
+      menuItemsWithoutRole(
+        `${menu(`<button type="button" role="menuitem">Edit</button>`)}<button type="button">Save</button>`
+      )
+    ).toEqual([]);
+  });
+
+  it("sees a menu nested in a braced attribute value", () => {
+    // app/(app)/protocols/ProtocolControls.tsx and
+    // app/(app)/wellness/PracticeCard.tsx both mount their kebab inside a
+    // header's `action` prop. Skipping braces wholesale hid five real offenders
+    // in the first of those, and folded the second's items into the OUTER tag's
+    // attributes — inventing population as readily as it hid it.
+    const src = `<PageHeader title={t} action={<div><OverflowMenu itemName={n} open={o} onOpenChange={s}>{() => (<button type="button">End now</button>)}</OverflowMenu></div>} />`;
+    expect(menuPanelRegions(src)).toHaveLength(1);
+    expect(menuItemsWithoutRole(src)).toEqual([1]);
+  });
+
+  it("sees a menu whose opening tag carries a comment", () => {
+    // app/(app)/trends/BodyMetricRowMenu.tsx and app/(app)/upcoming/RowActions.tsx
+    // explain their `itemName` in a `//` comment between attributes, and the one
+    // in BodyMetricRowMenu quotes a template literal. A reader that skipped
+    // comments only BETWEEN tags opened a string on that backtick and lost the
+    // rest of the file.
+    const src = [
+      "<OverflowMenu",
+      "  // it used to compose `Actions for entry from ${label}` itself",
+      "  itemName={label}",
+      "  open={o}",
+      "  onOpenChange={s}",
+      ">",
+      '  {() => <button type="button">Delete entry</button>}',
+      "</OverflowMenu>",
+    ].join("\n");
+    expect(menuPanelRegions(src)).toHaveLength(1);
+    expect(menuItemsWithoutRole(src)).toEqual([7]);
+  });
+});

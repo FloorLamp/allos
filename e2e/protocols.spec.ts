@@ -344,7 +344,7 @@ test.describe("protocols create → compare (issue #161)", () => {
     );
     await page
       .getByRole("menu")
-      .getByRole("button", { name: "Edit", exact: true })
+      .getByRole("menuitem", { name: "Edit", exact: true })
       .click();
     const editDialog = page.getByRole("dialog", { name: "Edit protocol" });
     await expect(editDialog).toBeVisible();
@@ -409,7 +409,7 @@ test.describe("protocols create → compare (issue #161)", () => {
     );
     await page
       .getByRole("menu")
-      .getByRole("button", { name: "Edit", exact: true })
+      .getByRole("menuitem", { name: "Edit", exact: true })
       .click();
     const phoneEditDialog = page.getByRole("dialog", { name: "Edit protocol" });
     await expect(phoneEditDialog).toBeVisible();
@@ -450,7 +450,7 @@ test.describe("protocols create → compare (issue #161)", () => {
     );
     await page
       .getByRole("menu")
-      .getByRole("button", { name: "End now" })
+      .getByRole("menuitem", { name: "End now" })
       .click();
     await settledClick(
       page,
@@ -468,7 +468,7 @@ test.describe("protocols create → compare (issue #161)", () => {
     );
     await settledClick(
       page,
-      page.getByRole("menu").getByRole("button", { name: "Resume" })
+      page.getByRole("menu").getByRole("menuitem", { name: "Resume" })
     );
     await expect(detailMain.getByTestId("protocol-header")).toContainText(
       "Ongoing"
@@ -481,7 +481,7 @@ test.describe("protocols create → compare (issue #161)", () => {
     );
     await page
       .getByRole("menu")
-      .getByRole("button", { name: "Delete", exact: true })
+      .getByRole("menuitem", { name: "Delete", exact: true })
       .click();
     await settledClick(
       page,
@@ -530,7 +530,7 @@ test.describe("protocols create → compare (issue #161)", () => {
     );
     await settledClick(
       page,
-      page.getByRole("menu").getByRole("button", { name: "Run again" })
+      page.getByRole("menu").getByRole("menuitem", { name: "Run again" })
     );
     await page.waitForURL((url) => url.href !== oldUrl);
     const newUrl = page.url();
@@ -554,7 +554,7 @@ test.describe("protocols create → compare (issue #161)", () => {
       );
       await page
         .getByRole("menu")
-        .getByRole("button", { name: "Delete", exact: true })
+        .getByRole("menuitem", { name: "Delete", exact: true })
         .click();
       await settledClick(
         page,

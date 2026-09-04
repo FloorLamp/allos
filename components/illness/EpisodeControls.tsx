@@ -135,6 +135,7 @@ export default function EpisodeControls({
               {editor && (
                 <button
                   type="button"
+                  role="menuitem"
                   className={MENU_ITEM}
                   data-testid="episode-edit-open"
                   onClick={() => {
@@ -182,6 +183,7 @@ export default function EpisodeControls({
               ) : (
                 <button
                   type="button"
+                  role="menuitem"
                   className={MENU_ITEM}
                   disabled={conditionBusy}
                   onClick={() => {

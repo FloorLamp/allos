@@ -331,6 +331,7 @@ export default function ActivityCardMenu({
                   </div>
                   <button
                     type="button"
+                    role="menuitem"
                     data-testid="merge-multi-toggle"
                     className={`${MENU_ITEM} font-medium text-brand-600 dark:text-brand-400`}
                     onClick={() => setMultiMode(true)}
@@ -387,6 +388,7 @@ export default function ActivityCardMenu({
                   </div>
                   <button
                     type="button"
+                    role="menuitem"
                     data-testid="merge-run"
                     disabled={checked.size === 0}
                     className={`${MENU_ITEM} font-medium text-brand-600 disabled:opacity-40 dark:text-brand-400`}
