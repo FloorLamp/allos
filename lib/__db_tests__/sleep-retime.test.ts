@@ -33,7 +33,8 @@ function sample(
   wakeDay: string,
   startUtc: string,
   endUtc: string,
-  value: number
+  value: number,
+  source = PROVIDER
 ): number {
   return Number(
     db
@@ -44,8 +45,8 @@ function sample(
       )
       .run(
         profileId,
-        PROVIDER,
-        ORIGIN,
+        source,
+        source === "manual" ? null : ORIGIN,
         metric,
         wakeDay,
         startUtc,
@@ -222,6 +223,7 @@ describe("retimeSleepSessionCore", () => {
       }).kind
     ).toBe("not-hedged");
     expect(rowOf(id)?.started_at).toBe(`${day}T09:39:00Z`);
+    expect(tombstones()).toEqual([]);
   });
 
   it("refuses a window of a different length, and says how long the night was", () => {
@@ -256,6 +258,116 @@ describe("retimeSleepSessionCore", () => {
         wakeAt: `${ahead}T08:37:00Z`,
       }).kind
     ).toBe("invalid-window");
+    // NO REFUSAL WRITES A TOMBSTONE (#5125). Asserted on the table rather than read
+    // off the branch: the write kills the moved row's natural key, and a refusal that
+    // wrote one would silently stop the source re-sending a row it never moved.
+    expect(tombstones()).toEqual([]);
+  });
+});
+
+describe("the lock is on the SESSION, not on its wake day (#5125)", () => {
+  // The detector's population is NARROWER than the day it reports. It judges the wake
+  // day's MAIN session only (#5019 — a nap always reads as a contradiction against its
+  // own overnight trough, so judging naps flagged good nights) and it never sees a
+  // `source = 'manual'` row at all. Both rows below therefore sit on a hedged day
+  // having been contradicted by nothing, which is exactly what the lock's own sentence
+  // says must not pass.
+  //
+  // The tombstone assertion is the half with the longest tail: the write kills the
+  // moved row's natural key, so a nap carried through this lock could never be
+  // re-sent by its source, and nobody would go looking.
+  it.each([
+    ["a nap the detector never judged", PROVIDER],
+    ["a hand-logged row the detector cannot see", "manual"],
+  ])("refuses %s on a hedged day", (_case, source) => {
+    hedgedNight();
+    const id = sample(
+      "sleep_min",
+      day,
+      `${day}T16:00:00Z`,
+      `${day}T17:00:00Z`,
+      60,
+      source
+    );
+    // The DAY is hedged — which is what used to carry these rows through.
+    expect(getSuspectSleepWakeDays(profileId, shiftDateStr(T, -30))).toEqual(
+      new Set([day])
+    );
+
+    expect(
+      retimeSleepSessionCore(profileId, id, {
+        bedAt: `${day}T11:00:00Z`,
+        wakeAt: `${day}T12:00:00Z`,
+      }).kind
+    ).toBe("not-hedged");
+    expect(rowOf(id)?.started_at).toBe(`${day}T16:00:00Z`);
+    expect(tombstones()).toEqual([]);
+  });
+
+  it("still moves the night the detector DID contradict", () => {
+    // The converse, in the same fixture the refusals use: adding a nap beside the
+    // night must not close the door on the night itself.
+    const { sessionId } = hedgedNight();
+    sample("sleep_min", day, `${day}T16:00:00Z`, `${day}T17:00:00Z`, 60);
+    expect(
+      retimeSleepSessionCore(profileId, sessionId, {
+        bedAt: `${day}T03:39:00Z`,
+        wakeAt: `${day}T08:37:00Z`,
+      }).kind
+    ).toBe("retimed");
+    expect(rowOf(sessionId)?.started_at).toBe(`${day}T03:39:00Z`);
+  });
+});
+
+describe("a night stored twice, whose stages have two owners (#5125)", () => {
+  /** The same night filed a second time — the state Review's "Keep this one" is for. */
+  const twinOf = () =>
+    sample("sleep_min", day, `${day}T09:41:00Z`, `${day}T14:35:00Z`, 294);
+
+  it("refuses rather than move a session away from its breakdown", () => {
+    const { sessionId, stageId } = hedgedNight();
+    const twin = twinOf();
+    const before = { session: rowOf(sessionId), stage: rowOf(stageId) };
+
+    // `stagesOwnedBy` vetoes every stage the twin also covers, so the move would have
+    // taken the session six hours away and left the breakdown at the old hours — the
+    // orphaned breakdown `length-changed` exists to prevent, through the path it
+    // allows. The dialog's "The sleep stages move with the session." stays true
+    // because the move does not happen.
+    expect(
+      retimeSleepSessionCore(profileId, sessionId, {
+        bedAt: `${day}T03:39:00Z`,
+        wakeAt: `${day}T08:37:00Z`,
+      })
+    ).toEqual({ kind: "stages-shared" });
+    expect(rowOf(sessionId)).toEqual(before.session);
+    expect(rowOf(stageId)).toEqual(before.stage);
+    expect(rowOf(twin)?.started_at).toBe(`${day}T09:41:00Z`);
+    expect(tombstones()).toEqual([]);
+  });
+
+  it("moves a twinned night that has no breakdown to strand", () => {
+    // The refusal is about STAGES, not about the duplicate: with nothing in the band
+    // to leave behind, the door stays open on a night Review is also offering to fix.
+    const sessionId = sample(
+      "sleep_min",
+      day,
+      `${day}T09:39:00Z`,
+      `${day}T14:37:00Z`,
+      298
+    );
+    twinOf();
+    trace(`${shiftDateStr(day, -1)}T22:00:00Z`, `${day}T22:00:00Z`, {
+      from: `${day}T03:39:00Z`,
+      to: `${day}T08:37:00Z`,
+    });
+    expect(
+      retimeSleepSessionCore(profileId, sessionId, {
+        bedAt: `${day}T03:39:00Z`,
+        wakeAt: `${day}T08:37:00Z`,
+      }).kind
+    ).toBe("retimed");
+    expect(rowOf(sessionId)?.started_at).toBe(`${day}T03:39:00Z`);
   });
 });
 

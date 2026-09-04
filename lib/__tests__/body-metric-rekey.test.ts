@@ -168,10 +168,14 @@ describe("rekeyedDaysFor: sub-hour offsets and DST", () => {
 });
 
 describe("departedZones: which zones the reconcile may consider at all", () => {
+  // The reconcile reads BOTH kinds (#3428 item 2) — a zone moved in Settings re-keys a
+  // day exactly as a trip does — so the kind these are built with is not the subject
+  // here; the settings-kind half is pinned in the DB tier against the real ingest.
   const sw = (at: string, from: string, to: string): TimezoneSwitch => ({
     at,
     from,
     to,
+    kind: "travel",
   });
 
   it("keeps the `from` of every recorded switch, newest first", () => {

@@ -1,5 +1,5 @@
 import { cleanup, render, screen } from "@testing-library/react";
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import MeasurementsQuickAdd from "@/app/(app)/trends/MeasurementsQuickAdd";
 
 // THE MEASUREMENTS FORM'S OWN CHROME (#4977 items 2 and 3).
@@ -23,6 +23,8 @@ vi.mock("next/navigation", () => ({
 }));
 
 beforeEach(() => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  vi.setSystemTime(new Date(`${TODAY}T12:00:00Z`));
   Element.prototype.scrollIntoView ??= () => {};
   vi.stubGlobal(
     "ResizeObserver",
@@ -35,18 +37,31 @@ beforeEach(() => {
   cleanup();
 });
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 const ABOUT = /fill in only what you measured/;
+
+// The default timezone is UTC (components/TimezoneProvider.tsx), so a frozen
+// clock makes `defaultDate` the control's own "today" — which is what puts the
+// one-tap "Now" on the surface beside the commit.
+const TODAY = "2026-05-20";
 
 function mount(presentation: "card" | "modal") {
   render(
     <MeasurementsQuickAdd
-      defaultDate="2026-05-20"
+      defaultDate={TODAY}
       weightUnit="kg"
       defaultGroup="vitals"
       presentation={presentation}
     />
   );
 }
+
+/** Every control on the mounted surface wearing the one primary paint. */
+const primaries = () =>
+  Array.from(document.querySelectorAll(".button-control-primary"));
 
 /** The grid cell a field's control sits in — the element the grid lays out. */
 function cellOf(id: string): HTMLElement {
@@ -87,5 +102,23 @@ it.each(["card", "modal"] as const)(
       "ariaLabel",
       expect.stringMatching(ABOUT)
     );
+  }
+);
+
+// THE FORM'S COMMIT OUTRANKS ITS HELPER (#4978 item 2, from #4977's sighting).
+// The owner reported "Save measurements" reading quieter than the "Now" beside
+// it: the commit rendered the plain secondary while the helper wore the ghost's
+// fill. Asserted as the RELATIONSHIP between the two real controls plus the
+// admission rule (#3982: at most one primary per surface), because "Save has
+// the paint" is also true of a form that painted everything primary.
+it.each(["card", "modal"] as const)(
+  "%s: the commit wears the one primary paint and the Now beside it does not",
+  (presentation) => {
+    mount(presentation);
+    const save = screen.getByRole("button", { name: "Save measurements" });
+    const now = screen.getByTestId("m-now");
+    expect(save.className).toContain("button-control-primary");
+    expect(now.className).not.toContain("button-control-primary");
+    expect(primaries()).toEqual([save]);
   }
 );

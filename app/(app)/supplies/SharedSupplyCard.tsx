@@ -13,6 +13,7 @@ import { productLabel } from "@/lib/supply-product";
 import type { AvatarProfile } from "@/components/Avatar";
 import { switchProfileAction } from "@/app/(app)/profile-context-actions";
 import { updatePoolAction, deletePoolAction } from "./actions";
+import SubmitButton from "@/components/SubmitButton";
 
 export interface SharedSupplyCardData {
   id: number;
@@ -270,13 +271,9 @@ export default function SharedSupplyCard({
               </select>
             </div>
             <input type="hidden" name="returnTo" value={pool.addHref} />
-            <button
-              type="submit"
-              className="btn"
-              data-testid="shared-supply-add-for-submit"
-            >
+            <SubmitButton data-testid="shared-supply-add-for-submit">
               Add this bottle
-            </button>
+            </SubmitButton>
           </form>
         )}
         {pool.hiddenMemberCount > 0 && (
@@ -389,14 +386,13 @@ export default function SharedSupplyCard({
             />
           </div>
           <div className="sm:col-span-2 flex flex-wrap items-center gap-2">
-            <button
-              type="submit"
-              className="btn"
+            <SubmitButton
+              variant="primary"
               data-testid="shared-supply-save"
               disabled={pending}
             >
               {pending ? "Saving…" : "Save"}
-            </button>
+            </SubmitButton>
             <button
               type="button"
               className="btn-ghost"

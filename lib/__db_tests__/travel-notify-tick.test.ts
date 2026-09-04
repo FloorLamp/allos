@@ -268,8 +268,14 @@ describe("travel excusal at the real notification tick", () => {
     vi.setSystemTime(new Date("2026-05-01T12:01:00Z")); // Paris 14:01
     switchProfileTimezone(disconnected.receiver, ATHENS, NEW_YORK); // Athens 15:01
 
-    // The retained suffix alone appears to skip 15:00, but the unrecorded
-    // Athens→Paris seam made it occur. Both production consumers must fail open.
+    // The Athens→Paris correction IS recorded now (#3428 item 2), so the STORED history
+    // is one connected chain — but the excusal predicates read the travel sub-chain, and
+    // pulling that correction out of it leaves New York → Athens and Paris → Athens with
+    // nothing joining them. That is the disconnection this test is now about, and it is
+    // why the kind filter runs BEFORE the trust gate rather than after: the travel legs
+    // alone appear to skip 15:00, while the correction they straddle is what made 15:00
+    // occur. Counting those legs over a chain the gate had already accepted would excuse
+    // a slot this profile lived through. Both production consumers fail open instead.
     const switches = resolveSwitchHistory(
       getTravelSwitches(disconnected.receiver)
     );
@@ -290,14 +296,26 @@ describe("travel excusal at the real notification tick", () => {
     vi.setSystemTime(new Date("2026-05-01T10:00:00Z")); // New York 06:00
     switchProfileTimezone(anchored.receiver, ATHENS, NEW_YORK); // Athens 13:00
     vi.setSystemTime(new Date("2026-05-01T10:01:00Z")); // Athens 13:01
-    setTimezone(anchored.receiver, PARIS); // bare correction: Paris 12:01
+    setTimezone(anchored.receiver, PARIS); // Settings correction: Paris 12:01
 
-    // Read on its own, the single retained record anchors on its OWN destination and
-    // reads as a clean 06:00 → 13:00 skip over Midday. But the profile's day is on
-    // Paris, so that chain does not end where the profile is, and the seam that took
-    // it to Paris was never recorded. The current zone is what both consumers anchor
-    // on, and it is what rejects the history whole.
-    expect(getTravelSwitches(anchored.receiver).at(-1)?.to).toBe(ATHENS);
+    // THE PREMISE HERE CHANGED WITH #3428 item 2, and the assertions did not.
+    // This scenario used to turn on the Paris seam being UNRECORDED, which left the
+    // stored history ending in Athens while the profile stood in Paris. `setTimezone`
+    // records now, so the stored history really does end where the profile is — the
+    // whole-history readers (`zoneAtInstant`, the body-metric reconcile) can finally
+    // follow it, which is what item 2 is for.
+    //
+    // The excusal predicates still refuse it, for the reason that replaces the old one:
+    // they read the TRAVEL sub-chain, and that is still a lone New York → Athens record
+    // anchored against a profile standing in Paris. Read on its own it is a clean
+    // 06:00 → 13:00 skip over Midday; against the current zone it does not reach the
+    // profile, so it is rejected whole and Midday is not excused. A Settings correction
+    // cannot start excusing a dose slot — asserted here at the real tick.
+    expect(getTravelSwitches(anchored.receiver).map((sw) => sw.kind)).toEqual([
+      "travel",
+      "settings",
+    ]);
+    expect(getTravelSwitches(anchored.receiver).at(-1)?.to).toBe(PARIS);
     expect(getTimezone(anchored.receiver)).toBe(PARIS);
     expect(
       isReminderSlotExcused(
