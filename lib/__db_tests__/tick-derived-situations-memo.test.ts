@@ -26,6 +26,7 @@ import {
   type NormMetricSample,
 } from "@/lib/integrations/normalize";
 import {
+  effectiveSituationResolver,
   getDerivedSituationLines,
   getEffectiveActiveSituations,
   resolveDerivedSituations,
@@ -172,7 +173,50 @@ describe("resolveDerivedSituations under a tick scope (#2724)", () => {
     );
   });
 
-  it("keys by DATE too — one day's snapshot never answers another day's", async () => {
+  // BOTH ENTRY POINTS, ONE SNAPSHOT (#3993). The memo used to wrap the single-DATE
+  // answer, which the WINDOW resolver does not go through — so inside one scope, with the
+  // web's "Not today" landing mid-scope from another process, the reminder rebuild
+  // (single-date) and the catch-up sheet (windowed) answered the SAME day two different
+  // ways. A bound that only covers one of two callers is a split, and this is the shape
+  // #2724's comment claims not to have. Asserted in BOTH orders, because whichever entry
+  // point reads first is the one that takes the snapshot.
+  it("the two entry points agree about a day, whichever reads first (#3993)", async () => {
+    for (const first of ["single-date", "window"] as const) {
+      const profileId = newProfile(`Memo Seam ${first}`);
+      seedRoughNight(profileId);
+      const td = today(profileId);
+      const held = (s: Set<string>) => s.has(BUILTIN_POOR_SLEEP_SITUATION);
+
+      await runInTickScope(
+        async () => {
+          const early =
+            first === "single-date"
+              ? getEffectiveActiveSituations(profileId, td)
+              : effectiveSituationResolver(profileId, { from: td, to: td })(td);
+          // The one cross-process write lib/tick-cache.ts warns about, mid-scope.
+          dismissFinding(profileId, poorSleepOverrideKey(td));
+          const late =
+            first === "single-date"
+              ? effectiveSituationResolver(profileId, { from: td, to: td })(td)
+              : getEffectiveActiveSituations(profileId, td);
+          // Snapshot-shaped, which is the documented trade — but ONE snapshot, so the
+          // message the tick sends and the sheet it composes cannot disagree.
+          expect({ early: held(early), late: held(late) }, first).toEqual({
+            early: true,
+            late: true,
+          });
+        },
+        { profileId }
+      );
+
+      // The scope closed, so the override lands for both.
+      expect(held(getEffectiveActiveSituations(profileId, td)), first).toBe(
+        false
+      );
+    }
+  });
+
+  it("answers each day from the one snapshot — no day is served another's answer", async () => {
     const profileId = newProfile("Memo Key Date");
     // BOTH days rough, so the sleep data is identical on the two days and the ONLY
     // thing left to tell them apart is the override — which is what this test is about.
@@ -183,7 +227,10 @@ describe("resolveDerivedSituations under a tick scope (#2724)", () => {
     const yd = shiftDateStr(td, -1);
     // The override is DATE-SCOPED (`poor-sleep-override:<date>`), which is exactly
     // what makes the two days differ on otherwise identical inputs: today is
-    // overridden, yesterday's key was never written.
+    // overridden, yesterday's key was never written. Since #3993 the date is an
+    // evaluation parameter rather than half a memo key, so this is no longer a guard
+    // against a key that forgot to project it — it is the per-day independence of one
+    // shared snapshot, which is the property the window resolver rests on too.
     dismissFinding(profileId, poorSleepOverrideKey(td));
 
     await runInTickScope(
@@ -191,9 +238,6 @@ describe("resolveDerivedSituations under a tick scope (#2724)", () => {
         expect(resolveDerivedSituations(profileId, td).poorSleep.on).toBe(
           false
         );
-        // A key that projected only the profile would hand today's answer back
-        // here. `tickCached` warns that `keyOf` must project EVERY argument that
-        // can change the answer; this is the half a profile-only guard misses.
         expect(resolveDerivedSituations(profileId, yd).poorSleep).toMatchObject(
           {
             on: true,
