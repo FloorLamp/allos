@@ -560,7 +560,12 @@ describe("setSubstanceTargetAction / clearSubstanceTargetAction", () => {
 });
 
 describe("substance consumption history actions (#2009)", () => {
-  it("adds a past alcohol day, edits date/amount/notes, deletes with undo, and weekly state follows", async () => {
+  // THE EDIT HALF IS GONE FROM THIS ROUND-TRIP, and that is the subject (#5026 item
+  // 1): a drink is an EVENT, so it corrects on its own record row and this day-count
+  // action refuses it. What used to append the second surface's tap was that
+  // correction; a second ADD does it now, which is what a person filing another drink
+  // actually posts, so the provenance claim keeps its fixture.
+  it("adds a past alcohol day twice, refuses the day-count correction, and deletes with undo", async () => {
     const login = createLogin();
     const profile = createProfile("su-history-alcohol", login.id);
     actAs(login, profile);
@@ -587,33 +592,53 @@ describe("substance consumption history actions (#2009)", () => {
         notes: "Dinner with friends",
       },
     ]);
-    const updated = await updateSubstanceDailyTotalAction(
-      fd({
-        id: String(added.id),
-        substance: "alcohol",
-        date: td,
-        amount: "3",
-        notes: "Corrected amount",
-        logged_via: "dashboard-widget",
-      })
-    );
-    // `capProgress` since #4424's substance leg — null here because this profile
-    // opted into no weekly cap. Its own test is below.
-    expect(updated).toEqual({
-      kind: "updated",
-      id: added.id,
-      capProgress: null,
-    });
-    expect(getSubstanceWeekState(profile.id, "alcohol").count).toBe(3);
+    // A third drink, filed from another surface onto the same day — ADDITIVE, and the
+    // event it creates carries its own provenance.
+    expect(
+      (
+        await addSubstanceDailyTotalAction(
+          fd({
+            substance: "alcohol",
+            date: past,
+            amount: "1",
+            logged_via: "dashboard-widget",
+          })
+        )
+      ).kind
+    ).toBe("added");
     const eventCount = db
       .prepare(
         `SELECT COUNT(*) AS n, GROUP_CONCAT(DISTINCT logged_via) AS via FROM food_log_events
          WHERE profile_id = ? AND group_key = 'alcohol' AND date = ?`
       )
-      .get(profile.id, td) as { n: number; via: string };
+      .get(profile.id, past) as { n: number; via: string };
     expect(eventCount.n).toBe(3);
     expect(eventCount.via).toBe("quick-log,dashboard-widget");
 
+    // The day-count correction is refused, and the day it addressed does not move.
+    expect(
+      await updateSubstanceDailyTotalAction(
+        fd({
+          id: String(added.id),
+          substance: "alcohol",
+          date: td,
+          amount: "9",
+          notes: "Corrected amount",
+        })
+      )
+    ).toEqual({ kind: "corrected-per-event" });
+    expect(getSubstanceDailyTotals(profile.id, "alcohol")).toEqual([
+      {
+        id: added.id,
+        substance: "alcohol",
+        date: past,
+        amount: 3,
+        notes: "Dinner with friends",
+      },
+    ]);
+
+    // THE DAY'S DELETE IS NOT THE DAY'S CORRECTION and is unchanged: it removes the
+    // entry whole, undoably, rather than restating what the events under it say.
     const deleted = await deleteSubstanceDailyTotalAction(
       fd({ id: String(added.id), substance: "alcohol" })
     );
@@ -621,11 +646,10 @@ describe("substance consumption history actions (#2009)", () => {
     expect(getSubstanceWeekState(profile.id, "alcohol").count).toBe(0);
     if (deleted.kind !== "deleted") throw new Error("entry was not deleted");
     expect(await undoDelete(deleted.undoId)).toEqual({ ok: true });
-    expect(getSubstanceWeekState(profile.id, "alcohol").count).toBe(3);
     expect(getSubstanceDailyTotals(profile.id, "alcohol")[0]).toMatchObject({
-      date: td,
+      date: past,
       amount: 3,
-      notes: "Corrected amount",
+      notes: "Dinner with friends",
     });
   });
 
@@ -827,7 +851,12 @@ describe("substance consumption history actions (#2009)", () => {
 // than by inspection: one ledger each, asserting the typed `not-found` AND that the
 // victim's row (and, for alcohol, its per-tap events) is byte-identical afterwards.
 describe("substance history actions refuse another profile's row (#2072)", () => {
-  it("alcohol (food-log ledger): update and delete are not-found, the row and its taps survive", async () => {
+  // ALCOHOL'S UPDATE IS REFUSED BEFORE OWNERSHIP IS ASKED (#5026 item 1) — a drink is
+  // corrected on its own event, so there is no cross-profile reconcile left to run and
+  // the answer cannot depend on whose row the id names. The boundary this describe
+  // exists for is still asserted on alcohol's DELETE, which does take the id and does
+  // carry the profile filter, and on nicotine's update below.
+  it("alcohol (food-log ledger): the row and its taps survive an intruder's edit and delete", async () => {
     const owner = createLogin();
     const ownerProfile = createProfile("su-history-owner-alcohol", owner.id);
     actAs(owner, ownerProfile);
@@ -854,7 +883,7 @@ describe("substance history actions refuse another profile's row (#2072)", () =>
           notes: "Rewritten by another profile",
         })
       )
-    ).toEqual({ kind: "not-found" });
+    ).toEqual({ kind: "corrected-per-event" });
     expect(
       await deleteSubstanceDailyTotalAction(
         fd({ id: String(added.id), substance: "alcohol" })
