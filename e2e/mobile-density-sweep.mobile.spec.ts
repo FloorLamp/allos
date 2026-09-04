@@ -447,7 +447,7 @@ async function runsFlushWithTheirFill(
   );
 }
 
-// The three surfaces the ruling names, with the content marker each one must be
+// The surfaces the ruling names, with the content marker each one must be
 // waited for. A region measured before its rows arrive is a measurement of a
 // placeholder, and empty is the state that flatters every assertion below.
 const SWEPT = [
@@ -457,6 +457,24 @@ const SWEPT = [
   // The census grid is the one surface on this list whose cards are placed into
   // TRACKS rather than stacked down the page, and it is where #3931 was found.
   ["the Body census", "/trends", "body-metric-tiles"],
+  // #3899: the routes whose frames were hand-rolled out of `rounded-xl border
+  // bg-surface` rather than out of `.card`, so #3673's rule could not reach them
+  // and they still drew a frame here. Added to THIS list rather than to a parallel
+  // one, because what has to hold on them is the same property.
+  [
+    "the provider directory",
+    "/records/care/providers",
+    "provider-directory-grouped",
+  ],
+  ["the reports pane", "/results/reports", "reports-list"],
+  // /nutrition is deliberately NOT on this list yet, and the reason is a finding
+  // rather than an omission: `ledger-rows` there draws the shared
+  // `LOGGED_EVENT_LIST` frame (components/LoggedEventRow.tsx) with no `band`,
+  // where the same constant in HistoryRows carries one — so the route reds on a
+  // surface #3899's census never saw (its frame is an imported constant, not a
+  // class list). Converting it also moves that list's rows off `px-3`, which is a
+  // different change from this one. The nutrition sidebar is covered below
+  // instead, at both widths.
 ] as const;
 
 for (const [what, route, marker] of SWEPT) {
@@ -504,6 +522,60 @@ for (const [what, route, marker] of SWEPT) {
     expect(await runsFlushWithTheirFill(page, PAGE_GUTTER_PX)).toEqual([]);
   });
 }
+
+// #3899: the three surfaces above, each read at BOTH widths. Every assertion in
+// this file so far asks for ABSENCE, and absence is exactly what a `band` that
+// never compiled would also produce — a class eaten by a specificity or layer rule
+// leaves the sweep green and the phone unchanged. So these ask the converse of the
+// SAME element: the frame that is gone at 390 must come back at `sm`, which no
+// dead class can fake. Measured against the pre-`band` tree, where all three read
+// border 1px / radius 12px / x 16 / width 358 at 390 too.
+const BANDED = [
+  ["/results/reports", "reports-list"],
+  ["/records/care/providers", "provider-org-card"],
+  ["/nutrition", "nutrition-sidebar-surface"],
+] as const;
+
+test("#3899 a band's frame is gone at 390, back at 640, and a control keeps its own", async ({
+  page,
+}) => {
+  test.slow();
+  const frame = (locator: Locator) =>
+    locator.evaluate((node) => {
+      const style = getComputedStyle(node);
+      return [
+        Number.parseFloat(style.borderLeftWidth),
+        Number.parseFloat(style.borderTopLeftRadius),
+      ];
+    });
+
+  for (const [route, marker] of BANDED) {
+    await page.setViewportSize({ width: VIEWPORT_PX, height: 844 });
+    await page.goto(route);
+    // first-ok: the marker repeats where the surface repeats, and every copy is
+    // the same element with the same class list — the claim is about the shape.
+    const surface = page.getByTestId(marker).first();
+    await expect(surface).toBeVisible();
+    expect(await frame(surface)).toEqual([0, 0]);
+
+    await page.setViewportSize({ width: 640, height: 844 });
+    await page.waitForFunction(() => window.innerWidth === 640);
+    const [border, radius] = await frame(surface);
+    expect(border).toBeGreaterThan(0);
+    expect(radius).toBeGreaterThan(0);
+  }
+
+  // AN AFFORDANCE KEEPS ITS FRAME AT EVERY WIDTH, which is the ruling and not an
+  // exception to it — and it is the reading that says the zeros above are a fact
+  // about the band rather than about this viewport. Two real elements, one page.
+  await page.setViewportSize({ width: VIEWPORT_PX, height: 844 });
+  await page.goto("/records/care/providers");
+  const control = page.getByTestId("provider-search");
+  await expect(control).toBeVisible();
+  const [controlBorder, controlRadius] = await frame(control);
+  expect(controlBorder).toBeGreaterThan(0);
+  expect(controlRadius).toBeGreaterThan(0);
+});
 
 test("#3673 the sweep can SEE a frame, and stays quiet on the Notice that keeps one", async ({
   page,
