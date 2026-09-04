@@ -42,12 +42,7 @@ import {
 import { redirect } from "next/navigation";
 import { withReadSnapshot, __probeReadSnapshotOpen } from "@/lib/read-snapshot";
 import { __probeSettingScopeOpen } from "@/lib/settings/kv";
-import {
-  preloadGlobalSettings,
-  preloadProfileSettings,
-  preloadLoginSettings,
-  withSettingReadCache,
-} from "@/lib/settings";
+import { preloadGlobalSettings, withSettingReadCache } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -125,7 +120,15 @@ async function renderTrends(props: TrendsPageProps) {
     console.log(
       `[PROBE-component] renderTrends:after-await settingScope=${__probeSettingScopeOpen()} readSnapshot=${__probeReadSnapshotOpen()}`
     );
+  if (process.env.PROBE_5012)
+    console.log(
+      `[PROBE-component] renderTrends:before-today settingScope=${__probeSettingScopeOpen()}`
+    );
   const todayStr = today(profile.id);
+  if (process.env.PROBE_5012)
+    console.log(
+      `[PROBE-component] renderTrends:after-today settingScope=${__probeSettingScopeOpen()}`
+    );
   const from = timelineDateFromParam(searchParams.from);
   const to = timelineDateFromParam(searchParams.to);
   // #1485 G: no-param loads open on 90D, not all time. An explicit window still
