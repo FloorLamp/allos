@@ -46,14 +46,31 @@ export function comparePositions(a: LocalPosition, b: LocalPosition): number {
   return a.minute - b.minute;
 }
 
+// WHY a recorded move happened, and it is the discriminator that lets two readers
+// with opposite needs share one history (#3428 item 2, owner 2026-08-23T01:01:51Z).
+//
+//   "travel"   — the one-tap switch, or a Settings edit made DURING an active trip.
+//                The person crossed the seam: a stretch of their wall clock really
+//                did repeat or never happen.
+//   "settings" — an ordinary Settings edit or onboarding. The day boundary moves, but
+//                nothing says the person went anywhere; it is at least as likely that
+//                the app's belief about where they were is what changed.
+//
+// The excusal predicates read TRAVEL only — a correction must never drop a dose out of
+// the denominator or silence its reminder. `zoneAtInstant` and the Health Connect
+// body-metric reconcile read BOTH, because either kind genuinely moved the zone a day
+// was keyed under.
+export type TimezoneSwitchKind = "travel" | "settings";
+
 // One recorded move of a profile's timezone. `at` is the canonical UTC instant the
-// switch took effect; `from`/`to` are IANA zones. Written by every path that moves
-// the zone for TRAVEL (the accepted outbound and return offers), so the rules
-// below can be asked about a day after the fact.
+// switch took effect; `from`/`to` are IANA zones. Written by `setTimezone`
+// (lib/settings/display.ts), the one door every path to a profile's zone goes
+// through, so the rules below can be asked about a day after the fact.
 export interface TimezoneSwitch {
   at: string;
   from: string;
   to: string;
+  kind: TimezoneSwitchKind;
 }
 
 // Which way a switch moved the wall clock, in the profile's own terms.
@@ -190,6 +207,30 @@ export type GatedSwitchHistory = readonly ResolvedSwitch[] & {
 // predicates means having come through the gate — and having paid for the positions
 // once, per profile.
 //
+// TRAVEL-KIND ONLY, AND FILTERED BEFORE THE GATE RATHER THAN AFTER IT. The owner's
+// ruling is that a Settings correction must never start excusing or repeating a dose
+// slot (#3428, 2026-08-23T01:01:51Z), and where the filter sits is what decides whether
+// obeying it is safe.
+//
+// Filtering AFTER the gate would drop a settings switch's crossing while keeping the
+// travel crossings either side of it, and those two halves no longer describe a
+// trajectory anybody took: an Athens→Paris correction sitting between two travel legs
+// cancels a repeat that really happened, so the arithmetic would EXCUSE a slot the
+// person lived through — a dose out of the denominator and its reminder silenced, which
+// is the exact harm the predicates exist to prevent, arrived at by obeying the rule.
+//
+// Filtering FIRST hands the gate the travel sub-chain on its own, and the gate's
+// standing rule does the rest: a chain that does not run unbroken to the profile's
+// current zone is rejected WHOLE, so an interposed correction fails the history open
+// and nothing is excused. Fewer things excused is this module's safe direction.
+//
+// It is also byte-identical to the behaviour #3263 shipped, which is the strongest
+// thing that can be said about a change to an excusal rule. Before item 2 a Settings
+// edit wrote no record at all, so the stored history WAS the travel sub-chain and a
+// correction already broke the chain or the anchor in precisely these places. This
+// filter reproduces that input exactly; what item 2 adds is a history the whole-history
+// readers (`zoneAtInstant`, the body-metric reconcile) can finally trust.
+//
 // The null arm is `resolveSwitch`'s return shape, not a live path: the gate already
 // rejects the WHOLE history on an unparseable instant or an invalid zone, which are
 // the only two things that make `resolveSwitch` null, so a switch that reaches here
@@ -200,7 +241,10 @@ export function resolveSwitchHistory(
   currentZone?: string
 ): GatedSwitchHistory {
   const out: ResolvedSwitch[] = [];
-  for (const sw of connectedTimezoneSwitchHistory(switches, currentZone)) {
+  for (const sw of connectedTimezoneSwitchHistory(
+    switches.filter((sw) => sw.kind === "travel"),
+    currentZone
+  )) {
     const r = resolveSwitch(sw);
     if (r) out.push(r);
   }
@@ -345,11 +389,19 @@ export function decodeTimezoneSwitchHistory(
   for (const entry of parsed) {
     if (!entry || typeof entry !== "object")
       return { switches: [], valid: false };
-    const { at, from, to } = entry as Record<string, unknown>;
+    const { at, from, to, kind } = entry as Record<string, unknown>;
     if (typeof at !== "string") return { switches: [], valid: false };
     if (typeof from !== "string" || typeof to !== "string")
       return { switches: [], valid: false };
-    out.push({ at, from, to });
+    // An ABSENT kind is "travel", not corruption: every record written before #3428
+    // item 2 came from `switchProfileTimezone`, which only ever recorded trips. An
+    // absent field is therefore evidence, and reading it as anything else would
+    // retroactively un-excuse the switch days those records exist to explain.
+    // A PRESENT but unrecognised one is corruption like any other bad field, and
+    // taints the whole history rather than being guessed at.
+    if (kind !== undefined && kind !== "travel" && kind !== "settings")
+      return { switches: [], valid: false };
+    out.push({ at, from, to, kind: kind ?? "travel" });
   }
   return { switches: out, valid: true };
 }

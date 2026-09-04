@@ -91,6 +91,9 @@ export default async function MobilitySection({
                     />
                     <input type="hidden" name="scope_value" value={s.region} />
                     <input type="hidden" name="per_week" value={s.perWeek} />
+                    {/* A row affordance, not the surface's commit: this accept
+                        renders once per observation beside its own dismiss, so
+                        the one primary rank (#3982) would be N of them. */}
                     <SubmitButton data-testid={`mobility-accept-${s.region}`}>
                       Track {s.perWeek}×/week
                     </SubmitButton>

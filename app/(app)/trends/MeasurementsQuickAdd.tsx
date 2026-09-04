@@ -1337,7 +1337,7 @@ export default function MeasurementsQuickAdd({
       )}
 
       <InlineError>{error}</InlineError>
-      <SubmitButton pendingLabel="Saving…">
+      <SubmitButton pendingLabel="Saving…" variant="primary">
         {metric ? `Save ${metric.label.toLowerCase()}` : "Save measurements"}
       </SubmitButton>
     </form>

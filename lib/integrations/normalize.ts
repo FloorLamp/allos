@@ -1104,17 +1104,21 @@ export function supersedeMetricSampleOverlaps(
  * zone in force when it was attributed, which is what `zoneAt(profileId, instant)` would
  * compute for every row whose instants did not move — i.e. every row of a re-send.
  *
- * IT IS NOT `zoneAt`, AND THAT IS DELIBERATE. The resolver of #3428 item 3 needs the
- * COMPLETE, unbounded switch history of item 2, which does not exist: today's
- * `profile_settings.timezone_switches` is written only by `switchProfileTimezone`
- * (`lib/settings/travel.ts`) — a Settings or onboarding `setTimezone` leaves no record at
- * all — and it is pruned (`MAX_STORED_SWITCHES` / `SWITCH_RETENTION_DAYS`). A resolver
- * over that history would silently do nothing on the Settings path. Item 2 is also
- * blocked on the owner's `kind: travel | settings` discriminator (#3428 comments of
- * 2026-08-23T00:58Z and 01:01:51Z), because #3263's `isExcusedSlot` / `isRepeatedSlot`
- * read travel switches ONLY. So this lane takes the owner's stated alternative — "or
- * simply a stored `date` is not recomputed by a re-send" — and the resolver replaces it
- * when the history it needs is real.
+ * IT IS NOT `zoneAt`, AND THE REASON HAS CHANGED. This took the owner's stated
+ * alternative — "or simply a stored `date` is not recomputed by a re-send" — because the
+ * history a resolver needs did not exist: `profile_settings.timezone_switches` was
+ * written only by `switchProfileTimezone` (`lib/settings/travel.ts`), so a Settings or
+ * onboarding `setTimezone` left no record and a resolver would have silently done
+ * nothing on that path.
+ *
+ * That history is real now (#3428 item 2): `setTimezone` writes every zone move, each
+ * record carries `kind: travel | settings`, and only a safety cap on a runaway writer
+ * is left of the pruning. So the swap is available and it is item 3's adoption to make,
+ * not this function's to keep refusing. What it would NOT be is a behaviour change on
+ * this path: for every row of a re-send the instants have not moved, so the frozen day
+ * is exactly what `zoneAt(profileId, instant)` computes — the two agree here by
+ * construction, and diverge only for a row whose instants change, which a re-send is
+ * not.
  *
  * THE BROAD EXCEPTION IS GONE, AND ITS REMOVAL IS #3901's THIRD HALF.
  *

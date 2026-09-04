@@ -287,7 +287,11 @@ export default function EndurancePlanBar({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <SubmitButton pendingLabel="Saving…" data-testid="endurance-submit">
+            <SubmitButton
+              pendingLabel="Saving…"
+              data-testid="endurance-submit"
+              variant="primary"
+            >
               Add event
             </SubmitButton>
             <button

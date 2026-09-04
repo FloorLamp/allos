@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, type RenderResult } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import IntradayChart from "@/components/IntradayChart";
 import { DEFAULT_FORMAT_PREFS } from "@/lib/format-date";
@@ -38,40 +38,49 @@ const chart = (selectedWindow: { from: number; to: number | null } | null) => (
   <IntradayChart
     model={MODEL}
     formatPrefs={DEFAULT_FORMAT_PREFS}
-    variant="wide"
     className=""
     profileId={1}
     selectedWindow={selectedWindow}
   />
 );
 
+/**
+ * THE BAND ON ONE GEOMETRY. The chart draws a compact and a wide drawing behind a
+ * container query and displays whichever its container earns (#4973); jsdom lays out
+ * neither, so a document-wide `getByTestId` matches BOTH and a bare `querySelector`
+ * would answer from whichever comes first without saying so. The mark is the same at
+ * either scale — this file reads the wide one, which is the scale its ratio below is
+ * written about.
+ */
+const selection = (result: RenderResult) =>
+  result.container.querySelector(
+    '[data-variant="wide"] [data-testid="intraday-selection"]'
+  );
+
 afterEach(cleanup);
 
 describe("the chart draws the window the URL states", () => {
   it("draws nothing when no window is stated", () => {
-    render(chart(null));
-    expect(screen.queryByTestId("intraday-selection")).toBeNull();
+    expect(selection(render(chart(null)))).toBeNull();
   });
 
   it("draws a band for a window, spanning exactly its minutes", () => {
     // 19:10 → 20:40, the issue's own example.
-    render(chart({ from: 19 * 60 + 10, to: 20 * 60 + 40 }));
-    const band = screen.getByTestId("intraday-selection");
+    const band = selection(
+      render(chart({ from: 19 * 60 + 10, to: 20 * 60 + 40 }))
+    )!;
     const x = Number(band.getAttribute("x"));
     const width = Number(band.getAttribute("width"));
     // Geometry is the chart's, so the assertion is a RELATIONSHIP rather than a pixel
-    // count: 90 of the day's 1440 minutes, at whatever scale this variant draws.
-    const full = render(
-      chart({ from: 0, to: 24 * 60 - 5 })
-    ).container.querySelector('[data-testid="intraday-selection"]')!;
+    // count: 90 of the day's 1440 minutes, at whatever scale this geometry draws.
+    const full = selection(render(chart({ from: 0, to: 24 * 60 - 5 })))!;
     const fullWidth = Number(full.getAttribute("width"));
     expect(width / fullWidth).toBeCloseTo(90 / (24 * 60 - 5), 2);
     expect(x).toBeGreaterThan(0);
   });
 
   it("draws a start alone as a hairline, not as a zero-width nothing", () => {
-    render(chart({ from: 19 * 60 + 10, to: null }));
-    const band = screen.getByTestId("intraday-selection");
+    const band = selection(render(chart({ from: 19 * 60 + 10, to: null })))!;
     // A tap marks when something began; the width floor is what keeps it visible.
     expect(Number(band.getAttribute("width"))).toBeGreaterThanOrEqual(1);
   });
@@ -85,13 +94,11 @@ describe("the chart draws the window the URL states", () => {
     const parsed = parseIntradayWindow("19:12", "20:41");
     expect(parsed).toEqual({ from: 19 * 60 + 10, to: 20 * 60 + 40 });
 
-    const fromParam = render(chart(parsed)).container.querySelector(
-      '[data-testid="intraday-selection"]'
-    )!;
+    const fromParam = selection(render(chart(parsed)))!;
     cleanup();
-    const fromMinutes = render(
-      chart({ from: 19 * 60 + 10, to: 20 * 60 + 40 })
-    ).container.querySelector('[data-testid="intraday-selection"]')!;
+    const fromMinutes = selection(
+      render(chart({ from: 19 * 60 + 10, to: 20 * 60 + 40 }))
+    )!;
 
     expect(fromParam.getAttribute("x")).toBe(fromMinutes.getAttribute("x"));
     expect(fromParam.getAttribute("width")).toBe(

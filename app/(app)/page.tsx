@@ -1244,8 +1244,9 @@ async function renderDashboard(
   // whole days (#3258). Local, not UTC — a delta appearing on the server's clock would
   // be the same artifact in a different disguise.
   // THE DAY SO FAR (#4767 item 2) — the SAME IntradayChart the /history day view
-  // draws, in its existing compact geometry. No second implementation and no model
-  // of its own: the events are `gatherHistoryLog`'s own resolved day rows, the same
+  // draws, in whatever geometry this row's own width earns (#4973: the chart reads
+  // its container, so nothing here names one). No second implementation and no
+  // model of its own: the events are `gatherHistoryLog`'s own resolved day rows, the same
   // list the day view hands the panel, so a window drawn here can never name
   // something that page would not show.
   //
@@ -2352,7 +2353,6 @@ async function renderDashboard(
             model={intradayToday}
             formatPrefs={formatPrefs}
             profileId={profile.id}
-            variant="compact"
             className="w-full"
           />
         ),

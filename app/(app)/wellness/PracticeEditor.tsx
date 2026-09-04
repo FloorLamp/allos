@@ -6,6 +6,7 @@ import Combobox from "@/components/Combobox";
 import { PRACTICE_STARTER_LIST } from "@/lib/practice";
 import { useFocusFormOnParam } from "@/components/useFocusFormOnParam";
 import { savePractice } from "./actions";
+import SubmitButton from "@/components/SubmitButton";
 
 export default function PracticeEditor({
   targetId = null,
@@ -111,9 +112,9 @@ export default function PracticeEditor({
         Multiple sessions on the same day count once toward the weekly goal.
       </p>
       <div className="flex items-end gap-2 sm:col-span-3">
-        <button type="submit" className="btn" disabled={pending}>
+        <SubmitButton variant="primary" disabled={pending}>
           {pending ? "Saving…" : targetId == null ? "Save" : "Save changes"}
-        </button>
+        </SubmitButton>
         {onDone && (
           <button type="button" className="btn-ghost" onClick={onDone}>
             Cancel

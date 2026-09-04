@@ -6,6 +6,7 @@ import InlineError from "@/components/InlineError";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { SYMPTOM_SEVERITY_LEVELS, severityLabelFor } from "@/lib/symptoms";
 import { editSymptom, logSymptom } from "@/app/(app)/symptom-actions";
+import SubmitButton from "@/components/SubmitButton";
 
 // THE SYMPTOM DOMAIN'S ONE FORM (#4424 ruling 1), named by
 // `LOG_MANIFEST.symptom.pieces.form`. `row` absent posts the log core; `row` present
@@ -157,14 +158,13 @@ export default function SymptomForm({
       </label>
       <InlineError>{error}</InlineError>
       <div className="flex items-end gap-2 sm:col-span-2">
-        <button
-          className="btn"
-          type="submit"
+        <SubmitButton
+          variant="primary"
           data-testid="symptom-form-save"
           disabled={pending || key.trim() === ""}
         >
           {pending ? "Saving…" : row ? "Save" : "Add"}
-        </button>
+        </SubmitButton>
         <button className="btn-ghost" type="button" onClick={onCancel}>
           Cancel
         </button>

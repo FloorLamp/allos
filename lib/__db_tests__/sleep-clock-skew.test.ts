@@ -134,6 +134,7 @@ function recordReturnEast(day: string): void {
         at: `${day}T12:00:00Z`,
         from: "Pacific/Honolulu",
         to: "America/New_York",
+        kind: "travel",
       },
     ])
   );
