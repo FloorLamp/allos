@@ -6,6 +6,7 @@ import { integrationDetailHref } from "@/lib/hrefs";
 import { getIntegration } from "@/lib/integrations/registry";
 import type { ConnectedSource } from "@/lib/queries/integrations";
 import {
+  droppingConsequence,
   failureConsequence,
   formatSyncOutcome,
   intermittentReassurance,
@@ -84,6 +85,11 @@ function SourceAction({ source }: { source: ConnectedSource }) {
 // A source that needs attention: the full shared status header (the same component
 // its own page leads with), its action, and a link to the full history. `consequence`
 // adds the user-terms cost of the breakage on the escalated card (#1880 item 2).
+//
+// A `dropping` source (#4975) gets its OWN consequence, because both halves of the
+// generic one are false for it: data has not "stopped arriving" — it is arriving and
+// being discarded — and a registry `stoppedConsequence` describes the source going
+// quiet. The card that exists to say what the breakage COSTS you names the types.
 function AttentionCard({
   source,
   isAdmin,
@@ -123,10 +129,12 @@ function AttentionCard({
           className="mt-1 text-sm text-slate-600 dark:text-slate-300"
           data-testid={`source-consequence-${source.id}`}
         >
-          {failureConsequence(
-            source.name,
-            getIntegration(source.id as IntegrationId)?.stoppedConsequence
-          )}
+          {source.standing === "dropping"
+            ? droppingConsequence(source.droppedTypes)
+            : failureConsequence(
+                source.name,
+                getIntegration(source.id as IntegrationId)?.stoppedConsequence
+              )}
         </p>
       )}
     </li>
