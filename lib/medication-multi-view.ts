@@ -43,6 +43,11 @@ export interface MedStripItem {
   title: string;
   detail: string | null;
   dueText: string | null;
+  // THE SCHEDULED DOSE THIS ROW STANDS ON (#4429), so the strip can mount the shared
+  // tri-state instead of only a jump link. Every due-dose row has one (doseRowToItem
+  // always sets it); a low-refill row never does, which is why this is nullable rather
+  // than two item shapes — the strip renders both lists through one mapper.
+  doseId: number | null;
 }
 
 // A member's medication attention, filtered out of the household rollup (which mixes
@@ -68,6 +73,7 @@ function toStripItem(item: UpcomingItem): MedStripItem {
     title: item.title,
     detail: item.detail ?? null,
     dueText: item.dueText ?? null,
+    doseId: item.doseId ?? null,
   };
 }
 

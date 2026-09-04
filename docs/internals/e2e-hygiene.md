@@ -1906,6 +1906,44 @@ both attempts are cost that run really paid, and it has to be spelled out:
 npx tsx scripts/gen-e2e-durations.ts --from-log shard-*.log --allow-rerun
 ```
 
+## A shard bucket is an OUTCOME, not a property (2026-09-04, #5032)
+
+Which bucket a spec lands in falls out of the duration manifest and the spec
+list together. Both move. A manifest refresh reshuffles almost everything —
+#5017 moved 443 of 477 specs — and so does adding ONE spec, because an unlisted
+spec is planned in on an estimate and displaces its neighbours.
+
+The planner is deterministic, so the same tree always gives the same answer —
+what moves is the TREE. Asked on two trees the same night, one pair of specs
+sat in different buckets each time. So **do not write a bucket number down**:
+it is a fact about a tree that no longer exists by the next merge, and a rule
+that quotes one teaches the next reader to trust it.
+
+Two consequences, both of which cost something on 2026-09-04:
+
+- **A separation claim is verified on the tree that will LAND**, never on the
+  branch alone. #5017's body stated a correct separation for its own branch;
+  merged with main, one of the pair had moved. The claim survived, the
+  arrangement did not — and this sentence deliberately names no number, for
+  the reason above.
+- **A separation buys nothing.** Two specs in different buckets today are a
+  coincidence of the current partition. The fix for a co-residency defect is
+  the spec owning the state it asserts (#5014's shape) — never an arrangement
+  that happens to keep two specs apart.
+
+`main` went red the same night on exactly this: `sleep-page.spec.ts` read a
+sleep hero it did not seed, because the refresh moved it in beside a writer it
+had never shared a worker with (#5032). The manifest was not the defect. It
+exposed one that had been latent for as long as the spec had existed.
+
+### "Covers main exactly" is true against the base it was measured on
+
+A manifest's coverage claim is a measurement, and measurements have a date.
+Every spec merged since is unlisted and planned on an estimate — inherent, not
+a defect, and self-correcting at the next refresh. Re-run the check against
+current `main` before believing a "missing (none)" line: on the day #5017
+landed, its manifest was exact at its base and one short against `main`.
+
 ## Co-residency: an ABSENCE is the precondition that sharding breaks
 
 Two specs sharing a worker share its database. That is fine for the fixture rule

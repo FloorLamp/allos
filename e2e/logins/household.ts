@@ -117,6 +117,12 @@ export const MVMEDS_SELF_PROFILE = "Meds Board Self (e2e)";
 export const MVMEDS_RO_PROFILE = "Meds Board RO (e2e)";
 export const MVMEDS_SELF_MED = "Board Lisinopril";
 export const MVMEDS_RO_MED = "Board Metformin";
+// #4429 — a THIRD member, granted WRITE and never the acting one. The read-only
+// member proves the strip's control stays OFF; only a writable member who is not the
+// actor can prove it goes ON and lands on THEM rather than on the session, which is
+// the whole of the caregiver gap. Its own med so the take is this test's alone.
+export const MVMEDS_WARD_PROFILE = "Meds Board Ward (e2e)";
+export const MVMEDS_WARD_MED = "Board Amlodipine";
 
 // #1331 — multi-view Clinical results table. A caregiver granted its OWN base
 // profile (WRITE, the lowest-id grant → the acting profile on sign-in) plus a second

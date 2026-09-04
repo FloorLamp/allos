@@ -607,7 +607,7 @@ export const KIND_REISSUE: readonly KindReissueEntry[] = [
 // too: the next report-shaped message (a weekly recap) has to say whether its prose
 // reconciles rather than inheriting silence.
 
-export type ProseReconciler = "digest" | "wear-reminder";
+export type ProseReconciler = "digest" | "wear-reminder" | "workout-recap";
 
 export interface KindProseEntry {
   kind: NotificationKind;
@@ -632,8 +632,8 @@ export const KIND_PROSE: readonly KindProseEntry[] = [
   },
   {
     kind: "workout-recap",
-    prose: null,
-    why: "A record of one session that happened. Nothing in the app makes a completed workout un-happen, so the sentence cannot become false. Since #2272 the line can be followed by the type ASK when the session's source declined to classify it — a question, not a claim, and its buttons refuse a stale tap on their own (see the `actype` entry above), so there is still no sentence here for a prose reconciler to correct.",
+    prose: "workout-recap",
+    why: "A merge REPLACES THE SENTENCE'S SUBJECT (#4996). This entry used to reason that nothing in the app makes a completed workout un-happen, so the sentence cannot become false — true, and beside the point, because the row the sentence is ABOUT can be destroyed and replaced by a richer one while the message sits in the chat. One ride arrives as four uploads; Health Connect lands 30-45 min ahead of Strava and declines to classify, so the message that goes out is `Session complete` with the type ask, and the auto-merge then keeps the Strava row under a NEW id while `carryPostWorkoutMarker` (#2570) carries the announcement onto it so the good row is never announced. That is one ride, one message, working as designed — and it is exactly why the correction has to be an EDIT of the message that exists rather than a second send. The fold registers where the subject went; `rebuildWorkoutRecap` re-runs the SAME builder the send ran for the row the app now knows the session by; the sweep's body-hash pin makes a fold whose keeper reads identically cost no Telegram call. The type ask goes with the correction — dropped when the keeper is classified, re-addressed to the keeper when it is not — so the keyboard cannot outlive the row it names any more than the sentence can. A recap that was CLASSIFIED at send time carries no `actype` token and therefore no address, and is left exactly as delivered.",
   },
   {
     kind: "practice-recap",
