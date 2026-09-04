@@ -665,6 +665,15 @@ const CONFIRM_DELETE_CLICK_ALLOW: Record<string, number> = {};
 // can honestly claim — a coverage number is true against the tree it was measured on,
 // and a reader who does not know which tree cannot verify it.
 //
+// WHICH NEEDS NO STALENESS CHECK, because the comparison is EXACT EQUALITY, not a
+// ceiling: checkPattern reds when a count exceeds its entry AND when it falls below
+// one. So a fixture read from the wrong tree cannot pass quietly — main gaining a
+// bare lookup reds as an over-count, main REMOVING one (what #5028 does to
+// entry-ergonomics.spec.ts, 86 → 85) reds as "you reduced offenders, lower the
+// entry". A ceiling would have left that second case silently green and let the file
+// regain a bare lookup for free, which is the hole this shape does not have. Nothing
+// here needs to read git to know it is out of date.
+//
 // AND THE READING IS TAKEN AGAINST THE TREE IT LANDS ON. CI gates the merge on the
 // branch head, so a fixture read from an OLDER tree than the one it merges into can
 // pass on the PR and red on main — the worst thing this rule could produce. Which

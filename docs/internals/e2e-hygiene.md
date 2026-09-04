@@ -303,7 +303,12 @@ rule could produce. Re-derive at promotion, against the tree it will actually la
 on, not earlier. A rebase therefore re-reads the whole list in both directions — a spec that landed
 since carries lookups the rule never saw, a spec someone scoped in the meantime
 carries fewer — and the guard names every file whose count moved and which way.
-Raising an entry is legitimate only there; never as a way to land a new bare
+Nothing has to check that the reading is stale, because the comparison is exact
+equality rather than a ceiling: a count above its entry reds, and a count BELOW it
+reds too ("you reduced offenders — lower the entry"). So main gaining a lookup and
+main removing one both fail, and a fixture cannot drift out of date quietly. A
+ceiling would have left the removal case green and let that file regain a bare
+lookup for free. Raising an entry is legitimate only there; never as a way to land a new bare
 lookup. Lowering is always legitimate and always wanted.
 
 **Burn down the 158 files that reach a streaming route first.** They hold 2,309
