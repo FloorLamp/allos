@@ -245,3 +245,16 @@ export function suggestedRulesForFoodTiming(
   if (!timing || timing === "any") return [];
   return [{ id: nextRuleId(), type: "food", timing, suggested: true }];
 }
+
+// What a rules list SAYS about food, as one comparable string: the timings of its food
+// sentences in list order, since `fieldsFromRules` above takes the last one. Two lists
+// with the same statement say the same thing about food, so a difference between the
+// list before a person's edit and the list after it is that person having added,
+// changed or deleted a food rule (#4665).
+//
+// `foodTiming` is the one prefillable field with no control of its own — it is a rule
+// sentence rather than an input — so this is how the form's prefill ledger learns the
+// person has set it.
+export function foodRuleStatement(rules: readonly IntakeRule[]): string {
+  return rules.flatMap((r) => (r.type === "food" ? [r.timing] : [])).join(",");
+}
