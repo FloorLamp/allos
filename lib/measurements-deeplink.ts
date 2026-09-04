@@ -112,9 +112,11 @@ const FIELD_GROUP: Record<string, MeasurementGroup> = {
   // would cost more than it explains.
   "m-hydration": "body",
   // The night's bed and wake clocks (#1851) — the pair the Sleep Regularity Index
-  // reads, beside the duration they are an account of.
-  "m-bed-time": "sleep",
-  "m-wake-time": "sleep",
+  // reads, beside the duration they are an account of. TimeRangeFields (#4976) builds
+  // both ids from the ONE `idPrefix="m-sleep"` the form gives it; "m-sleep" itself
+  // stays the separate hours field just below, no collision.
+  "m-sleep-start-time": "sleep",
+  "m-sleep-end-time": "sleep",
   "m-sleep": "sleep",
   "m-hrv": "sleep",
 };

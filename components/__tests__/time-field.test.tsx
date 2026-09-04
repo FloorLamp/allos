@@ -2,8 +2,29 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useState } from "react";
 import TimeField from "@/components/TimeField";
+import DirtyFormProvider from "@/components/DirtyFormRegistry";
 import { FormatPrefsProvider } from "@/components/FormatPrefsProvider";
 import type { TimeFormat } from "@/lib/format-date";
+
+// `DirtyFormProvider` calls `useRouter().refresh` when a form releases into an
+// owed refresh — never reached by the tests below, which read `data-dirty`
+// directly, but the provider still needs a router object to mount at all.
+//
+// ONE STABLE OBJECT, returned on every call — never a fresh `{ ... }` literal
+// per render. `DirtyFormProvider` memoizes its listener-attaching effect on
+// `dispatch`, which itself depends on this router reference; a mock that hands
+// back a new object each render makes `dispatch` a new function every render
+// too, which tears the effect down and rebuilds it — clearing the very
+// registration state the tests below assert on — on every state change the
+// registry itself causes. Measured: with a fresh literal here, a field that
+// DID register and DID get marked touched still read back `data-dirty="0"`,
+// because the rebuild's cleanup wiped the record between the touch and the
+// read. Not a registry bug — a test-mock one, and worth naming so nobody
+// "fixes" the registry to accommodate an unstable router again.
+const router = { refresh: vi.fn(), push: vi.fn() };
+vi.mock("next/navigation", () => ({
+  useRouter: () => router,
+}));
 
 // THE STYLED TIME FIELD (#4218) — what a caller hands in and what it gets back.
 //
@@ -242,5 +263,90 @@ describe("TimeField — the wheel", () => {
     openWheel();
     fireEvent.keyDown(column("Hour"), { key: "ArrowDown" });
     expect(emitted).toEqual([]);
+  });
+});
+
+// THE DIRTY-FORM REGISTRY SEES A NAMED FIELD (#4976). The registry excludes
+// `type="hidden"` categorically; this field's hidden sibling opts back in
+// (components/DirtyFormRegistry.tsx, `data-dirty-track-hidden`) and dispatches
+// the registry's own events by hand, because neither the visible input nor the
+// picker button carries the `name` the registry keys on. Real `DirtyFormProvider`
+// mounted, `data-testid="dirty-form-registry"`'s `data-dirty` read directly —
+// the same signal e2e/dirty-form-refresh.spec.ts asserts through a page.
+function mountNamed(initial = "09:00") {
+  function Host() {
+    const [value, setValue] = useState(initial);
+    return (
+      <DirtyFormProvider>
+        <form>
+          <TimeField
+            value={value}
+            onChange={setValue}
+            label="Start"
+            name="start_time"
+            data-testid="tf"
+          />
+        </form>
+      </DirtyFormProvider>
+    );
+  }
+  render(<Host />);
+  return {
+    field: () => screen.getByTestId("tf") as HTMLInputElement,
+    dirty: () => screen.getByTestId("dirty-form-registry").dataset.dirty,
+  };
+}
+
+describe("TimeField — the dirty-form registry (#4976)", () => {
+  // THE SEAM THAT ALREADY WORKED. Typing focuses the visible input first, which
+  // is where the hidden field's pre-edit baseline registers.
+  it("typing marks the form dirty", () => {
+    const { field, dirty } = mountNamed("09:00");
+    expect(dirty()).toBe("0");
+    fireEvent.focus(field());
+    fireEvent.change(field(), { target: { value: "14:30" } });
+    expect(dirty()).toBe("1");
+  });
+
+  // THE SEAM THAT DID NOT (caught in review). Opening the wheel moves focus to
+  // the picker BUTTON, never to the text input, so a value chosen entirely by
+  // wheel or keyboard used to reach the hidden field with no baseline registered
+  // — `onEdit`'s never-focused branch then read the baseline off a DOM default
+  // that had already moved onto the pick, and the field could never look dirty.
+  it("picking from the wheel marks the form dirty", () => {
+    const { dirty } = mountNamed("09:00");
+    expect(dirty()).toBe("0");
+    openWheel();
+    fireEvent.click(within(column("Hour")).getByRole("option", { name: "14" }));
+    expect(dirty()).toBe("1");
+  });
+
+  // REGISTRATION IS NOT DIRTINESS (`onFocusIn`'s own rule) — opening the wheel
+  // and closing it without picking anything must stay clean, or every glance at
+  // the picker would hold back a background refresh for nothing.
+  it("opening the wheel without picking a row stays clean", () => {
+    const { dirty } = mountNamed("09:00");
+    openWheel();
+    expect(dirty()).toBe("0");
+    fireEvent.click(screen.getByRole("button", { name: "Open time picker" }));
+    expect(dirty()).toBe("0");
+  });
+
+  // THE TWO SEAMS MUST SHARE ONE BASELINE, not clobber each other's. A pick
+  // followed by typing has to still remember 09:00 as the pre-edit value —
+  // `onFocusIn` registering a second time (the typing seam, after the wheel
+  // already registered) must be the no-op it claims to be. Returning to 09:00
+  // reading clean again is the proof: if either seam had overwritten the
+  // baseline with something else, this would still read dirty.
+  it("a wheel pick followed by typing keeps the wheel's baseline", () => {
+    const { field, dirty } = mountNamed("09:00");
+    openWheel();
+    fireEvent.click(within(column("Hour")).getByRole("option", { name: "14" }));
+    expect(dirty()).toBe("1");
+    fireEvent.focus(field());
+    fireEvent.change(field(), { target: { value: "16:00" } });
+    expect(dirty()).toBe("1");
+    fireEvent.change(field(), { target: { value: "09:00" } });
+    expect(dirty()).toBe("0");
   });
 });
