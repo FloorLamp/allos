@@ -1110,6 +1110,9 @@ export default async function HistoryPage(props: {
                adds it to the params these rules produced. */
             <HistoryAddRow
               timeFormat={prefs.timeFormat}
+              /* Only the day view has a chart, so only it has a window and a day for
+                 the workouts door to open on (#4950 item 5). */
+              workoutsDate={day}
               chips={historyAddKinds(presentKinds).map((candidate) => ({
                 kind: candidate,
                 label: HISTORY_KIND_LABELS[candidate],

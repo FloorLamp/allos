@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import HistoryWorkoutDoor from "./HistoryWorkoutDoor";
 import { useIntradayInteraction } from "@/components/IntradayInteraction";
 import { historyHref, type HistoryHrefParams } from "@/lib/hrefs";
 import { intradayWindowParams, windowFromView } from "@/lib/intraday-window";
@@ -32,9 +33,15 @@ export interface HistoryAddChip {
 export default function HistoryAddRow({
   chips,
   timeFormat,
+  workoutsDate = null,
 }: {
   chips: readonly HistoryAddChip[];
   timeFormat: TimeFormat;
+  /**
+   * The day the workouts door writes into, or null where there is no day — the feed
+   * has no chart, so it has no window and no day to open an activity on (#4950 item 5).
+   */
+  workoutsDate?: string | null;
 }) {
   const { view, cursor } = useIntradayInteraction();
   const window = windowFromView(view, cursor);
@@ -75,6 +82,9 @@ export default function HistoryAddRow({
           {chip.label}
         </Link>
       ))}
+      {workoutsDate ? (
+        <HistoryWorkoutDoor date={workoutsDate} window={params} />
+      ) : null}
     </div>
   );
 }
