@@ -104,6 +104,7 @@ import {
   FitnessPercentileCard,
   fitnessContextFor,
 } from "@/components/FitnessPercentile";
+import SubmitButton from "@/components/SubmitButton";
 
 export const dynamic = "force-dynamic";
 
@@ -834,13 +835,9 @@ export default async function ClinicalResultDetailPage(props: {
             ) : (
               <form action={dismissTrajectory}>
                 <input type="hidden" name="dedupe_key" value={resultAckKey} />
-                <button
-                  type="submit"
-                  className="btn-ghost btn-sm"
-                  data-testid="result-acknowledge-submit"
-                >
+                <SubmitButton data-testid="result-acknowledge-submit">
                   Seen it
-                </button>
+                </SubmitButton>
               </form>
             )}
           </div>
