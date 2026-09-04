@@ -612,21 +612,23 @@ test.describe("the record day view's phone chrome (#1517, inherited)", () => {
 // satisfied by a rail stacked above them in source order, which is exactly the
 // stacked layout this must not disturb.
 //
-// 1409 IS THE THRESHOLD AND IT IS MEASURED, NOT CHOSEN — the derivation lives beside
-// `dayGrid` in app/(app)/history/page.tsx. The shell spends 240px on the sidebar and
-// 40px on the page gutters, the grid 768 + 24 on the reading column and the gap, and
-// the chart's card a further 42px of padding, so the DRAWING gets `viewport - 1114`.
-// Since #4973 the chart picks its geometry from THAT box, so the binding floor is
-// the compact one — `11 × container ÷ 360` against #1518's 9px minimum, which needs
-// 294.55px. Swept in this browser at this head:
+// 1440 IS THE THRESHOLD AND IT IS RULED OFF A MEASUREMENT — the derivation lives
+// beside `dayGrid` in app/(app)/history/page.tsx. The shell spends 240px on the
+// sidebar and 40px on the page gutters, the grid 768 + 24 on the reading column and
+// the gap, and the chart's card a further 42px of padding, so the DRAWING gets
+// `viewport - 1114`. Since #4973 the chart picks its geometry from THAT box, so the
+// binding floor is the compact one — `11 × container ÷ 360` against #1518's 9px
+// minimum, which needs 294.55px. Swept in this browser:
 //
 //     viewport 1280 → container 166 → 5.07px     viewport 1409 → 295 → 9.01px
 //     viewport 1400 → container 286 → 8.74px     viewport 1440 → 326 → 9.96px
 //
-// So 1409 is the first width that pays, and #4974's 1440 acceptance criterion holds
-// as written. BOTH are tested below, and 1409 is in the table for a reason: its
-// headroom over the floor is 0.014px, so one pixel added to the gap, the gutters or
-// the card's padding reds this file instead of shipping 8.99px type.
+// 1409 is the first width that PAYS the floor, by 0.014px. The owner put the
+// threshold at 1440 instead (2026-09-04) for the margin: 9.96px against 9, and
+// #4974's acceptance criterion as written. So the pair either side of it is what
+// this file drives — 1439 stacked, 1440 railed — and the labels are MEASURED at
+// 1440 rather than derived, because the arithmetic is what was wrong about `xl` in
+// the first place.
 //
 // AND THE RAIL'S CHART IS THE *COMPACT* GEOMETRY, which is the premise #4974 got
 // wrong ("the rail simply gives it 760px" — at 1440 it gives 326). Since #4973 that
@@ -640,15 +642,12 @@ test.describe("the record day view's phone chrome (#1517, inherited)", () => {
 // against a rail with no `sticky` on it at all. The test asserts that condition
 // rather than trusting this number.
 //
-// THE THRESHOLD ITSELF AND THE ACCEPTANCE CRITERION'S WIDTH, in one table: the first
-// is where the arithmetic is tightest and the second is the width the issue rules.
-const RAIL_WIDTHS = [
-  { label: "the threshold", width: 1409, height: 640 },
-  { label: "#4974's 1440", width: 1440, height: 640 },
-];
-const RAIL = RAIL_WIDTHS[1]; // first-ok analogue: the AC's own width, for the single-width tests
-// One pixel under the threshold: the width where the stack must still be a stack.
-const BELOW_RAIL = { width: 1408, height: 900 };
+// THE THRESHOLD, WHICH IS ALSO THE ACCEPTANCE CRITERION'S WIDTH.
+const RAIL = { width: 1440, height: 640 };
+// ONE PIXEL UNDER THE THRESHOLD, and it is half the proof: 1439 and 1440 differ by a
+// single pixel and must produce two different layouts, so the stacked test below is
+// what fixes the boundary rather than merely showing a rail exists somewhere wide.
+const BELOW_RAIL = { width: 1439, height: 900 };
 // The width #4974's acceptance criteria name for the STACK, and the phone.
 const LAPTOP = { width: 1024, height: 900 };
 // Wide enough for the rail, too short to hold it: the state the height cap exists
@@ -660,114 +659,111 @@ const RAIL_SHORT = { width: 1440, height: 420 };
 const RAIL_DRAWING = '[data-variant="compact"]';
 
 test.describe("the day view's rail beside its reading column (#4974)", () => {
-  // BOTH RAIL WIDTHS RUN THE WHOLE ARRANGEMENT. They differ only in viewport, so
-  // they are a table rather than two tests: the threshold is where the label floor
-  // is tightest and 1440 is the width the issue rules.
-  for (const viewport of RAIL_WIDTHS) {
-    test(`at ${viewport.width} (${viewport.label}) the rows sit beside a sticky rail holding chart, add layer and calendar`, async ({
-      browser,
-    }) => {
-      test.slow();
-      const page = await signIn(browser);
-      const app = appContent(page);
-      try {
-        await page.setViewportSize(viewport);
-        await page.goto(dayUrl(TL_CHROME_BUSY_DAY));
+  // THE WHOLE ARRANGEMENT AT THE THRESHOLD. 1440 is both the first railed width and
+  // #4974's acceptance criterion, so one run covers the boundary and the criterion.
+  test("at 1440 the rows sit beside a sticky rail holding chart, add layer and calendar", async ({
+    browser,
+  }) => {
+    test.slow();
+    const page = await signIn(browser);
+    const app = appContent(page);
+    try {
+      await page.setViewportSize(RAIL);
+      await page.goto(dayUrl(TL_CHROME_BUSY_DAY));
 
-        const rail = app.getByTestId("history-day-rail");
-        const feed = app.getByTestId("history-feed");
-        const panel = rail.getByTestId("intraday-panel");
-        // WAIT FOR THE CONTENT, NOT THE CONTAINER. Every measurement below is about
-        // where two boxes sit relative to each other, and an empty column fits beside
-        // anything — so the chart and the first row are awaited before anything is
-        // read.
-        await expect(panel).toBeVisible();
-        const firstRow = feed.getByTestId("history-row").first(); // first-ok: any row will do; the claim is about the column that holds them
-        await expect(firstRow).toBeVisible();
+      const rail = app.getByTestId("history-day-rail");
+      const feed = app.getByTestId("history-feed");
+      const panel = rail.getByTestId("intraday-panel");
+      // WAIT FOR THE CONTENT, NOT THE CONTAINER. Every measurement below is about
+      // where two boxes sit relative to each other, and an empty column fits beside
+      // anything — so the chart and the first row are awaited before anything is
+      // read.
+      await expect(panel).toBeVisible();
+      const firstRow = feed.getByTestId("history-row").first(); // first-ok: any row will do; the claim is about the column that holds them
+      await expect(firstRow).toBeVisible();
 
-        const [railBox, feedBox] = await settledBoxes([rail, feed]);
-        // BESIDE, AND THE MEASUREMENT SAYS SO. Two full-width blocks in source order
-        // satisfy "the rail exists" and "the rail is 760px or less" without ever
-        // sitting beside anything, so the claim is the horizontal gap AND the vertical
-        // overlap: the rail starts after the column ends, and the two share rows.
-        expect(
-          railBox.x,
-          `the rail starts at ${railBox.x}, the column ends at ${
-            feedBox.x + feedBox.width
-          }`
-        ).toBeGreaterThanOrEqual(feedBox.x + feedBox.width);
-        expect(railBox.y).toBeLessThan(feedBox.y + feedBox.height);
-        expect(feedBox.y).toBeLessThan(railBox.y + railBox.height);
-        // AND THE COLUMN KEEPS THE READING MEASURE — the invariant the arrangement is
-        // bounded by. `max-w-3xl` is 48rem, and two flexible tracks would have split
-        // the space evenly and called the result a reading column.
-        expect(Math.round(feedBox.width), "the rows keep 48rem").toBe(768);
-        // AND THE CHART IN IT IS LEGIBLE, which is what fixes the threshold at 1409.
-        // The rail is the narrowest container the day chart is ever drawn into, and
-        // the geometry scales its type by `container ÷ viewBox` — so a rail opened one
-        // tier earlier paints 5.07px labels (measured at `xl`) and reds
-        // e2e/intraday-panel.spec.ts. Measured here rather than derived, because the
-        // arithmetic is what was wrong about `xl` in the first place, and measured AT
-        // the threshold because that is where it is tightest: 9.01px against 9.
-        await expectSvgTextLegible(page);
-        // AND IT IS THE COMPACT DRAWING. #4974 assumed the rail hands the chart 760px;
-        // it hands it 326 at 1440, and since #4973 the chart answers that for itself.
-        // If a future rail widened into the 420-520 dead band this is the assertion
-        // that would say so, rather than the labels quietly changing size.
-        await expect(panel.locator(RAIL_DRAWING)).toBeVisible();
+      const [railBox, feedBox] = await settledBoxes([rail, feed]);
+      // BESIDE, AND THE MEASUREMENT SAYS SO. Two full-width blocks in source order
+      // satisfy "the rail exists" and "the rail is 760px or less" without ever
+      // sitting beside anything, so the claim is the horizontal gap AND the vertical
+      // overlap: the rail starts after the column ends, and the two share rows.
+      expect(
+        railBox.x,
+        `the rail starts at ${railBox.x}, the column ends at ${
+          feedBox.x + feedBox.width
+        }`
+      ).toBeGreaterThanOrEqual(feedBox.x + feedBox.width);
+      expect(railBox.y).toBeLessThan(feedBox.y + feedBox.height);
+      expect(feedBox.y).toBeLessThan(railBox.y + railBox.height);
+      // AND THE COLUMN KEEPS THE READING MEASURE — the invariant the arrangement is
+      // bounded by. `max-w-3xl` is 48rem, and two flexible tracks would have split
+      // the space evenly and called the result a reading column.
+      expect(Math.round(feedBox.width), "the rows keep 48rem").toBe(768);
+      // AND THE CHART IN IT IS LEGIBLE, which is what the threshold is for. The rail
+      // is the narrowest container the day chart is ever drawn into, and the geometry
+      // scales its type by `container ÷ viewBox` — so a rail opened one tier earlier
+      // paints 5.07px labels (measured at `xl`) and reds e2e/intraday-panel.spec.ts.
+      // Measured here rather than derived, because the arithmetic is what was wrong
+      // about `xl` in the first place: 9.96px against 9 at the threshold. That is a
+      // real margin and the reason 1440 was ruled over 1409's 0.014px — but it is not
+      // the tightest width above it, which is 1634 at 9.03px where the wide geometry
+      // takes over. A change to any term here should be re-swept, not spot-checked.
+      await expectSvgTextLegible(page);
+      // AND IT IS THE COMPACT DRAWING. #4974 assumed the rail hands the chart 760px;
+      // it hands it 326 at 1440, and since #4973 the chart answers that for itself.
+      // If a future rail widened into the 420-520 dead band this is the assertion
+      // that would say so, rather than the labels quietly changing size.
+      await expect(panel.locator(RAIL_DRAWING)).toBeVisible();
 
-        // WHAT THE RAIL HOLDS, TOP TO BOTTOM, asserted as order rather than presence.
-        const add = rail.getByTestId("history-add");
-        const calendar = rail.getByTestId("history-calendar-open");
-        await expect(add).toBeVisible();
-        await expect(calendar).toBeVisible();
-        const [panelBox, addBox, calBox] = await settledBoxes([
-          panel,
-          add,
-          calendar,
-        ]);
-        expect(panelBox.y).toBeLessThan(addBox.y);
-        expect(addBox.y).toBeLessThan(calBox.y);
-        // The door disappears at this width and nowhere else — the grid it opens is
-        // already on screen, so a second way to it is a second copy.
-        await expect(app.getByTestId("history-calendar")).toBeHidden();
+      // WHAT THE RAIL HOLDS, TOP TO BOTTOM, asserted as order rather than presence.
+      const add = rail.getByTestId("history-add");
+      const calendar = rail.getByTestId("history-calendar-open");
+      await expect(add).toBeVisible();
+      await expect(calendar).toBeVisible();
+      const [panelBox, addBox, calBox] = await settledBoxes([
+        panel,
+        add,
+        calendar,
+      ]);
+      expect(panelBox.y).toBeLessThan(addBox.y);
+      expect(addBox.y).toBeLessThan(calBox.y);
+      // The door disappears at this width and nowhere else — the grid it opens is
+      // already on screen, so a second way to it is a second copy.
+      await expect(app.getByTestId("history-calendar")).toBeHidden();
 
-        // THE SCROLL, which is the whole point of the rail: reading the rows must not
-        // take the map off screen. Asserted as the two boxes moving DIFFERENTLY —
-        // the rows travel with the page, the panel does not.
-        const rowBefore = (await firstRow.boundingBox())!;
-        const maxScroll = await page.evaluate(
-          () => document.documentElement.scrollHeight - window.innerHeight
-        );
-        const scrolled = await scrollTo(page, maxScroll);
-        // THE FIXTURE HAS TO REACH THE STATE THIS FORBIDS. Scrolling less than the
-        // chart's own starting offset leaves an unpinned chart on screen too, and the
-        // assertion below would be green against a rail that never stuck.
-        expect(
-          scrolled,
-          `the page scrolls ${scrolled}px and the chart starts ${panelBox.y}px down — ` +
-            "the scroll must pass it, or an unpinned rail would still be in view"
-        ).toBeGreaterThan(panelBox.y);
-        const rowAfter = (await firstRow.boundingBox())!;
-        expect(
-          rowBefore.y - rowAfter.y,
-          "the rows travelled with the scroll"
-        ).toBeGreaterThan(scrolled - 2);
-        const panelAfter = (await panel.boundingBox())!;
-        // FULLY in view, top and bottom: an unpinned rail would be carried ~600px up
-        // and its top edge would be negative.
-        expect(
-          panelAfter.y,
-          `the chart's top sits at ${panelAfter.y} after a ${scrolled}px scroll`
-        ).toBeGreaterThanOrEqual(0);
-        expect(panelAfter.y + panelAfter.height).toBeLessThanOrEqual(
-          viewport.height
-        );
-      } finally {
-        await page.context().close();
-      }
-    });
-  }
+      // THE SCROLL, which is the whole point of the rail: reading the rows must not
+      // take the map off screen. Asserted as the two boxes moving DIFFERENTLY —
+      // the rows travel with the page, the panel does not.
+      const rowBefore = (await firstRow.boundingBox())!;
+      const maxScroll = await page.evaluate(
+        () => document.documentElement.scrollHeight - window.innerHeight
+      );
+      const scrolled = await scrollTo(page, maxScroll);
+      // THE FIXTURE HAS TO REACH THE STATE THIS FORBIDS. Scrolling less than the
+      // chart's own starting offset leaves an unpinned chart on screen too, and the
+      // assertion below would be green against a rail that never stuck.
+      expect(
+        scrolled,
+        `the page scrolls ${scrolled}px and the chart starts ${panelBox.y}px down — ` +
+          "the scroll must pass it, or an unpinned rail would still be in view"
+      ).toBeGreaterThan(panelBox.y);
+      const rowAfter = (await firstRow.boundingBox())!;
+      expect(
+        rowBefore.y - rowAfter.y,
+        "the rows travelled with the scroll"
+      ).toBeGreaterThan(scrolled - 2);
+      const panelAfter = (await panel.boundingBox())!;
+      // FULLY in view, top and bottom: an unpinned rail would be carried ~600px up
+      // and its top edge would be negative.
+      expect(
+        panelAfter.y,
+        `the chart's top sits at ${panelAfter.y} after a ${scrolled}px scroll`
+      ).toBeGreaterThanOrEqual(0);
+      expect(panelAfter.y + panelAfter.height).toBeLessThanOrEqual(RAIL.height);
+    } finally {
+      await page.context().close();
+    }
+  });
 
   // THE TICK TAP, which is what the rail is FOR (#1515: chart as map, list as
   // detail). On one column the tap took the reader to the row and carried the map

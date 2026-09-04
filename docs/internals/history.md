@@ -256,41 +256,50 @@ stays put.
 widths. The rail comes FIRST in the document and is placed into column 2 explicitly, because
 source order is what the stacked layout reads and there the chart and the add layer
 belong above the rows they map and create. The left track is a fixed `48rem` rather
-than `minmax(0, 48rem)`: two flexible tracks share free space evenly, which at 1409
-would hand the rows 552px and call it a reading column. Measured rail widths, content
-minus the column and the gap: **208px at 1280, 337 at 1409, 368 at 1440, 528 at 1600,
-760 at 1832** (the ceiling, where the page cap takes over).
+than `minmax(0, 48rem)`: two flexible tracks share free space evenly, which at the
+threshold would hand the rows 568px and call it a reading column. Measured rail
+widths, content minus the column and the gap: **208px at 1280, 337 at 1409, 368 at
+1440, 528 at 1600, 760 at 1832** (the ceiling, where the page cap takes over).
 
-**The threshold is 1409px and it is MEASURED, not chosen — #4974 rules `xl`, and `xl`
+**The threshold is 1440px, ruled off a measurement — #4974 rules `xl`, and `xl`
 cannot pay for it.** The rail is `viewport - 1072` and the chart's card spends a
 further 42px of padding, so the DRAWING gets `viewport - 1114`. Each chart geometry
 computes its label size from the narrowest container it declares, so the type clears
 #1518's 9px floor there and nowhere narrower (`lib/intraday-layout.ts`). Since #4973
 the chart picks its geometry from THAT box rather than from the viewport, so the
 binding floor is the compact one: `11 × container ÷ 360`, which needs 294.55px. Swept
-in the browser at the merged head:
+in the browser:
 
-| viewport                 | drawing container | variant | smallest label                         |
-| ------------------------ | ----------------- | ------- | -------------------------------------- |
-| 1280 (`xl`)              | 166px             | compact | 5.07px                                 |
-| 1400                     | 286px             | compact | 8.74px                                 |
-| **1409**                 | 295px             | compact | **9.01px** — the first width that pays |
-| 1440 (#4974's criterion) | 326px             | compact | 9.96px                                 |
-| 1640                     | 526px             | wide    | 9.13px                                 |
+| viewport                 | drawing container | variant | smallest label                        |
+| ------------------------ | ----------------- | ------- | ------------------------------------- |
+| 1280 (`xl`)              | 166px             | compact | 5.07px                                |
+| 1400                     | 286px             | compact | 8.74px                                |
+| 1409                     | 295px             | compact | 9.01px — the first width that pays    |
+| **1440** (the threshold) | 326px             | compact | **9.96px**                            |
+| 1600                     | 486px             | compact | 12.83px                               |
+| **1634**                 | 520px             | wide    | **9.03px** — the tightest width above |
+| 1832                     | 718px             | wide    | 12.47px                               |
 
-So the arrangement starts at 1409 and #4974's 1440 criterion holds as written. **The
-headroom at the threshold is 0.014px**: every term is an integer this page or the
-shell owns, so one pixel added to the gap, the page gutters or the card's padding puts
-the first rail width under the floor. `e2e/history-day-view.spec.ts` therefore runs
-the whole arrangement AT 1409 as well as at 1440, and measures the labels rather than
-trusting the arithmetic.
+1409 pays the floor by 0.014px, and every term is an integer this page or the shell
+owns — one pixel on the gap, the page gutters or the card's padding would put it
+under. So the threshold is **1440**, which is #4974's own acceptance criterion and
+carries 0.96px; laptops between 1409 and 1439 keep the stack, which the owner accepted
+as the cost of that margin (ruling 2026-09-04).
+
+**The floor is not monotonic above the threshold**, so 1440 is not the width to
+re-check after a change to any term. Compact type grows with the container to 12.83px
+at 1600; then the box reaches `INTRADAY_VARIANTS.wide.minContainerPx` and the wide
+geometry takes over at 1634 with a 9.03px label. `e2e/history-day-view.spec.ts` drives
+the pair either side of the boundary — 1439 stacked, 1440 railed — and measures the
+labels at 1440 rather than trusting the arithmetic.
 
 **The rail's chart is the COMPACT geometry**, which is where #4974's premise — "the
 rail simply gives it 760px" — is wrong: at 1440 it gives 326. Wide needs 520px of
 container and so a 1634px viewport; below that the container query in
-`components/IntradayChart.tsx` picks compact, and the type is _larger_ for it. `xl`
-is payable by neither geometry — a 166px drawing is under the compact variant's own
-300px floor too.
+`components/IntradayChart.tsx` picks compact, and the type is _larger_ for it. That
+compact drawing between 1440 and 1633 IS the ruled design (2026-09-04); the rail does
+not have to hold the wide one. `xl` is payable by neither geometry — a 166px drawing
+is under the compact variant's own 300px floor too.
 
 **The calendar is open in the rail, and a door everywhere else.** It is a door
 (#4102) because the grid could not spend the ~140px chrome budget above the first

@@ -855,7 +855,7 @@ export default async function HistoryPage(props: {
   // CHANGES: no grid, and the same source order the stack has always had
   // (chart → add → rows).
   //
-  // 1409, NOT `xl`, AND THE NUMBER IS MEASURED RATHER THAN CHOSEN. #4974 rules the
+  // 1440, NOT `xl`, AND THE NUMBER IS RULED OFF A MEASUREMENT. #4974 rules the
   // arrangement "from xl" on the premise that "the rail simply gives it 760px". It
   // does not: the shell spends 240px on the sidebar and 40px on the page gutters and
   // the grid 768 + 24 on the reading column and the gap, so the rail is
@@ -866,20 +866,23 @@ export default async function HistoryPage(props: {
   // viewport, so the binding floor is the COMPACT one: 11 label units in a 360-unit
   // viewBox paint `11 × container ÷ 360`, and #1518's 9px minimum needs 294.55px of
   // container. Measured in the browser across the whole range (the sweep is the
-  // table in e2e/history-day-view.spec.ts, re-run at this head):
+  // table in docs/internals/history.md):
   //
   //     viewport 1280 → container 166 → 5.07px      viewport 1409 → 295 → 9.01px
   //     viewport 1400 → container 286 → 8.74px      viewport 1440 → 326 → 9.96px
   //
-  // 1409 is the first width that pays the floor, and it is the threshold. #4974's
-  // 1440 acceptance criterion therefore holds as written, with 0.96px to spare.
+  // 1409 is the first width that PAYS the floor; 1440 is where the threshold sits,
+  // by owner ruling on 2026-09-04. 1409 clears 9px by 0.014px, and every term above
+  // is an integer this file or the shell owns, so one pixel added to the gap, the
+  // gutters or the card's padding would put the first rail width under the floor.
+  // 1440 is #4974's own acceptance criterion and holds 0.96px. Laptops between 1409
+  // and 1439 keep the stack, and that is the accepted cost of the margin.
   //
-  // THE HEADROOM AT THE THRESHOLD ITSELF IS 0.014px, which is why the spec asserts
-  // legibility AT 1409 and not only at a comfortable width: every term above is an
-  // integer this file or the shell owns, so a single pixel added to the gap, the
-  // gutters or the card's padding puts the first rail width under the floor. That
-  // is checked rather than asserted — `gap-6` widened to `gap-7` was run against the
-  // spec, and the 1409 case reds at 8.89px.
+  // THE FLOOR IS NOT MONOTONIC ABOVE THE THRESHOLD, so 1440 is not the width to
+  // re-check after a change to any term. The compact type GROWS with the container
+  // — 12.83px at 1600 — and then the box reaches
+  // `INTRADAY_VARIANTS.wide.minContainerPx` at 1634, the wide geometry takes over,
+  // and the label drops to 9.03px: the tightest painted label above the threshold.
   //
   // THE RAIL COMES FIRST IN THE DOCUMENT, and is placed into column 2 explicitly.
   // Source order is what the stacked layout below the threshold reads, and there the
@@ -888,8 +891,9 @@ export default async function HistoryPage(props: {
   // grid and upside down at every width beneath it.
   //
   // THE LEFT TRACK IS FIXED AT `48rem` — the reading measure — rather than
-  // `minmax(0, 48rem)`. Two flexible tracks share free space equally, which at 1409
-  // would have handed the rows 552px and called it a reading column.
+  // `minmax(0, 48rem)`. Two flexible tracks share free space equally, which at the
+  // threshold (1440 − 240 sidebar − 40 gutters − 24 gap, split evenly) would have
+  // handed the rows 568px and called it a reading column.
   //
   // THE RAIL CANNOT OUTGROW THE VIEWPORT. A sticky element taller than the screen
   // pins its top and strands its own bottom, unreachable at any page scroll — so it
@@ -906,12 +910,12 @@ export default async function HistoryPage(props: {
   // `overflow-y: auto` chains at the ends (no `overscroll-contain`), so reaching
   // that box's bottom keeps scrolling the page rather than trapping it.
   const dayGrid =
-    "min-[1409px]:grid min-[1409px]:grid-cols-[48rem_minmax(0,760px)] min-[1409px]:gap-6";
+    "min-[1440px]:grid min-[1440px]:grid-cols-[48rem_minmax(0,760px)] min-[1440px]:gap-6";
   const dayRail =
-    "min-[1409px]:col-start-2 min-[1409px]:row-start-1 min-[1409px]:sticky min-[1409px]:top-6 min-[1409px]:self-start min-[1409px]:flex min-[1409px]:max-h-[calc(100dvh-3rem)] min-[1409px]:flex-col";
-  const dayRailScroll = "min-[1409px]:min-h-0 min-[1409px]:overflow-y-auto";
+    "min-[1440px]:col-start-2 min-[1440px]:row-start-1 min-[1440px]:sticky min-[1440px]:top-6 min-[1440px]:self-start min-[1440px]:flex min-[1440px]:max-h-[calc(100dvh-3rem)] min-[1440px]:flex-col";
+  const dayRailScroll = "min-[1440px]:min-h-0 min-[1440px]:overflow-y-auto";
   const dayColumn =
-    "min-[1409px]:col-start-1 min-[1409px]:row-start-1 min-[1409px]:min-w-0";
+    "min-[1440px]:col-start-1 min-[1440px]:row-start-1 min-[1440px]:min-w-0";
 
   return (
     <PageContainer
@@ -1030,7 +1034,7 @@ export default async function HistoryPage(props: {
             of it, so where the rail exists the door would be a second way to a thing
             already open. `contents` keeps the button the flex item it has always
             been — the wrapper adds no box of its own to this row at any width. */}
-        <span className={day ? "contents min-[1409px]:hidden" : "contents"}>
+        <span className={day ? "contents min-[1440px]:hidden" : "contents"}>
           <EventCalendar eventDates={eventDates} everyone={everyone} />
         </span>
       </div>
@@ -1255,7 +1259,7 @@ export default async function HistoryPage(props: {
           nothing here has to close. */}
               {day ? (
                 <div
-                  className="card mb-3 hidden p-3 min-[1409px]:block"
+                  className="card mb-3 hidden p-3 min-[1440px]:block"
                   data-testid="history-calendar-open"
                 >
                   <EventMonthGrid eventDates={eventDates} everyone={everyone} />
