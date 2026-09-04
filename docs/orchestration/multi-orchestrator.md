@@ -13,6 +13,13 @@ cap and E2E cap. What they share is GitHub — issues, branches, PRs, `main`.
   orchestrator (SendMessage to its session id), answered in writing, PM
   copied.
 
+## Slots
+
+- The machine cap counts running agents, not branches: a lane that returned
+  banked holds no slot (keep its worktree; re-dispatch it against the banked
+  head when its ruling lands). A receipt is a review, never a lane, so the cap
+  never delays one.
+
 ## Claim before dispatch
 
 - Before `dispatch-brief.mjs new`: `git ls-remote --heads origin` — an issue

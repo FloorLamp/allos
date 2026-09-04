@@ -33,6 +33,12 @@ the thirty issues that reached the owner mid-flight on 2026-09-04.
   (a shared reader narrowed for one caller). Real alternatives get 2–3
   costed options (#2837, #2830); the owner picks before filing.
 
+## When one still reaches the owner
+
+- **A visual A/B question carries screenshots.** Density, a primary's rank, a
+  placement: the lane renders both options at 390 and 1280 and attaches them
+  before the question is raised; prose alone does not reach the owner (#4978).
+
 ## Not catchable at filing
 
 - **Owner amendments** after seeing the product (twelve spec edits, #3987,
