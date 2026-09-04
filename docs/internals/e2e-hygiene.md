@@ -296,8 +296,11 @@ boundary (a `/login` page outside the `(app)` shell, an overlay portalled to
 
 **The counts are a reading of one base, and the base is named.** They were derived
 at `ec474f5e` (main, 2026-09-04). A coverage number is only true against the tree
-it was measured on, and a reader who does not know which tree cannot check it. A
-rebase therefore re-reads the whole list in both directions — a spec that landed
+it was measured on, and a reader who does not know which tree cannot check it. CI
+gates the merge on the branch head, so a fixture read from an older tree than the
+one it merges into can pass on the PR and red on `main` — the worst outcome this
+rule could produce. Re-derive at promotion, against the tree it will actually land
+on, not earlier. A rebase therefore re-reads the whole list in both directions — a spec that landed
 since carries lookups the rule never saw, a spec someone scoped in the meantime
 carries fewer — and the guard names every file whose count moved and which way.
 Raising an entry is legitimate only there; never as a way to land a new bare
@@ -321,9 +324,17 @@ shared helper MODULES (`symptom-helpers.ts`, `cycle-helpers.ts`,
 `log-sheet-helpers.ts`, `intake-form-helpers.ts`, `trends-chrome.ts`) that receive
 an already-navigated page from a spec that did — the exact shape that put one
 occurrence inside `e2e/helpers.ts`. Excluding those would hide files that CAN
-race, which is worse than an honest overcount. What is permanent is per-LINE, not
-per-file: a lookup at a `/login` control or a body-portalled overlay takes the
-`testid-scope-ok` marker and leaves the rest of its file burnable.
+race, which is worse than an honest overcount. **So the number does not lie: every
+entry can burn down.** What is permanent is per-LINE, not per-file — a lookup at a
+`/login` control or a body-portalled overlay takes the `testid-scope-ok` marker and
+leaves the rest of its file burnable. That is the answer to the next proposal to
+exclude a file.
+
+One question decides whether a new boundary is one of these: does it suspend a
+SERVER component — it stages a copy, so re-read the specs asserting against that
+route — or a client-only `dynamic(…, { ssr: false })` import from inside
+`"use client"`, which stages nothing and carries no exposure? The guard's failure
+message asks exactly that, and the answer belongs beside the entry.
 
 **The streaming surface is frozen with it.** `components/StreamedSection.tsx` is
 what makes a section genuinely suspend — every read here is synchronous

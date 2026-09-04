@@ -665,6 +665,11 @@ const CONFIRM_DELETE_CLICK_ALLOW: Record<string, number> = {};
 // can honestly claim — a coverage number is true against the tree it was measured on,
 // and a reader who does not know which tree cannot verify it.
 //
+// AND THE READING IS TAKEN AGAINST THE TREE IT LANDS ON. CI gates the merge on the
+// branch head, so a fixture read from an OLDER tree than the one it merges into can
+// pass on the PR and red on main — the worst thing this rule could produce. Which
+// tree that is only becomes knowable at promotion, so re-derive there, not earlier.
+//
 // SO A REBASE RE-READS THE WHOLE LIST, in both directions. A spec that landed on main
 // after the reading carries lookups this rule never saw; a spec someone scoped in the
 // meantime carries fewer. Run the guard after rebasing and it names every file whose
@@ -1990,7 +1995,9 @@ describe("e2e suite hygiene guard (issue #868)", () => {
           `boundary is relocating (#4890) — scope it: appContent(page).getByTestId(...), ` +
           `a row/card/dialog you already hold, or page.getByTestId("${TESTID_SCOPE_ROOTS[0]}"). ` +
           `A marker that provably cannot sit inside a streamed boundary takes a same-line ` +
-          `\`testid-scope-ok: <why>\` comment; see docs/internals/e2e-hygiene.md.`,
+          `\`testid-scope-ok: <why>\` comment. Do NOT raise the number to make this ` +
+          `pass — raising is legitimate ONLY when re-deriving the whole list against a ` +
+          `new base after a rebase. See docs/internals/e2e-hygiene.md.`,
       }
     );
   });
@@ -2055,8 +2062,13 @@ describe("e2e suite hygiene guard (issue #868)", () => {
     expect(
       found.sort(),
       `A new <Suspense> in app/ or components/ is a new candidate streaming ` +
-        `surface (#4890). ` +
-        `Say whether it stages server content, then add it to SUSPENSE_BOUNDARY_FILES.`
+        `surface (#4890). ONE QUESTION decides it: does this boundary suspend a ` +
+        `SERVER component (it stages a <div hidden> copy — every unscoped ` +
+        `getByTestId on that route can now resolve to 2 elements, so re-read the ` +
+        `specs asserting against it), or a client-only ` +
+        `dynamic(..., { ssr: false }) import from inside "use client" (nothing is ` +
+        `ever staged — no exposure)? Answer that beside the entry you add to ` +
+        `SUSPENSE_BOUNDARY_FILES.`
     ).toEqual([...SUSPENSE_BOUNDARY_FILES].sort());
   });
 
