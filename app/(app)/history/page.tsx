@@ -47,6 +47,7 @@ import {
 import { shiftDateStr, zonedDateParts } from "@/lib/date";
 import TimelineDayNav from "@/components/TimelineDayNav";
 import IntradayPanel from "@/components/IntradayPanel";
+import { parseIntradayWindow } from "@/lib/intraday-window";
 import { getIntradayDay } from "@/lib/queries/intraday";
 import { solarDay } from "@/lib/sun";
 import {
@@ -157,6 +158,15 @@ export const dynamic = "force-dynamic";
 // carries the "why here, why nested" notes that used to live on this inline
 // function.
 
+// The first value of a repeatable query param. A private copy, matching the ones in
+// `app/(app)/trends/page.tsx:46` and `components/DataExport.tsx:7` rather than inventing
+// a fourth spelling — converging the three is #4553's, not this lane's.
+function firstQueryParam(
+  value: string | string[] | undefined
+): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
 export default async function HistoryPage(props: {
   searchParams: Promise<{
     family?: string | string[];
@@ -169,6 +179,9 @@ export default async function HistoryPage(props: {
     open?: string | string[];
     expand?: string | string[];
     show?: string | string[];
+    /** A window selected on the day chart (#4950) — see lib/intraday-window.ts. */
+    from?: string | string[];
+    to?: string | string[];
   }>;
 }) {
   const searchParams = await props.searchParams;
@@ -193,6 +206,15 @@ export default async function HistoryPage(props: {
       ? searchParams.media[0]
       : searchParams.media) === "1";
   const day = clampHistoryDay(searchParams.day, todayStr);
+  // THE WINDOW THE CHART STATED (#4950), and only ON a day. The chart that writes it is
+  // the day view's, so a `?from=` arriving on the feed names a window over nothing —
+  // dropped here rather than carried to a door that could not use it anyway.
+  const chartWindow = day
+    ? parseIntradayWindow(
+        firstQueryParam(searchParams.from),
+        firstQueryParam(searchParams.to)
+      )
+    : null;
   const show = parseHistoryShow(searchParams.show);
   const openFolds = parseTimelineOpen(searchParams.open);
   // THE ROLLUP LINES THE READER HAS OPENED (#3958 phase 2). A second param beside
@@ -1001,6 +1023,7 @@ export default async function HistoryPage(props: {
                   })
                 : null
             }
+            selectedWindow={chartWindow}
           />
         </div>
       ) : null}

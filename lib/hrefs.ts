@@ -165,6 +165,17 @@ export function historyHref(
     /** The rollup lines opened in Everything (#3958 phase 2), one key per entry. */
     expand?: readonly string[];
     show?: number;
+    /**
+     * A window selected on the day chart (#4950), as profile-local `HH:MM` clocks on
+     * the day in view. `to` is optional: a tap marks a start alone and leaves the
+     * length to the form. Written and read through `lib/intraday-window.ts`, which is
+     * where the shape is defined and where a pair that is not a window is refused.
+     *
+     * These ship WITH their reader, per the `?subject=` note above: the day view parses
+     * them beside `kind` and hands the window to the add door.
+     */
+    from?: string;
+    to?: string;
   } = {}
 ): AppRoute {
   const sp = new URLSearchParams();
@@ -175,6 +186,10 @@ export function historyHref(
   if (params.item) sp.set("item", params.item);
   if (params.media) sp.set("media", "1");
   if (params.day) sp.set("day", params.day);
+  // The window follows the day it is a window ON, and `to` follows `from`, so a URL
+  // reads in the order a person would say it.
+  if (params.from) sp.set("from", params.from);
+  if (params.from && params.to) sp.set("to", params.to);
   if (params.everyone) sp.set("view", "everyone");
   for (const key of params.open ?? []) sp.append("open", key);
   for (const key of params.expand ?? []) sp.append("expand", key);

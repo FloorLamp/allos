@@ -174,12 +174,24 @@ export default function IntradayChart({
   variant,
   className,
   profileId,
+  selectedWindow = null,
 }: {
   model: IntradayModel;
   formatPrefs: DisplayFormatPrefs;
   variant: IntradayVariant;
   className: string;
   profileId: number;
+  /**
+   * A window stated in the URL (#4950), in minutes since profile-local midnight.
+   *
+   * DRAWN FROM THE SERVER RENDER, which is the whole reason it is a prop rather than
+   * client state: the selection has to stay under the add form while the person fills
+   * it in, and survive a reload of the link they were sent. A live drag is the other
+   * source and stays local — the two are different marks with the same paint, and
+   * `dragSpan` below prefers the live one so releasing a drag never leaves the old
+   * window highlighted under the new gesture.
+   */
+  selectedWindow?: { from: number; to: number | null } | null;
 }) {
   const [view, setView] = useState<IntradayView | null>(null);
   const [cursor, setCursor] = useState<number | null>(null);
@@ -491,10 +503,22 @@ export default function IntradayChart({
           .filter(Boolean)
           .join(" · ");
 
-  const dragSpan =
+  // The live drag wins over the stated window: while a gesture is in flight, the mark
+  // under the pointer must be the gesture's, or the person is looking at the last answer
+  // while giving a new one.
+  const liveDrag =
     drag && Math.abs(drag.to - drag.from) >= 1
       ? { from: Math.min(drag.from, drag.to), to: Math.max(drag.from, drag.to) }
       : null;
+  // A start alone (a tap, `to: null`) is drawn as a hairline rather than a band — the
+  // `Math.max(1, …)` on the width below is what makes one pixel of it visible.
+  const statedSpan = selectedWindow
+    ? {
+        from: selectedWindow.from,
+        to: selectedWindow.to ?? selectedWindow.from,
+      }
+    : null;
+  const dragSpan = liveDrag ?? statedSpan;
 
   return (
     <div
