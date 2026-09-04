@@ -8,8 +8,9 @@
 // whichever situations were declared RIGHT NOW, beside a `situationsOn` resolver in the
 // same function that already dated the adherence strip.
 //
-// The TODAY branch keeps the derived widening (#1292/#1298) and is pinned here too: it is
-// a statement about now with no dated form, so it must reach today and only today.
+// The DERIVED widening (#1292/#1298) dates with it (#3993): a logged period day, a heat
+// spell and the night ending a day are all facts about that day, so a past day gets the
+// verdict its own data supports rather than an empty set.
 //
 // AND THE SIBLING SEAM REACHED WITH THE SAME `p.date` (#3994), at the bottom of this
 // file: `standingUsualOffer` -> `getUsualRoutineOffer` -> `getPendingRoutineDoses`. Two
@@ -38,6 +39,21 @@ import {
 } from "@/lib/integrations/normalize";
 import { collectWindowDoses } from "@/lib/notifications/intake";
 import { getPendingRoutineDoses } from "@/lib/queries/usual-routine";
+import { createCycleRow } from "@/lib/cycle-store";
+import { setHomeLocation } from "@/lib/settings";
+import { runWeatherSync } from "@/lib/integrations/weather-sync";
+import type {
+  DailyWeatherRow,
+  WeatherSource,
+} from "@/lib/integrations/open-meteo";
+import {
+  BUILTIN_HEATWAVE_SITUATION,
+  HEATWAVE_ENTER_C,
+} from "@/lib/weather-situations";
+import {
+  BUILTIN_PERIOD_SITUATION,
+  BUILTIN_POOR_SLEEP_SITUATION,
+} from "@/lib/derived-situations";
 
 let seq = 0;
 function newProfile(): number {
@@ -194,12 +210,12 @@ function night(wakeDay: string, minutes: number): NormMetricSample {
   };
 }
 
-describe("the TODAY branch keeps the derived widening (#1292/#1298)", () => {
-  it("a rough night makes a sleep-keyed item due today and on no past day", () => {
+describe("the derived widening is DATED, not today-only (#3993)", () => {
+  it("a rough night reaches today, and a past day with a healthy night stays empty", () => {
     const p = newProfile();
     seedItem(p, "Magnesium Glycinate", "Poor sleep", "due-on");
     const anchor = today(p);
-    // Six ~8h nights, then 5h last night → a MEASURED rough night, derived-on today.
+    // Six ~8h nights, then 5h last night → a MEASURED rough night on today.
     const nights = [1, 2, 3, 4, 5, 6].map((i) =>
       night(shiftDateStr(anchor, -i), 480)
     );
@@ -207,10 +223,117 @@ describe("the TODAY branch keeps the derived widening (#1292/#1298)", () => {
 
     // Today's reminder sees it through the declared ∪ derived union...
     expect(morningNames(p, anchor)).toContain("Magnesium Glycinate");
-    // ...and no past day does: "Poor sleep" was never DECLARED, and the derived verdict
-    // is a statement about now that may not be dated backwards.
+    // ...and days 1-3 do not — NOT because a past day may not hold a derived verdict,
+    // but because the night ending each of those days was a healthy 8h. The dated
+    // widening answers each day from that day's own data; here it answers no.
     for (const d of [1, 2, 3])
       expect(morningNames(p, shiftDateStr(anchor, -d))).toEqual([]);
+  });
+});
+
+// ── THE DERIVED HALF IS DATED TOO (#3993) ────────────────────────────────────────────
+//
+// Owner ruling, 2026-08-31. The declared half above dates through the #654 change log.
+// The derived half used to be dropped from every past day on the stated ground that
+// derived context "cannot be dated" — and it can, for all three of its sources: a logged
+// period day is a span in the cycle record, a heat spell is a fact in the cached daily
+// series, and a rough night is the night ENDING that day measured against the baseline
+// before it, through the same pure threshold the coaching engine calls.
+//
+// A RETROACTIVE VERDICT READS DATA AS STORED NOW. A night that syncs late changes the
+// verdict for its day — like every other read this app makes of a past day, and the
+// reason the reminder rebuild re-derives rather than replaying.
+//
+// Each row seeds its source to hold on day-2 and NOT on day-5, and asserts BOTH days in
+// one object: "due on day-2" alone is equally satisfied by a widening that never turns
+// off, which is the failure the today-only branch was standing in for.
+function dailySource(rows: DailyWeatherRow[]): WeatherSource {
+  return {
+    id: "fixture",
+    async fetchHourly() {
+      return { ok: true, rows: [] };
+    },
+    async fetchDaily() {
+      return { ok: true, rows };
+    },
+  };
+}
+
+function weatherDay(date: string, tempMaxC: number): DailyWeatherRow {
+  return {
+    date,
+    tempMaxC,
+    tempMinC: null,
+    pressureMslHpa: null,
+    precipitationMm: null,
+    weatherCode: null,
+    uvIndexMax: null,
+    aqi: null,
+    pollenTree: null,
+    pollenWeed: null,
+    pollenGrass: null,
+  };
+}
+
+describe("a past day gets the derived verdict its own data supports (#3993)", () => {
+  it.each([
+    {
+      what: "the night ending that day was rough",
+      situation: BUILTIN_POOR_SLEEP_SITUATION,
+      async seed(p: number, anchor: string) {
+        // Healthy 8h nights back to day-9, then 5h on the night ending day-2. The night
+        // ending day-5 is one of the healthy ones, so the same fixture answers NO there.
+        const nights: NormMetricSample[] = [];
+        for (let d = 9; d >= 3; d--)
+          nights.push(night(shiftDateStr(anchor, -d), 480));
+        nights.push(night(shiftDateStr(anchor, -2), 300));
+        upsertMetricSamples(p, nights, "health-connect");
+      },
+    },
+    {
+      what: "a logged period covered that day",
+      situation: BUILTIN_PERIOD_SITUATION,
+      async seed(p: number, anchor: string) {
+        // The issue's own measurement: ONE logged, closed period covering day-4 through
+        // day-0. `periodOnDate` answers true for every one of those days; the past-day
+        // gather used to return [] for all of them. A cycle row also makes cycle
+        // tracking relevant, so the built-in Period situation applies.
+        createCycleRow(p, shiftDateStr(anchor, -4), anchor, "medium", null);
+      },
+    },
+    {
+      what: "a heat spell covered that day",
+      situation: BUILTIN_HEATWAVE_SITUATION,
+      async seed(p: number, anchor: string) {
+        // 0.1° is the storage precision, and the daily cache is keyed by coarse
+        // location — so each fixture profile needs its own coordinate or one test's
+        // series becomes another's weather.
+        setHomeLocation(p, { lat: 20 + (p % 300) / 10, lng: -74 });
+        // HEATWAVE_MIN_DAYS consecutive days at/above the enter bound ending on day-2.
+        // A spell's first days are marked on retroactively, so day-4, day-3 and day-2
+        // all hold; day-5 is mild and outside it.
+        const rows: DailyWeatherRow[] = [];
+        for (let d = 9; d >= 2; d--)
+          rows.push(
+            weatherDay(
+              shiftDateStr(anchor, -d),
+              d <= 4 ? HEATWAVE_ENTER_C + 3 : 18
+            )
+          );
+        await runWeatherSync(p, dailySource(rows));
+      },
+    },
+  ])("$what", async ({ situation, seed }) => {
+    const p = newProfile();
+    seedItem(p, ITEM, situation, "due-on");
+    const anchor = today(p);
+    await seed(p, anchor);
+
+    // ONE assertion carrying both halves: the day the source held, and a day it did not.
+    expect({
+      "day-2": morningNames(p, shiftDateStr(anchor, -2)).includes(ITEM),
+      "day-5": morningNames(p, shiftDateStr(anchor, -5)).includes(ITEM),
+    }).toEqual({ "day-2": true, "day-5": false });
   });
 });
 
