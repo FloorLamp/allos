@@ -329,7 +329,12 @@ export const STRAVA_DETAILS_FOLLOW_LINE = "Details follow when Strava syncs.";
 // than the sample supports.
 export function stravaDetailsFollowLine(medianLagMin: number | null): string {
   if (medianLagMin == null) return STRAVA_DETAILS_FOLLOW_LINE;
-  const hours = Math.max(1, Math.ceil(medianLagMin / 60));
+  // STRICTLY MORE THAN THE MEDIAN (#5127 falsifying pass). `ceil` was a no-op at exact
+  // multiples of sixty — a 60-minute median promised "within an hour", which is the
+  // median itself, and half of all rides are later than a median by definition. This
+  // is the same objection #2214 raised about medians, applied to the number the copy
+  // actually says out loud.
+  const hours = Math.floor(medianLagMin / 60) + 1;
   const span = hours === 1 ? "an hour" : `${hours} hours`;
   return `Details follow when Strava syncs, usually within ${span}.`;
 }

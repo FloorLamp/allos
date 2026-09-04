@@ -6,6 +6,8 @@ import { instantNow } from "@/lib/clock";
 import { getTimezone } from "@/lib/settings";
 import { zonedWallTimeToUtc } from "@/lib/date";
 import { activityWindow } from "@/lib/training-zones";
+import { profileDayZone } from "@/lib/travel-excusal";
+import { zoneOf } from "@/lib/travel-timezone";
 import { arrivalLagMedian, ARRIVAL_LAG_MAX_MIN } from "@/lib/arrival-wait";
 import type {
   IntegrationId,
@@ -1340,10 +1342,35 @@ export interface ArrivalLagQuery {
 
 const ARRIVAL_SAMPLE_LIMIT = 28;
 
+/**
+ * ONE PUSH IS ONE OBSERVATION (#5127 falsifying pass, F3).
+ *
+ * The sample gate counts arrivals, and it was counting ROWS: a single Health Connect
+ * push writing five `metric_samples` of different metrics cleared a five-arrival gate
+ * by itself, and set a whole profile's practice bound off one delivery. The sleep call
+ * never showed it because `metric = 'sleep_min'` makes one row about one night.
+ *
+ * What is being measured is a PIPELINE's latency, so the unit is the push. Rows arrive
+ * newest first, so the first row of each event is the one kept.
+ */
+function onePerPush(
+  rows: readonly { eventId: number; lag: number | null }[]
+): number[] {
+  const seen = new Set<number>();
+  const out: number[] = [];
+  for (const row of rows) {
+    if (row.lag == null || seen.has(row.eventId)) continue;
+    seen.add(row.eventId);
+    out.push(row.lag);
+  }
+  return out;
+}
+
 function sampleArrivalLags(profileId: number, q: ArrivalLagQuery): number[] {
   const rows = db
     .prepare(
-      `SELECT (julianday(r.created_at) - julianday(s.ended_at)) * 1440 AS lag
+      `SELECT r.event_id AS eventId,
+              (julianday(r.created_at) - julianday(s.ended_at)) * 1440 AS lag
          FROM integration_sync_rows r
          JOIN integration_sync_events e ON e.id = r.event_id
          JOIN metric_samples s ON s.id = r.target_id
@@ -1363,15 +1390,16 @@ function sampleArrivalLags(profileId: number, q: ArrivalLagQuery): number[] {
       q.metric ?? null,
       q.metric ?? null,
       (q.limit ?? ARRIVAL_SAMPLE_LIMIT) * 4
-    ) as { lag: number | null }[];
-  return rows.map((r) => r.lag).filter((v): v is number => v != null);
+    ) as { eventId: number; lag: number | null }[];
+  return onePerPush(rows.map((r) => ({ eventId: r.eventId, lag: r.lag })));
 }
 
 function activityArrivalLags(profileId: number, q: ArrivalLagQuery): number[] {
-  const tz = getTimezone(profileId);
+  const zone = profileDayZone(profileId);
   const rows = db
     .prepare(
-      `SELECT r.created_at, a.date, a.start_time, a.end_time, a.duration_min
+      `SELECT r.event_id AS eventId,
+              r.created_at, a.date, a.start_time, a.end_time, a.duration_min
          FROM integration_sync_rows r
          JOIN integration_sync_events e ON e.id = r.event_id
          JOIN activities a ON a.id = r.target_id
@@ -1389,27 +1417,46 @@ function activityArrivalLags(profileId: number, q: ArrivalLagQuery): number[] {
       q.sourceId ?? null,
       (q.limit ?? ARRIVAL_SAMPLE_LIMIT) * 4
     ) as {
+    eventId: number;
     created_at: string;
     date: string;
     start_time: string | null;
     end_time: string | null;
     duration_min: number | null;
   }[];
-  const lags: number[] = [];
+  const lags: { eventId: number; lag: number | null }[] = [];
   for (const row of rows) {
     // An activity with no bounded window states no end, and an arrival measured from
     // a day rather than a moment is not the same quantity.
     const window = activityWindow(row);
     if (!window) continue;
-    const [endDay, endClock] = window.end.split("T");
-    const endAt = zonedWallTimeToUtc(tz, endDay, endClock);
     const arrivedAt = Date.parse(
       toUtcInstant(row.created_at) ?? row.created_at
     );
-    if (!endAt || !Number.isFinite(arrivedAt)) continue;
-    lags.push((arrivedAt - endAt.getTime()) / 60_000);
+    if (!Number.isFinite(arrivedAt)) continue;
+    // THE ZONE THAT RIDE WAS RIDDEN IN, not the one the profile stands in now (#5127
+    // falsifying pass, F4). Reading `getTimezone` here relocated the very bug this
+    // second path exists to avoid: on a profile with a recorded New York → London
+    // move, five rides that truly landed 45 minutes after their end measured 345, and
+    // that number reached the rider as "usually within 6 hours".
+    //
+    // The zone is taken at the ARRIVAL, which is a real UTC instant this row already
+    // carries — the event's own end is the thing being resolved, so it cannot supply
+    // the zone for its own resolution. A move between an event and its arrival is
+    // bounded by ARRIVAL_LAG_MAX_MIN, the same edge every zone-at-instant read has.
+    const [endDay, endClock] = window.end.split("T");
+    const endAt = zonedWallTimeToUtc(
+      zoneOf(zone, new Date(arrivedAt)),
+      endDay,
+      endClock
+    );
+    if (!endAt) continue;
+    lags.push({
+      eventId: row.eventId,
+      lag: (arrivedAt - endAt.getTime()) / 60_000,
+    });
   }
-  return lags;
+  return onePerPush(lags);
 }
 
 export function getArrivalLagMinutes(

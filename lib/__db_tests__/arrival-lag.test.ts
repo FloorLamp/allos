@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { db, today } from "@/lib/db";
-import { setTimezone } from "@/lib/settings";
+import { setProfileSetting, setTimezone } from "@/lib/settings";
+import { serializeTimezoneSwitches } from "@/lib/travel-timezone";
 import { shiftDateStr } from "@/lib/date";
 import { getArrivalLagMinutes } from "@/lib/queries/integrations";
 
@@ -186,6 +187,87 @@ describe("getArrivalLagMinutes over activities", () => {
         sourceId: STRAVA,
       })
     ).toBe(50);
+  });
+
+  it("counts PUSHES, not rows — one delivery is one observation (#5127 F3)", () => {
+    // The gate counts arrivals to decide whether a median may be quoted. It was
+    // counting ROWS: one Health Connect push writing five `metric_samples` of
+    // different metrics cleared a five-arrival gate by itself and set a whole
+    // profile's practice bound off one delivery. The sleep call never showed it,
+    // because `metric = 'sleep_min'` makes one row about one night.
+    const eventId = Number(
+      db
+        .prepare(
+          `INSERT INTO integration_sync_events (profile_id, source_id, at, ok, inserted)
+           VALUES (?, ?, ?, 1, 1)`
+        )
+        .run(profileId, HC, `${day}T08:30:00Z`).lastInsertRowid
+    );
+    const link = db.prepare(
+      `INSERT INTO integration_sync_rows
+         (event_id, target_table, target_id, disposition, created_at)
+       VALUES (?, 'metric_samples', ?, 'inserted', ?)`
+    );
+    for (const metric of ["sleep_min", "steps", "resting_hr", "hrv", "spo2"]) {
+      const sampleId = Number(
+        db
+          .prepare(
+            `INSERT INTO metric_samples
+               (profile_id, source, metric, date, started_at, ended_at, value)
+             VALUES (?, ?, ?, ?, ?, ?, 1)`
+          )
+          .run(
+            profileId,
+            HC,
+            metric,
+            day,
+            `${day}T07:00:00Z`,
+            `${day}T08:00:00Z`
+          ).lastInsertRowid
+      );
+      link.run(eventId, sampleId, `${day}T08:30:00Z`);
+    }
+
+    expect(
+      getArrivalLagMinutes(profileId, {
+        targetTable: "metric_samples",
+        sourceId: HC,
+      })
+    ).toBeNull();
+  });
+
+  it("resolves a ride's end in the zone it was RIDDEN in (#5127 F4)", () => {
+    // This is the bug the activities path exists to avoid, relocated one line: reading
+    // the profile's CURRENT zone made five rides that truly landed 45 minutes after
+    // their end measure 345 on a profile that has since moved, and that number reached
+    // the rider as "usually within 6 hours".
+    setTimezone(profileId, "America/New_York");
+    for (let i = 1; i <= 5; i++) {
+      const date = shiftDateStr(day, -i);
+      const id = ride(date, "08:00");
+      // 08:00 in New York is 12:00Z in September; the row lands 45 minutes later.
+      arrival("activities", id, `${date}T12:45:00Z`);
+    }
+    // …and the rider has since moved to London, which is where they stand now.
+    setTimezone(profileId, "Europe/London");
+    setProfileSetting(
+      profileId,
+      "timezone_switches",
+      serializeTimezoneSwitches([
+        {
+          at: `${today(profileId)}T09:00:00Z`,
+          from: "America/New_York",
+          to: "Europe/London",
+        },
+      ])
+    );
+
+    expect(
+      getArrivalLagMinutes(profileId, {
+        targetTable: "activities",
+        sourceId: STRAVA,
+      })
+    ).toBe(45);
   });
 
   it("does not count another profile's arrivals", () => {

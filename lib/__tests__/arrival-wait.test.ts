@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { arrivalWait, arrivalWaitWindowMin } from "@/lib/arrival-wait";
+import {
+  arrivalLagMedian,
+  arrivalWait,
+  arrivalWaitWindowMin,
+} from "@/lib/arrival-wait";
 
 // #5001 — the ONE bounded arrival wait, extracted from the sleep morning state.
 //
@@ -89,5 +93,19 @@ describe("arrivalWait", () => {
     expect(arrivalWaitWindowMin({ ...floored, measuredLagMin: 180 })).toBe(180);
     // The max still ends it.
     expect(arrivalWaitWindowMin({ ...floored, measuredLagMin: 900 })).toBe(720);
+  });
+});
+
+describe("arrivalLagMedian", () => {
+  it("is null under the gate and never zero above it (#5127 F2)", () => {
+    expect(arrivalLagMedian([10, 20, 30, 40])).toBeNull();
+    // ZERO AND ABSENT MUST BE DISTINGUISHABLE. Every consumer branches on null, so a
+    // measured 0 would put the ABSENT case and the FASTEST case at two ends of one
+    // `??` — a source landing inside thirty seconds reading as no measurement to one
+    // consumer and as a zero-length window to another.
+    expect(arrivalLagMedian([0, 0, 0, 0, 0, 1])).toBe(1);
+    expect(arrivalLagMedian([0, 0, 0, 0, 0])).toBe(1);
+    // An ordinary sample is untouched.
+    expect(arrivalLagMedian([30, 40, 50, 60, 70])).toBe(50);
   });
 });

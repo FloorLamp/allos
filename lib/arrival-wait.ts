@@ -116,12 +116,22 @@ export const MIN_ARRIVAL_SAMPLES = 5;
  */
 export const ARRIVAL_LAG_MAX_MIN = 12 * 60;
 
-/** The median of a sample, or null under the gate. The one place it is taken. */
+/**
+ * The median of a sample, or null under the gate. The one place it is taken.
+ *
+ * NEVER ZERO, AND THAT IS NOT A ROUNDING CHOICE (#5127 falsifying pass, F2). `null`
+ * means "nothing measured" and every consumer branches on it; a measured 0 would make
+ * the ABSENT case and the FASTEST case two ends of one `??`, so a source that lands
+ * inside thirty seconds — which `Math.round` sends to 0 — would read as no measurement
+ * at all to one consumer and as a zero-length window to another. One minute is the
+ * honest floor for "it arrived before the next minute began", and it keeps `null` the
+ * only value that means nothing was measured.
+ */
 export function arrivalLagMedian(lags: readonly number[]): number | null {
   if (lags.length < MIN_ARRIVAL_SAMPLES) return null;
   const sorted = [...lags].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   const median =
     sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-  return Math.round(median);
+  return Math.max(1, Math.round(median));
 }

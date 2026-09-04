@@ -518,14 +518,17 @@ describe("stravaDetailsFollowLine", () => {
     expect(stravaDetailsFollowLine(45)).toBe(
       "Details follow when Strava syncs, usually within an hour."
     );
+    // STRICTLY MORE THAN THE MEDIAN (#5127 falsifying pass). A 60-minute median used
+    // to promise "within an hour" — the median itself, which half of all rides are
+    // later than by definition. That is the one thing the line's own rationale forbids.
     expect(stravaDetailsFollowLine(60)).toBe(
-      "Details follow when Strava syncs, usually within an hour."
+      "Details follow when Strava syncs, usually within 2 hours."
     );
     expect(stravaDetailsFollowLine(61)).toBe(
       "Details follow when Strava syncs, usually within 2 hours."
     );
     expect(stravaDetailsFollowLine(180)).toBe(
-      "Details follow when Strava syncs, usually within 3 hours."
+      "Details follow when Strava syncs, usually within 4 hours."
     );
   });
 
@@ -533,6 +536,11 @@ describe("stravaDetailsFollowLine", () => {
     // A ten-minute median would be a promise the tail cannot keep: the same sighting
     // that produced these numbers has 2 of 18 rides landing the NEXT DAY.
     expect(stravaDetailsFollowLine(10)).toBe(
+      "Details follow when Strava syncs, usually within an hour."
+    );
+    // And `arrivalLagMedian` can no longer hand this a 0 at all (#5127 F2), so the
+    // floor is a floor on the copy rather than a cover for an absent measurement.
+    expect(stravaDetailsFollowLine(1)).toBe(
       "Details follow when Strava syncs, usually within an hour."
     );
   });
