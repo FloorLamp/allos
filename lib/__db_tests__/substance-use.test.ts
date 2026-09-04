@@ -880,10 +880,12 @@ describe("custom substances (#3279)", () => {
 // broke four contracts every other food path holds. Two of the four were about its
 // day-count CORRECTION of alcohol — a re-date leaving no instant behind, and a shrink
 // being undoable — and that correction is gone (#5026 item 1), so what those two
-// demonstrated is now asserted where it is still reachable: on the food event cores
-// themselves, in lib/__db_tests__/food-log-event-correction.test.ts and
-// food-log-event-delete.test.ts. What is left here is the ADD, on both ledgers, and
-// the surface stamp.
+// demonstrated is now asserted where it is still reachable: the instant that cannot
+// outlive its row's day in lib/__db_tests__/food-log-event-correction.test.ts, and the
+// #2642 capture `deleteFoodLogEventCore` writes in
+// lib/__db_tests__/day-ledger-selection-edit.test.ts, which is the file that reads
+// `deleted_rows` after that core runs. What is left here is the ADD, on both ledgers,
+// and the surface stamp.
 
 /** The day rows the record renders, for one day. */
 function historyOn(profileId: number, date: string) {
