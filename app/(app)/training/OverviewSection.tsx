@@ -262,7 +262,7 @@ export default async function OverviewSection() {
     // the Telegram nudge all read the same "is it a deload week."
     deloadWeek:
       getRoutineCycleStatus(profile.id, todayStr)?.isDeloadWeek ?? false,
-    sleep: getSleepSignal(profile.id),
+    sleep: getSleepSignal(profile.id, todayStr),
     // Declared Poor sleep tilts the rest rec on the unified verdict (#1292) — the SAME
     // signal the dashboard/Telegram surfaces read, so this card agrees (#221).
     poorSleepDeclared: getActiveSituations(profile.id).some((s) =>

@@ -68,14 +68,21 @@ function night(wakeDay: string, minutes: number): NormMetricSample {
   };
 }
 
-// A ~8h baseline then a 5h last night — the measured rough-night state whose
-// override key is the ONE suppression the resolver consults.
-function seedRoughNight(profileId: number): void {
+// A ~8h baseline with a 5h night on each of `roughOffsets` (day offsets back from
+// today) — the measured rough-night state whose override key is the ONE suppression the
+// resolver consults. Defaults to a rough LAST night and healthy nights before it.
+//
+// The offsets are a parameter because the verdict is DATED (#3993): the resolver reads
+// the night ending the day it is asked about, so a test that needs two days to differ on
+// the OVERRIDE has to make both of them rough first — otherwise they differ on the sleep
+// data and the override is not what is being measured.
+function seedRoughNight(profileId: number, roughOffsets: number[] = [0]): void {
   const anchor = today(profileId);
   const sessions: NormMetricSample[] = [];
-  for (let i = 6; i >= 1; i--)
-    sessions.push(night(shiftDateStr(anchor, -i), 480));
-  sessions.push(night(anchor, 300));
+  for (let i = 6; i >= 0; i--)
+    sessions.push(
+      night(shiftDateStr(anchor, -i), roughOffsets.includes(i) ? 300 : 480)
+    );
   upsertMetricSamples(profileId, sessions, "health-connect");
 }
 
@@ -167,7 +174,11 @@ describe("resolveDerivedSituations under a tick scope (#2724)", () => {
 
   it("keys by DATE too — one day's snapshot never answers another day's", async () => {
     const profileId = newProfile("Memo Key Date");
-    seedRoughNight(profileId);
+    // BOTH days rough, so the sleep data is identical on the two days and the ONLY
+    // thing left to tell them apart is the override — which is what this test is about.
+    // With a healthy night on yesterday the two would differ anyway, and the assertion
+    // below would pass against a memo key that ignored the date entirely.
+    seedRoughNight(profileId, [0, 1]);
     const td = today(profileId);
     const yd = shiftDateStr(td, -1);
     // The override is DATE-SCOPED (`poor-sleep-override:<date>`), which is exactly

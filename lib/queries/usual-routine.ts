@@ -25,11 +25,9 @@ import { getIntakeItems } from "./intake";
 import { getIntakeDoses } from "./intake/schedule";
 import { getSkippedDoseIds, getTakenDoseIds } from "./intake/adherence";
 import { getEffectiveActiveSituations } from "./derived-situations";
-import { getActiveSituations, getSituationEvents } from "../settings";
 
 import { doseWindowSince } from "../intake-adherence";
 import { profileDayZone, travelExcusalResolver } from "../travel-excusal";
-import { situationsActiveOn } from "../trend-annotations";
 import { db, today } from "../db";
 import { doseBucketOn, doseDueOn, type TimeBucket } from "../intake-schedule";
 import { doseScheduleAsOf } from "../intake-cadence";
@@ -175,18 +173,11 @@ export function pendingDayDoses(
   const byId = new Map(items.map((s) => [s.id, s]));
   const taken = getTakenDoseIds(profileId, date);
   const skipped = getSkippedDoseIds(profileId, date);
-  // The day context, resolved ONCE. THE SITUATION SET IS ASKED PER DAY (#654), and the
-  // today/past split below is the one `intakeAdherenceStrip` and the reminder gather
-  // already make — it is not a new policy, it is this function joining the existing one:
-  //
-  //   • TODAY  — `getEffectiveActiveSituations`: declared-now ∪ derived. Correct for a
-  //     SURFACING path, and byte-identical to what this function did before, so the
-  //     composed one-tap offer riding `getPendingRoutineDoses` is untouched.
-  //   • A PAST DAY — `situationsActiveOn`: the DECLARED set reconstructed as of that day
-  //     from the dated change log, and deliberately WITHOUT the derived half, exactly as
-  //     lib/notifications/intake.ts says ("the history resolver owns retroactive
-  //     membership, so it must NOT see derived names") and as `intakeAdherenceStrip`
-  //     scores its dots.
+  // The day context, resolved ONCE. THE SITUATION SET IS ASKED PER DAY (#654), through
+  // `getEffectiveActiveSituations`, which dates BOTH halves (#3973/#3993): the declared
+  // set reconstructed as of that day from the change log, unioned with the derived
+  // context that held on it. The today/past split this function used to make is gone —
+  // it existed only because the derived half was said to have no dated form.
   //
   // Both directions of the bug this closes were silent. Declaring Travel today used to
   // make the switcher claim two days of travel doses you never owed — and a tap would
@@ -217,13 +208,7 @@ export function pendingDayDoses(
     isWorkoutDay: isToday
       ? getActivitiesByDate(profileId, date).length > 0
       : trainedOn.has(date),
-    activeSituations: isToday
-      ? getEffectiveActiveSituations(profileId, date)
-      : situationsActiveOn(
-          date,
-          getActiveSituations(profileId),
-          getSituationEvents(profileId)
-        ),
+    activeSituations: getEffectiveActiveSituations(profileId, date),
     // THE SAME TODAY/PAST SPLIT, and found by auditing the rest of this seam rather
     // than by a third review round. `conditionAppliesOn` reads
     // `predictedWorkoutDay ?? isWorkoutDay`, and the prediction is a pattern inferred

@@ -4,18 +4,40 @@
 //
 //   • the per-context VERDICTS (with basis) the visible state lines format over, and
 //   • getEffectiveActiveSituations(profileId, date) — the profile's active-situation
-//     NAME set WIDENED by any derived context that holds today, the ONE seam every
-//     dueness surface (Supplements bar, Medications, check-in count, Upcoming, notify
-//     tick, digest) unions in so a situational item keyed to Poor sleep / Period goes
-//     due exactly while the derived context holds (surfacing-paths-only, #558/#1292).
+//     NAME set on `date`, WIDENED by any derived context that held that day: the ONE
+//     seam every dueness surface (Supplements bar, Medications, check-in count,
+//     Upcoming, notify tick, digest) unions in so a situational item keyed to Poor
+//     sleep / Period goes due exactly while the derived context holds
+//     (surfacing-paths-only, #558/#1292).
 //
-// Derived context belongs to the profile's LOCAL calendar day (`date` is today in the
+// EVERY DERIVED SOURCE IS DATED (#3993, owner ruling 2026-08-31). This module used to
+// answer only for NOW, on the stated ground that derived context "cannot be dated". It
+// can, for all three sources, and each is dated from its own record:
+//
+//   • PERIOD — periodOnDate takes the subject day and the `today` horizon as SEPARATE
+//     parameters, and that horizon exists to refuse the FUTURE, not the past (#2613).
+//   • WEATHER — the spell is a fact in the cached daily series, reconstructable and
+//     identical every time it is computed; activeWeatherSituations is already dated.
+//   • POOR SLEEP — the night ENDING that day against the baseline before it, through
+//     the same pure threshold the coaching engine calls (measureRoughNight), and its
+//     "Not today" override is a date-scoped suppression key already.
+//
+// A RETROACTIVE VERDICT READS DATA AS STORED NOW, and this is the honest caveat the
+// ruling recorded rather than smoothed away: a night that syncs late changes the verdict
+// for its day. That is true of every read this app makes of a past day — a dose logged
+// late moves that day's adherence too — and it is why the reminder rebuild re-derives
+// from the record instead of replaying a stored answer.
+//
+// Derived context belongs to the profile's LOCAL calendar day (`date` is a day in the
 // profile's timezone, resolved by the caller): a "night" and a "logged period day" are
 // both judged against that local date, never UTC (the per-profile-context trap). No
 // `.prepare` here — every read delegates to an already profile-scoped reader — so the
 // scoping guard is unaffected.
 
 import { getSleepSignal } from "./coaching";
+import { today } from "../db";
+import { situationsActiveOn } from "../trend-annotations";
+import { getSituationEvents } from "../settings/profile-attrs";
 import { tickCached } from "../tick-cache";
 import { getFindingSuppressions } from "./upcoming/suppressions";
 import { getIntakeItems } from "./intake/schedule";
@@ -47,8 +69,9 @@ import type { TemperatureUnit } from "../settings";
 import type { IntakeObligation } from "../types";
 
 // Whether a declared-situation NAME set contains a given built-in (name-keyed, #560).
-function declared(active: readonly string[], name: string): boolean {
-  return active.some((s) => sameSituation(s, name));
+function declared(active: ReadonlySet<string>, name: string): boolean {
+  for (const s of active) if (sameSituation(s, name)) return true;
+  return false;
 }
 
 export interface DerivedSituations {
@@ -65,17 +88,18 @@ export interface DerivedSituations {
   weather: WeatherSituationState[];
   // The DERIVED situation names to union into the active set (only those turned on by
   // derivation, i.e. NOT already declared — a declared toggle is already in the set).
+  // Dated: these are the names derivation turned on ON `date` (#3993).
   derivedNames: Set<string>;
 }
 
-// Resolve every derived situation for the profile on `today` (its local calendar day).
+// Resolve every derived situation for the profile on `date` (a day in its local calendar).
 //
-// The parameter is named `today` because every caller resolves it that way (the dashboard's
-// `on`, med-data's `todayStr`) and because every verdict below is a statement about NOW —
-// the period field is literally `coversToday`, and the weather series deliberately ends
-// today rather than reading its forecast tail. It matters to #2613: the period read takes a
-// horizon, and passing the subject day as its own horizon is only sound where the subject
-// really is today. Naming it says so instead of leaving a guard that silently cannot fire.
+// The parameter is `date`, not `today` (#3993). Every verdict below is a statement about
+// THAT DAY, read from the record the day left: the night that ended it, the period log
+// that covered it, the cached weather series through it. The #2613 horizon is now passed
+// as what it is — the profile's real today — so periodOnDate can refuse a future day
+// instead of being handed the subject day as its own horizon, which is the arrangement
+// that made the guard unable to fire.
 //
 // TICK-MEMOIZED (#2724), measured first on #2674's evidence standard. One digest gather
 // reaches this resolver from FOUR unrelated callers (two getEffectiveActiveSituations
@@ -122,38 +146,62 @@ export interface DerivedSituations {
 // returned object are pinned by lib/__db_tests__/tick-derived-situations-memo.test.ts.
 export const resolveDerivedSituations = tickCached(
   "derived-situations.resolve",
-  (profileId: number, today: string) => `${profileId}:${today}`,
+  (profileId: number, date: string) => `${profileId}:${date}`,
   resolveDerivedSituationsUncached
 );
 
 function resolveDerivedSituationsUncached(
   profileId: number,
-  today: string
+  date: string
 ): DerivedSituations {
-  const active = getActiveSituations(profileId);
+  const horizon = today(profileId);
+  // A day that has not happened leaves no record to read, so there is nothing to claim
+  // about it (#2613's own words: unknowable, not merely uncertain). periodOnDate refuses
+  // its own future and no night ends on a future day — but the weather cache reaches a
+  // week AHEAD for the planning surfaces, so once `date` is a real parameter the refusal
+  // has to be stated once for all three rather than held by two of them accidentally.
+  if (date > horizon)
+    return {
+      poorSleep: { on: false, basis: null },
+      period: null,
+      weather: [],
+      derivedNames: new Set(),
+    };
+  // The DECLARED set as it stood on `date` (#654/#3973), so the declared FALLBACK each
+  // verdict below carries is dated with everything else — a Poor sleep chip toggled on
+  // this morning must not report a rough night for last Tuesday. On today the change log
+  // has no transition strictly after the day, so this is the current set exactly.
+  const active = situationsActiveOn(
+    date,
+    getActiveSituations(profileId),
+    getSituationEvents(profileId)
+  );
 
   // ---- Poor sleep (#1292) ----
   // Missing data ⇒ getSleepSignal null ⇒ measured never fires ⇒ OFF unless declared
-  // (the conservative missing-data-OFF posture). The override is a date-scoped
-  // suppression row on the shared bus; only today's key is ever consulted, so a stale
-  // yesterday override never touches today.
+  // (the conservative missing-data-OFF posture). The measured half is the night ENDING
+  // `date` against the baseline of the nights before it — the same threshold function
+  // the coaching engine calls, so the two can never disagree about what a rough night
+  // is. The override is a date-scoped suppression row on the shared bus, so the key for
+  // THIS day is the one consulted and a neighbouring day's override never reaches it.
   const suppressions = getFindingSuppressions(profileId);
   const poorSleep = roughNightVerdict({
-    sleep: getSleepSignal(profileId),
+    sleep: getSleepSignal(profileId, date),
     thresholds: DEFAULT_COACHING_THRESHOLDS,
     declared: declared(active, BUILTIN_POOR_SLEEP_SITUATION),
-    overridden: suppressions.has(poorSleepOverrideKey(today)),
+    overridden: suppressions.has(poorSleepOverrideKey(date)),
   });
 
   // ---- Period (#1298) ----
   // Gated on the SAME cycle relevance bit the nav uses (#1042): a profile that doesn't
-  // track cycles never sees the built-in Period situation. Derived = today covered by a
-  // logged period (factual, non-predictive — periodOnDate); declared is the fallback.
+  // track cycles never sees the built-in Period situation. Derived = `date` covered by a
+  // logged period (factual, non-predictive — periodOnDate, which takes the subject day
+  // and the horizon separately); declared is the fallback.
   const cycleRelevant = getNavRelevance(profileId).cycle;
   const period: PeriodVerdict | null = cycleRelevant
     ? periodVerdict({
-        coversToday:
-          periodOnDate(listCyclePeriods(profileId), today, today) != null,
+        coversDate:
+          periodOnDate(listCyclePeriods(profileId), date, horizon) != null,
         declared: declared(active, BUILTIN_PERIOD_SITUATION),
       })
     : null;
@@ -161,9 +209,10 @@ function resolveDerivedSituationsUncached(
   // ---- Weather (#1726) ----
   // Gated on weather relevance (a home location plus either a weather-keyed item or a
   // symptom these situations explain), then decided purely by the cached daily series
-  // ending TODAY — never on the forecast tail, so a situation cannot activate on
-  // weather that has not happened. No data ⇒ no situation.
-  const weather = resolveWeatherSituations(profileId, today).active;
+  // ending on `date` — never on the forecast tail, so a situation cannot activate on
+  // weather that has not happened. Already dated: this is the source the #1360
+  // window-source rule names as fully reconstructable. No data ⇒ no situation.
+  const weather = resolveWeatherSituations(profileId, date).active;
 
   // Only the names turned on by DERIVATION (not already declared) need adding — a
   // declared toggle is already in getActiveSituations.
@@ -277,11 +326,18 @@ export function getDerivedSituationLines(
   };
 }
 
-// The active-situation NAME set widened by today's derived context — the ONE set every
-// dueness surface consumes so a Poor sleep / Period situational item goes due exactly
-// while its derived context holds. Declared ∪ derived (idempotent — a declared toggle
-// is already present). Replaces `new Set(getActiveSituations(profileId))` at the
-// dueness-surfacing call sites.
+// The active-situation NAME set ON `date`, widened by the derived context that held that
+// day — the ONE set every dueness surface consumes so a Poor sleep / Period / weather
+// situational item goes due exactly while its context holds. Replaces
+// `new Set(getActiveSituations(profileId))` at the dueness-surfacing call sites.
+//
+// BOTH HALVES ARE DATED, which is what lets a past-day caller stop branching (#3993).
+// The declared half is the #654 change-log reconstruction (#3973 — today's toggle must
+// not rewrite last Tuesday), and the derived half is now dated too, so a surface asking
+// about a closed day gets one answer about that day instead of a dated half beside a
+// now half. On today both halves answer exactly what they answered before: the change
+// log holds no transition strictly after today, and every derived source reads the day
+// it is given.
 //
 // THE UNION IS ALSO WHAT BOUNDS THE #2724 MEMO. The declared half is re-read here on
 // every call, and only the DERIVED half comes out of the tick-scoped snapshot — so a
@@ -292,7 +348,11 @@ export function getEffectiveActiveSituations(
   profileId: number,
   date: string
 ): Set<string> {
-  const set = new Set(getActiveSituations(profileId));
+  const set = situationsActiveOn(
+    date,
+    getActiveSituations(profileId),
+    getSituationEvents(profileId)
+  );
   for (const name of resolveDerivedSituations(profileId, date).derivedNames)
     set.add(name);
   return set;

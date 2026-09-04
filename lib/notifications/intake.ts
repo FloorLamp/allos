@@ -274,19 +274,18 @@ function gatherWindowDoses(
     isWorkoutDay: isForToday
       ? activitiesToday.length > 0
       : workoutDays.has(date),
-    // The situations active ON `date` — the history resolver owns retroactive
-    // membership on BOTH halves (#3973). The declared set is a statement about now, so
-    // scoring a past day against it moved yesterday's reminder whenever a situation was
-    // toggled today.
+    // The situations active ON `date`, declared AND derived (#3973/#3993). Scoring a
+    // past day against the set declared NOW moved yesterday's reminder whenever a
+    // situation was toggled today; scoring it without the derived half dropped the
+    // context the day actually carried.
     //
-    // The TODAY branch is deliberate, not inherited: the derived widening (#1292/#1298)
-    // judges "a rough night" and "a logged period day" against the CURRENT local day and
-    // has no dated form, so it may only ever speak for today. The two agree on today —
-    // an event logged today is not strictly after it — so the union adds exactly the
-    // derived names.
-    activeSituations: isForToday
-      ? getEffectiveActiveSituations(profileId, date)
-      : situationsOn(date),
+    // THERE IS NO TODAY/PAST BRANCH LEFT HERE, and its absence is the fix. The branch
+    // existed because the derived widening was said to have no dated form — but a logged
+    // period day, a weather spell and the night ending a day are each a fact about that
+    // day, so `getEffectiveActiveSituations` dates both halves and one call answers for
+    // whichever day is being rebuilt. Its declared half is the same change-log
+    // reconstruction `situationsOn` applies to the strip below.
+    activeSituations: getEffectiveActiveSituations(profileId, date),
     // TODAY ONLY, the same split (#4019). The prediction is a rhythm inferred from a
     // trailing window ending NOW, and `conditionAppliesOn` reads it as
     // `predictedWorkoutDay ?? isWorkoutDay` — so on a closed day a guess made today

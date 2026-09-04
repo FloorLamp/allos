@@ -5,14 +5,19 @@
 // PREDICTED training day: derived context, surfacing-paths-only, no user toggle)
 // applied to two more contexts:
 //
-//   • Poor sleep (#1292) — DERIVED from last night's sleep vs baseline (the SAME
+//   • Poor sleep (#1292) — DERIVED from the night ENDING that day vs baseline (the SAME
 //     rough-night threshold coaching already evaluates), OR DECLARED (the Poor sleep
 //     situation manually toggled, for no-wearable / self-report profiles). On-with-
 //     override: a one-tap "Not today" suppresses the DERIVED contribution for that
 //     date only; a declared activation is cleared by the normal chip toggle.
-//   • Period (#1298) — DERIVED from a logged menses day (a period log covering today).
+//   • Period (#1298) — DERIVED from a logged menses day (a period log covering it).
 //     No override needed: the log IS the control (editing the log is the override).
 //     A declared manual toggle remains a fallback for profiles that don't track cycles.
+//
+// EVERY DERIVED SOURCE IS DATED (#3993). Each of the three answers for a NAMED day, not
+// only for now: a logged period day is a span in the cycle record, a weather spell is a
+// fact in the cached daily series, and a rough night is the night ending that day. So a
+// past-day dueness surface scores the day against the context that actually held on it.
 //
 // This module is PURE (no DB) so every rule + formatter is unit-testable. The DB
 // gathers live in lib/queries/derived-situations.ts; the shared rough-night threshold
@@ -82,7 +87,8 @@ export function withWeatherSituationOptions(
 // The date-scoped suppression key for the poor-sleep "Not today" override (#1292).
 // Stored on the shared findings-suppression bus (upcoming_dismissals) so it composes
 // with "dismiss once, silence everywhere"; date-scoped so it only ever suppresses the
-// DERIVED contribution for that one calendar day (the resolver checks today's key).
+// DERIVED contribution for that one calendar day — which is also what lets the verdict
+// be asked about a past day (#3993): the resolver checks THAT day's key.
 // The prefix is registered in lib/rule-finding-prefixes.ts so the write action's
 // dedupeKeyHasKnownPrefix guard accepts it (the #448 registry discipline).
 export const POOR_SLEEP_OVERRIDE_PREFIX = "poor-sleep-override:";
@@ -181,17 +187,22 @@ export interface PeriodVerdict {
   basis: "logged" | "declared" | null;
 }
 
-// "Is Period context on today?" = today falls in a LOGGED period (the factual
-// `coveringPeriod` from periodOnDate — a period log with a start covering today, an
-// open one covering every day from its start) OR the Period situation is DECLARED
-// (the manual fallback for profiles that don't track cycles). Factual logged state,
-// not prediction — fully inside the cycles page's "informational only" contract
-// (menses only; phase-level keying is deliberately deferred, #1298). Pure.
+// "Is Period context on `date`?" = that day falls in a LOGGED period (the factual
+// `coveringPeriod` from periodOnDate — a period log with a start covering it, an open
+// one covering every day from its start) OR the Period situation is DECLARED (the
+// manual fallback for profiles that don't track cycles). Factual logged state, not
+// prediction — fully inside the cycles page's "informational only" contract (menses
+// only; phase-level keying is deliberately deferred, #1298). Pure.
+//
+// The field is `coversDate`, not `coversToday` (#3993): the caller decides which day is
+// being asked about, and periodOnDate has always taken the subject day and the horizon
+// as two parameters. The old name was the whole of the "period context cannot be dated"
+// case, and it was a name rather than a limit.
 export function periodVerdict(input: {
-  coversToday: boolean;
+  coversDate: boolean;
   declared: boolean;
 }): PeriodVerdict {
-  if (input.coversToday) return { on: true, basis: "logged" };
+  if (input.coversDate) return { on: true, basis: "logged" };
   if (input.declared) return { on: true, basis: "declared" };
   return { on: false, basis: null };
 }

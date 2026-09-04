@@ -166,7 +166,7 @@ describe("getSleepSignal — main overnight session, not the nap-summed total (#
   });
 
   it("lastNightMin is the overnight session (300), not the nap-summed 390", () => {
-    const signal = getSleepSignal(profileId);
+    const signal = getSleepSignal(profileId, today(profileId));
     expect(signal).not.toBeNull();
     expect(signal!.lastNightMin).toBe(300);
     // Baseline is the prior night's main session (420), so the 5h overnight reads
@@ -758,7 +758,10 @@ describe("two syncing sources, one nap: per-night resolution (#2603/#1851)", () 
 // used to hand that over under the name `lastNightMin`, so the rest-sleep nudge
 // and the derived poor-sleep situation described the wrong night's sleep as this
 // morning's. The signal now refuses instead of substituting.
-describe("getSleepSignal freshness — the night must BE last night", () => {
+// DATED (#3993): the reader takes the wake-day it is asked about, so "must BE last
+// night" is the shape a caller passing today(profileId) sees — the refusal is that no
+// night ends on the day asked about. The past-day case is the last one below.
+describe("getSleepSignal freshness — the night must BE the day asked about", () => {
   // A profile whose sleep stopped two nights ago: a rough 3h night that WOULD trip
   // the rest-sleep floor if it were mistaken for last night.
   const staleProfile = (name: string, newestOffset: number): number => {
@@ -790,19 +793,19 @@ describe("getSleepSignal freshness — the night must BE last night", () => {
 
   it("answers when the newest night IS last night", () => {
     const id = staleProfile("SleepFreshToday", 0);
-    const signal = getSleepSignal(id);
+    const signal = getSleepSignal(id, today(id));
     expect(signal).not.toBeNull();
     expect(signal!.lastNightMin).toBe(180);
   });
 
   it("refuses when the newest night is the night BEFORE last night", () => {
     const id = staleProfile("SleepStaleOneNight", 1);
-    expect(getSleepSignal(id)).toBeNull();
+    expect(getSleepSignal(id, today(id))).toBeNull();
   });
 
   it("refuses when sleep has not synced for days", () => {
     const id = staleProfile("SleepStaleDays", 4);
-    expect(getSleepSignal(id)).toBeNull();
+    expect(getSleepSignal(id, today(id))).toBeNull();
   });
 
   // The rough-night evaluation the rest-sleep nudge and the derived poor-sleep
@@ -812,15 +815,28 @@ describe("getSleepSignal freshness — the night must BE last night", () => {
   // isn't, because there is no signal to evaluate.
   it("a stale rough night cannot reach the rough-night evaluation at all", () => {
     const id = staleProfile("SleepStaleNoNudge", 1);
-    expect(getSleepSignal(id)).toBeNull();
+    expect(getSleepSignal(id, today(id))).toBeNull();
   });
 
   it("but the identical night dated last night reads as rough", () => {
     const id = staleProfile("SleepFreshNudge", 0);
-    const signal = getSleepSignal(id)!;
+    const signal = getSleepSignal(id, today(id))!;
     expect(measureRoughNight(signal, DEFAULT_COACHING_THRESHOLDS).fired).toBe(
       true
     );
+  });
+
+  // The same reader answers a PAST wake-day with the night that ended THAT day — what
+  // lets the derived poor-sleep situation be dated (#3993). This fixture's rough 3h
+  // night is on day-1 and every night before it is a healthy 8h, so both days are read
+  // as a pair: "day-1 is 180" alone is equally true of a reader that ignores its
+  // argument and always hands back the newest night.
+  it("answers a PAST wake-day with the night that ended it", () => {
+    const id = staleProfile("SleepDatedPast", 1);
+    expect({
+      "day-1": getSleepSignal(id, shiftDateStr(today(id), -1))?.lastNightMin,
+      "day-2": getSleepSignal(id, shiftDateStr(today(id), -2))?.lastNightMin,
+    }).toEqual({ "day-1": 180, "day-2": 480 });
   });
 });
 
@@ -914,7 +930,7 @@ describe("segmented night merge — no false rest-sleep nudge (#1191)", () => {
     upsertMetricSamples(segId, samples, "health-connect");
 
     // The merged main sleep is 8h, not the longest 4h block.
-    const signal = getSleepSignal(segId)!;
+    const signal = getSleepSignal(segId, today(segId))!;
     expect(signal.lastNightMin).toBe(480);
     expect(Math.round(signal.baselineMin)).toBe(480);
 
@@ -1000,7 +1016,7 @@ describe("segmented night merge — no false rest-sleep nudge (#1191)", () => {
       ],
       "health-connect"
     );
-    expect(getSleepSignal(napId)!.lastNightMin).toBe(180);
+    expect(getSleepSignal(napId, today(napId))!.lastNightMin).toBe(180);
     expect(getLastNightSummary(napId)!.durationMin).toBe(180);
   });
 });

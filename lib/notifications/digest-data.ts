@@ -191,7 +191,7 @@ export function gatherDigestSleep(
   demoted: readonly DigestCategory[] = []
 ): DigestSleep | null {
   if (!getProfileSleepDigest(profileId)) return null;
-  const signal = getSleepSignal(profileId);
+  const signal = getSleepSignal(profileId, today(profileId));
   if (!signal) return null;
 
   const sessions = getSleepSessions(profileId);
