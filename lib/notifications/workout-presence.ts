@@ -31,10 +31,7 @@ import {
   getPublicUrl,
 } from "../settings";
 import { composeFinishNudge } from "./workout-recap-format";
-import {
-  finishRecapParts,
-  loadFinishRow,
-} from "./workout-recap-build";
+import { finishRecapParts, loadFinishRow } from "./workout-recap-build";
 import { collectWindowDoses } from "./intake";
 import {
   notifiableWindowDoses,

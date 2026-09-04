@@ -146,7 +146,9 @@ function foldInto(profileId: number, keepId: number, dropId: number): void {
 }
 
 function keeperLink(profileId: number, droppedId: number): string | null {
-  return getProfileSetting(profileId, `notify_recap_keeper_${droppedId}`) ?? null;
+  return (
+    getProfileSetting(profileId, `notify_recap_keeper_${droppedId}`) ?? null
+  );
 }
 
 function sentClaims(profileId: number): number {
@@ -277,9 +279,9 @@ describe("the four orderings (#4996 item 4)", () => {
     expect(autoMergeActivityDuplicates(p)).toBeGreaterThan(0);
     expect(
       (
-        db
-          .prepare("SELECT id FROM activities WHERE profile_id = ?")
-          .all(p) as { id: number }[]
+        db.prepare("SELECT id FROM activities WHERE profile_id = ?").all(p) as {
+          id: number;
+        }[]
       ).map((r) => r.id)
     ).toEqual([strava]);
 
@@ -353,10 +355,24 @@ describe("the four orderings (#4996 item 4)", () => {
     // produced a real message for the KEEPER, and it hashes to what the chat is
     // already showing. A rebuild that had silently declined would be indistinguishable
     // from this by edit count alone.
+    const rebuiltHash = () =>
+      messageBodyHash(composeForSend(p, rebuildWorkoutRecap(p, pointer)!));
     const rebuilt = rebuildWorkoutRecap(p, pointer);
     expect(rebuilt).not.toBeNull();
     expect(plainBody(rebuilt!.body)).toContain(ACTIVITY_TYPE_ASK_PROMPT);
-    expect(messageBodyHash(composeForSend(p, rebuilt!))).toBe(pointer.bodyHash);
+    expect(rebuiltHash()).toBe(pointer.bodyHash);
+
+    // AND THE COMPARISON CAN FAIL — forged through the SAME pair the assertion above
+    // reads, not through a fresh query written to check the work. A code-level mutation
+    // cannot show this: the send and the rebuild are ONE builder by design, so anything
+    // that changes the render changes both sides of the hash equally. Only a keeper that
+    // genuinely says something else moves it, which is the whole question the pin asks.
+    db.prepare("UPDATE activities SET title = 'Evening Ride' WHERE id = ?").run(
+      b
+    );
+    expect(rebuiltHash()).not.toBe(pointer.bodyHash);
+    db.prepare("UPDATE activities SET title = 'Workout' WHERE id = ?").run(b);
+    expect(rebuiltHash()).toBe(pointer.bodyHash);
 
     vi.mocked(editMessageTextRaw).mockClear();
     const res = await reconcileProfileMessages(p);

@@ -205,7 +205,8 @@ export function finishRecapParts(
       : null;
   return {
     type: finishRow?.type ?? null,
-    leadLine: recapLine && weeklyLine ? `${recapLine}\n${weeklyLine}` : recapLine,
+    leadLine:
+      recapLine && weeklyLine ? `${recapLine}\n${weeklyLine}` : recapLine,
     ask,
   };
 }

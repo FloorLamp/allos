@@ -469,7 +469,11 @@ describe("the provisional line says details follow (#4996)", () => {
     ["recap-only", null as NotificationMessage | null],
     ["riding a dose message", doseMsg],
   ])("ends the message with it — %s", (_name, dose) => {
-    const msg = composeFinishNudge("Morning Ride done · 51 min", dose, withLine);
+    const msg = composeFinishNudge(
+      "Morning Ride done · 51 min",
+      dose,
+      withLine
+    );
     expect(plainBody(msg!.body).endsWith(STRAVA_DETAILS_FOLLOW_LINE)).toBe(
       true
     );
