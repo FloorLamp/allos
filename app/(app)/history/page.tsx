@@ -1051,13 +1051,18 @@ export default async function HistoryPage(props: {
           draws no context row at all — but the CARD itself, and the daylight band
           on the plot, draw regardless: `intraday` is non-null whenever a day is
           open (see above), rows or none. */}
-      {intraday ? (
-        // ONE ZOOM AND ONE CROSSHAIR FOR THE DAY (#4950). The panel mounts the chart
-        // twice — compact and wide, both in the DOM at once — and the add row below is
-        // about to read "the current view" off them. Two owners would mean two views
-        // and no way for this page to know which variant the viewport is showing, so
-        // the state lives here and both charts read it.
-        <IntradayInteractionProvider>
+      {/* ONE ZOOM AND ONE CROSSHAIR FOR THE DAY (#4950). The panel mounts the chart
+          twice — compact and wide, both in the DOM at once — and the add row BELOW
+          reads "the current view" off them. Two owners would mean two views and no way
+          for this page to know which variant the viewport is showing, so the state
+          lives here and both charts read it.
+
+          IT WRAPS THE CHART AND THE ADD LAYER TOGETHER, which is the whole point and
+          was the defect the e2e caught: closed around the chart alone, the add row fell
+          back to its own private pair and its label could never leave "Add". A provider
+          that does not span both readers is not a shared state. */}
+      <IntradayInteractionProvider>
+        {intraday ? (
           <div className={railGutter}>
             <IntradayPanel
               model={intraday}
@@ -1082,10 +1087,9 @@ export default async function HistoryPage(props: {
               selectedWindow={chartWindow}
             />
           </div>
-        </IntradayInteractionProvider>
-      ) : null}
+        ) : null}
 
-      {/* THE ADD LAYER SITS ABOVE THE ROWS IT CREATES (#4918 ruling 2) — under the
+        {/* THE ADD LAYER SITS ABOVE THE ROWS IT CREATES (#4918 ruling 2) — under the
           chart, not above it.
 
           THE ADD DOOR, KIND-RESOLVED. Filtered to a kind it IS that kind's backfill,
@@ -1094,51 +1098,55 @@ export default async function HistoryPage(props: {
           shipped (#4045 §1). Log kinds only — clinical, training and life records are
           created on their own surfaces — and never the future: every door here is
           bounded by today. */}
-      {canWrite ? (
-        <div className={`mb-2 text-sm ${railGutter}`} data-testid="history-add">
-          {/* THE OFFERS LINE FIRST (#4310 ruling), before the per-kind grammar below it,
+        {canWrite ? (
+          <div
+            className={`mb-2 text-sm ${railGutter}`}
+            data-testid="history-add"
+          >
+            {/* THE OFFERS LINE FIRST (#4310 ruling), before the per-kind grammar below it,
               and silent on a day with no standing offer. */}
-          <HistoryUsualOffers offers={usualOffers} date={day ?? todayStr} />
-          {!hasAddDoor ? (
-            /* IN ALL — AND IN A KIND WITH NOTHING TO OFFER — THE DOOR ASKS THE KIND
+            <HistoryUsualOffers offers={usualOffers} date={day ?? todayStr} />
+            {!hasAddDoor ? (
+              /* IN ALL — AND IN A KIND WITH NOTHING TO OFFER — THE DOOR ASKS THE KIND
                FIRST, which on a record page is the same act as narrowing to it. It
                scrolls rather than wraps for the same reason the filter row does. */
-            /* SYMPTOM IS EXEMPT FROM THE PRESENCE GATE (#4851 owner ruling) —
+              /* SYMPTOM IS EXEMPT FROM THE PRESENCE GATE (#4851 owner ruling) —
                `historyAddKinds` is the one computation that knows it, so the exemption
                cannot drift out of step with the rest of the gate. The row itself is a
                client component (#4950): it reads the window the chart is showing and
                adds it to the params these rules produced. */
-            <HistoryAddRow
-              timeFormat={prefs.timeFormat}
-              /* Only the day view has a chart, so only it has a window and a day for
+              <HistoryAddRow
+                timeFormat={prefs.timeFormat}
+                /* Only the day view has a chart, so only it has a window and a day for
                  the workouts door to open on (#4950 item 5). */
-              workoutsDate={day}
-              chips={historyAddKinds(presentKinds).map((candidate) => ({
-                kind: candidate,
-                label: HISTORY_KIND_LABELS[candidate],
-                params: chipHrefParams({ kind: candidate }),
-              }))}
-            />
-          ) : addVocabulary && addKind ? (
-            <HistoryAddDoor
-              kind={addKind}
-              /* The window the chip carried, already parsed and refused if it was not
+                workoutsDate={day}
+                chips={historyAddKinds(presentKinds).map((candidate) => ({
+                  kind: candidate,
+                  label: HISTORY_KIND_LABELS[candidate],
+                  params: chipHrefParams({ kind: candidate }),
+                }))}
+              />
+            ) : addVocabulary && addKind ? (
+              <HistoryAddDoor
+                kind={addKind}
+                /* The window the chip carried, already parsed and refused if it was not
                  one (#4950). It rides the URL rather than client state, so it survives
                  a reload with the form open. */
-              window={chartWindow ? intradayWindowParams(chartWindow) : null}
-              /* The practice this profile usually does at that moment — a prefill a tap
+                window={chartWindow ? intradayWindowParams(chartWindow) : null}
+                /* The practice this profile usually does at that moment — a prefill a tap
                  confirms, never a claim about what happened. */
-              defaultPractice={windowPractice}
-              // THE DAY THE READER WAS LOOKING AT. Finding a gap is the reason to open
-              // this door at all, so the form opens on that day rather than on today —
-              // the context the redirect used to throw away.
-              date={day ?? todayStr}
-              maxDate={todayStr}
-              vocabulary={addVocabulary}
-            />
-          ) : null}
-        </div>
-      ) : null}
+                defaultPractice={windowPractice}
+                // THE DAY THE READER WAS LOOKING AT. Finding a gap is the reason to open
+                // this door at all, so the form opens on that day rather than on today —
+                // the context the redirect used to throw away.
+                date={day ?? todayStr}
+                maxDate={todayStr}
+                vocabulary={addVocabulary}
+              />
+            ) : null}
+          </div>
+        ) : null}
+      </IntradayInteractionProvider>
 
       {/* THE TWO EMPTY STATES ARE DIFFERENT MESSAGES (#1410), and the difference is
           the whole design: an EMPTY ACCOUNT is fixed by putting data in, a FILTERED
