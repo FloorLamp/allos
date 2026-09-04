@@ -1375,28 +1375,34 @@ export function getHrMinutes(profileId: number, date: string): HrMinute[] {
   );
 }
 
-// Per-minute HR buckets (ts + bpm) within an inclusive [since, until] date range
-// (until omitted = open-ended), one source per day — the shared read behind the
-// training-zone aggregations (lib/queries/zones.ts), so zone minutes can't
-// double-count a workout recorded by two HR sources at once (issue #14).
+// Per-minute HR buckets (ts + bpm) within an inclusive [since, until] date range, one
+// source per day — the shared read behind the training-zone aggregations
+// (lib/queries/zones.ts), so zone minutes can't double-count a workout recorded by two
+// HR sources at once (issue #14). Both bounds are profile-local days.
+//
+// `until` IS REQUIRED (#5069). It used to default to the day of the profile's LAST
+// STORED instant, which reads as "to now" only while the last row is roughly now — a
+// coincidence, not a bound. A device stamping ahead (#5035) widened this scan with
+// nothing saying so: #5069 records a snapshot whose rows ran into the future, where the
+// zone reads materialised 144,000 minutes and kept 86. Every caller already knew the
+// window it meant, so the open-ended form is DELETED rather than guarded — the
+// parameter is the bound, and a caller that forgets one no longer compiles.
 //
 // REQUEST-CACHED because a dashboard asks for the SAME window more than once (#5010):
-// `getDayLoadInputs` and `getIntensitySignal` both open-endedly read the same 42 days
-// on one render, and each read is a wide materialisation. `cache()` is identity outside
-// a Next request (lib/request-cache.ts says so deliberately), so a notify tick and the
-// DB tier behave exactly as before. Keyed on the arguments, so the open-ended form
-// (`until` undefined) and a bounded one stay separate reads, as they must.
+// `getDayLoadInputs` and `getIntensitySignal` read the same 42 days on one render, and
+// each read is a wide materialisation. `cache()` is identity outside a Next request
+// (lib/request-cache.ts says so deliberately), so a notify tick and the DB tier behave
+// exactly as before. Keyed on the arguments, so two spellings of one span would stay
+// separate reads — with `until` required, the trailing window has one spelling.
 export const getHrMinutesInRange = cache(function getHrMinutesInRange(
   profileId: number,
   since: string,
-  until?: string
+  until: string
 ): { ts: string; bpm: number }[] {
   const tz = getTimezone(profileId);
-  const bounds = hrInstantBounds(profileId);
-  if (!bounds) return [];
-  const lastDay = until ?? localDayOf(tz, bounds.last);
-  if (!lastDay || lastDay < since) return [];
-  const { startUtc, endUtc } = localDaySpan(tz, since, lastDay);
+  if (!hrInstantBounds(profileId)) return [];
+  if (until < since) return [];
+  const { startUtc, endUtc } = localDaySpan(tz, since, until);
   const rows = db
     .prepare(
       `SELECT ts, bpm, source FROM hr_minutes

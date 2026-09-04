@@ -138,8 +138,8 @@ function ctxFor(profileId: number): PersonaContext {
 // THE WINDOW IS THE BOUND SPAN, NOT THE ARGUMENTS THE CALLER SPELLED. `getHrMinutesInRange`
 // is memoized on `(profileId, since, until)`, so a duplicate of that tuple is already
 // impossible under the request cache — an assertion keyed on it could only ever restate
-// the memo. What the memo cannot see is two DIFFERENT spellings resolving to one span
-// (the open-ended form and the bounded one are the case its own comment names), and
+// the memo. What the memo cannot see is two DIFFERENT spellings resolving to one span —
+// #5069 has since required `until`, which retires the spelling that used to do it — and
 // that is a second full materialisation of the same rows. Keying on the statement's
 // parameters catches both that and a memo that stopped collapsing at all. The pattern
 // itself lives in the harness, because the profiler prints the same read's windows.
@@ -1103,7 +1103,7 @@ describe("actual atomic dashboard manifests", () => {
   // none carries an open illness, and /medications is unmoved: med-data now reads the
   // same rows through the one loader instead of assembling its own copy.
   // −1 on EVERY persona (#5010): `getHrMinutesInRange` joined the request cache.
-  // `getDayLoadInputs` and `getIntensitySignal` both read the same open-ended 42-day
+  // `getDayLoadInputs` and `getIntensitySignal` both read the same trailing 42-day
   // window on one render, so the memo collapses two identical reads into one. It moves
   // every persona, including those with no `hr_minutes` at all, because the second read
   // was issued regardless of what it returned.
@@ -1391,8 +1391,8 @@ describe("actual atomic dashboard manifests", () => {
         "rows — the cost #5010 removed — and it is invisible to a statement COUNT,\n" +
         "because N reads of N windows and N reads of one window are both N.\n" +
         "The usual cause is a caller reaching the reader outside the request memo, or\n" +
-        "two callers spelling one span differently (the open-ended form and the bounded\n" +
-        "one key separately, by design, and resolve to the same window)."
+        "two callers spelling one span differently — separate keys, one window. #5069\n" +
+        "required `until`, so the trailing window now has a single spelling."
     ).toEqual([]);
   });
 });
