@@ -15,11 +15,12 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { db, today } from "@/lib/db";
 import { setProfileSetting } from "@/lib/settings";
 import { setProfileSubstanceTelegram } from "@/lib/settings/notifications";
-import { shiftDateStr } from "@/lib/date";
+import { shiftDateStr, zonedMinuteStr } from "@/lib/date";
 import {
   getOvernightHrMinSeries,
   OVERNIGHT_MIN_MEASURED_MIN,
 } from "@/lib/queries/event-physiology";
+import { getHrMinutesInRange } from "@/lib/queries/metrics";
 import { gatherSubstanceObservationLine } from "@/lib/notifications/digest-data";
 import { ALCOHOL_FOOD_GROUP } from "@/lib/substance-use";
 
@@ -131,6 +132,155 @@ describe("the overnight-hr-min stream", () => {
       `${day}T05:00`
     );
     expect(getOvernightHrMinSeries(profileId, 90)).toEqual([]);
+  });
+});
+
+// The per-night SLICE must return what the per-night FILTER returned (#5010).
+//
+// The reader stopped scanning the whole span once per night. The risk in that is not
+// arithmetic, it is ORDER: the slice is a binary search, and the stamps it searches
+// are profile-local, which on a fall-back night run 01:59 → 01:00 while the instants
+// keep climbing. So the equivalence is asserted against the materialising filter
+// ITSELF, over a zone that transitions, rather than against hand-written expectations
+// that would encode the same assumption twice.
+describe("the night slice equals the night filter", () => {
+  // The filter this reader used to run, kept here as the reference implementation.
+  const byFilter = (rows: { ts: string; bpm: number }[], from: string, to: string) =>
+    rows.filter((b) => b.ts >= from && b.ts < to);
+
+  it.each([
+    ["UTC, ordinary nights", "UTC", ["2026-06-10", "2026-06-11", "2026-06-12"]],
+    // 2026-11-01 is New York's fall back: 01:59 EDT is followed by 01:00 EST, so the
+    // night of the 31st→1st contains a repeated wall-clock hour.
+    [
+      "America/New_York across the fall back",
+      "America/New_York",
+      ["2026-10-31", "2026-11-01", "2026-11-02"],
+    ],
+    // 2026-03-08 is the spring forward: an hour of wall clock does not happen.
+    [
+      "America/New_York across the spring forward",
+      "America/New_York",
+      ["2026-03-07", "2026-03-08", "2026-03-09"],
+    ],
+  ])("agrees with the filter in %s", (_label, tz, days) => {
+    const id = newProfile(`slice-${tz}-${days[0]}`);
+    setProfileSetting(id, "timezone", tz);
+    // 480 measured minutes, not the 240 default: the session runs 23:00Z→07:00Z and
+    // New York's transition sits at 06:00Z, so a half-seeded night stops short of the
+    // seam and the DST rows would test the ordinary case twice over.
+    days.forEach((day, i) => seedNight(id, day, 44 + i, 480));
+
+    const series = getOvernightHrMinSeries(id, 90);
+
+    // The reference: the same minutes, filtered per night rather than sliced.
+    const nights = db
+      .prepare(
+        `SELECT date, started_at, ended_at FROM metric_samples
+          WHERE profile_id = ? AND metric = 'sleep_min' ORDER BY date`
+      )
+      .all(id) as { date: string; started_at: string; ended_at: string }[];
+    // The reader derives its own span from the FIRST night's start, which is the
+    // evening BEFORE the first wake day — read the same span or the reference misses
+    // the minutes before midnight and reports a floor that is not the night's.
+    const rows = getHrMinutesInRange(
+      id,
+      shiftDateStr(days[0], -1),
+      days[days.length - 1]
+    );
+    const expected = nights.flatMap(({ date, started_at, ended_at }) => {
+      const from = zonedMinuteStr(tz, new Date(started_at));
+      const to = zonedMinuteStr(tz, new Date(ended_at));
+      const inNight = byFilter(rows, from, to);
+      return inNight.length < OVERNIGHT_MIN_MEASURED_MIN
+        ? []
+        : [{ date, value: Math.min(...inNight.map((b) => b.bpm)) }];
+    });
+
+    // THE FIXTURE MUST REACH THE STATE THIS GUARD IS ABOUT, and there are two of
+    // them. Nights that produced no rows would make both sides empty and prove
+    // nothing; and the SORT is only under test where the rows arrive out of local
+    // order, which happens on the fall-back night and nowhere else. Counted, not
+    // assumed — the first version of this table seeded half a night, never reached the
+    // seam, and stayed green with the sort deleted.
+    expect(expected.length).toBeGreaterThan(0);
+    // One DESCENT, not sixty rows: the stamps climb to 01:59 EDT, drop to 01:00 EST
+    // and climb again, so exactly one adjacent pair goes backwards — and the 60
+    // minutes after it are the ones a search over the unsorted array would miss.
+    const descents = rows.filter((r, i) => i > 0 && r.ts < rows[i - 1].ts).length;
+    expect(descents).toBe(days.includes("2026-11-01") ? 1 : 0);
+    expect(series).toEqual(expected);
+  });
+});
+
+// THE CASE THAT SEPARATES THE TWO ORDERS, and the reason the table above does not.
+//
+// A window whose boundary sits OUTSIDE the repeated hour selects the same rows under
+// either order — the disorder is wholly inside the slice, and a minimum does not care
+// how its inputs are arranged. The orders differ only when a boundary lands INSIDE the
+// repeat, because then the answer depends on finding every row below it, and a binary
+// search over a non-monotone array cannot. So this night ENDS at 01:30 on the fall-back
+// morning: a wall clock that came round twice, with the session stopping in its second
+// pass.
+describe("a night that ends inside the repeated hour", () => {
+  const TZ = "America/New_York";
+
+  it("takes both passes of the repeated minutes below the boundary", () => {
+    const id = newProfile("fall-back-boundary");
+    setProfileSetting(id, "timezone", TZ);
+    // 23:00Z on the 31st (19:00 EDT) to 06:30Z on the 1st. New York falls back at
+    // 06:00Z, so 06:30Z reads 01:30 EST — the SECOND time the clock says 01:30.
+    const start = "2026-10-31T23:00:00Z";
+    const end = "2026-11-01T06:30:00Z";
+    db.prepare(
+      `INSERT INTO metric_samples
+         (profile_id, source, metric, date, started_at, ended_at, value)
+       VALUES (?, 'health-connect', 'sleep_min', '2026-11-01', ?, ?, 450)`
+    ).run(id, start, end);
+    const insertHr = db.prepare(
+      `INSERT INTO hr_minutes (profile_id, ts, bpm, n, source)
+       VALUES (?, ?, ?, 1, 'health-connect')`
+    );
+    const base = Date.parse(start);
+    // THREE BLOCKS, PLACED SO EACH WRONG ANSWER IS A DIFFERENT NUMBER. Everything is
+    // 58 except two half-hours either side of the seam:
+    //   35 at 01:30–01:59 EDT — the FIRST pass, ABOVE the boundary stamp, so a slice
+    //      that runs past the boundary reports 35;
+    //   39 at 01:00–01:29 EST — the SECOND pass, BELOW it, so a slice that stops at
+    //      the first stamp it sees at 01:30 loses this block and reports 58.
+    // The right answer is 39, and it is neither of the two ways of being wrong.
+    for (let i = 0; i <= 450; i++) {
+      const at = base + i * 60_000;
+      const firstPassLate =
+        at >= Date.parse("2026-11-01T05:30:00Z") &&
+        at < Date.parse("2026-11-01T06:00:00Z");
+      const secondPassEarly =
+        at >= Date.parse("2026-11-01T06:00:00Z") &&
+        at < Date.parse("2026-11-01T06:30:00Z");
+      insertHr.run(
+        id,
+        new Date(at).toISOString().slice(0, 16),
+        firstPassLate ? 35 : secondPassEarly ? 39 : 58
+      );
+    }
+
+    const rows = getHrMinutesInRange(id, "2026-10-31", "2026-11-01");
+    const from = zonedMinuteStr(TZ, new Date(start));
+    const to = zonedMinuteStr(TZ, new Date(end));
+    expect(to).toBe("2026-11-01T01:30");
+    const inNight = rows.filter((b) => b.ts >= from && b.ts < to);
+    // THE FIXTURE REACHES THE STATE, COUNTED RATHER THAN ASSUMED: the rows arrive with
+    // exactly one backwards step (the seam), the second pass is inside the window, and
+    // the first pass's below-boundary block is not.
+    expect(rows.filter((r, i) => i > 0 && r.ts < rows[i - 1].ts)).toHaveLength(1);
+    expect(inNight.filter((b) => b.bpm === 39)).toHaveLength(30);
+    expect(inNight.filter((b) => b.bpm === 35)).toHaveLength(0);
+
+    expect(getOvernightHrMinSeries(id, 90)).toEqual([
+      { date: "2026-11-01", value: 39 },
+    ]);
+    // …which is what the materialising filter says too.
+    expect(Math.min(...inNight.map((b) => b.bpm))).toBe(39);
   });
 });
 
