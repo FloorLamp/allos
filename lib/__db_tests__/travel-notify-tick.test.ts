@@ -19,6 +19,7 @@ import {
 import { db, today } from "@/lib/db";
 import {
   getProfileSetting,
+  getTimezone,
   getTravelSwitches,
   setProfileHouseholdRound,
   setProfileSetting,
@@ -46,7 +47,7 @@ import {
   isReminderSlotExcused,
   travelExcusalResolver,
 } from "@/lib/travel-excusal";
-import { isRepeatedSlot } from "@/lib/travel-timezone";
+import { isRepeatedSlot, resolveSwitchHistory } from "@/lib/travel-timezone";
 
 const HONOLULU = "Pacific/Honolulu";
 const LOS_ANGELES = "America/Los_Angeles";
@@ -175,7 +176,7 @@ describe("travel excusal at the real notification tick", () => {
     // Honolulu 09:45 → Los Angeles 12:45. Midday never occurred, but 13:00
     // remains `slotDue` through the retry band that used to resurrect it.
     switchProfileTimezone(east.receiver, LOS_ANGELES, HONOLULU);
-    const switches = getTravelSwitches(east.receiver);
+    const switches = resolveSwitchHistory(getTravelSwitches(east.receiver));
     expect(isReminderSlotExcused(switches, DAY, MIDDAY_MINUTE)).toBe(true);
 
     vi.setSystemTime(new Date("2026-06-17T20:00:00Z")); // Los Angeles 13:00
@@ -197,7 +198,7 @@ describe("travel excusal at the real notification tick", () => {
     const west = scenario("west", LOS_ANGELES);
     // Los Angeles 12:45 → Honolulu 09:45 repeats Midday instead of skipping it.
     switchProfileTimezone(west.receiver, HONOLULU, LOS_ANGELES);
-    const switches = getTravelSwitches(west.receiver);
+    const switches = resolveSwitchHistory(getTravelSwitches(west.receiver));
     expect(isRepeatedSlot(switches, DAY, MIDDAY_MINUTE)).toBe(true);
     expect(isReminderSlotExcused(switches, DAY, MIDDAY_MINUTE)).toBe(false);
 
@@ -215,7 +216,9 @@ describe("travel excusal at the real notification tick", () => {
     vi.setSystemTime(new Date("2026-05-01T14:01:00Z")); // Tokyo 23:01
     switchProfileTimezone(roundTrip.receiver, NEW_YORK, null); // New York 10:01
 
-    const switches = getTravelSwitches(roundTrip.receiver);
+    const switches = resolveSwitchHistory(
+      getTravelSwitches(roundTrip.receiver)
+    );
     expect(isReminderSlotExcused(switches, "2026-05-01", MIDDAY_MINUTE)).toBe(
       false
     );
@@ -233,7 +236,9 @@ describe("travel excusal at the real notification tick", () => {
     vi.setSystemTime(new Date("2026-05-01T14:01:00Z")); // Tokyo 23:01
     setProfileTimezoneFromSettings(settingsReturn.receiver, NEW_YORK);
 
-    const switches = getTravelSwitches(settingsReturn.receiver);
+    const switches = resolveSwitchHistory(
+      getTravelSwitches(settingsReturn.receiver)
+    );
     expect(isReminderSlotExcused(switches, "2026-05-01", MIDDAY_MINUTE)).toBe(
       false
     );
@@ -265,7 +270,9 @@ describe("travel excusal at the real notification tick", () => {
 
     // The retained suffix alone appears to skip 15:00, but the unrecorded
     // Athens→Paris seam made it occur. Both production consumers must fail open.
-    const switches = getTravelSwitches(disconnected.receiver);
+    const switches = resolveSwitchHistory(
+      getTravelSwitches(disconnected.receiver)
+    );
     expect(
       isReminderSlotExcused(switches, "2026-05-01", AFTERNOON_MINUTE)
     ).toBe(false);
@@ -275,6 +282,40 @@ describe("travel excusal at the real notification tick", () => {
 
     await tickProfile(disconnected.receiver, "disconnected", 5, Date.now());
     expectThreeSlotMessages(sentTo(disconnected.chatId));
+  });
+
+  it("anchors the retained history on the profile's CURRENT zone", async () => {
+    const anchored = scenario("anchored", NEW_YORK);
+
+    vi.setSystemTime(new Date("2026-05-01T10:00:00Z")); // New York 06:00
+    switchProfileTimezone(anchored.receiver, ATHENS, NEW_YORK); // Athens 13:00
+    vi.setSystemTime(new Date("2026-05-01T10:01:00Z")); // Athens 13:01
+    setTimezone(anchored.receiver, PARIS); // bare correction: Paris 12:01
+
+    // Read on its own, the single retained record anchors on its OWN destination and
+    // reads as a clean 06:00 → 13:00 skip over Midday. But the profile's day is on
+    // Paris, so that chain does not end where the profile is, and the seam that took
+    // it to Paris was never recorded. The current zone is what both consumers anchor
+    // on, and it is what rejects the history whole.
+    expect(getTravelSwitches(anchored.receiver).at(-1)?.to).toBe(ATHENS);
+    expect(getTimezone(anchored.receiver)).toBe(PARIS);
+    expect(
+      isReminderSlotExcused(
+        resolveSwitchHistory(
+          getTravelSwitches(anchored.receiver),
+          getTimezone(anchored.receiver)
+        ),
+        "2026-05-01",
+        MIDDAY_MINUTE
+      )
+    ).toBe(false);
+    expect(
+      travelExcusalResolver(anchored.receiver)("Midday", "2026-05-01")
+    ).toBe(false);
+
+    vi.setSystemTime(new Date("2026-05-01T10:03:00Z")); // Paris 12:03
+    await tickProfile(anchored.receiver, "anchored", 5, Date.now());
+    expectThreeSlotMessages(sentTo(anchored.chatId));
   });
 
   it("keeps malformed history quarantined through a later real switch", async () => {
@@ -326,7 +367,7 @@ describe("travel excusal at the real notification tick", () => {
     );
     expect(
       isReminderSlotExcused(
-        getTravelSwitches(invalid.receiver),
+        resolveSwitchHistory(getTravelSwitches(invalid.receiver)),
         "2026-05-01",
         AFTERNOON_MINUTE
       )

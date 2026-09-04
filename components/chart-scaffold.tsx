@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Label, type LabelProps } from "recharts";
+import { Label, ReferenceArea, ReferenceLine, type LabelProps } from "recharts";
+import type {
+  ChartDots,
+  ChartReference,
+  ChartTooltip,
+  ChartXAxis,
+  ChartYAxis,
+} from "./chart-spec";
 import { textWidth } from "@/lib/chart-svg";
 import { chartNeutral } from "@/lib/chart-colors";
 import {
@@ -897,4 +904,343 @@ export function ChartLegend({ items }: { items: ChartLegendItem[] }) {
       ))}
     </ul>
   );
+}
+
+// ── THE SPEC, RESOLVED (#4925) ──────────────────────────────────────────────
+//
+// A `chart-spec.ts` spec is plain data: it NAMES a mark, an axis kind, a dot
+// policy, and holds no prop bag and no render function, so a public card can
+// build one without importing recharts (which is the whole point of the code
+// split). These functions are the other half of that bargain — they turn a name
+// back into the bags above, and they live here because that is where the bags
+// live. Both renderers call them; nothing else does.
+
+/** The x axis a spec declares. A sparkline's axis stays MOUNTED (it still scales
+ *  the series) and simply stops painting itself. */
+export function chartSpecXAxisProps(
+  c: ChartColors,
+  x: ChartXAxis,
+  sparkline = false
+) {
+  if (sparkline) {
+    const key =
+      x.kind === "numeric" || x.kind === "category"
+        ? x.dataKey
+        : x.kind === "instant"
+          ? "t"
+          : "date";
+    return { dataKey: key, ...chartSparklineAxisProps() } as const;
+  }
+  switch (x.kind) {
+    case "day":
+      return {
+        tickFormatter: x.tickFormatter,
+        ...chartDayAxisProps(c, x.dates),
+      };
+    case "instant":
+      return chartInstantAxisProps(c, x.dates);
+    case "numeric":
+      return {
+        dataKey: x.dataKey,
+        type: "number" as const,
+        domain: x.domain,
+        tickFormatter: x.tickFormatter,
+        ...chartAxisProps(c),
+        ...(x.title
+          ? {
+              label: chartAxisLabelProps(c, x.title, {
+                position: "insideBottom",
+                offset: -2,
+              }),
+            }
+          : {}),
+      };
+    case "category":
+      return {
+        dataKey: x.dataKey,
+        tickFormatter: x.tickFormatter,
+        ...chartAxisProps(c),
+      };
+  }
+}
+
+/** One value axis a spec declares. */
+export function chartSpecYAxisProps(
+  c: ChartColors,
+  y: ChartYAxis,
+  sparkline = false
+) {
+  return {
+    ...(y.id ? { yAxisId: y.id } : {}),
+    ...(y.orientation ? { orientation: y.orientation } : {}),
+    ...(sparkline ? chartSparklineAxisProps() : chartAxisProps(c)),
+    ...(y.domain ? { domain: y.domain } : {}),
+    ...(y.ticks ? { ticks: y.ticks } : {}),
+    ...(y.tickFormatter
+      ? { tickFormatter: (v: unknown) => y.tickFormatter!(Number(v)) }
+      : {}),
+    ...(y.allowDecimals != null ? { allowDecimals: y.allowDecimals } : {}),
+    ...(y.unit != null ? { unit: y.unit } : {}),
+  };
+}
+
+/** The tooltip a spec declares, over `chartTooltipProps`' surface and motion. */
+export function chartSpecTooltipProps(
+  c: ChartColors,
+  motion: ChartMotion,
+  t: ChartTooltip
+) {
+  const animate = t.animate ?? true;
+  return {
+    ...(t.cursor === "bar"
+      ? { cursor: chartBarCursorProps(c) }
+      : t.cursor === "sparkline-bar"
+        ? { cursor: chartSparklineBarCursorProps(c) }
+        : {}),
+    ...(t.filterNull === false ? { filterNull: false } : {}),
+    formatter: (v: unknown, name: unknown, item: unknown, index: number) =>
+      t.row(
+        v,
+        String(name),
+        (item as { payload?: Record<string, unknown> } | undefined)?.payload,
+        index
+      ),
+    ...(t.label ? { labelFormatter: (v: unknown) => t.label!(String(v)) } : {}),
+    ...chartTooltipProps(c, motion),
+    // AFTER the spread, both of them: a chart wanting its own numeric order, and
+    // one whose labelled bands can force an edge flip that crosses the card, are
+    // each overriding a default the shared props just set.
+    ...(t.order
+      ? { itemSorter: (item: { dataKey?: unknown }) => t.order!(item.dataKey) }
+      : {}),
+    isAnimationActive: animate && !motion.reduced,
+    ...(animate ? {} : { wrapperStyle: { transition: "none" } }),
+  };
+}
+
+/** The resting mark a series declares. */
+export function chartSpecDots(c: ChartColors, d: ChartDots) {
+  switch (d.policy) {
+    case "none":
+      return false as const;
+    case "density":
+      return chartLineDot(c, {
+        color: d.color,
+        pointCount: d.pointCount,
+        enabled: d.enabled,
+        isolated: d.isolated,
+        inexact: d.inexact,
+      });
+    case "sparse":
+      return chartSparseDot(c, d.color);
+    case "exact":
+      return chartExactDot(c, d.color);
+    case "bounded":
+      return chartBoundedDot(c, d.color, d.inexact);
+    case "other-source":
+      return chartOtherSourceDot(c);
+    case "curve-end-label":
+      return chartCurveEndLabel(c, d.label, d.atIndex);
+  }
+}
+
+/**
+ * Exact or hollow at EVERY point, whatever the density says — a lab series,
+ * where the readings ARE the content and a bounded assay result must show that
+ * it is one. `chartLineDot`'s clutter threshold is the wrong rule here: thirty
+ * lab draws is a well-measured analyte, not a smudge.
+ *
+ * Deliberately NOT carrying `CHART_DOT_CLASS` or recharts' own dot classes,
+ * which is a difference from `chartPointDot` and not an oversight: this is the
+ * markup `BiomarkerChartInner` has always emitted, and #4925 may not change a
+ * consumer's rendered output. Whether the biomarker chart's marks SHOULD be
+ * findable by the selectors every other card's marks answer to is a real
+ * question, and it is one for the issue that asks it.
+ */
+function chartBoundedDot(
+  c: ChartColors,
+  color: string,
+  inexact: ReadonlySet<number>
+) {
+  const exact = chartExactDot(c, color);
+  const hollow = chartInexactDot(c, color);
+  return function BoundedDot({
+    cx,
+    cy,
+    index,
+  }: {
+    cx?: number | string;
+    cy?: number | string;
+    index?: number;
+  }) {
+    const key = `dot-${index ?? 0}`;
+    if (typeof cx !== "number" || typeof cy !== "number")
+      return <g key={key} />;
+    const mark = index != null && inexact.has(index) ? hollow : exact;
+    return (
+      <circle
+        key={key}
+        cx={cx}
+        cy={cy}
+        r={mark.r}
+        fill={mark.fill}
+        stroke={mark.stroke}
+        strokeWidth={mark.strokeWidth}
+      />
+    );
+  };
+}
+
+/**
+ * A label at one end of a reference curve instead of a mark at every point. The
+ * growth chart's percentile numbers are its legend, and they are anchored at
+ * each band's OWN last sample: a trajectory point past a band's reference-age
+ * range extends the axis beyond where that curve ends, so anchoring every label
+ * at the global last row made them all vanish.
+ */
+function chartCurveEndLabel(c: ChartColors, label: string, atIndex: number) {
+  return function CurveEndLabel({
+    cx,
+    cy,
+    index,
+  }: {
+    cx?: number | string;
+    cy?: number | string;
+    index?: number;
+  }) {
+    const key = `lbl-${label}`;
+    if (typeof cx !== "number" || typeof cy !== "number" || index !== atIndex)
+      return <g key={key} />;
+    return (
+      <text
+        key={key}
+        x={cx + 3}
+        y={cy}
+        dy={3}
+        fontSize={CHART_LABEL_FONT_SIZE}
+        fill={c.tick}
+        textAnchor="start"
+      >
+        {label}
+      </text>
+    );
+  };
+}
+
+/**
+ * The reference marks a spec declares, as recharts elements.
+ *
+ * An ARRAY rather than a component, for the reason this file's header gives:
+ * recharts identifies its children by component type, so a `<ChartReferences/>`
+ * wrapping them would be silently ignored and the marks would simply not draw.
+ *
+ * `yAxisId` is threaded onto every mark because recharts requires one from every
+ * child as soon as ANY axis carries an id (the dual-axis compare chart).
+ */
+export function chartReferenceMarks(
+  c: ChartColors,
+  references: readonly ChartReference[],
+  yAxisId?: string
+) {
+  const axis = yAxisId ? { yAxisId } : {};
+  return references.map((r, i) => {
+    switch (r.mark) {
+      case "event":
+        return (
+          <ReferenceLine
+            key={`ref-${i}`}
+            {...axis}
+            x={r.x}
+            {...chartAnnotationLineProps(r.kind)}
+          />
+        );
+      case "window":
+        return (
+          <ReferenceArea
+            key={`ref-${i}`}
+            {...axis}
+            x1={r.x1}
+            x2={r.x2}
+            {...chartWindowAreaProps(r.kind)}
+          />
+        );
+      case "unlogged":
+        return (
+          <ReferenceArea
+            key={`ref-${i}`}
+            {...axis}
+            x1={r.x1}
+            x2={r.x2}
+            fill={c.grid}
+            fillOpacity={0.45}
+            stroke="none"
+            // A plot can be shaded by two unrelated things — a protocol window
+            // the reader toggled on, and a silence in the data. Both are
+            // reference areas, so the unlogged run carries its own class: "is a
+            // protocol shaded here?" must never be answered by a gap.
+            className="chart-unlogged-band"
+            label={
+              r.label == null
+                ? undefined
+                : chartFittedAnnotationLabel(r.label, c.tick, "insideTop")
+            }
+          />
+        );
+      case "now":
+        return (
+          <ReferenceLine
+            key={`ref-${i}`}
+            {...axis}
+            x={r.x}
+            stroke={r.color}
+            strokeDasharray={chartDash.now}
+            label={chartAnnotationLabel(r.label, r.labelColor ?? c.tick, "top")}
+          />
+        );
+      case "target":
+        return (
+          <ReferenceLine
+            key={`ref-${i}`}
+            {...axis}
+            y={r.y}
+            stroke={r.color}
+            strokeDasharray={chartDash[r.dash]}
+            {...(r.width != null ? { strokeWidth: r.width } : {})}
+            label={
+              r.label == null
+                ? undefined
+                : chartAnnotationLabel(
+                    r.label,
+                    r.color,
+                    r.labelPosition,
+                    r.labelFontSize != null ? { fontSize: r.labelFontSize } : {}
+                  )
+            }
+          />
+        );
+      case "band":
+        return (
+          <ReferenceArea
+            key={`ref-${i}`}
+            {...axis}
+            y1={r.y1}
+            y2={r.y2}
+            fill={r.color}
+            fillOpacity={r.fillOpacity}
+            {...(r.strokeOpacity != null
+              ? { stroke: r.color, strokeOpacity: r.strokeOpacity }
+              : {})}
+            label={
+              r.label == null
+                ? undefined
+                : chartAnnotationLabel(
+                    r.label,
+                    r.labelColor ?? c.tick,
+                    r.labelPosition ?? "insideLeft"
+                  )
+            }
+          />
+        );
+    }
+  });
 }

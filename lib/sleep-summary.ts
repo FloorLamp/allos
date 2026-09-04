@@ -147,17 +147,28 @@ export function lastNightSummary(
 
   const periodStart = new Date(period.start);
   const periodEnd = new Date(period.end);
+  // ONE ZONE PER NIGHT, AND IT IS THE WAKE'S (#5018).
+  //
+  // #4820 made every sleep reader resolve each instant through the zone in force at
+  // THAT instant, which is right for a stamp read on its own and wrong for a PAIR that
+  // has to be read against each other. A night spanning a recorded switch would take
+  // its bedtime from the old zone and its wake from the new one, and the interval
+  // between them is then drawn from two clocks with different offsets: the 08-21 night
+  // stored `01:15Z → 08:59Z`, 464 minutes, printed 9:15 PM → 1:59 AM and drew a
+  // 4.7-hour bar for a 7.7-hour night.
+  //
+  // The wake's zone wins because it is already the one that NAMES this night —
+  // `groupByWakeDay` above keys on `zonedDateParts(zoneOf(zone, end), end).date`. The
+  // bed's zone is the other single-zone answer and would be equally self-consistent;
+  // taking the wake's introduces no new derivation, which is the whole argument.
+  const nightZone = zoneOf(zone, periodEnd);
   return {
     wakeDay: latest,
     durationMin,
     // Merged night spans the outer edges: onset of the first fragment → wake of the
     // last (#1191). For a single overnight these are its own bed/wake, unchanged.
-    bedMinutes: hhmmToMinutes(
-      zonedDateParts(zoneOf(zone, periodStart), periodStart).hhmm
-    ),
-    wakeMinutes: hhmmToMinutes(
-      zonedDateParts(zoneOf(zone, periodEnd), periodEnd).hhmm
-    ),
+    bedMinutes: hhmmToMinutes(zonedDateParts(nightZone, periodStart).hhmm),
+    wakeMinutes: hhmmToMinutes(zonedDateParts(nightZone, periodEnd).hhmm),
     baselineAvgMin,
     deltaMin,
     baselineNights,
@@ -420,8 +431,14 @@ export function consistencyNights(
   const rows = mainNights.map((n) => {
     const start = new Date(n.start);
     const end = new Date(n.end);
-    const bed = zonedDateParts(zoneOf(zone, start), start).hhmm;
-    const wake = zonedDateParts(zoneOf(zone, end), end).hhmm;
+    // One zone per night, the wake's — see lastNightSummary above (#5018). This
+    // reader needs it for a second reason: the bar's WIDTH is `wakeHour - bedHour`,
+    // so two clocks with different offsets do not merely mislabel the ends, they
+    // draw an interval that is not the session's length. The deviation the strip
+    // flags is measured across that same pair.
+    const nightZone = zoneOf(zone, end);
+    const bed = zonedDateParts(nightZone, start).hhmm;
+    const wake = zonedDateParts(nightZone, end).hhmm;
     const bedHour = clockHour(bed);
     const rawWakeHour = clockHour(wake);
     const wakeHour = rawWakeHour <= bedHour ? rawWakeHour + 24 : rawWakeHour;

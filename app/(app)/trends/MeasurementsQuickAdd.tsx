@@ -43,6 +43,7 @@ import {
 import type { TemperatureUnit, WeightUnit } from "@/lib/settings";
 import { TREND_METRIC_META } from "@/lib/trend-metrics";
 import InlineError from "@/components/InlineError";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import {
   addMeasurements,
   type MeasurementsSaveResult,
@@ -80,8 +81,9 @@ function refusedMessage(
 // itself after a save; the page mounts simply reset and stay put.
 //
 // ── The layout is INTRINSIC, never a viewport breakpoint (issue #2014) ───────
-// Those three hosts are ~400px (the quick-entry BottomSheet, `sm:max-w-md` less its
-// padding), ~912px (the Trends modal, `max-w-5xl`) and a page column. The grid used
+// Those three hosts are the quick-entry BottomSheet, the Trends modal and a page
+// column — and the first two are the SAME declared bucket since #4977, which is a
+// fact about the hosts and not about this file. The grid used
 // `sm:grid-cols-2 lg:grid-cols-4` — VIEWPORT queries, which read the window and know
 // nothing about the box the form is in. At a 1024px window the sheet therefore laid
 // four columns into 400px: 91px each, three-line label wraps, inputs at four
@@ -90,8 +92,15 @@ function refusedMessage(
 // screen got BIGGER, which is why it survived.
 //
 // `repeat(auto-fit, minmax(10.5rem, 1fr))` asks the CONTAINER instead, so it is
-// right in all three hosts and in any host nobody has thought of yet. Two things
-// follow from the same reasoning and are part of the same fix:
+// right in all three hosts and in any host nobody has thought of yet. THAT IS ALSO
+// WHY #4977 IS A ONE-LINE CHANGE SOMEWHERE ELSE: the quick-entry sheet was narrow
+// because its host declared no size and took the default bucket, and declaring `lg`
+// there (components/QuickEntryProvider.tsx's `SHEET`) flows this grid to four
+// fields a row with nothing in this file touched. A breakpoint added here would be
+// the defect above coming back — if a fix for a HOST's width wants a `md:` or `lg:`
+// on the grid below, the host is the thing to fix.
+//
+// Two things follow from the same reasoning and are part of the same fix:
 //   • a unit is not a peer control — it is a suffix INSIDE the field (`bpm`, `%`)
 //     or a two-state toggle on the field's trailing edge (°F/°C, mg/dL) — because
 //     the `input` + `select` flex row is precisely what overflowed;
@@ -909,8 +918,25 @@ export default function MeasurementsQuickAdd({
     // A blood pressure is ONE reading typed as two numbers — one field, two inputs
     // and a slash. Adjacency used to be an ordering convention against a grid that
     // reflows freely; here it is structural.
+    //
+    // AND IT HOLDS TWO CONTROLS, so it takes two tracks WHERE THERE ARE TWO
+    // (#4977 item 2). A track is sized for one input; splitting one between two of
+    // them plus a slash and a unit left each under the length of its own
+    // placeholder, which then truncated mid-word — the field said "Sy" and "Dia"
+    // where it means systolic and diastolic. Two tracks give each input a track's
+    // room, and the placeholders can say the words.
+    //
+    // The `sleepWindow` cell above spans two tracks UNCONDITIONALLY (#4991), which
+    // is the same idea one gate short — at a one-column width it invents the narrow
+    // implicit track described on GRID_CLASS. It is left alone here: the Bed & wake
+    // pair is #4976's surface and out of this issue's scope.
     bloodPressure: (
-      <Field key="blood-pressure" label="Blood Pressure" htmlFor="m-systolic">
+      <Field
+        key="blood-pressure"
+        label="Blood Pressure"
+        htmlFor="m-systolic"
+        tracks={2}
+      >
         <div className="flex items-center gap-1.5">
           <input
             id="m-systolic"
@@ -919,7 +945,7 @@ export default function MeasurementsQuickAdd({
             min="0"
             name="systolic"
             aria-label="Systolic"
-            placeholder="Sys"
+            placeholder="Systolic"
             className="input min-w-0 flex-1"
           />
           <span aria-hidden className="text-slate-400">
@@ -932,7 +958,7 @@ export default function MeasurementsQuickAdd({
             min="0"
             name="diastolic"
             aria-label="Diastolic"
-            placeholder="Dia"
+            placeholder="Diastolic"
             className="input min-w-0 flex-1"
           />
           <span className="shrink-0 text-xs font-medium text-slate-500 dark:text-slate-400">
@@ -1173,6 +1199,12 @@ export default function MeasurementsQuickAdd({
     sleep: [field.sleepWindow, field.sleep, ...(showHrv ? [field.hrv] : [])],
   };
 
+  // ONE sentence for what this form is (#4977 item 3): the same string whichever
+  // presentation renders it, and whichever mount is rendering.
+  const about = metric
+    ? `Add one manual ${metric.label.toLowerCase()} reading. It will appear alongside synced readings.`
+    : "Today’s body and vitals readings — fill in only what you measured. Shows up alongside synced readings.";
+
   return (
     <form
       id="measurements-quick-add"
@@ -1186,26 +1218,26 @@ export default function MeasurementsQuickAdd({
       data-life-stage={showGrowth ? "minor" : "adult"}
     >
       <input type="hidden" name="weight_unit" value={weightUnit} />
+      {/* WHAT THE FORM IS FOR, AS THE TITLE'S GLYPH (#4977 item 3, on #4918
+          ruling 4's precedent). It was a paragraph, and it said the same sentence
+          on every visit forever while holding the widest line under the title — the
+          shape that rule moves to an info affordance. `about` is authored ONCE and
+          read by both branches below; the two hosts used to carry their own copy of
+          it, which is how a sentence gets edited in one place and not the other.
+
+          IN A DIALOG THE HEADING IS THE HOST'S (#3361), so the glyph is the whole
+          of what this form contributes to that row — a heading of its own here
+          would print the panel's name twice, which is the thing #3361 removed. */}
       {presentation === "card" ? (
         <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-              {metric ? `Log ${metric.label}` : "Log measurements"}
-            </h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              {metric
-                ? `Add one manual ${metric.label.toLowerCase()} reading. It will appear alongside synced readings.`
-                : "Today’s body and vitals readings — fill in only what you measured. Shows up alongside synced readings."}
-            </p>
-          </div>
+          <h2 className="flex items-center gap-1 font-semibold text-slate-800 dark:text-slate-100">
+            {metric ? `Log ${metric.label}` : "Log measurements"}
+            <InfoTooltipIcon label={about} data-testid="measurements-help" />
+          </h2>
           {headerSlot}
         </div>
       ) : (
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          {metric
-            ? `Add one manual ${metric.label.toLowerCase()} reading. It will appear alongside synced readings.`
-            : "Today’s body and vitals readings — fill in only what you measured. Shows up alongside synced readings."}
-        </p>
+        <InfoTooltipIcon label={about} data-testid="measurements-help" />
       )}
 
       {/* The submission's one date + one optional Time (#2235 decision 3): the
@@ -1315,20 +1347,43 @@ export default function MeasurementsQuickAdd({
 // INTRINSIC columns (#2014): sized by the CONTAINER, not by the window, because
 // this one form is mounted in hosts ~400px, ~912px and a page column wide. Picking
 // a better breakpoint value only moves which host is wrong.
+//
+// `@container` IS PART OF THE SAME RULE, and it is what makes a two-track cell safe
+// (#4977 item 2). `auto-fit` counts its columns from the container and IGNORES
+// spans, so where only ONE column fits, a cell asking for two makes the grid invent
+// a second — an implicit track, sized `auto` from that cell's content. Measured at a
+// 320px viewport that produced `168px 82px`: a real column beside an invented 82px
+// one, and the next single-control field landed in the 82px. So a span is gated on
+// the CONTAINER having room for a second real column (21.75rem = two 10.5rem tracks
+// and the 0.75rem gap — the same arithmetic `auto-fit` itself does), which is the
+// #2014 rule applied to spans rather than an exception to it. A viewport query here
+// would be the defect above coming back.
 const GRID_CLASS =
-  "grid gap-3 grid-cols-[repeat(auto-fit,minmax(10.5rem,1fr))]";
+  "grid gap-3 @container grid-cols-[repeat(auto-fit,minmax(10.5rem,1fr))]";
 
 function Field({
   label,
   htmlFor,
   children,
+  tracks = 1,
 }: {
   label: string;
   htmlFor: string;
   children: ReactNode;
+  // How many of the grid's tracks this field's cell takes. One, unless the cell
+  // holds more than one control (#4977 item 2). Two is a CEILING, not a promise:
+  // the span is container-gated (see GRID_CLASS), so where the grid has only one
+  // real column the cell takes that column and the row is unchanged from a
+  // single-track field's. Measured across five viewports in
+  // e2e/measurements-form-layout.spec.ts.
+  tracks?: 1 | 2;
 }) {
   return (
-    <div className="min-w-0">
+    <div
+      className={
+        tracks === 2 ? "@min-[21.75rem]:col-span-2 min-w-0" : "min-w-0"
+      }
+    >
       <label className="label" htmlFor={htmlFor}>
         {label}
       </label>

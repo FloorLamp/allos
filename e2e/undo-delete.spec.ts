@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { hydratedClick, settledClick } from "./helpers";
+import { chartsSettled, hydratedClick, settledClick } from "./helpers";
 import { workerDbPath } from "./worker-env";
 
 // Issue #30: deleting a row keeps it in a short-lived holding table and offers an
@@ -218,6 +218,23 @@ test.describe("a metric_samples reading is undoable too (#2123)", () => {
       .getByRole("row")
       .filter({ hasText: HRV_PROBE_DATE });
     await expect(row).toHaveCount(1);
+
+    // SETTLE THE CHARTS BEFORE OPENING THE PORTALED MENU. `OverflowMenu`'s panel
+    // is `position: fixed` and glued to its trigger's rect at open time, and
+    // `scrollIntoViewIfNeeded` cannot move a fixed element — so growth ABOVE the
+    // trigger slides the panel off-viewport and the click on its item retries
+    // against `<html>` until the budget dies (the hazard e2e/helpers.ts names).
+    //
+    // This page has exactly that growth: measured 2026-09-04, the trigger's y
+    // goes 1492 -> 1748 about 240ms after the row is first locatable — 256px,
+    // one tick before `.recharts-wrapper` appears, so it is the chart cards
+    // taking their plot footprint. The row sits well below a 900px viewport, so
+    // the menu is opened after a scroll the growth then invalidates.
+    //
+    // Nothing about the page changed to make this true; the window simply moved
+    // under #4925, which reshaped when chart chunks land. Waiting removes the
+    // race rather than sampling it.
+    await chartsSettled(page, page.getByTestId("metric-detail-chart"));
 
     await row.getByLabel("Reading actions").click();
     await page.getByRole("menuitem", { name: "Delete", exact: true }).click();

@@ -26,6 +26,7 @@ import {
 import type { MeasurementsQuickEntry } from "@/lib/quick-entry-measurements";
 import type { QuickEntryForm, QuickEntryPrefill } from "@/lib/quick-log";
 import type { SessionProfile } from "@/lib/auth";
+import type { OverlaySize } from "./overlay";
 
 // The newest bodies load ON DEMAND (#1525/#1633/#1892). This host is mounted on every
 // route, and its promise is that it COSTS NOTHING until opened — a promise about
@@ -138,33 +139,53 @@ export function useQuickEntry(): QuickEntryApi {
   return ctx;
 }
 
-// The sheet's accessible name per form, and whether the mounted form already
-// renders that heading itself (in which case the sheet's copy is screen-reader
-// only, so the panel doesn't print the same sentence twice).
-const SHEET: Record<QuickEntryForm, { title: string; ownsHeading: boolean }> = {
-  food: { title: "Log food", ownsHeading: true },
+// The sheet's accessible name per form, whether the mounted form already renders
+// that heading itself (in which case the sheet's copy is screen-reader only, so the
+// panel doesn't print the same sentence twice), and HOW WIDE the panel gets from
+// `sm` up.
+//
+// THE SIZE IS DECLARED PER FORM, NOT PER HOST (#4977 item 1). One `BottomSheet`
+// mounts every body in this registry, so a width set on the mount below is a width
+// set for all of them — and the bodies genuinely differ: a dose list is a column of
+// rows, the measurements grid is a multi-column tool. #2774's three buckets are the
+// vocabulary for exactly that difference, so each form names the one its content is,
+// here, beside the title it already names. Every entry but `measurements` declares
+// `sm`, which is the sheet's historical default and therefore the width each of them
+// renders at today; measurements declares `lg`, the bucket
+// `OVERLAY_PANEL_MAX_WIDTH`'s own note already assigns to "the measurements grid".
+const SHEET: Record<
+  QuickEntryForm,
+  { title: string; ownsHeading: boolean; size: OverlaySize }
+> = {
+  food: { title: "Log food", ownsHeading: true, size: "sm" },
   // #1486/#1506: weight and vitals merged into ONE form (and one sheet row).
   // #3361: the form is mounted `presentation="modal"` below, so it renders no
   // heading of its own and the sheet prints this one.
-  measurements: { title: "Log measurements", ownsHeading: false },
-  dose: { title: "Log dose", ownsHeading: false },
-  practice: { title: "Log practice", ownsHeading: false },
+  //
+  // `lg` (#4977 item 1): the form's grid is INTRINSIC since #2014 — it asks its
+  // container (`repeat(auto-fit, minmax(10.5rem, 1fr))`) rather than the window — so
+  // the only thing standing between this mount and the two-row Vitals group the
+  // Trends modal already renders was a container that never said how wide it was.
+  // Nothing in the form changes; it flows to four fields a row on its own.
+  measurements: { title: "Log measurements", ownsHeading: false, size: "lg" },
+  dose: { title: "Log dose", ownsHeading: false, size: "sm" },
+  practice: { title: "Log practice", ownsHeading: false, size: "sm" },
   // #1892: the sheet's period row. The panel owns no heading — the verb is on the
   // button, which is the point.
-  cycle: { title: "Log period", ownsHeading: false },
+  cycle: { title: "Log period", ownsHeading: false, size: "sm" },
   // #2130: the sheet's mood row — the same check-in write, a second mount.
-  mood: { title: "Log mood", ownsHeading: false },
+  mood: { title: "Log mood", ownsHeading: false, size: "sm" },
   // #2785: the sheet's stool row. The panel owns no heading — the seven buttons ARE
   // the question, and a printed one above them would say it twice.
-  stool: { title: "Log stool form", ownsHeading: false },
+  stool: { title: "Log stool form", ownsHeading: false, size: "sm" },
   // #3327: the sheet's substance row. The panel owns no heading — the rows ARE the
   // question, and each carries its own verb.
-  substance: { title: "Log substance", ownsHeading: false },
+  substance: { title: "Log substance", ownsHeading: false, size: "sm" },
   // #4064: the sheet's symptom row. The panel owns no heading — the bar's own
   // "Daily symptoms" label is suppressed the way the illness cockpit suppresses it,
   // so the sheet prints the one heading.
-  symptom: { title: "Log symptom", ownsHeading: false },
-  document: { title: "Add document", ownsHeading: false },
+  symptom: { title: "Log symptom", ownsHeading: false, size: "sm" },
+  document: { title: "Add document", ownsHeading: false, size: "sm" },
 };
 
 // The measurements payload comes from the SHELL, everything else from the gather —
@@ -450,6 +471,7 @@ export default function QuickEntryProvider({
           open={open}
           onClose={close}
           title={sheet.title}
+          size={sheet.size}
           testId="quick-entry-sheet"
           // A sheet on the phone (where this opens from the quick-log sheet) and
           // a centered card from `md` up, so the palette's future adoption of the
