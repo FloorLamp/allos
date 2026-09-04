@@ -69,7 +69,9 @@ import {
   type HistoryRow,
 } from "@/lib/history-format";
 import type { AppRoute } from "@/lib/hrefs";
-import TimelineFilterLink from "@/components/TimelineFilterLink";
+import TimelineFilterLink, {
+  useHistoryFoldNavigate,
+} from "@/components/TimelineFilterLink";
 import DestinationLink from "@/components/DestinationLink";
 import { MedicalValue } from "@/components/ui";
 import { removeSymptom } from "@/app/(app)/symptom-actions";
@@ -232,6 +234,52 @@ export type HistoryRollupLine = HistoryRollup & {
   href: AppRoute;
   open: boolean;
 };
+
+// A ROLLUP LINE'S OWN COMPONENT, and the reason it exists at all is
+// `useHistoryFoldNavigate` (#4365): a hook cannot be called inside `rollups.map()`
+// directly — the list can hold a different number of lines render to render — so
+// each rollup line's own view-transition-wrapped navigation lives in its own
+// component instance instead, exactly the way a keyed list item usually earns one.
+function HistoryRollupToggle({
+  rollup,
+  subjectName,
+}: {
+  rollup: HistoryRollupLine;
+  subjectName?: string;
+}): ReactNode {
+  const onClick = useHistoryFoldNavigate(rollup.href);
+  return (
+    <TimelineFilterLink
+      href={rollup.href}
+      testId={`history-rollup-${rollup.key}`}
+      label={rollup.label}
+      ariaExpanded={rollup.open}
+      onClick={onClick}
+      className="flex min-w-0 flex-1 items-center gap-2 text-left"
+    >
+      <span
+        aria-hidden
+        className={`inline-flex h-4 w-4 shrink-0 items-center justify-center text-slate-500 transition dark:text-slate-400 ${
+          rollup.open ? "rotate-180" : ""
+        }`}
+      >
+        <IconChevronDown className="h-3.5 w-3.5" stroke={2} />
+      </span>
+      {/* LEFT-ALIGNED IN THE TITLE COLUMN, SPANNING TO THE FAR EDGE (#3958): a
+          rollup stands for a set, not for a row, so it draws no phantom trailing
+          cells to line up with the rows above it. */}
+      <span className="min-w-0 flex-1 truncate">{rollup.label}</span>
+      {subjectName ? (
+        <span
+          className={`shrink-0 text-xs font-normal text-slate-500 dark:text-slate-400 ${ROLLUP_SUBJECT_CAP}`}
+          data-testid="history-row-subject"
+        >
+          {subjectName}
+        </span>
+      ) : null}
+    </TimelineFilterLink>
+  );
+}
 
 // The domain's own delete, adapted to the ONE undoable-delete contract every "remove
 // a logged event" in the app answers to (owner ruling 2026-08-05).
@@ -1094,34 +1142,10 @@ export default function HistoryRows({
             <div
               className={`flex min-w-0 flex-1 items-center gap-2 ${rowClassName}`}
             >
-              <TimelineFilterLink
-                href={rollup.href}
-                testId={`history-rollup-${rollup.key}`}
-                label={rollup.label}
-                ariaExpanded={rollup.open}
-                className="flex min-w-0 flex-1 items-center gap-2 text-left"
-              >
-                <span
-                  aria-hidden
-                  className={`inline-flex h-4 w-4 shrink-0 items-center justify-center text-slate-500 transition dark:text-slate-400 ${
-                    rollup.open ? "rotate-180" : ""
-                  }`}
-                >
-                  <IconChevronDown className="h-3.5 w-3.5" stroke={2} />
-                </span>
-                {/* LEFT-ALIGNED IN THE TITLE COLUMN, SPANNING TO THE FAR EDGE
-                    (#3958): a rollup stands for a set, not for a row, so it draws no
-                    phantom trailing cells to line up with the rows above it. */}
-                <span className="min-w-0 flex-1 truncate">{rollup.label}</span>
-                {subjectNames[rollup.profileId] ? (
-                  <span
-                    className={`shrink-0 text-xs font-normal text-slate-500 dark:text-slate-400 ${ROLLUP_SUBJECT_CAP}`}
-                    data-testid="history-row-subject"
-                  >
-                    {subjectNames[rollup.profileId]}
-                  </span>
-                ) : null}
-              </TimelineFilterLink>
+              <HistoryRollupToggle
+                rollup={rollup}
+                subjectName={subjectNames[rollup.profileId]}
+              />
             </div>
           </li>
           {rollup.open ? rollup.rows.map(renderRow) : null}

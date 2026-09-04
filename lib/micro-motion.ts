@@ -260,6 +260,23 @@ export const CONTINUITY_MOTIONS = {
     "the reader's own tap, click or Enter on the summary. Nothing else opens a disclosure: a fold restored from memory on page load is already open and does not animate.",
     "the panel is simply at its full height on the frame the disclosure opens, and simply gone on the frame it closes; no transition is scheduled."
   ),
+  // The second tenant (#4365), and the first that crosses a NAVIGATION rather than a
+  // client toggle. /history's fold and rollup lines are still plain URL state (#4135:
+  // collapsed content stays server-omitted, the URL stays the carrier), so there is no
+  // client fold model here for a `.motion-<name>` element to transition — the whole
+  // re-rendered feed crosses at once. What smooths THAT without either side inventing
+  // a second state machine is the browser's own View Transition API: it diffs the
+  // page's own before/after paint, so a row that renders pixel-identical either side
+  // is never drawn as moving, and only the fold or rollup actually toggled visibly
+  // changes. Not a "route/page transition" in #3676's excluded sense — that phrase
+  // named a transition spanning two DIFFERENT documents' worth of state; this is one
+  // route re-rendering its own same params.
+  historyfold: continuityMotion(
+    250,
+    "every row that was not the one you tapped stays exactly where it was and exactly how it looked — the fold or rollup you opened or closed is the only thing that visibly changes.",
+    "the reader's own tap on a fold or rollup toggle (TimelineFilterLink, via useHistoryFoldNavigate). A `?open=`/`?expand=` link loaded directly, or a navigation this browser has no View Transition API for, renders with no transition scheduled — the ordinary `<Link>` navigation runs instead.",
+    "the new feed is simply on screen on the frame the navigation completes, exactly as a browser with no View Transition support already renders it; no transition is scheduled."
+  ),
 } as const satisfies Record<string, ContinuityMotionDecl>;
 
 export type ContinuityMotion = keyof typeof CONTINUITY_MOTIONS;
