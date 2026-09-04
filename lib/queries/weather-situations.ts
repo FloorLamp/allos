@@ -189,10 +189,10 @@ export function activeWeatherSituationNames(
 
 // The dated during-windows for one weather situation over the profile's cached history
 // — the input the pooled situation-impact engine consumes (#1297). Reconstructed from
-// the predicate over the cache rather than from a transition log, which is exactly why
-// a derived WEATHER situation can carry an impact card where derived poor-sleep cannot:
-// the spell is a reproducible fact in the series, not a per-day verdict (the #1360
-// window-source rule, and why weather is its documented exception).
+// the predicate over the cache rather than from a transition log, which is why a derived
+// WEATHER situation carries an impact card where derived poor-sleep does not: the spell
+// is a run of days anyone can recompute, while a rough night is dated (#3993) but never
+// collected into a span (the #1360 window-source rule, and weather's exception to it).
 export function getWeatherSituationWindows(
   profileId: number,
   situation: WeatherSituationName,

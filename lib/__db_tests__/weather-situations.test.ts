@@ -276,6 +276,36 @@ describe("situational intake gating on weather (#1726 payoff 1)", () => {
     ).toBe(false);
   });
 
+  // AND THE OTHER DIRECTION, which only became askable when the resolver was dated
+  // (#3993): the test above asks about TODAY and ignores the tail, this one asks ABOUT a
+  // tail day. Weather is the source that proves the refusal — periodOnDate refuses its
+  // own future (#2613) and no night ends on a day that has not happened, but the cache
+  // really does hold WEATHER_FORECAST_DAYS ahead, so a free `date` could otherwise turn
+  // a situation on from weather nobody has lived through.
+  it("refuses a day that has not happened, spell or no spell", async () => {
+    const p = newProfile("heat-future");
+    keyItem(p, "Electrolytes", BUILTIN_HEATWAVE_SITUATION);
+    const anchor = today(p);
+    // Hot from day-5 through day+3, so today AND tomorrow sit inside the spell — the
+    // difference between them is only that one of them has happened.
+    await runWeatherSync(
+      p,
+      dailySource(
+        trailing(shiftDateStr(anchor, 3), 9, () => ({
+          tempMaxC: HEATWAVE_ENTER_C + 3,
+        }))
+      )
+    );
+    expect({
+      today: getEffectiveActiveSituations(p, anchor).has(
+        BUILTIN_HEATWAVE_SITUATION
+      ),
+      tomorrow: getEffectiveActiveSituations(p, shiftDateStr(anchor, 1)).has(
+        BUILTIN_HEATWAVE_SITUATION
+      ),
+    }).toEqual({ today: true, tomorrow: false });
+  });
+
   it("stays silent for a profile with no home location", async () => {
     const id = Number(
       db.prepare("INSERT INTO profiles (name) VALUES ('no-home-weather')").run()
