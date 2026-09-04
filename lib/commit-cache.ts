@@ -26,11 +26,12 @@
 // counter inside `writeTx` on the grounds that it is "the one path every mutation
 // takes". It is not, and the difference is a stale health reading. `writeTx` is where
 // every write TRANSACTION goes — lib/__tests__/immediate-tx.test.ts enforces that and
-// nothing else — but a single-statement write needs no transaction and dozens skip it:
-// `deleteAppointment` is a bare `db.prepare("DELETE FROM appointments …").run(…)`, and
-// `getScheduledAppointments` is one of the gathers memoized here. A writeTx-only
-// counter would have served the deleted appointment straight back to the dashboard.
-// SQLite's own counter has no such hole and needs no instrumentation at any write site.
+// nothing else — but a single-statement write needs no transaction and dozens skip it.
+// `deleteAppointment` (app/(app)/encounters/appointment-actions.ts) removes the row with
+// one prepared statement and no wrapper, and `getScheduledAppointments` is one of the
+// gathers memoized here, so a writeTx-only counter would have served the deleted
+// appointment straight back to the dashboard. SQLite's own counter has no such hole and
+// needs no instrumentation at any write site.
 //
 // OVER-INVALIDATION IS THE DESIGN, not an accident: neither half of the version is per
 // profile, so any write anywhere drops every profile's entry. Making it per profile
