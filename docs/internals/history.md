@@ -198,6 +198,42 @@ the add layer does not spend the chrome budget below; what it fixes is that the 
 own content had the weakest position on its own page, under three frames of three
 styles. The add layer sits directly above the rows it creates, offers first (#4832).
 
+**From `xl` that stack becomes two columns** (#4974). The day bar runs across the
+top; beneath it the rows keep the reading measure in the left column and a **sticky
+rail** on the right holds, top to bottom, the chart card, the add layer and the month
+calendar — `grid-template-columns: 48rem minmax(0, 760px)`, the page capped at their
+sum plus the gap (`PageContainer width="rail"`, 97rem). The reading column is the
+right width for one-line rows and the wrong one for the day's map: at `xl` it left
+half the viewport empty and capped the chart inside it, and reading the rows took the
+map off screen. With the rail sticky, a tick tap scrolls the rows beside a chart that
+stays put.
+
+**Below `xl` nothing changes** — no grid, the same source order, the same widths. The
+rail comes FIRST in the document and is placed into column 2 explicitly, because
+source order is what the stacked layout reads and there the chart and the add layer
+belong above the rows they map and create. The left track is a fixed `48rem` rather
+than `minmax(0, 48rem)`: two flexible tracks share free space evenly, which at 1280
+would hand the rows 488px and call it a reading column. Measured rail widths, content
+minus the column and the gap: **208px at 1280, 368 at 1440, 528 at 1600, 760 at 1920**
+(the ceiling, where the page cap takes over).
+
+**The calendar is open in the rail, and a door everywhere else.** It is a door
+(#4102) because the grid could not spend the ~140px chrome budget above the first
+record; in the rail it is BESIDE the rows and spends none of it, so at `xl` on the day
+view the trigger in the pinned cluster stands down and the grid renders inline. Both
+mounts are the same `EventMonthGrid` — the binding split out of `EventCalendar` so the
+popover host and the rail host cannot drift into two answers about what a marked day
+means. `MonthCalendar`'s `href` is a function, which a Server Component cannot hand
+across the RSC boundary, so that binding lives client-side either way.
+
+**The rail cannot outgrow the viewport.** A sticky element taller than the screen pins
+its top and strands its own bottom, unreachable at any page scroll, so it is capped at
+`100dvh` minus its two `1.5rem` insets and scrolls inside itself past that. The scroll
+chains at the ends rather than being contained, so reaching the rail's bottom keeps
+scrolling the page. The **jump-rail scrubber does not exist on the day view at all** —
+`windowed` is null when `?day=` is set, so there are no ticks and `railGutter` is
+empty there; the rail spends no lane of its own.
+
 **The day bar names the day** (#4918): `TimelineDayNav` prints
 `Wed, September 3 — 15 records` between its arrows, in the #3958 header grammar and
 with "0 records" on an empty day. The per-group `<h2>` is the FEED's only — on the day
