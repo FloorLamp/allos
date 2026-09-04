@@ -26,7 +26,7 @@ import {
   USUAL_RECENT_EVENTS,
 } from "../event-physiology";
 import { activityWindow, type ActivityWindow } from "../training-zones";
-import { arrivalWait, ARRIVAL_LAG_MAX_MIN } from "../arrival-wait";
+import { arrivalWait } from "../arrival-wait";
 import { getArrivalLagMinutes } from "../queries/integrations";
 import { HEALTH_CONNECT_ID } from "../integrations/health-connect";
 import {
@@ -80,10 +80,29 @@ function recentlyFinishedPractices(
   // `overdue` sends nothing and burns no marker. That would silence the finish note
   // for exactly the profiles whose data arrived soonest.
   //
-  // So the constant is the FLOOR and the default, and a genuinely slower pipeline is
-  // what the measurement is for. The cap is the sample's own declared plausibility
-  // bound rather than a new number — `getArrivalLagMinutes` already drops any arrival
-  // beyond it, so no measurement can reach past it by construction.
+  // SO THE CONSTANT IS BOTH BOUNDS, AND THEY ARE THE SAME NUMBER (#5127 review, second
+  // finding). `PRACTICE_RECAP_BOUND_MIN` was carrying TWO rules and the fix above moved
+  // only one of them:
+  //
+  //   * the RETRY rule — how long the app must wait for coverage — which is the floor
+  //     `minWindowMin` now states, and which a quicker pipeline may not lower;
+  //   * the MOMENT rule — how long a finish note stays worth sending — which was doing
+  //     its work as the cap, and which a slower pipeline may not raise. A message about
+  //     a sauna three hours ago is a bulletin, not a finish note, and that is a claim
+  //     about the moment rather than about the pipeline.
+  //
+  // Raising the cap to the sample's plausibility bound deleted the second rule: a
+  // profile measuring a 400-minute lag would have sent a finish note nearly six hours
+  // after the practice ended. So both are the constant, and the consequence is stated
+  // rather than hidden — a pipeline genuinely slower than the bound LOSES the finish
+  // note, which is the answer that shipped before this lane and is not this lane's to
+  // change.
+  //
+  // The two together make `arrivalWaitWindowMin` a CONSTANT for this consumer:
+  // `min(max(measured ?? 120, 120), 120)`. That is deliberate and not a degenerate use
+  // of the model — the measurement contributes the ETA and nothing else here. Do not
+  // "simplify" either bound away; each one alone reintroduces exactly one of the two
+  // defects above.
   //
   // WHAT IS MEASURED, and why it is not literally the heart rate. The recap needs HR
   // coverage over the window, but `hr_minutes` is not one of the tables
@@ -106,7 +125,7 @@ function recentlyFinishedPractices(
       defaultLagMin: PRACTICE_RECAP_BOUND_MIN,
       graceMin: 0,
       minWindowMin: PRACTICE_RECAP_BOUND_MIN,
-      maxMin: ARRIVAL_LAG_MAX_MIN,
+      maxMin: PRACTICE_RECAP_BOUND_MIN,
       elapsedMin: localMinutesBetween(window.end, nowLocal),
     });
     if (wait.kind !== "waiting") continue;
