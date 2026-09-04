@@ -31,6 +31,7 @@
 import {
   dateStrInTz,
   parseUtcSql,
+  shiftDateStr,
   tzOffsetMs,
   zonedWallTimeToUtc,
 } from "./date";
@@ -202,6 +203,20 @@ export function localDaySpan(
   return { startUtc: instant(start.getTime()), endUtc: instant(end.getTime()) };
 }
 
+// A calendar date's midnight instant and the days either side of it, memoised per
+// window by `localMinuteProjector`.
+interface UtcDay {
+  midnightMs: number;
+  dates: [string, string, string];
+}
+
+// The shape every stored instant column holds: a calendar date, a separator, and a
+// minute of day. Canonical rows spell it 'YYYY-MM-DDTHH:MM:SSZ'; SQLite's own
+// datetime() spells the separator as a space, and both are read by index below.
+const STORED_STAMP = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/;
+
+const pad2 = (n: number): string => (n < 10 ? `0${n}` : String(n));
+
 // The profile-local MINUTE stamp ('YYYY-MM-DDTHH:MM') of every stored instant in one
 // window, derived from the window's offset segments instead of from `Intl` per row.
 //
@@ -236,22 +251,83 @@ export function localMinuteProjector(
 ): (ts: string) => string | null {
   const segments = offsetSegments(tz, startUtc, endUtc).map((s) => ({
     startMs: parseUtcSql(s.startUtc)?.getTime() ?? 0,
-    offsetMs: s.offsetMinutes * 60_000,
+    offsetMinutes: s.offsetMinutes,
   }));
+  // Linear over at most `maxSegments` (8) entries, and 1 or 2 for every window the
+  // app asks for — cheaper than a binary search's setup at this length, and the rows
+  // arrive in no guaranteed order so a cursor would not hold.
+  const offsetMinutesFor = (utcMs: number): number => {
+    let offset = segments.length > 0 ? segments[0].offsetMinutes : null;
+    for (const seg of segments) {
+      if (utcMs < seg.startMs) break;
+      offset = seg.offsetMinutes;
+    }
+    return offset ?? offsetMinutesAt(tz, new Date(utcMs));
+  };
+
+  // ONE `Date` PER CALENDAR DAY IN THE WINDOW, NOT ONE PER ROW (#5061). The segments
+  // above removed `Intl` from the row loop; measured after that, what was left was
+  // the row loop's own `new Date(...).toISOString()` — 294,420 of each on one
+  // dashboard render, 1.0 µs apiece and the single largest remaining self time on the
+  // page. A stored stamp is a fixed-width UTC calendar date and a minute-of-day, so
+  // everything a local minute needs from that date — its midnight instant, and the
+  // calendar days either side of it for a minute that rolls over — is the same for
+  // every row of that day and is memoised here. The row itself is then integer
+  // arithmetic on two character pairs.
+  const days = new Map<string, UtcDay | null>();
+  const dayOf = (date: string): UtcDay | null => {
+    const known = days.get(date);
+    if (known !== undefined) return known;
+    const midnightMs = Date.parse(`${date}T00:00:00Z`);
+    // THE DAY LABEL IS THE PARSED DATE, NEVER THE INPUT SUBSTRING. `Date` rolls an
+    // impossible calendar date over — `2026-02-30` is 2026-03-02 — so a loop that
+    // labelled the row with the characters it read would answer differently from the
+    // `Date` path it replaced on exactly the stamps nobody checks. `shiftDateStr(d, 0)`
+    // is that same normalisation, taken once per day instead of once per row.
+    const day = Number.isNaN(midnightMs)
+      ? null
+      : {
+          midnightMs,
+          dates: [
+            shiftDateStr(date, -1),
+            shiftDateStr(date, 0),
+            shiftDateStr(date, 1),
+          ] as [string, string, string],
+        };
+    days.set(date, day);
+    return day;
+  };
+
   return (ts: string) => {
+    if (STORED_STAMP.test(ts)) {
+      const hours = (ts.charCodeAt(11) - 48) * 10 + (ts.charCodeAt(12) - 48);
+      const minutes = (ts.charCodeAt(14) - 48) * 10 + (ts.charCodeAt(15) - 48);
+      const day = hours < 24 && minutes < 60 ? dayOf(ts.slice(0, 10)) : null;
+      if (day) {
+        const minuteOfDay = hours * 60 + minutes;
+        // Every real offset is inside ±14 h, so a local minute lands on the stored
+        // day or on one of its neighbours and one correction is always enough.
+        let local =
+          minuteOfDay + offsetMinutesFor(day.midnightMs + minuteOfDay * 60_000);
+        let dayIndex = 1;
+        if (local < 0) {
+          local += 1440;
+          dayIndex = 0;
+        } else if (local >= 1440) {
+          local -= 1440;
+          dayIndex = 2;
+        }
+        return `${day.dates[dayIndex]}T${pad2((local / 60) | 0)}:${pad2(local % 60)}`;
+      }
+    }
+    // Any other shape `Date` understands goes the long way; true garbage yields null,
+    // so a surprise row stays visible to the caller rather than being silently dated.
     const d = parseUtcSql(ts);
     if (!d) return null;
     const t = d.getTime();
-    // Linear over at most `maxSegments` (8) entries, and 1 or 2 for every window the
-    // app asks for — cheaper than a binary search's setup at this length, and the rows
-    // arrive in no guaranteed order so a cursor would not hold.
-    let offsetMs =
-      segments.length > 0 ? segments[0].offsetMs : tzOffsetMs(tz, d);
-    for (const seg of segments) {
-      if (t < seg.startMs) break;
-      offsetMs = seg.offsetMs;
-    }
-    return new Date(t + offsetMs).toISOString().slice(0, 16);
+    return new Date(t + offsetMinutesFor(t) * 60_000)
+      .toISOString()
+      .slice(0, 16);
   };
 }
 

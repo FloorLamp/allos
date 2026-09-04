@@ -1102,17 +1102,28 @@ describe("actual atomic dashboard manifests", () => {
     // left four personas a query short with nothing to show for it. The numbers below
     // came from running the gate on the merged tree, which is the only thing that can
     // tell "we agree" from "we both landed on 227 by coincidence".
-    bodybuilder: 207,
-    "marathon-runner": 208,
-    household: 255,
-    pregnant: 203,
-    "diabetic-cgm": 214,
+    bodybuilder: 206,
+    "marathon-runner": 207,
+    household: 254,
+    pregnant: 202,
+    "diabetic-cgm": 213,
     // +9 (#4424 ruling 7): Upcoming's practice rows mount the shared row control, so
     // the row now resolves what that control renders — `getTrackedPractices`, which is
     // one grouped today-tally and one live sweep however many practices there are,
     // plus the usual-duration vote per practice. Assembling the same four fields
     // per-target instead measured +13.
-    biohacker: 234,
+    biohacker: 233,
+    // −1 each (#5061): `getDayLoadInputs` and `getIntensitySignal` ask the same
+    // question of the same 42 days — the shared HR read, kept to the activity windows
+    // that bound it — and only the READ was request-cached (#5010), so each one still
+    // fetched the windows and walked every minute again. `windowScopedBuckets` in
+    // lib/queries/zones.ts caches the scoped answer instead, and the second fetch of
+    // `activities` goes with it. The statement is the only one that moved: diffing the
+    // profiler's per-statement counts over one snapshot render, before and after,
+    // reports exactly `SELECT date, start_time, end_time, duration_min FROM activities`
+    // ×3 → ×2 and nothing else. The walk it also removed is not a statement and so is
+    // invisible here — 144,000 of the render's 295,200 bucket comparisons, counted with
+    // a probe rather than read off this meter.
     // −1 each (#4775): the paired-observation registry gained a third alcohol entry
     // (`alcohol-overnight-hr`), which reads the SAME `food_daily_totals` window the
     // other two already read — and the factor read happens before each entry's
