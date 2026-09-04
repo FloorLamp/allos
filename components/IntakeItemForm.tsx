@@ -1177,9 +1177,7 @@ export default function IntakeItemForm({
       )}
 
       <div className="flex items-center gap-2 sm:col-span-2">
-        <SubmitButton pendingLabel="Saving…" variant="primary">
-          {s ? "Save" : "Add"}
-        </SubmitButton>
+        <SubmitButton pendingLabel="Saving…">{s ? "Save" : "Add"}</SubmitButton>
         {onDone && (
           <button type="button" onClick={onDone} className="btn-ghost">
             Cancel

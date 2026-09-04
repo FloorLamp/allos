@@ -112,7 +112,7 @@ export default function PracticeEditor({
         Multiple sessions on the same day count once toward the weekly goal.
       </p>
       <div className="flex items-end gap-2 sm:col-span-3">
-        <SubmitButton variant="primary" disabled={pending}>
+        <SubmitButton disabled={pending}>
           {pending ? "Saving…" : targetId == null ? "Save" : "Save changes"}
         </SubmitButton>
         {onDone && (

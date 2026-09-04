@@ -141,7 +141,7 @@ export default function CareGoalForm({
           className="grid w-full sm:w-auto"
           data-testid="care-goal-form-primary-action"
         >
-          <SubmitButton pendingLabel="Saving…" variant="primary">
+          <SubmitButton pendingLabel="Saving…">
             {editing ? "Save" : "Add"}
           </SubmitButton>
         </div>

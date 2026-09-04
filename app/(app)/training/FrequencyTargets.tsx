@@ -254,9 +254,7 @@ export default function FrequencyTargets({
             name; two controls answering to it inside one card is a duplicate
             accessible name, and the one the user reaches first would be the wrong
             one. Same split CycleForm already ships under its own fold. */}
-            <SubmitButton pendingLabel="Saving…" variant="primary">
-              Save
-            </SubmitButton>
+            <SubmitButton pendingLabel="Saving…">Save</SubmitButton>
             {selectedId != null && (
               <button
                 type="button"

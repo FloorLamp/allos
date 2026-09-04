@@ -537,7 +537,7 @@ export default function HistoryRows({
 
     const buttons = (
       <div className="flex items-end gap-2">
-        <SubmitButton variant="primary" disabled={submitting}>
+        <SubmitButton disabled={submitting}>
           {submitting ? "Saving…" : "Save"}
         </SubmitButton>
         <button className="btn-ghost" type="button" onClick={done}>

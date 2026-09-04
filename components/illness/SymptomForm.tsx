@@ -159,7 +159,6 @@ export default function SymptomForm({
       <InlineError>{error}</InlineError>
       <div className="flex items-end gap-2 sm:col-span-2">
         <SubmitButton
-          variant="primary"
           data-testid="symptom-form-save"
           disabled={pending || key.trim() === ""}
         >

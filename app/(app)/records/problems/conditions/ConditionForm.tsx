@@ -321,7 +321,7 @@ export default function ConditionForm({
           className="grid w-full sm:w-auto"
           data-testid="condition-form-primary-action"
         >
-          <SubmitButton pendingLabel="Saving…" variant="primary">
+          <SubmitButton pendingLabel="Saving…">
             {editing ? "Save" : "Add"}
           </SubmitButton>
         </div>

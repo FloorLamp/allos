@@ -244,7 +244,6 @@ export default function PracticeSessionForm({
       <InlineError>{error}</InlineError>
       <div className="flex items-end gap-2 sm:col-span-2">
         <SubmitButton
-          variant="primary"
           disabled={pending || timeError}
           data-testid="practice-log-detailed-submit"
         >

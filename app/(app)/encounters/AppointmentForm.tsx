@@ -444,7 +444,7 @@ export default function AppointmentForm({
           className="grid w-full sm:w-auto"
           data-testid="appointment-form-primary-action"
         >
-          <SubmitButton pendingLabel="Saving…" variant="primary">
+          <SubmitButton pendingLabel="Saving…">
             {editing ? "Save" : onDone ? "Schedule" : "Add"}
           </SubmitButton>
         </div>

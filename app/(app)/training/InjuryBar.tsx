@@ -691,11 +691,7 @@ function LogInjuryForm({
         </p>
       )}
       <div className="flex items-center gap-2">
-        <SubmitButton
-          pendingLabel="Saving…"
-          data-testid="injury-submit"
-          variant="primary"
-        >
+        <SubmitButton pendingLabel="Saving…" data-testid="injury-submit">
           Log injury
         </SubmitButton>
         <button type="button" onClick={onDone} className="btn-ghost">
@@ -844,11 +840,7 @@ function EditInjuryForm({
         </p>
       )}
       <div className="flex items-center gap-2">
-        <SubmitButton
-          pendingLabel="Saving…"
-          data-testid="injury-edit-submit"
-          variant="primary"
-        >
+        <SubmitButton pendingLabel="Saving…" data-testid="injury-edit-submit">
           Save changes
         </SubmitButton>
         <button type="button" onClick={onDone} className="btn-ghost">

@@ -172,11 +172,7 @@ export default function PassportControls({
               </p>
             )}
 
-            <SubmitButton
-              disabled={creating}
-              pendingLabel="Creating…"
-              variant="primary"
-            >
+            <SubmitButton disabled={creating} pendingLabel="Creating…">
               Create link
             </SubmitButton>
           </form>

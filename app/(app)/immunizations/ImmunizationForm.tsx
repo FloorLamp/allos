@@ -256,7 +256,7 @@ export default function ImmunizationForm({
           className="grid w-full sm:w-auto"
           data-testid="immunization-form-primary-action"
         >
-          <SubmitButton pendingLabel="Saving…" variant="primary">
+          <SubmitButton pendingLabel="Saving…">
             {editing ? "Save" : "Add"}
           </SubmitButton>
         </div>

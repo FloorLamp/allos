@@ -216,11 +216,7 @@ export default function EpisodeControls({
                 {error}
               </p>
             )}
-            <SubmitButton
-              disabled={creating}
-              pendingLabel="Creating…"
-              variant="primary"
-            >
+            <SubmitButton disabled={creating} pendingLabel="Creating…">
               Create link
             </SubmitButton>
           </form>

@@ -264,9 +264,7 @@ export default function WeeklyHabits({
           <span className="text-xs text-slate-500 dark:text-slate-400">
             /week
           </span>
-          <SubmitButton pendingLabel="Tracking…" variant="primary">
-            Track
-          </SubmitButton>
+          <SubmitButton pendingLabel="Tracking…">Track</SubmitButton>
         </form>
       </Disclosure>
     </div>

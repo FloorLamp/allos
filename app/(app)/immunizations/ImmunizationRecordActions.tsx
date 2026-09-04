@@ -161,7 +161,6 @@ export default function ImmunizationRecordActions({
               disabled={creating}
               pendingLabel="Creating…"
               data-testid="immunization-share-create"
-              variant="primary"
             >
               Create link
             </SubmitButton>

@@ -120,9 +120,7 @@ export default function EpisodeEditor({
           <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>
         )}
         <div className="flex gap-2">
-          <SubmitButton pendingLabel="Saving…" variant="primary">
-            Save
-          </SubmitButton>
+          <SubmitButton pendingLabel="Saving…">Save</SubmitButton>
           <button type="button" className="btn-ghost" onClick={onClose}>
             Cancel
           </button>

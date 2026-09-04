@@ -94,7 +94,6 @@ export default function MedicationListActions() {
               disabled={creating}
               pendingLabel="Creating…"
               data-testid="medication-share-create"
-              variant="primary"
             >
               Create link
             </SubmitButton>

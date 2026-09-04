@@ -153,7 +153,7 @@ export default function ProviderIdentityCard({
           <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>
         ) : null}
         <div className="flex gap-2">
-          <SubmitButton variant="primary">Save</SubmitButton>
+          <SubmitButton>Save</SubmitButton>
           <button
             type="button"
             className="btn-ghost"

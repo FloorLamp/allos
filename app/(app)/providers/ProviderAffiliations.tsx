@@ -246,7 +246,7 @@ export default function ProviderAffiliations({
                     }
                   />
                 </div>
-                <SubmitButton variant="primary">
+                <SubmitButton>
                   <IconPlus className="h-4 w-4" stroke={1.75} />
                   Link
                 </SubmitButton>

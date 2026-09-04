@@ -432,7 +432,7 @@ export default function ResultForm({
         </p>
       )}
       <div className="flex items-end gap-2 sm:col-span-4">
-        <SubmitButton pendingLabel="Saving…" variant="primary">
+        <SubmitButton pendingLabel="Saving…">
           {editing ? "Save" : "Save result"}
         </SubmitButton>
         {editing && onDone && (

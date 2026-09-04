@@ -414,10 +414,7 @@ export default function MoodForm({
               />
             </label>
             <div className="flex items-center gap-2">
-              <SubmitButton
-                variant="primary"
-                disabled={busy || valence == null}
-              >
+              <SubmitButton disabled={busy || valence == null}>
                 {busy ? "Saving…" : "Save"}
               </SubmitButton>
               {onCancel ? (

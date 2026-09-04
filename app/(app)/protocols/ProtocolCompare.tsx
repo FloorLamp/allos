@@ -237,9 +237,7 @@ export default function ProtocolCompare({
               className="grid w-full sm:w-auto"
               data-testid="protocol-outcomes-primary-action"
             >
-              <SubmitButton pendingLabel="Saving…" variant="primary">
-                Save outcomes
-              </SubmitButton>
+              <SubmitButton pendingLabel="Saving…">Save outcomes</SubmitButton>
             </div>
           </div>
         </form>

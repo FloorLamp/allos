@@ -326,7 +326,7 @@ export default function HistoricalDoseForm({
       </p>
       <InlineError>{error}</InlineError>
       <div className="flex items-center gap-2">
-        <SubmitButton pendingLabel="Saving…" variant="primary">
+        <SubmitButton pendingLabel="Saving…">
           {editing ? "Save changes" : "Save dose"}
         </SubmitButton>
         <button type="button" onClick={onDone} className="btn-ghost btn-sm">

@@ -814,7 +814,7 @@ export default function ProtocolForm({
           className="grid w-full sm:w-auto sm:min-w-24"
           data-testid="protocol-form-primary-action"
         >
-          <SubmitButton pendingLabel="Saving…" variant="primary">
+          <SubmitButton pendingLabel="Saving…">
             {editing ? "Save" : "Create protocol"}
           </SubmitButton>
         </div>

@@ -347,7 +347,7 @@ export default function AllergyForm({
           className="grid w-full sm:w-auto"
           data-testid="allergy-form-primary-action"
         >
-          <SubmitButton pendingLabel="Saving…" variant="primary">
+          <SubmitButton pendingLabel="Saving…">
             {editing ? "Save" : "Add"}
           </SubmitButton>
         </div>
