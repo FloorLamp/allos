@@ -37,10 +37,9 @@
   agent to execute falsifying attacks; prose alone only ever reaches CONSULT.
 - On CONSULT, read the file and hunk it quotes, not the matched terms; dispatch
   when it moves what a shared surface shows about another profile.
-- The merge waits for that report. A HOLD comment on the PR is a gate until
-  its author lifts it, whatever `merge-gate.mjs` reports (#5126): read the
-  PR's last comments before every merge. Fix each refuted claim or record a reasoned
-  override in the thread.
+- The merge waits for that report; a HOLD comment on the PR is a gate until
+  its author lifts it, whatever `merge-gate.mjs` reports (#5126). Fix each
+  refuted claim or record a reasoned override in the thread.
 - A blocking finding fixed by changing the MECHANISM, not the value, earns a
   fresh pass. The test: does the fix create a surface the last pass could not
   have attacked? A new store, key, lifetime, or owning row is yes; a corrected
@@ -56,7 +55,8 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
 
 ## Migrations
 
-- Applied migrations are keyed by name; numbered migrations 001–185 are closed.
+- Applied migrations are keyed by name; numbered migrations 001–185 are
+  closed.
 - Add `YYYYMMDD-slug.ts`, export `{ name, up }`, append it last, then run
   `npm run gen:migration-manifest` for its hash. Never edit a shipped migration.
 - Merge order defines migration order. An APPEND-ONLY file (`versions/index.ts`,
