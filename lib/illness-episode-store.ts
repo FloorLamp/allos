@@ -246,20 +246,22 @@ export function getOpenEpisodeRow(
 // household's real per-profile fan-out and two are the acting profile asking twice; the
 // memo keys on profileId so it collapses only the second kind. NO WRITER CAN INTERVENE
 // (lib/queries/AGENTS.md): no episode writer reads it.
-export const mostRecentClosedEpisodeRow = cache(function mostRecentClosedEpisodeRow(
-  profileId: number
-): IllnessEpisodeRow | null {
-  return (
-    (db
-      .prepare(
-        `SELECT ${COLS} FROM illness_episodes
+export const mostRecentClosedEpisodeRow = cache(
+  function mostRecentClosedEpisodeRow(
+    profileId: number
+  ): IllnessEpisodeRow | null {
+    return (
+      (db
+        .prepare(
+          `SELECT ${COLS} FROM illness_episodes
           WHERE profile_id = ? AND end_date IS NOT NULL
           ORDER BY end_date DESC, id DESC
           LIMIT 1`
-      )
-      .get(profileId) as IllnessEpisodeRow | undefined) ?? null
-  );
-});
+        )
+        .get(profileId) as IllnessEpisodeRow | undefined) ?? null
+    );
+  }
+);
 
 // The profile's most-recently resolved episode that is STILL within its 7-day reopen
 // window (#1140 Part A) — the dashboard "Recently resolved — reopen?" affordance's

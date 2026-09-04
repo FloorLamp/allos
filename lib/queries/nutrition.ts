@@ -464,18 +464,20 @@ export function getFoodLedgerPage(
 // the two windows stay two reads and a household render still reads once per profile.
 // NO WRITER CAN INTERVENE (lib/queries/AGENTS.md): nothing that writes food logs reads
 // these totals in the same request. Callers iterate or filter what they get back.
-export const getFoodDailyServingTotals = cache(function getFoodDailyServingTotals(
-  profileId: number,
-  since: string
-): FoodDailyServingTotal[] {
-  return db
-    .prepare(
-      `SELECT date, group_key, servings FROM food_daily_totals
+export const getFoodDailyServingTotals = cache(
+  function getFoodDailyServingTotals(
+    profileId: number,
+    since: string
+  ): FoodDailyServingTotal[] {
+    return db
+      .prepare(
+        `SELECT date, group_key, servings FROM food_daily_totals
         WHERE profile_id = ? AND date >= ? AND servings > 0
         ORDER BY date DESC`
-    )
-    .all(profileId, since) as FoodDailyServingTotal[];
-});
+      )
+      .all(profileId, since) as FoodDailyServingTotal[];
+  }
+);
 
 // The weekly rollup — servings per group over the profile's "this week" window (the
 // SAME week definition the weekly-routine counters use, #223). The ONE computation the
