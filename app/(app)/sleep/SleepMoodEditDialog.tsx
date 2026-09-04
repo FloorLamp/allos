@@ -61,6 +61,8 @@ function emptyRow(date: string): SleepMoodHistoryRow {
     sleepSampleId: null,
     moodLogId: null,
     sleepSuspect: false,
+    sleepSettledMinutes: null,
+    sleepClaimedWindow: null,
   };
 }
 

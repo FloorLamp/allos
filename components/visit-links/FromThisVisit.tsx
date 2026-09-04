@@ -10,6 +10,7 @@ import type {
   EncounterFromVisit,
   VisitLinkDomain,
 } from "@/lib/visit-link-suggest";
+import SubmitButton from "@/components/SubmitButton";
 
 // The encounter detail page's "From this visit" section (rows already linked) + the
 // "From this visit?" suggestion block (read-time date/provider matches the user
@@ -136,9 +137,7 @@ export default function FromThisVisit({
                       name="encounterId"
                       value={encounterId}
                     />
-                    <button type="submit" className="btn btn-sm">
-                      Link
-                    </button>
+                    <SubmitButton>Link</SubmitButton>
                   </form>
                   <form action={declineRecordVisitAction}>
                     <input type="hidden" name="profileId" value={profileId} />
@@ -153,9 +152,7 @@ export default function FromThisVisit({
                       name="encounterId"
                       value={encounterId}
                     />
-                    <button type="submit" className="btn-ghost btn-sm">
-                      Dismiss
-                    </button>
+                    <SubmitButton>Dismiss</SubmitButton>
                   </form>
                 </div>
               </li>
@@ -170,13 +167,9 @@ export default function FromThisVisit({
                 name="pairs"
                 value={pairsJson(suggestions.suggestions)}
               />
-              <button
-                type="submit"
-                data-testid="link-all-from-visit"
-                className="btn btn-sm"
-              >
+              <SubmitButton data-testid="link-all-from-visit">
                 Link all
-              </button>
+              </SubmitButton>
             </form>
             <form action={dismissAllFromVisitAction}>
               <input type="hidden" name="profileId" value={profileId} />
