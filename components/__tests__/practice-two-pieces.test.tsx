@@ -280,12 +280,18 @@ describe("the window and the duration read each other (#336's interplay)", () =>
   const end = () => screen.getByLabelText("End") as HTMLInputElement;
   const duration = () => screen.getByLabelText("Duration") as HTMLInputElement;
 
+  // A DIFFERENT STATED START PER ROW, deliberately. The fixture's start replaced a
+  // value read off the wall clock (#4998), and a constant shared by both rows would
+  // let a `derivedEnd` that ignored `startTime` entirely — hardcoding this very
+  // constant — pass both. Two different starts put `startTime` back in the loop: the
+  // final assertion below reads the offer against `start().value`, so an offer that
+  // stopped depending on it can only satisfy one row.
   it.each([
-    ["add", undefined],
-    ["edit", ROW],
+    ["add", undefined, "09:00"],
+    ["edit", ROW, "14:05"],
   ] as const)(
     "%s mode: a stated clock offers the other at the duration's distance, then the third derives",
-    (_mode, row) => {
+    (_mode, row, statedStart) => {
       openForm(row);
       // Cleared first, so what the case measures is the interplay and not the seed.
       fireEvent.change(start(), { target: { value: "" } });
@@ -296,6 +302,17 @@ describe("the window and the duration read each other (#336's interplay)", () =>
       expect(screen.getByTestId("start-time-shortcut").textContent).toBe("now");
       fireEvent.click(screen.getByTestId("start-time-shortcut"));
       expect(start().value).toMatch(/^\d\d:\d\d$/);
+
+      // …and then the Start is STATED OUTRIGHT, which is what the rest of this case
+      // is about. Reading it from the "now" click instead made these two cases fail
+      // every night between 23:30 and midnight (#4998): the `+30m` offer is
+      // `shiftHHMM(start, 30)`, which is same-day by contract and returns null past
+      // 23:59, so the control correctly fell back to its own `now` offer and the
+      // assertion below read a real behaviour as a regression. Nothing about a
+      // duration's distance depends on which minute of the day it is measured from,
+      // so the fixture states one rather than borrowing the wall clock — the unit-tier
+      // face of e2e-hygiene item 20 (#4963).
+      fireEvent.change(start(), { target: { value: statedStart } });
 
       // Once a Start is stated, the OTHER side offers the duration instead — which is
       // the offer this form had no way to make.
