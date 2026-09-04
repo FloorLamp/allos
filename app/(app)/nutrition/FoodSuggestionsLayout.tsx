@@ -218,7 +218,7 @@ function FoodSuggestionsLayoutForProfile({
           <div data-testid="nutrition-sidebar" className="min-w-0 self-start">
             <div
               data-testid="nutrition-sidebar-surface"
-              className="divide-y divide-(--divider) overflow-hidden rounded-xl border border-(--border) bg-surface shadow-xs"
+              className="band divide-y divide-(--divider) overflow-hidden rounded-xl border border-(--border) bg-surface px-0! shadow-xs"
             >
               {activeDate === today ? (
                 todaySidebar && (
