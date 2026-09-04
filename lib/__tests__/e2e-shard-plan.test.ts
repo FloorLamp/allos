@@ -99,7 +99,11 @@ describe("the shipped manifest", () => {
       readFileSync(path.join(E2E_DIR, "spec-durations.json"), "utf8")
     ) as DurationMap;
     // Shard count does not affect `unknown`; 12 is what CI splits into.
-    expect(planShards(walkSpecFiles(), manifest, 12).unknown).toEqual([]);
+    expect(
+      planShards(walkSpecFiles(), manifest, 12).unknown,
+      "planned on a guess — measure on a RUNNER and refresh the manifest " +
+        "(docs/internals/e2e-hygiene.md), never with a local number"
+    ).toEqual([]);
   });
 });
 
