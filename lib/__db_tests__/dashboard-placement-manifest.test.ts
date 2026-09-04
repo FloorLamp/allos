@@ -999,6 +999,11 @@ describe("actual atomic dashboard manifests", () => {
   // the per-cockpit pediatric read it subsumes. Every other persona is flat because
   // none carries an open illness, and /medications is unmoved: med-data now reads the
   // same rows through the one loader instead of assembling its own copy.
+  // −1 on EVERY persona (#5010): `getHrMinutesInRange` joined the request cache.
+  // `getDayLoadInputs` and `getIntensitySignal` both read the same open-ended 42-day
+  // window on one render, so the memo collapses two identical reads into one. It moves
+  // every persona, including those with no `hr_minutes` at all, because the second read
+  // was issued regardless of what it returned.
   const QUERY_BASELINE: Record<string, number> = {
     // +1 on four personas and +3 on two (#4956): the attention read now also asks
     // whether a live source is DROPPING a record type. That is one scan of this
@@ -1079,17 +1084,17 @@ describe("actual atomic dashboard manifests", () => {
     // left four personas a query short with nothing to show for it. The numbers below
     // came from running the gate on the merged tree, which is the only thing that can
     // tell "we agree" from "we both landed on 227 by coincidence".
-    bodybuilder: 228,
-    "marathon-runner": 229,
-    household: 277,
-    pregnant: 224,
-    "diabetic-cgm": 235,
+    bodybuilder: 227,
+    "marathon-runner": 228,
+    household: 276,
+    pregnant: 223,
+    "diabetic-cgm": 234,
     // +9 (#4424 ruling 7): Upcoming's practice rows mount the shared row control, so
     // the row now resolves what that control renders — `getTrackedPractices`, which is
     // one grouped today-tally and one live sweep however many practices there are,
     // plus the usual-duration vote per practice. Assembling the same four fields
     // per-target instead measured +13.
-    biohacker: 255,
+    biohacker: 254,
     // −1 each (#4775): the paired-observation registry gained a third alcohol entry
     // (`alcohol-overnight-hr`), which reads the SAME `food_daily_totals` window the
     // other two already read — and the factor read happens before each entry's

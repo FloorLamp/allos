@@ -282,6 +282,70 @@ describe("sriTrend", () => {
   });
 });
 
+// sriTrend builds the nights ONCE and scores each anchor over them (#5010). The
+// scoring is unchanged; what moved is where the wall-clock conversion happens. So the
+// guard is equivalence against the shape it replaced — one full rebuild per anchor —
+// asserted over the boundaries a shared build could get wrong: a DST transition inside
+// the series, and a TRAVEL ZONE, where `ProfileDayZone` is a resolver rather than a
+// string and the zone itself changes partway through the history.
+describe("sriTrend builds once and scores many", () => {
+  // The pre-#5010 shape, kept as the reference implementation.
+  const rebuildPerAnchor = (
+    sessions: SleepSession[],
+    zone: Parameters<typeof sriTrend>[1],
+    opts: Parameters<typeof sriTrend>[2]
+  ) => {
+    const anchors = [
+      ...new Set(mainSleepNights(sessions, zone).map((n) => n.wakeDay)),
+    ].sort();
+    return anchors.flatMap((asOf) => {
+      const r = computeSleepRegularity(sessions, zone, { ...opts, asOf });
+      return r ? [{ date: asOf, sri: r.sri }] : [];
+    });
+  };
+
+  const NY = "America/New_York";
+  // A traveller: New York until 2026-03-20, Tokyo after. `zoneAtInstant`'s shape —
+  // the zone a night was actually slept in, not the one the profile stands in now.
+  const travelled = (at: Date) =>
+    at.getTime() < Date.parse("2026-03-20T00:00:00Z") ? NY : "Asia/Tokyo";
+
+  it.each([
+    ["UTC", "UTC" as const],
+    // 2026-03-08 is New York's spring forward: the series spans it.
+    ["America/New_York across the spring forward", NY],
+    ["a zone that MOVES partway through the history", travelled],
+  ])("agrees with a rebuild per anchor in %s", (_label, zone) => {
+    const sessions = consecutiveWakeDays("2026-02-20", 40).map((d) =>
+      utcNight(d)
+    );
+    const opts = { windowDays: 28, minNights: 14 };
+    const trend = sriTrend(sessions, zone, opts);
+    // The fixture must REACH the state: an empty series would agree vacuously.
+    expect(trend.length).toBeGreaterThan(0);
+    expect(trend).toEqual(rebuildPerAnchor(sessions, zone, opts));
+  });
+
+  // The zone resolver must be asked about the INSTANT, not about a single anchor —
+  // a shared build that resolved the zone once would score the whole history under
+  // one side of the move. Named separately because the equivalence above compares two
+  // implementations that could in principle share the same mistake.
+  it("dates each night in the zone that night was slept in", () => {
+    const sessions = consecutiveWakeDays("2026-03-15", 12).map((d) =>
+      utcNight(d)
+    );
+    const both = sriTrend(sessions, travelled, {
+      windowDays: 28,
+      minNights: 3,
+    });
+    const nyOnly = sriTrend(sessions, NY, { windowDays: 28, minNights: 3 });
+    // Tokyo is +9 and New York is −4 in late March, so the same instants land on
+    // different wake-days either side of the move — the two series cannot match.
+    expect(both).not.toEqual(nyOnly);
+    expect(both.length).toBeGreaterThan(0);
+  });
+});
+
 describe("regularityTravelInsight", () => {
   const beforeTravel = [
     { date: "2026-06-01", sri: 90 },

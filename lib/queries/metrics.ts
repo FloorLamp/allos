@@ -25,6 +25,7 @@ import {
   localDayOf,
   localDayRange,
   localDaySpan,
+  localMinuteProjector,
   offsetSegments,
 } from "../local-day-window";
 import {
@@ -32,7 +33,6 @@ import {
   isDstTransitionDay,
   parseUtcSql,
   zonedDateParts,
-  zonedMinuteStr,
 } from "../date";
 import type { ArrivalNight } from "../notifications/digest-schedule";
 import { metricAggregation } from "../metric-buckets";
@@ -1182,17 +1182,6 @@ function hrDayAggregates(
   return mergeHrDayRows(out);
 }
 
-// A stored instant as the profile-local minute stamp ('YYYY-MM-DDTHH:MM') the pure
-// consumers compare against. The read-time twin of what ingest used to STORE — which
-// is the whole #94 correction: the projection is recomputed from the absolute instant
-// on every read, so changing the profile timezone re-reads history correctly instead
-// of silently re-meaning it. Falls back to the raw stamp if it will not parse, so a
-// surprise row is visible rather than dropped.
-function localMinuteStamp(tz: string, ts: string): string {
-  const d = parseUtcSql(ts);
-  return d ? zonedMinuteStr(tz, d) : ts;
-}
-
 // The profile's newest and oldest stored instants, or null when it has no HR at all.
 // Two indexed seeks — the open-ended readers need real data bounds to build a window
 // from, and scanning to find them would undo the point.
@@ -1341,7 +1330,8 @@ export function getLatestHrDay(profileId: number): string | null {
 export function getHrMinutes(profileId: number, date: string): HrMinute[] {
   // The local day as a half-open UTC range — 23, 24 or 25 hours wide depending on
   // DST, which is precisely what a `substr` day could not express.
-  const { startUtc, endUtc } = localDayRange(getTimezone(profileId), date);
+  const tz = getTimezone(profileId);
+  const { startUtc, endUtc } = localDayRange(tz, date);
   const rows = db
     .prepare(
       `SELECT * FROM hr_minutes
@@ -1354,8 +1344,8 @@ export function getHrMinutes(profileId: number, date: string): HrMinute[] {
   // training-zone windows, the ride series — compares it against activity times that
   // are profile-local wall clocks. Storage is UTC, presentation is local, and the
   // conversion happens HERE, once, instead of each surface guessing.
-  const tz = getTimezone(profileId);
-  const local = rows.map((r) => ({ ...r, ts: localMinuteStamp(tz, r.ts) }));
+  const toLocalMinute = localMinuteProjector(tz, startUtc, endUtc);
+  const local = rows.map((r) => ({ ...r, ts: toLocalMinute(r.ts) ?? r.ts }));
   return pickRowsOneSourcePerDay(
     local,
     resolutionFor(profileId, "heart_rate"),
@@ -1368,7 +1358,14 @@ export function getHrMinutes(profileId: number, date: string): HrMinute[] {
 // (until omitted = open-ended), one source per day — the shared read behind the
 // training-zone aggregations (lib/queries/zones.ts), so zone minutes can't
 // double-count a workout recorded by two HR sources at once (issue #14).
-export function getHrMinutesInRange(
+//
+// REQUEST-CACHED because a dashboard asks for the SAME window more than once (#5010):
+// `getDayLoadInputs` and `getIntensitySignal` both open-endedly read the same 42 days
+// on one render, and each read is a wide materialisation. `cache()` is identity outside
+// a Next request (lib/request-cache.ts says so deliberately), so a notify tick and the
+// DB tier behave exactly as before. Keyed on the arguments, so the open-ended form
+// (`until` undefined) and a bounded one stay separate reads, as they must.
+export const getHrMinutesInRange = cache(function getHrMinutesInRange(
   profileId: number,
   since: string,
   until?: string
@@ -1392,14 +1389,22 @@ export function getHrMinutesInRange(
   // Projected to the profile-local minute before anything groups or compares it —
   // same boundary rule as getHrMinutes above. Once projected, the day is the stamp's
   // own prefix again and the training-zone windows line up as they always did.
-  const local = rows.map((r) => ({ ...r, ts: localMinuteStamp(tz, r.ts) }));
+  //
+  // Through the window's OFFSET SEGMENTS rather than through `Intl` per row (#5010).
+  // The zone's offset is constant inside a segment, so the local minute is the stored
+  // instant plus that constant; the segments cost ~90 `Intl` probes for a 90-day
+  // window against the 125,000 `formatToParts` calls this line used to make. Identical
+  // output, including on the transition instant itself — pinned minute by minute
+  // against `zonedMinuteStr` in lib/__tests__/local-day-window.test.ts.
+  const toLocalMinute = localMinuteProjector(tz, startUtc, endUtc);
+  const local = rows.map((r) => ({ ...r, ts: toLocalMinute(r.ts) ?? r.ts }));
   return pickRowsOneSourcePerDay(
     local,
     resolutionFor(profileId, "heart_rate"),
     (r) => r.ts.slice(0, 10),
     (r) => r.source
   ).map(({ ts, bpm }) => ({ ts, bpm }));
-}
+});
 
 function bodyMetricColumn(metric: BodyMetricKind): string {
   return metric === "weight"
