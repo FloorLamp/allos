@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { appContent, settledBoxes } from "./helpers";
+import { appContent, bandFrame, leftEdge, settledBoxes } from "./helpers";
 import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 import { NOTICE_TONE, type NoticeTone } from "@/components/Notice";
 import type { Locator } from "@playwright/test";
@@ -540,25 +540,16 @@ test("#3899 a band's frame is gone at 390, back at 640, and a control keeps its 
   page,
 }) => {
   test.slow();
-  const frame = (locator: Locator) =>
-    locator.evaluate((node) => {
-      const style = getComputedStyle(node);
-      return [
-        Number.parseFloat(style.borderLeftWidth),
-        Number.parseFloat(style.borderTopLeftRadius),
-      ];
-    });
-
   for (const [route, marker] of BANDED) {
     await page.setViewportSize({ width: VIEWPORT_PX, height: 844 });
     await page.goto(route);
     const surface = appContent(page).getByTestId(marker).first(); // first-ok: the marker repeats where the surface repeats, and every copy is the same element with the same class list
     await expect(surface).toBeVisible();
-    expect(await frame(surface)).toEqual([0, 0]);
+    expect(await bandFrame(surface)).toEqual([0, 0]);
 
     await page.setViewportSize({ width: 640, height: 844 });
     await page.waitForFunction(() => window.innerWidth === 640);
-    const [border, radius] = await frame(surface);
+    const [border, radius] = await bandFrame(surface);
     expect(border).toBeGreaterThan(0);
     expect(radius).toBeGreaterThan(0);
   }
@@ -570,9 +561,55 @@ test("#3899 a band's frame is gone at 390, back at 640, and a control keeps its 
   await page.goto("/records/care/providers");
   const control = appContent(page).getByTestId("provider-search");
   await expect(control).toBeVisible();
-  const [controlBorder, controlRadius] = await frame(control);
+  const [controlBorder, controlRadius] = await bandFrame(control);
   expect(controlBorder).toBeGreaterThan(0);
   expect(controlRadius).toBeGreaterThan(0);
+});
+
+// #3899, the owner's ruling of 2026-09-04: `band` normalises the horizontal gutter
+// the way `.card` does, which is what let the two page-level containers this branch
+// had left framed convert at all. Each one is read as a PAIR at 390 — the frame is
+// gone, AND the content inside it sits on the same rag as a heading OUTSIDE it that
+// never had a frame. The pair is the whole assertion. #3673 shipped a tree where
+// every run was honestly 16px from the VIEWPORT and still flush against its own
+// fill, so an offset measured against a constant survives the defect it is written
+// for; measured against a real neighbour it does not.
+//
+// The other half of this pair — the profile page's emergency prompt — is asserted
+// in e2e/emergency-card.spec.ts instead, because that container renders ONLY while
+// the emergency card is off, and that spec is where the off state is established
+// rather than hoped for. This one is read-only over the seed like the rest of this
+// file: the detail page is reached by following the directory's own link, not by
+// reading an id out of the worker database.
+test("#3899 a converted container loses its frame and keeps the page rag", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: VIEWPORT_PX, height: 844 });
+  await page.goto("/records/care/providers");
+  await appContent(page)
+    .getByRole("link", { name: "Dr. Cora Bell (e2e)" })
+    .click();
+  const affiliations = appContent(page).getByTestId("provider-affiliations");
+  const heading = affiliations.getByRole("heading", { name: "Practices at" });
+  const row = affiliations
+    .getByTestId("affiliation-list")
+    .getByRole("listitem")
+    .first(); // first-ok: every affiliation row is the same element with the same class list, and the seed guarantees this one
+  const content = row.getByRole("link").first(); // first-ok: the row's leading link is the run whose left edge is the rag being measured
+  await expect(row).toBeVisible();
+
+  const [border, radius] = await bandFrame(row);
+  expect(border).toBe(0);
+  expect(radius).toBe(0);
+  expect(await leftEdge(content)).toBeCloseTo(await leftEdge(heading), 1);
+
+  // The converse, on the SAME element: a class that never compiled would also
+  // report a missing frame here, and would have nothing to bring back at `sm`.
+  await page.setViewportSize({ width: 640, height: 844 });
+  await page.waitForFunction(() => window.innerWidth === 640);
+  const [wide, wideRadius] = await bandFrame(row);
+  expect(wide).toBeGreaterThan(0);
+  expect(wideRadius).toBeGreaterThan(0);
 });
 
 test("#3673 the sweep can SEE a frame, and stays quiet on the Notice that keeps one", async ({
