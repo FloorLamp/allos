@@ -145,8 +145,11 @@ describe("the overnight-hr-min stream", () => {
 // that would encode the same assumption twice.
 describe("the night slice equals the night filter", () => {
   // The filter this reader used to run, kept here as the reference implementation.
-  const byFilter = (rows: { ts: string; bpm: number }[], from: string, to: string) =>
-    rows.filter((b) => b.ts >= from && b.ts < to);
+  const byFilter = (
+    rows: { ts: string; bpm: number }[],
+    from: string,
+    to: string
+  ) => rows.filter((b) => b.ts >= from && b.ts < to);
 
   it.each([
     ["UTC, ordinary nights", "UTC", ["2026-06-10", "2026-06-11", "2026-06-12"]],
@@ -207,7 +210,9 @@ describe("the night slice equals the night filter", () => {
     // One DESCENT, not sixty rows: the stamps climb to 01:59 EDT, drop to 01:00 EST
     // and climb again, so exactly one adjacent pair goes backwards — and the 60
     // minutes after it are the ones a search over the unsorted array would miss.
-    const descents = rows.filter((r, i) => i > 0 && r.ts < rows[i - 1].ts).length;
+    const descents = rows.filter(
+      (r, i) => i > 0 && r.ts < rows[i - 1].ts
+    ).length;
     expect(descents).toBe(days.includes("2026-11-01") ? 1 : 0);
     expect(series).toEqual(expected);
   });
@@ -272,7 +277,9 @@ describe("a night that ends inside the repeated hour", () => {
     // THE FIXTURE REACHES THE STATE, COUNTED RATHER THAN ASSUMED: the rows arrive with
     // exactly one backwards step (the seam), the second pass is inside the window, and
     // the first pass's below-boundary block is not.
-    expect(rows.filter((r, i) => i > 0 && r.ts < rows[i - 1].ts)).toHaveLength(1);
+    expect(rows.filter((r, i) => i > 0 && r.ts < rows[i - 1].ts)).toHaveLength(
+      1
+    );
     expect(inNight.filter((b) => b.bpm === 39)).toHaveLength(30);
     expect(inNight.filter((b) => b.bpm === 35)).toHaveLength(0);
 

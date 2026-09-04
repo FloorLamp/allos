@@ -260,7 +260,11 @@ describe("eastward: the vanished slot is excused, not missed (#3263 §4)", () =>
     // between them — including this dose's 20:00 slot — never occurred.
     switchProfileTimezone(profileId, TOKYO, NY);
     expect(
-      isExcusedSlot(resolveSwitchHistory(getTravelSwitches(profileId)), SWITCH_DAY, EVENING_MINUTE)
+      isExcusedSlot(
+        resolveSwitchHistory(getTravelSwitches(profileId)),
+        SWITCH_DAY,
+        EVENING_MINUTE
+      )
     ).toBe(true);
 
     const strip = stripFor(profileId, evening.itemId);
@@ -323,7 +327,11 @@ describe("eastward: the vanished slot is excused, not missed (#3263 §4)", () =>
     freeze("2026-05-02T11:00:00Z");
     expect(today(profileId)).toBe("2026-05-02");
     expect(
-      isExcusedSlot(resolveSwitchHistory(getTravelSwitches(profileId)), "2026-05-02", EVENING_MINUTE)
+      isExcusedSlot(
+        resolveSwitchHistory(getTravelSwitches(profileId)),
+        "2026-05-02",
+        EVENING_MINUTE
+      )
     ).toBe(false);
     expect(buildIntakeReminderForSlots(profileId, ["Evening"])).not.toBeNull();
     // Yesterday keeps its excusal; today is judged like any other day.

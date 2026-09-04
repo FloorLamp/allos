@@ -205,7 +205,8 @@ describe("localMinuteProjector — equivalence with the per-row Intl projection"
   // transition instant itself, the repeated hour, and the skipped hour.
   const sweep = (tz: string, fromUtc: string, hours: number) => {
     const start = Date.parse(fromUtc);
-    const endUtc = new Date(start + hours * 3_600_000).toISOString().slice(0, 19) + "Z";
+    const endUtc =
+      new Date(start + hours * 3_600_000).toISOString().slice(0, 19) + "Z";
     const project = localMinuteProjector(tz, fromUtc, endUtc);
     const disagreements: string[] = [];
     for (let m = 0; m < hours * 60; m++) {
@@ -213,7 +214,8 @@ describe("localMinuteProjector — equivalence with the per-row Intl projection"
       const ts = at.toISOString().slice(0, 19) + "Z";
       const arithmetic = project(ts);
       const intl = zonedMinuteStr(tz, at);
-      if (arithmetic !== intl) disagreements.push(`${ts}: ${arithmetic} != ${intl}`);
+      if (arithmetic !== intl)
+        disagreements.push(`${ts}: ${arithmetic} != ${intl}`);
     }
     return disagreements;
   };
@@ -221,11 +223,36 @@ describe("localMinuteProjector — equivalence with the per-row Intl projection"
   // Both DST directions, a 30-minute DST step, two non-hour standard offsets, and a
   // zone that never transitions — the offset shapes the arithmetic has to survive.
   it.each([
-    ["America/New_York spring forward", "America/New_York", "2026-03-07T00:00:00Z", 72],
-    ["America/New_York fall back", "America/New_York", "2026-10-31T00:00:00Z", 72],
-    ["Australia/Lord_Howe 30-minute step", "Australia/Lord_Howe", "2026-04-03T00:00:00Z", 72],
-    ["Pacific/Chatham +12:45/+13:45", "Pacific/Chatham", "2026-04-03T00:00:00Z", 72],
-    ["Asia/Kathmandu +05:45, no transition", "Asia/Kathmandu", "2026-03-07T00:00:00Z", 72],
+    [
+      "America/New_York spring forward",
+      "America/New_York",
+      "2026-03-07T00:00:00Z",
+      72,
+    ],
+    [
+      "America/New_York fall back",
+      "America/New_York",
+      "2026-10-31T00:00:00Z",
+      72,
+    ],
+    [
+      "Australia/Lord_Howe 30-minute step",
+      "Australia/Lord_Howe",
+      "2026-04-03T00:00:00Z",
+      72,
+    ],
+    [
+      "Pacific/Chatham +12:45/+13:45",
+      "Pacific/Chatham",
+      "2026-04-03T00:00:00Z",
+      72,
+    ],
+    [
+      "Asia/Kathmandu +05:45, no transition",
+      "Asia/Kathmandu",
+      "2026-03-07T00:00:00Z",
+      72,
+    ],
     ["UTC", "UTC", "2026-03-07T00:00:00Z", 72],
   ])("agrees every minute across %s", (_label, tz, fromUtc, hours) => {
     expect(sweep(tz, fromUtc, hours as number)).toEqual([]);
@@ -244,9 +271,9 @@ describe("localMinuteProjector — equivalence with the per-row Intl projection"
     // 07:00Z is the instant EST(-05:00) becomes EDT(-04:00): 02:00 becomes 03:00.
     expect(project("2026-03-08T06:59:00Z")).toBe("2026-03-08T01:59");
     expect(project("2026-03-08T07:00:00Z")).toBe("2026-03-08T03:00");
-    expect(zonedMinuteStr("America/New_York", new Date("2026-03-08T07:00:00Z"))).toBe(
-      "2026-03-08T03:00"
-    );
+    expect(
+      zonedMinuteStr("America/New_York", new Date("2026-03-08T07:00:00Z"))
+    ).toBe("2026-03-08T03:00");
   });
 
   // A travel switch moves the profile's zone, and this reader projects a whole span
@@ -260,7 +287,11 @@ describe("localMinuteProjector — equivalence with the per-row Intl projection"
   });
 
   it("returns null for an unparseable stamp rather than dating it", () => {
-    const project = localMinuteProjector(NY, "2026-01-01T05:00:00Z", "2026-01-02T05:00:00Z");
+    const project = localMinuteProjector(
+      NY,
+      "2026-01-01T05:00:00Z",
+      "2026-01-02T05:00:00Z"
+    );
     expect(project("not-an-instant")).toBeNull();
   });
 });

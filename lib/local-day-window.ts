@@ -242,7 +242,8 @@ export function localMinuteProjector(
     // Linear over at most `maxSegments` (8) entries, and 1 or 2 for every window the
     // app asks for — cheaper than a binary search's setup at this length, and the rows
     // arrive in no guaranteed order so a cursor would not hold.
-    let offsetMs = segments.length > 0 ? segments[0].offsetMs : tzOffsetMs(tz, d);
+    let offsetMs =
+      segments.length > 0 ? segments[0].offsetMs : tzOffsetMs(tz, d);
     for (const seg of segments) {
       if (t < seg.startMs) break;
       offsetMs = seg.offsetMs;

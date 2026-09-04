@@ -215,7 +215,9 @@ describe("travel excusal at the real notification tick", () => {
     vi.setSystemTime(new Date("2026-05-01T14:01:00Z")); // Tokyo 23:01
     switchProfileTimezone(roundTrip.receiver, NEW_YORK, null); // New York 10:01
 
-    const switches = resolveSwitchHistory(getTravelSwitches(roundTrip.receiver));
+    const switches = resolveSwitchHistory(
+      getTravelSwitches(roundTrip.receiver)
+    );
     expect(isReminderSlotExcused(switches, "2026-05-01", MIDDAY_MINUTE)).toBe(
       false
     );
@@ -233,7 +235,9 @@ describe("travel excusal at the real notification tick", () => {
     vi.setSystemTime(new Date("2026-05-01T14:01:00Z")); // Tokyo 23:01
     setProfileTimezoneFromSettings(settingsReturn.receiver, NEW_YORK);
 
-    const switches = resolveSwitchHistory(getTravelSwitches(settingsReturn.receiver));
+    const switches = resolveSwitchHistory(
+      getTravelSwitches(settingsReturn.receiver)
+    );
     expect(isReminderSlotExcused(switches, "2026-05-01", MIDDAY_MINUTE)).toBe(
       false
     );
@@ -265,7 +269,9 @@ describe("travel excusal at the real notification tick", () => {
 
     // The retained suffix alone appears to skip 15:00, but the unrecorded
     // Athens→Paris seam made it occur. Both production consumers must fail open.
-    const switches = resolveSwitchHistory(getTravelSwitches(disconnected.receiver));
+    const switches = resolveSwitchHistory(
+      getTravelSwitches(disconnected.receiver)
+    );
     expect(
       isReminderSlotExcused(switches, "2026-05-01", AFTERNOON_MINUTE)
     ).toBe(false);
