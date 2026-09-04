@@ -77,6 +77,42 @@ export const USUAL_KINDS = {
     minSamples: 1,
     centre: "mode",
   },
+  /**
+   * The recap's typical night (#2396). A median, never a mean and never a total: one
+   * 3am finish should not move what the period typically looked like. Three nights is
+   * the floor because below it "the week's typical night" is one or two nights wearing
+   * a week's authority, and a single night is a fact the daily message already owns
+   * (#1117). `windowDays` is null because the recap's period is not a fixed number of
+   * days — the caller gathers a week or a month and hands over what it found.
+   */
+  recapSleepNight: {
+    recentCount: null,
+    windowDays: null,
+    minSamples: 3,
+    centre: "median",
+  },
+  /**
+   * The weekly workout count this person usually does, over prior weeks — the
+   * longer-run baseline the recap compares a week against.
+   */
+  recapWeeklyWorkouts: {
+    recentCount: null,
+    windowDays: null,
+    minSamples: 1,
+    centre: "median",
+  },
+  /**
+   * How long this person's illnesses usually run, in days, over their prior CLOSED
+   * episodes (#856 item 10). One prior episode is enough to say "your last illness
+   * ran 5 days" — the line names its own sample count, so it never wears more
+   * authority than it has.
+   */
+  illnessDuration: {
+    recentCount: null,
+    windowDays: null,
+    minSamples: 1,
+    centre: "median",
+  },
 } as const satisfies Record<string, UsualKind>;
 
 export type UsualKindName = keyof typeof USUAL_KINDS;

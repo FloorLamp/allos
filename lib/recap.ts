@@ -72,7 +72,8 @@ import {
   foodHabitSentence,
   type FoodHabitObservation,
 } from "./food-habit-observation";
-import { median, robustEndpoints } from "./robust-stats";
+import { robustEndpoints } from "./robust-stats";
+import { USUAL_KINDS, recordedUsual } from "./usual";
 import { prSetClause } from "./lifts";
 import { fmtWeight, kgTo } from "./units";
 import { weekWindow } from "./week-window";
@@ -363,9 +364,9 @@ export interface RecapInput {
   // Per-night MAIN sleep minutes inside the window and the previous one (#2396). The
   // recap reported sleep CONSISTENCY (the SRI) and never how much was actually slept —
   // and a perfectly regular five hours a night scores well. The line states the week's
-  // TYPICAL night (a median, never a total) and how it moved. Below
-  // RECAP_SLEEP_MIN_NIGHTS the line is omitted: one or two nights is a digest fact
-  // (#1117), not a week's pattern.
+  // TYPICAL night (a median, never a total) and how it moved. Below the floor the
+  // `recapSleepNight` usual states (#5143), the line is omitted: one or two nights is
+  // a digest fact (#1117), not a week's pattern.
   sleepMinutes?: readonly number[];
   prevSleepMinutes?: readonly number[];
   // Distinct days within the window that fell inside a flagged-illness episode
@@ -767,11 +768,6 @@ export function weightTrendKg(weights: RecapWeight[]): number | null {
 // sessions rendered as "strength 67%" is a percentage of noise, and a share that swings
 // 33 points on one session is worse than no line at all.
 export const RECAP_MIX_MIN_SESSIONS = 4;
-
-// The smallest number of nights a TYPICAL night is allowed to speak over (#2396). Below
-// it the "week's typical night" is one or two nights wearing a week's authority — and a
-// single night is a digest fact the daily message already owns (#1117).
-export const RECAP_SLEEP_MIN_NIGHTS = 3;
 
 // The smallest number of intended doses the adherence SHAPE is allowed to speak over.
 // Below it a "weekends 50%" is two doses, and a split is a coincidence, not a pattern.
@@ -1309,12 +1305,9 @@ export function buildRecap(input: RecapInput): Recap {
   // is what "how it moved" means here.
   const nights = input.sleepMinutes ?? [];
   const prevNights = input.prevSleepMinutes ?? [];
-  if (nights.length >= RECAP_SLEEP_MIN_NIGHTS) {
-    const typical = median([...nights]);
-    const priorTypical =
-      prevNights.length >= RECAP_SLEEP_MIN_NIGHTS
-        ? median([...prevNights])
-        : null;
+  const typical = recordedUsual(nights, USUAL_KINDS.recapSleepNight);
+  const priorTypical = recordedUsual(prevNights, USUAL_KINDS.recapSleepNight);
+  if (typical != null) {
     push({
       key: "sleep-duration",
       section: "stats",
@@ -1663,10 +1656,9 @@ export function renderRecapMessage(
   };
 }
 
-// The median weekly workout count over a list of prior weekly counts — a
-// longer-run baseline helper kept with the recap logic. Returns null for an empty
-// list.
+// The weekly workout count this person USUALLY does, over a list of prior weekly
+// counts — the longer-run baseline the recap compares a week against, through the
+// shared habit model (#5143). Returns null for an empty list.
 export function medianWeeklyWorkouts(counts: number[]): number | null {
-  if (counts.length === 0) return null;
-  return median(counts);
+  return recordedUsual(counts, USUAL_KINDS.recapWeeklyWorkouts);
 }
