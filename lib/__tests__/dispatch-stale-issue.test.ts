@@ -63,13 +63,24 @@ describe("closedIssueRefusal", () => {
   });
 });
 
-/** A stub `curl` on PATH answering every issue read with one canned issue. */
+/**
+ * A stub `curl` answering every issue read with one canned issue, and every
+ * COMMENTS read with an empty list — an issue nobody has claimed. The claim
+ * check (#5108) reads that endpoint before `new` writes anything, so a stub
+ * that answers only the issue URL makes every drive below refuse for a reason
+ * none of them is about.
+ */
 function stubCurl(dir: string, issue: Record<string, unknown>): string {
   const bin = path.join(dir, "bin");
   fs.mkdirSync(bin, { recursive: true });
   fs.writeFileSync(
     path.join(bin, "curl"),
-    `#!${process.execPath}\nprocess.stdout.write(${JSON.stringify(JSON.stringify(issue))});\n`,
+    `#!${process.execPath}
+const body = process.argv.at(-1).includes("/comments")
+  ? "[]"
+  : ${JSON.stringify(JSON.stringify(issue))};
+process.stdout.write(body);
+`,
     { mode: 0o755 }
   );
   return bin;
@@ -83,7 +94,7 @@ function failingCurl(dir: string, bodies: Record<string, string>): string {
     path.join(bin, "curl"),
     `#!${process.execPath}
 const bodies = ${JSON.stringify(bodies)};
-const issue = process.argv.at(-1).match(/\\/issues\\/(\\d+)$/)?.[1];
+const issue = process.argv.at(-1).match(/\\/issues\\/(\\d+)/)?.[1];
 process.stdout.write(bodies[issue] ?? "");
 process.exit(22);
 `,
@@ -96,7 +107,8 @@ function runNew(
   dir: string,
   bin: string,
   extraEnv: Record<string, string> = {},
-  issues = "4347"
+  issues = "4347",
+  extraArgs: string[] = []
 ) {
   return spawnSync(
     process.execPath,
@@ -111,6 +123,7 @@ function runNew(
       "P2",
       "--lane",
       "operator",
+      ...extraArgs,
     ],
     {
       cwd: REPO,
@@ -155,16 +168,31 @@ describe("dispatch-brief.mjs new, driven against a tracker that has moved", () =
     );
   });
 
-  it("degrades without a read token: warns, dispatches, never blocks on a check it cannot run", () => {
+  // TWO CHECKS, TWO DEGRADATIONS, AND THE SPLIT IS DELIBERATE (#4460, #5108).
+  // The STALENESS check still warns and continues without a token: its failure
+  // costs a lane an empty diff. The CLAIM check refuses: its failure costs two
+  // lanes one bug, and an unreachable claim is not an absent one. So the same
+  // run prints the old warning AND the new refusal, and `--adopt-claim` is the
+  // door out for an orchestrator who has read the issue by hand.
+  it("without a read token: the staleness check warns, the claim check REFUSES", () => {
     const dir = makeTmpDir("dispatch-notoken");
     const bin = stubCurl(dir, {
       number: 4451,
       state: "closed",
       closed_at: "2026-08-31T03:09:32Z",
     });
-    const run = runNew(dir, bin, { GH_TOKEN: "", GITHUB_TOKEN: "", PATH: bin });
-    expect(run.status).toBe(0);
+    const env = { GH_TOKEN: "", GITHUB_TOKEN: "", PATH: bin };
+    const run = runNew(dir, bin, env);
+    expect(run.status).toBe(1);
     expect(run.stderr).toContain("NO READ TOKEN");
+    expect(run.stderr).toContain("AN UNREACHABLE CLAIM IS NOT AN ABSENT ONE");
+    expect(fs.existsSync(path.join(dir, "ledger.jsonl"))).toBe(false);
+
+    const overridden = runNew(makeTmpDir("dispatch-notoken-ok"), bin, env, "4451", [
+      "--adopt-claim",
+    ]);
+    expect(overridden.status).toBe(0);
+    expect(overridden.stderr).toContain("NO READ TOKEN");
   });
 });
 
@@ -174,6 +202,13 @@ describe("dispatch-brief.mjs new, driven against a tracker that has moved", () =
 // or a proxy blip threw and crashed `new` outright. With the repo unreachable
 // EVERY dispatch was blocked by a check that could not run, which is exactly
 // what the comment above issueStates disclaims. Only a CLOSED answer refuses.
+//
+// THAT RULING IS ABOUT THIS CHECK, NOT ABOUT EVERY CHECK. #5108 added a second
+// question at the same point — is another lane already on this issue? — and it
+// degrades the OTHER way, because the two failures cost different things: a
+// stale read sends one lane to an empty diff, an unread claim sends two lanes
+// to one bug. So an unreachable answer still WARNS here and REFUSES there, in
+// the same run, and both messages appear below.
 
 describe("unreachableIssueWarning", () => {
   const st = (number: number, over = {}) => ({
@@ -198,7 +233,7 @@ describe("unreachableIssueWarning", () => {
 });
 
 describe("dispatch-brief.mjs new, when GitHub does not answer", () => {
-  it("warns with every failure shape, then dispatches without exposing the token", () => {
+  it("names every failure shape, refuses on the unreadable claim, leaks no token", () => {
     const dir = makeTmpDir("dispatch-unreachable");
     const run = runNew(
       dir,
@@ -212,18 +247,18 @@ describe("dispatch-brief.mjs new, when GitHub does not answer", () => {
       {},
       "404,429,500"
     );
-    // Warn and DISPATCH, in the no-token path's voice.
-    expect(run.status).toBe(0);
+    // The staleness check still warns in the no-token path's voice, naming
+    // each shape rather than swallowing it...
     expect(run.stderr).toContain("GITHUB DID NOT ANSWER");
     expect(run.stderr).toContain("no such issue (404) — mistyped --issues?");
     expect(run.stderr).toContain("API rate limit exceeded");
     expect(run.stderr).toContain("curl exited 22");
-    expect(run.stderr).not.toContain("REFUSED");
+    // ...and the claim check, reading the same dead endpoint, refuses (#5108).
+    expect(run.status).toBe(1);
+    expect(run.stderr).toContain("could not read the claims on");
     // execFileSync's own message carries the whole command; quoting it here
     // would print the Bearer token, which is what the crash path did.
     expect(run.stderr).not.toContain("stub token 2");
-    expect(fs.readFileSync(path.join(dir, "ledger.jsonl"), "utf8")).toContain(
-      '"status":"active"'
-    );
+    expect(fs.existsSync(path.join(dir, "ledger.jsonl"))).toBe(false);
   });
 });
