@@ -45,6 +45,7 @@ import SymptomRowControl from "@/components/illness/SymptomRowControl";
 import Button from "@/components/Button";
 import IconButton from "@/components/IconButton";
 import IllnessMedicationLogger from "@/components/illness/IllnessMedicationLogger";
+import { useDoseOfferSignal } from "@/components/illness/DoseOfferContext";
 import type { PrnMedForQuickLog } from "@/lib/queries/intake/adherence";
 import type { IntakeFormContext } from "@/lib/intake-form-context";
 import SubmitButton from "@/components/SubmitButton";
@@ -158,12 +159,14 @@ export default function SymptomLogBar({
   // reducers by the caller (`antipyreticPrnMeds`, lib/prn-defaults.ts) — this bar
   // stays free of that judgment. Reuses IllnessMedicationLogger (#4834) rather than
   // a second dose control; absent or empty, the block still offers the episode.
-  // NO PRODUCTION CALLER FEEDS THIS as of #4712's duplicate-chip fix — the one
-  // mount with PRN data (IllnessCockpitBody) already shows every antipyretic as a
-  // persistent Meds chip, so passing it here would duplicate that chip rather than
-  // add a dose offer. The owner rules the fold-vs-persistent-row conflict on #4712
-  // (`needs-human`); until then the only feeders are this file's own component
-  // tests, which exist to keep the contract above correct and ready.
+  // BOTH HOSTS FEED THIS AGAIN (#4712, owner ruling 2026-09-04 11:20 UTC part 2).
+  // It was fed by nobody for a while: the same antipyretic was already a chip in the
+  // host's persistent Meds section a few lines below, so the offer could only ever
+  // duplicate it. The ruling makes the PERSISTENT SECTION yield instead — one dose
+  // prompt at a time — which the host arranges with a `DoseOfferProvider` around this
+  // bar and that section plus the section's `yieldsTo` prop, and this bar signals
+  // through `useDoseOfferSignal`. A host that wires the props without the provider would show
+  // two chips again, so the two arrive together on both mounts.
   antipyreticMeds?: PrnMedForQuickLog[];
   // Required alongside antipyreticMeds to mount IllnessMedicationLogger (its own
   // required prop) — absent, the dose offer is skipped rather than mounted half-fed.
@@ -234,7 +237,7 @@ export default function SymptomLogBar({
     setTempWhen({ date: next, statedAt: null });
     // The offer is about the reading that produced it, on the day it was on; leaving
     // it up under a different day would say something about a day it never saw.
-    setFeverOffer(null);
+    showFeverOffer(null);
   }
   const [tempError, setTempError] = useState<string | null>(null);
   const [tempPending, setTempPending] = useState(false);
@@ -246,6 +249,18 @@ export default function SymptomLogBar({
   // that would leave the block up with the fold closed.
   const [feverOffer, setFeverOffer] = useState<{ degF: number } | null>(null);
   const [episodeOfferPending, setEpisodeOfferPending] = useState(false);
+  // WHETHER THIS BLOCK WOULD CARRY A DOSE (#4712 ruling 2026-09-04 11:20, part 2).
+  // The host's persistent Meds section yields only to a dose offer, never to the
+  // episode half — an offer with no eligible PRN takes nothing off the screen.
+  const offersDose = antipyreticMeds.length > 0 && !!intakeContext && !!nowIso;
+  const yieldMeds = useDoseOfferSignal();
+  // ONE SETTER FOR THE OFFER AND ITS SIGNAL, so the host's Meds section cannot be
+  // left yielding to a block that is no longer there. Every path that raises or
+  // clears the offer goes through here.
+  function showFeverOffer(offer: { degF: number } | null): void {
+    setFeverOffer(offer);
+    yieldMeds(offer != null && offersDose);
+  }
 
   // Free-text intake (issue #877): a typed sentence → staged, editable suggestions the
   // user confirms with one tap. Suggest-only — nothing writes until confirm, which goes
@@ -352,7 +367,7 @@ export default function SymptomLogBar({
       // THE BLOCK LIVES IN THE FOLD (#4712 judgement 1). Closing it any way —
       // including by opening the OTHER fold, which forces this one shut above —
       // takes the offer with it.
-      setFeverOffer(null);
+      showFeverOffer(null);
     }
   }
 
@@ -360,7 +375,7 @@ export default function SymptomLogBar({
     const opening = !tempOpen;
     setTempOpen(opening);
     if (opening) setPickerOpen(false);
-    else setFeverOffer(null);
+    else showFeverOffer(null);
   }
 
   // NO CLIENT RANGE CHECK. `logTemperatureCore` runs `temperatureRangeError` over the
@@ -398,11 +413,11 @@ export default function SymptomLogBar({
       // renders under the reading, in the SAME fold — closing it here would bury the
       // offer under the very toggle that reveals it. A fever reading with nothing to
       // offer (an episode already open and no eligible PRN) closes exactly as before.
-      const offers = !hasOpenEpisode || antipyreticMeds.length > 0;
+      const offers = !hasOpenEpisode || offersDose;
       if (res.flag === "high" && offers) {
-        setFeverOffer({ degF: res.degF });
+        showFeverOffer({ degF: res.degF });
       } else {
-        setFeverOffer(null);
+        showFeverOffer(null);
         setTempOpen(false);
       }
       // NO ACTION ON THIS TOAST (#4712 judgement 1's second exclusion). The owner
@@ -460,12 +475,12 @@ export default function SymptomLogBar({
     startTransition(async () => {
       await activateIllnessForSymptoms(withTarget(new FormData()));
       setEpisodeOfferPending(false);
-      setFeverOffer(null);
+      showFeverOffer(null);
     });
   }
 
   function dismissFeverOffer() {
-    setFeverOffer(null);
+    showFeverOffer(null);
   }
 
   // The full universe of rows (curated catalog + any custom keys already logged, either
@@ -998,7 +1013,7 @@ export default function SymptomLogBar({
                     Open an episode
                   </Button>
                 )}
-                {antipyreticMeds.length > 0 && intakeContext && nowIso && (
+                {offersDose && intakeContext && nowIso && (
                   <div data-testid="fever-offer-dose" className="min-w-0">
                     {/* THE DOSE REUSES IllnessMedicationLogger (#4834), narrowed
                         to fever reducers — never a second dose control spelled
@@ -1010,6 +1025,11 @@ export default function SymptomLogBar({
                       intakeContext={intakeContext}
                       canAdd={false}
                       nowIso={nowIso}
+                      // TAKEN ENDS THE OFFER (#4712 ruling part 2's own words). The
+                      // dose is on the ledger and the host's Meds chip comes straight
+                      // back; the fold itself stays open, exactly as accepting the
+                      // episode half leaves it.
+                      onLogged={() => showFeverOffer(null)}
                     />
                   </div>
                 )}

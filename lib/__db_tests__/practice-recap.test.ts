@@ -374,21 +374,29 @@ describe("Start now stamps the practice's usual duration (owner ruling 2026-09-0
     });
   });
 
-  it("leaves a swept live row its derived duration, so it still has a window", () => {
+  it("completes a swept live row at its own derived end, not as abandoned", () => {
+    // WAS: "leaves a swept live row its derived duration, so it still has a window",
+    // asserting `end_time: null` — the #4900 shape, a row closed without an end.
+    // #5091 retires exactly that case for a practice that HAS a usual duration: the
+    // row knew when it finished, so the sweep completes it there instead of giving up
+    // on it. It still has a window, and now it is the window the row stated.
     const p = newProfile("PracSwept");
     const date = today(p);
     seedPractice(p, date, "Sauna");
     const started = startLivePracticeSession(p, "Sauna", "page");
     const liveId = started.kind === "started" ? started.session.id : 0;
 
-    // Seven hours on: past LIVE_PRACTICE_STALE_HOURS, so the sweep closes it without
-    // inventing an end. The duration it was started with survives.
+    // Seven hours on — past LIVE_PRACTICE_STALE_HOURS, and it does not matter: the
+    // completion is checked first, because a row that knew its own end still knew it
+    // whether or not a gather ran in time to write it.
     vi.setSystemTime(new Date(NOW.getTime() + 7 * 60 * 60_000));
     expect(closeAbandonedPracticeSessions(p)).toBe(1);
     expect(getPracticeSession(p, liveId)).toMatchObject({
-      duration_min: 20,
-      end_time: null,
+      duration_min: DURATION_MIN,
+      end_time: "18:20",
       live: 0,
+      // Still derived, so the end goes on hedging itself (#4948).
+      derived_window: 1,
     });
   });
 

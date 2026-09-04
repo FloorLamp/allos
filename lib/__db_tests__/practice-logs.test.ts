@@ -697,6 +697,105 @@ describe("live practice sessions (#3143)", () => {
     ).toEqual({ kind: "not-live" });
   });
 
+  // #5091 — A LIVE ROW THAT KNOWS ITS OWN LENGTH COMPLETES ITSELF. A Start now stamps
+  // the practice's usual duration with `derived_window = 1` (#4897) and nothing read it
+  // as an END, so a 15-minute red-light session started at 06:28 was still "running" at
+  // 10:52 and drew four hours wide. The second tap is the tap the one-tap doctrine says
+  // a person should not owe when the row already knows when it finished.
+  //
+  // `Rowing` is given two 15-minute sessions first, because the usual duration IS the
+  // history: a practice with none has nothing to complete at, which is the third case
+  // below.
+  function seedUsual(pid: number, minutes: number): void {
+    for (const date of ["2026-08-29", "2026-08-30"])
+      logPracticeSession(pid, "Rowing", date, "page", { durationMin: minutes });
+  }
+
+  it("completes a known-length session at start plus its duration, with no tap", () => {
+    const pid = makeProfile("live-completes");
+    seedUsual(pid, 15);
+    expect(getPracticeUsualDuration(pid, "Rowing")).toBe(15);
+    const started = startLivePracticeSession(pid, "Rowing", "page");
+    expect(started.kind).toBe("started");
+
+    vi.setSystemTime(new Date("2026-08-31T12:20:00Z"));
+    closeAbandonedPracticeSessions(pid);
+    const [row] = getPracticeSessions(pid, "Rowing");
+    expect(row).toMatchObject({
+      date: "2026-08-31",
+      start_time: "12:00",
+      // The row's OWN start plus its OWN duration, not the minute the sweep ran.
+      end_time: "12:15",
+      duration_min: 15,
+      live: 0,
+      // Still derived, so the chart and the note go on hedging the end (#4948). A
+      // completion that cleared this would turn a derived end into a stated one.
+      derived_window: 1,
+    });
+  });
+
+  it("is still live before that instant, and an End tap writes the observed end", () => {
+    const pid = makeProfile("live-before-derived");
+    seedUsual(pid, 15);
+    const started = startLivePracticeSession(pid, "Rowing", "page");
+    expect(started.kind).toBe("started");
+    if (started.kind !== "started") return;
+
+    vi.setSystemTime(new Date("2026-08-31T12:10:00Z"));
+    closeAbandonedPracticeSessions(pid);
+    expect(getPracticeSessions(pid, "Rowing")[0]).toMatchObject({ live: 1 });
+    // The End tap still wins before the derived end: what was observed beats what was
+    // expected, which is the whole reason the tap stays.
+    expect(endLivePracticeSession(pid, started.session.id)).toMatchObject({
+      kind: "ended",
+      session: { end_time: "12:10", duration_min: 10, live: 0 },
+    });
+  });
+
+  it("leaves a session with no usual duration exactly as it was", () => {
+    // The unchanged case, read at the SAME offsets as the two above rather than by
+    // reading the branch: a practice with no history has no length to complete at.
+    const pid = makeProfile("live-no-usual");
+    const started = startLivePracticeSession(pid, "Rowing", "page");
+    expect(started.kind).toBe("started");
+    for (const at of ["2026-08-31T12:10:00Z", "2026-08-31T12:20:00Z"]) {
+      vi.setSystemTime(new Date(at));
+      closeAbandonedPracticeSessions(pid);
+      expect(getPracticeSessions(pid, "Rowing")[0]).toMatchObject({
+        live: 1,
+        end_time: null,
+        duration_min: null,
+      });
+    }
+    // ...and the six-hour bound still closes it start-only.
+    vi.setSystemTime(new Date("2026-08-31T19:00:00Z"));
+    expect(closeAbandonedPracticeSessions(pid)).toBe(1);
+    expect(getPracticeSessions(pid, "Rowing")[0]).toMatchObject({
+      live: 0,
+      end_time: null,
+      duration_min: null,
+    });
+  });
+
+  it("leaves the usual duration no abandoned derived row to vote with (#4900)", () => {
+    // ASSERTED AS AN ABSENCE, with its reason: #4900 was about a row that was never
+    // finished voting in the usual. For a practice that HAS a usual, such a row can no
+    // longer exist — it completes at its own derived end long before the six-hour
+    // bound — so the vote is over finished sessions only.
+    const pid = makeProfile("live-no-abandoned-vote");
+    seedUsual(pid, 15);
+    startLivePracticeSession(pid, "Rowing", "page");
+    vi.setSystemTime(new Date("2026-08-31T19:00:00Z"));
+    closeAbandonedPracticeSessions(pid);
+    expect(
+      getPracticeSessions(pid, "Rowing").filter(
+        (row) =>
+          row.live === 0 && row.start_time !== null && row.end_time === null
+      )
+    ).toEqual([]);
+    expect(getPracticeUsualDuration(pid, "Rowing")).toBe(15);
+  });
+
   it("closes a carried-over live row as start-only without fabricating values", () => {
     const pid = makeProfile("live-rollover");
     const started = startLivePracticeSession(pid, "Meditation", "page");

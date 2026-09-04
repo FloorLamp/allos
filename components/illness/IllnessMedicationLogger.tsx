@@ -12,6 +12,7 @@ import type { PrnMedForQuickLog } from "@/lib/queries";
 import type { IntakeFormContext } from "@/lib/intake-form-context";
 import { medChipsStatusLine, prnRowStatus } from "@/lib/redose-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import { useDoseOfferLive } from "@/components/illness/DoseOfferContext";
 
 // How many chips stand before the tail folds. Three is what the compact quick-log
 // content already showed, so the fold's threshold is unchanged by this rebuild.
@@ -39,6 +40,8 @@ export default function IllnessMedicationLogger({
   intakeContext,
   canAdd,
   nowIso,
+  yieldsTo,
+  onLogged,
 }: {
   meds: PrnMedForQuickLog[];
   tz: string;
@@ -53,6 +56,15 @@ export default function IllnessMedicationLogger({
   // The server's redose-window "now" (see QuickLogPrnContent.nowIso) — this is a
   // "use client" mount, so the frozen-clock env override is invisible here.
   nowIso: string;
+  // THE CHIPS THIS ROW YIELDS TO THE FOLD'S DOSE OFFER (#4712 ruling 2026-09-04 11:20
+  // UTC part 2). A persistent Meds section names the antipyretics the fold offers, and
+  // those chips step aside WHILE that offer is live — one prompt for one dose. Absent
+  // on the fold's own mount and on every host with no offer beside it, which is what
+  // keeps this a data prop rather than a mode.
+  yieldsTo?: readonly { id: number }[];
+  // Fired after a dose is logged from this row. The fold's offer ends on it: "until
+  // the offer is taken or dismissed" (same ruling), and taken means the dose landed.
+  onLogged?: () => void;
 }) {
   const formatPrefs = useFormatPrefs();
   const [adding, setAdding] = useState(false);
@@ -63,10 +75,22 @@ export default function IllnessMedicationLogger({
     med,
     row: prnRowStatus(med, tz, now, formatPrefs.timeFormat),
   }));
+  // THE CHIPS ONLY. `rows` stays the whole row everywhere else it is read: the status
+  // line still describes this medication set ("Nothing given in 24h · both windows
+  // open"), and the empty-state below still means "this person has no PRNs" rather
+  // than "the offer has the only one". A yielded chip is a chip on another surface
+  // this instant, not a medication that stopped existing.
+  const yielded =
+    useDoseOfferLive() && yieldsTo ? new Set(yieldsTo.map((m) => m.id)) : null;
+  const standing = yielded
+    ? rows.filter((entry) => !yielded.has(entry.med.id))
+    : rows;
   const statusLine = medChipsStatusLine(rows.map((entry) => entry.row.status));
-  const tail = rows.slice(COLLAPSED_CHIPS);
-  const shown = showTail ? rows : rows.slice(0, COLLAPSED_CHIPS);
-  const open = rows.find((entry) => entry.med.id === openMedId);
+  const tail = standing.slice(COLLAPSED_CHIPS);
+  const shown = showTail ? standing : standing.slice(0, COLLAPSED_CHIPS);
+  // An open panel goes with its chip: the med it names is being offered in the fold,
+  // and two `cockpit-med-panel` on one page is the collision this yield exists to end.
+  const open = standing.find((entry) => entry.med.id === openMedId);
 
   return (
     <section data-testid="cockpit-meds">
@@ -163,6 +187,7 @@ export default function IllnessMedicationLogger({
             profileId={profileId}
             layout="detail"
             tz={tz}
+            onLogged={onLogged}
           />
         </div>
       ) : null}

@@ -12,6 +12,7 @@ import { describe, it, expect } from "vitest";
 import { db } from "@/lib/db";
 import { reconcileFlags } from "@/lib/queries";
 import { logSymptomCore } from "@/lib/symptom-log-write";
+import { logTemperatureCore } from "@/lib/temperature-log";
 import {
   assembleIllnessEpisode,
   currentEpisodeForProfile,
@@ -279,6 +280,47 @@ describe("assembleIllnessEpisode — 5-day fixture (#448)", () => {
       ["2026-07-01", 103.4, "high"],
       ["2026-07-02", 101.2, "high"],
     ]);
+  });
+
+  // DERIVE, NEVER WRITE (#4712 item 4, owner-ruled 2026-09-01, and the AC's own
+  // "no `symptoms` row is created by any temperature path"). Asserted where the write
+  // would have to happen rather than as a source sweep: `logTemperatureCore` is the
+  // one core both temperature doors funnel through (the Server Action and the
+  // Telegram quick-log), so a materialised row would have to come from here.
+  //
+  // The derived row's presence in the same case is the control that makes the
+  // absence mean something — a fixture whose reading never flagged "high" would
+  // write no symptom row for a reason that has nothing to do with the ruling.
+  it("a fever-range reading writes NO symptom row, and still derives one (#4712)", () => {
+    const p = newProfile("derive-never-write");
+    const episode: IllnessEpisode = {
+      situation: "Illness",
+      start: "2026-08-01",
+      end: "2026-08-01",
+    };
+    const outcome = logTemperatureCore(
+      p,
+      103.4,
+      "F",
+      "2026-08-01",
+      "page",
+      "19:10"
+    );
+    expect(outcome.kind).toBe("logged");
+    expect(outcome.kind === "logged" ? outcome.flag : null).toBe("high");
+
+    const rows = db
+      .prepare("SELECT COUNT(*) AS c FROM symptom_logs WHERE profile_id = ?")
+      .get(p) as { c: number };
+    expect(rows.c).toBe(0);
+
+    const a = assembleIllnessEpisode(p, episode);
+    const derived = a.symptoms.find((sr) => sr.source === "derived");
+    expect(
+      derived?.source === "derived" ? derived.days.map((d) => d.date) : null
+    ).toEqual(["2026-08-01"]);
+    // And the whole symptom list is that one derived row — nothing logged joined it.
+    expect(a.symptoms.filter(isLoggedSymptomSeries)).toHaveLength(0);
   });
 
   it("excludes SCHEDULED (non-PRN) doses from the medication story", () => {
