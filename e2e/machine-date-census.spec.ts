@@ -284,8 +284,16 @@ const ROUTES: CensusRoute[] = [
     why: "Global search's logged-row subtitles — the day each record row is filed under (#5006).",
     minTextNodes: 40,
     kinds: ["date"],
+    // THE SUBJECT IS THE WHOLE GUARD ON THIS ROUTE, and that is measured rather than
+    // assumed: the collector below walks `document.querySelector("main")`, and the
+    // palette is a dialog rendered OUTSIDE main, so no palette copy has ever entered
+    // the offender sweep — on this route or on the lab-unit one above it. Forcing the
+    // subtitle to the machine shape leaves the sweep silent and reds THIS line, which
+    // is the assertion doing the work. Widening the collector past `main` would put
+    // every dialog on every route into the sweep at once; that is its own change.
+    //
     // The hit itself, not the group box: the group renders before its rows, and an
-    // absence assertion taken between the two is a claim about an empty list.
+    // assertion taken between the two is a claim about an empty list.
     subject: '[data-testid="palette-group-logged"] [role="option"]',
     plant: plantLoggedSymptomProbe,
     sweep: sweepLoggedSymptomProbe,

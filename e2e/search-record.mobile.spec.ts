@@ -49,6 +49,9 @@ interface RecordCase {
   query: string;
   kind: "practice" | "food" | "symptom";
   day: string;
+  /** The subtitle the hit prints: the record's word for the row, and the day in the
+   *  login's date shape — never the stored `YYYY-MM-DD` (#3492/#3545). */
+  subtitle: string;
   title: string;
   /** The row id the record renders, as `timelineEntryAnchorId` spells it. */
   anchor: RegExp;
@@ -59,6 +62,7 @@ const CASES: RecordCase[] = [
     what: "a practice session",
     query: SEARCH_RECORD_PRACTICE,
     kind: "practice",
+    subtitle: "Practice · Jan 12",
     day: SEARCH_RECORD_PRACTICE_DAY,
     title: SEARCH_RECORD_PRACTICE,
     anchor: /^timeline-entry-practice-\d+$/,
@@ -67,6 +71,7 @@ const CASES: RecordCase[] = [
     what: "a food group",
     query: SEARCH_RECORD_FOOD_NAME,
     kind: "food",
+    subtitle: "Serving · Jan 13",
     day: SEARCH_RECORD_FOOD_DAY,
     title: SEARCH_RECORD_FOOD_NAME,
     anchor: /^timeline-entry-food-\d+$/,
@@ -75,6 +80,7 @@ const CASES: RecordCase[] = [
     what: "a symptom",
     query: SEARCH_RECORD_SYMPTOM_NAME,
     kind: "symptom",
+    subtitle: "Symptom · Jan 14",
     day: SEARCH_RECORD_SYMPTOM_DAY,
     title: SEARCH_RECORD_SYMPTOM_NAME,
     anchor: /^timeline-entry-symptom-2026-01-14-sore_throat$/,
@@ -119,9 +125,11 @@ test.describe("search into the record (#5006)", () => {
       const group = palette.getByTestId("palette-group-logged");
       const hit = group.getByRole("option", { name: record.title });
       await expect(hit).toBeVisible();
-      // The subtitle says which day the entry is on, so the reader knows what they
-      // are about to open before they open it.
-      await expect(hit).toContainText(record.day);
+      // The subtitle says which KIND this is and which day the entry is on, so the
+      // reader knows what they are about to open before they open it. Asserted whole
+      // rather than on the date alone: "Jan 12" on its own could come from anywhere
+      // on the row, and the pair cannot.
+      await expect(hit).toContainText(record.subtitle);
 
       await hit.click();
       await page.waitForURL(

@@ -83,9 +83,9 @@ describe("retrieveRecordCitations — grounded, profile-scoped retrieval (#878)"
   });
 
   it("returns no citations for a stopword-only question (upstream refusal)", () => {
-    expect(retrieveRecordCitations(mine, "when did I last take it?", null)).toEqual(
-      []
-    );
+    expect(
+      retrieveRecordCitations(mine, "when did I last take it?", null)
+    ).toEqual([]);
   });
 
   it("finds singular-named rows from a PLURAL question term (#1597)", () => {
@@ -100,7 +100,11 @@ describe("retrieveRecordCitations — grounded, profile-scoped retrieval (#878)"
     expect(colds.length).toBeGreaterThan(0);
 
     // Same for the flagship allergy phrasing: "nuts" misses "Peanut", "nut" hits.
-    const allergies = retrieveRecordCitations(mine, "any allergies to nuts?", null);
+    const allergies = retrieveRecordCitations(
+      mine,
+      "any allergies to nuts?",
+      null
+    );
     expect(allergies.map((c) => c.title)).toContain("Peanut");
   });
 
