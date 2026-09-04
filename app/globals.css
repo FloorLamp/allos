@@ -469,6 +469,22 @@
     border-radius: 0;
     box-shadow: none;
   }
+  /* A BAND RE-SPENDS THE PAGE GUTTER INSIDE ITS OWN FILL, exactly as the card
+     above does (#3899, owner ruling of 2026-09-04). Until this, `band` cancelled
+     the page bleed and NOTHING else, so it was only correct where the call site's
+     own padding already WAS the gutter: a `p-6` container converted to a 24px rag
+     against a 16px page, and a `px-3` row to a 12px one, which is why two
+     page-level containers were left framed rather than banded.
+
+     Unlayered and normal, the card's ranking and for the card's reason — a call
+     site's own `p-6` sits in `utilities` and loses, while a band that DELEGATES
+     its gutter to its rows keeps `px-0!`, important in `utilities`, which no
+     unlayered declaration can beat. That is `card-delegated`'s split one level
+     out: whichever element spends the gutter is the one that pads, and a band
+     whose rows already pad says so instead of padding twice. */
+  .band {
+    padding-inline: var(--page-gutter-left) var(--page-gutter-right);
+  }
   /* A DELEGATED card keeps its `p-0!` — important in the `utilities` layer, which
      the unlayered rule above cannot beat and should not — so its cells are what
      spend the card's gutter, and with the card now reaching the viewport edge they

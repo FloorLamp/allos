@@ -36,7 +36,7 @@ export default function ReportsSection({
 
   return (
     <div
-      className="band overflow-hidden rounded-xl border border-(--border) bg-surface"
+      className="band overflow-hidden rounded-xl border border-(--border) bg-surface px-0!"
       data-testid="reports-list"
     >
       {reports.map((r) => (

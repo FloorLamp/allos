@@ -90,7 +90,7 @@ export default function GroupedProvidersIndex({
           {activeIndividuals.length > 0 ? (
             <div>
               <div className="section-label mb-2">Other individuals</div>
-              <ul className="band divide-y divide-black/5 overflow-hidden rounded-xl border border-black/5 dark:divide-white/10 dark:border-white/10">
+              <ul className="band divide-y divide-black/5 overflow-hidden rounded-xl border border-black/5 px-0! dark:divide-white/10 dark:border-white/10">
                 {activeIndividuals.map((p) => (
                   <li key={p.id}>
                     <ProviderRow p={p} />
@@ -116,7 +116,7 @@ export default function GroupedProvidersIndex({
                   <OrganizationGroup key={group.org.id} group={group} />
                 ))}
                 {otherIndividuals.length > 0 ? (
-                  <ul className="band divide-y divide-black/5 overflow-hidden rounded-xl border border-black/5 dark:divide-white/10 dark:border-white/10">
+                  <ul className="band divide-y divide-black/5 overflow-hidden rounded-xl border border-black/5 px-0! dark:divide-white/10 dark:border-white/10">
                     {otherIndividuals.map((provider) => (
                       <li key={provider.id}>
                         <ProviderRow p={provider} />
@@ -134,7 +134,7 @@ export default function GroupedProvidersIndex({
 
       {directory.archivedCount > 0 ? (
         <Disclosure
-          className="band mt-6 rounded-xl border border-black/5 dark:border-white/10"
+          className="band mt-6 rounded-xl border border-black/5 px-0! dark:border-white/10"
           data-testid="provider-archived-disclosure"
         >
           <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm font-medium text-slate-600 dark:text-slate-300">
@@ -166,7 +166,7 @@ function OrganizationGroup({
 }) {
   return (
     <div
-      className="band overflow-hidden rounded-xl border border-(--border) bg-surface"
+      className="band overflow-hidden rounded-xl border border-(--border) bg-surface px-0!"
       data-testid="provider-org-card"
     >
       <ProviderRow p={group.org} heading />
@@ -200,7 +200,7 @@ function FlatList({
   }
   return (
     <ul
-      className="band divide-y divide-black/5 overflow-hidden rounded-xl border border-black/5 dark:divide-white/10 dark:border-white/10"
+      className="band divide-y divide-black/5 overflow-hidden rounded-xl border border-black/5 px-0! dark:divide-white/10 dark:border-white/10"
       data-testid="provider-list"
     >
       {providers.map((p) => (

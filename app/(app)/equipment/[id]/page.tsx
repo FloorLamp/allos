@@ -174,7 +174,7 @@ export default async function EquipmentDetailPage(props: {
           <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
             Recent sessions
           </h2>
-          <ul className="band divide-y divide-black/5 rounded-xl border border-black/5 dark:divide-white/10 dark:border-white/10">
+          <ul className="band divide-y divide-black/5 rounded-xl border border-black/5 px-0! dark:divide-white/10 dark:border-white/10">
             {[...sessions]
               .reverse()
               .slice(0, 12)
