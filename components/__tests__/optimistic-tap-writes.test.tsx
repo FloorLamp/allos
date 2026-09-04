@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   act,
   fireEvent,
@@ -132,16 +133,33 @@ describe("optimistic paint on tap-shaped writes (#2641)", () => {
     );
   });
 
-  it("closes the overflow menu on the tap rather than on the response", async () => {
+  // WHAT A KEBAB WRITE ACTUALLY PAINTS WHILE IT IS IN FLIGHT.
+  //
+  // This case used to be called "closes the overflow menu on the tap rather than
+  // on the response" and asserted `onOpenChange` had been CALLED with false. It
+  // had — `runAction` calls `close()` before the await — but a call is not a
+  // commit: `open` was a literal here and `onOpenChange` a spy, so the panel was
+  // never asked to unmount and the assertion could not have failed either way.
+  //
+  // Given a real controlled parent, the panel stays up for the whole round trip.
+  // A form's `action` runs inside a React transition, and a state update made
+  // inside an async transition is not committed until the action settles — so
+  // `close()` moves when the close is REQUESTED, not when it is SEEN. The same
+  // thing is visible in the browser on a held Server Action POST
+  // (components/OverflowMenu.tsx carries that measurement).
+  //
+  // Which makes the pending item the only in-flight answer a kebab gives, and it
+  // is asserted here as such rather than assumed either way.
+  it("keeps the panel and its pending item up until the write settles", async () => {
     const write = held<void>();
     const action = vi.fn((_fd: FormData) => write.promise);
-    const onOpenChange = vi.fn();
     // Not a literal: lib/__tests__/overflow-menu-identity.test.ts scans every mount
     // for a hard-coded itemName, and this row has a name like any other.
     const rowName = FINDING.title;
-    render(
-      <ToastProvider>
-        <OverflowMenu itemName={rowName} open onOpenChange={onOpenChange}>
+    function Host() {
+      const [open, setOpen] = useState(true);
+      return (
+        <OverflowMenu itemName={rowName} open={open} onOpenChange={setOpen}>
           {({ runAction }) => (
             <form action={(fd) => runAction(action, fd, "Snoozed for 1 week")}>
               <input
@@ -149,19 +167,34 @@ describe("optimistic paint on tap-shaped writes (#2641)", () => {
                 name="signal_key"
                 value="preventive:shingles"
               />
-              <OverflowMenuSubmitItem>1 week</OverflowMenuSubmitItem>
+              <OverflowMenuSubmitItem pendingLabel="Snoozing…">
+                1 week
+              </OverflowMenuSubmitItem>
             </form>
           )}
         </OverflowMenu>
+      );
+    }
+    render(
+      <ToastProvider>
+        <Host />
       </ToastProvider>
     );
+
     fireEvent.click(screen.getByRole("menuitem", { name: "1 week" }));
     await waitFor(() => expect(action).toHaveBeenCalledOnce());
-    // Closed while the write is still in flight — the whole point.
-    expect(onOpenChange).toHaveBeenCalledWith(false);
+    // The item reports itself as busy, in place, while the write runs.
+    const pending = await screen.findByRole("menuitem", { name: "Snoozing…" });
+    expect(pending.getAttribute("aria-busy")).toBe("true");
+    expect((pending as HTMLButtonElement).disabled).toBe(true);
+    // And the success message is NOT claimed before the write has settled.
     expect(screen.queryByText("Snoozed for 1 week")).toBeNull();
 
     await act(async () => write.settle());
     await screen.findByText("Snoozed for 1 week");
+    // Only now does the panel go.
+    await waitFor(() =>
+      expect(screen.queryByRole("menuitem", { name: "1 week" })).toBeNull()
+    );
   });
 });
