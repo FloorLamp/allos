@@ -134,6 +134,7 @@ const FILE_BUDGETS = {
   "lib/migrations/AGENTS.md": { lines: 80, genre: "prose" },
   "lib/queries/AGENTS.md": { lines: 60, genre: "prose" },
   "docs/work.md": { lines: 80, genre: "runbook" },
+  "docs/work/decision-classes.md": { lines: 60, genre: "runbook" },
   "docs/work/dispatch.md": { lines: 100, genre: "runbook" },
   "docs/work/e2e-ci.md": { lines: 100, genre: "runbook" },
   "docs/work/environment.md": { lines: 100, genre: "runbook" },

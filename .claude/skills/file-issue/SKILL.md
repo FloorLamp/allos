@@ -94,12 +94,11 @@ posture — recommendations make questions cheap to answer).
 
 These questions go to a person: lead with what each option means in plain
 terms — what they'd see or get — with code-level detail underneath,
-answerable without reading the codebase. Typical survivors:
+answerable without reading the codebase.
 
-- **Scope boundaries** — which surfaces are in, what is explicitly out.
-  "Out of scope" lines prevent well-meaning scope creep.
-- **Design calls with real alternatives** — 2–3 options with costs, the way
-  #2837 and #2830 do; the user picks before filing.
+`docs/work/decision-classes.md` names the seven classes that reached the owner
+mid-flight in one day: two readings, placement, a number, wrong-result cost,
+two rulings on one name, coupled issues, edges of an "every X" rule. Ask each.
 
 Priority is NOT a question: set it from the calibration in step 6 and state
 it in the draft. Ask only when the calibration genuinely can't settle it.
