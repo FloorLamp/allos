@@ -242,29 +242,41 @@ the add layer does not spend the chrome budget below; what it fixes is that the 
 own content had the weakest position on its own page, under three frames of three
 styles. The add layer sits directly above the rows it creates, offers first (#4832).
 
-**From `xl` that stack becomes two columns** (#4974). The day bar runs across the
-top; beneath it the rows keep the reading measure in the left column and a **sticky
-rail** on the right holds, top to bottom, the chart card, the add layer and the month
-calendar — `grid-template-columns: 48rem minmax(0, 760px)`, the page capped at their
-sum plus the gap (`PageContainer width="rail"`, 97rem). The reading column is the
-right width for one-line rows and the wrong one for the day's map: at `xl` it left
-half the viewport empty and capped the chart inside it, and reading the rows took the
-map off screen. With the rail sticky, a tick tap scrolls the rows beside a chart that
+**On a wide screen that stack becomes two columns** (#4974). The day bar runs across
+the top; beneath it the rows keep the reading measure in the left column and a
+**sticky rail** on the right holds, top to bottom, the chart card, the add layer and
+the month calendar — `grid-template-columns: 48rem minmax(0, 760px)`, the page capped
+at their sum plus the gap (`PageContainer width="rail"`, 97rem). The reading column is
+the right width for one-line rows and the wrong one for the day's map: it left half
+the viewport empty and capped the chart inside it, and reading the rows took the map
+off screen. With the rail sticky, a tick tap scrolls the rows beside a chart that
 stays put.
 
-**Below `xl` nothing changes** — no grid, the same source order, the same widths. The
-rail comes FIRST in the document and is placed into column 2 explicitly, because
-source order is what the stacked layout reads and there the chart and the add layer
-belong above the rows they map and create. The left track is a fixed `48rem` rather
-than `minmax(0, 48rem)`: two flexible tracks share free space evenly, which at 1280
-would hand the rows 488px and call it a reading column. Measured rail widths, content
-minus the column and the gap: **208px at 1280, 368 at 1440, 528 at 1600, 760 at 1920**
-(the ceiling, where the page cap takes over).
+**Below the threshold nothing changes** — no grid, the same source order, the same
+widths. The rail comes FIRST in the document and is placed into column 2 explicitly,
+because source order is what the stacked layout reads and there the chart and the add
+layer belong above the rows they map and create. The left track is a fixed `48rem`
+rather than `minmax(0, 48rem)`: two flexible tracks share free space evenly, which at
+1280 would hand the rows 488px and call it a reading column.
+
+**The threshold is 1600px and it is DERIVED, not chosen — #4974 rules `xl`, and `xl`
+cannot pay for it yet.** The shell spends 240px on the sidebar and 40px on the page
+gutters, so the rail is `viewport - 1072`: **208px at 1280, 368 at 1440, 528 at 1600,
+760 at 1920** (the ceiling, where the page cap takes over). #4974's premise is that
+"the rail simply gives it 760px", which only becomes true near 1830. The chart's wide
+variant declares its own floor — `INTRADAY_VARIANTS.wide.minContainerPx` is 520
+(`lib/intraday-layout.ts`) — and under it the label type falls below the 9px floor
+#1518's guard enforces: measured at 1280, the plot's labels render at **2.88px** and
+e2e/intraday-panel.spec.ts's legibility case reds. 1600 is the first round width that
+pays the chart's floor. `xl` becomes correct the moment the chart picks its variant
+from its own box rather than from the viewport, which is **#4973** — the two issues
+are coupled, and 368px at 1440 sits squarely inside the compact variant's own 300–420
+band.
 
 **The calendar is open in the rail, and a door everywhere else.** It is a door
 (#4102) because the grid could not spend the ~140px chrome budget above the first
-record; in the rail it is BESIDE the rows and spends none of it, so at `xl` on the day
-view the trigger in the pinned cluster stands down and the grid renders inline. Both
+record; in the rail it is BESIDE the rows and spends none of it, so where the rail
+exists the trigger in the pinned cluster stands down and the grid renders inline. Both
 mounts are the same `EventMonthGrid` — the binding split out of `EventCalendar` so the
 popover host and the rail host cannot drift into two answers about what a marked day
 means. `MonthCalendar`'s `href` is a function, which a Server Component cannot hand
