@@ -74,10 +74,7 @@ describe("one bundle mint (#5082)", () => {
   it.each([
     [RULES[0], 'import { newDoseBundle } from "@/lib/bundle";'],
     [RULES[1], "export function newBundle(): BundleId { return x; }"],
-    [
-      RULES[2],
-      'const id = randomBytes(8).toString("hex") as BundleId;',
-    ],
+    [RULES[2], 'const id = randomBytes(8).toString("hex") as BundleId;'],
   ])("$#: catches a forged offender", (rule, forged) => {
     expect(rule.test(forged)).toBe(true);
   });

@@ -56,7 +56,8 @@ function seedDose(profileId: number, name: string): number {
 // #2458 ledger shape in miniature, UTC so the profile's local day IS the frozen one.
 function seedMorning(tag: string) {
   const profileId = Number(
-    db.prepare("INSERT INTO profiles (name) VALUES (?)").run(tag).lastInsertRowid
+    db.prepare("INSERT INTO profiles (name) VALUES (?)").run(tag)
+      .lastInsertRowid
   );
   setTimezone(profileId, "UTC");
   const anchor = today(profileId);
@@ -127,9 +128,9 @@ describe("one usual tap, one act id (#5082)", () => {
   it("writes NULL for a single serving add and a single dose confirm", () => {
     const { profileId, anchor, creatine } = seedMorning("act-null");
 
-    expect(
-      logFoodServingCore(profileId, "berries", anchor, "page").kind
-    ).toBe("logged");
+    expect(logFoodServingCore(profileId, "berries", anchor, "page").kind).toBe(
+      "logged"
+    );
     expect(markDoseTaken(profileId, creatine, null, anchor, "page")).toBe(
       "logged"
     );

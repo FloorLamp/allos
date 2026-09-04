@@ -271,6 +271,12 @@ describe("the migration-free guarantee", () => {
   //     stays #2896's deferred question. The row count per (profile, date, source)
   //     is unchanged, nothing was migrated onto the columns, and every existing row
   //     reads NULL.
+  //   • #5082: `20260904-act-bundle-columns` adds a nullable `bundle_id` — WHICH
+  //     COMPOSED ACTION wrote the row, the same id its dose and food siblings carry.
+  //     Additive and nullable, no backfill, and no writer reaches it yet: one submit
+  //     of the measurements form still lands ONE row, so nothing composes and nothing
+  //     mints. It is here for the day #3428 splits the sitting into per-measure
+  //     readings and "taken in one sitting" needs somewhere to be recorded.
   const columns = (table: string) =>
     (db.pragma(`table_info(${table})`) as { name: string }[])
       .map((c) => c.name)
@@ -280,6 +286,7 @@ describe("the migration-free guarantee", () => {
     expect(columns("body_metrics")).toEqual([
       "body_fat_at",
       "body_fat_pct",
+      "bundle_id",
       "date",
       "edited",
       "id",
