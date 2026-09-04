@@ -33,7 +33,9 @@ function seedFailedTelegramSend(): void {
     db.pragma("busy_timeout = 5000");
     const adminLoginId = (
       db
-        .prepare("SELECT id FROM logins WHERE role = 'admin' ORDER BY id LIMIT 1")
+        .prepare(
+          "SELECT id FROM logins WHERE role = 'admin' ORDER BY id LIMIT 1"
+        )
         .get() as { id: number }
     ).id;
     db.prepare("DELETE FROM notify_lifecycle WHERE state = 'failing'").run();
