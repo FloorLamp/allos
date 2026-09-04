@@ -457,12 +457,14 @@ export async function updateSubstanceDailyTotalAction(
   if (!parsed.ok) return parsed.outcome;
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id) || id <= 0) return { kind: "not-found" };
+  // NO SURFACE STAMP: the correction no longer creates a row (a drink's units are
+  // events and are corrected on the event, #5026 item 1), so there is no provenance
+  // for it to claim — a day counter's correction only restates what is already there.
   const outcome = updateSubstanceDailyTotalCore(
     profileId,
     parsed.substance,
     id,
-    parsed,
-    webOrigin(formData)
+    parsed
   );
   if (outcome.kind !== "updated") return outcome;
   revalidateSubstanceUse();

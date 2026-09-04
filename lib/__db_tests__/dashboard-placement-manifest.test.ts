@@ -26,6 +26,7 @@ import {
 import { PERSONAS, type PersonaContext } from "../../scripts/seed-personas";
 import {
   allProfileIds,
+  HR_RANGE_READ,
   installStatementTrace,
   loadDashboard,
   profilesForIds as profiles,
@@ -49,6 +50,7 @@ import { biomarkerFlagDismissalKey } from "@/lib/dismissal-keys";
 import { dashboardAttentionCandidateId } from "@/lib/dashboard-attention-identity";
 import LogPracticeButton from "@/components/practices/LogPracticeButton";
 import { isNotableFlag } from "@/lib/reference-range";
+import { ALCOHOL_FOOD_GROUP } from "@/lib/substance-use";
 import type { MedicalFlag } from "@/lib/types";
 
 vi.mock("@/lib/request-cache", async () =>
@@ -126,6 +128,78 @@ function ctxFor(profileId: number): PersonaContext {
   };
 }
 
+// #5010's last acceptance criterion, and it is a claim about ARGUMENTS rather than
+// about a count. The owner's profile over a production snapshot saw three `hr_minutes`
+// range reads per render, down from four, and could not tell from the trace whether
+// three reads meant three windows or one window asked for three times — both print 3,
+// and only one of them is correct. So each execution is keyed on the span it was BOUND
+// to, the way #5055's probe keyed its reads on their profile ids.
+//
+// THE WINDOW IS THE BOUND SPAN, NOT THE ARGUMENTS THE CALLER SPELLED. `getHrMinutesInRange`
+// is memoized on `(profileId, since, until)`, so a duplicate of that tuple is already
+// impossible under the request cache — an assertion keyed on it could only ever restate
+// the memo. What the memo cannot see is two DIFFERENT spellings resolving to one span —
+// #5069 has since required `until`, which retires the spelling that used to do it — and
+// that is a second full materialisation of the same rows. Keying on the statement's
+// parameters catches both that and a memo that stopped collapsing at all. The pattern
+// itself lives in the harness, because the profiler prints the same read's windows.
+/** Render name → the windows its `hr_minutes` range reads were bound to, in order. */
+const hrWindowReads = new Map<string, string[]>();
+/**
+ * The one render in this file that HAS heart-rate minutes. Rendered after the persona
+ * loop below, on its own profile, so it cannot move a single number in QUERY_BASELINE.
+ */
+const HR_FIXTURE = "hr-minutes fixture";
+
+function windowsRead(
+  trace: ReturnType<typeof installStatementTrace>
+): string[] {
+  return trace.bindings().map((execution) => JSON.stringify(execution.args));
+}
+
+/** Drink and dry evenings, so the alcohol pair reaches its overnight outcome series. */
+function seedDrinkEvenings(profileId: number, days: number): void {
+  const insert = db.prepare(
+    `INSERT INTO food_daily_totals (profile_id, date, group_key, servings)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT (profile_id, date, group_key)
+       DO UPDATE SET servings = excluded.servings`
+  );
+  const td = today(profileId);
+  for (let back = 1; back <= days; back++) {
+    const day = shiftDateStr(td, -back);
+    // A dry evening has to be a LOGGED evening — the pair's `logging-evidence`
+    // control reads a day with no food at all as evidence about logging.
+    insert.run(profileId, day, "whole-grains", 1);
+    if (back % 3 === 0) insert.run(profileId, day, ALCOHOL_FOOD_GROUP, 2);
+  }
+}
+
+/**
+ * A quarter-hourly heart-rate trace over `days` of history. No persona seeds
+ * `hr_minutes` and `npm run seed` writes none (#5034), so without this every reader
+ * on this seam returns before its range read and the criterion above would be asserted
+ * over zero executions.
+ */
+function seedHrMinutes(profileId: number, days: number): void {
+  const insert = db.prepare(
+    `INSERT OR IGNORE INTO hr_minutes (profile_id, ts, bpm, n, source)
+     VALUES (?, ?, ?, 1, 'health-connect')`
+  );
+  const start = Date.parse(
+    `${shiftDateStr(today(profileId), -days)}T00:00:00.000Z`
+  );
+  const steps = days * 24 * 4;
+  for (let step = 0; step < steps; step++) {
+    const at = new Date(start + step * 15 * 60_000);
+    // A plain diurnal swing: low overnight, higher through the day, so the night's
+    // floor and a workout window are different numbers rather than one constant.
+    const hour = at.getUTCHours();
+    const bpm = hour < 7 ? 52 + (step % 5) : 78 + (step % 40);
+    insert.run(profileId, at.toISOString().slice(0, 16), bpm);
+  }
+}
+
 const manifests = new Map<
   string,
   DashboardPlacementCanvasProps["placements"]
@@ -171,7 +245,7 @@ describe("actual atomic dashboard manifests", () => {
         id: number;
       }
     ).id;
-    const trace = installStatementTrace();
+    const trace = installStatementTrace({ bindings: HR_RANGE_READ });
     const Dashboard = await loadDashboard();
     // One call = one request, so one request-cache scope. Everything outside this
     // helper — persona seeding above all — runs unmemoized, exactly as production
@@ -218,6 +292,7 @@ describe("actual atomic dashboard manifests", () => {
       rowPresentations.set(persona.name, element.props.presentations);
       aheadPresentations.set(persona.name, element.props.aheadPresentations);
       queryCounts.set(persona.name, trace.count());
+      hrWindowReads.set(persona.name, windowsRead(trace));
       personaProfileIds.set(persona.name, profileId);
       if (persona.name === "household") {
         const switched = session.accessible.find(
@@ -232,6 +307,34 @@ describe("actual atomic dashboard manifests", () => {
         )!;
       }
     }
+
+    // ── THE ONE RENDER ON THIS FILE THAT HAS HEART-RATE MINUTES (#5010).
+    // After the loop and on its own profile, so no persona's count can move: the
+    // budget above is captured before this line runs, and nothing below reads
+    // `trace.count()`. It reuses a persona's own shape — the trained profile with
+    // synced nights, which is what puts the zone reader, the overnight reader and the
+    // event windows on one render — and adds only the minutes those readers ask for.
+    //
+    // IT REACHES THE STATE THE ASSERTION FORBIDS, which the six personas above do not:
+    // this render issues three range reads — the trailing zone window, the span of the
+    // nights the alcohol pair judges, and the recent event window. The personas issue
+    // NONE, so on them the check below is a claim about an empty list.
+    const hrBefore = new Set(allProfileIds());
+    const hrProfileId = newProfile(`dashboard:${HR_FIXTURE}`);
+    PERSONAS.find((persona) => persona.name === "biohacker")!.apply(
+      ctxFor(hrProfileId)
+    );
+    seedHrMinutes(hrProfileId, 95);
+    seedDrinkEvenings(hrProfileId, 90);
+    session.accessible = profiles(
+      allProfileIds().filter((id) => !hrBefore.has(id))
+    );
+    session.profile = session.accessible.find(
+      (profile) => profile.id === hrProfileId
+    )!;
+    trace.clear();
+    await renderDashboard();
+    hrWindowReads.set(HR_FIXTURE, windowsRead(trace));
   }, MANIFEST_HOOK_MS);
 
   afterAll(() => {
@@ -999,6 +1102,29 @@ describe("actual atomic dashboard manifests", () => {
   // the per-cockpit pediatric read it subsumes. Every other persona is flat because
   // none carries an open illness, and /medications is unmoved: med-data now reads the
   // same rows through the one loader instead of assembling its own copy.
+  // −1 on EVERY persona (#5010): `getHrMinutesInRange` joined the request cache.
+  // `getDayLoadInputs` and `getIntensitySignal` both read the same trailing 42-day
+  // window on one render, so the memo collapses two identical reads into one. It moves
+  // every persona, including those with no `hr_minutes` at all, because the second read
+  // was issued regardless of what it returned.
+  // −20 on every persona and −21 on household (#3369 item 2): eight reads that one
+  // render asked the SAME question of, more than once, joined the request cache at
+  // their existing author. Measured LEAVE-ONE-OUT on this file — each wrap disabled
+  // alone against the other seven — so these are contributions, not a split of the
+  // total guessed after the fact; they sum to exactly the move above, so the eight
+  // compose rather than overlap. Per persona: getActiveRoutine 4, getWeights 3,
+  // getOutcomeGoals 3, getEpisodeRowForDate 3, getLatestBodyMetricDated 2 (3 on
+  // household), getFoodDailyServingTotals 2, mostRecentClosedEpisodeRow 2,
+  // getActiveMedicationFamilies 1.
+  //
+  // WHAT WAS DELIBERATELY NOT WRAPPED, because a memo there would have hidden real
+  // work rather than removed it: `getEpisodeRowsForDate` runs 4× on household and
+  // its four executions carry FOUR DIFFERENT profile ids — the household's own
+  // per-profile fan-out — and `preloadProfileSettings` is likewise one read per
+  // profile already. Both would have shown a green count and cost the same queries.
+  // Every wrap above keys on `profile_id`, so what collapses is one profile asking
+  // twice and never one profile answering for another; the two-profile assertion
+  // below is what holds that.
   const QUERY_BASELINE: Record<string, number> = {
     // +1 on four personas and +3 on two (#4956): the attention read now also asks
     // whether a live source is DROPPING a record type. That is one scan of this
@@ -1079,17 +1205,28 @@ describe("actual atomic dashboard manifests", () => {
     // left four personas a query short with nothing to show for it. The numbers below
     // came from running the gate on the merged tree, which is the only thing that can
     // tell "we agree" from "we both landed on 227 by coincidence".
-    bodybuilder: 228,
-    "marathon-runner": 229,
-    household: 277,
-    pregnant: 224,
-    "diabetic-cgm": 235,
+    bodybuilder: 206,
+    "marathon-runner": 207,
+    household: 254,
+    pregnant: 202,
+    "diabetic-cgm": 213,
     // +9 (#4424 ruling 7): Upcoming's practice rows mount the shared row control, so
     // the row now resolves what that control renders — `getTrackedPractices`, which is
     // one grouped today-tally and one live sweep however many practices there are,
     // plus the usual-duration vote per practice. Assembling the same four fields
     // per-target instead measured +13.
-    biohacker: 255,
+    biohacker: 233,
+    // −1 each (#5061): `getDayLoadInputs` and `getIntensitySignal` ask the same
+    // question of the same 42 days — the shared HR read, kept to the activity windows
+    // that bound it — and only the READ was request-cached (#5010), so each one still
+    // fetched the windows and walked every minute again. `windowScopedBuckets` in
+    // lib/queries/zones.ts caches the scoped answer instead, and the second fetch of
+    // `activities` goes with it. The statement is the only one that moved: diffing the
+    // profiler's per-statement counts over one snapshot render, before and after,
+    // reports exactly `SELECT date, start_time, end_time, duration_min FROM activities`
+    // ×3 → ×2 and nothing else. The walk it also removed is not a statement and so is
+    // invisible here — 144,000 of the render's 295,200 bucket comparisons, counted with
+    // a probe rather than read off this meter.
     // −1 each (#4775): the paired-observation registry gained a third alcohol entry
     // (`alcohol-overnight-hr`), which reads the SAME `food_daily_totals` window the
     // other two already read — and the factor read happens before each entry's
@@ -1110,13 +1247,14 @@ describe("actual atomic dashboard manifests", () => {
   // rather than a bound, and decoration is exactly what the single cap had already
   // decayed into by the time #3164 filed against it. So it is re-derived here:
   //
-  //   household 270 (the heaviest baseline) + 20 headroom = 290
+  //   household 254 (the heaviest baseline) + 20 headroom = 274
   //
-  // RE-DERIVED, NOT LEFT BEHIND (#3410/#3316/#3100). The line above read
-  // "267 + 23 = 290" after the household baseline moved to 270, which is the one
-  // arithmetic this comment cannot afford to get wrong: the whole subject here is
-  // that these numbers are honest. The CEILING did not move — only the split of it
-  // into "what a render costs" and "what is left".
+  // RE-DERIVED, NOT LEFT BEHIND (#3410/#3316/#3100). This line has read "267 + 23"
+  // and then "270 + 20" as the household baseline moved, and it is the one arithmetic
+  // this comment cannot afford to get wrong: the whole subject here is that these
+  // numbers are honest. What changes is the split of the ceiling into "what a render
+  // costs" and "what is left", and the split has to be re-done every time either half
+  // moves — including, as below, when it moves DOWN.
   //
   // WHAT THE HEADROOM IS FOR: one household-shaped addition landing without a
   // conversation. The integrated household fixture carries four profiles, so an
@@ -1133,7 +1271,43 @@ describe("actual atomic dashboard manifests", () => {
   // the residual duplicates) are each expected to take a bite out of these numbers;
   // when they do, this number follows them down. A ceiling left behind by a
   // reduction stops being able to fire, and then it is decoration again.
-  const QUERY_CEILING = 290;
+  //
+  // 290 → 275 (#3369 item 2), WHICH IS THAT RULE BEING FOLLOWED RATHER THAN AN
+  // OPTIMISATION BANKED. Wrapping the eight repeated reads took household 276 → 255,
+  // so the derivation above re-runs as 255 + 20 = 275 and the ceiling follows the
+  // baselines down. Leaving it at 290 would have parked 35 statements of slack over
+  // the heaviest persona — room for a 20-query regression to be pasted in without
+  // anyone having the conversation this bound exists to force, which is the exact
+  // decay the 535 suffered. Re-deriving is one line and is meant to happen every
+  // time a gather moves these numbers.
+  //
+  // 275 → 274 (#5061), the same rule again and the smallest it will ever look. The
+  // zone reads stopped fetching the activity windows twice, which is −1 on every
+  // persona, so household is 254 and the derivation above re-runs as 254 + 20 = 274.
+  // A one-statement reduction is exactly the size at which leaving the ceiling alone
+  // feels reasonable, and that is the decay: nothing here ever moves by 15 at once,
+  // it moves by one several times and the slack is what accumulates. The arithmetic
+  // in this comment is the whole product, so it follows the number down or it is
+  // false — which is the same defect #5062 deleted from this file, one paragraph up.
+  //
+  // WHAT IS NOT COMING: #3369 item 1 said the closed Show-everything tail's node
+  // payloads would move behind the disclosure and take a bite out of the table
+  // above. Measured on 5045340d by attributing every statement to the page frame
+  // that issued it — one stack capture per statement, six personas, the per-line
+  // counts summing to exactly the six baselines — the tail's payloads are not what
+  // this page spends. The whole candidate-and-row region of `app/(app)/page.tsx`,
+  // every `add(...)` and every presentation built for one, issues ONE statement per
+  // persona (`getLastSleepRecordDate`, itself a dormancy date and so candidacy) and
+  // none at all on biohacker. Every other statement comes from the shared gathers
+  // ABOVE the first candidate — which is also where the candidate IDS come from.
+  // Six of those gathers do feed nothing but everything-lane candidates and are
+  // worth 32-47% of a render (collectCoachingFindings 38-44, gatherCoachingInput
+  // 17-22, getRecapCard 8-16, getHealthspanPillars 10-18, getActiveProtocolSummaries
+  // 1-13, getScheduledAppointments 1), but each MINTS the ids it feeds —
+  // `data-quality.finding:<dedupeKey>`, `recap.<line>`, `healthspan.pillar:<key>` —
+  // so deferring one defers CANDIDACY, not a payload, and that is the #3077
+  // exact-once partition rather than a cost question.
+  const QUERY_CEILING = 274;
 
   it("dashboard query budget: each persona matches its recorded main baseline", () => {
     // THE BACKSTOP ASKS ABOUT THE TABLE, NOT THE MEASUREMENT — which is the only
@@ -1186,6 +1360,39 @@ describe("actual atomic dashboard manifests", () => {
         "it removed. Either way the fix is the same: account for the move in the\n" +
         "commit message, then refresh QUERY_BASELINE in this file with:\n\n" +
         `  const QUERY_BASELINE: Record<string, number> = {\n${refreshed}\n  };\n`
+    ).toEqual([]);
+  });
+
+  it("reads each hr_minutes window once per render (#5010)", () => {
+    // THE CONTROL COMES FIRST BECAUSE ZERO IS THE FLATTERING ANSWER. Every window
+    // below is distinct when no window was read at all, which is the state all six
+    // personas are in — and it is what the assertion would report forever if the
+    // statement this watches were renamed or the fixture stopped reaching the reader.
+    expect(
+      hrWindowReads.get(HR_FIXTURE) ?? [],
+      `${HR_FIXTURE} made no hr_minutes range read, so the check below is vacuous.\n` +
+        `Either the fixture stopped reaching a reader on this seam, or the read's\n` +
+        `SQL no longer matches ${HR_RANGE_READ}.`
+    ).not.toEqual([]);
+
+    const repeated = [...hrWindowReads].flatMap(([render, windows]) => {
+      const times = new Map<string, number>();
+      for (const window of windows)
+        times.set(window, (times.get(window) ?? 0) + 1);
+      return [...times]
+        .filter(([, count]) => count > 1)
+        .map(([window, count]) => `${render}: ${count} reads of ${window}`);
+    });
+    expect(
+      repeated,
+      "One render read the same hr_minutes window more than once.\n" +
+        "Each line names the render and the [profile_id, from, to] span it asked for\n" +
+        "twice. A second read of one span is a second full materialisation of the same\n" +
+        "rows — the cost #5010 removed — and it is invisible to a statement COUNT,\n" +
+        "because N reads of N windows and N reads of one window are both N.\n" +
+        "The usual cause is a caller reaching the reader outside the request memo, or\n" +
+        "two callers spelling one span differently — separate keys, one window. #5069\n" +
+        "required `until`, so the trailing window now has a single spelling."
     ).toEqual([]);
   });
 });

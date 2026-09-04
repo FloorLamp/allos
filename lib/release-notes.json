@@ -107,6 +107,90 @@
           "category": "History",
           "title": "A drink with a stated time draws its own tick on the day chart",
           "issues": [3295]
+        },
+        {
+          "pr": 5023,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "A workout note is corrected once a fuller copy of that session arrives",
+          "issues": [4996]
+        },
+        {
+          "pr": 5023,
+          "kind": "feature",
+          "category": "Reminders",
+          "title": "A workout note still asking the type says details follow when Strava syncs",
+          "issues": [4996]
+        },
+        {
+          "pr": 5031,
+          "kind": "feature",
+          "category": "Medications",
+          "title": "You can check off and log doses on the medication page of someone you help",
+          "issues": [4429]
+        },
+        {
+          "pr": 5031,
+          "kind": "feature",
+          "category": "Medications",
+          "title": "You can mark a dose taken from the “Today across everyone” strip",
+          "issues": [4429]
+        },
+        {
+          "pr": 5039,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "The measurements sheet opens wide enough for four fields to a row",
+          "issues": [4977]
+        },
+        {
+          "pr": 5039,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "Blood pressure has room for both numbers, labelled Systolic and Diastolic",
+          "issues": [4977]
+        },
+        {
+          "pr": 5039,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "The measurements form’s standing sentence moves behind an info icon",
+          "issues": [4977]
+        },
+        {
+          "pr": 5042,
+          "kind": "fix",
+          "category": "Sleep",
+          "title": "A night that crosses a clock change reads its bed and wake on one clock",
+          "issues": [5018]
+        },
+        {
+          "pr": 5042,
+          "kind": "fix",
+          "category": "Sleep",
+          "title": "The sleep consistency strip stops calling a clock-change night off schedule",
+          "issues": [5018]
+        },
+        {
+          "pr": 5043,
+          "kind": "perf",
+          "category": "Trends",
+          "title": "Trends loads faster when you have a lot of biomarkers tracked",
+          "issues": []
+        },
+        {
+          "pr": 5028,
+          "kind": "fix",
+          "category": "Sleep",
+          "title": "A daytime nap stops making that night’s times look like a wrong clock",
+          "issues": [5019]
+        },
+        {
+          "pr": 5028,
+          "kind": "fix",
+          "category": "Sleep",
+          "title": "Deleting the flagged session removes the night, not that day’s nap",
+          "issues": [5019]
         }
       ]
     },
@@ -663,14 +747,14 @@
           "pr": 4966,
           "kind": "feature",
           "category": "Trends",
-          "title": "A chart whose data source has stopped links to Review and offers Fix a range",
+          "title": "A chart whose data source has stopped links to Review and offers “Fix a range”",
           "issues": [4925]
         },
         {
           "pr": 4967,
           "kind": "fix",
           "category": "Connected apps",
-          "title": "HRV, respiratory rate and skin temperature are being stored again",
+          "title": "Health Connect stores HRV, respiratory rate and skin temperature again",
           "issues": [4956]
         },
         {
@@ -684,7 +768,7 @@
           "pr": 4967,
           "kind": "fix",
           "category": "Connected apps",
-          "title": "Sync details no longer draw an empty box on a run with nothing to report",
+          "title": "Sync details no longer draw an empty box on a sync with nothing to report",
           "issues": [4956]
         },
         {

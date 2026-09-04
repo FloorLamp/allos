@@ -607,6 +607,174 @@ const CONFIRM_DELETE_CLICK_RE =
 const CONFIRM_DELETE_OK_MARKER = "confirm-delete-ok";
 const CONFIRM_DELETE_CLICK_ALLOW: Record<string, number> = {};
 
+// ── (v-e) An UNSCOPED page.getByTestId on a streaming page (issue #4890) ─────
+//
+// THE DEFECT. A page whose Suspense boundary streams delivers the boundary's
+// content TWICE for a window: React flushes it into a `<div hidden>` appended to
+// `<body>` and an inline `$RC(…)` script relocates it into the document. While
+// both exist, every marker inside the boundary exists twice with the same testid,
+// so a GLOBAL `page.getByTestId("x")` resolves to 2 elements and throws a
+// strict-mode violation rather than retrying down to one. Under CI load the window
+// outlives Playwright's retry, so it is a deterministic property of the page and
+// not a flake.
+//
+// WHY IT IS A RULE AND NOT A HELPER. This was caught three times reading it one
+// marker at a time — `history-row`, then `routine-new`, then
+// `training-log-clear-filters` — across four specs, and each reading fixed the
+// marker in front of it and left the page exposed. A `trainingRow()` helper covers
+// the markers somebody thought to put on it; a lint rule covers the NEXT call site
+// by default and forces an exemption to be written down. One occurrence reached
+// the failure THROUGH e2e/helpers.ts, where the call site could not have scoped its
+// way out at all — which is why this is the one guard here that also reads the
+// blessed helper module.
+//
+// WHAT COUNTS AS SCOPED. The staged copy's ancestry stops at `<body>`, so any scope
+// that lives in the document proper excludes it. A locator whose receiver is not
+// the bare `page` — a row, a card, a dialog, `appContent(page)` — is already
+// scoped and is not matched here. A `page.getByTestId(root)` naming one of the
+// TESTID_SCOPE_ROOTS below IS the scope, so the chained
+// `page.getByTestId("training-page").getByTestId("routine-new")` form that #4833
+// shipped stays legal.
+//
+// A root has to be a marker that exists ONCE per document and sits ABOVE every
+// boundary: `app-content-container` is the app shell's wrapper around every
+// `(app)` page's children, and `training-page` is the hub header the #4890
+// boundary sits inside. Do not add a root that could itself land inside a
+// streamed section — that would bless the very duplicate this guard is about.
+//
+// `training-page` is TRANSITIONAL: it is here to keep #4833's shipped fixes legal,
+// buys nothing `appContent(page)` does not, and works on one page only. Converge
+// those call sites on `appContent(page)` when they are next touched; the root goes
+// when the last one has.
+//
+// THE ALLOWLIST IS THE HONEST RECORD. 5,427 unscoped lookups across 435 files exist
+// today, and a rule that started as "scope all of them" would be 5,427 hand edits
+// with nothing preventing the 5,428th. Burn down the 161 files whose code names
+// `/training` or `/trends` first (2,298 of the lookups) — they are the only ones that
+// can race today; the other 274 files / 3,129 lookups are frozen for uniformity and
+// can wait. No file is
+// excluded: every allowlisted file reaches the `(app)` shell, including the six that
+// name no route — all six are shared helper MODULES, `helpers.ts` among them, and a
+// spec hands each of them an already-navigated page. So
+// today's per-file counts are frozen in
+// __fixtures__/e2e-testid-scope-allow.json — immutable-downward like every other
+// list here — and the list says what has NOT been checked rather than claiming
+// everything has. A NEW bare locator anywhere fails; scope it, or mark the line
+// `testid-scope-ok: <why>` when the marker provably cannot be inside a streamed
+// boundary (a `/login` page, an overlay portalled to `<body>`).
+// THE COUNTS ARE A READING OF ONE BASE, and the base is named so a reader can check
+// it: they were derived at da622bc0 (main, 2026-09-04). That is what a frozen manifest
+// can honestly claim — a coverage number is true against the tree it was measured on,
+// and a reader who does not know which tree cannot verify it.
+//
+// WHICH NEEDS NO STALENESS CHECK, because the comparison is EXACT EQUALITY, not a
+// ceiling: checkPattern reds when a count exceeds its entry AND when it falls below
+// one. So a fixture read from the wrong tree cannot pass quietly. Both directions are
+// measured rather than argued: merging main onto this branch red as an over-count on
+// the two files main had grown lookups in (measurements-form-layout.spec.ts 14 → 18 in
+// #5039, undo-delete.spec.ts 12 → 13 in #4997), and scoping one lookup by hand reds as
+// "you reduced offenders, lower the entry". A ceiling would have left that second case
+// silently green and let the file regain a bare lookup for free, which is the hole this
+// shape does not have. Nothing here needs to read git to know it is out of date.
+//
+// AND THE READING IS TAKEN AGAINST THE TREE IT LANDS ON. CI gates the merge on the
+// branch head, so a fixture read from an OLDER tree than the one it merges into can
+// pass on the PR and red on main — the worst thing this rule could produce. Which
+// tree that is only becomes knowable at promotion, so re-derive there, not earlier.
+//
+// SO A REBASE RE-READS THE WHOLE LIST, in both directions. A spec that landed on main
+// after the reading carries lookups this rule never saw; a spec someone scoped in the
+// meantime carries fewer. Run the guard after rebasing and it names every file whose
+// count moved and which way. Raising an entry is legitimate ONLY there — re-deriving
+// against a new base — and NEVER as a way to land a new bare lookup, which is the
+// whole ratchet. Lowering is always legitimate and always wanted.
+const TESTID_SCOPE_ROOTS = ["app-content-container", "training-page"];
+// The argument test, as a NEGATIVE lookahead with the whitespace INSIDE it. Written
+// as `\s*(?!…)` the `\s*` is greedy and backtracks until the lookahead succeeds, so
+// `page.getByTestId(  "training-page")` would read as unscoped — a guard that fires on
+// the one form it exists to bless.
+const TESTID_ROOT_ARG = `(?!\\s*[\"'\`](?:${TESTID_SCOPE_ROOTS.join("|")})[\"'\`]\\s*\\))`;
+
+// A Playwright `Page` under any name. `page` is the fixture, but a spec that opens a
+// second context names it whatever the story needs — `member`, `tabB`, `anon`,
+// `otherPage` — and 311 of the bare lookups in the suite are on one of those. A rule
+// that read only the literal `page.` would have declared those clean, which is the
+// same per-name narrowness #4890 was caught by three times, one level down.
+const PAGE_ALIAS_RE =
+  /\b([A-Za-z_$][\w$]*)\s*(?::\s*Page\b|=\s*await\s+[\w$.]*(?:newPage|loginAs|comparePage)\s*\()/g;
+
+export function pageIdentifiers(code: string): Set<string> {
+  const ids = new Set<string>(["page"]);
+  for (const m of code.matchAll(PAGE_ALIAS_RE)) ids.add(m[1]);
+  return ids;
+}
+
+/**
+ * Lookups in `scanned` that start from a whole PAGE and name a testid that is not one
+ * of the roots — i.e. the shape that also matches the staged copy (#4890).
+ *
+ * Receiver-based, not chain-based, deliberately. `page.getByTestId(root).getByTestId(x)`
+ * is safe because the ROOT is unique in the document, never because a chain happens to
+ * be two calls long: `page.getByTestId("history-row").locator("a")` chains just as far
+ * and still matched both copies. So the question this asks is only ever "does this
+ * lookup start at a page, and does it name a root".
+ */
+export function countUnscopedTestIds(scanned: string, code = scanned): number {
+  let n = 0;
+  for (const id of pageIdentifiers(code)) {
+    const re = new RegExp(
+      // Whitespace around the dot: prettier wraps a long chain as `page\n  .getByTestId(`,
+      // and 452 lookups in the suite are written that way. An `\bpage\.` anchored rule
+      // read every one of them as absent — the hole this guard's own mutation test found.
+      `\\b${id.replace(/\$/g, "\\$")}\\s*\\.\\s*getByTestId\\(` +
+        TESTID_ROOT_ARG,
+      "g"
+    );
+    n += (scanned.match(re) ?? []).length;
+  }
+  return n;
+}
+
+const BARE_TESTID_OK_MARKER = "testid-scope-ok";
+const BARE_TESTID_ALLOW_FILE =
+  "lib/__tests__/__fixtures__/e2e-testid-scope-allow.json";
+const BARE_TESTID_ALLOW: Record<string, number> = JSON.parse(
+  fs.readFileSync(path.join(REPO, BARE_TESTID_ALLOW_FILE), "utf8")
+) as Record<string, number>;
+
+// The app's own streaming surface, frozen (#4890).
+//
+// `components/StreamedSection.tsx` is what makes a section genuinely suspend —
+// every read in this app is synchronous better-sqlite3, so an `async` Server
+// Component resolves in microtasks and a bare `<Suspense>` around it never
+// flushes early. It is therefore the one thing that produces the staged
+// `<div hidden>` copy, and its two call sites are the whole hazard surface:
+// `/training` (the tab panel) and `/trends` (the Body census). The other two
+// boundaries below do not stage server content — app/layout.tsx wraps a client
+// component reading useSearchParams behind a null fallback, and the chart-empty
+// harness suspends a client chart — but they are frozen with the rest so the
+// list reads as "every Suspense in app/", which is the thing to re-check.
+//
+// `loading.tsx` is the other way in, and app/(app)/layout.tsx already refuses it
+// in prose (#530). Frozen at zero below so the refusal has teeth.
+const SUSPENSE_BOUNDARY_FILES = [
+  "app/(app)/e2e-fixtures/chart-empty/ChartEmptyHarness.tsx",
+  "app/(app)/training/page.tsx",
+  "app/(app)/trends/page.tsx",
+  "app/layout.tsx",
+  // The three chart wrappers suspend a `dynamic(..., { ssr: false })` import from
+  // inside a "use client" component — client-only, so nothing is ever staged.
+  // #4997 rebuilt nine chart trees around two renderers, so two of the three are
+  // new names for the same client-only shape.
+  "components/BarSeriesChart.tsx",
+  "components/ScatterChartCard.tsx",
+  "components/TimeSeriesChart.tsx",
+];
+const STREAMED_SECTION_FILES = [
+  "app/(app)/training/page.tsx",
+  "app/(app)/trends/page.tsx",
+];
+
 // ── (vi) The fixture-LOGIN budget (issue #1392) ──────────────────────────────
 // Every seeded fixture login is a PERMANENT row on Settings → Family and a
 // permanent member of the grant matrix. That population is monotonic — it only
@@ -684,9 +852,9 @@ function codeFor(file: SpecFile): string {
   return (file.code ??= cachedStripComments(file.text));
 }
 
-let specFilesCache: SpecFile[] | undefined;
-function specFiles(): SpecFile[] {
-  if (specFilesCache) return specFilesCache;
+let allE2eFilesCache: SpecFile[] | undefined;
+function allE2eFiles(): SpecFile[] {
+  if (allE2eFilesCache) return allE2eFilesCache;
   const out: SpecFile[] = [];
   const walk = (dir: string) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -696,16 +864,20 @@ function specFiles(): SpecFile[] {
       if (entry.isDirectory()) walk(full);
       else if (entry.name.endsWith(".ts")) {
         const name = path.relative(E2E_DIR, full).split(path.sep).join("/");
-        if (!SCAN_EXCLUDE.has(name)) {
-          const text = fs.readFileSync(full, "utf8");
-          out.push({ name, text });
-        }
+        out.push({ name, text: fs.readFileSync(full, "utf8") });
       }
     }
   };
   walk(E2E_DIR);
-  specFilesCache = out.sort((a, b) => a.name.localeCompare(b.name));
-  return specFilesCache;
+  allE2eFilesCache = out.sort((a, b) => a.name.localeCompare(b.name));
+  return allE2eFilesCache;
+}
+
+let specFilesCache: SpecFile[] | undefined;
+function specFiles(): SpecFile[] {
+  return (specFilesCache ??= allE2eFiles().filter(
+    (f) => !SCAN_EXCLUDE.has(f.name)
+  ));
 }
 
 function countMatches(text: string, re: RegExp): number {
@@ -790,7 +962,7 @@ export function unmarkedCiBranchLines(text: string): number[] {
 
 function checkPattern(
   label: string,
-  re: RegExp,
+  re: RegExp | ((scanned: string, file: SpecFile) => number),
   allow: Record<string, number>,
   opts?: {
     hint?: string;
@@ -799,9 +971,17 @@ function checkPattern(
     // Files skipped entirely — the blessed HOME for a pattern (e.g. family-helpers.ts
     // legitimately contains the family-create sequences it exists to centralize).
     skipFiles?: Set<string>;
+    // The corpus to read, when a rule's reach differs from the default one. The
+    // #4890 testid-scope rule passes allE2eFiles() because one of its known
+    // occurrences was inside e2e/helpers.ts itself, which SCAN_EXCLUDE hides.
+    corpus?: SpecFile[];
+    // Where the frozen counts live, when they are not inline in this file.
+    allowFile?: string;
   }
 ) {
-  const files = specFiles().filter((f) => !opts?.skipFiles?.has(f.name));
+  const files = (opts?.corpus ?? specFiles()).filter(
+    (f) => !opts?.skipFiles?.has(f.name)
+  );
   const seen = new Set<string>();
   const violations: string[] = [];
   const hint =
@@ -813,12 +993,14 @@ function checkPattern(
     const { name, text } = file;
     // Comment stripping cannot create a match. Keep the exact code-only verdict
     // for raw candidates without lexing guaranteed-empty files for every rule.
-    const count = countMatches(text, re)
-      ? countMatches(
-          hygieneScanTextFrom(text, codeFor(file), opts?.excludeLineMarker),
-          re
-        )
-      : 0;
+    const scanned = () =>
+      hygieneScanTextFrom(text, codeFor(file), opts?.excludeLineMarker);
+    const count =
+      typeof re === "function"
+        ? re(scanned(), file)
+        : countMatches(text, re)
+          ? countMatches(scanned(), re)
+          : 0;
     const allowed = allow[name] ?? 0;
     seen.add(name);
     if (count > allowed) {
@@ -829,7 +1011,8 @@ function checkPattern(
       violations.push(
         `${name}: ${count} ${label} but allowlist freezes ${allowed}. ` +
           `You reduced offenders — LOWER (or remove) its entry in ` +
-          `lib/__tests__/e2e-hygiene.test.ts so the allowlist keeps shrinking.`
+          `${opts?.allowFile ?? "lib/__tests__/e2e-hygiene.test.ts"} so the ` +
+          `allowlist keeps shrinking.`
       );
     }
   }
@@ -839,7 +1022,7 @@ function checkPattern(
     if (!seen.has(name)) {
       violations.push(
         `${name}: allowlisted for ${label} but the spec file no longer exists — ` +
-          `remove its entry in lib/__tests__/e2e-hygiene.test.ts.`
+          `remove its entry in ${opts?.allowFile ?? "lib/__tests__/e2e-hygiene.test.ts"}.`
       );
     }
   }
@@ -930,6 +1113,86 @@ describe("the bare-year assertion guard (#4369)", () => {
 // The URL case is the one the hand-rolled strip got wrong, and it got it wrong
 // toward PASS — the silent direction — while the prose cases are the ones an author
 // meets when they document a branch they removed.
+describe("the testid-scope pattern discriminates a scoped locator from a bare one (#4890)", () => {
+  const count = (text: string): number =>
+    countUnscopedTestIds(
+      hygieneScanText(text, BARE_TESTID_OK_MARKER),
+      hygieneScanText(text)
+    );
+
+  it("flags a bare global locator — the shape that matched the staged copy", () => {
+    expect(count('await page.getByTestId("routine-new").click();\n')).toBe(1);
+    expect(
+      count('await expect(page.getByTestId("history-row")).toHaveCount(3);\n')
+    ).toBe(1);
+    // Through a helper, where the call site could not have scoped its way out.
+    expect(
+      count('await hydratedClick(page, page.getByTestId("routine-new"));\n')
+    ).toBe(1);
+    // A dynamic testid is never a root.
+    expect(count("page.getByTestId(`day-${iso}`).click();\n")).toBe(1);
+  });
+
+  it("does not flag a locator scoped through a root, a helper, or a held locator", () => {
+    expect(
+      count(
+        'await page\n  .getByTestId("training-page")\n  .getByTestId("routine-new")\n  .click();\n'
+      )
+    ).toBe(0);
+    expect(
+      count('appContent(page).getByTestId("routine-new").click();\n')
+    ).toBe(0);
+    expect(count('row.getByTestId("history-row-title").click();\n')).toBe(0);
+    expect(
+      count('const main = page.getByTestId("app-content-container");\n')
+    ).toBe(0);
+  });
+
+  it("honours the reviewed same-line escape and ignores prose", () => {
+    expect(
+      count(
+        'await page.getByTestId("login-submit").click(); // testid-scope-ok: /login is outside the (app) shell\n'
+      )
+    ).toBe(0);
+    expect(
+      count(
+        '// A bare page.getByTestId("routine-new") would match the staged copy too.\n' +
+          'await appContent(page).getByTestId("routine-new").click();\n'
+      )
+    ).toBe(0);
+  });
+
+  it("reads the wrapped chain prettier actually writes", () => {
+    // 452 lookups in the suite are wrapped this way; an `\bpage\.`-anchored rule saw none.
+    expect(
+      count('await page\n  .getByTestId("history-row")\n  .click();\n')
+    ).toBe(1);
+    // And the root test survives the same wrapping, in both directions.
+    expect(
+      count(
+        'await page\n  .getByTestId(\n    "training-page"\n  )\n  .getByTestId("routine-new");\n'
+      )
+    ).toBe(0);
+  });
+
+  it("reads a SECOND page under whatever name the spec gave it", () => {
+    expect(
+      count(
+        "const member = await loginAs(browser, creds(E2E_LOGIN_MEMBER));\n" +
+          'await member.getByTestId("history-row").click();\n'
+      )
+    ).toBe(1);
+    expect(
+      count(
+        "const member = await loginAs(browser, creds(E2E_LOGIN_MEMBER));\n" +
+          'await appContent(member).getByTestId("history-row").click();\n'
+      )
+    ).toBe(0);
+    // A Locator named like a page is not a page — nothing declares it one.
+    expect(count('memberCard.getByTestId("history-row").click();\n')).toBe(0);
+  });
+});
+
 describe("the ci-ok check reads code, not prose (#3402)", () => {
   it.each([
     ["if (process.env.CI) await slow();", [0], "a bare branch"],
@@ -1730,6 +1993,97 @@ describe("e2e suite hygiene guard (issue #868)", () => {
     const helpers = fs.readFileSync(path.join(E2E_DIR, "helpers.ts"), "utf8");
     expect(helpers).toMatch(/export async function settledClick\b/);
     expect(helpers).toMatch(/export async function followLink\b/);
+  });
+
+  it("no NEW unscoped page.getByTestId in an e2e/*.ts (scope it, or mark testid-scope-ok)", () => {
+    checkPattern(
+      "unscoped page.getByTestId(",
+      (scanned, file) => countUnscopedTestIds(scanned, codeFor(file)),
+      BARE_TESTID_ALLOW,
+      {
+        corpus: allE2eFiles(),
+        excludeLineMarker: BARE_TESTID_OK_MARKER,
+        allowFile: BARE_TESTID_ALLOW_FILE,
+        hint:
+          `A global getByTestId matches the STAGED copy too while a streamed Suspense ` +
+          `boundary is relocating (#4890) — scope it: appContent(page).getByTestId(...), ` +
+          `a row/card/dialog you already hold, or page.getByTestId("${TESTID_SCOPE_ROOTS[0]}"). ` +
+          `A marker that provably cannot sit inside a streamed boundary takes a same-line ` +
+          `\`testid-scope-ok: <why>\` comment. Do NOT raise the number to make this ` +
+          `pass — raising is legitimate ONLY when re-deriving the whole list against a ` +
+          `new base after a rebase. See docs/internals/e2e-hygiene.md.`,
+      }
+    );
+  });
+
+  it("the blessed testid scope roots are real markers that sit above the boundary", () => {
+    const shell = fs.readFileSync(
+      path.join(REPO, "app/(app)/layout.tsx"),
+      "utf8"
+    );
+    // The universal root wraps {children} in the (app) shell, so it is one per
+    // document and above every page's own boundary.
+    expect(shell).toContain('data-testid="app-content-container"');
+    const training = fs.readFileSync(
+      path.join(REPO, "app/(app)/training/page.tsx"),
+      "utf8"
+    );
+    expect(training).toContain('testId="training-page"');
+    // A root inside a streamed section would bless the duplicate rather than
+    // exclude it: the hub header renders ABOVE the <Suspense>, not under it.
+    expect(training.indexOf('testId="training-page"')).toBeLessThan(
+      training.indexOf("<Suspense")
+    );
+    const helpers = fs.readFileSync(path.join(E2E_DIR, "helpers.ts"), "utf8");
+    expect(helpers).toMatch(/export function appContent\b/);
+    expect(helpers).toContain('page.getByTestId("app-content-container")');
+  });
+
+  it("every Suspense boundary in the app tree is registered, and no loading.tsx is back", () => {
+    const found: string[] = [];
+    const streamed: string[] = [];
+    const loaders: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          walk(full);
+          continue;
+        }
+        const rel = path.relative(REPO, full).split(path.sep).join("/");
+        if (entry.name === "loading.tsx") loaders.push(rel);
+        if (!entry.name.endsWith(".tsx")) continue;
+        const code = cachedStripComments(fs.readFileSync(full, "utf8"));
+        if (/<Suspense\b/.test(code)) found.push(rel);
+        if (/<StreamedSection\b/.test(code)) streamed.push(rel);
+      }
+    };
+    walk(path.join(REPO, "app"));
+    walk(path.join(REPO, "components"));
+    expect(
+      loaders,
+      `A route-segment loading.tsx opts its page into streamed rendering, which is ` +
+        `the #530 / #4890 staged-duplicate race. app/(app)/layout.tsx refuses it in ` +
+        `prose; this is the tooling half.`
+    ).toEqual([]);
+    expect(
+      streamed.sort(),
+      `StreamedSection is what actually stages a <div hidden> copy. A NEW call site ` +
+        `means a new page where every unscoped page.getByTestId can resolve to 2 ` +
+        `elements — re-read the specs that assert against that route, then add it to ` +
+        `STREAMED_SECTION_FILES.`
+    ).toEqual([...STREAMED_SECTION_FILES].sort());
+    expect(
+      found.sort(),
+      `A new <Suspense> in app/ or components/ is a new candidate streaming ` +
+        `surface (#4890). ONE QUESTION decides it: does this boundary suspend a ` +
+        `SERVER component (it stages a <div hidden> copy — every unscoped ` +
+        `getByTestId on that route can now resolve to 2 elements, so re-read the ` +
+        `specs asserting against it), or a client-only ` +
+        `dynamic(..., { ssr: false }) import from inside "use client" (nothing is ` +
+        `ever staged — no exposure)? Answer that beside the entry you add to ` +
+        `SUSPENSE_BOUNDARY_FILES.`
+    ).toEqual([...SUSPENSE_BOUNDARY_FILES].sort());
   });
 
   it("the family helper module exists and exports the three create/grant drivers", () => {

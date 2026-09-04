@@ -278,15 +278,44 @@ export function getOvernightHrMinSeries(
     windows[0].start.slice(0, 10),
     windows[windows.length - 1].end.slice(0, 10)
   );
+  // EACH NIGHT SLICES, IT DOES NOT SCAN (#5010). This loop used to `filter` the whole
+  // span per night — 90 nights over ~125,000 minutes is 11 million comparisons for a
+  // series of 90 numbers, and it grew as the PRODUCT of the two windows the caller
+  // widens independently. Sorted once and bounded by two binary searches it is the
+  // same set of rows in the same order, which is why the answer cannot move: the
+  // stamps compared are the ones the filter compared.
+  //
+  // SORTED BY THE LOCAL STAMP, NOT BY THE INSTANT, and they are not the same order.
+  // The rows arrive as profile-local minutes, and a fall-back night runs 01:59 → 01:00
+  // on the wall clock while the instants keep climbing — so ordering by arrival would
+  // leave the array unsorted exactly on the night this reader most needs to be right
+  // about, and a binary search over an unsorted region silently returns a short slice.
+  // Sorting by the stamp also keeps a repeated wall-clock minute's two instants
+  // adjacent, so both stay inside the window, which is what the filter did.
+  const sorted = [...minutes].sort((a, b) =>
+    a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0
+  );
+  const lowerBound = (stamp: string) => {
+    let lo = 0;
+    let hi = sorted.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (sorted[mid].ts < stamp) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  };
   const out: { date: string; value: number }[] = [];
   for (const w of windows) {
     if (frontier < w.end) continue;
-    const inNight = minutes.filter((b) => b.ts >= w.start && b.ts < w.end);
-    if (inNight.length < OVERNIGHT_MIN_MEASURED_MIN) continue;
-    out.push({
-      date: w.wakeDay,
-      value: Math.min(...inNight.map((b) => b.bpm)),
-    });
+    const from = lowerBound(w.start);
+    const to = lowerBound(w.end);
+    if (to - from < OVERNIGHT_MIN_MEASURED_MIN) continue;
+    let value = Infinity;
+    for (let i = from; i < to; i++) {
+      if (sorted[i].bpm < value) value = sorted[i].bpm;
+    }
+    out.push({ date: w.wakeDay, value });
   }
   return out;
 }

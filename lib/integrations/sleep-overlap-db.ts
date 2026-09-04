@@ -6,8 +6,10 @@ import {
   sleepOverlapPairs,
   stagesOwnedBy,
   type HeartRateMinute,
+  type SleepOverlapPair,
   type SleepSessionRow,
 } from "@/lib/sleep-overlap";
+import { instantMs, windowsOverlap } from "@/lib/metric-window-overlap";
 import { continuousStream } from "./continuous-streams";
 import { HEALTH_CONNECT_ID } from "./health-connect";
 import { writeImportTombstone } from "./tombstones";
@@ -76,6 +78,122 @@ function heartRateInWindow(
       utcMinute(new Date(startMs)),
       utcMinute(new Date(endMs))
     ) as HeartRateMinute[];
+}
+
+// ── THE RE-STAMPED TWIN (#5020) ──────────────────────────────────────────────
+// A zone error larger than the night is long produces two rows that do not touch, so
+// `sleepOverlapPairs` — which is geometry and nothing else — forms no pair, and the
+// fragment merge in `mainSleepPeriod` then glues the twin onto the real night as its
+// second half. The 08-30 pair on prod is two 298-minute rows six hours apart.
+//
+// What identifies them is not their duration. Two nights of the same length are ordinary
+// and pairing on that alone would offer a real night up to the collapse. What identifies
+// them is that they carry THE SAME STAGE BREAKDOWN, shifted whole: every stage of one
+// sits at the same offset inside its session as a stage of the other, same metric, same
+// length. That is a re-write of one recording, not two sleeps that happen to match.
+//
+// It needs the stage read, which is why it lives here beside the heart-rate observation
+// and not in the pure half (owner ruling, 2026-09-04).
+//
+// Pairing is ALL this does. Everything after it is unchanged: `decideSleepOverlap` still
+// collapses only when exactly one window is corroborated by the person's own heart rate,
+// and neither or both leaves the pair standing for Data → Review.
+const TWIN_SHIFT_MAX_MS = 24 * 60 * 60 * 1000;
+
+// A stage set of ONE metric is a duration, not a shape. Two thirty-minute naps recorded
+// as one light block each would otherwise match each other exactly, and two naps are two
+// sleeps. The cost is a twin whose whole night was scored with a single metric, which
+// this rule then does not see — a miss, and a miss is the failure this rule is allowed.
+function stageShape(
+  sessionStartMs: number,
+  stages: readonly SleepSessionRow[]
+): string | null {
+  if (new Set(stages.map((s) => s.metric)).size < 2) return null;
+  return stages
+    .map((stage) => {
+      const from = (instantMs(stage.started_at) ?? 0) - sessionStartMs;
+      const to = (instantMs(stage.ended_at) ?? 0) - sessionStartMs;
+      return `${stage.metric}@${from}+${to - from}`;
+    })
+    .sort()
+    .join("|");
+}
+
+/**
+ * The same-origin sessions in `sessions` that are one recording written twice.
+ *
+ * Non-overlapping by construction — an overlapping pair is `sleepOverlapPairs`'s, and
+ * these two sets never intersect. The shift must be non-zero and UNDER A DAY: a day or
+ * more apart is another night, not the same one re-stamped, and a person on an identical
+ * schedule two nights running sits at exactly a day. That bound is what keeps them out,
+ * so it also means an offset error of a day or more is not seen here — the observed
+ * errors are zone offsets of a few hours.
+ */
+export function restampedTwinPairs<
+  T extends SleepSessionRow & { date: string },
+>(
+  profileId: number,
+  source: string,
+  sessions: readonly T[]
+): SleepOverlapPair<T>[] {
+  if (sessions.length < 2) return [];
+  const days = sessions.map((s) => s.date).sort();
+  const stages = db
+    .prepare(
+      `SELECT id, date, metric, origin, started_at, ended_at, edited
+         FROM metric_samples
+        WHERE profile_id = ? AND source = ? AND metric IN ${STAGE_METRICS_SQL}
+          AND date >= ? AND date <= ?
+        ORDER BY id`
+    )
+    .all(
+      profileId,
+      source,
+      days[0],
+      days[days.length - 1]
+    ) as SleepSessionRow[];
+  if (stages.length === 0) return [];
+
+  const shapeOf = (session: T, startMs: number, endMs: number): string | null =>
+    stageShape(
+      startMs,
+      stagesOwnedBy(
+        { date: session.date, startMs, endMs },
+        sessions.filter((s) => s.id !== session.id),
+        stages.filter((stage) => stage.origin === session.origin)
+      )
+    );
+
+  const pairs: SleepOverlapPair<T>[] = [];
+  for (let i = 0; i < sessions.length; i++) {
+    for (let j = i + 1; j < sessions.length; j++) {
+      const a = sessions[i];
+      const b = sessions[j];
+      if (a.origin === null || b.origin === null || a.origin !== b.origin)
+        continue;
+      const aStartMs = instantMs(a.started_at);
+      const aEndMs = instantMs(a.ended_at);
+      const bStartMs = instantMs(b.started_at);
+      const bEndMs = instantMs(b.ended_at);
+      if (
+        aStartMs === null ||
+        aEndMs === null ||
+        bStartMs === null ||
+        bEndMs === null
+      )
+        continue;
+      if (windowsOverlap(a.started_at, a.ended_at, b.started_at, b.ended_at))
+        continue;
+      // ONE delta, on both edges: the whole window moved, nothing was re-scored.
+      const shift = bStartMs - aStartMs;
+      if (shift === 0 || bEndMs - aEndMs !== shift) continue;
+      if (Math.abs(shift) >= TWIN_SHIFT_MAX_MS) continue;
+      const shapeA = shapeOf(a, aStartMs, aEndMs);
+      if (shapeA === null || shapeA !== shapeOf(b, bStartMs, bEndMs)) continue;
+      pairs.push({ a, b, aStartMs, aEndMs, bStartMs, bEndMs });
+    }
+  }
+  return pairs;
 }
 
 /**
@@ -199,7 +317,10 @@ export function collapseSleepSessionOverlaps(
       from,
       to
     ) as SleepSessionRow[];
-    for (const pair of sleepOverlapPairs(neighbourhood)) {
+    for (const pair of [
+      ...sleepOverlapPairs(neighbourhood),
+      ...restampedTwinPairs(profileId, source, neighbourhood),
+    ]) {
       const { a, b } = pair;
       if (a.id !== session.id && b.id !== session.id) continue;
       if (settled.has(a.id) || settled.has(b.id)) continue;

@@ -49,6 +49,8 @@ export default function ActivityOverlay({
   editData,
   prefill = null,
   initialDate,
+  initialStartTime,
+  initialEndTime,
   live = false,
   adoptRowId = null,
   adoptPending = false,
@@ -74,6 +76,9 @@ export default function ActivityOverlay({
   editData: ActivityEditData | null;
   prefill?: ActivityEditData | null;
   initialDate?: string;
+  /** The window's clocks, forwarded whole to the form (#4950 item 5). */
+  initialStartTime?: string;
+  initialEndTime?: string;
   live?: boolean;
   // Create-at-start row + first-ownership callback for a live session (#2870
   // step 3), forwarded whole.
@@ -223,6 +228,8 @@ export default function ActivityOverlay({
           editData={editData}
           prefill={prefill}
           initialDate={initialDate}
+          initialStartTime={initialStartTime}
+          initialEndTime={initialEndTime}
           live={live}
           onLiveFinished={() => {
             setWorkoutRunning(false);

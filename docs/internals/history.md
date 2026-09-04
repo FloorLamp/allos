@@ -341,6 +341,35 @@ lane. The band shares that lane with a real session — it reserves the row the 
 either exists — and draws only while waiting: never on a day whose session is in
 hand, and never on a past day (the window is clock-relative and means nothing there).
 
+**The add row opens on the window the chart is already showing** (#4950, as amended).
+There is no mode to arm and no second selection: the chart's two existing interactions
+ARE the window. Zoomed, the view is the window and the row reads `Add at 19:10–20:40`;
+at full day a crosshair is a start alone and it reads `Add at 19:10`; with neither it
+reads `Add`. Zoom itself stays ephemeral — the URL learns the window only when a kind
+chip is tapped, and the chips carry it as `?from=HH:MM&to=HH:MM` (`to` optional) on top
+of the params `chipHref` already decided. `lib/intraday-window.ts` parses the pair back:
+it snaps to `INTRADAY_BUCKET_MINUTES`, requires `to` to follow `from` by at least
+`MIN_ZOOM_MINUTES`, and REFUSES rather than repairs — a malformed or inverted pair is
+dropped. With a window in the URL the chart draws it from the server render, so it stays
+under the open form and survives a reload.
+
+Each kind's form then opens on it, through the time control it already had. The
+practice form takes both clocks; a dose, a serving, a body sitting and a movement take
+the start (one stated instant, built once by the door, so they cannot disagree about
+what `19:10` on this day means — and a serving's meal follows that hour as it does
+anywhere else). A check-in and a symptom have a day and no event instant, so there is
+nothing for a window to open and they ignore it; a substance use waits on #3295. The
+practice picker also opens on the practice whose weekly rhythm predicts the window's
+weekday and hour, tie-broken by the usual duration nearest its length — habit matching
+and never physiology, and a practice with no rhythm can never fit. Every one of these is
+a DEFAULT the person changes or confirms; a stated window is a stated time, not a claim
+about what happened.
+
+**And a `Workouts` door joins that row on the day view** — the training hub keeps its
+own log (below), so this opens the shared activity editor with the day and the window
+rather than adding a tenth kind. It carries no activity type: heart rate cannot tell a
+run from a sauna. A profile that does not train sees no door.
+
 A future `?day=` clamps to today and the nav cannot advance past it — the record ends
 at now.
 
@@ -355,8 +384,11 @@ only see `addEventListener` recognizers, and a JSX-prop one had landed unlisted.
 
 `lib/hrefs.ts`'s `historyHref` owns the whole grammar: `?family`, `?kind` (which
 implies its family), `?class` (the old two-door dose pre-filter), `?item`,
-`?media`, `?day`, `?view=everyone`, `?open` (repeatable), `?show`. There is **no**
-`from`/`to`/`range`/`page` — those concepts died with the range row and the pager.
+`?media`, `?day`, `?from`/`?to`, `?view=everyone`, `?open` (repeatable), `?show`.
+There is **no** `range`/`page` — those concepts died with the range row and the pager,
+and `?from`/`?to` are not their return: they are a WINDOW WITHIN ONE DAY (#4950, below),
+profile-local `HH:MM` clocks on the `?day=` in view, meaningless without it and dropped
+on the feed.
 
 An invalid `?kind`, `?family`, `?day`, `?item` or an unsatisfiable `?media` **falls
 back to All**. The item axis
@@ -387,4 +419,5 @@ was the one that self-linked.
 Per-item panels keep their bounded recent window plus a door (`DoseHistoryPanel`,
 the metric detail page's readings — #3505/#3959). `lib/day-history.ts`'s
 group×bucket matrices answer "how consistently?", which is analysis, not a
-record. The training hub keeps its own log.
+record. The training hub keeps its own log — the day view has a DOOR onto its editor
+(#4950 item 5), which is not the same thing as the record carrying workouts.
