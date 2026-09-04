@@ -277,16 +277,16 @@ call sites is next touched, converge it on `appContent(page)`; the root can go
 when the last one has.
 
 **It reads a second page under any name.** `page` is the fixture, but a spec that
-opens a second context names it `member`, `tabB`, `anon`, `otherPage` — 298 of the
+opens a second context names it `member`, `tabB`, `anon`, `otherPage` — 311 of the
 lookups in the suite are on one of those, and a rule anchored on the literal
 `page.` would have called every one of them clean. It also reads the WRAPPED chain
-prettier actually writes (`page\n  .getByTestId(`): 443 lookups are formatted that
+prettier actually writes (`page\n  .getByTestId(`): 452 lookups are formatted that
 way, and an unwrapped-only rule saw none of them. Both holes were found by
 mutating the rule, not by reading it.
 
-**The allowlist is the honest record.** 5,422 unscoped lookups across 435 files
-exist today; a rule that started as "scope all of them" would be 5,422 hand edits
-with nothing preventing the 5,423rd. Today's per-file counts are frozen in
+**The allowlist is the honest record.** 5,427 unscoped lookups across 435 files
+exist today; a rule that started as "scope all of them" would be 5,427 hand edits
+with nothing preventing the 5,428th. Today's per-file counts are frozen in
 `lib/__tests__/__fixtures__/e2e-testid-scope-allow.json`, immutable-downward like
 every other list here, and the list says what has NOT been checked rather than
 claiming everything has. A NEW lookup anywhere fails: scope it, or mark the line
@@ -295,7 +295,7 @@ boundary (a `/login` page outside the `(app)` shell, an overlay portalled to
 `<body>` — a portal is client-only, so it has exactly one copy).
 
 **The counts are a reading of one base, and the base is named.** They were derived
-at `ec474f5e` (main, 2026-09-04). A coverage number is only true against the tree
+at `da622bc0` (main, 2026-09-04). A coverage number is only true against the tree
 it was measured on, and a reader who does not know which tree cannot check it. CI
 gates the merge on the branch head, so a fixture read from an older tree than the
 one it merges into can pass on the PR and red on `main` — the worst outcome this
@@ -311,9 +311,10 @@ ceiling would have left the removal case green and let that file regain a bare
 lookup for free. Raising an entry is legitimate only there; never as a way to land a new bare
 lookup. Lowering is always legitimate and always wanted.
 
-**Burn down the 158 files that reach a streaming route first.** They hold 2,309
-of the 5,422 lookups and they are the only ones that can race today; the other
-277 files / 3,113 lookups are frozen for uniformity and can wait indefinitely.
+**Burn down the 161 files that reach a streaming route first.** They are the files
+whose code names `/training` or `/trends`; they hold 2,298 of the 5,427 lookups and
+they are the only ones that can race today. The other 274 files / 3,129 lookups are
+frozen for uniformity and can wait indefinitely.
 The freeze is immutable-downward like every other list here, so scoping a site
 and lowering its number happen in the same PR — that is the ratchet, and it is
 worth the friction to keep one guard file consistent with itself.
@@ -324,8 +325,8 @@ would read as "not yet checked" while meaning "unreachable" — so the obvious m
 is to drop the specs that never enter the `(app)` shell. There are none. Every
 allowlisted file naming `/login`, `/set-password`, `/offline` or `/share` also
 navigates into the shell, because signing in and landing on the dashboard is the
-point of most of them; and the five files naming no `(app)` route at all are
-shared helper MODULES (`symptom-helpers.ts`, `cycle-helpers.ts`,
+point of most of them; and the six files naming no `(app)` route at all are
+shared helper MODULES (`helpers.ts`, `symptom-helpers.ts`, `cycle-helpers.ts`,
 `log-sheet-helpers.ts`, `intake-form-helpers.ts`, `trends-chrome.ts`) that receive
 an already-navigated page from a spec that did — the exact shape that put one
 occurrence inside `e2e/helpers.ts`. Excluding those would hide files that CAN

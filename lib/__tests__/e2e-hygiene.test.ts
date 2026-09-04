@@ -647,13 +647,15 @@ const CONFIRM_DELETE_CLICK_ALLOW: Record<string, number> = {};
 // those call sites on `appContent(page)` when they are next touched; the root goes
 // when the last one has.
 //
-// THE ALLOWLIST IS THE HONEST RECORD. 5,422 unscoped lookups across 435 files exist
-// today, and a rule that started as "scope all of them" would be 5,422 hand edits
-// with nothing preventing the 5,423rd. Burn down the 158 files that reach a
-// streaming route first (2,309 of the lookups) — they are the only ones that can
-// race today; the other 277 are frozen for uniformity and can wait. No file is
-// excluded: every allowlisted file reaches the `(app)` shell, including the five
-// that name no route, because a spec hands them an already-navigated page. So
+// THE ALLOWLIST IS THE HONEST RECORD. 5,427 unscoped lookups across 435 files exist
+// today, and a rule that started as "scope all of them" would be 5,427 hand edits
+// with nothing preventing the 5,428th. Burn down the 161 files whose code names
+// `/training` or `/trends` first (2,298 of the lookups) — they are the only ones that
+// can race today; the other 274 files / 3,129 lookups are frozen for uniformity and
+// can wait. No file is
+// excluded: every allowlisted file reaches the `(app)` shell, including the six that
+// name no route — all six are shared helper MODULES, `helpers.ts` among them, and a
+// spec hands each of them an already-navigated page. So
 // today's per-file counts are frozen in
 // __fixtures__/e2e-testid-scope-allow.json — immutable-downward like every other
 // list here — and the list says what has NOT been checked rather than claiming
@@ -661,18 +663,19 @@ const CONFIRM_DELETE_CLICK_ALLOW: Record<string, number> = {};
 // `testid-scope-ok: <why>` when the marker provably cannot be inside a streamed
 // boundary (a `/login` page, an overlay portalled to `<body>`).
 // THE COUNTS ARE A READING OF ONE BASE, and the base is named so a reader can check
-// it: they were derived at ec474f5e (main, 2026-09-04). That is what a frozen manifest
+// it: they were derived at da622bc0 (main, 2026-09-04). That is what a frozen manifest
 // can honestly claim — a coverage number is true against the tree it was measured on,
 // and a reader who does not know which tree cannot verify it.
 //
 // WHICH NEEDS NO STALENESS CHECK, because the comparison is EXACT EQUALITY, not a
 // ceiling: checkPattern reds when a count exceeds its entry AND when it falls below
-// one. So a fixture read from the wrong tree cannot pass quietly — main gaining a
-// bare lookup reds as an over-count, main REMOVING one (what #5028 does to
-// entry-ergonomics.spec.ts, 86 → 85) reds as "you reduced offenders, lower the
-// entry". A ceiling would have left that second case silently green and let the file
-// regain a bare lookup for free, which is the hole this shape does not have. Nothing
-// here needs to read git to know it is out of date.
+// one. So a fixture read from the wrong tree cannot pass quietly. Both directions are
+// measured rather than argued: merging main onto this branch red as an over-count on
+// the two files main had grown lookups in (measurements-form-layout.spec.ts 14 → 18 in
+// #5039, undo-delete.spec.ts 12 → 13 in #4997), and scoping one lookup by hand reds as
+// "you reduced offenders, lower the entry". A ceiling would have left that second case
+// silently green and let the file regain a bare lookup for free, which is the hole this
+// shape does not have. Nothing here needs to read git to know it is out of date.
 //
 // AND THE READING IS TAKEN AGAINST THE TREE IT LANDS ON. CI gates the merge on the
 // branch head, so a fixture read from an OLDER tree than the one it merges into can
@@ -694,7 +697,7 @@ const TESTID_ROOT_ARG = `(?!\\s*[\"'\`](?:${TESTID_SCOPE_ROOTS.join("|")})[\"'\`
 
 // A Playwright `Page` under any name. `page` is the fixture, but a spec that opens a
 // second context names it whatever the story needs — `member`, `tabB`, `anon`,
-// `otherPage` — and 298 of the bare lookups in the suite are on one of those. A rule
+// `otherPage` — and 311 of the bare lookups in the suite are on one of those. A rule
 // that read only the literal `page.` would have declared those clean, which is the
 // same per-name narrowness #4890 was caught by three times, one level down.
 const PAGE_ALIAS_RE =
@@ -721,7 +724,7 @@ export function countUnscopedTestIds(scanned: string, code = scanned): number {
   for (const id of pageIdentifiers(code)) {
     const re = new RegExp(
       // Whitespace around the dot: prettier wraps a long chain as `page\n  .getByTestId(`,
-      // and 443 lookups in the suite are written that way. An `\bpage\.` anchored rule
+      // and 452 lookups in the suite are written that way. An `\bpage\.` anchored rule
       // read every one of them as absent — the hole this guard's own mutation test found.
       `\\b${id.replace(/\$/g, "\\$")}\\s*\\.\\s*getByTestId\\(` +
         TESTID_ROOT_ARG,
@@ -761,9 +764,11 @@ const SUSPENSE_BOUNDARY_FILES = [
   "app/layout.tsx",
   // The three chart wrappers suspend a `dynamic(..., { ssr: false })` import from
   // inside a "use client" component — client-only, so nothing is ever staged.
-  "components/BarSparkline.tsx",
-  "components/LineChartCard.tsx",
+  // #4997 rebuilt nine chart trees around two renderers, so two of the three are
+  // new names for the same client-only shape.
+  "components/BarSeriesChart.tsx",
   "components/ScatterChartCard.tsx",
+  "components/TimeSeriesChart.tsx",
 ];
 const STREAMED_SECTION_FILES = [
   "app/(app)/training/page.tsx",
@@ -1158,7 +1163,7 @@ describe("the testid-scope pattern discriminates a scoped locator from a bare on
   });
 
   it("reads the wrapped chain prettier actually writes", () => {
-    // 443 lookups in the suite are wrapped this way; an `\bpage\.`-anchored rule saw none.
+    // 452 lookups in the suite are wrapped this way; an `\bpage\.`-anchored rule saw none.
     expect(
       count('await page\n  .getByTestId("history-row")\n  .click();\n')
     ).toBe(1);
