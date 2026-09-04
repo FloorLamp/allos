@@ -11,6 +11,9 @@ import { join } from "node:path";
 // the exact regression ChartErrorBoundary was built to contain. StackedBarCard
 // was the one twin that skipped it; this test fails the build if the next chart
 // wrapper drifts the same way.
+//
+// Since #4925 there are THREE seams rather than nine, because the split is one
+// per RENDERER: a card is a spec now, and only a renderer loads recharts.
 describe("chart wrapper error-boundary parity", () => {
   const componentsDir = join(__dirname, "..", "..", "components");
   const files = readdirSync(componentsDir).filter((f) => f.endsWith(".tsx"));
@@ -29,9 +32,17 @@ describe("chart wrapper error-boundary parity", () => {
   it("finds the known chart wrappers", () => {
     // Sanity check that the heuristic still matches real files (so a rename or
     // refactor that hides every wrapper can't silently make this test vacuous).
-    expect(wrappers).toContain("StackedBarCard.tsx");
-    expect(wrappers).toContain("LineChartCard.tsx");
-    expect(wrappers.length).toBeGreaterThanOrEqual(5);
+    //
+    // THREE, where this said five. #4925 moved the code-split seam from one per
+    // CARD to one per RENDERER: nine cards became specs over two renderers plus
+    // Scatter, so the population this guard is about genuinely shrank — and the
+    // guard caught it, which is the vacuity check working rather than a floor to
+    // be lowered on request. The fact is unchanged: every seam that lazy-loads a
+    // recharts chunk catches that chunk failing.
+    expect(wrappers).toContain("TimeSeriesChart.tsx");
+    expect(wrappers).toContain("BarSeriesChart.tsx");
+    expect(wrappers).toContain("ScatterChartCard.tsx");
+    expect(wrappers.length).toBeGreaterThanOrEqual(3);
   });
 
   it.each(wrappers)("%s wraps its inner in ChartErrorBoundary", (file) => {
