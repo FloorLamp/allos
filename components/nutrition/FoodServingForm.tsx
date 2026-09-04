@@ -281,7 +281,11 @@ export default function FoodServingForm({
       </div>
       <InlineError>{error}</InlineError>
       <div className="flex items-end gap-2 sm:col-span-2">
-        <SubmitButton data-testid={`${testId}-save`} disabled={pending}>
+        <SubmitButton
+          variant="primary"
+          data-testid={`${testId}-save`}
+          disabled={pending}
+        >
           {pending ? "Saving…" : row ? "Save" : "Add"}
         </SubmitButton>
         <button

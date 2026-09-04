@@ -362,6 +362,7 @@ export default function ConsumptionSection({
                 Cancel
               </button>
               <SubmitButton
+                variant="primary"
                 disabled={pending || capInput === ""}
                 data-testid={`substance-cap-save-${substance}`}
               >

@@ -374,14 +374,12 @@ test.describe("shared supply pools", () => {
       ).toBeVisible();
       await editable.getByTestId("shared-supply-qty-input").fill("123");
       const save = editable.getByTestId("shared-supply-save");
-      // The commit renders through the PRIMITIVE and takes no rank (#4978).
-      // The marker attribute is the positive half — it proves the control is a
-      // Button rather than proving only that something is absent — and the rank
-      // is denied because one primary belongs to the ROUTE (#3408) while the
-      // cabinet draws one of these cards per bottle. Both replace the retiring
-      // `.btn` class this used to read, which said neither.
+      // The editor's commit is the card's one primary rank, and it is the
+      // PRIMITIVE's (#4978): the marker attribute proves it renders through
+      // Button at all, the paint utility proves the rank. Both replace the
+      // retiring `.btn` class this used to read, which said neither.
       await expect(save).toHaveAttribute("data-button-control", "");
-      await expect(save).not.toHaveClass(/\bbutton-control-primary\b/);
+      await expect(save).toHaveClass(/\bbutton-control-primary\b/);
       await settledClick(page, save);
       await expect(async () => {
         expect(await onHand(page, SUPPLY_EDIT_BOTTLE)).toBe(123);

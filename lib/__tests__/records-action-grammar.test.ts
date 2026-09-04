@@ -4,12 +4,22 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { stripComments } from "./strip-comments";
 
-// One primary action per Records pane (issue #3408, item G).
+// The retiring `btn` family's per-pane count (issue #3408, item G).
 //
-// The rule and the vocabulary it belongs to are in docs/internals/design-system.md §3
-// (Control grammar, "one primary per surface"). This is the half of it a scan can
-// hold: a PANE draws at most one `btn`-class primary, and everything rarer is a
-// secondary, a ⋯ item, or a row affordance.
+// WHAT THIS SCAN IS NOT, SINCE IT USED TO BE. It was written as "one primary per
+// surface" with the surface read as the ROUTE. The owner amended that on
+// 2026-09-04 (#4978): THE SURFACE IS THE FORM, and a form's commit is
+// `SubmitButton variant="primary"`, one per form. So a route may now carry as many
+// primaries as it mounts forms, and the sentence this file used to enforce — a pane
+// that mounts an `AddEntryPanel` "has already spent its primary" — is no longer the
+// rank's accounting. It survives as a different and still-useful question: how many
+// of the RETIRING `btn` class one Records route draws, which is #4978 item 4's
+// burn-down and reaches zero when the family is deleted.
+//
+// The rank's own unit is the form, and this scan cannot see forms: it reads class
+// tokens and `AddEntryPanel` mounts, neither of which is a form commit. A
+// `SubmitButton variant="primary"` is therefore invisible here BY DESIGN, not by
+// omission. The vocabulary is in docs/internals/design-system.md §3.
 //
 // WHY A GUARD AND NOT JUST A DOC. The Records hub reached ten button species
 // without anyone deciding to. Nobody added a tenth; each pane added its own
@@ -21,8 +31,8 @@ import { stripComments } from "./strip-comments";
 // Measured, not assumed (2026-08-21). Two spellings, and only two:
 //
 //   1. `AddEntryPanel` — the rare-cadence entry toggle (#1497). It renders a
-//      `btn` internally, so a pane that mounts one has already spent its
-//      primary even though the string `btn` never appears in the pane file.
+//      `btn` internally, so a pane that mounts one draws one of the retiring
+//      class even though the string `btn` never appears in the pane file.
 //      This is the spelling EVERY records pane's primary actually uses today, so
 //      a guard that only looked for the literal class would have been green
 //      against a tree that never used it — the #3325 failure exactly.
@@ -33,6 +43,9 @@ import { stripComments } from "./strip-comments";
 //
 // ── THE UNIT IS THE PANE, AND IT USED NOT TO BE ─────────────────────────────
 //
+// (The unit of the RANK moved again on 2026-09-04 and is now the form — see the
+// header. What follows is why this `btn` count is per pane rather than per file.)
+//
 // This scan counted per FILE and was named "at most one primary per pane". The
 // two are not the same thing and the difference hid the only case the rule could
 // ever bite: `records/care/overview` is ONE pane — one chip, one route, one
@@ -41,8 +54,8 @@ import { stripComments } from "./strip-comments";
 // green; per pane it is 3. A guard whose unit is finer than its rule cannot see
 // a violation of that rule.
 //
-// So a PANE is now the route: a `page.tsx` under app/(app)/records, plus the
-// `*Section.tsx` bodies it imports. Its count is the sum.
+// So a PANE, for this count, is the route: a `page.tsx` under app/(app)/records,
+// plus the `*Section.tsx` bodies it imports. Its count is the sum.
 //
 // WHERE THAT BOUNDARY STOPS, said plainly rather than discovered later. A
 // component a section MOUNTS — a row list, a photo strip, a sub-list, a pane
@@ -86,8 +99,8 @@ export function withoutComments(text: string): string {
   return stripComments(text);
 }
 
-// How many pane-level primaries a file draws. Both spellings, deduplicated by
-// nothing: two AddEntryPanels IS two primaries, which is the finding.
+// How many of the retiring `btn` family a file draws. Both spellings, deduplicated
+// by nothing: two AddEntryPanels IS two, which is the finding.
 export function primaryCount(text: string): number {
   const source = withoutComments(text);
   const entryPanels = source.match(/<AddEntryPanel\b/g)?.length ?? 0;
@@ -158,7 +171,7 @@ function panes(): { rel: string; members: string[]; count: number }[] {
     });
 }
 
-describe("Records action grammar (#3408)", () => {
+describe("Records action grammar (#3408, rank amended to the form by #4978)", () => {
   it("scans a non-empty set of panes", () => {
     // A scan over nothing is green and says nothing. This is the check that the
     // directory walk still finds the panes after a route move.
@@ -207,17 +220,19 @@ describe("Records action grammar (#3408)", () => {
     ).toEqual([]);
   });
 
-  it("draws at most one primary per pane", () => {
+  it("draws at most one of the retiring `btn` family per pane", () => {
     const offenders = panes().filter(
       (p) => p.count > 1 && !STACKED_PANE_ALLOW.has(p.rel)
     );
 
     expect(
       offenders.map((o) => o.rel),
-      "A Records pane draws at most ONE `btn`-class primary (docs/internals/" +
+      "A Records pane draws at most ONE of the retiring `btn` class (docs/internals/" +
         "design-system.md §3, 'Control grammar'). A second candidate is a secondary " +
         "(`btn-ghost`), a `⋯` item (components/OverflowMenu.tsx), or a row " +
-        "affordance — or one of the two is not actually primary. A pane that " +
+        "affordance. It is NOT answered by making one a form commit: the rank's " +
+        "surface is the FORM (#4978, owner ruling 2026-09-04) and this scan does " +
+        "not read forms. A pane that " +
         "genuinely stacks collapsed sections belongs in STACKED_PANE_ALLOW with " +
         "its reason, not in a widened count. Offenders:\n" +
         offenders

@@ -219,7 +219,7 @@ export default function SubstanceForm({
       </label>
       <InlineError>{error}</InlineError>
       <div className="flex items-end gap-2 sm:col-span-2">
-        <SubmitButton disabled={pending}>
+        <SubmitButton variant="primary" disabled={pending}>
           {pending ? "Saving…" : row ? "Save" : "Add"}
         </SubmitButton>
         <button className="btn-ghost" type="button" onClick={onCancel}>

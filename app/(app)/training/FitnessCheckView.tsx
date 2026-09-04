@@ -791,6 +791,7 @@ function EntryModal({
             <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>
           )}
           <SubmitButton
+            variant="primary"
             disabled={pending}
             data-testid={`fitness-submit-${def.key}`}
           >

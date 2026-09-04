@@ -136,7 +136,11 @@ export default function StoolForm({
       </label>
       <InlineError>{error}</InlineError>
       <div className="flex items-end gap-2 sm:col-span-2">
-        <SubmitButton data-testid="stool-form-save" disabled={pending}>
+        <SubmitButton
+          variant="primary"
+          data-testid="stool-form-save"
+          disabled={pending}
+        >
           {pending ? "Saving…" : row ? "Save" : "Add"}
         </SubmitButton>
         <button className="btn-ghost" type="button" onClick={onCancel}>

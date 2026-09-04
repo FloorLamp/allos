@@ -386,7 +386,11 @@ export default function SharedSupplyCard({
             />
           </div>
           <div className="sm:col-span-2 flex flex-wrap items-center gap-2">
-            <SubmitButton data-testid="shared-supply-save" disabled={pending}>
+            <SubmitButton
+              variant="primary"
+              data-testid="shared-supply-save"
+              disabled={pending}
+            >
               {pending ? "Saving…" : "Save"}
             </SubmitButton>
             <button

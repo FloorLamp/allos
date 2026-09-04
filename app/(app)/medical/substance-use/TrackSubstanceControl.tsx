@@ -123,7 +123,11 @@ export default function TrackSubstanceControl() {
             {error}
           </p>
         ) : null}
-        <SubmitButton disabled={pending} data-testid="track-substance-save">
+        <SubmitButton
+          variant="primary"
+          disabled={pending}
+          data-testid="track-substance-save"
+        >
           {pending ? "Logging…" : "Log a use"}
         </SubmitButton>
       </form>
