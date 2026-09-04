@@ -70,6 +70,16 @@ vi.mock("@/app/(app)/medical/substance-use/actions", () => ({
     return { kind: "added" };
   },
 }));
+vi.mock("@/app/(app)/stool-actions", () => ({
+  logStoolForm: async (fd: FormData) => {
+    record("logStoolForm")(fd);
+    return { ok: true };
+  },
+  correctStoolReading: async () => ({
+    ok: false,
+    error: "the door never corrects",
+  }),
+}));
 vi.mock("@/app/(app)/mood-actions", () => ({
   logMood: async (fd: FormData) => {
     record("logMood")(fd);
@@ -244,6 +254,23 @@ function open(kind: HistoryAddKind): void {
       date={FOUND_DAY}
       maxDate={TODAY}
       vocabulary={VOCABULARY}
+    />
+  );
+  fireEvent.click(screen.getByTestId(`history-add-open-${kind}`));
+}
+
+/** The same door, opened with the window a day chart was showing (#4950). */
+function openAt(
+  kind: HistoryAddKind,
+  window: { from: string; to?: string }
+): void {
+  render(
+    <HistoryAddDoor
+      kind={kind}
+      date={FOUND_DAY}
+      maxDate={TODAY}
+      vocabulary={VOCABULARY}
+      window={window}
     />
   );
   fireEvent.click(screen.getByTestId(`history-add-open-${kind}`));
@@ -765,5 +792,94 @@ describe("the composed usual leads the add door", () => {
     expect(sent.date).toBe(FOUND_DAY);
     expect(sent.group_key).toBe("leafy_greens");
     expect(posted.logUsualRoutine ?? []).toHaveLength(0);
+  });
+});
+
+// ── THE WINDOW THE CHART WAS SHOWING (#4950 item 3) ──────────────────────────
+//
+// The door turns one `HH:MM` into one stated instant on the day in hand and every kind
+// with a time control opens on it. What is asserted is the POSTED clock, not a field's
+// value: a prefill that never reaches the write is not a prefill, and this is the same
+// claim the rest of this file makes about the day.
+//
+// It is a DEFAULT. Nothing here says the window is what happened — a person confirms or
+// changes it before submitting, exactly as they do with the day.
+describe("a window the chart stated opens each kind's time control", () => {
+  it("states the window's start on a movement", async () => {
+    openAt("stool", { from: "19:10", to: "20:40" });
+    await submit("stool");
+    expect(only("logStoolForm")).toMatchObject({
+      date: FOUND_DAY,
+      at: "19:10",
+    });
+  });
+
+  it("states it on a serving, and the meal follows that hour", async () => {
+    // 19:10 is past this profile's own evening boundary (1020), so the serving files
+    // under Evening without anyone touching the meal select — the same rule the
+    // nutrition bar follows when a person picks an hour (#2227 decision 4).
+    openAt("food", { from: "19:10", to: "20:40" });
+    await submit("food");
+    expect(only("logFoodServing")).toMatchObject({
+      date: FOUND_DAY,
+      occurred_at: "19:10",
+      meal_slot: "Evening",
+    });
+  });
+
+  it("beats the day's own seed on a body reading", () => {
+    // `measurementsQuickEntry` seeds the instant already on the day's manual row. A
+    // person who framed 19:10 on the trace has said when, and the seed is what to
+    // offer when nobody has — so this vocabulary carries a seed for the window to beat.
+    render(
+      <HistoryAddDoor
+        kind="body"
+        date={FOUND_DAY}
+        maxDate={TODAY}
+        vocabulary={{
+          ...VOCABULARY,
+          measurements: {
+            ...MEASUREMENTS,
+            defaultStatedAt: `${FOUND_DAY}T07:00:00.000Z`,
+          },
+        }}
+        window={{ from: "19:10" }}
+      />
+    );
+    fireEvent.click(screen.getByTestId("history-add-open-body"));
+    expect(
+      document.querySelector<HTMLInputElement>('input[name="occurred_at"]')
+        ?.value
+    ).toBe(`${FOUND_DAY}T19:10:00.000Z`);
+  });
+
+  it("keeps the day's own seed when no window was stated", () => {
+    render(
+      <HistoryAddDoor
+        kind="body"
+        date={FOUND_DAY}
+        maxDate={TODAY}
+        vocabulary={{
+          ...VOCABULARY,
+          measurements: {
+            ...MEASUREMENTS,
+            defaultStatedAt: `${FOUND_DAY}T07:00:00.000Z`,
+          },
+        }}
+      />
+    );
+    fireEvent.click(screen.getByTestId("history-add-open-body"));
+    expect(
+      document.querySelector<HTMLInputElement>('input[name="occurred_at"]')
+        ?.value
+    ).toBe(`${FOUND_DAY}T07:00:00.000Z`);
+  });
+
+  it("leaves every kind exactly as it was when no window was stated", async () => {
+    open("stool");
+    await submit("stool");
+    // An untouched time field stays empty and emits nothing (#2236 invariant 3), so a
+    // backfill that states no minute still states none.
+    expect(only("logStoolForm")).not.toHaveProperty("at");
   });
 });

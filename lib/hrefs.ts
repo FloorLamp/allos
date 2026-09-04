@@ -152,21 +152,35 @@ export function intakeHref(kind: IntakeItemKind): AppRoute {
 // Param ORDER is fixed by this function, never by the caller's object literal, so the
 // same state always produces the same URL — which is what makes a link cacheable and
 // "did this href change?" a question a test can ask.
-export function historyHref(
-  params: {
-    family?: HistoryFamily;
-    kind?: HistoryKind;
-    class?: "supplement" | "medication";
-    item?: string;
-    media?: boolean;
-    day?: string;
-    everyone?: boolean;
-    open?: readonly string[];
-    /** The rollup lines opened in Everything (#3958 phase 2), one key per entry. */
-    expand?: readonly string[];
-    show?: number;
-  } = {}
-): AppRoute {
+/** Everything `historyHref` spells, as a value a caller can build and pass on. Named so
+ *  a server surface can hand a client one its own rules produced — the day view's add
+ *  chips do that, adding the chart's window without re-deriving the kind rules (#4950). */
+export interface HistoryHrefParams {
+  family?: HistoryFamily;
+  kind?: HistoryKind;
+  class?: "supplement" | "medication";
+  item?: string;
+  media?: boolean;
+  day?: string;
+  everyone?: boolean;
+  open?: readonly string[];
+  /** The rollup lines opened in Everything (#3958 phase 2), one key per entry. */
+  expand?: readonly string[];
+  show?: number;
+  /**
+   * A window selected on the day chart (#4950), as profile-local `HH:MM` clocks on
+   * the day in view. `to` is optional: a tap marks a start alone and leaves the
+   * length to the form. Written and read through `lib/intraday-window.ts`, which is
+   * where the shape is defined and where a pair that is not a window is refused.
+   *
+   * These ship WITH their reader, per the `?subject=` note above: the day view parses
+   * them beside `kind` and hands the window to the add door.
+   */
+  from?: string;
+  to?: string;
+}
+
+export function historyHref(params: HistoryHrefParams = {}): AppRoute {
   const sp = new URLSearchParams();
   // A kind implies its family; spelling both would be a URL that can contradict itself.
   if (params.family && !params.kind) sp.set("family", params.family);
@@ -175,6 +189,10 @@ export function historyHref(
   if (params.item) sp.set("item", params.item);
   if (params.media) sp.set("media", "1");
   if (params.day) sp.set("day", params.day);
+  // The window follows the day it is a window ON, and `to` follows `from`, so a URL
+  // reads in the order a person would say it.
+  if (params.from) sp.set("from", params.from);
+  if (params.from && params.to) sp.set("to", params.to);
   if (params.everyone) sp.set("view", "everyone");
   for (const key of params.open ?? []) sp.append("open", key);
   for (const key of params.expand ?? []) sp.append("expand", key);

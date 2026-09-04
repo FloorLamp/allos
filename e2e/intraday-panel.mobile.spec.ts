@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
 import {
+  appContent,
   expectNoClippedContent,
   expectSvgTextInsidePlot,
   expectSvgTextLegible,
@@ -8,6 +9,19 @@ import {
 } from "./helpers";
 import { E2E_LOGIN_INTRADAY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { INTRADAY_VARIANTS } from "@/lib/intraday-layout";
+
+/** The fixture's intraday day IS the profile's today, resolved from the page. */
+async function openFixtureDay(
+  page: Awaited<ReturnType<typeof loginAs>>
+): Promise<string> {
+  await page.goto("/history");
+  const date = (await page
+    .locator("[id^='timeline-day-']")
+    .first() // first-ok: spec-owned profile, newest day is the fixture's today
+    .getAttribute("id"))!.replace("timeline-day-", "");
+  await page.goto(`/history?day=${date}`);
+  return date;
+}
 
 // The day chart at 390px — the surface #1518 and #1512 F were written about.
 //
@@ -188,6 +202,110 @@ test.describe("the day chart at phone width (#1512 F / #1518)", () => {
         .locator("title")
         .allTextContents();
       expect(titles.some((t) => t.includes("AI insight"))).toBe(false);
+    } finally {
+      await member.context().close();
+    }
+  });
+
+  // ── THE WINDOW THE ADD ROW WRITES INTO (#4950, as amended) ─────────────────
+  //
+  // No mode, no chip to arm, no second selection rect: the chart's two existing
+  // interactions ARE the window. This is the browser-side proof of both, because both
+  // are gestures — a component test can hand the row a view, but only a browser can
+  // show that a drag on the plot produces one.
+  //
+  // Reads only, like the rest of this spec. What is asserted is the URL the chip mints
+  // and the clocks the opened form holds; the door's own posting is pinned at the
+  // component tier, where every kind's payload is read.
+  test("a drag on the plot becomes the window the add row opens on", async ({
+    browser,
+  }) => {
+    test.slow();
+
+    const member = await loginAs(browser, {
+      username: E2E_LOGIN_INTRADAY,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      const date = await openFixtureDay(member);
+      const chart = appContent(member)
+        .getByTestId("intraday-panel")
+        .locator('[data-variant="compact"]');
+      await expect(chart).toBeVisible();
+
+      // Drag across the middle of the plot. The gesture is the zoom that already
+      // shipped (#1515) — this asserts a SECOND READER of it, not a second meaning.
+      const svg = chart.getByTestId("intraday-svg");
+      const box = (await svg.boundingBox())!;
+      const y = box.y + box.height / 2;
+      await member.mouse.move(box.x + box.width * 0.4, y);
+      await member.mouse.down();
+      await member.mouse.move(box.x + box.width * 0.65, y, { steps: 8 });
+      await member.mouse.up();
+      await expect(chart).toHaveAttribute("data-zoomed", "true");
+
+      // The row states the span it would write into, in the profile's own format.
+      const label = appContent(member).getByTestId("history-add-label");
+      await expect(label).toHaveText(/^Add at \d{2}:\d{2}–\d{2}:\d{2}$/);
+      const [from, to] = (await label.textContent())!
+        .replace("Add at ", "")
+        .split("–");
+
+      // The chip carries it. The URL learns the window HERE and not on the drag:
+      // zoom itself stays ephemeral.
+      await appContent(member).getByTestId("history-add-practice").click();
+      await expect(member).toHaveURL(
+        new RegExp(`day=${date}.*from=${from.replace(":", "%3A")}`)
+      );
+      await expect(member).toHaveURL(/to=/);
+
+      // And the form behind that door opens on both clocks — a default the person
+      // confirms. The door is a toggle, as every kind's is (#4045 §1).
+      await appContent(member).getByTestId("history-add-open-practice").click();
+      await expect(member.locator("#practice-start-time")).toHaveValue(from);
+      await expect(member.locator("#practice-end-time")).toHaveValue(to);
+    } finally {
+      await member.context().close();
+    }
+  });
+
+  test("at full day the crosshair is a start alone, and the chip carries it", async ({
+    browser,
+  }) => {
+    test.slow();
+
+    const member = await loginAs(browser, {
+      username: E2E_LOGIN_INTRADAY,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await openFixtureDay(member);
+      const chart = appContent(member)
+        .getByTestId("intraday-panel")
+        .locator('[data-variant="compact"]');
+      await expect(chart).toBeVisible();
+
+      // The keyboard cursor, unzoomed: a start and no end. Nothing here invents one —
+      // an end nobody stated is a length nobody gave.
+      await chart.getByTestId("intraday-svg").focus();
+      await member.keyboard.press("Home");
+      await member.keyboard.press("ArrowRight");
+      await expect(chart).toHaveAttribute("data-zoomed", "false");
+
+      const label = appContent(member).getByTestId("history-add-label");
+      await expect(label).toHaveText(/^Add at \d{2}:\d{2}$/);
+      const from = (await label.textContent())!.replace("Add at ", "");
+
+      await appContent(member).getByTestId("history-add-practice").click();
+      await expect(member).toHaveURL(
+        new RegExp(`from=${from.replace(":", "%3A")}`)
+      );
+      await expect(member).not.toHaveURL(/[?&]to=/);
+      await appContent(member).getByTestId("history-add-open-practice").click();
+      await expect(member.locator("#practice-start-time")).toHaveValue(from);
+      // The End shortcut's job, not this window's: an end nobody stated is a length
+      // nobody gave.
+      await expect(member.locator("#practice-end-time")).toHaveValue("");
     } finally {
       await member.context().close();
     }
