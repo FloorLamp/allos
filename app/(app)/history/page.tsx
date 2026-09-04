@@ -48,6 +48,7 @@ import { shiftDateStr, zonedDateParts } from "@/lib/date";
 import TimelineDayNav from "@/components/TimelineDayNav";
 import IntradayPanel from "@/components/IntradayPanel";
 import { IntradayInteractionProvider } from "@/components/IntradayInteraction";
+import HistoryAddRow from "./HistoryAddRow";
 import { parseIntradayWindow } from "@/lib/intraday-window";
 import { getIntradayDay } from "@/lib/queries/intraday";
 import { solarDay } from "@/lib/sun";
@@ -67,7 +68,11 @@ import {
 import { listCyclePeriods } from "@/lib/cycle-store";
 import { cyclePhaseOnDate, periodOnDate } from "@/lib/cycle";
 import { PICKER_SYMPTOMS, symptomLabel } from "@/lib/symptoms";
-import { historyHref, type AppRoute } from "@/lib/hrefs";
+import {
+  historyHref,
+  type HistoryHrefParams,
+  type AppRoute,
+} from "@/lib/hrefs";
 import { historyMemberFeed } from "@/lib/history";
 import {
   HISTORY_DEFAULT_SHOW,
@@ -289,11 +294,14 @@ export default async function HistoryPage(props: {
   // pre-filter and means nothing on any other kind, so a chip that leaves doses must
   // not carry it: a row of chips whose "All" still says `class=medication` is a
   // control that does not do what it is called.
-  const chipHref = (next: {
+  // Split from the speller (#4950) so a client surface can take the PARAMS these rules
+  // produce and add to them, rather than re-deriving the rules or editing a finished
+  // URL. `historyHref` stays the one place a history URL is spelled.
+  const chipHrefParams = (next: {
     kind?: HistoryKind;
     family?: HistoryFamily;
     media?: boolean;
-  }): AppRoute => {
+  }): HistoryHrefParams => {
     const nextKind = "kind" in next ? next.kind : kind;
     // A FAMILY CHIP DROPS THE KIND INSIDE IT. Moving to Clinical while `?kind=dose` was
     // set would produce a URL that contradicts itself (a kind implies its family), and
@@ -301,7 +309,7 @@ export default async function HistoryPage(props: {
     // have navigated back to Doses.
     const nextFamily =
       "family" in next ? next.family : "kind" in next ? undefined : family;
-    return historyHref({
+    return {
       family: nextKind ? undefined : nextFamily,
       kind: nextKind,
       class: nextKind === "dose" ? doseClass : undefined,
@@ -310,8 +318,14 @@ export default async function HistoryPage(props: {
       day,
       everyone,
       show: show === HISTORY_DEFAULT_SHOW ? undefined : show,
-    });
+    };
   };
+
+  const chipHref = (next: {
+    kind?: HistoryKind;
+    family?: HistoryFamily;
+    media?: boolean;
+  }): AppRoute => historyHref(chipHrefParams(next));
 
   // THE DAY NAV'S TWO DESTINATIONS. Same day, one step either way, and every other
   // filter the reader has set rides across — walking days inside `?kind=dose` stays
@@ -1054,28 +1068,19 @@ export default async function HistoryPage(props: {
             /* IN ALL — AND IN A KIND WITH NOTHING TO OFFER — THE DOOR ASKS THE KIND
                FIRST, which on a record page is the same act as narrowing to it. It
                scrolls rather than wraps for the same reason the filter row does. */
-            <div className="-mx-2 flex items-center gap-3 overflow-x-auto px-2 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
-              {/* "Add", not "Add past" (#4918 ruling 5): on the day view the day
-                  bar states the day being written to, and on the feed the door is
-                  bounded by today anyway, so "past" was answering a question the
-                  frame answers. */}
-              <span className="shrink-0 text-slate-500 dark:text-slate-400">
-                Add
-              </span>
-              {/* SYMPTOM IS EXEMPT FROM THE PRESENCE GATE (#4851 owner ruling) —
-                  `historyAddKinds` is the one computation that knows it, so the
-                  exemption cannot drift out of step with the rest of the gate. */}
-              {historyAddKinds(presentKinds).map((candidate) => (
-                <Link
-                  key={candidate}
-                  className="btn-ghost btn-sm shrink-0"
-                  href={chipHref({ kind: candidate })}
-                  data-testid={`history-add-${candidate}`}
-                >
-                  {HISTORY_KIND_LABELS[candidate]}
-                </Link>
-              ))}
-            </div>
+            /* SYMPTOM IS EXEMPT FROM THE PRESENCE GATE (#4851 owner ruling) —
+               `historyAddKinds` is the one computation that knows it, so the exemption
+               cannot drift out of step with the rest of the gate. The row itself is a
+               client component (#4950): it reads the window the chart is showing and
+               adds it to the params these rules produced. */
+            <HistoryAddRow
+              timeFormat={prefs.timeFormat}
+              chips={historyAddKinds(presentKinds).map((candidate) => ({
+                kind: candidate,
+                label: HISTORY_KIND_LABELS[candidate],
+                params: chipHrefParams({ kind: candidate }),
+              }))}
+            />
           ) : addVocabulary && addKind ? (
             <HistoryAddDoor
               kind={addKind}

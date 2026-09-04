@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   IntradayInteractionProvider,
@@ -17,37 +17,47 @@ import { windowFromView } from "@/lib/intraday-window";
 // Driving a real zoom would need jsdom to answer `getBoundingClientRect`, and would test
 // the geometry on the way to testing the sharing.
 
-let setters: ((from: number, to: number) => void)[] = [];
-
-function Consumer({ label }: { label: string }) {
+// Each consumer renders its own control rather than pushing a setter into module scope:
+// mutating shared state during render is a side effect, and it would double under
+// StrictMode. Clicking one consumer's button is also closer to what happens for real —
+// one variant receives the gesture and the other has to agree.
+function Consumer({
+  label,
+  window: w,
+}: {
+  label: string;
+  window: { from: number; to: number };
+}) {
   const { view, setView, cursor } = useIntradayInteraction();
-  setters.push((from, to) => setView({ from, to }));
   const shown = windowFromView(view, cursor);
   return (
-    <div data-testid={`consumer-${label}`}>
-      {shown ? `${shown.from}-${shown.to ?? "start"}` : "none"}
+    <div>
+      <button data-testid={`set-${label}`} onClick={() => setView(w)} />
+      <div data-testid={`consumer-${label}`}>
+        {shown ? `${shown.from}-${shown.to ?? "start"}` : "none"}
+      </div>
     </div>
   );
 }
 
-afterEach(() => {
-  setters = [];
-  cleanup();
-});
+afterEach(cleanup);
 
 describe("the day chart's interaction state", () => {
   it("is ONE window across both chart variants under a provider", () => {
     render(
       <IntradayInteractionProvider>
-        <Consumer label="compact" />
-        <Consumer label="wide" />
+        <Consumer
+          label="compact"
+          window={{ from: 19 * 60 + 10, to: 20 * 60 + 40 }}
+        />
+        <Consumer label="wide" window={{ from: 6 * 60, to: 8 * 60 }} />
       </IntradayInteractionProvider>
     );
     expect(screen.getByTestId("consumer-compact").textContent).toBe("none");
     expect(screen.getByTestId("consumer-wide").textContent).toBe("none");
 
     // The visible variant zooms; the hidden one must agree rather than hold its own.
-    act(() => setters[0](19 * 60 + 10, 20 * 60 + 40));
+    fireEvent.click(screen.getByTestId("set-compact"));
     expect(screen.getByTestId("consumer-compact").textContent).toBe(
       "1150-1240"
     );
@@ -57,11 +67,14 @@ describe("the day chart's interaction state", () => {
   it("lets the OTHER variant move it too, so neither is the owner", () => {
     render(
       <IntradayInteractionProvider>
-        <Consumer label="compact" />
-        <Consumer label="wide" />
+        <Consumer
+          label="compact"
+          window={{ from: 19 * 60 + 10, to: 20 * 60 + 40 }}
+        />
+        <Consumer label="wide" window={{ from: 6 * 60, to: 8 * 60 }} />
       </IntradayInteractionProvider>
     );
-    act(() => setters[1](6 * 60, 8 * 60));
+    fireEvent.click(screen.getByTestId("set-wide"));
     expect(screen.getByTestId("consumer-compact").textContent).toBe("360-480");
     expect(screen.getByTestId("consumer-wide").textContent).toBe("360-480");
   });
@@ -71,11 +84,14 @@ describe("the day chart's interaction state", () => {
     // It is also what the chart's own tests mount against.
     render(
       <>
-        <Consumer label="alone-a" />
-        <Consumer label="alone-b" />
+        <Consumer
+          label="alone-a"
+          window={{ from: 19 * 60 + 10, to: 20 * 60 + 40 }}
+        />
+        <Consumer label="alone-b" window={{ from: 6 * 60, to: 8 * 60 }} />
       </>
     );
-    act(() => setters[0](19 * 60 + 10, 20 * 60 + 40));
+    fireEvent.click(screen.getByTestId("set-alone-a"));
     expect(screen.getByTestId("consumer-alone-a").textContent).toBe(
       "1150-1240"
     );
