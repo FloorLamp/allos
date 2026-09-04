@@ -49,7 +49,10 @@ import TimelineDayNav from "@/components/TimelineDayNav";
 import IntradayPanel from "@/components/IntradayPanel";
 import { IntradayInteractionProvider } from "@/components/IntradayInteraction";
 import HistoryAddRow from "./HistoryAddRow";
-import { parseIntradayWindow } from "@/lib/intraday-window";
+import {
+  intradayWindowParams,
+  parseIntradayWindow,
+} from "@/lib/intraday-window";
 import { getIntradayDay } from "@/lib/queries/intraday";
 import { solarDay } from "@/lib/sun";
 import {
@@ -1084,6 +1087,10 @@ export default async function HistoryPage(props: {
           ) : addVocabulary && addKind ? (
             <HistoryAddDoor
               kind={addKind}
+              /* The window the chip carried, already parsed and refused if it was not
+                 one (#4950). It rides the URL rather than client state, so it survives
+                 a reload with the form open. */
+              window={chartWindow ? intradayWindowParams(chartWindow) : null}
               // THE DAY THE READER WAS LOOKING AT. Finding a gap is the reason to open
               // this door at all, so the form opens on that day rather than on today —
               // the context the redirect used to throw away.

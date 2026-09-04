@@ -173,12 +173,23 @@ export default function HistoryAddDoor({
   date,
   maxDate,
   vocabulary,
+  window = null,
 }: {
   kind: HistoryAddKind;
   /** The day the reader is looking at, or today. */
   date: string;
   maxDate: string;
   vocabulary: HistoryAddVocabulary;
+  /**
+   * The window the day chart was showing when a kind chip was tapped (#4950), as
+   * `HH:MM` clocks on `date`. It arrives from the URL rather than from the chart, so
+   * this door needs no client state of its own and the window survives a reload of the
+   * link with the form open.
+   *
+   * Every form treats it as a DEFAULT a person can change, never as a write: a stated
+   * window is a stated time, not a claim about what happened.
+   */
+  window?: { from: string; to?: string } | null;
 }) {
   const router = useRouter();
   const formatPrefs = useFormatPrefs();
@@ -232,7 +243,10 @@ export default function HistoryAddDoor({
             }))}
             initialDate={date}
             maxDate={maxDate}
-            defaultTime={vocabulary.doseDefaultTime}
+            /* The window's start beats the vocabulary's default (#4950): a person who
+               framed 19:10 on the trace has said when, and `doseDefaultTime` is what
+               to offer when nobody has. */
+            defaultTime={window?.from ?? vocabulary.doseDefaultTime}
             repeatAfterAdd
             onSaved={() => router.refresh()}
             onDone={close}
@@ -251,6 +265,8 @@ export default function HistoryAddDoor({
             today={maxDate}
             date={date}
             maxDate={maxDate}
+            defaultStartTime={window?.from ?? null}
+            defaultEndTime={window?.to ?? null}
             onSaved={() => {
               close();
               router.refresh();
