@@ -1,4 +1,5 @@
 import { db, today } from "../../db";
+import { cache } from "../../request-cache";
 import type { GoalProgress, GoalSetRow } from "../../goal-progress";
 import {
   computeBodyGoalProgress,
@@ -32,7 +33,17 @@ type StoredOutcomeGoal = Omit<OutcomeGoal, "kind" | "categoryLabel"> & {
   category: string | null;
 };
 
-export function getOutcomeGoals(profileId: number): OutcomeGoal[] {
+// REQUEST-CACHED (#3369 item 2): four separate readers ask one render for the same
+// profile's goals — the dashboard's live-goal band, the upcoming plan items, the
+// trends context's goal metrics and the rule findings — and each re-reads the whole
+// list to filter it differently. Keyed on profileId, so a household render still
+// reads once per profile. NO WRITER CAN INTERVENE (lib/queries/AGENTS.md): no module
+// that writes `goals` reads this list, in a Server Action or anywhere else. The
+// returned array is derived (each row is remapped), and every caller filters or finds
+// on it rather than sorting it in place, so sharing it is safe.
+export const getOutcomeGoals = cache(function getOutcomeGoals(
+  profileId: number
+): OutcomeGoal[] {
   // Archived goals sink to the bottom; within each, active before achieved.
   // status is exactly ('active' | 'achieved') (OutcomeGoalStatus / migration 016 CHECK),
   // so the CASE covers the whole set — 'active' first, everything else (achieved)
@@ -61,7 +72,7 @@ export function getOutcomeGoals(profileId: number): OutcomeGoal[] {
       categoryLabel: kind === "freeform" ? category : null,
     };
   });
-}
+});
 
 export type { GoalProgress } from "../../goal-progress";
 

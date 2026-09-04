@@ -71,7 +71,15 @@ describe("outcome-goal and frequency-target vocabulary boundary (#2480)", () => 
       false
     );
     const query = read("lib/queries/training/outcome-goals.ts");
-    expect(query).toContain("export function getOutcomeGoals");
-    expect(query).not.toMatch(/export function getGoals\b/);
+    // THE CLAIM IS THE EXPORTED NAME, NOT THE KEYWORD IN FRONT OF IT. A read in this
+    // repo is exported either as `export function X(` or, once it joins the request
+    // cache, as `export const X = cache(function X(` — getOutcomeGoals took the second
+    // spelling in #3369. Matching only the first would have made the NEGATIVE half
+    // below the blind one: `export const getGoals = cache(...)` is exactly the generic
+    // API this retires, and a `export function getGoals` pattern could never see it.
+    const exportsRead = (name: string) =>
+      new RegExp(`export (?:function ${name}\\(|const ${name}\\s*=)`);
+    expect(query).toMatch(exportsRead("getOutcomeGoals"));
+    expect(query).not.toMatch(exportsRead("getGoals"));
   });
 });
