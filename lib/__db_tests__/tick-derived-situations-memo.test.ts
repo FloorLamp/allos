@@ -249,6 +249,104 @@ describe("resolveDerivedSituations under a tick scope (#2724)", () => {
     );
   });
 
+  // A DECLARED TOGGLE MID-TICK (#3993) — the torn read, in both directions.
+  //
+  // The snapshot used to carry the DECLARED set while the dueness seam re-read it fresh,
+  // so one tick unioned a fresh declared half with a derived half computed from the STALE
+  // one. That is not a conservative snapshot, because the dependence is not monotone:
+  // `roughNightVerdict` short-circuits on `declared` and never reaches `derivedNames`, so
+  // a stale-TRUE declared SUPPRESSES a measured derivation and the answer is neither the
+  // before answer nor the after one.
+  //
+  // The two reads below are the pair `lib/notifications/digest-data.ts` makes NINE LINES
+  // APART in one gather (`:637` the dueness set, `:646` the Context line), so a
+  // disagreement between them is a single message contradicting itself.
+  //
+  // Each case runs the identical sequence twice — once inside a scope, once outside one —
+  // and asserts the two agree. The control is what makes this about the memo rather than
+  // about resolver lifetime, which behaves the same either side of a scope.
+  const observePoorSleep = (profileId: number, td: string) => {
+    const lines = getDerivedSituationLines(profileId, td);
+    return {
+      contextLine: lines.poorSleep != null,
+      // Offered only for a MEASURED basis, so this is where declared/measured shows.
+      overridable: lines.poorSleepOverridable,
+      due: getEffectiveActiveSituations(profileId, td).has(
+        BUILTIN_POOR_SLEEP_SITUATION
+      ),
+    };
+  };
+
+  // Read, toggle the chip to `to`, read again — inside a scope or outside one.
+  async function toggleMidSequence(
+    profileId: number,
+    to: string[],
+    inScope: boolean
+  ) {
+    const td = today(profileId);
+    const seq = () => {
+      const before = observePoorSleep(profileId, td);
+      setActiveSituations(profileId, to);
+      return { before, after: observePoorSleep(profileId, td) };
+    };
+    if (!inScope) return seq();
+    let out: ReturnType<typeof seq> | null = null;
+    await runInTickScope(
+      async () => {
+        out = seq();
+      },
+      { profileId }
+    );
+    return out as unknown as ReturnType<typeof seq>;
+  }
+
+  it("a chip toggled OFF mid-tick cannot suppress the measured night behind it (#3993)", async () => {
+    const seed = (name: string) => {
+      const profileId = newProfile(name);
+      seedRoughNight(profileId);
+      keyItem(profileId, "Toggle Magnesium", BUILTIN_POOR_SLEEP_SITUATION);
+      setActiveSituations(profileId, [BUILTIN_POOR_SLEEP_SITUATION]);
+      return profileId;
+    };
+    const control = await toggleMidSequence(
+      seed("Toggle Off Control"),
+      [],
+      false
+    );
+    const tick = await toggleMidSequence(seed("Toggle Off Tick"), [], true);
+
+    // Turning the chip off leaves the night itself rough, so the context stays on and
+    // becomes overridable — the item goes on being due, on the measured basis.
+    expect(control).toEqual({
+      before: { contextLine: true, overridable: false, due: true },
+      after: { contextLine: true, overridable: true, due: true },
+    });
+    expect(tick, "in tick scope").toEqual(control);
+  });
+
+  it("a chip toggled ON mid-tick reaches the state line, not just the dueness set (#3993)", async () => {
+    // No sleep data at all, so nothing is measured and the declaration is the whole
+    // verdict — the mirror of the case above.
+    const seed = (name: string) => {
+      const profileId = newProfile(name);
+      keyItem(profileId, "Toggle Magnesium", BUILTIN_POOR_SLEEP_SITUATION);
+      return profileId;
+    };
+    const on = [BUILTIN_POOR_SLEEP_SITUATION];
+    const control = await toggleMidSequence(
+      seed("Toggle On Control"),
+      on,
+      false
+    );
+    const tick = await toggleMidSequence(seed("Toggle On Tick"), on, true);
+
+    expect(control).toEqual({
+      before: { contextLine: false, overridable: false, due: false },
+      after: { contextLine: true, overridable: false, due: true },
+    });
+    expect(tick, "in tick scope").toEqual(control);
+  });
+
   it("no consumer mutates the memoized object — the snapshot survives every reader", async () => {
     const profileId = newProfile("Memo Shared Object");
     seedRoughNight(profileId);

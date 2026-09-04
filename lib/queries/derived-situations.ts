@@ -139,11 +139,26 @@ export interface DerivedSituations {
 // FIRST tick-memoized gather that reads `upcoming_dismissals` at all — the bus #2674
 // fenced off — so it is a first of its kind rather than one more of a kind.
 //
-// WHAT IS AND IS NOT SNAPSHOTTED. `getActiveSituations` is read inside here, so the
-// DECLARED set is snapshotted with everything else. The dueness seam survives that only
-// because `getEffectiveActiveSituations` unions a FRESH `getActiveSituations` read with
-// this resolver's memoized DERIVED names — so a situation toggled mid-tick still lands,
-// and the memo's blast radius is the derived half alone.
+// WHAT IS AND IS NOT SNAPSHOTTED — and the DECLARED set is NOT (#3993). It used to be:
+// the snapshot carried `getActiveSituations` + `getSituationEvents` while the dueness
+// seam unioned a FRESH declared read with this resolver's memoized derived names. That
+// left one call mixing a fresh declared half with a derived half computed from the STALE
+// one — a torn read, and the tear is not harmless, because the dependence is not
+// monotone: `roughNightVerdict` short-circuits on `declared` and so never reaches
+// `derivedNames`, and a stale-TRUE declared therefore SUPPRESSES a measured derivation. A
+// chip toggled off mid-tick over a genuinely rough night gave an answer that was neither
+// the before answer nor the after answer, and the item stopped being due for the rest of
+// the tick. Both halves now read the declared set through ONE `declaredSituationsResolver`
+// per resolver, so the memo holds only what is genuinely declaration-independent and its
+// blast radius really is the derived half alone. (The tear pre-dates this branch, which
+// routes five more summary readers through here; both directions are pinned by
+// lib/__db_tests__/tick-derived-situations-memo.test.ts.)
+//
+// Moving that pair out costs the memo nothing: `getActiveSituations` is one hoisted
+// statement (`snapshotCached` on top of it for page renders) and `getSituationEvents` is
+// one profile-setting read, against the ~1.7 ms weather-series scan the memo exists for.
+// Outside a tick scope it is a net saving — the declared pair used to be read twice per
+// resolver, once by the seam and once through the memo's passthrough.
 //
 // THE DATE IS NOT A MEMO KEY ANY MORE, it is an evaluation parameter. Every day's answer
 // is computed from the one snapshot, so two days cannot be served each other's answer by
@@ -156,14 +171,12 @@ export interface DerivedSituations {
 // independence, the agreement of the two entry points, and the fact that no consumer
 // mutates the snapshot are pinned by lib/__db_tests__/tick-derived-situations-memo.test.ts.
 // The profile-scoped inputs every derived verdict reads that do NOT depend on which day
-// is being asked about. Each is one read whose pure rule then slices per day: the
-// declared set and its change log, the suppression bus, the nightly sleep series, the
-// cycle relevance bit and the period log, plus the profile's real today as the #2613
-// horizon.
+// is being asked about, and — since the torn read above — that the DECLARED set does not
+// decide either. Each is one read whose pure rule then slices per day: the suppression
+// bus, the nightly sleep series, the cycle relevance bit and the period log, plus the
+// profile's real today as the #2613 horizon.
 interface DerivedSources {
   horizon: string;
-  declared: string[];
-  events: SituationEvent[];
   suppressions: ReturnType<typeof getFindingSuppressions>;
   sleepOn: (wakeDay: string) => SleepSignal | null;
   cycleRelevant: boolean;
@@ -177,8 +190,6 @@ const derivedSources = tickCached(
     const cycleRelevant = getNavRelevance(profileId).cycle;
     return {
       horizon: today(profileId),
-      declared: getActiveSituations(profileId),
-      events: getSituationEvents(profileId),
       suppressions: getFindingSuppressions(profileId),
       sleepOn: sleepSignalResolver(profileId),
       cycleRelevant,
@@ -186,6 +197,33 @@ const derivedSources = tickCached(
     };
   }
 );
+
+// The DECLARED half, dated (#654/#3973): the active-situation names as they stood on
+// `date`, from the current set plus its change log. NEVER tick-memoized, and read ONCE
+// per resolver so both halves of the union — the fallback each verdict carries and the
+// set the dueness seam starts from — are the same declaration. That sharing is the whole
+// point: a fresh declared half beside a derived half computed from a stale one is the
+// torn read documented above, not a conservative snapshot.
+//
+// Lazy and per-date-cached, like everything else here: a resolver nobody asks reads
+// nothing, and `situationsActiveOn` runs once per distinct day. The returned set is the
+// resolver's own, so callers copy before widening it.
+function declaredSituationsResolver(
+  profileId: number
+): (date: string) => ReadonlySet<string> {
+  const byDate = new Map<string, ReadonlySet<string>>();
+  let declaredNow: string[] | null = null;
+  let events: SituationEvent[] | null = null;
+  return (date) => {
+    const cached = byDate.get(date);
+    if (cached) return cached;
+    declaredNow ??= getActiveSituations(profileId);
+    events ??= getSituationEvents(profileId);
+    const set = situationsActiveOn(date, declaredNow, events);
+    byDate.set(date, set);
+    return set;
+  };
+}
 
 // The weather half is the one input that depends on the WINDOW rather than only on the
 // profile, so it is memoized per declared span. Nothing the tick runs writes the weather
@@ -236,7 +274,13 @@ export function resolveDerivedSituations(
 export function derivedSituationsResolver(
   profileId: number,
   from: string,
-  to: string
+  to: string,
+  // The declared half, injected so the caller that also unions it reads it ONCE. Left to
+  // default for the callers that only want the verdicts; either way it is fresh per
+  // resolver rather than tick-memoized.
+  declaredOn: (
+    date: string
+  ) => ReadonlySet<string> = declaredSituationsResolver(profileId)
 ): (date: string) => DerivedSituations {
   interface Inputs extends DerivedSources {
     weatherOn: ReturnType<typeof weatherSituationsResolver>;
@@ -267,8 +311,10 @@ export function derivedSituationsResolver(
       };
     // The DECLARED set as it stood on `date` (#654/#3973), so the fallback each verdict
     // below carries is dated with the rest — a chip toggled this morning must not report
-    // a rough night for last Tuesday. On today it is the current set exactly.
-    const active = situationsActiveOn(date, i.declared, i.events);
+    // a rough night for last Tuesday. On today it is the current set exactly, read fresh
+    // rather than out of the tick snapshot, and it is the SAME read the dueness seam
+    // unions.
+    const active = declaredOn(date);
 
     // ---- Poor sleep (#1292) ----
     // Missing data ⇒ no sleep signal ⇒ measured never fires ⇒ OFF unless declared (the
@@ -448,14 +494,20 @@ export function getDerivedSituationLines(
 // situation-impact windows read it directly, because membership really is their question
 // — but nothing in the app now asks for dueness from declarations alone.
 //
-// THE UNION IS ALSO WHAT BOUNDS THE #2724 MEMO. The declared half is re-read on every
-// call, and only the DERIVED half comes out of the tick-scoped snapshot — so a situation
-// toggled by hand mid-tick reaches this seam immediately, and the memo can only ever hold
-// the derived names stale. The returned Set is the caller's own, so a caller mutating it
-// cannot reach the snapshot behind `derivedNames`.
+// THE UNION IS ALSO WHAT BOUNDS THE #2724 MEMO, and the bound is real only because the
+// declared set is outside the memo on BOTH sides now (#3993). One `declaredSituations-
+// Resolver` per resolver feeds this union AND the fallback inside every verdict, so a
+// situation toggled by hand mid-tick reaches this seam immediately and reaches the
+// verdicts with it. Unioning a fresh declared half over a derived half computed from the
+// stale one is what used to make a toggled-off chip suppress a measured rough night —
+// an answer that was neither the before answer nor the after one. The memo can now only
+// hold the derived names stale, which is the exposure the resolver above documents. The
+// returned Set is the caller's own, so a caller mutating it reaches neither the declared
+// cache nor the snapshot behind `derivedNames`.
 //
 // ONE IMPLEMENTATION: this is the window resolver over a one-day window, built fresh per
-// call, which is what keeps the declared half fresh per call for the tick.
+// call, which is what keeps the whole answer — not just the declared half — fresh per
+// call for the tick.
 export function getEffectiveActiveSituations(
   profileId: number,
   date: string
@@ -487,16 +539,23 @@ export function effectiveSituationResolver(
   window: { from: string; to: string }
 ): (date: string) => Set<string> {
   const byDate = new Map<string, Set<string>>();
-  let declaredNow: string[] | null = null;
-  let events: SituationEvent[] | null = null;
+  // ONE declared read for BOTH halves — this union and the fallback inside every verdict
+  // — so the two cannot be a day's answer apart. Built here rather than inside the
+  // derived resolver because this is the caller that unions it.
+  const declaredOn = declaredSituationsResolver(profileId);
   let derivedOn: ((date: string) => DerivedSituations) | null = null;
   return (date) => {
     let set = byDate.get(date);
     if (set) return set;
-    declaredNow ??= getActiveSituations(profileId);
-    events ??= getSituationEvents(profileId);
-    derivedOn ??= derivedSituationsResolver(profileId, window.from, window.to);
-    set = situationsActiveOn(date, declaredNow, events);
+    derivedOn ??= derivedSituationsResolver(
+      profileId,
+      window.from,
+      window.to,
+      declaredOn
+    );
+    // Copied, because `declaredOn` caches its answer per date and this set is the
+    // caller's to widen (and to scribble on).
+    set = new Set(declaredOn(date));
     for (const name of derivedOn(date).derivedNames) set.add(name);
     byDate.set(date, set);
     return set;

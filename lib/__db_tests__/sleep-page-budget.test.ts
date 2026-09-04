@@ -149,24 +149,29 @@ describe("/sleep route query budget (#3993)", () => {
   // Recorded per persona, the same discipline the dashboard manifest uses: a number that
   // moves is a conversation, not a value to bump. Measured on the merged tree.
   //
-  // FIVE OF THE SIX ARE UNMOVED BY #3993 at 69, and one moved: `biohacker` 90 → 111. Only
+  // FIVE OF THE SIX ARE UNMOVED BY #3993 at 69, and one moved: `biohacker` 90 → 109. Only
   // that persona has a bedtime supplement dose to score, so it is the only one whose
-  // gather builds a resolver at all — the others return before it. The +21 is the derived
+  // gather builds a resolver at all — the others return before it. The +19 is the derived
   // inputs read ONCE for the history's span (the declared set and its change log, the
   // suppression bus, the nightly series, the cycle relevance bit, the home location and
   // the weather gate), not once per night: the page draws 30 nights, and 30 gathers is
   // what the per-DATE resolver would have cost.
+  //
+  // It was 111 until the declared pair came OUT of the tick memo: the seam and the memo's
+  // passthrough were each reading `getActiveSituations` + `getSituationEvents`, and one
+  // shared read serves both halves now. Fixing the torn read made the page two queries
+  // cheaper, not dearer.
   const BASELINES: Record<string, number> = {
     bodybuilder: 69,
     "marathon-runner": 69,
     household: 69,
     pregnant: 69,
     "diabetic-cgm": 69,
-    biohacker: 111,
+    biohacker: 109,
   };
 
   // The dashboard's backstop, borrowed. /sleep is one domain page; reaching this would
-  // mean it costs what the entire dashboard census costs. The heaviest persona is 111
+  // mean it costs what the entire dashboard census costs. The heaviest persona is 109
   // against it — the answer to the question nobody had asked, which was whether this
   // route could exceed a ceiling no gate applies to it.
   const QUERY_CEILING = 274;

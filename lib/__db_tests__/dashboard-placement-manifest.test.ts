@@ -1205,7 +1205,9 @@ describe("actual atomic dashboard manifests", () => {
     // left four personas a query short with nothing to show for it. The numbers below
     // came from running the gate on the merged tree, which is the only thing that can
     // tell "we agree" from "we both landed on 227 by coincidence".
-    // +24 on four personas and +28 on the two with cycle rows (#3993): the dueness
+    // +24 on THREE personas, +28 on the two with cycle rows, and `household` unmoved at
+    // 254 (#3993) — six personas, three deltas, which the earlier "+24 on four" did not
+    // add up to. The dueness
     // question is now DATED on every surface that asks it, including the two summary
     // walks this page runs — `buildAdherencePatternFindings` (56 days) and
     // `getIntakeHistory` (30). Each builds one `effectiveSituationResolver`, and each
