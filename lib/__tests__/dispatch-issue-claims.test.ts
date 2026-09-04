@@ -40,12 +40,28 @@ describe("issueClaims — whose claim is it, keyed on the BRANCH not the author"
   // create X; so a claim naming X is this dispatch's own, posted by the
   // convention that says claim before briefing.
   it.each([
-    [comments(claim("live-practice-self-complete-5091")), "claimed", "another lane's branch"],
+    [
+      comments(claim("live-practice-self-complete-5091")),
+      "claimed",
+      "another lane's branch",
+    ],
     [comments(claim(MINE)), "clear", "my own claim, posted before briefing"],
-    [comments("Landed by PR #5101, squashed to `38e36a85`."), "clear", "prose that is not a claim"],
+    [
+      comments("Landed by PR #5101, squashed to `38e36a85`."),
+      "clear",
+      "prose that is not a claim",
+    ],
     [comments(), "clear", "an issue nobody has commented on"],
-    [comments(`**Dispatched:** branch \`other-lane-1\``), "claimed", "bolded, as orchestrators write it"],
-    [comments(claim(MINE), claim("other-lane-2")), "claimed", "mine plus somebody else's"],
+    [
+      comments(`**Dispatched:** branch \`other-lane-1\``),
+      "claimed",
+      "bolded, as orchestrators write it",
+    ],
+    [
+      comments(claim(MINE), claim("other-lane-2")),
+      "claimed",
+      "mine plus somebody else's",
+    ],
     [{ unknown: "API rate limit exceeded" }, "unknown", "comments unreadable"],
   ])("%#: %s", (got, verdict, _why) => {
     expect(issueClaims(["5108"], MINE, () => got)[0].verdict).toBe(verdict);
@@ -59,7 +75,9 @@ describe("issueClaims — whose claim is it, keyed on the BRANCH not the author"
     expect(refusal).toContain("#5091 was claimed 2026-09-04T15:18:42Z");
     expect(refusal).toContain("live-practice-self-complete-5091");
     expect(refusal).toContain("--adopt-claim");
-    expect(claimedIssueRefusal(issueClaims(["5108"], MINE, () => comments()))).toBeNull();
+    expect(
+      claimedIssueRefusal(issueClaims(["5108"], MINE, () => comments()))
+    ).toBeNull();
   });
 
   it("refuses an UNREADABLE claim in its own words — CANNOT TELL, not CLEAR", () => {
@@ -72,7 +90,9 @@ describe("issueClaims — whose claim is it, keyed on the BRANCH not the author"
     expect(refusal).toContain("--adopt-claim");
     // The two refusals must be DISTINGUISHABLE: a fetch failure is not a claim.
     expect(claimedIssueRefusal(rows)).toBeNull();
-    expect(unreadableClaimRefusal(issueClaims(["5108"], MINE, () => comments()))).toBeNull();
+    expect(
+      unreadableClaimRefusal(issueClaims(["5108"], MINE, () => comments()))
+    ).toBeNull();
   });
 });
 
@@ -111,8 +131,19 @@ process.stdout.write(JSON.stringify({ number: 5108, state: "open", closed_at: nu
 function runNew(dir: string, bin: string, extra: string[] = []) {
   return spawnSync(
     process.execPath,
-    [SCRIPT, "new", "--branch", MINE, "--issues", "5108",
-     "--priority", "P2", "--lane", "operator", ...extra],
+    [
+      SCRIPT,
+      "new",
+      "--branch",
+      MINE,
+      "--issues",
+      "5108",
+      "--priority",
+      "P2",
+      "--lane",
+      "operator",
+      ...extra,
+    ],
     {
       cwd: REPO,
       encoding: "utf8",
@@ -175,9 +206,11 @@ describe("dispatch-brief.mjs new, against an issue that may already have a lane"
 
   it("--adopt-claim overrides a stale claim, and says out loud that it did", () => {
     const dir = makeTmpDir("dispatch-adoptclaim");
-    const run = runNew(dir, stubCurl(dir, { bodies: [claim("other-lane-3")] }), [
-      "--adopt-claim",
-    ]);
+    const run = runNew(
+      dir,
+      stubCurl(dir, { bodies: [claim("other-lane-3")] }),
+      ["--adopt-claim"]
+    );
     expect(run.status).toBe(0);
     expect(run.stderr).toContain("claim check SKIPPED");
     expect(fs.readFileSync(path.join(dir, "ledger.jsonl"), "utf8")).toContain(

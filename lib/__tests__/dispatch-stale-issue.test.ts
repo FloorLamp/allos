@@ -188,9 +188,13 @@ describe("dispatch-brief.mjs new, driven against a tracker that has moved", () =
     expect(run.stderr).toContain("AN UNREACHABLE CLAIM IS NOT AN ABSENT ONE");
     expect(fs.existsSync(path.join(dir, "ledger.jsonl"))).toBe(false);
 
-    const overridden = runNew(makeTmpDir("dispatch-notoken-ok"), bin, env, "4451", [
-      "--adopt-claim",
-    ]);
+    const overridden = runNew(
+      makeTmpDir("dispatch-notoken-ok"),
+      bin,
+      env,
+      "4451",
+      ["--adopt-claim"]
+    );
     expect(overridden.status).toBe(0);
     expect(overridden.stderr).toContain("NO READ TOKEN");
   });
