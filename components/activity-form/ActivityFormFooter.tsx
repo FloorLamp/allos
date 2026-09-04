@@ -8,6 +8,12 @@ import SaveStatus from "@/components/SaveStatus";
 // The sticky variant re-spans the overlay panel padding so the bar runs edge to edge.
 // Presentational only — extracted from ActivityForm so the parent stays
 // composition (#319).
+//
+// `showDone` gates the PLAIN dismissal — the Done button and the Close beside a
+// Finish — not the slot itself. A running workout offers neither (its exit is the
+// header's ✕), and its one commit is Finish workout in the primary slot (#5111);
+// before that, `showDone={false}` emptied the whole cluster and the footer of a
+// live session carried no action at all.
 export default function ActivityFormFooter({
   stickyFooter,
   hasRow,
@@ -56,7 +62,7 @@ export default function ActivityFormFooter({
         <span className="md:hidden">
           <SaveStatus pending={pending} savedAt={savedAt} error={error} />
         </span>
-        {stickyFooter && onFinish ? (
+        {stickyFooter && showDone && onFinish ? (
           <button
             type="button"
             onClick={() => void onDone()}
@@ -65,12 +71,12 @@ export default function ActivityFormFooter({
             Close
           </button>
         ) : null}
-        {stickyFooter && showDone && (
+        {stickyFooter && (showDone || onFinish) && (
           <button
             type="button"
             onClick={() => void (onFinish ?? onDone)()}
             className="btn"
-            data-testid={onFinish ? "plain-finish-workout" : undefined}
+            data-testid={onFinish ? "form-finish-workout" : undefined}
           >
             {onFinish ? "Finish workout" : "Done"}
           </button>
