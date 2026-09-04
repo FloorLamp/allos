@@ -64,6 +64,17 @@
   Several PRs failing the same untouched specs is a base regression until that
   run says otherwise — not a coincidence of flakes (#2791).
 - `next dev` and `next start` differ. Interaction fixes must work in both.
+- WHICH SHARD A SPEC LANDS IN IS AN OUTCOME, NOT A PROPERTY. A duration-manifest
+  refresh reshuffles buckets, and so does adding ONE spec: a manifest measured on
+  yesterday's suite separates two specs at 4 and 12 shards, and the same manifest
+  with one new spec planned in on an estimate moves one of them two buckets. So
+  verify a separation claim on the tree that will actually land (branch merged
+  with current main), never on the branch alone — and treat the separation as a
+  coincidence that buys nothing: the fix is the spec owning the state it asserts.
+- A manifest's "covers main exactly" is true against the base it was MEASURED on.
+  Re-run the coverage check against current main before believing it; every spec
+  merged since is unlisted and planned on an estimate, which is inherent rather
+  than a defect.
 - After restoring a planted mutation, BUMP THE FILE'S MTIME. `cp -a` from a
   backup keeps the original timestamp, the harness's staleness check is
   mtime-based, and it goes on serving the mutated build — so the restored tree
