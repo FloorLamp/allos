@@ -7,6 +7,7 @@ import { ASSIGNABLE_MEDICAL_CATEGORIES } from "@/lib/medical-categories";
 import type { UnclassifiedClinicalObservation } from "@/lib/queries";
 import { useToast } from "@/components/Toast";
 import { displayUnit } from "@/lib/display-unit";
+import SubmitButton from "@/components/SubmitButton";
 
 export type UnclassifiedResultRow = UnclassifiedClinicalObservation & {
   subjectLabel?: string;
@@ -97,9 +98,7 @@ export default function UnclassifiedResultsCard({
                     ))}
                   </select>
                 </label>
-                <button className="btn" type="submit">
-                  Save
-                </button>
+                <SubmitButton>Save</SubmitButton>
               </form>
             ) : (
               <p className="mt-2 text-sm text-muted">

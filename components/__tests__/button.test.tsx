@@ -96,6 +96,42 @@ describe("Button", () => {
     ).toBe("");
   });
 
+  // THE CLOSED LAYOUT SET (owner ruling 2026-09-04, #4978). Layout is ADDED to
+  // the same box and never replaces the rank's paint, which is what lets the
+  // two mounts that had grown wrapper elements drop them. The type refuses a
+  // third value, so there is no runtime check here to write and none below —
+  // the row that would test it does not compile.
+  it.each([
+    { layout: undefined, expected: ["button-control"] },
+    { layout: "block" as const, expected: ["button-control", "w-full"] },
+    {
+      layout: "hidden-below-sm" as const,
+      expected: ["button-control", "hidden", "sm:inline-flex"],
+    },
+  ])("layout $layout adds only layout", ({ layout, expected }) => {
+    render(
+      <Button layout={layout} data-testid="laid-out">
+        Apply
+      </Button>
+    );
+    expect(screen.getByTestId("laid-out").className.split(" ")).toEqual(
+      expected
+    );
+  });
+
+  it("composes layout with a rank rather than replacing it", () => {
+    render(
+      <Button variant="primary" layout="block" data-testid="both">
+        Save
+      </Button>
+    );
+    expect(screen.getByTestId("both").className.split(" ")).toEqual([
+      "button-control",
+      "button-control-primary",
+      "w-full",
+    ]);
+  });
+
   // PENDING AND DISABLED ON `danger` REUSE PRIMARY'S TREATMENT (#4978 AC).
   // Both rank utilities scope their paint to
   // `:not(:disabled):not([aria-disabled="true"])` in app/globals.css, so the
