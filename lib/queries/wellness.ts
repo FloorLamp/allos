@@ -631,6 +631,52 @@ export function getTrackedPractices(
   );
 }
 
+// THE WEEKLY RHYTHM OF EVERY PRACTICE THIS PROFILE HAS LOGGED, by identity (#4950
+// item 4). One statement, and the pure inference is `inferPracticeRhythm` — the same
+// computation `getWellnessPractices` runs in memory over its own gather and the same
+// one `inferPracticeSchedule` wraps, so no surface can hold a different opinion about
+// when a practice usually happens.
+//
+// NOT `getWellnessPractices`, which already carries this: that aggregate also builds
+// frequency progress and a heatmap per practice, which is right for the Wellness page
+// and far too much for a door that wants one question answered. The rows here are the
+// two columns the inference reads and nothing else.
+//
+// The whole history, not a window: `inferPracticeRhythm` does its own windowing, and
+// its fallback-hour ladder deliberately reads a practice's habitual hour from ANYWHERE
+// in its history. Handing it eight weeks would quietly change which hour it settles on.
+export function getPracticeRhythms(
+  profileId: number,
+  asOf = profileToday(profileId)
+): Map<string, WeeklyRhythm> {
+  const rows = db
+    .prepare(
+      `SELECT practice, date, start_time
+         FROM practice_logs
+        WHERE profile_id = ?
+        ORDER BY date DESC, id DESC`
+    )
+    .all(profileId) as {
+    practice: string;
+    date: string;
+    start_time: string | null;
+  }[];
+  const byIdentity = new Map<string, { date: string; time: string | null }[]>();
+  for (const row of rows) {
+    const identity = practiceIdentity(row.practice);
+    if (!identity) continue;
+    const list = byIdentity.get(identity);
+    if (list) list.push({ date: row.date, time: row.start_time });
+    else byIdentity.set(identity, [{ date: row.date, time: row.start_time }]);
+  }
+  return new Map(
+    [...byIdentity].map(([identity, sessions]) => [
+      identity,
+      inferPracticeRhythm(sessions, asOf),
+    ])
+  );
+}
+
 // One practice as the global search needs it (#1595) — identity, display name, its
 // weekly cadence, and its session tally. Deliberately NOT getWellnessPractices():
 // that aggregate builds a heatmap and week-pace state per practice, which is right

@@ -53,14 +53,14 @@ function activityWindowInputs(
     .all(profileId, since) as ActivityWindowInput[];
 }
 
-// Per-minute HR buckets within an inclusive [since, until] date range (until
-// defaults to open-ended). ts is 'YYYY-MM-DDTHH:MM' profile-local. Reads through
-// the shared one-source-per-day HR read (issue #14) so a workout recorded by two
-// HR sources at once can't double its zone minutes.
+// Per-minute HR buckets within an inclusive [since, until] date range, both
+// profile-local days. ts is 'YYYY-MM-DDTHH:MM' profile-local. Reads through the
+// shared one-source-per-day HR read (issue #14) so a workout recorded by two HR
+// sources at once can't double its zone minutes.
 function hrBuckets(
   profileId: number,
   since: string,
-  until?: string
+  until: string
 ): HrBucket[] {
   return getHrMinutesInRange(profileId, since, until);
 }
@@ -76,10 +76,17 @@ function hrBuckets(
 // days: measured on a snapshot with 144,000 minutes in the window, two passes over all
 // of them for the 86 buckets each kept. `cache()` is identity outside a Next request,
 // so the notify tick and the DB tier behave exactly as before.
+//
+// `until` IS REQUIRED (#5069). Every zone question here has an end — a trailing window
+// ends today, a recap window ends on its own last day — and the two that used to leave
+// it off scanned to the profile's LAST STORED HR row instead. That is the window they
+// meant only while the last row is roughly now; a device stamping ahead (#5035) makes
+// it wider with nothing saying so. The end is a PROFILE-LOCAL day, resolved through
+// `today(profileId)` like every other dated read here, never off the server clock.
 const windowScopedBuckets = cache(function windowScopedBuckets(
   profileId: number,
   since: string,
-  until?: string
+  until: string
 ): HrBucket[] {
   return scopeBucketsToWindows(
     hrBuckets(profileId, since, until),
@@ -240,7 +247,7 @@ export function getDayLoadInputs(profileId: number, days = 42): DayLoadInput[] {
   // Per-day easy/hard split from window-scoped HR buckets, when a zone model exists.
   const model = getProfileZoneModel(profileId);
   if (model) {
-    const scoped = windowScopedBuckets(profileId, since);
+    const scoped = windowScopedBuckets(profileId, since, td);
     const byDay = new Map<string, HrBucket[]>();
     for (const b of scoped) {
       const day = b.ts.slice(0, 10);
@@ -271,5 +278,5 @@ export function getIntensitySignal(
   if (!model) return null;
   const td = today(profileId);
   const since = shiftDateStr(td, -(days - 1));
-  return polarizedSplit(windowScopedBuckets(profileId, since), model);
+  return polarizedSplit(windowScopedBuckets(profileId, since, td), model);
 }
