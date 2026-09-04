@@ -144,9 +144,7 @@ export function independenceClaim(body) {
     return { asserts: false, why: "hedged" };
   return {
     asserts: false,
-    why: sentences(quoting.join("\n")).some((s) =>
-      ASSERTS_INDEPENDENCE.test(s)
-    )
+    why: sentences(quoting.join("\n")).some((s) => ASSERTS_INDEPENDENCE.test(s))
       ? "quoted"
       : null,
   };
@@ -402,7 +400,8 @@ function markerLines(notes, name) {
     }
     for (const raw of quoting) {
       const line = normalise(raw);
-      if (opener.test(line)) ignored.push({ line, who: note.user ?? "someone" });
+      if (opener.test(line))
+        ignored.push({ line, who: note.user ?? "someone" });
     }
   }
   // Newest first, and a HOLD wins a tie: two markers stamped the same second
