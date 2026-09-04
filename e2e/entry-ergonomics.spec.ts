@@ -223,7 +223,19 @@ test("Training Log houses its primary in the header and keeps secondary actions 
     "aria-current",
     "page"
   );
-  await page.getByTestId("training-log-clear-filters").click();
+  // Scoped through `training-page`, which the STAGED copy has no ancestor of (#4890).
+  // Each Suspense boundary's content lands in a `<div hidden>` on `<body>` before an
+  // inline script relocates it, so through that window this testid exists twice and an
+  // unscoped locator throws a strict-mode violation rather than retrying down to one.
+  // The two clicks above navigate through the log's GET form, which is what puts this
+  // assertion inside the streaming window; #5017's shard refresh made the wait long
+  // enough under load to outlive Playwright's retry. Same one-line scoping #4833
+  // applied to `training-log-search-depth.spec.ts` and `unclassified-activity.spec.ts`;
+  // #4890 still owns the other twenty-one call sites.
+  await page
+    .getByTestId("training-page")
+    .getByTestId("training-log-clear-filters")
+    .click();
   await page.waitForURL(/\/training\?tab=log$/);
   await expect(types.getByRole("link", { name: "All" })).toHaveAttribute(
     "aria-current",

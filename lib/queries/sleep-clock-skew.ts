@@ -31,6 +31,7 @@ import {
   type HrMinuteSample,
   type SleepClockSkew,
 } from "../sleep-clock-skew";
+import { mainSleepPeriod } from "../sleep-regularity";
 
 // How far back the detector looks. The Sleep log's own display window (#2556's
 // SLEEP_MOOD_HISTORY_DAYS is 60) is the surface that offers the repair, so a suspect
@@ -65,6 +66,11 @@ interface SyncedSessionRow {
   started_at: string;
   ended_at: string;
   source: string;
+  /** Provider-reported minutes asleep, which the shared classifier prefers over the
+   *  window when a source reports both (Oura/Withings include awake time in the
+   *  window). Selected only so `mainSleepPeriod` here decides exactly as it does
+   *  everywhere else. */
+  value: number | null;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -100,7 +106,7 @@ function suspectSleepSessionsUncached(
 ): SuspectSleepSession[] {
   const sessions = db
     .prepare(
-      `SELECT id, date, started_at, ended_at, source
+      `SELECT id, date, started_at, ended_at, source, value
          FROM metric_samples
         WHERE profile_id = ? AND metric = 'sleep_min'
           AND source <> 'manual'
@@ -110,6 +116,56 @@ function suspectSleepSessionsUncached(
     )
     .all(profileId, since) as SyncedSessionRow[];
   if (sessions.length === 0) return [];
+
+  // THE NIGHT, NOT EVERY SESSION (#5019).
+  //
+  // The judgement below asks whether a claimed window disagrees with the surrounding
+  // day's heart rate, and for a DAYTIME NAP the surrounding day always contains the
+  // overnight trough. A person napping runs above their own overnight trough by
+  // definition, so every nap of any length reads as a contradiction — measured on prod:
+  // a 68-minute nap at 17:41Z flagged at median 67 against the 07:26Z trough's 55, on a
+  // day whose actual night was fine.
+  //
+  // So this asks the question of the wake day's MAIN session only. `mainSleepPeriod` is
+  // the shared classifier (#1118/#1191) the nap-aware readers already use, taken here
+  // rather than re-derived so the skew judge and the nap classifier cannot disagree
+  // about which row is the night. The grouping key is the STORED wake day, which is the
+  // same column `SuspectSleepSession.wakeDay` carries and the same one every consumer
+  // keys its hedge on — so at most one suspect per day comes out of here BY
+  // CONSTRUCTION, and the Map in lib/queries/sleep.ts can no longer be a race between
+  // two rows for one day's hedge.
+  //
+  // A fragmented night is judged through its representative member, which is the row a
+  // repair would name; the other members carry the same claim and the same clock.
+  //
+  // A WAKE DAY WHOSE ONLY SYNCED ROW IS A NAP still has that nap judged, and against
+  // the surrounding day's trough exactly as before. `mainSleepSession` elects the
+  // longest candidate, and nothing in the repo supplies `SleepSession.type`, so the
+  // provider-labeled-nap arm of `candidateSessions` never fires and a lone nap IS the
+  // day's main session. That is strictly better than judging every nap on every day
+  // and it is a much smaller class, but it is not nothing, and naming it here is
+  // cheaper than someone re-deriving it from a surprising hedge.
+  const byWakeDay = new Map<string, SyncedSessionRow[]>();
+  for (const row of sessions) {
+    const day = byWakeDay.get(row.date);
+    if (day) day.push(row);
+    else byWakeDay.set(row.date, [row]);
+  }
+  const nights: SyncedSessionRow[] = [];
+  for (const day of byWakeDay.values()) {
+    const period = mainSleepPeriod(
+      day.map((row) => ({
+        start: row.started_at,
+        end: row.ended_at,
+        value: row.value ?? undefined,
+        date: row.date,
+        source: row.source,
+        row,
+      }))
+    );
+    if (period) nights.push(period.main.row);
+  }
+  if (nights.length === 0) return [];
 
   // ONE HR read for the whole judged span, not one per night.
   //
@@ -125,7 +181,7 @@ function suspectSleepSessionsUncached(
   // for every step. `sliceByTs` does that with two binary searches on the sorted `ts`,
   // so each night is handed exactly the minutes it can reach.
   const context = HR_CONTEXT_HOURS * 60 * 60 * 1000;
-  const spans = sessions.map((row) => ({
+  const spans = nights.map((row) => ({
     start: Date.parse(row.started_at),
     end: Date.parse(row.ended_at),
   }));
@@ -151,7 +207,7 @@ function suspectSleepSessionsUncached(
   if (hr.length === 0) return [];
   const switches = getTravelSwitches(profileId);
 
-  return sessions.flatMap((row) => {
+  return nights.flatMap((row) => {
     const start = Date.parse(row.started_at);
     const end = Date.parse(row.ended_at);
     if (!Number.isFinite(start) || !Number.isFinite(end)) return [];
