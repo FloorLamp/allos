@@ -1,5 +1,7 @@
 import { test, expect } from "./fixtures";
 import { hydratedClick } from "./helpers";
+import { sharedDayRestorePoint } from "./shared-profile-guard";
+import { frozenNow } from "./worker-env";
 
 // #28: PWA offline write queue. A body-metric quick-add submitted while the browser
 // is OFFLINE must be queued in IndexedDB (not lost), show a "queued" state + pending
@@ -62,46 +64,59 @@ test("a body metric logged offline queues, then syncs exactly once on reconnect 
   await expect(page.getByTestId("offline-queue-badge")).toHaveCount(0);
 });
 
+// THE WAIST HALF LANDS ON THE SHARED ADMIN'S TODAY (#5037). It is a `metric_samples`
+// row — the table the last-night hero and the day rail read — and unlike the weight
+// beside it nothing here addresses it or expects it to survive. So the day is copied
+// before the sitting and put back when the test ends; the weight stays, because
+// History showing it exactly once is what the test is about.
 test("an offline weight is kept when its waist reading needs a connection (#4142)", async ({
   page,
   context,
 }) => {
-  const marker = `offline-partial-${Date.now()}`; // clock-ok: unique notes marker, never a stored timestamp
-  await page.goto("/trends");
-  await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
-  const form = page.getByTestId("measurements-quick-add");
-  const weight = form.getByLabel("Weight", { exact: true });
-  const notes = form.getByLabel("Notes");
-  const waist = form.getByTestId("measurements-waist-circ");
-  const waistUnit = form.getByLabel("Waist circumference unit");
-  await expect(form).toBeVisible();
-  await context.setOffline(true);
-  await weight.fill("82.6");
-  await notes.fill(marker);
-  await waist.fill("36.2");
-  await waistUnit.selectOption("in");
-  await form.getByRole("button", { name: "Save measurements" }).click();
+  const restoreSharedDay = sharedDayRestorePoint(
+    "metric_samples",
+    frozenNow().toISOString().slice(0, 10)
+  );
+  try {
+    const marker = `offline-partial-${Date.now()}`; // clock-ok: unique notes marker, never a stored timestamp
+    await page.goto("/trends");
+    await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
+    const form = page.getByTestId("measurements-quick-add");
+    const weight = form.getByLabel("Weight", { exact: true });
+    const notes = form.getByLabel("Notes");
+    const waist = form.getByTestId("measurements-waist-circ");
+    const waistUnit = form.getByLabel("Waist circumference unit");
+    await expect(form).toBeVisible();
+    await context.setOffline(true);
+    await weight.fill("82.6");
+    await notes.fill(marker);
+    await waist.fill("36.2");
+    await waistUnit.selectOption("in");
+    await form.getByRole("button", { name: "Save measurements" }).click();
 
-  await expect(
-    page.getByText(
-      "Body measurements were saved. Waist circumference wasn't — add that again."
-    )
-  ).toBeVisible();
-  const badge = page.getByTestId("offline-queue-badge");
-  await expect(badge).toHaveText(/1 queued offline/);
-  await expect(weight).toHaveValue("");
-  await expect(notes).toHaveValue("");
-  await expect(waist).toHaveValue("36.2");
-  await expect(waistUnit).toHaveValue("in");
-  await context.setOffline(false);
-  await expect(page.getByText(/Synced 1 offline entr/)).toBeVisible();
-  await expect(badge).toHaveCount(0);
-  await form.getByRole("button", { name: "Save measurements" }).click();
-  await expect(page.getByText("Measurements saved")).toBeVisible();
-  await page.goto("/trends");
-  await expect(page.getByText(marker)).toHaveCount(1);
-  await page.reload();
-  await expect(page.getByText(marker)).toHaveCount(1);
+    await expect(
+      page.getByText(
+        "Body measurements were saved. Waist circumference wasn't — add that again."
+      )
+    ).toBeVisible();
+    const badge = page.getByTestId("offline-queue-badge");
+    await expect(badge).toHaveText(/1 queued offline/);
+    await expect(weight).toHaveValue("");
+    await expect(notes).toHaveValue("");
+    await expect(waist).toHaveValue("36.2");
+    await expect(waistUnit).toHaveValue("in");
+    await context.setOffline(false);
+    await expect(page.getByText(/Synced 1 offline entr/)).toBeVisible();
+    await expect(badge).toHaveCount(0);
+    await form.getByRole("button", { name: "Save measurements" }).click();
+    await expect(page.getByText("Measurements saved")).toBeVisible();
+    await page.goto("/trends");
+    await expect(page.getByText(marker)).toHaveCount(1);
+    await page.reload();
+    await expect(page.getByText(marker)).toHaveCount(1);
+  } finally {
+    restoreSharedDay();
+  }
 });
 
 // #475: an offline entry the server REJECTS on replay must NOT vanish with a

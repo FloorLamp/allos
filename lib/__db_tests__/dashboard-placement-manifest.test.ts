@@ -1,9 +1,15 @@
 // Real-schema candidate census and query budget for the dashboard cutover (#3096).
+//
+// WHAT THIS GATE DOES NOT COVER, because its silence would otherwise read as coverage
+// (#5199). It walks ONE ROUTE RENDER per persona with a request cache open. The
+// notification tick runs the same query layer with `cache()` degraded to identity and
+// no route at all — that is tick-gather-budget.test.ts, whose digest gather costs more
+// per profile than a whole render here. Wall time is docs/internals/profiling.md's.
 
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { db, today } from "@/lib/db";
+import { db, today, writeTx } from "@/lib/db";
 import { utcInstant, shiftDateStr } from "@/lib/date";
 import { zonedWallTimeToUtc } from "@/lib/calendar-ics";
 import { reconcileFlags } from "@/lib/queries";
@@ -106,6 +112,7 @@ function ctxFor(profileId: number): PersonaContext {
       saveFitnessEntry(profileId, entry, "page"),
     recordGlucoseTrace,
     seedStandardMetricSaves: (pid) => seedStandardMetricSaves(db, pid),
+    writeTx,
     diffSituations,
     serializeSituationEvents,
     episodesForSituation,
@@ -146,8 +153,11 @@ function ctxFor(profileId: number): PersonaContext {
 /** Render name → the windows its `hr_minutes` range reads were bound to, in order. */
 const hrWindowReads = new Map<string, string[]>();
 /**
- * The one render in this file that HAS heart-rate minutes. Rendered after the persona
- * loop below, on its own profile, so it cannot move a single number in QUERY_BASELINE.
+ * The hand-built heart-rate render, on its own profile after the persona loop, so it
+ * cannot move a single number in QUERY_BASELINE. It was the ONLY render here with
+ * heart-rate minutes until #5034 gave `biohacker` a trace; it stays because it is the
+ * POSITIVE CONTROL — it seeds the seam directly, so it reds if the reader or the SQL
+ * moves, where a persona-only check would go quietly vacuous if the seed ever changed.
  */
 const HR_FIXTURE = "hr-minutes fixture";
 
@@ -1141,6 +1151,29 @@ describe("actual atomic dashboard manifests", () => {
   // Every wrap above keys on `profile_id`, so what collapses is one profile asking
   // twice and never one profile answering for another; the two-profile assertion
   // below is what holds that.
+  // +4 ON marathon-runner (#4993): that persona now seeds eight recorded Strava polls,
+  // so `getImportIssues` reaches `resolveSourceFacts` for the first time on any persona.
+  // The four are the standing window, the latest-event seek, the last-successful-sync
+  // seek, and one more read of the connection row. This is the cost the gate was BLIND
+  // to, not a cost it added: with no events the loop had nothing to iterate, so
+  // `sourceStanding`, the staleness facts and everything under them executed zero times
+  // while the file's own comments described them as covered.
+  //
+  // +57 ON biohacker (#5034), 255 → 312, AND IT IS ALMOST ALL ONE DASHBOARD SECTION.
+  // That persona now seeds an all-day Oura heart-rate trace, and `app/(app)/page.tsx`
+  // gates its "day so far" IntradayChart on `getLatestHrDay(profile.id) === on` — one
+  // indexed read that every persona used to fail, so the day gather behind it had never
+  // once run under this meter. Attributed with a stack capture per statement on a probe
+  // render of the same fixture (which totals 252 → 308 of its own, resolving the tree
+  // slightly differently from this file): 3 statements against `hr_minutes` itself and
+  // 53 in the day gather the row opens — 19 in lib/timeline.ts, 8 in the substance
+  // totals, 6 each in lib/queries/metrics.ts and lib/history.ts, and the rest one and
+  // two at a time across the day's other readers.
+  //
+  // SO THE NUMBER TO ARGUE WITH IS THE SECTION, NOT THE SEED. Any persona with a
+  // wearable seam pays it; the row count does not enter into it, and a one-day trace
+  // would cost the same 57 as this thirty-day one. The five personas with no
+  // `hr_minutes` are unmoved, which is what makes that legible.
   const QUERY_BASELINE: Record<string, number> = {
     // +1 on four personas and +3 on two (#4956): the attention read now also asks
     // whether a live source is DROPPING a record type. That is one scan of this
@@ -1254,7 +1287,7 @@ describe("actual atomic dashboard manifests", () => {
     // commit memo collapses those to one, so −3 +1 = −2. The WARM table below is where
     // this change's actual subject shows up.
     bodybuilder: 228,
-    "marathon-runner": 233,
+    "marathon-runner": 237,
     household: 252,
     pregnant: 228,
     "diabetic-cgm": 235,
@@ -1263,7 +1296,7 @@ describe("actual atomic dashboard manifests", () => {
     // one grouped today-tally and one live sweep however many practices there are,
     // plus the usual-duration vote per practice. Assembling the same four fields
     // per-target instead measured +13.
-    biohacker: 255,
+    biohacker: 312,
     // −1 each (#5061): `getDayLoadInputs` and `getIntensitySignal` ask the same
     // question of the same 42 days — the shared HR read, kept to the activity windows
     // that bound it — and only the READ was request-cached (#5010), so each one still
@@ -1376,7 +1409,24 @@ describe("actual atomic dashboard manifests", () => {
   //
   // AND IT STILL TRACKS THE COLD NUMBER: a ceiling derived from the warm table below
   // would be a bound on a render nobody's first load ever gets.
-  const QUERY_CEILING = 272;
+  // 272 → 329 (#5034), AND THIS IS THE FIRST TIME THE NUMBER HAS GONE UP. Every move
+  // above followed a reduction down. The rule is unchanged and is applied as written:
+  // the heaviest persona plus the 17 of headroom the line above froze — 312 + 17 = 329.
+  //
+  // WHAT ROSE IS THE POPULATION, NOT THE PAGE. No gather was added and no card moved
+  // (the placement census below is byte-identical on all six personas). `biohacker`
+  // simply became the first persona to satisfy the "day so far" row's gate, so a
+  // dashboard section that had never been rendered under this meter is now inside it.
+  // A backstop that excluded it would be a bound on a dashboard nobody with a wearable
+  // ever loads, which is the same objection the line below makes to deriving it from
+  // the warm table.
+  //
+  // IT IS ALSO THE LARGEST SINGLE MOVE THIS FILE HAS RECORDED, and the comment above
+  // says growth this size is a design conversation rather than a number to raise. It is
+  // raised here because the conversation has an answer — 57 statements is what the
+  // section costs, measured and attributed — but whether the section should cost that is
+  // still open, and the number is now visible for the first time so that it can be asked.
+  const QUERY_CEILING = 329;
 
   it("dashboard query budget: each persona matches its recorded main baseline", () => {
     // THE BACKSTOP ASKS ABOUT THE TABLE, NOT THE MEASUREMENT — which is the only
@@ -1488,13 +1538,18 @@ describe("actual atomic dashboard manifests", () => {
   // SO RE-MEASURING THIS TABLE MEANS RENDERING TWICE WITH NO CLOCK MOVEMENT IN BETWEEN,
   // the way the loop above does. A re-measure that let real time pass would watch those
   // two TTLs expire and record it as this memo weakening.
+  // +4 / +56 (#4993, #5034), the cold table's two moves seen warm. Both land almost
+  // entirely OUTSIDE the commit-scoped memo, which is the useful thing this table says
+  // about them: the integration standing and the day-so-far gather are read on every
+  // load, not once per commit. The one statement of difference against the cold +57 is
+  // the memo holding a single gather the trace opened.
   const WARM_BASELINE: Record<string, number> = {
     bodybuilder: 119,
-    "marathon-runner": 121,
+    "marathon-runner": 125,
     household: 177,
     pregnant: 119,
     "diabetic-cgm": 128,
-    biohacker: 134,
+    biohacker: 190,
   };
 
   it("dashboard query budget: a second load with no write in between matches its warm baseline (#5073)", () => {
@@ -1566,9 +1621,11 @@ describe("actual atomic dashboard manifests", () => {
 
   it("reads each hr_minutes window once per render (#5010)", () => {
     // THE CONTROL COMES FIRST BECAUSE ZERO IS THE FLATTERING ANSWER. Every window
-    // below is distinct when no window was read at all, which is the state all six
-    // personas are in — and it is what the assertion would report forever if the
-    // statement this watches were renamed or the fixture stopped reaching the reader.
+    // below is distinct when no window was read at all, which is the state five of the
+    // six personas are still in — and it is what the assertion would report forever if
+    // the statement this watches were renamed or the fixture stopped reaching the
+    // reader. `biohacker` seeds a trace since #5034 and so is now checked here too, on
+    // the windows a real persona render binds rather than only the hand-built one.
     expect(
       hrWindowReads.get(HR_FIXTURE) ?? [],
       `${HR_FIXTURE} made no hr_minutes range read, so the check below is vacuous.\n` +

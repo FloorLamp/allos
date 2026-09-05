@@ -19,6 +19,7 @@ import {
   settledClick,
 } from "./helpers";
 import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
+import { sharedDayRestorePoint } from "./shared-profile-guard";
 import { workerDbPath, frozenNow } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
 import { shiftDateStr, zonedWallTimeToUtc } from "@/lib/date";
@@ -63,6 +64,18 @@ const OWNED_NIGHT = {
 } as const;
 const OWNED_NAP = { start: "13:00", end: "13:45", minutes: 45 } as const;
 
+// AND IT IS PUT BACK AFTERWARDS (#5037). Re-establishing the night replaces profile
+// 1's seeded wake-day for the rest of this worker's run, which is the same class of
+// leak the seeding defends against — pointing at whoever runs next instead of at
+// this file. The copy is taken before the first re-seed and restored in `afterEach`,
+// so the three tests below own the night for exactly as long as they read it.
+let restoreSharedNight: (() => void) | null = null;
+
+test.afterEach(() => {
+  restoreSharedNight?.();
+  restoreSharedNight = null;
+});
+
 function seedOwnedLastNight(): void {
   const handle = new Database(DB_PATH);
   handle.pragma("busy_timeout = 5000");
@@ -70,6 +83,7 @@ function seedOwnedLastNight(): void {
     // The run's pin puts local at 13:mm, so the profile-local date always equals the
     // frozen instant's UTC date (e2e/pinned-timezone.ts).
     const wakeDay = frozenNow().toISOString().slice(0, 10);
+    restoreSharedNight ??= sharedDayRestorePoint("metric_samples", wakeDay);
     const bedDay = shiftDateStr(wakeDay, -1);
     // The #2159 wake-day rule: a session's wake-day is the profile-LOCAL date of its
     // END, so the windows are built through the run's pinned zone, never bare `…Z`.
@@ -311,7 +325,8 @@ async function selectAndSave(
 // sleep data, so it proves the nav gate hides the entry.
 //
 // Reads only, apart from the last night the three tests that assert on it seed for
-// themselves (seedOwnedLastNight — a profile-1 wake-day a neighbour writes too, #5032).
+// themselves (seedOwnedLastNight — a profile-1 wake-day a neighbour writes too,
+// #5032) and put back when they are done with it (#5037).
 
 test.describe("Sleep page (#1066)", () => {
   test("renders the last-night hero and every section on a sleep-seeded profile", async ({

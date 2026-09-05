@@ -57,8 +57,16 @@
 - Stop dispatching new work, land or clearly bank in-flight work, clean
   worktrees and stale branches, stop check-ins, and hand off remaining state.
 - Use an unverified WIP marker only when an agent actually died.
-- Before deleting dirty work, verify whether the content already landed on main
-  in another form.
+- Before deleting a branch or dirty work, settle it on CONTENT: compare its
+  files against `main` and say which comparison answered. The PR record and
+  the surviving ref are hints; `main` is the verdict.
+- `merged=false` is not evidence nothing landed — work re-lands under a new PR
+  from a renamed successor branch (#5220), and a squash can leave the record
+  unmerged (`recovery.md` §A merge that half-landed).
+- Nor is a non-empty `git diff $(git merge-base main <branch>) <branch>`
+  evidence of unlanded work: one of #5220's 48 branches was byte-identical to
+  `main`, a sibling PR having carried the same hunk. A merge-base diff cannot
+  see that; only `git diff main <branch> -- <file>` can.
 
 ## Out of scope
 
