@@ -118,7 +118,7 @@ export function regionsFactLabel(
 }
 
 /**
- * "right side" / "both sides", or null when the person did not say.
+ * "Right side" / "Both sides", or null when the person did not say.
  *
  * THE SAME PHRASING `scopeSummary` USES for a one-sided constraint, so the chip the
  * person confirms and the chip the bar lists afterwards read alike. "Both sides" is
@@ -128,7 +128,11 @@ export function lateralityFactLabel(
   laterality: InjuryLaterality | "" | null
 ): string | null {
   if (!laterality) return null;
-  return laterality === "bilateral" ? "both sides" : `${laterality} side`;
+  if (laterality === "bilateral") return "Both sides";
+  // Sentence-cased FROM the model's own value rather than from a second table of
+  // spellings — #2948's rule, and the reason this reads the side out of `laterality`
+  // instead of listing the three.
+  return `${laterality[0].toUpperCase()}${laterality.slice(1)} side`;
 }
 
 /** "Pushing, Overhead", or null when no pattern is named. */
@@ -167,7 +171,7 @@ export function loadFactorFactLabel(raw: string): string | null {
   if (!value) return null;
   const fraction = Number(value);
   if (!Number.isFinite(fraction)) return null;
-  return `easing to ${Math.round(fraction * 100)}%`;
+  return `Easing to ${Math.round(fraction * 100)}%`;
 }
 
 /** "revisit 12 Sep", or null when no reminder is set. */
@@ -176,7 +180,7 @@ export function reviewDateFactLabel(
   prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
 ): string | null {
   const value = reviewDate.trim();
-  return value ? `revisit ${formatMonthDay(value, prefs)}` : null;
+  return value ? `Revisit ${formatMonthDay(value, prefs)}` : null;
 }
 
 /** The single trailing affordance's own sentence: the optional facts it holds, named. */
@@ -229,14 +233,14 @@ export function injuryFactSummary(
   chips.push(
     label
       ? { key: "label", label, state: "stated" }
-      : { key: "label", label: "what's hurt?", state: "missing" }
+      : { key: "label", label: "What's hurt?", state: "missing" }
   );
 
   const regions = regionsFactLabel(f.regions);
   chips.push(
     regions
       ? { key: "regions", label: regions, state: "stated" }
-      : { key: "regions", label: "pick a region", state: "missing" }
+      : { key: "regions", label: "Pick a region", state: "missing" }
   );
 
   const optional: [InjuryFactKey, string | null][] = [

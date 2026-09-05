@@ -726,7 +726,7 @@ test("a strength part states its implement, and the registry door is one per for
     await firstName.press("Escape");
     await expect(firstName).toHaveValue("Curl");
     await expect(chips).toHaveCount(1);
-    await expect(chips).toHaveText("pick equipment");
+    await expect(chips).toHaveText("Pick equipment");
     await expect(chips).toHaveAttribute("data-fact-state", "missing");
     // NOTHING ELSE IS ON SCREEN. This is the row's whole complaint: these three were
     // drawn on every exercise, unasked.

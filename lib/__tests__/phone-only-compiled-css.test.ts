@@ -28,9 +28,12 @@ const PHONE_ONLY_CONTRACTS = [
   "notification-kind-matrix",
 ] as const;
 
-// The control box's own selector list, spelled once (#3938).
+// The control box's own selector list, spelled once (#3938). The fact chip's `solo`
+// shape joined it in #4035; the removable `pill` takes the FLOOR only, because it
+// draws its own border and the derived padding on top of it would render 36.
 const CONTROL_BOX_SELECTOR =
-  ".chip-base, .btn, .btn-ghost, .btn-danger, .button-control, .input, [data-segmented-option]";
+  '.chip-base, .btn, .btn-ghost, .btn-danger, .button-control, .input, [data-segmented-option], [data-fact-chip="solo"]';
+const CONTROL_BOX_FLOOR_SELECTOR = `${CONTROL_BOX_SELECTOR}, [data-fact-chip="pill"]`;
 const RANKING_UTILITIES = [
   "band",
   "bleed-none",
@@ -321,7 +324,7 @@ describe("compiled phone-only CSS proof (#3518/#3727)", () => {
     // phone floor on desktop.
     [CONTROL_BOX_SELECTOR, "padding-block", false, null, false],
     [CONTROL_BOX_SELECTOR, "border-width", false, null, false],
-    [CONTROL_BOX_SELECTOR, "min-block-size", false, "components", false],
+    [CONTROL_BOX_FLOOR_SELECTOR, "min-block-size", false, "components", false],
     // #3954: a checkbox label has no line box, so it takes the floor on BOTH
     // axes instead of the derived padding — in `components` with the rest of the
     // floor, and un-important, because a phone floor spelled with `!` is exactly
