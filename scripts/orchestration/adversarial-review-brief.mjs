@@ -498,7 +498,12 @@ export const SAFETY_VOCABULARY = [
     // disclosure claim in the test beside it.
     term: "PHI",
     rx: PHI_DISCLOSURE,
-    why: "protected health information leaving the surface it was recorded on",
+    // THE BET, STATED, so the next editor inherits the number and not an
+    // impression of one: narrowed on 2026-09-05, when the bare term scored 25
+    // hits and NOT ONE true positive over PRs #4144-#5282. If a later window is
+    // also empty, rule (2) above settles this term on evidence rather than on
+    // the inertia of having always been in the table.
+    why: "protected health information leaving the surface it was recorded on — narrowed 2026-09-05 to that movement, the bare term having scored 25 hits and 0 true positives over PRs #4144-#5282",
   },
   {
     term: "contraindication",
