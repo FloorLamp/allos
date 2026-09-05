@@ -423,8 +423,8 @@ while read -r d; do
   b=$(git -C "$d" rev-parse --abbrev-ref HEAD 2>/dev/null)
   h=$(git -C "$d" rev-parse HEAD 2>/dev/null)
   # ONE honest read of the porcelain, and every verdict about this tree derives
-  # from it. It used to be two — this line and the detached-lane probe count at
-  # #5281 below — each `2>/dev/null`, and each folding a read that FAILED into
+  # from it. It used to be two — this line and the detached-lane probe count
+  # below — each `2>/dev/null`, and each folding a read that FAILED into
   # the same `0` a clean tree produces. That is the #5241 shape: a suppressed
   # failure wearing a confident answer, and here the confident answer is
   # "nothing to rescue". A status that cannot be taken is UNREAD, never clean.
@@ -956,7 +956,7 @@ fi
 # A WAIT LOOP THAT WILL NEVER FINISH IS AN ENVIRONMENT FACT, and until #5305 it
 # was the one fact nothing here could see. Eight shells were spinning `sleep`
 # against gate runs that had ended hours before — the oldest 8h55m, all eight
-# ticking every 15-20 s on a four-core box every lane shares — and the only
+# ticking every 10-20 s on a four-core box every lane shares — and the only
 # reason anyone knew is that somebody ran `ps` by hand.
 #
 # REPORT THE FACT, DO NOT DIAGNOSE IT. The fact is a process whose command is a
