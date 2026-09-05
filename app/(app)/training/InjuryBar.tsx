@@ -446,7 +446,7 @@ function InjuryScopeFields({
             {REGION_SCOPES.map((r) => (
               <label
                 key={r}
-                className="flex cursor-pointer items-center gap-1.5 rounded-full border border-black/10 px-2.5 py-1 text-sm dark:border-white/15"
+                className="checkbox-control flex cursor-pointer items-center gap-1.5 rounded-full border border-black/10 px-2.5 py-1 text-sm dark:border-white/15"
               >
                 <input
                   type="checkbox"
@@ -483,7 +483,7 @@ function InjuryScopeFields({
             {INJURY_MOVEMENT_PATTERNS.map((m) => (
               <label
                 key={m}
-                className="flex cursor-pointer items-center gap-1.5 rounded-full border border-black/10 px-2.5 py-1 text-sm dark:border-white/15"
+                className="checkbox-control flex cursor-pointer items-center gap-1.5 rounded-full border border-black/10 px-2.5 py-1 text-sm dark:border-white/15"
               >
                 <input
                   type="checkbox"
@@ -583,7 +583,8 @@ function InjuryScopeFields({
                 type="button"
                 data-testid={`injury-more-${key}`}
                 onClick={() => onOpen(key)}
-                className="min-h-11 rounded-full border border-(--border) px-3 py-1.5 text-sm transition hover:bg-(--ghost-hover)"
+                data-fact-chip="solo"
+                className="rounded-full border border-(--border) px-3 text-sm transition hover:bg-(--ghost-hover)"
               >
                 {INJURY_FACT_NOUNS[key]}
               </button>

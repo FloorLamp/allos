@@ -773,7 +773,8 @@ export default function ProtocolForm({
                     type="button"
                     data-testid={`protocol-more-${key}`}
                     onClick={() => openPanel(key)}
-                    className="min-h-11 rounded-full border border-(--border) px-3 py-1.5 text-sm transition hover:bg-(--ghost-hover)"
+                    data-fact-chip="solo"
+                    className="rounded-full border border-(--border) px-3 text-sm transition hover:bg-(--ghost-hover)"
                   >
                     {PROTOCOL_FACT_NOUNS[key]}
                   </button>

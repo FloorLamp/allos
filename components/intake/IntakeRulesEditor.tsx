@@ -195,7 +195,8 @@ export default function IntakeRulesEditor({
                 setRules([...rules, newRule(type, firstOtherId)]);
                 setAdding(false);
               }}
-              className="min-h-11 rounded-full border border-(--border) px-3 py-1.5 text-sm transition hover:bg-(--ghost-hover)"
+              data-fact-chip="solo"
+              className="rounded-full border border-(--border) px-3 text-sm transition hover:bg-(--ghost-hover)"
             >
               {INTAKE_RULE_MENU_LABELS[type]}
             </button>

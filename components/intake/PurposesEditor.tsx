@@ -164,7 +164,8 @@ export default function PurposesEditor({
               type="button"
               data-testid={`purpose-suggest-${key}`}
               onClick={() => add({ kind: "goal", goalKey: key })}
-              className="min-h-11 rounded-full border border-dashed border-(--border) px-2.5 py-1 text-sm"
+              data-fact-chip="solo"
+              className="rounded-full border border-dashed border-(--border) px-2.5 text-sm"
             >
               + {goalPurposeLabel(key)}
             </button>
@@ -182,7 +183,8 @@ export default function PurposesEditor({
               type="button"
               data-testid={`purpose-goal-${g.key}`}
               onClick={() => add({ kind: "goal", goalKey: g.key })}
-              className="min-h-11 rounded-full border border-(--border) px-2.5 py-1 text-sm transition hover:bg-(--ghost-hover)"
+              data-fact-chip="solo"
+              className="rounded-full border border-(--border) px-2.5 text-sm transition hover:bg-(--ghost-hover)"
             >
               {g.label}
             </button>

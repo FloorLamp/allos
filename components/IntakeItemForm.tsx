@@ -1731,7 +1731,8 @@ export default function IntakeItemForm({
                 type="button"
                 data-testid={`intake-more-${key}`}
                 onClick={() => setOpenPanel(key)}
-                className="min-h-11 rounded-full border border-(--border) px-3 py-1.5 text-sm transition hover:bg-(--ghost-hover)"
+                data-fact-chip="solo"
+                className="rounded-full border border-(--border) px-3 text-sm transition hover:bg-(--ghost-hover)"
               >
                 {INTAKE_FACT_NOUNS[key]}
               </button>

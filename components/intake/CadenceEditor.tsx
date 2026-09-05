@@ -49,7 +49,10 @@ export function WeekdayChips({
 }) {
   const selected = new Set(value);
   return (
-    <div data-testid={`${idPrefix}-weekdays`} className="flex flex-wrap gap-1">
+    <div
+      data-testid={`${idPrefix}-weekdays`}
+      className="flex flex-wrap gap-1 pointer-coarse:gap-y-3"
+    >
       {weekdayOrder(weekStart).map((d) => {
         const on = selected.has(d);
         return (
@@ -61,7 +64,8 @@ export function WeekdayChips({
             onClick={() =>
               onChange(on ? value.filter((x) => x !== d) : [...value, d].sort())
             }
-            className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg px-2 text-xs font-medium transition ${
+            data-segmented-option=""
+            className={`inline-flex items-center justify-center rounded-lg px-2 text-xs font-medium transition ${
               on
                 ? "bg-sky-600 text-white dark:bg-sky-500"
                 : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
