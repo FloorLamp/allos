@@ -422,7 +422,17 @@ while read -r d; do
   found=1
   b=$(git -C "$d" rev-parse --abbrev-ref HEAD 2>/dev/null)
   h=$(git -C "$d" rev-parse HEAD 2>/dev/null)
-  dirty=$(git -C "$d" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+  # ONE honest read of the porcelain, and every verdict about this tree derives
+  # from it. It used to be two — this line and the detached-lane probe count
+  # below — each `2>/dev/null`, and each folding a read that FAILED into
+  # the same `0` a clean tree produces. That is the #5241 shape: a suppressed
+  # failure wearing a confident answer, and here the confident answer is
+  # "nothing to rescue". A status that cannot be taken is UNREAD, never clean.
+  if wt_status=$(git -C "$d" status --porcelain); then
+    dirty=$(printf '%s\n' "$wt_status" | grep -c . || true)
+  else
+    dirty=UNREAD
+  fi
   r=$(git -C "$REPO" ls-remote --heads origin "$b" 2>/dev/null | cut -c1-7)
   # A RESTART VOIDS THE ROSTER'S LIVENESS CLAIM. The roster records DISPATCH,
   # not liveness — nothing writes to it when an agent dies, so "live" only ever
@@ -526,14 +536,57 @@ while read -r d; do
     # licensing it was false, and only the claim is visible at 3am after a
     # restart. Print the count so the reader makes the call the recorder is
     # merely recommending.
-    wt_probes=$(git -C "$d" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
-    if [ "${wt_probes:-0}" -gt 0 ]; then
-      wt_note="read-only lane, ${wt_probes} uncommitted probe file(s) — not rescued: no commits, so this is scratch"
+    #
+    # AND COUNTING IS NOT CLASSIFYING (#5281). "No commits, so this is scratch"
+    # is true of a lane that only WRITES files and false of the one lane type
+    # whose working method is to MUTATE them: a falsifying pass is instructed to
+    # copy a file to $SCRATCH and edit the original in place, because `git stash`
+    # and `git checkout --` reach across the worktrees that share this .git. So
+    # the type this branch dismissed is the type whose dirty tree is worst to
+    # leave. Measured 2026-09-05: a pass killed mid-run left
+    # lib/notifications/telegram-callbacks.ts modified, this line called it a
+    # probe, and the next reader's baseline would have been taken against
+    # mutated source — where the mutation it was about to make is already
+    # present and reds nothing. A false green produced by the recovery step.
+    #
+    # The distinction is TRACKED-MODIFIED versus UNTRACKED-ADDED, and it is a
+    # fact in the porcelain rather than a judgement about the lane: `?? f` is a
+    # file this tree created, ` M f` is a file it changed. Nothing here guesses
+    # which kind of lane wrote it, and nothing looks for the $SCRATCH pristine
+    # copy the brief mandates — the mandated name embeds the branch, and a
+    # detached tree has no branch, so a search for it could only report a guess.
+    wt_mod=$(printf '%s\n' "$wt_status" | grep -c '^[^?]' || true)
+    if [ "$dirty" = "UNREAD" ]; then
+      wt_note="read-only lane — STATUS UNREAD: git status failed (its error is above), so whether this tree holds a mutation is UNKNOWN"
+      alarms=1
+    elif [ "$wt_mod" -gt 0 ]; then
+      wt_note="MUTATED, NOT SCRATCH: ${wt_mod} TRACKED file(s) modified — RESCUE: restore or commit before this tree is removed"
+      alarms=1
+    elif [ "$dirty" -gt 0 ]; then
+      wt_note="read-only lane, ${dirty} untracked probe file(s) — not rescued: no commits and nothing tracked is modified, so this is scratch"
     else
       wt_note="read-only lane, clean — nothing to rescue"
     fi
     printf "  %-16s %-32s %-6s local=%s  (%s)\n" \
       "$(basename "$d")" "(detached)" "lane" "${h:0:7}" "$wt_note"
+    # NAME THE PATHS. The whole failure was a reader accepting a summary, so the
+    # line that overturns it has to carry what a reader would otherwise open the
+    # tree to see. Four is enough to recognise a source file among fixtures, and
+    # the count of what the cap hid comes from the SAME pass, so the list cannot
+    # describe a different set than the number beside it.
+    #
+    # ONE awk RATHER THAN `grep | head`, and that is not a style preference:
+    # `trap '' PIPE` at the top of this file is INHERITED BY CHILDREN, so a
+    # `head` that closes the pipe early gives its upstream EPIPE instead of a
+    # signal — "grep: write error: Broken pipe" on stderr and a status of 2,
+    # measured here with `seq 1 200000 | grep . | head -4`. This tree's status
+    # is far too small to fill a pipe buffer today, which is exactly why the
+    # instance would sit here harmless until some tree was not.
+    if [ "$dirty" != "UNREAD" ] && [ "$wt_mod" -gt 0 ]; then
+      printf '%s\n' "$wt_status" | awk '
+        /^[^?]/ { n++; if (n <= 4) print "        modified: " $0 }
+        END { if (n > 4) print "        modified: +" n - 4 " more" }'
+    fi
     continue
   fi
   # "Was this branch ever pushed?" — read the tracking CONFIG, not @{upstream}.
@@ -569,7 +622,17 @@ while read -r d; do
       state="banked"
     else
       state="DONE"
-      [ "$dirty" != "0" ] && { flag="$flag  <<< DIRTY AND NO AGENT: RESCUE NOW"; alarms=1; }
+      # UNREAD IS NOT DIRTY, for the reason the wake clock states two sections
+      # down: both answers send you to the tree, but only one of them can be
+      # fixed by rescuing it, and an alarm whose remedy does not apply is the
+      # alarm a reader learns to skip.
+      if [ "$dirty" = "UNREAD" ]; then
+        flag="$flag  <<< STATUS UNREAD, NO AGENT: whether anything needs rescuing here is UNKNOWN"
+        alarms=1
+      elif [ "$dirty" != "0" ]; then
+        flag="$flag  <<< DIRTY AND NO AGENT: RESCUE NOW"
+        alarms=1
+      fi
       # Say the ACTIONABLE thing. On a branch, "push it". Detached, there is no
       # branch to push and the rescue is `git branch -c` first — different advice,
       # and the generic line would send you to a command that cannot work.
@@ -889,6 +952,53 @@ if [ "$stale" -gt 0 ]; then
     sed -E 's/-[A-Za-z0-9]{6}$//; s/-[0-9]+\.zip$//' |
     sort | uniq -c | sort -rn | head -5 |
     awk '{print "        " $1 " x " $2 "-*"}'
+fi
+# A WAIT LOOP THAT WILL NEVER FINISH IS AN ENVIRONMENT FACT, and until #5305 it
+# was the one fact nothing here could see. Eight shells were spinning `sleep`
+# against gate runs that had ended hours before — the oldest 8h55m, all eight
+# ticking every 10-20 s on a four-core box every lane shares — and the only
+# reason anyone knew is that somebody ran `ps` by hand.
+#
+# REPORT THE FACT, DO NOT DIAGNOSE IT. The fact is a process whose command is a
+# shell wait loop and which has outlived any gate run. Why it is stuck is a
+# separate question with at least two answers already: `pgrep -f "agent-gates.sh"`
+# matches the WAITER'S OWN command line, and the bracket workaround
+# `ps -eo args | grep '[a]gent-gates.sh'` is matched by the OTHER waiters, whose
+# command lines carry the plain string. A counter that encoded either spelling
+# would go blind on the third one, and this line's job is to make a reader look.
+#
+# AGE IS ALSO WHAT MAKES THIS PROBE IMMUNE TO THE DEFECT IT REPORTS. This is one
+# `awk` over one `ps` precisely so no sibling in a pipeline can carry the search
+# text into the snapshot — but the floor is the structural half: anything born
+# inside this probe is zero seconds old, and no threshold admits it. Spelling
+# cannot be got right forever; an elapsed-seconds floor cannot be got wrong.
+#
+# 3600 s is the `tmp:` threshold above, reused rather than re-chosen. It bounds
+# the same quantity: how long a thing may sit before its owner is certainly
+# gone. The longest gate run measured on this host is the DB tier at 862 s under
+# load 18 (environment.md), so a wait loop past an hour has outlived four of them.
+WAIT_FLOOR_S=3600
+if waiter_ps=$(ps -eo pid=,etimes=,args=); then
+  # One pass: the count and the named PIDs come from the same scan, so the list
+  # cannot describe a different set than the number above it.
+  stuck=$(awk -v floor="$WAIT_FLOOR_S" '
+    $2 > floor && $0 ~ /(while|until).*do[ \t]+sleep/ {
+      n++
+      if (n <= 4) list = list sprintf("%s(%dm) ", $1, $2 / 60)
+    }
+    END { printf "%d\t%s", n + 0, list }' <<<"$waiter_ps")
+  waiter_n=${stuck%%$'\t'*}
+  echo "  waiters: $waiter_n shell wait loop(s) older than $((WAIT_FLOOR_S / 60)) min"
+  if [ "$waiter_n" -gt 0 ]; then
+    # The named PIDs are capped at four, so say how many the cap hid — a list
+    # that silently shows half its own count is the summary-over-exact-work
+    # shape, and this line exists to replace a summary a reader believed.
+    [ "$waiter_n" -gt 4 ] && more="+$((waiter_n - 4)) more " || more=""
+    echo "        ${stuck#*$'\t'}${more}— kill by PID, never pkill -f (siblings run the same loops)"
+  fi
+else
+  echo "  waiters: *** UNMEASURED — ps -eo pid=,etimes=,args= failed (its error is"
+  echo "      above), so whether shells are stuck in a wait loop is UNKNOWN ***"
 fi
 if [ -n "${GH_TOKEN:-}" ] || [ -n "${GITHUB_TOKEN:-}" ]; then
   echo "  GH_TOKEN: present"
