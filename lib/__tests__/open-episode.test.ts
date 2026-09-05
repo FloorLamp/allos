@@ -23,10 +23,29 @@ function episode(
 }
 
 describe("the bounds table", () => {
-  it("holds the four values the domains used to declare themselves", () => {
-    expect(EPISODE_BOUNDS.practice).toEqual({ staleMin: 360, abandonMin: 360 });
+  it("holds the values the domains used to declare themselves", () => {
+    expect(EPISODE_BOUNDS.practice.abandonMin).toBe(360);
     expect(EPISODE_BOUNDS.workout).toEqual({ staleMin: 45, abandonMin: 90 });
     expect(EPISODE_BOUNDS.fast).toEqual({ staleMin: 2160, abandonMin: null });
+  });
+
+  // THE ONE NUMBER IN THIS TABLE NO DOMAIN BROUGHT WITH IT (#5142 AC 3). Practice
+  // arrived with a single six-hour bound doing both jobs, because it had no
+  // "Still going?" to send and a suggest nobody sends needs no window to be sent in.
+  // Giving it one meant choosing a stale bound, and 90 is that choice: past every
+  // practice this app is a logger for, and far enough inside the abandon bound that
+  // the person has four and a half hours to answer before the sweep clears the row.
+  it("gives practice a real stale window inside its unchanged abandon bound", () => {
+    expect(EPISODE_BOUNDS.practice).toEqual({ staleMin: 90, abandonMin: 360 });
+    expect(EPISODE_BOUNDS.practice.staleMin).toBeLessThan(
+      EPISODE_BOUNDS.practice.abandonMin
+    );
+    expect(episodeState(episode("practice", 89.99), NOW).kind).toBe("running");
+    expect(episodeState(episode("practice", 90), NOW).kind).toBe("stale");
+    expect(episodeState(episode("practice", 360), NOW).kind).toBe("stale");
+    expect(episodeState(episode("practice", 360.01), NOW).kind).toBe(
+      "abandoned"
+    );
   });
 });
 

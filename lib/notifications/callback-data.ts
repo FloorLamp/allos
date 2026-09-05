@@ -1,7 +1,11 @@
 // Pure helpers for Telegram callback payloads — no DB/network, so they can be
 // unit-tested (lib/__tests__). Consumed by telegram-callbacks.ts.
 
-import type { DoseTakenOutcome, EscalationAckOutcome } from "../types";
+import type {
+  DoseTakenOutcome,
+  EscalationAckOutcome,
+  PracticeSessionDeleteOutcome,
+} from "../types";
 import type {
   DiscardWorkoutOutcome,
   FinishWorkoutOutcome,
@@ -909,48 +913,88 @@ export function parseRightSizeLowerCallback(
 // one typed outcome (#1633). It used to live here, which made the chat surface the
 // accidental owner of a domain string three web surfaces also needed.
 
-// ---- Workout finish/discard over Telegram (the stale-nudge buttons, #1205) ----
-// The "⏱️ Still working out?" nudge's "Finish workout" / "Discard" buttons carry the
-// ACTIVITY id (plus the profile id as a cross-check, resolved against the chat like a
-// dose tap). "wofinish:<profileId>:<activityId>" stamps end = now through the shared
-// finishWorkoutSession core; "wodiscard:<profileId>:<activityId>" deletes the abandoned
-// draft. Both re-verify ownership on write (id AND profile_id), so the token id is a
-// cross-check, never trusted alone. The handler answers from the typed outcome union —
-// never an unconditional confirm (a re-tap on an already-finished session is honest).
+// ---- "Still going?" finish/discard over Telegram (#1205, one family at #5142) ----
+// ONE FAMILY FOR EVERY OPEN EPISODE, LABELLED BY KIND. The workout draft's nudge
+// (#1205) minted "wofinish:<profileId>:<activityId>", which named the domain in the
+// prefix — so giving the practice kind the same two buttons would have meant a second
+// prefix pair, a second parser and a second handler for one question asked twice.
+// The kind is a FIELD now: "sgfinish:<kind>:<profileId>:<rowId>" resolves the episode
+// through the same shared cores each domain already exposes.
+//
+// The row id (plus the profile id as a cross-check, resolved against the chat like a
+// dose tap) is all the token carries. Every write re-verifies ownership by id AND
+// profile_id, so the token id is a cross-check and never trusted alone. The handler
+// answers from the typed outcome union — never an unconditional confirm, because a
+// re-tap on an already-finished session is honest.
+//
+// LEGACY TOKENS STILL PARSE, and that is not politeness. A "Still working out?" message
+// sent minutes before this deploys is sitting in a chat with the old buttons on it;
+// refusing them would answer a real tap with "that message is out of date" while the
+// draft it names is still live. They read as the workout kind, which is what they were.
 
-export type WorkoutFinishAction = "finish" | "discard";
+export type StillGoingKind = "workout" | "practice";
+export type StillGoingAction = "finish" | "discard";
 
-export interface WorkoutFinishCallback {
+export interface StillGoingCallback {
+  kind: StillGoingKind;
   profileId: number;
-  activityId: number;
-  action: WorkoutFinishAction;
+  rowId: number;
+  action: StillGoingAction;
 }
 
 // The single source of truth for the button token (the nudge mints it, the parser
 // reads it) so the prefix can't drift between send and handle.
-export function workoutFinishCallback(
+export function stillGoingCallback(
+  kind: StillGoingKind,
   profileId: number,
-  activityId: number,
-  action: WorkoutFinishAction
+  rowId: number,
+  action: StillGoingAction
 ): string {
-  return `wo${action}:${profileId}:${activityId}`;
+  return `sg${action}:${kind}:${profileId}:${rowId}`;
 }
 
-// Parse a "wofinish:<profileId>:<activityId>" / "wodiscard:<profileId>:<activityId>"
-// token. Malformed (wrong prefix, bad ids) → null.
-export function parseWorkoutFinishCallback(
-  data: unknown
-): WorkoutFinishCallback | null {
-  if (typeof data !== "string") return null;
-  let action: WorkoutFinishAction;
-  if (data.startsWith("wofinish:")) action = "finish";
-  else if (data.startsWith("wodiscard:")) action = "discard";
-  else return null;
-  const [, profStr, actStr] = data.split(":");
+function isStillGoingKind(value: string): value is StillGoingKind {
+  return value === "workout" || value === "practice";
+}
+
+// "sgfinish:<kind>:<profileId>:<rowId>" — the kind is a field the token states.
+function parseKinded(
+  data: string,
+  action: StillGoingAction
+): StillGoingCallback | null {
+  const [, kind, profStr, rowStr] = data.split(":");
+  if (!kind || !isStillGoingKind(kind)) return null;
   const profileId = Number(profStr);
-  const activityId = Number(actStr);
-  if (!profileId || !activityId) return null;
-  return { profileId, activityId, action };
+  const rowId = Number(rowStr);
+  if (!profileId || !rowId) return null;
+  return { kind, profileId, rowId, action };
+}
+
+// "wofinish:<profileId>:<activityId>" — the workout kind's pre-#5142 shape, where the
+// kind was the prefix.
+function parseLegacyWorkout(
+  data: string,
+  action: StillGoingAction
+): StillGoingCallback | null {
+  const [, profStr, rowStr] = data.split(":");
+  const profileId = Number(profStr);
+  const rowId = Number(rowStr);
+  if (!profileId || !rowId) return null;
+  return { kind: "workout", profileId, rowId, action };
+}
+
+// Malformed (wrong prefix, unknown kind, bad ids) → null. The four prefixes are
+// spelled out rather than composed, because the callback-vocabulary guard (#1779)
+// reads the literals here to know what this app can mint.
+export function parseStillGoingCallback(
+  data: unknown
+): StillGoingCallback | null {
+  if (typeof data !== "string") return null;
+  if (data.startsWith("sgfinish:")) return parseKinded(data, "finish");
+  if (data.startsWith("sgdiscard:")) return parseKinded(data, "discard");
+  if (data.startsWith("wofinish:")) return parseLegacyWorkout(data, "finish");
+  if (data.startsWith("wodiscard:")) return parseLegacyWorkout(data, "discard");
+  return null;
 }
 
 // The Telegram toast for a "Finish workout" tap, per the typed finishWorkoutSession
@@ -984,6 +1028,18 @@ export function workoutDiscardAnswerText(
     default:
       return "This session is out of date. Open the app.";
   }
+}
+
+// The practice kind's discard (#5142 AC 3). A practice draft is not a husk the way an
+// empty workout draft is — the row IS the session — so "discard" deletes it, and the
+// answer says the row is gone rather than that a draft was dropped. The delete is
+// undoable by the same capture every other practice delete uses.
+export function practiceDiscardAnswerText(
+  outcome: PracticeSessionDeleteOutcome
+): string {
+  return outcome.kind === "deleted"
+    ? `Session discarded ${GLYPH.discarded}`
+    : "This session is out of date. Open the app.";
 }
 
 // ---- The post-workout TYPE ask (#2272) ----
