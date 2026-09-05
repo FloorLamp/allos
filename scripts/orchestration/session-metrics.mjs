@@ -204,9 +204,18 @@ function main() {
   // the same denominator. This report printed "969 closed PRs scanned" under a
   // heading that says denominators FIRST, having fetched 1000 of the repo's 2545
   // closed PRs. Same defect and same fix as the sibling gatherer's `ghGetAll`
-  // (#5311); the shape is mirrored rather than shared because that one is a `.ts`
-  // module with a curl of its own, and a helper spanning both would be a third
-  // way of doing it.
+  // (#5311); the shape is MIRRORED RATHER THAN SHARED, and the reason recorded
+  // here used to be a TypeScript/ESM fence — which is not true and would be the
+  // next reader's premise: SEVEN `.ts` scripts in this directory already import
+  // `.mjs` siblings (`./host.mjs`, `./usage.mjs`, `./title-rule.mjs`) —
+  // `git grep -al 'from "\./[a-z-]*\.mjs"' -- 'scripts/orchestration/*.ts'`.
+  // The real wall is SHAPE. #5343 judged the
+  // other eight pagers one at a time and found two that `{items, truncated}`
+  // cannot hold: `reconcile-watermark.ts` is a FIND-ONE search that returns
+  // early and must never materialise every open issue, and
+  // `adversarial-review-brief.mjs` fills TWO accumulators inside the loop body.
+  // A helper that fits five of seven leaves the other two inline, which is a
+  // third way of doing it in one directory rather than one fewer.
   const get = (pathAndQuery) => {
     const all = [];
     for (let page = 1; page <= PAGE_CAP; page++) {

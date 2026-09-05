@@ -15,9 +15,9 @@
 // The teeth, in the house style (read the source as text, no DB, no network):
 //
 //   1. Every scope kind names a home, and every declared home is a real page.
-//   2. The training surfaces reach the REGISTRY. No file under app/(app)/training may
-//      carry its own `scope_kind` literal comparison — that is the subtraction this
-//      issue removed, and it must not grow back.
+//   2. The training surfaces reach the REGISTRY. (The other half of that tooth — no
+//      file under app/(app)/training carries its own `scope_kind` literal comparison —
+//      is an eslint.config.mjs override now, #5347.)
 //   3. Every chip the Plan tab can render has a matching option in the editor's Scope
 //      select. This is the silent-no-op guard: a chip whose scope the select cannot
 //      represent renders a blank field, submits no scope_kind, and `createFrequencyTarget`
@@ -39,21 +39,9 @@ import { FREQUENCY_SCOPE_KINDS } from "@/lib/frequency-targets";
 import { stripComments } from "./strip-comments";
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const TRAINING_DIR = path.join(REPO, "app", "(app)", "training");
 
 const read = (rel: string) =>
   fs.readFileSync(path.join(REPO, rel), "utf8") as string;
-
-function tsxFiles(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) out.push(...tsxFiles(full));
-    else if (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx"))
-      out.push(full);
-  }
-  return out;
-}
 
 // The homes a scope may claim. A page, not a mood — each one is a route a reader can
 // open and find the target's progress, its explanation and its edit control.
@@ -117,25 +105,6 @@ describe("every cadence scope declares the page it lives on (#2888)", () => {
 });
 
 describe("the reflection tooth: the surfaces reach the registry", () => {
-  it("no training file carries its own scope_kind list", () => {
-    // The `scope_kind !== "practice"` subtraction on the Plan card was a private
-    // membership rule that disagreed with the two surfaces beside it. Any scope_kind
-    // comparison under app/(app)/training is that shape coming back.
-    const offenders = tsxFiles(TRAINING_DIR)
-      .filter((full) =>
-        /scope_kind\s*[=!]==?\s*["']/.test(
-          stripComments(fs.readFileSync(full, "utf8"))
-        )
-      )
-      .map((full) => path.relative(REPO, full).split(path.sep).join("/"));
-    expect(
-      offenders,
-      `these training files compare scope_kind to a literal: ${offenders.join(", ")} ` +
-        `— filter with getFrequencyTargetProgressForHome(profileId, "training") so ` +
-        `membership stays declared once in CADENCE_SCOPES.home`
-    ).toEqual([]);
-  });
-
   it("both training routine surfaces read the SCOPED rollup", () => {
     // One question, one computation (#221): the card that RENDERS the chips and the
     // card that EDITS them must ask for the same set, or the page disagrees with

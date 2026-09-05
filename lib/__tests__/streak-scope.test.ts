@@ -24,50 +24,14 @@ import { summarizePracticeWeeks } from "@/lib/trends-practices";
 // signal that must not be removed along with the vanity metrics it resembles.
 // #1935, #1936, #1937 and #1939 each ask for this pin by name.
 //
-// A pure source scan (the profile-scoping / typed-route precedent): it fails CI
-// when a new module reaches for a streak, so a new caller has to state, here,
-// which "you have done too much of this in a row" question it answers.
+// WHICH MODULES MAY IMPORT lib/streak is an eslint.config.mjs override now
+// (#5347) — lib/coaching/engine.ts carries the reason on its own disable line.
+// What stays here reads source for two things no selector can see: that a
+// deleted WORD has not come back into rendered copy, and that the survivor
+// still fires.
 
 const ROOT = path.join(__dirname, "..", "..");
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), "utf8");
-
-// Every production module allowed to import lib/streak, with the reason. Adding a
-// row is a deliberate act: it means a new surface asks the overtraining question.
-const STREAK_CALLERS: Record<string, string> = {
-  "lib/coaching/engine.ts":
-    'the overtraining nudge\'s "trained N days in a row" — strict, over hard-session ' +
-    "dates, telling the user to rest",
-};
-
-// Production source lives in these trees; tests and build output are excluded.
-const SCAN_DIRS = ["lib", "app", "components"];
-
-function walk(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      if (
-        entry.name === "node_modules" ||
-        entry.name === ".next" ||
-        entry.name.startsWith("__")
-      )
-        continue;
-      out.push(...walk(full));
-    } else if (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx")) {
-      out.push(full);
-    }
-  }
-  return out;
-}
-
-function productionFiles(): string[] {
-  const out: string[] = [];
-  for (const dir of SCAN_DIRS) out.push(...walk(path.join(ROOT, dir)));
-  return out
-    .map((f) => path.relative(ROOT, f).split(path.sep).join("/"))
-    .filter((f) => !f.includes(".test."));
-}
 
 describe("streak scope after the retirement (#1935/#1936/#1937/#1939/#1966)", () => {
   it("lib/streak exports currentStreak and nothing else", () => {
@@ -76,18 +40,6 @@ describe("streak scope after the retirement (#1935/#1936/#1937/#1939/#1966)", ()
     // Training tile, the recap and the milestone engine one shared number to print
     // under the word "streak". No surface prints that word any more.
     expect(Object.keys(streak).sort()).toEqual(["currentStreak"]);
-  });
-
-  it("only the coaching overtraining detector imports it", () => {
-    const importers = productionFiles().filter((rel) =>
-      /from "[@./][^"]*\/?streak"/.test(read(rel))
-    );
-    expect(
-      importers.sort(),
-      "a new lib/streak caller must state in STREAK_CALLERS which " +
-        '"you have done too much of this in a row" question it answers — a run to ' +
-        "MAINTAIN is not one of them (#1935/#1936/#1937/#1939)"
-    ).toEqual(Object.keys(STREAK_CALLERS).sort());
   });
 
   it("the coaching overtraining reason still fires", () => {
