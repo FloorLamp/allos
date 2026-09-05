@@ -195,11 +195,16 @@ describe("export datasets are profile-scoped", () => {
     expect(String(log[0].item)).toBe("EXPA Vitamin D");
   });
 
-  it("hr_minutes (composite key, browse-only) is scoped and carries no id", () => {
+  // The `carries no id` half of this case is gone (#5296). Whether a dataset emits an
+  // `id` is a property of its SELECT, and asserting it here is the property the
+  // scoping loop was corrected to stop trusting: an aliased `id AS row_id` used to buy
+  // a dataset an exemption and delete its case. hr_minutes is scoped by the same
+  // row-content comparison every other dataset gets; what is left here is the seeded
+  // bpm, which says WHICH profile's row came back.
+  it("hr_minutes (composite key, browse-only) returns its own profile's row", () => {
     const rowsA = rowsFor("hr_minutes", a.profileId);
     expect(rowsA).toHaveLength(1);
     expect(rowsA[0].bpm).toBe(60);
-    expect(rowsA[0].id).toBeUndefined();
   });
 });
 

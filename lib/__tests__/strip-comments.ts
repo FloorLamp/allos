@@ -32,17 +32,6 @@
 // patterns still see real line starts. Strings and template contents are preserved
 // verbatim — a census looking for `"quick-log"` is looking for a string literal.
 //
-// WHY `codeSpans` IN lib/__tests__/sql-scan.ts IS NOT THIS FUNCTION, and stays
-// separate (ruled 2026-09-05, so the next round does not re-open it). The two answer
-// different questions. This one answers "what does the file say once the prose is
-// gone", and returns a STRING to search. `codeSpans` answers "is this offset code,
-// and how deeply BRACED is it" — it carries a depth counter, because its one caller
-// asks whether a `const NAME = …;` sits at column 0 at depth 0 and so is a real
-// module-scope declaration. Depth is not something a stripped string can be asked
-// about, and no other caller of this function wants it. They share a subject (which
-// characters are code) and not a question, so folding them together would mean giving
-// this function a counter nobody else reads.
-//
 // NOT A PARSER, and it does not need to be: nothing downstream evaluates the result,
 // it is only searched. Where the code is genuinely ambiguous to a scanner it fails
 // toward "this is ordinary code" rather than toward deleting text (see the regex
