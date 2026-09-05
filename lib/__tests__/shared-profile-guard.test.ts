@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  attributeSharedRowGap,
   diffSharedRows,
   horizonStart,
   recencyHorizonStart,
   SHARED_RECENCY_HORIZON_DAYS,
   sharedRowDriftMessage,
+  sharedRowGapMessage,
   WATCHED_SHARED_TABLES,
   type SharedRowSnapshot,
 } from "@/e2e/shared-profile-guard";
@@ -258,5 +260,86 @@ describe("the shared-profile diff sees what a later test would see", () => {
         watched.table,
         TODAY,
       ]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE GAP BETWEEN TWO TESTS, AND WHO OWNS IT (#5266).
+//
+// The per-test diff above cannot see a write that escapes its window, and #5037
+// measured that window at 61, 106 and 76 ms past `context.close()`. The gap diff
+// closes it by comparing one test's `before` against the previous test's `after` —
+// and the whole reason it needed a ruling is ATTRIBUTION, not detection. A guard
+// that reports a real leak against the wrong test is worse than one that misses it.
+//
+// The FILE BOUNDARY case is the one that matters: a new file's `beforeAll` runs in
+// exactly that window, so the naive reading blames the previous file's last test —
+// an innocent spec somebody would spend an afternoon reading.
+describe("the gap between two tests names the window's own owner", () => {
+  const previousIn = (file: string, title: string) => ({ file, title });
+
+  it.each([
+    [
+      "a FILE BOUNDARY is charged to the new file's beforeAll, never across files",
+      previousIn("sleep-page.spec.ts", "the hero shows last night"),
+      "manual-vitals.spec.ts",
+      { kind: "before-all", name: "manual-vitals.spec.ts beforeAll" },
+    ],
+    [
+      "inside one file the previous test owned the window, so it is named",
+      previousIn("manual-vitals.spec.ts", "logs a blood pressure"),
+      "manual-vitals.spec.ts",
+      {
+        kind: "previous-test",
+        name: "manual-vitals.spec.ts › logs a blood pressure",
+      },
+    ],
+  ])("%s", (_name, previous, currentFile, expected) => {
+    expect(attributeSharedRowGap(previous, currentFile)).toEqual(expected);
+  });
+
+  // The escaped write #5037 measured, arriving in the next test's baseline: the
+  // previous test's `after` missed it, this test's `before` holds it.
+  const ESCAPED = sample(40, `${TODAY}|sleep_min|manual|a|b|450`);
+
+  it("the message names the culprit, the row, and what owned the window", () => {
+    const drift = diffSharedRows(snap(...SEEDED), snap(...SEEDED, ESCAPED));
+    const culprit = attributeSharedRowGap(
+      previousIn("manual-vitals.spec.ts", "logs a blood pressure"),
+      "manual-vitals.spec.ts"
+    );
+    const message = sharedRowGapMessage(culprit, drift, NOW);
+    expect(message).toContain("manual-vitals.spec.ts › logs a blood pressure");
+    expect(message).toContain("metric_samples");
+    expect(message).toContain("sleep_min");
+    expect(message).toContain("ADDED");
+    // It must not read as an accusation against the test it fails on.
+    expect(message).not.toContain("This test moved");
+    // An escaped row belongs to nobody, so it is taken out.
+    expect(message).toContain("have been removed");
+  });
+
+  // The half a false accusation would get wrong: the previous file's last test is
+  // not named ANYWHERE in a boundary report, not even as context.
+  it("a boundary report never mentions the previous file's last test", () => {
+    const drift = diffSharedRows(snap(...SEEDED), snap(...SEEDED, ESCAPED));
+    const message = sharedRowGapMessage(
+      attributeSharedRowGap(
+        previousIn("sleep-page.spec.ts", "the hero shows last night"),
+        "manual-vitals.spec.ts"
+      ),
+      drift,
+      NOW
+    );
+    expect(message).toContain("manual-vitals.spec.ts beforeAll");
+    expect(message).not.toContain("sleep-page");
+    expect(message).not.toContain("the hero shows last night");
+    // A file's own rows are not this guard's to take, and it says so rather than
+    // leaving the reader to assume the profile was cleaned.
+    expect(message).toContain("Nothing has been repaired");
+    expect(message).not.toContain("have been removed");
+    // The other hook Playwright runs in that window, which is how a REMOVED row
+    // reaches a boundary report at all.
+    expect(message).toContain("afterAll");
   });
 });

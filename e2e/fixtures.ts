@@ -12,14 +12,19 @@ import path from "node:path";
 import { installStreamRevealGuard } from "./helpers";
 import { pinnedTimezone } from "./pinned-timezone";
 import {
+  attributeSharedRowGap,
   diffSharedRows,
   NO_LEFTOVERS,
   repairAddedSharedRows,
   sharedRowDriftMessage,
+  sharedRowGapMessage,
   type SharedProfileLeftovers,
+  type SharedRowDrift,
+  type SharedRowSnapshot,
   snapshotSharedRows,
   strandedDraftMessage,
   takeStrandedDrafts,
+  type TestPosition,
 } from "./shared-profile-guard";
 import {
   ADMIN_PASSWORD,
@@ -293,6 +298,25 @@ async function stopServer(server: ChildProcess): Promise<void> {
   });
 }
 
+// THE READING THE PREVIOUS TEST IN THIS WORKER ENDED ON (#5266).
+//
+// Module scope, because a Playwright worker IS a process: this holds one worker's
+// last reading and nothing crosses between workers, and a worker that restarts gets
+// a fresh process and a fresh (empty) one. It is what the next test's `before` is
+// compared against — the escape window, at no extra query, since both readings are
+// already taken for the per-test diff.
+let previousReading: { position: TestPosition; after: SharedRowSnapshot } | null =
+  null;
+
+/** The rows `repairAddedSharedRows` has just deleted, dropped from a reading. */
+function withoutRepaired(
+  reading: SharedRowSnapshot,
+  repaired: SharedRowDrift["added"]
+): SharedRowSnapshot {
+  const gone = new Set(repaired.map((row) => `${row.table}:${row.id}`));
+  return reading.filter((row) => !gone.has(`${row.table}:${row.id}`));
+}
+
 export const test = base.extend<TestFixtures, WorkerFixtures>({
   // NO SPEC MAY STRAND A LIVE DRAFT — OR A SAVED ROW — ON THE SHARED PROFILE
   // (#3173, #3946).
@@ -311,7 +335,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   // demo login rather than acting as the shared admin.
   noSharedProfileLeak: [
     // eslint-disable-next-line react-hooks/rules-of-hooks
-    async ({ workerApp, sharedProfileLeftovers }, use) => {
+    async ({ workerApp, sharedProfileLeftovers }, use, testInfo) => {
       // The BEFORE reading of the saved-row diff (#3946). It is taken here rather
       // than in a `beforeEach` so that a `beforeAll` fixture — which runs before
       // any test's fixtures — is already in it: a row a whole FILE owns and tears
@@ -320,10 +344,49 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       const before = workerApp.demo
         ? []
         : snapshotSharedRows(at, workerApp.dbPath);
+      const position: TestPosition = {
+        file: path.basename(testInfo.file),
+        title: testInfo.title,
+      };
+      // THE GAP: this reading against the one the previous test ended on (#5266).
+      // Everything that moved in between escaped BOTH per-test windows, so this is
+      // the only place it is ever visible — and the culprit is whoever owned the
+      // window, which across a file boundary is the new file's `beforeAll`.
+      if (!workerApp.demo && previousReading) {
+        const gap = diffSharedRows(previousReading.after, before);
+        if (gap.added.length + gap.missing.length > 0) {
+          const culprit = attributeSharedRowGap(
+            previousReading.position,
+            position.file
+          );
+          // A row that escaped the PREVIOUS TEST belongs to nobody, so it is taken
+          // out — otherwise it sits in every later reading on this worker and is
+          // invisible from here on, which is the whole defect. A row a new file's
+          // `beforeAll` just wrote is that FILE's for the length of its run, and
+          // deleting it would fail every test in the file instead of this one; it
+          // is reported and left, and the next test's gap is silent because both
+          // readings then hold it.
+          if (culprit.kind === "previous-test")
+            repairAddedSharedRows(gap, workerApp.dbPath);
+          previousReading = {
+            position,
+            after:
+              culprit.kind === "previous-test"
+                ? withoutRepaired(before, gap.added)
+                : before,
+          };
+          throw new Error(sharedRowGapMessage(culprit, gap, at));
+        }
+      }
       // eslint-disable-next-line react-hooks/rules-of-hooks
       await use();
       if (workerApp.demo) return;
       const stranded = takeStrandedDrafts(workerApp.dbPath);
+      const after = snapshotSharedRows(at, workerApp.dbPath);
+      // Recorded BEFORE any throw below, and after every repair above it, so the
+      // next test's gap is measured against the profile as this guard leaves it —
+      // a row IT removed must not read as the next test's leak.
+      previousReading = { position, after };
       if (stranded.length > 0) throw new Error(strandedDraftMessage(stranded));
       if (
         sharedProfileLeftovers.rows.length > 0 &&
@@ -334,11 +397,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
             `row(s) with no \`why\` — say what makes these rows worth leaving on ` +
             `the shared profile (#3946).`
         );
-      const drift = diffSharedRows(
-        before,
-        snapshotSharedRows(at, workerApp.dbPath),
-        sharedProfileLeftovers
-      );
+      const drift = diffSharedRows(before, after, sharedProfileLeftovers);
       if (
         drift.added.length +
           drift.missing.length +
@@ -347,6 +406,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       )
         return;
       repairAddedSharedRows(drift, workerApp.dbPath);
+      previousReading = { position, after: withoutRepaired(after, drift.added) };
       throw new Error(sharedRowDriftMessage(drift, at));
     },
     { auto: true },
