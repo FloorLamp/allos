@@ -67,6 +67,7 @@ import { runStillGoingSuggest } from "./still-going";
 import { flushPostWorkoutDispatches } from "../notifications/post-workout-queue";
 import { runPracticeRecaps } from "../notifications/practice-recap-dispatch";
 import { expireWorkoutDrafts } from "../workout-finish";
+import { finishDetectedWorkouts } from "../workout-detected-end";
 import { runRefills } from "../notifications/refill";
 import { runPoolRefills } from "../notifications/supply-pool";
 import { runPreventive } from "../notifications/preventive";
@@ -711,6 +712,35 @@ export async function tickProfile(
       err: e instanceof Error ? e : String(e),
     });
     anyFailed = true;
+  }
+
+  // THE OPEN WORKOUT FINISHES ITSELF, AND IT RUNS BEFORE THE DISPATCH BELOW (#5194,
+  // and #5212's falsifying pass F4). The heart rate already says when the session
+  // ended; reading it costs nothing when there is no open row.
+  //
+  // THE ORDER IS THE WHOLE POINT. This is the first writer in the app that stamps an
+  // end in the PAST — the other two `finishWorkoutSession` callers both take the tap's
+  // own instant — and the finish-triggered dose reminder below rests on
+  // `FINISHED_WINDOW_MIN`, a guarantee written when no writer could back-date. Swept
+  // after the dispatch, a detected finish was `idle` at the sweep instant and older
+  // than the window by the next tick, so the safety-tier dose delivery and the #924
+  // recap were silenced for every session this feature ever finished. Swept first, the
+  // end is only the usual recovery old when the dispatch reads it, so the window sees
+  // it exactly as it sees a tapped finish.
+  //
+  // A detected end OLDER than the window is still declined, and that is correct rather
+  // than a residue: a post-workout dose reminder for a session that ended yesterday is
+  // not a reminder. `isPostWorkoutReady` still opens the item at the scheduled slot.
+  //
+  // NOT waking-gated: the session ended whether or not the person is awake, and gating
+  // the write would make the recorded end depend on a sleep schedule.
+  try {
+    finishDetectedWorkouts(profileId);
+  } catch (e) {
+    log.error("detected workout finish failed", {
+      profile: profileId,
+      err: e instanceof Error ? e : String(e),
+    });
   }
 
   // Finish-triggered post-workout dose reminder (#921): the moment a session

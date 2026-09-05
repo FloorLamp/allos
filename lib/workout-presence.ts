@@ -24,6 +24,7 @@
 
 import { parseUtcSql, zonedWallTimeToUtc } from "./date";
 import { episodeIsOpen, episodeState } from "./open-episode";
+import { activityWindow } from "./training-zones";
 import type { ActivityType } from "./types/training";
 
 // --- Window constants (documented; the boundary tests pin each edge). ---
@@ -143,16 +144,24 @@ function lastTouchMs(row: PresenceActivityRow): number | null {
 // start wall time plus its logged duration. Returns null when neither is known —
 // an end-less, duration-less import has no reliable end, so it is NOT treated as
 // finished (the scheduled slot remains its fallback) rather than guessed.
+// ONE ROLLOVER RULE, NOT TWO (#5212 falsifying pass). This resolved `end_time` against
+// the row's own date and stopped there, while `activityWindow` — which every other
+// reader of a session's span uses — reads an end at or before its start as a crossing
+// of local midnight. So a session that started at 23:50 and ended at 00:20 had an end
+// instant twenty-three and a half hours BEFORE its own start here, and one thirty
+// minutes after it everywhere else.
+//
+// That is not a cosmetic disagreement: `runPostWorkoutFinish` is presence-gated and
+// safety tier, so for a cross-midnight finish the post-workout dose delivery and the
+// #924 recap were unreachable at every instant — the same silencing the sweep's tick
+// ordering exists to prevent, arriving by a different door. Asking `activityWindow`
+// rather than restating half of it is the fix: it already covers the start-plus-
+// duration case this function's second branch was, so the second branch goes too.
 function endInstantMs(row: PresenceActivityRow, tz: string): number | null {
-  if (row.end_time) {
-    const end = zonedWallTimeToUtc(tz, row.date, row.end_time);
-    if (end) return end.getTime();
-  }
-  if (row.start_time && row.duration_min != null && row.duration_min > 0) {
-    const start = zonedWallTimeToUtc(tz, row.date, row.start_time);
-    if (start) return start.getTime() + row.duration_min * 60_000;
-  }
-  return null;
+  const window = activityWindow(row);
+  if (!window) return null;
+  const [day, clock] = window.end.split("T");
+  return zonedWallTimeToUtc(tz, day, clock)?.getTime() ?? null;
 }
 
 export function computeWorkoutPresence(
