@@ -1,11 +1,16 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
-import { closeEditor, openFact } from "./intake-form-helpers";
+import { closeEditor, intakeForm, openFact } from "./intake-form-helpers";
 import Database from "better-sqlite3";
 import { workerDbPath, frozenNow } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
 import { utcSqlString, zonedWallTimeToUtc } from "@/lib/date";
-import { expandUpcomingAggregates, settledClick } from "./helpers";
+import {
+  expandUpcomingAggregates,
+  hydratedClick,
+  settledClick,
+  settledFill,
+} from "./helpers";
 
 // Issue #1505, the rendered halves of the obligation model:
 //   • a `may` item is TRACKED — it renders on Supplements & Meds like any other —
@@ -24,6 +29,9 @@ const LOW_NAME = "Tracked Never Pushed (e2e)";
 const HIGH_NAME = "Pushed Comparison (e2e)";
 const ABANDONED_NAME = "Abandoned Habit (e2e)";
 const GUARDED_MED_NAME = "Guarded Med (e2e)";
+const GATED_MED_NAME = "Gated Med (e2e)";
+const HELD_MED_NAME = "Held Med (e2e)";
+const PAUSE_SITUATION = "Presurgery day 2";
 
 function openDb(): Database.Database {
   const db = new Database(workerDbPath());
@@ -75,6 +83,27 @@ function seedItem(
       .run(itemId, created).lastInsertRowid
   );
   return { itemId, doseId };
+}
+
+// A `must` MEDICATION with one morning dose — the state both #1505 guardrails
+// below protect, and the row the owner could not edit (#5336).
+function seedMustMed(db: Database.Database, name: string): number {
+  const created = createdAt(30);
+  const med = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_items
+           (profile_id, name, active, kind, obligation, condition, source, created_at)
+         VALUES (1, ?, 1, 'medication', 'must', 'daily', 'manual', ?)`
+      )
+      .run(name, created).lastInsertRowid
+  );
+  db.prepare(
+    `INSERT INTO intake_item_doses
+       (item_id, amount, time_of_day, food_timing, sort, created_at)
+     VALUES (?, '1 tablet', 'Morning', 'any', 0, ?)`
+  ).run(med, created);
+  return med;
 }
 
 function dropItem(db: Database.Database, itemId: number | null): void {
@@ -249,23 +278,8 @@ test("a medication's obligation control defaults to Must and states each level's
   const db = openDb();
   let itemId: number | null = null;
   try {
-    // A `must` medication with a live schedule — the state the guardrail protects.
-    const created = createdAt(30);
-    const med = Number(
-      db
-        .prepare(
-          `INSERT INTO intake_items
-             (profile_id, name, active, kind, obligation, condition, source, created_at)
-           VALUES (1, ?, 1, 'medication', 'must', 'daily', 'manual', ?)`
-        )
-        .run(GUARDED_MED_NAME, created).lastInsertRowid
-    );
+    const med = seedMustMed(db, GUARDED_MED_NAME);
     itemId = med;
-    db.prepare(
-      `INSERT INTO intake_item_doses
-         (item_id, amount, time_of_day, food_timing, sort, created_at)
-       VALUES (?, '1 tablet', 'Morning', 'any', 0, ?)`
-    ).run(med, created);
 
     await page.goto(`/medications/${med}?action=edit`);
     const importance = await openFact(page, "importance");
@@ -442,6 +456,149 @@ test("an Upcoming Available row logs in one tap and stays available rather than 
     ).toBeVisible();
   } finally {
     dropItem(db, itemId);
+    db.close();
+  }
+});
+
+// ---- #5336: the form's confirm gates reach the screen ------------------------
+//
+// Both guardrails below are asked from INSIDE components/IntakeItemForm.tsx's
+// `<form action>`. A form action is a React transition, and React holds every
+// `useState` update scheduled inside a pending async action until the action
+// settles — so while the confirm provider kept its open sheet in state, the
+// action waited on a sheet whose open state React was holding until the wait
+// ended. Every Must -> Should/May medication edit sat on "Saving…" with nothing
+// to answer, on every device, and no e2e drove one.
+//
+// So what these two pin is the SHEET ARRIVING WHILE THE ACTION IS STILL PARKED —
+// the pending Save beside it is the deadlock's own signature, and it is also what
+// says the confirm was not moved to a pre-submit step instead. The answers either
+// side of it prove the action was genuinely still there to continue.
+
+// The Save this form posts through. Located by its TYPE, not its name: the name is
+// exactly what changes while the action is pending ("Save" -> "Saving…"), and
+// these tests need the same handle on both sides of that.
+function saveButton(page: Page) {
+  return intakeForm(page).locator('button[type="submit"]');
+}
+
+// The confirm sheet portals to <body> (BottomSheet), one copy.
+function confirmSheet(page: Page) {
+  return page.getByTestId("confirm-dialog"); // testid-scope-ok: portaled to <body>, one copy
+}
+
+test("the Must -> May guardrail's sheet arrives from inside the form action, and both answers land (#5336/#1505)", async ({
+  page,
+}) => {
+  const db = openDb();
+  let itemId: number | null = null;
+  try {
+    const med = seedMustMed(db, GATED_MED_NAME);
+    itemId = med;
+    const obligationOf = () =>
+      (
+        db
+          .prepare("SELECT obligation FROM intake_items WHERE id = ?")
+          .get(med) as { obligation: string }
+      ).obligation;
+
+    await page.goto(`/medications/${med}?action=edit`);
+    const importance = await openFact(page, "importance");
+    await importance.getByTestId("intake-obligation").selectOption("may");
+    await closeEditor(page);
+
+    const save = saveButton(page);
+    const sheet = confirmSheet(page);
+
+    // hydratedClick, not settledClick: there is no POST to await yet. The action
+    // starts, reaches the guardrail, and parks on it.
+    await hydratedClick(page, save);
+    await expect(sheet).toBeVisible();
+    await expect(sheet).toContainText(`Reduce reminders for ${GATED_MED_NAME}?`);
+    // Still mid-action while the question is on screen — this is the pair that
+    // could not both be true before.
+    await expect(save).toHaveText(/Saving…/);
+
+    // Cancelling settles the await with `false`: the handler returns before the
+    // write, and the form is answerable again rather than stuck.
+    await sheet.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(sheet).toHaveCount(0);
+    await expect(save).toHaveText(/^Save$/);
+    await expect(save).toBeEnabled();
+    // The edit is still open — no POST, so no onDone and no URL replace.
+    await expect(page).toHaveURL(/\?action=edit$/);
+    expect(obligationOf()).toBe("must");
+
+    // Re-armed for real: the same tap asks the same question, and confirming lets
+    // the action past the await it was parked on, all the way to the write.
+    await hydratedClick(page, save);
+    await expect(sheet).toBeVisible();
+    await sheet
+      .getByRole("button", { name: "Reduce reminders", exact: true })
+      .click();
+    await expect(page).toHaveURL(/\/medications\/\d+$/);
+    await expect.poll(obligationOf).toBe("may");
+  } finally {
+    dropItem(db, itemId);
+    db.close();
+  }
+});
+
+test("the pause-link confirm arrives from the same form action, and linking lands (#5336/#1296)", async ({
+  page,
+}) => {
+  const db = openDb();
+  let itemId: number | null = null;
+  try {
+    const med = seedMustMed(db, HELD_MED_NAME);
+    itemId = med;
+    const pauseOf = () =>
+      (
+        db
+          .prepare("SELECT pause_situation_id FROM intake_items WHERE id = ?")
+          .get(med) as { pause_situation_id: number | null }
+      ).pause_situation_id;
+
+    await page.goto(`/medications/${med}?action=edit`);
+    const rules = await openFact(page, "rules");
+    await rules.getByTestId("intake-rule-add-pause-while").click();
+    const situation = rules.getByRole("combobox", {
+      name: "Pause during situation",
+      exact: true,
+    });
+    await settledFill(page, situation, PAUSE_SITUATION);
+    // The portaled listbox is still open over the sheet's future seat; Escape
+    // closes the list, not the editor.
+    await situation.press("Escape");
+    await closeEditor(page);
+
+    const save = saveButton(page);
+    const sheet = confirmSheet(page);
+
+    await hydratedClick(page, save);
+    await expect(sheet).toBeVisible();
+    await expect(sheet).toContainText("Pause reminders?");
+    await expect(sheet).toContainText(PAUSE_SITUATION);
+    await expect(save).toHaveText(/Saving…/);
+
+    await sheet.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(sheet).toHaveCount(0);
+    await expect(save).toHaveText(/^Save$/);
+    await expect(page).toHaveURL(/\?action=edit$/);
+    expect(pauseOf()).toBeNull();
+
+    await hydratedClick(page, save);
+    await expect(sheet).toBeVisible();
+    await sheet.getByRole("button", { name: "Link pause", exact: true }).click();
+    await expect(page).toHaveURL(/\/medications\/\d+$/);
+    await expect.poll(pauseOf).not.toBeNull();
+  } finally {
+    dropItem(db, itemId);
+    // Linking a free-text situation MINTS it into the profile's vocabulary
+    // (resolveSituationId), so the fixture owns that row too.
+    db.prepare("DELETE FROM situations WHERE profile_id = 1 AND name = ?").run(
+      PAUSE_SITUATION
+    );
     db.close();
   }
 });
