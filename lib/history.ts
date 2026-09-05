@@ -38,7 +38,7 @@ import { now } from "./clock";
 import { getIntakeDoseLedgerPage } from "./queries";
 import { getFoodLedgerPage } from "./queries/nutrition";
 import { getPracticeLedgerPage } from "./queries/wellness";
-import { getAllSubstanceDailyTotals } from "./queries/substance";
+import { getSubstanceLedgerPage } from "./queries/substance";
 import { getBodyMetricsOnDate, getBodyMetricsPage } from "./queries/metrics";
 import { bodyMetricMeasures } from "./body-metric-measures";
 import { foodGroupBySlug } from "./food-groups";
@@ -213,11 +213,23 @@ export function historyPresentKinds(profileId: number): HistoryKind[] {
     .get(profileId);
   if (practice != null) out.push("practice");
   if (hasMoodLogs(profileId)) out.push("mood");
-  if (
-    !isMinor(getProfileAge(profileId)) &&
-    getAllSubstanceDailyTotals(profileId).length > 0
-  ) {
-    out.push("substance");
+  // THE PROBE READS WHAT THE ROWS READ (#5026 phase 2), which is the food probe's own
+  // rule three lines up: both consumable ledgers are EVENT tables now, so a chip is
+  // earned by a use that exists rather than by a counter that says one did. Asking the
+  // counters instead would earn the chip for a day row with no events under it, and the
+  // chip would open onto nothing — the presence rule saying the opposite of what it
+  // means. Two reads because there are two stores, and alcohol's is the food one.
+  if (!isMinor(getProfileAge(profileId))) {
+    const drink = db
+      .prepare(
+        `SELECT 1 FROM food_log_events
+          WHERE profile_id = ? AND group_key = ? LIMIT 1`
+      )
+      .get(profileId, ALCOHOL_FOOD_GROUP);
+    const use = db
+      .prepare("SELECT 1 FROM substance_log_events WHERE profile_id = ? LIMIT 1")
+      .get(profileId);
+    if (drink != null || use != null) out.push("substance");
   }
   const body = db
     .prepare("SELECT 1 FROM body_metrics WHERE profile_id = ? LIMIT 1")
@@ -766,30 +778,45 @@ export function gatherHistoryLog(
       }
     }
 
-    // THE DAY-COUNT SUBSTANCES — nicotine, cannabis and every custom key, whose
-    // ledger is `substance_daily_totals`: UNIQUE per (profile, date, substance) and
-    // structurally timeless. A DAY TOTAL HAS NO INSTANT and the schema says so, so
-    // these rows are date-only and sink below the day's timed rows, which is the
-    // standing rule rather than a substance special case. Reading `bestKnownInstant`
-    // here would answer with `recorded_at` — the FILING stamp — and hand them a minute
-    // they never claimed. Phase 2 gives them events and this branch goes with it.
-    const totals = getAllSubstanceDailyTotals(profileId).filter(
-      (row) =>
-        substanceDef(row.substance).ledger !== "food-log" &&
-        row.date <= until &&
-        row.date >= since &&
-        (!item || item === row.substance)
+    // EVERY OTHER SUBSTANCE, ALSO ONE ROW PER EVENT (#5026 phase 2). Nicotine,
+    // cannabis and every custom key ride `substance_log_events` now, so this loop is
+    // the drinks loop above with its own ledger and its own correction door: the same
+    // instant questions, the same data-gated tick, the same "one event is one unit"
+    // detail. What it replaces was a DAY row — date-only, sinking below the day's timed
+    // rows, correcting through a day-count form — because `substance_daily_totals`
+    // declares no event column and reading `bestKnownInstant` off it would have handed
+    // a day a minute it never claimed. The events answer that question honestly now.
+    const uses = getSubstanceLedgerPage(
+      profileId,
+      since,
+      { untilDate: until, substance: item },
+      1,
+      limit
     );
-    if (totals.length > limit) truncated = true;
-    for (const row of totals.slice(0, limit)) {
+    if (uses.total > uses.rows.length) truncated = true;
+    for (const row of uses.rows) {
       const def = substanceDef(row.substance);
+      // The stated use instant when somebody named one, else the record chain — with
+      // the answer saying WHICH, so a tap stamp never prints as a stated hour.
+      const when = bestKnownInstant("substance_log_events", { ...row });
+      const hhmm = when.known ? localClock(tz, when.at) : null;
+      const stated = when.known && when.semantic === "event";
+      // THE ROW'S CLOCK AND THE RAIL'S MINUTE ARE DIFFERENT QUESTIONS, exactly as they
+      // are for the drink above: the row may say "logged 23:50" because the grammar's
+      // `logged` prefix admits a filing time, and the CHART may not, so the mark reads
+      // the EVENT instant only and a use with none draws nothing. Every row the phase-2
+      // backfill derived from a day count is in that state, which is why converting a
+      // legacy day adds rows to the record and no ticks to the rail.
+      const usedAt = eventInstant("substance_log_events", { ...row });
+      const markMinute = usedAt.known ? localClock(tz, usedAt.at) : null;
+      const id = `substance:${row.substance}:${row.id}`;
       rows.push({
-        id: `substance:${row.substance}:${row.id}`,
+        id,
         kind: "substance",
         profileId,
         tz,
         date: row.date,
-        ...historyClockFields(null, "logged", prefs),
+        ...historyClockFields(hhmm, stated ? "stated" : "logged", prefs),
         title: def.label,
         // PLAIN, LIKE THE FOOD GROUPS BESIDE IT (#4045 §5). The title link is a
         // PER-ITEM question — "does this thing have a home" — and a substance has
@@ -799,26 +826,28 @@ export function gatherHistoryLog(
         // ever gains a stable per-item anchor the title may link THERE; the
         // page-level link is not a fallback for a missing one.
         href: null,
-        detail: detailSegment([
-          `${row.amount} ${row.amount === 1 ? def.countSingular : def.countPlural}`,
-          row.notes,
-        ]),
+        // ONE EVENT IS ONE UNIT, the drink's own detail. The day's arithmetic moved to
+        // the rows; the day's NOTE stayed on the day, so it is not repeated here once
+        // per use (#5077 owns where a day note lives now).
+        detail: detailSegment([`1 ${def.countSingular}`]),
         media: 0,
         edit: {
           kind: "substance",
-          rowId: row.id,
+          eventId: row.id,
           substance: row.substance,
-          amount: row.amount,
-          notes: row.notes,
+          // The row's OWN stated instant, never `sortTime` — the practice row's rule
+          // (#2205's substitution), because the correction rewrites what it reads and
+          // posting a filing stamp back would stamp it into the event column.
+          statedAt: row.occurred_at,
         },
       });
       if (opts.day != null) {
         dayEvents.push({
-          id: `substance:${row.substance}:${row.id}`,
+          id,
           date: row.date,
           category: "substance",
           title: def.label,
-          sortTime: null,
+          sortTime: markMinute,
         });
       }
     }
