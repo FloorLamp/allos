@@ -570,9 +570,10 @@ describe("an imported session is not a tap", () => {
 // after a tap, and what takes it down again. All four defects here shipped green because
 // no case followed a real nudge from send → tap → sweep.
 describe("the pace nudge's correction lifecycle, end to end", () => {
-  // A Tuesday, 08:00 in Berlin — inside the default waking window (08:00–21:00), and
-  // the same weekday the #2188 rhythm cases use, so a Wed/Fri habit is HELD here.
-  const NOW_ISO = "2026-06-16T06:00:00Z";
+  // A Friday, 08:00 in Berlin — inside the default waking window (08:00–21:00), and
+  // far enough into the week that a 3×/week floor with nothing logged is behind
+  // (#4758: three to do, two days left). A Wed/Sat habit is still HELD here.
+  const NOW_ISO = "2026-06-19T06:00:00Z";
   let priorNow: string | undefined;
 
   beforeEach(() => {
@@ -708,11 +709,11 @@ describe("the pace nudge's correction lifecycle, end to end", () => {
     seedLoginTelegram(pid, "5552882");
     const redLight = practiceTarget(pid, "Red light therapy");
     const breath = practiceTarget(pid, "Breathwork");
-    // Eight weeks of Wednesday+Friday sessions → a rhythm that holds on Tuesday.
+    // Eight weeks of Wednesday+Saturday sessions → a rhythm that holds on Friday.
     const t = today(pid);
     const sunday = shiftDateStr(t, -new Date(`${t}T00:00:00Z`).getUTCDay());
     for (let k = 1; k <= 8; k++)
-      for (const wd of [3, 5])
+      for (const wd of [3, 6])
         seedSessionOn(
           pid,
           "Red light therapy",
@@ -720,7 +721,11 @@ describe("the pace nudge's correction lifecycle, end to end", () => {
           "18:30"
         );
 
-    // The SEND withholds it: Wednesday is still ahead this week.
+    // THE PREMISE, pinned: the untimed gather DOES find Red light therapy behind, so
+    // the absence below is the #2188 hold and not a target with nothing to say.
+    expect(behindPractices(pid).map((b) => b.targetId)).toContain(redLight);
+
+    // The SEND withholds it: Saturday is still ahead this week.
     const pointer = await sendNudge(pid);
     const sent = keyboardTokens(pointer.keyboard);
     expect(sent).toContain(`pdone:${pid}:${breath}:n1`);
@@ -775,14 +780,14 @@ describe("the pace nudge's correction lifecycle, end to end", () => {
     ).toBe(true);
 
     // Still fresh: the sweep has nothing to do, and does nothing.
-    setNow("2026-06-16T06:30:00Z");
+    setNow("2026-06-19T06:30:00Z");
     expect((await reconcileProfileMessages(pid)).edited).toBe(0);
 
     // D3. `practice.dead()` never called `deadCorrectionTokens`, so the chips had NO
     // clock: this sweep — and the one an hour after it — edited nothing at all, and the
     // dead chips stood until the 3-day pointer prune, where a tap answers "Couldn't
     // find those entries any more".
-    setNow("2026-06-16T08:00:00Z");
+    setNow("2026-06-19T08:00:00Z");
     const first = await reconcileProfileMessages(pid);
     expect(first.edited, "one trailing edit takes the lapsed chips off").toBe(
       1
@@ -795,15 +800,17 @@ describe("the pace nudge's correction lifecycle, end to end", () => {
     );
 
     // THE IDEMPOTENCE PIN: the steady state costs zero Telegram calls.
-    setNow("2026-06-16T10:00:00Z");
+    setNow("2026-06-19T10:00:00Z");
     expect((await reconcileProfileMessages(pid)).edited).toBe(0);
     expect(breath).toBeGreaterThan(0);
   });
 
   it("closes a nudge whose only remaining claims are lapsed chips", async () => {
-    // The confirmation shape: ONE behind practice, tapped. Main closed that message on
-    // the tap; the rebuild deliberately keeps it alive to carry the chips — so the
-    // sweep has to be what closes it, and without a clock nothing ever did.
+    // The confirmation shape: ONE behind practice, tapped — and the tap takes it off
+    // behind (3×/week, two days left, one now logged), so no live claim survives it.
+    // Main closed that message on the tap; the rebuild deliberately keeps it alive to
+    // carry the chips — so the sweep has to be what closes it, and without a clock
+    // nothing ever did.
     const pid = makeProfile("lifecycle-close");
     seedLoginTelegram(pid, "5552884");
     const sauna = practiceTarget(pid, "Sauna");
@@ -819,7 +826,7 @@ describe("the pace nudge's correction lifecycle, end to end", () => {
     );
     expect(liveMessagePointers(pid)).toHaveLength(1);
 
-    setNow("2026-06-16T08:00:00Z");
+    setNow("2026-06-19T08:00:00Z");
     const result = await reconcileProfileMessages(pid);
     expect(result.closed, "every claim is dead — the message closes").toBe(1);
     expect(liveMessagePointers(pid)).toHaveLength(0);

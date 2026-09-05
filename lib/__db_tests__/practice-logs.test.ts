@@ -258,15 +258,21 @@ describe("practice_logs store + range progress (#1259)", () => {
     const t = today(pid);
     const tid = practiceTarget(pid, "Sauna", 3, 5);
 
-    // Below the floor → behind, not met, not at ceiling.
+    // Below the floor → not met, not at ceiling. Two of the three still to do and a
+    // rolling window that ends today, so the pace verdict fires too (#4758).
     logPracticeSession(pid, "Sauna", t, "page");
-    logPracticeSession(pid, "Sauna", shiftDateStr(t, -1), "page");
     let prog = getFrequencyTargetProgress(pid).find(
       (p) => p.target.id === tid
     )!;
-    expect(prog).toMatchObject({ count: 2, met: false, atCeiling: false });
+    expect(prog).toMatchObject({ count: 1, met: false, atCeiling: false });
     expect(prog.pace).toBe("behind");
     expect(prog.per_week_max).toBe(5);
+
+    // One more, still under the floor — and now the last one fits in the day left.
+    logPracticeSession(pid, "Sauna", shiftDateStr(t, -1), "page");
+    prog = getFrequencyTargetProgress(pid).find((p) => p.target.id === tid)!;
+    expect(prog).toMatchObject({ count: 2, met: false, atCeiling: false });
+    expect(prog.pace).toBe("on-pace");
 
     // Reach the floor (3 distinct days) → met, still below the ceiling.
     logPracticeSession(pid, "Sauna", shiftDateStr(t, -2), "page");
