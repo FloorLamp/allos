@@ -107,7 +107,6 @@ describe("dashboard reading-promotion gathers (#3137)", () => {
         candidate: progressCandidates.targetProgress(
           { subject: { scope: "profile", profileId }, sourceOrder: 0 },
           progress.target.id,
-          !progress.met,
           progress.pace === "behind"
         ),
       };

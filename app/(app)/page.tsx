@@ -2137,7 +2137,6 @@ async function renderDashboard(
       progressCandidates.targetProgress(
         { subject: profileSubject, sourceOrder: sourceOrder + index * 2 },
         id,
-        !progress.met,
         // Owner ruling #3548: a behind target is a HIGHLIGHTED READING in Standing's
         // attention tier, "not a Now card". The crossing is told by `owed`, and by
         // #4756/#5064 that is the ONLY thing this family tells Now — the met and

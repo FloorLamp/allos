@@ -10,6 +10,7 @@ import {
   statementCandidate,
 } from "../dashboard-candidates";
 import {
+  placementsInLane,
   rankDashboardCandidates,
   type DashboardCandidate,
   type DashboardPlacement,
@@ -286,9 +287,6 @@ describe("fixed Standing instrument cluster", () => {
       reading("sleep.nap:today:600", 3),
       reading("sleep.regularity:today", 4),
       reading("unregistered.reading", 5),
-      reading("target.weekly-progress:complete", 6, {
-        standingEligible: false,
-      }),
     ];
     expect(standingIds(candidates)).toEqual([]);
     expect(
@@ -447,33 +445,36 @@ describe("a capped Standing family's tail", () => {
   // reds HERE and not only in the registry list: a hand-made candidate would simply
   // stop compiling and prove nothing about what the builder emits.
   it("leaves a met weekly target in no lane at all", () => {
-    const target = (id: number, unmet: boolean, behind = false) =>
+    const target = (id: number, behind = false) =>
       progressCandidates.targetProgress(
         { subject: profile, sourceOrder: 400 + id },
         id,
-        unmet,
         behind
       );
 
-    const met = target(2, false);
+    const met = target(2);
     expect(met.rankReasons.changed).toBe(false);
     expect(met.readingPromotion).toBeUndefined();
 
+    // The met row keeps its Standing seat and takes NO Now seat — which is the
+    // whole ruling: the week is still stated, it just stops being news.
     expect(
-      rank([target(1, true), met]).map(({ candidate, lane }) => [
+      rank([target(1), met]).map(({ candidate, lane }) => [
         candidate.candidateId,
         lane,
       ])
-    ).toEqual([["target.weekly-progress:1", "standing"]]);
+    ).toEqual([
+      ["target.weekly-progress:1", "standing"],
+      ["target.weekly-progress:2", "standing"],
+    ]);
 
-    // The converse, so the absence above is the MET state and not this family
-    // having quietly left the page: a behind target still claims its standing seat.
+    // The converse, so "standing" above is not this family's one and only answer:
+    // a behind target seats in Standing's ATTENTION band, not the quiet rest.
     expect(
-      rank([target(3, true, true)]).map(({ candidate, lane }) => [
-        candidate.candidateId,
-        lane,
-      ])
-    ).toEqual([["target.weekly-progress:3", "standing"]]);
+      placementsInLane(rank([target(3, true)]), "standing").map(
+        ({ standingBand }) => standingBand
+      )
+    ).toEqual(["attention"]);
   });
 
   it("gathers the seats a capped family has plus its live promotions", () => {
