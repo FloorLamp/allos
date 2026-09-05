@@ -473,11 +473,6 @@ const ALLOW_NON_LITERAL: { file: string; expr: string; why: string }[] = [
     expr: "sql",
     why: "q(sql) helper: every DATASETS query string filters the acting profile — directly (WHERE profile_id = ?) or, for the intake dose/log child tables, through the parent JOIN (WHERE ii.profile_id = ?). Not left to that sentence: lib/__db_tests__/export.test.ts seeds two profiles and asserts, per dataset, that rows(), page() and count() carry none of the OTHER profile's rows — compared by row CONTENT, so a dataset emitting no `id`, or aliasing the one it has, is judged like any other. The one dataset that comparison cannot judge (the GLOBAL providers table) is named there and asserted exhaustive against OWNED_TABLES + ownedChildTables(db), which is schema-derived and not editable from lib/export.ts.",
   },
-  ...(["ACTIVITIES_SELECT", "ITEMS_SELECT"] as const).map((expr) => ({
-    file: "lib/export.ts",
-    expr,
-    why: `the ${expr === "ACTIVITIES_SELECT" ? "activities" : "intake_items"} dataset's full read. Both datasets fold a child table in JS after the read, so they hand-write rows()/page() instead of taking them from tableDataset — and the statement is one module const rather than three copies, because ExportDataset.select must be the SAME string the readers run for the column census to attribute its columns. Passed by name, so this scan sees an identifier. The const itself opens its WHERE with the acting profile's own \`profile_id = ?\`, and that is CHECKED rather than asserted here: lib/__db_tests__/export.test.ts seeds two profiles and proves per dataset that rows(), page() and count() carry none of the other profile's rows, compared by row content. Rewriting this const's WHERE reds that dataset's case.`,
-  })),
   {
     file: "lib/export.ts",
     expr: "providersSelect(ph)",

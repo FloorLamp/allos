@@ -15,11 +15,11 @@ import {
   DELETE_POLICY,
   getDataset,
   PROVIDER_LINK_SELECTS,
+  readsSelect,
   toCsv,
 } from "@/lib/export";
 import { OWNED_TABLES } from "@/lib/owned-tables";
 import { ownedChildTables } from "@/lib/profile-delete";
-import { stripComments } from "../__tests__/strip-comments";
 import {
   execArgs,
   prepareArgs,
@@ -288,10 +288,14 @@ describe("DATASETS ⇄ DELETE_POLICY stay in sync", () => {
 const jsBuiltColumns = (ds: (typeof DATASETS)[number]) =>
   (ds.jsBuilt ?? []).map((c) => c.column);
 
-// The datasets that do NOT carry the `readsSelect` marker — they hand-write their
-// reads instead of taking q(select)/qPage(select) from tableDataset — so the binding
-// has to be PROVEN on seeded rows rather than held by construction.
-const HAND_AUTHORED_READS = ["activities", "intake_items", "providers"];
+// The datasets tableDataset() does NOT build — they hand-write their reads instead of
+// taking q(select)/qPage(select) from it — so the binding has to be PROVEN on seeded
+// rows rather than held by construction. It was three; `activities` and `intake_items`
+// came off it when tableDataset grew the `shape` hook their child-table fold needed
+// (#5324). `providers` cannot follow: its declared select's one `?` stands for the
+// runtime id LIST, not the profile id, so q(select) would bind a profile id into
+// `id IN (?)`.
+const HAND_AUTHORED_READS = ["providers"];
 
 describe("the declared select is the statement the export runs (#5117)", () => {
   const expectedKeys = (ds: (typeof DATASETS)[number]) =>
@@ -366,16 +370,17 @@ describe("the declared select is the statement the export runs (#5117)", () => {
     // tableDataset() sets `readsSelect`, and its rows/page ARE q(select)/qPage(select).
     // Anything else must be in HAND_AUTHORED_READS, which the seeded comparison covers.
     const unbound = DATASETS.filter(
-      (d) => !d.readsSelect && !HAND_AUTHORED_READS.includes(d.key)
+      (d) => !readsSelect(d) && !HAND_AUTHORED_READS.includes(d.key)
     ).map((d) => d.key);
     expect(
       unbound,
       `\nThese datasets hand-write their reads and nothing proves the reads match their declared select.\nSeed them in this file and add them to HAND_AUTHORED_READS:\n${unbound.join("\n")}\n`
     ).toEqual([]);
     // …and nothing is listed that tableDataset now builds.
-    const stale = HAND_AUTHORED_READS.filter(
-      (key) => getDataset(key)?.readsSelect
-    );
+    const stale = HAND_AUTHORED_READS.filter((key) => {
+      const ds = getDataset(key);
+      return ds && readsSelect(ds);
+    });
     expect(stale, `built by tableDataset now — remove from the list`).toEqual(
       []
     );
@@ -398,36 +403,23 @@ describe("the declared select is the statement the export runs (#5117)", () => {
           );
           continue;
         }
-        for (const [reader, got, fn] of [
-          ["rows()", rows, ds.rows],
-          ["page()", page, ds.page],
+        // WHAT THIS ESTABLISHES, exactly: the cell is on every row the export
+        // emits, with a value rather than `undefined`. It does NOT establish that
+        // the value came from `cell.by` — the two guards that reached for that (a
+        // regex over `String(reader)`, and a source-text read of lib/export.ts for a
+        // declaration of that name) both existed because `by` was a STRING that
+        // could name nothing at all. It is the function reference now (#5324), so
+        // what is left is the behavioural half, which is the half worth running.
+        for (const [reader, got] of [
+          ["rows()", rows],
+          ["page()", page],
         ] as const) {
           const built = got.every(
             (r) => cell.column in r && r[cell.column] !== undefined
           );
           if (!built) {
             missing.push(
-              `${ds.key}.${cell.column}: ${ds.key}.${reader} does not put it on every row — ${cell.by}() is not building it`
-            );
-          }
-          // …and `by` names THE builder, not merely a function of that name.
-          // export-completeness.test.ts reads lib/export.ts as text and can only ask
-          // whether such a function is declared — renaming this to `shapeSupplements`,
-          // a real function building a different cell, passes there. Here the reader
-          // itself is in hand, so the call can be looked for in its own source.
-          //
-          // WHAT THIS ESTABLISHES, exactly: the reader's CODE names `by(`. Comments
-          // are stripped first (the shared scanner, #3595 — they are part of
-          // `String(fn)`, and one line mentioning the function by name satisfied this
-          // while the reader called something else). It still does not establish that
-          // the emitted cell CAME from that call — the `built` check above is what
-          // says the cell is there, and the two together are what the declaration is
-          // worth.
-          if (
-            !new RegExp(`\\b${cell.by}\\s*\\(`).test(stripComments(String(fn)))
-          ) {
-            missing.push(
-              `${ds.key}.${cell.column}: ${ds.key}.${reader} never calls ${cell.by}() — jsBuilt names a function that does not build this cell`
+              `${ds.key}.${cell.column}: ${ds.key}.${reader} does not put it on every row — ${cell.by.name}() is not building it`
             );
           }
         }

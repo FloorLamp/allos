@@ -17,8 +17,6 @@
 // in the SQLite handle.
 
 import { describe, it, expect } from "vitest";
-import fs from "node:fs";
-import { fileURLToPath } from "node:url";
 import { db } from "@/lib/db";
 import { DATASETS } from "@/lib/export";
 import { OWNED_TABLES } from "@/lib/owned-tables";
@@ -401,8 +399,15 @@ describe("FHIR export/import symmetry (issue #465)", () => {
 //     Every column of a table that has a flat dataset is exported, unless it is
 //     named in COLUMN_EXPORT_ALLOWLIST below.
 //
-// So adding a column to an exported table is now a fork in the road with no third
-// path: put it in the dataset, or write its name and your reason here.
+// So adding a column to an exported table is a fork in the road: put it in the
+// dataset, or write its name and your reason here.
+//
+// UNLESS THE TABLE ALSO FEEDS THE FHIR PASSPORT (#5342), which is the third case and
+// the one an author trips over. Those tables are carved out of this guard entirely —
+// see COLUMN_GUARD_FHIR_CARVE_OUT below — so on one of them NEITHER fork applies, and
+// an allowlist entry added in good faith is what reds, telling its author to remove
+// the entry they just wrote. Membership is FHIR_INPUT_TABLES, derived where the
+// passport input is declared, not restated here.
 //
 // ATTRIBUTION COMES FROM SQLITE, NOT FROM READING THIS REPO'S SOURCE. Each dataset
 // carries the `select` its rows()/page() run, and better-sqlite3's
@@ -468,20 +473,15 @@ const CSV_OMITTED_RESULT_COLUMNS: {
 // parent select cannot fold in.
 //
 // That declaration lives on the DATASET (`jsBuilt` in lib/export.ts), not in a second
-// list here, and it is not taken on faith. A list here could name a column no reader
-// builds and a builder function that exists nowhere, and stay green forever; on the
-// dataset it is one source that both guards read — this file proves the column really
-// is absent from the select and that the dataset could even have a JS step, and
-// lib/__db_tests__/export.test.ts proves the cell is actually emitted on a seeded row.
+// list here, and it is not taken on faith: this file proves the column really is
+// absent from the select, and lib/__db_tests__/export.test.ts proves the cell is
+// actually emitted, non-undefined, on a seeded row. The two claims a source-text read
+// used to make here — that `by` names a function this repo declares, and that a
+// dataset with no JS step cannot declare a cell at all — are now the TYPE's (#5324):
+// `by` is the function reference, and tableDataset takes `shape` and `jsBuilt`
+// together or neither.
 const JS_BUILT = DATASETS.flatMap((ds) =>
   (ds.jsBuilt ?? []).map((c) => ({ ds, ...c }))
-);
-
-// lib/export.ts as text, so the `by` half of a jsBuilt declaration can be read
-// against the file that is supposed to declare it.
-const EXPORT_SOURCE = fs.readFileSync(
-  fileURLToPath(new URL("../export.ts", import.meta.url)),
-  "utf8"
 );
 
 // Columns of an exported table that the export does NOT carry. Two kinds, and the
@@ -935,10 +935,17 @@ function columnCensus(): {
     // under, JOIN-sourced ones included: that name is the key toCsv reads.
     const csvHeader = new Set(ds.columns);
     const emitted = new Set(result.map((c) => c.name));
+    // `id` is the contract-wide CSV omission (every dataset carries the row's key for
+    // the manage UI), and it is exempt only when it IS that key. Aliasing another
+    // column to it borrowed the exemption: `n AS id` on hr_minutes, with "n" dropped
+    // from `columns`, took `n` out of the CSV entirely and left it in the JSON under
+    // a name the table has no column for — 77/77 green (#5341).
+    const idColumn = result.find((c) => c.name === "id");
+    const idIsRowKey =
+      idColumn?.table === ds.table && idColumn?.column === "id";
     for (const name of emitted) {
-      if (name !== "id" && !csvHeader.has(name)) {
-        csvOmitted.push({ key: ds.key, column: name });
-      }
+      if (name === "id" && idIsRowKey) continue;
+      if (!csvHeader.has(name)) csvOmitted.push({ key: ds.key, column: name });
     }
     for (const name of ds.columns) {
       if (!emitted.has(name)) csvOnly.push({ key: ds.key, column: name });
@@ -1093,51 +1100,14 @@ describe("every column of an exported table is exported (#5117)", () => {
         `${c.ds.key}.${c.column} is selected now — remove its jsBuilt entry`
       ).toBe(true);
       expect(c.why.trim().length).toBeGreaterThan(0);
-      // The BUILDER must be DECLARED. What this establishes is exactly that: a
-      // function of that name exists in lib/export.ts. It does NOT establish that
-      // this dataset's reader calls it — renaming `shapeActivities` to
-      // `shapeSupplements`, a real function building a different cell, passes here.
-      // The half that ties the name to the code needs the dataset object, so it is
-      // in lib/__db_tests__/export.test.ts: the reader that emits the cell must name
-      // `by`. Both halves, because this tier runs with no database and that one has
-      // no source text.
-      //
-      // An identifier, asserted rather than assumed — `by` is interpolated into a
-      // RegExp below, so `by: "shape.*"` would otherwise match anything.
-      expect(c.by, `${c.ds.key}.${c.column}: jsBuilt \`by\``).toMatch(
-        /^[A-Za-z_$][\w$]*$/
-      );
-      // Anchored at COLUMN ZERO and requiring the parameter list, so a mention
-      // inside a comment or a string cannot satisfy it — and neither can a
-      // function-LOCAL `const <name> = (` inside some other builder, which the
-      // earlier `^\s*` spelling accepted. Every declaration in this file is at module
-      // scope. Both spellings the file uses: a `function <name>(` declaration and an
-      // arrow const (`providersSelect` is written that way, so refusing one would
-      // bite).
-      expect(
-        new RegExp(
-          `^(?:export\\s+)?(?:function ${c.by}\\s*\\(|const ${c.by}\\s*=\\s*\\()`,
-          "m"
-        ).test(EXPORT_SOURCE),
-        `${c.ds.key}.${c.column}: jsBuilt names \`${c.by}\`, which lib/export.ts does not declare`
-      ).toBe(true);
     }
   });
 
-  it("only a dataset that HAS a JS step can declare a JS-built cell", () => {
-    // A tableDataset's rows()/page() ARE q(select)/qPage(select): the row is whatever
-    // SQLite returned, and there is no step that could add a cell. So a `jsBuilt`
-    // entry on one is not a claim that turned out false — it is a claim that could
-    // never have been true, and the CSV would ship an empty column under it.
-    const impossible = JS_BUILT.filter((c) => c.ds.readsSelect).map(
-      (c) => `${c.ds.key}.${c.column} (built by ${c.by})`
-    );
-    expect(
-      impossible,
-      `\nDeclared as built in JS by a dataset whose rows() is q(select) — nothing runs between the read and the row:\n${impossible.join("\n")}\n`
-    ).toEqual([]);
-    // The other half of the claim — that the cell is really emitted, non-undefined,
-    // on a seeded row — needs data, and lives in lib/__db_tests__/export.test.ts.
+  it("the JS-built census is not empty", () => {
+    // The two assertions above are silent on an empty JS_BUILT, and the cases they
+    // replace ("`by` names a real function", "only a dataset with a JS step declares
+    // one") are now compile-time — so nothing else would notice the declarations
+    // going away.
     expect(JS_BUILT.length).toBeGreaterThan(0);
   });
 });
