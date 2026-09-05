@@ -653,6 +653,49 @@ function connectIntegration(
     .run(ctx.profileId, sourceId, JSON.stringify(config));
 }
 
+// RECORDED SYNC RUNS for a connected source (#4993). A connection row says a source
+// is wired up; `integration_sync_events` is what every STANDING is derived from, and
+// `getImportIssues` walks only the sources that have at least one event. So a persona
+// with connections and no events leaves `resolveSourceFacts` — and `sourceStanding`,
+// the staleness facts and the dropped-type tally under it — executing zero times on
+// every surface that claims to cover them, including the dashboard query budget.
+//
+// STRAVA RATHER THAN HEALTH CONNECT, and the reason is the fixture's determinism, not
+// the source. A standing is judged from how long ago the newest `ok` run was, while a
+// persona states its data in profile-LOCAL wall time and "now" comes from whichever
+// clock the caller runs under. Strava declares a three-day silence tolerance, so a run
+// seeded at a recent local morning is inside it at every zone offset and under both
+// instants the db tier pins; Health Connect's is twelve hours, which a local wall time
+// cannot stay inside without knowing the zone. A source whose standing flipped with the
+// hour would give this persona an attention row and a Review entry some afternoons and
+// not others — the shape #3260 is filed about.
+//
+// Every run is `ok` with its counts recorded and `details` left NULL: a healthy source,
+// so nothing here escalates. `details` is the per-type tally the #4956 dropped-type
+// rule reads, and a NULL one drops nothing.
+function syncRuns(
+  ctx: PersonaContext,
+  sourceId: "strava" | "health-connect" | "oura" | "withings",
+  runs: readonly { day: string; hhmm: string; received: number }[]
+): void {
+  const ins = ctx.db.prepare(
+    `INSERT INTO integration_sync_events
+       (profile_id, source_id, at, ok, received, written, inserted, unchanged)
+     VALUES (?, ?, ?, 1, ?, ?, ?, ?)`
+  );
+  for (const run of runs) {
+    ins.run(
+      ctx.profileId,
+      sourceId,
+      ctx.occurredAt(run.day, run.hhmm),
+      run.received,
+      run.received,
+      run.received,
+      0
+    );
+  }
+}
+
 // A provider-imported cardio session carrying source + external_id (and the
 // Strava-only rich metrics when given), so provenance chips, source filters,
 // and cross-source dedup surfaces have real subjects.
@@ -762,6 +805,71 @@ function ouraNight(
        VALUES (?,?,?,'oura',?, ${VIA_IMPORTED})`
     )
     .run(ctx.profileId, wakeDay, opts.rhr, end);
+}
+
+// AN ALL-DAY WEARABLE HEART-RATE TRACE (#5034). `hr_minutes` is the schema's
+// fastest-growing table and no persona wrote a single row into it, so every reader on
+// that seam returned at `hrInstantBounds` before its range read on all six: the
+// dashboard's 42- and 90-day zone windows, `hrBuckets`, the overnight series and the
+// intraday chart all rendered against zero rows, and the query budget counted an empty
+// table. One persona carries it — the one whose character is a ring on the wrist
+// overnight and a watch by day — and the other five stay empty, so the meter has a
+// population without every fixture paying for it.
+//
+// MINUTES ARE MINTED FROM HOURLY ANCHORS, not one at a time. `ctx.occurredAt` is an
+// Intl conversion — 43,200 of them measured 7.5 s on this tree, more than the rest of
+// every persona put together — so the hour is converted and the minute field is written
+// into the instant it returns. A DST transition lands on an hour boundary, so an hourly
+// anchor is exact where a midnight anchor plus 1,440 minutes of arithmetic would be off
+// by the offset for part of the day. The hour a spring-forward skips resolves onto its
+// neighbour and two anchors then name one instant, which is why the insert is OR IGNORE:
+// it is the same minute, and the row is the same row.
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+function wearableHrDay(
+  ctx: PersonaContext,
+  day: string,
+  dayIndex: number
+): void {
+  const ins = ctx.db.prepare(
+    `INSERT OR IGNORE INTO hr_minutes (profile_id, ts, bpm, bpm_min, bpm_max, n, source)
+     VALUES (?, ?, ?, ?, ?, 60, 'oura')`
+  );
+  // THE ONE TRANSACTION IN EITHER SEED SCRIPT, and it is here because this is the one
+  // place that writes rows by the thousand. Neither seed batches anything else, so every
+  // other INSERT is its own implicit transaction — fine at a few hundred rows, and
+  // measured at 273 ms for one day of this trace against 20 ms for the same day inside a
+  // transaction. Over the thirty days below that is the difference between ~8 s and the
+  // 1.16 s this persona now pays. It wraps ONE DAY rather than the whole trace, so an
+  // interrupted seed leaves whole days behind instead of half of one.
+  ctx.db.transaction(() => {
+    for (let hour = 0; hour < 24; hour++) {
+      // "YYYY-MM-DDTHH:" — the anchor minus its minute and second fields.
+      const stem = ctx.occurredAt(day, `${pad2(hour)}:00`).slice(0, 14);
+      for (let minute = 0; minute < 60; minute++) {
+        const local = hour * 60 + minute;
+        const jitter = (dayIndex * 13 + local * 7) % 9;
+        // The night bounds are ouraNight's own window, so the staged sleep this persona
+        // already records and the minutes underneath it describe the same night.
+        const asleep = local < 6 * 60 + 50 || local >= 23 * 60 + 5;
+        // One hard hour in the evening: the training block the zone readers count.
+        const training = local >= 18 * 60 && local < 19 * 60;
+        const bpm = asleep
+          ? 47 + (jitter % 6)
+          : training
+            ? 128 + jitter
+            : 63 + (jitter % 15);
+        ins.run(
+          ctx.profileId,
+          `${stem}${pad2(minute)}:00Z`,
+          bpm,
+          bpm - 2,
+          bpm + 3
+        );
+      }
+    }
+  })();
 }
 
 // A Withings weigh-in: weight + body-fat on body_metrics plus the
@@ -1312,6 +1420,21 @@ const marathonRunner: SeedPersona = {
     // while the /integrations cards and hasConnectedDataSource read connected.
     connectIntegration(ctx, "strava", { athlete: "Elena R." });
     connectIntegration(ctx, "health-connect", {});
+
+    // Eight recorded Strava polls over the last three days — the standing window is
+    // ten, so this fills most of it. Two found a run; the rest are the quiet polls a
+    // healthy hourly connection records anyway, which is what makes "last successful
+    // sync" track the CONNECTION rather than the athlete's training week.
+    syncRuns(ctx, "strava", [
+      { day: ctx.daysAgo(2), hhmm: "08:00", received: 0 },
+      { day: ctx.daysAgo(2), hhmm: "14:00", received: 0 },
+      { day: ctx.daysAgo(2), hhmm: "20:00", received: 1 },
+      { day: ctx.daysAgo(1), hhmm: "08:00", received: 1 },
+      { day: ctx.daysAgo(1), hhmm: "14:00", received: 0 },
+      { day: ctx.daysAgo(1), hhmm: "20:00", received: 0 },
+      { day: ctx.daysAgo(0), hhmm: "00:00", received: 0 },
+      { day: ctx.daysAgo(0), hhmm: "06:00", received: 0 },
+    ]);
 
     // This week's runs arrive Strava-sourced with rich metrics…
     const tempoDay = ctx.daysAgo(1);
@@ -2973,6 +3096,7 @@ const biohacker: SeedPersona = {
         hrv: 58 + (jitter % 13),
         rhr: 49 + (i % 3),
       });
+      wearableHrDay(ctx, wakeDay, i);
     }
     // Two weeks of smart-scale weigh-ins beside the manual weekly log — the
     // same quantity from two sources, the metric_source_priority subject.
