@@ -337,54 +337,145 @@ describe("the trace is read as instants, not rebuilt from local minutes (#5212 F
   // on top of the earlier rest, the earlier rest became the quiet that closes the
   // session, and the save-stamp cancel could not save them because `updated_at` is a
   // real instant while the candidate had been shifted an hour back.
-  it("ends the effort where it really ended across a fall-back hour", async () => {
-    const p = newProfile("DetEndFallBack");
+  // Seeds the timeline above on `day` in `zone`: a first effort, a rest longer than the
+  // profile's recovery, and a second effort. `restsAfter` adds the quiet that ends the
+  // whole trace, which is the difference between "still going" and "finished a while
+  // ago" — and the difference the two cases below are built to keep apart.
+  function seedTwoEfforts(
+    name: string,
+    day: string,
+    restsAfter: boolean
+  ): { p: number; id: number } {
+    const p = newProfile(name);
     setTimezone(p, "America/New_York");
-    seedRestingHrBefore(p, "2026-11-01", 60);
+    seedRestingHrBefore(p, day, 60);
     // 00:40–01:20 EDT
-    seedInstants(p, "2026-11-01T04:40:00Z", "2026-11-01T05:20:00Z", 140);
+    seedInstants(p, `${day}T04:40:00Z`, `${day}T05:20:00Z`, 140);
     // rest, 01:20–02:00 EDT
-    seedInstants(p, "2026-11-01T05:20:00Z", "2026-11-01T06:00:00Z", 55);
-    // a SECOND effort, 01:00–01:35 EST — the same local minutes as the first block's
-    // tail, which is what a fall-back hour does and what the round trip could not tell
-    // apart from the first pass.
-    seedInstants(p, "2026-11-01T06:00:00Z", "2026-11-01T06:35:00Z", 140);
-    const id = seedOpenWorkoutOn(
-      p,
-      "2026-11-01",
-      "00:40",
-      "2026-11-01T04:45:00Z"
-    );
+    seedInstants(p, `${day}T05:20:00Z`, `${day}T06:00:00Z`, 55);
+    // a SECOND effort — on 2026-11-01 this is 01:00–01:35 EST, the same local minutes
+    // as the first block's tail, which is what a fall-back hour does and what the round
+    // trip could not tell apart from the first pass.
+    seedInstants(p, `${day}T06:00:00Z`, `${day}T06:35:00Z`, 140);
+    if (restsAfter) seedInstants(p, `${day}T06:35:00Z`, `${day}T07:15:00Z`, 55);
+    const id = seedOpenWorkoutOn(p, day, "00:40", `${day}T04:45:00Z`);
+    return { p, id };
+  }
 
-    // The session is the FIRST effort — the forty-minute rest after it is longer than
-    // this profile's recovery, which is the detector's own rule for an end, and the
-    // second block is a second effort rather than a continuation. What matters here is
-    // that the end is 01:20 and not a minute an hour's worth of collapsed readings put
-    // there: rebuilding the trace from local minutes lands the second block's elevation
-    // on top of the first block's quiet and moves the answer.
+  // THE PERSON IS STILL LIFTING, and no zone makes that a finished session. The trace
+  // ends elevated, so nothing is written — the frontier rule, asked of the whole trace
+  // rather than of the effort the start is in (#5212 third pass, R2).
+  //
+  // This fixture used to assert a finish at 01:20 while its own prose said the person
+  // was mid-session, which is the shape the pass found: segmenting had moved the
+  // frontier out of view and turned that refusal into an answer.
+  it("does not finish a session still in progress across a fall-back hour", async () => {
+    const { p, id } = seedTwoEfforts("DetEndFallBack", "2026-11-01", false);
+    expect(finishDetectedWorkouts(p)).toBe(0);
+    expect(rowOf(id).end_time).toBeNull();
+  });
+
+  // …and once they really stop, the end is the FIRST effort's — the forty-minute rest
+  // after it is longer than this profile's recovery, which is this module's own rule for
+  // an end, so the second block is a second effort rather than a continuation.
+  //
+  // WHAT THE MINUTE DISCRIMINATES: 01:20 is where the first effort ended in INSTANTS.
+  // Rebuilding the trace from local minutes lands the second block on 01:00–01:35 EDT,
+  // inside the first block's rest, and the answer moves to 01:35.
+  it("ends the effort where it really ended across a fall-back hour", async () => {
+    const { p, id } = seedTwoEfforts(
+      "DetEndFallBackRested",
+      "2026-11-01",
+      true
+    );
     expect(finishDetectedWorkouts(p)).toBe(1);
     expect(rowOf(id)).toEqual({ end_time: "01:20", duration_min: 40 });
   });
 
   // The control, and it is the property stated directly: the same timeline on a day
-  // with no transition in it reads the same way. A zone that silenced the module, or a
-  // fall-back hour that moved the answer, would show up as these two disagreeing.
+  // with no transition in it reads the same way, in BOTH states. A zone that silenced
+  // the module, or a fall-back hour that moved the answer, would show up as these
+  // disagreeing with their pair above.
   it("reads the same timeline the same way on an ordinary day", async () => {
-    const p = newProfile("DetEndFallBackControl");
-    setTimezone(p, "America/New_York");
-    seedRestingHrBefore(p, "2026-10-25", 60);
-    seedInstants(p, "2026-10-25T04:40:00Z", "2026-10-25T05:20:00Z", 140);
-    seedInstants(p, "2026-10-25T05:20:00Z", "2026-10-25T06:00:00Z", 55);
-    seedInstants(p, "2026-10-25T06:00:00Z", "2026-10-25T06:35:00Z", 140);
-    const id = seedOpenWorkoutOn(
-      p,
-      "2026-10-25",
-      "00:40",
-      "2026-10-25T04:45:00Z"
-    );
+    const going = seedTwoEfforts("DetEndControlGoing", "2026-10-25", false);
+    expect(finishDetectedWorkouts(going.p)).toBe(0);
+    expect(rowOf(going.id).end_time).toBeNull();
+
+    const rested = seedTwoEfforts("DetEndControlRested", "2026-10-25", true);
+    expect(finishDetectedWorkouts(rested.p)).toBe(1);
+    expect(rowOf(rested.id)).toEqual({ end_time: "01:20", duration_min: 40 });
+  });
+});
+
+// THE TWO SHAPES THE THIRD PASS DROVE, pinned end to end rather than only at the pure
+// tier, because what they cost is a WRITE and a send. Both were answers before; both are
+// refusals now, and a refusal here leaves the stale suggest as the path.
+describe("the sweep refuses what the third pass drove (#5212 R1, R2)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  // R1. The row was started at 08:00 and the wrist went on at 17:00. Taking the first
+  // effort at or after the start wrote `end_time 19:00`, `duration_min 660` — eleven
+  // hours of "strength training", unattended, and worse than the hour-late tap this
+  // module exists to replace.
+  it("writes nothing when the start's own stretch has no elevated minute", () => {
+    const p = newProfile("DetEndNoEffortAtStart");
+    seedRestingHr(p, 60);
+    // Measured the whole way, so the refusal is the start-containment bound and not the
+    // coverage rule standing in for it.
+    seedRange(p, "08:00", "18:00", 55);
+    seedRange(p, "18:00", "19:00", 150);
+    seedRange(p, "19:00", "19:40", 55);
+    const id = seedOpenWorkout(p, "08:00", new Date("2026-07-17T08:20:00Z"));
+
+    expect(finishDetectedWorkouts(p)).toBe(0);
+    expect(rowOf(id).end_time).toBeNull();
+  });
+
+  // R2, and it is the one with the send behind it. A rest longer than this profile's
+  // recovery closed the first effort, so the segmented trace hid a frontier that was
+  // still ELEVATED: the row flipped `active → finished` mid-workout, which reaches the
+  // safety-tier post-workout dispatch (ungated by the waking window) and takes the stale
+  // suggest's Finish button away in the same move. The `updated_at` cancel cannot catch
+  // it, because a set logged while still elevated stamps BEFORE the candidate.
+  it("leaves a session alone while its trace is still elevated", () => {
+    // The clock sits five minutes past the newest measured minute, because that is what
+    // "still going" means and because presence has its own bounds: an hour later this
+    // row reads `idle` whatever the sweep does, and the assertion below would be about
+    // the wrong thing.
+    vi.setSystemTime(new Date("2026-07-17T17:10:00Z"));
+    const p = newProfile("DetEndStillGoing");
+    seedRestingHr(p, 60);
+    seedRange(p, "16:00", "16:35", 140);
+    seedRange(p, "16:35", "16:55", 55); // a rest past the ten-minute default
+    seedRange(p, "16:55", "17:05", 140); // and they are lifting again
+    const id = seedOpenWorkout(p, "16:00", new Date("2026-07-17T17:00:00Z"));
+
+    expect(getWorkoutPresence(p).state).toBe("active");
+    expect(finishDetectedWorkouts(p)).toBe(0);
+    expect(rowOf(id).end_time).toBeNull();
+    // Still the dock's live session, so the Finish they could argue with is still there.
+    expect(getWorkoutPresence(p).state).toBe("active");
+  });
+
+  // The control for both, and it is the same trace as R2 with the cool-down that was
+  // missing: the frontier lets the answer through, and the answer is the FIRST effort's
+  // end rather than the later one's. Without this, the two refusals above could be a
+  // module that had simply stopped answering.
+  it("finishes that same session at its first effort once they stop", () => {
+    const p = newProfile("DetEndStoppedForReal");
+    seedRestingHr(p, 60);
+    seedRange(p, "16:00", "16:35", 140);
+    seedRange(p, "16:35", "16:55", 55);
+    seedRange(p, "16:55", "17:05", 140);
+    seedRange(p, "17:05", "17:45", 55);
+    const id = seedOpenWorkout(p, "16:00", new Date("2026-07-17T16:20:00Z"));
 
     expect(finishDetectedWorkouts(p)).toBe(1);
-    expect(rowOf(id)).toEqual({ end_time: "01:20", duration_min: 40 });
+    expect(rowOf(id)).toEqual({ end_time: "16:35", duration_min: 35 });
   });
 });
 

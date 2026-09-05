@@ -191,39 +191,65 @@ export function exertionWindows(input: ExertionWindowInput): ExertionSpan[] {
 }
 
 /**
- * The first effort in an ordered trace, and the quiet that closes it — nothing after.
+ * THE EFFORT THAT CONTAINS THE START, and nothing after it — or null when the start is
+ * inside no effort at all.
  *
- * The cut is made where THIS FUNCTION'S OWN CALLER would already have declared an end:
- * `recoveryMs` of quiet following an elevated minute, the same threshold `detectedWorkoutEnd`
- * uses to accept a candidate. So it introduces no second judgment and cannot move a
- * candidate that would have been chosen — the samples before the cut are unchanged, and
- * the samples after it could only ever have OVERRIDDEN that candidate with a later
- * effort's. A trace holding one effort is returned whole.
+ * `samples` is the trace from `startedAt` onward, in instant order. Two bounds, and both
+ * are `recoveryMs`, which is the number this module already uses to say an effort has
+ * ended. Nothing new is invented in either direction.
  *
- * Coverage is deliberately not re-checked here. A sparse quiet stretch may cut earlier
- * than `quiet` would accept, and that direction is safe: a shorter trace can only make
- * the detector refuse to answer, never answer wrongly.
+ * ── WHERE THE EFFORT ENDS ────────────────────────────────────────────────────
+ * The cut is made where `detectedWorkoutEnd` would already have declared an end:
+ * `recoveryMs` of quiet after an elevated minute. Same threshold, so this introduces no
+ * second judgment and cannot move a candidate that would have been chosen — the samples
+ * before the cut are unchanged. A trace holding one effort is returned whole.
  *
- * `samples` must already be in instant order — every caller reaches this through
- * `sorted`. Walking an unsorted array would make the answer depend on the read's order,
- * and a trace whose instants disagree with its array order is exactly what a
- * mis-resolved zone produces.
+ * ── WHERE IT BEGINS, WHICH IS THE HALF THE FIRST DRAFT DID NOT HAVE ──────────
+ * That draft walked forward to the FIRST elevated minute at or after the start and
+ * called it this session's. So a row started at 08:00 whose wrist went on at 17:00, or
+ * whose trace has nothing elevated until an evening run, was answered with the run's
+ * end: 08:00–19:00, eleven hours of "strength training", written unattended. It closed
+ * the case it was shown and left the neighbouring one open.
+ *
+ * "Contains the start" is a claim about the start, so it is asked about the start: the
+ * elevated minutes must begin before `recoveryMs` of quiet has passed since it, and that
+ * quiet must be MEASURED. Beyond that much quiet, the effort the start was in has ended
+ * by this module's own rule — or never happened — and either way the trace does not say
+ * when this session finished. Null, and the stale suggest stays the fallback, which is
+ * "the trace decides, never the clock" read at the opening edge.
+ *
+ * The cost is a real case and it is small: a profile whose own `usualRecoveryMin` is six
+ * minutes, warming up for seven below their own ceiling, gets no detected end. That is
+ * the same trade the module makes everywhere — their own measured number wins even when
+ * it is smaller than the default — and it fails toward the refusal.
  */
-function effortFrom(
+function effortFromStart(
   samples: readonly ExertionSample[],
   ceilingBpm: number,
-  recoveryMs: number
-): ExertionSample[] {
-  let seenElevated = false;
+  recoveryMs: number,
+  startedAt: number
+): ExertionSample[] | null {
+  let first = -1;
+  for (let i = 0; i < samples.length; i++)
+    if (samples[i].bpm > ceilingBpm) {
+      first = i;
+      break;
+    }
+  if (first < 0) return null;
+  const begins = samples[first].at;
+  if (begins - startedAt >= recoveryMs) return null;
+  // Unmeasured minutes between the start and the effort are not quiet either — the same
+  // sentence `covered` makes everywhere else in this file. Without it a trace that
+  // simply BEGINS elevated the next day reads as containing the start.
+  if (!covered(samples, startedAt, begins)) return null;
+
   let quietFrom: number | null = null;
-  for (let i = 0; i < samples.length; i++) {
+  for (let i = first; i < samples.length; i++) {
     const sample = samples[i];
     if (sample.bpm > ceilingBpm) {
-      seenElevated = true;
       quietFrom = null;
       continue;
     }
-    if (!seenElevated) continue;
     if (quietFrom == null) quietFrom = sample.at;
     else if (sample.at - quietFrom >= recoveryMs)
       return samples.slice(0, i + 1);
@@ -251,6 +277,21 @@ function effortFrom(
  * "strength training", written unattended. A caller can bound its own gather, but the
  * segmenting is this function's contract rather than the caller's — so the cut is made
  * here, and a caller may hand over as many days as it likes.
+ *
+ * ── THE WHOLE TRACE MUST HAVE COME TO REST, NOT JUST THAT EFFORT ─────────────
+ * Segmenting moved the frontier, and the frontier is what says "a span still elevated at
+ * the end of the trace is a session in progress". Read on the CUT trace alone, a person
+ * resting between heavy sets long enough to drop inside their own range — and elevated
+ * again right now — had that refusal turned into an answer: the row flipped to finished
+ * mid-workout, which reaches the safety-tier post-workout dispatch and takes away the
+ * stale suggest's Finish button in the same move. The `updated_at` cancel does not catch
+ * it, because a set logged while still elevated stamps BEFORE the candidate.
+ *
+ * So the frontier question is asked of the WHOLE trace and the candidate is taken from
+ * the effort containing the start. Both rules survive segmentation, which is what the
+ * cut owed them. The cost is a delay and never a wrong write: someone who leaves this
+ * morning's session open and goes running at six has it finished after the run, at this
+ * morning's minute.
  */
 export function detectedWorkoutEnd(input: {
   samples: readonly ExertionSample[];
@@ -262,13 +303,28 @@ export function detectedWorkoutEnd(input: {
   lastSetAt: number | null;
 }): number | null {
   const recovery = exertionRecoveryMin(input.usualRecoveryMin) * MINUTE_MS;
-  const samples = effortFrom(
-    sorted(input.samples).filter((s) => s.at >= input.startedAt),
+  const trace = sorted(input.samples).filter((s) => s.at >= input.startedAt);
+  if (trace.length === 0) return null;
+
+  // NOBODY IS STILL GOING. Asked of the whole trace, before any segmenting — see the
+  // header. The newest elevated minute anywhere past the start must have `recovery` of
+  // measured quiet after it, or this person is exerting right now and no session of
+  // theirs has ended.
+  const frontier = trace[trace.length - 1].at + MINUTE_MS;
+  let newest: number | null = null;
+  for (const sample of trace)
+    if (sample.bpm > input.ceilingBpm) newest = sample.at + MINUTE_MS;
+  if (newest == null) return null;
+  if (newest + recovery > frontier) return null;
+  if (!quiet(trace, input.ceilingBpm, newest, newest + recovery)) return null;
+
+  const samples = effortFromStart(
+    trace,
     input.ceilingBpm,
-    recovery
+    recovery,
+    input.startedAt
   );
-  if (samples.length === 0) return null;
-  const last = samples[samples.length - 1].at + MINUTE_MS;
+  if (samples == null) return null;
 
   // The newest elevated minute is where this session ended, if it ended at all — an
   // earlier one would be a rest the person came back from.
@@ -277,8 +333,12 @@ export function detectedWorkoutEnd(input: {
     if (sample.bpm > input.ceilingBpm) candidate = sample.at + MINUTE_MS;
   }
   if (candidate == null) return null;
-  if (candidate + recovery > last) return null;
-  if (!quiet(samples, input.ceilingBpm, candidate, candidate + recovery))
+  // The candidate's own closing quiet, asked of the WHOLE trace. The two are equivalent
+  // today and provably so — the cut always extends at least `recovery` past the
+  // candidate, because that is the arithmetic it cuts on — which is exactly why it is
+  // asked here: the answer then does not depend on that property continuing to hold.
+  // No test separates them, and none can while it does.
+  if (!quiet(trace, input.ceilingBpm, candidate, candidate + recovery))
     return null;
   if (input.lastSetAt != null && input.lastSetAt >= candidate) return null;
   return candidate;

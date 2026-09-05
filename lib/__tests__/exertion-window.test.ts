@@ -325,6 +325,121 @@ describe("detectedWorkoutEnd", () => {
     ).toBe(at(160));
   });
 
+  // THE START MUST BE INSIDE THE EFFORT (#5212 third pass, R1). "The effort that
+  // contains the start" was really "the first effort at or after the start", so a row
+  // started at 08:00 whose trace has nothing elevated until an evening run was answered
+  // with the run's end — eleven hours of one session, written unattended.
+  it("says nothing when the start is in no effort at all", () => {
+    // MEASURED THROUGHOUT, deliberately: a gap here would be refused by the coverage
+    // rule instead and this case would stop testing the bound it is for. The trace says
+    // this person was inside their own resting range for ten hours after they started
+    // the row, and then went for a run.
+    const out: ExertionSample[] = [];
+    minutes(out, 0, 660, 55);
+    minutes(out, 660, 720, 120); // an evening run
+    minutes(out, 720, 780, 55);
+    expect(
+      detectedWorkoutEnd({
+        ...BASE,
+        samples: out,
+        startedAt: at(0),
+        lastSetAt: null,
+      })
+    ).toBeNull();
+  });
+
+  it("still answers when the effort starts inside the recovery after the start", () => {
+    // The control, and the case the rule must not break: a warm-up shorter than this
+    // profile's own recovery is part of the session they started.
+    const out: ExertionSample[] = [];
+    minutes(out, 0, 10, 55);
+    minutes(out, 10, 70, 120);
+    minutes(out, 70, 110, 55);
+    expect(
+      detectedWorkoutEnd({
+        ...BASE,
+        samples: out,
+        startedAt: at(0),
+        lastSetAt: null,
+      })
+    ).toBe(at(70));
+  });
+
+  it("says nothing when the minutes between the start and the effort are unmeasured", () => {
+    // Coverage is not quiet, at the OPENING edge too: nothing says the effort that
+    // begins at :10 is the one this row started, when nobody measured :02 to :09.
+    const out: ExertionSample[] = [];
+    minutes(out, 0, 2, 55);
+    minutes(out, 10, 40, 120);
+    minutes(out, 40, 80, 55);
+    expect(
+      detectedWorkoutEnd({
+        ...BASE,
+        samples: out,
+        startedAt: at(0),
+        lastSetAt: null,
+      })
+    ).toBeNull();
+  });
+
+  // NOBODY IS STILL GOING (#5212 third pass, R2). A rest longer than this profile's
+  // recovery closes the first effort, so the cut hid a frontier that was still elevated
+  // — and the refusal became an answer, finishing somebody mid-workout.
+  function restThenBackAtIt(): ExertionSample[] {
+    const out: ExertionSample[] = [];
+    minutes(out, 0, 35, 120); // the session
+    minutes(out, 35, 55, 55); // a rest longer than the recovery
+    minutes(out, 55, 65, 140); // and they are lifting again
+    return out;
+  }
+
+  it("says nothing while the trace is elevated at its frontier, whatever effort the start is in", () => {
+    expect(
+      detectedWorkoutEnd({
+        ...BASE,
+        samples: restThenBackAtIt(),
+        startedAt: at(0),
+        lastSetAt: null,
+      })
+    ).toBeNull();
+  });
+
+  it("says nothing at the frontier even when the recovery is shorter than a gap", () => {
+    // THE FRONTIER RULE EARNS ITS OWN LINE HERE. For most profiles the candidate's
+    // closing-quiet test already refuses a trace that ends elevated, because quiet past
+    // the frontier is unmeasured. For a profile whose own recovery is SHORTER than the
+    // coverage bound it does not: four minutes past the last sample is inside the gap
+    // this file forgives, so the quiet reads as satisfied and only the frontier test is
+    // left to say that this person is lifting right now.
+    const out: ExertionSample[] = [];
+    minutes(out, 0, 35, 120);
+    minutes(out, 35, 45, 55);
+    minutes(out, 45, 55, 140);
+    expect(
+      detectedWorkoutEnd({
+        ...BASE,
+        usualRecoveryMin: 4,
+        samples: out,
+        startedAt: at(0),
+        lastSetAt: null,
+      })
+    ).toBeNull();
+  });
+
+  it("ends the start's own effort once the whole trace comes to rest", () => {
+    // The same trace with the cool-down that was missing. Both rules hold at once: the
+    // frontier lets the answer through, and the answer is the FIRST effort's end rather
+    // than the later one's.
+    expect(
+      detectedWorkoutEnd({
+        ...BASE,
+        samples: minutes(restThenBackAtIt(), 65, 105, 55),
+        startedAt: at(0),
+        lastSetAt: null,
+      })
+    ).toBe(at(35));
+  });
+
   it("says nothing for a bare wrist — no minutes past the start", () => {
     // The 45-minute stale suggest stays the fallback; the trace decides or nothing does.
     expect(
