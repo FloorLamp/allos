@@ -13,6 +13,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { DATASETS, DELETE_POLICY, getDataset, toCsv } from "@/lib/export";
 import { OWNED_TABLES } from "@/lib/owned-tables";
 import { ownedChildTables } from "@/lib/profile-delete";
+import { stripComments } from "../__tests__/strip-comments";
 import { db } from "@/lib/db";
 import { seedProfile, type SeededProfile } from "./fixtures";
 
@@ -398,13 +399,15 @@ describe("the declared select is the statement the export runs (#5117)", () => {
           // itself is in hand, so the call can be looked for in its own source.
           //
           // WHAT THIS ESTABLISHES, exactly: the reader's CODE names `by(`. Comments
-          // are stripped first, because they are part of `String(fn)` and one line
-          // mentioning the function by name satisfied this while the reader called
-          // something else. It still does not establish that the emitted cell CAME
-          // from that call — the `built` check above is what says the cell is there,
-          // and the two together are what the declaration is worth.
-          const body = String(fn).replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, "");
-          if (!new RegExp(`\\b${cell.by}\\s*\\(`).test(body)) {
+          // are stripped first (the shared scanner, #3595 — they are part of
+          // `String(fn)`, and one line mentioning the function by name satisfied this
+          // while the reader called something else). It still does not establish that
+          // the emitted cell CAME from that call — the `built` check above is what
+          // says the cell is there, and the two together are what the declaration is
+          // worth.
+          if (
+            !new RegExp(`\\b${cell.by}\\s*\\(`).test(stripComments(String(fn)))
+          ) {
             missing.push(
               `${ds.key}.${cell.column}: ${ds.key}.${reader} never calls ${cell.by}() — jsBuilt names a function that does not build this cell`
             );
