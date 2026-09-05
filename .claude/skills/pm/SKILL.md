@@ -24,7 +24,7 @@ check-in. A ladder that lives in your prompt dies at compaction.
 Edit it whenever the owner re-ranks, a prerequisite lands, or a session is
 added: body in place, time stamped, verified by re-read.
 
-It carries STATE only: a rule goes to `docs/orchestration/rulings.md` the
+It carries STATE only: a rule goes to its `docs/orchestration/` runbook the
 same day, a per-issue ruling to that issue's body; the Ladder points.
 
 ## Bootstrap — sessions do not survive an account change

@@ -146,7 +146,6 @@ const FILE_BUDGETS = {
   "docs/orchestration/lifecycle.md": { lines: 80, genre: "runbook" },
   "docs/orchestration/multi-orchestrator.md": { lines: 60, genre: "runbook" },
   "docs/orchestration/recovery.md": { lines: 50, genre: "runbook" },
-  "docs/orchestration/rulings.md": { lines: 60, genre: "runbook" },
   "docs/orchestration/review-merge.md": { lines: 100, genre: "runbook" },
 } as const satisfies Record<string, { lines: number; genre: Genre }>;
 
