@@ -32,9 +32,9 @@
   mid-write leaves state its neighbour reads (load 21.6, 92 lost, one of them a
   `document-sync-provenance` assertion). Re-run alone on any untouched-file red.
 - `pgrep -f <pattern>` matches its OWN command line, so `until ! pgrep -f "…"`
-  never fires — the wait sits there forever with nothing left running. Use
-  `ps -eo args | grep <pattern> | grep -v grep`, which exits 1 when the process
-  is gone. Costs most in lanes polling for a dev server or a long run.
+  never fires; the bracket workaround `ps -eo args | grep '[p]attern'` is then
+  matched by the OTHER waiters, whose command lines carry the plain string.
+  Wait on a captured PID or a log terminator. Check-in `waiters:` counts them.
 - Use `E2E_PORT`, not `PORT`. The brief generator allocates non-overlapping port
   ranges.
 
