@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { useToast } from "@/components/Toast";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
@@ -14,7 +14,7 @@ import {
   type IntentPayload,
 } from "@/lib/offline/queue";
 import type { ArguedExclusion } from "@/lib/loggable-domains";
-import type { OneTapAffordance } from "@/lib/one-tap";
+import type { LedgerSettlement, OneTapAffordance } from "@/lib/one-tap";
 import type { UndoOffer } from "@/lib/undo-offer";
 
 // THE ONE CLIENT WRITE PIPELINE (#3276). Ten surfaces hand-wired the same commit dance
@@ -33,6 +33,9 @@ import type { UndoOffer } from "@/lib/undo-offer";
 //                  carries when the user tapped rather than when we gave up (#1427).
 //   undo         — `undo` on an announcement is required and nullable: declining is a
 //                  written `undo: null`; forgetting does not compile.
+//   optimistic   — the value a tap paints and the ending it settles on are ONE
+//                  declaration (`OptimisticValue`), so a surface cannot paint a guess
+//                  and then forget one of the three endings (#3728).
 //
 // It never interprets a domain outcome — only the caller knows whether "already
 // skipped" is a success sentence — and it runs no unattended retry: the bounded backoff
@@ -59,11 +62,18 @@ export type WriteAnnouncement =
     }
   | "silent";
 
-export interface WriteSettlement {
+export interface WriteSettlement<V = void> {
   // Did anything actually get written? Answered from the TYPED outcome, never from the
   // ask — a dose retired by a schedule edit wrote nothing however the request went.
   readonly wrote: boolean;
   readonly announce: WriteAnnouncement;
+  // WHAT THE SERVER SAYS THE VALUE NOW IS, for a surface that declared `optimistic`.
+  // Present, it is ADOPTED over whatever the tap guessed — the #748 item 2 rule the
+  // ledger already spells. Absent, the projection stands: an offline capture has no
+  // server figure to adopt, and a surface whose truth arrives by revalidation says so
+  // by naming the value its props feed (`null` on the dose override) rather than by
+  // leaving this out.
+  readonly value?: V;
 }
 
 // What this surface does with THIS tap on a dead connection. Three arms, so the choice
@@ -93,7 +103,27 @@ type OfflineHalf<A extends OneTapAffordance> =
     ? { readonly offline?: never }
     : { readonly offline: (tappedAt: Date) => OfflineDecision };
 
-export type WriteSpec<A extends OneTapAffordance, R> = {
+// THE OPTIMISTIC-VALUE CHANNEL (#3728). Every quick-log surface used to carry its own:
+// paint a guess, then hand-roll the three endings — adopt the server's figure, leave the
+// guess standing for a queued replay, or put the old value back. `StoolTypeControl` spelt
+// all three inline, and its rollback restored the value THIS tap fired from, so a
+// refusal on one of the seven buttons erased a reading a sibling tap had already landed.
+//
+// One channel, so a write's projection and its settlement cannot disagree: the surface
+// says what it shows and how this tap changes it, and the pipeline decides which of the
+// three endings applies from the SAME typed outcome that picks the sentence.
+export interface OptimisticValue<V> {
+  // The displayed value as it stands BEFORE this tap. Read at the tap, so it is the
+  // surface's own state and not a re-derivation.
+  readonly from: V;
+  // How this tap makes it look, painted before the request leaves.
+  readonly to: V;
+  // Writes a value into the surface's own state. The surface keeps its state where it
+  // is — the ledger's rule (#2041): a count indexed by day and slot has one home.
+  readonly commit: (value: V) => void;
+}
+
+export type WriteSpec<A extends OneTapAffordance, R, V = void> = {
   // Which write this is, when one surface hosts many independent targets (#2041). The
   // key names the WRITE, not the row.
   readonly key?: string;
@@ -101,26 +131,32 @@ export type WriteSpec<A extends OneTapAffordance, R> = {
   // holds one, which is what makes an un-stamped post unrepresentable.
   readonly fields: Readonly<Record<string, string>>;
   readonly action: (formData: FormData) => Promise<R>;
-  readonly settle: (result: R) => WriteSettlement;
+  readonly settle: (result: R) => WriteSettlement<V>;
+  // The value this tap moves, when the surface shows one. Omitted by a surface whose
+  // server action revalidates and re-renders it.
+  readonly optimistic?: OptimisticValue<V>;
   // What to say when the request itself did not complete and nothing was captured.
   readonly failureMessage: string;
 } & OfflineHalf<A>;
 
-export interface WritePipeline<A extends OneTapAffordance> {
+export interface WritePipeline<A extends OneTapAffordance, V = void> {
   readonly affordance: A;
   pending: (key?: string) => boolean;
   blocked: (key?: string) => boolean;
-  run: <R>(spec: WriteSpec<A, R>) => Promise<WriteResult>;
+  run: <R>(spec: WriteSpec<A, R, V>) => Promise<WriteResult>;
 }
 
-export function useWritePipeline<A extends OneTapAffordance>(
+// What one attempt ended up doing, plus the server's own figure when it named one.
+type Attempted<V> = { readonly result: WriteResult; readonly value?: V };
+
+export function useWritePipeline<A extends OneTapAffordance, V = void>(
   affordance: A
-): WritePipeline<A> {
+): WritePipeline<A, V> {
   const toast = useToast();
   const announceUndoable = useUndoableAction();
   const { enqueue } = useOfflineQueue();
   const stampLoggedVia = useLoggedViaStamp();
-  const ledger = useOptimisticLedger(affordance);
+  const ledger = useOptimisticLedger<V>(affordance);
 
   // ONE announcement path. An Undo rides only where `lib/undo-offer.ts` says it may.
   const say = useCallback(
@@ -175,7 +211,7 @@ export function useWritePipeline<A extends OneTapAffordance>(
   );
 
   const attempt = useCallback(
-    async <R>(spec: WriteSpec<A, R>, tappedAt: Date): Promise<WriteResult> => {
+    async <R>(spec: WriteSpec<A, R, V>, tappedAt: Date): Promise<Attempted<V>> => {
       const offline = spec.offline as
         ((at: Date) => OfflineDecision) | undefined;
       const online =
@@ -184,7 +220,8 @@ export function useWritePipeline<A extends OneTapAffordance>(
         const decision = offline(tappedAt);
         // `attempt` falls through to the network on purpose — a cross-profile write has
         // no offline path but is still worth trying, and a failure is reported below.
-        if (decision.kind !== "attempt") return capture(decision);
+        if (decision.kind !== "attempt")
+          return { result: await capture(decision) };
       }
 
       const formData = stampLoggedVia(new FormData());
@@ -200,41 +237,78 @@ export function useWritePipeline<A extends OneTapAffordance>(
         // the refusal copy is about a state the user is in, not about a dropped fetch.
         if (offline && shouldQueueOffline(navigator.onLine !== false, error)) {
           const decision = offline(tappedAt);
-          if (decision.kind === "capture") return capture(decision);
+          if (decision.kind === "capture")
+            return { result: await capture(decision) };
         }
         say({ message: spec.failureMessage, tone: "error", undo: null });
-        return "nothing";
+        return { result: "nothing" };
       }
       const settled = spec.settle(result);
       say(settled.announce);
-      return settled.wrote ? "wrote" : "nothing";
+      return settled.wrote
+        ? { result: "wrote", value: settled.value }
+        : { result: "nothing" };
     },
     [capture, say, stampLoggedVia]
   );
 
+  // THE VALUE A ROLLBACK RETURNS TO — the last one the server accepted, which is
+  // `useSaveStatus`'s `saved` ref answering the same question (#4688). A ref, because
+  // it is read when a write SETTLES, not in the render whose closure started it, and
+  // that definition is what keeps a refusal from erasing a newer success: with two taps
+  // out, the failing one puts back whatever the server last took, never the snapshot it
+  // was fired from, which a sibling tap may already have replaced.
+  const settled = useRef<V | undefined>(undefined);
+  const inFlight = useRef(0);
+
   const run = useCallback(
-    async <R>(spec: WriteSpec<A, R>): Promise<WriteResult> => {
+    async <R>(spec: WriteSpec<A, R, V>): Promise<WriteResult> => {
       if (ledger.blocked(spec.key)) return "nothing";
       // Stamped up front: everything below — the round trip, its failure, the queue
       // write — happens after the moment the user acted.
       const tappedAt = new Date();
+      const projection = spec.optimistic;
+      // Re-read the surface's own truth only while nothing is out. Mid-burst the
+      // caller's `from` is a sibling tap's PROJECTION, and taking it as settled would
+      // make a rollback promise a write that has not answered yet.
+      if (projection && inFlight.current === 0) settled.current = projection.from;
+      inFlight.current += 1;
       // Held in a local rather than read off `tap`'s return so the ledger sees exactly
       // one settlement and the caller sees exactly one answer.
-      let outcome: WriteResult = "nothing";
-      await ledger.tap({
-        key: spec.key,
-        write: async () => {
-          outcome = await attempt(spec, tappedAt);
-        },
-        settle: () =>
-          outcome === "nothing" ? { kind: "rollback" } : { kind: "keep" },
-        onError: () => {
-          outcome = "nothing";
-          say({ message: spec.failureMessage, tone: "error", undo: null });
-          return { kind: "rollback" };
-        },
-      });
-      return outcome;
+      let outcome: Attempted<V> = { result: "nothing" };
+      const restore = (): LedgerSettlement<V> =>
+        projection ? { kind: "rollback", to: settled.current } : { kind: "rollback" };
+      try {
+        await ledger.tap({
+          key: spec.key,
+          from: projection?.from,
+          optimistic: projection?.to,
+          commit: projection?.commit,
+          write: async () => {
+            outcome = await attempt(spec, tappedAt);
+          },
+          settle: () => {
+            if (outcome.result === "nothing") return restore();
+            if (outcome.value !== undefined) {
+              settled.current = outcome.value;
+              return { kind: "adopt", value: outcome.value };
+            }
+            // A capture, or a write with no authoritative figure: the projection is
+            // what stands in for it until the replay or the revalidation, so it is
+            // also what a later rollback must come back to.
+            if (projection) settled.current = projection.to;
+            return { kind: "keep" };
+          },
+          onError: () => {
+            outcome = { result: "nothing" };
+            say({ message: spec.failureMessage, tone: "error", undo: null });
+            return restore();
+          },
+        });
+      } finally {
+        inFlight.current -= 1;
+      }
+      return outcome.result;
     },
     [attempt, ledger, say]
   );
