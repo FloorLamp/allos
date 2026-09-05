@@ -385,11 +385,11 @@ export default async function UpcomingPage(props: {
           CARD, and the skeleton's own frame is already most of their height.
           Measured in the browser against the seeded UPCOMING_AGG profile (a
           Playwright `boundingBox()` on the fallback, and on the sections it stands
-          in for): the frame alone is 74px, plus its own `mt-8` a 106px footprint;
-          the two collapsed disclosures are 16px each plus an `mt-8` each — a 96px
-          footprint when both render, 48px when one does. So `h-0` is the closest
-          this skeleton can get, and every remaining pixel of it is over-reserve at
-          the bottom of the page. */}
+          in for): the frame alone is 74px, so with its own `mt-8` a 106px
+          footprint. The one disclosure that rendered on that fixture is 16px, so
+          48px of footprint with its `mt-8` — and the other is the same shape. So
+          `h-0` is the closest this skeleton can get, and every remaining pixel of
+          it is over-reserve at the bottom of the page. */}
       <Suspense
         fallback={
           <div className="mt-8">
