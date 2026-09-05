@@ -38,7 +38,10 @@ function goal(overrides: Partial<OutcomeGoal>): OutcomeGoal {
 }
 
 describe("computeBodyGoalProgress", () => {
-  it("null current is never done", () => {
+  // The zeroed numbers AND the reason for them (#5198): nothing has been weighed, so
+  // the 0 is an absence of evidence rather than a measured value, and the row that
+  // states the endpoints reads the difference off `unavailable` instead of guessing.
+  it("null current is never done and says it was never measured", () => {
     const g = goal({
       body_metric: "weight",
       target_value: 80,
@@ -49,7 +52,11 @@ describe("computeBodyGoalProgress", () => {
       target: 80,
       pct: 0,
       done: false,
+      unavailable: "no-readings",
     });
+    // The converse in the same case: a real reading of the same shape carries no
+    // unavailable at all, so the marker means "no evidence" and not "low value".
+    expect(computeBodyGoalProgress(g, 90).unavailable).toBeUndefined();
   });
 
   it("maintain goal (baseline === target): done only when current is at target", () => {
@@ -167,7 +174,7 @@ describe("computeGoalProgress", () => {
     );
   });
 
-  it("no matching sets yields zeroed progress", () => {
+  it("no matching sets yields zeroed progress, marked as never measured", () => {
     const g = goal({ metric: "weight", target_weight_kg: 100 });
     const p = computeGoalProgress(g, []);
     expect(p).toEqual({
@@ -176,7 +183,17 @@ describe("computeGoalProgress", () => {
       pct: 0,
       done: false,
       lifetimeBest: 0,
+      unavailable: "no-readings",
     });
+    // DETRAINING IS NOT ABSENCE (#5198). This goal has a set — outside the trailing
+    // window — so its `current` of 0 is a measured drop-off and stays unmarked.
+    const detrained = computeGoalProgress(
+      g,
+      [set({ weight_kg: 80, date: "2020-01-01" })],
+      "2026-06-17"
+    );
+    expect(detrained).toMatchObject({ current: 0, lifetimeBest: 80 });
+    expect(detrained.unavailable).toBeUndefined();
   });
 
   it("without a today, current equals the lifetime best (backward compatible)", () => {

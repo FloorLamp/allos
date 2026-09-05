@@ -3,12 +3,14 @@ import {
   actionCandidate,
   careCandidates,
   profileDataRelevance,
+  progressCandidates,
   readingCandidate,
   sleepCandidates,
   stateCandidate,
   statementCandidate,
 } from "../dashboard-candidates";
 import {
+  placementsInLane,
   rankDashboardCandidates,
   type DashboardCandidate,
   type DashboardPlacement,
@@ -285,9 +287,6 @@ describe("fixed Standing instrument cluster", () => {
       reading("sleep.nap:today:600", 3),
       reading("sleep.regularity:today", 4),
       reading("unregistered.reading", 5),
-      reading("target.weekly-progress:complete", 6, {
-        standingEligible: false,
-      }),
     ];
     expect(standingIds(candidates)).toEqual([]);
     expect(
@@ -324,7 +323,7 @@ describe("fixed Standing instrument cluster", () => {
         windowOpen: false,
         changed: true,
       },
-      readingPromotion: "weekly-target-transition",
+      readingPromotion: "training-best",
     });
     const placements = rank([promoted]);
     expect(placements).toHaveLength(1);
@@ -439,35 +438,43 @@ describe("a capped Standing family's tail", () => {
     ).toMatchObject({ lane: "everything" });
   });
 
-  it("celebrates a met weekly target once and then leaves every lane", () => {
-    const unmet = reading("target.weekly-progress:1", 400);
-    const met = (promoted: boolean) =>
-      reading("target.weekly-progress:2", 401, {
-        standingEligible: false,
-        ...(promoted
-          ? {
-              rankReasons: changedReasons,
-              readingPromotion: "weekly-target-transition" as const,
-            }
-          : {}),
-      });
+  // A MET TARGET TAKES NO SEAT AT ALL (#4756's ruling, delivered by #5064). It used
+  // to mint a promoted reading and card at the top of Right now — a receipt for work
+  // the logging surface had already confirmed. Driven through the family's OWN
+  // builder rather than a hand-assembled candidate, so re-introducing a promoted arm
+  // reds HERE and not only in the registry list: a hand-made candidate would simply
+  // stop compiling and prove nothing about what the builder emits.
+  it("leaves a met weekly target in no lane at all", () => {
+    const target = (id: number, behind = false) =>
+      progressCandidates.targetProgress(
+        { subject: profile, sourceOrder: 400 + id },
+        id,
+        behind
+      );
 
+    const met = target(2);
+    expect(met.rankReasons.changed).toBe(false);
+    expect(met.readingPromotion).toBeUndefined();
+
+    // The met row keeps its Standing seat and takes NO Now seat — which is the
+    // whole ruling: the week is still stated, it just stops being news.
     expect(
-      rank([unmet, met(true)]).map(({ candidate, lane }) => [
+      rank([target(1), met]).map(({ candidate, lane }) => [
         candidate.candidateId,
         lane,
       ])
     ).toEqual([
-      ["target.weekly-progress:2", "now"],
       ["target.weekly-progress:1", "standing"],
+      ["target.weekly-progress:2", "standing"],
     ]);
 
+    // The converse, so "standing" above is not this family's one and only answer:
+    // a behind target seats in Standing's ATTENTION band, not the quiet rest.
     expect(
-      rank([unmet, met(false)]).map(({ candidate, lane }) => [
-        candidate.candidateId,
-        lane,
-      ])
-    ).toEqual([["target.weekly-progress:1", "standing"]]);
+      placementsInLane(rank([target(3, true)]), "standing").map(
+        ({ standingBand }) => standingBand
+      )
+    ).toEqual(["attention"]);
   });
 
   it("gathers the seats a capped family has plus its live promotions", () => {

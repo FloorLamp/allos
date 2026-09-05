@@ -231,6 +231,8 @@ function git(args, { allowFail = false, cwd = repoRoot } = {}) {
   }
 }
 
+const MAIN_REF = "refs/remotes/origin/main";
+
 export function branchGitArgs(branch) {
   const localRef = `refs/heads/${branch}`;
   const remoteRef = `refs/remotes/origin/${branch}`;
@@ -240,6 +242,17 @@ export function branchGitArgs(branch) {
     remoteExists: ["show-ref", "--verify", remoteRef],
     localExists: ["show-ref", "--verify", localRef],
     deleteLocal: ["branch", "-D", branch],
+    // The messages of the commits this branch has and origin/main does not,
+    // newest first, for the `Claude-Session:` trailer (#5179). `--not
+    // origin/main` is load-bearing, not tidiness: a squash merge onto main
+    // carries the trailers of every commit it squashed, so a branch sitting AT
+    // main's head reads as owned by whoever last landed, and a check that
+    // refused there would refuse a fresh branch on most days.
+    localOwn: ["log", "--format=%B", localRef, "--not", MAIN_REF],
+    remoteOwn: ["log", "--format=%B", remoteRef, "--not", MAIN_REF],
+    // Does the REMOTE have it, when this clone has no ref for it? Read-only —
+    // it moves nothing in the shared .git every worktree here shares.
+    onRemote: ["ls-remote", "origin", localRef],
   };
 }
 
@@ -1614,6 +1627,19 @@ export function unreadableClaimRefusal(rows) {
 // the same question at merge time — one reader, not a third convention.
 
 /**
+ * The open PR this branch heads whose body ATTRIBUTES it, or null. One
+ * spelling, because two readers now ask it: the refusal below, and the caller
+ * deciding whether the PR bodies answered at all (#5179).
+ *
+ * @param {{ head?: { ref?: string }, number?: number, body?: string }[]} prs
+ * @param {string} branch
+ */
+function attributedPr(prs, branch) {
+  const pr = (prs ?? []).find((p) => p?.head?.ref === branch);
+  return pr && bodySession(pr.body) ? pr : null;
+}
+
+/**
  * Refusal when an OPEN PR already has this branch as its head and its body
  * names a session other than the one running. Null when it does not, and null
  * when there is nothing to compare against — those are WARNINGS the caller
@@ -1626,8 +1652,8 @@ export function unreadableClaimRefusal(rows) {
  */
 export function branchPrRefusal(prs, branch, self) {
   if (!self) return null;
-  const pr = (prs ?? []).find((p) => p?.head?.ref === branch);
-  const theirs = pr ? normaliseSession(bodySession(pr.body)) : null;
+  const pr = attributedPr(prs, branch);
+  const theirs = pr && normaliseSession(bodySession(pr.body));
   if (!theirs || theirs === self) return null;
   return (
     `REFUSED: ${branch} is the head of open PR #${pr.number}, whose body names ` +
@@ -1636,6 +1662,117 @@ export function branchPrRefusal(prs, branch, self) {
     "control of its own landing slot (#5177). Dispatch onto a branch of your " +
     `own, or pass ${ADOPT_CLAIM} if the two sessions have actually agreed.`
   );
+}
+
+// THE SAME QUESTION AGAIN, FOR THE BRANCHES A PR CANNOT ANSWER FOR (#5179).
+//
+// `branchPrRefusal` above returns null whenever no OPEN PR has the branch as
+// its head, and that is most of this repo's branches: banked work is
+// branch-only by design, and #5220's census counted 70 remote branches with no
+// open PR, only 14 of which introduce zero files against their merge base. A
+// closed PR and a body that lost its footer land in the same silence. The commit trailer answers for all three,
+// because every commit an agent pushes here carries `Claude-Session:`.
+//
+// TWO READERS, TWO POPULATIONS, AND THE REFUSAL SAYS WHICH ONE ANSWERED — a
+// caller cannot act on "refused" without knowing whether the PR body or the
+// commit decided, since only one of them has a PR to go and read.
+
+/**
+ * The session a commit message's `Claude-Session:` trailer names, or null.
+ *
+ * The trailer LINE AT COLUMN 0, never any session id in the prose: commit
+ * messages here quote refusals and each other, and a commit that quotes
+ * `session_x` — or quotes a whole trailer, indented, as a quotation is written
+ * — is not a commit `session_x` wrote. `--format=%B` prints a message raw, so
+ * a real trailer is always unindented and this costs nothing.
+ *
+ * The FIRST trailer wins, because the reader hands this the branch's own
+ * commits NEWEST FIRST — so the first trailer in the text is the
+ * most recent commit that signed one, and a `git merge origin/main` commit
+ * (which signs nothing) falls through to the work underneath it instead of
+ * reading as an unowned branch.
+ *
+ * @param {string|null|undefined} messages one or more commit messages, newest first
+ */
+export function trailerSession(messages) {
+  const line = String(messages ?? "")
+    .split("\n")
+    .find((l) => /^Claude-Session:/i.test(l));
+  return line ? normaliseSession(line) : null;
+}
+
+/**
+ * Refusal when the trailer on the branch's own work names another session.
+ * Null when it names this one, null when there is no trailer — an unmarked
+ * commit is not attributable, which is the same answer `branchPrRefusal` gives
+ * an unmarked PR body.
+ *
+ * Call this only where the PR bodies did not attribute the branch. It does NOT
+ * say WHY they did not, because it cannot tell: no open PR heads it, the one
+ * that does carries no session footer, and the PR list could not be read at all
+ * are three different worlds, and the third is the one an enumeration gets
+ * wrong. A refusal that names a cause it has not established sends its reader
+ * to look for a PR that may exist and may not — the exact harm naming the
+ * deciding reader exists to prevent — so it points at the `[pr-owner]` line the
+ * caller always prints just above it, which does know.
+ *
+ * @param {string|null} messages the branch's own commit messages, newest first
+ * @param {string} branch the branch about to be dispatched onto
+ * @param {string|null} self the running session, normalised
+ */
+export function branchTrailerRefusal(messages, branch, self) {
+  if (!self) return null;
+  const theirs = trailerSession(messages);
+  if (!theirs || theirs === self) return null;
+  return (
+    `REFUSED: the newest commit ${branch} carries and origin/main does not has ` +
+    `a Claude-Session: trailer naming ${theirs} — ANOTHER orchestrator session ` +
+    `(this one is ${self}). No PR body attributed ${branch} — the [pr-owner] ` +
+    "line above says what was read — so the COMMIT TRAILER did (#5179). " +
+    "Pushing onto it is two writers on one branch. The alternative that works: " +
+    "REVIEW it and COMMENT the finding on its issue or PR, and let the owning " +
+    "session push the fix — that is what happened on #5139 after the fact. Or " +
+    `dispatch onto a branch of your own, or pass ${ADOPT_CLAIM} if the two ` +
+    "sessions have actually agreed."
+  );
+}
+
+/**
+ * The messages of the commits `branch` carries and origin/main does not, or a
+ * stated reason there are none to read. Local ref first, then this clone's
+ * remote-tracking ref, then the remote itself — because a branch another
+ * session banked from another clone has no ref here at all, and "I have no ref
+ * for it" must not read as "it has no trailer".
+ *
+ * @returns {{ messages: string, ref: string } | { absent: string } | { unknown: string }}
+ */
+function ownCommitsReader(branch) {
+  const args = branchGitArgs(branch);
+  let sawRef = false;
+  for (const [exists, own, ref] of [
+    [args.localExists, args.localOwn, `refs/heads/${branch}`],
+    [args.remoteExists, args.remoteOwn, `origin/${branch}`],
+  ]) {
+    if (git(exists, { allowFail: true }) === null) continue;
+    sawRef = true;
+    const messages = git(own, { allowFail: true });
+    if (messages === null)
+      return {
+        unknown: `${ref} exists but \`git log ${ref} --not origin/main\` failed`,
+      };
+    if (messages) return { messages, ref };
+  }
+  if (sawRef) return { absent: "every commit on it is already in origin/main" };
+  const onRemote = git(args.onRemote, { allowFail: true });
+  if (onRemote === null)
+    return { unknown: `\`git ls-remote origin refs/heads/${branch}\` failed` };
+  return onRemote
+    ? {
+        unknown:
+          `origin has ${branch} but this clone has no ref for it — run ` +
+          `\`git fetch origin ${branch}\` and dispatch again`,
+      }
+    : { absent: "it exists neither here nor on origin" };
 }
 
 /** Open PRs over the live API, or a stated reason they could not be read. */
@@ -1668,36 +1805,115 @@ function openPrsReader(repo = process.env.RECONCILE_REPO || "FloorLamp/allos") {
 }
 
 /**
+ * BOTH READERS, IN ORDER, AS ONE DECISION — pure, with the reads handed in, so
+ * the ordering is drivable without a network or a git tree (the #4473 shape).
+ * Both are thunks: the second reader only runs when the first did not answer,
+ * and that laziness is the whole ordering — neither costs a call it need not.
+ *
+ * @param {string} branch
+ * @param {string|null} self the running session, normalised
+ * @param {{ readPrs: () => { prs: object[] } | { unknown: string },
+ *           readOwnCommits: () => { messages: string, ref: string } | { absent: string } | { unknown: string } }} reads
+ * @returns {{ refusal: string|null, notes: string[] }}
+ */
+export function branchOwnerVerdict(branch, self, reads) {
+  const notes = [];
+  if (!self)
+    return {
+      refusal: null,
+      notes: [
+        `[pr-owner] UNCHECKED: this host exposes no session id, so whether ${branch} ` +
+          "belongs to another session was not asked (#5177).",
+      ],
+    };
+  const prs = reads.readPrs();
+  if ("unknown" in prs) {
+    notes.push(
+      `[pr-owner] CANNOT TELL: could not read the open PRs (${prs.unknown}) — ` +
+        `whether ${branch} is another session's landing slot is UNANSWERED by the ` +
+        "PR bodies (#5177). Asking the commit trailer instead (#5179)."
+    );
+  } else {
+    const refusal = branchPrRefusal(prs.prs, branch, self);
+    if (refusal) return { refusal, notes };
+    // The PR body ANSWERED, and the answer was "this session's". Stop: the
+    // body is the authority when it has one, and the trailer can legitimately
+    // disagree — the #5139 incident left another session's commits on the head
+    // of a PR whose owner is still its owner, and refusing that owner from
+    // their own landing slot is the opposite of this guard's job.
+    const pr = attributedPr(prs.prs, branch);
+    if (pr)
+      return {
+        refusal: null,
+        notes: [
+          ...notes,
+          `[pr-owner] ${branch} heads open PR #${pr.number}, whose body names this ` +
+            "session (#5177).",
+        ],
+      };
+    notes.push(
+      `[pr-owner] ${branch} heads none of the ${prs.prs.length} open PRs with ` +
+        "a session footer (#5177), so the PR bodies did not answer — asking the " +
+        "commit trailer instead (#5179)."
+    );
+  }
+  // THE FALLBACK, AND ITS FAILURES ARE WARNINGS RATHER THAN REFUSALS — the
+  // posture `branchPrRefusal` set, and #4460 governs it: this read runs on
+  // EVERY dispatch, so a git or network hiccup that refused would cost every
+  // lane its start, while the other direction is bounded — `merge-gate.mjs`
+  // asks ownership again, off the same marker, before anything lands. What a
+  // warning may NOT do is read like a pass, so each one says what it examined.
+  const own = reads.readOwnCommits();
+  if ("unknown" in own)
+    return {
+      refusal: null,
+      notes: [
+        ...notes,
+        `[branch-owner] CANNOT TELL: nothing to read for ${branch} (${own.unknown}), ` +
+          "so whose branch it is went UNANSWERED (#5179).",
+      ],
+    };
+  if ("absent" in own)
+    return {
+      refusal: null,
+      notes: [
+        ...notes,
+        `[branch-owner] ${branch} carries no unlanded commit — ${own.absent} — so ` +
+          "there is no trailer to own it (#5179).",
+      ],
+    };
+  const refusal = branchTrailerRefusal(own.messages, branch, self);
+  if (refusal) return { refusal, notes };
+  return {
+    refusal: null,
+    notes: [
+      ...notes,
+      trailerSession(own.messages)
+        ? `[branch-owner] ${own.ref}'s newest unlanded commit names this session (#5179).`
+        : `[branch-owner] no commit on ${own.ref} outside origin/main carries a ` +
+          "Claude-Session: trailer — nothing attributes it, so this dispatches as " +
+          "it always did (#5179).",
+    ],
+  };
+}
+
+/**
  * The branch-ownership check as `new` and `adopt` run it. It prints what it
  * examined either way, so an answer it could not reach never passes for a
  * clean one, and it exits 1 on a positive finding.
  */
 function refuseAnotherSessionsBranch(branch, adopted) {
   if (adopted) return;
-  const self = normaliseSession(process.env.CLAUDE_CODE_REMOTE_SESSION_ID);
-  if (!self) {
-    console.error(
-      `[pr-owner] UNCHECKED: this host exposes no session id, so whether ${branch} ` +
-        "belongs to another session was not asked (#5177)."
-    );
-    return;
-  }
-  const got = openPrsReader();
-  if ("unknown" in got) {
-    console.error(
-      `[pr-owner] CANNOT TELL: could not read the open PRs (${got.unknown}) — ` +
-        `whether ${branch} is another session's landing slot is UNANSWERED (#5177).`
-    );
-    return;
-  }
-  const refusal = branchPrRefusal(got.prs, branch, self);
+  const { refusal, notes } = branchOwnerVerdict(
+    branch,
+    normaliseSession(process.env.CLAUDE_CODE_REMOTE_SESSION_ID),
+    { readPrs: openPrsReader, readOwnCommits: () => ownCommitsReader(branch) }
+  );
+  for (const note of notes) console.error(note);
   if (refusal) {
     console.error(refusal);
     process.exit(1);
   }
-  console.error(
-    `[pr-owner] ${branch} heads none of the ${got.prs.length} open PRs (#5177).`
-  );
 }
 
 /** `commentsFor` over the live API. Every failure names itself; none is CLEAR. */

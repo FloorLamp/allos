@@ -58,7 +58,8 @@ import {
 } from "@/lib/coaching";
 import { collectCoachingFindings } from "@/lib/rule-findings";
 import { pickNextAppointment } from "@/lib/household";
-import { goalPct, isGoalLive } from "@/lib/outcome-goals";
+import { isGoalLive } from "@/lib/outcome-goals";
+import { goalProgressStatement } from "@/lib/goal-facts";
 import {
   frequencyPaceLabel,
   frequencyScopeLabel,
@@ -79,7 +80,8 @@ import { writeSubjectName } from "@/lib/own-profile";
 import { currentFoodSlotWindow } from "@/lib/queries/nutrition";
 import { getUsualRoutineOffer } from "@/lib/queries/usual-routine";
 import { foodGroupName } from "@/lib/food-groups";
-import { usualRoutineFoodMembers } from "@/lib/usual-routine";
+import { namesPhrase, usualRoutineFoodMembers } from "@/lib/usual-routine";
+import { TIME_BUCKET_LABELS, type TimeBucket } from "@/lib/intake-schedule";
 import { withAiLogContext } from "@/lib/ai-log";
 import { runRecommendation } from "@/lib/recommendation-engine";
 import {
@@ -155,7 +157,9 @@ import {
   type StandingFamilyKey,
 } from "@/lib/dashboard-standing";
 import {
-  attentionCandidates,
+  attentionEntries,
+  attentionEntryCandidate,
+  type AttentionEntry,
   attentionAheadDetail,
   attentionDoseChipLabel,
   careCandidates,
@@ -194,6 +198,7 @@ import StreamLifecycleOfferControls from "@/components/integrations/StreamLifecy
 import Button from "@/components/Button";
 import DoseConfirmButton from "@/components/DoseConfirmButton";
 import SnoozeDismissMenu from "@/components/SnoozeDismissMenu";
+import DoseSlotTakeAll from "@/components/dashboard/DoseSlotTakeAll";
 import FollowUpResolveControls from "@/components/FollowUpResolveControls";
 import FindingDismissButton from "@/components/FindingDismissButton";
 import PreventiveReviewControls from "@/components/PreventiveReviewControls";
@@ -298,7 +303,6 @@ import {
   clinicalResultBecameNotable,
   outcomeGoalProgressChanged,
   sleepArrivedInWakeWindow,
-  weeklyTargetStateChanged,
 } from "@/lib/dashboard-reading-promotions";
 import {
   biomarkerFlagDismissalKey,
@@ -312,7 +316,6 @@ import {
 } from "@/lib/upcoming";
 import { isSuppressed } from "@/lib/upcoming-suppress";
 import { itemDetailText } from "@/lib/upcoming-aggregate";
-import { dashboardAttentionCandidateId } from "@/lib/dashboard-attention-identity";
 import { loadContextLabel } from "@/lib/lifts";
 import { formatMinutes } from "@/lib/duration";
 
@@ -1354,15 +1357,82 @@ async function renderDashboard(
 
   const attentionBadgeCount = attentionBadgeItems(attention, on).length;
   const attentionItems = [...attention];
-  for (const candidate of attentionCandidates(
-    profileSubject,
-    attentionItems,
-    on
-  )) {
-    const item = attentionItems.find(
-      (entry) =>
-        dashboardAttentionCandidateId(entry.key) === candidate.candidateId
-    )!;
+  // WHICH SLOTS ALREADY HAVE A SEAT (#5063) — read below by the usual-routine offer,
+  // which becomes the seated slot's control instead of opening a row of its own.
+  const seatedDoseSlots = new Set<TimeBucket>();
+  // ONE SLOT, ONE ROW (#5063). The row IS the slot run #2579 already ships on
+  // /upcoming: the bucket and its count name it, its members are the dose chips
+  // under that header — each stating what the header does not, its own dose — and
+  // the trailing cell holds the one tap that writes the whole slot. When the
+  // usual-routine offer covers this same slot it IS that tap, rather than opening a
+  // second row further down the page for the same act.
+  const addDoseSlotRow = (
+    entry: Extract<AttentionEntry, { kind: "dose-slot" }>,
+    candidate: DashboardCandidate
+  ) => {
+    const label = `${TIME_BUCKET_LABELS[entry.bucket]} (${entry.items.length})`;
+    const members = entry.items.map((item) => ({
+      doseId: item.doseId!,
+      // The CONTROL form of the name (#2858), collision-resolved across the whole
+      // profile by the gather — this chip's tap WRITES, so it may not wear a name
+      // another item also answers to.
+      name: item.shortLabel ?? item.title,
+      title: item.title,
+    }));
+    // Ahead is read-only, so it states the slot and when it opens and nothing else.
+    // Every member shares the bucket, so the lead member's sentence is the slot's.
+    aheadPresentations.set(candidate.candidateId, {
+      label,
+      detail: attentionAheadDetail(entry.items[0]!, on, formatPrefs),
+    });
+    const routine =
+      routineControl != null && routineControl.window === entry.bucket
+        ? routineControl
+        : null;
+    add(candidate, {
+      label,
+      detail: canWrite ? (
+        // `gap-3` BETWEEN TWO CHIPS, not a tighter list gap: `chip-base`'s
+        // coarse-pointer `::after` reaches 6px past the pill, so anything narrower
+        // overlaps two effective targets on a phone (#3938).
+        <span className="flex w-full flex-wrap items-center gap-3">
+          {members.map((member) => (
+            <DoseConfirmButton
+              key={member.doseId}
+              action={markAttentionDose}
+              undoAction={undoAttentionDose}
+              fields={{ dose_id: member.doseId }}
+              payload={member.name}
+              ariaLabel={`Take ${member.title}`}
+              testid="attention-mark-taken"
+            />
+          ))}
+        </span>
+      ) : (
+        namesPhrase(members.map((member) => member.name))
+      ),
+      control: canWrite ? (
+        routine ? (
+          <UsualRoutineControl {...routine} />
+        ) : (
+          <DoseSlotTakeAll date={on} doses={members} />
+        )
+      ) : undefined,
+    });
+  };
+  for (const entry of attentionEntries(attentionItems)) {
+    const candidate = attentionEntryCandidate(
+      profileSubject,
+      entry,
+      on,
+      sourceOrder
+    );
+    if (entry.kind === "dose-slot") {
+      seatedDoseSlots.add(entry.bucket);
+      addDoseSlotRow(entry, candidate);
+      continue;
+    }
+    const item = entry.item;
     // AHEAD SAYS WHEN, AND NOW ALSO WHY (#4076, #4319). A schedule's sentence is its
     // due text; the row below says WHAT, because outside Ahead the item's own detail
     // is the content a person came to read — the biomarker retest sentence, "Vitamin
@@ -2014,7 +2084,15 @@ async function renderDashboard(
   sourceOrder += coachingRecs.length;
 
   goals.forEach((goal, index) => {
-    const pct = goalPct(goal, goalProgress.get(goal.id));
+    // ENDPOINTS FIRST, PERCENT AS THE ANNOTATION (#5198). "Resting HR goal · 27%"
+    // asked the reader 27% of the way from WHAT to what; the row states
+    // "63 → 58 bpm · 27%" through the one goal-progress formatter every surface
+    // shares, so the percent has something to be a percent OF.
+    const statement = goalProgressStatement(
+      goal,
+      goalProgress.get(goal.id),
+      units.weightUnit
+    );
     add(
       progressCandidates.goal(
         { subject: profileSubject, sourceOrder: sourceOrder + index },
@@ -2023,7 +2101,8 @@ async function renderDashboard(
       ),
       {
         label: goal.title,
-        value: pct == null ? "In progress" : `${pct}%`,
+        value: statement.value,
+        detail: statement.percent ?? undefined,
         href: "/training?tab=goals",
         presence: "current",
       }
@@ -2058,17 +2137,11 @@ async function renderDashboard(
       progressCandidates.targetProgress(
         { subject: profileSubject, sourceOrder: sourceOrder + index * 2 },
         id,
-        !progress.met,
         // Owner ruling #3548: a behind target is a HIGHLIGHTED READING in Standing's
-        // attention tier, "not a Now card". A calendar week compares against its own
-        // zero-evidence opening, so crossing into behind on day 4 stays a live
-        // transition for the rest of the week — which, before this, kept both
-        // readings parked in Now exactly as #3245 described the log offers doing.
-        // The crossing is still told; `owed` is where it is told from. What the
-        // promotion keeps is the transitions that remain Now facts: reaching met,
-        // and coming back onto pace.
-        weeklyTargetStateChanged(progress, progress.previous ?? null) &&
-          !behind,
+        // attention tier, "not a Now card". The crossing is told by `owed`, and by
+        // #4756/#5064 that is the ONLY thing this family tells Now — the met and
+        // back-on-pace transitions used to mint a promoted reading, and a promoted
+        // reading of a finished week is a receipt, not a moment.
         behind
       ),
       {
@@ -2297,7 +2370,15 @@ async function renderDashboard(
         presence: "never",
       }
     );
-  if (routineControl && routineTiming)
+  // ONE ACT, ONE SEAT (#5063). A slot seated above already carries this offer as its
+  // control, so a second row for the same tap would be the defect this issue names —
+  // the bundle sitting in the fold under the stragglers of the slot it would have
+  // written. Nothing is lost: the offer is on the page, on the row for its own slot.
+  if (
+    routineControl &&
+    routineTiming &&
+    !seatedDoseSlots.has(routineControl.window)
+  )
     add(
       dailyCandidates.usualRoutine(
         {

@@ -178,8 +178,10 @@ function seedReportedProfile(name: string): {
   ]);
   logLifts(pid, shiftDateStr(t, -3), ["Barbell Bench Press"]);
   logCardio(pid, shiftDateStr(t, -2), "Running");
+  // ONE session, not two: a rolling window has only today left, so 2 of 3 would fit
+  // and read on-pace (#4758). The #2017 claim below is about a practice that still has
+  // a live shortfall of its own, so the fixture has to keep one.
   logPracticeSession(pid, "Red light therapy", shiftDateStr(t, -4), "page");
-  logPracticeSession(pid, "Red light therapy", shiftDateStr(t, -2), "page");
 
   return { pid, backId, chestId, cardioId, practiceId };
 }
@@ -245,7 +247,7 @@ describe("the composed workout nudge (#2015/#2016/#2017)", () => {
     const practice = buildPracticeReminder(pid, "nonce1")!;
     expect(practice.kind).toBe("practice");
     expect(practice.body).toContain(
-      "Red light therapy — 2 of 3 this week, one more to go"
+      "Red light therapy — 1 of 3 this week, 2 more to go"
     );
   });
 

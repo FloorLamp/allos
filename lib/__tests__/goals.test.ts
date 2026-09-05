@@ -265,9 +265,9 @@ describe("frequencyPace never fails a week (Monday-morning regression)", () => {
   });
 
   it("Monday morning (day 1) of a fresh week is on-pace, not behind", () => {
-    // floor(perWeek * 1 / 7) === 0 for perWeek ≤ 6, so 0 done ≥ 0 owed → on-pace.
-    // (A daily 7×/week habit already owes 1 on day 1 — behind, but still never rose.)
-    for (let perWeek = 1; perWeek <= 6; perWeek++) {
+    // Day 1 leaves all seven days, so every cadence up to daily still fits (#4758).
+    // Before that ruling a 7×/week habit already owed one on day 1 and read behind.
+    for (let perWeek = 1; perWeek <= 7; perWeek++) {
       expect(frequencyPace(0, perWeek, 1)).toBe("on-pace");
     }
   });

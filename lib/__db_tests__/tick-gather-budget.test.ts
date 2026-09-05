@@ -157,7 +157,7 @@ describe("notification tick gather query budget (#5199)", () => {
   // states at length and this file borrows whole.
   //
   // THE FIRST THING THESE NUMBERS SAY is that the hourly digest gather costs MORE THAN A
-  // WHOLE DASHBOARD RENDER: 434-543 statements per persona against the dashboard's 274
+  // WHOLE DASHBOARD RENDER: 422-529 statements per persona against the dashboard's 274
   // backstop, and it runs once an hour per profile against a page nobody loads that
   // often. That is not a regression this gate caught; it is the standing cost, recorded
   // here for the first time because nothing had ever counted it. Whether it is too much
@@ -167,13 +167,23 @@ describe("notification tick gather query budget (#5199)", () => {
   // 43 against 110 for the two training personas. The weekly recap reads what a profile
   // has, so a persona with no training log skips most of the gather — which is also why
   // a single averaged number would have said nothing.
+  //
+  // THEY CAME DOWN BY 12 (14 for `biohacker`) IN #5064, and the mechanism is named
+  // rather than guessed: the weekly-target rollup used to read TWO week windows —
+  // today's and yesterday's — because the dashboard's met-target promotion needed a
+  // prior comparable verdict. That promotion is gone, so the rollup reads one window,
+  // and each dropped window cost `getWeekMode` + `getWeekStart` (weekWindowStartOn)
+  // plus a timezone read per call of `getFrequencyTargetProgress`. The saving is 12
+  // everywhere except `biohacker` at 14; how many times each persona's gather reaches
+  // that rollup is not something this file measures, so no reason for the 14 is
+  // offered here.
   const DIGEST_BASELINE: Record<string, number> = {
-    bodybuilder: 478,
-    "marathon-runner": 491,
-    household: 434,
-    pregnant: 441,
-    "diabetic-cgm": 466,
-    biohacker: 543,
+    bodybuilder: 466,
+    "marathon-runner": 479,
+    household: 422,
+    pregnant: 429,
+    "diabetic-cgm": 454,
+    biohacker: 529,
   };
   const RECAP_BASELINE: Record<string, number> = {
     bodybuilder: 110,

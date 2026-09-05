@@ -2,7 +2,12 @@ import type { UpcomingItem } from "../upcoming";
 import { bandForItem, upcomingDueText } from "../upcoming";
 import { itemSuppressionPolicy } from "../upcoming-suppress";
 import { doseBucketFromSortHint } from "../dose-order";
-import { TIME_BUCKET_LABELS, TIME_BUCKET_OPENS_AT } from "../intake-schedule";
+import {
+  OBLIGATION_ORDER,
+  TIME_BUCKET_LABELS,
+  TIME_BUCKET_OPENS_AT,
+  type TimeBucket,
+} from "../intake-schedule";
 import { formatClockMinutes, type DisplayFormatPrefs } from "../format-date";
 import { preventiveReviewFactKey } from "../preventive-review";
 import { actionCandidate, statementCandidate } from "./candidate";
@@ -70,74 +75,216 @@ function attentionObligation(
   return "should";
 }
 
+// ── A SLOT'S DUE DOSES ARE ONE CANDIDATE (#5063) ─────────────────────────────
+//
+// Six doses declared for one time bucket are ONE act at one moment. As one candidate
+// each, the Now cap seated two and the rest fell through Standing and Ahead into the
+// fold — a stack split from its own smoothie, with the control that takes the whole
+// slot sitting below the stragglers. So a bucket holding two or more due doses is ONE
+// entry carrying its members, and a bucket holding one is the dose itself, unchanged.
+//
+// It groups the DASHBOARD'S view of the attention model and nothing upstream of it:
+// Upcoming's rows, the digest, the app badge and the calendar feed still see one item
+// per dose. What changes is only what this page treats as one thing to do.
+export type AttentionEntry =
+  | { kind: "item"; item: UpcomingItem; sourceIndex: number }
+  | {
+      kind: "dose-slot";
+      bucket: TimeBucket;
+      items: readonly UpcomingItem[];
+      sourceIndex: number;
+    };
+
+// The bucket a due dose sits in, or null for anything that is not one. `doseId` is
+// part of the test because every member of a slot row is a one-tap write.
+function doseSlotBucket(item: UpcomingItem): TimeBucket | null {
+  if (item.domain !== "dose" || item.doseId == null) return null;
+  return doseBucketFromSortHint(item.sortHint);
+}
+
+// The slot's key inside the attention namespace (`dashboardAttentionCandidateId`
+// still mints the id), so a slot and a dose can never collide and the slot acquires
+// no identity namespace of its own.
+export function doseSlotKey(bucket: TimeBucket): string {
+  return `dose-slot:${bucket}`;
+}
+
+// A WEEKLY TARGET IS A STANDING READING, NOT AN UPCOMING ITEM (#5064). Its
+// progress reaches this page as `target.weekly-progress:<id>` — the family Standing
+// states, and whose behind member Attention already highlights — so the same four
+// facts arriving again through the upcoming model gave one screen two lanes saying
+// one thing in two spellings ("Cardio 1 of 2 this week" and "Cardio 1/2 this week").
+//
+// Dropped HERE, in the dashboard's own view of the attention model, and nowhere
+// else: `weeklyTarget` is the producer's declaration of what the row IS
+// (lib/queries/upcoming/plans.ts, #2579-E), and /upcoming's planning ledger, the
+// digest, the app badge and the calendar feed all still see the item — completeness
+// is that page's charter, and one dashboard is not it.
+function weeklyTargetReading(item: UpcomingItem): boolean {
+  return item.weeklyTarget === true;
+}
+
+export function attentionEntries(
+  items: readonly UpcomingItem[]
+): AttentionEntry[] {
+  const slots = new Map<
+    TimeBucket,
+    { items: UpcomingItem[]; sourceIndex: number }
+  >();
+  items.forEach((item, sourceIndex) => {
+    const bucket = doseSlotBucket(item);
+    if (bucket == null) return;
+    const run = slots.get(bucket);
+    if (run) run.items.push(item);
+    else slots.set(bucket, { items: [item], sourceIndex });
+  });
+  // Emitted in the model's OWN order, and a slot takes the position of its FIRST
+  // member — so every other candidate keeps the `sourceOrder` it had, and the
+  // #3554 dose-day order still decides which owed act reaches Now.
+  return items.flatMap<AttentionEntry>((item, sourceIndex) => {
+    if (weeklyTargetReading(item)) return [];
+    const bucket = doseSlotBucket(item);
+    const run = bucket == null ? undefined : slots.get(bucket);
+    if (run == null || run.items.length < 2)
+      return [{ kind: "item", item, sourceIndex }];
+    return run.sourceIndex === sourceIndex
+      ? [{ kind: "dose-slot", bucket: bucket!, items: run.items, sourceIndex }]
+      : [];
+  });
+}
+
+// Whether this item is owed RIGHT NOW. Upcoming exposes one due-now fact, so this
+// producer cannot distinguish owed from window-open; the separate Now tiers remain
+// reachable through target-log candidates, which carry the two booleans
+// independently (#4255).
+function attentionDueNow(item: UpcomingItem, today: string): boolean {
+  const band = bandForItem(item, today);
+  return item.signalGroup == null && (band === "overdue" || band === "today");
+}
+
+// The whole model's candidates, in the model's order. A two-line passthrough over
+// the two functions below, in the order the dashboard calls them — kept because the
+// test tier drives it, and safe to keep only because it can no longer differ from
+// that path: it decides nothing this file's own producer does not decide.
 export function attentionCandidates(
   subject: DashboardSubject,
   items: readonly UpcomingItem[],
   today: string,
   sourceOrder = 0
 ): DashboardCandidate[] {
-  return items.map((item, index) => {
-    const opensAt = doseOpensAt(item);
-    const setup = item.signalGroup === "setup";
-    const dueNow =
-      item.signalGroup == null &&
-      (bandForItem(item, today) === "overdue" ||
-        bandForItem(item, today) === "today");
-    // Upcoming exposes one due-now fact, so this producer cannot distinguish
-    // owed from window-open. The separate Now tiers remain reachable through
-    // target-log candidates, which carry the two booleans independently (#4255).
-    // Carry the owning Upcoming surface's declared affordances. `actionLabel`
-    // covers only navigation-first status rows; the typed one-tap actions have
-    // their own source fields and are still action candidates even when the
-    // current viewer cannot perform the write.
-    const actionable =
-      item.actionLabel != null ||
-      item.altAction != null ||
-      item.doseId != null ||
-      item.practiceLog != null ||
-      item.preventiveRuleKey != null ||
-      item.bookHref != null ||
-      item.carePlanItemId != null ||
-      item.conditionSuggestion != null ||
-      item.followUpResolve != null ||
-      item.followUpSettle != null;
-    const common = {
-      candidateId: dashboardAttentionCandidateId(item.key),
-      factKey: dashboardAttentionFactKey(item.key),
-      groupKey: item.signalGroup
-        ? `attention.${item.signalGroup}`
-        : "attention.due",
-      subject,
-      // Read access still owns the fact. Write capability controls the atom's
-      // controls in presentation; filtering here erased safety information.
-      applicable: true,
-      relevance: setup
-        ? ({ kind: "setup" } as const)
-        : ({ kind: "event" } as const),
-      rankReasons: {
-        safety: itemSuppressionPolicy(item) === "safety-ungated",
-        owed: dueNow,
-        windowOpen: dueNow,
-        changed:
-          item.signalGroup === "flagged" || item.signalGroup === "review",
-      },
-      timing:
-        opensAt == null ? undefined : localTimeWindow(opensAt, 24 * 60 - 1),
-      // The candidate's rank tiebreak IS this list's index, so the order the
-      // model arrives in decides which owed `must` doses survive
-      // NOW_CANDIDATE_CAP when they all score alike. buildAttentionModel states
-      // and guarantees that order — date → priority → domain → dose-day slot
-      // (#297) → title → key — so this index means the canonical dose-day order,
-      // never raw generator emission (#3554).
-      sourceOrder: sourceOrder + index,
-    };
-    return actionable
-      ? actionCandidate({
-          ...common,
-          obligation: attentionObligation(item, setup),
-        })
-      : statementCandidate(common);
+  return attentionEntries(items).map((entry) =>
+    attentionEntryCandidate(subject, entry, today, sourceOrder)
+  );
+}
+
+// ONE ENTRY, ONE CANDIDATE. Both arms mint their id through the same attention
+// identity helper, so a slot and a dose share one namespace and the exact-once
+// partition still holds over `factKey`.
+//
+// `sourceOrder` IS THE MODEL'S BASE, and the entry's own index is added HERE rather
+// than by each caller. Both callers used to spell `sourceOrder + entry.sourceIndex`
+// themselves, which is the one seam on which the page's path and the path the test
+// tier drives could have drifted apart while both stayed green. There is one place
+// to get it wrong now, and it is the place under test.
+export function attentionEntryCandidate(
+  subject: DashboardSubject,
+  entry: AttentionEntry,
+  today: string,
+  sourceOrder: number
+): DashboardCandidate {
+  const order = sourceOrder + entry.sourceIndex;
+  if (entry.kind === "item")
+    return attentionItemCandidate(subject, entry.item, today, order);
+  const key = doseSlotKey(entry.bucket);
+  const dueNow = entry.items.some((item) => attentionDueNow(item, today));
+  return actionCandidate({
+    candidateId: dashboardAttentionCandidateId(key),
+    factKey: dashboardAttentionFactKey(key),
+    groupKey: "attention.due",
+    subject,
+    applicable: true,
+    relevance: { kind: "event" },
+    rankReasons: {
+      safety: entry.items.some(
+        (item) => itemSuppressionPolicy(item) === "safety-ungated"
+      ),
+      owed: dueNow,
+      windowOpen: dueNow,
+      changed: false,
+    },
+    // Every member was declared for this bucket, so the slot's window IS the
+    // bucket's — the same span each member carried alone.
+    timing: localTimeWindow(TIME_BUCKET_OPENS_AT[entry.bucket], 24 * 60 - 1),
+    sourceOrder: order,
+    // AS STRONGLY OWED AS ITS STRONGEST MEMBER. A `must` dose may not be softened
+    // by the `should` doses it now shares a seat with — the seat is the same act.
+    obligation: entry.items.reduce<DashboardObligation>((strongest, item) => {
+      const own = attentionObligation(item, false);
+      return OBLIGATION_ORDER[own] < OBLIGATION_ORDER[strongest]
+        ? own
+        : strongest;
+    }, "may"),
   });
+}
+
+function attentionItemCandidate(
+  subject: DashboardSubject,
+  item: UpcomingItem,
+  today: string,
+  sourceOrder: number
+): DashboardCandidate {
+  const opensAt = doseOpensAt(item);
+  const setup = item.signalGroup === "setup";
+  const dueNow = attentionDueNow(item, today);
+  // Carry the owning Upcoming surface's declared affordances. `actionLabel`
+  // covers only navigation-first status rows; the typed one-tap actions have
+  // their own source fields and are still action candidates even when the
+  // current viewer cannot perform the write.
+  const actionable =
+    item.actionLabel != null ||
+    item.altAction != null ||
+    item.doseId != null ||
+    item.practiceLog != null ||
+    item.preventiveRuleKey != null ||
+    item.bookHref != null ||
+    item.carePlanItemId != null ||
+    item.conditionSuggestion != null ||
+    item.followUpResolve != null ||
+    item.followUpSettle != null;
+  const common = {
+    candidateId: dashboardAttentionCandidateId(item.key),
+    factKey: dashboardAttentionFactKey(item.key),
+    groupKey: item.signalGroup
+      ? `attention.${item.signalGroup}`
+      : "attention.due",
+    subject,
+    // Read access still owns the fact. Write capability controls the atom's
+    // controls in presentation; filtering here erased safety information.
+    applicable: true,
+    relevance: setup
+      ? ({ kind: "setup" } as const)
+      : ({ kind: "event" } as const),
+    rankReasons: {
+      safety: itemSuppressionPolicy(item) === "safety-ungated",
+      owed: dueNow,
+      windowOpen: dueNow,
+      changed: item.signalGroup === "flagged" || item.signalGroup === "review",
+    },
+    timing: opensAt == null ? undefined : localTimeWindow(opensAt, 24 * 60 - 1),
+    // The candidate's rank tiebreak IS this list's index, so the order the
+    // model arrives in decides which owed `must` doses survive
+    // NOW_CANDIDATE_CAP when they all score alike. buildAttentionModel states
+    // and guarantees that order — date → priority → domain → dose-day slot
+    // (#297) → title → key — so this index means the canonical dose-day order,
+    // never raw generator emission (#3554).
+    sourceOrder,
+  };
+  return actionable
+    ? actionCandidate({
+        ...common,
+        obligation: attentionObligation(item, setup),
+      })
+    : statementCandidate(common);
 }
 
 // A preventive REVIEW CANDIDATE (#3025): one dashboard fact per open

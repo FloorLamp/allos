@@ -527,7 +527,9 @@ export const DATASETS: ExportDataset[] = [
     label: "Body metrics",
     table: "body_metrics",
     // source + edited carry provenance (which integration wrote it, whether a hand
-    // edit locked it) that the export used to drop (#466).
+    // edit locked it) that the export used to drop (#466); bundle_id says which rows
+    // one act wrote (#5117). Nothing writes body_metrics.bundle_id yet, so it is
+    // empty on every row until one does — manifest.json says so (#5273).
     columns: [
       "date",
       "weight_kg",
@@ -536,8 +538,10 @@ export const DATASETS: ExportDataset[] = [
       "source",
       "edited",
       "notes",
+      "bundle_id",
     ],
-    select: `SELECT id, date, weight_kg, body_fat_pct, resting_hr, source, edited, notes
+    select: `SELECT id, date, weight_kg, body_fat_pct, resting_hr, source, edited, notes,
+              bundle_id
        FROM body_metrics WHERE profile_id = ? ORDER BY date DESC`,
     countSql: `SELECT COUNT(*) AS n FROM body_metrics WHERE profile_id = ?`,
   }),
@@ -748,6 +752,9 @@ export const DATASETS: ExportDataset[] = [
     key: "practice_logs",
     label: "Practice sessions",
     table: "practice_logs",
+    // bundle_id says which rows one act wrote (#5117). Nothing writes
+    // practice_logs.bundle_id yet, so it is empty on every row until one does —
+    // manifest.json says so (#5273).
     columns: [
       "practice",
       "date",
@@ -756,8 +763,10 @@ export const DATASETS: ExportDataset[] = [
       "duration_min",
       "notes",
       "created_at",
+      "bundle_id",
     ],
-    select: `SELECT id, practice, date, start_time, end_time, duration_min, notes, created_at
+    select: `SELECT id, practice, date, start_time, end_time, duration_min, notes,
+              created_at, bundle_id
        FROM practice_logs WHERE profile_id = ? ORDER BY date DESC, id DESC`,
     countSql: `SELECT COUNT(*) AS n FROM practice_logs WHERE profile_id = ?`,
   }),
@@ -839,9 +848,10 @@ export const DATASETS: ExportDataset[] = [
       "recorded_at",
       "amount",
       "skip_reason",
+      "bundle_id",
     ],
     select: `SELECT l.id, l.date, ii.name AS item, l.status, l.occurred_at,
-              l.recorded_at, l.amount, l.skip_reason
+              l.recorded_at, l.amount, l.skip_reason, l.bundle_id
        FROM intake_item_logs l JOIN intake_items ii ON ii.id = l.item_id
        WHERE ii.profile_id = ? ORDER BY l.date DESC, ii.name`,
     countSql: `SELECT COUNT(*) AS n
@@ -1353,8 +1363,8 @@ export const DATASETS: ExportDataset[] = [
     key: "food_log_events",
     label: "Food log events",
     table: "food_log_events",
-    columns: ["date", "group_key", "recorded_at", "meal_slot"],
-    select: `SELECT id, date, group_key, recorded_at, meal_slot
+    columns: ["date", "group_key", "recorded_at", "meal_slot", "bundle_id"],
+    select: `SELECT id, date, group_key, recorded_at, meal_slot, bundle_id
        FROM food_log_events WHERE profile_id = ? ORDER BY recorded_at DESC`,
     countSql: `SELECT COUNT(*) AS n FROM food_log_events WHERE profile_id = ?`,
   }),
