@@ -63,9 +63,6 @@ import {
 } from "../sleep-regularity";
 import { sleepWaitingState, type SleepWaitingState } from "../sleep-waiting";
 import { arrivalLagMedian, ARRIVAL_LAG_MAX_MIN } from "../arrival-wait";
-// Re-exported, not defined here: the constant belongs to the model (#5001) and
-// this module's existing importers keep the name they already use.
-export { ARRIVAL_LAG_MAX_MIN };
 import { getIntegrationAttention, getLatestSyncEvent } from "./integrations";
 import {
   isLastNight,
@@ -833,8 +830,15 @@ export function getSyncedSleepSources(
 // now the one home for the WAIT — the bounds, the sample gate, the plausibility cut —
 // because three surfaces were each writing their own. Generalising this READ to any
 // table is a separate change with its own defects to answer, so it is its own issue.
-// Only the two constants are shared from here, so there is one 12 hours and one 5;
-// the re-export sits beside the import at the top of the file.
+// Only the two constants are shared from here, so there is one 12 hours and one 5.
+//
+// `ARRIVAL_LAG_MAX_MIN` used to be RE-EXPORTED from this module too, justified as
+// keeping the name its existing importers used. It had none — not in `lib`, not in
+// `app`, not in a script, not at the head that introduced the sentence nor at the one
+// before it (#5127 falsifying pass). A re-export with no consumer is a second import
+// path for a constant, which is how one value comes to look like two; it is gone
+// rather than re-justified. `MIN_ARRIVAL_SAMPLES` keeps its re-export through
+// `lib/sleep-waiting.ts`, which the db tier really does read.
 
 export function getSleepArrivalLagMinutes(
   profileId: number,
