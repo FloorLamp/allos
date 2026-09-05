@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -56,7 +56,8 @@ function runGather(issuePages: number, prPages: number) {
   fs.mkdirSync(bin);
   fs.writeFileSync(path.join(bin, "curl"), STUB_CURL, { mode: 0o755 });
   const out = path.join(dir, "report.md");
-  const run = spawnSync(TSX, [SCRIPT, "--out", out], {
+  const json = path.join(dir, "evidence.json");
+  const run = spawnSync(TSX, [SCRIPT, "--out", out, "--json", json], {
     cwd: REPO,
     encoding: "utf8",
     env: {
@@ -70,7 +71,18 @@ function runGather(issuePages: number, prPages: number) {
   return {
     ...run,
     report: fs.existsSync(out) ? fs.readFileSync(out, "utf8") : "",
+    evidence: fs.existsSync(json)
+      ? (JSON.parse(fs.readFileSync(json, "utf8")) as { sweptCommit?: string })
+      : null,
   };
+}
+
+/** HEAD of the checkout the gather ran in — the SHA it is claiming to sweep. */
+function head(): string {
+  return execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: REPO,
+    encoding: "utf8",
+  }).trim();
 }
 
 describe("the gatherer reports a fetch it could not finish (#865)", () => {
@@ -89,6 +101,17 @@ describe("the gatherer reports a fetch it could not finish (#865)", () => {
     expect(run.status).toBe(0);
     expect(run.report).toContain("merged PRs examined: 900");
     expect(run.report).not.toContain("TRUNCATED");
+  });
+
+  it("records the real HEAD it swept, in the evidence and in the report", () => {
+    // The run summary line (#865) prints this SHA as the tree the run's claims
+    // were checked against, and the durable record is only worth as much as
+    // that SHA is real. Compared against `git rev-parse HEAD` rather than a
+    // shape check: `/^[0-9a-f]{40}$/` passes just as happily on a constant.
+    const run = runGather(1, 1);
+    expect(run.status).toBe(0);
+    expect(run.evidence?.sweptCommit).toBe(head());
+    expect(run.report).toContain(`Swept \`main\` at: ${head()}`);
   });
 
   it("refuses outright when the OPEN-ISSUE fetch hits the cap", () => {

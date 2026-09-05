@@ -4,6 +4,7 @@
 //   npx tsx scripts/orchestration/reconcile-apply.ts plan.json           # dry run
 //   npx tsx scripts/orchestration/reconcile-apply.ts plan.json --apply   # writes
 //   … --apply --notify 123,456    # 123/456 are IN FLIGHT: comment even if quiet
+//   … --outcome out.json          # how many landed, for the run summary line
 //
 // A plan file is `{ "<issue>": [ { kind, anchor, replacement, reason }, … ] }`,
 // with each entry an `AnchoredPatch`. For every issue it re-reads the CURRENT
@@ -54,12 +55,20 @@ const config = resolveRunConfig(process.env, process.argv.slice(2));
 const argvRest = process.argv.slice(2);
 const notify = new Set<string>();
 const positional: string[] = [];
+// --outcome <file>: this run's applied/refused/skipped counts as JSON. The run
+// summary line (#865) needs "drift patched", and that number exists only here —
+// the gather proposes candidates and cannot know which of them landed. Written
+// rather than retyped from stdout, because a hand-copied count in a durable
+// record is a count nobody can check.
+let outcomeFile: string | null = null;
 for (let i = 0; i < argvRest.length; i++) {
   const arg = argvRest[i];
   if (arg === "--notify") {
     for (const n of (argvRest[++i] ?? "").split(",")) {
       if (n.trim()) notify.add(n.trim());
     }
+  } else if (arg === "--outcome") {
+    outcomeFile = argvRest[++i] ?? null;
   } else if (!arg.startsWith("--")) {
     positional.push(arg);
   }
@@ -236,3 +245,11 @@ for (const [issue, patches] of Object.entries(plan)) {
 console.log(
   `\napplied ${applied} · refused ${refused}${skipped > 0 ? ` · skipped ${skipped} (closed)` : ""}`
 );
+if (outcomeFile) {
+  // `applied` is 0 on a dry run and says so, so a summary built from a dry-run
+  // outcome counts every candidate as still-unapplied rather than as patched.
+  fs.writeFileSync(
+    outcomeFile,
+    JSON.stringify({ applied, refused, skipped, wrote: APPLY }, null, 2) + "\n"
+  );
+}
