@@ -76,15 +76,9 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
   READY at once (never draft — environment.md §GitHub access), so CI and the
   exact-head review run in parallel. `landing-independence.mjs` is path-only
   advice (#5138); the gate refuses an unchecked base-moved head (#5235).
-- Its refusal names the `MERGED-TREE-CHECKED` receipt that clears it. A
-  release-notes batch landing on `main` forces no re-run of a PR that never
-  touches `lib/release-notes.json`: display data read by one page.
-- **The receipt is bound to the base it names, exactly as a pass is bound to its
-  head — run it and merge in the same pass.** It is not a step you bank in
-  advance: main moves, and the gate then reads it as a check of some other merged
-  tree. Post it as its own paragraph (inside a fence or a blockquote it quotes
-  rather than speaks, #5183) and state all four literals the grammar wants — head
-  SHA, base SHA, `npm run typecheck`, the test script you ran.
+- Its refusal names the `MERGED-TREE-CHECKED` receipt that clears it, base-bound
+  as a pass is head-bound: run it and merge in one pass. A release-notes batch
+  on `main` forces no re-run of a PR not touching `lib/release-notes.json`.
 - **The exact-head review is INDEPENDENT and pinned to the SHA** (owner
   2026-08-26, #3710): a non-author reviews the candidate commit; the COMMENT
   review states SHA and reviewer — on a shared bot account, also that the
