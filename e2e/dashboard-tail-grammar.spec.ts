@@ -352,6 +352,14 @@ test.describe("the dashboard's row grammar (#3365/#4076)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     try {
+      // BOTH VIEWPORTS ARE MEASURED BEFORE EITHER CLAIM IS MADE. Asserting inside
+      // the loop throws on the first viewport that offends, and the one that would
+      // have spoken loudest never runs: measured on the unfixed tree, the desktop
+      // row's facts cell held 548px of 966 — the fixture's phrase is short — while
+      // the SAME row at 390px held 0px of 358. A per-viewport assertion reported the
+      // height defect and reported nothing at all about the width.
+      const tooNarrow: string[] = [];
+      const tooTall: string[] = [];
       for (const viewport of [DESKTOP, PHONE]) {
         await page.setViewportSize(viewport);
         await page.goto("/");
@@ -381,27 +389,29 @@ test.describe("the dashboard's row grammar (#3365/#4076)", () => {
             };
           })
         );
-
-        // Reported as the offending rows and their measured boxes, not as a count:
+        // Collected as the offending rows and their measured boxes, not as a count:
         // "Expected true, Received false" names no row to open.
-        expect(
-          measured
+        tooNarrow.push(
+          ...measured
             .filter((m) => m.facts + TAP_FLOOR_FLOAT_EPSILON_PX < m.width / 2)
             .map(
               (m) =>
-                `${m.id}: facts ${Math.round(m.facts)}px of a ${Math.round(m.width)}px row`
-            ),
-          `${viewport.width}px: the facts cell keeps half the row`
-        ).toEqual([]);
-        expect(
-          measured
+                `${viewport.width}px ${m.id}: facts ${Math.round(m.facts)}px of a ${Math.round(m.width)}px row`
+            )
+        );
+        tooTall.push(
+          ...measured
             .filter(
               (m) => m.controls > CONTROL_BOX_PX + TAP_FLOOR_FLOAT_EPSILON_PX
             )
-            .map((m) => `${m.id}: controls cell ${Math.round(m.controls)}px`),
-          `${viewport.width}px: the controls cell is the control box`
-        ).toEqual([]);
+            .map(
+              (m) =>
+                `${viewport.width}px ${m.id}: controls cell ${Math.round(m.controls)}px`
+            )
+        );
       }
+      expect(tooNarrow, "the facts cell keeps half its row").toEqual([]);
+      expect(tooTall, "the controls cell is the control box").toEqual([]);
     } finally {
       await page.context().close();
     }
