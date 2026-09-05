@@ -4,6 +4,10 @@ import {
   intakeItemFields,
   intakeItemFormData,
   intakeItemFormStateFrom,
+  parseIntakeDoses,
+  parseIntakeIngredients,
+  parseIntakePairs,
+  parseIntakePurposes,
   type IntakeItemFormState,
 } from "@/lib/intake-form-fields";
 import type { IntakeDose, IntakeItem, MedicationCourse } from "@/lib/types";
@@ -367,5 +371,187 @@ describe("the one intake seeding (#4664)", () => {
       courseId: null,
       providerId: null,
     });
+  });
+});
+
+// THE PAYLOAD ROUND TRIP (#4666). Four fields ride as JSON, and their parse used to
+// live in the action module behind `(p as any)`. One parse each, here, so what the
+// drafts above write is read back by something a test can drive without a database.
+describe("intake JSON payload parsing (#4666)", () => {
+  const post = (key: string, value: unknown): FormData => {
+    const fd = new FormData();
+    fd.set(key, JSON.stringify(value));
+    return fd;
+  };
+
+  it("reads back what the form's own mapping wrote", () => {
+    // The mapping is the only writer of these four, so the round trip is the claim.
+    const fd = intakeItemFormData(
+      med({
+        doses: [
+          {
+            amount: "200 mg",
+            time_of_day: "08:00",
+            food_timing: "with_food",
+            weekdays: [3, 1],
+            start_date: "2026-03-01",
+            end_date: "",
+          },
+        ],
+        pairs: [{ otherId: 7, relation: "separate", note: "two hours apart" }],
+        ingredients: [{ name: "Magnesium", amount: "200 mg" }],
+        purposes: [{ kind: "goal", goalKey: "sleep" }],
+      })
+    );
+    expect(parseIntakeDoses(fd)).toEqual([
+      {
+        id: undefined,
+        amount: "200 mg",
+        time_of_day: "08:00",
+        food_timing: "with_food",
+        // normalizeWeekdays canonicalizes the order, so a no-op edit never reads as
+        // a change.
+        weekdays: "1,3",
+        start_date: "2026-03-01",
+        end_date: null,
+      },
+    ]);
+    expect(parseIntakePairs(fd)).toEqual([
+      { otherId: 7, relation: "separate", note: "two hours apart" },
+    ]);
+    const ingredients = parseIntakeIngredients(fd);
+    expect(ingredients?.ok).toBe(true);
+    expect(ingredients?.ok && ingredients.rows[0].name).toBe("Magnesium");
+    expect(parseIntakePurposes(fd)).toEqual([
+      {
+        kind: "goal",
+        goal_key: "sleep",
+        condition_id: null,
+        biomarker_key: null,
+        direction: null,
+      },
+    ]);
+  });
+
+  // Untrusted client text at a write boundary: every malformed payload has to degrade
+  // to "nothing submitted", and nothing here may throw.
+  it.each([
+    ["not JSON at all", "{oh no"],
+    ["a JSON scalar", "42"],
+    ["an object where an array belongs", '{"amount":"1 g"}'],
+    ["rows that are not objects", '[1,"two",null]'],
+  ])("survives %s", (_label, raw) => {
+    const fd = new FormData();
+    for (const key of ["doses", "pairs", "ingredients", "purposes"])
+      fd.set(key, raw);
+    // A dose is always returned so an item is never left without a schedule entry.
+    expect(parseIntakeDoses(fd)).toEqual([
+      {
+        amount: null,
+        time_of_day: null,
+        food_timing: "any",
+        weekdays: null,
+        start_date: null,
+        end_date: null,
+      },
+    ]);
+    expect(parseIntakePairs(fd)).toEqual([]);
+    expect(parseIntakeIngredients(fd)).toEqual({ ok: true, rows: [] });
+    expect(parseIntakePurposes(fd)).toEqual([]);
+  });
+
+  it.each([
+    ["an unreadable food timing falls back", { food_timing: "midair" }, "any"],
+    ["a real one is kept", { food_timing: "with_fat" }, "with_fat"],
+  ])("%s", (_label, over, expected) => {
+    expect(parseIntakeDoses(post("doses", [over]))[0].food_timing).toBe(
+      expected
+    );
+  });
+
+  it.each([
+    ["a malformed window is dropped", "2026-02-30", null],
+    ["a non-date is dropped", "soon", null],
+    ["a real day is kept", "2026-02-28", "2026-02-28"],
+  ])("%s", (_label, raw, expected) => {
+    expect(
+      parseIntakeDoses(post("doses", [{ start_date: raw }]))[0].start_date
+    ).toBe(expected);
+  });
+
+  it("drops a pair with no other item, and defaults an unknown relation", () => {
+    expect(
+      parseIntakePairs(
+        post("pairs", [
+          { otherId: 0, relation: "with" },
+          { otherId: "9", relation: "sideways" },
+        ])
+      )
+    ).toEqual([{ otherId: 9, relation: "separate", note: null }]);
+  });
+
+  // ABSENT MEANS UNCHANGED for the two child sets: a form that does not render the
+  // control posts nothing, and must not clear what is stored. An explicit empty array
+  // from a form that DOES render it still clears every row.
+  it.each([
+    ["ingredients", parseIntakeIngredients, { ok: true, rows: [] }],
+    ["purposes", parseIntakePurposes, []],
+  ])("%s: absent is null, empty is a clear", (key, parse, empty) => {
+    expect(parse(new FormData())).toBeNull();
+    expect(parse(post(key, []))).toEqual(empty);
+  });
+
+  it("refuses a save whose ingredient amount cannot be read", () => {
+    const bad = parseIntakeIngredients(
+      post("ingredients", [{ name: "Niacin", amount: "1,000 mg or so" }])
+    );
+    expect(bad).toEqual({
+      ok: false,
+      name: "Niacin",
+      amountText: "1,000 mg or so",
+    });
+  });
+
+  it("keeps every purpose variant, and drops a row that names none", () => {
+    expect(
+      parseIntakePurposes(
+        post("purposes", [
+          { kind: "goal", goalKey: "sleep" },
+          { kind: "condition", conditionId: 4 },
+          { kind: "biomarker", biomarkerKey: "ferritin", direction: "low" },
+          { kind: "biomarker", biomarkerKey: "b12", direction: "sideways" },
+          { kind: "whatever", goalKey: "sleep" },
+        ])
+      )
+    ).toEqual([
+      {
+        kind: "goal",
+        goal_key: "sleep",
+        condition_id: null,
+        biomarker_key: null,
+        direction: null,
+      },
+      {
+        kind: "condition",
+        goal_key: null,
+        condition_id: 4,
+        biomarker_key: null,
+        direction: null,
+      },
+      {
+        kind: "biomarker",
+        goal_key: null,
+        condition_id: null,
+        biomarker_key: "ferritin",
+        direction: "low",
+      },
+      {
+        kind: "biomarker",
+        goal_key: null,
+        condition_id: null,
+        biomarker_key: "b12",
+        direction: null,
+      },
+    ]);
   });
 });
