@@ -542,7 +542,6 @@ const SYNTAX_E2E_WORKER_HARNESS = [
   ...E2E_PROFILE_SQL_BANS,
 ];
 
-
 const config = [
   // Global ignores — mirror the old ignorePatterns. Build output, deps, and the
   // runtime data dir are never linted.
