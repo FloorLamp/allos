@@ -303,10 +303,13 @@ const ROUTES: CensusRoute[] = [
       });
       await expect(input).toBeVisible();
       await settledFill(page, input, LOGGED_SYMPTOM_PROBE);
+      // The palette mounts as a SIBLING of <main> (app/(app)/layout.tsx — <main>
+      // closes, then <CommandPalette>), so it sits outside `app-content-container`
+      // and outside every StreamedSection call site. appContent() scoping cannot
+      // reach it, and there is no staged copy for a bare lookup to match.
+      const group = page.getByTestId("palette-group-logged"); // testid-scope-ok: outside <main>
       await expect(
-        page
-          .getByTestId("palette-group-logged")
-          .getByRole("option", { name: LOGGED_SYMPTOM_PROBE })
+        group.getByRole("option", { name: LOGGED_SYMPTOM_PROBE })
       ).toBeVisible({ timeout: 15_000 });
     },
   },
