@@ -13,10 +13,12 @@ import {
 import {
   parseSymptomPickCallback,
   parseSymptomSeverityCallback,
+} from "@/lib/notifications/callback-data";
+import {
   parseTempReply,
   parseTempReplyMarker,
   tempReplyMarker,
-} from "@/lib/notifications/callback-data";
+} from "@/lib/notifications/reply-markers";
 
 // Pure tests for the Telegram symptom/temp quick-log parsers (issue #859 item 5). No DB.
 
