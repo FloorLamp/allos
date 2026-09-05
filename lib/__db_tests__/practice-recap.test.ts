@@ -282,6 +282,13 @@ describe("the practice finish message waits for the stream", () => {
   // slower pipeline may not raise, because a message about a sauna three hours ago is
   // a bulletin and not a finish note. Both bounds are the same number, so this
   // consumer's window is that constant and the measurement moves neither end of it.
+  //
+  // THE SEEDED ARRIVALS BELOW ARE DELIBERATELY INERT, and that is what they are for.
+  // Since the #5127 review the dispatch does not query the arrival lag at all — a
+  // constant window meant the value could not alter a single outcome, and nothing on
+  // this path reads the ETA. These fixtures seed pipelines from 20 to 660 minutes and
+  // every one of them lands on the same two-hour bound. If a later lane re-adds the
+  // measurement AND raises the cap, this is the block that says what that costs.
   function seedArrivals(
     profileId: number,
     lagMin: number,
@@ -372,13 +379,14 @@ describe("the practice finish message waits for the stream", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps the constant as the bound when the sample is thin", async () => {
+  it("keeps the constant as the bound for an unmeasured profile", async () => {
     const p = newProfile("PracThinSample");
     const date = today(p);
     seedPractice(p, date);
     seedHrMinutes(p, date, 30);
-    // Four arrivals is under the gate, so nothing has been measured and the doc's
-    // number is still the answer — this row is news for two hours as before.
+    // Four arrivals — under what the sample gate would have required back when this
+    // path queried one. It reads the same as every other profile now, which is the
+    // point: the doc's number is the answer for all of them.
     seedArrivals(p, 30, 4);
     const fetchMock = stubFetch();
     expect((await tick(p, new Date("2026-07-17T19:19:00Z"))).sent).toBe(1);

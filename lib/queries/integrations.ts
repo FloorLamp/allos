@@ -1325,20 +1325,34 @@ export function getSyncRowProvenance(
 // arithmetic. `activities` stores a profile-local day plus a wall clock, so its end
 // is resolved through the profile's zone in JS — `julianday()` over a local string
 // would silently measure the offset as lag.
-export interface ArrivalLagQuery {
-  /** Which table the arriving rows land in. */
-  targetTable: "metric_samples" | "activities";
+/** What both arms share: which integration, and how many arrivals to read. */
+interface ArrivalLagQueryBase {
   /**
    * Narrow to ONE integration, by `integration_sync_events.source_id`. Omitted
    * measures every source that writes this row kind, which is what the sleep tile
    * has always done — a two-source profile is waiting for whichever pushes first.
    */
   sourceId?: string;
-  /** Narrow `metric_samples` to one metric. Meaningless for activities. */
-  metric?: string;
   /** How many of the newest arrivals the median is taken over. */
   limit?: number;
 }
+
+/**
+ * TWO ARMS, BECAUSE `metric` IS MEANINGLESS FOR ACTIVITIES (#5127 review).
+ *
+ * It used to be one optional field documented as "meaningless for activities", and
+ * `activityArrivalLags` simply never read it — so `{ targetTable: "activities",
+ * metric: "sleep_min" }` type-checked and quietly measured something else entirely.
+ * A union makes that unrepresentable, which is what this repo asks for over a guard
+ * or a comment.
+ */
+export type ArrivalLagQuery =
+  | (ArrivalLagQueryBase & {
+      targetTable: "metric_samples";
+      /** Narrow to one metric. */
+      metric?: string;
+    })
+  | (ArrivalLagQueryBase & { targetTable: "activities" });
 
 const ARRIVAL_SAMPLE_LIMIT = 28;
 
@@ -1366,7 +1380,10 @@ function onePerPush(
   return out;
 }
 
-function sampleArrivalLags(profileId: number, q: ArrivalLagQuery): number[] {
+function sampleArrivalLags(
+  profileId: number,
+  q: Extract<ArrivalLagQuery, { targetTable: "metric_samples" }>
+): number[] {
   const rows = db
     .prepare(
       `SELECT r.event_id AS eventId,
@@ -1394,7 +1411,10 @@ function sampleArrivalLags(profileId: number, q: ArrivalLagQuery): number[] {
   return onePerPush(rows.map((r) => ({ eventId: r.eventId, lag: r.lag })));
 }
 
-function activityArrivalLags(profileId: number, q: ArrivalLagQuery): number[] {
+function activityArrivalLags(
+  profileId: number,
+  q: Extract<ArrivalLagQuery, { targetTable: "activities" }>
+): number[] {
   const zone = profileDayZone(profileId);
   const rows = db
     .prepare(

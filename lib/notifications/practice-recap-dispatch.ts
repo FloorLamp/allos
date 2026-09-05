@@ -27,8 +27,6 @@ import {
 } from "../event-physiology";
 import { activityWindow, type ActivityWindow } from "../training-zones";
 import { arrivalWait } from "../arrival-wait";
-import { getArrivalLagMinutes } from "../queries/integrations";
-import { HEALTH_CONNECT_ID } from "../integrations/health-connect";
 import {
   practiceRecapBody,
   practiceRecapFacts,
@@ -69,51 +67,34 @@ function recentlyFinishedPractices(
         ORDER BY id DESC`
     )
     .all(profileId, shiftDateStr(todayStr, -1)) as PracticeRow[];
-  // THIS PROFILE'S OWN BOUND (#5001), measured once per pass rather than per row.
+  // THIS CONSUMER TAKES THE MODEL'S VOCABULARY AND NONE OF ITS MEASUREMENT, and that
+  // is a decision rather than an oversight (#5001, and the #5127 review that settled
+  // it). `PRACTICE_RECAP_BOUND_MIN` carries TWO rules that are the same number:
   //
-  // THE MEASUREMENT MAY ONLY LENGTHEN THIS WAIT (#5127 review). `PRACTICE_RECAP_BOUND_MIN`
-  // was read off the pipeline's p99 in a doc (#2560) "and then some" — it is a number
-  // about how long the app must WAIT for coverage, and a profile whose pipeline is
-  // quicker needs no shorter wait, because the send already fires the moment coverage
-  // arrives. Shortening it buys nothing and costs the send: a practice that ended 25
-  // minutes ago on a profile measuring a 20-minute lag would read `overdue`, and
-  // `overdue` sends nothing and burns no marker. That would silence the finish note
-  // for exactly the profiles whose data arrived soonest.
+  //   * the RETRY rule — how long the app must wait for coverage. A quicker pipeline
+  //     may not lower it, because the send already fires the moment coverage arrives.
+  //     Shortening buys nothing and costs the send: a practice that ended 25 minutes
+  //     ago on a profile measuring a 20-minute lag would read `overdue`, and `overdue`
+  //     sends nothing and burns no marker — silencing the finish note for exactly the
+  //     profiles whose data arrived soonest.
+  //   * the MOMENT rule — how long a finish note stays worth sending. A slower pipeline
+  //     may not raise it: a message about a sauna three hours ago is a bulletin, not a
+  //     finish note, and that is a claim about the moment rather than about the
+  //     pipeline. A profile whose pipeline is genuinely slower LOSES the note, which is
+  //     the answer that shipped before this lane.
   //
-  // SO THE CONSTANT IS BOTH BOUNDS, AND THEY ARE THE SAME NUMBER (#5127 review, second
-  // finding). `PRACTICE_RECAP_BOUND_MIN` was carrying TWO rules and the fix above moved
-  // only one of them:
+  // Both being the constant makes the window `min(max(measured ?? 120, 120), 120)` — a
+  // CONSTANT — so the measurement cannot move either end of it. `wait.etaMin` is the
+  // only place the number could still surface and nothing on this path reads it, so
+  // querying it was a two-join read per dispatch pass whose value could not alter a
+  // single outcome. It is gone; the three arrival fixtures pass unchanged without it,
+  // which is what proves it was inert rather than merely unused.
   //
-  //   * the RETRY rule — how long the app must wait for coverage — which is the floor
-  //     `minWindowMin` now states, and which a quicker pipeline may not lower;
-  //   * the MOMENT rule — how long a finish note stays worth sending — which was doing
-  //     its work as the cap, and which a slower pipeline may not raise. A message about
-  //     a sauna three hours ago is a bulletin, not a finish note, and that is a claim
-  //     about the moment rather than about the pipeline.
-  //
-  // Raising the cap to the sample's plausibility bound deleted the second rule: a
-  // profile measuring a 400-minute lag would have sent a finish note nearly six hours
-  // after the practice ended. So both are the constant, and the consequence is stated
-  // rather than hidden — a pipeline genuinely slower than the bound LOSES the finish
-  // note, which is the answer that shipped before this lane and is not this lane's to
-  // change.
-  //
-  // The two together make `arrivalWaitWindowMin` a CONSTANT for this consumer:
-  // `min(max(measured ?? 120, 120), 120)`. That is deliberate and not a degenerate use
-  // of the model — the measurement contributes the ETA and nothing else here. Do not
-  // "simplify" either bound away; each one alone reintroduces exactly one of the two
-  // defects above.
-  //
-  // WHAT IS MEASURED, and why it is not literally the heart rate. The recap needs HR
-  // coverage over the window, but `hr_minutes` is not one of the tables
-  // `integration_sync_rows` records provenance for (`ProvenanceTable`), so there is no
-  // per-row arrival to join. Health Connect delivers a pass as one push, so the lag of
-  // its `metric_samples` arrivals IS its push lag — which is the question the bound
-  // actually asks: has this source had its slowest realistic push yet.
-  const measuredLagMin = getArrivalLagMinutes(profileId, {
-    targetTable: "metric_samples",
-    sourceId: HEALTH_CONNECT_ID,
-  });
+  // What is still taken from the model is the VOCABULARY, and that is read: `ready`
+  // for a window that has not finished, `waiting` for one still inside its bound,
+  // `overdue` for one that has stopped being news. Do NOT "simplify" either bound away
+  // — each one alone reintroduces exactly one of the two defects above — and do not
+  // re-add the measurement without a consumer that reads it.
   const out: { row: PracticeRow; window: ActivityWindow }[] = [];
   for (const row of rows) {
     const window = activityWindow(row);
@@ -121,7 +102,7 @@ function recentlyFinishedPractices(
     // Half-open at both ends on purpose: a window that has not finished yet is not a
     // finish (`ready`), and one past the bound has stopped being news (`overdue`).
     const wait = arrivalWait({
-      measuredLagMin,
+      measuredLagMin: null,
       defaultLagMin: PRACTICE_RECAP_BOUND_MIN,
       graceMin: 0,
       minWindowMin: PRACTICE_RECAP_BOUND_MIN,
