@@ -414,13 +414,14 @@ command handed only the diff's own files would have reported one of the 44.
   base check, the base moves during the pass, and merging again voids the pass.
   `MERGED-TREE-CHECKED:` is what that loop lacks — it clears a moved base WITHOUT
   moving the head, so the pass stays valid. It is not the gate's only exit: the
-  gate itself names merging and letting CI re-run, and the check goes inert when
-  nothing type-bearing landed. It is the exit when the merge would cost you a
-  pass. Post it as its own paragraph — a receipt inside a fence, an indented
-  block or a blockquote quotes rather than speaks, and is read as absent (#5183)
-  — and state all four literals the grammar wants: the head SHA, the base SHA,
-  `npm run typecheck`, and the test script you ran. The gate checks that they
-  were named, never that they cover the diff. Treating the receipt as a shortcut
+  gate itself names merging and letting CI re-run, and the check does not fire
+  at all when nothing type-bearing landed. The receipt is the exit when merging
+  would cost a pass. Post it as its own paragraph — a receipt inside a fence, an indented
+  block or a blockquote quotes rather than speaks, and the gate keeps that line
+  only to say it went unread (#5183) — and state all four literals the grammar
+  wants: a head SHA of at least eight characters, the base SHA,
+  `npm run typecheck`, and a test tier named as its own npm script. The gate
+  checks that they were named, never that they cover the diff. Treating the receipt as a shortcut
   to be declined on principle (2026-09-05, twice) sends lanes round the loop with
   the one thing that shortens it withheld. And the receipt is bound to the base
   it names, so it stales the moment main moves — run it and merge in one pass,
