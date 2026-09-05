@@ -3,7 +3,7 @@ import {
   RECEIPT_MARKER,
   baseMovedVerdict,
   typeBearing,
-} from "../../scripts/orchestration/base-moved-core.mjs";
+} from "../../scripts/orchestration/merge-gate-core.mjs";
 
 // THE BASE-MOVED GATE (#5235). type-verdict.test.ts pins that a tree can be
 // clean on its own base and invalid merged; this pins what the merge gate DOES

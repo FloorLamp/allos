@@ -39,7 +39,7 @@
 //      above is about ONE head; this one is about the merge. When the base has
 //      moved since this head's CI base by a commit that could carry a type,
 //      only a MERGED-TREE-CHECKED receipt on this exact head opens the gate.
-//      base-moved-core.mjs holds that judgment and states its own limit.
+//      The core holds that judgment and states its own limit.
 //
 // It also PRINTS, without gating on it, what `e2e-main` says about the base
 // branch (#4722): that workflow reports on main, never on a PR head, so main
@@ -83,8 +83,9 @@ import {
   ownershipVerdict,
   readinessVerdict,
   receiptVerdict,
+  RECEIPT_MARKER,
+  baseMovedVerdict,
 } from "./merge-gate-core.mjs";
-import { RECEIPT_MARKER, baseMovedVerdict } from "./base-moved-core.mjs";
 import { titleLength, titleRuleRefusal } from "./title-rule.mjs";
 helpGuard(process.argv, import.meta.url);
 
