@@ -66,7 +66,6 @@ import {
 } from "@/lib/intake-active-write";
 import { readForUpdate, casUpdate } from "@/lib/tx";
 import {
-  resolveProviderIdByName,
   resolveProviderOnEdit,
   resolveExactPrescriberId,
 } from "@/lib/providers-db";
@@ -79,16 +78,21 @@ import {
 import { orderIntakePair } from "@/lib/intake-pairs";
 import { readDoseQuantity, unreadableDoseAmountMessage } from "@/lib/dri";
 import {
-  normalizeIngredientDrafts,
   unreadableAmountMessage,
   type IngredientDraftResult,
   type IngredientWrite,
 } from "@/lib/intake-ingredients";
+import type { PurposeWrite } from "@/lib/intake-purposes";
+// The ONE spelling of every key this form's round trip uses, and the one parse of the
+// four JSON payloads it posts (#4666) — the writer side is lib/intake-form-fields.
 import {
-  normalizePurposeDrafts,
-  type PurposeDraft,
-  type PurposeWrite,
-} from "@/lib/intake-purposes";
+  parseIntakeDoses,
+  parseIntakeIngredients,
+  parseIntakePairs,
+  parseIntakePurposes,
+  type IntakeField,
+  type IntakePairInput,
+} from "@/lib/intake-form-fields";
 import { leftRefillTrackedSet, refillMarkerKey } from "@/lib/refill-nudge";
 import { parseQuantityOnHand, resolveOnHandWrite } from "@/lib/refill";
 import {
@@ -100,10 +104,10 @@ import {
   CONDITIONS,
   WORKOUT_CONDITIONS,
   OBLIGATIONS,
-  FOOD_TIMINGS,
   parseDosage,
   spreadDoseTimes,
   collapseOnDemandDoses,
+  type CollapsibleDose,
 } from "@/lib/intake-schedule";
 import { isTrainingRelevant } from "@/lib/life-stage";
 import {
@@ -128,7 +132,6 @@ import { doseLogDays } from "@/lib/dose-log-window";
 import { historicalDoseErrorMessage } from "@/lib/historical-dose-error";
 import type {
   FoodTiming,
-  PairRelation,
   IntakeCondition,
   IntakeItemKind,
   IntakeObligation,
@@ -162,10 +165,15 @@ function revalidateIntake() {
   revalidateRoute("/");
 }
 
-// IntakeItem-level fields (timing/amount/food live on doses).
-function fields(formData: FormData) {
-  const str = (k: string) => strOrNull(formData.get(k));
-  const conditionRaw = String(formData.get("condition") ?? "daily");
+// IntakeItem-level fields (timing/amount/food live on doses). Every key is read
+// through `get`/`str`, whose parameter is the ONE field declaration in
+// lib/intake-form-fields (#4666) — so renaming a key the form posts is a compile
+// error here instead of a field that quietly stops arriving.
+function fields(formData: FormData, todayStr: string) {
+  const get = (k: IntakeField) => formData.get(k);
+  const has = (k: IntakeField) => formData.has(k);
+  const str = (k: IntakeField) => strOrNull(formData.get(k));
+  const conditionRaw = String(get("condition") ?? "daily");
   const condition: IntakeCondition = CONDITIONS.includes(
     conditionRaw as IntakeCondition
   )
@@ -175,10 +183,10 @@ function fields(formData: FormData) {
   // on it (see below): kind is clinical identity, and a medication's default is the
   // one obligation that carries a safety net.
   const kindEarly: IntakeItemKind =
-    formData.get("kind") === "medication" ? "medication" : "supplement";
+    get("kind") === "medication" ? "medication" : "supplement";
   const kindAffordances = intakeKindAffordances(kindEarly);
   const defaultObligation = kindAffordances.defaultObligation;
-  const obligationRaw = String(formData.get("obligation") ?? defaultObligation);
+  const obligationRaw = String(get("obligation") ?? defaultObligation);
   // A `may` item is on demand by construction (#1505 collapsed obligation into it), so
   // the old separate as-needed checkbox is gone: choosing May declares no dueness.
   const obligation: IntakeObligation = OBLIGATIONS.includes(
@@ -190,7 +198,7 @@ function fields(formData: FormData) {
   // Each branch keeps ONLY its own fields so a user who tries weekly, picks days, then
   // switches back to daily doesn't leave a stale weekday list that would silently
   // re-narrow the schedule if the kind were ever changed back by another path.
-  const cadenceKindRaw = String(formData.get("cadence_kind") ?? "daily");
+  const cadenceKindRaw = String(get("cadence_kind") ?? "daily");
   const cadenceKind: CadenceKind = CADENCE_KINDS.includes(
     cadenceKindRaw as CadenceKind
   )
@@ -199,20 +207,20 @@ function fields(formData: FormData) {
   const cadenceWeekdays =
     cadenceKind === "weekly"
       ? normalizeWeekdays(
-          String(formData.get("cadence_weekdays") ?? "")
+          String(get("cadence_weekdays") ?? "")
             .split(",")
             .map((x) => Number(x.trim()))
             .filter((n) => Number.isInteger(n))
         )
       : null;
-  const cadenceIntervalRaw = Number(formData.get("cadence_interval_days"));
+  const cadenceIntervalRaw = Number(get("cadence_interval_days"));
   const cadenceIntervalDays =
     cadenceKind === "interval" &&
     Number.isInteger(cadenceIntervalRaw) &&
     cadenceIntervalRaw >= 1
       ? cadenceIntervalRaw
       : null;
-  const anchorRaw = String(formData.get("cadence_anchor_date") ?? "").trim();
+  const anchorRaw = String(get("cadence_anchor_date") ?? "").trim();
   const cadenceAnchorDate =
     cadenceKind === "interval" && isRealIsoDate(anchorRaw) ? anchorRaw : null;
   const situation = condition === "situational" ? str("situation") : null;
@@ -225,24 +233,23 @@ function fields(formData: FormData) {
   // the "For condition…" picker (a conditions-list select). Medications only; a blank
   // value or a supplement clears it. Ownership is validated in the action before it's
   // written (an untrusted id is dropped to null).
-  const indicationRaw = Number(formData.get("indication_condition_id"));
+  const indicationRaw = Number(get("indication_condition_id"));
   const indicationConditionIdRaw =
     Number.isInteger(indicationRaw) && indicationRaw > 0 ? indicationRaw : null;
   // Missed-dose escalation. Only a critical supplement carries an
   // escalation window/override; clear them when it's toggled off so a stale value
   // can't fire later. escalate_after_min is a positive minute count (else null →
   // the notifier's default).
-  const critical =
-    formData.get("critical") === "1" || formData.get("critical") === "on";
-  const afterRaw = Number(formData.get("escalate_after_min"));
+  const critical = get("critical") === "1" || get("critical") === "on";
+  const afterRaw = Number(get("escalate_after_min"));
   const escalateAfterMin =
     critical && Number.isInteger(afterRaw) && afterRaw > 0 ? afterRaw : null;
   const escalateChatId = critical ? str("escalate_chat_id") : null;
   // Refill tracking. quantity_on_hand is opt-in: a blank field
   // leaves it NULL (untracked). qty_per_dose defaults to 1 and is clamped
   // positive so days-of-supply math never divides by zero.
-  const quantityOnHand = parseQuantityOnHand(formData.get("quantity_on_hand"));
-  const perDoseRaw = Number(formData.get("qty_per_dose"));
+  const quantityOnHand = parseQuantityOnHand(get("quantity_on_hand"));
+  const perDoseRaw = Number(get("qty_per_dose"));
   const qtyPerDose =
     Number.isFinite(perDoseRaw) && perDoseRaw > 0 ? perDoseRaw : 1;
   // Medication identity (CLINICAL, #1505): kind = 'medication' reveals the
@@ -264,7 +271,7 @@ function fields(formData: FormData) {
   // The form submits an explicit 0/1 ("rx" hidden field it keeps in sync); when the
   // field is ABSENT (a lean caller like the quick-add), derive it the same way the
   // migration backfill does — a recorded prescriber or Rx number ⇒ Rx, else OTC.
-  const rxRaw = formData.get("rx");
+  const rxRaw = get("rx");
   const rx = !isMed
     ? 0
     : rxRaw === "1" || rxRaw === "on"
@@ -288,19 +295,19 @@ function fields(formData: FormData) {
   // NO notice, ever (the liability line). redose_notice is the per-item opt-in, forced
   // OFF unless BOTH numbers are confirmed (an opt-in with nothing confirmed can never
   // fire, so it isn't stored as "on").
-  const intervalRaw = Number(formData.get("min_interval_hours"));
+  const intervalRaw = Number(get("min_interval_hours"));
   const minIntervalHours =
     isPrnMedication && Number.isFinite(intervalRaw) && intervalRaw > 0
       ? intervalRaw
       : null;
-  const maxRaw = Number(formData.get("max_daily_count"));
+  const maxRaw = Number(get("max_daily_count"));
   const maxDailyCount =
     isPrnMedication && Number.isInteger(maxRaw) && maxRaw > 0 ? maxRaw : null;
   // Amount-aware daily maximum in mg (#1854), same confirm discipline: a PRN
   // item only, user-entered, blank/invalid stays NULL — the mg basis is then
   // simply unavailable and the counters fall back to counting doses. It does NOT
   // gate the redose opt-in (interval + count max remain that pair).
-  const maxMgRaw = Number(formData.get("max_daily_amount_mg"));
+  const maxMgRaw = Number(get("max_daily_amount_mg"));
   const maxDailyAmountMg =
     isPrnMedication && Number.isFinite(maxMgRaw) && maxMgRaw > 0
       ? maxMgRaw
@@ -309,8 +316,7 @@ function fields(formData: FormData) {
     isPrnMedication &&
     minIntervalHours != null &&
     maxDailyCount != null &&
-    (formData.get("redose_notice") === "1" ||
-      formData.get("redose_notice") === "on")
+    (get("redose_notice") === "1" || get("redose_notice") === "on")
       ? 1
       : 0;
   // Cached RxNorm concept id (issue #144) — user-confirmed on the form; kept for both
@@ -323,7 +329,25 @@ function fields(formData: FormData) {
   const rxcuiIngredients = rxcui
     ? serializeRxcuiIngredients(parseRxcuiIngredients(str("rxcui_ingredients")))
     : null;
+  // The start date, and whether it was posted AT ALL — a lean caller that omits the
+  // field is not a person who cleared it. Validated here so the create and the save
+  // cannot drift on what a usable start date is; the callers decide when to refuse.
+  const hasStartedOn = has("started_on");
+  const startedOnRaw = String(get("started_on") ?? "").trim();
+  const startDateError =
+    kind === "medication" &&
+    hasStartedOn &&
+    ((!isOnDemand && !startedOnRaw) ||
+      (!!startedOnRaw &&
+        (!isRealIsoDate(startedOnRaw) || startedOnRaw > todayStr)))
+      ? isOnDemand
+        ? "Enter a valid start date that isn't in the future."
+        : "Enter a start date that isn't in the future."
+      : null;
   return {
+    hasStartedOn,
+    startedOnRaw,
+    startDateError,
     cadenceKind,
     cadenceWeekdays,
     cadenceIntervalDays,
@@ -371,60 +395,6 @@ function resolveIndicationConditionId(
   return row ? row.id : null;
 }
 
-interface DoseInput {
-  id?: number;
-  amount: string | null;
-  time_of_day: string | null;
-  food_timing: FoodTiming;
-  // Per-row calendar (#1602), already normalized by parseDoses: a canonical weekday
-  // CSV (or null) and an inclusive validity window.
-  weekdays: string | null;
-  start_date: string | null;
-  end_date: string | null;
-}
-
-// Parse the doses JSON the form submits. Always returns at least one dose so a
-// supplement is never left without a schedule entry.
-function parseDoses(formData: FormData): DoseInput[] {
-  let raw: unknown = [];
-  try {
-    raw = JSON.parse(String(formData.get("doses") ?? "[]"));
-  } catch {
-    raw = [];
-  }
-  const arr = Array.isArray(raw) ? raw : [];
-  const out: DoseInput[] = arr.map((d: any) => ({
-    id: typeof d?.id === "number" ? d.id : undefined,
-    amount: strOrNull(d?.amount),
-    time_of_day: strOrNull(d?.time_of_day),
-    food_timing: FOOD_TIMINGS.includes(d?.food_timing) ? d.food_timing : "any",
-    // Per-row calendar (#1602). normalizeWeekdays drops anything out of range and
-    // canonicalizes the order, so an equivalent re-submission stores identically and a
-    // no-op edit never looks like a change. A malformed date is dropped to null rather
-    // than stored — an unparseable window would read as "no window", and storing it
-    // would leave a value that looks like a rule but constrains nothing.
-    weekdays: normalizeWeekdays(
-      Array.isArray(d?.weekdays)
-        ? d.weekdays.map((x: unknown) => Number(x))
-        : []
-    ),
-    start_date: isRealIsoDate(d?.start_date) ? d.start_date : null,
-    end_date: isRealIsoDate(d?.end_date) ? d.end_date : null,
-  }));
-  return out.length
-    ? out
-    : [
-        {
-          amount: null,
-          time_of_day: null,
-          food_timing: "any",
-          weekdays: null,
-          start_date: null,
-          end_date: null,
-        },
-      ];
-}
-
 // A dose amount whose number cannot be read STOPS THE SAVE (#3153), exactly as an
 // unreadable ingredient amount does. The dose amount is the number the upper-limit
 // warnings are computed from, and every alternative to refusing stores a guess on a
@@ -434,8 +404,8 @@ function parseDoses(formData: FormData): DoseInput[] {
 // dose keeps no `amount_text` alongside its reading, so nothing downstream could ever
 // tell that a number had been dropped. Refusing is the only answer the person can see
 // and correct. Returns the offending text (possibly "") or null when every dose reads.
-// Takes only what it reads — both call sites pass the COLLAPSED doses, whose type
-// differs from DoseInput in fields this has no opinion about.
+// Takes only what it reads, so the collapsed doses both call sites pass fit whatever
+// else they carry.
 function unreadableDoseAmount(
   doses: readonly { amount: string | null }[]
 ): string | null {
@@ -445,35 +415,14 @@ function unreadableDoseAmount(
   return bad ? (bad.amount ?? "") : null;
 }
 
-interface PairInput {
-  otherId: number;
-  relation: PairRelation;
-  note: string | null;
-}
-
-// Parse the interactions JSON the form submits (relationships from the edited
-// supplement to others).
-function parsePairs(formData: FormData): PairInput[] {
-  let raw: unknown = [];
-  try {
-    raw = JSON.parse(String(formData.get("pairs") ?? "[]"));
-  } catch {
-    raw = [];
-  }
-  const arr = Array.isArray(raw) ? raw : [];
-  return arr
-    .map((p: any) => ({
-      otherId: Number(p?.otherId) || 0,
-      relation: (p?.relation === "with" ? "with" : "separate") as PairRelation,
-      note: strOrNull(p?.note),
-    }))
-    .filter((p) => p.otherId > 0);
-}
-
 // Replace all pairs involving `itemId` with the submitted set. Pairs carry no
 // child data, so delete-and-reinsert is simpler than diffing and is correct from
 // either item's edit form. Must run inside a transaction.
-function reconcilePairs(itemId: number, pairs: PairInput[], profileId: number) {
+function reconcilePairs(
+  itemId: number,
+  pairs: IntakePairInput[],
+  profileId: number
+) {
   db.prepare("DELETE FROM intake_item_pairs WHERE a_id = ? OR b_id = ?").run(
     itemId,
     itemId
@@ -496,41 +445,6 @@ function reconcilePairs(itemId: number, pairs: PairInput[], profileId: number) {
   }
 }
 
-// Parse the ingredients JSON the form's repeater submits (issue #2856). The posted
-// shape is the LABEL's own words — a name and the amount text as printed — and the
-// canonical (amount, unit) pair is derived here at the write boundary by the shared
-// pure normalizer, never trusted from the client. Blank rows are dropped; a row with a
-// name and no amount is KEPT, because "this blend contains St. John's Wort" is exactly
-// what the interaction belt needs even when the label hides the milligrams.
-//
-// ABSENT MEANS UNCHANGED (review of #2856). `null` here is "this form did not post a
-// composition", which is a different statement from "this item has no composition" and
-// must not clear one. Two forms share updateIntakeItem, and only one of them renders
-// the repeater; without this distinction a medication edit — or any future form
-// reusing the action — would silently delete a person's transcribed label. An explicit
-// empty array from a form that DOES render the repeater still clears it, which is how
-// someone removes every row.
-//
-// A row whose amount carries digits but is not one clean quantity refuses the whole
-// save (see readIngredientAmount): storing it as "no stated amount" would drop a real
-// upper-limit contribution exactly as quietly as the fabricated zero it replaced.
-function parseIngredients(formData: FormData): IngredientDraftResult | null {
-  if (!formData.has("ingredients")) return null;
-  let raw: unknown = [];
-  try {
-    raw = JSON.parse(String(formData.get("ingredients") ?? "[]"));
-  } catch {
-    raw = [];
-  }
-  const arr = Array.isArray(raw) ? raw : [];
-  return normalizeIngredientDrafts(
-    arr.map((g: any) => ({
-      name: typeof g?.name === "string" ? g.name : "",
-      amount_text: typeof g?.amount === "string" ? g.amount : "",
-    }))
-  );
-}
-
 // Replace an item's ingredient rows with the submitted set. Ingredients carry no child
 // data and no identity of their own — they are ATTRIBUTES of the item, restated in
 // full every time the form that owns them is saved — so delete-and-reinsert is both
@@ -550,60 +464,6 @@ function reconcileIngredients(itemId: number, rows: IngredientWrite[] | null) {
   rows.forEach((g, i) => {
     ins.run(itemId, g.name, g.amount_text, g.amount, g.unit, i);
   });
-}
-
-// Parse the purposes JSON the form submits (issue #2857) — the structured "why" of an
-// item. The posted shape is a list of typed targets (a goal key, a condition id, a
-// canonical biomarker name with an optional flag direction), normalized here at the
-// write boundary by the shared pure normalizer.
-//
-// ABSENT MEANS UNCHANGED, exactly as it does for the composition above and for the same
-// reason: `null` is "this form did not post purposes", which is not "this item has no
-// purposes" and must not clear one. Two forms share updateIntakeItem and only one
-// renders the control. An explicit empty array from a form that DOES render it still
-// clears every row, which is how somebody removes the last one.
-//
-// Nothing here can REFUSE a save. A purpose is an annotation; an unrenderable row is
-// dropped by the normalizer and the rest of the person's edit lands (see
-// normalizePurposeDrafts).
-function parsePurposes(formData: FormData): PurposeWrite[] | null {
-  if (!formData.has("purposes")) return null;
-  let raw: unknown = [];
-  try {
-    raw = JSON.parse(String(formData.get("purposes") ?? "[]"));
-  } catch {
-    raw = [];
-  }
-  const arr = Array.isArray(raw) ? raw : [];
-  const drafts: PurposeDraft[] = [];
-  for (const p of arr) {
-    const kind = (p as { kind?: unknown })?.kind;
-    if (kind === "goal") {
-      drafts.push({
-        kind: "goal",
-        goalKey:
-          typeof (p as any).goalKey === "string" ? (p as any).goalKey : "",
-      });
-    } else if (kind === "condition") {
-      drafts.push({
-        kind: "condition",
-        conditionId: Number((p as any).conditionId),
-      });
-    } else if (kind === "biomarker") {
-      drafts.push({
-        kind: "biomarker",
-        biomarkerKey:
-          typeof (p as any).biomarkerKey === "string"
-            ? (p as any).biomarkerKey
-            : "",
-        direction:
-          (p as any).direction === "low" || (p as any).direction === "high"
-            ? (p as any).direction
-            : null,
-      });
-    }
-  }
-  return normalizePurposeDrafts(drafts);
 }
 
 // Drop purpose rows naming a condition that is not this PROFILE's — the ownership
@@ -651,11 +511,80 @@ function reconcilePurposes(itemId: number, rows: PurposeWrite[] | null) {
   });
 }
 
+// WHAT THE CREATE AND THE SAVE BOTH READ (#4666). The two actions spelled this block
+// twice — the same four payload parses, the same two refusals, the same prescriber and
+// indication resolution — and only what surrounds it differs (the shared bottle, the
+// course, the on-hand compare-and-set). Returns the refusal to show, or the submission.
+//
+// ONE PRESCRIBER RESOLUTION, NOT TWO. The create used resolveProviderIdByName and the
+// save resolveProviderOnEdit. The create posts neither `provider_id` nor
+// `provider_loaded` (the form sends those only for an edit), and resolveProviderOnEdit
+// with a null loaded id and a blank loaded name is exactly resolveProviderIdByName —
+// a blank submitted name normalizes equal and returns the null loaded id, any other
+// name differs and re-resolves. So the edit-safe call (#601) covers both doors.
+function readIntakeSubmission(
+  profileId: number,
+  formData: FormData,
+  f: ReturnType<typeof fields>
+):
+  | { error: string }
+  | {
+      doses: CollapsibleDose[];
+      pairs: IntakePairInput[];
+      ingredients: IngredientDraftResult | null;
+      purposes: PurposeWrite[] | null;
+      providerId: number | null;
+      indicationConditionId: number | null;
+    } {
+  const get = (k: IntakeField) => formData.get(k);
+  const doses = collapseOnDemandDoses(parseIntakeDoses(formData), f.isOnDemand);
+  const badDoseAmount = unreadableDoseAmount(doses);
+  if (badDoseAmount != null)
+    return { error: unreadableDoseAmountMessage(badDoseAmount) };
+  const ingredients = parseIntakeIngredients(formData);
+  if (ingredients && !ingredients.ok)
+    return {
+      error: unreadableAmountMessage(ingredients.name, ingredients.amountText),
+    };
+  // Prescriber (#1051 semantics decision (a)): provider_id is the prescribing
+  // INDIVIDUAL, resolved-or-created as one ("individual" — never the silent org
+  // default that mints mistyped person rows), and kept as loaded unless the field was
+  // actually changed (#601) so an unrelated edit cannot relink an ambiguously-named
+  // prescriber to a freshly-coined duplicate. When the picker is left blank, fall back
+  // to an EXISTING individual row matching the free-text prescriber exactly (never an
+  // org, never a near-miss). NULL for supplements, so a kind flip clears a stale link.
+  let providerId =
+    f.kind === "medication"
+      ? resolveProviderOnEdit(
+          Number(get("provider_id")) || null,
+          String(get("provider_loaded") ?? ""),
+          String(get("provider") ?? ""),
+          "individual"
+        )
+      : null;
+  if (f.kind === "medication" && providerId == null && f.prescriber)
+    providerId = resolveExactPrescriberId(f.prescriber);
+  return {
+    doses,
+    pairs: parseIntakePairs(formData),
+    ingredients,
+    purposes: parseIntakePurposes(formData),
+    providerId,
+    indicationConditionId: resolveIndicationConditionId(
+      profileId,
+      f.kind,
+      f.indicationConditionIdRaw
+    ),
+  };
+}
+
 export async function addIntakeItem(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
-  const name = String(formData.get("name") ?? "").trim();
+  const get = (k: IntakeField) => formData.get(k);
+  const name = String(get("name") ?? "").trim();
   if (!name) return formError("Enter a name.");
-  const f = fields(formData);
+  const todayStr = today(profile.id);
+  const f = fields(formData, todayStr);
   if (
     f.kind === "supplement" &&
     WORKOUT_CONDITIONS.includes(f.condition) &&
@@ -672,7 +601,7 @@ export async function addIntakeItem(formData: FormData): Promise<FormResult> {
   // a forged id can't attach this item to a household branch the caller can't reach — and
   // a linked item keeps NO private count (the phantom-double-supply invariant), which is
   // why quantity_on_hand is forced NULL below rather than trusted from the form.
-  const postedSupplyId = Number(formData.get("supply_id") ?? 0);
+  const postedSupplyId = Number(get("supply_id") ?? 0);
   let supplyId: number | null = null;
   if (postedSupplyId) {
     const scope = await requireScope();
@@ -680,55 +609,17 @@ export async function addIntakeItem(formData: FormData): Promise<FormResult> {
       return formError("Couldn't find that shared bottle.");
     supplyId = postedSupplyId;
   }
-  const todayStr = today(profile.id);
-  const hasStartedOn = formData.has("started_on");
-  const startedOnRaw = String(formData.get("started_on") ?? "").trim();
-  if (
-    f.kind === "medication" &&
-    hasStartedOn &&
-    ((!f.isOnDemand && !startedOnRaw) ||
-      (!!startedOnRaw &&
-        (!isRealIsoDate(startedOnRaw) || startedOnRaw > todayStr)))
-  ) {
-    return formError(
-      f.isOnDemand
-        ? "Enter a valid start date that isn't in the future."
-        : "Enter a start date that isn't in the future."
-    );
-  }
-  const doses = collapseOnDemandDoses(parseDoses(formData), f.isOnDemand);
-  const badDoseAmount = unreadableDoseAmount(doses);
-  if (badDoseAmount != null)
-    return formError(unreadableDoseAmountMessage(badDoseAmount));
-  const pairs = parsePairs(formData);
-  const ingredients = parseIngredients(formData);
-  const purposes = parsePurposes(formData);
-  if (ingredients && !ingredients.ok) {
-    return formError(
-      unreadableAmountMessage(ingredients.name, ingredients.amountText)
-    );
-  }
-  // Prescriber (#1051 semantics decision (a)): provider_id is the prescribing
-  // INDIVIDUAL. The picker resolves-or-creates against the registry as an INDIVIDUAL
-  // (type: "individual" — never the silent org default that mints mistyped person
-  // rows). When the picker is left blank, fall back to resolving the free-text
-  // prescriber into an EXISTING individual row (exact only; never an org, never a
-  // near-miss). NULL for supplements.
-  let providerId =
-    f.kind === "medication"
-      ? resolveProviderIdByName(
-          String(formData.get("provider") ?? ""),
-          "individual"
-        )
-      : null;
-  if (f.kind === "medication" && providerId == null && f.prescriber) {
-    providerId = resolveExactPrescriberId(f.prescriber);
-  }
-  const indicationConditionId = resolveIndicationConditionId(
-    profile.id,
-    f.kind,
-    f.indicationConditionIdRaw
-  );
+  if (f.startDateError) return formError(f.startDateError);
+  const sub = readIntakeSubmission(profile.id, formData, f);
+  if ("error" in sub) return formError(sub.error);
+  const {
+    doses,
+    pairs,
+    ingredients,
+    purposes,
+    providerId,
+    indicationConditionId,
+  } = sub;
   const created = writeTx(() => {
     // Link the situational item to its id-keyed situation ROW (#560), creating the
     // row if this is a new label; the free-text `situation` column is kept as a
@@ -792,13 +683,13 @@ export async function addIntakeItem(formData: FormData): Promise<FormResult> {
             // chosen date (today for quick-add).
             course: {
               kind: "open",
-              startedOn: hasStartedOn
-                ? startedOnRaw || null
+              startedOn: f.hasStartedOn
+                ? f.startedOnRaw || null
                 : f.isOnDemand
                   ? null
                   : todayStr,
               preserveUnknownStart:
-                f.isOnDemand && (!hasStartedOn || !startedOnRaw),
+                f.isOnDemand && (!f.hasStartedOn || !f.startedOnRaw),
             },
           }
         : { ...base, kind: "supplement" }
@@ -822,37 +713,25 @@ export async function updateIntakeItem(
   formData: FormData
 ): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
-  const id = Number(formData.get("id"));
+  const get = (k: IntakeField) => formData.get(k);
+  const has = (k: IntakeField) => formData.has(k);
+  const id = Number(get("id"));
   if (!id) return formError("Couldn't find that supplement.");
-  const name = String(formData.get("name") ?? "").trim();
+  const name = String(get("name") ?? "").trim();
   if (!name) return formError("Enter a name.");
-  const f = fields(formData);
   const todayStr = today(profile.id);
-  const hasStartedOn = formData.has("started_on");
-  const startedOnRaw = String(formData.get("started_on") ?? "").trim();
-  if (
-    f.kind === "medication" &&
-    hasStartedOn &&
-    ((!f.isOnDemand && !startedOnRaw) ||
-      (!!startedOnRaw &&
-        (!isRealIsoDate(startedOnRaw) || startedOnRaw > todayStr)))
-  ) {
-    return formError(
-      f.isOnDemand
-        ? "Enter a valid start date that isn't in the future."
-        : "Enter a start date that isn't in the future."
-    );
-  }
-  const hasCourseId = formData.has("course_id");
-  const courseId = Number(formData.get("course_id"));
+  const f = fields(formData, todayStr);
+  if (f.startDateError) return formError(f.startDateError);
+  const hasCourseId = has("course_id");
+  const courseId = Number(get("course_id"));
   if (hasCourseId && (!Number.isInteger(courseId) || courseId <= 0)) {
     return formError("Couldn't find that medication course.");
   }
   // End date (#1140 Part D): the current course's `stopped_on`. Empty ⇒ active (no end);
   // a date ⇒ ended as of that date. Medications only; validated not-future here, routed
   // through the shared stop/restart cores below (never a raw stopped_on write).
-  const hasEndDate = f.kind === "medication" && formData.has("end_date");
-  const endDateRaw = String(formData.get("end_date") ?? "").trim();
+  const hasEndDate = f.kind === "medication" && has("end_date");
+  const endDateRaw = String(get("end_date") ?? "").trim();
   if (
     hasEndDate &&
     endDateRaw &&
@@ -860,46 +739,21 @@ export async function updateIntakeItem(
   ) {
     return formError("Enter an end date that isn't in the future.");
   }
-  const doses = collapseOnDemandDoses(parseDoses(formData), f.isOnDemand);
-  const badDoseAmount = unreadableDoseAmount(doses);
-  if (badDoseAmount != null)
-    return formError(unreadableDoseAmountMessage(badDoseAmount));
-  const pairs = parsePairs(formData);
-  const ingredients = parseIngredients(formData);
-  const purposes = parsePurposes(formData);
-  if (ingredients && !ingredients.ok) {
-    return formError(
-      unreadableAmountMessage(ingredients.name, ingredients.amountText)
-    );
-  }
+  const sub = readIntakeSubmission(profile.id, formData, f);
+  if ("error" in sub) return formError(sub.error);
+  const {
+    doses,
+    pairs,
+    ingredients,
+    purposes,
+    providerId,
+    indicationConditionId,
+  } = sub;
   // The on-hand value the form was LOADED with (issue #467): quantity_on_hand is a
   // concurrently-decremented counter, so we compare-and-set against this instead of
   // blindly writing the absolute submitted value (see resolveOnHandWrite).
   const loadedQuantityOnHand = parseQuantityOnHand(
-    formData.get("quantity_on_hand_loaded")
-  );
-  // Prescribing provider: medications only; NULL for supplements so
-  // a kind flip back to supplement clears a stale link. Keep the loaded link unless
-  // the field was actually changed (#601), so an unrelated edit can't relink an
-  // ambiguously-named prescriber to a freshly-coined duplicate.
-  let providerId =
-    f.kind === "medication"
-      ? resolveProviderOnEdit(
-          Number(formData.get("provider_id")) || null,
-          String(formData.get("provider_loaded") ?? ""),
-          String(formData.get("provider") ?? ""),
-          "individual"
-        )
-      : null;
-  // As on add: an empty prescriber picker falls back to an exact free-text match
-  // against an existing individual registry row (#1051), never an org / near-miss.
-  if (f.kind === "medication" && providerId == null && f.prescriber) {
-    providerId = resolveExactPrescriberId(f.prescriber);
-  }
-  const indicationConditionId = resolveIndicationConditionId(
-    profile.id,
-    f.kind,
-    f.indicationConditionIdRaw
+    get("quantity_on_hand_loaded")
   );
   const result = writeTx((tx) => {
     // Verify ownership before touching the supplement or its child rows — the
@@ -932,7 +786,7 @@ export async function updateIntakeItem(
     // specific current/latest course it displayed, and this scoped lookup prevents a
     // forged id from changing another medication or profile. Validate before any row
     // is mutated so a start date can never land after that course's stop date.
-    if (f.kind === "medication" && hasStartedOn && hasCourseId) {
+    if (f.kind === "medication" && f.hasStartedOn && hasCourseId) {
       const course = db
         .prepare(
           `SELECT c.stopped_on
@@ -945,9 +799,9 @@ export async function updateIntakeItem(
         { stopped_on: string | null } | undefined;
       if (!course) return "course-not-found" as const;
       if (
-        startedOnRaw &&
+        f.startedOnRaw &&
         course.stopped_on &&
-        startedOnRaw > course.stopped_on
+        f.startedOnRaw > course.stopped_on
       ) {
         return "start-after-stop" as const;
       }
@@ -1156,13 +1010,19 @@ export async function updateIntakeItem(
       ensureMedicationCourse(
         profile.id,
         id,
-        hasStartedOn ? startedOnRaw || null : null,
-        !!f.isOnDemand && hasStartedOn && !startedOnRaw
+        f.hasStartedOn ? f.startedOnRaw || null : null,
+        !!f.isOnDemand && f.hasStartedOn && !f.startedOnRaw
       );
-      if (hasStartedOn && hasCourseId) {
+      if (f.hasStartedOn && hasCourseId) {
         // Through the course core (#2132) inside THIS transaction (the Tx token) — the
         // course was validated above, so a refusal here is unreachable.
-        setCourseStartDate(tx, profile.id, id, courseId, startedOnRaw || null);
+        setCourseStartDate(
+          tx,
+          profile.id,
+          id,
+          courseId,
+          f.startedOnRaw || null
+        );
       }
       // End date (#1140 Part D): apply only when it actually changed vs the current
       // latest-course state (re-read under the write lock, the #467 lifecycle-field
