@@ -22,12 +22,14 @@ import { jsxTags, lineAt, walkTsx, REPO } from "./jsx-tag-scan";
 // picker's rows, CompactDateMenu's radios). So the scan locates each menu panel
 // and looks at what is inside it.
 //
-// WHAT COUNTS AS AN ITEM: the command elements — `button`, `a`, `Link`. A
-// component (OverflowMenuSubmitItem, SourceDocumentLink, MyChartImport) is
-// scanned where it is DEFINED, at the element it actually renders, so a
-// pass-through prop is never mistaken for a missing role. Non-command content
-// inside a panel — a form wrapping a submit item, a hidden input, the merge
-// picker's checkboxes — is out of this scan's scope.
+// WHAT COUNTS AS AN ITEM: the command elements — `button`, `a`, `Link` —
+// written LITERALLY inside a panel, in the SAME FILE. The scan does not follow a
+// component to its definition, so a wrapper mounted in a panel
+// (OverflowMenuSubmitItem, SourceDocumentLink, MyChartImport) is skipped here:
+// the render tier holds those, and SourceDocumentLink takes `role` from its
+// caller, which no definition site can answer for. Non-command content inside a
+// panel — a form wrapping a submit item, a hidden input, the merge picker's
+// checkboxes — is out of this scan's scope.
 
 const SCAN_DIRS = ["app", "components"];
 
@@ -39,7 +41,14 @@ const COMMANDS = new Set(["button", "a", "Link"]);
 /** [start, end) of the CHILDREN of every menu panel opened in `text`. */
 export function menuPanelRegions(text: string): [number, number][] {
   const out: [number, number][] = [];
-  for (const tag of jsxTags(text)) {
+  const tags = jsxTags(text);
+  // A self-closing `<div … />` opens nothing, so counting it as a nesting level
+  // leaves the panel's own `</div>` unmatched and runs the region to end of file
+  // — reporting commands that are nowhere near the menu (#5204).
+  const selfClosingAt = new Set(
+    tags.filter((t) => t.selfClosing).map((t) => t.start)
+  );
+  for (const tag of tags) {
     const opensMenu =
       tag.name === MENU_TAG || /\brole\s*=\s*"menu"/.test(tag.attrs);
     if (!opensMenu || tag.selfClosing) continue;
@@ -58,7 +67,7 @@ export function menuPanelRegions(text: string): [number, number][] {
         text.startsWith(open, i) &&
         !/[\w.]/.test(text[i + open.length] ?? "")
       ) {
-        depth++;
+        if (!selfClosingAt.has(i)) depth++;
         i += open.length;
         continue;
       }
@@ -69,32 +78,37 @@ export function menuPanelRegions(text: string): [number, number][] {
   return out;
 }
 
-/** Line numbers of the commands inside a menu panel that carry no role. */
-export function menuItemsWithoutRole(text: string): number[] {
+// The role the failure message asks for, spelled once. Asking instead whether
+// SOME `role=` is present let the likeliest wrong answer through — `role="button"`
+// on a button — and a bare `data-role=` with it, since `-` is a non-word
+// character. The gate and the population count are ONE question (#5204).
+const MENU_ITEM_ROLE = /\brole\s*=\s*"menuitem(checkbox|radio)?"/;
+
+/** Every command inside a menu panel, with whether it announces a menu role. */
+function menuCommands(text: string): { line: number; hasRole: boolean }[] {
   const regions = menuPanelRegions(text);
   if (regions.length === 0) return [];
   const inside = (i: number) => regions.some(([s, e]) => i >= s && i < e);
   return jsxTags(text)
-    .filter(
-      (t) =>
-        COMMANDS.has(t.name) && inside(t.start) && !/\brole\s*=/.test(t.attrs)
-    )
-    .map((t) => lineAt(text, t.start));
+    .filter((t) => COMMANDS.has(t.name) && inside(t.start))
+    .map((t) => ({
+      line: lineAt(text, t.start),
+      hasRole: MENU_ITEM_ROLE.test(t.attrs),
+    }));
+}
+
+/** Line numbers of the commands inside a menu panel that carry no menu role. */
+export function menuItemsWithoutRole(text: string): number[] {
+  return menuCommands(text)
+    .filter((c) => !c.hasRole)
+    .map((c) => c.line);
 }
 
 /** Line numbers of the commands inside a menu panel that DO carry a menu role. */
 function menuItemsWithRole(text: string): number[] {
-  const regions = menuPanelRegions(text);
-  if (regions.length === 0) return [];
-  const inside = (i: number) => regions.some(([s, e]) => i >= s && i < e);
-  return jsxTags(text)
-    .filter(
-      (t) =>
-        COMMANDS.has(t.name) &&
-        inside(t.start) &&
-        /\brole\s*=\s*"menuitem(checkbox|radio)?"/.test(t.attrs)
-    )
-    .map((t) => lineAt(text, t.start));
+  return menuCommands(text)
+    .filter((c) => c.hasRole)
+    .map((c) => c.line);
 }
 
 function sourceFiles(): { rel: string; text: string }[] {
@@ -169,23 +183,6 @@ describe('every command in a role="menu" panel is an item of it (#5181)', () => 
     expect(menuItemsWithoutRole(menu(`<Link href={h}>Open</Link>`))).toEqual([
       1,
     ]);
-    // The fix, in each of its three spellings.
-    expect(
-      menuItemsWithoutRole(
-        menu(`<button type="button" role="menuitem">Edit</button>`)
-      )
-    ).toEqual([]);
-    expect(
-      menuItemsWithoutRole(
-        menu(`<button type="button" role="menuitemradio">Day</button>`)
-      )
-    ).toEqual([]);
-    expect(
-      menuItemsWithoutRole(
-        menu(`<button type="button" role="menuitemcheckbox">Bands</button>`)
-      )
-    ).toEqual([]);
-
     // A hand-rolled panel that declares the role itself is held to the same rule.
     expect(
       menuItemsWithoutRole(
@@ -203,6 +200,92 @@ describe('every command in a role="menu" panel is an item of it (#5181)', () => 
         `${menu(`<button type="button" role="menuitem">Edit</button>`)}<button type="button">Save</button>`
       )
     ).toEqual([]);
+  });
+
+  // THE GATE SPELLS THE ROLE IT DEMANDS (#5204). Asking only whether SOME
+  // `role=` is present accepts the likeliest wrong answer — `role="button"` on a
+  // button — and a `data-role=` passes too, because `-` is a non-word character.
+  it.each([
+    ['role="menuitem"', []],
+    ['role="menuitemradio"', []],
+    ['role="menuitemcheckbox"', []],
+    ['role="button"', [1]],
+    ['role="menu-item"', [1]],
+    ['data-role="edit"', [1]],
+  ])("a command in a panel carrying %s", (attr, expected) => {
+    expect(
+      menuItemsWithoutRole(
+        `<div role="menu"><button type="button" ${attr}>Edit</button></div>`
+      )
+    ).toEqual(expected);
+  });
+
+  // WHAT THE SCAN REACHES. Commands written literally inside a panel, in the
+  // same file. It does not follow a component to its definition, and a
+  // definition that sits outside any panel is not scanned at all — this pins the
+  // claim the header makes, which used to say the opposite (#5204).
+  it("reads only the commands written inside a panel in the same file", () => {
+    expect(
+      menuItemsWithoutRole(
+        `export function Item() {\n  return <button type="button">Edit</button>;\n}`
+      )
+    ).toEqual([]);
+    expect(
+      menuItemsWithoutRole(
+        `<div role="menu"><OverflowMenuSubmitItem label="Edit" /></div>`
+      )
+    ).toEqual([]);
+  });
+
+  // THE READER'S BLIND SPOTS (#5204). An apostrophe in menu copy ("Don't",
+  // "won't", "today's") and a regex literal both opened a string that ran on,
+  // taking every tag after it out of the census — the direction that reads as a
+  // clean bill of health.
+  it.each([
+    [
+      "an apostrophe in menu copy",
+      `<div role="menu">Don't stop<button type="button">Edit</button></div>`,
+      [1],
+    ],
+    [
+      // The apostrophe closing on the SAME line is the one only the
+      // operand-position rule catches: "Don't" opens, "today's" closes, and the
+      // item between them was gone from the census.
+      "an apostrophe on each side of an item",
+      `<div role="menu">Don't stop<button type="button">Edit</button>today's plan</div>`,
+      [1],
+    ],
+    [
+      // And a quote that never closes at all is not a string either — an
+      // opening apostrophe in copy used to take the rest of the file.
+      "an apostrophe that opens copy and never closes",
+      `<div role="menu">'til later<button type="button">Edit</button></div>`,
+      [1],
+    ],
+    [
+      "a regex literal above the panel",
+      `const q = /['"]/;\n<div role="menu"><button type="button">Edit</button></div>`,
+      [2],
+    ],
+  ])("still sees the items after %s", (_shape, src, expected) => {
+    expect(menuItemsWithoutRole(src)).toEqual(expected);
+  });
+
+  it("ends a panel at its own close, not at a self-closing child", () => {
+    // The third shape, and it INVENTS population: a self-closing `<div … />`
+    // opens nothing, so counting it as a nesting level leaves the panel's own
+    // `</div>` unmatched and the region runs to end of file — reporting a button
+    // that is nowhere near the menu.
+    const src = [
+      '<div role="menu">',
+      '<div className="sep" />',
+      '<button type="button" role="menuitem">Edit</button>',
+      "</div>",
+      '<button type="button">Save</button>',
+    ].join("\n");
+    expect(menuPanelRegions(src)).toHaveLength(1);
+    expect(menuPanelRegions(src)[0][1]).toBe(src.indexOf("</div>"));
+    expect(menuItemsWithoutRole(src)).toEqual([]);
   });
 
   it("sees a menu nested in a braced attribute value", () => {
