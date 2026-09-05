@@ -1465,6 +1465,13 @@ describe("actual atomic dashboard manifests", () => {
     // THE COLD COUNT IS THE CONTROL. "The warm render issues none of the six gathers'
     // statements" is only evidence if the cold render DID issue them — a memo that
     // returned nothing at all would satisfy the warm half exactly as well.
+    // AND IT IS THE EXACT BASELINE BELOW THAT DOES THE WORK, not this comparison —
+    // measured by making `commitCached` a passthrough and re-running: warm went
+    // 229/234/254/229/236/256 against cold 230/235/254/230/237/257, so five personas
+    // are still one statement cheaper on a second render for a reason that is not this
+    // memo, and only `household` trips the line below. The drift check is what turns
+    // that mutant red properly (bodybuilder 119 → 229). Keep both: this one names the
+    // failure in words, and the table catches it.
     const notCheaper = [...warmQueryCounts].flatMap(([persona, warm]) => {
       const cold = queryCounts.get(persona)!;
       return warm < cold
