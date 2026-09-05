@@ -46,24 +46,27 @@ describe("a confirm awaited inside a form action", () => {
   it.each([
     ["Reduce reminders", true],
     ["Cancel", false],
-  ])("renders its sheet, and %s resolves the await to %s", async (label, ok) => {
-    const answers: boolean[] = [];
-    render(
-      <ConfirmProvider>
-        <ConfirmingForm record={(a) => answers.push(a)} />
-      </ConfirmProvider>
-    );
+  ])(
+    "renders its sheet, and %s resolves the await to %s",
+    async (label, ok) => {
+      const answers: boolean[] = [];
+      render(
+        <ConfirmProvider>
+          <ConfirmingForm record={(a) => answers.push(a)} />
+        </ConfirmProvider>
+      );
 
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    // The sheet, while the action is still pending on it.
-    await screen.findByTestId("confirm-dialog");
-    expect(screen.getByText("Saving…")).toBeTruthy();
+      // The sheet, while the action is still pending on it.
+      await screen.findByTestId("confirm-dialog");
+      expect(screen.getByText("Saving…")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: label }));
+      fireEvent.click(screen.getByRole("button", { name: label }));
 
-    // Answering lets the action continue, and it carries the answer.
-    await waitFor(() => expect(answers).toEqual([ok]));
-    await waitFor(() => expect(screen.queryByText("Saving…")).toBeNull());
-  });
+      // Answering lets the action continue, and it carries the answer.
+      await waitFor(() => expect(answers).toEqual([ok]));
+      await waitFor(() => expect(screen.queryByText("Saving…")).toBeNull());
+    }
+  );
 });

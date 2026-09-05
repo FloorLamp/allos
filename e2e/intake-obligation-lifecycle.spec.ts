@@ -514,7 +514,9 @@ test("the Must -> May guardrail's sheet arrives from inside the form action, and
     // starts, reaches the guardrail, and parks on it.
     await hydratedClick(page, save);
     await expect(sheet).toBeVisible();
-    await expect(sheet).toContainText(`Reduce reminders for ${GATED_MED_NAME}?`);
+    await expect(sheet).toContainText(
+      `Reduce reminders for ${GATED_MED_NAME}?`
+    );
     // Still mid-action while the question is on screen — this is the pair that
     // could not both be true before.
     await expect(save).toHaveText(/Saving…/);
@@ -589,7 +591,9 @@ test("the pause-link confirm arrives from the same form action, and linking land
 
     await hydratedClick(page, save);
     await expect(sheet).toBeVisible();
-    await sheet.getByRole("button", { name: "Link pause", exact: true }).click();
+    await sheet
+      .getByRole("button", { name: "Link pause", exact: true })
+      .click();
     await expect(page).toHaveURL(/\/medications\/\d+$/);
     await expect.poll(pauseOf).not.toBeNull();
   } finally {
