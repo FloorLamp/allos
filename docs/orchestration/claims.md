@@ -1,7 +1,7 @@
 # Cross-session markers
 
-Several orchestrator sessions run against this repo and post as one GitHub account,
-so every coordination fact here is a MARKER a script reads, not a relayed line.
+Several orchestrator sessions post as one GitHub account, so every
+coordination fact here is a MARKER a script reads, not a relayed line.
 
 ## Claiming an issue
 
