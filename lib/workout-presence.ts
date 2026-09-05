@@ -23,6 +23,7 @@
 // lib/queries and simply feeds candidate rows to computeWorkoutPresence.
 
 import { parseUtcSql, zonedWallTimeToUtc } from "./date";
+import { episodeIsOpen, episodeState } from "./open-episode";
 import type { ActivityType } from "./types/training";
 
 // --- Window constants (documented; the boundary tests pin each edge). ---
@@ -40,19 +41,11 @@ export const FINISHED_WINDOW_MIN = 60;
 // row whose end instant looks recent but whose sync landed long ago.
 export const IMPORT_FRESHNESS_MIN = 60;
 
-// An `active` session whose draft has gone quiet for at least this long is
-// flagged `stale` — the "Still working out? Finish or discard?" suggest (#560).
-// A genuine live session bumps its auto-save every set (minutes apart), so this
-// much silence means it's very likely done or abandoned. Suggest-only: presence
-// NEVER auto-ends a session.
-export const STALE_MIN = 45;
-
-// Liveness cap: an unfinished session (no end_time) whose draft has been quiet
-// longer than this is treated as abandoned and drops to `idle`, so a draft left
-// open all day (or a quick manual log that was never marked done) doesn't hold
-// the dock forever. Must be > STALE_MIN so `stale` is an observable sub-state of
-// `active` (the hourly stale-suggest tick fires in the STALE_MIN..this window).
-export const ACTIVE_MAX_QUIET_MIN = 90;
+// The draft's two quiet bounds live in the open-episode table (#5142), where the
+// live practice's and the fast's do: a workout draft is one open episode among
+// four, and the "Still working out? Finish or discard?" suggest (#560) is the
+// STALE reading of it. Suggest-only: presence NEVER auto-ends a session — past the
+// abandon bound the draft simply stops holding the dock.
 
 // Small tolerance for a finish/end instant that reads slightly in the future
 // (clock skew, or an end time rounded up past `now`) — still "just finished".
@@ -75,7 +68,8 @@ export interface WorkoutPresence {
   // active: minutes elapsed since start_time; finished: minutes since end_time;
   // idle: 0. Clamped to >= 0.
   sinceMin: number;
-  // active AND the draft has been quiet >= STALE_MIN — drives the stale-suggest.
+  // active AND the draft has gone quiet past the episode's stale bound — drives
+  // the stale-suggest.
   stale: boolean;
 }
 
@@ -173,7 +167,7 @@ export function computeWorkoutPresence(
   let active: {
     row: PresenceActivityRow;
     touch: number;
-    quietMin: number;
+    stale: boolean;
   } | null = null;
   for (const row of rows) {
     if (row.date !== today) continue;
@@ -189,11 +183,16 @@ export function computeWorkoutPresence(
     if (isCompletedSessionRow(row)) continue;
     const touch = lastTouchMs(row);
     if (touch == null) continue;
-    const quietMin = (nowMs - touch) / 60_000;
-    if (quietMin > ACTIVE_MAX_QUIET_MIN) continue; // abandoned draft → idle
+    // The draft IS an open episode, and the last save is its freshest evidence
+    // (#5142). An abandoned one drops to idle here rather than holding the dock.
+    const episode = episodeState(
+      { kind: "workout", lastSignalAt: touch, expectedEnd: null },
+      nowMs
+    );
+    if (!episodeIsOpen(episode)) continue;
     // Most recently touched wins when two drafts are somehow open.
     if (!active || touch > active.touch)
-      active = { row, touch, quietMin: Math.max(0, quietMin) };
+      active = { row, touch, stale: episode.kind === "stale" };
   }
   // `start_time` is non-null here: isCompletedSessionRow already routed a
   // start-less row away. A start that does not RESOLVE (an unreadable clock) is a
@@ -213,7 +212,7 @@ export function computeWorkoutPresence(
         0,
         Math.round((nowMs - activeStart.getTime()) / 60_000)
       ),
-      stale: active.quietMin >= STALE_MIN,
+      stale: active.stale,
     };
   }
 

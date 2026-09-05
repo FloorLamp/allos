@@ -39,7 +39,9 @@ import { upsertActivities } from "@/lib/integrations/normalize";
 import { getWorkoutPresence } from "@/lib/queries/presence";
 import { applyIntent } from "@/lib/offline/writes";
 import { buildIntent } from "@/lib/offline/queue";
-import { STALE_MIN } from "@/lib/workout-presence";
+import { EPISODE_BOUNDS } from "@/lib/open-episode";
+
+const STALE_MIN = EPISODE_BOUNDS.workout.staleMin;
 import { setProfileBirthdate } from "@/lib/settings/profile-attrs";
 
 // The gap the freeze nudge produces for a run starting at 23:32Z (nudged to
