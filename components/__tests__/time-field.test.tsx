@@ -40,7 +40,28 @@ vi.mock("next/navigation", () => ({
 // mounts in its DESKTOP host. The sheet presentation and the wheel's real scroll
 // physics are a browser claim and live in e2e/anchored-panel-fork.mobile.spec.ts;
 // what is here is the value contract, which is the same in both hosts.
+//
+// ONE MediaQueryList OBJECT FOR THE WHOLE FILE, because `useCompactViewport`
+// caches the first one `matchMedia` hands back (components/useCompactViewport.ts)
+// — a fresh object per call is read once and then ignored for the rest of the
+// run. Flipping `matches` on THIS object before a mount is therefore the only
+// way to reach the phone branch, and `beforeEach` puts it back to the desktop
+// default every test.
+const viewport = {
+  matches: false,
+  media: "",
+  onchange: null,
+  addEventListener() {},
+  removeEventListener() {},
+  addListener() {},
+  removeListener() {},
+  dispatchEvent: () => false,
+};
+
 beforeEach(() => {
+  viewport.matches = false;
+  vi.stubGlobal("matchMedia", () => viewport);
+  vi.stubGlobal("scrollTo", () => {});
   vi.stubGlobal(
     "ResizeObserver",
     class ResizeObserver {
@@ -136,6 +157,83 @@ describe("TimeField — typing", () => {
     fireEvent.change(field(), { target: { value: "7:30pm" } });
     fireEvent.blur(field());
     expect(field().value).toBe("19:30");
+  });
+
+  // SHORTHAND IS READ (#5360) — the field goes through `parseTypedClock`, not the
+  // strict stored-text reader. A BARE TIME IS 24-HOUR IN EVERY PROFILE: the 12h
+  // rows below are the ruling, since a field that guessed a meridiem from the
+  // clock preference would read `630` as half past six in the evening for half
+  // the app's logins and half past six in the morning for the other half.
+  it.each([
+    ["24h" as const, "1124p", "23:24"],
+    ["24h" as const, "630", "06:30"],
+    ["12h" as const, "630", "06:30"],
+    ["12h" as const, "1830", "18:30"],
+    ["24h" as const, "6p", "18:00"],
+    ["24h" as const, "18", "18:00"],
+    ["24h" as const, "6h30", "06:30"],
+    ["24h" as const, "11.24 PM", "23:24"],
+  ])("a %s profile typing %s emits %s", (timeFormat, typed, canonical) => {
+    const { emitted, field } = mount(timeFormat);
+    fireEvent.change(field(), { target: { value: typed } });
+    expect(emitted.at(-1)).toBe(canonical);
+  });
+
+  // The message has to name the shorthand it now takes, or the field refuses
+  // text while telling the typist only about the two forms it always accepted.
+  it("names the shorthand in its validity message", () => {
+    const { field } = mount("24h");
+    fireEvent.change(field(), { target: { value: "quarter past" } });
+    expect(field().validationMessage).toContain("730p");
+  });
+});
+
+// ±1 MINUTE ON THE ARROWS (#5360) — the segment stepping the native control had.
+describe("TimeField — stepping the text field", () => {
+  // THE FIELD OWNS NO DAY (#2236 — that is `WhenControl`'s), so the ends wrap
+  // rather than reaching for tomorrow or yesterday.
+  it.each([
+    ["ArrowUp", "09:15", "09:16"],
+    ["ArrowDown", "09:15", "09:14"],
+    ["ArrowUp", "23:59", "00:00"],
+    ["ArrowDown", "00:00", "23:59"],
+  ])("%s on %s emits %s", (key, initial, expected) => {
+    const { emitted, field } = mount("24h", initial);
+    fireEvent.keyDown(field(), { key });
+    expect(emitted.at(-1)).toBe(expected);
+  });
+
+  // NEVER DEFAULTS TO NOW (#2236's invariant): an arrow on a field with no time
+  // has nothing to step, and seeding one from the clock is the single thing this
+  // component does not do. It opens nothing either — a keystroke is not a tap on
+  // the glyph.
+  it("steps nothing and opens nothing on an empty field", () => {
+    const { emitted, field } = mount("24h", "");
+    fireEvent.keyDown(field(), { key: "ArrowDown" });
+    expect(emitted).toEqual([]);
+    expect(field().value).toBe("");
+    expect(screen.queryByTestId("time-field-wheel")).toBeNull();
+  });
+
+  // HALF-TYPED TEXT IS NOT A VALUE, so it is not a thing to step from either —
+  // stepping the parent's last committed time under text that disagrees with it
+  // would move a value the typist can no longer see.
+  it("steps nothing while the typed text does not parse", () => {
+    const { emitted, field } = mount("24h", "09:15");
+    fireEvent.change(field(), { target: { value: "9:1" } });
+    fireEvent.keyDown(field(), { key: "ArrowDown" });
+    expect(emitted).toEqual([]);
+    expect(field().value).toBe("9:1");
+  });
+
+  // THE DRAFT CLEARS ON A STEP, so the field shows the settled clock: the
+  // shorthand it was typed as has just stopped being what the field holds.
+  it("settles the shorthand it stepped from into the profile's clock", () => {
+    const { field } = mount("12h");
+    fireEvent.change(field(), { target: { value: "630" } });
+    expect(field().value).toBe("630");
+    fireEvent.keyDown(field(), { key: "ArrowUp" });
+    expect(field().value).toBe("6:31 AM");
   });
 });
 
@@ -266,6 +364,44 @@ describe("TimeField — the wheel", () => {
   });
 });
 
+// FOCUS OPENS THE WHEEL WHERE IT IS A POPOVER (#5360) — `DateField`'s rule
+// verbatim, so the two halves of `WhenControl` answer a tap the same way.
+// Nothing here clicks the glyph before asserting the panel is there: the glyph
+// opens it too, and a case that pressed both would pass with focus doing nothing.
+describe("TimeField — focus opens the wheel", () => {
+  it("opens on focus from md up, where the panel is a popover", () => {
+    const { field } = mount("24h", "09:15");
+    expect(screen.queryByTestId("time-field-wheel")).toBeNull();
+    fireEvent.focus(field());
+    expect(screen.getByTestId("time-field-wheel")).toBeTruthy();
+  });
+
+  // OPENING IS NOT PICKING: the wheel resting on the field's own value emits
+  // nothing, and the field stays typeable with the panel up.
+  it("leaves the field typeable and emits nothing by opening", () => {
+    const { emitted, field } = mount("24h", "09:15");
+    fireEvent.focus(field());
+    expect(emitted).toEqual([]);
+    fireEvent.change(field(), { target: { value: "1124p" } });
+    expect(emitted).toEqual(["23:24"]);
+    expect(screen.getByTestId("time-field-wheel")).toBeTruthy();
+  });
+
+  // BELOW md THE WHEEL IS A MODAL SHEET THAT TAKES FOCUS, so opening it the
+  // moment the field is tapped would mean the field could never be typed into on
+  // a phone at all. The glyph stays the door there.
+  it("does not open the sheet on focus below md, where the glyph is the door", () => {
+    viewport.matches = true;
+    const { field } = mount("24h", "09:15");
+    fireEvent.focus(field());
+    expect(screen.queryByTestId("time-field-sheet")).toBeNull();
+    fireEvent.change(field(), { target: { value: "630" } });
+    expect(field().value).toBe("630");
+    openWheel();
+    expect(screen.getByTestId("time-field-sheet")).toBeTruthy();
+  });
+});
+
 // THE DIRTY-FORM REGISTRY SEES A NAMED FIELD (#4976). The registry excludes
 // `type="hidden"` categorically; this field's hidden sibling opts back in
 // (components/DirtyFormRegistry.tsx, `data-dirty-track-hidden`) and dispatches
@@ -329,6 +465,18 @@ describe("TimeField — the dirty-form registry (#4976)", () => {
     openWheel();
     expect(dirty()).toBe("0");
     fireEvent.click(screen.getByRole("button", { name: "Open time picker" }));
+    expect(dirty()).toBe("0");
+  });
+
+  // AND THE SAME NOW THAT FOCUS IS A WAY IN (#5360). `onFocus` still registers
+  // the baseline it always did, and the wheel it now opens is still not a pick —
+  // so merely tabbing through the field must not hold back a background refresh.
+  // Asserting the panel is up is what keeps this honest: a clean read would
+  // otherwise pass just as well on a field that never opened anything.
+  it("opening the wheel by focusing the field stays clean", () => {
+    const { field, dirty } = mountNamed("09:00");
+    fireEvent.focus(field());
+    expect(screen.getByTestId("time-field-wheel")).toBeTruthy();
     expect(dirty()).toBe("0");
   });
 
