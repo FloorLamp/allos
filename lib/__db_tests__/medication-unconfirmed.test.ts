@@ -35,7 +35,7 @@ import {
   UNCONFIRMED_STOP_TEXT,
 } from "@/lib/medication-unconfirmed";
 import { demotionCandidateItemIds } from "@/lib/rule-findings";
-import { MED_STOP_PREFIX } from "@/lib/notifications/callback-data";
+import { MED_STOP_PREFIX } from "@/lib/notifications/callback-tokens";
 import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
 import { answerCallbackQuery } from "@/lib/notifications/telegram-api";
 import { GLYPH } from "@/lib/notifications/glyphs";
