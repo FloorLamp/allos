@@ -1,4 +1,8 @@
+import fs from "node:fs";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
+import { makeTmpDir } from "./tmp-dir";
 import {
   independenceNotice,
   judgeIndependence,
@@ -72,5 +76,66 @@ describe("judgeIndependence", () => {
         1
       )
     ).toMatch(/NOT independent \(paths changed on both sides: a\)/);
+  });
+});
+
+// AND THE READ HAS TO REACH GITHUB AT ALL.
+//
+// This script asked through node's `fetch`, which ignores HTTP(S)_PROXY — the
+// managed environments route GitHub through an agent proxy that answers fetch
+// 403 and curl 200, as merge-gate.mjs and ci-watch.mjs both record. So every
+// invocation here returned exit 2, "could not judge", and the re-run exemption
+// the script exists to grant was silently unavailable.
+//
+// The stub below is the fixture that can tell the two spellings apart: it is a
+// `curl` on PATH, so a script that calls `fetch` never reaches it and goes to
+// the real network instead. A source grep for the word "fetch" could not do
+// this — the script legitimately runs `git fetch` two lines later.
+const SCRIPT = path.join(
+  process.cwd(),
+  "scripts/orchestration/landing-independence.mjs"
+);
+
+const STUB_CURL = `#!/usr/bin/env node
+const body = process.env.STUB_BODY;
+const status = process.env.STUB_STATUS || "200";
+process.stdout.write(body + "\\n" + status);
+process.exit(0);
+`;
+
+function runScript(body: unknown, status = "200") {
+  const bin = path.join(makeTmpDir("landing-independence"), "bin");
+  fs.mkdirSync(bin, { recursive: true });
+  fs.writeFileSync(path.join(bin, "curl"), STUB_CURL, { mode: 0o755 });
+  return spawnSync(process.execPath, [SCRIPT, "4100"], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      PATH: `${bin}:${process.env.PATH}`,
+      STUB_BODY: JSON.stringify(body),
+      STUB_STATUS: status,
+    },
+  });
+}
+
+describe("the PR read", () => {
+  // An already-merged PR answers and exits BEFORE any git call, so this case
+  // isolates the transport: it passes only if the stub was the thing asked.
+  it("goes through curl, which is the only spelling the proxy answers", () => {
+    const run = runScript({
+      merged_at: "2026-09-05T00:00:00Z",
+      head: { sha: "0123456789abcdef0123456789abcdef01234567" },
+    });
+    expect(run.stdout).toContain("#4100 is already merged.");
+    expect(run.status).toBe(0);
+  });
+
+  // Exit 2 keeps meaning "could not judge". A read this script cannot make
+  // must never become an independence verdict it did not reach.
+  it("still refuses to judge when the read fails", () => {
+    const run = runScript({ message: "Not Found" }, "404");
+    expect(run.stderr).toContain("could not read PR #4100: HTTP 404");
+    expect(run.status).toBe(2);
   });
 });

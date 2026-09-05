@@ -11,6 +11,15 @@
 // Reads: unauthenticated REST for the PR head (environment.md §GitHub access)
 // and git against origin — it fetches main and the head itself.
 //
+// THROUGH `curl`, NOT `fetch`. Node's fetch ignores HTTP(S)_PROXY and the
+// managed environments route GitHub through an agent proxy, which answers it
+// 403 while curl to the identical URL gets 200 — merge-gate.mjs and
+// ci-watch.mjs both say so and this script did not. It therefore returned
+// exit 2, "could not judge", on EVERY invocation here: safe in direction, and
+// it meant the re-run exemption this script exists to grant was unavailable
+// the whole time. A tool that cannot read fails closed and looks like a tool
+// with nothing to say.
+//
 // Usage:
 //   node scripts/orchestration/landing-independence.mjs <pr-number> [--repo owner/name]
 //
@@ -40,13 +49,31 @@ if (!pr) {
 const git = (...a) => execFileSync("git", a, { encoding: "utf8" }).trim();
 const lines = (s) => s.split("\n").filter(Boolean);
 
+// merge-gate.mjs's argument shape, kept local: extracting one shared reader is
+// #5022's job, and a second copy of five curl flags is cheaper here than a new
+// shared surface this change would have to design.
+function readPr() {
+  const out = execFileSync(
+    "curl",
+    [
+      "-sS",
+      "-w",
+      "\n%{http_code}",
+      "-H",
+      "Accept: application/vnd.github+json",
+      `https://api.github.com/repos/${repo}/pulls/${pr}`,
+    ],
+    { encoding: "utf8", timeout: 30_000 }
+  );
+  const cut = out.lastIndexOf("\n");
+  const status = Number(out.slice(cut + 1));
+  if (status < 200 || status >= 300) throw new Error(`HTTP ${status}`);
+  return JSON.parse(out.slice(0, cut));
+}
+
 let head;
 try {
-  const res = await fetch(`https://api.github.com/repos/${repo}/pulls/${pr}`, {
-    headers: { accept: "application/vnd.github+json" },
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
+  const data = readPr();
   head = data.head.sha;
   if (data.merged_at) {
     console.log(`#${pr} is already merged.`);
