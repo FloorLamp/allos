@@ -22,15 +22,8 @@ import incident from "./__fixtures__/e2e-main-c6d2b2ed-incident.json";
 // failing test recurring across green heads — are shapes CI actually produced,
 // not shapes chosen by the person writing the assertion.
 
-type Row = {
-  sha: string;
-  subject: string;
-  runs: Record<string, string>;
-  failures: string[];
-};
-
 /** The fixture stores name -> conclusion; the classifier reads check runs. */
-const heads = (rows: Row[]) =>
+const heads = (rows: typeof incident) =>
   rows.map((row) => ({
     sha: row.sha,
     subject: row.subject,
@@ -47,7 +40,7 @@ const SLEEP =
 const FOOD =
   "[chromium] › e2e/offline-food-log.spec.ts:46:7 › protein quick-add hydration (#4399) › the arming fill survives a forced pre-hydration window";
 
-const history = readHistory(heads(incident as Row[]));
+const history = readHistory(heads(incident));
 const at = (sha: string) => history.heads.findIndex((h) => h.sha === sha);
 
 describe("the recorded c6d2b2ed incident", () => {
