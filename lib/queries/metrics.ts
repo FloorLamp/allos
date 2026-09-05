@@ -1204,16 +1204,34 @@ function hrDayAggregates(
 }
 
 // The profile's newest and oldest stored instants, or null when it has no HR at all.
-// Two indexed seeks — the open-ended readers need real data bounds to build a window
-// from, and scanning to find them would undo the point.
+// The open-ended readers need real data bounds to build a window from, and scanning to
+// find them would undo the point.
+//
+// TWO SEEKS, AND THEY HAD TO BE WRITTEN AS TWO (#5201). The comment here used to
+// promise "two indexed seeks" over `SELECT MIN(ts), MAX(ts) … WHERE profile_id = ?`,
+// and that promise was not kept: SQLite's min/max optimisation applies to a query with
+// exactly ONE aggregate, so asking for both in one statement gives up the index walk
+// and visits every row the profile has. On a measured snapshot of 125,951 rows that is
+// 6.91 ms median against 0.016 ms for the endpoint form — and the dashboard runs it
+// three times a warm render, so it grew with the profile's whole history inside
+// otherwise bounded readers.
+//
+// Each subquery seeks one end of the `(profile_id, ts, source)` primary-key index,
+// which already covers both columns; no new index and no history cutoff. `ts` is
+// NOT NULL, so `ORDER BY ts` and `MIN`/`MAX` cannot disagree about a missing value —
+// the one way this substitution could have changed an answer.
 function hrInstantBounds(
   profileId: number
 ): { first: string; last: string } | null {
   const row = db
     .prepare(
-      "SELECT MIN(ts) AS first, MAX(ts) AS last FROM hr_minutes WHERE profile_id = ?"
+      `SELECT
+         (SELECT ts FROM hr_minutes WHERE profile_id = ?
+           ORDER BY ts ASC LIMIT 1) AS first,
+         (SELECT ts FROM hr_minutes WHERE profile_id = ?
+           ORDER BY ts DESC LIMIT 1) AS last`
     )
-    .get(profileId) as { first: string | null; last: string | null };
+    .get(profileId, profileId) as { first: string | null; last: string | null };
   return row.first && row.last ? { first: row.first, last: row.last } : null;
 }
 
