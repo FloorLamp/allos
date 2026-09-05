@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
-import { settledClick, followLink } from "./helpers";
+import { appContent, settledClick, followLink } from "./helpers";
 import { E2E_LOGIN_VISITLINKS, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // Record ↔ visit (#1050) and episode ↔ visit (#1053) linking, driven end-to-end.
@@ -89,7 +89,7 @@ test.describe("record ↔ visit / episode ↔ visit linking (#1050/#1053)", () =
         .first(), // first-ok: exactly one episode row ON THIS PAGE carries that text — the axis that makes a .first() safe is "one match on the page being clicked", not "one match in the fixture profile"
       /\/medical\/episodes\/\d+/
     );
-    const care = page.getByTestId("episode-care");
+    const care = appContent(page).getByTestId("episode-care");
     await expect(care).toBeVisible();
 
     // Link the in-range visit if still suggested (first run).
@@ -99,11 +99,13 @@ test.describe("record ↔ visit / episode ↔ visit linking (#1050/#1053)", () =
     }
 
     // Linked end-state: the Care line resolves to the visit.
-    await expect(page.getByTestId("episode-care-link")).toBeVisible();
+    await expect(
+      appContent(page).getByTestId("episode-care-link")
+    ).toBeVisible();
 
     // #1198 many-model surface: the linked visit renders in the "Visits during this
     // episode" list with its own Unlink control (the episode holds a SET of visits now).
-    const visitList = page.getByTestId("episode-care-visits");
+    const visitList = appContent(page).getByTestId("episode-care-visits");
     await expect(visitList).toBeVisible();
     await expect(visitList).toContainText(/Visit during this episode/i);
     await expect(
@@ -114,11 +116,61 @@ test.describe("record ↔ visit / episode ↔ visit linking (#1050/#1053)", () =
     // status line, linking back into the episode view.
     await followLink(
       page,
-      page.getByTestId("episode-care-link"),
+      appContent(page).getByTestId("episode-care-link"),
       /\/encounters\/\d+/
     );
     await expect(page.getByTestId("encounter-episode-trail")).toContainText(
       "During illness episode: sinus infection"
     );
+  });
+
+  // #2641 GAP 1 PHASE 2 — CARE AND CONTEXT SIT BELOW A REAL BOUNDARY, AND THAT IS
+  // ALL AN INDEX COMPARISON CAN SAY.
+  //
+  // The shell is the ONE assembly (#221) the page exists to show — who this is, what
+  // was logged, the controls to add to it — not a spinner in a void (#530). Care,
+  // Episode context and the household context each read from other tables (the whole
+  // encounter list ordered by proximity, a comparison across past episodes, a gather
+  // per other accessible member) and sit below a Suspense boundary.
+  //
+  // This test reads INDEXES, so it can say the boundary is there, that the summary
+  // precedes its pending state in the document, and that the tail rides the same
+  // response. It CANNOT say the shell was flushed earlier in time, and it does not
+  // red if those gathers are hoisted back into the page (#5327). The placement
+  // property is pinned where it is observable:
+  // lib/__db_tests__/streamed-hub-boundary-reads.test.ts.
+  //
+  // Read as raw HTML rather than through the browser, because the pending state is
+  // the thing being asserted and it is gone by the time a page has settled.
+  test("Care and context stream below the episode summary", async () => {
+    await page.goto("/medical/episodes");
+    const href = await appContent(page)
+      .getByTestId("episode-index-row")
+      .filter({ hasText: /sinus infection/i })
+      .first() // first-ok: exactly one episode row ON THIS PAGE carries that text
+      .getAttribute("href");
+    expect(href).toMatch(/\/medical\/episodes\/\d+/);
+    const response = await page.request.get(href!);
+    expect(response.ok()).toBe(true);
+    const html = await response.text();
+
+    // Document order: the summary precedes the boundary's pending state.
+    const summary = html.indexOf('data-testid="episode-summary-header"');
+    const pending = html.indexOf('data-testid="streamed-section-loading"');
+    expect(summary).toBeGreaterThan(-1);
+    expect(pending).toBeGreaterThan(summary);
+    // …and the tail rides the SAME streamed response rather than being dropped: the
+    // footer is the one thing below the boundary that always renders.
+    expect(
+      html.indexOf('data-testid="episode-summary-footer"')
+    ).toBeGreaterThan(pending);
+
+    // The pending state NAMES what is arriving and RESERVES A HEIGHT (#2531/#2399,
+    // carried across to pending states). Both are pinned here: a fallback that goes
+    // back to a bare <Suspense>, or drops its stated height for the component's
+    // default, reds on this line rather than in a layout jump nobody is measuring.
+    const card = html.slice(pending, html.indexOf("</div>", pending) + 2000);
+    expect(card).toContain('data-section="Care and context"');
+    expect(card).toContain("dark:bg-ink-850 h-16");
   });
 });
