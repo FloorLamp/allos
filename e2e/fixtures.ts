@@ -317,63 +317,11 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       // any test's fixtures — is already in it: a row a whole FILE owns and tears
       // down in `afterAll` is in both readings and is correctly invisible here.
       const at = frozenNow();
-      // PROBE (#5266, temporary — removed before the PR).
-      const probeOut = process.env.ALLOS_E2E_DRIFT_PROBE;
-      const probeTables = ["medical_records", "profile_settings"];
-      const probeRead = (): Record<string, string[]> => {
-        if (!probeOut || workerApp.demo) return {};
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const DB = require("better-sqlite3");
-        const db = new DB(workerApp.dbPath, { readonly: true });
-        try {
-          const out: Record<string, string[]> = {};
-          for (const t of probeTables)
-            out[t] = (
-              db.prepare(`SELECT * FROM "${t}" WHERE profile_id = 1`).all() as Record<string, unknown>[]
-            ).map((r) => JSON.stringify(r));
-          return out;
-        } finally {
-          db.close();
-        }
-      };
-      const probeBefore = probeRead();
       const before = workerApp.demo
         ? []
         : snapshotSharedRows(at, workerApp.dbPath);
       // eslint-disable-next-line react-hooks/rules-of-hooks
       await use();
-      if (probeOut && !workerApp.demo) {
-        const probeAfter = probeRead();
-        const drift: Record<string, { added: string[]; removed: string[] }> = {};
-        for (const t of probeTables) {
-          const a = [...(probeBefore[t] ?? [])];
-          const b = [...(probeAfter[t] ?? [])];
-          const only = (x: string[], y: string[]) =>
-            x.filter((r) => {
-              const i = y.indexOf(r);
-              if (i < 0) return true;
-              y.splice(i, 1);
-              return false;
-            });
-          const removed = only(a, [...b]);
-          const added = only(b, [...a]);
-          if (removed.length + added.length > 0) drift[t] = { added, removed };
-        }
-        if (Object.keys(drift).length > 0) {
-          const info = test.info();
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
-          require("node:fs").appendFileSync(
-            probeOut,
-            JSON.stringify({
-              file: info.file.split("/").pop(),
-              title: info.titlePath.slice(1).join(" > "),
-              status: info.status,
-              drift,
-            }) + "\n"
-          );
-        }
-        return;
-      }
       if (workerApp.demo) return;
       const stranded = takeStrandedDrafts(workerApp.dbPath);
       if (stranded.length > 0) throw new Error(strandedDraftMessage(stranded));

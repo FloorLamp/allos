@@ -2217,23 +2217,68 @@ in between. The guard now watches `metric_samples`, `mood_logs` and
 `medical_records` for TODAY AND LATER as well as `activities` for 84 days, so a
 spec that skips this fails in its own teardown.
 
-`medical_records` (#5266) is INSERT-only on every manual path, so most of its
-leaks are a row to delete rather than a day to restore — but it is also the first
-watched table that is an FK PARENT (`instrument_responses` and the preventive
-record decisions cascade off a record id), so restore a day only when nothing in
-it has children.
+`medical_records` (#5266) is INSERT-only on every manual path, so a leak there is
+usually a surplus row rather than a destroyed day — but it is also the first
+watched table that is an FK PARENT. `instrument_responses`,
+`medical_record_revisions` and `preventive_record_decisions` all cascade off a
+record id, and `care_plan_items` and `intake_items` reference one without a
+cascade, so a restore that spans a row with children either takes them with it or
+(for the plain references) fails the DELETE outright. Profile 1's seed carries
+exactly one record dated on or after the frozen day and it has no children, so
+today is safe; a day holding an instrument score is not, and a spec there should
+delete its own row.
 
-**`profile_settings` was censused by key and left unwatched (#5266).** It has no
-date column, so nothing bounds it; 36 files move it across 33 keys. Dropping the
-four the app writes by itself (`routine_position_advanced_1`, in 17 files, and
-three `notify_last_esc_*`) still leaves 17 files. And 139 of the 147 movements
-merely MATERIALISE a key that had no row — the settings forms post their whole
-field set on every save — while only 4 overwrite an existing value, all four in
-`digest-time-suggestion.spec.ts`. Separating a materialised default from a
-materialised change needs every key's default held a second time inside the
-guard, which is worth more than the defect. Note the unit preferences are not
-here at all: they live in `login_settings`, keyed by login, so no profile-scoped
-watch could ever see them.
+Seven files move `medical_records` on profile 1 on or after the frozen day —
+`fitness-percentile`, `illness-episode-followups`, `illness-round3`,
+`manual-vitals`, `measurements-form-layout`, `unit-mislabel-review` and
+`view-only-access` — and all seven now restore what they touched. The other four
+that move the table (`clinical-duplicate-import`, `lab-result-lifecycle`,
+`clinical-undo`, `ia-nutrition-medications`) write dates months or years before
+the run, so they sit outside the bound.
+
+The fourth table is close to free. Timing the guard's own SQL against a real
+worker database — one connection per snapshot, 300 iterations, three runs — the
+snapshot goes from 2.255–2.292 ms to 2.309–2.336 ms, so **+0.08 to +0.13 ms per
+test** across its two snapshots. #5265 paid +0.60 ms per test to add the first two
+tables; the connection is what costs, and it was already open.
+
+### `profile_settings` was censused by key and left unwatched (#5266)
+
+`profile_settings` has no date column, so the today-onward bound that makes the
+other three affordable does not exist here. The question #5266 asked was whether
+a KEY-scoped watch was affordable where a whole-table one is not. It is not, and
+the count is the answer rather than a hedge.
+
+The census re-reads #5037's own per-test drift data — every test in the suite run
+with a probe diffing all 84 profile-owned tables for profile 1 — and partitions
+each movement into a MATERIALISE (a key that had no row before) and an OVERWRITE
+(a key whose row changed value). 36 files move the table across 33 keys, in 147
+movements: **139 materialise, 4 overwrite, 0 delete.** The settings forms post
+their whole field set on every save, so what looks like a spec changing a setting
+is nearly always a default becoming a row.
+
+| key | files | movements | who writes it |
+| --- | --- | --- | --- |
+| `routine_position_advanced_1` | 17 | 23 | the app — `creditRoutineSession` (#740) |
+| `digest_mode` | 7 | 11 | Settings → Profile notifications |
+| `notify_digest_hour` | 7 | 11 | Settings → Profile notifications |
+| `digest_sleep_enabled` | 7 | 9 | Settings → Profile notifications |
+| `food_telegram_enabled`, `mood_checkin_enabled`, `mood_recap_enabled`, `notify_milestones`, `notify_preventive`, `notify_recap_day`, `notify_recap_hour`, `notify_recap_scale`, `notify_supp_bedtime_hour` | 7 each | 7 each | Settings → Profile notifications |
+| `calendar_feed_enabled` | 2 | 2 | the calendar-feed form |
+| `emergency_card_offline` | 2 | 4 | the directives / emergency-card forms |
+| `calendar_feed_categories`, `calendar_feed_past_days`, `calendar_feed_reminders`, `code_status`, `code_status_note`, `directive_documents_at`, `healthcare_proxy_name`, `healthcare_proxy_phone`, `organ_donor`, `offline_snapshots`, `protein_quickadd_last`, `recommendation_cadence`, `risk_attributes_reviewed`, `week_start`, `zone2_weekly_target_min` | 1 each | 1–2 each | one form each |
+| `notify_last_esc_28`, `notify_last_esc_99`, `notify_last_esc_100` | 1 each | 1 each | the app — per-dose escalation dedup marker (#328) |
+
+Dropping the four keys the app writes by itself — `routine_position_advanced_1`
+and the three `notify_last_esc_*` — still leaves **17 files**, each of which would
+need a cleanup or a declaration before a key-scoped watch could go green. And the
+watch could not tell those 17 apart from noise anyway: separating a materialised
+DEFAULT from a materialised CHANGE means holding every key's default a second time
+inside the guard, a copy of `lib/settings`' own knowledge kept where nothing can
+see it go stale. That costs more than the defect it would catch.
+
+Note the unit preferences are not in this table at all — they live in
+`login_settings`, keyed by LOGIN — so no profile-scoped watch could ever see them.
 
 ### Reproducing one — a green shard proves nothing
 

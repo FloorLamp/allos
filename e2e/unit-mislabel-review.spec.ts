@@ -41,6 +41,32 @@ function cleanup(): void {
   }
 }
 
+// PUT THE FIXTURE'S UNIT BACK (#5266). The Apply test corrects `unit` IN PLACE on a
+// row this file seeded on the SHARED profile, and `medical_records` is watched there
+// from today onward — 2099-02-01 is inside that bound — so the correction reads as
+// one row removed and one added on profile 1. Both are this file's own rows and it
+// still deletes them in `afterAll`; what the per-test guard is entitled to see is a
+// test that ends its own row the way it found it.
+//
+// Restoring the seeded unit is also what lets the Apply test run a SECOND time at
+// all: `beforeAll` seeds once per worker, and the card only renders while the
+// mislabel is still there, so a `--repeat-each` iteration used to find a corrected
+// row and no card.
+//
+// Addressed by the MARKER, never by id, so it is idempotent across retries and
+// touches nothing the seed owns.
+function restoreSeededUnits(): void {
+  const db = new Database(dbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    db.prepare(
+      "UPDATE medical_records SET unit = 'g/L' WHERE panel = ? AND unit <> 'g/L'"
+    ).run(MARKER);
+  } finally {
+    db.close();
+  }
+}
+
 function seedMislabel(db: Database.Database): number {
   return Number(
     db
@@ -77,6 +103,7 @@ test.describe("Data → Review unit-mislabel correction (#761)", () => {
       db.close();
     }
   });
+  test.afterEach(restoreSeededUnits);
   test.afterAll(cleanup);
 
   test("shows the mislabel card and Apply corrects the unit (before/after shown)", async ({
