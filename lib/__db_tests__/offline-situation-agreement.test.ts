@@ -19,11 +19,24 @@
 // take it or skip it on that. The household card is the same shape one seat over — a
 // caregiver deciding whether to go and ask. Neither is a display divergence.
 //
+// ── THE HOUSEHOLD HALF IS CALLED, NOT SCANNED (second falsifying pass) ───────
+// The card loop assembled its day context inline in the page, so the only guard
+// available was a source scan of `page.tsx`. Two mutants walked through it: a SECOND
+// `getEffectiveActiveSituations(profileIds[0], day)` call unioned in below the pinned
+// one — scoring every card partly against the first accessible profile's situations —
+// and a comment naming the reader with its arguments, which satisfied the positive
+// assertion on its own. Both were byte-identical green across the whole db tier.
+//
+// The defect they demonstrate is a COMPOSITION one: two correctly scoped readers, with
+// one profile's honest answer handed into another profile's context. `profile-scoping`
+// and `scoping` both ask whether a READER is scoped, so neither can see it, and no
+// amount of scanning holds a shape whose vectors are "add a call" and "add a comment".
+// `intakeAdherenceOn(profileId, date)` in `lib/queries/household.ts` is the seam that
+// does: the subject and the day are its arguments, and the cases below call it.
+//
 // Fixtures are 100% synthetic (a throwaway per-file DB via setup.ts). No AI, no network.
 
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { setTimezone } from "@/lib/settings";
@@ -34,13 +47,7 @@ import {
 import { resolveSituationId } from "@/lib/settings/profile-attrs";
 import { BUILTIN_POOR_SLEEP_SITUATION } from "@/lib/derived-situations";
 import { getEffectiveActiveSituations } from "@/lib/queries/derived-situations";
-import {
-  getIntakeItems,
-  getIntakeDoses,
-  getTakenDoseIds,
-  getActivitiesByDate,
-} from "@/lib/queries";
-import { intakeAdherenceToday } from "@/lib/household";
+import { intakeAdherenceOn } from "@/lib/queries/household";
 import { buildSnapshot, snapshotContext } from "@/lib/offline/snapshot-build";
 import type { DoseScheduleEntry } from "@/lib/offline/snapshots";
 
@@ -128,37 +135,6 @@ function offlineDoseNames(profileId: number): string[] {
   );
 }
 
-// THE HOUSEHOLD HALF IS PINNED HERE AND BY THE SOURCE SCAN BELOW, and the split is
-// worth stating rather than hiding. /household's card loop is INLINE in the page: the
-// module it hands its reads to (`lib/household.ts`) is pure by its own stated design —
-// "the page fetches each profile's data with the existing per-profile query functions
-// and hands the raw results to these helpers" — so there is no seam a runtime test can
-// hold, and building one would contradict that design for the sake of a test.
-//
-// What this helper pins is the ANSWER: given the effective situations, the card's x/y
-// and the snapshot's rows name the same doses. What it cannot pin is that the page asks
-// for them, because it rebuilds the page's context rather than calling it. That one bit
-// is the source scan's — the shape `dirty-seed-shape.test.ts` already uses in this
-// directory for a claim no runtime call can reach.
-/** The card's x/y, built from the same reads /household's card loop makes. */
-function householdAdherence(profileId: number): { taken: number; due: number } {
-  const day = today(profileId);
-  return intakeAdherenceToday(
-    getIntakeDoses(profileId),
-    new Map(
-      getIntakeItems(profileId)
-        .filter((i) => i.active)
-        .map((i) => [i.id, i])
-    ),
-    {
-      date: day,
-      isWorkoutDay: getActivitiesByDate(profileId, day).length > 0,
-      activeSituations: getEffectiveActiveSituations(profileId, day),
-    },
-    getTakenDoseIds(profileId, day)
-  );
-}
-
 describe("the offline schedule reads the situations the page reads (#5167)", () => {
   it("holds a dose a derived pause holds", () => {
     const p = newProfile();
@@ -218,36 +194,41 @@ describe("the household card and the offline schedule agree (#5167)", () => {
     seedItem(p, "Magnesium", "paused-by");
     seedItem(p, "Electrolytes", "due-on");
 
-    expect(householdAdherence(p)).toEqual({ taken: 0, due: 1 });
+    expect(intakeAdherenceOn(p, today(p))).toEqual({ taken: 0, due: 1 });
     expect(offlineDoseNames(p)).toEqual(["Magnesium"]);
 
     seedRoughNight(p);
     // The pause takes one away and the trigger adds one back: the DUE count is the same
     // number for a different reason, and the two surfaces name the same dose.
-    expect(householdAdherence(p)).toEqual({ taken: 0, due: 1 });
+    expect(intakeAdherenceOn(p, today(p))).toEqual({ taken: 0, due: 1 });
     expect(offlineDoseNames(p)).toEqual(["Electrolytes"]);
   });
-});
 
-describe("the /household card asks for the effective situations (#5167)", () => {
-  // A SOURCE SCAN, because the card loop is inline in the page and there is nothing to
-  // call — see the note above `householdAdherence`. It is deliberately narrow: it reads
-  // the CALL, not how the file is laid out, so an unrelated edit cannot red it. The name
-  // appearing in the comment that explains the change is not a regression, which is why
-  // the negative assertion looks for the open paren.
-  //
-  // THE ARGUMENTS ARE PART OF THE CLAIM, not just the reader's name (#5306 falsifying
-  // pass, finding 2). Pinning the name alone let a subject swap ship green through the
-  // whole db tier: every card scored against the FIRST accessible profile's situations —
-  // a caregiver's card for one member showing another's rough night holding their doses.
-  // The loop already binds `pid` and `day`, so asking for them by name costs nothing and
-  // closes the half the answer-level case cannot see.
-  it("calls the effective resolver for the card's own subject and day", () => {
-    const source = readFileSync(
-      join(process.cwd(), "app/(app)/household/page.tsx"),
-      "utf8"
-    );
-    expect(source).toContain("getEffectiveActiveSituations(pid, day)");
-    expect(source).not.toMatch(/getActiveSituations\(/);
+  it("answers for the subject it is asked about, not another member", () => {
+    // THE MUTANT THE SOURCE SCAN COULD NOT SEE. One member's rough night must not hold
+    // another member's dose: a card that reads 0/0 where the truth is 0/1 has lost the
+    // one signal on it that says a dose is owed, and the caregiver never goes to ask.
+    const rough = newProfile();
+    const rested = newProfile();
+    seedItem(rested, "Magnesium", "paused-by");
+    seedRoughNight(rough);
+
+    expect(getEffectiveActiveSituations(rough, today(rough)).size).toBe(1);
+    expect(intakeAdherenceOn(rested, today(rested))).toEqual({
+      taken: 0,
+      due: 1,
+    });
+  });
+
+  it("answers for the day it is asked about", () => {
+    // The other argument, pinned the same way: the rough night is two days back, so
+    // today's card counts the dose and the card for that day holds it.
+    const p = newProfile();
+    seedItem(p, "Magnesium", "paused-by");
+    seedRoughNight(p, [2]);
+    const rough = shiftDateStr(today(p), -2);
+
+    expect(intakeAdherenceOn(p, today(p))).toEqual({ taken: 0, due: 1 });
+    expect(intakeAdherenceOn(p, rough)).toEqual({ taken: 0, due: 0 });
   });
 });

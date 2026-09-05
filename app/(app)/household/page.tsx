@@ -10,13 +10,9 @@ import { today } from "@/lib/db";
 import {
   getActivities,
   getActivitiesSince,
-  getActivitiesByDate,
   getLatestBodyMetricDated,
   getOutcomeGoals,
   getOutcomeGoalProgressMap,
-  getIntakeItems,
-  getIntakeDoses,
-  getTakenDoseIds,
   getLatestBodyMetricDailyPoints,
   getWorkoutPresence,
   getOptimalHitRate,
@@ -36,7 +32,7 @@ import {
   getProfileAge,
   getUnitPrefs,
 } from "@/lib/settings";
-import { getEffectiveActiveSituations } from "@/lib/queries/derived-situations";
+import { intakeAdherenceOn } from "@/lib/queries/household";
 import {
   isStrengthTrainingRelevant,
   isTrainingRelevant,
@@ -46,11 +42,7 @@ import { currentEpisodeForProfile } from "@/lib/illness-episode";
 import { householdSickLine } from "@/lib/illness-episode-format";
 import { schoolReturnStatusFor } from "@/lib/school-return-data";
 import { schoolReturnCompactClause } from "@/lib/school-return";
-import {
-  goalHighlights,
-  intakeAdherenceToday,
-  weightTrend,
-} from "@/lib/household";
+import { goalHighlights, weightTrend } from "@/lib/household";
 import { fmtWeight } from "@/lib/units";
 import { householdPresenceChip } from "@/lib/workout-presence";
 import { formatRelativeDate } from "@/lib/format-date";
@@ -94,28 +86,11 @@ export default async function HouseholdPage() {
     const trainingRelevant = isTrainingRelevant(age);
     const strengthTrainingRelevant = isStrengthTrainingRelevant(age);
 
-    // Today's intake adherence (x/y): due doses honored via isDueOn.
-    //
-    // THE SAME SITUATIONS THE MEMBER'S OWN PAGE USES (#5167). This asked
-    // `getActiveSituations` — the declared half, as of now — so a card's x/y counted a
-    // dose the member's medications page holds for a derived pause, and missed one whose
-    // `situational` trigger the app derived. A caregiver reading "1/3" beside a page that
-    // says "1/2" has no way to tell which is the schedule.
-    const activeItemById = new Map(
-      getIntakeItems(pid)
-        .filter((s) => s.active)
-        .map((s) => [s.id, s])
-    );
-    const adherence = intakeAdherenceToday(
-      getIntakeDoses(pid),
-      activeItemById,
-      {
-        date: day,
-        isWorkoutDay: getActivitiesByDate(pid, day).length > 0,
-        activeSituations: getEffectiveActiveSituations(pid, day),
-      },
-      getTakenDoseIds(pid, day)
-    );
+    // Today's intake adherence (x/y): due doses honored via isDueOn, and the SAME
+    // effective situations the member's own page uses (#5167) — assembled in
+    // `lib/queries/household.ts` rather than here, so the subject and the day are a
+    // function's arguments that a test can pin rather than a shape only a scan can read.
+    const adherence = intakeAdherenceOn(pid, day);
 
     const relevantRecent = trainingRelevant
       ? getActivities(pid, 10).find(
