@@ -31,10 +31,9 @@
 - CONTENTION CAN PRODUCE A WRONG VALUE, not just a timeout: a test timing out
   mid-write leaves state its neighbour reads (load 21.6, 92 lost, one of them a
   `document-sync-provenance` assertion). Re-run alone on any untouched-file red.
-- `pgrep -f <pattern>` matches its OWN command line, so `until ! pgrep -f "…"`
-  never fires — the wait sits there forever with nothing left running. Use
-  `ps -eo args | grep <pattern> | grep -v grep`, which exits 1 when the process
-  is gone. Costs most in lanes polling for a dev server or a long run.
+- `pgrep -f <pattern>` matches its OWN command line, and the bracket workaround
+  `grep '[p]attern'` is matched by the OTHER waiters, so `until ! …; do sleep`
+  never exits. Wait on a captured PID or a log line; check-in `waiters:` counts.
 - Use `E2E_PORT`, not `PORT`. The brief generator allocates non-overlapping port
   ranges.
 
@@ -88,9 +87,9 @@ section rather than restating it, so the rule cannot drift per surface.
   body PATCH is silent, so a comment chain or in-flight lane keeps the
   pre-edit text; `reconcile-apply.ts` comments automatically (`--notify` for
   in-flight). Label changes are already timeline events — no comment.
-- Check the GraphQL rate-limit bucket before MCP-heavy work. Batch around a
-  reset; never retry in a loop.
 - GitHub closes multiple issues only when each `Fixes #N` is on its own line.
+- A PR landing part of a CHECKLIST issue ticks its own box in the same breath;
+  `Part of #X` against a still-open X is drift the reconcile pass has to chase.
 - Gitleaks scans all checked-out refs. Read its annotation first: installation
   failure means the scan never ran.
 

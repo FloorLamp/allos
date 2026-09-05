@@ -230,6 +230,11 @@ export function computeGoalProgress(
     // (`current`/`pct`) has since dropped back to recent form.
     done: target > 0 && lifetimeBest >= target,
     lifetimeBest,
+    // No set has ever been logged in this goal's load context, so `current` is 0
+    // because there is nothing to measure — not because the lift is 0 (#5198). A
+    // DETRAINED goal is a different state and keeps its measured zero: it has sets,
+    // just none in the trailing window.
+    ...(sets.length === 0 ? { unavailable: "no-readings" as const } : {}),
   };
 }
 
@@ -250,7 +255,18 @@ export function baselineTargetProgress(
   target: number,
   baseline: number | null
 ): GoalProgress {
-  if (current == null) return { current: 0, target, pct: 0, done: false };
+  // NOTHING MEASURED IS NOT A MEASURED ZERO (#5198). The numbers stay as they were —
+  // a bar of length 0, not done — and the row that STATES the value now has a way to
+  // tell "we have no reading" from "you weigh nothing", which is the difference
+  // between an honest unknown and a confident lie.
+  if (current == null)
+    return {
+      current: 0,
+      target,
+      pct: 0,
+      done: false,
+      unavailable: "no-readings",
+    };
   if (baseline == null || baseline === target) {
     // No usable baseline to measure directional progress from (missing, or a
     // maintain goal where baseline === target): we can't compute a meaningful

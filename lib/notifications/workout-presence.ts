@@ -11,25 +11,20 @@
 //      finish was never observed. `isPostWorkoutReady` stays the dueness truth —
 //      this only changes DELIVERY timing.
 //
-//   2. runStaleWorkoutSuggest — an `active` session gone quiet past its stale bound gets
-//      ONE gentle "Still working out? Finish or discard" suggest (#560). Never
-//      auto-ends; suggest-only, deep-links back to the session. Waking-gated (a
-//      workout is a waking activity and this is a soft coaching suggest, not a
-//      safety signal).
+// The "Still working out?" suggest that used to live here moved to
+// `lib/notifications/still-going.ts` (#5142 AC 3): it is one family across every open
+// episode now, and a practice nudge has no business in a module named for workout
+// presence. It still reads THIS presence — the question is the same one, asked once.
 //
-// Both use the id-keyed one-shot marker discipline (notify_last_* / notify_stale_*
-// keyed by the activity id — #203-safe: AUTOINCREMENT ids never recycle, so a
-// stale marker is a harmless dead row needing no rename cleanup).
+// The remaining nudge uses the id-keyed one-shot marker discipline (notify_last_*
+// keyed by the activity id — #203-safe: AUTOINCREMENT ids never recycle, so a stale
+// marker is a harmless dead row needing no rename cleanup).
 
 import { today, writeTx } from "../db";
 import { now as clockNow } from "../clock";
 import { isCompletedSessionRow } from "../workout-presence";
 import { getWorkoutPresence } from "../queries/presence";
-import {
-  getProfileSetting,
-  setProfileSetting,
-  getPublicUrl,
-} from "../settings";
+import { getProfileSetting, setProfileSetting } from "../settings";
 import { composeFinishNudge } from "./workout-recap-format";
 import { finishRecapParts, loadFinishRow } from "./workout-recap-build";
 import { collectWindowDoses } from "./intake";
@@ -41,7 +36,6 @@ import {
 import { OBLIGATION_ORDER } from "../intake-schedule";
 import { intakeShortLabels } from "../intake-short-name";
 import { dispatch } from "./index";
-import { workoutFinishCallback } from "./callback-data";
 import type { NotificationAction, NotificationMessage } from "./types";
 import { createLogger } from "../log";
 import { formatMedicationDoseProduct } from "../medication-dose-format";
@@ -370,88 +364,4 @@ export async function runPostWorkoutFinish(
   if (presence.state !== "finished" || presence.activityId == null)
     return { failed: false, outcome: "skipped" };
   return runPostWorkoutForActivity(profileId, presence.activityId);
-}
-
-// --- Stale-session suggest ---
-
-export const STALE_WORKOUT_MARKER_PREFIX = "notify_stale_workout_";
-export function staleWorkoutMarkerKey(activityId: number): string {
-  return `${STALE_WORKOUT_MARKER_PREFIX}${activityId}`;
-}
-
-// The stale-session nudge (#560), now ACTIONABLE (#1205): a "🏁 Finish workout" and
-// "🗑️ Discard" inline button that resolve the stale draft in place (the two-way
-// principle — one idempotent, low-risk state change through the shared
-// finishWorkoutSession/discardWorkoutSession cores; the tokens carry ids only), plus
-// the "Open workout" deep-link that non-Telegram channels (Web Push / Home Assistant,
-// which can't do a stateful callback) fall back to. The buttons need the activity id
-// to act on and the profile id as the resolve-against-chat cross-check.
-export function renderStaleWorkoutMessage(
-  profileId: number,
-  activityId: number,
-  profileName: string,
-  deepLinkBase = ""
-): NotificationMessage {
-  const who = profileName ? ` — ${profileName}` : "";
-  const base = deepLinkBase.replace(/\/$/, "");
-  const actions: NotificationAction[] = [
-    {
-      label: `${GLYPH.finish} Finish workout`,
-      data: workoutFinishCallback(profileId, activityId, "finish"),
-      row: "finish",
-    },
-    {
-      label: `${GLYPH.discarded} Discard`,
-      data: workoutFinishCallback(profileId, activityId, "discard"),
-      row: "finish",
-    },
-  ];
-  if (base) actions.push({ label: "Open workout", url: `${base}/training` });
-  return {
-    title: `${GLYPH.inProgress} Still working out?${who}`,
-    body: "Your session has been quiet for a while. Finish it or discard the draft — nothing was ended automatically.",
-    actions,
-    kind: "other",
-  };
-}
-
-// One gentle suggest per stale session (keyed by activity id). Never auto-ends
-// (#560). Returns failed for the tick's exit code; never throws for a send failure.
-export async function runStaleWorkoutSuggest(
-  profileId: number,
-  profileName: string,
-  now: Date = clockNow()
-): Promise<{ failed: boolean }> {
-  const presence = getWorkoutPresence(profileId, now);
-  if (
-    presence.state !== "active" ||
-    !presence.stale ||
-    presence.activityId == null
-  )
-    return { failed: false };
-
-  const markerKey = staleWorkoutMarkerKey(presence.activityId);
-  if (getProfileSetting(profileId, markerKey) != null) return { failed: false };
-
-  const date = today(profileId);
-  const results = await dispatch(
-    profileId,
-    renderStaleWorkoutMessage(
-      profileId,
-      presence.activityId,
-      profileName,
-      getPublicUrl()
-    )
-  );
-  if (results.length === 0) return { failed: false };
-  const delivered = results.some((r) => r.ok);
-  const failed = results.some((r) => !r.ok);
-  if (delivered) {
-    setProfileSetting(profileId, markerKey, date);
-    log.info("stale-workout suggest sent", {
-      profile: profileId,
-      activity: presence.activityId,
-    });
-  }
-  return { failed };
 }

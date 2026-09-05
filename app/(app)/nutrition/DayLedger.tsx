@@ -18,7 +18,7 @@ import type { DoseStatusResult } from "@/app/(app)/nutrition/intake-actions";
 import { EmptyState } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import { useDoseDayResolution } from "@/components/medications/dose-day-settlement";
-import { bulkTakeLabel, dosesPhrase } from "@/lib/usual-routine";
+import { bulkLabel, dosesPhrase } from "@/lib/usual-routine";
 import { historyClock } from "@/lib/history-format";
 import type { DisplayFormatPrefs } from "@/lib/settings";
 import { TIME_BUCKET_LABELS } from "@/lib/intake-schedule";
@@ -551,13 +551,13 @@ export default function DayLedger({
               // phrase after it would have the control say the name twice.
               aria-label={
                 doses.length === 1
-                  ? bulkTakeLabel(doses)
-                  : `${bulkTakeLabel(doses)}: ${dosesPhrase(doses)}`
+                  ? bulkLabel("Take", doses)
+                  : `${bulkLabel("Take", doses)}: ${dosesPhrase(doses)}`
               }
               disabled={bulkBlocked(ids)}
               onClick={() => resolveAll(ids)}
             >
-              {bulkTakeLabel(doses)}
+              {bulkLabel("Take", doses)}
             </Button>
           )}
         </div>

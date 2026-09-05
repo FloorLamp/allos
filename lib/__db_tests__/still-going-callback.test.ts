@@ -1,13 +1,15 @@
-// DB INTEGRATION TIER — the stale-workout nudge's "🏁 Finish workout" / "🗑️ Discard"
-// inline buttons (issue #1205) driven end-to-end through handleCallbackQuery against
-// the REAL query + finish cores, with only the Telegram network surface stubbed.
+// DB INTEGRATION TIER — the "Still going?" nudge's "🏁 Finish" / "🗑️ Discard" inline
+// buttons (issue #1205, one family across every open episode at #5142) driven
+// end-to-end through handleCallbackQuery against the REAL query + finish cores, with
+// only the Telegram network surface stubbed.
 // Proves: a Finish tap stamps end_time through the shared finishWorkoutSession core,
 // EDITS the same message into the #924 post-workout-dose summary, and sets the #924
 // finish marker so the hourly tick sends NO second notification; a re-tap is
 // idempotent (already-finished, no double activity); an empty draft returns
 // empty-draft without a 0-content activity; a cross-profile token is refused; and a
 // finished session with no pending doses edits to a plain confirmation. Discard
-// deletes the draft. Every value is synthetic.
+// deletes the draft. The practice kind rides the same tap into its own cores.
+// Every value is synthetic.
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { stubTelegramSends } from "./telegram-spies";
@@ -15,16 +17,15 @@ import { stubTelegramSends } from "./telegram-spies";
 import { db, today } from "@/lib/db";
 import { getProfileSetting } from "@/lib/settings";
 import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
-import {
-  postWorkoutFinishMarkerKey,
-  renderStaleWorkoutMessage,
-} from "@/lib/notifications/workout-presence";
-import { workoutFinishCallback } from "@/lib/notifications/callback-data";
+import { postWorkoutFinishMarkerKey } from "@/lib/notifications/workout-presence";
+import { stillGoingCallback } from "@/lib/notifications/callback-data";
+import { renderStillGoingMessage } from "@/lib/notifications/still-going";
 import {
   answerCallbackQuery,
   editMessageTextRaw,
 } from "@/lib/notifications/telegram-api";
 import { seedProfile, type SeededProfile, seedLoginTelegram } from "./fixtures";
+import { startLivePracticeSession, getPracticeSessions } from "@/lib/queries";
 
 // This spec exercises the logic ABOVE the wire, so the four Telegram
 // primitives are stubbed for it (lib/__db_tests__/telegram-spies.ts). They
@@ -110,7 +111,7 @@ function cq(data: string, chatId: string, text = "⏱️ Still working out?") {
             { text: "🏁 Finish workout", callback_data: data },
             {
               text: "🗑️ Discard",
-              callback_data: data.replace("wofinish", "wodiscard"),
+              callback_data: data.replace("sgfinish", "sgdiscard"),
             },
           ],
         ],
@@ -152,7 +153,12 @@ describe("Finish workout button", () => {
   it("stamps end, edits the message into the post-workout dose summary, and sets the #924 marker (no second notification)", async () => {
     const date = today(withDoses.profileId);
     const id = seedLiveDraft(withDoses.profileId, date);
-    const token = workoutFinishCallback(withDoses.profileId, id, "finish");
+    const token = stillGoingCallback(
+      "workout",
+      withDoses.profileId,
+      id,
+      "finish"
+    );
 
     await handleCallbackQuery(cq(token, OWN_CHAT));
 
@@ -170,7 +176,12 @@ describe("Finish workout button", () => {
   it("is idempotent: a second tap answers already-finished and does not re-stamp", async () => {
     const date = today(withDoses.profileId);
     const id = seedLiveDraft(withDoses.profileId, date);
-    const token = workoutFinishCallback(withDoses.profileId, id, "finish");
+    const token = stillGoingCallback(
+      "workout",
+      withDoses.profileId,
+      id,
+      "finish"
+    );
 
     await handleCallbackQuery(cq(token, OWN_CHAT));
     const firstEnd = endTimeOf(id);
@@ -186,7 +197,12 @@ describe("Finish workout button", () => {
   it("a finished session with no pending doses edits to a plain confirmation", async () => {
     const date = today(noDoses.profileId);
     const id = seedLiveDraft(noDoses.profileId, date);
-    const token = workoutFinishCallback(noDoses.profileId, id, "finish");
+    const token = stillGoingCallback(
+      "workout",
+      noDoses.profileId,
+      id,
+      "finish"
+    );
 
     await handleCallbackQuery(cq(token, OWN_CHAT));
     expect(endTimeOf(id)).not.toBeNull();
@@ -199,7 +215,12 @@ describe("Finish workout button", () => {
   it("an empty draft returns empty-draft — no stamp, no 0-content finish", async () => {
     const date = today(noDoses.profileId);
     const id = seedEmptyDraft(noDoses.profileId, date);
-    const token = workoutFinishCallback(noDoses.profileId, id, "finish");
+    const token = stillGoingCallback(
+      "workout",
+      noDoses.profileId,
+      id,
+      "finish"
+    );
 
     await handleCallbackQuery(cq(token, OWN_CHAT));
     expect(endTimeOf(id)).toBeNull(); // not finished
@@ -210,7 +231,12 @@ describe("Finish workout button", () => {
   it("refuses a cross-profile token (tapped from a chat that isn't the session's profile)", async () => {
     const date = today(withDoses.profileId);
     const id = seedLiveDraft(withDoses.profileId, date);
-    const token = workoutFinishCallback(withDoses.profileId, id, "finish");
+    const token = stillGoingCallback(
+      "workout",
+      withDoses.profileId,
+      id,
+      "finish"
+    );
 
     // Tapped from OTHER_CHAT (maps only to `other`, not `withDoses`).
     await handleCallbackQuery(cq(token, OTHER_CHAT));
@@ -219,13 +245,33 @@ describe("Finish workout button", () => {
   });
 });
 
-describe("renderStaleWorkoutMessage (#1205)", () => {
-  it("carries a Finish callback with the activity id + the deep-link fallback", () => {
-    const msg = renderStaleWorkoutMessage(7, 99, "Ada", "https://allos.test/");
-    const finish = msg.actions?.find((a) => a.data?.startsWith("wofinish:"));
-    expect(finish?.data).toBe("wofinish:7:99");
+describe("renderStillGoingMessage (#1205, one family at #5142)", () => {
+  const workout = {
+    kind: "workout" as const,
+    rowId: 99,
+    label: null,
+    quietMin: null,
+  };
+  const practice = {
+    kind: "practice" as const,
+    rowId: 99,
+    label: "Sauna",
+    quietMin: 95,
+  };
+
+  it("carries a Finish callback with the row id + the deep-link fallback", () => {
+    const msg = renderStillGoingMessage(
+      workout,
+      7,
+      "Ada",
+      "https://allos.test/"
+    );
+    const finish = msg.actions?.find((a) => a.data?.startsWith("sgfinish:"));
+    expect(finish?.data).toBe("sgfinish:workout:7:99");
     // The Discard companion carries the same id under its own prefix.
-    expect(msg.actions?.find((a) => a.data === "wodiscard:7:99")).toBeTruthy();
+    expect(
+      msg.actions?.find((a) => a.data === "sgdiscard:workout:7:99")
+    ).toBeTruthy();
     // Non-Telegram channels fall back to the "Open workout" deep-link.
     expect(
       msg.actions?.find((a) => a.url === "https://allos.test/training")
@@ -233,9 +279,44 @@ describe("renderStaleWorkoutMessage (#1205)", () => {
   });
 
   it("still carries the callback buttons with no deep-link base", () => {
-    const msg = renderStaleWorkoutMessage(7, 99, "Ada", "");
-    expect(msg.actions?.some((a) => a.data === "wofinish:7:99")).toBe(true);
+    const msg = renderStillGoingMessage(workout, 7, "Ada", "");
+    expect(msg.actions?.some((a) => a.data === "sgfinish:workout:7:99")).toBe(
+      true
+    );
     expect(msg.actions?.some((a) => a.url)).toBe(false);
+  });
+
+  // ONE FAMILY, AND THE KIND IS WHAT DIFFERS. The practice message names the practice
+  // and how long it has been running — the person has one live sauna, not a "session"
+  // — and its deep-link opens the surface that practice lives on.
+  it("names the practice, its quiet, and its own surface", () => {
+    const msg = renderStillGoingMessage(
+      practice,
+      7,
+      "Ada",
+      "https://allos.test/"
+    );
+    expect(msg.title).toContain("Still doing Sauna?");
+    expect(msg.title).toContain("Ada");
+    expect(msg.body).toContain("1h 35m");
+    expect(msg.actions?.some((a) => a.data === "sgfinish:practice:7:99")).toBe(
+      true
+    );
+    expect(msg.actions?.some((a) => a.data === "sgdiscard:practice:7:99")).toBe(
+      true
+    );
+    expect(
+      msg.actions?.find((a) => a.url === "https://allos.test/wellness")
+    ).toBeTruthy();
+  });
+
+  // NEITHER KIND EVER SAYS SOMETHING WAS ENDED (#560). The nudge suggests; the tap
+  // writes.
+  it("promises no automatic end, whatever the kind", () => {
+    for (const episode of [workout, practice])
+      expect(renderStillGoingMessage(episode, 7, "Ada", "").body).toContain(
+        "nothing was ended automatically"
+      );
   });
 });
 
@@ -243,7 +324,12 @@ describe("Discard button", () => {
   it("deletes the abandoned draft and its sets", async () => {
     const date = today(withDoses.profileId);
     const id = seedLiveDraft(withDoses.profileId, date);
-    const token = workoutFinishCallback(withDoses.profileId, id, "discard");
+    const token = stillGoingCallback(
+      "workout",
+      withDoses.profileId,
+      id,
+      "discard"
+    );
 
     await handleCallbackQuery(cq(token, OWN_CHAT));
     expect(lastAnswerText()).toContain("discarded");
@@ -253,5 +339,78 @@ describe("Discard button", () => {
     expect(
       db.prepare("SELECT 1 FROM exercise_sets WHERE activity_id = ?").get(id)
     ).toBeUndefined();
+  });
+});
+
+// ── The practice kind (#5142 AC 3) ───────────────────────────────────────────
+//
+// The SAME tap, resolved by the kind the token carries. What is worth proving here is
+// that it lands in the practice domain's own cores rather than in a second copy of the
+// workout ones: Finish ends the live row the way the Wellness card's End button does,
+// and Discard deletes it, because a practice row IS the session rather than a draft
+// standing in for one.
+describe("the practice kind's Finish and Discard (#5142 AC 3)", () => {
+  function startPractice(profileId: number): number {
+    const started = startLivePracticeSession(profileId, "Sauna", "page");
+    expect(started.kind).toBe("started");
+    return started.kind === "started" ? started.session.id : -1;
+  }
+
+  it("ends the live row through the shared core and says so", async () => {
+    const pid = noDoses.profileId;
+    const id = startPractice(pid);
+
+    await handleCallbackQuery(
+      cq(
+        stillGoingCallback("practice", pid, id, "finish"),
+        OWN_CHAT,
+        "⏱️ Still doing Sauna?"
+      )
+    );
+
+    expect(lastAnswerText()).toBe("Session finished");
+    const [row] = getPracticeSessions(pid, "Sauna");
+    expect(row).toMatchObject({ live: 0 });
+    expect(row.end_time).not.toBeNull();
+  });
+
+  it("deletes the row on Discard — the row IS the session", async () => {
+    const pid = noDoses.profileId;
+    const id = startPractice(pid);
+    const before = getPracticeSessions(pid, "Sauna").length;
+
+    await handleCallbackQuery(
+      cq(
+        stillGoingCallback("practice", pid, id, "discard"),
+        OWN_CHAT,
+        "⏱️ Still doing Sauna?"
+      )
+    );
+
+    expect(lastAnswerText()).toContain("discarded");
+    expect(getPracticeSessions(pid, "Sauna").some((r) => r.id === id)).toBe(
+      false
+    );
+    expect(getPracticeSessions(pid, "Sauna").length).toBe(before - 1);
+  });
+
+  // OWNERSHIP IS RE-VERIFIED ON THE WRITE, and the token id is only a cross-check. A
+  // token tapped from a chat that does not map to this profile writes nothing.
+  it("refuses a token tapped from another profile's chat", async () => {
+    const pid = noDoses.profileId;
+    const id = startPractice(pid);
+
+    await handleCallbackQuery(
+      cq(
+        stillGoingCallback("practice", pid, id, "finish"),
+        OTHER_CHAT,
+        "⏱️ Still doing Sauna?"
+      )
+    );
+
+    expect(lastAnswerText()).toContain("out of date");
+    expect(
+      getPracticeSessions(pid, "Sauna").find((r) => r.id === id)
+    ).toMatchObject({ live: 1, end_time: null });
   });
 });

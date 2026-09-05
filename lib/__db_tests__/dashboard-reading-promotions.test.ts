@@ -4,21 +4,27 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { recentPRs } from "@/lib/coaching";
+import { progressCandidates } from "@/lib/dashboard-candidates";
+import {
+  rankDashboardCandidates,
+  type DashboardCandidate,
+} from "@/lib/dashboard-relevance";
 import {
   clinicalResultBecameNotable,
   outcomeGoalProgressChanged,
-  weeklyTargetStateChanged,
 } from "@/lib/dashboard-reading-promotions";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import {
   getDashboardClinicalObservations,
-  getFrequencyTargetProgress,
   getOutcomeGoalProgressMap,
   getOutcomeGoals,
   getStrengthByExercise,
 } from "@/lib/queries";
-import { setTimezone, setWeekMode, setWeekStart } from "@/lib/settings";
+import { logPracticeSession } from "@/lib/practice-log";
+import { getFrequencyTargetProgress } from "@/lib/queries";
+import { setTimezone, setWeekStart, type WeekStart } from "@/lib/settings";
+import { weekdayOfDateStr } from "@/lib/date";
 
 const NOW = new Date("2026-06-17T12:00:00Z");
 
@@ -74,6 +80,65 @@ describe("dashboard reading-promotion gathers (#3137)", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  // THE MOMENT THE PROMOTION USED TO FIRE (#4756 / #5064), driven through a real
+  // write rather than a steady-state render — the receipt row the owner photographed
+  // appeared on the FIRST dashboard after the session was logged, and a fixture that
+  // only ever renders a settled week never visits that moment at all.
+  //
+  // The week is pinned to start today, so one session meets a 1x/week floor with six
+  // days still to run: `met` flips inside one render of the same week, which is the
+  // only shape in which a met-transition promotion could ever have been minted.
+  it("seats nothing in Now when a target is met by the write that meets it", () => {
+    const profileId = newProfile("dashboard-target-met-write");
+    const anchor = today(profileId);
+    setWeekStart(profileId, weekdayOfDateStr(anchor) as WeekStart);
+    db.prepare(
+      `INSERT INTO frequency_targets
+         (profile_id, scope_kind, scope_value, per_week, scope_identity, created_at)
+       VALUES (?, 'practice', 'Sauna', 1, 'sauna', ?)`
+    ).run(profileId, `${shiftDateStr(anchor, -30)} 08:00:00`);
+
+    const readingNow = () => {
+      const [progress] = getFrequencyTargetProgress(profileId);
+      return {
+        progress,
+        candidate: progressCandidates.targetProgress(
+          { subject: { scope: "profile", profileId }, sourceOrder: 0 },
+          progress.target.id,
+          progress.pace === "behind"
+        ),
+      };
+    };
+    const placementsOf = (candidate: DashboardCandidate) =>
+      rankDashboardCandidates([candidate], {
+        activeProfileId: profileId,
+        minutesOfDay: 12 * 60,
+        today: anchor,
+        upcoming: [],
+      }).map(({ candidate: placed, lane }) => [placed.candidateId, lane]);
+
+    // The control, and it is the half that proves the assertion below can fail: an
+    // unmet target holds a real standing seat, so "no Now row" after the write is
+    // about the MET state rather than about this family having left the page.
+    const before = readingNow();
+    expect(before.progress.met).toBe(false);
+    expect(placementsOf(before.candidate)).toEqual([
+      [`target.weekly-progress:${before.progress.target.id}`, "standing"],
+    ]);
+
+    expect(logPracticeSession(profileId, "Sauna", anchor, "page").kind).toBe(
+      "logged"
+    );
+
+    const after = readingNow();
+    expect(after.progress.met).toBe(true);
+    expect(after.candidate.readingPromotion).toBeUndefined();
+    expect(after.candidate.rankReasons.changed).toBe(false);
+    expect(
+      placementsOf(after.candidate).filter(([, lane]) => lane === "now")
+    ).toEqual([]);
   });
 
   it("pairs each current clinical family with only its prior profile-scoped result", () => {
@@ -142,191 +207,6 @@ describe("dashboard reading-promotion gathers (#3137)", () => {
         hdl!.previous_id == null ? undefined : hdl!.previous_flag
       )
     ).toBe(false);
-  });
-
-  it("carries the preceding local-week verdict from the same cadence gather", () => {
-    const profileId = newProfile("dashboard-target-transition");
-    setWeekMode(profileId, "rolling");
-    const anchor = today(profileId);
-    db.prepare(
-      `INSERT INTO frequency_targets
-         (profile_id, scope_kind, scope_value, per_week, created_at)
-       VALUES (?, 'food_group', 'vegetables', 2, ?)`
-    ).run(profileId, `${shiftDateStr(anchor, -30)} 08:00:00`);
-    db.prepare(
-      `INSERT INTO food_daily_totals
-         (profile_id, date, group_key, servings)
-       VALUES (?, ?, 'vegetables', 1), (?, ?, 'vegetables', 1)`
-    ).run(profileId, shiftDateStr(anchor, -1), profileId, anchor);
-
-    const [progress] = getFrequencyTargetProgress(profileId);
-    expect(progress).toMatchObject({
-      count: 2,
-      met: true,
-    });
-    expect(progress.previous).toMatchObject({ met: false });
-    expect(weeklyTargetStateChanged(progress, progress.previous ?? null)).toBe(
-      true
-    );
-  });
-
-  it("ends weekly promotion at local-week close until new evidence lands", () => {
-    const profileId = newProfile("dashboard-target-week-close");
-    setWeekStart(profileId, 3);
-    const anchor = today(profileId);
-    db.prepare(
-      `INSERT INTO frequency_targets
-         (profile_id, scope_kind, scope_value, per_week, created_at)
-       VALUES (?, 'food_group', 'fruit', 1, ?)`
-    ).run(profileId, `${shiftDateStr(anchor, -30)} 08:00:00`);
-    db.prepare(
-      `INSERT INTO food_daily_totals
-         (profile_id, date, group_key, servings)
-       VALUES (?, ?, 'fruit', 1)`
-    ).run(profileId, shiftDateStr(anchor, -7));
-
-    const [progress] = getFrequencyTargetProgress(profileId);
-    expect(progress).toMatchObject({
-      count: 0,
-      previous: { met: false },
-    });
-    expect(weeklyTargetStateChanged(progress, progress.previous ?? null)).toBe(
-      false
-    );
-  });
-
-  it("keeps a calendar-week crossing live after its crossing day", () => {
-    const profileId = newProfile("dashboard-target-persistence");
-    const anchor = today(profileId);
-    db.prepare(
-      `INSERT INTO frequency_targets
-         (profile_id, scope_kind, scope_value, per_week, created_at)
-       VALUES (?, 'food_group', 'vegetables', 2, ?)`
-    ).run(profileId, `${shiftDateStr(anchor, -30)} 08:00:00`);
-    db.prepare(
-      `INSERT INTO food_daily_totals
-         (profile_id, date, group_key, servings)
-       VALUES (?, ?, 'vegetables', 1), (?, ?, 'vegetables', 1)`
-    ).run(
-      profileId,
-      shiftDateStr(anchor, -2),
-      profileId,
-      shiftDateStr(anchor, -1)
-    );
-
-    const [progress] = getFrequencyTargetProgress(profileId);
-    expect(progress).toMatchObject({
-      count: 2,
-      met: true,
-      previous: { met: false },
-    });
-    expect(weeklyTargetStateChanged(progress, progress.previous ?? null)).toBe(
-      true
-    );
-  });
-
-  it("anchors calendar-week transitions on the profile-local declaration day", () => {
-    for (const scenario of [
-      {
-        name: "west-admitted",
-        timezone: "America/Los_Angeles",
-        createdAt: "2026-06-17 00:30:00",
-        expectedPrevious: { pace: "on-pace", met: false },
-        changed: true,
-      },
-      {
-        name: "east-rejected",
-        timezone: "Asia/Tokyo",
-        createdAt: "2026-06-16 23:30:00",
-        expectedPrevious: null,
-        changed: false,
-      },
-    ] as const) {
-      const profileId = newProfile(`dashboard-calendar-${scenario.name}`);
-      setTimezone(profileId, scenario.timezone);
-      setWeekStart(profileId, 2);
-      db.prepare(
-        `INSERT INTO frequency_targets
-           (profile_id, scope_kind, scope_value, per_week, created_at)
-         VALUES (?, 'food_group', 'vegetables', 7, ?)`
-      ).run(profileId, scenario.createdAt);
-      // Nothing logged: a daily target on day 2 of its week already needs seven
-      // servings out of six remaining days, so today's reading is "behind" and the
-      // zero-evidence opening it is compared against is not (#4758). Without that
-      // difference the transition under test could not fire at all.
-      const [progress] = getFrequencyTargetProgress(profileId);
-      expect(progress).toMatchObject({ count: 0, pace: "behind" });
-      expect(progress.previous).toEqual(scenario.expectedPrevious);
-      expect(
-        weeklyTargetStateChanged(progress, progress.previous ?? null)
-      ).toBe(scenario.changed);
-    }
-  });
-
-  it("anchors rolling comparison eligibility on the profile-local declaration day", () => {
-    for (const scenario of [
-      {
-        name: "west-admitted",
-        timezone: "America/Los_Angeles",
-        createdAt: "2026-06-11 00:30:00",
-        expectedPrevious: { pace: "met", met: true },
-        changed: true,
-      },
-      {
-        name: "east-rejected",
-        timezone: "Asia/Tokyo",
-        createdAt: "2026-06-10 23:30:00",
-        expectedPrevious: null,
-        changed: false,
-      },
-    ] as const) {
-      const profileId = newProfile(`dashboard-rolling-${scenario.name}`);
-      setTimezone(profileId, scenario.timezone);
-      setWeekMode(profileId, "rolling");
-      db.prepare(
-        `INSERT INTO frequency_targets
-           (profile_id, scope_kind, scope_value, per_week, created_at)
-         VALUES (?, 'food_group', 'fruit', 1, ?)`
-      ).run(profileId, scenario.createdAt);
-      db.prepare(
-        `INSERT INTO food_daily_totals
-           (profile_id, date, group_key, servings)
-         VALUES (?, '2026-06-10', 'fruit', 1)`
-      ).run(profileId);
-
-      const [progress] = getFrequencyTargetProgress(profileId);
-      expect(progress).toMatchObject({ count: 0, pace: "on-pace" });
-      expect(progress.previous).toEqual(scenario.expectedPrevious);
-      expect(
-        weeklyTargetStateChanged(progress, progress.previous ?? null)
-      ).toBe(scenario.changed);
-    }
-  });
-
-  it("promotes a zero-count rolling target when its last log ages out", () => {
-    const profileId = newProfile("dashboard-target-zero-count-transition");
-    setWeekMode(profileId, "rolling");
-    const anchor = today(profileId);
-    db.prepare(
-      `INSERT INTO frequency_targets
-         (profile_id, scope_kind, scope_value, per_week, created_at)
-       VALUES (?, 'food_group', 'fruit', 1, ?)`
-    ).run(profileId, `${shiftDateStr(anchor, -30)} 08:00:00`);
-    db.prepare(
-      `INSERT INTO food_daily_totals
-         (profile_id, date, group_key, servings)
-       VALUES (?, ?, 'fruit', 1)`
-    ).run(profileId, shiftDateStr(anchor, -7));
-
-    const [progress] = getFrequencyTargetProgress(profileId);
-    expect(progress).toMatchObject({
-      count: 0,
-      pace: "on-pace",
-      previous: { pace: "met", met: true },
-    });
-    expect(weeklyTargetStateChanged(progress, progress.previous ?? null)).toBe(
-      true
-    );
   });
 
   it("keeps a body-goal transition through same-state evidence and ends it on reversion or period close", () => {

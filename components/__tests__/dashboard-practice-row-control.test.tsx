@@ -74,8 +74,6 @@ function renderRow(presentation: DashboardStandingPresentation) {
   const candidate = progressCandidates.targetProgress(
     { subject: { scope: "profile", profileId: 1 }, sourceOrder: 0 },
     1,
-    true,
-    false,
     true
   );
   render(

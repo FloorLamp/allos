@@ -17,6 +17,8 @@
 // in the SQLite handle.
 
 import { describe, it, expect } from "vitest";
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import { db } from "@/lib/db";
 import { DATASETS } from "@/lib/export";
 import { OWNED_TABLES } from "@/lib/owned-tables";
@@ -382,5 +384,760 @@ describe("FHIR export/import symmetry (issue #465)", () => {
       notExported,
       `\nImporter consumes these but the exporter drops them (add an inverse builder):\n${notExported.join("\n")}\n`
     ).toEqual([]);
+  });
+});
+
+// ── Column completeness (#5117) ─────────────────────────────────────────────────
+//
+// Everything above asks "is this TABLE exported?". Nothing above can ask "is it
+// exported COMPLETELY?" — which is how `bundle_id` landed on four exported tables
+// and none of their datasets: every table involved was already covered, so the
+// obligation those guards derive stayed satisfied while four datasets each dropped
+// a column.
+//
+// THE RULE, also stated in lib/export.ts beside DATASETS and in
+// lib/migrations/AGENTS.md, where the person adding the next column is standing:
+//
+//     Every column of a table that has a flat dataset is exported, unless it is
+//     named in COLUMN_EXPORT_ALLOWLIST below.
+//
+// So adding a column to an exported table is now a fork in the road with no third
+// path: put it in the dataset, or write its name and your reason here.
+//
+// ATTRIBUTION COMES FROM SQLITE, NOT FROM READING THIS REPO'S SOURCE. Each dataset
+// carries the `select` its rows()/page() run, and better-sqlite3's
+// `Statement#columns()` reports the ORIGIN table and column of every result column —
+// through aliases (`ii.name AS item`) and JOINs alike. A computed cell (`exercises`,
+// `schedule`) attributes to no origin column, so it can only make this guard
+// stricter, never blinder. And anything this scan CANNOT attribute throws below
+// rather than being skipped: a column the guard silently cannot see is precisely the
+// hole it exists to close.
+
+// Tables that have a flat dataset AND feed the FHIR passport. This guard reads flat
+// SELECTs; it cannot read what a FHIR builder emits, so it does not pronounce on
+// these tables' columns — a column of `conditions` absent from the flat dataset may
+// well ride a FHIR resource, and calling it un-exported would be a lie. Carved out
+// BY NAME and COUNTED, never skipped.
+//
+// The count is the whole of it, and this comment used to promise more. Both halves of
+// a membership proof are true BY CONSTRUCTION and so are not asserted: this set IS
+// FHIR_INPUT_TABLES, and `carvedOut` is filled while walking the dataset tables, so
+// every name in it is already a real dataset table in the passport set. What is left
+// to check is that the exemption does not GROW, which is what the count does — see
+// the case that pins it.
+const COLUMN_GUARD_FHIR_CARVE_OUT = FHIR_INPUT_TABLES;
+
+// ── The JSON ⇄ CSV agreement, in BOTH directions ─────────────────────────────
+//
+// The archive ships each dataset twice: datasets/<key>.json (whatever the rows carry)
+// and a CSV whose header is the dataset's declared `columns`, which is also what
+// toCsv keys each row by. The two are the same export, so the two lists must be the
+// same list — and the comparison is by RESULT-COLUMN NAME, the thing toCsv looks up,
+// not by which table SQLite attributes a column to. The earlier version compared
+// against origin-table attribution and so could not see a JOIN-sourced column at all
+// (`a.title AS activity`, `ii.name AS item`): deleting one from `columns` shipped a
+// JSON with the column and a CSV without it, green. There are 15 such result columns
+// across 11 datasets — a result column whose `columns()` origin table is not the
+// dataset's own `table`, which is the census the loop below already walks.
+// Attribution answers "is this table's column exported"; only the emitted NAMES
+// answer "do the JSON and the CSV agree".
+//
+// Two divergences are declarable, each with its own list below, and nothing else is.
+
+// Result columns a dataset SELECTs — so they reach datasets/<key>.json — but keeps
+// out of `columns`, the CSV header. `id` is the contract-wide one (every dataset
+// carries the row's primary key for the manage UI, deliberately not a CSV column);
+// anything else is a per-dataset divergence between the two files the archive ships
+// and must be named here.
+const CSV_OMITTED_RESULT_COLUMNS: {
+  key: string;
+  column: string;
+  why: string;
+}[] = [
+  {
+    key: "milestones",
+    column: "key",
+    why: "the milestone's stable identity (`first-5k`), which is also its once-only fired marker (lib/milestones.ts). It rides datasets/milestones.json for a re-importer that must not re-fire a milestone; the CSV a person reads shows the milestone itself — kind, threshold, title, detail, achieved_on.",
+  },
+];
+
+// The other direction: CSV header cells the `select` never emits. Left unchecked,
+// adding a name to `columns` ships a column of permanently empty cells — and a name
+// the column allowlist may simultaneously certify as deliberately un-exported. The
+// only legitimate case is a cell BUILT IN JS after the read, from a child table the
+// parent select cannot fold in.
+//
+// That declaration lives on the DATASET (`jsBuilt` in lib/export.ts), not in a second
+// list here, and it is not taken on faith. A list here could name a column no reader
+// builds and a builder function that exists nowhere, and stay green forever; on the
+// dataset it is one source that both guards read — this file proves the column really
+// is absent from the select and that the dataset could even have a JS step, and
+// lib/__db_tests__/export.test.ts proves the cell is actually emitted on a seeded row.
+const JS_BUILT = DATASETS.flatMap((ds) =>
+  (ds.jsBuilt ?? []).map((c) => ({ ds, ...c }))
+);
+
+// lib/export.ts as text, so the `by` half of a jsBuilt declaration can be read
+// against the file that is supposed to declare it.
+const EXPORT_SOURCE = fs.readFileSync(
+  fileURLToPath(new URL("../export.ts", import.meta.url)),
+  "utf8"
+);
+
+// Columns of an exported table that the export does NOT carry. Two kinds, and the
+// difference is the point:
+//
+//   "argued"     — someone decided this column has no place in a portable health
+//                  record, and the reason is here.
+//   "inherited"  — it simply never joined the export and nobody argued either way.
+//                  This is the debt #5117 found, written down: an inventory, not a
+//                  defence. Exporting one of these and deleting its name here is
+//                  always a valid change, and needs no permission from this list.
+//
+// `profile_id` is not listed anywhere below — it is excluded by rule, right above
+// the census, because the argument is identical on all 47 tables.
+type ColumnExclusion = {
+  table: string;
+  columns: string[];
+  kind: "argued" | "inherited";
+  why: string;
+};
+
+const COLUMN_EXPORT_ALLOWLIST: ColumnExclusion[] = [
+  // ── Instance-local keys: the row id of a parent, or of another row on this
+  // instance. They renumber on import and name nothing outside this database; the
+  // thing they point at exports under its own dataset (and child datasets carry the
+  // parent's readable identity instead — `ii.name AS item`).
+  {
+    table: "activity_routes",
+    columns: ["activity_id"],
+    kind: "argued",
+    why: "the parent activity's row id; the activity itself exports via the activities dataset",
+  },
+  {
+    table: "exercise_sets",
+    columns: ["activity_id", "warmup", "rpe"],
+    kind: "inherited",
+    why: "the parent activity's row id (the activity exports via the activities dataset), plus the warmup flag and RPE, which never joined the sets dataset",
+  },
+  {
+    table: "intake_dose_schedule_versions",
+    columns: ["dose_id"],
+    kind: "argued",
+    why: "the parent dose's row id; the dataset carries the readable item name and dose amount in its place",
+  },
+  {
+    table: "medical_record_revisions",
+    columns: ["record_id"],
+    kind: "argued",
+    why: "the parent record's row id; the record exports via medical_records",
+  },
+  {
+    table: "intake_item_ingredients",
+    columns: ["item_id", "sort"],
+    kind: "argued",
+    why: "the parent item's row id, plus the display order of the ingredient list — presentation, not a fact about the person",
+  },
+  {
+    table: "intake_item_purposes",
+    columns: ["item_id", "condition_id", "sort"],
+    kind: "argued",
+    why: "parent item id, the linked condition's row id (the condition itself exports via the FHIR passport, and the dataset carries its name), and display order",
+  },
+  {
+    table: "intake_item_side_effects",
+    columns: ["item_id", "course_id", "created_at"],
+    kind: "argued",
+    why: "parent item and course row ids, plus the row's write stamp",
+  },
+
+  // ── Write stamps: when the app filed the row, not when anything happened to the
+  // person. Each of these datasets exports the event column that answers the
+  // clinical question (see docs/internals/time-columns.md); the filing time is
+  // machinery. Where a dataset DOES export its created_at (practice_logs), it is
+  // exported and absent from this list.
+  {
+    table: "equipment",
+    columns: ["created_at", "retired"],
+    kind: "inherited",
+    why: "write stamp, and the retired flag — gym-inventory state that never joined the dataset",
+  },
+  {
+    table: "food_daily_totals",
+    columns: ["created_at"],
+    kind: "argued",
+    why: "write stamp; the day the totals count for is the exported `date`",
+  },
+  {
+    table: "protein_daily_totals",
+    columns: ["created_at"],
+    kind: "argued",
+    why: "write stamp, as food_daily_totals",
+  },
+  {
+    table: "immunization_overrides",
+    columns: ["created_at"],
+    kind: "argued",
+    why: "write stamp",
+  },
+  {
+    table: "preventive_events",
+    columns: ["created_at"],
+    kind: "argued",
+    why: "write stamp",
+  },
+  {
+    table: "preventive_overrides",
+    columns: ["created_at"],
+    kind: "argued",
+    why: "write stamp",
+  },
+  {
+    table: "preventive_record_decisions",
+    columns: ["created_at", "updated_at"],
+    kind: "argued",
+    why: "write stamps",
+  },
+  {
+    table: "situations",
+    columns: ["created_at"],
+    kind: "argued",
+    why: "write stamp",
+  },
+  {
+    table: "milestones",
+    columns: ["created_at"],
+    kind: "argued",
+    why: "write stamp; `achieved_on` is the date that matters and is exported",
+  },
+  {
+    table: "mood_logs",
+    columns: ["updated_at"],
+    kind: "argued",
+    why: "last-edit stamp; the mood entry's own date is exported",
+  },
+
+  // ── Not argued: columns that simply never joined their dataset. Listed so the
+  // NEXT one cannot join them silently.
+  {
+    table: "activities",
+    columns: [
+      "components",
+      "created_at",
+      "avg_speed_kmh",
+      "max_speed_kmh",
+      "relative_effort",
+      "max_power_w",
+      "weighted_avg_power_w",
+      "avg_temp_c",
+      "edited",
+      "updated_at",
+      "equipment_id",
+      "elapsed_min",
+      "logged_via",
+    ],
+    kind: "inherited",
+    why: "#466 widened this dataset from the display projection to the device telemetry it was dropping, and stopped where it stopped; every telemetry column added since is here, alongside the write stamps, the equipment link and the edited/logged_via provenance pair",
+  },
+  {
+    table: "activity_telemetry",
+    columns: ["stream_summary_json", "answer"],
+    kind: "inherited",
+    why: "the stored stream summary and the answer derived from it, behind the telemetry columns the dataset does carry",
+  },
+  {
+    table: "appointments",
+    columns: [
+      "provider_id",
+      "created_at",
+      "kind",
+      "document_id",
+      "source",
+      "external_id",
+      "encounter_id",
+    ],
+    kind: "inherited",
+    why: "the link columns (provider, document, encounter), the ingest provenance trio, and the appointment kind",
+  },
+  {
+    table: "body_metrics",
+    columns: [
+      "occurred_at",
+      "logged_via",
+      "weight_at",
+      "body_fat_at",
+      "resting_hr_at",
+    ],
+    kind: "inherited",
+    why: "the per-measure instants behind the exported `date` (docs/internals/time-columns.md) and the logged_via provenance — the same class of fact as the bundle_id this dataset just gained, and not covered by #5117's ruling",
+  },
+  {
+    table: "dental_procedures",
+    columns: ["provider_id", "external_id", "created_at", "encounter_id"],
+    kind: "inherited",
+    why: "link columns and ingest provenance",
+  },
+  {
+    table: "endurance_plans",
+    columns: ["session_kinds"],
+    kind: "inherited",
+    why: "the plan's session-kind composition",
+  },
+  {
+    table: "fasts",
+    columns: ["end_written_at"],
+    kind: "inherited",
+    why: "when the fast's end was written down, as distinct from the exported end instant",
+  },
+  {
+    table: "food_log_events",
+    columns: [
+      "created_at",
+      "occurred_at",
+      "time_source",
+      "notify_message_id",
+      "logged_via",
+    ],
+    kind: "inherited",
+    why: "the eating instant a person may have stated, and where that time came from, behind the exported `recorded_at` tap instant; plus the Telegram message pointer and logged_via",
+  },
+  {
+    table: "frequency_targets",
+    columns: ["per_week_max", "created_at", "scope_identity"],
+    kind: "inherited",
+    why: "the range's upper bound beside the exported per_week, the write stamp, and the derived scope identity",
+  },
+  {
+    table: "genomic_variants",
+    columns: ["source", "document_id", "external_id", "created_at"],
+    kind: "inherited",
+    why: "ingest provenance and the source document link",
+  },
+  {
+    table: "goals",
+    columns: [
+      "exercise",
+      "metric",
+      "target_weight_kg",
+      "target_reps",
+      "target_sets",
+      "target_duration_sec",
+      "body_metric",
+      "baseline_value",
+      "archived",
+      "equipment_id",
+      "biomarker_name",
+      "target_direction",
+      "achieved_at",
+    ],
+    kind: "inherited",
+    why: "the whole typed half of a goal — what it is measured on and what the target actually is — behind the generic title/target_value/current_value the dataset carries",
+  },
+  {
+    table: "imaging_studies",
+    columns: [
+      "ordering_provider_id",
+      "reading_provider_id",
+      "source",
+      "document_id",
+      "external_id",
+      "created_at",
+      "dose_msv",
+      "encounter_id",
+    ],
+    kind: "inherited",
+    why: "provider/document/encounter links, ingest provenance, and the study's radiation dose",
+  },
+  {
+    table: "injuries",
+    columns: [
+      "laterality",
+      "movements",
+      "exercises",
+      "load_factor",
+      "review_date",
+    ],
+    kind: "inherited",
+    why: "which side, what it restricts, and when to look again",
+  },
+  {
+    table: "intake_item_logs",
+    columns: [
+      "dose_id",
+      "item_id",
+      "product",
+      "supply_adjusted",
+      "notify_message_id",
+      "logged_via",
+    ],
+    kind: "inherited",
+    why: "parent dose/item row ids (the readable item name is exported in their place), the product taken, whether the confirm moved supply, the Telegram pointer, and logged_via",
+  },
+  {
+    table: "medical_documents",
+    columns: [
+      "stored_path",
+      "patient_name",
+      "extraction_error",
+      "raw_extraction",
+      "model",
+      "import_report",
+      "content_hash",
+      "processing_started_at",
+      "extraction_completed_at",
+      "acquired_portal_id",
+      "clinical_key",
+      "acquired_identity_id",
+      "delivered_at",
+    ],
+    kind: "argued",
+    why: "the extraction pipeline's own record of processing this file — on-disk path, model, raw and errored extraction output, timings, and the portal/identity routing it arrived through. The FILE itself is bundled under medical-files/ and the clinical entries it produced export via their own datasets; none of this describes the person",
+  },
+  {
+    table: "medication_courses",
+    columns: [
+      "item_id",
+      "created_at",
+      "prescriber",
+      "provider_id",
+      "dose_snapshot",
+    ],
+    kind: "inherited",
+    why: "parent item row id and write stamp, plus who prescribed the course and the dose as of its start",
+  },
+  {
+    table: "metric_samples",
+    columns: ["activity_external_id", "edited", "pushed_at"],
+    kind: "inherited",
+    why: "the provider-side activity key this sample came from, the hand-edit lock, and when it was pushed back",
+  },
+  {
+    table: "optical_prescriptions",
+    columns: [
+      "provider_id",
+      "source",
+      "document_id",
+      "external_id",
+      "created_at",
+      "encounter_id",
+    ],
+    kind: "inherited",
+    why: "link columns and ingest provenance",
+  },
+  {
+    table: "practice_logs",
+    columns: [
+      "source",
+      "external_id",
+      "edited",
+      "notify_message_id",
+      "logged_via",
+      "live",
+      "derived_window",
+      "correction_locked",
+    ],
+    kind: "inherited",
+    why: "ingest provenance, the Telegram pointer, and the in-progress/derived-window/correction-lock flags behind the exported session window — the same class as the bundle_id this dataset just gained, and not covered by #5117's ruling",
+  },
+  {
+    table: "protocols",
+    columns: [
+      "created_at",
+      "equipment_id",
+      "frequency_target_id",
+      "owns_frequency_target",
+      "intake_item_id",
+    ],
+    kind: "inherited",
+    why: "write stamp and the equipment / frequency-target / intake-item links, each of which exports under its own dataset",
+  },
+  {
+    table: "providers",
+    columns: [
+      "dedup_key",
+      "created_at",
+      "specialty_code",
+      "specialty",
+      "archived",
+      "contact_edited",
+    ],
+    kind: "inherited",
+    why: "the dedup key and write stamp are instance-local bookkeeping; the specialty pair, archived flag and contact-edit lock never joined the dataset",
+  },
+  {
+    table: "skin_lesions",
+    columns: ["provider_id", "external_id", "created_at", "encounter_id"],
+    kind: "inherited",
+    why: "link columns and ingest provenance",
+  },
+  {
+    table: "substance_daily_totals",
+    columns: ["created_at", "source", "edited", "logged_via"],
+    kind: "inherited",
+    why: "write stamp and the source/edited/logged_via provenance trio",
+  },
+  {
+    table: "symptom_logs",
+    columns: ["created_at", "episode_id", "logged_via"],
+    kind: "inherited",
+    why: "write stamp, the illness_episodes link (that table is allowlisted above), and logged_via",
+  },
+];
+
+// The scope column. Every profile-owned table carries it, and it is the one thing an
+// export of ONE profile cannot tell anyone: the archive is that profile's, and the id
+// renumbers on import. Excluded by rule rather than 47 identical allowlist entries.
+const PROFILE_SCOPE_COLUMN = "profile_id";
+
+// The census the assertions below run on: for every dataset table not carved out,
+// its physical columns and the ones the export actually carries. Anything it cannot
+// attribute THROWS — an unseen dataset or column is the defect, not an exemption.
+type TableColumnCensus = {
+  table: string;
+  physical: string[];
+  exported: Set<string>;
+};
+
+function columnCensus(): {
+  tables: TableColumnCensus[];
+  carvedOut: string[];
+  csvOmitted: { key: string; column: string }[];
+  csvOnly: { key: string; column: string }[];
+} {
+  const exported = new Map<string, Set<string>>();
+  const datasetTables: string[] = [];
+  const csvOmitted: { key: string; column: string }[] = [];
+  const csvOnly: { key: string; column: string }[] = [];
+
+  for (const ds of DATASETS) {
+    if (!ds.select?.trim()) {
+      throw new Error(
+        `dataset "${ds.key}" has no select — this guard cannot see which columns it exports`
+      );
+    }
+    const result = db.prepare(ds.select).columns();
+    const own = result.filter((c) => c.table === ds.table && c.column);
+    if (own.length === 0) {
+      throw new Error(
+        `dataset "${ds.key}" selects nothing SQLite can attribute to ${ds.table} — this guard cannot see which columns it exports`
+      );
+    }
+    if (!exported.has(ds.table)) {
+      exported.set(ds.table, new Set<string>());
+      datasetTables.push(ds.table);
+    }
+    const carried = exported.get(ds.table)!;
+    // Origin-table attribution answers the completeness question (which columns of
+    // THIS table the export carries) — JOINed columns belong to their own table's
+    // dataset and are counted there.
+    for (const c of own) carried.add(c.column!);
+    // The JSON ⇄ CSV question is asked of EVERY result column by the name it lands
+    // under, JOIN-sourced ones included: that name is the key toCsv reads.
+    const csvHeader = new Set(ds.columns);
+    const emitted = new Set(result.map((c) => c.name));
+    for (const name of emitted) {
+      if (name !== "id" && !csvHeader.has(name)) {
+        csvOmitted.push({ key: ds.key, column: name });
+      }
+    }
+    for (const name of ds.columns) {
+      if (!emitted.has(name)) csvOnly.push({ key: ds.key, column: name });
+    }
+  }
+
+  const tables: TableColumnCensus[] = [];
+  const carvedOut: string[] = [];
+  for (const table of datasetTables.sort()) {
+    if (COLUMN_GUARD_FHIR_CARVE_OUT.has(table)) {
+      carvedOut.push(table);
+      continue;
+    }
+    const physical = (
+      db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]
+    ).map((r) => r.name);
+    if (physical.length === 0) {
+      throw new Error(
+        `PRAGMA table_info(${table}) returned no columns — the guard cannot read the table a dataset says it exports`
+      );
+    }
+    tables.push({ table, physical, exported: exported.get(table)! });
+  }
+  return { tables, carvedOut, csvOmitted, csvOnly };
+}
+
+// The floor. Not a target — a tripwire under the census, so a scan that reads a
+// TRUNCATED SCHEMA fails LOUD instead of passing green over nothing.
+//
+// WHAT IT MEASURES IS SCHEMA BREADTH, not data: the census reads PRAGMA table_info
+// and prepared-statement metadata and never touches a row, so it is green against an
+// empty fixture database and cannot notice an empty or partial EXPORT. What it
+// catches is the population shrinking — a dataset dropped, a table gone.
+//
+// And it is COARSE even at that: the population is exactly 47/583 with zero headroom,
+// so `>=` on a sum admits a same-size population that has diverged — a dropped column
+// and an added one cancel. The assertions above do fire in that state (the dropped
+// column is unexported, the added one is not in the allowlist), which is why this
+// stays a backstop under them rather than the guard itself.
+//
+// These are the counts at the time #5117 landed; they only ever move up, and moving
+// one down means the export lost a table.
+const MIN_TABLES_CHECKED = 47;
+const MIN_COLUMNS_CHECKED = 583;
+
+describe("every column of an exported table is exported (#5117)", () => {
+  const { tables, carvedOut, csvOmitted, csvOnly } = columnCensus();
+  const columnsChecked = tables.reduce((n, t) => n + t.physical.length, 0);
+
+  it("checks a real population, not a truncated schema", () => {
+    expect(
+      tables.length,
+      `only ${tables.length} dataset tables reached the column census`
+    ).toBeGreaterThanOrEqual(MIN_TABLES_CHECKED);
+    expect(
+      columnsChecked,
+      `only ${columnsChecked} columns reached the column census`
+    ).toBeGreaterThanOrEqual(MIN_COLUMNS_CHECKED);
+  });
+
+  it("every column is exported, or named in the allowlist with a reason", () => {
+    const excluded = new Map<string, Set<string>>();
+    for (const entry of COLUMN_EXPORT_ALLOWLIST) {
+      const set = excluded.get(entry.table) ?? new Set<string>();
+      for (const c of entry.columns) set.add(c);
+      excluded.set(entry.table, set);
+    }
+    const unexported: string[] = [];
+    for (const t of tables) {
+      for (const column of t.physical) {
+        if (column === PROFILE_SCOPE_COLUMN) continue;
+        if (t.exported.has(column)) continue;
+        if (excluded.get(t.table)?.has(column)) continue;
+        unexported.push(`${t.table}.${column}`);
+      }
+    }
+    expect(
+      unexported,
+      `\nColumns of an exported table that the export drops.\nAdd each to its dataset's columns + select in lib/export.ts, or name it in COLUMN_EXPORT_ALLOWLIST with the reason:\n${unexported.join("\n")}\n`
+    ).toEqual([]);
+  });
+
+  it("the column allowlist stays real (no stale table, column, or entry)", () => {
+    const census = new Map(tables.map((t) => [t.table, t]));
+    for (const entry of COLUMN_EXPORT_ALLOWLIST) {
+      const t = census.get(entry.table);
+      expect(
+        t,
+        `${entry.table} has no dataset (or is FHIR-carved-out) — remove its column allowlist entry`
+      ).toBeDefined();
+      expect(entry.columns.length).toBeGreaterThan(0);
+      expect(entry.why.trim().length).toBeGreaterThan(0);
+      for (const column of entry.columns) {
+        expect(
+          t!.physical,
+          `${entry.table}.${column} is not a column of ${entry.table}`
+        ).toContain(column);
+        expect(
+          t!.exported.has(column),
+          `${entry.table}.${column} IS exported — remove it from the allowlist`
+        ).toBe(false);
+      }
+    }
+    // One entry per table, so a reader finds every excluded column in one place.
+    const seen = COLUMN_EXPORT_ALLOWLIST.map((e) => e.table);
+    expect(seen).toEqual([...new Set(seen)]);
+  });
+
+  it("the FHIR carve-out is exactly the tables the passport also carries", () => {
+    // COLUMN_GUARD_FHIR_CARVE_OUT *is* FHIR_INPUT_TABLES, so "every carved-out table
+    // is a FHIR input table" cannot fail and is not asserted. The count is the gate:
+    // named and counted, this exemption cannot quietly grow.
+    expect(carvedOut.length).toBe(10);
+  });
+
+  it("what a dataset selects reaches the CSV as well as the JSON", () => {
+    const named = new Set(
+      CSV_OMITTED_RESULT_COLUMNS.map((c) => `${c.key}.${c.column}`)
+    );
+    const undeclared = csvOmitted
+      .map((c) => `${c.key}.${c.column}`)
+      .filter((c) => !named.has(c));
+    expect(
+      undeclared,
+      `\nSelected into datasets/<key>.json but missing from the CSV header (dataset \`columns\`):\n${undeclared.join("\n")}\n`
+    ).toEqual([]);
+    // …and nothing is declared that no longer diverges.
+    const actual = new Set(csvOmitted.map((c) => `${c.key}.${c.column}`));
+    for (const c of CSV_OMITTED_RESULT_COLUMNS) {
+      expect(
+        actual.has(`${c.key}.${c.column}`),
+        `${c.key}.${c.column} is in the CSV now — remove its entry`
+      ).toBe(true);
+      expect(c.why.trim().length).toBeGreaterThan(0);
+    }
+  });
+
+  it("what the CSV header promises, the dataset actually selects", () => {
+    const named = new Set(JS_BUILT.map((c) => `${c.ds.key}.${c.column}`));
+    const undeclared = csvOnly
+      .map((c) => `${c.key}.${c.column}`)
+      .filter((c) => !named.has(c));
+    expect(
+      undeclared,
+      `\nPromised by the CSV header (dataset \`columns\`) but selected by nothing — every row ships an empty cell:\nAdd it to the dataset's select in lib/export.ts, or, if a JS step builds it after the read, declare it in that dataset's \`jsBuilt\` with the function that does:\n${undeclared.join("\n")}\n`
+    ).toEqual([]);
+    // …and nothing is declared that the select emits after all.
+    const actual = new Set(csvOnly.map((c) => `${c.key}.${c.column}`));
+    for (const c of JS_BUILT) {
+      expect(
+        actual.has(`${c.ds.key}.${c.column}`),
+        `${c.ds.key}.${c.column} is selected now — remove its jsBuilt entry`
+      ).toBe(true);
+      expect(c.why.trim().length).toBeGreaterThan(0);
+      // The BUILDER must be DECLARED. What this establishes is exactly that: a
+      // function of that name exists in lib/export.ts. It does NOT establish that
+      // this dataset's reader calls it — renaming `shapeActivities` to
+      // `shapeSupplements`, a real function building a different cell, passes here.
+      // The half that ties the name to the code needs the dataset object, so it is
+      // in lib/__db_tests__/export.test.ts: the reader that emits the cell must name
+      // `by`. Both halves, because this tier runs with no database and that one has
+      // no source text.
+      //
+      // An identifier, asserted rather than assumed — `by` is interpolated into a
+      // RegExp below, so `by: "shape.*"` would otherwise match anything.
+      expect(c.by, `${c.ds.key}.${c.column}: jsBuilt \`by\``).toMatch(
+        /^[A-Za-z_$][\w$]*$/
+      );
+      // Anchored at COLUMN ZERO and requiring the parameter list, so a mention
+      // inside a comment or a string cannot satisfy it — and neither can a
+      // function-LOCAL `const <name> = (` inside some other builder, which the
+      // earlier `^\s*` spelling accepted. Every declaration in this file is at module
+      // scope. Both spellings the file uses: a `function <name>(` declaration and an
+      // arrow const (`providersSelect` is written that way, so refusing one would
+      // bite).
+      expect(
+        new RegExp(
+          `^(?:export\\s+)?(?:function ${c.by}\\s*\\(|const ${c.by}\\s*=\\s*\\()`,
+          "m"
+        ).test(EXPORT_SOURCE),
+        `${c.ds.key}.${c.column}: jsBuilt names \`${c.by}\`, which lib/export.ts does not declare`
+      ).toBe(true);
+    }
+  });
+
+  it("only a dataset that HAS a JS step can declare a JS-built cell", () => {
+    // A tableDataset's rows()/page() ARE q(select)/qPage(select): the row is whatever
+    // SQLite returned, and there is no step that could add a cell. So a `jsBuilt`
+    // entry on one is not a claim that turned out false — it is a claim that could
+    // never have been true, and the CSV would ship an empty column under it.
+    const impossible = JS_BUILT.filter((c) => c.ds.readsSelect).map(
+      (c) => `${c.ds.key}.${c.column} (built by ${c.by})`
+    );
+    expect(
+      impossible,
+      `\nDeclared as built in JS by a dataset whose rows() is q(select) — nothing runs between the read and the row:\n${impossible.join("\n")}\n`
+    ).toEqual([]);
+    // The other half of the claim — that the cell is really emitted, non-undefined,
+    // on a seeded row — needs data, and lives in lib/__db_tests__/export.test.ts.
+    expect(JS_BUILT.length).toBeGreaterThan(0);
   });
 });

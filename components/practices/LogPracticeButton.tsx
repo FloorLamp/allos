@@ -24,6 +24,7 @@ import {
   PRACTICE_DURATION_STEP_MIN,
   PRACTICE_USUAL_DAY_TEXT,
   practiceIdentity,
+  practiceLiveEndText,
   practiceLogOutcomeText,
   stepPracticeDuration,
 } from "@/lib/practice";
@@ -399,15 +400,12 @@ export default function LogPracticeButton({
     const fd = subject(new FormData());
     fd.set("id", String(session.id));
     const outcome = await endPracticeLive(fd);
+    setCurrentLive(null);
     if (outcome.kind === "ended") {
-      setCurrentLive(null);
       setCount(outcome.count);
       setLastTime(null);
-      toast("Session finished");
-    } else {
-      setCurrentLive(null);
-      toast("That session is no longer running.");
     }
+    toast(practiceLiveEndText(outcome));
   }
 
   async function onEnd() {

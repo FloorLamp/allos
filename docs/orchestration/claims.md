@@ -1,15 +1,14 @@
 # Cross-session markers
 
-Two orchestrator sessions run against this repo and post as one GitHub account,
-so every coordination fact here is a MARKER a script reads, not a relayed line.
+Several orchestrator sessions post as one GitHub account, so every
+coordination fact here is a MARKER a script reads, not a relayed line.
 
 ## Claiming an issue
 
-- Claim by commenting on the issue, naming the branch, BEFORE briefing. The two
-  spellings in use, quoted off the tracker:
-  - `` Dispatched: B, branch `live-practice-self-complete-5091` `` (#5091)
-  - ``Dispatched: branch `dispatch-claim-refusal-5108` (orchestrator A, …)``
-    (#5108)
+- Claim by commenting on the issue, naming the branch, BEFORE briefing, as
+  ``Dispatched: branch `dispatch-claim-refusal-5108` (orchestrator A, …)``.
+- Duplicate filings: one bug, one lane — the earlier CLAIM holds, never the
+  earlier file (#5241 over #5242).
 - The BRANCH is the discriminator, never the author: a claim naming the branch
   you are about to create is your own, and any other branch is another lane's.
 - Read the issue WHOLE first — `issue-read.mjs <n>`, body and every comment,
@@ -36,8 +35,9 @@ so every coordination fact here is a MARKER a script reads, not a relayed line.
 - Where `adversarial-review-brief.mjs --check` says MANDATORY, `merge-gate.mjs`
   requires the pass's own verdict on the current head, as
   `FALSIFYING-PASS: SURVIVES <sha>` or `FALSIFYING-PASS: FALSIFIED <sha>`.
-- A head change VOIDS a pass verdict exactly as it voids a receipt. A label
-  cannot: it is not on the head, which is why neither of these is one.
+- A head change VOIDS a pass verdict exactly as it voids a receipt; a label
+  cannot. One exception: a head moved ONLY by a merge of `main`, its three-dot
+  diff byte-identical, keeps its receipt with the equality shown (#5247).
 - QUOTING a marker does not place one (#5183): a fenced, indented-as-code, or
   blockquoted line is an example, so the grammar can be written down on a PR
   without arming it. Emphasis is not quotation; a bolded marker still counts.
