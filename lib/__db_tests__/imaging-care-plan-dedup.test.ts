@@ -127,7 +127,7 @@ describe("imaging studies collapse across overlapping exports (#2919)", () => {
       )
     ).toHaveLength(1);
     expect(
-      searchAll(profile, "breast").filter((h) => h.domain === "imaging")
+      searchAll(profile, "breast", null).filter((h) => h.domain === "imaging")
     ).toHaveLength(1);
   });
 
@@ -157,7 +157,9 @@ describe("care-plan items collapse across overlapping exports (#2919)", () => {
 
     expect(getCarePlanItems(profile)).toHaveLength(1);
     expect(
-      searchAll(profile, "flu vaccine").filter((h) => h.domain === "care-plan")
+      searchAll(profile, "flu vaccine", null).filter(
+        (h) => h.domain === "care-plan"
+      )
     ).toHaveLength(1);
     expect(carePlanItems(profile)).toHaveLength(1);
   });

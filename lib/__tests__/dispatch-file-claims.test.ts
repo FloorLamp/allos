@@ -239,9 +239,19 @@ describe("the brief a lane receives", () => {
     // such bullets were in the brief this lane was handed and in NO template —
     // found by diffing the handed brief against `dispatch-brief.mjs brief`.
     ["A NUMBER IN PROSE MUST COME FROM A COMMAND YOU RAN", "the rule"],
+    // The receipt that cannot be recalled — and it is now DISCOVERED rather
+    // than asserted, because the baked one ("THIS CLONE IS SHALLOW, history
+    // begins two days ago") went false when the clone was unshallowed and told
+    // a lane a `git show <sha>^:<file>` it could make was impossible. The
+    // fragment pinned here is the half that holds whichever way the answer
+    // comes out; `dispatch-history-depth.test.ts` drives both branches.
     [
-      "THIS CLONE IS SHALLOW",
+      "CHECK WHAT YOURS CAN REACH BEFORE YOU CLAIM EITHER WAY",
       "with the receipt that cannot be recalled instead",
+    ],
+    [
+      "`git rev-parse --is-shallow-repository`",
+      "and the command that answers it, beside the claim",
     ],
     ["RE-ASK IT NARROWLY", "and the same lesson pointed at greps"],
   ])("says %s (%s)", (fragment, _why) => {

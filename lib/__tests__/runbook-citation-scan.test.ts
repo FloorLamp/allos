@@ -18,12 +18,22 @@ import { describe, expect, it } from "vitest";
 //   scan runs offline in CI.
 // - Bare basenames (`reconcile-tracker-core.ts`) and dir mentions (`lib/`) —
 //   only ROOTED file paths are checkable without guessing.
+//
+// ONE OF THOSE GAPS COST A FLIGHT RECORDER (#5242). The citation scan skips
+// anything templated, and a shell script's helper calls are ALL templated —
+// `node "$(dirname "$0")/work/ledger.mjs"` is a `$` expression, so this file
+// walked past five invocations of a directory that has never existed for as
+// long as they were there. They are not prose citations: they are commands,
+// and the shell resolves them against a known base, so they ARE checkable.
+// The second describe below resolves them, and it is where the check for a
+// path a shell script INVOKES belongs — the question is the same one this
+// file already answers for prose, asked of the executable half.
 
 const REPO = process.cwd();
 
-/** The scanned surface: runbook, skills, PR template, orchestration scripts. */
+/** The scanned surface: runbook, skills, PR template, work scripts. */
 function scannedFiles(): string[] {
-  const orchestration = readdirSync(path.join(REPO, "docs/orchestration"))
+  const work = readdirSync(path.join(REPO, "docs/orchestration"))
     .filter((name) => name.endsWith(".md"))
     .map((name) => path.posix.join("docs/orchestration", name));
   const skills = readdirSync(path.join(REPO, ".claude/skills"), {
@@ -36,7 +46,7 @@ function scannedFiles(): string[] {
   );
   return [
     "docs/orchestration.md",
-    ...orchestration,
+    ...work,
     ...skills,
     ".github/pull_request_template.md",
     ...scripts,
@@ -59,6 +69,71 @@ function pathRefs(text: string): string[] {
     refs.add(raw);
   }
   return [...refs].sort();
+}
+
+/** Every `.sh` under scripts/, which is the set that invokes helpers. */
+function shellScripts(dir = "scripts"): string[] {
+  return readdirSync(path.join(REPO, dir), { withFileTypes: true }).flatMap(
+    (entry) => {
+      const rel = path.posix.join(dir, entry.name);
+      if (entry.isDirectory()) return shellScripts(rel);
+      return entry.name.endsWith(".sh") ? [rel] : [];
+    }
+  );
+}
+
+/**
+ * Repo-relative paths a shell script INVOKES, resolved the way the shell
+ * resolves them.
+ *
+ * Scoped to lines that run something (`node`, `bash`, `sh`, `npx`, `tsx`),
+ * because the same three spellings appear in prose and in pathspec regexes —
+ * pm-digest.sh's `PROC_PATHS` holds `scripts/orchestration/` as a REGEX
+ * FRAGMENT, and a scan that read it as an invocation would cry wolf on a
+ * correct file. The three forms are the ones the repo actually writes:
+ * `$(dirname "$0")/x` (against the script's own directory), `$REPO_DIR/x`
+ * (against the root), and a bare rooted `scripts/x.mjs`.
+ *
+ * A path expression assigned to a variable is expanded first. #5242's fix
+ * names the helper directory once as `HELPERS`, and a guard that could not
+ * follow one hop would be blind to exactly the five call sites it exists to
+ * watch — it would check the directory and never the file.
+ */
+export function invokedPaths(source: string, relative: string): string[] {
+  const vars = [
+    ...source.matchAll(
+      /^([A-Za-z_][A-Za-z0-9_]*)="?(\$\(dirname "\$0"\)[^"\s]*|\$\{?REPO(?:_DIR)?\}?[^"\s]*)"?$/gm
+    ),
+  ];
+  const here = path.posix.dirname(relative);
+  const forms = [
+    [
+      /\$\(dirname "\$0"\)((?:\/[A-Za-z0-9_.-]+)+)/g,
+      (p: string) => path.posix.join(here, p),
+    ],
+    [
+      /\$\{?REPO(?:_DIR)?\}?((?:\/[A-Za-z0-9_.-]+)+)/g,
+      (p: string) => p.slice(1),
+    ],
+    [
+      /(?<![\w/.$-])((?:scripts|lib|e2e|app|components)\/[A-Za-z0-9_./-]*\.(?:mjs|ts|sh))/g,
+      (p: string) => p,
+    ],
+  ] as const;
+  const found = new Set<string>();
+  for (const raw of source.split("\n")) {
+    if (!/(?:^|[\s;&|(`])(?:node|bash|sh|npx|tsx)\s/.test(raw)) continue;
+    let line = raw;
+    for (const [, name, value] of vars) {
+      line = line
+        .replaceAll(`\${${name}}`, value)
+        .replaceAll(`$${name}`, value);
+    }
+    for (const [pattern, resolve] of forms) {
+      for (const match of line.matchAll(pattern)) found.add(resolve(match[1]));
+    }
+  }
+  return [...found].sort();
 }
 
 type AnchorRef = { file: string; anchor: string };
@@ -112,7 +187,7 @@ function anchorResolves(anchor: string, heading: string): boolean {
  */
 const DELIBERATE_REFS: Record<string, readonly string[]> = {
   // PROC_PATHS regex fragments: `\.sh` splits one, the other is a prefix.
-  "scripts/orchestration/catchup-digest.sh": [
+  "scripts/orchestration/pm-digest.sh": [
     "scripts/orchestrator-checkin",
     "docs/internals/e2e",
   ],
@@ -216,5 +291,84 @@ describe("the citation scan's reach", () => {
       "docs/orchestration/review-merge.md"
     );
     expect(resolveDoc("no-such-doc.md")).toBeNull();
+  });
+});
+
+// A shell script's helper calls are the half of this repo's citations that
+// EXECUTE, and #5242 is what it costs when nothing resolves them: five calls
+// into a directory that never existed, each one swallowing its own failure
+// into a plausible answer, for as long as nobody ran the script and read the
+// stderr it was hiding. The two loudest call sites were the two that hid it.
+describe("shell helper invocations", () => {
+  it.each(shellScripts())("%s invokes only helpers that exist", (relative) => {
+    const dead = invokedPaths(
+      readFileSync(path.join(REPO, relative), "utf8"),
+      relative
+    ).filter((target) => !existsSync(path.join(REPO, target)));
+    expect(
+      dead,
+      `${relative} invokes paths that are not on disk:\n${dead.join("\n")}\n` +
+        `The shell resolves these at run time and most of these call sites ` +
+        `have a fallback, so a wrong one does not fail — it answers wrongly.`
+    ).toEqual([]);
+  });
+
+  // The whole set, so a script added under scripts/ is scanned without anyone
+  // remembering to list it, and #5242's own subject cannot drop out.
+  it("scans every shell script under scripts/", () => {
+    expect(shellScripts()).toEqual([
+      "scripts/dev.sh",
+      "scripts/orchestration/agent-gates.sh",
+      "scripts/orchestration/pm-digest.sh",
+      "scripts/orchestrator-checkin.sh",
+    ]);
+  });
+
+  it("resolves the check-in's five helper calls, through the variable", () => {
+    expect(
+      invokedPaths(
+        readFileSync(
+          path.join(REPO, "scripts/orchestrator-checkin.sh"),
+          "utf8"
+        ),
+        "scripts/orchestrator-checkin.sh"
+      )
+    ).toEqual([
+      "scripts/orchestration/host.mjs",
+      "scripts/orchestration/ledger.mjs",
+      "scripts/orchestration/queue-snapshot.mjs",
+      "scripts/orchestrator-checkin.sh",
+    ]);
+  });
+});
+
+// Green over a tree whose paths resolve says nothing about what the extractor
+// can SEE, so it is run over the defect verbatim and over the neighbours it
+// must stay quiet on.
+describe("the invocation scan's reach", () => {
+  it("catches #5242's own line, base-relative and through a variable", () => {
+    expect(
+      invokedPaths(
+        'STATE_DIR=$(node "$(dirname "$0")/work/host.mjs" state-dir)',
+        "scripts/orchestrator-checkin.sh"
+      )
+    ).toEqual(["scripts/work/host.mjs"]);
+    expect(
+      invokedPaths(
+        'HELPERS="$(dirname "$0")/work"\nnode "$HELPERS/ledger.mjs" branches',
+        "scripts/orchestrator-checkin.sh"
+      )
+    ).toEqual(["scripts/work/ledger.mjs"]);
+  });
+
+  it.each([
+    [
+      "a pathspec regex, which runs nothing",
+      "PROC='^(scripts/orchestration/)'",
+    ],
+    ["prose in an echo with no path", 'echo "run dispatch-brief.mjs done"'],
+    ["a bare basename, unrooted and unresolvable", "node ledger.mjs branches"],
+  ])("stays quiet on %s", (_why, line) => {
+    expect(invokedPaths(line, "scripts/orchestrator-checkin.sh")).toEqual([]);
   });
 });

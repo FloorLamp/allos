@@ -31,7 +31,7 @@ describe("activity surfaces are age-neutral (#3067)", () => {
     ).toBe(true);
     expect(getTimelineDates(profileId)).toContain(date);
     expect(
-      searchAll(profileId, "AGE15 Bench")
+      searchAll(profileId, "AGE15 Bench", null)
         .find((group) => group.domain === "activity")
         ?.hits.some((hit) => hit.title === "AGE15 Bench Press")
     ).toBe(true);

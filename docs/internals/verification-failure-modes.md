@@ -239,7 +239,7 @@ These are not review taste; each retired a green that meant nothing.
   an earlier ruling, diff it against the later one and say which survives.
 
 - **YOUR proposed fix is a hypothesis, not a specification.** A lane implements
-  an orchestrator's suggestion faithfully and without the scepticism it applies
+  a worker's suggestion faithfully and without the scepticism it applies
   to its own ideas — so a fix named in a review comment arrives with LESS
   scrutiny than one the lane invented, not more. I proposed the one-line
   `COALESCE(source_name, name)` that produced the defect above, and the lane
@@ -285,6 +285,63 @@ These are not review taste; each retired a green that meant nothing.
   with its input — the unit-tier twin of the shard-composition effect. The fix is
   not a wait or a reset: it is to keep the state you are asserting on scoped to
   the thing under test, so the oracle cannot be reached by anyone else.
+
+## Vitest passing is not a type verdict
+
+**Both non-browser tiers transpile. Neither asks the checker anything, so a type
+error inside a test file is invisible to the tier that runs that file.** #5150 is
+the receipt: `main` was red on `check`, `seed` and `build` for two merges while
+`test-unit` and `test-db` stayed green on the same commit, over a `TimezoneSwitch`
+literal in `lib/__db_tests__/sleep-retime-action.test.ts` that had lost a required
+member. `npm run typecheck` is the only command here that gives a type verdict.
+It is a gate — `scripts/orchestration/agent-gates.sh` runs it before every push,
+CI's `check` job runs it on every PR — and not a tier.
+
+`lib/__tests__/type-verdict.test.ts` pins that, and the two shapes below, over
+synthetic programs.
+
+**Moving it into the tiers was measured and declined (#5150).** Two reasons, and
+the first is the one that settles it.
+
+- **It could not have caught the incident.** #5129 made `kind` required; #5138's
+  fixture was written against the base that preceded it (`git show a2bb777e9^:lib/travel-timezone.ts`
+  has no `kind`; `git show 780f93703:lib/__db_tests__/sleep-retime-action.test.ts`
+  has no `kind` either). Each tree typechecks clean alone. Only their merge is
+  invalid, so no per-branch check — tier-side or gate-side — sees it. Only a
+  check of the MERGED tree can, which is #5235's ground and not the tier's. The
+  combined-tree case below asserts that property; nothing yet prevents it.
+- **The cost lands exactly on the case the guard exists for.** TypeScript's
+  incremental build is cheap for a leaf edit and full-price the moment an exported
+  type moves, because every dependent has to be rechecked — which is the whole
+  point of wanting it. Measured on the four-core agent box, `wt-tc5150` at
+  `0ce1b0207`; wall time moves with the sibling lanes' load, so read the CPU column.
+
+  | measurement                                | command                        | wall            | user CPU        | load at start |
+  | ------------------------------------------ | ------------------------------ | --------------- | --------------- | ------------- |
+  | pure tier                                  | `npm test`                     | 220.5 s         | 351.4 s         | 6.54          |
+  | DB tier                                    | `npm run test:db`              | 126.9 s         | 228.7 s         | 12.28         |
+  | typecheck, cold (fresh worktree)           | `npm run typecheck`            | 106.7 s         | 114.6 s         | 0.09          |
+  | typecheck, warm, nothing changed           | `npm run typecheck`            | 16.9 s / 14.1 s | 16.6 s / 16.4 s | 4.27 / 5.47   |
+  | typecheck, warm, one test file edited      | `npm run typecheck`            | 12.5 s          | 17.1 s          | 4.40          |
+  | typecheck, warm, one exported type changed | `tsc --noEmit` (typegen 0.8 s) | 193.2 s         | 109.3 s         | 3.82          |
+  | typecheck, warm, that change reverted      | `npm run typecheck`            | 251.1 s         | 114.0 s         | 22.62         |
+
+  So a `pretest` hook costs +17 s CPU while a lane edits test files, +115 s the
+  first run in a fresh worktree, and +109 s on every iteration after a shared type
+  moves: 31% of the pure tier's CPU and 48% of the DB tier's. Both wall-clock
+  samples of that case — 193 s and 251 s — are longer than the DB tier's entire
+  127 s run, on a box whose load the samples do not hold still. #5150's own
+  acceptance rules that out: a guard that doubles a tier's runtime is a guard
+  lanes route around. It is also redundant with the gate, which already runs
+  typecheck immediately before `npm test`, and in CI it would duplicate the
+  `check` job across two more runners.
+
+**A check scoped to changed files is not a substitute.** The break lives in files
+the change never touched. `lib/travel-timezone.ts` has 13 importers
+(`git grep -lE 'from "@/lib/travel-timezone"' -- lib app components`); adding one
+required member to `TimezoneSwitch` produced 44 errors, of which 42 are inside
+`lib/__tests__/` and `lib/__db_tests__/` and 1 is in the edited file itself. A
+command handed only the diff's own files would have reported one of the 44.
 
 ## Merge-time failure modes
 

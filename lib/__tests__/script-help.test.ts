@@ -26,14 +26,16 @@ const ENTRY_SCRIPTS = [
   "scripts/orchestrator-checkin.sh",
   "scripts/orchestration/adversarial-review-brief.mjs",
   "scripts/orchestration/agent-gates.sh",
-  "scripts/orchestration/catchup-digest.sh",
+  "scripts/orchestration/pm-digest.sh",
   "scripts/orchestration/ci-watch.mjs",
   "scripts/orchestration/closing-keywords.mjs",
   "scripts/orchestration/delete-unknown-labels.ts",
   "scripts/orchestration/dependabot-eval-brief.mjs",
   "scripts/orchestration/dispatch-brief.mjs",
   "scripts/orchestration/host.mjs",
+  "scripts/orchestration/landing-independence.mjs",
   "scripts/orchestration/ledger.mjs",
+  "scripts/orchestration/main-red-history.mjs",
   "scripts/orchestration/merge-gate.mjs",
   "scripts/orchestration/post-merge-census.mjs",
   "scripts/orchestration/pr-board.mjs",
@@ -103,7 +105,7 @@ describe("--help belongs to the invoked script, not to its imports", () => {
     [
       "scripts/orchestration/ledger.mjs",
       "The dispatch ledger, folded",
-      "Host resolution for orchestration",
+      "Host resolution for work",
     ],
     // The title rule became an entry script of its own in #5068, which made
     // merge-gate's import of it the newest edge of exactly this shape.
@@ -111,6 +113,13 @@ describe("--help belongs to the invoked script, not to its imports", () => {
       "scripts/orchestration/merge-gate.mjs",
       "Merge gate —",
       "owned in one place because two things enforce it",
+    ],
+    // #5160's history tool imports host.mjs for the same token resolution, so
+    // it is the newest edge of this shape.
+    [
+      "scripts/orchestration/main-red-history.mjs",
+      "history on main, and who owns each red",
+      "Host resolution for work",
     ],
   ])("%s prints its OWN header", (rel, own, imported) => {
     const run = runHelp(rel);

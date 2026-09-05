@@ -481,7 +481,7 @@ describe("the scope rule: a diff that ships no runtime code decides nothing", ()
     );
   });
 
-  it("keeps a safety-worded orchestration PR ordinary", () => {
+  it("keeps a safety-worded work PR ordinary", () => {
     // #2932's real title. It is entirely about the safety tier and says so in
     // every sentence; it changes one script and two docs, and a bug in it cannot
     // disclose or decide anything at runtime.

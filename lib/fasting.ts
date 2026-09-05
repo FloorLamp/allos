@@ -18,6 +18,7 @@
 // profile timezone, which is why it takes one rather than slicing a string.
 
 import { dateStrInTz, parseUtcSql } from "./date";
+import { episodeState } from "./open-episode";
 
 // One stored fast, as every reader sees it. `ended_at === null` IS the active state —
 // there is no status enum, the same open/closed shape `cycles` and `illness_episodes`
@@ -28,16 +29,6 @@ export interface Fast {
   ended_at: string | null;
   note: string | null;
 }
-
-// ── The plausibility bound (the #921 stale-session shape, never a timeout) ──────────
-//
-// Past this many hours an ACTIVE fast stops reading as "in progress" and starts reading
-// as "you probably forgot to end this". It is a SUGGEST, not an expiry: the app never
-// auto-ends a fast, because "I stopped at some point" and "I never actually fasted" are
-// different truths and only the user knows which one happened. 36 h is the top of the
-// commonly-practised extended-fast range — long enough that a real 24 h fast is never
-// nagged, short enough that a forgotten one surfaces the same day.
-export const FAST_STALE_HOURS = 36;
 
 // The longest interval the write core will accept at all, backdated or live. A claim
 // longer than this is far likelier to be a mis-set date than a real fast, and accepting
@@ -116,10 +107,10 @@ export function fastAttributedDay(fast: Fast, tz: string): string | null {
 //
 //   start    — nothing is open. The control starts a fast.
 //   active   — a fast is running and still plausible. The control ends it.
-//   stale    — a fast has been running past FAST_STALE_HOURS. The control still ends it,
-//              and the surface ALSO offers discard, because at this point "end it with a
-//              backdated instant" and "this never happened" are both live answers and
-//              the app is not entitled to pick.
+//   stale    — a fast has been running past its plausibility bound (#5142). The control
+//              still ends it, and the surface ALSO offers discard, because at this point
+//              "end it with a backdated instant" and "this never happened" are both live
+//              answers and the app is not entitled to pick.
 export type FastControlState =
   | { kind: "start" }
   | { kind: "active"; fast: Fast; elapsedMs: number }
@@ -131,7 +122,15 @@ export function fastControlState(
 ): FastControlState {
   if (!active) return { kind: "start" };
   const elapsedMs = fastElapsedMs(active, at) ?? 0;
-  return elapsedMs >= FAST_STALE_HOURS * MS_PER_HOUR
+  // The plausibility bound is the one every open episode reads (#5142): a fast is an
+  // episode whose only close signal is a tap, so it goes STALE and never abandons —
+  // "I stopped at some point" and "I never actually fasted" are different truths and
+  // only the user knows which one happened.
+  const state = episodeState(
+    { kind: "fast", lastSignalAt: at.getTime() - elapsedMs, expectedEnd: null },
+    at.getTime()
+  );
+  return state.kind === "stale"
     ? { kind: "stale", fast: active, elapsedMs }
     : { kind: "active", fast: active, elapsedMs };
 }

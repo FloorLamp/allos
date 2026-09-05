@@ -53,13 +53,13 @@
 
 - Reproduce locally before pushing a fix. Preserve and inspect Playwright's
   `error-context.md`.
-- Run failures in failing order and use one worker when investigating shared
+- Run failures in failing order and use one orchestrator when investigating shared
   state or cross-spec poisoning.
 - Check the actual command exit code; pipelines can hide it.
 - For mass failures, check memory pressure, then run failures individually.
   Passing alone suggests starvation; failing alone suggests a defect.
 - Compare with clean main under the same conditions to identify pre-existing
-  failures.
+  failures — `main-red-history.mjs` reads `e2e-main`'s run of heads (#5160).
 - Before calling a PR's e2e red unrelated, check `E2E (main)` on the PR's base.
   Several PRs failing the same untouched specs is a base regression until that
   run says otherwise — not a coincidence of flakes (#2791).

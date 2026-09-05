@@ -152,13 +152,13 @@ describe("ledger.mjs, driven the way orchestrator-checkin.sh drives it", () => {
     expect(run.stdout.trim()).toBe("1");
   });
 
-  // AND `?` IS NOT 0 (owner, 2026-08-31). The shell prints `?` when this exits
-  // non-zero, and `?` sends the orchestrator to LOOK. A missing ledger printed
-  // as 0 reads "no lanes are running", and an empty roster is a dispatch order
-  // — so a wrong STATE_DIR or a restart would dispatch on top of live lanes
-  // nobody can see. Only a present-but-EMPTY ledger is genuinely zero. Each
-  // row asserts stdout too: a refusal that PRINTS would make the shell's
-  // `$(node … || echo "?")` yield the number AND the `?`.
+  // AND UNKNOWN IS NOT 0 (owner, 2026-08-31). The shell prints UNMEASURED when
+  // this exits non-zero, and that sends the orchestrator to LOOK. A missing
+  // ledger printed as 0 reads "no lanes are running", and an empty roster is a
+  // dispatch order — so a wrong STATE_DIR or a restart would dispatch on top of
+  // live lanes nobody can see. Only a present-but-EMPTY ledger is genuinely
+  // zero. Each row asserts stdout too: a refusal that PRINTS would leave the
+  // shell holding a number it would then read as the answer.
   it.each([
     [["branchez"], file, "an unknown mode"],
     [
@@ -188,7 +188,7 @@ describe("ledger.mjs, driven the way orchestrator-checkin.sh drives it", () => {
 });
 
 // THE FOURTH READER, finished (#4473). #4460 converged dispatch-brief,
-// queue-snapshot and orchestrator-checkin, and catchup-digest.sh kept its own
+// queue-snapshot and orchestrator-checkin, and pm-digest.sh kept its own
 // inline `live.set(branch, row)` fold — last row per branch wins, the exact
 // read this file's header was written about. Its consequence is worse than the
 // others: the digest decides WHAT TO DISPATCH NEXT, so an `update` row on a
@@ -196,7 +196,7 @@ describe("ledger.mjs, driven the way orchestrator-checkin.sh drives it", () => {
 // Latent when found — no `update` row had ever been written (47 active,
 // 43 done, 21 promotion across 111 live rows) — and armed by `update` itself.
 // The fixture above HAS one, on `nut-4118`, which is why these two rows differ.
-describe("issues in flight, the answer catchup-digest.sh now asks for", () => {
+describe("issues in flight, the answer pm-digest.sh now asks for", () => {
   const dir = makeTmpDir("dispatch-ledger-issues");
   const file = path.join(dir, "ledger.jsonl");
   fs.writeFileSync(file, LEDGER + "\n");

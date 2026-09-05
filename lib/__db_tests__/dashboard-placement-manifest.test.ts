@@ -1,9 +1,15 @@
 // Real-schema candidate census and query budget for the dashboard cutover (#3096).
+//
+// WHAT THIS GATE DOES NOT COVER, because its silence would otherwise read as coverage
+// (#5199). It walks ONE ROUTE RENDER per persona with a request cache open. The
+// notification tick runs the same query layer with `cache()` degraded to identity and
+// no route at all — that is tick-gather-budget.test.ts, whose digest gather costs more
+// per profile than a whole render here. Wall time is docs/internals/profiling.md's.
 
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { db, today } from "@/lib/db";
+import { db, today, writeTx } from "@/lib/db";
 import { utcInstant, shiftDateStr } from "@/lib/date";
 import { zonedWallTimeToUtc } from "@/lib/calendar-ics";
 import { reconcileFlags } from "@/lib/queries";
@@ -106,6 +112,7 @@ function ctxFor(profileId: number): PersonaContext {
       saveFitnessEntry(profileId, entry, "page"),
     recordGlucoseTrace,
     seedStandardMetricSaves: (pid) => seedStandardMetricSaves(db, pid),
+    writeTx,
     diffSituations,
     serializeSituationEvents,
     episodesForSituation,
@@ -146,8 +153,11 @@ function ctxFor(profileId: number): PersonaContext {
 /** Render name → the windows its `hr_minutes` range reads were bound to, in order. */
 const hrWindowReads = new Map<string, string[]>();
 /**
- * The one render in this file that HAS heart-rate minutes. Rendered after the persona
- * loop below, on its own profile, so it cannot move a single number in QUERY_BASELINE.
+ * The hand-built heart-rate render, on its own profile after the persona loop, so it
+ * cannot move a single number in QUERY_BASELINE. It was the ONLY render here with
+ * heart-rate minutes until #5034 gave `biohacker` a trace; it stays because it is the
+ * POSITIVE CONTROL — it seeds the seam directly, so it reds if the reader or the SQL
+ * moves, where a persona-only check would go quietly vacuous if the seed ever changed.
  */
 const HR_FIXTURE = "hr-minutes fixture";
 
@@ -213,6 +223,14 @@ const aheadPresentations = new Map<
   DashboardPlacementCanvasProps["aheadPresentations"]
 >();
 const queryCounts = new Map<string, number>();
+// THE WARM READING BESIDE THE COLD ONE (#5073). A second render of the same persona
+// with no write in between, so the six Show-everything gathers are answered from the
+// commit-scoped memo instead of the database.
+const warmQueryCounts = new Map<string, number>();
+const warmManifests = new Map<
+  string,
+  DashboardPlacementCanvasProps["placements"]
+>();
 const personaProfileIds = new Map<string, number>();
 let switchedHouseholdManifest: DashboardPlacementCanvasProps["placements"] = [];
 let switchedHouseholdProfileId = 0;
@@ -294,6 +312,14 @@ describe("actual atomic dashboard manifests", () => {
       queryCounts.set(persona.name, trace.count());
       hrWindowReads.set(persona.name, windowsRead(trace));
       personaProfileIds.set(persona.name, profileId);
+      // THE WARM RENDER (#5073), immediately after the cold one and before anything
+      // writes again. A dashboard render writes nothing — measured with
+      // `total_changes()` around three persona renders, 0 rows each — so the memo
+      // survives its own first load, which is the whole premise.
+      trace.clear();
+      const warmElement = await renderDashboard();
+      warmQueryCounts.set(persona.name, trace.count());
+      warmManifests.set(persona.name, warmElement.props.placements);
       if (persona.name === "household") {
         const switched = session.accessible.find(
           (profile) => profile.name === "Riley"
@@ -1125,6 +1151,29 @@ describe("actual atomic dashboard manifests", () => {
   // Every wrap above keys on `profile_id`, so what collapses is one profile asking
   // twice and never one profile answering for another; the two-profile assertion
   // below is what holds that.
+  // +4 ON marathon-runner (#4993): that persona now seeds eight recorded Strava polls,
+  // so `getImportIssues` reaches `resolveSourceFacts` for the first time on any persona.
+  // The four are the standing window, the latest-event seek, the last-successful-sync
+  // seek, and one more read of the connection row. This is the cost the gate was BLIND
+  // to, not a cost it added: with no events the loop had nothing to iterate, so
+  // `sourceStanding`, the staleness facts and everything under them executed zero times
+  // while the file's own comments described them as covered.
+  //
+  // +57 ON biohacker (#5034), 255 → 312, AND IT IS ALMOST ALL ONE DASHBOARD SECTION.
+  // That persona now seeds an all-day Oura heart-rate trace, and `app/(app)/page.tsx`
+  // gates its "day so far" IntradayChart on `getLatestHrDay(profile.id) === on` — one
+  // indexed read that every persona used to fail, so the day gather behind it had never
+  // once run under this meter. Attributed with a stack capture per statement on a probe
+  // render of the same fixture (which totals 252 → 308 of its own, resolving the tree
+  // slightly differently from this file): 3 statements against `hr_minutes` itself and
+  // 53 in the day gather the row opens — 19 in lib/timeline.ts, 8 in the substance
+  // totals, 6 each in lib/queries/metrics.ts and lib/history.ts, and the rest one and
+  // two at a time across the day's other readers.
+  //
+  // SO THE NUMBER TO ARGUE WITH IS THE SECTION, NOT THE SEED. Any persona with a
+  // wearable seam pays it; the row count does not enter into it, and a one-day trace
+  // would cost the same 57 as this thirty-day one. The five personas with no
+  // `hr_minutes` are unmoved, which is what makes that legible.
   const QUERY_BASELINE: Record<string, number> = {
     // +1 on four personas and +3 on two (#4956): the attention read now also asks
     // whether a live source is DROPPING a record type. That is one scan of this
@@ -1226,17 +1275,28 @@ describe("actual atomic dashboard manifests", () => {
     // was also unnecessary: only three of the twelve reads depend on the day at all,
     // and none of them is a per-day query. Gathering per WINDOW rather than per DAY is
     // what took the same correctness from +96 to +24.
-    bodybuilder: 230,
-    "marathon-runner": 235,
-    household: 254,
-    pregnant: 230,
-    "diabetic-cgm": 237,
+    //
+    // −2 EACH (#5073) ON TOP OF THE ABOVE, RE-MEASURED ON THE MERGED TREE and not
+    // carried over from the banked branch, whose base predated #3993's +24/+28. The
+    // sign is the surprise: this change ADDS one statement per render
+    // (`SELECT total_changes()`, the memo's own version read) and still comes out
+    // negative, because three of the six memoized gathers' calls inside ONE render were
+    // duplicates. `getScheduledAppointments` is reached four times on a dashboard render
+    // — the page's Upcoming list, `kindedScheduled` from the Upcoming generators, the
+    // intake warnings and the surgery bridge — and it was request-cached by nobody. The
+    // commit memo collapses those to one, so −3 +1 = −2. The WARM table below is where
+    // this change's actual subject shows up.
+    bodybuilder: 228,
+    "marathon-runner": 237,
+    household: 252,
+    pregnant: 228,
+    "diabetic-cgm": 235,
     // +9 (#4424 ruling 7): Upcoming's practice rows mount the shared row control, so
     // the row now resolves what that control renders — `getTrackedPractices`, which is
     // one grouped today-tally and one live sweep however many practices there are,
     // plus the usual-duration vote per practice. Assembling the same four fields
     // per-target instead measured +13.
-    biohacker: 257,
+    biohacker: 312,
     // −1 each (#5061): `getDayLoadInputs` and `getIntensitySignal` ask the same
     // question of the same 42 days — the shared HR read, kept to the activity windows
     // that bound it — and only the READ was request-cached (#5010), so each one still
@@ -1337,7 +1397,36 @@ describe("actual atomic dashboard manifests", () => {
   // `data-quality.finding:<dedupeKey>`, `recap.<line>`, `healthspan.pillar:<key>` —
   // so deferring one defers CANDIDACY, not a payload, and that is the #3077
   // exact-once partition rather than a cost question.
-  const QUERY_CEILING = 274;
+  //
+  // 274 → 272 (#5073), the same rule a fourth time, and the derivation is NOT the
+  // "heaviest + 20" one — that split was suspended above when #3993 spent queries and
+  // the bound was held at 274 against a 257 heaviest, i.e. a headroom of 17. The
+  // commit-scoped memo takes every persona down 2, so the heaviest (biohacker) is 255
+  // and the SAME 17 headroom re-derives as 255 + 17 = 272. Following the reduction down
+  // is the rule; re-deriving the 20 back would hand this change 3 statements of slack
+  // it did not earn, which is the "buy back your own headroom" move the paragraph above
+  // refuses in the other direction.
+  //
+  // AND IT STILL TRACKS THE COLD NUMBER: a ceiling derived from the warm table below
+  // would be a bound on a render nobody's first load ever gets.
+  // 272 → 329 (#5034), AND THIS IS THE FIRST TIME THE NUMBER HAS GONE UP. Every move
+  // above followed a reduction down. The rule is unchanged and is applied as written:
+  // the heaviest persona plus the 17 of headroom the line above froze — 312 + 17 = 329.
+  //
+  // WHAT ROSE IS THE POPULATION, NOT THE PAGE. No gather was added and no card moved
+  // (the placement census below is byte-identical on all six personas). `biohacker`
+  // simply became the first persona to satisfy the "day so far" row's gate, so a
+  // dashboard section that had never been rendered under this meter is now inside it.
+  // A backstop that excluded it would be a bound on a dashboard nobody with a wearable
+  // ever loads, which is the same objection the line below makes to deriving it from
+  // the warm table.
+  //
+  // IT IS ALSO THE LARGEST SINGLE MOVE THIS FILE HAS RECORDED, and the comment above
+  // says growth this size is a design conversation rather than a number to raise. It is
+  // raised here because the conversation has an answer — 57 statements is what the
+  // section costs, measured and attributed — but whether the section should cost that is
+  // still open, and the number is now visible for the first time so that it can be asked.
+  const QUERY_CEILING = 329;
 
   it("dashboard query budget: each persona matches its recorded main baseline", () => {
     // THE BACKSTOP ASKS ABOUT THE TABLE, NOT THE MEASUREMENT — which is the only
@@ -1393,11 +1482,150 @@ describe("actual atomic dashboard manifests", () => {
     ).toEqual([]);
   });
 
+  // THE WARM METER (#5073). The cold table above says what a first load costs; this
+  // says what the SECOND one costs when nothing has been written in between, which is
+  // the whole point of the commit-scoped memo. Same paste-the-refresh ritual as the
+  // cold table, and the same reason for having numbers rather than a ratio: a move
+  // here has to be accounted for, in either direction.
+  //
+  // WHAT IS LEFT is everything the memo does not cover: the Now/Standing/Ahead gathers,
+  // the suppression bus and `routineOrder` (deliberately unmemoized — a dismissal taken
+  // since the last commit must still be read fresh), and one `SELECT total_changes()`
+  // for the memo's own version read.
+  //
+  // WHAT THIS TABLE CANNOT SEE IS A GATHER LEAVING THE TAIL, and it is worth saying
+  // because the cold-is-cheaper line below reads as though it guards the thing it
+  // measures. A memoized gather costs 0 on a warm render whether it is memoized or
+  // ABSENT, so the two readings are indistinguishable from here. Measured: removing
+  // `getHealthspanPillars` from app/(app)/page.tsx entirely leaves every number in this
+  // table unmoved and the warm census below green, while the cold table above goes
+  // −8/−6/−8/−7/−8/−14 and three of the semantic assertions fire. MEMBERSHIP IS THE
+  // COLD TABLE'S TO POLICE, together with those assertions; this table measures what a
+  // warm load COSTS, not what it contains.
+  //
+  // RE-MEASURED ON THE MERGED TREE AND UNMOVED BY #3993, which is the most useful thing
+  // this table has said yet. #3993 dating the summary surfaces cost +24 on three
+  // personas and +28 on two, and every one of those statements is issued from inside
+  // `collectCoachingFindings` — `buildAdherencePatternFindings` (lib/rule-findings.ts,
+  // in the gather's own list) and `getIntakeHistory` under
+  // `buildDemotionSuggestionFindings` beside it. So the cold table above moved and this
+  // one did not: the whole of that cost falls inside the memo. `household` is the
+  // control on both tables — its acting profile has no active intake items, so #3993
+  // charged it nothing cold and it is unmoved here too.
+  //
+  // THESE NUMBERS DESCRIBE A SECOND LOAD ARRIVING WITHIN FIVE SECONDS OF THE FIRST, and
+  // the condition belongs beside the table because the table is meant to be re-pasted by
+  // whoever re-measures next. It is a fact about two OTHER memos, not about this change:
+  // `tzMemo` (lib/db.ts) and `versionsMemo` (lib/queries/intake/schedule.ts) are both
+  // TTL-bounded at 5 s and both measure that duration off `Date.now()`. This tier freezes
+  // Date (lib/__db_tests__/frozen-clock.ts), so neither can expire between the two renders
+  // in the loop above, and both are already warm when the second one runs.
+  //
+  // MEASURED, not reasoned about. Moving the clock six seconds between the cold and the
+  // warm render — an ordinary reload interval — raises every number here:
+  //
+  //   bodybuilder 119 → 122   marathon-runner 121 → 124   household 177 → 185
+  //   pregnant    119 → 124   diabetic-cgm    128 → 133   biohacker  134 → 137
+  //
+  // AND THE WHOLE OF THAT DELTA IS THE TWO TTLs. Clearing `versionsMemo` alone between
+  // the renders costs +1 on every persona except `household`, which has no active intake
+  // items to re-join and is the control here for the same reason it is above; clearing
+  // `tzMemo` alone costs +2/+2/+8/+4/+4/+2. The two sum to the six-second delta exactly,
+  // on all six personas, which leaves nothing for the memo under test to account for —
+  // and nothing in lib/commit-cache.ts is bounded by the clock in the first place. The
+  // cold table above does not move under the same six seconds.
+  //
+  // SO RE-MEASURING THIS TABLE MEANS RENDERING TWICE WITH NO CLOCK MOVEMENT IN BETWEEN,
+  // the way the loop above does. A re-measure that let real time pass would watch those
+  // two TTLs expire and record it as this memo weakening.
+  // +4 / +56 (#4993, #5034), the cold table's two moves seen warm. Both land almost
+  // entirely OUTSIDE the commit-scoped memo, which is the useful thing this table says
+  // about them: the integration standing and the day-so-far gather are read on every
+  // load, not once per commit. The one statement of difference against the cold +57 is
+  // the memo holding a single gather the trace opened.
+  const WARM_BASELINE: Record<string, number> = {
+    bodybuilder: 119,
+    "marathon-runner": 125,
+    household: 177,
+    pregnant: 119,
+    "diabetic-cgm": 128,
+    biohacker: 190,
+  };
+
+  it("dashboard query budget: a second load with no write in between matches its warm baseline (#5073)", () => {
+    // THE COLD COUNT IS THE CONTROL. "The warm render issues none of the six gathers'
+    // statements" is only evidence if the cold render DID issue them — a memo that
+    // returned nothing at all would satisfy the warm half exactly as well.
+    // AND IT IS THE EXACT BASELINE BELOW THAT DOES THE WORK, not this comparison —
+    // measured by making `commitCached` a passthrough and re-running: warm went
+    // 229/234/254/229/236/256 against cold 230/235/254/230/237/257, so five personas
+    // are still one statement cheaper on a second render for a reason that is not this
+    // memo, and only `household` trips the line below. The drift check is what turns
+    // that mutant red properly (bodybuilder 119 → 229). Keep both: this one names the
+    // failure in words, and the table catches it.
+    const notCheaper = [...warmQueryCounts].flatMap(([persona, warm]) => {
+      const cold = queryCounts.get(persona)!;
+      return warm < cold
+        ? []
+        : [`${persona}: warm ${warm} is not below cold ${cold}`];
+    });
+    expect(
+      notCheaper,
+      "A warm dashboard load cost as much as the cold one.\n" +
+        "Either the commit-scoped memo (lib/commit-cache.ts) stopped holding the six\n" +
+        "tail gathers, or something wrote between the two renders — a render itself\n" +
+        "writes nothing, so a write here is a regression rather than noise."
+    ).toEqual([]);
+
+    const drift = [...warmQueryCounts].flatMap(([persona, count]) => {
+      const baseline = WARM_BASELINE[persona];
+      if (baseline === undefined)
+        return [`${persona}: ${count} warm queries, but no recorded baseline`];
+      if (count === baseline) return [];
+      const delta = count - baseline;
+      return [
+        `${persona}: ${count} warm queries, baseline ${baseline} ` +
+          `(${delta > 0 ? `+${delta}` : `${delta}`})`,
+      ];
+    });
+    const refreshed = [...warmQueryCounts]
+      .map(([persona, count]) => `    ${JSON.stringify(persona)}: ${count},`)
+      .join("\n");
+    expect(
+      drift,
+      "Warm dashboard query counts moved off the recorded baseline.\n" +
+        "Refresh WARM_BASELINE in this file with:\n\n" +
+        `  const WARM_BASELINE: Record<string, number> = {\n${refreshed}\n  };\n`
+    ).toEqual([]);
+  });
+
+  it("places exactly the same candidates on a warm load (#3077 through #5073)", () => {
+    // #3077's partition is what the memo must not touch: every candidate the ranker
+    // sees on a cold load it sees on a warm one, in the same lane and the same order.
+    // Compared as the ordered lane+candidateId census rather than by deep equality, so
+    // this reads the identity the partition is actually about.
+    const census = (
+      placements: DashboardPlacementCanvasProps["placements"]
+    ): string[] =>
+      placements.map(
+        (placement) => `${placement.lane}:${placement.candidate.candidateId}`
+      );
+    for (const persona of PERSONAS) {
+      const cold = census(manifests.get(persona.name)!);
+      expect(cold.length).toBeGreaterThan(0);
+      expect(census(warmManifests.get(persona.name)!), persona.name).toEqual(
+        cold
+      );
+    }
+  });
+
   it("reads each hr_minutes window once per render (#5010)", () => {
     // THE CONTROL COMES FIRST BECAUSE ZERO IS THE FLATTERING ANSWER. Every window
-    // below is distinct when no window was read at all, which is the state all six
-    // personas are in — and it is what the assertion would report forever if the
-    // statement this watches were renamed or the fixture stopped reaching the reader.
+    // below is distinct when no window was read at all, which is the state five of the
+    // six personas are still in — and it is what the assertion would report forever if
+    // the statement this watches were renamed or the fixture stopped reaching the
+    // reader. `biohacker` seeds a trace since #5034 and so is now checked here too, on
+    // the windows a real persona render binds rather than only the hand-built one.
     expect(
       hrWindowReads.get(HR_FIXTURE) ?? [],
       `${HR_FIXTURE} made no hr_minutes range read, so the check below is vacuous.\n` +

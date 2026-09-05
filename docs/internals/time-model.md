@@ -225,8 +225,9 @@ costs, twice:
 
 - `activities.created_at` / `updated_at` are the LIVENESS signal
   `computeWorkoutPresence` subtracts from the seam's now. Stamped by SQL, a
-  draft saved seconds earlier read as 58 minutes quiet — past `STALE_MIN` (45)
-  — and the dock rendered "Still working out? Finish or discard".
+  draft saved seconds earlier read as 58 minutes quiet — past the workout kind's
+  stale bound (45; `EPISODE_BOUNDS` in `lib/open-episode.ts`) — and the dock
+  rendered "Still working out? Finish or discard".
 - the offline food replay judged a queued eating-time statement against a bare
   `new Date()` while the statement had been resolved against the seam, so
   `acceptEatenAt` refused a seconds-old statement as being in the future and

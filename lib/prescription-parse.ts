@@ -539,6 +539,19 @@ export interface ParsedPrescription {
   prescriber: string | null;
   pharmacy: string | null;
   rxNumber: string | null;
+  // Whether `prescriber` / `rxNumber` above were SCRAPED out of the free-text
+  // sig/notes by the label heuristics, rather than ASSERTED by the source's own
+  // structured fields (the CCD/FHIR mapper's, #417).
+  //
+  // The scrape is a guess over prose, and it is a loose one: the label list includes
+  // a bare "doctor", so "Call your doctor if symptoms persist" yields a prescriber,
+  // and the Rx pattern reads "no prescription required" as an Rx number. That is
+  // tolerable for TEXT — it is what the label said, shown as-is — and it is not
+  // evidence of anything. Anything that DERIVES a fact from these two fields (the Rx
+  // flag, #851/#4669) must read the assertion, not the guess, so the guess is
+  // labelled here where it is made rather than re-inferred at each reader.
+  prescriberScraped: boolean;
+  rxNumberScraped: boolean;
   sig: string | null; // the directions text we parsed (kept for the row's notes)
 }
 
@@ -611,16 +624,22 @@ export function parsePrescription(
   const structuredPharmacy = rec.pharmacy?.trim() || null;
   const structuredRxNumber = rec.rxNumber?.trim() || null;
 
+  const scrapedPrescriber =
+    structuredPrescriber == null && provText ? prescriberFrom(provText) : null;
+  const scrapedRxNumber =
+    structuredRxNumber == null && provText ? rxNumberFrom(provText) : null;
+
   return {
     name: cleanMedicationName(rawName),
     strength,
     asNeeded: parsed.asNeeded,
     timesPerDay: parsed.timesPerDay,
     timeBuckets: parsed.timeBuckets,
-    prescriber:
-      structuredPrescriber ?? (provText ? prescriberFrom(provText) : null),
+    prescriber: structuredPrescriber ?? scrapedPrescriber,
     pharmacy: structuredPharmacy ?? (provText ? pharmacyFrom(provText) : null),
-    rxNumber: structuredRxNumber ?? (provText ? rxNumberFrom(provText) : null),
+    rxNumber: structuredRxNumber ?? scrapedRxNumber,
+    prescriberScraped: scrapedPrescriber != null,
+    rxNumberScraped: scrapedRxNumber != null,
     sig,
   };
 }

@@ -8,6 +8,13 @@
 import type { AppRoute } from "./hrefs";
 
 export type SearchDomain =
+  // THE RECORD'S OWN ROWS (#5006). The record's row-only Logs kinds — doses, food
+  // servings, practice sessions, symptoms, check-ins, body readings, sleep nights —
+  // have no page, so a hit lands on the day view scrolled to the row it names
+  // (lib/queries/search-logged.ts builds them). ONE domain for all of them: the kind
+  // lives in the subtitle (`<kind> · <date>`), so `practice` stays the wellness
+  // practice you track and a session of it is a `logged` hit.
+  | "logged"
   | "clinical-result"
   | "imaging"
   | "genomic"
@@ -104,6 +111,12 @@ export const SEARCH_DOMAIN_ORDER: SearchDomain[] = [
   "dental",
   "skin",
   "activity",
+  // THE LOGGED ROWS (#5006) sit with the activity they read like — things that
+  // happened, newest first — and ABOVE the catalog entities (`supplement`,
+  // `protocol`, `practice`, `equipment`) that name what they were logged against, so
+  // typing "sauna" shows your sessions before the practice card. Ahead of `page` too,
+  // which puts an entry above the kind's own static list entry ("Food history").
+  "logged",
   "supplement",
   "protocol",
   "practice",
@@ -131,6 +144,9 @@ export const SEARCH_DOMAIN_LABELS: Record<SearchDomain, string> = {
   dental: "Dental",
   skin: "Skin",
   activity: "Activities",
+  // One word for all seven kinds (#5006): the group says these are things you logged,
+  // and each hit's subtitle says which kind it is.
+  logged: "Logged",
   supplement: "Supplements",
   protocol: "Protocols",
   practice: "Practices",
@@ -156,14 +172,22 @@ export function matchTier(text: string, query: string): number {
 
 // Order hits within one domain: match quality desc, then recency (later date
 // first, undated last), then title/key for a stable, deterministic order.
+//
+// THE `logged` DOMAIN INVERTS THE FIRST TWO KEYS (#5006), and only it does. An entity
+// is asked for by NAME, so the best-named match wins; a logged row is asked for by
+// RECENCY — "my latest sauna" — and the words are how you narrow to the kind, not how
+// you choose between two rows of it. Tier-first put a year-old "Sauna" above this
+// morning's "Sauna, infrared" for exactly the query the feature exists to answer.
 export function sortHits(hits: SearchHit[], query: string): SearchHit[] {
   return [...hits].sort((a, b) => {
     const ta = matchTier(a.title, query);
     const tb = matchTier(b.title, query);
-    if (ta !== tb) return tb - ta;
     // Recency: compare ISO date strings lexically; "" (undated) sorts last.
     const da = a.date ?? "";
     const db = b.date ?? "";
+    const dateFirst = a.domain === "logged" && b.domain === "logged";
+    if (dateFirst && da !== db) return da < db ? 1 : -1;
+    if (ta !== tb) return tb - ta;
     if (da !== db) return da < db ? 1 : -1;
     if (a.title !== b.title) return a.title < b.title ? -1 : 1;
     return a.key < b.key ? -1 : 1;
@@ -172,6 +196,11 @@ export function sortHits(hits: SearchHit[], query: string): SearchHit[] {
 
 // Merge a flat hit list into grouped, ranked results: each domain sorted and
 // capped, emitted in SEARCH_DOMAIN_ORDER, dropping empty groups.
+//
+// THE SORT RUNS BEFORE THE SLICE, OVER THE WHOLE DOMAIN. That is what makes `logged`
+// a cap of five ACROSS all seven kinds (#5006) rather than five per kind or one kind
+// in turn: the union is ranked date-first and the newest five survive, so three
+// doses and two sessions is a correct answer and so is five servings.
 export function rankAndGroup(
   hits: SearchHit[],
   query: string,

@@ -17,7 +17,7 @@ Maintainer documentation for the Playwright suite's reliability discipline
 browser-e2e bullet; this doc is the deep-dive on WHY the suite flakes and the
 conventions that stop it.
 
-## The four failure classes (from a day of orchestrated verification)
+## The four failure classes (from a day of worker-run verification)
 
 The suite is the right size (~340 specs, ~7m CI) and is **not** classically
 order-dependent. The recurring reds fall into four classes:
@@ -2130,7 +2130,7 @@ same reason. On the fixed tree the same neighbour pairing is green 3/3 at each o
 
 **A re-run clearing a red is not evidence of a timing flake.** A re-run also reshuffles
 which specs share a worker, so it clears a co-residency failure just as readily — and
-that is the reading that costs an orchestrator a diagnosis. Before blaming the clock or
+that is the reading that costs a worker a diagnosis. Before blaming the clock or
 the zone, run the victim alone, then run it behind a plausible neighbour.
 
 The rest of the suite was swept for the same latent dependency and is clean.
@@ -2928,8 +2928,8 @@ a run to retry.
 ## The known CI failure classes
 
 Every class here recurred at least once. Format: **tell** — mechanism — fix.
-This is the ONE home for the taxonomy (it moved here from the orchestration
-runbook so spec authors and the orchestrator diagnose from the same list; the
+This is the ONE home for the taxonomy (it moved here from the work
+runbook so spec authors and the worker diagnose from the same list; the
 runbook's "Diagnosing a red" section points here). The census table below
 tracks the individual recurring specs; this list is the general shapes.
 
@@ -2941,7 +2941,7 @@ tracks the individual recurring specs; this list is the general shapes.
    page CONSOLIDATION made a neighbour spec's page-wide `getByRole` ambiguous
    (the #1042 specialty fold). Scope selectors to a container; anchor cards on
    their own heading. When gating a consolidation, re-run any spec that drove
-   the folded-in pages — it is the folding orchestrator's lane.
+   the folded-in pages — it is the folding worker's lane.
 3. **Autosave races** — wait for the Saved indicator before any reload.
 4. **Collapsed `<details>`** — click the summary before asserting contents.
 5. **Component variants** — a testid may cover several visual variants; target

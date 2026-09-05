@@ -72,7 +72,7 @@
 //
 // The ledger and the roster MUST default to the same directory, and that
 // directory must be the durable one. `$SCRATCH` is UNSET in the live
-// orchestration container (measured), so a `/tmp` fallback here would have put
+// work container (measured), so a `/tmp` fallback here would have put
 // the restart-proof ledger in the least durable place on the box — the one
 // swept for stale `allos-db-shared-*` dirs — while the roster it must stay in
 // sync with landed in /home/user/scratch. Two defaults that disagree is the
@@ -259,6 +259,52 @@ function nvmrcMajor() {
 
 function discoverNode24() {
   return discoverNodeBin(nvmrcMajor());
+}
+
+// THE DEPTH OF THIS CLONE IS A FACT ABOUT THE CONTAINER, NOT ABOUT THE REPO.
+//
+// This brief used to ASSERT it — "THIS CLONE IS SHALLOW, history begins two days
+// ago … `git log --reverse` starts on 2026-08-29" — baked into the very rule
+// that says a number in prose must come from a command you ran. The clone was
+// unshallowed and the sentence went false, in the direction that STOPS work: on
+// 2026-09-05 a lane needed `git show <sha>^:lib/travel-timezone.ts` to verify a
+// two-merge chain, and the brief told it that was impossible in a container
+// where it works. So it is discovered, like the node bin dir and the port range,
+// and neither branch bakes a date.
+
+/**
+ * What a lane may conclude from how much history it can reach.
+ *
+ * @param {boolean} shallow `git rev-parse --is-shallow-repository`
+ * @param {string|null} firstCommit the oldest REACHABLE commit, already formatted
+ */
+export function historyDepthLine(shallow, firstCommit) {
+  const begins = firstCommit
+    ? `history begins at ${firstCommit}`
+    : "the oldest reachable commit could not be read";
+  return shallow
+    ? `THIS CLONE IS SHALLOW — \`git rev-parse --is-shallow-repository\` is true and ` +
+        `${begins}, so anything older is UNREACHABLE and no command here can measure a span across it`
+    : `This clone has FULL history — \`git rev-parse --is-shallow-repository\` is false and ` +
+        `${begins}, so a claim about an older tree IS checkable here: check it rather than assuming you cannot`;
+}
+
+function historyDepth() {
+  const shallow =
+    git("rev-parse --is-shallow-repository", { allowFail: true }) === "true";
+  // `git log --reverse -1` returns the NEWEST commit — the limit is applied
+  // before the reversal — so the root is asked for as a root. In a shallow
+  // clone the graft boundary is parentless and answers here too, which is
+  // exactly the commit the shallow branch means by "history begins at".
+  const root = git(["rev-list", "--max-parents=0", "HEAD"], {
+    allowFail: true,
+  })?.split("\n")[0];
+  const first = root
+    ? git(["log", "-1", "--format=%h (%ad) %s", "--date=short", root], {
+        allowFail: true,
+      })
+    : null;
+  return historyDepthLine(shallow, first);
 }
 
 function canonicalNodeModules() {
@@ -689,11 +735,9 @@ ${landingLines}
   a shell, and prose carries no test — so a specific number in a comment, a commit
   message or a PR body reads as though something checked it. Nothing did. Measured
   2026-08-31, two lanes, both already pushed: a comment read "deleted in #4515 after
-  two years of rendering nowhere" — THIS CLONE IS SHALLOW, history begins two days
-  ago (\`git rev-parse --is-shallow-repository\` is true and \`git log --reverse\`
-  starts on 2026-08-29 — a COUNT would have drifted by the hour, the boundary does
-  not), so no command
-  in this container could produce "two years"; and a spec comment AND a PR body both
+  two years of rendering nowhere", and no command in that container could produce
+  "two years". CHECK WHAT YOURS CAN REACH BEFORE YOU CLAIM EITHER WAY —
+  ${historyDepth()}. And a spec comment AND a PR body both
   justified measuring painted pixels rather than boxes with "the nearest clipping
   ancestor is 147px narrower than the screen", a figure the lane could not reproduce
   in any configuration — the real values are 93 and 141, and 147 looks like a garbled
