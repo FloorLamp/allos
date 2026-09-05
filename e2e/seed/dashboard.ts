@@ -285,9 +285,10 @@ export function seedNowStrip(): void {
   // sufficient — so a 2×/week target reads behind from day 7 of 7, not day 4. So the
   // profile's calendar week is pinned to start on the run's own frozen weekday: today
   // is day 1, on-pace under either rule, and the fixture reads the same on every CI
-  // day. Since #3245 the pin no longer changes whether these card
-  // — a group target has no rhythm moment, so `owed` cannot promote it on any day —
-  // and what it holds fixed is the ON-PACE reading (#3543's negative control).
+  // day. Since #3245 the pin no longer decides whether these two targets card into
+  // Now — a group target has no rhythm moment, so `owed` cannot promote it on any
+  // day. What it still holds fixed is the ON-PACE reading (#3543's negative
+  // control).
   // Idempotent hard-clear; synthetic, no PHI.
   const nowQuietId = adultFixtureProfileId(NOW_QUIET_PROFILE);
   {
