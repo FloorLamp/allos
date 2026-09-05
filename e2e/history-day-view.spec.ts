@@ -654,7 +654,22 @@ const BELOW_RAIL = { width: 1439, height: 900 };
 const LAPTOP = { width: 1024, height: 900 };
 // Wide enough for the rail, too short to hold it: the state the height cap exists
 // for, and the test below proves the fixture reaches it rather than assuming so.
-const RAIL_SHORT = { width: 1440, height: 420 };
+//
+// 256, AND THE NUMBER IS DERIVED, NOT CHOSEN. It was 420 while the rail also held the
+// open month grid (#4974); #5359 took that card out, and the rail is now the chart
+// card and the 42px add row — measured at 1440 with a throwaway probe on this
+// fixture's own day: `intraday-panel` 178px, `history-day-rail-scroll` scrollHeight
+// 42px. The cap is the viewport minus the rail's two 1.5rem insets, so the rail only
+// outgrows it below 268, and the box below the chart only has travel above 226:
+// `visible = height - 226`, `travel = 42 - visible`. 256 sits inside that band with
+// room either side — 220px of content against a 208px cap, an 18px scrolling box with
+// 24px of travel. THAT BAND IS 42px WIDE AND IT USED TO BE ~230, so a change to the
+// chart card's height now moves both tests below; see the note in
+// docs/internals/history.md.
+const RAIL_SHORT = { width: 1440, height: 256 };
+// What the rail's two insets cost it, so the tests can say what the cap IS rather
+// than comparing content against the raw viewport (`max-h-[calc(100dvh-3rem)]`).
+const RAIL_INSETS_PX = 48;
 // The drawing the rail's box earns (#4973). The rail is 368px at 1440 and the chart
 // card 326px of that, well under `INTRADAY_VARIANTS.wide.minContainerPx` — so the
 // chart in the rail is the compact geometry at every width this file drives.
@@ -908,6 +923,14 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
       const svg = panel.locator(RAIL_DRAWING).getByTestId("intraday-svg");
       await expect(svg).toBeVisible();
 
+      // PIN THE RAIL BEFORE AIMING AT IT. Sticky only pins once the page has scrolled
+      // to it, and at this viewport the unpinned rail sits below the fold — so a
+      // pointer placed on the chart's page coordinates would be over NOTHING, the
+      // wheel would reach the document by default, and both halves below would pass
+      // without the chart ever having been under the cursor.
+      await scrollTo(page, 400);
+      await expect(svg).toBeInViewport();
+
       // THE FIXTURE REACHES THE STATE THIS FORBIDS. If the rail's own box cannot
       // scroll at all, "the rail did not scroll" is true of every arrangement.
       const room = await scroller.evaluate(
@@ -980,11 +1003,16 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
       const panelHeight = (await rail
         .getByTestId("intraday-panel")
         .boundingBox())!.height;
+      // AGAINST THE CAP, NOT THE RAW VIEWPORT, because the cap is what this test is
+      // about: `100dvh` minus the rail's two 1.5rem insets. The two quantities differ
+      // by 48px, which did not matter while the rail held ~450px of content and is
+      // the whole margin now that #5359 has left it 220.
+      const cap = RAIL_SHORT.height - RAIL_INSETS_PX;
       expect(
         panelHeight + scroll.content,
         `the rail holds ${Math.round(panelHeight + scroll.content)}px of content ` +
-          `in a ${RAIL_SHORT.height}px viewport`
-      ).toBeGreaterThan(RAIL_SHORT.height);
+          `against a ${cap}px cap in a ${RAIL_SHORT.height}px viewport`
+      ).toBeGreaterThan(cap);
       expect(Math.round(box.height)).toBeLessThanOrEqual(RAIL_SHORT.height);
       expect(
         scroll.content,
