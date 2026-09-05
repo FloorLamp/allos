@@ -23,11 +23,14 @@
 // A brand is worth exactly as much as the weakest way to obtain one. So a value of one
 // of these types comes from a function that either VALIDATED a string (`isRealIsoDate`
 // checks the calendar, not a regex) or CONSTRUCTED it from a `Date` (`utcInstant`).
-// `x as LocalDay` on a plain string is an ESLint error everywhere
-// (eslint.config.mjs, "no-restricted-syntax"); the minters carry the only permitted
-// casts, each on a `// eslint-disable-next-line … -- <brand> minter:` line, so
-// `grep -rn "minter:" lib` IS the minter inventory. A function that receives a string
-// and casts it is not a minter and must not exist.
+// A cast to a brand — direct, through `unknown`, inside a union, an array, a tuple, an
+// intersection, a `NonNullable<>`, a qualified or `import()` name, or a bare re-alias
+// `type D = LocalDay` — is an ESLint error everywhere (eslint.config.mjs,
+// "no-restricted-syntax"); the minters carry the only permitted casts, each on a
+// `// eslint-disable-next-line … -- <brand> minter:` line, so `grep -rn "minter:" lib`
+// IS the minter inventory. A function that receives a string and casts it is not a
+// minter and must not exist. What no syntax rule can see — `as any`, `as never`, a
+// generic launderer, `JSON.parse` — is review's, as it is for every other type.
 //
 // The one place a brand may appear without a minter is a DB ROW SHAPE — the
 // `.get(...) as { date: LocalDay }` assertion every read already makes. A row shape may
@@ -36,12 +39,14 @@
 //
 // ── WHAT IS DELIBERATELY NOT A BRAND ─────────────────────────────────────────
 //
-// `metric_samples.started_at` / `ended_at` are NEVER `CanonicalInstant`. They hold two
-// shapes by design — a vendor ISO-with-milliseconds instant and a `${day}T00:00:00`
-// day-midnight anchor — inside the natural key that makes a re-push a correction, so
-// a cast there would be a lie with an idempotency blast radius. `MetricSampleInstant`
-// below is the truthful union of those two, each with its own minter. Normalising the
-// stored values is #2896's question, not this module's.
+// `metric_samples.started_at` / `ended_at` carry NO brand. They are the natural key
+// that makes a re-push a correction, and they hold at least four shapes — the device's
+// own instant verbatim (ISO with or without milliseconds), a `${day}T00:00:00`
+// day-midnight anchor, and a `${day}THH:MM:SS` zoneless local datetime — see the
+// registry note on that column. A union was proposed and FALSIFIED against the real
+// writers (#2899, 2026-09-05): it modelled the note, not the column. A truthful type
+// for that column needs the writers inventoried first, and normalising the values is
+// #2896's question. Until then the column is `string`, and saying so is the point.
 //
 // A brand is a subtype of `string`, so branding a function's RETURN breaks no caller;
 // only narrowing a PARAMETER does, and that happens at each consumer as it is touched.
@@ -52,8 +57,6 @@ declare const LOCAL_DAY: unique symbol;
 declare const LOCAL_TIME: unique symbol;
 declare const CANONICAL_INSTANT: unique symbol;
 declare const BARE_INSTANT: unique symbol;
-declare const VENDOR_MS_INSTANT: unique symbol;
-declare const DAY_MIDNIGHT_ANCHOR: unique symbol;
 
 // "YYYY-MM-DD", a real calendar day, profile-local by attribution (#94). Minted by
 // `isRealIsoDate` (validates) and by the day constructors in lib/date.ts and
@@ -72,37 +75,3 @@ export type CanonicalInstant = string & { readonly [CANONICAL_INSTANT]: true };
 // "YYYY-MM-DD HH:MM:SS" — SQLite's own datetime('now') shape, UTC with no zone
 // stated. The legacy half of the convention. Minted by `utcSqlString` and `sqlNow`.
 export type BareInstant = string & { readonly [BARE_INSTANT]: true };
-
-// "YYYY-MM-DDTHH:MM:SS.mmmZ" — a JS toISOString that reached storage, as the device
-// integrations write into metric_samples.
-export type VendorMsInstant = string & { readonly [VENDOR_MS_INSTANT]: true };
-
-// "YYYY-MM-DDT00:00:00" — a profile-local DAY's midnight, zoneless. Not an instant:
-// the metric_samples window for a reading whose author stated only a day.
-export type DayMidnightAnchor = string & {
-  readonly [DAY_MIDNIGHT_ANCHOR]: true;
-};
-
-// What metric_samples.started_at / ended_at genuinely hold (lib/time-columns.ts,
-// "THE column that most rewards reading this table"). A union, never a cast.
-export type MetricSampleInstant = VendorMsInstant | DayMidnightAnchor;
-
-// The day-midnight anchor for a day-only reading. CONSTRUCTS from a LocalDay, so the
-// day inside is already a real calendar day.
-export function dayMidnightAnchor(day: LocalDay): DayMidnightAnchor {
-  // eslint-disable-next-line no-restricted-syntax -- DayMidnightAnchor minter: constructs from a LocalDay
-  return `${day}T00:00:00` as DayMidnightAnchor;
-}
-
-// A vendor instant as the integrations serialize it. VALIDATES: the value must be a
-// real instant that round-trips through toISOString byte-for-byte, so a truncated,
-// zoneless or out-of-range value is refused rather than branded.
-export function vendorInstant(
-  v: string | null | undefined
-): VendorMsInstant | null {
-  if (typeof v !== "string") return null;
-  const d = new Date(v);
-  if (Number.isNaN(d.getTime()) || d.toISOString() !== v) return null;
-  // eslint-disable-next-line no-restricted-syntax -- VendorMsInstant minter: validated by toISOString round-trip
-  return v as VendorMsInstant;
-}

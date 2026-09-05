@@ -14,20 +14,18 @@ import {
 } from "../date";
 import { fhirSourceTime, sourceDay, sourceInstant } from "../source-time";
 import { activityClockHHMM } from "../activity-meta";
-import {
-  dayMidnightAnchor,
-  vendorInstant,
-  type BareInstant,
-  type CanonicalInstant,
-  type LocalDay,
-  type LocalTime,
-  type MetricSampleInstant,
+import type {
+  BareInstant,
+  CanonicalInstant,
+  LocalDay,
+  LocalTime,
 } from "../temporal-types";
 
 // The temporal type vocabulary (#2899). Three things are pinned: that every minter
 // produces its brand with no cast at the call site, that the brands are NOT
 // interchangeable (grain and serialization are separate axes), and that the cast ban
-// in eslint.config.mjs refuses `x as LocalDay` while leaving a DB row shape alone.
+// in eslint.config.mjs refuses every spelling of `x as LocalDay` the 2026-09-05
+// falsifying pass found while leaving a DB row shape alone.
 //
 // The type-level half uses `@ts-expect-error`: an assignment the vocabulary must
 // refuse is written out, and `npm run typecheck` fails if it ever starts compiling.
@@ -93,29 +91,6 @@ describe("temporal brands: minters produce the brand without a cast", () => {
   });
 });
 
-describe("temporal brands: the metric_samples union is modeled, never cast", () => {
-  it("dayMidnightAnchor constructs from a LocalDay", () => {
-    const v: string = "2026-08-05";
-    if (!isRealIsoDate(v)) throw new Error("unreachable");
-    const anchor: MetricSampleInstant = dayMidnightAnchor(v);
-    expect(anchor).toBe("2026-08-05T00:00:00");
-  });
-
-  it("vendorInstant validates by toISOString round-trip", () => {
-    const ok: MetricSampleInstant | null = vendorInstant(
-      "2026-08-05T06:12:00.000Z"
-    );
-    expect(ok).toBe("2026-08-05T06:12:00.000Z");
-    // Second resolution, zoneless, bare and garbage are all refused: none is the
-    // shape the integrations write.
-    expect(vendorInstant("2026-08-05T06:12:00Z")).toBeNull();
-    expect(vendorInstant("2026-08-05T06:12:00")).toBeNull();
-    expect(vendorInstant("2026-08-05 06:12:00")).toBeNull();
-    expect(vendorInstant("not a time")).toBeNull();
-    expect(vendorInstant(null)).toBeNull();
-  });
-});
-
 describe("temporal brands: the axes do not collapse", () => {
   // A plain string is never a brand.
   const plain: string = "2026-08-05";
@@ -141,8 +116,6 @@ describe("temporal brands: the axes do not collapse", () => {
   const dayAsInstant: CanonicalInstant = day;
   // @ts-expect-error a LocalTime is not a LocalDay
   const clockAsDay: LocalDay = clock;
-  // @ts-expect-error a canonical instant is not a metric_samples value: that column is never branded canonical
-  const canonicalAsSample: MetricSampleInstant = canonical;
 
   it("every brand is still a string, so branding a return breaks no caller", () => {
     const asString: string[] = [day, clock, canonical, bare];
@@ -156,13 +129,12 @@ describe("temporal brands: the axes do not collapse", () => {
       dayAsInstant,
       clockAsDay,
     ];
-    void canonicalAsSample;
   });
 });
 
 describe("temporal brands: the cast ban", () => {
   // The repo's own flat config, so the test fails if the rule is removed or its
-  // selector drifts from the exported names.
+  // selectors drift from the exported names.
   const eslint = new ESLint({ cwd: process.cwd() });
   const lint = async (code: string) => {
     const [result] = await eslint.lintText(code, {
@@ -170,28 +142,70 @@ describe("temporal brands: the cast ban", () => {
     });
     return result.messages.filter((m) => m.ruleId === "no-restricted-syntax");
   };
-  const header = `import type { LocalDay, CanonicalInstant } from "./temporal-types";\ndeclare const s: string;\n`;
+  const header = [
+    `import type { LocalDay, CanonicalInstant } from "./temporal-types";`,
+    `import type * as TT from "./temporal-types";`,
+    `declare const s: string;`,
+    `declare const get: () => unknown;`,
+    ``,
+  ].join("\n");
 
-  it("refuses a direct cast, a union cast and an array cast to a brand", async () => {
-    const direct = await lint(`${header}export const a = s as LocalDay;\n`);
-    const union = await lint(
-      `${header}export const b = s as CanonicalInstant | null;\n`
-    );
-    const array = await lint(`${header}export const c = [s] as LocalDay[];\n`);
-    expect(direct.map((m) => m.message)).toEqual([
-      expect.stringContaining("Do not cast to a temporal brand"),
-    ]);
-    expect(union).toHaveLength(1);
-    expect(array).toHaveLength(1);
+  // Every spelling the 2026-09-05 falsifying pass found that a plain-string cast
+  // could hide behind. Each is one message: the brand reference is matched once.
+  const refused: Record<string, string> = {
+    direct: `s as LocalDay`,
+    throughUnknown: `s as unknown as LocalDay`,
+    angleBracket: `<LocalDay>s`,
+    parenthesised: `s as (LocalDay)`,
+    union: `s as CanonicalInstant | null`,
+    array: `[s] as LocalDay[]`,
+    qualified: `s as TT.LocalDay`,
+    importType: `s as import("./temporal-types").LocalDay`,
+    intersection: `s as LocalDay & {}`,
+    intersectionInUnion: `s as (LocalDay & string) | null`,
+    nonNullable: `s as NonNullable<LocalDay>`,
+    readonly: `s as Readonly<LocalDay>`,
+    arrayGeneric: `[s] as Array<LocalDay>`,
+    readonlyArray: `[s] as readonly LocalDay[]`,
+    arrayOfUnion: `[s] as (LocalDay | null)[]`,
+    tuple: `[s] as [LocalDay]`,
+  };
+
+  for (const [name, expr] of Object.entries(refused)) {
+    it(`refuses ${name}: ${expr}`, async () => {
+      const messages = await lint(`${header}export const v = ${expr};\n`);
+      expect(messages.map((m) => m.message)).toEqual([
+        expect.stringContaining("Do not cast or re-alias to a temporal brand"),
+      ]);
+    });
+  }
+
+  it("refuses a bare re-alias, which exists only to cast around the rule", async () => {
+    const messages = await lint(`${header}export type D = LocalDay;\n`);
+    expect(messages).toHaveLength(1);
   });
 
-  it("leaves a DB row shape and an unrelated cast alone", async () => {
-    const row = await lint(
-      `${header}declare const get: () => unknown;\nexport const r = get() as { date: LocalDay; n: number }[];\n`
+  // The row-shape exemption, and casts that are none of this rule's business.
+  const allowed: Record<string, string> = {
+    rowShape: `get() as { date: LocalDay; n: number }[]`,
+    nestedRowShape: `get() as { d: { date: LocalDay } }`,
+    optionalRow: `get() as { date: LocalDay } | undefined`,
+    unrelatedCast: `s as "x" | "y"`,
+    brandOnExpressionSide: `(get as unknown as <T>() => T)<LocalDay>() as string`,
+  };
+
+  for (const [name, expr] of Object.entries(allowed)) {
+    it(`leaves ${name} alone: ${expr}`, async () => {
+      const messages = await lint(`${header}export const v = ${expr};\n`);
+      expect(messages).toHaveLength(0);
+    });
+  }
+
+  it("a union of row shapes is still a row shape", async () => {
+    const messages = await lint(
+      `${header}export type Row = { date: LocalDay } | { at: CanonicalInstant };\n`
     );
-    const other = await lint(`${header}export const o = s as "x" | "y";\n`);
-    expect(row).toHaveLength(0);
-    expect(other).toHaveLength(0);
+    expect(messages).toHaveLength(0);
   });
 
   it("names every minter on a disable line, so the inventory is greppable", async () => {

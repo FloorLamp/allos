@@ -22,17 +22,28 @@ const TEMPORAL_BRANDS = [
   "LocalTime",
   "CanonicalInstant",
   "BareInstant",
-  "VendorMsInstant",
-  "DayMidnightAnchor",
-  "MetricSampleInstant",
 ];
-// A cast (`as` or angle-bracket) whose target is a brand, a union holding one, or an
-// array of one. Three alternatives rather than one nested `:matches`, because a child
-// combinator binds to the matched node and cannot describe two different parents.
-const TEMPORAL_BRAND_CAST_SELECTOR = (() => {
+// A reference to a brand by bare name, qualified name (`TT.LocalDay`) or
+// `import("…").LocalDay`.
+const TEMPORAL_BRAND_REF = (() => {
+  const names = `/^(?:${TEMPORAL_BRANDS.join("|")})$/`;
+  return `:matches(TSTypeReference[typeName.name=${names}], TSTypeReference[typeName.right.name=${names}], TSImportType[qualifier.name=${names}])`;
+})();
+// The three shapes a cast to a brand can take. `.typeAnnotation` pins the match to the
+// cast's TYPE side, so a brand inside the expression being cast (`foo<LocalDay>() as
+// string`) is not this rule's business; the `:not(TSTypeLiteral …)` clause is the row
+// shape exemption.
+const TEMPORAL_BRAND_CAST_SELECTORS = (() => {
   const cast = ":matches(TSAsExpression, TSTypeAssertion)";
-  const brand = `TSTypeReference[typeName.name=/^(?:${TEMPORAL_BRANDS.join("|")})$/]`;
-  return `:matches(${cast} > ${brand}, ${cast} > TSUnionType > ${brand}, ${cast} > TSArrayType > ${brand})`;
+  return [
+    // `s as LocalDay`, `<LocalDay>s`, `s as unknown as LocalDay`.
+    `${cast} > ${TEMPORAL_BRAND_REF}.typeAnnotation`,
+    // The brand anywhere inside the cast's type — a union, array, tuple, intersection,
+    // `NonNullable<>`, `Readonly<>`, `Array<>` — except inside an object type literal.
+    `${cast} > *.typeAnnotation ${TEMPORAL_BRAND_REF}:not(TSTypeLiteral ${TEMPORAL_BRAND_REF})`,
+    // `type D = LocalDay` — a bare re-alias exists only to cast around the rule.
+    `TSTypeAliasDeclaration > ${TEMPORAL_BRAND_REF}.typeAnnotation`,
+  ];
 })();
 
 const config = [
@@ -142,24 +153,27 @@ const config = [
     },
   },
   // The temporal brands (#2899, lib/temporal-types.ts) are worth exactly as much as
-  // the weakest way to obtain one, so `x as LocalDay` on a plain string is an error
-  // EVERYWHERE — production, tests and scripts alike. A brand comes from a minter
-  // that validated or constructed it; each minter carries the one permitted cast on
-  // a `// eslint-disable-next-line no-restricted-syntax -- <brand> minter:` line,
-  // which makes `grep -rn "minter:" lib` the minter inventory. A DB row shape
-  // (`.get(...) as { date: LocalDay }`) is deliberately NOT matched: the selector
-  // sees only a direct cast to a brand, a union containing one, or an array of one,
-  // and a row shape may carry the brand lib/time-columns.ts declares for that column.
+  // the weakest way to obtain one, so a cast to one is an error EVERYWHERE —
+  // production, tests and scripts alike — whether direct, through `unknown`, inside a
+  // union/array/tuple/intersection/`NonNullable<>`, by qualified or `import()` name,
+  // or via a bare re-alias `type D = LocalDay`. A brand comes from a minter that
+  // validated or constructed it; each minter carries the one permitted cast on a
+  // `// eslint-disable-next-line no-restricted-syntax -- <brand> minter:` line, which
+  // makes `grep -rn "minter:" lib` the minter inventory. A DB row shape
+  // (`.get(...) as { date: LocalDay }`) is deliberately NOT matched — an object type
+  // literal is exempt — because a row may carry the brand lib/time-columns.ts declares
+  // for that column. `as any` / `as never` / a generic launderer are not syntax this
+  // rule can see; those are review's, as for every other type.
   {
     files: ["**/*.{ts,tsx,mts,cts}"],
     rules: {
       "no-restricted-syntax": [
         "error",
-        {
-          selector: TEMPORAL_BRAND_CAST_SELECTOR,
+        ...TEMPORAL_BRAND_CAST_SELECTORS.map((selector) => ({
+          selector,
           message:
-            "Do not cast to a temporal brand. Obtain it from a minter that validates or constructs it (lib/temporal-types.ts, #2899).",
-        },
+            "Do not cast or re-alias to a temporal brand. Obtain it from a minter that validates or constructs it (lib/temporal-types.ts, #2899).",
+        })),
       ],
     },
   },

@@ -1145,14 +1145,14 @@ export const TIME_COLUMNS = {
       semantic: "window-start",
       grain: "instant",
       convention: "mixed",
-      note: "THE column that most rewards reading this table before writing SQL. It holds vendor ISO-with-milliseconds for an imported sample AND `${date}T00:00:00` — a profile-local DAY midnight, not an instant — for a reading whose author stated only a day. It is also the natural key (profile, metric, source, origin, started_at) that makes a re-entry a correction, so neither shape can be normalized without changing dedupe.",
+      note: "THE column that most rewards reading this table before writing SQL. It holds FOUR shapes, verified against the writers on 2026-09-05 (#2899's falsifying pass; the earlier note claimed two): the device's own instant VERBATIM from an integration — vendor ISO-with-milliseconds or second-resolution `…Z` (lib/integrations/health-connect.ts passes the payload's time through; normalize.ts upsertMetricSamples inserts it unchanged); `${date}T00:00:00` — a profile-local DAY midnight, not an instant — for a reading whose author stated only a day (lib/reading-writes.ts); and `${date}THH:MM:SS`, a profile-local ZONELESS datetime, for a hydration tap or a reading with a stated time (lib/offline/writes.ts sampleTime). It is also the natural key (profile, metric, source, origin, started_at) that makes a re-entry a correction, so no shape can be normalized without changing dedupe — and no brand types it (#2899).",
     },
     {
       column: "ended_at",
       semantic: "window-end",
       grain: "instant",
       convention: "mixed",
-      note: "The same two shapes as started_at, and equal to it for an instantaneous reading.",
+      note: "The same shapes as started_at, and equal to it for an instantaneous reading.",
     },
     {
       column: "pushed_at",

@@ -112,7 +112,8 @@ Known gaps, stated rather than implied:
   claim them. The type vocabulary below is what closes this: a `CanonicalInstant`
   is visible to the compiler wherever it is built, SQL or not, so the gap shrinks
   each time a normalizer's output is narrowed to the brand — and the
-  `metric_samples` writers narrow to `MetricSampleInstant`, never to canonical.
+  `metric_samples` writers are never narrowed to canonical, because that column
+  is not (see the registry note on it).
 - Column `DEFAULT`s live in shipped, immutable migrations and cannot be scanned
   from source. A converted table's `DEFAULT` is pinned by its own migration test.
 
@@ -125,29 +126,40 @@ compile error to pass a profile-local day where an instant is wanted, or an
 registry's grain and convention are also stated as TYPES, beside the scans and
 never instead of them. `lib/temporal-types.ts` owns the vocabulary:
 
-| brand                 | shape                                  | minted by                                                                               |
-| --------------------- | -------------------------------------- | --------------------------------------------------------------------------------------- |
-| `LocalDay`            | `YYYY-MM-DD`, a real day               | `isRealIsoDate` (validates); `today`, `dateStrInTz`, `shiftDateStr`, `startOfWeekStr` … |
-| `LocalTime`           | `HH:MM`, profile-local                 | `zonedDateParts`, `nowTime`, `activityClockHHMM`, the `SourceTime` local arm            |
-| `CanonicalInstant`    | `…THH:MM:SSZ`                          | `utcInstant`, `utcMinute`, `toUtcInstant`, `instantNow`, `sourceInstant`                |
-| `BareInstant`         | `YYYY-MM-DD HH:MM:SS`                  | `utcSqlString`, `sqlNow`                                                                |
-| `MetricSampleInstant` | vendor ISO-ms **or** `${day}T00:00:00` | `vendorInstant` (validates), `dayMidnightAnchor` (constructs) — a union, one per shape  |
+| brand              | shape                    | minted by                                                                               |
+| ------------------ | ------------------------ | --------------------------------------------------------------------------------------- |
+| `LocalDay`         | `YYYY-MM-DD`, a real day | `isRealIsoDate` (validates); `today`, `dateStrInTz`, `shiftDateStr`, `startOfWeekStr` … |
+| `LocalTime`        | `HH:MM`, profile-local   | `zonedDateParts`, `nowTime`, `activityClockHHMM`, the `SourceTime` local arm            |
+| `CanonicalInstant` | `…THH:MM:SSZ`            | `utcInstant`, `utcMinute`, `toUtcInstant`, `instantNow`, `sourceInstant`                |
+| `BareInstant`      | `YYYY-MM-DD HH:MM:SS`    | `utcSqlString`, `sqlNow`                                                                |
 
 Grain and serialization are separate axes, so `CanonicalInstant` and
 `BareInstant` are two types and there is no umbrella instant brand: one over
 both would make the lexical-comparison bug the scan exists to catch look
-checked. `metric_samples.started_at` / `ended_at` are never canonical — they
-hold two shapes inside the natural key, so they are the union, never a cast.
+checked.
+
+`metric_samples.started_at` / `ended_at` carry **no brand**. They are the
+natural key that makes a re-push a correction, and they hold at least four
+shapes — the device's own instant verbatim, a `${day}T00:00:00` day-midnight
+anchor, and a `${day}THH:MM:SS` zoneless local datetime (the registry note on
+that column lists the writers). A two-shape union was proposed and falsified
+against those writers on 2026-09-05: it modelled the registry note, not the
+column. A truthful type for it needs the writers inventoried first; until then
+the column is `string`, and saying so is the point.
 
 Three rules keep a brand worth something:
 
 - **A minter validates or constructs.** It checks the calendar or builds from a
   `Date`. A function that receives a string and casts it is not a minter and
   must not exist. `grep -rn "minter:" lib` is the inventory, because
-- **`x as LocalDay` is an ESLint error everywhere** (`eslint.config.mjs`,
-  `no-restricted-syntax`), and the minters carry the only permitted casts on a
+- **A cast to a brand is an ESLint error everywhere** (`eslint.config.mjs`,
+  `no-restricted-syntax`) — direct, through `unknown`, inside a union, array,
+  tuple or intersection, by qualified or `import()` name, or via a bare
+  re-alias `type D = LocalDay`. The minters carry the only permitted casts on a
   `-- <brand> minter:` disable line. A cast that appears anywhere else is the
   defect, not a shortcut: bring it back to #2899 rather than adding a disable.
+  `as any`, `as never` and a generic launderer are not syntax a rule can see;
+  those are review's, as for every other type.
 - **A DB row shape may carry the brand the registry declares for that column**
   (`.get(...) as { date: LocalDay }`), and nothing else. That assertion already
   exists on every read; the brand adds what `TIME_COLUMNS` says about the column,
