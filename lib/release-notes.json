@@ -212,6 +212,48 @@
           "category": "Interface",
           "title": "A kebab menu’s items are announced as menu items by a screen reader",
           "issues": [5181]
+        },
+        {
+          "pr": 5221,
+          "kind": "perf",
+          "category": "General",
+          "title": "The dashboard loads faster when nothing has changed since you last opened it",
+          "issues": [5073]
+        },
+        {
+          "pr": 5224,
+          "kind": "fix",
+          "category": "Training",
+          "title": "Closing an activity you typed into asks before discarding it",
+          "issues": [5111]
+        },
+        {
+          "pr": 5234,
+          "kind": "feature",
+          "category": "History",
+          "title": "Search finds a dose, meal or session you logged and opens it in the record",
+          "issues": [5006]
+        },
+        {
+          "pr": 5209,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "An imported prescription is badged Rx, with its prescriber, pharmacy and number",
+          "issues": [4669]
+        },
+        {
+          "pr": 5209,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "An imported medicine’s adherence counts from the dose, not from long before",
+          "issues": [4669]
+        },
+        {
+          "pr": 5209,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Editing an imported medicine’s schedule no longer re-judges the days before it",
+          "issues": [4669]
         }
       ]
     },
