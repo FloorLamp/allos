@@ -35,6 +35,7 @@ const ENTRY_SCRIPTS = [
   "scripts/orchestration/host.mjs",
   "scripts/orchestration/landing-independence.mjs",
   "scripts/orchestration/ledger.mjs",
+  "scripts/orchestration/main-red-history.mjs",
   "scripts/orchestration/merge-gate.mjs",
   "scripts/orchestration/post-merge-census.mjs",
   "scripts/orchestration/pr-board.mjs",
@@ -112,6 +113,13 @@ describe("--help belongs to the invoked script, not to its imports", () => {
       "scripts/orchestration/merge-gate.mjs",
       "Merge gate —",
       "owned in one place because two things enforce it",
+    ],
+    // #5160's history tool imports host.mjs for the same token resolution, so
+    // it is the newest edge of this shape.
+    [
+      "scripts/orchestration/main-red-history.mjs",
+      "history on main, and who owns each red",
+      "Host resolution for work",
     ],
   ])("%s prints its OWN header", (rel, own, imported) => {
     const run = runHelp(rel);

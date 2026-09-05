@@ -238,9 +238,31 @@ export function appContent(page: Page): Locator {
 //
 // The frame is the border and the corner together: `border-x-0` alone leaves a
 // radius drawing a curve on a full-bleed fill, which is the shape #3673 shipped.
+//
+// AND IT REFUSES TO RETURN A NUMBER-SHAPED NOTHING (#5213). `getComputedStyle` on a
+// node that is not being rendered answers "" for every property and
+// `Number.parseFloat("")` is `NaN`, so this used to hand the caller `[NaN, NaN]` —
+// which arrives as a deep-equality mismatch against `[0, 0]` and reads as a band
+// with the WRONG frame. It is not a wrong frame; it is no reading at all. The window
+// is real: Playwright resolves a Locator and then evaluates on the resolved node in
+// a second round trip, so the node can leave between the caller's `toBeVisible()`
+// and this read. Throw instead, naming which state the node is in — a reader should
+// not have to derive "detached" from a NaN.
 export function bandFrame(locator: Locator): Promise<[number, number]> {
   return locator.evaluate((node) => {
     const style = getComputedStyle(node);
+    if (style.borderLeftWidth === "") {
+      throw new Error(
+        `bandFrame: getComputedStyle answered nothing for ` +
+          `<${node.tagName.toLowerCase()} data-testid=` +
+          `"${node.getAttribute("data-testid") ?? ""}">, so NO frame was measured — ` +
+          `this is not a band with the wrong frame. isConnected=${node.isConnected}, ` +
+          `ownerDocument ${node.ownerDocument.defaultView ? "has" : "has no"} a ` +
+          `browsing context. isConnected=false means the node left the document ` +
+          `between the caller's visibility assertion and this read; re-resolve the ` +
+          `locator and read it again.`
+      );
+    }
     return [
       Number.parseFloat(style.borderLeftWidth),
       Number.parseFloat(style.borderTopLeftRadius),
@@ -254,6 +276,94 @@ export function bandFrame(locator: Locator): Promise<[number, number]> {
 // shipped and #3920 had to undo.
 export function leftEdge(locator: Locator): Promise<number> {
   return locator.evaluate((node) => node.getBoundingClientRect().left);
+}
+
+// WHAT THE PAGE CAN STILL SAY WHEN A HYDRATION WAIT RUNS OUT (#5213).
+//
+// `not hydrated yet` is the assumption the wait walked in with, so it is the one
+// sentence that cannot advance a diagnosis: it reports that the marker was absent
+// and nothing about why. `offline-food-log.spec.ts:46` went red on FOUR main heads —
+// `63901385`, `59a94164`, `db376bfa`, `9474fbf6`, with six observed-GREEN heads
+// interleaved and no code between them touching the path, per
+// `scripts/orchestration/main-red-history.mjs --limit 40`. A race whose losing side
+// was never reported, because every one of those occurrences printed that same
+// sentence and nothing else.
+//
+// ONE reading, taken once on the way out — never inside the poll, where a
+// whole-document scan every 100ms would change the timing it is measuring. It
+// separates the three states the old message conflated:
+//   • React attached to NOTHING here → hydration never ran. The fill was never the
+//     problem; the finding is upstream, in whether the client bundle arrived.
+//   • React attached elsewhere but not to THIS node → the page hydrated and this
+//     subtree did not; it is still server HTML.
+//   • React IS attached by diagnosis time → the marker landed after the last poll,
+//     so the wait lost a race rather than finding a dead page, and `value` says
+//     whether the fill had already gone in.
+// Plus the one question no reading of the node can answer: did the page NAVIGATE
+// under the wait?
+//
+// Bounded and never-throwing, the `clickedControlState` posture: a diagnosis must
+// not replace the failure it is explaining with one of its own.
+async function hydrationDiagnosis(
+  el: Locator,
+  armedUrl: string
+): Promise<string> {
+  try {
+    const url = el.page().url();
+    const moved =
+      url === armedUrl
+        ? `The page did not navigate (still ${url}).`
+        : `The page NAVIGATED under the wait: armed on ${armedUrl}, now ${url}.`;
+    const count = await el.count();
+    if (count !== 1)
+      return (
+        `${moved} The locator resolves to ${count} elements now, so the node the ` +
+        `wait was watching is not there to read.`
+      );
+    const state = await el.evaluate((node) => {
+      const claimed = (n: object) =>
+        Object.keys(n).some(
+          (k) => k.startsWith("__reactFiber$") || k.startsWith("__reactProps$")
+        );
+      const all = node.ownerDocument.querySelectorAll("*");
+      let anywhere = 0;
+      for (const other of all) if (claimed(other)) anywhere++;
+      return {
+        here: claimed(node),
+        anywhere,
+        elements: all.length,
+        readyState: node.ownerDocument.readyState,
+        value:
+          node instanceof HTMLInputElement ||
+          node instanceof HTMLTextAreaElement ||
+          node instanceof HTMLSelectElement
+            ? node.value
+            : null,
+        rendered: node.getClientRects().length > 0,
+      };
+    });
+    const where = state.here
+      ? `React IS attached to this node at diagnosis time: the markers landed ` +
+        `after the wait's last poll, so this is a race the wait lost and not a ` +
+        `page that never came alive.`
+      : state.anywhere === 0
+        ? `React has attached to NO node in this document (0 of ${state.elements} ` +
+          `elements, readyState=${state.readyState}): hydration never ran at all, ` +
+          `so nothing on this page was going to become interactive — the finding ` +
+          `is upstream of this control.`
+        : `React has attached to ${state.anywhere} of ${state.elements} elements ` +
+          `but NOT to this one: the page hydrated and this subtree did not, so ` +
+          `this node is still server HTML.`;
+    return (
+      `${moved} ${where} The node reads value=${JSON.stringify(state.value)}, ` +
+      `rendered=${state.rendered}.`
+    );
+  } catch (err) {
+    return (
+      `The page could not be read for a diagnosis: ${String(err).slice(0, 200)} ` +
+      `— a destroyed execution context here means the page navigated under the wait.`
+    );
+  }
 }
 
 // Wait until React has ATTACHED to this node — the one hydration probe, shared.
@@ -275,14 +385,22 @@ export async function awaitHydrated(
   timeout = 10_000
 ): Promise<void> {
   await expect(el).toBeVisible();
-  await expect(async () => {
-    const hydrated = await el.evaluate((node) =>
-      Object.keys(node).some(
-        (k) => k.startsWith("__reactFiber$") || k.startsWith("__reactProps$")
-      )
+  const armedUrl = el.page().url();
+  try {
+    await expect(async () => {
+      const hydrated = await el.evaluate((node) =>
+        Object.keys(node).some(
+          (k) => k.startsWith("__reactFiber$") || k.startsWith("__reactProps$")
+        )
+      );
+      expect(hydrated, "element not hydrated yet").toBe(true);
+    }).toPass({ timeout }); // topass-ok: polls for React's hydration markers on this node — a state, not an interaction; nothing is dispatched inside the loop
+  } catch (err) {
+    throw new Error(
+      `${err instanceof Error ? err.message : String(err)}\n\n` +
+        `[awaitHydrated] ${await hydrationDiagnosis(el, armedUrl)}`
     );
-    expect(hydrated, "element not hydrated yet").toBe(true);
-  }).toPass({ timeout }); // topass-ok: polls for React's hydration markers on this node — a state, not an interaction; nothing is dispatched inside the loop
+  }
 }
 
 // Tap a <PhotoCapture> trigger and hand the native file chooser its bytes.
@@ -2908,18 +3026,28 @@ export async function settledFill(
 ): Promise<void> {
   const timeout = opts.timeout ?? 10_000;
   await expect(field).toBeVisible();
-  await expect(async () => {
-    const hydrated = await field.evaluate((el) =>
-      Object.keys(el).some(
-        (k) => k.startsWith("__reactFiber$") || k.startsWith("__reactProps$")
-      )
+  const armedUrl = page.url();
+  try {
+    await expect(async () => {
+      const hydrated = await field.evaluate((el) =>
+        Object.keys(el).some(
+          (k) => k.startsWith("__reactFiber$") || k.startsWith("__reactProps$")
+        )
+      );
+      // Not hydrated yet → toPass retries (the fill would be reverted). Once React has
+      // attached, the fill fires onChange and the value sticks in state.
+      expect(hydrated, "input not hydrated yet").toBe(true);
+      await field.fill(value);
+      await expect(field).toHaveValue(value, { timeout: 2_000 });
+    }).toPass({ timeout });
+  } catch (err) {
+    // The wait's own last line is kept — it says WHICH of the two steps ran out —
+    // and the diagnosis says what the page was doing while it did (#5213).
+    throw new Error(
+      `${err instanceof Error ? err.message : String(err)}\n\n` +
+        `[settledFill] ${await hydrationDiagnosis(field, armedUrl)}`
     );
-    // Not hydrated yet → toPass retries (the fill would be reverted). Once React has
-    // attached, the fill fires onChange and the value sticks in state.
-    expect(hydrated, "input not hydrated yet").toBe(true);
-    await field.fill(value);
-    await expect(field).toHaveValue(value, { timeout: 2_000 });
-  }).toPass({ timeout });
+  }
 }
 
 // Choose a `<select>` option so the change durably lands in React STATE — the
