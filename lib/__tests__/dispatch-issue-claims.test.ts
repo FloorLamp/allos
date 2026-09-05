@@ -288,8 +288,9 @@ describe("branchPrRefusal — whose landing slot is this branch", () => {
 // `branchPrRefusal` above reads the session footer in an OPEN PR's body, and
 // returns null whenever no open PR heads the branch — which on this repo is
 // most branches, because banked work is branch-only by design (#5220's census
-// found 56 remote branches carrying unique work with no open PR). A closed PR
-// and a body that lost its footer land in the same silence. The commit trailer
+// counted 70 remote branches with no open PR, only 14 of which introduce zero
+// files against their merge base). A closed PR and a body that lost its footer
+// land in the same silence. The commit trailer
 // answers for all three, and the refusal says WHICH reader answered, because a
 // caller cannot act on "refused" without knowing whether to go and read a PR.
 describe("trailerSession / branchTrailerRefusal — whose work is on this branch", () => {

@@ -1668,9 +1668,9 @@ export function branchPrRefusal(prs, branch, self) {
 //
 // `branchPrRefusal` above returns null whenever no OPEN PR has the branch as
 // its head, and that is most of this repo's branches: banked work is
-// branch-only by design, so the #5220 census counted 56 remote branches
-// carrying unique work with no open PR. A closed PR and a body that lost its
-// footer land in the same silence. The commit trailer answers for all three,
+// branch-only by design, and #5220's census counted 70 remote branches with no
+// open PR, only 14 of which introduce zero files against their merge base. A
+// closed PR and a body that lost its footer land in the same silence. The commit trailer answers for all three,
 // because every commit an agent pushes here carries `Claude-Session:`.
 //
 // TWO READERS, TWO POPULATIONS, AND THE REFUSAL SAYS WHICH ONE ANSWERED — a
