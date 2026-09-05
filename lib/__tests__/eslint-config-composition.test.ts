@@ -166,8 +166,8 @@ const FORGED: [code: string, hits: number][] = [
 describe("the vendor-score ban bites the same characters in every spelling", () => {
   it.each(FORGED)("%s", async (code, hits) => {
     const [result] = await eslint.lintText(code, { filePath: FORGED_FILE });
-    expect(
-      result.messages.filter((m) => m.message.includes(OURA)).length
-    ).toBe(hits);
+    expect(result.messages.filter((m) => m.message.includes(OURA)).length).toBe(
+      hits
+    );
   });
 });
