@@ -2,7 +2,7 @@
 // (The Next.js runtime does this automatically; tsx-run scripts do not.)
 import "./load-env";
 
-import { db, today } from "../lib/db";
+import { db, today, writeTx } from "../lib/db";
 import { now as clockNow } from "../lib/clock";
 import { shiftDateStr, utcInstant } from "../lib/date";
 import { episodesForSituation } from "../lib/symptom-episode";
@@ -177,6 +177,7 @@ if (PERSONA_SELECTION.kind === "found") {
     recordGlucoseTrace,
     seedStandardMetricSaves: (profileId) =>
       seedStandardMetricSaves(db, profileId),
+    writeTx,
     diffSituations,
     serializeSituationEvents,
     episodesForSituation,
