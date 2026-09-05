@@ -20,6 +20,16 @@
 //   - An unauthenticated poll silently reports nothing (the curl 401s and the
 //     parse yields empty), which reads as "no failures" — a lie in the
 //     reassuring direction. The token is asserted before the first request.
+//   - A commit's CHECK RUNS and its COMMIT STATUSES are disjoint sets on two
+//     endpoints (#5022). This watcher read only the first and printed GREEN on
+//     a head whose `merge-gate` status said the gate was closed. Both are read
+//     now, and every row names the endpoint it came from — `merge-gate` the
+//     status and `merge-gate-job` the check run differ by one word.
+//   - Two matching fingerprints can BOTH land before a check registers, and
+//     the check that arrives late is the merge gate (#5317). `mergeable_state`
+//     held the contradiction and this script printed it without reading it, so
+//     settlement now also requires that an `unstable` state be EXPLAINED by
+//     something we can see.
 //
 // Usage:
 //   node scripts/orchestration/ci-watch.mjs <pr-number> \
@@ -39,6 +49,12 @@
 import { execFileSync } from "node:child_process";
 import { helpGuard } from "./usage.mjs";
 import { resolveReadToken } from "./host.mjs";
+import {
+  ciRows,
+  GATE_STATUS_CONTEXT,
+  reachedAVerdict,
+  rowName,
+} from "./merge-gate-core.mjs";
 helpGuard(process.argv, import.meta.url);
 
 const token = resolveReadToken();
@@ -126,14 +142,17 @@ async function checkRuns(sha) {
   }
 }
 
-// A `cancelled` run never reached a verdict, so it is not one (#4800, #4802).
-// GitHub returns the newest run per name PER CHECK SUITE, so a head whose
-// workflow was triggered twice carries the concurrency-cancelled run beside the
-// green that replaced it, and tallying the raw list reported RED on a head whose
-// checks tab was green — in the tool the runbook says to run BEFORE the gate.
-// Nothing here picks a winner between two runs, so nothing here can mask a red:
-// of what is left under a name, ALL must still be green.
-const reachedAVerdict = (r) => r.conclusion !== "cancelled";
+// THE OTHER ENDPOINT (#5022). Commit statuses are a disjoint set that
+// `/check-runs` never mentions, and this watcher printed `GREEN — all 19
+// registered checks settled and passing` on PR #5319 while `merge-gate` on
+// this endpoint read `failure`. One page: the combined endpoint returns the
+// NEWEST status per context, and a commit with more than 100 distinct
+// contexts is not a shape this repo can produce. The top-level `state` is NOT
+// read — it is `pending` for a commit with no statuses at all, which would
+// make every ordinary head unsettled forever; the per-context rows are the
+// evidence, and an empty list is the "absent" case that must behave as today.
+const commitStatuses = async (sha) =>
+  (await gh(`repos/${repo}/commits/${sha}/status?per_page=100`)).statuses ?? [];
 
 // SETTLEMENT IS DERIVED FROM THE RAW SET AND THE VERDICT FROM THE FILTERED ONE,
 // and that split is the whole design decision here. The fingerprint's job is to
@@ -146,36 +165,38 @@ const reachedAVerdict = (r) => r.conclusion !== "cancelled";
 // extra poll on a superseded head and buys back the only thing watching for
 // that — and being unsettled a poll too long is the safe direction, where a
 // premature green is not.
-function snapshot(runs) {
-  const decided = runs.filter(reachedAVerdict);
-  const pending = decided.filter((r) => r.status !== "completed");
-  const failed = decided.filter(
-    (r) =>
-      r.status === "completed" &&
-      !["success", "neutral", "skipped"].includes(r.conclusion)
-  );
-  // A name whose EVERY run was cancelled has no verdict at all — not green, and
-  // not red either, because nothing failed. Unsettled is the honest state, and
-  // exit 2 already means "re-invoke", which is what a re-run needs. The merge
-  // gate calls the same shape INCOMPLETE; two tools disagreeing about one head
-  // is worse than either being wrong alone.
-  const named = new Set(decided.map((r) => r.name));
-  const noVerdict = [...new Set(runs.map((r) => r.name))].filter(
-    (name) => !named.has(name)
-  );
-  // Identity of the registered set: names + ids, order-independent. Two equal
-  // consecutive fingerprints with zero pending = registration has settled.
-  const fingerprint = runs
-    .map((r) => `${r.name}#${r.id}`)
-    .sort()
-    .join("|");
+function snapshot(runs, statuses) {
+  const { rows, noVerdict } = ciRows({ checkRuns: runs, statuses });
+  // THE GATE'S OWN STATUS IS REPORTED, NEVER RED HERE. `merge-gate` is
+  // merge-gate.mjs's own last answer (merge-gate-core.mjs says why the gate
+  // must not read it back), and the runbook posts the receipt it asks for
+  // AFTER this watcher runs — dispatch.md steps 3-6 — so it is legitimately
+  // `failure` on every healthy PR at the moment anyone asks whether CI is
+  // green. Reddening on it would red every PR, every time, which is how a
+  // check gets ignored and then deleted. It rides its own line instead, which
+  // is what #5022 actually asked for: not that this exit code change, but that
+  // `GREEN` stop meaning "the endpoint I happened to read agrees".
+  const echo = (row) =>
+    row.source === "status" && row.name === GATE_STATUS_CONTEXT;
+  const checks = rows.filter((row) => row.source === "check-run");
   return {
-    pending,
-    failed,
+    rows,
+    pending: rows.filter((row) => row.state === "pending"),
+    failed: rows.filter((row) => row.state === "failed" && !echo(row)),
+    gateClosed: rows.filter((row) => echo(row) && row.state !== "success"),
     noVerdict,
-    fingerprint,
+    // Identity of the registered set: names + ids, order-independent. Two equal
+    // consecutive fingerprints with zero pending = registration has settled.
+    // STATUSES ARE DELIBERATELY OUT OF IT: a status is REPLACED in place under
+    // its context rather than registered alongside, so folding it in would make
+    // the fingerprint move every time the gate re-posts the same verdict.
+    fingerprint: runs
+      .map((r) => `${r.name}#${r.id}`)
+      .sort()
+      .join("|"),
     total: runs.length,
-    decided: decided.length,
+    decided: checks.length,
+    statuses: rows.length - checks.length,
   };
 }
 
@@ -186,7 +207,10 @@ let polls = 0;
 for (;;) {
   polls++;
   const pr = await gh(`repos/${repo}/pulls/${prNumber}`);
-  const s = snapshot(await checkRuns(pr.head.sha));
+  const s = snapshot(
+    await checkRuns(pr.head.sha),
+    await commitStatuses(pr.head.sha)
+  );
 
   // DIRTY IS CHECKED AFTER THE CHECKS, NOT BEFORE THEM, AND NEVER OVERRIDES A SETTLED
   // GREEN. `mergeable_state` is a CACHED field: GitHub serves a stale `dirty` — not
@@ -244,19 +268,65 @@ for (;;) {
   // which is exit 2 — "re-invoke" — and a re-run is what it needs.
   const ciDecided = ci?.status === "completed" && reachedAVerdict(ci);
   if (ciDecided && ci.conclusion !== "success" && s.failed.length === 0)
-    s.failed.push(ci);
+    s.failed.push({
+      source: "workflow-run",
+      name: ci.name ?? "CI",
+      state: "failed",
+      detail: ci.conclusion,
+      url: ci.html_url,
+    });
   const stamp = new Date().toISOString().slice(11, 19);
   console.log(
-    `[${stamp}] ${s.total} checks registered, ${s.pending.length} pending, ${s.failed.length} failed` +
+    `[${stamp}] ${s.total} checks + ${s.statuses} status(es) registered, ` +
+      `${s.pending.length} pending, ${s.failed.length} failed` +
       ` (head ${pr.head.sha.slice(0, 8)}, mergeable_state=${pr.mergeable_state})`
   );
 
+  // GREEN ONE CHECK EARLY (#5317). Two matching fingerprints answer "has the
+  // registered set stopped moving" — and on 2026-09-05 the answer was yes
+  // twice while `merge-gate-job` was still queued and unregistered, so this
+  // watcher printed GREEN at 19 checks a minute before the twentieth arrived.
+  // The check that registers late is the merge gate itself, so a merger
+  // trusting that line acts before the gate that exists to stop a bad merge
+  // has run.
+  //
+  // `mergeable_state` held the contradiction the whole time and this script
+  // already had it on screen: it stayed `unstable` and went `clean` only when
+  // the rollup completed. But it is `unstable` for ANY non-passing status too,
+  // which on this repo is every pre-review head (`merge-gate` = "no exact-head
+  // receipt"), so a flat "never settle while unstable" would hang on every
+  // healthy PR — the too-strict half of the same mistake. So it blocks only
+  // while it is UNEXPLAINED: everything both endpoints show us is green, and
+  // GitHub still says unstable, which means something we cannot see yet.
+  const unexplainedUnstable =
+    pr.mergeable_state === "unstable" &&
+    s.failed.length === 0 &&
+    s.gateClosed.length === 0;
   const settled =
     ciDecided &&
     s.pending.length === 0 &&
     s.noVerdict.length === 0 &&
     s.total > 0 &&
-    s.fingerprint === lastFingerprint;
+    s.fingerprint === lastFingerprint &&
+    !unexplainedUnstable;
+  const waitingOn = [
+    ciDecided ? null : "this head's CI workflow run to complete",
+    s.pending.length
+      ? `${s.pending.length} pending: ${s.pending.map(rowName).join(", ")}`
+      : null,
+    s.noVerdict.length
+      ? `no verdict for ${s.noVerdict.join(", ")} (every run cancelled — re-run it)`
+      : null,
+    s.total === 0 ? "any check to register" : null,
+    s.fingerprint === lastFingerprint
+      ? null
+      : polls === 1
+        ? "a second sample (settlement needs two matching polls)"
+        : "the registered set to stop moving (it changed between these two polls)",
+    unexplainedUnstable
+      ? "mergeable_state=unstable while every check run and commit status we can read is green — a check has not registered yet (#5317)"
+      : null,
+  ].filter(Boolean);
   lastFingerprint = s.fingerprint;
 
   if (settled) {
@@ -272,10 +342,10 @@ for (;;) {
       // dropped by the plumbing is not a verdict — print it where the log will keep
       // it, and keep stderr's copy for a human watching live.
       console.log(`RED — ${s.failed.length} failing check(s):`);
-      for (const r of s.failed) console.log(`  ${r.conclusion}: ${r.name}`);
+      for (const r of s.failed) console.log(`  ${r.detail}: ${rowName(r)}`);
       console.error(`RED — ${s.failed.length} failing check(s):`);
       for (const r of s.failed)
-        console.error(`  ${r.conclusion}: ${r.name}  ${r.html_url}`);
+        console.error(`  ${r.detail}: ${rowName(r)}  ${r.url ?? ""}`);
       console.error(
         "Before diagnosing the branch: a job can be stamped `failure` with every step green —\n" +
           "read the STEPS; a red with no failing step is infrastructure, and a rerun —\n" +
@@ -285,9 +355,24 @@ for (;;) {
       );
       process.exit(1);
     }
+    // THE VERDICT NAMES ITS ENDPOINTS (#5022). "all N registered checks" was a
+    // claim about `/check-runs` alone, read by everyone as "this PR is good".
     console.log(
-      `GREEN — all ${s.decided} registered checks settled and passing.`
+      `GREEN — all ${s.decided} check run(s) and ${s.statuses} commit ` +
+        "status(es) settled and passing."
     );
+    // The gate's own context, said out loud on both streams rather than folded
+    // into the verdict: it is not a CI failure and it does not red this run,
+    // but a reader who stops at GREEN must not miss that this head cannot
+    // merge yet. `merge-gate.mjs` recomputes it before every merge.
+    for (const r of s.gateClosed) {
+      const line =
+        `NOT MERGEABLE YET — ${rowName(r)} is ${r.state}: ${r.detail}\n` +
+        "  That is a commit status, not a check run, and merge-gate.mjs " +
+        "recomputes it before every merge.";
+      console.log(line);
+      console.error(line);
+    }
     if (pr.mergeable_state === "behind") {
       console.log(
         "CAUTION: the PR is BEHIND main — this green is a claim about the base it ran on. If a\n" +
@@ -299,11 +384,11 @@ for (;;) {
   }
 
   if ((once && polls >= 2) || Date.now() >= deadline) {
+    // WHICH CONDITION, NOT "SOMETHING" (#5317). The old line named two
+    // possibilities and left the reader to guess which held, which is how a
+    // watcher waiting on an unregistered merge gate read as ordinary slowness.
     console.log(
-      "UNSETTLED — CI workflow incomplete or registration/pending not yet stable. This is NOT a verdict; re-invoke." +
-        (s.noVerdict.length
-          ? ` No verdict for ${s.noVerdict.join(", ")} (every run cancelled — re-run it).`
-          : "") +
+      `UNSETTLED — waiting on: ${waitingOn.join("; ")}. This is NOT a verdict; re-invoke.` +
         (ci?.status === "completed" && !ciDecided
           ? " The CI workflow run itself was cancelled — re-run it."
           : "")

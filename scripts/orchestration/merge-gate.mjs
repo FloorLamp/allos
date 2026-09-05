@@ -18,9 +18,13 @@
 //      independence can only ever be a stated claim, so that is what is
 //      checked;
 //   3. no standing CHANGES_REQUESTED review on this head;
-//   4. every check run on the head is completed and green. This is a single
-//      sample — settlement (registration still growing) is ci-watch.mjs's
-//      job, so run that first; incomplete CI here exits 2, not 0;
+//   4. every check run AND every commit status on the head is completed and
+//      green (#5022) — two disjoint endpoints, one verdict, each row naming
+//      which endpoint it came from. The gate's own `merge-gate` status is the
+//      one exception: it is this script's own last answer, so it is recomputed
+//      here rather than read back (merge-gate-core.mjs says why). This is a
+//      single sample — settlement (registration still growing) is
+//      ci-watch.mjs's job, so run that first; incomplete CI here exits 2, not 0;
 //   5. zero unresolved review threads (a GraphQL read; outdated-but-unresolved
 //      still counts, because the finding may still apply to the new head).
 //      Where this host's proxy refuses GraphQL outright (#4231), zero REST
@@ -74,7 +78,7 @@ import { helpGuard } from "./usage.mjs";
 import { resolveReadToken } from "./host.mjs";
 import {
   baseDetectorNotice,
-  checkRunsVerdict,
+  ciVerdict,
   closedStatusDescription,
   falsifyingPassVerdict,
   holdVerdict,
@@ -413,7 +417,21 @@ const baseMoved = baseMovedVerdict({
 if (baseMoved.ok) pass(baseMoved.message);
 else fail(baseMoved.message);
 
-const checks = checkRunsVerdict(all_runs, ignoreCheck, head);
+// BOTH ENDPOINTS, ONE VERDICT (#5022). A commit's statuses live on their own
+// endpoint and are invisible to `/check-runs`; this gate read only the first
+// until now, so a red posted by anything other than Actions could not close it.
+// A read that FAILS exits 2 through `gh` rather than answering `[]` — an
+// unreadable status must refuse, because "I could not see it" reading as
+// "there was nothing there" is the reassuring-lie direction this gate exists
+// to refuse. The gate's own `merge-gate` context is excluded inside `ciVerdict`
+// (see GATE_STATUS_CONTEXT) and recomputed by every check above.
+const combined = gh(`repos/${repo}/commits/${head}/status`);
+const checks = ciVerdict({
+  checkRuns: all_runs,
+  statuses: combined.statuses ?? [],
+  ignoreCheck,
+  head,
+});
 if (checks.ignored) {
   console.log(`(ignoring check "${ignoreCheck}" — the gate's own wrapper)`);
 }

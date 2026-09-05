@@ -43,6 +43,7 @@
 import { execFileSync } from "node:child_process";
 import { helpGuard } from "./usage.mjs";
 import { resolveReadToken } from "./host.mjs";
+import { ciRows, rowName } from "./merge-gate-core.mjs";
 helpGuard(process.argv, import.meta.url);
 
 const token = resolveReadToken();
@@ -118,64 +119,46 @@ for (const p of prs.sort((a, b) => a.number - b.number)) {
   // fix is not "remember to check statuses too" — it is that one row of this
   // board can no longer be green while either endpoint is red.
   const combined = gh(`commits/${p.head.sha}/status`);
+  // A read that FAILED is not an empty one. `gh` answers null on a transport
+  // or parse failure, and `?? []` used to turn that into "no statuses" — the
+  // reassuring-lie shape this file warns about twice above. It is its own
+  // state now, and it keeps the row off GREEN.
+  const unreadable = combined === null;
   const ctx = Array.isArray(combined?.statuses) ? combined.statuses : [];
-  // A `cancelled` RUN NEVER REACHED A VERDICT, so it is not one (#4800, #4802).
-  // GitHub returns the newest run per name PER CHECK SUITE, so a head whose
-  // workflow was triggered twice carries the concurrency-cancelled run beside
-  // the green that replaced it. Counting it did both harms at once: it inflated
-  // the denominator (`18/20` on a head with 20 real checks) and painted a
-  // settled-green row red. Nothing here picks a winner between two runs, so a
-  // real red beside a cancellation still counts.
-  const decided = list.filter((r) => r.conclusion !== "cancelled");
-  let ok = 0,
-    pending = 0;
-  const failed = [];
-  for (const r of decided) {
-    if (r.status !== "completed") pending++;
-    else if (r.conclusion === "success" || r.conclusion === "skipped") ok++;
-    else failed.push(r);
-  }
+  // ONE READER, SHARED WITH THE GATE AND THE WATCHER (#5022). The cancelled-run
+  // reading (#4800, #4802) and the `neutral`/`skipped` alignment live in
+  // merge-gate-core.mjs's `ciRows`, so the three tools cannot drift apart on
+  // what a row means — which was the whole point of the issue.
+  const { rows, noVerdict } = ciRows({ checkRuns: list, statuses: ctx });
+  const ok = rows.filter((r) => r.state === "success").length;
   // A name whose every run was cancelled has no verdict — not green, and not
   // red either. It counts as outstanding so the row cannot read GREEN, and the
   // row says which name, because "re-run it" is the action and a bare `0/1`
   // does not say that.
-  const named = new Set(decided.map((r) => r.name));
-  const noVerdict = [...new Set(list.map((r) => r.name))].filter(
-    (name) => !named.has(name)
-  );
-  pending += noVerdict.length;
-  for (const s of ctx) {
-    if (s.state === "pending") pending++;
-    else if (s.state === "success") ok++;
-    // A status has no annotations endpoint, so it carries its own detail through
-    // to --why instead; `context` is its name and `description` its one line.
-    else
-      failed.push({
-        name: s.context,
-        conclusion: s.state,
-        description: s.description,
-        html_url: s.target_url,
-        isStatus: true,
-      });
-  }
-  const total = decided.length + noVerdict.length + ctx.length;
+  const pending =
+    rows.filter((r) => r.state === "pending").length + noVerdict.length;
+  const failed = rows.filter((r) => r.state === "failed");
+  const total = rows.length + noVerdict.length;
   const state = failed.length
     ? `RED ${failed.length}`
-    : pending
-      ? `run ${ok}/${total}`
-      : total
-        ? "GREEN"
-        : "no CI";
+    : unreadable
+      ? "status?"
+      : pending
+        ? `run ${ok}/${total}`
+        : total
+          ? "GREEN"
+          : "no CI";
   // Named on the row, not just counted: "RED 1" beside twenty green check runs
   // reads as a flaky shard, and the one thing it can be instead — a closed merge
   // gate — is the thing that changes what you do next.
   const gate = failed.length
     ? `  <<< ${failed
-        .filter((r) => r.isStatus)
-        .map((r) => `STATUS ${r.name} ${r.conclusion}`)
-        .concat(failed.filter((r) => !r.isStatus).map((r) => r.name))
+        .map((r) => `${rowName(r)} ${r.detail}`)
         .join(", ")
         .slice(0, 90)}`
+    : "";
+  const dark = unreadable
+    ? "  <<< commit statuses UNREADABLE — this row is check-runs only"
     : "";
   const stalled = noVerdict.length
     ? `  <<< no verdict: ${noVerdict.join(", ").slice(0, 60)} (every run cancelled — re-run it)`
@@ -213,7 +196,7 @@ for (const p of prs.sort((a, b) => a.number - b.number)) {
     }
   }
   console.log(
-    `#${p.number} ${p.draft ? "draft " : ""}${state.padEnd(9)} ${p.head.ref.slice(0, 34).padEnd(34)} ${p.title.slice(0, 46)}${merge}${gate}${stalled}${stale}`
+    `#${p.number} ${p.draft ? "draft " : ""}${state.padEnd(9)} ${p.head.ref.slice(0, 34).padEnd(34)} ${p.title.slice(0, 46)}${merge}${gate}${dark}${stalled}${stale}`
   );
   if (failed.length) red.push({ pr: p.number, failed });
 }
@@ -226,17 +209,17 @@ if (!why || !red.length) {
 // The annotations, which is the part worth having.
 for (const { pr, failed } of red) {
   for (const r of failed) {
-    console.log(`\n=== #${pr} ${r.name} (${r.conclusion}) ===`);
-    if (r.isStatus) {
+    console.log(`\n=== #${pr} ${rowName(r)} (${r.detail}) ===`);
+    if (r.source === "status") {
       // Statuses have no annotations; what they have is the description line the
       // reporter wrote, which for merge-gate is the closure reason itself.
-      console.log(`  ${r.description ?? "(no description)"}`);
-      if (r.html_url) console.log(`  ${r.html_url}`);
+      console.log(`  ${r.detail ?? "(no description)"}`);
+      if (r.url) console.log(`  ${r.url}`);
       continue;
     }
     const anns = gh(`check-runs/${r.id}/annotations`);
     if (!Array.isArray(anns) || !anns.length) {
-      console.log(`  (no annotations — ${r.html_url})`);
+      console.log(`  (no annotations — ${r.url})`);
       continue;
     }
     for (const a of anns) {

@@ -245,50 +245,148 @@ export function receiptVerdict(pr, reviews, head = pr.head.sha) {
 // scans. Two workflows sharing a job name — ci.yml and ci-main.yml both define
 // `check`, `test-unit` and `test-db` — would likewise both be required, rather
 // than one silently standing in for the other.
-const reachedAVerdict = (run) => run.conclusion !== "cancelled";
+export const reachedAVerdict = (run) => run.conclusion !== "cancelled";
 
-export function checkRunsVerdict(allRuns, ignoreCheck, head) {
-  const named = allRuns.filter((run) => run.name !== ignoreCheck);
-  const checkRuns = named.filter(reachedAVerdict);
-  const pending = checkRuns.filter((run) => run.status !== "completed");
-  const red = checkRuns.filter(
-    (run) =>
-      run.status === "completed" &&
-      !["success", "neutral", "skipped"].includes(run.conclusion)
-  );
-  const ignored = Boolean(ignoreCheck && named.length !== allRuns.length);
-  // A name whose EVERY run was cancelled has no verdict at all — not green, and
-  // not red either, because nothing failed. Incomplete is the honest state, and
-  // the wrapper publishes it as `pending`, which asks for a re-run instead of
-  // sending someone to hunt a failure that never happened.
-  const decided = new Set(checkRuns.map((run) => run.name));
+// ── ONE COMMIT'S CI, READ FROM BOTH ENDPOINTS ───────────────────────────────
+//
+// A commit carries CHECK RUNS (what Actions jobs post) and COMMIT STATUSES
+// (what any other reporter posts) as two DISJOINT sets on two endpoints, and
+// neither endpoint mentions the other's rows. Reading one and calling the
+// answer "CI" is the defect #5022 exists to remove: on PR #5319 at 12:20Z
+// `/check-runs` was 19 of 19 green — `merge-gate-job` among them — while
+// `/commits/<sha>/status` carried `merge-gate = failure · gate CLOSED — no
+// exact-head receipt`. The two names differ by one word, so every row here
+// carries its SOURCE: a bare `merge-gate` in a diagnostic is the same trap
+// wearing the fix's clothes.
+//
+// Rows, not a verdict, because the three callers ask three questions of one
+// classification — the gate asks "may this merge", the watcher asks "has
+// registration stopped moving", the board asks for a line per PR.
+//
+// `state` is the whole vocabulary and each value is a different action:
+// `pending` waits, `failed` stops, `success` passes; a name whose every run
+// was CANCELLED reaches no state at all and comes back in `noVerdict`, which
+// asks for a re-run rather than sending anyone to hunt a failure that never
+// happened. Statuses cannot be cancelled and have four states, of which
+// `error` and `failure` are both a red.
+//
+// @returns {{rows: {source: "check-run"|"status", name: string,
+//   state: "pending"|"failed"|"success", detail: string, url?: string}[],
+//   noVerdict: string[], ignored: boolean}}
+export function ciRows({ checkRuns = [], statuses = [], ignoreCheck = null }) {
+  const named = checkRuns.filter((run) => run.name !== ignoreCheck);
+  const decided = named.filter(reachedAVerdict);
+  const rows = decided.map((run) => ({
+    source: "check-run",
+    name: run.name,
+    state:
+      run.status !== "completed"
+        ? "pending"
+        : ["success", "neutral", "skipped"].includes(run.conclusion)
+          ? "success"
+          : "failed",
+    detail: run.conclusion ?? run.status,
+    url: run.html_url,
+    // The annotations endpoint is keyed on the run id, and it is the only
+    // route to a failing spec's assertion (pr-board.mjs --why says why).
+    id: run.id,
+  }));
+  const settled = new Set(decided.map((run) => run.name));
   const noVerdict = [...new Set(named.map((run) => run.name))].filter(
-    (name) => !decided.has(name)
+    (name) => !settled.has(name)
   );
-  if (checkRuns.length === 0 || pending.length || noVerdict.length) {
+  for (const status of statuses) {
+    rows.push({
+      source: "status",
+      name: status.context,
+      state:
+        status.state === "pending"
+          ? "pending"
+          : status.state === "success"
+            ? "success"
+            : "failed",
+      detail: status.description || status.state,
+      url: status.target_url,
+    });
+  }
+  return {
+    rows,
+    noVerdict,
+    ignored: Boolean(ignoreCheck && named.length !== checkRuns.length),
+  };
+}
+
+/** `check-run e2e (6)` / `status merge-gate` — the endpoint, then the name. */
+export const rowName = (row) => `${row.source} ${row.name}`;
+
+// THE GATE'S OWN PUBLISHED STATUS IS NOT EVIDENCE TO THE GATE (#5022).
+// `merge-gate` is the only commit status this repo posts, and
+// .github/workflows/merge-gate.yml posts it by running THIS script. So a gate
+// that counted its own context would be reading back its own last answer: a
+// `failure` posted before the receipt landed would close the gate, the
+// workflow would re-run the gate, the gate would read the failure it had just
+// posted, and post it again — a self-block with no way out, in the one tool
+// whose refusal stops every merge. It is excluded here and recomputed instead,
+// in full, by every other check in merge-gate.mjs.
+//
+// EVERY OTHER CONTEXT STILL COUNTS, and that half is the point of the issue: a
+// deploy gate, a coverage bot or any future required context is exactly what
+// nothing in this script recomputes, so ignoring it is how a merge goes out
+// over a red nobody read.
+export const GATE_STATUS_CONTEXT = "merge-gate";
+
+export function ciVerdict({
+  checkRuns = [],
+  statuses = [],
+  ignoreCheck = null,
+  head,
+}) {
+  const { rows, noVerdict, ignored } = ciRows({
+    checkRuns,
+    statuses,
+    ignoreCheck,
+  });
+  const echo = (row) =>
+    row.source === "status" && row.name === GATE_STATUS_CONTEXT;
+  const counted = rows.filter((row) => !echo(row));
+  const echoed = rows.filter(echo);
+  const checks = counted.filter((row) => row.source === "check-run");
+  const pending = counted.filter((row) => row.state === "pending");
+  const red = counted.filter((row) => row.state === "failed");
+  const recomputed = echoed.length
+    ? ` This head's own \`${GATE_STATUS_CONTEXT}\` status (${echoed
+        .map((row) => row.state)
+        .join(", ")}) is THIS script's last answer and is recomputed here, not read.`
+    : "";
+  if (checks.length === 0 || pending.length || noVerdict.length) {
     return {
       kind: "incomplete",
       ignored,
       message:
-        `CI INCOMPLETE on ${head.slice(0, 8)}: ${checkRuns.length} registered, ` +
-        `${pending.length} pending` +
+        `CI INCOMPLETE on ${head.slice(0, 8)}: ${checks.length} check run(s) ` +
+        `registered, ${pending.length} pending` +
+        (pending.length ? ` (${pending.map(rowName).join(", ")})` : "") +
         (noVerdict.length
           ? `, no verdict for ${noVerdict.join(", ")} (every run cancelled — re-run it)`
           : "") +
-        ". Not a verdict — run ci-watch.mjs to settlement.",
+        ". Not a verdict — run ci-watch.mjs to settlement." +
+        recomputed,
     };
   }
   if (red.length) {
     return {
       kind: "fail",
       ignored,
-      message: `red checks on this head: ${red.map((run) => run.name).join(", ")}`,
+      message: `red on this head: ${red.map(rowName).join(", ")}`,
     };
   }
   return {
     kind: "pass",
     ignored,
-    message: `all ${checkRuns.length} checks green on this head`,
+    message:
+      `all ${checks.length} check run(s) and ` +
+      `${counted.length - checks.length} independent commit status(es) green ` +
+      `on this head.${recomputed}`,
   };
 }
 
