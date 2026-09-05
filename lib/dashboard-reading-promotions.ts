@@ -4,7 +4,6 @@
 // number, choose a threshold, read a clock, or perform I/O.
 
 import { isNotableFlag } from "./reference-range";
-import type { FrequencyPace } from "./frequency-targets";
 import type { OutcomeGoalPace } from "./outcome-goals";
 import { goalPaceTone } from "./outcome-goals";
 import { isBiomarkerGoal } from "./biomarker-goal";
@@ -15,7 +14,6 @@ import type { DashboardReadingPromotion } from "./dashboard-relevance";
 
 export const DASHBOARD_READING_PROMOTIONS = [
   "clinical-non-notable-to-notable",
-  "weekly-target-transition",
   "outcome-goal-transition",
   "training-best",
   "sleep-arrived",
@@ -56,21 +54,6 @@ export function sleepArrivedInWakeWindow(
     return false;
   const ageMinutes = wakeDayAge * 1440 + minutesOfDay - wakeMinutes;
   return ageMinutes >= 0 && ageMinutes <= windowMinutes;
-}
-
-export interface WeeklyTargetSemanticState {
-  pace: FrequencyPace;
-  met: boolean;
-}
-
-export function weeklyTargetStateChanged(
-  current: WeeklyTargetSemanticState & { count: number },
-  previous: WeeklyTargetSemanticState | null
-): boolean {
-  return (
-    previous != null &&
-    (current.pace !== previous.pace || (!previous.met && current.met))
-  );
 }
 
 export interface OutcomeGoalSemanticState {
