@@ -357,6 +357,9 @@ describe("the vocabulary is narrowed against a measurement, not by taste", () =>
     ["dose safety", "The overdose ceiling is computed from the daily total."],
     ["minor (the person)", "a minor treated as an adult unlocks the surface"],
     ["PHI", "This writes PHI to a shared surface."],
+    ["PHI", "The CSV export carries PHI for every profile in the household."],
+    ["PHI", "PHI is logged verbatim when the parser throws."],
+    ["PHI", "Widens redaction so PHI stops leaking into the error page."],
   ];
 
   for (const [term, sentence] of SAFETY_SENTENCES) {
@@ -408,8 +411,10 @@ describe("what counts as a claim", () => {
     expect(vocabularyHits([{ where: "b", text: claimProse(body) }])).toEqual(
       []
     );
-    // …but the same words as prose ARE a claim.
-    const prose = "No PHI in code is asserted by the new scan.";
+    // …but a real PHI claim written as prose still is one. The sentence has to
+    // carry the term's own sense since #5275 narrowed it, which is the point:
+    // what drops the checklist is its SHAPE, and nothing here leans on that.
+    const prose = "No PHI in code, but this exports some to the share sheet.";
     expect(claimProse(prose)).toBe(prose);
     expect(vocabularyHits([{ where: "b", text: prose }])).toHaveLength(1);
   });
@@ -1216,5 +1221,69 @@ describe("the gate section is a transcript, not a claim (#4842)", () => {
     expect(
       vocabularyHits([{ where: "b", text: prose }]).map((h) => h.term)
     ).toEqual(["warning"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+// A GATE'S NAME IS NOT THE HAZARD IT SCANS FOR (#5275).
+//
+// #4842 taught this tier that a gate transcript is not a claim, and keyed the
+// transcript on a `Gates` heading. PR #5272 spelled its heading `Verification`
+// and came back CONSULT quoting `- phi-scan — OK, no likely-real PHI in 5566
+// files`: a gate reporting it found NOTHING, read as PHI leaving a surface. It
+// is not a hole in the heading rule that a wider heading rule would close —
+// most of these lines are the author's own one-sentence summary under no
+// heading at all, which is not quotation in any form a parser can see. The term
+// is narrowed instead, to the movement its `why` has always named.
+describe("PHI names the gate here, not the hazard (#5275)", () => {
+  // Verbatim from the window the narrowing was measured over (#4144-#5282),
+  // where the old pattern fired 25 times and every one of them was one of these.
+  it.each([
+    ["#5272, the report this was filed on", "- phi-scan — OK, no likely-real PHI in 5566 files"],
+    ["#4188 and ten others, the author's own summary", "- lint, typecheck, PHI scan, and format passed"],
+    ["#4200, the gate list", "- canonical lint, typecheck, pure, DB, format, PHI, and E2E shard-plan gates"],
+    ["#4595, the shortest spelling", "- PHI scan: clean"],
+    ["#5029, the scan's finding as a claim about the diff", "- No PHI: the notes describe features, never anyone's data"],
+    ["#4938, the gate quoting itself", "- `phi-scan`: `phi-scan: OK — no likely-real PHI in 5450 file(s).`"],
+  ])("stays silent on %s", (_case, line) => {
+    expect(vocabularyHits([{ where: "b", text: claimProse(line) }])).toEqual([]);
+  });
+
+  // #5272 END TO END, with the heading it actually used. The hunk is inert and
+  // the prose names no other term, so the whole verdict rests on this one line —
+  // which is what made it a wrong verdict rather than a wasted quote.
+  it("classifies #5272's shape as ordinary, heading and all", () => {
+    const file = "lib/day-context.ts";
+    const body = [
+      "The key now names the day it was built for.",
+      "",
+      "## Verification",
+      "",
+      "- lint — PASS",
+      "- typecheck — PASS",
+      "- phi-scan — OK, no likely-real PHI in 5566 files",
+      "- format:check, last — all matched files use Prettier code style",
+    ].join("\n");
+    const input = {
+      files: [file],
+      patches: { [file]: ["@@ -12,3 +12,3 @@", "-  return key;", "+  return dayKey;"].join("\n") },
+      sources: [
+        { where: "PR title", text: "Name the day-context key" },
+        { where: "PR body", text: claimProse(body) },
+      ],
+    };
+    expect(classify(input).verdict).toBe("ordinary");
+    // AND THE CONVERSE, through the same classifier and the same shipped file:
+    // a body that does claim a disclosure is still CONSULT, so the silence above
+    // is the term reading the sentence and not the tier having gone dark.
+    expect(
+      classify({
+        ...input,
+        sources: [
+          { where: "PR body", text: claimProse("The new endpoint exports PHI to a login outside the household.") },
+        ],
+      }).verdict
+    ).toBe("CONSULT");
   });
 });
