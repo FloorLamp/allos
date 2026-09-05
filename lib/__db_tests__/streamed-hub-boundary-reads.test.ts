@@ -50,14 +50,12 @@ vi.mock("@/lib/queries", async (importOriginal) => {
   };
 });
 
-const { collectMultiProfileSuppressed } = await import(
-  "@/lib/queries/attention"
-);
+const { collectMultiProfileSuppressed } =
+  await import("@/lib/queries/attention");
 const { encountersForEpisode } = await import("@/lib/queries");
 const UpcomingPage = (await import("@/app/(app)/upcoming/page")).default;
-const EpisodePage = (
-  await import("@/app/(app)/medical/episodes/[id]/page")
-).default;
+const EpisodePage = (await import("@/app/(app)/medical/episodes/[id]/page"))
+  .default;
 
 // Drive the async child React would have invoked at the boundary, walking the tree
 // the page ACTUALLY returned rather than re-querying one of my own. <Suspense> holds
