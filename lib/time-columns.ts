@@ -1145,14 +1145,14 @@ export const TIME_COLUMNS = {
       semantic: "window-start",
       grain: "instant",
       convention: "mixed",
-      note: "THE column that most rewards reading this table before writing SQL. It holds vendor ISO-with-milliseconds for an imported sample AND `${date}T00:00:00` — a profile-local DAY midnight, not an instant — for a reading whose author stated only a day. It is also the natural key (profile, metric, source, origin, started_at) that makes a re-entry a correction, so neither shape can be normalized without changing dedupe.",
+      note: "THE column that most rewards reading this table before writing SQL. It holds whatever each writer put there, and NO inventory of the shapes is claimed complete — two falsifying passes on #2899 (2026-09-05) each found shapes the previous note omitted. Known so far: the device's own value VERBATIM from an integration — ISO with or without milliseconds, `Z` or an offset (lib/integrations/health-connect.ts and oura.ts pass the payload's time through; normalize.ts upsertMetricSamples inserts it unchanged); `${date}T00:00:00`, a profile-local DAY midnight, for a reading whose author stated only a day (lib/reading-writes.ts); `${date}THH:MM:SS`, a profile-local ZONELESS datetime, for a hydration tap or a stated time (lib/offline/writes.ts sampleTime); a bare `YYYY-MM-DD` for a document-import point sample (lib/import-persist.ts); and `<ISO>#<stage>` for a Fitbit Takeout sleep-stage row (lib/integrations/fitbit-takeout.ts). It is also the natural key (profile, metric, source, origin, started_at) that makes a re-entry a correction, so no shape can be normalized without changing dedupe — and no brand types it (#2899).",
     },
     {
       column: "ended_at",
       semantic: "window-end",
       grain: "instant",
       convention: "mixed",
-      note: "The same two shapes as started_at, and equal to it for an instantaneous reading.",
+      note: "The same shapes as started_at, and equal to it for an instantaneous reading.",
     },
     {
       column: "pushed_at",

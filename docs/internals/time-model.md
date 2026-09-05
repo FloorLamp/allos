@@ -109,9 +109,79 @@ Known gaps, stated rather than implied:
   ingest NORMALIZER is not seen. Those feed `metric_samples`, whose natural-key
   dedupe is keyed on the stored instant — converting them is a value change with
   an idempotency blast radius, so phase 1 leaves them and the registry does not
-  claim them.
+  claim them. The type vocabulary below is what closes this: a `CanonicalInstant`
+  is visible to the compiler wherever it is built, SQL or not, so the gap shrinks
+  each time a normalizer's output is narrowed to the brand — and the
+  `metric_samples` writers are never narrowed to canonical, because that column
+  is not (see the registry note on it).
 - Column `DEFAULT`s live in shipped, immutable migrations and cannot be scanned
   from source. A converted table's `DEFAULT` is pinned by its own migration test.
+
+## The type vocabulary (#2899)
+
+The scans above reach SQL and stop at the writer. Nothing in them makes it a
+compile error to pass a profile-local day where an instant is wanted, or an
+`HH:MM` clock reading where a day is wanted — three different questions that
+#2883 finished separating, and that review alone was keeping apart. So the
+registry's grain and convention are also stated as TYPES, beside the scans and
+never instead of them. `lib/temporal-types.ts` owns the vocabulary:
+
+| brand              | shape                    | minted by                                                                               |
+| ------------------ | ------------------------ | --------------------------------------------------------------------------------------- |
+| `LocalDay`         | `YYYY-MM-DD`, a real day | `isRealIsoDate` (validates); `today`, `dateStrInTz`, `shiftDateStr`, `startOfWeekStr` … |
+| `LocalTime`        | `HH:MM`, profile-local   | `zonedDateParts`, `nowTime`, `activityClockHHMM`, the `SourceTime` local arm            |
+| `CanonicalInstant` | `…THH:MM:SSZ`            | `utcInstant`, `utcMinute`, `toUtcInstant`, `instantNow`, `sourceInstant`                |
+| `BareInstant`      | `YYYY-MM-DD HH:MM:SS`    | `utcSqlString`, `sqlNow`                                                                |
+
+Grain and serialization are separate axes, so `CanonicalInstant` and
+`BareInstant` are two types and there is no umbrella instant brand: one over
+both would make the lexical-comparison bug the scan exists to catch look
+checked.
+
+`metric_samples.started_at` / `ended_at` carry **no brand**. They are the
+natural key that makes a re-push a correction, and they hold whatever each
+writer put there: the device's own value verbatim, a `${day}T00:00:00`
+day-midnight anchor, a `${day}THH:MM:SS` zoneless local datetime, a bare
+`YYYY-MM-DD`, an `<ISO>#<stage>` key — the registry note on that column names
+the writers and does not claim its list is complete. A two-shape union was
+proposed and falsified against the writers twice on 2026-09-05: it modelled the
+registry note, not the column. A truthful type for it needs every writer
+inventoried first; until then the column is `string`, and saying so is the
+point.
+
+Three rules keep a brand worth something:
+
+- **A minter validates or constructs.** `isRealIsoDate` checks the calendar and
+  is a type predicate, so it needs no cast; the constructing minters build from
+  a `Date` and carry their one permitted cast on a `-- <brand> minter:` disable
+  line. A function that receives a string and casts it is not a minter and must
+  not exist.
+- **A cast to a brand is refused by ESLint as a ratchet, not a proof**
+  (`eslint.config.mjs`, `no-restricted-syntax`). The rule refuses the ways of
+  naming a brand as a cast target, as an alias, or as a renamed import/export
+  that `lib/__tests__/temporal-types.test.ts` lists, and that list is the
+  definition of what it catches. TypeScript's type grammar has more ways to
+  name a type than any selector list — three falsifying passes each found new
+  ones — so a spelling the test does not list is an addition (a selector and a
+  test row), never a refutation, and the reviewer's job is unchanged. A cast
+  that appears anywhere outside a minter is the defect, not a shortcut: bring
+  it back to #2899 rather than adding a disable. The rule does not chase what a
+  name resolves to (an indexed access into a row type, an interface's heritage
+  or call signature, an object literal whose method returns a brand), a lying
+  type predicate, an overload, `as any`, `as never`, a generic launderer or a
+  `.js` file; those are review's, as for every other type. The test pins six
+  of them as lint-clean, so a limit the rule later starts catching fails a
+  test rather than drifting silently.
+- **A DB row shape may carry the brand the registry declares for that column**
+  (`.get(...) as { date: LocalDay }`), and nothing else. That assertion already
+  exists on every read; the brand adds what `TIME_COLUMNS` says about the column,
+  and the column-index scan is what keeps the two in agreement.
+
+A brand is a subtype of `string`, so branding a minter's RETURN broke no caller.
+Narrowing a PARAMETER is where a consumer starts being checked, and that happens
+at each consumer as it is touched — the three-way confusion becomes a compile
+error one signature at a time, with the cast ban holding at every intermediate
+state. There is no sweep to schedule and no cast to grow around.
 
 ## One reader per question (phase 3)
 
