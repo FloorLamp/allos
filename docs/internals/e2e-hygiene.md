@@ -2272,6 +2272,11 @@ just wrote is that suite's for the length of its run, and deleting it would fail
 every test in the file instead of one. It is reported and left, and the next gap
 is silent because both readings then hold it.
 
+The standing rule this leaves behind: **no `beforeAll` or `afterAll` may move a
+watched row on profile 1 inside that table's bound** — date the fixture outside
+it, or give it a profile of its own. Every file-owned fixture on profile 1
+already did; `unit-mislabel-review` was the last one that did not.
+
 **What this does NOT close, measured.** Over 14 files and 70 tests at one worker,
 the guard made 68 comparisons — 45 same-suite, 12 across a file boundary, 11
 across a describe boundary — and the window itself is **13–63 ms wide, median 22
