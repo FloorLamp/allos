@@ -142,7 +142,7 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     file: "lib/queries/intake/supply-pool.ts",
     includes:
       "FROM intake_items i LEFT JOIN intake_item_doses d ON d.item_id = i.id AND d.retired = 0 WHERE i.supply_id = ?",
-    why: "poolMembers (#1374): a shared bottle's takers are DIFFERENT PEOPLE by construction, so membership and its child dose labels are cross-profile on purpose. It is an ACCOUNTING read (who draws from this bottle → the pooled decrement/projection/alert), with dose amounts carried only to disambiguate actionable member labels; the id is a household-shared shared_supplies row, and every surface that NAMES members filters this through the caller's ProfileScope before rendering. deleteSharedSupply, which unlinks the member rows this read returns, needs NO entry of its own: that UPDATE names id AND profile_id and passes the scan by itself. It carried one anyway until #5315, listed for context — and an entry that exempts nothing is indistinguishable from one whose statement quietly stopped needing it",
+    why: "poolMembers (#1374): a shared bottle's takers are DIFFERENT PEOPLE by construction, so membership and its child dose labels are cross-profile on purpose. It is an ACCOUNTING read (who draws from this bottle → the pooled decrement/projection/alert), with dose amounts carried only to disambiguate actionable member labels; the id is a household-shared shared_supplies row, and every surface that NAMES members filters this through the caller's ProfileScope before rendering. deleteSharedSupply, which unlinks the member rows this read returns, carried an entry until #5315: its UPDATE names id AND profile_id and passes the scan unaided, and an entry that exempts nothing reads exactly like one whose statement quietly stopped needing it",
   },
   {
     file: "lib/queries/intake/supply-pool.ts",
@@ -183,18 +183,11 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
       "(SELECT COUNT(*) FROM portal_identities i WHERE i.account_id = a.id AND i.ignored = 0 AND i.declined = 0 AND i.profile_id IS NOT NULL) AS mapped",
     why: "staleness candidates (#1888/#1889): the same collectable-patient COUNT as mappedPatientCount, asked once per portal login instead of once per call, so the unprompted creator can enumerate accounts in one statement. Deliberately profile-agnostic — the enumeration is over portal_accounts, and the correlated subquery contributes a per-account integer to it. No profile id and no profile data leave this statement; the profiles a resulting request appears on are chosen afterwards by syncRequestCarrierProfiles against the recipients' managed set (#5243)",
   },
-  // listPortalIdentities (#1739) HAD an entry here and no longer needs one, which is not
-  // the same as no longer being cross-profile. Its administrative "which patient goes
-  // where" view is cross-profile BY NATURE — its whole job is to show bindings across the
-  // household so a misfiled one is visible — and it carries identifiers and labels only
-  // (no health data), with the rendering surface filtering to the viewer's accessible set
-  // before display. What changed is the SCAN's reach, not the read: #1753 hoisted the
-  // statement's columns and FROM into `IDENTITY_COLS`/`IDENTITY_FROM` and interpolates
-  // them, so the literal this scan reads contains no owned table name and the statement
-  // is no longer scanned AT ALL. That same commit re-keyed this entry onto the hoisted
-  // FROM text, which lives in the const and never inside the `.prepare(` argument — so
-  // the entry was born unbound there and matched 0 live statements for its whole life
-  // (#5315). Re-keying could not save it: there is no live text left to key on.
+  // listPortalIdentities (#1739) exempted the deliberately cross-profile "which patient
+  // goes where" admin view. Unbound by #1753, which hoisted its columns and FROM into
+  // IDENTITY_COLS/IDENTITY_FROM and keyed the entry on text that only ever lives in the
+  // const: the literal names no owned table, so the statement is not scanned at all and
+  // there is nothing left to re-key on (#5315).
   {
     file: "lib/portals.ts",
     includes:
@@ -335,11 +328,10 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     includes: "UPDATE activities SET date = ?",
     why: "upsertActivities: the id comes from a profile-scoped find() just above",
   },
-  // Two entries left this list without leaving a gap, and both are recorded rather than
-  // silently dropped (#5315): `lib/saved-clinical-result-kind.ts`'s sqlite_master read
-  // went with its MODULE, deleted in #2882, and `lib/queries/clinical.ts`'s getConditions
-  // stopped composing a `${where.join(…)}` in #2681 — it is now two hoisted statements
-  // that each open with a literal `WHERE profile_id = ?`, so the scan clears it unaided.
+  // Two more entries left this list (#5315): `lib/saved-clinical-result-kind.ts`'s
+  // sqlite_master read exempted a frozen-migration DDL probe and went with its MODULE in
+  // #2882; `lib/queries/clinical.ts`'s getConditions exempted a `${where.join(…)}` that
+  // #2681 split into two literals each opening `WHERE profile_id = ?`.
   //
   // queries.ts statements whose profile_id lives inside an interpolated fragment
   // (`${clause}` / `${where.join(...)}` always start with `profile_id = ?`; the
