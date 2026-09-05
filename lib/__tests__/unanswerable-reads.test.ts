@@ -12,18 +12,20 @@ import { makeTmpDir } from "./tmp-dir";
 // answer. These pins hold the three sites this issue names.
 //
 // WHY THE SUPPRESSION SHAPE ITSELF IS NOT SCANNED, and this is the measured
-// argument rather than an opinion. `scripts/orchestrator-checkin.sh` has nine
-// `2>/dev/null || <fallback>` sites and they are syntactically identical. Eight
-// are honest, because the fallback IS the answer: MISSING for an absent boot or
-// session file, an empty string for a detached HEAD or an unreadable mtime,
-// `true` for an empty reflog or roster, "UNWRITTEN — run queue-snapshot.mjs"
-// for a queue nobody has taken. One was a guess — a hard-coded checkout path —
-// and it is fixed below. A pattern gate on the shape would therefore fire on
-// eight correct lines to catch one wrong one, and a gate at that ratio is
-// routed around or deleted within a week, taking the real check with it. The
-// distinguishing question is whether the fallback is an answer or a guess, and
-// that is a question about MEANING. So the rule is written down instead, in
-// docs/orchestration/environment.md, and enforced by the reviews that read it.
+// argument rather than an opinion. `scripts/orchestrator-checkin.sh` carried
+// NINE `2>/dev/null || <fallback>` sites before this change, syntactically
+// identical to each other. Eight were honest, because the fallback IS the
+// answer: MISSING for an absent boot or session file, an empty string for a
+// detached HEAD or an unreadable mtime, `true` for an empty reflog or roster,
+// "UNWRITTEN — run queue-snapshot.mjs" for a queue nobody has taken. ONE was a
+// guess — a hard-coded checkout path — and it is fixed below. A pattern gate on
+// the shape would therefore fire on eight correct lines to catch one wrong one,
+// and a gate at that ratio is routed around or deleted within a week, taking
+// the real check with it. The distinguishing question is whether the fallback
+// is an answer or a guess, and that is a question about MEANING. So the rule is
+// written down instead, in docs/orchestration/environment.md, where the
+// reviews that enforce it already look. (The two sites this change adds read
+// empty as unknown, and their reader prints UNCOMPARED.)
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const read = (rel: string) => readFileSync(path.join(REPO, rel), "utf8");
@@ -48,7 +50,11 @@ describe("the PM digest's state dir", () => {
       {
         cwd: REPO,
         encoding: "utf8",
-        env: { ...process.env, SCRATCH: "", PATH: `${stub}:${process.env.PATH}` },
+        env: {
+          ...process.env,
+          SCRATCH: "",
+          PATH: `${stub}:${process.env.PATH}`,
+        },
       }
     );
     expect(run.status).toBe(1);
@@ -81,7 +87,9 @@ describe("the check-in's stale-tooling verdict", () => {
     // The tip is captured from OUR fetch, not re-read later: sibling worktrees
     // share one .git, so FETCH_HEAD is not ours to rely on by the time the
     // environment section runs.
-    expect(checkin).toContain('MAIN_TIP=$(git -C "$REPO" rev-parse origin/main');
+    expect(checkin).toContain(
+      'MAIN_TIP=$(git -C "$REPO" rev-parse origin/main'
+    );
   });
 
   it("prints the scripts/ drift, and never a half-answer", () => {
@@ -109,15 +117,20 @@ describe("the check-in's stale-tooling verdict", () => {
 describe("the unknown vocabulary", () => {
   it("is written down where the runbook keeps environment rules", () => {
     expect(environment).toContain("A helper that cannot answer says so");
-    expect(environment).toContain("the ledger spelt its refusal that way until");
+    expect(environment).toContain(
+      "the ledger spelt its refusal that way until"
+    );
     expect(environment).toContain("`tooling:` line reports it every wake");
   });
 
   // `?` was the ledger's word for "no ledger, go look" and #5252 retired it for
-  // UNMEASURED. It stays retired: a bare `?` in a report reads as a value, and
-  // the four `?` renderings left in scripts/ are absent table cells in tools no
-  // orchestrator reads for a verdict (dependabot-eval-brief, gitleaks-explain,
-  // profile-dashboard, restore). The two recorders may not reintroduce it.
+  // UNMEASURED — in the CLI's own header too, so nothing owns the token now. It
+  // stays retired here, where a bare `?` would read as a measured value. The
+  // four `?` renderings left under scripts/ were each read: they are ONE ABSENT
+  // FIELD inside a wider line — an unparsed version in dependabot-eval-brief, a
+  // ruleless gitleaks finding, a caller-less statement in profile-dashboard, an
+  // unreadable snapshot version in restore, whose decision is taken on `null`
+  // and not on the token. None is a verdict, so none is renamed.
   it("keeps a bare `?` out of both recorders", () => {
     for (const source of [checkin, digest]) {
       expect(source).not.toMatch(/echo\s+["']?\?["']?\s*(?:$|[;)|&])/m);
