@@ -91,6 +91,49 @@ describe("the practice kind's stale window (#5142 AC 3)", () => {
     expect(stalePracticeSessions(pid, new Date())).toEqual([]);
   });
 
+  // AND THAT HOLDS FOR A USUAL LONGER THAN THE STALE BOUND, which is the case the
+  // first draft of this feature got wrong (#5249 falsifying pass, F1).
+  //
+  // `getPracticeUsualDuration` is the UNCAPPED modal duration of the profile's own
+  // history, and `episodeState` reads `finished` only once the clock passes the
+  // expected end — so a 120-minute usual left the row stale-AND-historied for the
+  // thirty minutes between the bound and its own end. The nudge went out quoting
+  // "Running for 1h 30m" at someone still in their practice, offering Finish and
+  // Discard, and Discard DELETES the row. At a 91-minute usual the answer window was
+  // one minute, after which the sweep completed the row and Finish answered
+  // "not-live".
+  //
+  // The body of that PR claimed the nudge "only ever fires on a row with NO history".
+  // It was a claim about the feature that nothing enforced; this is the enforcement.
+  it("never asks about a practice whose usual runs past the stale bound", async () => {
+    const pid = newProfile("still-going-long-usual");
+    seedLoginTelegram(pid, "9003");
+    for (const date of ["2026-09-02", "2026-09-03"])
+      logPracticeSession(pid, "Yin Yoga", date, "page", { durationMin: 120 });
+    vi.setSystemTime(START);
+    expect(startLivePracticeSession(pid, "Yin Yoga", "page").kind).toBe(
+      "started"
+    );
+    sendMessageRaw.mockClear();
+
+    // Past the stale bound and well before its own end: the window the nudge used to
+    // speak in.
+    at(90);
+    expect(stillGoingEpisodes(pid, new Date())).toEqual([]);
+    expect((await runStillGoingSuggest(pid, "Ada")).failed).toBe(false);
+    expect(sendMessageRaw).toHaveBeenCalledTimes(0);
+
+    // One minute before its own end, still silent.
+    at(119);
+    expect(stillGoingEpisodes(pid, new Date())).toEqual([]);
+
+    // And past it the row completes itself, which is the path that was always right
+    // for a practice that knows its own length.
+    at(121);
+    expect(closeAbandonedPracticeSessions(pid)).toBe(1);
+    expect(getPracticeSessions(pid, "Yin Yoga")[0]).toMatchObject({ live: 0 });
+  });
+
   // A ROW THAT KNOWS ITS OWN END NEVER REACHES THE NUDGE. Two logged sessions make a
   // usual duration, Start stamps it, and the episode is FINISHED at start + that
   // duration — read before any bound (#5091).
@@ -145,6 +188,60 @@ describe("the practice kind's stale window (#5142 AC 3)", () => {
     at(200);
     await runStillGoingSuggest(pid, "Ada");
     expect(sendMessageRaw).toHaveBeenCalledTimes(1);
+  });
+
+  // THE WORKOUT KIND'S SEND PATH, which had no test of its own before this family
+  // existed (#5249 falsifying pass, F2). Only the practice kind exercised
+  // `runStillGoingSuggest`, so disabling the one-shot check left the entire workout
+  // send path green — the consolidation is the moment that is cheapest to close.
+  it("asks once about a quiet workout draft and never again", async () => {
+    const pid = newProfile("still-going-workout");
+    seedLoginTelegram(pid, "9004");
+    vi.setSystemTime(START);
+    const id = Number(
+      db
+        .prepare(
+          `INSERT INTO activities (profile_id, date, type, title, start_time, updated_at)
+           VALUES (?, ?, 'strength', 'Session', '09:00', ?)`
+        )
+        .run(
+          pid,
+          START.toISOString().slice(0, 10),
+          START.toISOString().slice(0, 19).replace("T", " ")
+        ).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps)
+       VALUES (?, 'Back Squat', 1, 60, 5)`
+    ).run(id);
+    sendMessageRaw.mockClear();
+
+    // Inside the workout kind's own stale bound: nothing yet.
+    at(EPISODE_BOUNDS.workout.staleMin - 1);
+    await runStillGoingSuggest(pid, "Ada");
+    expect(sendMessageRaw).toHaveBeenCalledTimes(0);
+
+    at(EPISODE_BOUNDS.workout.staleMin + 1);
+    await runStillGoingSuggest(pid, "Ada");
+    expect(sendMessageRaw).toHaveBeenCalledTimes(1);
+    const [, sent] = sendMessageRaw.mock.calls[0];
+    expect(sent.title).toContain("Still working out?");
+
+    // Still inside its abandon bound, and still asked only once.
+    at(EPISODE_BOUNDS.workout.abandonMin - 1);
+    await runStillGoingSuggest(pid, "Ada");
+    expect(sendMessageRaw).toHaveBeenCalledTimes(1);
+  });
+
+  // THE WORKOUT KIND KEEPS ITS PRE-#5142 MARKER KEY, and this is what pins it. The
+  // reason it keeps it is stated in the code — a renamed key reads as "never nudged"
+  // on every draft already carrying one, and asks the same question twice — but
+  // renaming it CONSISTENTLY across all three declaration sites, which is exactly what
+  // a tidying refactor produces, left both tiers entirely green. The safety argument
+  // had a comment and no observer.
+  it("keeps the workout kind's pre-#5142 marker key", () => {
+    expect(stillGoingMarkerKey("workout", 1)).toBe("notify_stale_workout_1");
+    expect(stillGoingMarkerKey("practice", 1)).toBe("notify_stale_practice_1");
   });
 
   // THE SUGGEST NEVER ENDS ANYTHING (#560). Asking is not closing: after the send the

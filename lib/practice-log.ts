@@ -413,6 +413,11 @@ interface LivePracticeEpisode {
   practice: string;
   date: string;
   state: EpisodeState;
+  // Whether the row stamped its own expected end at Start (#5091) — a usual duration
+  // it derived from this practice's history. `episodeState` reads that end before any
+  // bound, so a row that has one is `finished` at it; between a quiet bound and that
+  // instant it is `stale`, and THAT is the window the nudge must not speak in.
+  knowsItsEnd: boolean;
 }
 
 function liveEpisodes(
@@ -441,17 +446,16 @@ function liveEpisodes(
       durationMin: row.duration_min,
       derivedWindow: row.derived_window === 1,
     });
+    const expectedEnd =
+      derived == null || startedAt == null
+        ? null
+        : startedAt + derived * 60_000;
     return {
       id: row.id,
       practice: row.practice,
       date: row.date,
-      state: practiceEpisodeState(
-        startedAt,
-        derived == null || startedAt == null
-          ? null
-          : startedAt + derived * 60_000,
-        at
-      ),
+      state: practiceEpisodeState(startedAt, expectedEnd, at),
+      knowsItsEnd: expectedEnd != null,
     };
   });
 }
@@ -488,6 +492,21 @@ export function stalePracticeSessions(
   const out: StalePracticeSession[] = [];
   for (const episode of liveEpisodes(profileId, tz, at)) {
     if (episode.state.kind !== "stale") continue;
+    // A ROW THAT KNOWS ITS OWN END IS NEVER ASKED (#5249 falsifying pass, F1). The
+    // nudge means "you probably forgot to end this", and a row carrying a usual
+    // duration has not been forgotten by the app: it completes itself at start plus
+    // that duration (#5091), and the abandon bound still clears it if anything goes
+    // wrong. Asking anyway is a false positive on a path whose other button DELETES
+    // the row.
+    //
+    // This was claimed as a property of the feature and was not enforced, which is the
+    // whole finding. `getPracticeUsualDuration` is the UNCAPPED modal duration of the
+    // profile's own history, so a practice whose usual runs past the stale bound sat
+    // stale-and-historied for the whole span between them: a 120-minute usual got
+    // "Running for 1h 30m" thirty minutes BEFORE its own expected end, at someone
+    // still in it, and a 91-minute usual left one minute to answer before the sweep
+    // completed the row and Finish began answering "not-live".
+    if (episode.knowsItsEnd) continue;
     out.push({
       id: episode.id,
       practice: episode.practice,

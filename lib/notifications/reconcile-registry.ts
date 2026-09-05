@@ -702,7 +702,7 @@ export const KIND_PROSE: readonly KindProseEntry[] = [
   {
     kind: "workout-stale",
     prose: null,
-    why: "Its claim — this draft is still running — is the `workout-draft` family's token, reconciled against getWorkoutPresence.",
+    why: "Its claim — this draft is still running — is the `still-going` family's token, reconciled against getWorkoutPresence.",
   },
   {
     kind: "ease-back",

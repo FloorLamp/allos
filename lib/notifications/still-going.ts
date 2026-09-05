@@ -16,7 +16,7 @@
 // bounded arrival rather than a quiet timer (#5001); neither is a button a person
 // can press to say "yes, still going", which is what this family is.
 
-import { today } from "../db";
+import { dateStrInTz } from "../date";
 import { now as clockNow } from "../clock";
 import { getWorkoutPresence } from "../queries/presence";
 import { stalePracticeSessions } from "../practice-log";
@@ -24,6 +24,7 @@ import {
   getProfileSetting,
   setProfileSetting,
   getPublicUrl,
+  getTimezone,
 } from "../settings";
 import { formatMinutes } from "../duration";
 import { dispatch } from "./index";
@@ -167,7 +168,12 @@ export async function runStillGoingSuggest(
     const markerKey = stillGoingMarkerKey(episode.kind, episode.rowId);
     if (getProfileSetting(profileId, markerKey) != null) continue;
 
-    const date = today(profileId);
+    // The DATE THE NUDGE WAS SENT ON, resolved from this run's own instant rather than
+    // from the clock (#5249 review). It is invisible under the hourly tick, where the
+    // two are the same instant — but a caller that passes a `now` is stating which
+    // moment it means, and reading the clock instead would key the marker to a
+    // different day than the one the episode was judged against.
+    const date = dateStrInTz(getTimezone(profileId), now);
     const results = await dispatch(
       profileId,
       renderStillGoingMessage(episode, profileId, profileName, getPublicUrl())
