@@ -84,7 +84,14 @@ import { specsNeedingIsolation } from "@/vitest.isolation";
 // nothing about the memo. Separate from the manifest spec for entry 32's reason: it
 // creates a profile per case, and seeding profiles beside a query budget pinned at one
 // instant risks moving the number that budget exists to measure.
-const DB_ISOLATED = 37;
+// 38 since #5030: require-profile-write-access executes the SHIPPED
+// requireProfileWriteAccess, which is exactly the module lib/__action_tests__/setup.ts
+// stubs for every other file in both db-tier projects — the case this file's own
+// message names. It restores the real @/lib/auth for itself and substitutes only
+// next/headers' cookies() and next/navigation's redirect(), so the gate has a session
+// to resolve and a refusal that can be observed. The tier cannot install either
+// shared: a tier-wide real auth would undo the stub every action spec relies on.
+const DB_ISOLATED = 38;
 // 7 since #3065: Longevity's server-component FitnessSection is tested directly with
 // controlled session, age, and assembler boundaries. It must prove that minor and unknown
 // profiles return null before assembling adult population data; sharing those module stubs

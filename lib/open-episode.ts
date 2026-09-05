@@ -15,6 +15,29 @@
 
 export type EpisodeKind = "practice" | "workout" | "fast";
 
+// TWO MORE THINGS IN THIS APP ARE OPEN EPISODES AND NEITHER IS A KIND HERE. Naming
+// them is the point: the next reader will find them and should know they were seen.
+//
+//   * THE NIGHT THE APP IS WAITING FOR (#2097, #5001). It is an episode by every
+//     description above — a thing that started, may never arrive, and needs a bound —
+//     but its bound is not a quiet timer. It is an ARRIVAL wait: a measured median lag
+//     for the source that will deliver it, a default that only bounds, and a sample
+//     gate under which nothing is promised. `lib/arrival-wait.ts` is that model, and
+//     forcing it into `staleMin` would throw away the measurement, which is the only
+//     interesting thing about it.
+//
+//   * THE STALE ILLNESS EPISODE (#859, `lib/stale-episode.ts`). Same question, same
+//     suggest-only discipline, and it even has the same shape of bound —
+//     `DEFAULT_STALE_QUIET_DAYS = 3` is a quiet threshold like every `staleMin` here.
+//     It is not wired for two reasons. Its quiet is counted in profile-local DAYS from
+//     a last-activity DATE, not in minutes from an instant, because a caregiver logging
+//     a temperature at 23:55 and again at 00:05 has logged on two days and not ten
+//     minutes apart; and its close is a BACKDATED end at the last activity day that
+//     only the caregiver may accept, so it has no `abandonMin` at all — the app never
+//     gives up holding an illness open. Wiring it means deciding whether this model
+//     speaks days as well as minutes, which is a change to the model rather than a
+//     consumer of it.
+
 export interface OpenEpisode {
   kind: EpisodeKind;
 
