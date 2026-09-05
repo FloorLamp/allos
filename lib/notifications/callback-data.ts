@@ -18,6 +18,7 @@ import { isRealIsoDate } from "../date";
 import { isDoseDateAccepted } from "../dose-log-window";
 import { foodGroupName } from "../food-groups";
 import { INTAKE_SEND_SLOTS, type IntakeSendSlot } from "./intake-format";
+import { MED_STOP_PREFIX } from "./callback-tokens";
 import { FOOD_NUDGE_WINDOWS, type FoodNudgeWindow } from "./food-format";
 import {
   ORIGIN_MARK_PATTERN,
@@ -153,9 +154,6 @@ export function parseAllCallback(data: unknown): AllCallback | null {
 // (20260827-notify-offers-autoincrement): a reissued row id silently re-points a button
 // still sitting in a chat at a bundle it never named.
 
-// Telegram's hard cap on a button's callback_data, in bytes.
-export const TELEGRAM_CALLBACK_DATA_MAX_BYTES = 64;
-
 // The prefixes that spell an offer token. Not a registry of behaviour — the dispatcher
 // still routes each to its own handler, and each keeps its own reconcile family; only
 // the GRAMMAR is shared, the way `take:` and `skip:` share theirs.
@@ -192,19 +190,6 @@ export function parseOfferCallback(
   if (!Number.isInteger(profileId) || profileId <= 0) return null;
   if (!Number.isInteger(offerId) || offerId <= 0) return null;
   return { profileId, offerId };
-}
-
-// Does a token fit Telegram's callback budget? The EXACT encoded byte length, not a
-// character count and not an estimate — a multi-byte character in a future token shape
-// would pass a `.length` check and be rejected on the wire.
-//
-// Compose-time callers DROP a button whose token does not fit; they never truncate it.
-// An offer may never name less than the tap would write (#2460), and #3098's per-stack
-// one-tap already ships that rule (lib/notifications/intake-format.ts).
-export function callbackDataFits(data: string): boolean {
-  return (
-    new TextEncoder().encode(data).length <= TELEGRAM_CALLBACK_DATA_MAX_BYTES
-  );
 }
 
 // Harvest the dose-session footprint out of a (possibly merged, #1154) reminder
@@ -1701,11 +1686,8 @@ export function parseDemoteCallback(data: unknown): DemoteCallback | null {
 
 // ---- The unconfirmed-medication Stop (issue #2574) --------------------------
 
-// The token prefix for the Stop button riding a dose reminder. Its own namespace, and
-// deliberately not a variant of `demote:` — the two buttons perform different writes
-// through different cores, and one token that could mean either is one mis-parse away
-// from stopping a medication somebody asked to demote.
-export const MED_STOP_PREFIX = "medstop";
+// The prefix is declared in the token leaf (#2961 step 1), beside the byte budget the
+// renderer needs; the PARSER stays here with every other parser.
 
 export interface MedStopCallback {
   profileId: number;
