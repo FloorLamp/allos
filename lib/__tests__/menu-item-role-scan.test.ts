@@ -256,6 +256,13 @@ describe('every command in a role="menu" panel is an item of it (#5181)', () => 
       [1],
     ],
     [
+      // And a quote that never closes at all is not a string either — an
+      // opening apostrophe in copy used to take the rest of the file.
+      "an apostrophe that opens copy and never closes",
+      `<div role="menu">'til later<button type="button">Edit</button></div>`,
+      [1],
+    ],
+    [
       "a regex literal above the panel",
       `const q = /['"]/;\n<div role="menu"><button type="button">Edit</button></div>`,
       [2],
