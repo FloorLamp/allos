@@ -55,10 +55,28 @@ export interface EpisodeBounds {
 export const EPISODE_BOUNDS = {
   // Six hours is longer than any practice this app is a logger for — a sauna, a
   // meditation, a mobility block — and short enough that a Start tapped in the
-  // evening is abandoned before the next morning's page load (#3143). Practice has
-  // no nudge, so it reaches both bounds at once: the moment it stops reading as in
-  // progress is the moment the sweep clears it.
-  practice: { staleMin: 6 * 60, abandonMin: 6 * 60 },
+  // evening is abandoned before the next morning's page load (#3143). That is the
+  // ABANDON bound and it has not moved.
+  //
+  // NINETY MINUTES IS THE NUDGE, and it is a real window now (#5142 AC 3). Practice
+  // used to reach both bounds at once — the moment it stopped reading as in progress
+  // was the moment the sweep cleared it — because it had no "Still going?" to send
+  // and a suggest nobody sends needs no window to be sent in. Now that it has one,
+  // the two numbers answer two questions: ninety minutes of silence is past every
+  // practice this app is a logger for, so the question does not interrupt anyone
+  // mid-sauna; and it leaves four and a half hours in which the person can answer
+  // before the sweep clears the row, so the nudge never races its own deadline.
+  //
+  // The shorter half of the choice is the moment rule this repo already keeps for the
+  // practice recap (#5127): a message about a sauna three hours ago is a bulletin,
+  // not a question. Half the abandon bound would have been the tidier ratio and the
+  // worse message.
+  //
+  // It only ever fires on a row with NO history: a practice with a usual duration
+  // stamps its own expected end at Start and completes itself there (#5091), so it
+  // is finished long before any bound is reached. This is the first sauna, not the
+  // hundredth — which is also why the number cannot be derived from the usual.
+  practice: { staleMin: 90, abandonMin: 6 * 60 },
   // A genuine live session bumps its auto-save every set, so 45 minutes of silence
   // means it is very likely done (#560). The draft is held for 90 so that `stale` is
   // an observable sub-state the hourly tick can fire inside (#921).

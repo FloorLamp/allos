@@ -1360,16 +1360,20 @@ HIGH confidence only, and `undecidedPairs` only. A `medium` pair is a proximity
 guess, and a recorded `kept-both` is the user stating the pair is two real
 sessions — the second must then be announced. Two workouts on one day whose clock
 windows do not overlap are not a duplicate at any confidence and both still speak.
-Both halves only ever REDUCE contact. **`runStaleWorkoutSuggest`** sends ONE gentle "Still
-working out? Finish or discard" note when an `active` session's draft has gone
-quiet past `STALE_MIN` (45 min) — suggest-only (#560), never auto-ends, one-shot
-per activity id (`notify_stale_workout_<activityId>`), waking-gated (a soft
-coaching suggest, not a safety signal). **Actionable finish (#1205):** the nudge
-now carries a **🏁 Finish workout** and **🗑️ Discard** inline button alongside
-the "Open workout" deep-link (the two-way principle — ids only:
-`wofinish:<profileId>:<activityId>` / `wodiscard:<profileId>:<activityId>`; the
-callback resolves activity→profile against the chat like every other family-chat
-button). Finish stamps `end_time = now` through the SHARED, auth-blind
+Both halves only ever REDUCE contact. **`runStillGoingSuggest`**
+(`lib/notifications/still-going.ts`) sends ONE gentle "Finish or discard" note for
+each OPEN EPISODE that has gone quiet past its own kind's stale bound in
+`EPISODE_BOUNDS` (`lib/open-episode.ts`) — 45 min for a workout draft, 90 min for a
+live practice (#5142 AC 3). Suggest-only (#560), never auto-ends, one-shot per row id
+(`notify_stale_workout_<activityId>` / `notify_stale_practice_<practiceLogId>`),
+waking-gated (a soft coaching suggest, not a safety signal). **Actionable finish
+(#1205):** the nudge carries a **🏁 Finish** and **🗑️ Discard** inline button
+alongside the deep-link (the two-way principle — ids only:
+`sgfinish:<kind>:<profileId>:<rowId>` / `sgdiscard:<kind>:<profileId>:<rowId>`; the
+workout kind's pre-#5142 `wofinish:`/`wodiscard:` tokens still parse, because a
+message sent before the change is sitting in a chat with them on it; the callback
+resolves row→profile against the chat like every other family-chat button, and each
+kind lands in its own domain's cores). Finish stamps `end_time = now` through the SHARED, auth-blind
 `finishWorkoutSession` core (`lib/workout-finish.ts`, the same core the
 request-path `finishWorkout` action uses) and **transforms this message in
 place** into the #924 post-workout-dose summary — the SAME

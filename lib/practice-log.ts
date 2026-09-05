@@ -399,41 +399,112 @@ function practiceEpisodeState(
 // idempotent. The day chart applies the same completion bound as a READ
 // (`lib/intraday.ts`), because a chart rendered before any gather ran would otherwise
 // keep growing a block past an end the row already knew.
-export function closeAbandonedPracticeSessions(profileId: number): number {
-  const tz = getTimezone(profileId);
-  const at = now();
-  return writeTx(() => {
-    const rows = db
-      .prepare(
-        `SELECT id, date, start_time, duration_min, derived_window
-           FROM practice_logs
-          WHERE profile_id = ? AND live = 1`
-      )
-      .all(profileId) as {
-      id: number;
-      date: string;
-      start_time: string | null;
-      duration_min: number | null;
-      derived_window: number;
-    }[];
-    let closed = 0;
-    for (const row of rows) {
-      const started = eventInstant("practice_logs", row, tz);
-      const startedAt = started.known ? Date.parse(started.at) : null;
-      const derived = derivedSessionMinutes({
-        durationMin: row.duration_min,
-        derivedWindow: row.derived_window === 1,
-      });
-      // THE ROW READ AS ONE OPEN EPISODE (#5142). Its expected end is the one it
-      // stamped at Start (#5091); `episodeState` reads that BEFORE any bound, so a
-      // row that knew its own end is finished at that end rather than swept.
-      const state = practiceEpisodeState(
+// EVERY LIVE ROW THIS PROFILE HOLDS, READ AS AN OPEN EPISODE (#5142). One derivation
+// for both callers: the sweep, which acts on `finished` and `abandoned`, and the
+// "Still going?" nudge, which acts on `stale`. Two readers deriving the same episode
+// from the same columns is exactly the drift this model exists to stop — a stale bound
+// the nudge honoured and the sweep did not would send a question about a row that was
+// already gone.
+//
+// Its expected end is the one the row stamped at Start (#5091); `episodeState` reads
+// that BEFORE any bound, so a row that knew its own end is finished at that end.
+interface LivePracticeEpisode {
+  id: number;
+  practice: string;
+  date: string;
+  state: EpisodeState;
+}
+
+function liveEpisodes(
+  profileId: number,
+  tz: string,
+  at: Date
+): LivePracticeEpisode[] {
+  const rows = db
+    .prepare(
+      `SELECT id, practice, date, start_time, duration_min, derived_window
+         FROM practice_logs
+        WHERE profile_id = ? AND live = 1`
+    )
+    .all(profileId) as {
+    id: number;
+    practice: string;
+    date: string;
+    start_time: string | null;
+    duration_min: number | null;
+    derived_window: number;
+  }[];
+  return rows.map((row) => {
+    const started = eventInstant("practice_logs", row, tz);
+    const startedAt = started.known ? Date.parse(started.at) : null;
+    const derived = derivedSessionMinutes({
+      durationMin: row.duration_min,
+      derivedWindow: row.derived_window === 1,
+    });
+    return {
+      id: row.id,
+      practice: row.practice,
+      date: row.date,
+      state: practiceEpisodeState(
         startedAt,
         derived == null || startedAt == null
           ? null
           : startedAt + derived * 60_000,
         at
-      );
+      ),
+    };
+  });
+}
+
+// The live rows that have gone quiet past the practice kind's stale bound and are
+// still open — what the "Still going?" nudge asks about. A READ: it never sweeps, so
+// a caller that also wants the row closed asks for that explicitly.
+export interface StalePracticeSession {
+  id: number;
+  practice: string;
+  date: string;
+  quietMin: number;
+}
+
+// The live rows still READING as open — running or stale — as the reconcile sweep
+// asks it (#5142). A row past the abandon bound is not open even while `live = 1`
+// still stands on it, because the next gather will clear it; the buttons on a chat
+// message about it are already dead.
+export function openPracticeSessionIds(
+  profileId: number,
+  at: Date = now()
+): number[] {
+  const tz = getTimezone(profileId);
+  return liveEpisodes(profileId, tz, at)
+    .filter((episode) => episodeIsOpen(episode.state))
+    .map((episode) => episode.id);
+}
+
+export function stalePracticeSessions(
+  profileId: number,
+  at: Date = now()
+): StalePracticeSession[] {
+  const tz = getTimezone(profileId);
+  const out: StalePracticeSession[] = [];
+  for (const episode of liveEpisodes(profileId, tz, at)) {
+    if (episode.state.kind !== "stale") continue;
+    out.push({
+      id: episode.id,
+      practice: episode.practice,
+      date: episode.date,
+      quietMin: Math.round(episode.state.quietMin),
+    });
+  }
+  return out;
+}
+
+export function closeAbandonedPracticeSessions(profileId: number): number {
+  const tz = getTimezone(profileId);
+  const at = now();
+  return writeTx(() => {
+    let closed = 0;
+    for (const row of liveEpisodes(profileId, tz, at)) {
+      const state = row.state;
       // FINISHED — the row keeps the end it already had. A Start at 06:28 on a
       // 15-minute practice ended at 06:43 whether or not a gather ran in time to
       // write it; letting abandonment reach it first would clear `live` and discard

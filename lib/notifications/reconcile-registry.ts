@@ -37,7 +37,7 @@ export type ReconcileFamily =
   | "refill"
   | "symptom"
   | "mood"
-  | "workout-draft"
+  | "still-going"
   | "practice";
 
 // A token that decorates MORE THAN ONE message family and takes the family of
@@ -145,9 +145,13 @@ const PREFIX_TABLE = [
   { prefix: "mood", family: "mood" },
   { prefix: "moodkeep", family: "mood" },
 
-  // Stale-workout nudge (#1205): the draft finished or discarded in the app.
-  { prefix: "wofinish", family: "workout-draft" },
-  { prefix: "wodiscard", family: "workout-draft" },
+  // "Still going?" nudge (#1205, one family at #5142): the episode finished or
+  // discarded in the app. The `wo*` pair is the workout kind's pre-#5142 token shape,
+  // still minted in no message but still sitting in chats that got one.
+  { prefix: "sgfinish", family: "still-going" },
+  { prefix: "sgdiscard", family: "still-going" },
+  { prefix: "wofinish", family: "still-going" },
+  { prefix: "wodiscard", family: "still-going" },
 
   // Practice pace nudge (#1259): a session logged in the app clears the shortfall.
   { prefix: "pdone", family: "practice" },
@@ -369,9 +373,9 @@ export const RECONCILE_DATE_GUARD: Record<
     guard: "exact-day",
     why: "mood:<profileId>:<valence>:<date> names ONE day's check-in, and the token's date is a guess at a user-owned fact in exactly food's sense: a next-morning tap on last night's face picker would answer yesterday's question. handleMoodTap writes the token's date without consulting the guard, so the sweep is deliberately the STRICTER of the two here — the safe direction, since reconciliation may only ever REDUCE what a chat claims. Should that handler ever gain a date check it must be this one, not a third.",
   },
-  "workout-draft": {
+  "still-going": {
     guard: "none",
-    why: "wofinish/wodiscard carry an activity id and no date, because a draft is not a DAY's claim — it is the live session, and getWorkoutPresence answers whether it still is. A draft running across midnight must keep its finish and discard buttons; date is not an axis this object has.",
+    why: "sgfinish/sgdiscard carry a kind and a row id and no date, because an open episode is not a DAY's claim — it is the thing still running, and its own domain answers whether it still is. An episode running across midnight must keep its finish and discard buttons; date is not an axis this object has.",
   },
   practice: {
     guard: "none",
