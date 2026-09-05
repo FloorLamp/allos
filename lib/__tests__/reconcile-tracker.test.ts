@@ -425,6 +425,7 @@ describe("gatherEvidence", () => {
         ],
         mergedPrs: [],
         issueStates: new Map([[900, "closed"]]),
+        prsTruncated: false,
       },
       index,
       watermark
@@ -461,6 +462,7 @@ describe("gatherEvidence", () => {
         ],
         mergedPrs: [],
         issueStates: new Map(),
+        prsTruncated: false,
       },
       index,
       watermark
@@ -484,6 +486,7 @@ describe("gatherEvidence", () => {
         ],
         mergedPrs: [],
         issueStates: new Map(),
+        prsTruncated: false,
       },
       index,
       watermark
@@ -517,6 +520,7 @@ describe("gatherEvidence", () => {
         ],
         mergedPrs: [],
         issueStates: new Map(),
+        prsTruncated: false,
       },
       twice,
       watermark
@@ -542,6 +546,7 @@ describe("gatherEvidence", () => {
         ],
         mergedPrs: [],
         issueStates: new Map(),
+        prsTruncated: false,
       },
       index,
       watermark
@@ -564,6 +569,7 @@ describe("gatherEvidence", () => {
         ],
         mergedPrs: [],
         issueStates: new Map(),
+        prsTruncated: false,
       },
       index,
       watermark
@@ -580,6 +586,7 @@ describe("gatherEvidence", () => {
         issues: [issue({ number: 3, body: "Depends-on: #4242" })],
         mergedPrs: [],
         issueStates: new Map(),
+        prsTruncated: false,
       },
       index,
       watermark
@@ -601,6 +608,7 @@ describe("gatherEvidence", () => {
           },
         ],
         issueStates: new Map([[794, "open"]]),
+        prsTruncated: false,
       },
       index,
       watermark
@@ -624,6 +632,7 @@ describe("gatherEvidence", () => {
         ],
         mergedPrs: [],
         issueStates: new Map(),
+        prsTruncated: false,
       },
       index,
       watermark
@@ -660,6 +669,7 @@ describe("gatherEvidence", () => {
         ],
         mergedPrs: [],
         issueStates: new Map(),
+        prsTruncated: false,
       },
       index,
       watermark
@@ -676,12 +686,18 @@ describe("gatherEvidence", () => {
         ],
         mergedPrs: [],
         issueStates: new Map(),
+        prsTruncated: false,
       },
       index,
       watermark
     );
     const blind = gatherEvidence(
-      { issues: [], mergedPrs: [], issueStates: new Map() },
+      {
+        issues: [],
+        mergedPrs: [],
+        issueStates: new Map(),
+        prsTruncated: false,
+      },
       index,
       watermark
     );
@@ -696,6 +712,55 @@ describe("gatherEvidence", () => {
     expect(renderReport(blind).indexOf("## What was examined")).toBeLessThan(
       renderReport(blind).indexOf("## Patch candidates")
     );
+  });
+
+  // The THIRD shape of deceptive success, and the only one whose denominator
+  // is HIGH. Measured on the live tracker 2026-09-05: with no watermark
+  // stamped the PR fetch asks for every closed PR, stops at its page cap after
+  // 1000 of this repo's 2544, and reports `merged PRs examined: 969` — a
+  // number that reads as a run resolving plenty. Every umbrella claim in the
+  // 1544 it never fetched went unchecked, silently.
+  const window = { previous: null, current: "2026-08-12T00:00:00Z" };
+  const prs = [{ number: 1, title: "Part of #900", body: "", mergedAt: "z" }];
+  it.each([
+    [true, "a truncated fetch says so, and says the count is a floor"],
+    [false, "an exhausted fetch adds nothing to the line"],
+  ])("prsTruncated=%s: %s", (truncated) => {
+    const report = renderReport(
+      gatherEvidence(
+        {
+          issues: [],
+          mergedPrs: prs,
+          issueStates: new Map([[900, "closed"]]),
+          prsTruncated: truncated,
+        },
+        index,
+        window
+      )
+    );
+    expect(report).toContain("merged PRs examined: 1");
+    expect(report.includes("TRUNCATED")).toBe(truncated);
+  });
+
+  it("never calls an unstamped window a first run, because it cannot know", () => {
+    // A missing lower bound has two causes — a genuine first run, and the
+    // stamp step skipped — and the run can distinguish neither. It has had
+    // several reconciliations and has never had a carrier issue, so the
+    // reassuring reading was also the wrong one.
+    const report = renderReport(
+      gatherEvidence(
+        {
+          issues: [],
+          mergedPrs: [],
+          issueStates: new Map(),
+          prsTruncated: false,
+        },
+        index,
+        window
+      )
+    );
+    expect(report).toContain("Window: (unstamped — no lower bound) →");
+    expect(report).not.toContain("first run");
   });
 });
 
@@ -815,6 +880,7 @@ describe("label hygiene (docs/orchestration/labels.md)", () => {
         issues: [issue({ number: 8, labels: ["P2", "parked", "training"] })],
         mergedPrs: [],
         issueStates: new Map(),
+        prsTruncated: false,
       },
       repo({ "lib/real.ts": "" }),
       { previous: null, current: "2026-08-15T00:00:00Z" }

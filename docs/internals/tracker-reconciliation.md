@@ -31,7 +31,13 @@ npm run reconcile                        # report to stdout
 npm run reconcile -- --json ev.json --out report.md
 npm run reconcile -- --issue 2603,2589   # one or two issues
 npm run reconcile:apply plan.json        # dry run; add --apply to write
+npm run reconcile:watermark              # read the stamp
+npm run reconcile:watermark -- stamp --evidence ev.json --apply
 ```
+
+Every step of the protocol has a name you can type. The stamp step did not
+until 2026-09-05, which is the likeliest reason it is the one step nothing has
+ever run — the carrier issue has never existed on this tracker.
 
 The run window starts at the previous run's watermark, stored in the tracker
 itself as the body of the issue titled "Reconcile watermark (machine state)" —
@@ -233,6 +239,25 @@ class becomes unreachable while `path citations parsed` stays high and
 sags into a clean report rather than an error. **Watch the testable-to-cited
 ratio, not just the totals**; today it is 46 of 103. A run where it approaches
 zero is not a tidy tracker, it is a detector that has quietly lost its grip.
+
+**Deceptive success, third shape: a denominator that is a page cap.** The two
+above fail toward a LOW number, which is at least the direction the reader is
+watching. This one fails HIGH. The gatherer pages every collection to a cap of
+ten pages of 100; the PR fetch runs unbounded when no watermark is stamped, and
+on 2026-09-05 it stopped after 1000 of the repo's 2544 closed PRs and reported
+`merged PRs examined: 969`. Nothing had examined the 1544 behind the cap, and
+969 is exactly the sort of number that ends an investigation rather than
+starting one. The fetch now says which of its two reasons it stopped for
+(`TrackerSnapshot.prsTruncated`, required so it cannot be omitted) and the
+examined block prints the count as a floor. **The open-issue fetch refuses
+instead** — a truncated PR list still produces a report worth reading, while an
+unswept issue produces no finding to be wrong about.
+
+The real repair is upstream of the report: **stamp the watermark**. A window
+with a lower bound holds a few dozen PRs and never approaches the cap. As of
+2026-09-05 the carrier issue `Reconcile watermark (machine state)` did not exist
+on the tracker, open or closed, so no run had ever advanced it and every run to
+date has swept from the beginning of the repo.
 
 ## Scheduling
 
