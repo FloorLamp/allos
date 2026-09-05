@@ -97,7 +97,13 @@ describe("branchGitArgs", () => {
   it("reads a branch's own commits, never main's", () => {
     const args = branchGitArgs("x");
     expect([args.localOwn, args.remoteOwn]).toEqual([
-      ["log", "--format=%B", "refs/heads/x", "--not", "refs/remotes/origin/main"],
+      [
+        "log",
+        "--format=%B",
+        "refs/heads/x",
+        "--not",
+        "refs/remotes/origin/main",
+      ],
       [
         "log",
         "--format=%B",

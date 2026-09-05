@@ -1755,8 +1755,7 @@ function ownCommitsReader(branch) {
       };
     if (messages) return { messages, ref };
   }
-  if (sawRef)
-    return { absent: "every commit on it is already in origin/main" };
+  if (sawRef) return { absent: "every commit on it is already in origin/main" };
   const onRemote = git(args.onRemote, { allowFail: true });
   if (onRemote === null)
     return { unknown: `\`git ls-remote origin refs/heads/${branch}\` failed` };
