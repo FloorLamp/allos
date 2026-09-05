@@ -221,7 +221,7 @@ test("the quick rows are the head of the ranking — nothing in the overflow out
   const more = page.getByTestId("food-more-groups");
   await hydratedClick(page, more.getByTestId("food-more-groups-summary"));
   const overflow = more.locator('li[data-testid^="food-group-"]');
-  await expect(overflow.first()).toBeVisible(); // first-ok: the disclosure's own rows, opened by this test
+  await expect(overflow.first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: the disclosure's own rows, opened by this test
   const overflowRanks = await ranksIn(overflow);
   expect(overflowRanks.length).toBeGreaterThan(0);
   expect(Math.min(...overflowRanks)).toBeGreaterThan(Math.max(...quickRanks));
@@ -631,7 +631,7 @@ test("a protocol deep link pins its group, and the protein control still sits by
     const rows = quickLog
       .getByTestId("food-quick-rows")
       .locator('li[data-testid^="food-group-"]');
-    const firstRow = rows.first(); // first-ok: the pin LEADING the quick rows is the assertion, on this spec's own fixture profile
+    const firstRow = rows.first(); // eslint-disable-line no-restricted-properties -- first-ok: the pin LEADING the quick rows is the assertion, on this spec's own fixture profile
     await expect(firstRow).toHaveAttribute("data-prefilled", "true");
 
     // The control leads the rows it outranks — including the pin, which it now

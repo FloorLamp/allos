@@ -32,7 +32,7 @@ test("add-mode form clears the critical flag for the next item (issue #627)", as
 
   // The item lands (confirming the add succeeded and the form reset ran).
   await expect(
-    page.locator("div.card").filter({ hasText: CRITICAL_NAME }).first() // first-ok: the card for CRITICAL_NAME, a supplement THIS spec created (unique name)
+    page.locator("div.card").filter({ hasText: CRITICAL_NAME }).first() // eslint-disable-line no-restricted-properties -- first-ok: the card for CRITICAL_NAME, a supplement THIS spec created (unique name)
   ).toBeVisible();
 
   // ── Reopening gives the next item a clean form. ─────────────────────────────

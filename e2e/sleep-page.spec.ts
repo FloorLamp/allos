@@ -608,7 +608,7 @@ test.describe("Sleep page (#1066)", () => {
     await page.goto("/");
     // The shared SidebarContent renders <Nav> in BOTH the desktop sidebar and the
     // mobile drawer (#794), so the /sleep href appears in two <nav>s in the DOM.
-    const sleepNav = page.locator('nav a[href="/sleep"]').first(); // first-ok: shared responsive nav rendered in both viewports; either instance proves the gated leaf is present
+    const sleepNav = page.locator('nav a[href="/sleep"]').first(); // eslint-disable-line no-restricted-properties -- first-ok: shared responsive nav rendered in both viewports; either instance proves the gated leaf is present
     await expect(sleepNav).toBeVisible();
   });
 
@@ -723,9 +723,10 @@ test.describe("Sleep page (#1066)", () => {
       // A TOP-LEVEL row stands in for "the shell rendered" — #3079 moved Timeline
       // into the collapsed "Plan & review" group, where a shell-mounted check would
       // have started failing for a reason that has nothing to do with sleep.
+      // eslint-disable-next-line no-restricted-properties -- first-ok: shared responsive nav leaf rendered in both viewports; first instance confirms the shell mounted
       const shellRow = page
         .getByRole("link", { name: "Dashboard", exact: true })
-        .first(); // first-ok: shared responsive nav leaf rendered in both viewports; first instance confirms the shell mounted
+        .first();
       await expect(shellRow).toBeVisible();
       // …and the Sleep leaf is absent for this sleep-less profile (both navs).
       await expect(page.locator('nav a[href="/sleep"]')).toHaveCount(0);
@@ -783,7 +784,7 @@ test.describe("Sleep page (#1066)", () => {
     // rectangle in the DOM — hovering that one opens a "No data" tooltip with no
     // hours in it, and this test is about the ROUNDING of a real value.
     const stageBars = stagesCard.locator(".recharts-bar-rectangle");
-    await stageBars.first().waitFor({ state: "attached", timeout: 15_000 }); // first-ok: waiting for the layer to exist at all, never selecting the subject
+    await stageBars.first().waitFor({ state: "attached", timeout: 15_000 }); // eslint-disable-line no-restricted-properties -- first-ok: waiting for the layer to exist at all, never selecting the subject
     // Poll rather than measure once: recharts grows its bars from zero height, so
     // a single measurement at attach time reads every bar as empty.
     let dataBarIndex = -1;
@@ -800,6 +801,7 @@ test.describe("Sleep page (#1066)", () => {
       .toBeGreaterThanOrEqual(0);
     const stageBar = stageBars.nth(dataBarIndex);
     const stageTip = stagesCard.locator(".recharts-tooltip-wrapper");
+    // eslint-disable-next-line no-restricted-properties -- topass-ok: recharts opens the tooltip only after a hover mousemove — re-hover per attempt, no single awaitable render event; 30s is a declared budget for a loaded CI shard (measured empty-tooltip overruns at 15s), not a retry
     await expect(async () => {
       await page.mouse.move(5, 5); // leave the chart so the next hover re-enters
       await stageBar.hover();
@@ -818,7 +820,7 @@ test.describe("Sleep page (#1066)", () => {
       expect(txt).toContain("h");
       // No raw unit conversion: nowhere a number with 2+ decimals (e.g. 1.5333333).
       expect(txt).not.toMatch(/\d\.\d{2,}/);
-    }).toPass({ timeout: 30_000 }); // topass-ok: recharts opens the tooltip only after a hover mousemove — re-hover per attempt, no single awaitable render event; 30s is a declared budget for a loaded CI shard (measured empty-tooltip overruns at 15s), not a retry
+    }).toPass({ timeout: 30_000 });
 
     // SRI trend line: decimals=0 so the tooltip is an INTEGER — like the headline
     // (which is Math.round(sri)), never the raw "87 vs 87.34" mismatch #403 named.
@@ -826,9 +828,10 @@ test.describe("Sleep page (#1066)", () => {
     // A DOT is the data-carrying mark by construction: recharts draws none for a
     // null point, so since #2258's calendar fill every dot is still a real SRI
     // reading and any of them opens the same tooltip.
-    const sriDot = sriCard.locator(".recharts-dot").first(); // first-ok: every dot is a real reading (nulls draw no dot), so any one proves the rounding
+    const sriDot = sriCard.locator(".recharts-dot").first(); // eslint-disable-line no-restricted-properties -- first-ok: every dot is a real reading (nulls draw no dot), so any one proves the rounding
     await sriDot.waitFor({ state: "attached", timeout: 15_000 });
     const sriTip = sriCard.locator(".recharts-tooltip-wrapper");
+    // eslint-disable-next-line no-restricted-properties -- topass-ok: recharts opens the tooltip only after a hover mousemove — re-hover per attempt, no single awaitable render event; 30s is a declared budget for a loaded CI shard (measured empty-tooltip overruns at 15s), not a retry
     await expect(async () => {
       await page.mouse.move(5, 5);
       await sriDot.hover();
@@ -846,7 +849,7 @@ test.describe("Sleep page (#1066)", () => {
       expect(txt).toContain("SRI");
       // Integer only — never a fractional SRI in the tooltip.
       expect(txt).not.toMatch(/\d\.\d/);
-    }).toPass({ timeout: 30_000 }); // topass-ok: recharts opens the tooltip only after a hover mousemove — re-hover per attempt, no single awaitable render event; 30s is a declared budget for a loaded CI shard (measured empty-tooltip overruns at 15s), not a retry
+    }).toPass({ timeout: 30_000 });
   });
 
   test("clock times follow the login's 12h/24h pref on the hero + consistency strip (#1163)", async ({

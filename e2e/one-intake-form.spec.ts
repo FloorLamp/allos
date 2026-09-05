@@ -32,10 +32,8 @@ test("changing only the formulation chip adds the children's suspension, in a 39
   await nameField.fill("Ibuprofen");
   // The listbox is PORTALED to <body> (#3271) — resolved from the page, not the
   // panel that owns the field. One list is open at a time, so this is unambiguous.
-  await comboboxRows(page)
-    .filter({ hasText: "Advil" })
-    .first() // first-ok: transient combobox list this test just opened
-    .click();
+  // eslint-disable-next-line no-restricted-properties -- first-ok: transient combobox list this test just opened
+  await comboboxRows(page).filter({ hasText: "Advil" }).first().click();
 
   // One ingredient, several products — the choice is a derived chip row, not a select
   // buried in a dose block.
@@ -68,7 +66,7 @@ test("changing only the formulation chip adds the children's suspension, in a 39
 
   // The formulation reached the row — `product` stores the full curated label, and
   // the shared dose formatter carries its concentration.
-  const row = medicationRow(page, name).first(); // first-ok: this test's own row
+  const row = medicationRow(page, name).first(); // eslint-disable-line no-restricted-properties -- first-ok: this test's own row
   await expect(row).toBeVisible();
   await expect(row).toContainText("mL");
 });
@@ -86,9 +84,10 @@ test("the default path is two taps in the supplement modal, with no editor opene
   // TAP ONE: the pick. It seeds the catalog's dose and food relationship.
   await form.getByLabel("Name").fill("Magnesium Glycinate");
   // Portaled listbox (#3271) — resolved from the page, not the modal.
+  // eslint-disable-next-line no-restricted-properties -- first-ok: transient combobox list this test just opened
   await comboboxRows(page)
     .filter({ hasText: "Magnesium Glycinate" })
-    .first() // first-ok: transient combobox list this test just opened
+    .first()
     .click();
 
   // GLANCE: the form states what it will save, and NOTHING is open.
@@ -187,10 +186,8 @@ test("the label's proposal is marked suggested, and stops being once the person 
 
   await form.getByLabel("Name").fill("SAMe");
   // Portaled listbox (#3271) — resolved from the page, not the modal.
-  await comboboxRows(page)
-    .filter({ hasText: "SAMe" })
-    .first() // first-ok: transient combobox list this test just opened
-    .click();
+  // eslint-disable-next-line no-restricted-properties -- first-ok: transient combobox list this test just opened
+  await comboboxRows(page).filter({ hasText: "SAMe" }).first().click();
 
   // THE OFFER. One rule, marked, saying so in words as well as in the attribute.
   const rule = form.getByTestId("intake-fact-rule");
@@ -296,10 +293,8 @@ test("focus returns to the rule sentence that was opened, not to the panel's fir
 
   // SAMe's label proposes one rule, so the row starts with a sentence already in it.
   await form.getByLabel("Name").fill("SAMe");
-  await comboboxRows(page)
-    .filter({ hasText: "SAMe" })
-    .first() // first-ok: transient combobox list this test just opened
-    .click();
+  // eslint-disable-next-line no-restricted-properties -- first-ok: transient combobox list this test just opened
+  await comboboxRows(page).filter({ hasText: "SAMe" }).first().click();
   const rules = form.getByTestId("intake-fact-rule");
   await expect(rules).toHaveCount(1);
 

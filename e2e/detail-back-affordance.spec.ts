@@ -54,7 +54,7 @@ test("an episode detail page has a way back to the care trail", async ({
   page,
 }) => {
   await page.goto("/medical/episodes");
-  const row = page.getByTestId("episode-index-row").first(); // first-ok: any seeded episode proves the shell; no per-row claim is made
+  const row = page.getByTestId("episode-index-row").first(); // eslint-disable-line no-restricted-properties -- first-ok: any seeded episode proves the shell; no per-row claim is made
   await followLink(page, row, /\/medical\/episodes\/\d+/);
   await expectBackLinkAboveTitle(page, "Back to episodes");
 });
@@ -63,7 +63,7 @@ test("your own medication detail shows a back link and no identity banner", asyn
   page,
 }) => {
   await page.goto("/medications");
-  const rowLink = page.getByTestId("medication-row-link").first(); // first-ok: the banner/back-link choice is per-page, identical for every seeded row
+  const rowLink = page.getByTestId("medication-row-link").first(); // eslint-disable-line no-restricted-properties -- first-ok: the banner/back-link choice is per-page, identical for every seeded row
   const href = await rowLink.getAttribute("href");
   expect(href).toMatch(/\/medications\/\d+/);
   await page.goto(href!);

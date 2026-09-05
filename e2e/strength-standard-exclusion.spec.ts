@@ -20,7 +20,7 @@ test("the Analyze panel explains why a machine lift has no level (#1922)", async
 
   const main = page.getByRole("main");
   // The panel is showing the machine lift…
-  await expect(main.getByText("Leg Press").first()).toBeVisible(); // first-ok: asserts the selected lift is on screen — order-agnostic presence
+  await expect(main.getByText("Leg Press").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: asserts the selected lift is on screen — order-agnostic presence
   // …with no Benchmarks ladder, because no barbell table covers it…
   await expect(main.getByText("Benchmarks", { exact: true })).toHaveCount(0);
   // …and the reason stated, instead of nothing at all.

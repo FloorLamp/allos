@@ -52,10 +52,11 @@ test.describe("Household dose round settings", () => {
       const enable = card.getByTestId("household-round-enabled");
       await settledCheckSave(member, enable, true, card);
 
+      // eslint-disable-next-line no-restricted-properties -- first-ok: this spec's DEDICATED fixture offers exactly one member
       const wardBox = members
         .getByRole("checkbox")
         .and(members.locator("input:not([disabled])"))
-        .first(); // first-ok: this spec's DEDICATED fixture offers exactly one member
+        .first();
       await settledCheckSave(member, wardBox, true, card);
 
       // Reload: the toggle and the tick came back from SQLite, not local state.
@@ -65,10 +66,11 @@ test.describe("Household dose round settings", () => {
         reloaded.getByTestId("household-round-enabled")
       ).toBeChecked();
       await expect(
+        // eslint-disable-next-line no-restricted-properties -- first-ok: same single offered member as above
         reloaded
           .getByTestId("household-round-members")
           .getByRole("checkbox")
-          .first() // first-ok: same single offered member as above
+          .first()
       ).toBeChecked();
 
       // Unsubscribing round-trips too — and the reload is what proves the OFF write

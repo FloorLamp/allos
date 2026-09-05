@@ -235,7 +235,7 @@ test.describe("the record (#3958)", () => {
     await page.goto(`/history?day=${DAY}`);
 
     const rows = page.getByTestId("history-row");
-    await expect(rows.first()).toBeVisible(); // first-ok: the anatomy claim is about any row
+    await expect(rows.first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: the anatomy claim is about any row
     const geometry = await page.evaluate(() => {
       const list = [
         ...document.querySelectorAll<HTMLElement>(
@@ -359,7 +359,7 @@ test.describe("the record (#3958)", () => {
     await phone(page);
     await page.goto("/history");
 
-    const first = page.getByTestId("history-row").first(); // first-ok: the budget is about whatever record leads
+    const first = page.getByTestId("history-row").first(); // eslint-disable-line no-restricted-properties -- first-ok: the budget is about whatever record leads
     await expect(first).toBeVisible();
     const chrome = await page.evaluate(() => {
       const container = document.querySelector('[data-testid="history-page"]')!;
@@ -578,8 +578,8 @@ test.describe("the record (#3958)", () => {
       const rail = page.getByTestId("timeline-scrubber");
       await expect(rail).toHaveCount(1);
       await expect(rail).toHaveAttribute("data-scrubber-ready", "true");
-      await expect(page.locator(MONTH_FOLD).first()).toBeVisible(); // first-ok: the edge claim is about any fold card
-      await expect(page.getByTestId("history-rows").first()).toBeVisible(); // first-ok: the edge claim is about any day card
+      await expect(page.locator(MONTH_FOLD).first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: the edge claim is about any fold card
+      await expect(page.getByTestId("history-rows").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: the edge claim is about any day card
 
       const edges = await page.evaluate((foldSelector) => {
         const right = (el: Element | null) =>
@@ -642,7 +642,7 @@ test.describe("the record (#3958)", () => {
     // PINNED TO ONE CARD BY KEY, not left as "the first shut month": that locator
     // re-resolves after the tap and quietly moves to the NEXT shut card, so every
     // assertion after the click would be about a fold nobody touched.
-    const shut = page.locator(`${MONTH_FOLD}[data-fold-open="false"]`).first(); // first-ok: the claim is about whichever shut month the spine opens with
+    const shut = page.locator(`${MONTH_FOLD}[data-fold-open="false"]`).first(); // eslint-disable-line no-restricted-properties -- first-ok: the claim is about whichever shut month the spine opens with
     await expect(shut).toBeVisible();
     const foldKey = await shut.getAttribute("data-fold-key");
     const fold = page.getByTestId(`history-fold-${foldKey}`);
@@ -657,11 +657,12 @@ test.describe("the record (#3958)", () => {
     await expect(fold).toHaveAttribute("data-fold-open", "true");
     // THE REVEALED DAYS ARE AT THE TAP. They render as the fold card's next siblings
     // now, so this is the month's own first day and not some day elsewhere in the feed.
+    // eslint-disable-next-line no-restricted-properties -- first-ok: the claim is about the day the tap revealed, which is the next one
     const revealed = page
       .locator(
         `[data-testid="history-fold-${foldKey}"] ~ [data-testid="history-day"]`
       )
-      .first(); // first-ok: the claim is about the day the tap revealed, which is the next one
+      .first();
     await expect(revealed).toBeInViewport();
     await expect(fold).toBeInViewport();
     expect(
@@ -690,12 +691,12 @@ test.describe("the record (#3958)", () => {
     );
 
     await page.goto("/history");
-    await expect(page.getByTestId("history-row").first()).toBeVisible(); // first-ok: readiness, no per-row claim
+    await expect(page.getByTestId("history-row").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: readiness, no per-row claim
     const all = await glyphs.count();
     expect(all, "All draws one glyph per row").toBeGreaterThan(0);
 
     await page.goto("/history?kind=food");
-    await expect(page.getByTestId("history-row").first()).toBeVisible(); // first-ok: readiness, no per-row claim
+    await expect(page.getByTestId("history-row").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: readiness, no per-row claim
     await expect(glyphs).toHaveCount(0);
   });
 

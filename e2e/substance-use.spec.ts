@@ -391,10 +391,11 @@ test.describe("substance use (#998/#1078/#1085)", () => {
       } finally {
         await anonContext.close();
       }
+      // eslint-disable-next-line no-restricted-properties -- first-ok: newest-first; this test just created the newest link
       await page
         .locator("li")
         .filter({ has: page.getByRole("button", { name: "Revoke" }) })
-        .first() // first-ok: newest-first; this test just created the newest link
+        .first()
         .getByRole("button", { name: "Revoke" })
         .click();
     } finally {
@@ -523,13 +524,14 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     // refused name is IDEMPOTENT: the handler returns before any write, so every
     // extra attempt can only set the same error string. Nothing accumulates.
     const error = page.getByTestId("track-substance-error");
+    // eslint-disable-next-line no-restricted-properties -- topass-ok: a client-only submit with no POST and no navigation to await, so there is no single awaitable event; safe to re-dispatch because the refusal path writes nothing and can only re-set the same error
     await expect(async () => {
       await page.getByTestId("track-substance-save").click();
       await expect(
         error,
         "the submit did not render a refusal — handler never ran"
       ).toBeVisible({ timeout: 1_000 });
-    }).toPass({ timeout: 15_000, intervals: [200, 500, 1000] }); // topass-ok: a client-only submit with no POST and no navigation to await, so there is no single awaitable event; safe to re-dispatch because the refusal path writes nothing and can only re-set the same error
+    }).toPass({ timeout: 15_000, intervals: [200, 500, 1000] });
     await expect(error).toContainText("60");
 
     // Nothing was created under any name — not the full one, and not a 60-character

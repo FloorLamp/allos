@@ -58,7 +58,7 @@ test("Today's session card renders the resolved routine day (#740)", async ({
         .filter({ hasText: "Barbell Bench Press" })
     ).toBeVisible();
     // Cold start (no history): the prescription shows sets × rep range, no load.
-    await expect(card.getByText("4 × 5–8").first()).toBeVisible(); // first-ok: several exercises in the scoped card share the 4×5–8 scheme — order-agnostic presence
+    await expect(card.getByText("4 × 5–8").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: several exercises in the scoped card share the 4×5–8 scheme — order-agnostic presence
     const actions = card.getByTestId("training-overview-actions");
     await expect(actions.getByTestId("log-this-session")).toBeVisible();
     await expect(
@@ -92,7 +92,7 @@ test("'Log this session' pre-fills the activity form in live mode (#740)", async
     await page.waitForURL(/\/training\/activity\/\d+$/);
     await expect(page.getByTestId("live-workout-panel")).toBeVisible();
     await expect(
-      page.getByPlaceholder(/What did you do/).first() // first-ok: the routine's first prefilled activity row
+      page.getByPlaceholder(/What did you do/).first() // eslint-disable-line no-restricted-properties -- first-ok: the routine's first prefilled activity row
     ).toHaveValue("Barbell Bench Press");
   } finally {
     await page.context().close();

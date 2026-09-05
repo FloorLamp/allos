@@ -18,7 +18,7 @@ import { E2E_LOGIN_HC, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 // recommended-settings table. A rotate re-renders the field masked, so reveal again.
 async function readRevealedToken(page: Page): Promise<string> {
   const reveal = page.getByRole("button", { name: "Reveal" });
-  if (await reveal.count()) await reveal.first().click(); // first-ok: reveals the just-minted token (guarded by count; this integration has one token) — order-agnostic
+  if (await reveal.count()) await reveal.first().click(); // eslint-disable-line no-restricted-properties -- first-ok: reveals the just-minted token (guarded by count; this integration has one token) — order-agnostic
   const text = await page.getByTestId("health-connect-token").textContent();
   return (text ?? "").trim();
 }
@@ -75,7 +75,7 @@ test.describe("Health Connect integration (#391)", () => {
       // the field shows the plaintext (not the mask) before comparing.
       await member.getByTestId("health-connect-rotate").click();
       const revealBtn = member.getByRole("button", { name: "Reveal" });
-      if (await revealBtn.count()) await revealBtn.first().click(); // first-ok: reveals the single token field — order-agnostic
+      if (await revealBtn.count()) await revealBtn.first().click(); // eslint-disable-line no-restricted-properties -- first-ok: reveals the single token field — order-agnostic
       await expect(tokenField).not.toHaveText(first, { timeout: 15_000 });
       const second = await readRevealedToken(member);
       expect(second.length).toBeGreaterThan(10);

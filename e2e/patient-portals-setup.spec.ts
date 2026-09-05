@@ -124,7 +124,7 @@ async function removePortal(page: Page, name: string): Promise<void> {
 // Choose a household chip inside one picker and return the profile name it carries —
 // the round-trip assertions compare against exactly this name.
 async function chooseChip(page: Page, scope: Locator): Promise<string> {
-  const chip = scope.getByTestId("profile-chip").first(); // first-ok: any household chip works — the assertion is the round-trip against this SAME chip's name
+  const chip = scope.getByTestId("profile-chip").first(); // eslint-disable-line no-restricted-properties -- first-ok: any household chip works — the assertion is the round-trip against this SAME chip's name
   const name = (await chip.getByTestId("profile-chip-name").innerText()).trim();
   await hydratedClick(page, chip);
   return name;
@@ -365,7 +365,7 @@ test.describe("Patient portals — the portal sections (#1874)", () => {
     page,
   }) => {
     test.slow();
-    const stamp = String(Date.now()).slice(-6); // clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
+    const stamp = String(Date.now()).slice(-6); // eslint-disable-line no-restricted-properties -- clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
     const portal = `Spec Portal ${stamp}`;
     const label = `Spec Patient ${stamp}`;
 
@@ -417,7 +417,7 @@ test.describe("Patient portals — the portal sections (#1874)", () => {
     page,
   }) => {
     test.slow();
-    const stamp = String(Date.now()).slice(-6); // clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
+    const stamp = String(Date.now()).slice(-6); // eslint-disable-line no-restricted-properties -- clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
     const portal = `Login Prompt ${stamp}`;
 
     await addPortal(page, portal);
@@ -468,7 +468,7 @@ test.describe("Patient portals — the portal sections (#1874)", () => {
     page,
   }) => {
     test.slow();
-    const stamp = String(Date.now()).slice(-6); // clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
+    const stamp = String(Date.now()).slice(-6); // eslint-disable-line no-restricted-properties -- clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
     const portal = `Editable Portal ${stamp}`;
     const fixed = `Fixed Portal ${stamp}`;
     const label = `Editable Patient ${stamp}`;
@@ -545,7 +545,7 @@ test.describe("Patient portals — the portal sections (#1874)", () => {
     page,
   }) => {
     test.slow();
-    const stamp = String(Date.now()).slice(-6); // clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
+    const stamp = String(Date.now()).slice(-6); // eslint-disable-line no-restricted-properties -- clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
     const portal = `Two Logins ${stamp}`;
     const label = `SHARED, LABEL ${stamp}`;
 
@@ -616,7 +616,7 @@ test.describe("Patient portals — checklist and mapping (#1874)", () => {
     page,
   }) => {
     test.slow();
-    const stamp = String(Date.now()).slice(-6); // clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
+    const stamp = String(Date.now()).slice(-6); // eslint-disable-line no-restricted-properties -- clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
     const portal = `Stage Walk ${stamp}`;
     const label = `Stage Patient ${stamp}`;
 
@@ -714,7 +714,7 @@ test.describe("Patient portals — checklist and mapping (#1874)", () => {
     page,
   }) => {
     test.slow();
-    const stamp = String(Date.now()).slice(-6); // clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
+    const stamp = String(Date.now()).slice(-6); // eslint-disable-line no-restricted-properties -- clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
     const portal = `Remap Portal ${stamp}`;
     const label = `Remap Patient ${stamp}`;
 
@@ -733,10 +733,11 @@ test.describe("Patient portals — checklist and mapping (#1874)", () => {
     await expect(row.getByTestId("remap-save")).toBeDisabled();
 
     // Choose a different household member.
+    // eslint-disable-next-line no-restricted-properties -- first-ok: any OTHER household chip works — the assertion is the round-trip against this SAME chip's name
     const other = picker
       .getByTestId("profile-chip")
       .filter({ hasNotText: from })
-      .first(); // first-ok: any OTHER household chip works — the assertion is the round-trip against this SAME chip's name
+      .first();
     const to = (
       await other.getByTestId("profile-chip-name").innerText()
     ).trim();
@@ -760,7 +761,7 @@ test.describe("Patient portals — checklist and mapping (#1874)", () => {
     page,
   }) => {
     test.slow();
-    const stamp = String(Date.now()).slice(-6); // clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
+    const stamp = String(Date.now()).slice(-6); // eslint-disable-line no-restricted-properties -- clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
     const portal = `Assist Portal ${stamp}`;
     const labelOne = `ASSIST, ONE ${stamp}`;
     const labelTwo = `ASSIST, TWO ${stamp}`;
@@ -841,7 +842,7 @@ test.describe("Patient portals — ignore and dismiss (#1739)", () => {
     page,
   }) => {
     test.slow();
-    const stamp = String(Date.now()).slice(-6); // clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
+    const stamp = String(Date.now()).slice(-6); // eslint-disable-line no-restricted-properties -- clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
     const portal = `Ignore Portal ${stamp}`;
     const label = `Ignore Patient ${stamp}`;
 
@@ -886,7 +887,7 @@ test.describe("Patient portals — ignore and dismiss (#1739)", () => {
     page,
   }) => {
     test.slow();
-    const stamp = String(Date.now()).slice(-6); // clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
+    const stamp = String(Date.now()).slice(-6); // eslint-disable-line no-restricted-properties -- clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
     const portal = `Dismiss Portal ${stamp}`;
     const label = `Dismiss Patient ${stamp}`;
 
@@ -918,7 +919,7 @@ test.describe("Patient portals — ignore and dismiss (#1739)", () => {
     page,
   }) => {
     test.slow();
-    const stamp = String(Date.now()).slice(-6); // clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
+    const stamp = String(Date.now()).slice(-6); // eslint-disable-line no-restricted-properties -- clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
     const portal = `Request Portal ${stamp}`;
     const label = `Request Patient ${stamp}`;
 
@@ -959,7 +960,7 @@ test.describe("Patient portals — ignore and dismiss (#1739)", () => {
     page,
   }) => {
     test.slow();
-    const stamp = String(Date.now()).slice(-6); // clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
+    const stamp = String(Date.now()).slice(-6); // eslint-disable-line no-restricted-properties -- clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
     const portal = `Delivery Portal ${stamp}`;
     const label = `Delivery Patient ${stamp}`;
 
@@ -1017,7 +1018,7 @@ test.describe("Patient portals — member view (#1874/#1875)", () => {
     browser,
   }) => {
     test.slow();
-    const stamp = String(Date.now()).slice(-6); // clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
+    const stamp = String(Date.now()).slice(-6); // eslint-disable-line no-restricted-properties -- clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
     const portal = `Member Scope Portal ${stamp}`;
     const boundLabel = `MEMBER, BOUND ${stamp}`;
     const pendingLabel = `MEMBER, PENDING ${stamp}`;
@@ -1227,7 +1228,7 @@ test.describe("Document tombstones and the held inventory (#1776/#1777)", () => 
     request,
   }) => {
     test.slow();
-    const stamp = String(Date.now()).slice(-8); // clock-ok: a uniqueness suffix for this spec's own fixture bytes, never a stored timestamp
+    const stamp = String(Date.now()).slice(-8); // eslint-disable-line no-restricted-properties -- clock-ok: a uniqueness suffix for this spec's own fixture bytes, never a stored timestamp
     const filename = `tombstone-spec-${stamp}.pdf`;
     const body = pdfBytes(stamp);
     const token = await mintToken(page, `tombstone spec ${stamp}`);
@@ -1302,10 +1303,11 @@ test.describe("Document tombstones and the held inventory (#1776/#1777)", () => 
 
     // 6. The block is VISIBLE and named, on Data → Review.
     await page.goto("/data?section=review");
+    // eslint-disable-next-line no-restricted-properties -- first-ok: the filename is unique to this test, so this is spec-owned data
     const blockedRow = page
       .getByTestId("blocked-document-row")
       .filter({ hasText: filename })
-      .first(); // first-ok: the filename is unique to this test, so this is spec-owned data
+      .first();
     await expect(blockedRow).toBeVisible();
 
     // 7. …and reversible with one tap. The action revalidates, so the entry LEAVES the
@@ -1330,10 +1332,11 @@ test.describe("Document tombstones and the held inventory (#1776/#1777)", () => 
       .click();
     await page.waitForURL(/\/data/);
     await page.goto("/data?section=review");
+    // eslint-disable-next-line no-restricted-properties -- first-ok: spec-owned row
     const leftover = page
       .getByTestId("blocked-document-row")
       .filter({ hasText: filename })
-      .first(); // first-ok: spec-owned row
+      .first();
     await hydratedClick(page, leftover.getByTestId("allow-reacquisition"));
     await expect(leftover).toHaveCount(0);
   });
@@ -1343,7 +1346,7 @@ test.describe("Document tombstones and the held inventory (#1776/#1777)", () => 
     request,
   }) => {
     test.slow();
-    const stamp = String(Date.now()).slice(-8); // clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
+    const stamp = String(Date.now()).slice(-8); // eslint-disable-line no-restricted-properties -- clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
     const portal = `Tombstone Copy Portal ${stamp}`;
     const label = `Tombstone Patient ${stamp}`;
     const token = await mintToken(page, `tombstone copy ${stamp}`);
@@ -1418,10 +1421,11 @@ test.describe("Document tombstones and the held inventory (#1776/#1777)", () => 
     // Remove this spec's own blocked entries and the portal it registered.
     await page.goto("/data?section=review");
     for (const name of [`acquired-${stamp}.pdf`, `manual-${stamp}.pdf`]) {
+      // eslint-disable-next-line no-restricted-properties -- first-ok: the filename is unique to this test
       const row = page
         .getByTestId("blocked-document-row")
         .filter({ hasText: name })
-        .first(); // first-ok: the filename is unique to this test
+        .first();
       await hydratedClick(page, row.getByTestId("allow-reacquisition"));
       await expect(row).toHaveCount(0);
     }
@@ -1443,7 +1447,7 @@ test.describe("Patient portals — the portal declines one patient (#1889)", () 
     browser,
   }) => {
     test.slow();
-    const stamp = String(Date.now()).slice(-6); // clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
+    const stamp = String(Date.now()).slice(-6); // eslint-disable-line no-restricted-properties -- clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
     const portal = `Declined Portal ${stamp}`;
     const holderLabel = `DECLINED, HOLDER ${stamp}`;
     const proxyLabel = `DECLINED, PROXY ${stamp}`;

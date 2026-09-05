@@ -222,10 +222,11 @@ test.describe("Trends → Overview → body census metric pages (#1067 Phase 2)"
     );
     const readingsSection = page.getByTestId("metric-readings");
     await expect(readingsSection).toBeVisible();
+    // eslint-disable-next-line no-restricted-properties -- first-ok: this fixture's newest reading owns the row-layout assertion
     const firstReading = readingsSection
       .getByTestId("metric-readings-table")
       .locator("tbody tr")
-      .first(); // first-ok: this fixture's newest reading owns the row-layout assertion
+      .first();
     await expect(firstReading).toBeVisible();
     const [readingsHeadingBox, firstReadingBox] = await settledBoxes([
       readingsSection.getByRole("heading", { level: 2, name: "Readings" }),
@@ -481,10 +482,11 @@ test.describe("Trends → Overview → body census metric pages (#1067 Phase 2)"
     await expect(page.getByTestId("period-stat-365")).toContainText("7,600");
     await expect(page.getByTestId("period-average-365")).toHaveText("8,650");
     const average = page.getByTestId("period-average-365");
+    // eslint-disable-next-line no-restricted-properties -- first-ok: any supporting value establishes the type-size hierarchy
     const supportingValue = page
       .getByTestId("period-stat-365")
       .locator("dd")
-      .first(); // first-ok: any supporting value establishes the type-size hierarchy
+      .first();
     const averageFontSize = await average.evaluate((el) =>
       Number.parseFloat(getComputedStyle(el).fontSize)
     );

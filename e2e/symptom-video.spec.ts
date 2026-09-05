@@ -142,10 +142,11 @@ test.afterAll(() => cleanup());
 // Reach this fixture's OWN open episode through the care trail (it owns exactly one).
 async function openEpisode(page: Page) {
   await page.goto("/medical/episodes");
+  // eslint-disable-next-line no-restricted-properties -- first-ok: spec-owned fixture with a single ongoing episode — order-agnostic
   const row = page
     .getByTestId("episode-index-row")
     .filter({ hasText: /ongoing/i })
-    .first(); // first-ok: spec-owned fixture with a single ongoing episode — order-agnostic
+    .first();
   await followLink(page, row, /\/medical\/episodes\/\d+/);
   const strip = page.getByTestId("symptom-video-strip");
   await expect(strip).toBeVisible();

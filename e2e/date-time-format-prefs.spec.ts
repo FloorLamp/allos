@@ -55,18 +55,18 @@ test("flipping the date/time prefs re-renders a record date and a training log t
   try {
     // Baseline: the status-quo defaults (mdy long-date; 24h clock).
     await page.goto("/records/problems/conditions");
-    await expect(page.getByText("Mar 1, 2019").first()).toBeVisible(); // first-ok: asserts a date renders in the mdy long-date format — order-agnostic presence
+    await expect(page.getByText("Mar 1, 2019").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: asserts a date renders in the mdy long-date format — order-agnostic presence
 
     await page.goto("/training?tab=log");
-    await expect(page.getByText("Strava morning ride").first()).toBeVisible(); // first-ok: the seeded Strava ride activity — order-agnostic presence
+    await expect(page.getByText("Strava morning ride").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: the seeded Strava ride activity — order-agnostic presence
     // 24h default — the ride's start renders as "07:15", never a 12h "7:15am".
-    await expect(page.getByText(/07:15/).first()).toBeVisible(); // first-ok: asserts a time renders in 24h format — order-agnostic presence
+    await expect(page.getByText(/07:15/).first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: asserts a time renders in 24h format — order-agnostic presence
 
     // Timeline day headers default to the mdy long shape ("Monday, July 6") —
     // never an ISO date (#1020).
     await page.goto("/history");
     await expect(
-      page.getByText(/^[A-Za-z]+day, [A-Z][a-z]+ \d{1,2}/).first() // first-ok: asserts a timeline date renders in long-date format — order-agnostic presence
+      page.getByText(/^[A-Za-z]+day, [A-Z][a-z]+ \d{1,2}/).first() // eslint-disable-line no-restricted-properties -- first-ok: asserts a timeline date renders in long-date format — order-agnostic presence
     ).toBeVisible();
 
     // The seeded weight-jump finding embeds its dates in the default shape too
@@ -75,11 +75,12 @@ test("flipping the date/time prefs re-renders a record date and a training log t
     await page.goto("/trends");
     await page.getByTestId("body-hygiene-findings-toggle").click();
     await expect(
+      // eslint-disable-next-line no-restricted-properties -- first-ok: asserts a finding renders its date in long-date format — order-agnostic presence
       page
         .getByRole("main")
         .getByTestId("body-hygiene-findings")
         .getByText(/On [A-Za-z]+day, [A-Z][a-z]+ \d{1,2} you logged/)
-        .first() // first-ok: asserts a finding renders its date in long-date format — order-agnostic presence
+        .first()
     ).toBeVisible();
 
     // Flip both prefs on Settings → Preferences (autosave on change). Reload between
@@ -101,7 +102,7 @@ test("flipping the date/time prefs re-renders a record date and a training log t
 
     // The record date now renders ISO on /conditions.
     await page.goto("/records/problems/conditions");
-    await expect(page.getByText("2019-03-01").first()).toBeVisible(); // first-ok: asserts a date renders in ISO format — order-agnostic presence
+    await expect(page.getByText("2019-03-01").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: asserts a date renders in ISO format — order-agnostic presence
 
     // The training log timestamp now renders a 12-hour clock on Training → Log.
     // "7:15am", in the shared history substrate's own clock grammar (#4079): the Log
@@ -110,14 +111,14 @@ test("flipping the date/time prefs re-renders a record date and a training log t
     // record/.ics "7:15 AM" is the OTHER style, and it does not belong here — what
     // this line pins is that the 12h pref reached a training-log timestamp.
     await page.goto("/training?tab=log");
-    await expect(page.getByText("Strava morning ride").first()).toBeVisible(); // first-ok: the seeded Strava ride activity — order-agnostic presence
-    await expect(page.getByText(/7:15am/).first()).toBeVisible(); // first-ok: asserts a time renders in 12h format — order-agnostic presence
+    await expect(page.getByText("Strava morning ride").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: the seeded Strava ride activity — order-agnostic presence
+    await expect(page.getByText(/7:15am/).first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: asserts a time renders in 12h format — order-agnostic presence
 
     // Timeline day headers follow the pref ("Monday, 2026-07-06" — iso keeps the
     // weekday prefix, #1020).
     await page.goto("/history");
     await expect(
-      page.getByText(/^[A-Za-z]+day, \d{4}-\d{2}-\d{2}$/).first() // first-ok: asserts a timeline date renders in ISO format — order-agnostic presence
+      page.getByText(/^[A-Za-z]+day, \d{4}-\d{2}-\d{2}$/).first() // eslint-disable-line no-restricted-properties -- first-ok: asserts a timeline date renders in ISO format — order-agnostic presence
     ).toBeVisible();
 
     // The weight-jump finding's embedded dates follow the pref too — same
@@ -126,11 +127,12 @@ test("flipping the date/time prefs re-renders a record date and a training log t
     await page.goto("/trends");
     await page.getByTestId("body-hygiene-findings-toggle").click();
     await expect(
+      // eslint-disable-next-line no-restricted-properties -- first-ok: asserts a finding renders its date in ISO format — order-agnostic presence
       page
         .getByRole("main")
         .getByTestId("body-hygiene-findings")
         .getByText(/On [A-Za-z]+day, \d{4}-\d{2}-\d{2} you logged/)
-        .first() // first-ok: asserts a finding renders its date in ISO format — order-agnostic presence
+        .first()
     ).toBeVisible();
   } finally {
     // Restore the defaults so the shared admin login preference doesn't bleed into

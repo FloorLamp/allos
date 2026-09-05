@@ -41,7 +41,7 @@ test("PRN med with ONLY a minimum interval still shows redose guidance (#1458)",
 }) => {
   await page.goto("/medications");
 
-  const nameStamp = Date.now(); // clock-ok: unique medication-name suffix, never a stored timestamp
+  const nameStamp = Date.now(); // eslint-disable-line no-restricted-properties -- clock-ok: unique medication-name suffix, never a stored timestamp
   const name = `${ADDED_MED_PREFIX} ${nameStamp}-${Math.floor(Math.random() * 1e6)}`;
 
   // --- Add the med: as-needed, 6h minimum interval, daily maximum LEFT BLANK ---

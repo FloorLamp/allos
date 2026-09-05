@@ -38,10 +38,11 @@ test.describe("responsive tables: stacked rows below sm (#1426)", () => {
     await expect(table.locator("thead")).toBeHidden();
 
     // Skip the group's own header row — the row under test is a READING.
+    // eslint-disable-next-line no-restricted-properties -- first-ok: the spec asserts the card SHAPE, never which row is first
     const card = table
       .locator("tbody tr")
       .filter({ has: page.locator('td[data-card="title"]') })
-      .first(); // first-ok: the spec asserts the card SHAPE, never which row is first
+      .first();
     await expect(card.locator('td[data-card="title"]')).toBeVisible();
     // The value (with its out-of-range flag) is on the card, not scrolled off it.
     const value = card.locator('td[data-card="value"]');
@@ -50,9 +51,10 @@ test.describe("responsive tables: stacked rows below sm (#1426)", () => {
     // A meta cell carries its own label in card mode, because `thead` is hidden.
     // Date is the one every reading has, so it proves the label round-trip.
     await expect(
+      // eslint-disable-next-line no-restricted-properties -- first-ok: one labeled meta cell proves the label round-trip; which row owns it is irrelevant
       table
         .locator('td[data-card="meta"] .card-cell-label', { hasText: "Date" })
-        .first() // first-ok: one labeled meta cell proves the label round-trip; which row owns it is irrelevant
+        .first()
     ).toBeVisible();
     // Panel and Category claim NO card line (#2316). The mechanism is unchanged —
     // a cell with no `slot` is desktop-only detail — but these two stopped
@@ -82,11 +84,12 @@ test.describe("responsive tables: stacked rows below sm (#1426)", () => {
     await expect(table).toBeVisible();
     // The canonical-name link is the SAME `clinicalResultDetailHref` anchor the desktop
     // table renders — the card is a re-layout of that cell, not a second one.
+    // eslint-disable-next-line no-restricted-properties -- first-ok: any canonical row's link proves the card keeps the desktop destination
     const link = table
       .locator(
         'td[data-card="title"] a[href*="/results/clinical-results/view"]'
       )
-      .first(); // first-ok: any canonical row's link proves the card keeps the desktop destination
+      .first();
     const destinationName = (await link.textContent())?.trim();
     expect(destinationName).toBeTruthy();
     await followLink(page, link, /\/results\/clinical-results\/view\?name=/);
@@ -101,7 +104,7 @@ test.describe("responsive tables: stacked rows below sm (#1426)", () => {
     await page.goto(CARD_ROWS);
     const table = page.getByTestId("clinical-results-table");
     await expect(table).toBeVisible();
-    const firstTitle = table.locator('td[data-card="title"]').first(); // first-ok: the assertion is that whatever is first CHANGES when the sort flips — an ordering, not a fixture identity
+    const firstTitle = table.locator('td[data-card="title"]').first(); // eslint-disable-line no-restricted-properties -- first-ok: the assertion is that whatever is first CHANGES when the sort flips — an ordering, not a fixture identity
     const ascending = (await firstTitle.innerText()).trim();
 
     // The select moved into the filter block's phone disclosure (#2316): "narrow
@@ -156,17 +159,18 @@ test.describe("responsive tables: stacked rows below sm (#1426)", () => {
     const list = page.getByTestId("imaging-study-list");
     // Wait for a rendered ROW, never the container: a region that has not painted
     // its content yet satisfies every geometry assertion made about it (#3384).
-    const table = list.locator("table").first(); // first-ok: the claim is about the card SHAPE of a study row, not which table on the page owns it
-    await expect(table.locator('td[data-card="title"]').first()).toBeVisible(); // first-ok: same — any rendered study row proves the pair layout
+    const table = list.locator("table").first(); // eslint-disable-line no-restricted-properties -- first-ok: the claim is about the card SHAPE of a study row, not which table on the page owns it
+    await expect(table.locator('td[data-card="title"]').first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: same — any rendered study row proves the pair layout
     await expectAtomicCardPairs(table, ["Modality", "Date"]);
 
     // The pairing has to be READABLE, not merely unbroken: label and value were
     // the same slate-500 before #3499, which is why the strip ran together. This
     // one IS a declaration question — "do these two resolve to different colours"
     // — so a computed read is the right instrument, in both themes.
+    // eslint-disable-next-line no-restricted-properties -- first-ok: every meta cell takes the one shared rule — any of them resolves the cascade
     const cell = table
       .locator('td[data-card="meta"]:has(.card-cell-label)')
-      .first(); // first-ok: every meta cell takes the one shared rule — any of them resolves the cascade
+      .first();
     const tones = async () =>
       cell.evaluate((td) => {
         const label = td.querySelector(".card-cell-label")!;
@@ -197,7 +201,7 @@ test.describe("responsive tables: stacked rows below sm (#1426)", () => {
     const table = page.getByTestId("clinical-results-table");
     await expect(table).toBeVisible();
     await expect(
-      table.locator('td[data-card="meta"] .card-cell-label').first() // first-ok: any labeled meta cell proves the pairs painted before they are measured
+      table.locator('td[data-card="meta"] .card-cell-label').first() // eslint-disable-line no-restricted-properties -- first-ok: any labeled meta cell proves the pairs painted before they are measured
     ).toBeVisible();
     await expectAtomicCardPairs(table, ["Date"]);
   });
@@ -211,7 +215,7 @@ test.describe("responsive tables: stacked rows below sm (#1426)", () => {
     const table = page.getByTestId("analyze-sessions");
     await expect(table).toBeVisible();
     await expect(table.locator("thead")).toBeHidden();
-    const card = table.locator("tbody tr").first(); // first-ok: the spec asserts the card shape of a session row, not which session
+    const card = table.locator("tbody tr").first(); // eslint-disable-line no-restricted-properties -- first-ok: the spec asserts the card shape of a session row, not which session
     // Date is the card title (and still the deep link into the log); the view's
     // leading metric is the headline value.
     await expect(card.locator('td[data-card="title"] a')).toBeVisible();

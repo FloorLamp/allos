@@ -184,7 +184,7 @@ test.describe("the record's windowing (#2657)", () => {
       // THE FEED OPENS ON A DAY, NOT ON A FOLD. `/timeline` led with its future fold;
       // #3958 rules that fold NOT inherited — "the record ends at now", the future
       // belongs to /upcoming — so the first thing here is a recent day group.
-      const first = page.getByTestId("history-feed").locator("section").first(); // first-ok: asserts WHICH element leads the feed — the assertion is about position
+      const first = page.getByTestId("history-feed").locator("section").first(); // eslint-disable-line no-restricted-properties -- first-ok: asserts WHICH element leads the feed — the assertion is about position
       await expect(first).toHaveAttribute("data-testid", "history-day");
 
       // THE FUTURE IS ABSENT, AND BOTH HALVES ARE ASSERTED. A "no ahead fold" check

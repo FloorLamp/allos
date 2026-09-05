@@ -31,7 +31,7 @@ test("a current panel names its size and freshness, and its rows carry dates (#2
 
   // Every judged row shows the reading's own date, so the breakdown reconciles with
   // whatever the line above claimed rather than asking the reader to trust it.
-  const firstDate = biomarkers.getByTestId("longevity-biomarker-date").first(); // first-ok: asserts a date renders on a row in the scoped section — order-agnostic presence
+  const firstDate = biomarkers.getByTestId("longevity-biomarker-date").first(); // eslint-disable-line no-restricted-properties -- first-ok: asserts a date renders on a row in the scoped section — order-agnostic presence
   await expect(firstDate).toBeVisible();
   await expect(firstDate).toContainText(/^\d{4}-\d{2}-\d{2}/);
 });
@@ -68,7 +68,7 @@ test("an old-only panel reads as older results, not a current green result (#202
   // Every row is marked older, and still shows its value and date — visible, not hidden.
   const rows = biomarkers.getByTestId("longevity-biomarker-date");
   await expect(rows).toHaveCount(2);
-  await expect(rows.first()).toContainText("older"); // first-ok: both rows are stale; asserting one is enough to pin the marking
+  await expect(rows.first()).toContainText("older"); // eslint-disable-line no-restricted-properties -- first-ok: both rows are stale; asserting one is enough to pin the marking
 
   await page.close();
 });

@@ -20,9 +20,10 @@ import {
 
 // The vertical position of the first element matching `name` within `scope`.
 async function topOf(scope: Locator, name: string): Promise<number> {
+  // eslint-disable-next-line no-restricted-properties -- first-ok: the first element matching `name`, read only for a vertical-position comparison — order-agnostic
   const box = await scope
     .getByText(name, { exact: false })
-    .first() // first-ok: the first element matching `name`, read only for a vertical-position comparison — order-agnostic
+    .first()
     .boundingBox();
   if (!box) throw new Error(`not found: ${name}`);
   return box.y;
@@ -49,7 +50,7 @@ test("item 1: Today panel orders scheduled rows by bucket — same order as Upco
   // Upcoming folds its dose rows (#1504); the ORDER inside the fold is the same
   // shared doseSortKey the Today panel uses, which is what this compares.
   await expandUpcomingAggregates(page.getByRole("main"), "dose");
-  await expect(page.getByText(ZETA).first()).toBeVisible(); // first-ok: ZETA is a unique med marker THIS spec created — order-agnostic
+  await expect(page.getByText(ZETA).first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: ZETA is a unique med marker THIS spec created — order-agnostic
   expect(await topOf(page.getByRole("main"), ZETA)).toBeLessThan(
     await topOf(page.getByRole("main"), ALPHA)
   );
@@ -82,10 +83,11 @@ async function extractShareUrl(page: Page): Promise<string> {
   const create = page.getByTestId("medication-share-create");
   // Ride out the hydration window (#730): retry opening the modal until its Create
   // button (a client-state toggle) actually appears.
+  // eslint-disable-next-line no-restricted-properties -- topass-ok: re-open the share modal until its client-state Create button appears past the hydration swallow (#730) — no awaitable event for a client toggle
   await expect(async () => {
     await page.getByTestId("medication-share-open").click();
     await expect(create).toBeVisible({ timeout: 2000 });
-  }).toPass(); // topass-ok: re-open the share modal until its client-state Create button appears past the hydration swallow (#730) — no awaitable event for a client toggle
+  }).toPass();
   await create.click();
   const url = page.getByTestId("medication-share-url");
   await expect(url).toBeVisible();
@@ -130,11 +132,12 @@ test("item 5: the detail page shows a month adherence calendar over the existing
   await expect(month.getByTestId("adherence-calendar")).toBeVisible();
   // The seed logged 14 taken days, so at least one "taken" cell renders.
   await expect(
-    month.getByTestId("adherence-cal-day").filter({ hasText: /\d/ }).first() // first-ok: asserts a day cell renders in the adherence calendar — order-agnostic
+    month.getByTestId("adherence-cal-day").filter({ hasText: /\d/ }).first() // eslint-disable-line no-restricted-properties -- first-ok: asserts a day cell renders in the adherence calendar — order-agnostic
   ).toBeVisible();
   await expect(
+    // eslint-disable-next-line no-restricted-properties -- first-ok: asserts a "taken" day cell renders (seed logged 14 taken days) — order-agnostic
     month
       .locator('[data-testid="adherence-cal-day"][data-state="taken"]')
-      .first() // first-ok: asserts a "taken" day cell renders (seed logged 14 taken days) — order-agnostic
+      .first()
   ).toBeVisible();
 });

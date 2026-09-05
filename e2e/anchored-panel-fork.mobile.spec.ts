@@ -42,9 +42,10 @@ test.describe("below md the ⋯ menu is a bottom action sheet", () => {
     page,
   }) => {
     await page.goto("/medications");
+    // eslint-disable-next-line no-restricted-properties -- first-ok: any medication row proves the shared fork — order-agnostic
     const trigger = page
       .getByRole("button", { name: "Medication actions" })
-      .first(); // first-ok: any medication row proves the shared fork — order-agnostic
+      .first();
     await expect(trigger).toBeVisible();
     await hydratedClick(page, trigger);
 
@@ -336,9 +337,10 @@ test.describe("from md up the anchored popover is what opens", () => {
     page,
   }) => {
     await page.goto("/medications");
+    // eslint-disable-next-line no-restricted-properties -- first-ok: any medication row proves the shared fork — order-agnostic
     const trigger = page
       .getByRole("button", { name: "Medication actions" })
-      .first(); // first-ok: any medication row proves the shared fork — order-agnostic
+      .first();
     await expect(trigger).toBeVisible();
     await hydratedClick(page, trigger);
 
@@ -373,7 +375,7 @@ test.describe("from md up the anchored popover is what opens", () => {
     // the rest of the page; the sheet presentation has moved focus in since
     // #1416 and the popover now matches it. Escape closes and hands the trigger
     // back — the #3374 invariant, unchanged, by the other of its two routes.
-    await expect(items.first()).toBeFocused(); // first-ok: the panel this test opened, and the claim is about its FIRST row specifically
+    await expect(items.first()).toBeFocused(); // eslint-disable-line no-restricted-properties -- first-ok: the panel this test opened, and the claim is about its FIRST row specifically
     await page.keyboard.press("Escape");
     await expect(page.getByRole("menu")).toHaveCount(0);
     await expect(trigger).toBeFocused();

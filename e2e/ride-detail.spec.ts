@@ -181,7 +181,7 @@ test("a Training Log ride opens a read-first detail with the stored ride measure
     )
   ).toBe(true);
   await expect(
-    comparisonRideLinks.first() // first-ok: the seeded comparison cohort is deterministically ranked
+    comparisonRideLinks.first() // eslint-disable-line no-restricted-properties -- first-ok: the seeded comparison cohort is deterministically ranked
   ).toContainText(formatLongDate(ZONE_RIDE_DAY, undefined, { year: "always" }));
   await comparisonChart
     .getByRole("button", { name: "Power", exact: true })
@@ -491,10 +491,11 @@ test("the Cycling overview, ride detail, and Timeline form one navigation loop",
     analyze.getByTestId("analyze-sessions").locator("th").nth(1)
   ).toHaveText("Power");
   await expect(
+    // eslint-disable-next-line no-restricted-properties -- first-ok: every seeded session value must lead with the selected metric
     analyze
       .getByTestId("analyze-sessions")
       .locator('tbody td[data-card="value"]')
-      .first() // first-ok: every seeded session value must lead with the selected metric
+      .first()
   ).toContainText("Power");
 
   const latestRide = analyze.getByRole("link", {
@@ -505,10 +506,11 @@ test("the Cycling overview, ride detail, and Timeline form one navigation loop",
     "href",
     /^\/training\/activity\/\d+\?metric=power&range=6m$/
   );
+  // eslint-disable-next-line no-restricted-properties -- first-ok: seeded power records are a deterministic duration-ordered set
   const powerProfileRide = page
     .getByTestId("cycling-power-profile")
     .getByRole("link")
-    .first(); // first-ok: seeded power records are a deterministic duration-ordered set
+    .first();
   await expect(powerProfileRide).toHaveAttribute(
     "href",
     /^\/training\/activity\/\d+\?metric=power&range=6m$/
@@ -544,7 +546,7 @@ test("the Cycling overview, ride detail, and Timeline form one navigation loop",
       .getByRole("button", { name: "Power", exact: true })
   ).toHaveAttribute("aria-pressed", "true");
   await expect(
-    page.getByTestId("ride-comparison-link").first() // first-ok: every comparison link must retain the lens
+    page.getByTestId("ride-comparison-link").first() // eslint-disable-line no-restricted-properties -- first-ok: every comparison link must retain the lens
   ).toHaveAttribute("href", /\?metric=power&range=6m$/);
   const adjacentActivityLinks = page.locator(
     '[data-testid="activity-older-link"], [data-testid="activity-newer-link"]'
@@ -811,7 +813,7 @@ test("the ride summary states each fact once and uses the whole phone (#3500)", 
   // about size, position or count on a card the router streams in; an empty
   // region fits any width and satisfies any "nothing clips" claim it is handed.
   const deltas = page.locator('[data-testid^="ride-summary-comparison-"]');
-  await expect(deltas.first()).toBeVisible(); // first-ok: waiting for the group to exist, not for a particular member
+  await expect(deltas.first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: waiting for the group to exist, not for a particular member
   const measurements = page.getByTestId("ride-recorded-measurements");
   await expect(measurements).toBeVisible();
   await expect(page.getByTestId("ride-stat-power")).toBeVisible();

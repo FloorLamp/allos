@@ -50,7 +50,7 @@ test.describe("create a visit from a record (#1099)", () => {
     await page.goto("/records/history/visits");
     await followLink(
       page,
-      page.getByRole("link", { name: /Eye exam/ }).first(), // first-ok: dedicated CREATEVISIT fixture profile — the only Eye exam visit is the one this spec created
+      page.getByRole("link", { name: /Eye exam/ }).first(), // eslint-disable-line no-restricted-properties -- first-ok: dedicated CREATEVISIT fixture profile — the only Eye exam visit is the one this spec created
       /\/encounters\/\d+/
     );
     await expect(page.getByTestId("encounter-detail")).toBeVisible();

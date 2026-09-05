@@ -8,15 +8,16 @@ test("a registered detail works by touch and keyboard without covering its trigg
   page,
 }) => {
   test.slow();
-  const name = `title disclosure ${Date.now()}`; // clock-ok: uniqueness for this spec-owned token only
+  const name = `title disclosure ${Date.now()}`; // eslint-disable-line no-restricted-properties -- clock-ok: uniqueness for this spec-owned token only
   await page.goto("/settings/tokens");
   await settledFill(page, page.getByTestId("api-token-name"), name);
   await hydratedClick(page, page.getByTestId("api-token-create"));
 
+  // eslint-disable-next-line no-restricted-properties -- first-ok: this spec's name is unique
   const row = page
     .getByTestId("api-token-row")
     .filter({ hasText: name })
-    .first(); // first-ok: this spec's name is unique
+    .first();
   await expect(row).toBeVisible();
   await hydratedClick(page, page.getByTestId("api-token-secret-dismiss"));
 

@@ -29,9 +29,9 @@ test("Analyze opens the unified strength-standards reference (#152, #3465)", asy
   await expect(standard).toContainText("at your bodyweight");
   // The ladder is bodyweight-adjusted (× BW rungs) and labeled as such.
   await expect(
-    main.getByText("for your bodyweight & sex").first() // first-ok: asserts the bodyweight-adjusted label renders — order-agnostic presence
+    main.getByText("for your bodyweight & sex").first() // eslint-disable-line no-restricted-properties -- first-ok: asserts the bodyweight-adjusted label renders — order-agnostic presence
   ).toBeVisible();
-  await expect(main.getByText(/× BW/).first()).toBeVisible(); // first-ok: asserts a × BW rung renders — order-agnostic presence
+  await expect(main.getByText(/× BW/).first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: asserts a × BW rung renders — order-agnostic presence
 
   const trigger = main.getByRole("button", {
     name: /see strength standards/i,

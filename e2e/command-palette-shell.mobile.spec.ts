@@ -197,10 +197,11 @@ test.describe("command palette — the phone shell (#3423)", () => {
       await settledPanel(page);
       await input.fill("LDL Cholesterol");
 
+      // eslint-disable-next-line no-restricted-properties -- first-ok: the add-result action in the scoped palette results — order-agnostic
       const action = page
         .getByRole("listbox", { name: "Results" })
         .getByTestId("palette-hit-action-add-result")
-        .first(); // first-ok: the add-result action in the scoped palette results — order-agnostic
+        .first();
       await expect(action).toBeVisible({ timeout: 20_000 });
       const box = await action.boundingBox();
       expect(box).not.toBeNull();

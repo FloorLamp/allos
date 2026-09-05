@@ -17,10 +17,11 @@ import type { Locator, Page } from "@playwright/test";
 // session with every other spec at any parallelism without contending.
 
 function firstReadingAction(page: Page): Locator {
+  // eslint-disable-next-line no-restricted-properties -- first-ok: any seeded metric reading opens the same shared ConfirmDialog; every test cancels it
   return page
     .getByTestId("metric-readings-table")
     .locator("tbody tr")
-    .first() // first-ok: any seeded metric reading opens the same shared ConfirmDialog; every test cancels it
+    .first()
     .getByRole("button", { name: "Reading actions" });
 }
 

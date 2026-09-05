@@ -56,7 +56,7 @@ test("Training → Analyze leads with workout history and its active days (#186/
   // The MATRIX half — "what was it", the question a day total cannot answer.
   // At least one named activity row, which is what #2415 added over the heatmap.
   await expect(section.getByTestId("day-history-row")).not.toHaveCount(0);
-  const rowHeader = section.locator('[role="rowheader"]').first(); // first-ok: any activity row proves the shared row interaction
+  const rowHeader = section.locator('[role="rowheader"]').first(); // eslint-disable-line no-restricted-properties -- first-ok: any activity row proves the shared row interaction
   const rowSummary = await rowHeader.getAttribute("aria-label");
   const rowLabel = (
     await rowHeader
@@ -110,14 +110,15 @@ test("Training → Analyze leads with workout history and its active days (#186/
   await expect(rowPanel.getByTestId("day-history-row-occurrence")).toHaveCount(
     activeDates.length
   );
-  const newestOccurrenceTime = rowPanel.locator("time").first(); // first-ok: the ledger contract puts its newest occurrence first
+  const newestOccurrenceTime = rowPanel.locator("time").first(); // eslint-disable-line no-restricted-properties -- first-ok: the ledger contract puts its newest occurrence first
   await expect(newestOccurrenceTime).toHaveAttribute(
     "datetime",
     activeDates.at(-1)!
   );
+  // eslint-disable-next-line no-restricted-properties -- first-ok: every occurrence carries the same quantity grammar
   const newestOccurrence = rowPanel
     .getByTestId("day-history-row-occurrence")
-    .first(); // first-ok: every occurrence carries the same quantity grammar
+    .first();
   await expect(newestOccurrence).toContainText(/\d+ sessions?/);
   await expect(newestOccurrence.getByRole("link")).toHaveAttribute(
     "href",
@@ -134,7 +135,7 @@ test("selecting a workout day opens its panel, which links to that Training Log 
   await expect(section).toBeVisible();
 
   const cal = section.getByTestId("day-history-calendar");
-  const day = cal.getByTestId("day-history-day").first(); // first-ok: asserts ANY active cell's date format and panel, not a specific day — order-agnostic
+  const day = cal.getByTestId("day-history-day").first(); // eslint-disable-line no-restricted-properties -- first-ok: asserts ANY active cell's date format and panel, not a specific day — order-agnostic
   const date = await day.getAttribute("data-date");
   expect(date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
 
@@ -177,7 +178,7 @@ test("the matrix is one keyboard grid and selecting a cell opens the shared day 
   const grid = section.getByRole("grid", { name: /By activity/ });
   const tabStops = grid.locator('[role="gridcell"][tabindex="0"]');
   await expect(tabStops).toHaveCount(1);
-  const entry = tabStops.first(); // first-ok: the grid contract asserts exactly one
+  const entry = tabStops.first(); // eslint-disable-line no-restricted-properties -- first-ok: the grid contract asserts exactly one
   const startingCol = Number(await entry.getAttribute("data-matrix-col"));
   await entry.focus();
 
@@ -199,10 +200,11 @@ test("an empty calendar day is selectable and still reaches the record", async (
 }) => {
   await page.goto("/training?tab=analyze");
   const section = page.getByTestId("workout-history");
+  // eslint-disable-next-line no-restricted-properties -- first-ok: any rest day proves empty cells are real controls
   const emptyDay = section
     .getByTestId("day-history-calendar")
     .locator('button[data-active="false"]')
-    .first(); // first-ok: any rest day proves empty cells are real controls
+    .first();
   await expect(emptyDay).toBeVisible();
   const date = await emptyDay.getAttribute("data-date");
   await emptyDay.click();

@@ -10,9 +10,10 @@ async function expectEmptyDayAddLink(
   unitMany: string,
   href: RegExp
 ) {
+  // eslint-disable-next-line no-restricted-properties -- first-ok: any in-range empty calendar day has the same close-the-loop contract
   const emptyDay = section
     .locator(`button[aria-label*=" — no ${unitMany}"]`)
-    .first(); // first-ok: any in-range empty calendar day has the same close-the-loop contract
+    .first();
   await expect(emptyDay).toBeVisible();
   const date = await emptyDay.getAttribute("data-date");
   expect(date).toMatch(/^\d{4}-\d{2}-\d{2}$/);

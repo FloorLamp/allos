@@ -72,10 +72,11 @@ test.describe("Home Assistant notification settings", () => {
       );
       // Turn one kind off in the matrix's HA column — the one editor of that key.
       const recapCell = member.getByTestId("matrix-cell-ha-weekly-recap");
+      // eslint-disable-next-line no-restricted-properties -- topass-ok: re-click the routing cell until the optimistic flip proves onChange fired — "my click landed" is non-atomic with no navigation to follow (#830)
       await expect(async () => {
         await recapCell.click();
         await expect(recapCell).toBeChecked({ checked: false });
-      }).toPass(); // topass-ok: re-click the routing cell until the optimistic flip proves onChange fired — "my click landed" is non-atomic with no navigation to follow (#830)
+      }).toPass();
       await expect(recapCell).toBeEnabled();
 
       await member.getByTestId("ha-save").click();
@@ -97,12 +98,13 @@ test.describe("Home Assistant notification settings", () => {
       await expect(member.getByTestId("matrix-cell-ha-refill")).toBeChecked();
 
       // Restore the column so a --repeat-each run re-enters clean.
+      // eslint-disable-next-line no-restricted-properties -- topass-ok: same optimistic-flip re-click as above, restoring the fixture (#830)
       await expect(async () => {
         await member.getByTestId("matrix-cell-ha-weekly-recap").click();
         await expect(
           member.getByTestId("matrix-cell-ha-weekly-recap")
         ).toBeChecked();
-      }).toPass(); // topass-ok: same optimistic-flip re-click as above, restoring the fixture (#830)
+      }).toPass();
 
       // Send-test now attempts a real POST (config present) → not the "no webhook"
       // message.

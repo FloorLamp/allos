@@ -370,7 +370,7 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     // rendered its due row but not yet its logged ones would be measured against a
     // ground nobody is standing on.
     await expect(
-      morning(page).locator('li[data-testid^="ledger-dose-"]').first() // first-ok: any recorded dose row proves the record half rendered — order-agnostic
+      morning(page).locator('li[data-testid^="ledger-dose-"]').first() // eslint-disable-line no-restricted-properties -- first-ok: any recorded dose row proves the record half rendered — order-agnostic
     ).toBeVisible();
 
     // THE RELATIONSHIP, NOT AN ABSOLUTE. The record rows carry no fill of their own —
@@ -525,9 +525,10 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     // and never against a constant: a hex asserted against a literal goes on passing
     // when the whole page changes colour together, which is the defect this criterion
     // is about.
+    // eslint-disable-next-line no-restricted-properties -- first-ok: any recorded row stands for the record layer — order-agnostic
     const record = morning(page)
       .locator('li[data-testid^="ledger-dose-"]')
-      .first(); // first-ok: any recorded row stands for the record layer — order-agnostic
+      .first();
     const due = morning(page).locator('[data-testid^="ledger-due-row-"]');
     const door = page.getByTestId("food-add-door");
     for (const layer of [record, due, door]) await expect(layer).toBeVisible();
@@ -627,7 +628,7 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
   }) => {
     await page.goto("/nutrition");
     const ledger = page.getByTestId("day-ledger");
-    const firstRow = page.getByTestId("ledger-rows").locator("li").first(); // first-ok: the first fact IS the first row — the measurement's subject
+    const firstRow = page.getByTestId("ledger-rows").locator("li").first(); // eslint-disable-line no-restricted-properties -- first-ok: the first fact IS the first row — the measurement's subject
     await expect(firstRow).toBeVisible();
     const [ledgerBox, rowBox] = await settledBoxes([ledger, firstRow]);
     // The ledger's chrome is its "Ledger" label line and the census beside it: one line
@@ -819,12 +820,13 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
       page,
       page.locator(`[data-testid="food-day-${inside}"]`)
     );
+    // eslint-disable-next-line no-restricted-properties -- first-ok: any due group carries the bulk control — order-agnostic
     const insideDue = page
       .locator('[data-testid^="ledger-due-group-"]')
-      .first(); // first-ok: any due group carries the bulk control — order-agnostic
+      .first();
     await expect(insideDue).toBeVisible();
     await expect(
-      page.locator('[data-testid^="ledger-takeall-"]').first() // first-ok: same group
+      page.locator('[data-testid^="ledger-takeall-"]').first() // eslint-disable-line no-restricted-properties -- first-ok: same group
     ).toBeVisible();
 
     await hydratedClick(
@@ -840,16 +842,17 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     // inside the write window, so a day four back rendered "Nothing logged yet." for a
     // day that owed doses. So the statement is asserted first and the absence second.
     const outsideDue = page.locator('[data-testid^="ledger-due-group-"]');
-    await expect(outsideDue.first()).toBeVisible(); // first-ok: any due group proves the day still states what it owed
+    await expect(outsideDue.first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: any due group proves the day still states what it owed
     await expect(page.getByTestId("day-ledger-empty")).toHaveCount(0);
     await expect(page.locator('[data-testid^="ledger-takeall-"]')).toHaveCount(
       0
     );
     // And expanding it states the doses themselves as record, not as offers.
-    await hydratedClick(page, outsideDue.first()); // first-ok: same group
+    await hydratedClick(page, outsideDue.first()); // eslint-disable-line no-restricted-properties -- first-ok: same group
+    // eslint-disable-next-line no-restricted-properties -- first-ok: any named dose row — order-agnostic
     const outsideDose = page
       .locator('[data-testid^="ledger-due-dose-"]')
-      .first(); // first-ok: any named dose row — order-agnostic
+      .first();
     await expect(outsideDose).toContainText("Not recorded");
     await expect(outsideDose.getByRole("button")).toHaveCount(0);
   });
@@ -966,7 +969,7 @@ test.describe("the day is stated once", () => {
     // "nothing renders it twice" just as happily. These are the named surfaces that
     // must STILL carry the day — the ledger states the servings, and the add list
     // still offers the groups to add.
-    await expect(ledger.locator("li[data-group]").first()).toBeVisible(); // first-ok: any serving row proves the ledger states the day — order-agnostic
+    await expect(ledger.locator("li[data-group]").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: any serving row proves the ledger states the day — order-agnostic
     await expect(
       page
         .getByTestId("food-quick-rows")

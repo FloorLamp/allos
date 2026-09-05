@@ -188,7 +188,7 @@ test("Nutrition is a Day | Manage tab umbrella (#746/#3987)", async ({
     "missing"
   );
   const dose = await openFact(page, "dose", addDialog);
-  await expect(dose.getByLabel("Amount").first()).toBeVisible(); // first-ok: first basic dose row in the scoped modal
+  await expect(dose.getByLabel("Amount").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: first basic dose row in the scoped modal
   await closeEditor(page, addDialog);
   await addDialog.getByRole("button", { name: "Close" }).click();
 
@@ -212,9 +212,10 @@ test("Nutrition is a Day | Manage tab umbrella (#746/#3987)", async ({
   await expect(page.getByTestId("supplement-suggestions-badge")).toHaveCount(0);
   await expect(suggestions.getByTestId("generated-origin-help")).toHaveCount(1);
   await expect(
+    // eslint-disable-next-line no-restricted-properties -- first-ok: any curated row proves the origin split renders; the claim is about the shape
     suggestions
       .locator('[data-testid^="curated-supplement-suggestion-"]')
-      .first() // first-ok: any curated row proves the origin split renders; the claim is about the shape
+      .first()
   ).toBeVisible();
 
   // …and the safety layer sits below the stack rather than above it, which is the

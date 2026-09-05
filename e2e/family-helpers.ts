@@ -101,6 +101,7 @@ export async function createLoginViaFamily(
   // The family create button is an onClick Server Action (not a form submit), so no
   // single awaitable event exists — re-goto→fill→click until the durable login-row
   // renders; idempotent via the NOCASE-unique username (#830/#1111).
+  // eslint-disable-next-line no-restricted-properties -- topass-ok: onClick+refresh create, no single awaitable event (#830)
   await expect(async () => {
     await page.goto("/settings/family");
     await settledFill(page, page.getByPlaceholder("Username"), username);
@@ -134,7 +135,7 @@ export async function createLoginViaFamily(
     await expect(row).toBeVisible({ timeout: 5000 });
     // The onClick+refresh create has no single awaitable event, so retry the whole
     // cycle against the durable login-row (idempotent via the NOCASE-unique username).
-  }).toPass({ timeout: 45_000 }); // topass-ok: onClick+refresh create, no single awaitable event (#830)
+  }).toPass({ timeout: 45_000 });
 
   return { username, password };
 }
@@ -194,12 +195,13 @@ export async function switchToProfile(page: Page, name: string): Promise<void> {
     .getByTestId("profile-switcher-panel")
     .locator('[data-testid^="switch-to-"]')
     .filter({ hasText: name });
+  // eslint-disable-next-line no-restricted-properties -- topass-ok: popover trigger pre-hydration re-open (#730)
   await expect(async () => {
     await bar.click();
     await expect(target).toBeVisible({ timeout: 2_000 });
     // The popover trigger can be clicked pre-hydration; no single awaitable event
     // covers "trigger opened AND target rendered", so re-open until it does.
-  }).toPass(); // topass-ok: popover trigger pre-hydration re-open (#730)
+  }).toPass();
   // settledClick, not a bare click: the switch is a `<form action={switchProfileAction}>`
   // submit whose POST + revalidatePath("/", "layout") refresh navigates the current route.
   // A bare click awaits none of that, so on a cold shard the still-in-flight "/" navigation
@@ -234,6 +236,7 @@ export async function createProfileViaFamily(
   // The Add button is an onClick Server Action (not a form submit) — no single awaitable
   // event exists; re-goto and re-check the durable profile row, clicking Add only when
   // it's absent so a landed-but-slow create never duplicates the un-unique name (#830).
+  // eslint-disable-next-line no-restricted-properties -- topass-ok: onClick+refresh create, verify-first re-goto (#830)
   await expect(async () => {
     await page.goto("/settings/family");
     if (await profileRowExists(page, name)) return;
@@ -251,7 +254,7 @@ export async function createProfileViaFamily(
       .toBe(true);
     // The onClick+refresh create has no single awaitable event; VERIFY-FIRST re-goto
     // so a landed-but-slow create never dupes the un-unique name.
-  }).toPass({ timeout: 45_000 }); // topass-ok: onClick+refresh create, verify-first re-goto (#830)
+  }).toPass({ timeout: 45_000 });
 
   await switchToProfile(page, name);
   // Defer goal-based onboarding so the fresh profile lands on the dashboard. Two
@@ -263,6 +266,7 @@ export async function createProfileViaFamily(
   //   • the onboarding GATE can bounce "/" straight back to /onboarding if the
   //     deferral write hasn't committed yet, so the whole goto→defer→assert cycle is
   //     what retries, not just the assertion.
+  // eslint-disable-next-line no-restricted-properties -- topass-ok: goto → defer → land is a multi-step cycle whose failure mode is a REDIRECT back to the start, which no single expect can express
   await expect(async () => {
     await page.goto("/");
     if (page.url().includes("/onboarding")) {
@@ -274,7 +278,7 @@ export async function createProfileViaFamily(
       );
     }
     await expect(page).toHaveURL(/\/$|\/\?/, { timeout: 5_000 });
-  }).toPass({ timeout: 45_000 }); // topass-ok: goto → defer → land is a multi-step cycle whose failure mode is a REDIRECT back to the start, which no single expect can express
+  }).toPass({ timeout: 45_000 });
   return name;
 }
 

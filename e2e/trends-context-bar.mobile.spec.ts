@@ -51,10 +51,11 @@ async function scrollTo(page: Page, y: number): Promise<number> {
 // supplied a generic `trend-mini-card`; anchoring inside the one Body grid keeps
 // "first chart" tied to the current composition (#3387).
 function firstBodyTile(page: Page) {
+  // eslint-disable-next-line no-restricted-properties -- first-ok: this helper deliberately names the first census metric
   return page
     .getByTestId("body-metric-tiles")
     .locator('[data-testid^="body-tile-"]')
-    .first(); // first-ok: this helper deliberately names the first census metric
+    .first();
 }
 
 test.describe("the tab-and-range context bar", () => {
@@ -106,7 +107,7 @@ test.describe("the tab-and-range context bar", () => {
     ).toBeCloseTo(shellBox.y + shellBox.height, 0);
 
     // The label sits ABOVE the first chart — the invariant, stated positionally.
-    const tile = firstBodyTile(page); // first-ok: the census's topmost tile is the subject — "is the window named above the FIRST chart?"
+    const tile = firstBodyTile(page); // the census's topmost tile is the subject — "is the window named above the FIRST chart?"
     await expect(tile).toBeVisible();
     const [labelBox, tileBox] = await settledBoxes([
       page.getByTestId("trends-context-label"),
@@ -433,7 +434,7 @@ test.describe("the heading band is given up below sm (F)", () => {
     const overviewLead = page.getByTestId("trending-digest");
     await expect(overviewLead).toBeVisible();
     const leadBox = await overviewLead.boundingBox();
-    const tile = firstBodyTile(page); // first-ok: the census's topmost tile IS the measurement's subject
+    const tile = firstBodyTile(page); // the census's topmost tile IS the measurement's subject
     await expect(tile).toBeVisible();
     const tileBox = await tile.boundingBox();
     // A ceiling with headroom for ordinary content changes, well under the 646px

@@ -55,7 +55,7 @@ test("a just-added medication shows no adherence percentage, not 0% (#1442)", as
   // A synthetic name that matches no OTC dataset entry, so nothing is prefilled and
   // the med stays SCHEDULED (a PRN med is never due, which would hide the line for
   // an unrelated reason and make the test prove nothing).
-  const nameStamp = Date.now(); // clock-ok: unique medication-name suffix, never a stored timestamp
+  const nameStamp = Date.now(); // eslint-disable-line no-restricted-properties -- clock-ok: unique medication-name suffix, never a stored timestamp
   const name = `${ADDED_MED_PREFIX} ${nameStamp}-${Math.floor(Math.random() * 1e6)}`;
 
   await page.getByTestId("medication-add-toggle").click();
