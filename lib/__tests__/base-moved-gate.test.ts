@@ -82,7 +82,11 @@ describe("a head whose base has moved", () => {
 
   it.each<[string, string, Partial<Parameters<typeof baseMovedVerdict>[0]>]>([
     // NOTHING LANDED. The ordinary case, and the one that must stay cheap.
-    ["nothing landed since the CI base", "current", { landed: [], landedFiles: [] }],
+    [
+      "nothing landed since the CI base",
+      "current",
+      { landed: [], landedFiles: [] },
+    ],
     // A MERGE THAT CANNOT CARRY A TYPE. The exemption the ruling asks for.
     [
       "a docs-only merge landed",
@@ -145,7 +149,11 @@ describe("a head whose base has moved", () => {
     ],
     // CANNOT TELL IS A REFUSAL. A base-moved check that fails open licenses the
     // merge it exists to question, so each unreadable input closes the gate.
-    ["a comparison that did not fit one page", "unreadable", { truncated: true }],
+    [
+      "a comparison that did not fit one page",
+      "unreadable",
+      { truncated: true },
+    ],
     ["a comparison that went dark", "unreadable", { ciBase: null }],
     ["a base branch with no tip", "unreadable", { baseTip: null }],
   ])("%s reads as %s", (_case, kind, over) => {

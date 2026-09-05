@@ -75,27 +75,16 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
   `e2e-main` run on `main` is not a reason to hold it; a red `main` is.
 - Merges are serial; PRs are not. Every branch that passed its gates opens
   READY at once (never draft — environment.md §GitHub access), so CI and the
-  exact-head review run in parallel. After a merge, `landing-independence.mjs`
-  says whether the next head's PATHS are disjoint — advisory only, and blind to
-  a type or contract change on either side (#5138). The binding question is the
-  gate's base-moved check below.
-- **A head whose base moved needs the MERGED tree checked** (owner 2026-09-05,
-  #5235). Two heads can each be green on their own base and be invalid together
-  — #5129 made `kind` required, #5138's CI predated it, and `main` was red on
-  three jobs for two merges. So when anything that could carry a type has landed
-  since a head's CI base, merge `main` into it and let CI re-run, or check the
-  merged tree yourself and post the receipt on that exact head:
-
-      MERGED-TREE-CHECKED: <head> onto <main tip> — npm run typecheck; npm run test:db
-
-  Both SHAs and the commands are read literally; a quoted line is not a receipt.
+  exact-head review run in parallel. `landing-independence.mjs` is path-only
+  advice (#5138); the gate refuses an unchecked base-moved head (#5235).
+- Its refusal names the `MERGED-TREE-CHECKED` receipt that clears it.
 - **The exact-head review is INDEPENDENT and pinned to the SHA** (owner
   2026-08-26, #3710): a non-author reviews the candidate commit; the COMMENT
   review states SHA and reviewer — on a shared bot account, also that the
   reviewer did not author the change (#4258). A head change voids it.
 - **Run `merge-gate.mjs <pr>` before every merge call** — receipt, green checks,
-  no threads, no hold, the mandated pass, this session's own PR (claims.md), and
-  a base that has not moved under the head unchecked; exit 0 is the precondition. CI mirrors it as the `merge-gate` COMMIT STATUS,
+  no threads, no hold, the mandated pass, this session's own PR (claims.md);
+  exit 0 is the precondition. CI mirrors it as the `merge-gate` COMMIT STATUS,
   which check-runs does not list: all-green can still be `unstable`.
 - A later conflicting PR rebases only after the last earlier conflict lands.
 - Resume the author for semantic conflict resolution; do not hand-integrate

@@ -167,7 +167,8 @@ export function baseMovedVerdict({
     };
   const named = [];
   if (!NAMES_TYPECHECK.test(onHead.rest)) named.push("npm run typecheck");
-  if (!NAMES_A_TEST_TIER.test(onHead.rest)) named.push("a test tier (npm test / npm run test:db)");
+  if (!NAMES_A_TEST_TIER.test(onHead.rest))
+    named.push("a test tier (npm test / npm run test:db)");
   if (named.length)
     return {
       ok: false,
