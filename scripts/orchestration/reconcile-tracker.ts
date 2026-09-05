@@ -88,7 +88,8 @@ function ghGetAll(
     const sep = pathAndQuery.includes("?") ? "&" : "?";
     const url = `https://api.github.com/repos/${config.repo}${pathAndQuery}${sep}per_page=100&page=${page}`;
     const batch = ghGet(config, url);
-    if (!Array.isArray(batch) || batch.length === 0) return { items: out, truncated: false };
+    if (!Array.isArray(batch) || batch.length === 0)
+      return { items: out, truncated: false };
     out.push(...batch);
     if (batch.length < 100) return { items: out, truncated: false };
   }

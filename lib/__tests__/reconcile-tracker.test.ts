@@ -692,7 +692,12 @@ describe("gatherEvidence", () => {
       watermark
     );
     const blind = gatherEvidence(
-      { issues: [], mergedPrs: [], issueStates: new Map(), prsTruncated: false },
+      {
+        issues: [],
+        mergedPrs: [],
+        issueStates: new Map(),
+        prsTruncated: false,
+      },
       index,
       watermark
     );
@@ -744,7 +749,12 @@ describe("gatherEvidence", () => {
     // reassuring reading was also the wrong one.
     const report = renderReport(
       gatherEvidence(
-        { issues: [], mergedPrs: [], issueStates: new Map(), prsTruncated: false },
+        {
+          issues: [],
+          mergedPrs: [],
+          issueStates: new Map(),
+          prsTruncated: false,
+        },
         index,
         window
       )
