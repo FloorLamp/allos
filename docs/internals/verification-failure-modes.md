@@ -414,4 +414,9 @@ command handed only the diff's own files would have reported one of the 44.
   the reason it exists — it clears a moved base WITHOUT moving the head, so the
   pass stays valid. Run the tiers it names against the merged tree and post what
   you ran. Treating it as a shortcut to be declined on principle (2026-09-05,
-  twice) sends lanes round a loop that has no other exit.
+  twice) sends lanes round a loop that has no other exit. But the receipt is
+  bound to the base it names, so it stales the moment main moves — run it and
+  merge in one pass, not as a step you bank in advance. Measured the same day:
+  receipts naming `bc7349b4` and `d248567d` were both void by the time the gate
+  read them, and the merge that worked re-ran the check against the base main
+  actually had and merged in the same breath.
