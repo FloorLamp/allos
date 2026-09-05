@@ -704,7 +704,10 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     // asserting WHICH doses the control promises while the ladder's own rungs are
     // pinned against literals in the copy test above.
     const promise = (ids: readonly number[]) =>
-      bulkLabel("Take", ids.map((id) => ({ name: nameOf(id) })));
+      bulkLabel(
+        "Take",
+        ids.map((id) => ({ name: nameOf(id) }))
+      );
     await expect(takeAll).toHaveText(promise(named));
 
     // THE STALE TAP, forged deliberately: one of the doses this row NAMES is resolved

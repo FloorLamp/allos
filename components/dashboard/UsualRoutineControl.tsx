@@ -171,7 +171,9 @@ function useUsualRoutineTap({
     // The day is named to a screen reader wherever there is one to name: the record
     // door reaches days the reader is not living, and "your usual Morning" without
     // one would be the same sentence for every day it can fill.
-    ariaLabel: date ? `${heading} on ${date}: ${phrase}` : `${heading}: ${phrase}`,
+    ariaLabel: date
+      ? `${heading} on ${date}: ${phrase}`
+      : `${heading}: ${phrase}`,
     data: {
       "data-groups": groups.join(","),
       "data-doses": doseIds.join(","),

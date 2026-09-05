@@ -101,7 +101,12 @@ describe("bulkLabel — the bulk verb reads by count (#4477, #5320)", () => {
   ] as ["Take" | "Log", string[], string][])(
     "%s over %s reads %s",
     (verb, names, label) => {
-      expect(bulkLabel(verb, names.map((name) => ({ name })))).toBe(label);
+      expect(
+        bulkLabel(
+          verb,
+          names.map((name) => ({ name }))
+        )
+      ).toBe(label);
     }
   );
 });

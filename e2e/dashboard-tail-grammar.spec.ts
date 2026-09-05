@@ -5,7 +5,10 @@ import {
   openDashboardAll,
   openEverythingFold,
 } from "./helpers";
-import { CONTROL_BOX_PX } from "@/lib/tap-floor-tokens";
+import {
+  CONTROL_BOX_PX,
+  TAP_FLOOR_FLOAT_EPSILON_PX,
+} from "@/lib/tap-floor-tokens";
 import {
   E2E_LOGIN_ROUTINEUSUAL,
   E2E_LOGIN_WELLSYM,
@@ -21,6 +24,9 @@ import {
 // EVERY ABSENCE ASSERTION BELOW CARRIES ITS POSITIVE CONTROL IN THE SAME TEST — a
 // selector that cannot find the group would satisfy "no cards in here" on a tree
 // where the tail vanished entirely, which is the failure this file exists to catch.
+const PHONE = { width: 390, height: 844 };
+const DESKTOP = { width: 1280, height: 900 };
+
 test.describe("the dashboard's row grammar (#3365/#4076)", () => {
   // THE GUARD INVERTS (#4076). It used to say "every card in a reporting group hosts
   // a write"; the ruling makes it "no card exists here at all", in any zone. Both
@@ -303,11 +309,13 @@ test.describe("the dashboard's row grammar (#3365/#4076)", () => {
       // The control: the offer is on screen, so the title claims below are about a
       // row that rendered.
       await expect(row).toHaveCount(1);
-      // The offer's own control carries the title: it names every serving and dose
-      // the tap will write, so the row does not print that promise a second time.
-      await expect(row.getByTestId("routine-usual-offer")).toContainText(
-        /^Your usual /
-      );
+      // The control is a COUNT (#5320) and the promise is on the row beside it —
+      // the dose chips and the food members' facts text — so nothing is printed
+      // twice. The whole sentence is still the control's accessible name, which is
+      // where a reader gets it.
+      const offer = row.getByTestId("routine-usual-offer");
+      await expect(offer).toContainText(/^Log /);
+      await expect(offer).toHaveAttribute("aria-label", /^Your usual /);
       // "Nutrition today" headed BOTH this offer and the Read protein readout, so the
       // same words scrolled past twice meaning two different things (#3365). One
       // surface owns the name now, and it is never this one.
@@ -317,6 +325,83 @@ test.describe("the dashboard's row grammar (#3365/#4076)", () => {
           .getByTestId("dashboard-all-contents")
           .getByText("Nutrition today", { exact: true })
       ).toHaveCount(0);
+    } finally {
+      await page.context().close();
+    }
+  });
+  // THE FACTS CELL CANNOT LOSE ITS ROW TO THE CONTROLS CELL (#5320).
+  //
+  // The P1 was not the offer card. It was that the row grammar had NO width bound on
+  // its trailing cell at all: the cell is `shrink-0`, so a control that asked for
+  // width simply took it, the facts cell got what was left, and six dose chips wrapped
+  // one per line beside a card. So the guard is on the GRAMMAR — every Now row hosting
+  // a control, not the one row that broke — because that is where the missing bound
+  // was.
+  //
+  // AS A RELATIONSHIP, NOT AN ABSOLUTE. A facts cell 200px wide is correct on a phone
+  // and broken on a desktop, so the claim is the facts cell against ITS OWN ROW. The
+  // height half is the ruled absolute (#3938's one 34px box) and stays one.
+  //
+  // MEASURED, NEVER A CLASS STRING, for #3514's reason: `flex-1` in a class list is a
+  // declaration, and the only thing that matters is the box that arrived.
+  test("every Now row hosting a control keeps at least half its width for the facts, and holds its controls at the control box", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_ROUTINEUSUAL,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      for (const viewport of [DESKTOP, PHONE]) {
+        await page.setViewportSize(viewport);
+        await page.goto("/");
+        const hosts = page.locator(
+          '[data-testid="dashboard-candidate"][data-lane="now"]:has([data-testid="dashboard-row-controls"])'
+        );
+        // THE POSITIVE CONTROL, and here it is the whole ballgame: both claims below
+        // are quantified over a set of rows and an EMPTY set satisfies either one.
+        // Waiting on the CONTROL rather than on the row is also what makes the boxes
+        // below a reading of the thing being measured instead of of an empty cell.
+        await expect(
+          hosts.first().getByTestId("dashboard-row-controls"),
+          `${viewport.width}px: Now hosts a row with a control`
+        ).toBeVisible();
+        const measured = await hosts.evaluateAll((rows) =>
+          rows.map((row) => {
+            const slot = row.querySelector(
+              '[data-testid="dashboard-row-controls"]'
+            )!;
+            return {
+              id: row.getAttribute("data-candidate-id"),
+              // The row's own two-cell flex line, not the <li>: the <li> is the list
+              // item and can carry motion transforms of its own.
+              width: slot.parentElement!.getBoundingClientRect().width,
+              facts: slot.previousElementSibling!.getBoundingClientRect().width,
+              controls: slot.getBoundingClientRect().height,
+            };
+          })
+        );
+
+        // Reported as the offending rows and their measured boxes, not as a count:
+        // "Expected true, Received false" names no row to open.
+        expect(
+          measured
+            .filter((m) => m.facts + TAP_FLOOR_FLOAT_EPSILON_PX < m.width / 2)
+            .map(
+              (m) =>
+                `${m.id}: facts ${Math.round(m.facts)}px of a ${Math.round(m.width)}px row`
+            ),
+          `${viewport.width}px: the facts cell keeps half the row`
+        ).toEqual([]);
+        expect(
+          measured
+            .filter(
+              (m) => m.controls > CONTROL_BOX_PX + TAP_FLOOR_FLOAT_EPSILON_PX
+            )
+            .map((m) => `${m.id}: controls cell ${Math.round(m.controls)}px`),
+          `${viewport.width}px: the controls cell is the control box`
+        ).toEqual([]);
+      }
     } finally {
       await page.context().close();
     }
