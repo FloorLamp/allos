@@ -131,11 +131,43 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
       "SELECT s.id AS supply_id, i.profile_id AS profile_id FROM shared_supplies s LEFT JOIN intake_items i ON i.supply_id = s.id",
     why: "countVisiblePools (#2116): the SAME cross-by-construction membership question poolMembers above answers, asked once for the whole cabinet instead of once per bottle. It reads nothing but (supply_id, profile_id) — no name, no dose, no health data — and hands it straight to the pure isPoolVisibleTo rule against the caller's already-resolved accessible set, which is the filter. A LEFT JOIN because an ORPHANED bottle names nobody and must still be countable",
   },
+  // THE FOUR PORTAL-IDENTITY READS BELOW ARE SCOPED BY A GATE, NOT BY A PREDICATE
+  // (#5243/#5239). Each one carries `profile_id IS NOT NULL`, which the scan used to
+  // read as scoping — so three of them needed no entry at all, and the fourth's entry
+  // could go dead unnoticed. Now that `IS NULL`/`IS NOT NULL` are refused, each states
+  // its own justification here, which is where it belonged. `portal_identities` is
+  // INSTANCE-WIDE by design: a portal login's bindings span the household, so a read
+  // that answers "who is bound here" cannot filter by the profile it is about to name.
+  //
+  // Each `includes` is keyed on the PREDICATE, not on the select list — the exemption is
+  // a claim about what the WHERE does and does not constrain, and the entry replaced
+  // here had gone dead the other way: its select list was the pre-#3011 spelling, so it
+  // matched NO live statement (measured: 0) while the statement it named sailed through
+  // on the hollow `IS NOT NULL` pass. Nothing was red, because both halves failed
+  // silently in the same direction.
   {
     file: "lib/portals.ts",
     includes:
-      "SELECT pi.profile_id AS profileId, pi.portal_id AS portalId, pi.account_id AS accountId FROM portal_identities pi WHERE pi.account_id = ? AND pi.patient_label = ? AND pi.ignored = 0 AND pi.profile_id IS NOT NULL",
-    why: "resolvePortalIdentity (#1739): the ONE lookup that RESOLVES which profile to gate on; the gate is the protection, the resolved id is immediately intersected with the token's write set. Filtering by profile_id here would presuppose the answer the acquirer is asking for. An identity that resolves to a profile the pushing token cannot write is refused exactly as loudly as an unbound one",
+      "FROM portal_identities pi WHERE pi.account_id = ? AND pi.patient_label = ? AND pi.ignored = 0 AND pi.profile_id IS NOT NULL",
+    why: "resolvePortalIdentity (#1739): the ONE lookup that RESOLVES which profile to gate on; the gate is the protection, the resolved id is immediately intersected with the token's write set. Filtering by profile_id here would presuppose the answer the acquirer is asking for. An identity that resolves to a profile the pushing token cannot write is refused exactly as loudly as an unbound one — every route that calls it (app/api/documents/route.ts, /held, /sync-report) puts the resolved id through accessibleProfilesForLogin reachability AND accessForProfile(...) !== 'write' before any row is read or written. The `ignored = 0 AND profile_id IS NOT NULL` pair is belt-and-braces against the migration-131 CHECK, never a scope filter (#5243)",
+  },
+  {
+    file: "lib/portal-requests.ts",
+    includes:
+      "SELECT COUNT(*) AS n FROM portal_identities WHERE account_id = ? AND ignored = 0 AND profile_id IS NOT NULL",
+    why: "mappedPatientCount (#1888/#1889): asks whether ONE portal login reaches anybody at all, so a sync request that could land nowhere is never raised. Counting the bindings under an account is a question ABOUT the account, and per-profile filtering would answer a different one. It returns an integer and nothing else — no profile id, no label, no health data — so there is no row for a caller to be shown; every surface that goes on to NAME profiles reaches them through mappedProfilesForAccount below, which is intersected against the caller's already-authorized set (#5243)",
+  },
+  {
+    file: "lib/portal-requests.ts",
+    includes:
+      "SELECT DISTINCT profile_id AS profileId FROM portal_identities WHERE account_id = ? AND ignored = 0 AND profile_id IS NOT NULL",
+    why: "mappedProfilesForAccount (#1889): profile_id is SELECTED, not filtered — this read RESOLVES which profiles a portal login covers, and filtering by one would presuppose the answer. The CROSS-PROFILE READER CONVENTION documented above it is the protection: openSyncRequestsForProfiles takes the token login's write set — resolved at the auth boundary, since this module never imports lib/auth — and keeps a request only when its account covers a profile in that set, and syncRequestCarrierProfiles intersects the same list against the recipients' managed profiles. It carries ids only, never a row of a profile's data (#5243)",
+  },
+  {
+    file: "lib/portal-requests.ts",
+    includes:
+      "(SELECT COUNT(*) FROM portal_identities i WHERE i.account_id = a.id AND i.ignored = 0 AND i.declined = 0 AND i.profile_id IS NOT NULL) AS mapped",
+    why: "staleness candidates (#1888/#1889): the same collectable-patient COUNT as mappedPatientCount, asked once per portal login instead of once per call, so the unprompted creator can enumerate accounts in one statement. Deliberately profile-agnostic — the enumeration is over portal_accounts, and the correlated subquery contributes a per-account integer to it. No profile id and no profile data leave this statement; the profiles a resulting request appears on are chosen afterwards by syncRequestCarrierProfiles against the recipients' managed set (#5243)",
   },
   {
     file: "lib/portals.ts",
@@ -458,6 +490,18 @@ const ALLOW_NON_LITERAL: { file: string; expr: string; why: string }[] = [
 //       located AFTER the statement's first WHERE/ON/USING keyword (so a SET-clause
 //       `profile_id = ?` before the WHERE, or a select-list/GROUP BY mention, does not
 //       count).
+// `IS` is admitted only when it compares against a VALUE (`profile_id IS ?`,
+// `profile_id IS NOT ?` — the null-safe spelling of `=`). The refusal is written as a
+// NEGATIVE LOOKAHEAD on `IS` rather than as `IS\s+(?!…)`, because the latter backtracks:
+// `\s+` gives back a space, the lookahead then reads " NOT NULL" as not-NULL, and
+// `profile_id IS  NOT  NULL` passes. The live scan normalizes whitespace first and would
+// never have shown it — a guard must not depend on a caller having tidied its input.
+// `IS NULL` / `IS NOT NULL` are
+// refused: an existence check on the column constrains nothing about WHOSE rows come
+// back, and on a profile-owned table every row satisfies `profile_id IS NOT NULL`
+// (#5243/#5239). Accepting it made four live portal reads pass hollowly — a pass that
+// looks identical from outside to a real one, which is how the `resolvePortalIdentity`
+// exemption documenting one of them came to read as dead.
 // A statement that names an owned table but fails this must be allowlisted with a
 // justification, exactly like a statement that omits profile_id entirely.
 function scopedByProfileId(sql: string): boolean {
@@ -470,7 +514,7 @@ function scopedByProfileId(sql: string): boolean {
   if (predIdx >= 0) {
     const tail = sql.slice(predIdx);
     if (
-      /(?:^|[\s.(])profile_id\s*(?:=|<|>|!=|<>|IN\b|IS\b|BETWEEN\b|LIKE\b|GLOB\b)/i.test(
+      /(?:^|[\s.(])profile_id\s*(?:=|<|>|!=|<>|IN\b|IS(?!\s+(?:NOT\s+)?NULL\b)\s|BETWEEN\b|LIKE\b|GLOB\b)/i.test(
         tail
       )
     )
@@ -561,6 +605,52 @@ describe("profile scoping: every owned-table query filters by profile_id", () =>
 
     expect(violations, `\n${violations.join("\n")}\n`).toEqual([]);
   });
+
+  // STALENESS for ALLOW_EXEC (#5239). An allowlist entry is a claim about the tree, and
+  // a claim nothing re-checks stops being true quietly. This one is not hypothetical:
+  // the ALLOW_SQL entry for resolvePortalIdentity had matched NO live statement since
+  // #3011 renamed its select list, and nothing went red — because the statement it named
+  // was passing the scan anyway on a `profile_id IS NOT NULL` that does not scope. Two
+  // silent failures pointing the same way, and the entry read as live from outside.
+  //
+  // LOAD-BEARING, not merely present: some live `.exec()` literal in the entry's OWN file
+  // must both match it and NEED it — an owned-table statement the positional rule refuses.
+  // An entry whose statement was deleted fails this; so does one whose statement was
+  // rewritten to scope itself, which is a permission left behind for code that changed.
+  it("every ALLOW_EXEC entry is justified and is the reason a live statement passes", () => {
+    const live = files.flatMap((file) => {
+      const rel = relPath(file);
+      if (isVersionedMigration(rel)) return [];
+      return execArgs(readSource(file))
+        .filter((a) => a.kind === "sql")
+        .map((a) => ({ rel, sql: norm(a.text) }))
+        .filter((p) => OWNED_RE.test(p.sql));
+    });
+
+    const dead: string[] = [];
+    for (const entry of ALLOW_EXEC) {
+      expect(entry.why.trim().length).toBeGreaterThan(0);
+      const matched = live.filter(
+        (p) => p.rel.endsWith(entry.file) && p.sql.includes(entry.includes)
+      );
+      // The verdict says WHICH fix it needs, and the second one deliberately stops short
+      // of "delete it": an entry can look unnecessary because the scan started accepting
+      // something that does not actually scope, which is how a live waiver gets deleted
+      // on a hollow pass (#5243). Send the reader to check the predicate first.
+      if (matched.length === 0)
+        dead.push(
+          `${entry.file}: "${entry.includes}" — no live .exec() statement matches this entry; its statement was deleted or rewritten, so delete the entry`
+        );
+      else if (matched.every((p) => scopedByProfileId(p.sql)))
+        dead.push(
+          `${entry.file}: "${entry.includes}" — the statement it matches passes the scan on its own, so this entry exempts nothing. Before deleting, read WHAT makes it pass: confirm a real predicate binds the profile, not a bare existence check on the column (#5243). If it is the existence check, the read is unscoped and this entry is its only documentation — keep it`
+        );
+    }
+    expect(
+      dead,
+      `\nALLOW_EXEC entries that exempt nothing. Each line says which fix it needs:\n${dead.join("\n")}\n`
+    ).toEqual([]);
+  });
 });
 
 // UNIT cases for the two #1208 rules, pinned on inline source (no files) so the
@@ -611,6 +701,31 @@ describe("profile-scoping scanner rules (issue #1208)", () => {
         "UPDATE medical_records SET profile_id = ? WHERE profile_id = ? AND id = ?"
       )
     ).toBe(true);
+  });
+
+  // `IS` scopes only when it compares against a VALUE (#5243/#5239). Both directions are
+  // pinned: the REFUSE half is the defect — an existence check on the column that every
+  // row of a profile-owned table satisfies — and the ACCEPT half is what keeps the fix
+  // from being a deletion of the operator, which would red four portal reads for the
+  // wrong reason and make the waivers below unfalsifiable.
+  it.each([
+    // Refused: constrains nothing about WHOSE rows come back.
+    ["SELECT 1 FROM t WHERE profile_id IS NOT NULL", false],
+    ["SELECT 1 FROM t WHERE profile_id IS NULL", false],
+    // Qualified, lower-cased, and loosely spaced spellings of the same thing — this is
+    // how the four live portal statements actually write it.
+    ["SELECT 1 FROM portal_identities pi WHERE pi.profile_id IS NOT NULL", false],
+    ["SELECT 1 FROM t WHERE profile_id is not null", false],
+    ["SELECT 1 FROM t WHERE profile_id IS  NOT  NULL", false],
+    // The existence check does not poison a statement that ALSO filters properly.
+    ["SELECT 1 FROM t WHERE profile_id = ? AND profile_id IS NOT NULL", true],
+    // Accepted: `IS ?` / `IS NOT ?` are the null-safe spellings of `=` / `!=` and bind a
+    // value, so they scope exactly as `=` does. This is what `IS` was admitted for.
+    ["SELECT 1 FROM t WHERE profile_id IS ?", true],
+    ["SELECT 1 FROM t WHERE profile_id IS NOT ?", true],
+    ["SELECT 1 FROM portal_identities pi WHERE pi.profile_id IS ?", true],
+  ])("IS as a scoping operator: %s -> %s", (sql, scoped) => {
+    expect(scopedByProfileId(sql)).toBe(scoped);
   });
 
   it("db.exec scan: an owned-table exec without an allowlist entry is flagged", () => {
