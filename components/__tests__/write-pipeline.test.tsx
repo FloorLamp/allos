@@ -265,6 +265,13 @@ describe("the client write pipeline (#3276)", () => {
 // row's seven buttons over one day count), and the REAL ledger underneath. What is
 // asserted is the value a person is looking at after each ending — the matrix the
 // adopters used to each spell for themselves.
+//
+// WHAT IT DOES NOT ASSERT, and a reader needs to know: the ledger PHASE. `keep` and a
+// rollback aimed at the projection land the same number and differ only in whether the
+// key enters the post-success cooldown, so this table cannot tell them apart — which is
+// how a mutation swapping one for the other stayed green here. The phase transitions
+// are `lib/__tests__/one-tap.test.ts`'s, on the pure machine, and pinning them a second
+// time here would be a second spelling of one question.
 
 type DoseOutcome = { ok: true } | { ok: false; error: string };
 

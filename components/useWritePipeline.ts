@@ -261,6 +261,14 @@ export function useWritePipeline<A extends OneTapAffordance, V = void>(
   // that definition is what keeps a refusal from erasing a newer success: with two taps
   // out, the failing one puts back whatever the server last took, never the snapshot it
   // was fired from, which a sibling tap may already have replaced.
+  //
+  // A RECORDED DECISION, NOT AN OMISSION: `useOptimisticLedger` is the more general
+  // home for this, and `LedgerSettlement.to` already exists, so the move is cheap. It
+  // was not made here because the blast radius is seven surfaces that consume the
+  // ledger directly and that this change cannot test — four of them (`MobilityLogBar`,
+  // `ProteinQuickAdd`, `SymptomRowControl`, `SymptomLogBar`) carrying the same
+  // multi-key/one-value shape and so the same defect. Moving it is the fix for all
+  // four at once, and that is the trade to weigh when someone does.
   const settled = useRef<V | undefined>(undefined);
   const inFlight = useRef(0);
 
