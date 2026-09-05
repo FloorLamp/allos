@@ -678,6 +678,42 @@ describe("the exit codes", () => {
     expect(run.stderr).toContain("did not resolve");
   });
 
+  // THE FILE-LIST PAGE CAP (#5343). Every HIGH_STAKES path is matched against
+  // this list, so a migration sitting on page eleven classifies as `ordinary` —
+  // which is exactly what a clean sweep prints. `batch.length < 100` is the
+  // exhaustion signal and it used to be spent on a bare `break`, so the two were
+  // indistinguishable. Both rows run through the same stub and differ only in how
+  // many FULL pages it serves, which is what makes the refusal the truncation
+  // talking rather than a constant in the branch.
+  const stubFiles = (fullPages: number) =>
+    `#!${process.execPath}\n` +
+    `const url = process.argv[process.argv.length - 1];\n` +
+    `const emit = (v) => { process.stdout.write(JSON.stringify(v)); process.exit(0); };\n` +
+    `if (url.includes("/files?")) {\n` +
+    `  const page = Number((url.match(/[?&]page=(\\d+)/) ?? [, "1"])[1]);\n` +
+    `  emit(page <= ${fullPages}\n` +
+    `    ? Array.from({ length: 100 }, (_, i) => ({ filename: "lib/ordinary-" + page + "-" + i + ".ts" }))\n` +
+    `    : []);\n` +
+    `}\n` +
+    `emit({ number: 4242, title: "an ordinary change", body: "no safety vocabulary here" });\n`;
+
+  it("exits 2 when the changed-file list runs out of pages", () => {
+    const run = withStubCurl(stubFiles(10));
+    expect(run.status).toBe(EXIT.cannotAnswer);
+    expect(run.stderr).toContain("changed more files than this reader pages");
+  });
+
+  it("still answers ordinary when the file list ended on its own", () => {
+    // The converse, through the same fetch: nine full pages plus a short tenth
+    // is 900 ordinary files and a real verdict, so the row above is the CAP
+    // firing and not the file count.
+    const run = withStubCurl(stubFiles(9));
+    expect(run.status).toBe(EXIT.ordinary);
+    expect(run.stderr).not.toContain(
+      "changed more files than this reader pages"
+    );
+  });
+
   it("guards its CLI entry so importing it does not curl GitHub", () => {
     // This whole file imports the script. Without the guard, every `npm test`
     // would run `--check` against argv it never meant to parse. The guard is the

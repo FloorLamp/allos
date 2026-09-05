@@ -257,6 +257,15 @@ describe("form ⇄ coaching-card agreement on the live-niggle axis (#3244)", () 
 // module that calls suggestNextSet MUST also call contextualNextSet, so a new next-set
 // surface can't seed the un-modified load. lib/coaching/strength.ts is the ONLY
 // exception — it DEFINES both.
+//
+// WHY THIS ONE STAYS A SCAN (#5346/#5347). The fact is CO-OCCURRENCE — two calls in one
+// file — and neither tier can see it. No selector can: four of the five surfaces bind
+// the raw suggestion to a local first (`const base = suggestNextSet(...)`) and pass the
+// LOCAL to contextualNextSet, so a nesting selector matches one site and misses four,
+// and ESLint has no cross-node "if A appears then B must" form. A type could, and that
+// is the real fix rather than a rule: have suggestNextSet return a branded RawNextSet
+// that only contextualNextSet accepts, and let every rendering surface take NextSet —
+// then a raw seed is uncompilable and this describe deletes itself.
 describe("every suggestNextSet surface routes through contextualNextSet (#1115 Fix B)", () => {
   const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
   const SCAN_DIRS = ["lib", "app", "components", "scripts"];

@@ -55,6 +55,8 @@ helpGuard(process.argv, import.meta.url);
 // in lib/__tests__/queue-snapshot-script.test.ts, so a rename breaks there.
 const WATERMARK_TITLE = "Reconcile watermark (machine state)";
 const SLOTS = ["P0", "P1", "P2", "P3"];
+/** Pages of open issues. Hitting it is a refusal, never a shorter queue. */
+const PAGE_CAP = 10;
 
 /** Pure: one snapshot from raw open issues. Exported for the test drive. */
 export function buildSnapshot(raw, now = new Date(), lanes = new Map()) {
@@ -104,7 +106,14 @@ function main() {
   }
   const repo = process.env.RECONCILE_REPO || "FloorLamp/allos";
   const issues = [];
-  for (let page = 1; page <= 10; page++) {
+  // The page cap earns the SAME refusal as the missing token above, for the
+  // identical reason: a sweep that stops short writes a SHORTER queue, and a
+  // dropped candidate is a forgotten candidate. `batch.length < 100` is the
+  // exhaustion signal and it used to be spent on a bare `break`, so a clipped
+  // sweep and a complete one wrote byte-identical `.queue` files — and the
+  // check-in cites that file's own count as the lanes verdict.
+  let swept = false;
+  for (let page = 1; page <= PAGE_CAP; page++) {
     const out = execFileSync(
       "curl",
       [
@@ -119,9 +128,23 @@ function main() {
       { encoding: "utf8", timeout: 30_000, maxBuffer: 64 * 1024 * 1024 }
     );
     const batch = JSON.parse(out);
-    if (!Array.isArray(batch) || batch.length === 0) break;
+    if (!Array.isArray(batch) || batch.length === 0) {
+      swept = true;
+      break;
+    }
     issues.push(...batch);
-    if (batch.length < 100) break;
+    if (batch.length < 100) {
+      swept = true;
+      break;
+    }
+  }
+  if (!swept) {
+    console.error(
+      `queue-snapshot: the open-issue sweep hit its ${PAGE_CAP}-page cap. Every ` +
+        "issue past it would be missing from a file that reads as the whole " +
+        "queue, which lies in the idle direction. Refusing."
+    );
+    process.exit(2);
   }
 
   const snapshot = buildSnapshot(issues, new Date(), laneIssues(readLedger()));
