@@ -211,6 +211,39 @@ const FITBIT_SURFACES = [
   "lib/integrations/registry.ts",
 ];
 
+// #5338 — THE CLOCK SEAM. `Date.parse` on a zoneless date-TIME string is SERVER-LOCAL
+// by specification, and silently so: a date-ONLY string is UTC, a stamp ending in `Z`
+// is UTC, and only the middle case moves with the host. Production writers emit a `Z`
+// and CI runs UTC, which is why a wrong write took four falsifying passes to surface.
+//
+// The replacement is a TYPE, not a convention: `parseInstant` takes
+// `CanonicalInstant | BareInstant` and `parseDay` takes `LocalDay` (lib/date.ts), so a
+// caller holding a bare `string` cannot reach either and has to say which shape it has.
+//
+// THE EXCEPTION CONVENTION, and it is the same one the temporal-brand minters use: a
+// site that cannot be typed yet keeps `parseUtcSql` — which appends the `Z` itself, so
+// it is UTC either way, and needs no disable because it is not the banned call — with a
+// SAME-LINE COMMENT NAMING THE SHAPE IT EXPECTS. `metric_samples.started_at` / `ended_at` are the
+// population that needs it: that column deliberately carries no brand (#2899,
+// 2026-09-05) because it holds the device's verbatim instant, a `${day}T00:00:00` day
+// anchor AND a zoneless `${day}THH:MM:SS`, and the zoneless halves are this issue's
+// hazard class. A reason that says which of those the reader expects is the thing the
+// next person can check; a bare disable is not.
+const DATE_PARSE_BAN = {
+  object: "Date",
+  property: "parse",
+  message:
+    "Date.parse answers in the SERVER's zone for a zoneless date-time string. Parse through parseInstant / parseDay (lib/date.ts), whose parameter type says the value is UTC. A value no brand describes yet — metric_samples.started_at/ended_at — goes through parseUtcSql with a same-line comment naming the shape expected (#5338).",
+};
+// #1878 — was inline in the block below; named here so the Date.parse level can be
+// re-stated alongside it (see the mechanic above the constants).
+const ROUTER_REFRESH_BAN = {
+  object: "router",
+  property: "refresh",
+  message:
+    "Decide which this is: CHROME (a background actor — repaint through useChromeRefresh so a half-typed form is not emptied) or USER (the person asked for it — keep the direct call and say why on an eslint-disable line) (#1878).",
+};
+
 // Accumulating levels, narrowest last — see the mechanic at the top of this section.
 const SYNTAX_ALL = TEMPORAL_BRAND_CAST_SELECTORS.map((selector) => ({
   selector,
@@ -252,6 +285,8 @@ const IMPORT_PATTERNS_LIB_APP = [
   ...IMPORT_PATTERNS_PRODUCTION,
   STREAK_MODULE_BAN,
 ];
+const PROPERTIES_PRODUCTION = [DATE_PARSE_BAN];
+const PROPERTIES_APP_SURFACE = [...PROPERTIES_PRODUCTION, ROUTER_REFRESH_BAN];
 const restrictImports = (paths, patterns) => ["error", { paths, patterns }];
 
 const config = [
@@ -533,6 +568,15 @@ const config = [
       ),
     },
   },
+  // #5338 — the clock seam, across every production tree. lib/date.ts needs no
+  // exemption: the seam is built on `parseUtcSql`, which appends the `Z` itself.
+  {
+    files: PRODUCTION_TREES,
+    ignores: TEST_TREES,
+    rules: {
+      "no-restricted-properties": ["error", ...PROPERTIES_PRODUCTION],
+    },
+  },
   // #1878 — every `router.refresh()` is classified. A background actor repaints
   // through `useChromeRefresh` so the dirty-form registry can hold it; a repaint the
   // person asked for calls the router directly and carries its reason on a file-level
@@ -542,15 +586,7 @@ const config = [
     files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}"],
     ignores: TEST_TREES,
     rules: {
-      "no-restricted-properties": [
-        "error",
-        {
-          object: "router",
-          property: "refresh",
-          message:
-            "Decide which this is: CHROME (a background actor — repaint through useChromeRefresh so a half-typed form is not emptied) or USER (the person asked for it — keep the direct call and say why on an eslint-disable line) (#1878).",
-        },
-      ],
+      "no-restricted-properties": ["error", ...PROPERTIES_APP_SURFACE],
     },
   },
   // #2888 — the training surfaces reach the registry. `scope_kind !== "practice"` was a
