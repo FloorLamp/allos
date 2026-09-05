@@ -1496,15 +1496,27 @@ export const getHrInstantsInRange = cache(function getHrInstantsInRange(
     source: string | null;
   }[];
   const toLocalMinute = localMinuteProjector(tz, startUtc, endUtc);
-  return pickRowsOneSourcePerDay(
-    rows,
-    resolutionFor(profileId, "heart_rate"),
-    (r) => (toLocalMinute(r.ts) ?? r.ts).slice(0, 10),
-    (r) => r.source
-  )
-    .map(({ ts, bpm }) => ({ at: Date.parse(ts), bpm }))
-    .filter((r) => Number.isFinite(r.at))
-    .sort((left, right) => left.at - right.at);
+  return (
+    pickRowsOneSourcePerDay(
+      rows,
+      resolutionFor(profileId, "heart_rate"),
+      (r) => (toLocalMinute(r.ts) ?? r.ts).slice(0, 10),
+      (r) => r.source
+    )
+      // `parseUtcSql`, NEVER `Date.parse` (#5338, found by the fourth falsifying pass on
+      // #5212). `hr_minutes.ts` is a stored stamp and a zoneless date-TIME string is
+      // SERVER-LOCAL by specification, so `Date.parse` reads it through whatever `TZ` the
+      // host has — every db fixture in the repo, migration 164's unconverted rows and any
+      // `seedTimezoneFromEnv` self-host emit one without a `Z`. Under
+      // `TZ=America/New_York` that moved a whole trace by the offset and stamped a
+      // completed workout onto a window with no heart rate in it, which is a WRITE and
+      // reaches the safety-tier post-workout dispatch. The projection above is thrown away
+      // precisely so this line reads the stored instant; parsing it in the host's zone
+      // gives back the loss that seam exists to prevent.
+      .map(({ ts, bpm }) => ({ at: parseUtcSql(ts)?.getTime() ?? NaN, bpm }))
+      .filter((r) => Number.isFinite(r.at))
+      .sort((left, right) => left.at - right.at)
+  );
 });
 
 function bodyMetricColumn(metric: BodyMetricKind): string {

@@ -19,11 +19,27 @@ import { setTimezone } from "@/lib/settings";
 
 const NOW = new Date("2026-07-17T18:00:00Z");
 
-function newProfile(name: string): number {
-  return Number(
+/**
+ * A profile whose day runs in a NAMED zone, never the host's (#5338).
+ *
+ * Without a `timezone` row a profile inherits the instance default, which is the
+ * machine's own zone — so every case below silently asserted that the runner was in
+ * UTC. It also hid the defect this file exists to catch: `getHrInstantsInRange` read
+ * its stamps with `Date.parse`, which resolves a zoneless date-time in the HOST's zone,
+ * and under a host in any other zone the whole trace moved by that offset. A fixture
+ * that inherits the host zone moves the start with it and the two errors cancel.
+ *
+ * The zone is set ONCE here rather than by a second call at the case, because a
+ * `setTimezone` onto a profile that already has a row records a travel-free SWITCH into
+ * the history the sweep's neighbours read.
+ */
+function newProfile(name: string, tz = "UTC"): number {
+  const id = Number(
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
       .lastInsertRowid
   );
+  setTimezone(id, tz);
+  return id;
 }
 
 /** A resting range of their own — without one this module refuses to guess (#4775). */
@@ -289,8 +305,7 @@ describe("the row's shape decides, not the editor's mode (#5212 F1, F2)", () => 
   // no instant at which `row.date === today` AND the closing quiet has been measured.
   // The presence gate made this case unreachable rather than merely late.
   it("finishes a session that started before local midnight and ended after it", async () => {
-    const p = newProfile("DetEndMidnight");
-    setTimezone(p, "UTC");
+    const p = newProfile("DetEndMidnight", "UTC");
     seedRestingHrBefore(p, "2026-05-10", 60);
     // 23:50 → 00:20 elevated, then quiet until 01:00 the next day.
     seedInstants(p, "2026-05-10T23:50:00Z", "2026-05-11T00:20:00Z", 140);
@@ -346,8 +361,7 @@ describe("the trace is read as instants, not rebuilt from local minutes (#5212 F
     day: string,
     restsAfter: boolean
   ): { p: number; id: number } {
-    const p = newProfile(name);
-    setTimezone(p, "America/New_York");
+    const p = newProfile(name, "America/New_York");
     seedRestingHrBefore(p, day, 60);
     // 00:40–01:20 EDT
     seedInstants(p, `${day}T04:40:00Z`, `${day}T05:20:00Z`, 140);
@@ -391,8 +405,7 @@ describe("the trace is read as instants, not rebuilt from local minutes (#5212 F
   // had simply stopped working in this zone would produce. One effort on the SAME
   // profile-local day of the SAME transition, and the end is the minute it really ended.
   it("still finishes a single effort on the transition day", async () => {
-    const p = newProfile("DetEndFallBackSingle");
-    setTimezone(p, "America/New_York");
+    const p = newProfile("DetEndFallBackSingle", "America/New_York");
     seedRestingHrBefore(p, "2026-11-01", 60);
     seedInstants(p, "2026-11-01T04:40:00Z", "2026-11-01T05:20:00Z", 140);
     seedInstants(p, "2026-11-01T05:20:00Z", "2026-11-01T06:00:00Z", 55);
@@ -418,8 +431,7 @@ describe("the trace is read as instants, not rebuilt from local minutes (#5212 F
     expect(finishDetectedWorkouts(rested.p)).toBe(0);
     expect(rowOf(rested.id).end_time).toBeNull();
 
-    const single = newProfile("DetEndControlSingle");
-    setTimezone(single, "America/New_York");
+    const single = newProfile("DetEndControlSingle", "America/New_York");
     seedRestingHrBefore(single, "2026-10-25", 60);
     seedInstants(single, "2026-10-25T04:40:00Z", "2026-10-25T05:20:00Z", 140);
     seedInstants(single, "2026-10-25T05:20:00Z", "2026-10-25T06:00:00Z", 55);
@@ -555,8 +567,7 @@ describe("a cross-midnight finish is visible too (#5212 falsifying pass)", () =>
     // to presence, which is right rather than a gap: a post-workout dose reminder for a
     // session from weeks ago is not a reminder.
     vi.setSystemTime(new Date("2026-05-11T00:35:00Z"));
-    const p = newProfile("DetEndMidnightSafety");
-    setTimezone(p, "UTC");
+    const p = newProfile("DetEndMidnightSafety", "UTC");
     seedRestingHrBefore(p, "2026-05-10", 60);
     seedInstants(p, "2026-05-10T23:50:00Z", "2026-05-11T00:20:00Z", 140);
     seedInstants(p, "2026-05-11T00:20:00Z", "2026-05-11T01:00:00Z", 55);
