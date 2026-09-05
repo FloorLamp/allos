@@ -280,10 +280,14 @@ function checkedValue(table: string, column: string): string | undefined {
   const ddl =
     (
       db
-        .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?`)
+        .prepare(
+          `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?`
+        )
         .get(table) as { sql: string } | undefined
     )?.sql ?? "";
-  const clause = new RegExp(`\\b${column}\\b\\s+IN\\s*\\(([^)]*)\\)`, "i").exec(ddl);
+  const clause = new RegExp(`\\b${column}\\b\\s+IN\\s*\\(([^)]*)\\)`, "i").exec(
+    ddl
+  );
   return clause ? /'([^']*)'/.exec(clause[1])?.[1] : undefined;
 }
 
@@ -304,7 +308,9 @@ function parentRow(
     );
   if (has(fk.table))
     return db
-      .prepare(`SELECT ${fk.to} AS id FROM ${fk.table} WHERE profile_id = ? LIMIT 1`)
+      .prepare(
+        `SELECT ${fk.to} AS id FROM ${fk.table} WHERE profile_id = ? LIMIT 1`
+      )
       .get(profileId) as { id: number } | undefined;
   const up = pragma<SchemaFk>(`foreign_key_list(${fk.table})`).find((g) =>
     has(g.table)
@@ -318,8 +324,7 @@ function parentRow(
       )
       .get(profileId) as { id: number } | undefined;
   return db.prepare(`SELECT ${fk.to} AS id FROM ${fk.table} LIMIT 1`).get() as
-    | { id: number }
-    | undefined;
+    { id: number } | undefined;
 }
 
 export function seedSchemaRow(

@@ -502,14 +502,17 @@ function distinguishableColumns(ds: (typeof DATASETS)[number]): string[] {
       .map((c) => c.column!)
   );
   const fks = new Set(
-    (
-      db.pragma(`foreign_key_list(${ds.table})`) as { from: string }[]
-    ).map((f) => f.from)
+    (db.pragma(`foreign_key_list(${ds.table})`) as { from: string }[]).map(
+      (f) => f.from
+    )
   );
   const cols = db.pragma(`table_info(${ds.table})`) as PhysicalColumn[];
   const usable = cols.filter(
     (c) =>
-      emitted.has(c.name) && !c.pk && c.name !== "profile_id" && !fks.has(c.name)
+      emitted.has(c.name) &&
+      !c.pk &&
+      c.name !== "profile_id" &&
+      !fks.has(c.name)
   );
   // Text first: a free-form text column is the one least likely to be CHECK'd to a
   // closed set of values, and the fallback below tries the rest in turn anyway.
@@ -524,17 +527,18 @@ function distinguishableColumns(ds: (typeof DATASETS)[number]): string[] {
 // of ROWS, not of exemptions: a dataset here still gets its case, and its row still
 // has to differ between the profiles or the case reds. Keep it as short as the
 // schema forces.
-const SCOPING_SEEDS: Record<string, (tag: string) => Record<string, unknown>> = {
-  // CHECK ties `kind` to exactly one of goal_key / condition_id / biomarker_key, with
-  // `direction` allowed only on the biomarker arm.
-  intake_item_purposes: (tag) => ({
-    kind: "goal",
-    goal_key: `${tag.toLowerCase()}-purpose`,
-    condition_id: null,
-    biomarker_key: null,
-    direction: null,
-  }),
-};
+const SCOPING_SEEDS: Record<string, (tag: string) => Record<string, unknown>> =
+  {
+    // CHECK ties `kind` to exactly one of goal_key / condition_id / biomarker_key, with
+    // `direction` allowed only on the biomarker arm.
+    intake_item_purposes: (tag) => ({
+      kind: "goal",
+      goal_key: `${tag.toLowerCase()}-purpose`,
+      condition_id: null,
+      biomarker_key: null,
+      direction: null,
+    }),
+  };
 
 // One row of `ds`, belonging to `p`, whose emitted content differs from the other
 // profile's. Candidate columns are tried in turn because a CHECK constraint can
@@ -552,9 +556,9 @@ function seedForScoping(
   }
   const refusals: string[] = [];
   for (const column of distinguishableColumns(ds)) {
-    const type = (db.pragma(`table_info(${ds.table})`) as PhysicalColumn[]).find(
-      (c) => c.name === column
-    )!.type;
+    const type = (
+      db.pragma(`table_info(${ds.table})`) as PhysicalColumn[]
+    ).find((c) => c.name === column)!.type;
     const value = /CHAR|CLOB|TEXT/i.test(type) ? `${p.tag} scope` : ordinal;
     try {
       seedSchemaRow(ds.table, { [column]: value }, p.profileId);

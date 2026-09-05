@@ -173,12 +173,11 @@ const qCount =
 // that declares a JS-built cell is not a claim that turned out false — it is a
 // claim that could never be true, and the CSV would ship an empty column under it.
 // That was a guard; it is now unrepresentable.
-type ShapeHook<T> = (
-  rows: T[],
-  profileId: number
-) => Record<string, unknown>[];
+type ShapeHook<T> = (rows: T[], profileId: number) => Record<string, unknown>[];
 
-function tableDataset<T extends Record<string, unknown> = Record<string, unknown>>(
+function tableDataset<
+  T extends Record<string, unknown> = Record<string, unknown>,
+>(
   cfg: {
     key: string;
     label: string;
@@ -254,7 +253,10 @@ const ACTIVITIES_SELECT = `SELECT id, date, type, title, duration_min, distance_
 // single bound parameter as JSON, so this is a complete literal the profile-scoping
 // scan reads directly. It used to be a const plus two interpolations, which that
 // scan cannot see through and silently skipped (#5323).
-const activitySets = (profileId: number, activityIds: number[]): ActivitySet[] =>
+const activitySets = (
+  profileId: number,
+  activityIds: number[]
+): ActivitySet[] =>
   db
     .prepare(
       `SELECT s.activity_id, s.exercise, s.set_number, s.weight_kg, s.reps,
@@ -474,7 +476,13 @@ export const DATASETS: ExportDataset[] = [
     select: ACTIVITIES_SELECT,
     countSql: `SELECT COUNT(*) AS n FROM activities WHERE profile_id = ?`,
     shape: (acts, profileId) =>
-      shapeActivities(acts, activitySets(profileId, acts.map((a) => a.id))),
+      shapeActivities(
+        acts,
+        activitySets(
+          profileId,
+          acts.map((a) => a.id)
+        )
+      ),
     jsBuilt: [
       {
         column: "exercises",
