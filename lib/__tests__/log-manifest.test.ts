@@ -24,8 +24,11 @@ import {
   SYMPTOM_DAY_WRITE,
   TAP_REACH,
   isPastWriteAccepted,
+  isWithinReach,
+  isWithinTapReach,
 } from "@/lib/log-manifest";
 import type { LogCoreName, LogCoresOf, LogDomain } from "@/lib/log-manifest";
+import type { OneTapAffordance } from "@/lib/one-tap";
 import {
   DOSE_LOG_DATE_WINDOW_DAYS,
   isDoseDateAccepted,
@@ -73,6 +76,40 @@ describe("bounded tap reaches are byte-identical to what shipped", () => {
     expect(Object.keys(TAP_REACH).sort()).toEqual(
       Object.keys(ONE_TAP_AFFORDANCES).sort()
     );
+  });
+
+  // `isWithinTapReach` is a lookup in front of `isWithinReach`, which is the door a
+  // mount that is NOT a core asks through — the day context declares a reach that is
+  // nowhere in `TAP_REACH` (#5211). The two must stay one answer, so this walks every
+  // declared reach across a range wider than the widest bound (30 back, 2 forward) and
+  // requires them to agree on every day, including the days each bound falls between.
+  it("asking by affordance and asking by reach are one answer", () => {
+    const realDays = Array.from({ length: 41 }, (_, i) =>
+      shiftDateStr(TODAY, i - 35)
+    );
+    const days = ["not-a-date", ...realDays];
+    const disagreements = Object.entries(TAP_REACH).flatMap(([id, reach]) =>
+      days
+        .filter(
+          (day) =>
+            isWithinTapReach(id as OneTapAffordance, TODAY, day) !==
+            isWithinReach(reach, TODAY, day)
+        )
+        .map((day) => `${id} @ ${day}`)
+    );
+    expect(disagreements).toEqual([]);
+    // The range really does straddle every bound rather than sitting inside them all:
+    // each affordance must both accept and refuse somewhere in the REAL days, or the
+    // agreement above was taken over a run of identical answers. Counted over
+    // `realDays` on purpose — the bogus date is refused by everything, so counting it
+    // would supply the refusal and let a one-day range pass this control.
+    for (const id of Object.keys(TAP_REACH) as OneTapAffordance[]) {
+      const accepted = realDays.filter((day) =>
+        isWithinTapReach(id, TODAY, day)
+      );
+      expect(accepted.length).toBeGreaterThan(0);
+      expect(accepted.length).toBeLessThan(realDays.length);
+    }
   });
 });
 
