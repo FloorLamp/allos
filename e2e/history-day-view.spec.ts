@@ -1089,7 +1089,7 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
         .getByTestId("history-calendar");
       await expect(door).toBeVisible();
       await hydratedClick(page, door);
-      const panel = page.getByTestId("history-calendar-panel");
+      const panel = page.getByTestId("history-calendar-panel"); // testid-scope-ok: AnchoredPanel portals the popover to <body>, one copy
       await expect(panel).toBeVisible();
 
       // A WHOLE MONTH OF CELLS, not merely "something opened": six weeks of seven is
