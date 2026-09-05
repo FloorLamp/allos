@@ -34,7 +34,12 @@
 //   7. that the PR belongs to the SESSION running the gate (#5177), where the
 //      host says which session that is. Two orchestrators post as one GitHub
 //      account, so the body's session footer is the only discriminator there
-//      is; a PR with no footer is reported as UNKNOWN, never as yours.
+//      is; a PR with no footer is reported as UNKNOWN, never as yours;
+//   8. that the tree which will LAND has been checked (#5235). Every check
+//      above is about ONE head; this one is about the merge. When the base has
+//      moved since this head's CI base by a commit that could carry a type,
+//      only a MERGED-TREE-CHECKED receipt on this exact head opens the gate.
+//      base-moved-core.mjs holds that judgment and states its own limit.
 //
 // It also PRINTS, without gating on it, what `e2e-main` says about the base
 // branch (#4722): that workflow reports on main, never on a PR head, so main
@@ -73,11 +78,13 @@ import {
   closedStatusDescription,
   falsifyingPassVerdict,
   holdVerdict,
+  markerLines,
   normaliseSession,
   ownershipVerdict,
   readinessVerdict,
   receiptVerdict,
 } from "./merge-gate-core.mjs";
+import { RECEIPT_MARKER, baseMovedVerdict } from "./base-moved-core.mjs";
 import { titleLength, titleRuleRefusal } from "./title-rule.mjs";
 helpGuard(process.argv, import.meta.url);
 
@@ -368,6 +375,43 @@ console.log(
     ? `NOTE: ${baseDetectorNotice(baseRuns.check_runs ?? [], baseRef)}`
     : `NOTE: could not read ${baseRef}'s check runs — e2e-main standing unknown`
 );
+
+// HAS THE LANDING TREE BEEN CHECKED? (#5235) One comparison, three-dot, which
+// answers all of it at once: `merge_base_commit` is the head's CI base, the
+// `commits` are what the base branch gained since, and `files` is what they
+// touched. A `soft` read, because a comparison that goes dark must reach the
+// verdict as "cannot tell" rather than exiting the gate — and cannot-tell
+// REFUSES there, since a base-moved check that fails open licenses the merge it
+// was written to question.
+const comparison = gh(
+  `repos/${repo}/compare/${head}...${encodeURIComponent(baseRef)}`,
+  true
+);
+const landedCommits = comparison?.commits ?? [];
+const receipts = markerLines(notes, RECEIPT_MARKER);
+const baseMoved = baseMovedVerdict({
+  head,
+  baseRef,
+  // The last commit of a three-dot comparison IS the target's tip, so a
+  // truncated page would silently name the wrong one — which `truncated`
+  // refuses on rather than reporting a base that was never checked.
+  baseTip: landedCommits.length
+    ? landedCommits[landedCommits.length - 1].sha
+    : comparison?.merge_base_commit?.sha,
+  ciBase: comparison?.merge_base_commit?.sha,
+  landed: landedCommits.map((c) => ({ sha: c.sha })),
+  landedFiles: (comparison?.files ?? []).map((f) => f.filename),
+  truncated:
+    !comparison ||
+    landedCommits.length < (comparison.total_commits ?? 0) ||
+    (comparison.files ?? []).length >= 300,
+  marks: receipts.found,
+  unread: receipts.ignored.length
+    ? ` NOTE: ${receipts.ignored.length} ${RECEIPT_MARKER} line(s) here QUOTE and were NOT read (#5183).`
+    : "",
+});
+if (baseMoved.ok) pass(baseMoved.message);
+else fail(baseMoved.message);
 
 const checks = checkRunsVerdict(all_runs, ignoreCheck, head);
 if (checks.ignored) {

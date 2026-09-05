@@ -90,6 +90,18 @@ if (url.includes("/check-runs")) {
   }
   reply({ total_count: state.baseCheckRuns.length, check_runs: state.baseCheckRuns });
 }
+// The base-moved comparison (#5235): three-dot head...base, so the merge base
+// is the head's CI base and the commits are what the base gained since.
+if (url.includes("/compare/")) {
+  reply(
+    state.comparison ?? {
+      merge_base_commit: { sha: state.pr.head.sha },
+      total_commits: 0,
+      commits: [],
+      files: [],
+    }
+  );
+}
 if (url.includes("/issues/") && url.includes("/comments")) {
   reply(url.includes("page=1") ? (state.prComments ?? []) : []);
 }
@@ -121,6 +133,7 @@ interface Fixture {
   threads?: unknown[];
   graphqlStatus?: number;
   reviewComments?: unknown[];
+  comparison?: unknown;
 }
 
 const green = (name: string) => ({
@@ -168,6 +181,10 @@ function fixture(overrides: Fixture) {
     threads: overrides.threads ?? [],
     graphqlStatus: overrides.graphqlStatus,
     reviewComments: overrides.reviewComments ?? [],
+    // Absent by default, which the stub serves as a head LEVEL with main: the
+    // base-moved boundary (#5235) has to land somewhere for every fixture here,
+    // and "nothing has landed since" is the side each of them was written on.
+    comparison: overrides.comparison,
   };
 }
 
@@ -1285,6 +1302,62 @@ describe("merge-gate.mjs holds and passes end to end", () => {
     const run = runGate({}, { CLAUDE_CODE_REMOTE_SESSION_ID: "" });
     expect(run.stdout).toContain("PR OWNERSHIP UNCHECKED");
     expect(run.stdout).not.toContain("PASS: PR belongs to");
+  });
+
+  // THE BASE-MOVED GATE THROUGH THE CLI (#5235). The pure matrix is in
+  // base-moved-gate.test.ts; this pins the wiring — that the comparison is
+  // actually read, and that the receipt is looked for in the same note set the
+  // hold and the falsifying pass come from. Every OTHER fixture in this file
+  // takes the stub's default comparison, which is a head level with main: they
+  // sit on the unmoved side of this boundary and still assert what they always
+  // did.
+  const LANDED = "9999999999999999999999999999999999999999";
+  const behindByALibMerge = {
+    comparison: {
+      merge_base_commit: { sha: "3333333333333333333333333333333333333333" },
+      total_commits: 1,
+      commits: [{ sha: LANDED }],
+      files: [{ filename: "lib/travel.ts" }],
+    },
+  };
+
+  it("closes on a head whose base moved under it, and names the escape", () => {
+    const run = runGate(behindByALibMerge);
+    expect(run.status).toBe(1);
+    expect(run.stdout).toContain("1 merge(s) behind main");
+    expect(run.stdout).toContain("MERGED-TREE-CHECKED");
+  });
+
+  it("opens once a receipt names this head, this tip and the commands", () => {
+    const run = runGate({
+      ...behindByALibMerge,
+      prComments: [
+        {
+          user: { login: "claude" },
+          created_at: "2026-09-04T12:00:00Z",
+          body: `MERGED-TREE-CHECKED: ${HEAD} onto ${LANDED} — npm run typecheck; npm run test:db`,
+        },
+      ],
+    });
+    expect(run.status).toBe(0);
+    expect(run.stdout).toContain("merged tree checked");
+  });
+
+  // AND A RECEIPT THAT NAMES NO COMMAND IS NOT ONE. The ruling asks for the
+  // commands because a receipt nobody can check is prose (#5254).
+  it("closes on a receipt that claims the check but names no command", () => {
+    const run = runGate({
+      ...behindByALibMerge,
+      prComments: [
+        {
+          user: { login: "claude" },
+          created_at: "2026-09-04T12:00:00Z",
+          body: `MERGED-TREE-CHECKED: ${HEAD} onto ${LANDED} — merged main, all clean`,
+        },
+      ],
+    });
+    expect(run.status).toBe(1);
+    expect(run.stdout).toContain("NAMES no");
   });
 });
 
