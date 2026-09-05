@@ -39,6 +39,8 @@ function metrics(over: Partial<Parameters<typeof computeMetrics>[0]> = {}) {
     openIssues: [],
     now: NOW,
     days: 7,
+    prsTruncated: false,
+    prsCoverageSince: null,
     ...over,
   });
 }
@@ -54,7 +56,7 @@ describe("computeMetrics", () => {
     });
     expect(m.throughput.merged).toBe(2);
     expect(m.throughput.reverts).toEqual([2]);
-    expect(m.examined.closedPrsScanned).toBe(3);
+    expect(m.examined.mergedPrsExamined).toBe(3);
   });
 
   it("shapes the queue by the one priority slot each issue carries", () => {
@@ -112,8 +114,94 @@ describe("computeMetrics", () => {
     expect(text.indexOf("What was examined")).toBeLessThan(
       text.indexOf("Throughput")
     );
-    expect(text).toContain("0 closed PRs scanned, 0 open PRs, 0 open issues");
+    expect(text).toContain("0 merged PRs examined, 0 open PRs, 0 open issues");
     expect(text).toContain("0 merged (0.0/day)");
+  });
+});
+
+// A PAGE CAP PRINTED AS A DENOMINATOR (#5310).
+//
+// The pager stops at ten pages of 100 and the report said "969 closed PRs
+// scanned" under a heading that says denominators FIRST, with 2545 closed PRs in
+// the repo. The exhaustion signal was already computed — `batch.length < 100` is
+// exactly it — and dropped on the next line, so a clipped sweep and an exhausted
+// one rendered the same number. Same defect, same fix, as #5311's `ghGetAll`.
+describe("the cap is not the denominator", () => {
+  // `since` for the 7d window below is 2026-08-23T12:00:00Z, so each boundary
+  // here sits deliberately on one side of it or the other.
+  it.each([
+    [
+      true,
+      "2026-08-25T00:00:00Z",
+      true,
+      "the window reaches past what was fetched",
+    ],
+    [
+      true,
+      "2026-08-20T00:00:00Z",
+      false,
+      "truncated, but the window is inside it",
+    ],
+    [
+      false,
+      "2026-08-25T00:00:00Z",
+      false,
+      "the fetch reached the end of the collection",
+    ],
+    [
+      true,
+      null,
+      false,
+      "truncated with nothing fetched at all — no boundary to be past",
+    ],
+  ])(
+    "truncated=%s coverage=%s -> uncovered=%s (%s)",
+    (prsTruncated, prsCoverageSince, expected, _why) => {
+      expect(metrics({ prsTruncated, prsCoverageSince }).window.uncovered).toBe(
+        expected
+      );
+    }
+  );
+
+  it("prints the count as a FLOOR, with the boundary, when the fetch was clipped", () => {
+    const text = renderMetrics(
+      metrics({
+        mergedPrs: [pr(1, "2026-08-29T00:00:00Z")],
+        prsTruncated: true,
+        prsCoverageSince: "2026-08-20T00:00:00Z",
+      })
+    );
+    expect(text).toContain("1 merged PRs examined");
+    expect(text).toContain("**TRUNCATED**");
+    expect(text).toContain("FLOOR");
+    expect(text).toContain("2026-08-20T00:00:00Z");
+  });
+
+  it("says none of that when the fetch reached the end", () => {
+    // The converse through the same renderer, so the line above is proven to be
+    // the truncation talking and not a constant in the template.
+    const text = renderMetrics(
+      metrics({ mergedPrs: [pr(1, "2026-08-29T00:00:00Z")] })
+    );
+    expect(text).toContain("1 merged PRs examined");
+    expect(text).not.toContain("TRUNCATED");
+    expect(text).not.toContain("FLOOR");
+  });
+
+  it("makes the flag REQUIRED, so omitting it cannot read as having looked", () => {
+    // The whole point of the field, pinned by the type checker rather than by a
+    // runtime guard (#2275): an optional `prsTruncated` left off at a call site
+    // is indistinguishable from a fetch nobody asked about. Verified reachable —
+    // deleting the two properties from the object below is the only thing that
+    // makes this line necessary, and adding them back makes typecheck clean.
+    // @ts-expect-error prsTruncated and prsCoverageSince are not optional
+    computeMetrics({
+      mergedPrs: [],
+      openPrs: [],
+      openIssues: [],
+      now: NOW,
+      days: 7,
+    });
   });
 });
 

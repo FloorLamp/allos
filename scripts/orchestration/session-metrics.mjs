@@ -14,7 +14,9 @@
 // PRs examined" is a broken read, not a quiet week, and the clean-looking one
 // is the one nobody investigates. Exit 0 with the report; 2 when it cannot
 // read (no token — an unauthenticated read truncates and lies quiet, the
-// ci-watch lesson; or API trouble).
+// ci-watch lesson; or API trouble), and 2 again when a fetch stopped at its page
+// cap in a place no line could rescue: an unwindowed denominator, or a --days
+// window reaching past what was actually fetched (#5310).
 
 import { execFileSync } from "node:child_process";
 import path from "node:path";
@@ -24,21 +26,42 @@ import { resolveReadToken } from "./host.mjs";
 helpGuard(process.argv, import.meta.url);
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const PAGE_CAP = 10;
 
 /**
  * @typedef {{ number: number, title: string, createdAt: string, mergedAt: string }} MergedPr
  * @typedef {{ number: number, draft: boolean }} OpenPr
  * @typedef {{ number: number, createdAt: string, labels: readonly string[] }} OpenIssue
+ * `prsTruncated` and `prsCoverageSince` are REQUIRED, not optional, for the
+ * reason the sibling gatherer records at length (#5311/#2275): an omitted flag
+ * reads exactly like nobody having looked, and this is the one field where that
+ * confusion IS the defect.
  * @typedef {{ mergedPrs: readonly MergedPr[], openPrs: readonly OpenPr[],
- *   openIssues: readonly OpenIssue[], now: Date, days: number }} MetricsInput
+ *   openIssues: readonly OpenIssue[], now: Date, days: number,
+ *   prsTruncated: boolean, prsCoverageSince: string | null }} MetricsInput
  */
 
 /**
  * Pure: everything below the fetch is computed from plain arrays.
  * @param {MetricsInput} input
  */
-export function computeMetrics({ mergedPrs, openPrs, openIssues, now, days }) {
+export function computeMetrics({
+  mergedPrs,
+  openPrs,
+  openIssues,
+  now,
+  days,
+  prsTruncated,
+  prsCoverageSince,
+}) {
   const since = new Date(now.getTime() - days * DAY_MS).toISOString();
+  // The window asks about time the fetch never reached: the pager stopped at its
+  // cap and `since` is older than the oldest activity it saw. A truncated list
+  // still yields a readable report — the count below says it is a floor — but a
+  // window nobody covered yields a throughput number with no finding in it to be
+  // right or wrong about, so the script refuses on this rather than printing.
+  const uncovered =
+    prsTruncated && prsCoverageSince !== null && since < prsCoverageSince;
   const merged = mergedPrs.filter((p) => p.mergedAt >= since);
   const reverts = merged.filter((p) => /^revert\b/i.test(p.title));
   const hoursToMerge = merged
@@ -64,9 +87,15 @@ export function computeMetrics({ mergedPrs, openPrs, openIssues, now, days }) {
     : null;
 
   return {
-    window: { since, days, now: now.toISOString() },
+    window: { since, days, now: now.toISOString(), uncovered },
     examined: {
-      closedPrsScanned: mergedPrs.length,
+      // NAMED FOR WHAT IT COUNTS. This printed as "closed PRs scanned" while
+      // holding the MERGED subset of what was fetched, so one line carried two
+      // denominator errors: a cap standing in for the repo, and a label
+      // standing in for a different population than the number.
+      mergedPrsExamined: mergedPrs.length,
+      truncated: prsTruncated,
+      coverageSince: prsCoverageSince,
       openPrs: openPrs.length,
       openIssues: openIssues.length,
     },
@@ -104,9 +133,18 @@ export function renderMetrics(m) {
   lines.push("");
   lines.push("## What was examined ← denominators FIRST");
   lines.push(
-    `- ${m.examined.closedPrsScanned} closed PRs scanned, ` +
+    `- ${m.examined.mergedPrsExamined} merged PRs examined, ` +
       `${m.examined.openPrs} open PRs, ${m.examined.openIssues} open issues`
   );
+  if (m.examined.truncated) {
+    lines.push(
+      `- **TRUNCATED**: the closed-PR fetch stopped at its ${PAGE_CAP}-page cap, so that count is a` +
+        ` FLOOR, not a total. Nothing untouched since ${m.examined.coverageSince} was fetched at all` +
+        ` — and the list is ordered by ACTIVITY, so that boundary is not a merge date: a PR merged` +
+        ` long before it can sit inside the set on one late comment, and a PR merged after it can` +
+        ` sit outside on none. Coverage is therefore not even monotonic in the window length.`
+    );
+  }
   lines.push("");
   lines.push("## Throughput");
   lines.push(
@@ -159,9 +197,19 @@ function main() {
   const repo = flag("--repo", "FloorLamp/allos");
 
   // curl, not fetch: node's fetch ignores HTTPS_PROXY (ci-watch.mjs says why).
+  //
+  // AND IT SAYS WHICH OF THE TWO REASONS IT STOPPED FOR. That answer used to be
+  // computed and dropped on the very next line — `if (batch.length < 100) break`
+  // IS the exhaustion signal — so a clipped sweep and an exhausted one rendered
+  // the same denominator. This report printed "969 closed PRs scanned" under a
+  // heading that says denominators FIRST, having fetched 1000 of the repo's 2545
+  // closed PRs. Same defect and same fix as the sibling gatherer's `ghGetAll`
+  // (#5311); the shape is mirrored rather than shared because that one is a `.ts`
+  // module with a curl of its own, and a helper spanning both would be a third
+  // way of doing it.
   const get = (pathAndQuery) => {
     const all = [];
-    for (let page = 1; page <= 10; page++) {
+    for (let page = 1; page <= PAGE_CAP; page++) {
       const sep = pathAndQuery.includes("?") ? "&" : "?";
       const out = execFileSync(
         "curl",
@@ -177,18 +225,48 @@ function main() {
         { encoding: "utf8", timeout: 30_000, maxBuffer: 64 * 1024 * 1024 }
       );
       const batch = JSON.parse(out);
-      if (!Array.isArray(batch) || batch.length === 0) break;
+      if (!Array.isArray(batch) || batch.length === 0)
+        return { items: all, truncated: false };
       all.push(...batch);
-      if (batch.length < 100) break;
+      if (batch.length < 100) return { items: all, truncated: false };
     }
-    return all;
+    // Every page came back full, so page PAGE_CAP + 1 would have had rows too.
+    return { items: all, truncated: true };
   };
 
-  const closedPrs = get("/pulls?state=closed&sort=updated&direction=desc");
-  const openPrsRaw = get("/pulls?state=open");
-  const openIssuesRaw = get("/issues?state=open");
+  const closed = get("/pulls?state=closed&sort=updated&direction=desc");
+  const openPrsPage = get("/pulls?state=open");
+  const openIssuesPage = get("/issues?state=open");
+
+  // A truncated TOTAL has no line that could rescue it. The closed-PR fetch is
+  // WINDOWED, so it survives truncation by saying so and naming its boundary;
+  // these two are printed as bare denominators with no window to bound them, and
+  // a clipped denominator is a wrong number that reads exactly like a right one.
+  // Refuse instead — the same split the sibling gatherer makes (#5311).
+  for (const [what, page] of [
+    ["open-PR", openPrsPage],
+    ["open-issue", openIssuesPage],
+  ]) {
+    if (page.truncated) {
+      console.error(
+        `session-metrics: the ${what} fetch hit its ${PAGE_CAP}-page cap. It is printed ` +
+          "as a denominator with no window to bound it, so every row past the cap " +
+          "would be silently missing from a number that reads as a total. Refusing."
+      );
+      process.exit(2);
+    }
+  }
+
+  const closedPrs = closed.items;
+  const openPrsRaw = openPrsPage.items;
+  const openIssuesRaw = openIssuesPage.items;
 
   const metrics = computeMetrics({
+    prsTruncated: closed.truncated,
+    // The oldest ACTIVITY in the fetched set. Ordered by `updated`, so this is
+    // the true lower edge of what the fetch reached, and it is deliberately not
+    // a merge date — see the note the renderer prints beside it.
+    prsCoverageSince: closedPrs.at(-1)?.updated_at ?? null,
     mergedPrs: closedPrs
       .filter((p) => p.merged_at)
       .map((p) => ({
@@ -208,6 +286,15 @@ function main() {
     now: new Date(),
     days,
   });
+  if (metrics.window.uncovered) {
+    console.error(
+      `session-metrics: --days ${days} reaches back to ${metrics.window.since}, and the ` +
+        `closed-PR fetch hit its ${PAGE_CAP}-page cap at ${metrics.examined.coverageSince}. ` +
+        "Throughput over the uncovered part would be an undercount that reads exactly " +
+        "like a quiet fortnight. Refusing; ask for a shorter window."
+    );
+    process.exit(2);
+  }
   console.log(renderMetrics(metrics));
 }
 
