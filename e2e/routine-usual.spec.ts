@@ -26,17 +26,23 @@ test("the dashboard offers the whole morning in one tap, and collapses once it i
 
     // The control names EVERY write it will perform — both halves, with the seam
     // between servings and dose confirms visible. The label IS the promise.
+    //
+    // WHERE THAT PROMISE IS NOW READ (#5320). The control's visible words are the
+    // count, because the row states the members beside it: the doses as chips and the
+    // food members as facts text. The whole sentence survives as the control's
+    // ACCESSIBLE NAME, which is the promise a reader is given, so it is asserted
+    // whole and exactly here. Anchored rather than `toContainText`, and the window is
+    // left open (`\w+`) because the frozen clock decides which food slot stands.
     const offer = page.getByTestId("routine-usual-offer");
     await expect(offer).toBeVisible();
-    await expect(offer).toHaveAttribute("data-groups", "berries,fermented");
-    await expect(page.getByTestId("routine-usual-names")).toHaveText(
-      "Berries and Fermented foods + Creatine, Collagen and B-complex"
+    await expect(offer).toHaveAttribute(
+      "aria-label",
+      /^Your usual \w+ \(5\): Berries and Fermented foods \+ Creatine, Collagen and B-complex$/
     );
     // The `may` supplement is declared for this window too and is absent — it has no
-    // dueness, which is the predicate the exclusion rides (#2419).
-    await expect(page.getByTestId("routine-usual-names")).not.toContainText(
-      "Magnesium"
-    );
+    // dueness, which is the predicate the exclusion rides (#2419). The anchored name
+    // above already forbids it; this says so where a reader looks for it.
+    await expect(offer).not.toHaveAttribute("aria-label", /Magnesium/);
 
     // One tap writes all five.
     await settledClick(page, offer);
@@ -87,8 +93,9 @@ test("the dashboard offers the whole morning in one tap, and collapses once it i
     await page.goto("/");
     await openDashboardAll(page);
     await expect(page.getByTestId("routine-usual-offer")).toBeVisible();
-    await expect(page.getByTestId("routine-usual-names")).toHaveText(
-      "Berries and Fermented foods + Creatine, Collagen and B-complex"
+    await expect(page.getByTestId("routine-usual-offer")).toHaveAttribute(
+      "aria-label",
+      /^Your usual \w+ \(5\): Berries and Fermented foods \+ Creatine, Collagen and B-complex$/
     );
   } finally {
     await page.context().close();
