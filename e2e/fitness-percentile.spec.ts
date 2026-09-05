@@ -1,5 +1,24 @@
 import { test, expect } from "./fixtures";
 import { followLink, hydratedClick, settledClick } from "./helpers";
+import { sharedDayRestorePoint } from "./shared-profile-guard";
+import { frozenNow } from "./worker-env";
+
+// THE GRIP READING BELOW LANDS ON THE SHARED PROFILE'S TODAY (#5266). The Fitness
+// check writes a `medical_records` row dated today on profile 1, and every reading
+// surface there ranks by recency under a canonical name — so a grip strength left
+// behind becomes the LATEST "Grip Strength" for every later test on this worker.
+// The day is copied before the write and put back after it rather than deleted:
+// the seed carries a today-dated Body Temperature in that same table, and clearing
+// the day would take it from everyone downstream (#5265's ruling).
+//
+// Armed inside the one test that writes, restored from an `afterEach` so a failure
+// part-way through the flow cannot skip it.
+let restoreSharedDay: (() => void) | null = null;
+
+test.afterEach(() => {
+  restoreSharedDay?.();
+  restoreSharedDay = null;
+});
 
 // #158: VO2 Max (and the functional fitness markers) gain an age/sex PERCENTILE +
 // FITNESS AGE context, computed from the baked FRIEND/Dodds/etc. norms in
@@ -33,6 +52,10 @@ test("the functional fitness markers are manually enterable and percentile-conte
   // left the daily measurements form; canonical storage is unchanged, which
   // lib/__action_tests__/measurements.actions.test.ts pins). The date defaults to
   // today, so a wide biomarkers window includes it.
+  restoreSharedDay = sharedDayRestorePoint(
+    "medical_records",
+    frozenNow().toISOString().slice(0, 10)
+  );
   await page.goto("/training/fitness-check");
   await hydratedClick(page, page.getByTestId("fitness-tile-grip"));
   const modal = page.getByTestId("fitness-entry-grip");

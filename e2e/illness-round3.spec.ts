@@ -7,6 +7,8 @@ import {
   settledUpload,
 } from "./helpers";
 import { openTempEntry } from "./symptom-helpers";
+import { sharedDayRestorePoint } from "./shared-profile-guard";
+import { frozenNow } from "./worker-env";
 
 // Illness round 3 (#859). The seed makes profile 1 currently sick with an OPEN "Illness"
 // episode, so these drive the NEW episode-page surfaces on that shared open episode with
@@ -30,6 +32,22 @@ const PHOTO_PNG = Buffer.from(
   "base64"
 );
 
+// THE FEVER READING IS A ROW ON THE SHARED PROFILE'S TODAY (#5266). "additive writes
+// only" above is true of the episode's own timeline and false of `medical_records`:
+// the temperature this test logs lands there on profile 1, dated today, and every
+// reading surface takes the LATEST row under a canonical name — so a 104.5 °F left
+// behind becomes the shared profile's current temperature for every later test on
+// this worker. The day is put back rather than cleared: the seed carries its own
+// today-dated Body Temperature, and deleting the day would take that from everyone
+// downstream (#5265's ruling). Restored from an `afterEach` so a failure part-way
+// through this long flow cannot skip it.
+let restoreSharedDay: (() => void) | null = null;
+
+test.afterEach(() => {
+  restoreSharedDay?.();
+  restoreSharedDay = null;
+});
+
 test.describe("Illness round 3 (#859)", () => {
   test("red-flag + school-return + photo strip on the episode page", async ({
     page,
@@ -50,6 +68,10 @@ test.describe("Illness round 3 (#859)", () => {
 
     // Item 3: log a very high fever (104.5°F) — the source's cited single-reading
     // red-flag instruction fires inline at logging (any age).
+    restoreSharedDay = sharedDayRestorePoint(
+      "medical_records",
+      frozenNow().toISOString().slice(0, 10)
+    );
     await openTempEntry(bar);
     await bar.getByTestId("temp-quick-unit").selectOption("F");
     await bar.getByTestId("temp-quick-input").fill("104.5");

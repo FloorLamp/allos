@@ -188,6 +188,11 @@ test("a collapsed group announces its value and still saves it", async ({
 // the worker while its comment said it deleted "exactly the rows the spec's own
 // submission created". A copy of the day is taken BEFORE the clear and restored
 // after, so the clear is a precondition this test owns rather than a hole it leaves.
+//
+// AND THE MEDICAL_RECORDS HALF OF THAT CLEAR HAD THE SAME HOLE (#5266). The seed
+// carries exactly ONE today-dated `medical_records` row for profile 1 — a manual
+// Body Temperature of 99.2 °F — and it is the row the first statement below
+// deletes. So the copy has to cover both tables, not only the samples one.
 function clearTodayManualVitals(): void {
   const handle = new Database(DB_PATH);
   try {
@@ -214,7 +219,10 @@ test("the one Time drives temperature and peak flow — the folded per-measure i
   page,
 }) => {
   test.slow();
-  const restoreSharedDay = sharedDayRestorePoint("metric_samples", TODAY);
+  const restoreSharedDay = [
+    sharedDayRestorePoint("metric_samples", TODAY),
+    sharedDayRestorePoint("medical_records", TODAY),
+  ];
   clearTodayManualVitals();
   try {
     await page.goto("/trends");
@@ -274,7 +282,7 @@ test("the one Time drives temperature and peak flow — the folded per-measure i
     }
   } finally {
     clearTodayManualVitals();
-    restoreSharedDay();
+    for (const restore of restoreSharedDay) restore();
   }
 });
 
