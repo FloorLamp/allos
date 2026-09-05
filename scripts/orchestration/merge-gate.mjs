@@ -383,10 +383,9 @@ console.log(
 // verdict as "cannot tell" rather than exiting the gate — and cannot-tell
 // REFUSES there, since a base-moved check that fails open licenses the merge it
 // was written to question.
-const comparison = gh(
-  `repos/${repo}/compare/${head}...${encodeURIComponent(baseRef)}`,
-  true
-);
+// The ref goes in unencoded, as it does in the base-detector read above: a
+// branch name with a slash is a path segment to this endpoint, not an escape.
+const comparison = gh(`repos/${repo}/compare/${head}...${baseRef}`, true);
 const landedCommits = comparison?.commits ?? [];
 const receipts = markerLines(notes, RECEIPT_MARKER);
 const baseMoved = baseMovedVerdict({
