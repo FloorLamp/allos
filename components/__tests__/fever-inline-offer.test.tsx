@@ -33,6 +33,15 @@ const record = (name: string) => (fd: FormData) => {
   (posted[name] ??= []).push(fd);
 };
 
+// WHAT THE ACTIVATION ANSWERS, per test (#4962). The default is the shipped happy
+// path; the failure shapes below are the whole subject of that issue, and the code
+// before it passed every happy-path test in this file while discarding all three.
+const activation = vi.hoisted(() => ({
+  next: { ok: true, episodeId: 900 } as
+    { ok: true; episodeId: number | null } | { ok: false; error: string },
+  throws: false,
+}));
+
 vi.mock("@/app/(app)/symptom-actions", () => ({
   logSymptom: async (fd: FormData) => {
     record("log")(fd);
@@ -59,7 +68,8 @@ vi.mock("@/app/(app)/symptom-actions", () => ({
   },
   activateIllnessForSymptoms: async (fd?: FormData) => {
     record("activate")(fd ?? new FormData());
-    return { ok: true as const, episodeId: 900 };
+    if (activation.throws) throw new Error("the action rejected");
+    return activation.next;
   },
   suggestSymptomsFromText: async () => ({
     ok: false as const,
@@ -130,6 +140,7 @@ function bar(
     antipyreticMeds: PrnMedForQuickLog[];
     intakeContext: IntakeFormContext;
     nowIso: string;
+    suggestActivateIllness: boolean;
   }> = {}
 ): void {
   render(
@@ -139,7 +150,7 @@ function bar(
       initialNotes={{}}
       symptoms={PICKER_SYMPTOMS}
       customNames={[]}
-      suggestActivateIllness={false}
+      suggestActivateIllness={props.suggestActivateIllness ?? false}
       showTemperature
       temperatureUnit="F"
       profileId={SUBJECT}
@@ -168,6 +179,8 @@ async function logReading(value: string): Promise<void> {
 beforeEach(() => {
   for (const key of Object.keys(posted)) delete posted[key];
   toasts.length = 0;
+  activation.next = { ok: true, episodeId: 900 };
+  activation.throws = false;
 });
 afterEach(() => cleanup());
 
@@ -526,5 +539,133 @@ describe("the Meds chip yields to the fold's dose offer (#4712 ruling part 2)", 
     expect(row.contains(screen.getByTestId("fever-offer-dose"))).toBe(true);
     expect(chips()).toHaveLength(1);
     expect(section().contains(chips()[0])).toBe(false);
+  });
+});
+
+// THE OFFER READS ITS OWN WRITE RESULT (#4962).
+//
+// Both doors onto `activateIllnessForSymptoms` awaited it and threw the answer away,
+// so a write that produced no episode cleared the affordance exactly like one that
+// did — and this is the primary action of a surface that has just told someone their
+// temperature is high. The action's own type invites the read: `episodeId` is "null
+// only if the situation write did not produce one … the reader answers from what
+// happened rather than from what it expected".
+//
+// EVERY CASE BELOW IS GREEN ON THE PRE-#4962 CODE except through this file's new
+// `activation` control — which is the point: a happy-path test cannot see a discarded
+// result, because the discarded result and the read one agree when the write worked.
+describe("the fever offer answers from what the write did (#4962)", () => {
+  async function accept(): Promise<void> {
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("fever-offer-open-episode"))
+    );
+  }
+
+  it.each([
+    [
+      "the write produced no episode",
+      () => {
+        activation.next = { ok: true, episodeId: null };
+      },
+    ],
+    [
+      "the action refused",
+      () => {
+        activation.next = { ok: false, error: "Couldn't do that." };
+      },
+    ],
+    [
+      "the action threw",
+      () => {
+        activation.throws = true;
+      },
+    ],
+  ])(
+    "keeps the block up with a stated failure when %s",
+    async (_n, arrange) => {
+      arrange();
+      bar({ hasOpenEpisode: false });
+      await openFold();
+      await logReading("102.1");
+      await accept();
+
+      // The block STAYS — clearing it is what reported a success that never happened.
+      expect(screen.getByTestId("fever-offer")).toBeTruthy();
+      expect(screen.getByTestId("fever-offer-open-episode")).toBeTruthy();
+      expect(screen.getByTestId("fever-offer-error").textContent).toBeTruthy();
+      // And the primary is tappable again rather than stuck pending.
+      expect(
+        screen.getByTestId("fever-offer-open-episode").hasAttribute("disabled")
+      ).toBe(false);
+
+      // THE RULED LIFETIME IS UNCHANGED BY THE FAILURE (#4712 judgement 1): a stated
+      // failure keeps the block, closing the fold still takes it away.
+      await openFold();
+      expect(screen.queryByTestId("fever-offer")).toBeNull();
+      expect(screen.queryByTestId("fever-offer-error")).toBeNull();
+    }
+  );
+
+  // THE CONVERSE, through the SAME markup the failures are read through: an episode
+  // that really came back still clears the block. Without this the assertions above
+  // would pass on a block that never clears at all.
+  it("clears the block only when an episode actually came back", async () => {
+    bar({ hasOpenEpisode: false });
+    await openFold();
+    await logReading("102.1");
+    await accept();
+    expect(screen.queryByTestId("fever-offer")).toBeNull();
+    expect(screen.queryByTestId("fever-offer-error")).toBeNull();
+  });
+
+  // A FRESH READING IS A FRESH ATTEMPT: the last try's sentence does not come back up
+  // under an offer raised by a new reading.
+  it("does not re-raise the previous failure with the next reading", async () => {
+    activation.next = { ok: true, episodeId: null };
+    bar({ hasOpenEpisode: false });
+    await openFold();
+    await logReading("102.1");
+    await accept();
+    expect(screen.getByTestId("fever-offer-error")).toBeTruthy();
+
+    activation.next = { ok: true, episodeId: 901 };
+    await logReading("103.4");
+    expect(screen.getByTestId("fever-offer")).toBeTruthy();
+    expect(screen.queryByTestId("fever-offer-error")).toBeNull();
+  });
+
+  // THE OTHER DOOR, which had the same hole in a colder context (#4962's `:896`).
+  // The claim is that the two STOP DISAGREEING, so it is asserted as an equality
+  // between the two rendered sentences rather than as a literal either could drift
+  // from — both doors make the same write, so a person who taps either is told the
+  // same thing.
+  it("states the same failure on + Mark as illness as on the offer", async () => {
+    activation.next = { ok: true, episodeId: null };
+    bar({ hasOpenEpisode: false, suggestActivateIllness: true });
+    await openFold();
+    await logReading("102.1");
+    await accept();
+    const fromOffer = screen.getByTestId("fever-offer-error").textContent;
+
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-illness-bridge-activate"))
+    );
+    expect(screen.getByTestId("symptom-illness-bridge-error").textContent).toBe(
+      fromOffer
+    );
+    expect(fromOffer).toBeTruthy();
+    // The subject still rides the bridge — `withTarget` posts the same stamp every
+    // other write in this bar carries, not a second hand-written copy of it.
+    expect(String(posted.activate.at(-1)!.get("profile_id"))).toBe(
+      String(SUBJECT)
+    );
+  });
+
+  it("says nothing on the bridge when the episode did open", async () => {
+    bar({ suggestActivateIllness: true });
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-illness-bridge-activate"))
+    );
+    expect(screen.queryByTestId("symptom-illness-bridge-error")).toBeNull();
   });
 });

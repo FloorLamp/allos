@@ -2204,6 +2204,19 @@ high-water mark), narrow it to the exact dates the test seeded, or restore the
 prior state from `afterEach`/`finally`. A deliberately fictional, uniquely named
 fixture may use its name as identity; a catalog or picker value may not.
 
+**A day-keyed write cannot be cleaned up by deleting what it added (#5037).** A
+`metric_samples` save REPLACES the day's rows for its metric and `mood_logs` is
+UNIQUE on `(profile_id, date)`, so a form driven on profile 1 has already deleted
+seeded rows by the time the test could remove its own. Deleting the day instead —
+"clear today's sleep in cleanup" — takes the seed's night and naps from every
+later test on the worker. Use `sharedDayRestorePoint(table, date)` from
+`e2e/shared-profile-guard.ts`: it copies the shared profile's rows for that day
+before the write and puts them back from an `afterEach` or a `finally`. It is
+safe because a worker runs one test at a time, so nothing else can have written
+in between. The guard now watches `metric_samples` and `mood_logs` for TODAY AND
+LATER as well as `activities` for 84 days, so a spec that skips this fails in its
+own teardown.
+
 ### Reproducing one — a green shard proves nothing
 
 DB-per-worker means a colliding pair only collides when Playwright puts both

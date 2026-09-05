@@ -152,13 +152,13 @@ describe("ledger.mjs, driven the way orchestrator-checkin.sh drives it", () => {
     expect(run.stdout.trim()).toBe("1");
   });
 
-  // AND `?` IS NOT 0 (owner, 2026-08-31). The shell prints `?` when this exits
-  // non-zero, and `?` sends the orchestrator to LOOK. A missing ledger printed
-  // as 0 reads "no lanes are running", and an empty roster is a dispatch order
-  // — so a wrong STATE_DIR or a restart would dispatch on top of live lanes
-  // nobody can see. Only a present-but-EMPTY ledger is genuinely zero. Each
-  // row asserts stdout too: a refusal that PRINTS would make the shell's
-  // `$(node … || echo "?")` yield the number AND the `?`.
+  // AND UNKNOWN IS NOT 0 (owner, 2026-08-31). The shell prints UNMEASURED when
+  // this exits non-zero, and that sends the orchestrator to LOOK. A missing
+  // ledger printed as 0 reads "no lanes are running", and an empty roster is a
+  // dispatch order — so a wrong STATE_DIR or a restart would dispatch on top of
+  // live lanes nobody can see. Only a present-but-EMPTY ledger is genuinely
+  // zero. Each row asserts stdout too: a refusal that PRINTS would leave the
+  // shell holding a number it would then read as the answer.
   it.each([
     [["branchez"], file, "an unknown mode"],
     [
@@ -220,8 +220,10 @@ describe("issues in flight, the answer pm-digest.sh now asks for", () => {
   });
 
   it("refuses a missing ledger rather than printing an empty set", () => {
-    // What makes the shell write `?`. An empty in-flight set reads as "nothing
-    // is running", and the digest turns that into a dispatch order.
+    // Unknown is not none, and the callers act on the difference: an empty
+    // in-flight set reads as "nothing is running", and the queue turns that
+    // into a dispatch order. The shell's word for the refusal is UNMEASURED,
+    // never a bare `?` — #5252 retired that token (docs/orchestration/environment.md).
     const gone = spawnSync(
       process.execPath,
       [SCRIPT, "issues", path.join(dir, "gone.jsonl")],

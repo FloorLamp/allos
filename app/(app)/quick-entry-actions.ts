@@ -243,6 +243,11 @@ export type QuickEntryData =
       customNames: string[];
       rankedKeys: string[];
       temperatureUnit: TemperatureUnit;
+      // The SUBJECT's zone (#4712 item 2), needed once the panel carries the
+      // temperature fold: a reading states a minute, and a minute is only a time in
+      // somebody's zone. The browser's — and the acting profile's — may not be the
+      // subject's, and `today` above is already resolved the same way.
+      timeZone: string;
       textIntakeEnabled: boolean;
       // The illness verb, RESOLVED (docs/internals/stateful-affordances.md): the
       // situations currently flagged illness-type and active, or an empty list when
@@ -521,6 +526,7 @@ export async function loadQuickEntry(
       customNames: getCustomSymptomNames(profile.id),
       rankedKeys: getSymptomLogOrder(profile.id),
       temperatureUnit: getUnitPrefs(login.id).temperatureUnit,
+      timeZone: getTimezone(profile.id),
       textIntakeEnabled: isTaskConfigured("symptom-map"),
       trackingIllness: getIllnessSituations(profile.id)
         .filter((s) => s.active)

@@ -78,11 +78,42 @@ trap '' PIPE
 ACK_RELAUNCH=0
 [ "${1:-}" = "--relaunched" ] && ACK_RELAUNCH=1
 
+# EVERY READER BELOW IS A MEASUREMENT, AND A MEASUREMENT THAT CANNOT BE TAKEN
+# MUST SAY SO. This file states that rule about its own stamp at the bottom —
+# "a FAILED STAMP IS A FUTURE FALSE RESTART, so it is announced rather than
+# swallowed" — and then broke it five times. #5242: every one of the five
+# helper calls resolved through a `work/` sibling that has never existed, and
+# every one of them swallowed the failure into a plausible answer. The state
+# dir fell back to a hard-coded /home/user/scratch (right on this container,
+# and precisely what this resolver exists to stop assuming); the ledger read
+# empty, so every live lane printed as a ROSTER/LEDGER DIVERGENCE; the e2e
+# cap printed `?`; the queue was never refreshed; and node(.nvmrc) printed
+# ABSENT on a host where it was present. So the rule is stated once, here, for
+# all four remaining call sites: A FAILED READ IS ANNOUNCED, NEVER SWALLOWED,
+# and stderr is left alone so the reader's own error is the explanation.
+HELPERS="$(dirname "$0")/orchestration"
+
 # One resolver for the state dir (scripts/orchestration/host.mjs), shared with
 # dispatch-brief.mjs so the roster and the ledger agree on every host (#3710).
-# The inline fallback covers a shell with no node on PATH — the measured live
-# container's own layout, so it resolves identically there.
-STATE_DIR=${SCRATCH:-$(node "$(dirname "$0")/work/host.mjs" state-dir 2>/dev/null || echo /home/user/scratch)}
+# A GUESSED STATE DIR IS WORSE THAN NO CHECK-IN: the boot-id, the roster, the
+# ledger and the queue all hang off it, so a wrong answer here does not degrade
+# one line, it makes every verdict below a statement about the wrong directory.
+# The only honest fallback is a shell with no node at all, which cannot ask the
+# question — and even that is announced, because on any host but this one it
+# is a guess.
+if [ -n "${SCRATCH:-}" ]; then
+  STATE_DIR=$SCRATCH
+elif ! command -v node >/dev/null 2>&1; then
+  STATE_DIR=/home/user/scratch
+  echo "*** no node on PATH: state dir ASSUMED $STATE_DIR, not resolved — export SCRATCH to be sure ***"
+elif ! STATE_DIR=$(node "$HELPERS/host.mjs" state-dir); then
+  echo "=== ORCHESTRATOR CHECK-IN: STATE-DIR RESOLVER FAILED ==="
+  echo "  node $HELPERS/host.mjs state-dir exited non-zero (its error is above)."
+  echo "  Everything this script reads and stamps lives under that directory, so"
+  echo "  guessing it would report on a directory this host may not keep state in."
+  echo "  Restore the resolver, or export SCRATCH, before trusting any check-in."
+  exit 1
+fi
 BOOT_FILE="$STATE_DIR/.boot_id"
 SESSION_FILE="$STATE_DIR/.session_id"
 ROSTER="$STATE_DIR/.roster"
@@ -137,7 +168,17 @@ if ! mkdir -p "$STATE_DIR" 2>/dev/null; then
   exit 1
 fi
 
-REPO=$(git rev-parse --show-toplevel 2>/dev/null || echo /home/user/allos)
+# THE REPO EVERY VERDICT BELOW IS ABOUT MUST NOT BE A GUESS. Only the fallback
+# changed: the caller's checkout is still the answer when there is one. What it
+# fell back to was ONE container's path, hard-coded, for the case where the
+# caller is standing outside a checkout entirely — and the worktree census, the
+# push checks and the stale-tooling verdict are all statements about whatever
+# that directory turns out to be. This script's own location is not a guess: it
+# IS the checkout whose tooling is running.
+if ! REPO=$(git rev-parse --show-toplevel 2>/dev/null); then
+  REPO=$(cd "$(dirname "$0")/.." && pwd -P)
+  echo "*** cwd is not inside a git checkout: repo taken from this script's own path ($REPO) ***"
+fi
 
 echo "=== ORCHESTRATOR CHECK-IN  $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="
 echo
@@ -359,7 +400,18 @@ echo
 # convention that the next dispatch is free to ignore. The main checkout is skipped
 # by path, not by name — it is the one entry that is not an agent's.
 echo "--- worktrees ---"
-git -C "$REPO" fetch origin main -q 2>/dev/null
+# The one fetch this run pays for. Everything compared against main below leans
+# on it — the per-worktree pushed checks here, and the stale-tooling verdict in
+# the environment section — so its failure is announced rather than swallowed:
+# a stale remote-tracking ref answers every one of those comparisons in a voice
+# indistinguishable from a fresh read.
+if git -C "$REPO" fetch origin main -q; then
+  MAIN_TIP=$(git -C "$REPO" rev-parse origin/main 2>/dev/null || echo "")
+else
+  MAIN_TIP=""
+  echo "  *** fetch of origin/main FAILED (its error is above) — every comparison"
+  echo "      against main below reads whatever was last fetched, which may be old ***"
+fi
 live_branches=$(grep -E '^Cluster ' "$ROSTER" 2>/dev/null | awk '{print $3}')
 found=0
 alarms=0
@@ -591,16 +643,33 @@ if [ -s "$ROSTER" ]; then sed 's/^/  /' "$ROSTER"; else echo "  (empty)"; fi
 LEDGER="$STATE_DIR/allos-dispatch-ledger.jsonl"
 if [ -s "$ROSTER" ] && [ -s "$LEDGER" ]; then
   roster_live=$(grep -E '^Cluster ' "$ROSTER" 2>/dev/null | awk '{print $3}' | sort -u)
-  ledger_live=$(node "$(dirname "$0")/work/ledger.mjs" branches "$LEDGER" 2>/dev/null)
-  only_roster=$(comm -23 <(echo "$roster_live") <(echo "$ledger_live") | grep -v '^$' || true)
-  only_ledger=$(comm -13 <(echo "$roster_live") <(echo "$ledger_live") | grep -v '^$' || true)
-  if [ -n "$only_roster" ] || [ -n "$only_ledger" ]; then
-    echo "  *** ROSTER/LEDGER DIVERGENCE — they are kept in step by dispatch-brief.mjs alone ***"
-    [ -n "$only_roster" ] && echo "$only_roster" | sed 's/^/      roster says LIVE, ledger says done: /'
-    [ -n "$only_ledger" ] && echo "$only_ledger" | sed 's/^/      ledger says active, roster has no Cluster line: /'
-    echo "      A stale Cluster line makes a DEAD worktree classify LIVE above, so it is"
-    echo "      never a rescue target. Fix the roster by hand, then close via"
-    echo "      dispatch-brief.mjs done <branch> from now on."
+  # THE COMPARISON MUST NOT RUN ON A LEDGER NOBODY READ. `comm` cannot tell an
+  # empty answer from an unasked question: an unread ledger makes every roster
+  # line only-in-roster, which is MAXIMUM ALARM FROM ZERO INFORMATION — and the
+  # remedy this banner prints ("fix the roster by hand") would then delete the
+  # Cluster lines of lanes that are alive, which are the only rescue record
+  # that outlives a restart. #5242 measured exactly that over lanes that were
+  # live at the time. An empty ledger and an unreadable
+  # one are different facts, so they print differently: a present-but-empty
+  # ledger really has no active dispatch and every roster Cluster line really
+  # is stale, which is the divergence below; a reader that could not run says
+  # so and compares nothing.
+  if ! ledger_live=$(node "$HELPERS/ledger.mjs" branches "$LEDGER"); then
+    echo "  *** LEDGER UNREAD — roster/ledger divergence NOT CHECKED ***"
+    echo "      node $HELPERS/ledger.mjs branches failed (its error is above)."
+    echo "      Comparing against an unread ledger would name every live lane as"
+    echo "      divergent and send you to delete its rescue record. Fix the reader."
+  else
+    only_roster=$(comm -23 <(echo "$roster_live") <(echo "$ledger_live") | grep -v '^$' || true)
+    only_ledger=$(comm -13 <(echo "$roster_live") <(echo "$ledger_live") | grep -v '^$' || true)
+    if [ -n "$only_roster" ] || [ -n "$only_ledger" ]; then
+      echo "  *** ROSTER/LEDGER DIVERGENCE — they are kept in step by dispatch-brief.mjs alone ***"
+      [ -n "$only_roster" ] && echo "$only_roster" | sed 's/^/      roster says LIVE, ledger says done: /'
+      [ -n "$only_ledger" ] && echo "$only_ledger" | sed 's/^/      ledger says active, roster has no Cluster line: /'
+      echo "      A stale Cluster line makes a DEAD worktree classify LIVE above, so it is"
+      echo "      never a rescue target. Fix the roster by hand, then close via"
+      echo "      dispatch-brief.mjs done <branch> from now on."
+    fi
   fi
 fi
 echo
@@ -619,8 +688,20 @@ echo
 # that is actually full is allowed to say so.
 lanes=$(grep -cE '^Cluster ' "$ROSTER" 2>/dev/null || true)
 lanes=${lanes:-0}
-e2e_lanes=$(node "$(dirname "$0")/work/ledger.mjs" e2e-count "$LEDGER" 2>/dev/null || echo "?")
-if [ "$e2e_lanes" = "?" ]; then other_lanes="?"; else other_lanes=$((lanes - e2e_lanes)); fi
+# The e2e count is the ONLY instrument for the 2-lane e2e cap, so an unmeasured
+# one is not a cosmetic gap: it is the cap running unpoliced. ledger.mjs answers
+# or exits (its own header: it never answers 0 for a question it could not ask),
+# and both exits — a ledger that is not there, and a reader that is not there —
+# leave the cap unmeasured. It says UNMEASURED and prints why, rather than a `?`
+# that reads like a value.
+if e2e_lanes=$(node "$HELPERS/ledger.mjs" e2e-count "$LEDGER"); then
+  other_lanes=$((lanes - e2e_lanes))
+else
+  e2e_lanes=UNMEASURED
+  other_lanes=UNMEASURED
+  echo "  *** e2e lane count UNMEASURED — node $HELPERS/ledger.mjs e2e-count failed (its error is above) ***"
+  echo "      The 2-lane e2e cap has no instrument until this reads. Do not dispatch an e2e lane on it."
+fi
 
 # THE QUEUE IS WRITTEN DOWN (owner, 2026-08-31): candidates forgotten one at a
 # time — a reconcile never looked for, small issues never paired, self-filed
@@ -636,8 +717,16 @@ if [ -f "$QUEUE_FILE" ]; then
   [ -n "$queue_mtime" ] && queue_age_s=$(($(date -u +%s) - queue_mtime))
 fi
 if [ -z "$queue_age_s" ] || [ "$queue_age_s" -ge "$QUEUE_DUE_SECS" ]; then
-  node "$(dirname "$0")/work/queue-snapshot.mjs" >/dev/null 2>&1 ||
-    echo "  *** queue snapshot FAILED (needs a read token) — $QUEUE_FILE may be stale ***"
+  # THE REASON IS CAPTURED, NOT NAMED. This line used to assert one cause —
+  # "needs a read token" — which reads as a diagnosis and hid every other one,
+  # including a reader that was not on disk at all (#5242): the snapshot never
+  # ran for as long as that was true, and the check-in kept reprinting the
+  # stale file's own header as though it were today's queue. The sweep's stderr
+  # carries a success line too, so it is held and printed only on failure.
+  if ! snapshot_err=$(node "$HELPERS/queue-snapshot.mjs" 2>&1 >/dev/null); then
+    echo "  *** queue snapshot FAILED — $QUEUE_FILE was NOT refreshed; the count below is as of its own header ***"
+    echo "$snapshot_err" | sed 's/^/      /'
+  fi
 fi
 queue_header=$(head -1 "$QUEUE_FILE" 2>/dev/null || echo "UNWRITTEN — run queue-snapshot.mjs")
 
@@ -808,9 +897,53 @@ elif command -v gh >/dev/null 2>&1 && gh auth token >/dev/null 2>&1; then
 else
   echo "  GH_TOKEN: *** MISSING - see the credential-loss section of the runbook ***"
 fi
-nodebin=$(node "$(dirname "$0")/work/host.mjs" node-bin 2>/dev/null)
-echo "  node(.nvmrc): ${nodebin:-ABSENT - install the .nvmrc major with your version manager}"
+# ABSENT is a real answer and it must stay one, so it is only printed when the
+# resolver RAN and found no matching node. A resolver that is not on disk is a
+# different fact — it is not a claim about the binary at all — and #5242 had the
+# two collapsed: this printed ABSENT for weeks on a host where `host.mjs
+# node-bin` names the path.
+if [ ! -f "$HELPERS/host.mjs" ]; then
+  echo "  node(.nvmrc): *** UNRESOLVED — $HELPERS/host.mjs is not on disk, so this says NOTHING about the binary ***"
+elif nodebin=$(node "$HELPERS/host.mjs" node-bin); then
+  echo "  node(.nvmrc): $nodebin"
+else
+  echo "  node(.nvmrc): ABSENT (the resolver ran and found none — its error is above)"
+  echo "      install the .nvmrc major with your version manager"
+fi
 echo "  main:   $(git -C "$REPO" ls-remote origin main 2>/dev/null | cut -c1-7)"
+# THE TOOLING THIS SESSION IS ABOUT TO TRUST IS ITSELF A MEASUREMENT.
+# scripts/orchestration/* run from $REPO, whose HEAD is wherever the last
+# session left it — commonly detached and behind origin/main — so a gate, a CI
+# watch or a `--check` mandate can be a verdict from a snapshot of the tooling.
+# On 2026-09-05 that checkout sat detached and behind for a whole session; it
+# was harmless, and the only reason anyone knows that is that somebody ran the
+# diff by hand afterwards. environment.md wrote the manual check down;
+# lifecycle.md prefers tooling where there is any, so it runs here.
+#
+# IT IS A WARNING AND NEVER A REFUSAL. A stale checkout is usually harmless and
+# the session must still run; what it may not do is go unnoticed. The fetch is
+# already paid for above, so the cost is three local git reads. Each of the
+# three can fail on its own, and each failure prints UNCOMPARED rather than the
+# reassuring half of the answer it still had.
+head_here=$(git -C "$REPO" rev-parse HEAD 2>/dev/null || echo "")
+if [ -z "$MAIN_TIP" ] || [ -z "$head_here" ]; then
+  echo "  tooling: *** UNCOMPARED — could not read this checkout's HEAD or origin/main,"
+  echo "      so whether the scripts/ this session runs are current is UNKNOWN ***"
+elif ! tooling_drift=$(git -C "$REPO" diff --shortstat "$head_here" "$MAIN_TIP" -- scripts/); then
+  echo "  tooling: *** UNCOMPARED — the scripts/ diff failed (its error is above) ***"
+elif ! behind=$(git -C "$REPO" rev-list --count "$head_here..$MAIN_TIP"); then
+  echo "  tooling: *** UNCOMPARED — the commit count failed (its error is above);"
+  echo "      scripts/ ${tooling_drift:+DIFFERS from origin/main}${tooling_drift:-is identical to origin/main} ***"
+elif [ -n "$tooling_drift" ]; then
+  echo "  tooling: *** $REPO's scripts/ DIFFER from origin/main ($behind commits behind):"
+  echo "     $tooling_drift ***"
+  echo "      Every gate, CI watch and --check verdict this session runs THAT tooling."
+  echo "      git -C $REPO diff --stat HEAD origin/main -- scripts/"
+elif [ "$behind" != "0" ]; then
+  echo "  tooling: $behind commits behind origin/main, scripts/ identical — verdicts stand"
+else
+  echo "  tooling: current with origin/main"
+fi
 echo
 
 # 6. The catch-up digest is the PM's now (scripts/orchestration/pm-digest.sh, run from

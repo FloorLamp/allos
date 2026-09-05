@@ -61,11 +61,11 @@ import {
   type SleepRegularity,
   type SleepRegularityOptions,
 } from "../sleep-regularity";
-import {
-  sleepWaitingState,
-  MIN_ARRIVAL_SAMPLES,
-  type SleepWaitingState,
-} from "../sleep-waiting";
+import { sleepWaitingState, type SleepWaitingState } from "../sleep-waiting";
+import { arrivalLagMedian, ARRIVAL_LAG_MAX_MIN } from "../arrival-wait";
+// Re-exported, not defined here: the constant belongs to the model (#5001) and
+// this module's existing importers keep the name they already use.
+export { ARRIVAL_LAG_MAX_MIN };
 import { getIntegrationAttention, getLatestSyncEvent } from "./integrations";
 import {
   isLastNight,
@@ -816,9 +816,9 @@ export function getSyncedSleepSources(
   ).map((r) => r.source);
 }
 
-// How long after a night ENDS its row actually lands, in minutes — the one genuinely
-// new measurement this feature needs. Joins each inserted `sleep_min` row to the
-// sync-row provenance that wrote it (#1333) and takes the median.
+// How long after a night ENDS its row actually lands, in minutes. Joins each inserted
+// `sleep_min` row to the sync-row provenance that wrote it (#1333) and takes the
+// median.
 //
 // `inserted` only, and lags outside a plausible same-morning band are dropped: an
 // ARCHIVE import (a Fitbit Takeout zip) inserts hundreds of nights at once, whose
@@ -828,7 +828,13 @@ export function getSyncedSleepSources(
 // Returns null under MIN_ARRIVAL_SAMPLES — `integration_sync_rows` retention reaches
 // back ~12 days, so the sample is often thin, and a median built on three mornings
 // is not something to put on screen as a promise.
-export const ARRIVAL_LAG_MAX_MIN = 12 * 60;
+//
+// THE QUERY HAS NOT MOVED, AND THAT IS DELIBERATE (#5227). `lib/arrival-wait.ts` is
+// now the one home for the WAIT — the bounds, the sample gate, the plausibility cut —
+// because three surfaces were each writing their own. Generalising this READ to any
+// table is a separate change with its own defects to answer, so it is its own issue.
+// Only the two constants are shared from here, so there is one 12 hours and one 5;
+// the re-export sits beside the import at the top of the file.
 
 export function getSleepArrivalLagMinutes(
   profileId: number,
@@ -848,15 +854,20 @@ export function getSleepArrivalLagMinutes(
         LIMIT ?`
     )
     .all(profileId, profileId, limit * 4) as { lag: number | null }[];
-  const lags = rows
-    .map((r) => r.lag)
-    .filter((v): v is number => v != null && v >= 0 && v <= ARRIVAL_LAG_MAX_MIN)
-    .slice(0, limit)
-    .sort((a, b) => a - b);
-  if (lags.length < MIN_ARRIVAL_SAMPLES) return null;
-  const mid = Math.floor(lags.length / 2);
-  const median = lags.length % 2 ? lags[mid] : (lags[mid - 1] + lags[mid]) / 2;
-  return Math.round(median);
+  // THE MEDIAN IS THE MODEL'S (#5127 falsifying pass, F3). `arrivalLagMedian` said it
+  // was "the one place it is taken" while this function took its own with a bare
+  // `Math.round`, so five twenty-second mornings measured 0 — the one value the model
+  // forbids, because `?? defaultLagMin` makes a measured 0 and "nothing measured" the
+  // same input to every consumer. The SQL above is unchanged and stays sleep's own;
+  // only the arithmetic over its rows moved.
+  return arrivalLagMedian(
+    rows
+      .map((r) => r.lag)
+      .filter(
+        (v): v is number => v != null && v >= 0 && v <= ARRIVAL_LAG_MAX_MIN
+      )
+      .slice(0, limit)
+  );
 }
 
 // The profile's morning waiting state, or null when the ordinary surfaces have
