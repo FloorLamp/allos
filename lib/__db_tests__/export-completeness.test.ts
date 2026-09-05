@@ -417,9 +417,14 @@ describe("FHIR export/import symmetry (issue #465)", () => {
 // SELECTs; it cannot read what a FHIR builder emits, so it does not pronounce on
 // these tables' columns — a column of `conditions` absent from the flat dataset may
 // well ride a FHIR resource, and calling it un-exported would be a lie. Carved out
-// BY NAME and counted (not skipped): the census below proves every carve-out is a
-// real dataset table that is really in FHIR_INPUT_TABLES, so the exemption cannot
-// grow by accident.
+// BY NAME and COUNTED, never skipped.
+//
+// The count is the whole of it, and this comment used to promise more. Both halves of
+// a membership proof are true BY CONSTRUCTION and so are not asserted: this set IS
+// FHIR_INPUT_TABLES, and `carvedOut` is filled while walking the dataset tables, so
+// every name in it is already a real dataset table in the passport set. What is left
+// to check is that the exemption does not GROW, which is what the count does — see
+// the case that pins it.
 const COLUMN_GUARD_FHIR_CARVE_OUT = FHIR_INPUT_TABLES;
 
 // ── The JSON ⇄ CSV agreement, in BOTH directions ─────────────────────────────

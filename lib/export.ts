@@ -273,10 +273,17 @@ type DoseRow = {
 // BY so the full read, the bounded page read (which appends only LIMIT/OFFSET) and
 // the dataset's declared `select` are the same statement. Both filter profile_id
 // directly.
+//
+// `, id` is what makes that sentence true. `ORDER BY name` alone is not a TOTAL
+// order — two items a family named the same way (two brands of one supplement) tie —
+// and LIMIT/OFFSET slices whatever permutation the engine chose for that call, so the
+// Data page can show one row on two pages and never show another. A total order
+// removes the question rather than adding a test for it; nothing local can falsify
+// the old spelling, because SQLite happens to return rowid order for this plan.
 const ITEMS_SELECT = `SELECT id, name, kind, brand, product, condition, obligation, situation,
           stack, active, critical, prescriber, pharmacy, rx_number,
           quantity_on_hand, notes
-   FROM intake_items WHERE profile_id = ? ORDER BY name`;
+   FROM intake_items WHERE profile_id = ? ORDER BY name, id`;
 // Dose-schedule read, scoped to the profile through the intake_items JOIN. The
 // page reader appends `AND d.item_id IN (...)` to fetch only the shown
 // items' doses.
