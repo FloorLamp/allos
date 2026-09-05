@@ -70,7 +70,14 @@ export type SubstanceEventEditOutcome =
   | { kind: "updated"; eventId: number; date: string }
   | { kind: "not-found" }
   | { kind: "invalid-date" }
-  | { kind: "invalid-stated-at"; reason: StatedTimeRefusal };
+  | { kind: "invalid-stated-at"; reason: StatedTimeRefusal }
+  // THE MOVE WOULD EMPTY A DAY WHOSE ROW CARRIES A NOTE, so it is refused and nothing
+  // is written. The day counter is dropped at zero and the note lives only on it, so
+  // moving a noted day's LAST use would delete a sentence somebody typed, through a
+  // door that captures no undo and says nothing about notes. Refusing is `main`'s own
+  // posture (its day form answers `date-conflict` and both notes survive); it stops
+  // being reachable when #5304 moves the note onto the use.
+  | { kind: "day-note-stranded" };
 
 // Log one use of a substance on a day. Upserts the day's row, incrementing its
 // units, appends the event, and returns the resulting daily total. Single IMMEDIATE
@@ -258,41 +265,26 @@ export function correctSubstanceEventCore(
       // the arriving day's `recorded_at` touch: that column is the day's last-tap stamp
       // and this use is the tap that just arrived there.
       //
-      // THE DAY'S NOTE TRAVELS WITH ITS LAST USE (review of #5290, finding F3). A
-      // counter row is not only a number: it carries the day's note, and the ledger
-      // DROPS the whole row at zero. So re-dating the only use of a day would delete
-      // the note, through a door that captures no undo — data loss caused by an
-      // unrelated correction, and worse than the disclosed cost that the note cannot
-      // yet be EDITED (#5304, which moves it onto the use). Reading it before the
-      // unbump and re-attaching it after the bump is what keeps the note and the use
-      // one fact while the note still lives on the day. `WHERE … notes IS NULL` is the
-      // repo's own rule where two day notes meet — `addSubstanceDailyTotalCore`'s
-      // COALESCE and the undo path's `mergeRecreatedSubstanceHistoryRoot` both say a
-      // note only fills an otherwise blank one — so a day that already has something
-      // written on it keeps what it says.
+      // A MOVE THAT WOULD STRAND THE DAY'S NOTE IS REFUSED (review of #5290, round 2).
+      // One read, before anything is written: the vacated day's own row. If this use is
+      // its last (`units <= 1`) and it carries a note, the `unbump` below would drop the
+      // row and take the note with it. An earlier round tried to CARRY the note to the
+      // arriving day; that destroyed it whenever the arriving day already had one, and
+      // patching the carry a second time is what this refusal replaces. `main` refuses
+      // the same move for the same reason, so this is not a capability lost here.
       const vacated = db
         .prepare(
-          `SELECT notes FROM substance_daily_totals
+          `SELECT units, notes FROM substance_daily_totals
             WHERE profile_id = ? AND date = ? AND substance = ?`
         )
         .get(profileId, row.date, row.substance) as
-        { notes: string | null } | undefined;
-      const left = substanceDayCounter.unbump(
-        profileId,
-        row.date,
-        [row.substance],
-        1
-      );
+        { units: number; notes: string | null } | undefined;
+      if (vacated != null && vacated.notes != null && vacated.units <= 1)
+        return { kind: "day-note-stranded" as const };
+      substanceDayCounter.unbump(profileId, row.date, [row.substance], 1);
       substanceDayCounter.bump(profileId, nextDate, [row.substance], 1, [
         row.recorded_at,
       ]);
-      // `left === 0` is exactly "the vacated row is gone": the ledger drops at zero, so
-      // a day with uses left keeps its own note and nothing is carried.
-      if (left === 0 && vacated?.notes != null)
-        db.prepare(
-          `UPDATE substance_daily_totals SET notes = ?, edited = 1
-            WHERE profile_id = ? AND date = ? AND substance = ? AND notes IS NULL`
-        ).run(vacated.notes, profileId, nextDate, row.substance);
     }
     db.prepare(
       `UPDATE substance_log_events

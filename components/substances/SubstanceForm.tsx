@@ -227,5 +227,10 @@ const REFUSALS: Record<string, string> = {
   "invalid-date": "Enter a valid date.",
   "invalid-amount": `Enter an amount between 1 and ${MAX_SUBSTANCE_ENTRY_AMOUNT}.`,
   "invalid-stated-at": "Enter a time on that day, not in the future.",
+  // Named rather than left to the fallback, because the person can act on it: the note
+  // is the day's and there is no door that moves it (#5304), so the way to move the
+  // last use of a noted day is to delete it and add it again where it belongs.
+  "day-note-stranded":
+    "Moving the day's last use would lose its note. Delete this use and add it on the new day instead.",
 };
 const refusal = (kind: string) => REFUSALS[kind] ?? "Couldn't save that entry.";

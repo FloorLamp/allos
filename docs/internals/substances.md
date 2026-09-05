@@ -79,10 +79,13 @@ day's, written on the add door and rendered in the card's History table, and it 
 correctable anywhere now that the day form is gone. That is #5077, ruled as #5304 — the
 note moves onto the use — and sequenced after this phase because the question it asks is
 what a day note means once every use has its own row. Until it lands, the note is
-write-once, and the one thing phase 2 owes it is that no other operation may DESTROY it:
-re-dating the last use of a day drops that day's counter row, so `correctSubstanceEventCore`
-carries the note to the day the use lands on, filling a blank note there and never
-overwriting one.
+write-once, and the one thing phase 2 owes it is that no other operation may DESTROY it.
+Re-dating a use drops the vacated day's counter row when that use was its last, so
+`correctSubstanceEventCore` REFUSES that move (`day-note-stranded`) when the row carries
+a note, and writes nothing — `main`'s own posture, whose day form answers
+`date-conflict` there. Carrying the note to the arriving day was tried and rejected: it
+destroyed the note whenever the arriving day already had one of its own. The way to move
+that use is to delete it (undoable) and add it on the day it belongs to.
 
 The cross-domain Timeline browses alcohol, nicotine, cannabis, and custom
 substances as one per-day `substance` rollup, and that is browse-only. Substance rows

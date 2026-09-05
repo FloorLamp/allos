@@ -774,57 +774,112 @@ describe("one use, one row, one clock (#5026 phase 2)", () => {
     ]);
   });
 
-  // THE DAY'S NOTE SURVIVES A CORRECTION THAT EMPTIES THE DAY (review of #5290, F3).
-  // The move is an unbump plus a bump, and the ledger DROPS a counter row at zero — but
-  // that row carries the day's note, and no correction path captures undo. So re-dating
-  // the only use of a day used to destroy a note through an operation that says nothing
-  // about notes. The note is write-once until #5304 moves it onto the use; it must not
-  // be DESTROYABLE in the meantime.
+  // A MOVE THAT WOULD STRAND A DAY'S NOTE IS REFUSED, AND WRITES NOTHING. The ledger
+  // drops a counter row at zero and the day's note lives only on it, so re-dating the
+  // LAST use of a noted day would delete a sentence somebody typed — through a door
+  // that captures no undo. `main` refuses the same move (its day form answers
+  // `date-conflict`), so refusing is not a capability lost here, and #5304 removes the
+  // situation by moving the note onto the use.
   //
-  // The three rows of this table are the three positions relative to the boundary: the
-  // day empties and the arrival is blank (carry), the day does not empty (nothing
-  // moves, both notes stay put), and the day empties onto a day that already says
-  // something (the arrival keeps what it says — the same rule `addSubstanceDailyTotalCore`
-  // and the undo path's recreate-merge both apply where two day notes meet).
+  // THE FIXTURE IS TWO PROFILES AND TWO SUBSTANCES ON PURPOSE. The refusal reads ONE
+  // row — the vacated day's own — and every predicate of that read is a way to refuse
+  // somebody else's move or to miss this one. Row 1 is the refusal; rows 2-4 are the
+  // NEAR MISSES that must still move, each of which is a different predicate dropped:
+  // a neighbour profile's noted day at the same coordinate, this profile's noted day
+  // for another substance, and this profile's noted day on another date. Row 5 is the
+  // boundary: a noted day the move does not empty keeps its note and moves the use.
   it.each([
-    ["empties the day", 1, null, [null, "smoked outside"]],
-    ["leaves a use behind", 2, null, ["smoked outside", null]],
-    [
-      "empties onto a day that already has one",
-      1,
-      "birthday",
-      [null, "birthday"],
-    ],
-  ] as const)(
-    "carries the day's note when the correction %s",
-    (_label, amount, arrivalNote, [fromNotes, toNotes]) => {
-      const p = newProfile(`SU note carry ${_label}`);
-      const date = shiftDateStr(today(p), -3);
-      const moved = shiftDateStr(date, 1);
+    ["its own noted day", "own", "day-note-stranded"],
+    ["a neighbour profile's noted day on the same day", "neighbour", "updated"],
+    ["this profile's noted day for another substance", "substance", "updated"],
+    ["this profile's noted day on another date", "date", "updated"],
+    ["a noted day the move does not empty", "not-last", "updated"],
+  ] as const)("refuses the move only for %s", (_label, decoy, kind) => {
+    // The NEIGHBOUR is created first in every case, so a read that has lost its
+    // profile predicate meets the same row whichever case it is in — which is what
+    // makes one of these two rows red rather than leaving it to scan order.
+    const other = newProfile(`SU strand neighbour ${decoy}`);
+    const p = newProfile(`SU strand ${decoy}`);
+    const date = shiftDateStr(today(p), -3);
+    const moved = shiftDateStr(date, 1);
+    const noteOn = (
+      profileId: number,
+      substance: string,
+      day: string,
+      amount: number
+    ) =>
       addSubstanceDailyTotalCore(
-        p,
-        "nicotine",
-        { date, amount, notes: "smoked outside" },
+        profileId,
+        substance,
+        { date: day, amount, notes: "quitting attempt, day 4" },
         "page"
       );
-      if (arrivalNote)
-        addSubstanceDailyTotalCore(
-          p,
-          "nicotine",
-          { date: moved, amount: 1, notes: arrivalNote },
-          "page"
-        );
-      const [first] = uses(p, "nicotine");
 
-      expect(correctSubstanceEventCore(p, first.id, { date: moved }).kind).toBe(
-        "updated"
-      );
-
-      const rows = dayRows(p, "nicotine");
-      expect(rows.find((r) => r.date === date)?.notes ?? null).toBe(fromNotes);
-      expect(rows.find((r) => r.date === moved)?.notes ?? null).toBe(toNotes);
+    if (decoy === "neighbour") noteOn(other, "nicotine", date, 1);
+    if (decoy === "substance") noteOn(p, "cannabis", date, 1);
+    // ON BOTH SIDES OF THE DAY, and the second one is not redundant. A read that has
+    // lost its date predicate meets whichever noted row its scan reaches FIRST, and
+    // that order is the index's, not the fixture's: `idx_substance_daily_totals_profile`
+    // is `(profile_id, date DESC)`, so an EARLIER-only decoy is reached LAST and the
+    // mutant lands on the correct row by luck — MEASURED, that mutant was green until
+    // the later day was added. With one on each side the refusal reds whichever way the
+    // scan runs, so this survives a planner or index change rather than pinning today's.
+    if (decoy === "date") {
+      noteOn(p, "nicotine", shiftDateStr(date, -1), 1);
+      noteOn(p, "nicotine", shiftDateStr(date, 2), 1);
     }
-  );
+    // The day under correction: noted only in the case that must refuse, and carrying
+    // a second use in the boundary case so the move does not empty it.
+    if (decoy === "own") noteOn(p, "nicotine", date, 1);
+    else if (decoy === "not-last") noteOn(p, "nicotine", date, 2);
+    else addSubstanceDailyTotalCore(p, "nicotine", { date, amount: 1 }, "page");
+
+    const mine = uses(p, "nicotine").filter((u) => u.date === date);
+    const before = dayRows(p, "nicotine");
+    expect(correctSubstanceEventCore(p, mine[0].id, { date: moved }).kind).toBe(
+      kind
+    );
+
+    if (kind === "day-note-stranded") {
+      // NOTHING WAS WRITTEN: the event still sits on its day and the counter is
+      // untouched, so the refusal costs the save rather than half-performing it.
+      expect(uses(p, "nicotine").map((u) => u.date)).toEqual([date]);
+      expect(dayRows(p, "nicotine")).toEqual(before);
+    } else {
+      expect(uses(p, "nicotine").find((u) => u.id === mine[0].id)?.date).toBe(
+        moved
+      );
+    }
+  });
+
+  // AND THE NOTE THE DESTINATION ALREADY HAS IS NEVER TOUCHED — the shape that broke
+  // the carry this refusal replaced: two typed notes, one of them was overwritten and
+  // the other deleted. Both survive, and both days keep their own.
+  it("refuses rather than merging two days' notes into one", () => {
+    const p = newProfile("SU strand two notes");
+    const date = shiftDateStr(today(p), -3);
+    const moved = shiftDateStr(date, 1);
+    addSubstanceDailyTotalCore(
+      p,
+      "nicotine",
+      { date, amount: 1, notes: "quitting attempt, day 4" },
+      "page"
+    );
+    addSubstanceDailyTotalCore(
+      p,
+      "nicotine",
+      { date: moved, amount: 1, notes: "birthday" },
+      "page"
+    );
+    const [first] = uses(p, "nicotine");
+    expect(correctSubstanceEventCore(p, first.id, { date: moved }).kind).toBe(
+      "day-note-stranded"
+    );
+    expect(dayRows(p, "nicotine")).toEqual([
+      { date, units: 1, notes: "quitting attempt, day 4" },
+      { date: moved, units: 1, notes: "birthday" },
+    ]);
+  });
 
   // ONE PROFILE'S DELETE MOVES ONE PROFILE'S COUNTER. The `substance-use` kind captures
   // its day counter through a `childWhere` that filters on the EVENT's own profile, and
