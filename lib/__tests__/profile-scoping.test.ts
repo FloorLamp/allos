@@ -139,12 +139,16 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
   // INSTANCE-WIDE by design: a portal login's bindings span the household, so a read
   // that answers "who is bound here" cannot filter by the profile it is about to name.
   //
-  // Each `includes` is keyed on the PREDICATE, not on the select list — the exemption is
-  // a claim about what the WHERE does and does not constrain, and the entry replaced
-  // here had gone dead the other way: its select list was the pre-#3011 spelling, so it
-  // matched NO live statement (measured: 0) while the statement it named sailed through
-  // on the hollow `IS NOT NULL` pass. Nothing was red, because both halves failed
-  // silently in the same direction.
+  // KEY AN `includes` ON THE PREDICATE, NOT ON THE SELECT LIST. An exemption is a claim
+  // about what the WHERE does and does not constrain, so the WHERE is the part it must
+  // name; a select list is the part that changes for reasons the exemption does not care
+  // about, and every change to it silently unmatches the entry. The entry replaced here
+  // is the proof: its select list was the pre-#3011 spelling, so it matched NO live
+  // statement (measured: 0) while the statement it named sailed through anyway on the
+  // hollow `IS NOT NULL` pass. Nothing went red, because both halves failed silently in
+  // the same direction and a dead entry above a hollow pass reads exactly like a live
+  // one. The convention is stated here for entries added from now on; the entries above
+  // still key on whole statements and have not been audited against it.
   {
     file: "lib/portals.ts",
     includes:
