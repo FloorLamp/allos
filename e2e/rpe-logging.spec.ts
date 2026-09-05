@@ -337,5 +337,13 @@ test("the set row's tab order is the same with the effort column on and off (#33
 
   // Back to the side of the boundary every seed puts this profile on.
   await setRpeColumn(page, false);
+  // Nothing was filled, so there is still no row and nothing to delete — but the
+  // lift picked at the top IS typed content, so closing asks before discarding it
+  // (#5111). Answering leaves the workspace shut, which is what this test's own
+  // "no cleanup beyond putting the opt-in back" depends on.
   await page.keyboard.press("Escape");
+  const discard = page.getByTestId("confirm-dialog");
+  await expect(discard).toContainText("Discard unsaved changes?");
+  await discard.getByRole("button", { name: "Close anyway" }).click();
+  await expect(page.getByTestId("activity-form")).toHaveCount(0);
 });
