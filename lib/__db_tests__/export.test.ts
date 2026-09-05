@@ -107,19 +107,12 @@ const pageFor = (
 // same shape, incl. the folded activities/intake-items JS), stay profile-scoped, and
 // that count() equals the true row total — the contract DataExport relies on.
 describe("bounded count()/page() readers (issue #113)", () => {
-  it("count() equals the full row total, per profile, incl. JOIN datasets", () => {
-    for (const key of [
-      "medical_records",
-      "activities",
-      "intake_items",
-      "intake_log",
-      "hr_minutes",
-      "allergies",
-    ]) {
-      expect(countFor(key, a.profileId)).toBe(rowsFor(key, a.profileId).length);
-      expect(countFor(key, b.profileId)).toBe(rowsFor(key, b.profileId).length);
-    }
-  });
+  // count() == rows().length is no longer asserted here. It was six hand-listed keys
+  // on both profiles; the per-dataset case in "every dataset's rows() and page() are
+  // profile-scoped (#5117)" makes the identical assertion, on both profiles, for
+  // every seeded dataset — all six of these among them, JOIN datasets included.
+  // The window and folding claims below are NOT subsumed and stay: page() agreeing
+  // with rows().slice() is an ordering contract the scoping loop never asks about.
 
   it("page() returns the same window (order + shape) as slicing rows()", () => {
     for (const key of ["medical_records", "activities", "intake_items"]) {

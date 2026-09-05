@@ -219,6 +219,14 @@ function redeclaredLocally(src: string, name: string): boolean {
 // asked of it is whether a `const NAME = ...;` at column 0 is a real module-scope
 // declaration.
 //
+// WHY THIS IS NOT `stripComments` (lib/__tests__/strip-comments.ts), and stays
+// separate (ruled 2026-09-05, so the next round does not re-open it). That function
+// returns a STRING with the prose blanked, which is the right answer to "what does
+// this file say" and cannot answer the question here: BRACE DEPTH. A declaration is
+// only module-scope at depth 0, and a depth counter is something no other caller of
+// stripComments wants. Same subject — which characters are code — different question,
+// so this is not a second spelling of one concept.
+//
 // The two ways of being wrong are NOT symmetric, and the asymmetry is worth stating
 // exactly. Mistaking code for a string or comment drops a const, and the statement
 // composed from it then goes unresolved and is refused by its reader — the safe
