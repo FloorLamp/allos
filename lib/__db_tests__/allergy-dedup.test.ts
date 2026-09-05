@@ -110,7 +110,7 @@ describe("allergy dedup is identical on Timeline and Search (#617)", () => {
     ).toHaveLength(1);
 
     // Search: exactly one allergy hit (was two, eating 2 of the domain's slots).
-    const groups = searchAll(p, "penicillin");
+    const groups = searchAll(p, "penicillin", null);
     const allergyGroup = groups.find((g) => g.domain === "allergy");
     expect(allergyGroup?.hits ?? []).toHaveLength(1);
   });
@@ -125,7 +125,7 @@ describe("allergy dedup is identical on Timeline and Search (#617)", () => {
     expect(
       events.filter((e) => e.title === "Codeine" && e.category === "allergy")
     ).toHaveLength(2);
-    const groups = searchAll(p, "codeine");
+    const groups = searchAll(p, "codeine", null);
     const allergyGroup = groups.find((g) => g.domain === "allergy");
     expect(allergyGroup?.hits ?? []).toHaveLength(2);
   });

@@ -87,6 +87,36 @@ export function hasMoodLogs(profileId: number): boolean {
   );
 }
 
+/**
+ * The newest check-in DAYS matching a palette query, for global search (#5006).
+ *
+ * A check-in states no instant and no free text the search may read — its whole
+ * searchable vocabulary is the words for the thing plus the day it names — so this
+ * returns the id and the day and nothing else: the valence, scales, factors and note
+ * stay inside the store. Here rather than in the search fan-out for the same reason
+ * `hasMoodLogs` is here: the mood table stays store-private (#992), and the fan-out
+ * gets a profile-scoped, bounded read instead of a second opinion about the table.
+ *
+ * `like` is the caller's escaped `%…%` pattern, matched against the constant
+ * vocabulary and the day.
+ */
+export function searchMoodDays(
+  profileId: number,
+  like: string,
+  limit: number
+): { id: number; date: string }[] {
+  return db
+    .prepare(
+      `SELECT id, date
+         FROM mood_logs
+        WHERE profile_id = ?
+          AND ('mood check-in' LIKE ? ESCAPE '\\' OR date LIKE ? ESCAPE '\\')
+        ORDER BY date DESC
+        LIMIT ?`
+    )
+    .all(profileId, like, like, limit) as { id: number; date: string }[];
+}
+
 // Whether the profile has EVER logged an anxiety rating — the "prior use" signal of
 // the check-in Calm-scale relevance gate (issue #1313, signal 1: continuity trumps
 // inference, so a profile that's used the scale keeps it). Kept here in the mood

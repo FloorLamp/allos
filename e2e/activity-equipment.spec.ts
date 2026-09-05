@@ -5,6 +5,7 @@ import {
   deleteActivityFromForm,
   followLink,
   hydratedClick,
+  openConfirm,
   settledClick,
   settledFill,
   settledSelect,
@@ -204,10 +205,15 @@ test("the activity form shows an 'Add equipment' door when the profile owns no g
     await expect(door).toHaveText(/Add equipment/);
     await expect(door).toHaveAttribute("href", "/equipment");
     await expect(door).not.toHaveAttribute("target", "_blank");
-    // A real navigation, and the assertion below is its destination — so make the
-    // URL commit part of the same retry boundary. Re-clicking a link that already
-    // committed asks for the same URL again, so followLink's retry is free here.
-    await followLink(page, door, /\/equipment$/);
+    // THE DOOR ASKS BEFORE IT LEAVES (#5111). This draft is a picked activity
+    // with no set behind it — rowless and unsavable — and `leaveFor` has always
+    // discarded it on the way out; what changed is that the guard now covers a
+    // draft with no row, so the discard is a question instead of a silence.
+    // `openConfirm` carries the hydration wait the followLink here used to.
+    const discard = await openConfirm(page, door);
+    await expect(discard).toContainText("Discard unsaved changes?");
+    await discard.getByRole("button", { name: "Close anyway" }).click();
+    await page.waitForURL(/\/equipment$/);
     await expect(page.getByTestId("activity-form")).toHaveCount(0);
   } finally {
     await page.context().close();
