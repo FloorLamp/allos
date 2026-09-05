@@ -6,6 +6,8 @@ import {
   E2E_LOGIN_VIEWONLY_READ,
   E2E_LOGIN_VIEWONLY_WRITE,
 } from "./fixture-logins";
+import { sharedDayRestorePoint } from "./shared-profile-guard";
+import { frozenNow } from "./worker-env";
 
 // View-only access (issue #33). A profile grant now carries an access LEVEL:
 // 'write' (read + edit — the historical behavior) or 'read' (view-only). These
@@ -21,6 +23,21 @@ import {
 // onClick+router.refresh() create/grant went stale under CI load — the #830/#1111 census
 // flake. We sign in as each in a fresh, cookie-less context (loginAs) so it never touches
 // the shared admin storageState.
+
+// THE WRITE MEMBER'S SAVE LANDS ON THE SHARED PROFILE (#5266). That is the whole
+// point of the second test — the grant is for profile 1 — so the blood pressure it
+// posts becomes today's `medical_records` rows on the profile every spec shares, and
+// every reading surface there takes the LATEST row under a canonical name. The day is
+// copied before the save and put back after it rather than cleared: the seed carries
+// a today-dated Body Temperature in that same table, and deleting the day would take
+// it from everyone downstream (#5265's ruling). Restored from an `afterEach` so a
+// failure between the save and the assertions cannot skip it.
+let restoreSharedDay: (() => void) | null = null;
+
+test.afterEach(() => {
+  restoreSharedDay?.();
+  restoreSharedDay = null;
+});
 
 test.describe("View-only access (issue #33)", () => {
   test("a read-only member sees data but a mutation is rejected server-side", async ({
@@ -113,6 +130,10 @@ test.describe("View-only access (issue #33)", () => {
     const form = memberPage.getByTestId("measurements-quick-add");
     await expect(form).toBeVisible();
     await openMeasurementGroup(memberPage, form, "vitals");
+    restoreSharedDay = sharedDayRestorePoint(
+      "medical_records",
+      frozenNow().toISOString().slice(0, 10)
+    );
     await form.getByLabel("Systolic", { exact: true }).fill("120");
     await form.getByLabel("Diastolic", { exact: true }).fill("78");
     await form.getByRole("button", { name: "Save measurements" }).click();
