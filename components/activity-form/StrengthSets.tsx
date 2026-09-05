@@ -859,7 +859,9 @@ export default function StrengthSets({
                     <button
                       type="button"
                       data-testid="recent-session-fill"
-                      onClick={() => onFill({ source: "session", sets: sess.sets })}
+                      onClick={() =>
+                        onFill({ source: "session", sets: sess.sets })
+                      }
                       className="-mx-1 flex w-full items-center justify-between gap-3 rounded-sm px-1 py-0.5 text-left text-slate-600 transition hover:bg-brand-50 hover:text-brand-700 dark:text-slate-300 dark:hover:bg-brand-950/40 dark:hover:text-brand-300"
                     >
                       {dateEl}

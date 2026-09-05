@@ -317,7 +317,9 @@ export function useActivityParts({
     if (!values) return;
     if (fill.source === "session") {
       setParts((prev) =>
-        prev.map((part, idx) => (idx === pi ? { ...part, sets, perSide } : part))
+        prev.map((part, idx) =>
+          idx === pi ? { ...part, sets, perSide } : part
+        )
       );
       return;
     }
