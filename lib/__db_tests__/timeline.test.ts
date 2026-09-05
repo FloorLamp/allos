@@ -10,7 +10,8 @@ import { shiftDateStr } from "@/lib/date";
 import {
   getTimelineDates,
   getTimelineEvents,
-  timelineDateSelects,
+  TIMELINE_DATE_UNION,
+  timelineDatesUnionSql,
 } from "@/lib/timeline";
 import { seedProfile, type SeededProfile } from "./fixtures";
 import { setStoredAge, setTimezone } from "@/lib/settings";
@@ -463,8 +464,12 @@ describe("getTimelineEvents", () => {
 // EVERY UNION arm of getTimelineDates filters by profile (#5117). The arms are
 // literals inside ONE prepared statement, so the profile-scoping scan reads the
 // wrapper and never them — its ALLOW_COMPOSED entry rests on this block instead.
-// The cases come from the statement's own arm list and each row is built from the
-// arm's own table, so an eighteenth arm arrives with its case already written.
+//
+// The cases are SPLIT OUT OF THE STRING getTimelineDates interpolates, not read from
+// a list beside it: while the array was assembled in getTimelineDates, an arm pushed
+// between the call and the `.prepare` reached the running statement and no case here.
+// Each row is built from the arm's own table, so an eighteenth arm arrives with its
+// case already written, wherever in timelineDatesUnionSql it is added.
 describe("getTimelineDates: every UNION arm is profile-scoped", () => {
   type Col = {
     name: string;
@@ -538,7 +543,7 @@ describe("getTimelineDates: every UNION arm is profile-scoped", () => {
     leaky = seedProfile("ARMS");
   });
 
-  const arms = timelineDateSelects(true);
+  const arms = timelineDatesUnionSql(true).split(TIMELINE_DATE_UNION);
 
   it("reads the arm list off the statement itself", () => {
     // A parse that silently found nothing would make every case below vacuous.

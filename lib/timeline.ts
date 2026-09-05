@@ -1496,13 +1496,7 @@ export function getMultiProfileTimeline(
 // The UNION arms of the calendar's explicit-date read, one per (table, date column):
 // the event date IS a stored calendar column, so the raw slice matches where the
 // timeline places the event. Activities and goals are age-neutral profile-owned data.
-//
-// EXPORTED because the arms are literals inside ONE prepared statement, so the
-// profile-scoping scan reads the wrapper and not them (its ALLOW_COMPOSED entry says
-// exactly that). lib/__db_tests__/timeline.test.ts loops over THIS list and proves
-// each arm's profile filter against a seeded second profile — so an eighteenth arm is
-// covered the day it is added rather than the day someone remembers to add a case.
-export function timelineDateSelects(includeTrainingEvents: boolean): string[] {
+function timelineDateSelects(includeTrainingEvents: boolean): string[] {
   const explicitSelects: string[] = [
     "SELECT date FROM body_metrics WHERE profile_id = @profileId",
     "SELECT date FROM medical_records WHERE profile_id = @profileId",
@@ -1536,6 +1530,23 @@ export function timelineDateSelects(includeTrainingEvents: boolean): string[] {
   return explicitSelects;
 }
 
+// The arms as ONE string, and the ONLY thing getTimelineDates interpolates into its
+// statement — that is the point of the export, not a convenience. The arms are
+// literals inside one prepared statement, so the profile-scoping scan reads the
+// wrapper and never them (its ALLOW_COMPOSED entry says exactly that) and the per-arm
+// proof lives in lib/__db_tests__/timeline.test.ts. While getTimelineDates held the
+// array itself, one `explicitSelects.push(...)` between the call and the `.prepare`
+// put an unscoped arm into the running statement with every test green — the test
+// enumerated a list the statement no longer matched. Now the test SPLITS this same
+// string, so an arm cannot reach the statement except through a function the test
+// reads: an eighteenth arm arrives with its case already written, and one added here
+// rather than above is caught the same way.
+export function timelineDatesUnionSql(includeTrainingEvents: boolean): string {
+  return timelineDateSelects(includeTrainingEvents).join(TIMELINE_DATE_UNION);
+}
+// The separator, shared with the test that splits on it.
+export const TIMELINE_DATE_UNION = "\nUNION\n";
+
 export function getTimelineDates(
   profileId: number,
   options: Pick<TimelineOptions, "includeTrainingEvents"> = {}
@@ -1547,10 +1558,9 @@ export function getTimelineDates(
     if (d) dates.add(d);
   };
 
-  const explicitSelects = timelineDateSelects(includeTrainingEvents);
   for (const r of db
     .prepare(
-      `SELECT DISTINCT date FROM (${explicitSelects.join("\nUNION\n")})
+      `SELECT DISTINCT date FROM (${timelineDatesUnionSql(includeTrainingEvents)})
         WHERE date IS NOT NULL AND date != ''`
     )
     .all({ profileId }) as { date: string }[]) {

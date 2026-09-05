@@ -52,6 +52,17 @@ beforeAll(() => {
       `INSERT INTO hr_minutes (profile_id, ts, bpm, n, source)
        VALUES (?, '2024-01-02T08:00', ?, 3, 'health-connect')`
     ).run(p.profileId, bpm);
+    // Two of the four datasets this PR gave `bundle_id` had no seeded row on either
+    // profile, so the per-dataset scoping loop below would have been silent about
+    // exactly the columns the change touches.
+    db.prepare(
+      `INSERT INTO practice_logs (profile_id, practice, date, duration_min)
+       VALUES (?, ?, '2024-01-02', 20)`
+    ).run(p.profileId, `${p.tag} Breathwork`);
+    db.prepare(
+      `INSERT INTO food_log_events (profile_id, group_key, date, recorded_at)
+       VALUES (?, ?, '2024-01-02', '2024-01-02T12:00:00Z')`
+    ).run(p.profileId, `${p.tag.toLowerCase()}-lunch`);
   }
 });
 
@@ -385,5 +396,141 @@ describe("the declared select is the statement the export runs (#5117)", () => {
       missing,
       `\nDeclared as built in JS after the read (jsBuilt in lib/export.ts), but not actually emitted:\n${missing.join("\n")}\n`
     ).toEqual([]);
+  });
+});
+
+// EVERY DATASET, NOT A HAND-PICKED SUBSET (#5117). The profile-scoping scan reads
+// `q(sql)`/`qPage(sql)` as non-literals, so its ALLOW_NON_LITERAL and ALLOW_COMPOSED
+// entries for lib/export.ts do not read the dataset SELECTs at all — they point HERE
+// for the per-dataset claim, and until this loop existed that claim was a sentence
+// about a subset. Measured on the pre-loop tree: replacing `WHERE profile_id = ?`
+// with `WHERE ? IS NOT NULL` in the `body_metrics`, `practice_logs` or
+// `food_log_events` select left profile-scoping.test.ts, export.test.ts and
+// export-completeness.test.ts all green.
+//
+// The comparison is by ROW ID: A's rows() and A's page() may carry no id that belongs
+// to B. Two things a dataset can be that an id comparison cannot judge, and both are
+// NAMED below rather than filtered out — a silent skip would move the very problem
+// this loop exists to close one level up.
+
+// Ids that are legitimately shared, or not there at all.
+const SCOPING_ID_EXEMPT: { key: string; why: string }[] = [
+  {
+    key: "hr_minutes",
+    why: "a composite-key browse dataset: its rows carry no `id` to compare (asserted above), so its scoping is pinned on the seeded bpm by the case above instead",
+  },
+  {
+    key: "providers",
+    why: "the one GLOBAL dataset. A provider row belongs to the instance, not to a profile, and both profiles' encounters reference the SAME row on purpose — a shared id here is the design. What scopes it is the id list referencedProviderIds(profileId) walks, and that the reader runs the declared statement is the select-binding case above",
+  },
+];
+
+// Datasets the shared fixture seeds no row for, on either profile. The loop has
+// nothing to compare for these and is therefore silent about them, so they are
+// written down and the list is asserted EXACT: seeding one means deleting its name
+// here, and a dataset that stops being seeded has to be added rather than quietly
+// dropping out of the sweep.
+const SCOPING_UNSEEDED = [
+  "activity_routes",
+  "activity_telemetry",
+  "activity_laps",
+  "activity_segment_efforts",
+  "medical_record_revisions",
+  "injuries",
+  "niggles",
+  "endurance_plans",
+  "cycles",
+  "mood_logs",
+  "dose_schedule_versions",
+  "glucose_trace",
+  "procedures",
+  "genomic_variants",
+  "imaging_studies",
+  "dental_procedures",
+  "skin_lesions",
+  "optical_prescriptions",
+  "family_history",
+  "care_goals",
+  "appointments",
+  "preventive_events",
+  "preventive_overrides",
+  "preventive_record_decisions",
+  "protocols",
+  "milestones",
+  "equipment",
+  "frequency_targets",
+  "food_daily_totals",
+  "substance_daily_totals",
+  "protein_daily_totals",
+  "fasts",
+  "symptom_logs",
+  "situations",
+  "medication_courses",
+  "intake_item_ingredients",
+  "intake_item_purposes",
+  "intake_item_side_effects",
+];
+
+describe("every dataset's rows() and page() are profile-scoped (#5117)", () => {
+  const skipped = new Set([
+    ...SCOPING_ID_EXEMPT.map((e) => e.key),
+    ...SCOPING_UNSEEDED,
+  ]);
+  const checked = DATASETS.filter((ds) => !skipped.has(ds.key)).map(
+    (ds) => ds.key
+  );
+
+  it.each(checked)(
+    "%s carries no row belonging to the other profile",
+    (key) => {
+      const ds = getDataset(key)!;
+      const idsB = new Set(ds.rows(b.profileId).map((r) => r.id));
+      // The fixture has to REACH the state the assertion forbids: with no B row there
+      // is no id that could leak, and every assertion below would pass on an empty set.
+      expect(
+        idsB.size,
+        `${key}: nothing seeded for the other profile`
+      ).toBeGreaterThan(0);
+      const rowsA = ds.rows(a.profileId);
+      const pageA = ds.page(a.profileId, 1000, 0);
+      expect(rowsA.length, `${key}.rows()`).toBeGreaterThan(0);
+      expect(pageA.length, `${key}.page()`).toBeGreaterThan(0);
+      expect(
+        rowsA.filter((r) => idsB.has(r.id)).map((r) => r.id),
+        `${key}.rows() returned the other profile's rows`
+      ).toEqual([]);
+      expect(
+        pageA.filter((r) => idsB.has(r.id)).map((r) => r.id),
+        `${key}.page() returned the other profile's rows`
+      ).toEqual([]);
+    }
+  );
+
+  it("the datasets the loop skips are exactly the ones named", () => {
+    const exempt = new Set(SCOPING_ID_EXEMPT.map((e) => e.key));
+    const unseeded = DATASETS.filter((ds) => !exempt.has(ds.key))
+      .filter(
+        (ds) =>
+          ds.rows(a.profileId).length === 0 || ds.rows(b.profileId).length === 0
+      )
+      .map((ds) => ds.key);
+    expect(
+      unseeded,
+      `\nDatasets the loop above is silent about. Seed one in this file and delete its name from SCOPING_UNSEEDED, or add a newly unseeded one to it:\n${unseeded.join("\n")}\n`
+    ).toEqual(SCOPING_UNSEEDED);
+    // An id-exempt dataset must still be SEEDED — otherwise its exemption is really
+    // the unseeded one wearing a reason, and the reason stops being true unnoticed.
+    for (const e of SCOPING_ID_EXEMPT) {
+      expect(e.why.trim().length).toBeGreaterThan(0);
+      expect(
+        getDataset(e.key)!.rows(a.profileId).length,
+        e.key
+      ).toBeGreaterThan(0);
+      expect(
+        getDataset(e.key)!.rows(b.profileId).length,
+        e.key
+      ).toBeGreaterThan(0);
+    }
+    expect(checked.length).toBeGreaterThan(0);
   });
 });

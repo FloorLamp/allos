@@ -445,10 +445,8 @@ const ALLOW_COMPOSED: { file: string; sql: string; why: string }[] = [
   },
   {
     file: "lib/timeline.ts",
-    // `nUNIONn` is not a typo: firstStringArgs drops the backslash of an escape, so
-    // the source's `join("\nUNION\n")` reaches the scan spelled that way.
-    sql: "SELECT DISTINCT date FROM (${explicitSelects.join(\"nUNIONn\")}) WHERE date IS NOT NULL AND date != ''",
-    why: "getTimelineDates: the UNION arms ARE the statement, and every one is a hand-authored literal in the exported `timelineDateSelects` list immediately above this .prepare — each carrying its own `WHERE profile_id = @profileId`, or, for the one child read (intake_item_logs), its parent's `ii.profile_id = @profileId` through the JOIN. The bound name is the caller's profileId and nothing else reaches the array. That per-arm claim is not left to this sentence: lib/__db_tests__/timeline.test.ts LOOPS over that same exported list, seeds one dated row per arm's own table for a second profile, and asserts none of those dates reaches the first — so an arm added later is covered by construction, and stripping any arm's predicate reds its own case.",
+    sql: "SELECT DISTINCT date FROM (${timelineDatesUnionSql(includeTrainingEvents)}) WHERE date IS NOT NULL AND date != ''",
+    why: "getTimelineDates: the UNION arms ARE the statement, and every one is a hand-authored literal carrying its own `WHERE profile_id = @profileId` — or, for the one child read (intake_item_logs), its parent's `ii.profile_id = @profileId` through the JOIN. The bound name is the caller's profileId and nothing else reaches the arms. What ENFORCES that is structural rather than this sentence: the arms reach the statement only through `timelineDatesUnionSql`, which is also the string lib/__db_tests__/timeline.test.ts splits to build its cases, so an arm cannot enter the statement without entering the test — it seeds a dated row per arm in the arm's own table for a second profile, asserts the row reaches its own profile's calendar, and asserts it reaches no other. Stripping any arm's predicate reds that arm's own case.",
   },
 ];
 
