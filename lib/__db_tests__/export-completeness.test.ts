@@ -1102,13 +1102,16 @@ describe("every column of an exported table is exported (#5117)", () => {
       expect(c.by, `${c.ds.key}.${c.column}: jsBuilt \`by\``).toMatch(
         /^[A-Za-z_$][\w$]*$/
       );
-      // Anchored at the start of a line and requiring the parameter list, so a
-      // mention inside a comment or a string cannot satisfy it. Both spellings the
-      // file uses: a `function <name>(` declaration and an arrow const
-      // (`providersSelect` is written that way, so refusing one would bite).
+      // Anchored at COLUMN ZERO and requiring the parameter list, so a mention
+      // inside a comment or a string cannot satisfy it — and neither can a
+      // function-LOCAL `const <name> = (` inside some other builder, which the
+      // earlier `^\s*` spelling accepted. Every declaration in this file is at module
+      // scope. Both spellings the file uses: a `function <name>(` declaration and an
+      // arrow const (`providersSelect` is written that way, so refusing one would
+      // bite).
       expect(
         new RegExp(
-          `^\\s*(?:export\\s+)?(?:function ${c.by}\\s*\\(|const ${c.by}\\s*=\\s*\\()`,
+          `^(?:export\\s+)?(?:function ${c.by}\\s*\\(|const ${c.by}\\s*=\\s*\\()`,
           "m"
         ).test(EXPORT_SOURCE),
         `${c.ds.key}.${c.column}: jsBuilt names \`${c.by}\`, which lib/export.ts does not declare`

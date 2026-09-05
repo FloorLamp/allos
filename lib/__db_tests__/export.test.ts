@@ -11,6 +11,8 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { DATASETS, DELETE_POLICY, getDataset, toCsv } from "@/lib/export";
+import { OWNED_TABLES } from "@/lib/owned-tables";
+import { ownedChildTables } from "@/lib/profile-delete";
 import { db } from "@/lib/db";
 import { seedProfile, type SeededProfile } from "./fixtures";
 
@@ -394,7 +396,15 @@ describe("the declared select is the statement the export runs (#5117)", () => {
           // whether such a function is declared — renaming this to `shapeSupplements`,
           // a real function building a different cell, passes there. Here the reader
           // itself is in hand, so the call can be looked for in its own source.
-          if (!new RegExp(`\\b${cell.by}\\s*\\(`).test(String(fn))) {
+          //
+          // WHAT THIS ESTABLISHES, exactly: the reader's CODE names `by(`. Comments
+          // are stripped first, because they are part of `String(fn)` and one line
+          // mentioning the function by name satisfied this while the reader called
+          // something else. It still does not establish that the emitted cell CAME
+          // from that call — the `built` check above is what says the cell is there,
+          // and the two together are what the declaration is worth.
+          const body = String(fn).replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, "");
+          if (!new RegExp(`\\b${cell.by}\\s*\\(`).test(body)) {
             missing.push(
               `${ds.key}.${cell.column}: ${ds.key}.${reader} never calls ${cell.by}() — jsBuilt names a function that does not build this cell`
             );
@@ -541,6 +551,27 @@ describe("every dataset's rows() and page() are profile-scoped (#5117)", () => {
         e.key
       ).toBeGreaterThan(0);
     }
+    // …and this list is asserted EXACT too, on the property that ADMITS an entry —
+    // a seeded dataset the id comparison cannot judge, which is one whose rows carry
+    // no `id`, or whose table belongs to the instance rather than to a profile (not
+    // owned and not an owned table's FK child). Seeded + a reason was true of every
+    // dataset, so a line added here used to delete that dataset's case in silence.
+    // The property is read off the row shape and the schema, never off the ids
+    // themselves, so a leak cannot make its own exemption true.
+    const profileScoped = new Set([
+      ...OWNED_TABLES,
+      ...ownedChildTables(db).keys(),
+    ]);
+    const exemptable = DATASETS.filter(
+      (ds) =>
+        ds.rows(a.profileId).length > 0 &&
+        ds.rows(b.profileId).length > 0 &&
+        (!("id" in ds.rows(a.profileId)[0]) || !profileScoped.has(ds.table))
+    ).map((ds) => ds.key);
+    expect(
+      exemptable.sort(),
+      `\nDatasets an id comparison cannot judge. SCOPING_ID_EXEMPT must name exactly these — every other seeded dataset gets a case:\n${exemptable.join("\n")}\n`
+    ).toEqual(SCOPING_ID_EXEMPT.map((e) => e.key).sort());
     expect(checked.length).toBeGreaterThan(0);
   });
 });

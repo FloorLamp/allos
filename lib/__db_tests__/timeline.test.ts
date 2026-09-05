@@ -551,7 +551,25 @@ describe("getTimelineDates: every UNION arm is profile-scoped", () => {
     for (const arm of arms) {
       expect(tableOf(arm), arm).toBeTruthy();
       expect(dateColOf(arm), arm).toBeTruthy();
+      // …and each slice is ONE simple SELECT. The split is on the separator
+      // literal, and each case reads only the FIRST `FROM` of its slice — so an arm
+      // that is itself a compound (an indented `UNION` of its own) is one slice
+      // whose second half no case ever looks at, while still GAINING a case, which
+      // is what makes it look covered. Refused by naming the offence: write it as
+      // separate arms and each half gets its own case.
+      expect(
+        arm.match(/\bSELECT\b/gi)?.length,
+        `this arm is itself a compound — split it into separate arms: ${arm}`
+      ).toBe(1);
     }
+    // The cases are built from the includeTrainingEvents=true statement, which today
+    // is a superset: the flag only PUSHES arms. An arm reaching the `false` statement
+    // and no case would be invisible here, so that containment is asserted rather
+    // than assumed.
+    for (const arm of timelineDatesUnionSql(false).split(TIMELINE_DATE_UNION))
+      expect(arms, `an arm only the bounded statement carries: ${arm}`).toContain(
+        arm
+      );
   });
 
   it.each(arms.map((arm, i) => [i, tableOf(arm), arm] as const))(

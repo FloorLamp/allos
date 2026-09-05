@@ -441,7 +441,7 @@ const ALLOW_COMPOSED: { file: string; sql: string; why: string }[] = [
   {
     file: "lib/export.ts",
     sql: "${sql} LIMIT ? OFFSET ?",
-    why: "qPage(sql): the bounded twin of the q(sql) helper allowlisted above, and the same argument — it appends LIMIT/OFFSET to whatever complete SELECT its caller declared, so there is no statement of its own to read here. Every string it is called with is a dataset `select` in the same file, each filtering the acting profile directly (WHERE profile_id = ?) or through the parent JOIN (WHERE ii.profile_id = ?). What CHECKS that is lib/__db_tests__/export.test.ts, which seeds two profiles and loops over DATASETS asserting page() returns no row id belonging to the other. It is a loop over the whole list, not a hand-picked subset — but it is not silently exhaustive either: a dataset the shared fixture seeds no row for, and the two whose ids are legitimately shared or absent, are NAMED there and that list is asserted exact. This sentence is worth exactly what that list leaves out, which is why the list is in the test rather than in this string.",
+    why: "qPage(sql): the bounded twin of the q(sql) helper allowlisted above, and the same argument — it appends LIMIT/OFFSET to whatever complete SELECT its caller declared, so there is no statement of its own to read here. Every string it is called with is a dataset `select` in the same file, each filtering the acting profile directly (WHERE profile_id = ?) or through the parent JOIN (WHERE ii.profile_id = ?). What CHECKS that is lib/__db_tests__/export.test.ts, which seeds two profiles and loops over DATASETS asserting page() returns no row id belonging to the other. It is a loop over the whole list, not a hand-picked subset — but it is not silently exhaustive either: a dataset the shared fixture seeds no row for, and the two whose ids are legitimately shared or absent, are NAMED there in two lists, and BOTH are asserted exact — the unseeded one against what the fixture actually seeds, the id-exempt one against the property that admits an entry (rows with no `id`, or a table belonging to the instance rather than to a profile). This sentence is worth exactly what those lists leave out, which is why they are in the test rather than in this string.",
   },
   {
     file: "lib/timeline.ts",
@@ -465,9 +465,13 @@ const ALLOW_COMPOSED: { file: string; sql: string; why: string }[] = [
 // are NOT reached: a scalar subquery in the select list (`SELECT (${sub}) AS n`),
 // `INSERT INTO t (a, b) ${sel}`, `IN (${sub})` / `NOT IN (${sub})`,
 // `AS [NOT] MATERIALIZED (${sub})`, and a PARENTHESISED compound arm
-// (`UNION (${arm})`). Four of those five have no live instance; `IN (${…})` has many
-// and every one of them is a placeholder VALUE list, which is why widening the rule to
-// it would produce false positives rather than coverage.
+// (`UNION (${arm})`). Four of those five have no live instance. `IN (${…})` has many,
+// and MOST are a placeholder value list — but not all, which is what this sentence
+// used to claim: the representative-window subqueries `representativeIds()` builds
+// (lib/representative-ids.ts) are an entire SELECT standing in that position. Widening
+// the rule to `IN (${…})` would refuse none of THOSE anyway — every statement hosting
+// one names an owned table, and this rule only reaches statements whose readable text
+// names none — so it would land solely on value lists, as false positives.
 //
 // The COMPLEMENTARY class — an interpolation in an IDENTIFIER or value position,
 // `DELETE FROM ${table} WHERE …` — is deliberately NOT claimed here. Those statements
@@ -1020,8 +1024,14 @@ describe("the scan's allowlists stay load-bearing (#5117)", () => {
     // statement can pass on `profile_id IS NOT NULL` alone (#5243), in which case the
     // entry is the only record that the read is deliberately unscoped.
     const unnecessary = staleReason(broad, [broad], [scopedStmt])!;
+    // Pinned on what the verdict ASKS FOR, not on the absence of one spelling of
+    // "delete it": "…passes the scan on its own. Delete it. (#5243)" satisfied that
+    // negative. It has to send the reader to check WHAT makes the statement pass
+    // before deleting, and to say the entry survives when the answer is the bare
+    // existence check.
     expect(unnecessary).toMatch(/passes the scan on its own/);
-    expect(unnecessary).not.toMatch(/on its own — delete it/);
+    expect(unnecessary).toMatch(/before deleting, read WHAT makes it pass/);
+    expect(unnecessary).toMatch(/keep it$/);
     expect(unnecessary).toContain("#5243");
   });
 
