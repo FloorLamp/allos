@@ -14,14 +14,12 @@
 - Prefer TYPES over guards (owner 2026-08-31): an invariant a type can make
   unrepresentable goes back when policed at runtime — simplify, extract,
   unify, and ask what the real goal costs in less code.
-- Weigh line cost; compact proofs before doubting coverage that found a defect.
 - Check the ruling's OWN condition, not the one the implementation makes easy:
   verifying values where they change ≠ rendering the case the ruling names.
 - A guard's existence is not its coverage. Ask which widths, states and
   roles it runs at, and say which in the review.
-- A REMOVAL is checked against the issue's acceptance criteria: an unreachable
-  export can be debris or an unfinished requirement, and only the issue can
-  say which. Delete when the issue doesn't ask; wire up when it does.
+- A REMOVAL is checked against the issue's acceptance criteria: unreachable
+  code is debris or an unfinished requirement, and only the issue says which.
 - Inspect cross-PR conflicts, stale shared signatures, binary-looking diffs,
   measured-count claims, and unintended generated-data changes.
 - Flag owner-visible judgment calls in the COMMENT review.
@@ -29,8 +27,7 @@
 ## Adversarial lane
 
 - Run `adversarial-review-brief.mjs <pr> --check` for every PR. Exit 0
-  dispatches
-  the lane, 3 is CONSULT and you decide, 1 is ordinary, 2 could not read the PR.
+  dispatches the lane, 3 is CONSULT, 1 is ordinary, 2 could not read the PR.
 - Never treat 2 or 3 as a no.
 - MANDATORY is read from the DIFF (#4842): a high-stakes path, a moved
   authorization gate, a dropped `profile_id` predicate. Those need a separate
@@ -43,9 +40,12 @@
   fresh pass. The test: does the fix create a surface the last pass could not
   have attacked? A new store, key, lifetime, or owning row is yes; a corrected
   constant or bound is no.
-- After two blocking rounds against one mechanism, stop patching examples.
-  Re-open the premise around a shared substrate, restrictive invariant, or
-  direct behavior evidence; record why the replacement closes the defect class.
+- Two falsifying passes per PR. A THIRD falsification means SIMPLIFY the
+  guards, the code, or both — never a third round (owner 2026-09-05; #5203
+  took seven). Pass-three prose mismatches are follow-ups unless they leak.
+- A PR the owner opens gets a plain non-author review and the standard gates;
+  a blocker is fixed as a new commit on the owner's branch, stated on the
+  PR — never rebase, amend or force-push it (owner 2026-09-04).
 
 ## What a lens looks for, and how verification lies
 
@@ -54,8 +54,7 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
 
 ## Migrations
 
-- Applied migrations are keyed by name; numbered migrations 001–185 are
-  closed.
+- Applied migrations are keyed by name; numbered migrations 001–185 are closed.
 - Add `YYYYMMDD-slug.ts`, export `{ name, up }`, append it last, then run
   `npm run gen:migration-manifest` for its hash. Never edit a shipped migration.
 - Merge order defines migration order. An APPEND-ONLY file (`versions/index.ts`,
@@ -77,7 +76,9 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
   READY at once (never draft — environment.md §GitHub access), so CI and the
   exact-head review run in parallel. `landing-independence.mjs` is path-only
   advice (#5138); the gate refuses an unchecked base-moved head (#5235).
-- Its refusal names the `MERGED-TREE-CHECKED` receipt that clears it.
+- Its refusal names the `MERGED-TREE-CHECKED` receipt that clears it. A
+  release-notes batch landing on `main` forces no re-run of a PR that never
+  touches `lib/release-notes.json`: display data read by one page.
 - **The exact-head review is INDEPENDENT and pinned to the SHA** (owner
   2026-08-26, #3710): a non-author reviews the candidate commit; the COMMENT
   review states SHA and reviewer — on a shared bot account, also that the
@@ -91,10 +92,6 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
   feature code.
 - **Check what a merge would CLOSE**: `closing-keywords.mjs <pr>`, exit 3
   (failure modes). Blind to your squash text: scan it; `Refs` a PHASED issue.
-- **Require the PR body rewritten in the same push as a rewrite.**
-  `adversarial-review-brief.mjs` serves it as "the claims to attack", so a stale
-  body aims the next lens at deleted code (failure modes).
+- **Rewrite the PR body in the same push as a rewrite**: the adversarial
+  brief serves it as "the claims to attack", so a stale body aims at deleted code.
 - Verify linked issues closed, then clean the worktree and local branch.
-
-- Merge queue: the checked-in ruleset is inactive under a personal account;
-  keep manual serialization until organization transfer, then validate it.

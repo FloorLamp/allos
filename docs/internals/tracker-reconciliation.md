@@ -1,7 +1,8 @@
 # Tracker reconciliation
 
-Status: **partial** (gather script, patcher and protocol shipped; the weekly
-schedule is deliberately not wired — see "Scheduling")
+Status: **partial** (gather script, patcher, run summary and protocol shipped;
+the weekly cron stays unwired by decision, with a measurable condition for
+lifting it — see "Scheduling")
 
 The tracker is prose that quotes the code. At this repo's merge rate — 99 PRs
 across 2026-08-11 and -12 alone — every path, line number, symbol and
@@ -23,6 +24,7 @@ symbol refreshes, and never changes scope or a decision. Judgment calls are FLAG
 | `scripts/orchestration/reconcile-repo-index.ts`   | The tracked-file list and lazy reads, shared by the scan and the applier.  |
 | `scripts/orchestration/reconcile-apply.ts`        | A writer. Sends exactly one field, `body`.                                 |
 | `scripts/orchestration/reconcile-labels.ts`       | A writer. Label ops only, one field, `labels`. Adds come from a plan file. |
+| `scripts/orchestration/reconcile-run-summary.ts`  | A writer. One comment on #865: this run's date, SHA and counts.            |
 | `.claude/skills/reconcile-tracker/SKILL.md`       | The six-step protocol, the guardrails, the report format, `allowed-tools`. |
 | `lib/__tests__/reconcile-tracker.test.ts`         | Parsers, false-positive floor, guardrails, capability scan.                |
 
@@ -33,6 +35,7 @@ npm run reconcile -- --issue 2603,2589   # one or two issues
 npm run reconcile:apply plan.json        # dry run; add --apply to write
 npm run reconcile:watermark              # read the stamp
 npm run reconcile:watermark -- stamp --evidence ev.json --apply
+npm run reconcile:summary -- --evidence ev.json   # dry run; add --apply to post
 ```
 
 Every step of the protocol has a name you can type. The stamp step did not
@@ -259,13 +262,65 @@ with a lower bound holds a few dozen PRs and never approaches the cap. As of
 on the tracker, open or closed, so no run had ever advanced it and every run to
 date has swept from the beginning of the repo.
 
+## The run summary line
+
+Every run appends **one line to #865**, and that comment chain is the routine's
+only run history: no report is committed anywhere in the tree, and the watermark
+holds one instant rather than a log. Before 2026-09-05 nothing recorded that a
+run had happened at all.
+
+```
+Reconciliation run — 2026-09-08T09:00:00Z · main `9b83ed8f2c14` · patched 12 · flagged 0 (unapplied candidates 0 · couldn't-verify 0 · docs 0 · labels 0) · boring: yes · window 2026-09-05T12:40:00Z → 2026-09-08T09:00:00Z · merged PRs examined 312
+```
+
+It is a **fact about the run, never a verdict on the tracker** — the same
+guardrail that stops the routine closing an issue. Three things in it are worth
+stating plainly, because each closes a way the count could be gamed by
+accident:
+
+**`flagged` counts unapplied patch candidates too.** Reading it as only the
+report's `Couldn't verify` bucket leaves a hole wide enough to drive the whole
+condition through: a run that gathers 474 candidates, applies none and has an
+empty unverifiable bucket would print `flagged 0`. Drift nobody wrote back is
+still drift and still a reader's job. So `flagged` is unapplied candidates +
+couldn't-verify + docs + label findings, and `boring` means the reader had
+nothing left to do.
+
+**`patched` comes from the applier, not from the gather.** The gather proposes
+candidates and cannot know which landed, so `reconcile-apply.ts --outcome
+<file>` writes its own count and the summary reads it. A count retyped by hand
+into a durable record is a count nobody can check. No `--outcome` means no
+applier ran, and zero is then the truth rather than a default.
+
+**A truncated sweep can never render `boring: yes`.** Until the watermark
+carrier exists every run is unbounded and the PR fetch stops at its page cap
+(see "deceptive success, third shape"), so its counts are of the whole tracker
+rather than of a window. Three "boring" runs assembled from three clipped sweeps
+would satisfy the unblock condition without anyone noticing, and a trailing
+truncation clause does not prevent that — a counter greps the boring token and
+stops. So the flag sits _inside_ that token: such a run reports
+`boring: not established (flagged 0, but the PR sweep was truncated)`, and
+spells the clipped denominator out at the end of the same line as well.
+
+The writer is confined like the others: one POST, one payload field (`body`),
+one URL built from the pinned `RUN_SUMMARY_ISSUE`. It is a dry run by default,
+`--apply` takes the write credential by name, and it refuses to post twice for
+one run — the line is keyed on the gather's own stamp, so re-running it on the
+same evidence is idempotent.
+
 ## Scheduling
 
-Run weekly, or on demand after a heavy merge day. **The cron is deliberately not
-wired.** An unattended pass that writes to the tracker needs its report read at
+Run weekly, or on demand after a heavy merge day. **The cron is not wired, by
+decision** (#865, ruling 2026-09-05 11:50 UTC): `npm run reconcile` is the
+schedule. An unattended pass that writes to the tracker needs its report read at
 least once per convention change, and a schedule nobody reads is how a routine
-starts patching in a shape nobody sanctioned. Wire it when the report has been
-boring three runs running.
+starts patching in a shape nobody sanctioned.
+
+The condition that lifts it is **three consecutive boring runs**, counted from
+the summary lines on #865; the lane that wires the cron cites those three
+comments. That condition used to be unmeasurable — nothing recorded a run's
+outcome, so "boring three runs running" was unblockable by construction — which
+is what the previous section exists to fix.
 
 ## Relationship to `scripts/orchestration/`
 
