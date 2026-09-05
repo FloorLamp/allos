@@ -314,7 +314,7 @@ describe("cross-source read-layer de-duplication", () => {
     // flattenHits, not the group list: searchAll returns ONE group per domain, so
     // filtering the groups counts domains and can never see a duplicate row.
     expect(
-      flattenHits(searchAll(profileId, "MMR")).filter(
+      flattenHits(searchAll(profileId, "MMR", null)).filter(
         (h) => h.domain === "immunization"
       )
     ).toHaveLength(1);

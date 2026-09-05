@@ -192,7 +192,7 @@ describe("the read models #3836 converted", () => {
         )
         .run(`sweep-labs-${day}.pdf`, at, profile.id).lastInsertRowid
     );
-    const hit = searchAll(profile.id, "sweep-labs")
+    const hit = searchAll(profile.id, "sweep-labs", null)
       .flatMap((g) => g.hits)
       .find((h) => h.key === `document:${docId}`)!;
     expect(hit.date).toBe(day);
