@@ -253,7 +253,12 @@ export async function logFoodServing(
     // question. 'tap' belongs to the Telegram button, whose declared contract IS "now".
     verdict.kind === "accepted"
       ? { eatenAt: utcInstant(verdict.at), source: "stated" }
-      : fields.mealSlot
+      : fields.mealSlot,
+    undefined,
+    // THE NOTE RIDES THE ADD (#5304). One serving, one note, on the row itself — the
+    // day counter this tap bumps carries none. An absent or blank field is the common
+    // answer and the core stores NULL for it.
+    String(formData.get("notes") ?? "")
   );
   if (outcome.kind === "unknown-group") return formError("Unknown food group.");
   // The core's own day bound (#4118), and it is NOT-FUTURE only: any real past day
@@ -413,7 +418,18 @@ export async function updateFoodLogEvent(
     date?: string;
     mealSlot?: FoodSlot;
     eatenAt?: Date | null;
+    notes?: string | null;
   } = {};
+  // THE NOTE, WITH THE HOUSE'S TWO WIRE VALUES (#5304): the field ABSENT leaves the
+  // row's note alone, and the field PRESENT states it — including present-and-empty,
+  // which is how a note is CLEARED. That is the whole of #5077's ask, and the reason
+  // it is not the `occurred_at` sentinel dance one field up: an empty string is a
+  // perfectly good "no note", whereas an empty time is a time nobody stated.
+  //
+  // The form only posts this field when the person has TOUCHED it, so a mount that
+  // does not yet seed the row's note cannot silently clear one by saving a time.
+  const rawNotes = formData.get("notes");
+  if (rawNotes !== null) patch.notes = String(rawNotes);
   const rawGroup = String(formData.get("group_key") ?? "").trim();
   if (rawGroup) {
     if (!isValidFoodGroup(rawGroup)) return formError("Unknown food group.");

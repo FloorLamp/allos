@@ -254,6 +254,10 @@ export interface FoodMealEvent {
   // present. `recorded_at` itself is never edited, so after a correction this is no
   // longer the number the user would recognise; the eating time above is.
   loggedTime: string;
+  // What the person wrote about THIS serving (#5304), or null. Carried so the
+  // correction sheet opens on the note it is about to correct — a sheet seeded without
+  // it would show an empty field over stored text.
+  notes: string | null;
 }
 
 export interface FoodMealDay {
@@ -305,12 +309,15 @@ export function getFoodMealDays(
 
   const events = db
     .prepare(
-      `SELECT id, group_key AS name, date, recorded_at, meal_slot, occurred_at
+      `SELECT id, group_key AS name, date, recorded_at, meal_slot, occurred_at, notes
          FROM food_log_events
         WHERE profile_id = ? AND date >= ? AND date <= ?
         ORDER BY recorded_at, id`
     )
-    .all(profileId, from, to) as (FoodLedgerEvent & { id: number })[];
+    .all(profileId, from, to) as (FoodLedgerEvent & {
+    id: number;
+    notes: string | null;
+  })[];
   const boundaries = profileFoodSlotBoundaries(profileId);
   const tz = getTimezone(profileId);
   for (const event of events) {
@@ -345,6 +352,7 @@ export function getFoodMealDays(
         ? zonedDateParts(tz, new Date(event.occurred_at)).hhmm
         : null,
       loggedTime: zonedDateParts(tz, new Date(event.recorded_at)).hhmm,
+      notes: event.notes,
     });
   }
   // Newest first: the serving most likely to need correcting is the one just tapped.
