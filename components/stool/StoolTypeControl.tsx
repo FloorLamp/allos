@@ -57,7 +57,11 @@ export default function StoolTypeControl({
   // profile and would land on the wrong person.
   subjectProfileId?: number;
 }) {
-  const pipeline = useWritePipeline("stool-form");
+  // THE DAY COUNT IS THE OPTIMISTIC VALUE (#3728), declared to the pipeline rather than
+  // painted and unwound here. Seven buttons write ONE count, so the ending a refusal
+  // takes is not "the value this tap fired from" — a sibling type's reading may have
+  // landed meanwhile — and that judgement is the pipeline's now.
+  const pipeline = useWritePipeline<"stool-form", number>("stool-form");
   const [count, setCount] = useState(todayCount);
   const reducedMotion = usePrefersReducedMotion();
   const settlePlan = microMotionPlan("settle", reducedMotion);
@@ -101,14 +105,12 @@ export default function StoolTypeControl({
     // The statement THIS tap consumes, read once — both as the wall time it posts and
     // as the value the spend below compares against.
     const stated = statement.at;
-    // OPTIMISTIC, THEN THE SERVER'S OWN TOTAL. The pipeline settles the ledger and says
-    // the sentence; the COUNT is this surface's state, committed here as
-    // `DoseStatusControl` commits its own override.
-    const before = count;
-    let landed: number | null = null;
-    setCount(before + 1);
     const result = await pipeline.run({
       key: String(type),
+      // OPTIMISTIC, THEN THE SERVER'S OWN TOTAL. The count stays this surface's state;
+      // the pipeline paints the +1, adopts `dayCount`, and puts the settled count back
+      // when nothing was written.
+      optimistic: { from: count, to: count + 1, commit: setCount },
       // ONLY when a time was actually stated, and never a day: the ABSENCE of each
       // field leaves the instant to the clock seam and the day to the action's `today`,
       // so an untouched sheet posts precisely the body it always posted (#3273).
@@ -126,13 +128,15 @@ export default function StoolTypeControl({
             wrote: false,
             announce: { message: res.error, tone: "error", undo: null },
           };
-        landed = res.dayCount;
         settle(type);
         // Rule 4 of the shared statement: restating a minute CORRECTS the row the
         // first tap wrote rather than adding one, so the sheet cannot stay armed.
         statement.spend(stated);
         return {
           wrote: true,
+          // The server's own total for the day, adopted over the +1 this tap guessed:
+          // another device, a Telegram tap or a queued replay may have moved it.
+          value: res.dayCount,
           // WHAT LANDED, INCLUDING WHAT DID NOT (#4425). The stated time is judged at
           // the write boundary, and a time it refuses costs the statement rather than
           // the observation — so the sentence says the reading is filed at the moment
@@ -169,11 +173,9 @@ export default function StoolTypeControl({
               keptMessage: "Saved offline — will sync when you reconnect.",
             },
     });
-    // The server's total is authoritative; a capture has no revalidate behind it, so
-    // its +1 stands in until replay; nothing written rolls back.
-    if (result === "wrote") setCount(landed ?? before + 1);
-    else if (result === "nothing") setCount(before);
-    else statement.spend(stated);
+    // A capture wrote the administration too, so it spends the statement — the online
+    // arm already did, inside `settle`.
+    if (result === "captured") statement.spend(stated);
   }
 
   return (

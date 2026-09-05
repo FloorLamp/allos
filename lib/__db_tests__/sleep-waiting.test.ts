@@ -191,6 +191,21 @@ describe("getSleepArrivalLagMinutes", () => {
     expect(getSleepArrivalLagMinutes(profileId)).toBe(70);
   });
 
+  // NEVER ZERO, AND THAT IS NOT A ROUNDING CHOICE (#5127 falsifying pass, F3). A source
+  // whose rows land inside the same minute the night ended measures a median of 0 once
+  // rounded — and 0 is the one value this model forbids, because `measured ?? default`
+  // makes a measured 0 and a profile with no measurement at all the same input to every
+  // consumer. One minute is the honest floor for "it arrived before the next minute
+  // began". The floor lives in `arrivalLagMedian`, which this query now takes its median
+  // through; before that it rounded its own and shipped the 0.
+  it("floors a sub-minute median at one minute rather than at zero", () => {
+    for (let i = 1; i <= MIN_ARRIVAL_SAMPLES; i++) {
+      const date = shiftDateStr(T, -i);
+      arrival(night(date), `${date}T06:00:20Z`);
+    }
+    expect(getSleepArrivalLagMinutes(profileId)).toBe(1);
+  });
+
   it("refuses to quote a median built on a thin sample", () => {
     // The retention-truncated case: integration_sync_rows reaches back ~12 days on
     // the measured instance, so this is the ordinary state of a young profile, not

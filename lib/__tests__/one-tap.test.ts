@@ -71,6 +71,19 @@ describe("the ledger state machine (#2041 finding 1)", () => {
     expect(rolled.preTap).toBeNull();
   });
 
+  // #3728: one displayed value written through several keys. The snapshot this key
+  // took is no longer the truth once a sibling key's write has settled over it, so the
+  // caller names where to land instead.
+  it("rolls back to the value the caller names over its own snapshot", () => {
+    const tapped = ledgerReducer(start, { kind: "tap", optimistic: 4 });
+    const rolled = ledgerReducer(tapped, {
+      kind: "settled",
+      settlement: { kind: "rollback", to: 7 },
+    });
+    expect(rolled.value).toBe(7);
+    expect(rolled.phase).toBe("ready");
+  });
+
   it("adopts the server total even when it disagrees with the optimistic value", () => {
     // The drift case that motivated the pattern: another device logged two servings
     // between render and response, so the authoritative total is 9, not the 4 this
