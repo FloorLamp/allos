@@ -29,6 +29,7 @@ case "$*" in
       then body="$CHECK_RUNS_2"
       else body="$CHECK_RUNS"
     fi ;;
+  */status*) body="$COMMIT_STATUSES" ;;
   *workflows/ci.yml/runs*)
     if [ "$CI_STATUS" = absent ]; then body='{"workflow_runs":[]}'
     else body='{"workflow_runs":[{"id":1,"event":"pull_request","head_sha":"0123456789abcdef","status":"completed","conclusion":"success"},{"id":2,"name":"CI","event":"pull_request","head_sha":"0123456789abcdef","status":"'"$CI_STATUS"'","conclusion":"'"$CI_CONCLUSION"'","html_url":"https://example.test/ci"}]}'
@@ -53,6 +54,13 @@ const payload = (runs: ReturnType<typeof check>[]) =>
 
 const GREEN_ONE = payload([check(1, "gitleaks", "success")]);
 
+// The other endpoint (#5022). `statuses` is the per-context list; the combined
+// `state` field is deliberately never read, because it is `pending` for a
+// commit that has no statuses at all.
+const statuses = (...rows: { context: string; state: string }[]) =>
+  JSON.stringify({ statuses: rows });
+const NO_STATUSES = statuses();
+
 let seq = 0;
 function watch(env: Record<string, string> = {}) {
   const state = path.join(bin, `state-${++seq}`);
@@ -62,6 +70,7 @@ function watch(env: Record<string, string> = {}) {
     env: {
       ...process.env,
       CHECK_RUNS: GREEN_ONE,
+      COMMIT_STATUSES: NO_STATUSES,
       CI_CONCLUSION: "success",
       CI_STATUS: "completed",
       GH_TOKEN: "test",
@@ -158,7 +167,9 @@ it("counts the verdicts it has, and names the check that has none", () => {
       check(3, "lint", "success"),
     ]),
   });
-  expect(green.stdout).toContain("GREEN — all 2 registered checks settled");
+  expect(green.stdout).toContain(
+    "GREEN — all 2 check run(s) and 0 commit status(es) settled"
+  );
 
   const none = watch({
     CHECK_RUNS: payload([
@@ -168,7 +179,7 @@ it("counts the verdicts it has, and names the check that has none", () => {
   });
   expect(none.status).toBe(2);
   expect(none.stdout).toContain(
-    "No verdict for check (every run cancelled — re-run it)"
+    "no verdict for check (every run cancelled — re-run it)"
   );
 });
 
@@ -224,3 +235,98 @@ it.each([
   expect(result.status).toBe(code);
   expect(result.stdout + result.stderr).toContain(expected);
 });
+
+// BOTH ENDPOINTS, ONE VERDICT (#5022). A commit's statuses are a disjoint set
+// this watcher never read, so `GREEN — all 19 registered checks settled` was a
+// claim about `/check-runs` alone — printed on PR #5319 beside a `merge-gate`
+// status reading `failure`. The last two rows are the pair that has to hold in
+// BOTH directions: an independent context reds, and the gate's own context —
+// which merge-gate.mjs recomputes, and which is legitimately `failure` on
+// every pre-review head — reports without reddening. A watcher red on every
+// healthy PR is a watcher nobody reads.
+it.each([
+  ["no statuses at all behaves exactly as today", NO_STATUSES, 0, "GREEN"],
+  [
+    "an all-success status set is green and counted",
+    statuses({ context: "deploy", state: "success" }),
+    0,
+    "GREEN — all 1 check run(s) and 1 commit status(es) settled",
+  ],
+  [
+    "a pending status is unsettled, not absent",
+    statuses({ context: "deploy", state: "pending" }),
+    2,
+    "1 pending: status deploy",
+  ],
+  [
+    "a failing independent status reds a green check set",
+    statuses({ context: "deploy", state: "failure" }),
+    1,
+    "RED — 1 failing check(s)",
+  ],
+  [
+    "the failing row names its endpoint, not just its context",
+    statuses({ context: "deploy", state: "error" }),
+    1,
+    "error: status deploy",
+  ],
+  [
+    "the gate's own status is reported beside the green, not folded into it",
+    statuses({ context: "merge-gate", state: "failure" }),
+    0,
+    "NOT MERGEABLE YET — status merge-gate failed:",
+  ],
+  [
+    "and the word PASSING never covers it",
+    statuses({ context: "merge-gate", state: "failure" }),
+    0,
+    "1 commit status(es) read, 1 not green",
+  ],
+])("both endpoints: %s", (_case, commitStatuses, code, expected) => {
+  const result = watch({ COMMIT_STATUSES: commitStatuses });
+
+  expect(result.status).toBe(code);
+  expect(result.stdout).toContain(expected);
+});
+
+// GREEN ONE CHECK EARLY (#5317). Two matching fingerprints both landed before
+// `merge-gate-job` registered, and `mergeable_state` — on screen in every poll
+// line — said `unstable` throughout and was right. It cannot simply block
+// settlement, because a non-passing status makes a PR `unstable` too and this
+// repo posts one on every pre-review head; the first two rows are that pair.
+// The third is the control that keeps the first honest: same green checks,
+// `clean`, settles.
+it.each([
+  [
+    "unstable with nothing to explain it is a check that has not registered",
+    "unstable",
+    NO_STATUSES,
+    2,
+    "mergeable_state=unstable while every check run and commit status we can read is green",
+  ],
+  [
+    "unstable explained by the gate's own closed status still settles",
+    "unstable",
+    statuses({ context: "merge-gate", state: "failure" }),
+    0,
+    "GREEN",
+  ],
+  [
+    "a clean head with the same checks settles",
+    "clean",
+    NO_STATUSES,
+    0,
+    "GREEN",
+  ],
+])(
+  "settlement: %s",
+  (_case, mergeableState, commitStatuses, code, expected) => {
+    const result = watch({
+      COMMIT_STATUSES: commitStatuses,
+      MERGEABLE_STATE: mergeableState,
+    });
+
+    expect(result.status).toBe(code);
+    expect(result.stdout).toContain(expected);
+  }
+);
