@@ -93,8 +93,6 @@ beforeAll(() => {
 
 const rowsFor = (key: string, profileId: number) =>
   getDataset(key)!.rows(profileId);
-const countFor = (key: string, profileId: number) =>
-  getDataset(key)!.count(profileId);
 const pageFor = (
   key: string,
   profileId: number,
