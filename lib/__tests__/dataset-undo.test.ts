@@ -65,9 +65,13 @@ describe("dataset table → undo kind mapping", () => {
     expect(undoKindForTable("intake_items")).toBe("intake-item");
     // #2038's kinds, mapped by #2125.
     expect(undoKindForTable("practice_logs")).toBe("practice-session");
-    expect(undoKindForTable("substance_daily_totals")).toBe(
-      "substance-history"
-    );
+    // #5026 phase 2 moved this one into the argued exclusions, for the reason its
+    // alcohol twin has always been in them: the day kind now captures and deletes that
+    // day's use EVENTS beside the selected row — a convention sibling, not the row's
+    // own child — and the event kind carries the day-counter decrement. The card's
+    // row-menu delete is still undoable; the Manage bulk delete is plain.
+    expect(undoKindForTable("substance_daily_totals")).toBeNull();
+    expect(undoKindForTable("substance_log_events")).toBeNull();
     // #2127: one period row, same single-entity shape.
     expect(undoKindForTable("cycles")).toBe("cycle");
     // #1847: the clinical passport datasets. `immunizations` had a dedicated

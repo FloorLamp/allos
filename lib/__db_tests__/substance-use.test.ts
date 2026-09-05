@@ -31,13 +31,11 @@ import {
 } from "@/lib/instrument-records";
 import { logFoodServingCore } from "@/lib/food-log-write";
 import {
+  correctSubstanceEventCore,
   logSubstanceUnitCore,
   undoSubstanceUnitCore,
 } from "@/lib/substance-log-write";
-import {
-  addSubstanceDailyTotalCore,
-  updateSubstanceDailyTotalCore,
-} from "@/lib/substance-daily-totals-write";
+import { addSubstanceDailyTotalCore } from "@/lib/substance-daily-totals-write";
 import {
   collectUpcoming,
   getInferredPreventiveSatisfactions,
@@ -365,7 +363,12 @@ describe("substance_daily_totals ledger (#1078) — split-ledger week rollup + t
     const td = today(p);
 
     const one = logSubstanceUnitCore(p, "nicotine", td, "page");
-    expect(one).toEqual({ kind: "logged", units: 1, substance: "nicotine" });
+    expect(one).toEqual({
+      kind: "logged",
+      units: 1,
+      substance: "nicotine",
+      eventId: expect.any(Number),
+    });
     const two = logSubstanceUnitCore(p, "nicotine", td, "page");
     expect(two.kind === "logged" && two.units === 2).toBe(true);
 
@@ -573,110 +576,225 @@ describe("no gamification for the new substances (#1078) — structural exemptio
   });
 });
 
-// #5026 item 1 — THE DAY-COUNT CORRECTION IS FOR DAY COUNTS. This describe replaces
-// the #2073 one, whose whole subject was which of a day's alcohol taps a shrinking
-// day-count correction kept; a consumable is an EVENT (owner ruling, 2026-09-04), so
-// that correction no longer exists and its rule has nothing left to decide.
+// #5026 phase 2 — A USE IS AN EVENT, ON EVERY LEDGER. Phase 1 left one day-count
+// correction standing for nicotine, cannabis and custom keys, because for them the day
+// still WAS the stored fact. It is not any more: the same three questions a drink
+// answers — which day, which minute, and can one use be taken out without taking its
+// neighbours — are asked here of the ledger phase 2 gave them.
 //
-// BOTH DIRECTIONS, because each is a real defect and they fail opposite ways. A drink
-// corrected through the day form loses what its events carry — MEASURED on the core
-// before it went: two drinks stated at 21:00 and 23:00, moved to the next day, both
-// came out with `occurred_at` and `time_source` NULL, and a shrink from 2 to 1 deleted
-// whichever was filed first. A day-count substance this core stopped serving would be
-// correctable NOWHERE, since `substance_daily_totals` has no event to correct instead.
-describe("the day-count correction is for day counts (#5026 item 1)", () => {
-  function drinks(profileId: number) {
+// THE FIXTURE STATES TWO DIFFERENT MINUTES ON ONE DAY, deliberately: a fixture whose
+// uses share a clock cannot show a correction levelling them, which is the defect the
+// day-count form had and the one this door exists not to have.
+describe("one use, one row, one clock (#5026 phase 2)", () => {
+  function uses(profileId: number, substance: string) {
     return db
       .prepare(
-        `SELECT date, occurred_at, time_source FROM food_log_events
-         WHERE profile_id = ? AND group_key = 'alcohol' ORDER BY id`
+        `SELECT id, date, occurred_at, time_source FROM substance_log_events
+         WHERE profile_id = ? AND substance = ? ORDER BY id`
       )
-      .all(profileId) as {
+      .all(profileId, substance) as {
+      id: number;
       date: string;
       occurred_at: string | null;
       time_source: string | null;
     }[];
   }
+  function dayRows(profileId: number, substance: string) {
+    return db
+      .prepare(
+        `SELECT date, units, notes FROM substance_daily_totals
+         WHERE profile_id = ? AND substance = ? ORDER BY date`
+      )
+      .all(profileId, substance) as {
+      date: string;
+      units: number;
+      notes: string | null;
+    }[];
+  }
 
-  it("refuses a drink, and the day it was asked to restate does not move", () => {
-    const p = newProfile("SU drink not day-editable");
-    const date = shiftDateStr(today(p), -3);
-    const added = addSubstanceDailyTotalCore(
-      p,
-      "alcohol",
-      { date, amount: 1, statedAt: `${date}T21:00:00Z`, notes: "night out" },
-      "page"
-    );
-    if (added.kind !== "added") throw new Error("first drink was not added");
-    addSubstanceDailyTotalCore(
-      p,
-      "alcohol",
-      { date, amount: 1, statedAt: `${date}T23:00:00Z` },
-      "page"
-    );
-    const before = drinks(p);
-    expect(before).toEqual([
-      { date, occurred_at: `${date}T21:00:00Z`, time_source: "stated" },
-      { date, occurred_at: `${date}T23:00:00Z`, time_source: "stated" },
-    ]);
-
-    // The correction that flattened: a new day AND a smaller count, in one post.
-    expect(
-      updateSubstanceDailyTotalCore(p, "alcohol", added.id, {
-        date: shiftDateStr(date, 1),
-        amount: 1,
-        notes: null,
-      })
-    ).toEqual({ kind: "corrected-per-event" });
-
-    // NOTHING MOVED — the two clocks, the two days, the counter and the day's note.
-    // Asserted as the whole before/after pair rather than as "the refusal came back",
-    // because a refusal returned AFTER a partial write reads identically at the seam.
-    expect(drinks(p)).toEqual(before);
-    expect(
-      db
-        .prepare(
-          `SELECT date, servings, notes FROM food_daily_totals WHERE profile_id = ?`
-        )
-        .all(p)
-    ).toEqual([{ date, servings: 2, notes: "night out" }]);
-    // And no drink was captured on its way out, because none left.
-    expect(
-      db
-        .prepare(`SELECT COUNT(*) AS n FROM deleted_rows WHERE profile_id = ?`)
-        .get(p)
-    ).toEqual({ n: 0 });
-  });
-
-  // THE CONVERSE, and it is not the same test with a different key: for these the day
-  // IS the stored fact, so this core is the only door they have.
   it.each(["nicotine", "cannabis", "Energy drinks"])(
-    "still corrects %s's day count, which is the thing that happened",
+    "%s: each unit of one entry is its own row carrying the stated minute",
     (substance) => {
-      const p = newProfile(`SU day count ${substance}`);
+      const p = newProfile(`SU events ${substance}`);
       const date = shiftDateStr(today(p), -3);
       const added = addSubstanceDailyTotalCore(
         p,
         substance,
-        { date, amount: 2, notes: "as filed" },
+        { date, amount: 2, statedAt: `${date}T21:00:00Z`, notes: "as filed" },
         "page"
       );
-      if (added.kind !== "added") throw new Error("entry was not added");
-      const moved = shiftDateStr(date, 1);
-      expect(
-        updateSubstanceDailyTotalCore(p, substance, added.id, {
-          date: moved,
-          amount: 5,
-          notes: "corrected",
-        })
-      ).toEqual({ kind: "updated", id: added.id });
-      expect(
-        getAllSubstanceDailyTotals(p).filter((r) => r.substance === substance)
-      ).toEqual([
-        { id: added.id, substance, date: moved, amount: 5, notes: "corrected" },
+      expect(added.kind).toBe("added");
+      // TWO rows, not one row saying two — and each carries the statement, because the
+      // form collects one time for one submission.
+      expect(uses(p, substance)).toEqual([
+        {
+          id: expect.any(Number),
+          date,
+          occurred_at: `${date}T21:00:00Z`,
+          time_source: "stated",
+        },
+        {
+          id: expect.any(Number),
+          date,
+          occurred_at: `${date}T21:00:00Z`,
+          time_source: "stated",
+        },
+      ]);
+      // The counter is still the day's rollup beside them, and the note is still the
+      // day's — one sentence, not one per use.
+      expect(dayRows(p, substance)).toEqual([
+        { date, units: 2, notes: "as filed" },
       ]);
     }
   );
+
+  it("an unstated use keeps a NULL instant rather than inheriting its tap stamp", () => {
+    const p = newProfile("SU events unstated");
+    const date = shiftDateStr(today(p), -2);
+    addSubstanceDailyTotalCore(p, "nicotine", { date, amount: 1 }, "page");
+    logSubstanceUnitCore(p, "nicotine", date, "page", `${date}T08:15:00Z`);
+    expect(uses(p, "nicotine")).toEqual([
+      { id: expect.any(Number), date, occurred_at: null, time_source: null },
+      { id: expect.any(Number), date, occurred_at: null, time_source: null },
+    ]);
+    // The tap instant IS recorded — as the filing stamp it is, in its own column.
+    expect(
+      db
+        .prepare(
+          `SELECT recorded_at FROM substance_log_events
+            WHERE profile_id = ? ORDER BY id DESC LIMIT 1`
+        )
+        .get(p)
+    ).toEqual({ recorded_at: `${date}T08:15:00Z` });
+  });
+
+  it("corrects ONE use's day and minute, and the use beside it does not move", () => {
+    const p = newProfile("SU events correct one");
+    const date = shiftDateStr(today(p), -3);
+    addSubstanceDailyTotalCore(
+      p,
+      "nicotine",
+      { date, amount: 1, statedAt: `${date}T21:00:00Z` },
+      "page"
+    );
+    addSubstanceDailyTotalCore(
+      p,
+      "nicotine",
+      { date, amount: 1, statedAt: `${date}T23:00:00Z` },
+      "page"
+    );
+    const [first, second] = uses(p, "nicotine");
+    const moved = shiftDateStr(date, 1);
+
+    expect(
+      correctSubstanceEventCore(p, first.id, {
+        date: moved,
+        statedAt: new Date(`${moved}T09:30:00Z`),
+      })
+    ).toEqual({ kind: "updated", eventId: first.id, date: moved });
+
+    expect(uses(p, "nicotine")).toEqual([
+      {
+        id: first.id,
+        date: moved,
+        occurred_at: `${moved}T09:30:00Z`,
+        time_source: "stated",
+      },
+      // THE ONE THAT WAS NOT CORRECTED, asserted rather than assumed: the day-count
+      // form levelled every clock under the day it restated, and the whole point of
+      // correcting an event is that its neighbour is untouched.
+      {
+        id: second.id,
+        date,
+        occurred_at: `${date}T23:00:00Z`,
+        time_source: "stated",
+      },
+    ]);
+    // The counter followed the move — one unbump, one bump — so the card and the cap
+    // count the use on the day it now sits on.
+    expect(dayRows(p, "nicotine")).toEqual([
+      { date, units: 1, notes: null },
+      { date: moved, units: 1, notes: null },
+    ]);
+  });
+
+  it("clears a stated minute back to nobody-said, and leaves the day alone", () => {
+    const p = newProfile("SU events clear");
+    const date = shiftDateStr(today(p), -1);
+    addSubstanceDailyTotalCore(
+      p,
+      "cannabis",
+      { date, amount: 1, statedAt: `${date}T20:00:00Z` },
+      "page"
+    );
+    const [only] = uses(p, "cannabis");
+    expect(
+      correctSubstanceEventCore(p, only.id, { date, statedAt: null })
+    ).toEqual({ kind: "updated", eventId: only.id, date });
+    expect(uses(p, "cannabis")).toEqual([
+      { id: only.id, date, occurred_at: null, time_source: null },
+    ]);
+    expect(dayRows(p, "cannabis")).toEqual([{ date, units: 1, notes: null }]);
+  });
+
+  // THE REFUSALS, and each one writes NOTHING. A correction's statement IS its
+  // submission, so an instant off the row's day costs the save rather than being
+  // quietly dropped — the opposite of the log path's posture, and #2296's distinction.
+  it.each([
+    ["a future day", { date: shiftDateStr("2999-01-01", 0) }, "invalid-date"],
+    ["a use that is not this profile's", null, "not-found"],
+  ] as const)("refuses %s", (_label, patch, kind) => {
+    const p = newProfile(`SU events refuse ${kind}`);
+    const date = shiftDateStr(today(p), -1);
+    addSubstanceDailyTotalCore(p, "nicotine", { date, amount: 1 }, "page");
+    const [only] = uses(p, "nicotine");
+    const outcome =
+      patch === null
+        ? correctSubstanceEventCore(p, only.id + 9000, { date })
+        : correctSubstanceEventCore(p, only.id, patch);
+    expect(outcome.kind).toBe(kind);
+    expect(uses(p, "nicotine")).toEqual([
+      { id: only.id, date, occurred_at: null, time_source: null },
+    ]);
+  });
+
+  it("refuses an instant that is not on the use's own day", () => {
+    const p = newProfile("SU events other day");
+    const date = shiftDateStr(today(p), -2);
+    addSubstanceDailyTotalCore(p, "nicotine", { date, amount: 1 }, "page");
+    const [only] = uses(p, "nicotine");
+    expect(
+      correctSubstanceEventCore(p, only.id, {
+        statedAt: new Date(`${shiftDateStr(date, -1)}T12:00:00Z`),
+      })
+    ).toEqual({ kind: "invalid-stated-at", reason: "other-day" });
+    expect(uses(p, "nicotine")).toEqual([
+      { id: only.id, date, occurred_at: null, time_source: null },
+    ]);
+  });
+
+  it("undoing a use retires the newest event, not just the count", () => {
+    const p = newProfile("SU events undo");
+    const day = today(p);
+    logSubstanceUnitCore(p, "nicotine", day, "page", `${day}T09:00:00Z`);
+    logSubstanceUnitCore(p, "nicotine", day, "page", `${day}T10:00:00Z`);
+    expect(uses(p, "nicotine")).toHaveLength(2);
+    expect(undoSubstanceUnitCore(p, "nicotine", day)).toEqual({
+      kind: "undone",
+      units: 1,
+      substance: "nicotine",
+    });
+    // The 10:00 tap is the one that went — an undo is the inverse of the tap that just
+    // happened, so a count that fell by one with the WRONG row removed would pass a
+    // count-only assertion and fail this one.
+    expect(
+      db
+        .prepare(
+          `SELECT recorded_at FROM substance_log_events WHERE profile_id = ?`
+        )
+        .all(p)
+    ).toEqual([{ recorded_at: `${day}T09:00:00Z` }]);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -698,6 +816,7 @@ describe("custom substances (#3279)", () => {
     expect(logSubstanceUnitCore(p, "Kratom", day, "page")).toEqual({
       kind: "logged",
       units: 1,
+      eventId: expect.any(Number),
       substance: "Kratom",
     });
     expect(getProfileSubstanceKeys(p)).toEqual([
@@ -777,7 +896,7 @@ describe("custom substances (#3279)", () => {
     expect(hasLoggedSubstance(p)).toBe(false);
   });
 
-  it("carries a custom substance through history correction like the curated three", () => {
+  it("carries a custom substance through the history door like the curated three", () => {
     const p = newProfile("SU custom history");
     const date = shiftDateStr(today(p), -3);
     const added = addSubstanceDailyTotalCore(
@@ -808,21 +927,15 @@ describe("custom substances (#3279)", () => {
       },
     ]);
 
-    expect(
-      updateSubstanceDailyTotalCore(p, "Energy drinks", added.id, {
-        date,
-        amount: 5,
-      })
-    ).toEqual({ kind: "updated", id: added.id });
-    // The correction flows through the shared cadence ledger, so the trend sees it —
-    // the row's day may be in the current week or the previous one depending on where
+    // The entry flows through the shared cadence ledger, so the trend sees it — the
+    // row's day may be in the current week or the previous one depending on where
     // today() falls, which is exactly why this sums the window instead of indexing it.
     expect(
       getSubstanceWeeklyTrend(p, "Energy drinks", 2).reduce(
         (n, w) => n + w.count,
         0
       )
-    ).toBe(5);
+    ).toBe(2);
 
     // A custom substance is never a food, whatever it is called: the nutrition ledger
     // stays empty even for a name containing a curated one.

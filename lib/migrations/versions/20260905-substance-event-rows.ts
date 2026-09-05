@@ -17,7 +17,8 @@ import type { Migration } from "../runner";
 // WHAT IS NOT COPIED, and why: `meal_slot` (a food window has no substance meaning)
 // and `notify_message_id` (substance is off the chat vocabulary by reach policy —
 // `TELEGRAM_DOMAIN_CENSUS`, docs/internals/substances.md), so a substance tap has no
-// originating message to point at.
+// originating message to point at. `logged_via` IS, and arrives through the tranche
+// shape below rather than inline, so the census can read what shipped.
 //
 // ── THE FATE OF EVERY ROW LOGGED BEFORE THIS CHANGE ──────────────────────────
 //
@@ -55,15 +56,28 @@ import type { Migration } from "../runner";
 // Determinism: reads only the DB and its own constants; every derived value comes from
 // a column already stored. No clock, no random, no network.
 //
-// REPLAY-SAFE. `migrate()` (lib/db.ts) applies every migration unconditionally, so
-// both backfills are written as "insert the shortfall": a second run computes a
-// shortfall of zero and inserts nothing.
+// THE BACKFILLS INSERT A SHORTFALL, NOT A COUNT. The runner is name-keyed, so this
+// applies once per database — but "insert `units` rows" would double any day that had
+// already gained real taps, and the alcohol arm MUST subtract them because that is the
+// whole of what item 3 is: the rows that are missing, and only those.
 
 // `food_daily_totals.created_at` is the `bare` convention — `YYYY-MM-DD HH:MM:SS`, UTC,
 // unstated (docs/internals/time-columns.md) — while `food_log_events.recorded_at` is
 // `canonical`. Converting on the way in is what keeps the new rows readable by
 // `parseUtcSql` beside every tap-written one; a bare value copied through would sort
 // and parse differently from its neighbours.
+// The ledger this migration gives `logged_via` (#3087/#4435's tranche shape, and its
+// literal list — lib/__tests__/logged-via-census.test.ts unions every tranche's own
+// list and holds LEDGERS_WITH_LOGGED_VIA to it). #4435 gave the day COUNTER provenance
+// because a nicotine tap was the one user write in the app that could not say which
+// surface it came from; once a use is its own row, that answer belongs on the row, the
+// shape `food_log_events` already has. Written at creation and never rewritten. Plain
+// TEXT, nullable, no default, no CHECK — the vocabulary stays closed in TypeScript
+// (lib/logged-via.ts) — and every row the backfill derives reads NULL, which means
+// "unknown", honestly: the counter remembers only its LAST tap's surface, so stamping
+// it onto each use would be a claim about surfaces nobody recorded.
+const TRANCHE = ["substance_log_events"] as const;
+
 const CANONICAL_CREATED_AT = `
   CASE
     WHEN d.created_at LIKE '____-__-__ __:__:__'
@@ -96,6 +110,10 @@ export function up(db: Database.Database): void {
       ON substance_log_events(profile_id, date, substance, recorded_at DESC);
   `);
 
+  for (const table of TRANCHE) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN logged_via TEXT`);
+  }
+
   // ── The substance ledger's own backfill (item 2) ──────────────────────────
   //
   // One row per outstanding unit. The recursive CTE counts the SHORTFALL between the
@@ -120,8 +138,8 @@ export function up(db: Database.Database): void {
         FROM expanded WHERE remaining > 1
     )
     INSERT INTO substance_log_events
-      (profile_id, substance, date, recorded_at, occurred_at, time_source)
-    SELECT profile_id, substance, date, recorded_at, NULL, NULL FROM expanded;
+      (profile_id, substance, date, recorded_at, occurred_at, time_source, logged_via)
+    SELECT profile_id, substance, date, recorded_at, NULL, NULL, NULL FROM expanded;
   `);
 
   // ── The orphan alcohol day (item 3) ───────────────────────────────────────

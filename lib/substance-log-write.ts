@@ -116,8 +116,9 @@ export function logSubstanceUnitCore(
     const inserted = db
       .prepare(
         `INSERT INTO substance_log_events
-           (profile_id, substance, date, recorded_at, occurred_at, time_source)
-         VALUES (?, ?, ?, ?, ?, ?)`
+           (profile_id, substance, date, recorded_at, occurred_at, time_source,
+            logged_via)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         profileId,
@@ -125,12 +126,15 @@ export function logSubstanceUnitCore(
         date,
         loggedAt,
         statedAt,
-        statedAt === null ? null : "stated"
+        statedAt === null ? null : "stated",
+        loggedVia
       );
     // CREATION, NOT MUTATION (#3087, #4435). A day total is upserted, so this is the
     // `symptom_logs` case: `recorded_at` moves to the LATEST tap because the day's
     // last use is a fact about the day, while provenance names the surface that
-    // OPENED the row and is never rewritten. COALESCE is the whole rule.
+    // OPENED the row and is never rewritten. COALESCE is the whole rule. The EVENT
+    // above carries this tap's own surface, which is where per-use provenance lives
+    // now; the day row keeps naming the surface that opened it.
     db.prepare(
       `UPDATE substance_daily_totals SET logged_via = COALESCE(logged_via, ?)
        WHERE profile_id = ? AND date = ? AND substance = ?`
