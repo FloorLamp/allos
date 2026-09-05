@@ -172,31 +172,28 @@ Window: <previous watermark> → <this run>
 
 ## What was examined ← denominators FIRST
 
-## Patch candidates (n) ← grouped by kind, each with its computed correction
+## Patch candidates (n) ← by kind, each with its computed correction
 
 ## Couldn't verify (n) ← needs a human; say what you tried
 
 ## Verified clean (n)
 ```
 
-**Why denominators come first.** "0 findings across 223 citations" is a
-healthy tracker; "0 findings across 0 citations" is a broken run — and the
-clean-looking one is the one nobody investigates.
-
-A sharp drop in examined counts between runs IS the finding.
+**Why denominators come first.** "0 findings across 223 citations" is a healthy
+tracker; "0 findings across 0 citations" is a broken run, and the clean-looking
+one is the one nobody investigates. A sharp drop between runs IS the finding.
 
 ## Applying patches
 
 ```bash
-npx tsx scripts/orchestration/reconcile-apply.ts plan.json           # dry run
-npx tsx scripts/orchestration/reconcile-apply.ts plan.json --apply [--notify 123,456]
+npx tsx scripts/orchestration/reconcile-apply.ts plan.json          # dry run
+npx tsx scripts/orchestration/reconcile-apply.ts plan.json --apply \
+  [--notify 123,456] [--outcome apply.json]
 ```
 
-`plan.json` maps issue number → array of `AnchoredPatch`. Dry-run first,
-always: it re-reads every current body and reports which anchors still hold.
-
-It also lists which issues will get the announcement comment (a non-empty
-chain, or `--notify` because the dispatch is in flight).
+`plan.json` maps issue number → array of `AnchoredPatch`. Dry-run first: it
+re-reads every body, reports which anchors hold, and lists which issues get
+the announcement comment (a non-empty chain, or an in-flight `--notify`).
 
 **Never re-run a plan with `--apply` twice.** Several path refreshes contain
 their own anchor inside the replacement, so a second pass nests them. A
@@ -209,61 +206,35 @@ writing a longer anchor past it is the forbidden fuzzy fallback. Flag it.
 ## Applying label changes
 
 ```bash
-npx tsx scripts/orchestration/reconcile-labels.ts                    # dry run + worksheet
-npx tsx scripts/orchestration/reconcile-labels.ts --apply            # removals + priority
-npx tsx scripts/orchestration/reconcile-labels.ts --plan p.json --apply   # + your domain calls
+npx tsx scripts/orchestration/reconcile-labels.ts          # dry run + worksheet
+npx tsx scripts/orchestration/reconcile-labels.ts --apply  # removals + priority
+npx tsx scripts/orchestration/reconcile-labels.ts --plan p.json --apply
 ```
 
 It builds removal and priority work from the live tracker, takes domain adds
 only from `--plan`, re-reads each issue immediately before writing, and
 prints one line per write. Dry run first; never while another sweep runs.
 
-## Stamp the watermark — only after the report is read
+## Close the run — stamp, then record
 
 ```bash
-npx tsx scripts/orchestration/reconcile-watermark.ts stamp \
-  --evidence /tmp/reconcile-evidence.json --apply   # dry run without --apply
+npx tsx scripts/orchestration/reconcile-watermark.ts stamp --evidence ev.json
+npx tsx scripts/orchestration/reconcile-run-summary.ts --evidence ev.json
 ```
 
-Stamps the GATHER's own timestamp — nothing between gather and stamp escapes
-the next window. Refuses rewinds; the first apply creates the carrier issue.
+Both are dry runs until `--apply`; the summary also takes `--outcome
+apply.json`, the applier's own count of what landed. The stamp records the
+GATHER's timestamp, refuses rewinds, and on first apply makes the carrier.
 
-## Record the run — one line on #865, every time
-
-```bash
-npx tsx scripts/orchestration/reconcile-run-summary.ts \
-  --evidence /tmp/reconcile-evidence.json \
-  --outcome /tmp/reconcile-apply.json \
-  --apply                                 # dry run without --apply
-```
-
-Every run ends here, including a run that patched nothing. One line, appended
-to #865: the run's date, the `main` SHA it swept, how much drift it patched,
-how much it flagged, and whether it was boring. Nothing else records that a
-run happened — no report is committed and the watermark holds one instant —
-so a run that skips this step leaves no trace it ever ran.
-
-`--outcome` is the applier's own count (`reconcile-apply.ts --outcome
-<file>`); without it the line reports zero patched, which is the truth for a
-report-only run. Dry-run first: it prints the exact line and posts nothing.
-Re-running on the same evidence is safe — the line is keyed on the gather's
-stamp and the writer refuses a second post for one run.
-
-**The line is a fact about the run, never a verdict on the tracker.**
-`flagged` is arithmetic: unapplied patch candidates + couldn't-verify + docs +
-label findings. `boring` is `flagged == 0`, and a run whose PR sweep was
-truncated reports `boring: not established` rather than `yes`, because zero
-findings out of a clipped window is a fact about the part that was fetched.
+The summary appends ONE line to #865 (date, swept SHA, patched, flagged,
+boring) — a fact about the run, never a verdict, and defined in
+`docs/internals/tracker-reconciliation.md`. A rerun on it is refused.
 
 ## Scheduling
 
 Run weekly, or on demand after a heavy merge day. **The cron is not wired, by
-decision** (#865, ruling 2026-09-05): `npm run reconcile` is the schedule. An
-unattended pass that writes to the tracker needs its report read, and an unread
-cron is how a routine starts patching in a shape nobody sanctioned.
+decision** (#865, ruling 2026-09-05): `npm run reconcile` is the schedule, and
+an unread cron is how a routine patches in a shape nobody sanctioned.
 
-What lifts that: **three consecutive boring runs**, counted from the summary
-lines on #865 — `Reconciliation run — …` — and the lane that wires the cron
-cites those three comments. Which is why the previous section is not optional:
-before it existed the condition could never be met, because nothing recorded
-that a run had happened at all.
+What lifts it: **three consecutive boring runs**, from the `Reconciliation
+run — …` lines on #865 — the only record a run happened — cited by the lane.
