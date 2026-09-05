@@ -36,7 +36,10 @@ fs.appendFileSync(
   JSON.stringify({ method, url }) + "\\n"
 );
 if (method === "GET" && url.includes("/labels?")) {
-  process.stdout.write(JSON.stringify(state.map((name) => ({ name }))));
+  // A real GitHub page: 100 per page, and a page past the end is empty.
+  const page = Number((url.match(/[?&]page=(\\d+)/) ?? [, "1"])[1]);
+  const slice = state.slice((page - 1) * 100, page * 100);
+  process.stdout.write(JSON.stringify(slice.map((name) => ({ name }))));
   process.exit(0);
 }
 const del = url.match(/\\/labels\\/([^/?]+)$/);
@@ -113,6 +116,24 @@ describe("delete-unknown-labels.ts", () => {
       expect(run.stdout).toContain(`delete ${stray}`);
     }
     expect(run.stdout).toContain("dry run");
+  });
+
+  // WHY THE LIST IS PAGED AT ALL (#5343 recorded this site as one that cannot
+  // truncate — the loop has no cap, and 39 live labels against 39 in the taxonomy
+  // fit one page today). That proof rests on the loop being a loop: collapse it
+  // to a single `?per_page=100` fetch, the shape several sibling readers use, and
+  // the taxonomy silently stops being enforced past label 100. A stray on page
+  // three is what tells the two apart.
+  it("reaches a stray past the first page of labels", () => {
+    // Two full pages of on-taxonomy labels, so the ONLY stray is on page three.
+    const filler = Array.from({ length: 100 }, () => "bug");
+    const run = runScript(
+      [...filler, ...filler, "P2", "bug", "sleep"],
+      ["--apply"]
+    );
+    expect(run.status).toBe(0);
+    expect(run.deletes).toEqual(["sleep"]);
+    expect(run.stdout).toContain("live labels: 203");
   });
 
   it("--apply deletes exactly the off-taxonomy strays and nothing else", () => {
