@@ -73,6 +73,49 @@ test("a new activity closes from the header ✕, and there is no backdrop behind
   await expect(page.getByTestId("confirm-dialog")).toHaveCount(0); // testid-scope-ok: the confirm sheet portals to <body> (BottomSheet), one copy
 });
 
+test("the ✕ asks before discarding a typed draft that never became a row", async ({
+  page,
+}) => {
+  await page.goto("/training?tab=log");
+  const sheet = await openLogSheet(page);
+  await (await showLogRow(sheet, "log-activity")).click();
+
+  const panel = workspace(page);
+  await expect(panel.getByTestId("activity-form")).toBeVisible();
+
+  // A NAME AND NOTHING BEHIND IT. No set follows, so the form never becomes
+  // savable, auto-save never creates a row — and until #5111 widened the guard
+  // past `hasRow` that made the confirm unreachable for the ONE draft with
+  // nothing to come back to. The empty create above still closes in silence;
+  // this is the other side of that boundary.
+  await pickActivity(page, "Barbell Bench Press");
+
+  // ROWLESS, READ RATHER THAN ASSUMED. Delete renders only once the form owns a
+  // row; Done beside it is the positive control, so the absence is the footer
+  // saying "no row" and not an unrendered footer saying nothing.
+  const footer = panel.getByTestId("activity-form-footer");
+  await expect(
+    footer.getByRole("button", { name: "Done", exact: true })
+  ).toBeVisible();
+  await expect(
+    footer.getByRole("button", { name: "Delete", exact: true })
+  ).toHaveCount(0);
+
+  const close = panel.getByTestId("close-activity");
+  const discard = page.getByTestId("confirm-dialog"); // testid-scope-ok: the confirm sheet portals to <body> (BottomSheet), one copy
+  await close.click();
+  await expect(discard).toContainText("Discard unsaved changes?");
+  // Cancel keeps the typing AND the workspace it was typed into.
+  await discard.getByRole("button", { name: "Cancel" }).click();
+  await expect(panel.getByPlaceholder(/What did you do/)).toHaveValue(
+    "Barbell Bench Press"
+  );
+
+  await close.click();
+  await discard.getByRole("button", { name: "Close anyway" }).click();
+  await expect(panel).toHaveCount(0);
+});
+
 test("the ✕ asks before discarding an edit the form cannot save", async ({
   page,
 }) => {

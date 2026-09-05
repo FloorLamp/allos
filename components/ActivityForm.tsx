@@ -87,7 +87,10 @@ import {
 } from "@/lib/activity-session-facts";
 import { estimateActivityKcal } from "@/lib/calorie-estimate";
 import { activityDisclosureSummary } from "@/lib/activity-import-details";
-import { activityEditDataHasStrength } from "@/lib/activity-form-model";
+import {
+  activityDraftHasTypedContent,
+  activityEditDataHasStrength,
+} from "@/lib/activity-form-model";
 import { activityIconIdentitiesAreComposite } from "@/lib/activity-icon";
 
 // Re-exported so existing callers keep importing the edit-payload shape from
@@ -1290,12 +1293,21 @@ export default function ActivityForm({
       : null;
 
   // Auto-save can't persist a blocked form, so closing one with unsaved edits
-  // to a real row would silently drop them — confirm first. A blocked blank
-  // create is exempt: discarding it is the natural "cancel". The durable
-  // before-close flush lives in the auto-save hook (#1189).
+  // would silently drop them — confirm first. A ROWLESS draft is asked about
+  // too (#5111): a half-typed exercise has no row to come back to, so closing
+  // it is the one discard that loses everything. What stays exempt is the
+  // create nobody has typed into — pristine, or changed only by a tap on the
+  // date, the effort chips or the gear picker — where discarding IS the cancel.
+  // The durable before-close flush lives in the auto-save hook (#1189).
+  const hasTypedContent = activityDraftHasTypedContent({
+    parts,
+    title,
+    titleEdited,
+    notes,
+  });
   const requestClose = useCallback(
     async (beforeClose?: () => void) => {
-      if (hasRow && dirty && !canSave) {
+      if ((hasRow || hasTypedContent) && dirty && !canSave) {
         const ok = await confirm({
           title: "Discard unsaved changes?",
           message:
@@ -1310,7 +1322,7 @@ export default function ActivityForm({
       onClose();
       return true;
     },
-    [hasRow, dirty, canSave, confirm, autosave, onClose]
+    [hasRow, hasTypedContent, dirty, canSave, confirm, autosave, onClose]
   );
   useEffect(() => {
     onCloseRequestReady?.(requestClose);
