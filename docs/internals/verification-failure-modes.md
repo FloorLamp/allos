@@ -311,8 +311,8 @@ These are not review taste; each retired a green that meant nothing.
   wearing the authority of a measurement. A lane censusing which files a change
   removed from a scan's surface first computed `removed` as a superset — 34
   files where the real delta was 22 — and that superset produced a phantom
-  offender it nearly reported as a finding (2026-09-05). Making the filter
-  exactly old-minus-new dissolved it. **State an instrument's definition before
+  offender it nearly reported as a finding (2026-09-05, on the branch that
+  landed as #5329). Making the filter exactly old-minus-new dissolved it. **State an instrument's definition before
   you trust its output**, and prefer the definition that can only under-report:
   a census that misses something reds later, a census that invents something
   spends a round.
@@ -403,20 +403,28 @@ command handed only the diff's own files would have reported one of the 44.
   reviewer hunting constructs that no longer exist. #3438 reached round 10 with
   round 9's body naming four deleted symbols.
 
-- **A head-bound verdict and a moving base chase each other, and only the
-  merged-tree receipt terminates.** The gate voids a falsifying pass whose SHA is
-  not the current head — deliberately, since a verdict that survived a push is
+- **A head-bound verdict and a moving base chase each other, and the merged-tree
+  receipt is what breaks the chase.** The gate voids a falsifying pass whose SHA
+  is not the current head — deliberately, since a verdict that survived a push is
   evidence about code that no longer exists — and separately refuses a head that
-  is behind main on paths that could move a compile contract. With several
-  sessions landing, main moves faster than a pass runs, so "merge main, then
-  pass" is a loop: the merge clears the base check, the base moves during the
-  pass, and merging again voids the pass. `MERGED-TREE-CHECKED:` is the exit and
-  the reason it exists — it clears a moved base WITHOUT moving the head, so the
-  pass stays valid. Run the tiers it names against the merged tree and post what
-  you ran. Treating it as a shortcut to be declined on principle (2026-09-05,
-  twice) sends lanes round a loop that has no other exit. But the receipt is
-  bound to the base it names, so it stales the moment main moves — run it and
-  merge in one pass, not as a step you bank in advance. Measured the same day:
-  receipts naming `bc7349b4` and `d248567d` were both void by the time the gate
-  read them, and the merge that worked re-ran the check against the base main
-  actually had and merged in the same breath.
+  is behind main. The trigger for that second refusal is the paths the merges ON
+  MAIN touched, never the PR's own diff, so a docs-only head is refused as
+  readily as a schema one. With several sessions landing, main moves faster than
+  a pass runs, so "merge main, then pass" becomes a loop: the merge clears the
+  base check, the base moves during the pass, and merging again voids the pass.
+  `MERGED-TREE-CHECKED:` is what that loop lacks — it clears a moved base WITHOUT
+  moving the head, so the pass stays valid. It is not the gate's only exit: the
+  gate itself names merging and letting CI re-run, and the check goes inert when
+  nothing type-bearing landed. It is the exit when the merge would cost you a
+  pass. Post it as its own paragraph — a receipt inside a fence, an indented
+  block or a blockquote quotes rather than speaks, and is read as absent (#5183)
+  — and state all four literals the grammar wants: the head SHA, the base SHA,
+  `npm run typecheck`, and the test script you ran. The gate checks that they
+  were named, never that they cover the diff. Treating the receipt as a shortcut
+  to be declined on principle (2026-09-05, twice) sends lanes round the loop with
+  the one thing that shortens it withheld. And the receipt is bound to the base
+  it names, so it stales the moment main moves — run it and merge in one pass,
+  not as a step you bank in advance. Measured the same day: receipts naming
+  `bc7349b4` and `d248567d` were both void by the time the gate read them, and
+  the merge that worked re-ran the check against the base main actually had and
+  merged in the same breath.
