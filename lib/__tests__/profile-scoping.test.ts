@@ -475,6 +475,11 @@ const ALLOW_NON_LITERAL: { file: string; expr: string; why: string }[] = [
   },
   {
     file: "lib/export.ts",
+    expr: "${sql} LIMIT ? OFFSET ?",
+    why: "qPage(): the pager appends LIMIT/OFFSET to the same dataset select q() runs, so the FROM and the WHERE are inside `sql` and this scan sees neither — it is the ONE statement-position interpolation left in the repo, the other six having been in this same file until `activities` and `intake_items` moved onto tableDataset (#5324/#5323). What scopes it is that declared select, and that is CHECKED rather than cited: lib/__db_tests__/export.test.ts runs every dataset's page() for two seeded profiles and asserts it carries none of the other's rows, compared by row CONTENT, and its count() agrees with its rows().",
+  },
+  {
+    file: "lib/export.ts",
     expr: "providersSelect(ph)",
     why: "the providers dataset's read: `providers` is a GLOBAL table with no profile_id of its own, so there is no profile filter in this statement to check. It is read by an explicit `IN (…)` id list, and that list comes from referencedProviderIds(profileId) — the walk over PROVIDER_LINK_SELECTS, whose arms are the entire profile filter. That walk is EXERCISED rather than cited: lib/__db_tests__/export.test.ts builds one case per arm out of the same exported array the walk iterates, seeding that arm's own table with a link to a uniquely named provider, asserting it reaches its own profile's export and reaches no other. Loosening any arm's `profile_id = ?` reds that arm's case. The function exists so the placeholder count can vary; its SQL text is one hand-authored literal.",
   },
@@ -624,7 +629,13 @@ describe("profile scoping: every owned-table query filters by profile_id", () =>
       if (isVersionedMigration(rel)) continue;
       const src = readSource(file);
       for (const arg of prepareArgs(src)) {
-        if (arg.kind === "expr") {
+        // Two arguments this scan cannot read, keyed the same way and refused the
+        // same way: a computed expression, and a LITERAL that opens with an
+        // interpolation (#5323). The second used to be worse than the first — it
+        // reached the owned-table test below carrying no table name, matched
+        // nothing, and was DROPPED IN SILENCE, so `${sql} LIMIT ? OFFSET ?` read as
+        // a statement with nothing to enforce rather than as one nobody had read.
+        if (arg.kind === "expr" || arg.composed) {
           const ok = ALLOW_NON_LITERAL.some(
             (a) => rel.endsWith(a.file) && arg.text === a.expr
           );
@@ -725,7 +736,16 @@ describe("profile scoping: every owned-table query filters by profile_id", () =>
       "ALLOW_NON_LITERAL",
       "non-literal .prepare()",
       ALLOW_NON_LITERAL.map((e) => ({ ...e, key: e.expr })),
-      () => scanned(prepareArgs, "expr"),
+      // Both shapes the scan refuses above, so an entry for either is watched: a
+      // computed argument, and a literal that opens with an interpolation.
+      () =>
+        files.flatMap((file) => {
+          const rel = relPath(file);
+          if (isVersionedMigration(rel)) return [];
+          return prepareArgs(readSource(file))
+            .filter((a) => a.kind === "expr" || a.composed)
+            .map((a) => ({ rel, sql: a.text }));
+        }),
       byExactExpr,
     ],
   ] as const)(
@@ -927,6 +947,26 @@ describe("profile-scoping scanner rules (issue #1208)", () => {
       /no live non-literal \.prepare\(\) statement matches/
     );
   });
+
+  // The statement-position rule (#5323), driven over sources written to BREAK it
+  // rather than over the tree, which complies. `composed` is what the scan refuses
+  // on; the last two rows are the benign neighbours it must stay quiet about, since
+  // a rule that flagged every `FROM ${table}` would be deleted within a week and
+  // would take the real one with it.
+  it.each([
+    ["`${sql} LIMIT ? OFFSET ?`", true],
+    ["`${BASE} WHERE profile_id = ?`", true],
+    ["`  ${union} ORDER BY date`", true],
+    ["`SELECT * FROM ${table} WHERE id = ? AND profile_id = ?`", false],
+    ["`SELECT * FROM medical_records WHERE profile_id = ?`", false],
+  ] as const)(
+    "statement-position interpolation: .prepare(%s) is refused = %s",
+    (literal, refused) => {
+      const [arg] = prepareArgs(`db.prepare(${literal}).all(x)`);
+      expect(arg.kind).toBe("sql");
+      expect(Boolean(arg.composed)).toBe(refused);
+    }
+  );
 
   it("db.exec scan: an owned-table exec without an allowlist entry is flagged", () => {
     // Simulate the scan's per-statement decision the way the file loop applies it.
