@@ -17,6 +17,8 @@
 // in the SQLite handle.
 
 import { describe, it, expect } from "vitest";
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import { db } from "@/lib/db";
 import { DATASETS } from "@/lib/export";
 import { OWNED_TABLES } from "@/lib/owned-tables";
@@ -466,6 +468,13 @@ const CSV_OMITTED_RESULT_COLUMNS: {
 // lib/__db_tests__/export.test.ts proves the cell is actually emitted on a seeded row.
 const JS_BUILT = DATASETS.flatMap((ds) =>
   (ds.jsBuilt ?? []).map((c) => ({ ds, ...c }))
+);
+
+// lib/export.ts as text, so the `by` half of a jsBuilt declaration can be read
+// against the file that is supposed to declare it.
+const EXPORT_SOURCE = fs.readFileSync(
+  fileURLToPath(new URL("../export.ts", import.meta.url)),
+  "utf8"
 );
 
 // Columns of an exported table that the export does NOT carry. Two kinds, and the
@@ -1077,7 +1086,18 @@ describe("every column of an exported table is exported (#5117)", () => {
         `${c.ds.key}.${c.column} is selected now — remove its jsBuilt entry`
       ).toBe(true);
       expect(c.why.trim().length).toBeGreaterThan(0);
-      expect(c.by.trim().length).toBeGreaterThan(0);
+      // The BUILDER must exist. `by` is the one half of the declaration that was
+      // prose: renaming it to a function that is nowhere in the tree left this suite
+      // green, so the name is now read against lib/export.ts's own source. Anchored
+      // at the start of a line and requiring the parameter list, so a mention inside
+      // a comment or a string cannot satisfy it — both builders today are plain
+      // `function <name>(` declarations in that file.
+      expect(
+        new RegExp(`^\\s*(?:export\\s+)?function ${c.by}\\s*\\(`, "m").test(
+          EXPORT_SOURCE
+        ),
+        `${c.ds.key}.${c.column}: jsBuilt names \`${c.by}\`, which lib/export.ts does not declare`
+      ).toBe(true);
     }
   });
 

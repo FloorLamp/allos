@@ -448,25 +448,38 @@ const ALLOW_COMPOSED: { file: string; sql: string; why: string }[] = [
     // `nUNIONn` is not a typo: firstStringArgs drops the backslash of an escape, so
     // the source's `join("\nUNION\n")` reaches the scan spelled that way.
     sql: "SELECT DISTINCT date FROM (${explicitSelects.join(\"nUNIONn\")}) WHERE date IS NOT NULL AND date != ''",
-    why: "getTimelineDates: the UNION arms ARE the statement, and all seventeen are hand-authored literals in the array immediately above this .prepare — every one carries its own `WHERE profile_id = @profileId`, or, for the one child read (intake_item_logs), its parent's `ii.profile_id = @profileId` through the JOIN. The bound name is the caller's profileId and nothing else reaches the array. lib/__db_tests__/timeline.test.ts seeds a second profile and asserts the dates of one never appear for the other.",
+    why: "getTimelineDates: the UNION arms ARE the statement, and every one is a hand-authored literal in the exported `timelineDateSelects` list immediately above this .prepare — each carrying its own `WHERE profile_id = @profileId`, or, for the one child read (intake_item_logs), its parent's `ii.profile_id = @profileId` through the JOIN. The bound name is the caller's profileId and nothing else reaches the array. That per-arm claim is not left to this sentence: lib/__db_tests__/timeline.test.ts LOOPS over that same exported list, seeds one dated row per arm's own table for a second profile, and asserts none of those dates reaches the first — so an arm added later is covered by construction, and stripping any arm's predicate reds its own case.",
   },
 ];
 
-// Where an unresolved `${…}` stands for an ENTIRE STATEMENT rather than for an
-// identifier, a value list or a fragment of a clause. That is the property that makes
-// a composed statement unreadable: `${sql} LIMIT ? OFFSET ?` and the same helper
+// The positions where an unresolved `${…}` stands for an ENTIRE STATEMENT rather than
+// for an identifier, a value list or a fragment of a clause. That is the property that
+// makes a composed statement unreadable: `${sql} LIMIT ? OFFSET ?` and the same helper
 // written `SELECT * FROM (${sql}) LIMIT ? OFFSET ?` are one statement in two
 // spellings, and a rule keyed on "begins with an interpolation" reads the first and
 // silently drops the second.
 //
+// This is a LIST of positions, not the category — the difference matters, because a
+// position missing from it is dropped silently rather than refused. It refuses: the
+// statement IS the interpolation; a derived table (`FROM (${…})`, `JOIN (${…})`); a
+// CTE body (`AS (${…})`); a bare compound arm (`UNION`/`UNION ALL`/`INTERSECT`/
+// `EXCEPT ${…}`); and an EXISTS subquery. Five places an entire SELECT can also stand
+// are NOT reached: a scalar subquery in the select list (`SELECT (${sub}) AS n`),
+// `INSERT INTO t (a, b) ${sel}`, `IN (${sub})` / `NOT IN (${sub})`,
+// `AS [NOT] MATERIALIZED (${sub})`, and a PARENTHESISED compound arm
+// (`UNION (${arm})`). Four of those five have no live instance; `IN (${…})` has many
+// and every one of them is a placeholder VALUE list, which is why widening the rule to
+// it would produce false positives rather than coverage.
+//
 // The COMPLEMENTARY class — an interpolation in an IDENTIFIER or value position,
 // `DELETE FROM ${table} WHERE …` — is deliberately NOT claimed here. Those statements
 // have a readable verb and shape and only a dynamic name, and there are 82 of them on
-// the tree that name no owned table (77 deduped; 37 carry a profile_id predicate
-// anyway, 45 carry nothing the scan can classify, and lib/queries/visit-links.ts,
-// lib/undo-delete-db.ts, lib/migrations/cascade-delete.ts and
-// app/(app)/data/manage-actions.ts lead). The scan still drops them; the count is
-// written down in the PR rather than this list absorbing them unread.
+// the tree that name no owned table (77 deduped): 37 raw / 36 deduped carry a
+// profile_id predicate anyway, and 45 raw / 41 deduped carry nothing the scan can
+// classify, led by lib/queries/visit-links.ts, lib/undo-delete-db.ts,
+// lib/migrations/cascade-delete.ts and app/(app)/data/manage-actions.ts. The scan
+// still drops them; the count is written down in the PR rather than this list
+// absorbing them unread.
 const STATEMENT_POSITION = [
   /^\$\{/, // the statement IS the interpolation
   /\b(?:FROM|JOIN)\s*\(\s*\$\{/i, // a derived table
@@ -865,6 +878,47 @@ const without = (over: Partial<Allowlists>): Allowlists => ({
   ...over,
 });
 
+// WHY an ALLOW_SQL entry exempts nothing — null when it is load-bearing. THREE
+// reasons, and they need OPPOSITE fixes: a dead entry should go, but an entry that
+// merely OVERLAPS a live one is half of a pair, and "delete them" (what this said
+// until R4) names BOTH halves — follow it and requireItemWriteAccess's owner-resolution
+// read becomes an unexplained violation. Pure in its inputs so the cases below can
+// drive it with synthetic statements rather than waiting for the tree to grow one.
+function staleReason(
+  entry: (typeof ALLOW_SQL)[number],
+  list: typeof ALLOW_SQL,
+  statements: Prepared[]
+): string | null {
+  const lists = (sql: typeof ALLOW_SQL): Allowlists => ({
+    ...ALL_ALLOWLISTS,
+    sql,
+  });
+  const covers = (e: (typeof ALLOW_SQL)[number], p: Prepared) =>
+    p.rel.endsWith(e.file) && p.sql.includes(e.includes);
+  const mine = statements.filter((p) => p.rel.endsWith(entry.file));
+  const rest = list.filter((e) => e !== entry);
+  if (
+    mine.some(
+      (p) =>
+        classifyPrepared(p, lists(list)) === null &&
+        classifyPrepared(p, lists(rest)) !== null
+    )
+  )
+    return null;
+  const matched = mine.filter((p) => covers(entry, p));
+  if (matched.length === 0)
+    return "no live statement matches this entry — delete it";
+  const gated = matched.filter((p) => classifyPrepared(p, lists([])) !== null);
+  if (gated.length === 0)
+    return "the statement it matches passes the scan on its own — delete it";
+  const overlap = rest.filter((e) => gated.some((p) => covers(e, p)));
+  if (overlap.length > 0)
+    return `another entry already covers the same statement — keep ONE of these and delete the other: ${overlap
+      .map((e) => `${e.file}: "${e.includes}"`)
+      .join(" | ")}`;
+  return "exempts nothing the scan asks about — delete it";
+}
+
 // STALENESS, for all three lists (#5117 R4). An allowlist entry is a claim about the
 // tree, and a claim nothing re-checks stops being true quietly: the `listPortalIdentities`
 // entry this PR first added was a strict SUFFIX of one that already covered the same
@@ -889,16 +943,59 @@ describe("the scan's allowlists stay load-bearing (#5117)", () => {
     const dead: string[] = [];
     for (const entry of ALLOW_SQL) {
       expect(entry.why.trim().length).toBeGreaterThan(0);
-      const needed = bearing(entry.file, (all) => ({
-        ...all,
-        sql: all.sql.filter((e) => e !== entry),
-      }));
-      if (!needed) dead.push(`${entry.file}: "${entry.includes}"`);
+      const stale = staleReason(entry, ALLOW_SQL, live);
+      if (stale) dead.push(`${entry.file}: "${entry.includes}" — ${stale}`);
     }
     expect(
       dead,
-      `\nALLOW_SQL entries that exempt nothing — the statement is gone, or it passes the scan on its own, or another entry already covers it. Delete them:\n${dead.join("\n")}\n`
+      `\nALLOW_SQL entries that exempt nothing. Each line says which fix it needs — an entry that another one OVERLAPS names its partner, and deleting both would turn that statement back into an unexplained violation:\n${dead.join("\n")}\n`
     ).toEqual([]);
+  });
+
+  // The two shapes, on synthetic statements, because the tree carries neither today
+  // and the instruction is the whole point: one says delete, the other says keep one.
+  it("says WHICH fix a stale entry needs: gone, redundant, or unnecessary", () => {
+    const file = "lib/fake-module.ts";
+    const unscoped = mkPrepared(
+      file,
+      "SELECT id FROM metric_samples WHERE token = ?"
+    );
+    const entry = {
+      file,
+      includes: "SELECT id FROM metric_samples WHERE token = ?",
+      why: "a resolve-then-gate read",
+    };
+    // Load-bearing: the statement passes with the entry and violates without it.
+    expect(staleReason(entry, [entry], [unscoped])).toBeNull();
+    // Gone: nothing in the file matches it any more.
+    expect(staleReason(entry, [entry], [])).toMatch(
+      /no live statement matches this entry — delete it/
+    );
+    // Redundant: a SUFFIX entry covering the same statement — the shape that made the
+    // `listPortalIdentities` entry invisible. Both are named, and each names the other.
+    const suffix = {
+      file,
+      includes: "FROM metric_samples WHERE token = ?",
+      why: "the same statement, spelled shorter",
+    };
+    const pair = [entry, suffix];
+    for (const [e, other] of [
+      [entry, suffix],
+      [suffix, entry],
+    ] as const) {
+      const reason = staleReason(e, pair, [unscoped]);
+      expect(reason).toMatch(/keep ONE of these and delete the other/);
+      expect(reason).toContain(other.includes);
+    }
+    // Unnecessary: the statement it matches needs no exemption at all.
+    const scopedStmt = mkPrepared(
+      file,
+      "SELECT id FROM metric_samples WHERE profile_id = ?"
+    );
+    const broad = { file, includes: "FROM metric_samples", why: "unnecessary" };
+    expect(staleReason(broad, [broad], [scopedStmt])).toMatch(
+      /passes the scan on its own — delete it/
+    );
   });
 
   it("every ALLOW_NON_LITERAL entry is justified and is the reason a live statement passes", () => {

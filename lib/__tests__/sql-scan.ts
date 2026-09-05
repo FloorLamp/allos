@@ -211,12 +211,24 @@ function redeclaredLocally(src: string, name: string): boolean {
 // asked of it is whether a `const NAME = ...;` at column 0 is a real module-scope
 // declaration.
 //
-// Both ways of being wrong point at refusing. Mistaking code for a string or comment
-// drops a const, and the statement composed from it then goes unresolved and is
-// refused by its reader; mistaking a string for code can only ADD a candidate name,
-// and a candidate is dropped again the moment that name is declared anywhere else.
-// The regex-literal heuristic (a `/` opens a regex only where an operand cannot
-// precede it) is imperfect within those same bounds.
+// The two ways of being wrong are NOT symmetric, and the asymmetry is worth stating
+// exactly. Mistaking code for a string or comment drops a const, and the statement
+// composed from it then goes unresolved and is refused by its reader — the safe
+// direction. Mistaking a string for code ADDS a candidate name, and that candidate is
+// dropped again the moment the name is declared anywhere else — but `redeclaredLocally`
+// looks for const/let/var/function/class and NEVER for an IMPORT, so a name bound by an
+// import escapes the drop.
+//
+// So the hole is real and it is narrow: a depth-0 `/` misread by the regex heuristic
+// (a `/` opens a regex only where an operand cannot precede it) desyncs the scan into a
+// block comment, a commented-out `const NAME = `…`;` at column 0 is then read as a
+// declaration, and NAME is really bound by an import — at which point a statement gets
+// SUBSTITUTED with text it never runs and the census reports "checked" about a statement
+// it never read. Two things bound it: the depth counter refuses the same shape anywhere
+// inside a function body (only column 0 at depth 0 is read), and no scanned file today
+// contains it — every name this map holds is declared in the file that uses it, none is
+// also bound by an import there. That is "does not happen on this tree", not "cannot
+// happen", and the second sentence is the one this comment used to make.
 function codeSpans(src: string): {
   isCode: (i: number) => boolean;
   depthAt: (i: number) => number;

@@ -1493,20 +1493,16 @@ export function getMultiProfileTimeline(
   return { members, hasMore };
 }
 
-export function getTimelineDates(
-  profileId: number,
-  options: Pick<TimelineOptions, "includeTrainingEvents"> = {}
-): string[] {
-  const includeTrainingEvents = options.includeTrainingEvents ?? true;
-  const tz = getTimezone(profileId);
-  const dates = new Set<string>();
-  const add = (d: string | null | undefined) => {
-    if (d) dates.add(d);
-  };
-
-  // Explicit-date tables: the event date IS a stored calendar column, so the raw
-  // slice matches where the timeline places the event. Activities and goals are
-  // age-neutral profile-owned data. `date`-column selects go straight into this UNION.
+// The UNION arms of the calendar's explicit-date read, one per (table, date column):
+// the event date IS a stored calendar column, so the raw slice matches where the
+// timeline places the event. Activities and goals are age-neutral profile-owned data.
+//
+// EXPORTED because the arms are literals inside ONE prepared statement, so the
+// profile-scoping scan reads the wrapper and not them (its ALLOW_COMPOSED entry says
+// exactly that). lib/__db_tests__/timeline.test.ts loops over THIS list and proves
+// each arm's profile filter against a seeded second profile — so an eighteenth arm is
+// covered the day it is added rather than the day someone remembers to add a case.
+export function timelineDateSelects(includeTrainingEvents: boolean): string[] {
   const explicitSelects: string[] = [
     "SELECT date FROM body_metrics WHERE profile_id = @profileId",
     "SELECT date FROM medical_records WHERE profile_id = @profileId",
@@ -1537,6 +1533,21 @@ export function getTimelineDates(
         WHERE profile_id = @profileId AND status != 'abandoned'`
     );
   }
+  return explicitSelects;
+}
+
+export function getTimelineDates(
+  profileId: number,
+  options: Pick<TimelineOptions, "includeTrainingEvents"> = {}
+): string[] {
+  const includeTrainingEvents = options.includeTrainingEvents ?? true;
+  const tz = getTimezone(profileId);
+  const dates = new Set<string>();
+  const add = (d: string | null | undefined) => {
+    if (d) dates.add(d);
+  };
+
+  const explicitSelects = timelineDateSelects(includeTrainingEvents);
   for (const r of db
     .prepare(
       `SELECT DISTINCT date FROM (${explicitSelects.join("\nUNION\n")})

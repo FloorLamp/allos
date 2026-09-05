@@ -7,7 +7,11 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
-import { getTimelineDates, getTimelineEvents } from "@/lib/timeline";
+import {
+  getTimelineDates,
+  getTimelineEvents,
+  timelineDateSelects,
+} from "@/lib/timeline";
 import { seedProfile, type SeededProfile } from "./fixtures";
 import { setStoredAge, setTimezone } from "@/lib/settings";
 
@@ -179,20 +183,6 @@ describe("getTimelineEvents", () => {
     expect(
       events.some((e) => e.id === `activity:${other.cardioActivityId}`)
     ).toBe(false);
-  });
-
-  it("scopes the calendar's event DATES to the requested profile", () => {
-    // getTimelineDates is one UNION over seventeen hand-authored arms, prepared
-    // through an interpolation the profile-scoping scan cannot read: its
-    // ALLOW_COMPOSED entry (lib/__tests__/profile-scoping.test.ts) rests on this.
-    // So it is asserted — a date only the OTHER profile has never reaches this one.
-    const onlyOther = "2019-03-04";
-    db.prepare(
-      `INSERT INTO body_metrics (profile_id, date, weight_kg) VALUES (?, ?, 70)`
-    ).run(other.profileId, onlyOther);
-
-    expect(getTimelineDates(other.profileId)).toContain(onlyOther);
-    expect(getTimelineDates(imperial.profileId)).not.toContain(onlyOther);
   });
 
   it("derives only schedule-backed immunization dose positions", () => {
@@ -468,6 +458,102 @@ describe("getTimelineEvents", () => {
       `activity:${oldActivityId}`
     );
   });
+});
+
+// EVERY UNION arm of getTimelineDates filters by profile (#5117). The arms are
+// literals inside ONE prepared statement, so the profile-scoping scan reads the
+// wrapper and never them — its ALLOW_COMPOSED entry rests on this block instead.
+// The cases come from the statement's own arm list and each row is built from the
+// arm's own table, so an eighteenth arm arrives with its case already written.
+describe("getTimelineDates: every UNION arm is profile-scoped", () => {
+  type Col = {
+    name: string;
+    type: string;
+    notnull: number;
+    dflt_value: string | null;
+    pk: number;
+  };
+  type Fk = { from: string; table: string; to: string };
+  const pragma = <T>(q: string) => db.pragma(q) as T[];
+  const tableOf = (arm: string) => /\bFROM\s+(\w+)/i.exec(arm)?.[1];
+  const dateColOf = (arm: string) => /^\s*SELECT\s+(?:\w+\.)?(\w+)/i.exec(arm)?.[1];
+
+  // One row in the arm's own table, on `date`, belonging to `profileId`. Columns are
+  // filled from the schema: profile_id and the arm's date column by name, every other
+  // NOT NULL column with an existing row's value where the table has one (that is what
+  // satisfies CHECK'd columns such as activities.type) or a plain filler, and every
+  // foreign key with an id from its parent — the seeded profile's, where the parent is
+  // itself profile-owned. That last part is how the one CHILD arm (intake_item_logs)
+  // reaches profile_id at all: through its intake_items parent.
+  function seedArmRow(arm: string, profileId: number, date: string) {
+    const table = tableOf(arm);
+    const dateCol = dateColOf(arm);
+    expect(table && dateCol, `unreadable arm: ${arm}`).toBeTruthy();
+    const fks = new Map(
+      pragma<Fk>(`foreign_key_list(${table})`).map((f) => [f.from, f])
+    );
+    const row = new Map<string, unknown>([[dateCol as string, date]]);
+    for (const c of pragma<Col>(`table_info(${table})`)) {
+      if (c.pk || row.has(c.name)) continue;
+      if (c.name === "profile_id") {
+        row.set(c.name, profileId);
+        continue;
+      }
+      const required = c.notnull === 1 && c.dflt_value === null;
+      const fk = fks.get(c.name);
+      if (fk) {
+        const scoped = pragma<Col>(`table_info(${fk.table})`).some(
+          (p) => p.name === "profile_id"
+        );
+        const parent = db
+          .prepare(
+            `SELECT ${fk.to} AS id FROM ${fk.table} ${scoped ? "WHERE profile_id = ?" : ""} LIMIT 1`
+          )
+          .get(...(scoped ? [profileId] : [])) as { id: number } | undefined;
+        if (parent) row.set(c.name, parent.id);
+        else if (required)
+          throw new Error(`${table}.${c.name}: no ${fk.table} row to point at`);
+        continue;
+      }
+      if (!required) continue;
+      const seen = db
+        .prepare(`SELECT ${c.name} AS v FROM ${table} WHERE ${c.name} IS NOT NULL LIMIT 1`)
+        .get() as { v: unknown } | undefined;
+      row.set(c.name, seen?.v ?? (/INT|REAL|NUM|DOUB|FLOA/i.test(c.type) ? 1 : "x"));
+    }
+    const names = [...row.keys()];
+    db.prepare(
+      `INSERT INTO ${table} (${names.join(", ")}) VALUES (${names.map(() => "?").join(", ")})`
+    ).run(...row.values());
+  }
+
+  let leaky: SeededProfile;
+  beforeAll(() => {
+    leaky = seedProfile("ARMS");
+  });
+
+  const arms = timelineDateSelects(true);
+
+  it("reads the arm list off the statement itself", () => {
+    // A parse that silently found nothing would make every case below vacuous.
+    expect(arms.length).toBeGreaterThan(10);
+    for (const arm of arms) {
+      expect(tableOf(arm), arm).toBeTruthy();
+      expect(dateColOf(arm), arm).toBeTruthy();
+    }
+  });
+
+  it.each(arms.map((arm, i) => [i, tableOf(arm), arm] as const))(
+    "arm %i (%s) keeps its own profile's dates off another profile's calendar",
+    (i, _table, arm) => {
+      const date = `2007-05-${String(i + 1).padStart(2, "0")}`;
+      seedArmRow(arm, leaky.profileId, date);
+      // The positive control: the seeded row REACHES the read, so the absence
+      // asserted next is about the filter and not about an unreachable fixture.
+      expect(getTimelineDates(leaky.profileId)).toContain(date);
+      expect(getTimelineDates(imperial.profileId)).not.toContain(date);
+    }
+  );
 });
 
 describe("getTimelineDates — tz-correct created-at fallback (#619)", () => {
