@@ -239,10 +239,11 @@ export const STANDING_READING_ORDER: readonly StandingReadingFamily[] = [
     section: "longer-view",
     label: "Weekly targets",
     composition: "members",
-    // A met target is claimed by this family and then declines its seat
-    // (`standingEligible: false`), which is what makes it a capped-family tail
-    // rather than a loose fact: it celebrates the transition in Now and, once
-    // that decays, /training owns it (#3186).
+    // EVERY member seats here, met included (#4756 item 2 / #5064). A met target
+    // used to decline its seat and be shown by a Now promotion instead; with that
+    // promotion retired the row is the only place a finished week is stated, and
+    // `orderDashboardHabits` already sorts met members last so one cannot take the
+    // cap's seat from an open one.
     matches: idStartsWith("target.weekly-progress:"),
     memberOrder: { kind: "source", authority: "orderDashboardHabits" },
     cap: 4,
@@ -373,10 +374,7 @@ export function resolveStandingMembers(
         family.matches(candidate)
     );
     const familyFacts = new Set<string>();
-    const ordered = orderFamilyMembers(
-      claimed.filter((candidate) => candidate.standingEligible !== false),
-      family
-    ).filter((candidate) => {
+    const ordered = orderFamilyMembers(claimed, family).filter((candidate) => {
       if (familyFacts.has(candidate.factKey)) return false;
       familyFacts.add(candidate.factKey);
       return true;
