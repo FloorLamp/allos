@@ -169,8 +169,9 @@ Three rules keep a brand worth something:
   name resolves to (an indexed access into a row type, an interface's heritage
   or call signature, an object literal whose method returns a brand), a lying
   type predicate, an overload, `as any`, `as never`, a generic launderer or a
-  `.js` file; those are review's, as for every other type, and the test pins
-  them as named limits so the documented limit and the rule cannot drift apart.
+  `.js` file; those are review's, as for every other type. The test pins six
+  of them as lint-clean, so a limit the rule later starts catching fails a
+  test rather than drifting silently.
 - **A DB row shape may carry the brand the registry declares for that column**
   (`.get(...) as { date: LocalDay }`), and nothing else. That assertion already
   exists on every read; the brand adds what `TIME_COLUMNS` says about the column,
