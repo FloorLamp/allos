@@ -239,10 +239,17 @@ function runGate(
 }
 
 /** The gate's CI verdict over both endpoints; statuses default to none. */
+type Run = {
+  name: string;
+  status?: string;
+  conclusion?: string | null;
+  id?: number;
+};
+type Status = { context: string; state: string; description?: string };
 const verdict = (
-  checkRuns: unknown[],
+  checkRuns: Run[],
   ignoreCheck: string | null = null,
-  statuses: unknown[] = []
+  statuses: Status[] = []
 ) => ciVerdict({ checkRuns, statuses, ignoreCheck, head: HEAD });
 
 function receipt(overrides: Fixture) {
@@ -347,13 +354,13 @@ describe("merge-gate.mjs", () => {
 
   it("keeps the published failure description inside GitHub's 140-character limit", () => {
     const result = verdict([
-        green("lint"),
-        {
-          name: `test-${"very-long-check-name-".repeat(10)}`,
-          status: "completed",
-          conclusion: "failure",
-        },
-      ]);
+      green("lint"),
+      {
+        name: `test-${"very-long-check-name-".repeat(10)}`,
+        status: "completed",
+        conclusion: "failure",
+      },
+    ]);
     const status = closedStatusDescription(result.message);
     expect(status.length).toBeLessThanOrEqual(140);
     expect(status).toContain("gate CLOSED — red on this head");
@@ -361,9 +368,9 @@ describe("merge-gate.mjs", () => {
 
   it("closes on a red check and names it", () => {
     const result = verdict([
-        green("lint"),
-        { name: "test", status: "completed", conclusion: "failure" },
-      ]);
+      green("lint"),
+      { name: "test", status: "completed", conclusion: "failure" },
+    ]);
     expect(result.kind).toBe("fail");
     // The endpoint is part of the name (#5022): `merge-gate` the status
     // and `merge-gate-job` the check run differ by one word.
@@ -422,11 +429,31 @@ describe("merge-gate.mjs", () => {
     description: `${context} says ${state}`,
   });
   it.each([
-    ["no statuses at all is the shape every other case here runs on", [], "pass"],
-    ["an all-success status set stays green", [status("deploy", "success")], "pass"],
-    ["a pending status is not a verdict yet", [status("deploy", "pending")], "incomplete"],
-    ["a failing status closes a green head", [status("deploy", "failure")], "fail"],
-    ["`error` is a red too, not an absence", [status("deploy", "error")], "fail"],
+    [
+      "no statuses at all is the shape every other case here runs on",
+      [],
+      "pass",
+    ],
+    [
+      "an all-success status set stays green",
+      [status("deploy", "success")],
+      "pass",
+    ],
+    [
+      "a pending status is not a verdict yet",
+      [status("deploy", "pending")],
+      "incomplete",
+    ],
+    [
+      "a failing status closes a green head",
+      [status("deploy", "failure")],
+      "fail",
+    ],
+    [
+      "`error` is a red too, not an absence",
+      [status("deploy", "error")],
+      "fail",
+    ],
     [
       "the gate's own failing status does NOT close the gate it recomputes",
       [status("merge-gate", "failure")],
@@ -447,7 +474,9 @@ describe("merge-gate.mjs", () => {
   });
 
   it("names the endpoint and the context on a failing status", () => {
-    const result = verdict([green("lint")], null, [status("deploy", "failure")]);
+    const result = verdict([green("lint")], null, [
+      status("deploy", "failure"),
+    ]);
     expect(result.message).toBe("red on this head: status deploy");
     expect(closedStatusDescription(result.message)).toContain(
       "gate CLOSED — red on this head: status deploy"
@@ -467,16 +496,19 @@ describe("merge-gate.mjs", () => {
   it.each([
     ["opens over its own closed status", GATE_STATUS_CONTEXT, 0, "GATE OPEN"],
     ["closes on an independent one", "deploy", 1, "GATE CLOSED"],
-  ])("the self-block, both directions: %s", (_case, context, code, verdictLine) => {
-    const cli = runGate({
-      statuses: [{ context, state: "failure", description: "it is red" }],
-    });
-    expect(cli.calls.some((c) => c.url.endsWith(`/commits/${HEAD}/status`))).toBe(
-      true
-    );
-    expect(cli.status).toBe(code);
-    expect(cli.stdout).toContain(verdictLine);
-  });
+  ])(
+    "the self-block, both directions: %s",
+    (_case, context, code, verdictLine) => {
+      const cli = runGate({
+        statuses: [{ context, state: "failure", description: "it is red" }],
+      });
+      expect(
+        cli.calls.some((c) => c.url.endsWith(`/commits/${HEAD}/status`))
+      ).toBe(true);
+      expect(cli.status).toBe(code);
+      expect(cli.stdout).toContain(verdictLine);
+    }
+  );
 
   // A CANCELLED RUN IS NOT A VERDICT (#4800). GitHub returns the latest run per
   // name PER CHECK SUITE, so a head whose workflow was triggered twice carries

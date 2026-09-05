@@ -367,7 +367,7 @@ for (;;) {
     // merge yet. `merge-gate.mjs` recomputes it before every merge.
     for (const r of s.gateClosed) {
       const line =
-        `NOT MERGEABLE YET — ${rowName(r)} is ${r.state}: ${r.detail}\n` +
+        `NOT MERGEABLE YET — ${rowName(r)} ${r.state}: ${r.detail}\n` +
         "  That is a commit status, not a check run, and merge-gate.mjs " +
         "recomputes it before every merge.";
       console.log(line);

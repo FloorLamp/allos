@@ -84,8 +84,8 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
   reviewer did not author the change (#4258). A head change voids it.
 - **Run `merge-gate.mjs <pr>` before every merge call** — receipt, green checks,
   no threads, no hold, the mandated pass, this session's own PR (claims.md);
-  exit 0 is the precondition. CI mirrors it as the `merge-gate` COMMIT STATUS,
-  which check-runs does not list: all-green can still be `unstable`.
+  exit 0 is the precondition. It refuses on any failing COMMIT STATUS, naming it
+  — except `merge-gate`, its own answer, recomputed not read back (#5022).
 - A later conflicting PR rebases only after the last earlier conflict lands.
 - Resume the author for semantic conflict resolution; do not hand-integrate
   feature code.

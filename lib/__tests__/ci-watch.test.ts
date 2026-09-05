@@ -274,7 +274,7 @@ it.each([
     "the gate's own status is reported beside the green, not folded into it",
     statuses({ context: "merge-gate", state: "failure" }),
     0,
-    "NOT MERGEABLE YET — status merge-gate is failed",
+    "NOT MERGEABLE YET — status merge-gate failed:",
   ],
 ])("both endpoints: %s", (_case, commitStatuses, code, expected) => {
   const result = watch({ COMMIT_STATUSES: commitStatuses });
@@ -305,7 +305,13 @@ it.each([
     0,
     "GREEN",
   ],
-  ["a clean head with the same checks settles", "clean", NO_STATUSES, 0, "GREEN"],
+  [
+    "a clean head with the same checks settles",
+    "clean",
+    NO_STATUSES,
+    0,
+    "GREEN",
+  ],
 ])(
   "settlement: %s",
   (_case, mergeableState, commitStatuses, code, expected) => {

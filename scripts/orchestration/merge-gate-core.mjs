@@ -270,9 +270,19 @@ export const reachedAVerdict = (run) => run.conclusion !== "cancelled";
 // happened. Statuses cannot be cancelled and have four states, of which
 // `error` and `failure` are both a red.
 //
-// @returns {{rows: {source: "check-run"|"status", name: string,
-//   state: "pending"|"failed"|"success", detail: string, url?: string}[],
-//   noVerdict: string[], ignored: boolean}}
+/**
+ * @typedef {{name: string, id?: number, status?: string,
+ *   conclusion?: string|null, html_url?: string}} CheckRun
+ * @typedef {{context: string, state: string, description?: string|null,
+ *   target_url?: string|null}} CommitStatus
+ * @typedef {{source: string, name: string,
+ *   state: "pending"|"failed"|"success", detail?: string|null,
+ *   url?: string|null, id?: number}} CiRow
+ *
+ * @param {{checkRuns?: CheckRun[], statuses?: CommitStatus[],
+ *   ignoreCheck?: string|null}} input
+ * @returns {{rows: CiRow[], noVerdict: string[], ignored: boolean}}
+ */
 export function ciRows({ checkRuns = [], statuses = [], ignoreCheck = null }) {
   const named = checkRuns.filter((run) => run.name !== ignoreCheck);
   const decided = named.filter(reachedAVerdict);
@@ -335,6 +345,12 @@ export const rowName = (row) => `${row.source} ${row.name}`;
 // over a red nobody read.
 export const GATE_STATUS_CONTEXT = "merge-gate";
 
+/**
+ * @param {{checkRuns?: CheckRun[], statuses?: CommitStatus[],
+ *   ignoreCheck?: string|null, head: string}} input
+ * @returns {{kind: "incomplete"|"fail"|"pass", ignored: boolean,
+ *   message: string}}
+ */
 export function ciVerdict({
   checkRuns = [],
   statuses = [],
@@ -356,7 +372,9 @@ export function ciVerdict({
   const recomputed = echoed.length
     ? ` This head's own \`${GATE_STATUS_CONTEXT}\` status (${echoed
         .map((row) => row.state)
-        .join(", ")}) is THIS script's last answer and is recomputed here, not read.`
+        .join(
+          ", "
+        )}) is THIS script's last answer and is recomputed here, not read.`
     : "";
   if (checks.length === 0 || pending.length || noVerdict.length) {
     return {

@@ -118,11 +118,6 @@ it.each([
     "run 1/2",
   ],
   [
-    "a green status set is counted into the denominator",
-    statuses({ context: "merge-gate", state: "success" }),
-    "GREEN",
-  ],
-  [
     "an unreadable status endpoint keeps the row off GREEN and says so",
     "unreadable",
     "<<< commit statuses UNREADABLE",
@@ -131,6 +126,18 @@ it.each([
   expect(board([check(1, "lint", "success")], commitStatuses)).toContain(
     expected
   );
+});
+
+// A SUCCESS status leaves no word on the row, so the only place it can be seen
+// is the arithmetic: `run 2/3` and not `run 1/2` is the whole assertion, and a
+// board that dropped the status would print the second.
+it("counts a green status into both halves of the fraction", () => {
+  expect(
+    board(
+      [check(1, "lint", "success"), check(2, "e2e", null)],
+      statuses({ context: "merge-gate", state: "success" })
+    )
+  ).toContain("run 2/3");
 });
 
 it("does not read an unreadable status endpoint as an empty one", () => {
