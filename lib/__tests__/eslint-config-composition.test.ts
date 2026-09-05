@@ -51,6 +51,51 @@ const HEALTH_CONNECT = "import the shared constants from";
 const LEAF = "stays dependency-free";
 const STRENGTH_ENGINE = "must not be sourced from the strength coverage engine";
 const EXERCISE_SETS = "never from strength set rows";
+// The e2e hygiene bans (#5350). Each was a per-file count frozen at zero with an
+// empty allowlist; four files each own one group and keep every other one.
+const NETWORKIDLE = "settles on network silence";
+const WAIT_TIMEOUT = "waitForTimeout(...) asserts nothing";
+const FIRST = ".first() on a shared surface";
+const TOPASS = "passes within N attempts";
+const TEST_SKIP = "committed test.skip";
+const CI_BRANCH = "The harness serves ONE build shape";
+const MULTI_BOX = "Two boundingBox() reads through one Promise.all";
+const SWIPE = "may only be an inline { x, y } literal";
+const CONFIRM_DELETE = "confirm dialog's Delete can be swallowed";
+const DOC_OVERFLOW = "document-level width comparison asserts nothing";
+const BARE_YEAR = "A bare fixed year is not a date contract";
+const FAMILY_LOGIN = "use createLoginViaFamily";
+const FAMILY_PROFILE = "use createProfileViaFamily";
+const FAMILY_GRANTS = "use setGrantsViaFamily";
+const PROFILE_INSERT = "A raw INSERT INTO profiles";
+const PROFILE_DELETE = "A raw DELETE FROM profiles";
+const PW_TEST = "opts out of the DB-per-worker harness";
+const DB_PATH = "ALLOS_DB_PATH is the APP SERVER's environment";
+const WALL_CLOCK = "the harness's frozen now";
+const ACTIVITY_DELETE = "use deleteActivitiesTitled";
+const E2E_EVERY_BAN = [
+  NETWORKIDLE,
+  WAIT_TIMEOUT,
+  FIRST,
+  TOPASS,
+  TEST_SKIP,
+  CI_BRANCH,
+  MULTI_BOX,
+  SWIPE,
+  CONFIRM_DELETE,
+  DOC_OVERFLOW,
+  BARE_YEAR,
+  FAMILY_LOGIN,
+  FAMILY_PROFILE,
+  FAMILY_GRANTS,
+  PROFILE_INSERT,
+  PROFILE_DELETE,
+  PW_TEST,
+  DB_PATH,
+  WALL_CLOCK,
+];
+const without = (...dropped: string[]) =>
+  E2E_EVERY_BAN.filter((ban) => !dropped.includes(ban));
 
 // One row per config block, plus the exemptions each block's `ignores` creates.
 const CASES: [file: string, must: string[], mustNot: string[]][] = [
@@ -123,6 +168,37 @@ const CASES: [file: string, must: string[], mustNot: string[]][] = [
     [TEMPORAL],
     [REVALIDATE, DIALOG],
   ],
+
+  // ── e2e/** (#5350) ────────────────────────────────────────────────────────
+  // A spec reaches every ban, including the one scoped to specs alone…
+  [
+    "e2e/dashboard.spec.ts",
+    [TEMPORAL, DIALOG, REVALIDATE, ...E2E_EVERY_BAN, ACTIVITY_DELETE],
+    [RPE_CAST, OURA, STREAK, REFRESH],
+  ],
+  // …a driver module reaches every ban EXCEPT that one, because a fixture module
+  // delete-then-inserts to stay idempotent and that is not a spec's cleanup.
+  ["e2e/nav.ts", [TEMPORAL, DIALOG, ...E2E_EVERY_BAN], [ACTIVITY_DELETE]],
+  // The blessed interaction module OWNS the settle patterns it centralizes, so it
+  // was the scan's ONE exclusion and falls back to the level above here.
+  ["e2e/helpers.ts", [TEMPORAL, DIALOG], [...E2E_EVERY_BAN, ACTIVITY_DELETE]],
+  // The three converses: each file drops exactly the group it owns and keeps the
+  // rest. A ladder of `ignores` would have dropped the groups BELOW them too.
+  [
+    "e2e/family-helpers.ts",
+    without(FAMILY_LOGIN, FAMILY_PROFILE, FAMILY_GRANTS),
+    [FAMILY_LOGIN, FAMILY_PROFILE, FAMILY_GRANTS, ACTIVITY_DELETE],
+  ],
+  [
+    "e2e/fixture-profile.ts",
+    without(PROFILE_INSERT, PROFILE_DELETE),
+    [PROFILE_INSERT, PROFILE_DELETE, ACTIVITY_DELETE],
+  ],
+  [
+    "e2e/fixtures.ts",
+    without(PW_TEST, DB_PATH, WALL_CLOCK),
+    [PW_TEST, DB_PATH, WALL_CLOCK, ACTIVITY_DELETE],
+  ],
 ];
 
 describe("eslint.config.mjs composes its bans instead of replacing them", () => {
@@ -160,6 +236,14 @@ const LIFT_CATALOG = "must not be sourced from the lift catalog";
 
 // A path with no file on disk; `lintText` resolves config by path, not by reading it.
 const FIXTURE = "lib/bite-fixture.ts";
+// The same, under e2e/ — and the four real files whose exemptions are the converse
+// half of the e2e rows. `Loc` is never declared: these are lints, not compiles.
+const E2E_SPEC = "e2e/bite-fixture.spec.ts";
+const E2E_MODULE = "e2e/bite-fixture.ts";
+const E2E_HELPERS = "e2e/helpers.ts";
+const E2E_FAMILY = "e2e/family-helpers.ts";
+const E2E_FIXTURE_PROFILE = "e2e/fixture-profile.ts";
+const E2E_FIXTURES = "e2e/fixtures.ts";
 
 // file, forged source, the ban's own message fragment, how many times it must fire
 const BITES: [file: string, code: string, fragment: string, hits: number][] = [
@@ -288,6 +372,192 @@ const BITES: [file: string, code: string, fragment: string, hits: number][] = [
     "export const f = (router: { refresh: () => void }) => router.refresh();",
     REFRESH,
     1,
+  ],
+
+  // ── e2e hygiene (#5350) ───────────────────────────────────────────────────
+  // Nineteen bans, each shown biting the shape the retired scan's regex matched —
+  // and, where the selector is narrower than "the words appear", shown STAYING
+  // QUIET on the neighbour that made the regex hard to write. Every zero row here
+  // is checked by revoking the exemption (or widening the selector) it names and
+  // confirming that row, and only that row, reds.
+  [E2E_SPEC, 'await page.waitForLoadState("networkidle");', NETWORKIDLE, 1],
+  [E2E_SPEC, "await page.waitForTimeout(50);", WAIT_TIMEOUT, 1],
+  [E2E_SPEC, "export const f = (l: Loc) => l.first();", FIRST, 1],
+  [E2E_SPEC, "await expect(async () => {}).toPass({ timeout: 1 });", TOPASS, 1],
+  [E2E_SPEC, 'test.skip("x", () => {});', TEST_SKIP, 1],
+  [E2E_SPEC, "export const f = process.env.CI ? 1 : 2;", CI_BRANCH, 1],
+  [
+    E2E_SPEC,
+    "export const f = async (x: Loc, y: Loc) => Promise.all([x.boundingBox(), y.boundingBox()]);",
+    MULTI_BOX,
+    1,
+  ],
+  // A third element between the two boxes still reds — the retired regex's lazy gap
+  // could walk out of one Promise.all into the next and pair a box with a stranger's.
+  [
+    E2E_SPEC,
+    "export const f = async (x: Loc, y: Loc) => Promise.all([x.count(), x.boundingBox(), y.boundingBox()]);",
+    MULTI_BOX,
+    1,
+  ],
+  // …and ONE box is the honest single read the rule must not fire on. Widening the
+  // selector to drop the `~` sibling clause reds this row and nothing else.
+  [
+    E2E_SPEC,
+    "export const f = async (x: Loc) => Promise.all([x.boundingBox()]);",
+    MULTI_BOX,
+    0,
+  ],
+  [E2E_SPEC, "await touchSwipe(page, grip, { x: grip.x, y: 1 });", SWIPE, 1],
+  // A document-anchored gesture names its coordinates inline; that is the whole
+  // distinction, so the literal form must stay legal.
+  [
+    E2E_SPEC,
+    "await touchSwipe(page, { x: 2, y: 5 }, { x: 220, y: 505 });",
+    SWIPE,
+    0,
+  ],
+  [
+    E2E_SPEC,
+    'await page.getByTestId("confirm-dialog").getByRole("button", { name: "Delete" }).click();',
+    CONFIRM_DELETE,
+    1,
+  ],
+  // `name: "Delete"` is anchored on its closing quote on purpose: the longer
+  // destructive labels drive tables this teardown ban does not read.
+  [
+    E2E_SPEC,
+    'await page.getByTestId("confirm-dialog").getByRole("button", { name: "Delete login" }).click();',
+    CONFIRM_DELETE,
+    0,
+  ],
+  [
+    E2E_SPEC,
+    "export const f = () => document.documentElement.scrollWidth;",
+    DOC_OVERFLOW,
+    1,
+  ],
+  [E2E_SPEC, 'await expect(row).toContainText("2024");', BARE_YEAR, 1],
+  // The negated form is the one that turns VACUOUSLY green, so it is the half that
+  // most needs catching (#4369).
+  [E2E_SPEC, 'await expect(row).not.toContainText("2024");', BARE_YEAR, 1],
+  [
+    E2E_SPEC,
+    "await expect(row).toContainText(/logged 2024-05/);",
+    BARE_YEAR,
+    1,
+  ],
+  // A year inside a longer string is a fixture-derived display date, which is the
+  // thing the rule asks for. Un-anchoring the string arm reds this row alone.
+  [E2E_SPEC, 'await expect(row).toContainText("Jan 2024");', BARE_YEAR, 0],
+  [
+    E2E_SPEC,
+    'await page.getByPlaceholder("Username").fill("x");',
+    FAMILY_LOGIN,
+    1,
+  ],
+  [E2E_SPEC, 'export const s = "Add a profile";', FAMILY_PROFILE, 1],
+  [E2E_SPEC, "export const s = `Save access`;", FAMILY_GRANTS, 1],
+  // The blessed home OWNS the three markers by design — and still may not spell a
+  // raw profile write, which a nested `ignores` ladder would have excused.
+  [
+    E2E_FAMILY,
+    'await page.getByPlaceholder("Username").fill("x");',
+    FAMILY_LOGIN,
+    0,
+  ],
+  [
+    E2E_FAMILY,
+    'db.exec("INSERT INTO profiles (name) VALUES (?)");',
+    PROFILE_INSERT,
+    1,
+  ],
+  [
+    E2E_SPEC,
+    'db.exec("INSERT OR IGNORE INTO profiles (name) VALUES (?)");',
+    PROFILE_INSERT,
+    1,
+  ],
+  [
+    E2E_SPEC,
+    'db.exec("DELETE FROM profiles WHERE id = ?");',
+    PROFILE_DELETE,
+    1,
+  ],
+  // The constructor pair's home — and it still may not spell an inline family
+  // create, the converse of the row two above.
+  [
+    E2E_FIXTURE_PROFILE,
+    'db.exec("INSERT INTO profiles (name) VALUES (?)");',
+    PROFILE_INSERT,
+    0,
+  ],
+  [
+    E2E_FIXTURE_PROFILE,
+    'await page.getByPlaceholder("Username").fill("x");',
+    FAMILY_LOGIN,
+    1,
+  ],
+  [
+    E2E_SPEC,
+    'import { test } from "@playwright/test";\nexport const t = test;',
+    PW_TEST,
+    1,
+  ],
+  // A TYPE import from the same module is not the opt-out and must stay legal.
+  [
+    E2E_SPEC,
+    'import type { Page } from "@playwright/test";\nexport type P = Page;',
+    PW_TEST,
+    0,
+  ],
+  [E2E_SPEC, "export const p = process.env.ALLOS_DB_PATH;", DB_PATH, 1],
+  [E2E_SPEC, "export const t = Date.now();", WALL_CLOCK, 1],
+  [E2E_SPEC, "export const t = new Date();", WALL_CLOCK, 1],
+  // `new Date(iso)` reads a fixture-derived instant, not the wall clock.
+  [E2E_SPEC, 'export const t = new Date("2020-01-02");', WALL_CLOCK, 0],
+  // The harness takes the ONE wall-clock reading frozenNow() is derived from, and
+  // is still held to every other ban — `.first()` among them.
+  [E2E_FIXTURES, "export const t = Date.now();", WALL_CLOCK, 0],
+  [
+    E2E_FIXTURES,
+    'import { test } from "@playwright/test";\nexport const t = test;',
+    PW_TEST,
+    0,
+  ],
+  [E2E_FIXTURES, "export const f = (l: Loc) => l.first();", FIRST, 1],
+  // The blessed interaction module was the scan's ONE exclusion.
+  [E2E_HELPERS, "await page.waitForTimeout(50);", WAIT_TIMEOUT, 0],
+  [E2E_HELPERS, "export const f = (l: Loc) => l.first();", FIRST, 0],
+  // #3946's census found five spellings of the shared-profile cleanup; a rule
+  // written for `WHERE title = ?` alone would have shipped green and blind to four.
+  [
+    E2E_SPEC,
+    'db.exec("DELETE FROM activities WHERE profile_id = 1 AND title = ?");',
+    ACTIVITY_DELETE,
+    1,
+  ],
+  [
+    E2E_SPEC,
+    "db.exec(`DELETE FROM activities\n  WHERE title IN (?, ?)`);",
+    ACTIVITY_DELETE,
+    1,
+  ],
+  // It stops short of `LIKE` on purpose: a prefix sweep is a different contract from
+  // the helper's exact-title delete, and two specs use one legitimately.
+  [
+    E2E_SPEC,
+    'db.exec("DELETE FROM activities WHERE title LIKE ?");',
+    ACTIVITY_DELETE,
+    0,
+  ],
+  // SPECS ONLY — a seed module delete-then-inserts to stay idempotent, which is its
+  // job. Dropping the `*.spec.ts` block's narrower `files` reds this row alone.
+  [
+    E2E_MODULE,
+    'db.exec("DELETE FROM activities WHERE title = ?");',
+    ACTIVITY_DELETE,
+    0,
   ],
 ];
 

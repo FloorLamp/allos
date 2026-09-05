@@ -94,7 +94,7 @@ export async function createLoginViaFamily(
   opts: CreateLoginOpts = {}
 ): Promise<Credentials> {
   const role = opts.role ?? "member";
-  const username = opts.username ?? `${role}-${Date.now()}-${++familySeq}`; // clock-ok: unique login-name suffix, never a stored timestamp
+  const username = opts.username ?? `${role}-${Date.now()}-${++familySeq}`; // eslint-disable-line no-restricted-properties -- clock-ok: unique login-name suffix, never a stored timestamp
   const password = opts.passwordless ? "" : (opts.password ?? MEMBER_PASSWORD);
   const row = loginRowFor(page, username);
 
@@ -232,7 +232,7 @@ export async function createProfileViaFamily(
   page: Page,
   label: string
 ): Promise<string> {
-  const name = `${label}-${Date.now()}-${++familySeq}`; // clock-ok: unique profile-name suffix, never a stored timestamp
+  const name = `${label}-${Date.now()}-${++familySeq}`; // eslint-disable-line no-restricted-properties -- clock-ok: unique profile-name suffix, never a stored timestamp
   // The Add button is an onClick Server Action (not a form submit) — no single awaitable
   // event exists; re-goto and re-check the durable profile row, clicking Add only when
   // it's absent so a landed-but-slow create never duplicates the un-unique name (#830).

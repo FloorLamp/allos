@@ -329,14 +329,14 @@ const E2E_PROPERTY_BANS = [
     property: "toPass",
     message: `.toPass( proves "passes within N attempts", not "works", and hides which step raced — await the actual signal, or carry a \`topass-ok: <why>\` disable line for a reviewed last resort; ${HYGIENE_DOC}`,
   },
-];
-// The harness reads the wall clock ONCE, to derive the frozen now every spec then
-// asks for — so `Date.now` joins the list only at the level that excuses it, exactly
-// as its `new Date()` twin does among the syntax bans.
-const E2E_PROPERTY_BANS_HARNESS = [
-  ...E2E_PROPERTY_BANS,
   { object: "Date", property: "now", message: WALL_CLOCK_MESSAGE },
 ];
+// The harness reads the wall clock ONCE, to derive the frozen now every spec then
+// asks for — so it is the one surface that drops `Date.now`, exactly as it drops the
+// `new Date()` twin among the syntax bans.
+const E2E_PROPERTY_BANS_WORKER_HARNESS = E2E_PROPERTY_BANS.filter(
+  (ban) => ban.property !== "now"
+);
 
 // Applies to every e2e source but the blessed interaction module.
 const E2E_SETTLE_BANS = [
@@ -508,14 +508,39 @@ const E2E_SHARED_ACTIVITY_DELETE = (() => {
   };
 })();
 
-// Accumulating levels again, narrowest LAST, each spreading the one it sits inside.
-// e2e/ already sits on APP_SURFACE_SYNTAX (the revalidate block above lists it), so
-// that is the level these build on rather than SYNTAX_ALL.
-const SYNTAX_E2E = [...SYNTAX_APP_SURFACE, ...E2E_SETTLE_BANS];
-const SYNTAX_E2E_FAMILY = [...SYNTAX_E2E, ...E2E_FAMILY_BANS];
-const SYNTAX_E2E_PROFILE = [...SYNTAX_E2E_FAMILY, ...E2E_PROFILE_SQL_BANS];
-const SYNTAX_E2E_HARNESS = [...SYNTAX_E2E_PROFILE, ...E2E_HARNESS_BANS];
-const SYNTAX_E2E_SPEC = [...SYNTAX_E2E_HARNESS, E2E_SHARED_ACTIVITY_DELETE];
+// FOUR FILES EACH OWN ONE GROUP, and each keeps every OTHER group — which is why
+// these are composed sets and not an accumulating ladder. An `ignores` entry drops a
+// file to the level ABOVE, so a ladder would have handed family-helpers.ts an
+// exemption from the profile-SQL and harness bans it never had under the scan. The
+// shape here is the one the two vendor allowlists above already use: state each
+// surface's list, and the converse.
+//
+// e2e/ already sits on APP_SURFACE_SYNTAX (the revalidate block lists it), so that
+// is what these build on rather than SYNTAX_ALL.
+const SYNTAX_E2E_BASE = [...SYNTAX_APP_SURFACE, ...E2E_SETTLE_BANS];
+const SYNTAX_E2E_ALL = [
+  ...SYNTAX_E2E_BASE,
+  ...E2E_FAMILY_BANS,
+  ...E2E_PROFILE_SQL_BANS,
+  ...E2E_HARNESS_BANS,
+];
+const SYNTAX_E2E_SPEC = [...SYNTAX_E2E_ALL, E2E_SHARED_ACTIVITY_DELETE];
+// …and the three converses, each dropping exactly the group its file owns.
+const SYNTAX_E2E_FAMILY_HOME = [
+  ...SYNTAX_E2E_BASE,
+  ...E2E_PROFILE_SQL_BANS,
+  ...E2E_HARNESS_BANS,
+];
+const SYNTAX_E2E_FIXTURE_PROFILE = [
+  ...SYNTAX_E2E_BASE,
+  ...E2E_FAMILY_BANS,
+  ...E2E_HARNESS_BANS,
+];
+const SYNTAX_E2E_WORKER_HARNESS = [
+  ...SYNTAX_E2E_BASE,
+  ...E2E_FAMILY_BANS,
+  ...E2E_PROFILE_SQL_BANS,
+];
 
 
 const config = [
@@ -829,59 +854,58 @@ const config = [
     },
   },
   // ── e2e/**: the retired hygiene scan's zero-allowlist bans (#5350) ──────────
-  // Narrowest LAST, each spreading the level it sits inside; a file in `ignores`
-  // falls back to the level above rather than to nothing. See the constants above
-  // for what each exemption is and why the file owns the shape it is excused for.
-  //
   // The scan read `e2e/**/*.ts` — specs AND the driver/helper modules, because a
-  // settle anti-pattern can hide in a helper the specs import (#868 phase 2).
+  // settle anti-pattern can hide in a helper the specs import (#868 phase 2). Only
+  // e2e/helpers.ts was never read: it OWNS the settle patterns it exists to
+  // centralize, so an `ignores` here leaves it on the level above, which is what
+  // that one exclusion meant.
   {
     files: ["e2e/**/*.ts"],
     ignores: [E2E_HELPERS],
     rules: {
       "no-restricted-imports": restrictImports(
-        [REVALIDATE_PATH_BAN],
-        IMPORT_PATTERNS_PRODUCTION
-      ),
-      "no-restricted-syntax": ["error", ...SYNTAX_E2E],
-      "no-restricted-properties": ["error", ...E2E_PROPERTY_BANS],
-    },
-  },
-  {
-    files: ["e2e/**/*.ts"],
-    ignores: [E2E_HELPERS, E2E_FAMILY_HOME],
-    rules: {
-      "no-restricted-syntax": ["error", ...SYNTAX_E2E_FAMILY],
-    },
-  },
-  {
-    files: ["e2e/**/*.ts"],
-    ignores: [E2E_HELPERS, E2E_FAMILY_HOME, E2E_FIXTURE_PROFILE],
-    rules: {
-      "no-restricted-syntax": ["error", ...SYNTAX_E2E_PROFILE],
-    },
-  },
-  {
-    files: ["e2e/**/*.ts"],
-    ignores: [
-      E2E_HELPERS,
-      E2E_FAMILY_HOME,
-      E2E_FIXTURE_PROFILE,
-      ...E2E_WORKER_HARNESS,
-    ],
-    rules: {
-      "no-restricted-imports": restrictImports(
         [REVALIDATE_PATH_BAN, E2E_HARNESS_IMPORT_BAN],
         IMPORT_PATTERNS_PRODUCTION
       ),
-      "no-restricted-syntax": ["error", ...SYNTAX_E2E_HARNESS],
-      "no-restricted-properties": ["error", ...E2E_PROPERTY_BANS_HARNESS],
+      "no-restricted-syntax": ["error", ...SYNTAX_E2E_ALL],
+      "no-restricted-properties": ["error", ...E2E_PROPERTY_BANS],
+    },
+  },
+  // The Settings → Family driver owns the three inline markers by design…
+  {
+    files: [E2E_FAMILY_HOME],
+    rules: {
+      "no-restricted-syntax": ["error", ...SYNTAX_E2E_FAMILY_HOME],
+    },
+  },
+  // …the fixture-profile constructor pair owns the two profile writes…
+  {
+    files: [E2E_FIXTURE_PROFILE],
+    rules: {
+      "no-restricted-syntax": ["error", ...SYNTAX_E2E_FIXTURE_PROFILE],
+    },
+  },
+  // …and the DB-per-worker harness IS what the harness bans point at: it extends
+  // Playwright's `test`, reads ALLOS_DB_PATH to hand out workerDbPath(), and takes
+  // the one wall-clock reading frozenNow() is derived from.
+  {
+    files: E2E_WORKER_HARNESS,
+    rules: {
+      "no-restricted-imports": restrictImports(
+        [REVALIDATE_PATH_BAN],
+        IMPORT_PATTERNS_PRODUCTION
+      ),
+      "no-restricted-syntax": ["error", ...SYNTAX_E2E_WORKER_HARNESS],
+      "no-restricted-properties": [
+        "error",
+        ...E2E_PROPERTY_BANS_WORKER_HARNESS,
+      ],
     },
   },
   // A seed and a fixture module delete-then-insert to stay idempotent over an
   // existing database, which is their job and not a spec's cleanup — so the shared
-  // activity cleanup is the one ban scoped to specs alone. None of the exempt files
-  // above is a spec, so this level spreads the one below it unconditionally.
+  // activity cleanup is the one ban scoped to specs alone. None of the three files
+  // above is a spec, so this block adds to the full list rather than to a converse.
   {
     files: ["e2e/**/*.spec.ts"],
     rules: {
