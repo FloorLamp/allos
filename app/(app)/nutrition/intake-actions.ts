@@ -11,6 +11,10 @@ import { requireScope } from "@/lib/scope";
 
 import { revalidateRoute } from "@/lib/revalidate";
 import { db, today, writeTx } from "@/lib/db";
+import {
+  createIntakeItemCore,
+  insertIntakeDose,
+} from "@/lib/intake-item-create";
 import { sqlNow } from "@/lib/clock";
 import { isRealIsoDate, zonedWallTimeToUtc } from "@/lib/date";
 import { statedInstantOnDate } from "@/lib/stated-time";
@@ -172,7 +176,8 @@ function fields(formData: FormData) {
   // one obligation that carries a safety net.
   const kindEarly: IntakeItemKind =
     formData.get("kind") === "medication" ? "medication" : "supplement";
-  const defaultObligation = intakeKindAffordances(kindEarly).defaultObligation;
+  const kindAffordances = intakeKindAffordances(kindEarly);
+  const defaultObligation = kindAffordances.defaultObligation;
   const obligationRaw = String(formData.get("obligation") ?? defaultObligation);
   // A `may` item is on demand by construction (#1505 collapsed obligation into it), so
   // the old separate as-needed checkbox is gone: choosing May declares no dueness.
@@ -246,6 +251,12 @@ function fields(formData: FormData) {
   // pushability — obligation does.
   const kind: IntakeItemKind = kindEarly;
   const isMed = kind === "medication";
+  // Stack is a SUPPLEMENT affordance, cleared for a medication for the same reason the
+  // medication-only columns below are cleared for a supplement: a kind flip must not
+  // leave stale data, and the create core nulls this column from the SAME table
+  // (intakeKindAffordances(...).stack). Without this the EDIT wrote a stack the CREATE
+  // refuses, so a medication's shape depended on which door touched it last.
+  const stack = kindAffordances.stack ? str("stack") : null;
   const prescriber = isMed ? str("prescriber") : null;
   const pharmacy = isMed ? str("pharmacy") : null;
   const rxNumber = isMed ? str("rx_number") : null;
@@ -320,7 +331,7 @@ function fields(formData: FormData) {
     notes: str("notes"),
     brand: str("brand"),
     product: str("product"),
-    stack: str("stack"),
+    stack,
     condition,
     obligation,
     situation,
@@ -432,63 +443,6 @@ function unreadableDoseAmount(
     (d) => readDoseQuantity(d.amount).kind === "unreadable"
   );
   return bad ? (bad.amount ?? "") : null;
-}
-
-// Stamp created_at so the adherence-pattern window starts at the dose's real birth,
-// not the parent item's (#430). SQLite forbids datetime('now') as an ADD COLUMN
-// default, so the write path sets it explicitly — from the CLOCK SEAM (sqlNow,
-// #1534), because doseAdherenceSince truncates this stamp to a calendar DAY
-// (`.slice(0, 10)`) and compares it against a `today()`-derived window.
-const insertDoseStmt = () =>
-  db.prepare(
-    `INSERT INTO intake_item_doses
-       (item_id, amount, time_of_day, food_timing, sort, created_at,
-        weekdays, start_date, end_date)
-     VALUES (?,?,?,?,?,?,?,?,?)`
-  );
-
-// The schedule-version writer (recordScheduleVersion) lives with the dose-lifecycle
-// core (#2131, lib/queries/intake/dose-lifecycle.ts) so the dose-edit path and the
-// retire/un-retire transitions share ONE version writer; imported above.
-
-// Insert a fresh set of doses for an intake item (used on add + accept). Must run
-// inside a transaction.
-function insertDoses(
-  itemId: number,
-  doses: {
-    amount: string | null;
-    time_of_day: string | null;
-    food_timing: FoodTiming;
-    // Optional so the AI-suggestion accept path — which has no calendar to offer —
-    // still type-checks and simply inserts an unrestricted row (#1602).
-    weekdays?: string | null;
-    start_date?: string | null;
-    end_date?: string | null;
-  }[],
-  // The profile-LOCAL calendar day the doses are born on — the first version's
-  // `effective_from` (#1973). Local rather than a UTC slice of `created_at` because it is
-  // compared against the profile-local windows every adherence surface is built from.
-  birthDay: string
-) {
-  const ins = insertDoseStmt();
-  doses.forEach((d, i) => {
-    const info = ins.run(
-      itemId,
-      d.amount,
-      d.time_of_day,
-      d.food_timing,
-      i,
-      sqlNow(),
-      d.weekdays ?? null,
-      d.start_date ?? null,
-      d.end_date ?? null
-    );
-    // Seed the schedule history at birth (#1973). Without this first version, the FIRST
-    // edit would have nothing to close: the new version would become the earliest one,
-    // and the resolver's before-recorded-history fallback would judge every past day by
-    // the NEW rule — the retroactive re-judgment this whole feature exists to prevent.
-    recordScheduleVersion(Number(info.lastInsertRowid), birthDay, d);
-  });
 }
 
 interface PairInput {
@@ -775,7 +729,7 @@ export async function addIntakeItem(formData: FormData): Promise<FormResult> {
     f.kind,
     f.indicationConditionIdRaw
   );
-  writeTx(() => {
+  const created = writeTx(() => {
     // Link the situational item to its id-keyed situation ROW (#560), creating the
     // row if this is a new label; the free-text `situation` column is kept as a
     // denormalized fallback.
@@ -788,82 +742,76 @@ export async function addIntakeItem(formData: FormData): Promise<FormResult> {
     const pauseSituationId = f.pauseSituation
       ? resolveSituationId(profile.id, f.pauseSituation)
       : null;
-    // created_at is bound from the CLOCK SEAM (sqlNow, #1534) rather than left to the
-    // column's `datetime('now')` default: an intake item's created_at is read as a
-    // calendar DAY — `date(created_at)` seeds a medication course's started_on and
-    // decides episode membership (getEpisodeMedReconciliation), and
-    // doseAdherenceSince truncates it — all against `today()`-derived windows.
-    const info = db
-      .prepare(
-        `INSERT INTO intake_items
-           (name, notes, condition, obligation, brand, product, situation, situation_id,
-            pause_situation_id, stack,
-            critical, escalate_after_min, escalate_chat_id,
-            quantity_on_hand, qty_per_dose,
-            kind, prescriber, pharmacy, rx_number, rx,
-            min_interval_hours, max_daily_count, max_daily_amount_mg, redose_notice,
-            rxcui, rxcui_ingredients, provider_id, indication_condition_id, source, profile_id,
-            created_at,
-            cadence_kind, cadence_weekdays, cadence_interval_days, cadence_anchor_date,
-            supply_id)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual',?,?,?,?,?,?,?)`
-      )
-      .run(
-        name,
-        f.notes,
-        f.condition,
-        f.obligation,
-        f.brand,
-        f.product,
-        f.situation,
-        situationId,
-        pauseSituationId,
-        f.stack,
-        f.critical,
-        f.escalateAfterMin,
-        f.escalateChatId,
-        supplyId != null ? null : f.quantityOnHand,
-        f.qtyPerDose,
-        f.kind,
-        f.prescriber,
-        f.pharmacy,
-        f.rxNumber,
-        f.rx,
-        f.minIntervalHours,
-        f.maxDailyCount,
-        f.maxDailyAmountMg,
-        f.redoseNotice,
-        f.rxcui,
-        f.rxcuiIngredients,
-        providerId,
-        indicationConditionId,
-        profile.id,
-        sqlNow(),
-        f.cadenceKind,
-        f.cadenceWeekdays,
-        f.cadenceIntervalDays,
-        f.cadenceAnchorDate,
-        supplyId
-      );
-    const itemId = Number(info.lastInsertRowid);
-    insertDoses(itemId, doses, todayStr);
-    reconcilePairs(itemId, pairs, profile.id);
-    reconcileIngredients(itemId, ingredients?.ok ? ingredients.rows : null);
+    // The item, its doses and (for a medication) its opening course are ONE core call
+    // (#4669) — this action no longer spells the intake_items column set. What the
+    // form knows it passes; the kind's defaults, the Rx derivation, the redose-notice
+    // coupling and the shared-bottle count rule live in the core.
+    const base = {
+      name,
+      provenance: { source: "manual" } as const,
+      notes: f.notes,
+      condition: f.condition,
+      obligation: f.obligation,
+      brand: f.brand,
+      product: f.product,
+      stack: f.stack,
+      situation: f.situation,
+      situationId,
+      pauseSituationId,
+      critical: f.critical,
+      escalateAfterMin: f.escalateAfterMin,
+      escalateChatId: f.escalateChatId,
+      quantityOnHand: f.quantityOnHand,
+      qtyPerDose: f.qtyPerDose,
+      supplyId,
+      rxcui: f.rxcui,
+      rxcuiIngredients: f.rxcuiIngredients,
+      cadenceKind: f.cadenceKind,
+      cadenceWeekdays: f.cadenceWeekdays,
+      cadenceIntervalDays: f.cadenceIntervalDays,
+      cadenceAnchorDate: f.cadenceAnchorDate,
+      doses,
+    };
+    const outcome = createIntakeItemCore(
+      profile.id,
+      f.kind === "medication"
+        ? {
+            ...base,
+            kind: "medication",
+            prescriber: f.prescriber,
+            pharmacy: f.pharmacy,
+            rxNumber: f.rxNumber,
+            rx: f.rx,
+            providerId,
+            indicationConditionId,
+            minIntervalHours: f.minIntervalHours,
+            maxDailyCount: f.maxDailyCount,
+            maxDailyAmountMg: f.maxDailyAmountMg,
+            redoseNotice: f.redoseNotice,
+            // Ensure-course-on-create: a new medication opens an initial course on the
+            // chosen date (today for quick-add).
+            course: {
+              kind: "open",
+              startedOn: hasStartedOn
+                ? startedOnRaw || null
+                : f.isOnDemand
+                  ? null
+                  : todayStr,
+              preserveUnknownStart:
+                f.isOnDemand && (!hasStartedOn || !startedOnRaw),
+            },
+          }
+        : { ...base, kind: "supplement" }
+    );
+    if (!outcome.ok) return outcome;
+    reconcilePairs(outcome.id, pairs, profile.id);
+    reconcileIngredients(outcome.id, ingredients?.ok ? ingredients.rows : null);
     // Purpose links (#2857). Inside the same write transaction as the item and its
     // composition, so an item and its declared "why" land together or not at all.
-    reconcilePurposes(itemId, ownedPurposes(profile.id, purposes));
-    // Ensure-course-on-create: a new medication opens an initial course
-    // on the chosen date (today for quick-add). A no-op for supplements (kind
-    // guard inside the helper).
-    if (f.kind === "medication") {
-      ensureMedicationCourse(
-        profile.id,
-        itemId,
-        hasStartedOn ? startedOnRaw || null : f.isOnDemand ? null : todayStr,
-        f.isOnDemand && (!hasStartedOn || !startedOnRaw)
-      );
-    }
+    reconcilePurposes(outcome.id, ownedPurposes(profile.id, purposes));
+    return outcome;
   });
+  if (!created.ok) return formError(created.error);
   // A newly pooled item changes what the cabinet and its doors show.
   if (supplyId != null) revalidateRoute("/supplies");
   revalidateIntake();
@@ -1094,7 +1042,6 @@ export async function updateIntakeItem(
     // in-flight Telegram reminder buttons (which carry the dose id) valid across
     // a brand/dosage edit. The retired = 0 guard keeps a forged/stale id from
     // rewriting a retired dose's row, which history still displays through.
-    const ins = insertDoseStmt();
     // Bump updated_at only when the slot actually changes (#430): a re-time
     // (evening → morning) restarts the adherence-pattern window so the engine
     // stops re-accusing the OLD slot, but a pure amount/food edit leaves the
@@ -1185,22 +1132,10 @@ export async function updateIntakeItem(
           recordScheduleVersion(d.id, todayStr, d);
         }
       } else {
-        const info = ins.run(
-          id,
-          d.amount,
-          d.time_of_day,
-          d.food_timing,
-          i,
-          sqlNow(),
-          d.weekdays ?? null,
-          d.start_date ?? null,
-          d.end_date ?? null
-        );
-        const newId = Number(info.lastInsertRowid);
-        // A dose added by an edit is born today; seed its first version so its own
-        // first schedule change has something to close (#1973).
-        recordScheduleVersion(newId, todayStr, d);
-        keptIds.push(newId);
+        // A dose added by an edit is born today, through the SAME writer a created
+        // item's doses go through (#4669) — stamped, and with its first schedule
+        // version seeded so its own first change has something to close (#1973).
+        keptIds.push(insertIntakeDose(id, d, todayStr, i));
       }
     });
     // A dose the user removed is RETIRED (kept, flagged) when adherence logs
@@ -2059,6 +1994,17 @@ export async function generateSuggestions(
   };
 }
 
+// A create the accept's core refused, raised so it ABORTS that accept's transaction
+// (see below) and re-typed as a form refusal outside it. Not a control-flow shortcut:
+// a throw is the only way to undo a compare-and-swap that already landed in the
+// transaction.
+class CreateRefused extends Error {
+  constructor(readonly refusal: string) {
+    super(refusal);
+    this.name = "CreateRefused";
+  }
+}
+
 export async function acceptSuggestion(
   formData: FormData
 ): Promise<FormResult> {
@@ -2071,93 +2017,91 @@ export async function acceptSuggestion(
   // across a slow response, two devices) produce exactly one medication and one honest
   // refusal — the old guard was a plain read before the transaction, and both racers
   // passed it.
-  const accepted = writeTx((tx): boolean | "workout-schedule-unavailable" => {
-    const s = readForUpdate<{
-      status: string;
-      name: string;
-      dosage: string | null;
-      time_of_day: string | null;
-      food_timing: FoodTiming;
-      condition: string;
-      obligation: string;
-      brand: string | null;
-      product: string | null;
-      situation: string | null;
-      rationale: string;
-    }>(
-      tx,
-      db.prepare(
-        "SELECT * FROM intake_item_suggestions WHERE id = ? AND profile_id = ?"
-      ),
-      id,
-      profile.id
-    );
-    if (!s || s.status !== "pending") return false;
-    if (
-      WORKOUT_CONDITIONS.includes(s.condition as IntakeCondition) &&
-      !isTrainingRelevant(getProfileAge(profile.id))
-    ) {
-      return "workout-schedule-unavailable" as const;
-    }
-    // Claim the suggestion FIRST: the expectation lives in the WHERE, and only the
-    // accept whose UPDATE lands may mint the item.
-    const claim = casUpdate(
-      tx,
-      db.prepare(
-        "UPDATE intake_item_suggestions SET status = 'accepted' WHERE id = ? AND profile_id = ? AND status = 'pending'"
-      ),
-      id,
-      profile.id
-    );
-    if (claim.kind === "stale") return false;
-    // Parse the free-text dosage ("5–10 g once daily") into a clean amount and
-    // intake count, rather than dumping it all into one dose's amount.
-    const parsed = parseDosage(s.dosage);
-    const amount = parsed.amount ?? s.dosage;
-    const time = s.time_of_day ?? parsed.timeOfDay ?? null;
-    const times = spreadDoseTimes(parsed.perDay, time);
-    // Link an accepted situational suggestion to its situation ROW (#560).
-    const situationId =
-      s.condition === "situational" && s.situation
-        ? resolveSituationId(profile.id, s.situation)
-        : null;
-    // created_at is bound from the CLOCK SEAM (sqlNow, #1534) rather than left to the
-    // column's `datetime('now')` default: an intake item's created_at is read as a
-    // calendar DAY — `date(created_at)` seeds a medication course's started_on and
-    // decides episode membership (getEpisodeMedReconciliation), and
-    // doseAdherenceSince truncates it — all against `today()`-derived windows.
-    const info = db
-      .prepare(
-        `INSERT INTO intake_items
-           (name, notes, condition, obligation, brand, product, situation, situation_id, stack, source, profile_id,
-            created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,'manual',?,?)`
-      )
-      .run(
-        s.name,
-        s.rationale,
-        s.condition,
-        s.obligation,
-        s.brand,
-        s.product,
-        s.situation,
-        situationId,
-        null,
-        profile.id,
-        sqlNow()
+  let accepted: boolean | "workout-schedule-unavailable";
+  try {
+    accepted = writeTx((tx): boolean | "workout-schedule-unavailable" => {
+      const s = readForUpdate<{
+        status: string;
+        name: string;
+        dosage: string | null;
+        time_of_day: string | null;
+        food_timing: FoodTiming;
+        condition: IntakeCondition;
+        obligation: IntakeObligation;
+        brand: string | null;
+        product: string | null;
+        situation: string | null;
+        rationale: string;
+      }>(
+        tx,
+        db.prepare(
+          "SELECT * FROM intake_item_suggestions WHERE id = ? AND profile_id = ?"
+        ),
+        id,
+        profile.id
       );
-    const itemId = Number(info.lastInsertRowid);
-    insertDoses(
-      itemId,
-      times.map((t) => ({
-        amount,
-        time_of_day: t,
-        food_timing: s.food_timing ?? "any",
-      })),
-      today(profile.id)
-    );
-    return true;
-  });
+      if (!s || s.status !== "pending") return false;
+      if (
+        WORKOUT_CONDITIONS.includes(s.condition) &&
+        !isTrainingRelevant(getProfileAge(profile.id))
+      ) {
+        return "workout-schedule-unavailable" as const;
+      }
+      // Claim the suggestion FIRST: the expectation lives in the WHERE, and only the
+      // accept whose UPDATE lands may mint the item.
+      const claim = casUpdate(
+        tx,
+        db.prepare(
+          "UPDATE intake_item_suggestions SET status = 'accepted' WHERE id = ? AND profile_id = ? AND status = 'pending'"
+        ),
+        id,
+        profile.id
+      );
+      if (claim.kind === "stale") return false;
+      // Parse the free-text dosage ("5–10 g once daily") into a clean amount and
+      // intake count, rather than dumping it all into one dose's amount.
+      const parsed = parseDosage(s.dosage);
+      const amount = parsed.amount ?? s.dosage;
+      const time = s.time_of_day ?? parsed.timeOfDay ?? null;
+      const times = spreadDoseTimes(parsed.perDay, time);
+      // Link an accepted situational suggestion to its situation ROW (#560).
+      const situationId =
+        s.condition === "situational" && s.situation
+          ? resolveSituationId(profile.id, s.situation)
+          : null;
+      // The SAME create core the form uses (#4669). `kind` is stated OUTRIGHT rather
+      // than left to the schema's `kind='supplement'` default: intake_item_suggestions
+      // has no kind column because the suggester only ever proposes supplements, and
+      // that is a fact about this caller, not something a column default should be
+      // asked to remember.
+      const created = createIntakeItemCore(profile.id, {
+        name: s.name,
+        kind: "supplement",
+        provenance: { source: "manual" },
+        notes: s.rationale,
+        condition: s.condition,
+        obligation: s.obligation,
+        brand: s.brand,
+        product: s.product,
+        situation: s.situation,
+        situationId,
+        doses: times.map((t) => ({
+          amount,
+          time_of_day: t,
+          food_timing: s.food_timing ?? "any",
+        })),
+      });
+      // A refusal must ROLL THE CLAIM BACK, not merely be reported: returning it
+      // would commit an `accepted` suggestion that produced no item, losing it
+      // silently. A throw is the only thing better-sqlite3 treats as an abort, so the
+      // refusal leaves the transaction as one and is re-typed on the way out.
+      if (!created.ok) throw new CreateRefused(created.error);
+      return true;
+    });
+  } catch (e) {
+    if (e instanceof CreateRefused) return formError(e.refusal);
+    throw e;
+  }
   if (accepted === "workout-schedule-unavailable") {
     return formError(
       "Workout-based supplement schedules aren't available for this profile's age."
