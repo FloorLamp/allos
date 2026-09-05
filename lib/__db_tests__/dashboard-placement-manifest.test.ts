@@ -251,6 +251,25 @@ const previousTestNow = process.env.ALLOS_TEST_NOW;
 // as ~14x of a good day, not of a bad one.
 const MANIFEST_HOOK_MS = perTestCeiling(4, "green");
 
+// THE SEEDED POPULATION'S DOSE SLOTS (#5063): each persona's slot rows AS LABELLED,
+// and how many single-dose candidates are left beside them.
+//
+// Both arms are exercised, which is the point of pinning the whole table rather than
+// one persona: `biohacker` groups four buckets and keeps no dose of its own, while
+// `bodybuilder` groups nothing and keeps all four — so a change that swallowed the
+// single-dose row would redden here rather than pass as "one fewer row".
+//
+// The candidate count this replaced is the table's own arithmetic: members plus
+// singles, i.e. 20/4/5/0/2/4 = 35 dose candidates before, and 4/4/2/0/1/3 = 14 after.
+const EXPECTED_DOSE_SLOTS: Record<string, [string[], number]> = {
+  bodybuilder: [[], 4],
+  "marathon-runner": [["Morning (2)"], 0],
+  household: [[], 0],
+  pregnant: [["Morning (2)"], 2],
+  "diabetic-cgm": [["Evening (2)", "Morning (3)"], 0],
+  biohacker: [["Bedtime (2)", "Evening (4)", "Midday (2)", "Morning (12)"], 0],
+};
+
 describe("actual atomic dashboard manifests", () => {
   beforeAll(async () => {
     process.env.ALLOS_TEST_NOW = "2026-08-18T13:00:00.000Z";
@@ -540,6 +559,55 @@ describe("actual atomic dashboard manifests", () => {
       }
     }
     expect(illnessContext).toBeGreaterThan(0);
+  });
+
+  // A SLOT'S DUE DOSES ARE ONE CANDIDATE (#5063), recorded here because this is the
+  // meter that watches what the dashboard treats as one thing to do. A bucket holding
+  // two or more due doses places ONE `dose-slot:<bucket>` candidate; every dose inside
+  // it stops placing on its own, so it can no longer be cut in two by the Now cap and
+  // spill into the fold. A bucket holding one dose is untouched — the `dose:` column
+  // below is what proves that, and a table where it went to zero everywhere would mean
+  // the grouping had swallowed the single-dose row too.
+  //
+  // THE TABLE IS PINNED RATHER THAN DERIVED, so a regrouping that quietly widened
+  // reddens here. The counts are the real seeded population: read off this file's own
+  // manifests, not computed by hand.
+  it("groups each bucket's due doses into one slot candidate (#5063)", () => {
+    const census = [...manifests].map(([persona, placements]) => {
+      const ids = placements.map(
+        (placement) => placement.candidate.candidateId
+      );
+      const rows = rowPresentations.get(persona)!;
+      return [
+        persona,
+        [
+          // The row's own LABEL, not the candidate id — the count it names is what a
+          // person reads off the seat, and it is the number the take-all promises.
+          ids
+            .filter((id) => id.startsWith("attention.fact:dose-slot:"))
+            .map((id) => String(rows.get(id)!.label))
+            .sort(),
+          ids.filter((id) => id.startsWith("attention.fact:dose:")).length,
+        ],
+      ] as const;
+    });
+    expect(Object.fromEntries(census)).toEqual(EXPECTED_DOSE_SLOTS);
+    // AND THE OFFER FOR A SEATED SLOT IS THAT ROW'S CONTROL, never a second row: one
+    // act, one seat. Asserted over every persona, so a usual-routine offer that starts
+    // standing on one of them cannot quietly re-open the row this issue closed.
+    for (const [persona, placements] of manifests) {
+      const ids = placements.map(
+        (placement) => placement.candidate.candidateId
+      );
+      for (const id of ids) {
+        if (!id.startsWith("nutrition.usual-routine:")) continue;
+        const window = id.slice("nutrition.usual-routine:".length);
+        expect(
+          ids,
+          `${persona}: ${window} has both a slot row and an offer row`
+        ).not.toContain(`attention.fact:dose-slot:${window}`);
+      }
+    }
   });
 
   it("orders Show everything by its fixed groups", () => {
