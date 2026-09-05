@@ -78,7 +78,7 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
   advice (#5138); the gate refuses an unchecked base-moved head (#5235).
 - Its refusal names the `MERGED-TREE-CHECKED` receipt that clears it, base-bound
   as a pass is head-bound: run it and merge in one pass. A notes batch moves
-  every open PR's base: `lib/release-notes.json` is type-bearing under `/^lib/`.
+  every open PR's base: `lib/release-notes.json` is type-bearing under `/^lib\//`.
 - **The exact-head review is INDEPENDENT and pinned to the SHA** (owner
   2026-08-26, #3710): a non-author reviews the candidate commit; the COMMENT
   review states SHA and reviewer — on a shared bot account, also that the

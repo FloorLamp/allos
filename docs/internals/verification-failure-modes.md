@@ -419,7 +419,7 @@ command handed only the diff's own files would have reported one of the 44.
   would cost a pass. Post it as its own paragraph — a receipt inside a fence, an indented
   block or a blockquote quotes rather than speaks, and the gate keeps that line
   only to say it went unread (#5183) — and state all four literals the grammar
-  wants: a head SHA of at least eight characters, the base SHA,
+  wants: the head SHA, the base SHA — each at least eight characters —
   `npm run typecheck`, and a test tier named as its own npm script. The gate
   checks that they were named, never that they cover the diff. Treating the receipt as a shortcut
   to be declined on principle (2026-09-05, twice) sends lanes round the loop with
