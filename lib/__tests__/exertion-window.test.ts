@@ -298,10 +298,11 @@ describe("detectedWorkoutEnd", () => {
     return out;
   }
 
-  it("ends the effort the start is in, not a later one on the same trace", () => {
-    // The morning session ended at 09:30 and the evening run is not its tail. Taking
-    // the last elevated minute of the whole trace writes a sixty-minute session as a
-    // two-and-a-half-hour one, unattended.
+  it("says nothing when the trace holds a later effort too", () => {
+    // The morning session ended at 09:30 and the evening run is not its tail — but
+    // PICKING the first is a mechanism, and three rounds of passes each broke one. The
+    // trace holds two efforts, so it does not say which one this row was, and the
+    // person finishes it themselves.
     expect(
       detectedWorkoutEnd({
         ...BASE,
@@ -309,7 +310,7 @@ describe("detectedWorkoutEnd", () => {
         startedAt: at(30),
         lastSetAt: null,
       })
-    ).toBe(at(90));
+    ).toBeNull();
   });
 
   it("ends the LATER effort when that is the one the start is in", () => {
@@ -329,6 +330,24 @@ describe("detectedWorkoutEnd", () => {
   // contains the start" was really "the first effort at or after the start", so a row
   // started at 08:00 whose trace has nothing elevated until an evening run was answered
   // with the run's end — eleven hours of one session, written unattended.
+  it("says nothing when the trace does not begin until hours after the start", () => {
+    // THE WRIST GOES ON MID-RUN. Nothing before it was measured, so the first thing this
+    // trace can say is about a run at six — and a row started at eight in the morning is
+    // not that run, however unambiguously it reads on its own. Without this the module
+    // answers 19:00 for an 08:00 session: eleven hours, written unattended.
+    const out: ExertionSample[] = [];
+    minutes(out, 600, 660, 130);
+    minutes(out, 660, 700, 55);
+    expect(
+      detectedWorkoutEnd({
+        ...BASE,
+        samples: out,
+        startedAt: at(0),
+        lastSetAt: null,
+      })
+    ).toBeNull();
+  });
+
   it("says nothing when the start is in no effort at all", () => {
     // MEASURED THROUGHOUT, deliberately: a gap here would be refused by the coverage
     // rule instead and this case would stop testing the bound it is for. The trace says
@@ -348,9 +367,12 @@ describe("detectedWorkoutEnd", () => {
     ).toBeNull();
   });
 
-  it("still answers when the effort starts inside the recovery after the start", () => {
-    // The control, and the case the rule must not break: a warm-up shorter than this
-    // profile's own recovery is part of the session they started.
+  it("says nothing when the first measured minutes are inside the resting range", () => {
+    // THE COST OF THE SIMPLIFICATION, PINNED RATHER THAN LEFT TO BE DISCOVERED. A
+    // ten-minute warm-up below this person's own ceiling used to be answered by a rule
+    // that looked past it; that rule is gone and the trace has to begin elevated. They
+    // finish this session themselves, which is the trade the module took over a fourth
+    // mechanism for looking past the start.
     const out: ExertionSample[] = [];
     minutes(out, 0, 10, 55);
     minutes(out, 10, 70, 120);
@@ -362,7 +384,7 @@ describe("detectedWorkoutEnd", () => {
         startedAt: at(0),
         lastSetAt: null,
       })
-    ).toBe(at(70));
+    ).toBeNull();
   });
 
   it("says nothing when the minutes between the start and the effort are unmeasured", () => {
@@ -382,9 +404,10 @@ describe("detectedWorkoutEnd", () => {
     ).toBeNull();
   });
 
-  // NOBODY IS STILL GOING (#5212 third pass, R2). A rest longer than this profile's
-  // recovery closes the first effort, so the cut hid a frontier that was still elevated
-  // — and the refusal became an answer, finishing somebody mid-workout.
+  // A REST BETWEEN HEAVY SETS IS A SECOND EFFORT TO THIS TRACE (#5212 third pass, R2).
+  // Segmenting it and answering the first half is what finished somebody mid-workout,
+  // reaching the safety-tier post-workout dispatch; answering the second half would end
+  // a session at a later effort's minute. Both readings are refused now.
   function restThenBackAtIt(): ExertionSample[] {
     const out: ExertionSample[] = [];
     minutes(out, 0, 35, 120); // the session
@@ -393,7 +416,7 @@ describe("detectedWorkoutEnd", () => {
     return out;
   }
 
-  it("says nothing while the trace is elevated at its frontier, whatever effort the start is in", () => {
+  it("says nothing while the trace is elevated at its frontier", () => {
     expect(
       detectedWorkoutEnd({
         ...BASE,
@@ -411,25 +434,23 @@ describe("detectedWorkoutEnd", () => {
     // coverage bound it does not: four minutes past the last sample is inside the gap
     // this file forgives, so the quiet reads as satisfied and only the frontier test is
     // left to say that this person is lifting right now.
-    const out: ExertionSample[] = [];
-    minutes(out, 0, 35, 120);
-    minutes(out, 35, 45, 55);
-    minutes(out, 45, 55, 140);
+    //
+    // ONE effort, deliberately — a second one is refused before the frontier test is
+    // reached, and this case would stop testing it.
     expect(
       detectedWorkoutEnd({
         ...BASE,
         usualRecoveryMin: 4,
-        samples: out,
+        samples: minutes([], 0, 55, 120),
         startedAt: at(0),
         lastSetAt: null,
       })
     ).toBeNull();
   });
 
-  it("ends the start's own effort once the whole trace comes to rest", () => {
-    // The same trace with the cool-down that was missing. Both rules hold at once: the
-    // frontier lets the answer through, and the answer is the FIRST effort's end rather
-    // than the later one's.
+  it("says nothing about that same trace once it comes to rest, either", () => {
+    // The cool-down lets the frontier rule through and the answer is still no: two
+    // efforts, and the trace does not say which one the row was.
     expect(
       detectedWorkoutEnd({
         ...BASE,
@@ -437,7 +458,25 @@ describe("detectedWorkoutEnd", () => {
         startedAt: at(0),
         lastSetAt: null,
       })
-    ).toBe(at(35));
+    ).toBeNull();
+  });
+
+  it("says nothing when minutes inside the session are unmeasured", () => {
+    // A wrist off mid-session is ABSENCE, so the elevated block after it cannot be shown
+    // to be the same effort — "coverage is not recovery" read BETWEEN two blocks rather
+    // than inside one. Without it a confident answer spans minutes nobody recorded.
+    const out: ExertionSample[] = [];
+    minutes(out, 0, 30, 120);
+    minutes(out, 30 + EXERTION_MAX_GAP_MIN + 1, 70, 120);
+    minutes(out, 70, 110, 55);
+    expect(
+      detectedWorkoutEnd({
+        ...BASE,
+        samples: out,
+        startedAt: at(0),
+        lastSetAt: null,
+      })
+    ).toBeNull();
   });
 
   it("says nothing for a bare wrist — no minutes past the start", () => {

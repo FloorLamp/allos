@@ -362,48 +362,75 @@ describe("the trace is read as instants, not rebuilt from local minutes (#5212 F
     return { p, id };
   }
 
-  // THE PERSON IS STILL LIFTING, and no zone makes that a finished session. The trace
-  // ends elevated, so nothing is written — the frontier rule, asked of the whole trace
-  // rather than of the effort the start is in (#5212 third pass, R2).
+  // TWO EFFORTS, SO NOTHING IS WRITTEN — and that refusal is what the round trip could
+  // not produce. Read as INSTANTS the two blocks are forty minutes apart, past this
+  // profile's recovery, so the trace holds two efforts and does not say which one the
+  // row was. Rebuilding them from local minutes lands the second block on 01:00–01:35
+  // EDT, INSIDE the first block's rest, where it merges into one effort and the module
+  // writes an end. The refusal is the assertion.
   //
-  // This fixture used to assert a finish at 01:20 while its own prose said the person
-  // was mid-session, which is the shape the pass found: segmenting had moved the
-  // frontier out of view and turned that refusal into an answer.
-  it("does not finish a session still in progress across a fall-back hour", async () => {
+  // Both states of the trace are asserted, because they refuse for different reasons and
+  // a fixture that could not tell them apart would not notice either one going.
+  it("refuses a fall-back day that holds two efforts, still going", async () => {
     const { p, id } = seedTwoEfforts("DetEndFallBack", "2026-11-01", false);
     expect(finishDetectedWorkouts(p)).toBe(0);
     expect(rowOf(id).end_time).toBeNull();
   });
 
-  // …and once they really stop, the end is the FIRST effort's — the forty-minute rest
-  // after it is longer than this profile's recovery, which is this module's own rule for
-  // an end, so the second block is a second effort rather than a continuation.
-  //
-  // WHAT THE MINUTE DISCRIMINATES: 01:20 is where the first effort ended in INSTANTS.
-  // Rebuilding the trace from local minutes lands the second block on 01:00–01:35 EDT,
-  // inside the first block's rest, and the answer moves to 01:35.
-  it("ends the effort where it really ended across a fall-back hour", async () => {
+  it("refuses it once they stop, too", async () => {
     const { p, id } = seedTwoEfforts(
       "DetEndFallBackRested",
       "2026-11-01",
       true
     );
+    expect(finishDetectedWorkouts(p)).toBe(0);
+    expect(rowOf(id).end_time).toBeNull();
+  });
+
+  // THE CONTROL THE PAIR ABOVE NEEDS, because two refusals are also what a module that
+  // had simply stopped working in this zone would produce. One effort on the SAME
+  // profile-local day of the SAME transition, and the end is the minute it really ended.
+  it("still finishes a single effort on the transition day", async () => {
+    const p = newProfile("DetEndFallBackSingle");
+    setTimezone(p, "America/New_York");
+    seedRestingHrBefore(p, "2026-11-01", 60);
+    seedInstants(p, "2026-11-01T04:40:00Z", "2026-11-01T05:20:00Z", 140);
+    seedInstants(p, "2026-11-01T05:20:00Z", "2026-11-01T06:00:00Z", 55);
+    const id = seedOpenWorkoutOn(
+      p,
+      "2026-11-01",
+      "00:40",
+      "2026-11-01T04:45:00Z"
+    );
     expect(finishDetectedWorkouts(p)).toBe(1);
     expect(rowOf(id)).toEqual({ end_time: "01:20", duration_min: 40 });
   });
 
-  // The control, and it is the property stated directly: the same timeline on a day
-  // with no transition in it reads the same way, in BOTH states. A zone that silenced
-  // the module, or a fall-back hour that moved the answer, would show up as these
-  // disagreeing with their pair above.
+  // The ordinary-day control: the same timeline on a day with no transition in it reads
+  // the same way in all three states. A zone that silenced the module, or a fall-back
+  // hour that moved an answer, shows up as these disagreeing with their pair above.
   it("reads the same timeline the same way on an ordinary day", async () => {
     const going = seedTwoEfforts("DetEndControlGoing", "2026-10-25", false);
     expect(finishDetectedWorkouts(going.p)).toBe(0);
     expect(rowOf(going.id).end_time).toBeNull();
 
     const rested = seedTwoEfforts("DetEndControlRested", "2026-10-25", true);
-    expect(finishDetectedWorkouts(rested.p)).toBe(1);
-    expect(rowOf(rested.id)).toEqual({ end_time: "01:20", duration_min: 40 });
+    expect(finishDetectedWorkouts(rested.p)).toBe(0);
+    expect(rowOf(rested.id).end_time).toBeNull();
+
+    const single = newProfile("DetEndControlSingle");
+    setTimezone(single, "America/New_York");
+    seedRestingHrBefore(single, "2026-10-25", 60);
+    seedInstants(single, "2026-10-25T04:40:00Z", "2026-10-25T05:20:00Z", 140);
+    seedInstants(single, "2026-10-25T05:20:00Z", "2026-10-25T06:00:00Z", 55);
+    const id = seedOpenWorkoutOn(
+      single,
+      "2026-10-25",
+      "00:40",
+      "2026-10-25T04:45:00Z"
+    );
+    expect(finishDetectedWorkouts(single)).toBe(1);
+    expect(rowOf(id)).toEqual({ end_time: "01:20", duration_min: 40 });
   });
 });
 
@@ -429,6 +456,20 @@ describe("the sweep refuses what the third pass drove (#5212 R1, R2)", () => {
     seedRange(p, "08:00", "18:00", 55);
     seedRange(p, "18:00", "19:00", 150);
     seedRange(p, "19:00", "19:40", 55);
+    const id = seedOpenWorkout(p, "08:00", new Date("2026-07-17T08:20:00Z"));
+
+    expect(finishDetectedWorkouts(p)).toBe(0);
+    expect(rowOf(id).end_time).toBeNull();
+  });
+
+  // R1's other half: the wrist goes on MID-RUN, so the trace begins elevated but hours
+  // after the row did. It reads as one clean effort on its own terms, which is exactly
+  // why the start has to be asked about separately.
+  it("writes nothing when the trace does not begin until hours after the start", () => {
+    const p = newProfile("DetEndWristOnLate");
+    seedRestingHr(p, 60);
+    seedRange(p, "17:00", "17:40", 150);
+    seedRange(p, "17:40", "18:20", 55);
     const id = seedOpenWorkout(p, "08:00", new Date("2026-07-17T08:20:00Z"));
 
     expect(finishDetectedWorkouts(p)).toBe(0);
@@ -461,17 +502,29 @@ describe("the sweep refuses what the third pass drove (#5212 R1, R2)", () => {
     expect(getWorkoutPresence(p).state).toBe("active");
   });
 
-  // The control for both, and it is the same trace as R2 with the cool-down that was
-  // missing: the frontier lets the answer through, and the answer is the FIRST effort's
-  // end rather than the later one's. Without this, the two refusals above could be a
-  // module that had simply stopped answering.
-  it("finishes that same session at its first effort once they stop", () => {
+  // …and it is still refused once they stop. Answering the first half is what finished
+  // somebody mid-workout; answering the second would end the session at a later effort's
+  // minute. The trace holds two efforts, so it does not say.
+  it("refuses that same trace once they stop, rather than picking a half", () => {
     const p = newProfile("DetEndStoppedForReal");
     seedRestingHr(p, 60);
     seedRange(p, "16:00", "16:35", 140);
     seedRange(p, "16:35", "16:55", 55);
     seedRange(p, "16:55", "17:05", 140);
     seedRange(p, "17:05", "17:45", 55);
+    const id = seedOpenWorkout(p, "16:00", new Date("2026-07-17T16:20:00Z"));
+
+    expect(finishDetectedWorkouts(p)).toBe(0);
+    expect(rowOf(id).end_time).toBeNull();
+  });
+
+  // THE CONTROL FOR ALL THREE, so a run of refusals cannot be a module that stopped
+  // answering: the same profile and the same day, with the second effort taken out.
+  it("finishes the same session when it is the day's only effort", () => {
+    const p = newProfile("DetEndSingleEffortDay");
+    seedRestingHr(p, 60);
+    seedRange(p, "16:00", "16:35", 140);
+    seedRange(p, "16:35", "17:45", 55);
     const id = seedOpenWorkout(p, "16:00", new Date("2026-07-17T16:20:00Z"));
 
     expect(finishDetectedWorkouts(p)).toBe(1);
@@ -541,17 +594,15 @@ describe("what a later write does to a detected end (#5212 falsifying pass)", ()
   // WHAT THIS PIN IS FOR is the second half, which the pass found and which the effort
   // bound closes: after such a clobber the row must not be finished AGAIN at some later
   // instant. The clobber's own `updated_at` is newer than the candidate, so the save
-  // stamp cancels it, and `detectedWorkoutEnd`'s own effort bound (#5289) stops a later
-  // effort from offering a candidate beyond it. The row stays open for the stale
-  // suggest, which is the degraded outcome and the safe one.
+  // stamp cancels it. (A later effort on the same day cannot offer a candidate beyond it
+  // either — the trace would hold two efforts and the detector refuses outright, which is
+  // the case above.) The row stays open for the stale suggest, which is the degraded
+  // outcome and the safe one.
   it("is not finished a second time after a later write clears the end", () => {
     const p = newProfile("DetEndClobber");
     seedRestingHr(p, 60);
     seedRange(p, "16:00", "16:35", 140);
     seedRange(p, "16:35", "17:00", 55);
-    // A second, later effort — the shape that offered a different instant before.
-    seedRange(p, "19:00", "19:30", 150);
-    seedRange(p, "19:30", "20:00", 55);
     const id = seedOpenWorkout(p, "16:00", new Date("2026-07-17T16:20:00Z"));
 
     expect(finishDetectedWorkouts(p)).toBe(1);

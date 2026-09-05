@@ -208,9 +208,11 @@ export function finishDetectedWorkouts(profileId: number): number {
       profileId,
       priorEventWindows(profileId, row.type, { date: row.date, id: row.id })
     );
-    // THE WHOLE WINDOW, HANDED OVER WHOLE. `detectedWorkoutEnd` is bounded to the effort
-    // that contains the start — its own contract (#5289), not something this gather
-    // arranges by feeding it a narrow slice. Two days go in; one effort comes back.
+    // THE WHOLE WINDOW, HANDED OVER WHOLE. Bounding it here was tried twice and each
+    // bound had a neighbouring case it got wrong (#5289). `detectedWorkoutEnd` answers
+    // one unambiguous shape and refuses everything else, which is a contract a caller
+    // cannot improve on by feeding it a narrower slice — a slice is exactly how a second
+    // effort stops being visible to the rule that refuses because of it. Two days go in.
     const end = detectedWorkoutEnd({
       samples,
       ceilingBpm: ceiling,

@@ -191,73 +191,6 @@ export function exertionWindows(input: ExertionWindowInput): ExertionSpan[] {
 }
 
 /**
- * THE EFFORT THAT CONTAINS THE START, and nothing after it — or null when the start is
- * inside no effort at all.
- *
- * `samples` is the trace from `startedAt` onward, in instant order. Two bounds, and both
- * are `recoveryMs`, which is the number this module already uses to say an effort has
- * ended. Nothing new is invented in either direction.
- *
- * ── WHERE THE EFFORT ENDS ────────────────────────────────────────────────────
- * The cut is made where `detectedWorkoutEnd` would already have declared an end:
- * `recoveryMs` of quiet after an elevated minute. Same threshold, so this introduces no
- * second judgment and cannot move a candidate that would have been chosen — the samples
- * before the cut are unchanged. A trace holding one effort is returned whole.
- *
- * ── WHERE IT BEGINS, WHICH IS THE HALF THE FIRST DRAFT DID NOT HAVE ──────────
- * That draft walked forward to the FIRST elevated minute at or after the start and
- * called it this session's. So a row started at 08:00 whose wrist went on at 17:00, or
- * whose trace has nothing elevated until an evening run, was answered with the run's
- * end: 08:00–19:00, eleven hours of "strength training", written unattended. It closed
- * the case it was shown and left the neighbouring one open.
- *
- * "Contains the start" is a claim about the start, so it is asked about the start: the
- * elevated minutes must begin before `recoveryMs` of quiet has passed since it, and that
- * quiet must be MEASURED. Beyond that much quiet, the effort the start was in has ended
- * by this module's own rule — or never happened — and either way the trace does not say
- * when this session finished. Null, and the stale suggest stays the fallback, which is
- * "the trace decides, never the clock" read at the opening edge.
- *
- * The cost is a real case and it is small: a profile whose own `usualRecoveryMin` is six
- * minutes, warming up for seven below their own ceiling, gets no detected end. That is
- * the same trade the module makes everywhere — their own measured number wins even when
- * it is smaller than the default — and it fails toward the refusal.
- */
-function effortFromStart(
-  samples: readonly ExertionSample[],
-  ceilingBpm: number,
-  recoveryMs: number,
-  startedAt: number
-): ExertionSample[] | null {
-  let first = -1;
-  for (let i = 0; i < samples.length; i++)
-    if (samples[i].bpm > ceilingBpm) {
-      first = i;
-      break;
-    }
-  if (first < 0) return null;
-  const begins = samples[first].at;
-  if (begins - startedAt >= recoveryMs) return null;
-  // Unmeasured minutes between the start and the effort are not quiet either — the same
-  // sentence `covered` makes everywhere else in this file. Without it a trace that
-  // simply BEGINS elevated the next day reads as containing the start.
-  if (!covered(samples, startedAt, begins)) return null;
-
-  let quietFrom: number | null = null;
-  for (let i = first; i < samples.length; i++) {
-    const sample = samples[i];
-    if (sample.bpm > ceilingBpm) {
-      quietFrom = null;
-      continue;
-    }
-    if (quietFrom == null) quietFrom = sample.at;
-    else if (sample.at - quietFrom >= recoveryMs)
-      return samples.slice(0, i + 1);
-  }
-  return [...samples];
-}
-
-/**
  * The END an open row should adopt, or null when the trace does not say.
  *
  * Reader 1 of the detector (#5113). "Open" is the ROW's shape rather than the editor's
@@ -270,28 +203,25 @@ function effortFromStart(
  * the session — so a set on the far side of the candidate is proof the session had not
  * ended there. That is the one rule keeping this from finishing somebody mid-workout.
  *
- * ── THE EFFORT THAT CONTAINS THE START, AND NOTHING AFTER IT ─────────────────
- * "The effort that contains the start" is the whole of the promise, and the loop below
- * used to take the last elevated minute of EVERYTHING it was handed. Handed a day, an
- * 08:00–08:40 session with an 18:00 run on it was answered 19:00: twelve hours of
- * "strength training", written unattended. A caller can bound its own gather, but the
- * segmenting is this function's contract rather than the caller's — so the cut is made
- * here, and a caller may hand over as many days as it likes.
+ * ── IT ANSWERS ONE SHAPE, AND REFUSES EVERY OTHER ────────────────────────────
+ * Three rounds of falsifying passes each broke a different SEGMENTING of the trace: a
+ * cut that took the last elevated minute of two whole days, then one that took the
+ * first effort at or after the start (an 08:00 row with the wrist put on at 17:00 was
+ * answered 19:00), then one that hid the frontier so a rest between heavy sets finished
+ * somebody mid-session. Each fix was a new mechanism, and each new mechanism had its own
+ * neighbouring case.
  *
- * ── THE WHOLE TRACE MUST HAVE COME TO REST, NOT JUST THAT EFFORT ─────────────
- * Segmenting moved the frontier, and the frontier is what says "a span still elevated at
- * the end of the trace is a session in progress". Read on the CUT trace alone, a person
- * resting between heavy sets long enough to drop inside their own range — and elevated
- * again right now — had that refusal turned into an answer: the row flipped to finished
- * mid-workout, which reaches the safety-tier post-workout dispatch and takes away the
- * stale suggest's Finish button in the same move. The `updated_at` cancel does not catch
- * it, because a set logged while still elevated stamps BEFORE the candidate.
+ * So there is no segmenting. This answers exactly one shape — a trace that begins at the
+ * start, begins ELEVATED, and holds ONE effort — and refuses every other, including
+ * shapes an earlier draft could answer. The refusals are not a gap: the stale suggest
+ * still reaches the row and the person finishes it themselves, which is what this module
+ * replaces only where the trace is unambiguous.
  *
- * So the frontier question is asked of the WHOLE trace and the candidate is taken from
- * the effort containing the start. Both rules survive segmentation, which is what the
- * cut owed them. The cost is a delay and never a wrong write: someone who leaves this
- * morning's session open and goes running at six has it finished after the run, at this
- * morning's minute.
+ * The four guards are one line each and none of them invents a number. `recovery` is
+ * the profile's own, and it already means "this effort has ended"; the gap bound is
+ * `EXERTION_MAX_GAP_MIN`, and it already means "nobody measured this". The tail below —
+ * newest elevated minute, quiet after it, the save-stamp cancel — is unchanged from the
+ * detector #5139 landed.
  */
 export function detectedWorkoutEnd(input: {
   samples: readonly ExertionSample[];
@@ -302,43 +232,48 @@ export function detectedWorkoutEnd(input: {
   /** The newest set's instant on this row, when there is one. */
   lastSetAt: number | null;
 }): number | null {
+  const samples = sorted(input.samples).filter((s) => s.at >= input.startedAt);
+  if (samples.length === 0) return null;
   const recovery = exertionRecoveryMin(input.usualRecoveryMin) * MINUTE_MS;
-  const trace = sorted(input.samples).filter((s) => s.at >= input.startedAt);
-  if (trace.length === 0) return null;
+  const last = samples[samples.length - 1].at + MINUTE_MS;
 
-  // NOBODY IS STILL GOING. Asked of the whole trace, before any segmenting — see the
-  // header. The newest elevated minute anywhere past the start must have `recovery` of
-  // measured quiet after it, or this person is exerting right now and no session of
-  // theirs has ended.
-  const frontier = trace[trace.length - 1].at + MINUTE_MS;
-  let newest: number | null = null;
-  for (const sample of trace)
-    if (sample.bpm > input.ceilingBpm) newest = sample.at + MINUTE_MS;
-  if (newest == null) return null;
-  if (newest + recovery > frontier) return null;
-  if (!quiet(trace, input.ceilingBpm, newest, newest + recovery)) return null;
+  // 1. THE TRACE BEGINS AT THE START. A wrist put on at five o'clock says nothing about
+  //    a session started at eight, however plainly it reads afterwards.
+  if (samples[0].at - input.startedAt > EXERTION_MAX_GAP_MIN * MINUTE_MS)
+    return null;
+  // 2. AND IT BEGINS ELEVATED, which is what "the effort that contains the start" means
+  //    when it is asked about the start rather than about the trace. Someone whose
+  //    warm-up sits inside their own resting range gets no detected end, and finishes
+  //    the session themselves.
+  if (samples[0].bpm <= input.ceilingBpm) return null;
 
-  const samples = effortFromStart(
-    trace,
-    input.ceilingBpm,
-    recovery,
-    input.startedAt
-  );
-  if (samples == null) return null;
-
-  // The newest elevated minute is where this session ended, if it ended at all — an
-  // earlier one would be a rest the person came back from.
-  let candidate: number | null = null;
+  // 3. ONE EFFORT, OR NOTHING. An elevated minute arriving after this profile's own
+  //    recovery of quiet — or after minutes nobody measured — is a SECOND effort, and a
+  //    trace with two of them does not say which one this row was. Refusing is the whole
+  //    of the simplification: every attempt to pick one was a mechanism with a
+  //    neighbouring case that picked wrong.
+  let previous = samples[0].at;
+  let quietFrom: number | null = null;
   for (const sample of samples) {
-    if (sample.bpm > input.ceilingBpm) candidate = sample.at + MINUTE_MS;
+    const separated =
+      sample.at - previous > EXERTION_MAX_GAP_MIN * MINUTE_MS ||
+      (quietFrom != null && sample.at - quietFrom >= recovery);
+    if (sample.bpm > input.ceilingBpm) {
+      if (separated) return null;
+      quietFrom = null;
+    } else if (quietFrom == null) quietFrom = sample.at;
+    previous = sample.at;
   }
-  if (candidate == null) return null;
-  // The candidate's own closing quiet, asked of the WHOLE trace. The two are equivalent
-  // today and provably so — the cut always extends at least `recovery` past the
-  // candidate, because that is the arithmetic it cuts on — which is exactly why it is
-  // asked here: the answer then does not depend on that property continuing to hold.
-  // No test separates them, and none can while it does.
-  if (!quiet(trace, input.ceilingBpm, candidate, candidate + recovery))
+
+  // The newest elevated minute is where this session ended — and with one effort that is
+  // the effort's own end, which is what makes the rest of this correct without a cut.
+  let candidate = samples[0].at + MINUTE_MS;
+  for (const sample of samples)
+    if (sample.bpm > input.ceilingBpm) candidate = sample.at + MINUTE_MS;
+  // 4. AND THEY HAVE COME BACK DOWN. A trace still elevated at its frontier is a session
+  //    in progress, measured rather than assumed.
+  if (candidate + recovery > last) return null;
+  if (!quiet(samples, input.ceilingBpm, candidate, candidate + recovery))
     return null;
   if (input.lastSetAt != null && input.lastSetAt >= candidate) return null;
   return candidate;
