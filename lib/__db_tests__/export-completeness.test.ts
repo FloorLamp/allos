@@ -456,23 +456,17 @@ const CSV_OMITTED_RESULT_COLUMNS: {
 // adding a name to `columns` ships a column of permanently empty cells — and a name
 // the column allowlist may simultaneously certify as deliberately un-exported. The
 // only legitimate case is a cell BUILT IN JS after the read, from a child table the
-// parent select cannot fold in; each is named here with the function that builds it.
-const CSV_COLUMNS_BUILT_IN_JS: {
-  key: string;
-  column: string;
-  why: string;
-}[] = [
-  {
-    key: "activities",
-    column: "exercises",
-    why: "the activity's exercise_sets folded into one prose summary by shapeActivities() in lib/export.ts — a child-table roll-up, not a column of activities. The sets themselves export in full via the exercise_sets dataset.",
-  },
-  {
-    key: "intake_items",
-    column: "schedule",
-    why: "the item's intake_item_doses folded into one readable dose summary by shapeSupplements() in lib/export.ts — a child-table roll-up, not a column of intake_items. The doses themselves export in full via the intake_doses dataset.",
-  },
-];
+// parent select cannot fold in.
+//
+// That declaration lives on the DATASET (`jsBuilt` in lib/export.ts), not in a second
+// list here, and it is not taken on faith. A list here could name a column no reader
+// builds and a builder function that exists nowhere, and stay green forever; on the
+// dataset it is one source that both guards read — this file proves the column really
+// is absent from the select and that the dataset could even have a JS step, and
+// lib/__db_tests__/export.test.ts proves the cell is actually emitted on a seeded row.
+const JS_BUILT = DATASETS.flatMap((ds) =>
+  (ds.jsBuilt ?? []).map((c) => ({ ds, ...c }))
+);
 
 // Columns of an exported table that the export does NOT carry. Two kinds, and the
 // difference is the point:
@@ -1038,13 +1032,9 @@ describe("every column of an exported table is exported (#5117)", () => {
   });
 
   it("the FHIR carve-out is exactly the tables the passport also carries", () => {
-    for (const table of carvedOut) {
-      expect(
-        FHIR_INPUT_TABLES.has(table),
-        `${table} is carved out of the column guard but is not a FHIR input table`
-      ).toBe(true);
-    }
-    // Named and counted: this exemption cannot quietly grow.
+    // COLUMN_GUARD_FHIR_CARVE_OUT *is* FHIR_INPUT_TABLES, so "every carved-out table
+    // is a FHIR input table" cannot fail and is not asserted. The count is the gate:
+    // named and counted, this exemption cannot quietly grow.
     expect(carvedOut.length).toBe(10);
   });
 
@@ -1071,24 +1061,40 @@ describe("every column of an exported table is exported (#5117)", () => {
   });
 
   it("what the CSV header promises, the dataset actually selects", () => {
-    const named = new Set(
-      CSV_COLUMNS_BUILT_IN_JS.map((c) => `${c.key}.${c.column}`)
-    );
+    const named = new Set(JS_BUILT.map((c) => `${c.ds.key}.${c.column}`));
     const undeclared = csvOnly
       .map((c) => `${c.key}.${c.column}`)
       .filter((c) => !named.has(c));
     expect(
       undeclared,
-      `\nPromised by the CSV header (dataset \`columns\`) but selected by nothing — every row ships an empty cell:\nAdd it to the dataset's select in lib/export.ts, or, if a JS step builds it after the read, name it in CSV_COLUMNS_BUILT_IN_JS with the function that does:\n${undeclared.join("\n")}\n`
+      `\nPromised by the CSV header (dataset \`columns\`) but selected by nothing — every row ships an empty cell:\nAdd it to the dataset's select in lib/export.ts, or, if a JS step builds it after the read, declare it in that dataset's \`jsBuilt\` with the function that does:\n${undeclared.join("\n")}\n`
     ).toEqual([]);
     // …and nothing is declared that the select emits after all.
     const actual = new Set(csvOnly.map((c) => `${c.key}.${c.column}`));
-    for (const c of CSV_COLUMNS_BUILT_IN_JS) {
+    for (const c of JS_BUILT) {
       expect(
-        actual.has(`${c.key}.${c.column}`),
-        `${c.key}.${c.column} is selected now — remove its entry`
+        actual.has(`${c.ds.key}.${c.column}`),
+        `${c.ds.key}.${c.column} is selected now — remove its jsBuilt entry`
       ).toBe(true);
       expect(c.why.trim().length).toBeGreaterThan(0);
+      expect(c.by.trim().length).toBeGreaterThan(0);
     }
+  });
+
+  it("only a dataset that HAS a JS step can declare a JS-built cell", () => {
+    // A tableDataset's rows()/page() ARE q(select)/qPage(select): the row is whatever
+    // SQLite returned, and there is no step that could add a cell. So a `jsBuilt`
+    // entry on one is not a claim that turned out false — it is a claim that could
+    // never have been true, and the CSV would ship an empty column under it.
+    const impossible = JS_BUILT.filter((c) => c.ds.readsSelect).map(
+      (c) => `${c.ds.key}.${c.column} (built by ${c.by})`
+    );
+    expect(
+      impossible,
+      `\nDeclared as built in JS by a dataset whose rows() is q(select) — nothing runs between the read and the row:\n${impossible.join("\n")}\n`
+    ).toEqual([]);
+    // The other half of the claim — that the cell is really emitted, non-undefined,
+    // on a seeded row — needs data, and lives in lib/__db_tests__/export.test.ts.
+    expect(JS_BUILT.length).toBeGreaterThan(0);
   });
 });

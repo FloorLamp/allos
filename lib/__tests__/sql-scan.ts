@@ -149,13 +149,169 @@ export const norm = (s: string) => s.replace(/\s+/g, " ").trim();
 // call, so it stays unresolved and the caller decides what to do with an unresolved
 // statement. Same reason only a BARE IDENTIFIER is substituted: `${a.b}`,
 // `${f(x)}` and `${xs.join(",")}` are runtime values, not text this scan can read.
+//
+// SUBSTITUTING THE WRONG TEXT IS WORSE THAN SUBSTITUTING NOTHING. An unresolved
+// statement is refused by its reader, out loud; a WRONGLY resolved one is a census
+// that reports "checked" about a statement it never read. So resolution refuses on
+// any doubt about which text a name stands for:
+//
+//   - the declaration must be CODE. `codeSpans` marks the offsets inside comments
+//     and inside other strings, so a `const X = ...;` that only LOOKS like a
+//     declaration — sitting at column 0 inside a block comment, or inside a
+//     multi-line template — is not read as one.
+//   - the name must mean ONE thing in the file. A name RE-DECLARED anywhere at
+//     non-zero indentation is a local SHADOW: at the `.prepare` site it may carry
+//     the local's text rather than the module const's, and substituting the module
+//     const there asserts a predicate the running statement need not have.
+//     `redeclaredLocally` looks for that in the RAW source (comments included) and
+//     drops the name — deliberately eager, because a false positive costs one
+//     refusal and a false negative costs the invariant. Two column-0 declarations
+//     of one name drop it for the same reason.
+//
+// What this does NOT see is a shadow introduced by a PARAMETER (`function
+// f(ACTIVITIES_SELECT)`) or by a destructuring form the pattern below misses: a bare
+// name in a parameter list cannot be told from the same name passed as an argument,
+// and refusing every const that is ever passed to a function would refuse nearly all
+// of them. No such shadow exists on the tree, and eslint has no `no-shadow` rule.
 export function sqlConsts(src: string): Map<string, string> {
+  const code = codeSpans(src);
   const consts = new Map<string, string>();
+  const dropped = new Set<string>();
   const re =
     /(?:^|\n)const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:`([^`]*)`|"([^"\\]*)")\s*;/g;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(src))) consts.set(m[1], m[2] ?? m[3]);
+  while ((m = re.exec(src))) {
+    const at = m.index + (src[m.index] === "\n" ? 1 : 0);
+    if (!code.isCode(at) || code.depthAt(at) !== 0) continue;
+    const name = m[1];
+    if (dropped.has(name)) continue;
+    if (consts.has(name) || redeclaredLocally(src, name)) {
+      consts.delete(name);
+      dropped.add(name);
+      continue;
+    }
+    consts.set(name, m[2] ?? m[3]);
+  }
   return consts;
+}
+
+// Is `name` declared anywhere other than at the start of a line — indented, which in
+// this prettier-formatted codebase means inside a function, block or class body?
+// Read off the raw source, comments included: the answer only ever REMOVES a const
+// from the map, and a refusal is always the safe direction.
+function redeclaredLocally(src: string, name: string): boolean {
+  const n = name.replace(/[$]/g, "\\$&");
+  return new RegExp(
+    `[^\\n]\\b(?:const|let|var|function|class)\\s+(?:${n}\\b|\\{[^}\\n]*\\b${n}\\b)`
+  ).test(src);
+}
+
+// Which offsets of a source file are CODE (outside every comment and string), and how
+// deeply braced each one is. A small state machine, not a parser: the only question
+// asked of it is whether a `const NAME = ...;` at column 0 is a real module-scope
+// declaration.
+//
+// Both ways of being wrong point at refusing. Mistaking code for a string or comment
+// drops a const, and the statement composed from it then goes unresolved and is
+// refused by its reader; mistaking a string for code can only ADD a candidate name,
+// and a candidate is dropped again the moment that name is declared anywhere else.
+// The regex-literal heuristic (a `/` opens a regex only where an operand cannot
+// precede it) is imperfect within those same bounds.
+function codeSpans(src: string): {
+  isCode: (i: number) => boolean;
+  depthAt: (i: number) => number;
+} {
+  const code = new Uint8Array(src.length);
+  const depth = new Int32Array(src.length);
+  // The brace depth at which each enclosing template's `${` opened, so its matching
+  // `}` returns to template TEXT instead of closing a block.
+  const tplExpr: number[] = [];
+  let mode: "code" | "line" | "block" | "sq" | "dq" | "tpl" | "re" = "code";
+  let d = 0;
+  let prev = ""; // last non-space code character, for the regex heuristic
+  let i = 0;
+  while (i < src.length) {
+    const c = src[i];
+    const c2 = src[i + 1];
+    if (mode === "code") {
+      code[i] = 1;
+      depth[i] = d;
+      if (c === "/" && c2 === "/") {
+        mode = "line";
+        i += 2;
+        continue;
+      }
+      if (c === "/" && c2 === "*") {
+        mode = "block";
+        i += 2;
+        continue;
+      }
+      if (c === "/" && prev !== "" && !/[\w$)\]]/.test(prev)) {
+        mode = "re";
+        i++;
+        continue;
+      }
+      if (c === "'" || c === '"' || c === "`") {
+        mode = c === "'" ? "sq" : c === '"' ? "dq" : "tpl";
+        i++;
+        continue;
+      }
+      if (c === "{") d++;
+      else if (c === "}") {
+        if (tplExpr.length > 0 && d === tplExpr[tplExpr.length - 1]) {
+          tplExpr.pop();
+          mode = "tpl";
+          i++;
+          continue;
+        }
+        d = Math.max(0, d - 1);
+      }
+      if (!/\s/.test(c)) prev = c;
+      i++;
+      continue;
+    }
+    if (mode === "line") {
+      if (c === "\n") mode = "code";
+      i++;
+      continue;
+    }
+    if (mode === "block") {
+      if (c === "*" && c2 === "/") {
+        mode = "code";
+        i += 2;
+        continue;
+      }
+      i++;
+      continue;
+    }
+    // Inside a string, template or regex body: an escape consumes the next char.
+    if (c === "\\") {
+      i += 2;
+      continue;
+    }
+    if (mode === "tpl" && c === "$" && c2 === "{") {
+      tplExpr.push(d);
+      mode = "code";
+      i += 2;
+      continue;
+    }
+    if (
+      (mode === "sq" && c === "'") ||
+      (mode === "dq" && c === '"') ||
+      (mode === "tpl" && c === "`") ||
+      (mode === "re" && (c === "/" || c === "\n"))
+    ) {
+      mode = "code";
+      if (c !== "\n") prev = c;
+      i++;
+      continue;
+    }
+    i++;
+  }
+  return {
+    isCode: (at: number) => code[at] === 1,
+    depthAt: (at: number) => depth[at],
+  };
 }
 
 // Substitute every `${IDENT}` that names one of `consts`, recursively (a const may

@@ -16,6 +16,7 @@ import {
   resolveSqlConsts,
   sourceFiles,
   sqlConsts,
+  type SqlArg,
 } from "./sql-scan";
 import {
   DYNAMIC_TABLE_RENAMES,
@@ -89,12 +90,6 @@ function isVersionedMigration(rel: string): boolean {
 // matched as a normalized-SQL substring. Keep this list SHORT and justified.
 const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
   {
-    file: "lib/portals.ts",
-    includes:
-      "FROM portal_identities pi JOIN portals p ON p.id = pi.portal_id JOIN portal_accounts a ON a.id = pi.account_id ORDER BY p.name COLLATE NOCASE",
-    why: "listPortalIdentities: EVERY binding on the instance, for the portal setup card — 'which patient label goes to which profile', which is a question about the mapping itself and has no one profile to filter to. Deliberately scope-blind at this layer, with the CALLER filtering to what its viewer may see (the comment above it in lib/portals.ts says so). It carries no clinical payload: portal/account names, a patient label, and the profile_id the row assigns. Read by the scan only since #5117 taught it to resolve module-scope SQL consts — before that its `${IDENTITY_COLS} ${IDENTITY_FROM}` text named no table and the statement was dropped unseen.",
-  },
-  {
     file: "lib/migrations/boot-tasks.ts",
     includes:
       "UPDATE integration_backfill_jobs SET status = 'paused', retry_after_at = ?, updated_at = ?",
@@ -132,20 +127,8 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
   {
     file: "lib/queries/intake/supply-pool.ts",
     includes:
-      "UPDATE intake_items SET supply_id = NULL, quantity_on_hand = ? WHERE id = ? AND profile_id = ?",
-    why: "deleteSharedSupply (#1374): unlinks each member row it just read from poolMembers — the statement itself IS profile-scoped (id AND profile_id); listed only because the surrounding function's membership read is the cross-profile one above",
-  },
-  {
-    file: "lib/queries/intake/supply-pool.ts",
-    includes:
       "SELECT s.id AS supply_id, i.profile_id AS profile_id FROM shared_supplies s LEFT JOIN intake_items i ON i.supply_id = s.id",
     why: "countVisiblePools (#2116): the SAME cross-by-construction membership question poolMembers above answers, asked once for the whole cabinet instead of once per bottle. It reads nothing but (supply_id, profile_id) — no name, no dose, no health data — and hands it straight to the pure isPoolVisibleTo rule against the caller's already-resolved accessible set, which is the filter. A LEFT JOIN because an ORPHANED bottle names nobody and must still be countable",
-  },
-  {
-    file: "lib/portals.ts",
-    includes:
-      "SELECT pi.profile_id AS profileId, pi.portal_id AS portalId, pi.account_id AS accountId FROM portal_identities pi WHERE pi.account_id = ? AND pi.patient_label = ? AND pi.ignored = 0 AND pi.profile_id IS NOT NULL",
-    why: "resolvePortalIdentity (#1739): the ONE lookup that RESOLVES which profile to gate on; the gate is the protection, the resolved id is immediately intersected with the token's write set. Filtering by profile_id here would presuppose the answer the acquirer is asking for. An identity that resolves to a profile the pushing token cannot write is refused exactly as loudly as an unbound one",
   },
   {
     file: "lib/portals.ts",
@@ -284,12 +267,6 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "schema introspection (#684): checks whether the migration-034 loinc column exists so the version-agnostic boot reconcile can run against an earlier schema — not a data query, reads no rows",
   },
   {
-    file: "lib/saved-clinical-result-kind.ts",
-    includes:
-      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'saved_items'",
-    why: "schema introspection for frozen migrations 174/177/178: selects only saved_items DDL to choose that migration era's saved-result kind; it reads no profile rows, and runtime always resolves the current schema",
-  },
-  {
     file: "lib/integrations/normalize.ts",
     includes: "UPDATE medical_records SET date = ?",
     why: "upsertVitals: the id comes from a profile-scoped find() just above",
@@ -317,11 +294,6 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     file: "lib/queries/medical.ts",
     includes: "FROM medical_records WHERE ${where.join(",
     why: "getObservationsForDocument: where[] always begins with 'profile_id = ?'",
-  },
-  {
-    file: "lib/queries/clinical.ts",
-    includes: "FROM conditions WHERE ${where.join(",
-    why: "getConditions: where[] always begins with 'profile_id = ?'",
   },
   {
     file: "lib/undo-delete-db.ts",
@@ -461,17 +433,49 @@ const ALLOW_NON_LITERAL: { file: string; expr: string; why: string }[] = [
   },
 ];
 
-// Statements whose OWN TEXT begins inside an interpolation, so neither the verb nor
-// the table can be read even after the module-scope consts are substituted — the
-// whole statement is the caller's. Same SHORT-and-justified discipline as the lists
-// above; today there is exactly one such site in the repo.
+// Statements an unresolved interpolation stands INSIDE OF rather than beside: the
+// interpolation occupies a place where an entire SELECT goes, so what is left to read
+// is a wrapper and not the statement. Same SHORT-and-justified discipline as the
+// lists above; today there are exactly two such sites in the repo.
 const ALLOW_COMPOSED: { file: string; sql: string; why: string }[] = [
   {
     file: "lib/export.ts",
     sql: "${sql} LIMIT ? OFFSET ?",
     why: "qPage(sql): the bounded twin of the q(sql) helper allowlisted above, and the same argument — it appends LIMIT/OFFSET to whatever complete SELECT its caller declared, so there is no statement of its own to read here. Every string it is called with is a dataset `select` in the same file, each filtering the acting profile directly (WHERE profile_id = ?) or through the parent JOIN (WHERE ii.profile_id = ?), and lib/__db_tests__/export.test.ts seeds two profiles and asserts per dataset that page() returns only the querying profile's rows.",
   },
+  {
+    file: "lib/timeline.ts",
+    // `nUNIONn` is not a typo: firstStringArgs drops the backslash of an escape, so
+    // the source's `join("\nUNION\n")` reaches the scan spelled that way.
+    sql: "SELECT DISTINCT date FROM (${explicitSelects.join(\"nUNIONn\")}) WHERE date IS NOT NULL AND date != ''",
+    why: "getTimelineDates: the UNION arms ARE the statement, and all seventeen are hand-authored literals in the array immediately above this .prepare — every one carries its own `WHERE profile_id = @profileId`, or, for the one child read (intake_item_logs), its parent's `ii.profile_id = @profileId` through the JOIN. The bound name is the caller's profileId and nothing else reaches the array. lib/__db_tests__/timeline.test.ts seeds a second profile and asserts the dates of one never appear for the other.",
+  },
 ];
+
+// Where an unresolved `${…}` stands for an ENTIRE STATEMENT rather than for an
+// identifier, a value list or a fragment of a clause. That is the property that makes
+// a composed statement unreadable: `${sql} LIMIT ? OFFSET ?` and the same helper
+// written `SELECT * FROM (${sql}) LIMIT ? OFFSET ?` are one statement in two
+// spellings, and a rule keyed on "begins with an interpolation" reads the first and
+// silently drops the second.
+//
+// The COMPLEMENTARY class — an interpolation in an IDENTIFIER or value position,
+// `DELETE FROM ${table} WHERE …` — is deliberately NOT claimed here. Those statements
+// have a readable verb and shape and only a dynamic name, and there are 82 of them on
+// the tree that name no owned table (77 deduped; 37 carry a profile_id predicate
+// anyway, 45 carry nothing the scan can classify, and lib/queries/visit-links.ts,
+// lib/undo-delete-db.ts, lib/migrations/cascade-delete.ts and
+// app/(app)/data/manage-actions.ts lead). The scan still drops them; the count is
+// written down in the PR rather than this list absorbing them unread.
+const STATEMENT_POSITION = [
+  /^\$\{/, // the statement IS the interpolation
+  /\b(?:FROM|JOIN)\s*\(\s*\$\{/i, // a derived table
+  /\bAS\s*\(\s*\$\{/i, // a CTE body
+  /\b(?:UNION(?:\s+ALL)?|INTERSECT|EXCEPT)\s*\$\{/i, // another arm of a compound
+  /\bEXISTS\s*\(\s*\$\{/i, // a subquery predicate
+];
+const interpolatesAStatement = (sql: string) =>
+  STATEMENT_POSITION.some((re) => re.test(sql));
 
 // POSITIONAL profile_id check (issue #1208 fix 1). The old guard passed any
 // owned-table statement that merely MENTIONED `profile_id` anywhere — including as a
@@ -506,6 +510,103 @@ function scopedByProfileId(sql: string): boolean {
   return false;
 }
 
+// A `.prepare` site as the scan reads it: the argument as written, plus the statement
+// text after the module-scope consts are substituted (#5117 — hoisting a read into a
+// const must not cost it the check).
+type Prepared = {
+  rel: string;
+  kind: "sql" | "expr";
+  arg: string;
+  sql: string;
+  resolved: boolean;
+};
+
+function readPrepared(
+  rel: string,
+  arg: SqlArg,
+  consts: Map<string, string>
+): Prepared {
+  const composed = resolveSqlConsts(
+    arg.kind === "expr" ? `\${${arg.text}}` : arg.text,
+    consts
+  );
+  return {
+    rel,
+    kind: arg.kind,
+    arg: arg.text,
+    sql: norm(composed.text),
+    resolved: composed.resolved,
+  };
+}
+
+// The three allowlists the decision consults, as a parameter so a caller can ask what
+// the decision would be WITHOUT one entry — that is how the staleness cases prove an
+// entry is load-bearing rather than merely present.
+type Allowlists = {
+  sql: typeof ALLOW_SQL;
+  nonLiteral: typeof ALLOW_NON_LITERAL;
+  composed: typeof ALLOW_COMPOSED;
+};
+const ALL_ALLOWLISTS: Allowlists = {
+  sql: ALLOW_SQL,
+  nonLiteral: ALLOW_NON_LITERAL,
+  composed: ALLOW_COMPOSED,
+};
+
+// THE per-statement decision: a violation string, or null. One function, so the file
+// loop and the unit cases at the bottom exercise the same code. A rule the loop
+// applies but no case can reach is a rule that deletes green, which is exactly how
+// the composed refusal was born toothless.
+function classifyPrepared(
+  p: Prepared,
+  lists: Allowlists = ALL_ALLOWLISTS
+): string | null {
+  if (p.kind === "expr" && !p.resolved) {
+    const ok = lists.nonLiteral.some(
+      (a) => p.rel.endsWith(a.file) && p.arg === a.expr
+    );
+    return ok
+      ? null
+      : `${p.rel}: non-literal .prepare(${p.arg}) — cannot verify scoping; allowlist it with a justification if it is safe`;
+  }
+  // An interpolation standing where a whole SELECT goes leaves a WRAPPER to read, not
+  // a statement, so "names no owned table" would be an answer about the wrapper.
+  // Refuse it rather than drop it: silently unclassified is the state this guard
+  // exists to prevent.
+  if (!p.resolved && !OWNED_RE.test(p.sql) && interpolatesAStatement(p.sql)) {
+    const ok = lists.composed.some(
+      (a) => p.rel.endsWith(a.file) && norm(a.sql) === p.sql
+    );
+    return ok
+      ? null
+      : `${p.rel}: composed .prepare(\`${p.sql}\`) — an unresolved interpolation stands where an entire statement goes and the readable text names no owned table, so this statement cannot be classified; allowlist it with a justification if it is safe`;
+  }
+  if (!OWNED_RE.test(p.sql)) return null; // no owned table → nothing to enforce
+  if (scopedByProfileId(p.sql)) return null; // profile_id in a scoping position
+  const allowed = lists.sql.some(
+    (a) => p.rel.endsWith(a.file) && p.sql.includes(a.includes)
+  );
+  return allowed ? null : `${p.rel}: ${p.sql}`;
+}
+
+// Every `.prepare` site on the scanned surface, read once and reused by the scan and
+// by the staleness cases.
+function livePrepared(): Prepared[] {
+  const out: Prepared[] = [];
+  for (const file of sourceFiles()) {
+    const rel = relPath(file);
+    // Numbered migrations are immutable, boot-time schema/data transitions. They
+    // intentionally operate across every profile; runtime scoping is not their
+    // authorization boundary. Keep the request/runtime surface fully scanned.
+    if (isVersionedMigration(rel)) continue;
+    const src = readSource(file);
+    const consts = sqlConsts(src);
+    for (const arg of prepareArgs(src))
+      out.push(readPrepared(rel, arg, consts));
+  }
+  return out;
+}
+
 describe("profile scoping: every owned-table query filters by profile_id", () => {
   const files = sourceFiles();
 
@@ -515,64 +616,9 @@ describe("profile scoping: every owned-table query filters by profile_id", () =>
   });
 
   it("has no owned-table .prepare() statement missing profile_id", () => {
-    const violations: string[] = [];
-
-    for (const file of files) {
-      const rel = relPath(file);
-      // Numbered migrations are immutable, boot-time schema/data transitions. They
-      // intentionally operate across every profile; runtime scoping is not their
-      // authorization boundary. Keep the request/runtime surface fully scanned.
-      if (isVersionedMigration(rel)) continue;
-      const src = readSource(file);
-      // Module-scope SQL consts, so a statement ASSEMBLED from them is read rather
-      // than dropped: `.prepare(ACTIVITIES_SELECT)` and the page reader's
-      // `${ACTIVITIES_SELECT} LIMIT ? OFFSET ?` are the same statement this scan saw
-      // when it was written out longhand, and hoisting it must not cost the check
-      // (#5117 — the activities page read went unscanned for exactly that reason).
-      const consts = sqlConsts(src);
-      for (const arg of prepareArgs(src)) {
-        const composed = resolveSqlConsts(
-          arg.kind === "expr" ? `\${${arg.text}}` : arg.text,
-          consts
-        );
-        if (arg.kind === "expr" && !composed.resolved) {
-          const ok = ALLOW_NON_LITERAL.some(
-            (a) => rel.endsWith(a.file) && arg.text === a.expr
-          );
-          if (!ok) {
-            violations.push(
-              `${rel}: non-literal .prepare(${arg.text}) — cannot verify scoping; allowlist it with a justification if it is safe`
-            );
-          }
-          continue;
-        }
-        const sql = norm(composed.text);
-        // A statement that STARTS inside an unresolved interpolation has no readable
-        // verb and no readable table, so "names no owned table" would be an answer
-        // about the fragment rather than about the statement. Refuse it instead of
-        // dropping it: silently unclassified is the state this guard exists to
-        // prevent.
-        if (!composed.resolved && sql.startsWith("${")) {
-          const ok = ALLOW_COMPOSED.some(
-            (a) => rel.endsWith(a.file) && norm(a.sql) === sql
-          );
-          if (!ok) {
-            violations.push(
-              `${rel}: composed .prepare(\`${sql}\`) — the statement begins inside an interpolation, so neither its verb nor its table can be read; allowlist it with a justification if it is safe`
-            );
-          }
-          continue;
-        }
-        if (!OWNED_RE.test(sql)) continue; // no owned table → nothing to enforce
-        if (scopedByProfileId(sql)) continue; // profile_id in a scoping position
-        const allowed = ALLOW_SQL.some(
-          (a) => rel.endsWith(a.file) && sql.includes(a.includes)
-        );
-        if (!allowed) {
-          violations.push(`${rel}: ${sql}`);
-        }
-      }
-    }
+    const violations = livePrepared()
+      .map((p) => classifyPrepared(p))
+      .filter((v): v is string => v !== null);
 
     expect(violations, `\n${violations.join("\n")}\n`).toEqual([]);
   });
@@ -736,16 +782,59 @@ describe("composed-statement scanning (#5117)", () => {
 
   it("a statement beginning inside an unresolved interpolation is refused, not dropped", () => {
     // Neither the verb nor the table is readable, so "names no owned table" would be
-    // an answer about the fragment. The scan requires an ALLOW_COMPOSED entry.
+    // an answer about the fragment. The DECISION is asserted, not just the text it
+    // reads: a rule no case can reach is a rule that deletes green.
     expect(read[4].resolved).toBe(false);
-    expect(sqlAt(4).startsWith("${")).toBe(true);
     expect(OWNED_RE.test(sqlAt(4))).toBe(false);
+    expect(refusalFor("lib/some-module.ts", sqlAt(4))).toMatch(
+      /cannot be classified/
+    );
+  });
+
+  it("the refusal is about WHERE the interpolation stands, not where it is written", () => {
+    // qPage written the other plausible way. Valid SQLite, same semantics, and the
+    // "begins with an interpolation" rule this replaced read it as classifiable and
+    // dropped it silently.
+    const wrapped = "SELECT * FROM (${sql}) LIMIT ? OFFSET ?";
+    expect(interpolatesAStatement(wrapped)).toBe(true);
+    expect(refusalFor("lib/some-module.ts", wrapped)).toMatch(
+      /cannot be classified/
+    );
+    // A CTE body is the same case.
+    expect(
+      refusalFor("lib/some-module.ts", "WITH t AS (${sub}) SELECT * FROM t")
+    ).toMatch(/cannot be classified/);
+    // An interpolation in an IDENTIFIER or value position is NOT this rule's
+    // business: the verb and the shape are readable, only a name is dynamic.
+    expect(
+      classifyPrepared(
+        mkPrepared("lib/some-module.ts", "DELETE FROM ${table} WHERE id = ?")
+      )
+    ).toBeNull();
+    expect(
+      classifyPrepared(
+        mkPrepared("lib/some-module.ts", "SELECT ${cols} FROM weather_days")
+      )
+    ).toBeNull();
+  });
+
+  it("an ALLOW_COMPOSED entry is what makes its own statement pass", () => {
+    // Without the list the refusal fires; with it, in the file that owns the entry,
+    // the same statement passes. Delete the branch and the first goes null; delete
+    // the array and the second becomes a violation.
+    for (const entry of ALLOW_COMPOSED) {
+      const p = mkPrepared(entry.file, norm(entry.sql));
+      expect(classifyPrepared(p, without({ composed: [] }))).toMatch(
+        /cannot be classified/
+      );
+      expect(classifyPrepared(p)).toBeNull();
+    }
   });
 
   it("every ALLOW_COMPOSED entry is justified and still matches a live statement", () => {
     for (const entry of ALLOW_COMPOSED) {
       expect(entry.why.trim().length).toBeGreaterThan(0);
-      expect(norm(entry.sql).startsWith("${")).toBe(true);
+      expect(interpolatesAStatement(norm(entry.sql))).toBe(true);
       const src = readSource(path.join(REPO, entry.file));
       const fileConsts = sqlConsts(src);
       const matches = prepareArgs(src).some(
@@ -758,6 +847,74 @@ describe("composed-statement scanning (#5117)", () => {
         `${entry.file}: ${entry.sql} matches no .prepare site`
       ).toBe(true);
     }
+  });
+});
+
+// A statement the scan has already read, for the unit cases above: they ask what the
+// DECISION is, so they need a Prepared and not a string.
+function mkPrepared(rel: string, sql: string): Prepared {
+  return { rel, kind: "sql", arg: sql, sql, resolved: !sql.includes("${") };
+}
+// The refusal a statement draws, or a readable stand-in for "none" — so a rule that
+// stops firing fails with the silence it caused, rather than with a type error.
+const refusalFor = (rel: string, sql: string) =>
+  classifyPrepared(mkPrepared(rel, sql)) ??
+  "(no violation — the statement was silently dropped)";
+const without = (over: Partial<Allowlists>): Allowlists => ({
+  ...ALL_ALLOWLISTS,
+  ...over,
+});
+
+// STALENESS, for all three lists (#5117 R4). An allowlist entry is a claim about the
+// tree, and a claim nothing re-checks stops being true quietly: the `listPortalIdentities`
+// entry this PR first added was a strict SUFFIX of one that already covered the same
+// statement, and nothing was red. So each entry must be LOAD-BEARING — some live
+// statement in its own file passes with the list and is a violation without that one
+// entry. A redundant entry fails this, and so does an entry whose statement is gone.
+describe("the scan's allowlists stay load-bearing (#5117)", () => {
+  const live = livePrepared();
+  const bearing = (
+    file: string,
+    over: (all: Allowlists) => Allowlists
+  ): boolean =>
+    live
+      .filter((p) => p.rel.endsWith(file))
+      .some(
+        (p) =>
+          classifyPrepared(p) === null &&
+          classifyPrepared(p, over(ALL_ALLOWLISTS)) !== null
+      );
+
+  it("every ALLOW_SQL entry is justified and is the reason a live statement passes", () => {
+    const dead: string[] = [];
+    for (const entry of ALLOW_SQL) {
+      expect(entry.why.trim().length).toBeGreaterThan(0);
+      const needed = bearing(entry.file, (all) => ({
+        ...all,
+        sql: all.sql.filter((e) => e !== entry),
+      }));
+      if (!needed) dead.push(`${entry.file}: "${entry.includes}"`);
+    }
+    expect(
+      dead,
+      `\nALLOW_SQL entries that exempt nothing — the statement is gone, or it passes the scan on its own, or another entry already covers it. Delete them:\n${dead.join("\n")}\n`
+    ).toEqual([]);
+  });
+
+  it("every ALLOW_NON_LITERAL entry is justified and is the reason a live statement passes", () => {
+    const dead: string[] = [];
+    for (const entry of ALLOW_NON_LITERAL) {
+      expect(entry.why.trim().length).toBeGreaterThan(0);
+      const needed = bearing(entry.file, (all) => ({
+        ...all,
+        nonLiteral: all.nonLiteral.filter((e) => e !== entry),
+      }));
+      if (!needed) dead.push(`${entry.file}: .prepare(${entry.expr})`);
+    }
+    expect(
+      dead,
+      `\nALLOW_NON_LITERAL entries matching no live non-literal .prepare site. Delete them:\n${dead.join("\n")}\n`
+    ).toEqual([]);
   });
 });
 

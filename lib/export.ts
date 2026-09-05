@@ -26,6 +26,14 @@ export { toCsv };
 // (issue #113 — /data used to serialize every dataset in full).
 export const PAGE_SIZE = 25;
 
+// A CSV cell no SELECT produces: built after the read by the named function.
+export type JsBuiltCell = {
+  column: string;
+  // The function in this file that puts the cell on the row.
+  by: string;
+  why: string;
+};
+
 export interface ExportDataset {
   key: string;
   label: string;
@@ -57,6 +65,19 @@ export interface ExportDataset {
   // and is proven bound by the seeded key comparison instead — export.test.ts fails
   // on a dataset that is neither.
   readsSelect?: true;
+  // Cells this dataset's rows()/page() BUILD IN JS after the read — a child-table
+  // roll-up the parent select cannot fold into a column. They are in `columns` (so
+  // the CSV ships them) and in no `select`, which is otherwise exactly the shape of a
+  // header column with an empty cell on every row.
+  //
+  // Declaring one is a claim with two halves, and both are checked:
+  // lib/__db_tests__/export-completeness.test.ts asserts the column really is absent
+  // from the select, and that a `readsSelect` dataset never carries one (q(select)
+  // leaves no JS step that could build a cell); lib/__db_tests__/export.test.ts
+  // asserts the named cell is actually EMITTED, non-undefined, on a seeded row. One
+  // list, not two: a declaration nothing runs against is how a column named after a
+  // function that does not exist stays green.
+  jsBuilt?: JsBuiltCell[];
   // FULL dataset — every row, unbounded. Used ONLY by the export routes
   // (/api/export/*), which stream/serialize the complete table. The Data page
   // must NOT call this (it's the 22.5 MB / 2.1 s stall in #113); it reads the
@@ -372,6 +393,13 @@ export const DATASETS: ExportDataset[] = [
     label: "Activities",
     table: "activities",
     select: ACTIVITIES_SELECT,
+    jsBuilt: [
+      {
+        column: "exercises",
+        by: "shapeActivities",
+        why: "the activity's exercise_sets folded into one prose summary — a child-table roll-up, not a column of activities. The sets themselves export in full via the exercise_sets dataset.",
+      },
+    ],
     columns: [
       "date",
       "type",
@@ -824,6 +852,13 @@ export const DATASETS: ExportDataset[] = [
     label: "Supplements & Medications",
     table: "intake_items",
     select: ITEMS_SELECT,
+    jsBuilt: [
+      {
+        column: "schedule",
+        by: "shapeSupplements",
+        why: "the item's intake_item_doses folded into one readable dose summary — a child-table roll-up, not a column of intake_items. The doses themselves export in full via the intake_doses dataset.",
+      },
+    ],
     columns: [
       "name",
       "kind",

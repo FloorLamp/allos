@@ -934,7 +934,8 @@ export type IdentityResolution =
 // selects `profile_id` without filtering by it — filtering would presuppose the answer.
 // The gate is the protection, not the filter: the caller immediately intersects the
 // returned id with the token's `accessForProfile` write set, and an unauthorized result
-// is refused. Registered with that justification in the profile-scoping allowlist.
+// is refused. That is the argument for the read; nothing exempts it from the
+// profile-scoping scan, which reads the statement directly.
 //
 // `ignored = 0 AND profile_id IS NOT NULL` is belt-and-braces against the CHECK: the two
 // can never disagree, and resolution states its requirement rather than relying on a

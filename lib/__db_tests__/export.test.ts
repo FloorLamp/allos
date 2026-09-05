@@ -249,12 +249,12 @@ describe("DATASETS ⇄ DELETE_POLICY stay in sync", () => {
 // declared select emits — the same names toCsv keys on. A dataset with no seeded rows
 // has no keys to read, so the check is silent about it; that is why the two lists
 // below exist, and why the last case fails on a dataset that is bound by neither.
-const JS_BUILT_CELLS: Record<string, string[]> = {
-  // Child-table roll-ups built after the read (shapeActivities / shapeSupplements),
-  // declared in the same terms as export-completeness's CSV_COLUMNS_BUILT_IN_JS.
-  activities: ["exercises"],
-  intake_items: ["schedule"],
-};
+// The cells a dataset builds after the read are declared ON the dataset (`jsBuilt` in
+// lib/export.ts) and read from there by both guards — this one and the CSV header
+// check in lib/__db_tests__/export-completeness.test.ts. A second list here, never
+// cross-checked against that one, is how a declared cell no reader builds stays green.
+const jsBuiltColumns = (ds: (typeof DATASETS)[number]) =>
+  (ds.jsBuilt ?? []).map((c) => c.column);
 
 // The datasets that do NOT carry the `readsSelect` marker — they hand-write their
 // reads instead of taking q(select)/qPage(select) from tableDataset — so the binding
@@ -268,13 +268,18 @@ describe("the declared select is the statement the export runs (#5117)", () => {
         .prepare(ds.select)
         .columns()
         .map((c) => c.name),
-      ...(JS_BUILT_CELLS[ds.key] ?? []),
+      ...jsBuiltColumns(ds),
     ]);
 
   // A dataset that folds a child table in builds its rows as an object LITERAL
   // (shapeActivities), so dropping a column from the read leaves the key in place and
   // the value `undefined` — the key set alone cannot see it. A shipped cell is a value
   // or SQL NULL; `undefined` means a shaper read a field the statement never selected.
+  //
+  // THE LIMIT OF THIS RULE, stated where it lives: `undefined` catches a MISSING
+  // value, never a WRONG one. A shaper that wrote `notes: a.title` passes here and
+  // ships the wrong column; only reading the shaper, or a per-dataset value assertion,
+  // sees that. The claim these cases support is about which KEYS the export emits.
   const unselectedCells = (rows: Record<string, unknown>[], key: string) => {
     const bad: string[] = [];
     for (const row of rows) {
@@ -342,5 +347,43 @@ describe("the declared select is the statement the export runs (#5117)", () => {
     expect(stale, `built by tableDataset now — remove from the list`).toEqual(
       []
     );
+  });
+
+  it("every declared JS-built cell is actually built, on a seeded row", () => {
+    // A `jsBuilt` entry says a column reaches the CSV even though no SELECT emits it.
+    // Unchecked, that is a hatch: name any column and any builder — a function that
+    // exists nowhere included — and the CSV header check above goes quiet while every
+    // row ships an empty cell under the name. So the claim is run: seeded rows, the
+    // column present, and its value not `undefined`.
+    const missing: string[] = [];
+    for (const ds of DATASETS) {
+      for (const cell of ds.jsBuilt ?? []) {
+        const rows = ds.rows(a.profileId);
+        const page = ds.page(a.profileId, 25, 0);
+        if (rows.length === 0 || page.length === 0) {
+          missing.push(
+            `${ds.key}.${cell.column}: no seeded row to build it on — seed ${ds.key} in this file`
+          );
+          continue;
+        }
+        for (const [reader, got] of [
+          ["rows()", rows],
+          ["page()", page],
+        ] as const) {
+          const built = got.every(
+            (r) => cell.column in r && r[cell.column] !== undefined
+          );
+          if (!built) {
+            missing.push(
+              `${ds.key}.${cell.column}: ${ds.key}.${reader} does not put it on every row — ${cell.by}() is not building it`
+            );
+          }
+        }
+      }
+    }
+    expect(
+      missing,
+      `\nDeclared as built in JS after the read (jsBuilt in lib/export.ts), but not actually emitted:\n${missing.join("\n")}\n`
+    ).toEqual([]);
   });
 });

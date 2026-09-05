@@ -181,6 +181,20 @@ describe("getTimelineEvents", () => {
     ).toBe(false);
   });
 
+  it("scopes the calendar's event DATES to the requested profile", () => {
+    // getTimelineDates is one UNION over seventeen hand-authored arms, prepared
+    // through an interpolation the profile-scoping scan cannot read: its
+    // ALLOW_COMPOSED entry (lib/__tests__/profile-scoping.test.ts) rests on this.
+    // So it is asserted — a date only the OTHER profile has never reaches this one.
+    const onlyOther = "2019-03-04";
+    db.prepare(
+      `INSERT INTO body_metrics (profile_id, date, weight_kg) VALUES (?, ?, 70)`
+    ).run(other.profileId, onlyOther);
+
+    expect(getTimelineDates(other.profileId)).toContain(onlyOther);
+    expect(getTimelineDates(imperial.profileId)).not.toContain(onlyOther);
+  });
+
   it("derives only schedule-backed immunization dose positions", () => {
     const profileId = Number(
       db.prepare("INSERT INTO profiles (name) VALUES ('DOSE POSITION')").run()
