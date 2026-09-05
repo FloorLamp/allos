@@ -33,7 +33,7 @@
 // to part of their population on 2026-09-04 alone.
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db, today } from "@/lib/db";
+import { db, today, writeTx } from "@/lib/db";
 import { utcInstant, shiftDateStr } from "@/lib/date";
 import { zonedWallTimeToUtc } from "@/lib/calendar-ics";
 import { reconcileFlags } from "@/lib/queries";
@@ -89,6 +89,7 @@ function ctxFor(profileId: number): PersonaContext {
     saveFitnessEntry: (pid, entry) => saveFitnessEntry(pid, entry, "page"),
     recordGlucoseTrace,
     seedStandardMetricSaves: (pid) => seedStandardMetricSaves(db, pid),
+    writeTx,
     diffSituations,
     serializeSituationEvents,
     episodesForSituation,

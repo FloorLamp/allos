@@ -61,6 +61,15 @@ export interface PersonaContext {
   ): unknown;
   /** The standard Overview metric saves every production-created profile gets. */
   seedStandardMetricSaves(profileId: number): void;
+  /**
+   * One BEGIN IMMEDIATE write transaction (lib/db.ts's `writeTx`). Injected like
+   * everything else here so this module stays type-only, and IMMEDIATE rather than a
+   * bare `db.transaction` for the reason lib/__tests__/immediate-tx.test.ts gives: a
+   * DEFERRED transaction opens a read snapshot and only reaches for the write lock at
+   * its first write, where a competing commit makes it throw SQLITE_BUSY instead of
+   * waiting.
+   */
+  writeTx(fn: () => void): void;
   /** The situation change-log helpers (lib/trend-annotations, lib/symptom-episode). */
   diffSituations(before: string[], after: string[], date: string): unknown[];
   serializeSituationEvents(
@@ -843,7 +852,7 @@ function wearableHrDay(
   // transaction. Over the thirty days below that is the difference between ~8 s and the
   // 1.16 s this persona now pays. It wraps ONE DAY rather than the whole trace, so an
   // interrupted seed leaves whole days behind instead of half of one.
-  ctx.db.transaction(() => {
+  ctx.writeTx(() => {
     for (let hour = 0; hour < 24; hour++) {
       // "YYYY-MM-DDTHH:" — the anchor minus its minute and second fields.
       const stem = ctx.occurredAt(day, `${pad2(hour)}:00`).slice(0, 14);
@@ -869,7 +878,7 @@ function wearableHrDay(
         );
       }
     }
-  })();
+  });
 }
 
 // A Withings weigh-in: weight + body-fat on body_metrics plus the

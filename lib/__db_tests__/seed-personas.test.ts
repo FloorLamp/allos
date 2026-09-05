@@ -10,7 +10,7 @@
 // the two drift, this tier is where it shows.
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { db, today } from "@/lib/db";
+import { db, today, writeTx } from "@/lib/db";
 import { utcInstant } from "@/lib/date";
 import { zonedWallTimeToUtc } from "@/lib/calendar-ics";
 import { reconcileFlags } from "@/lib/queries";
@@ -59,6 +59,7 @@ function ctxFor(profileId: number): PersonaContext {
       saveFitnessEntry(profileId, entry, "page"),
     recordGlucoseTrace,
     seedStandardMetricSaves: (pid) => seedStandardMetricSaves(db, pid),
+    writeTx,
     diffSituations,
     serializeSituationEvents,
     episodesForSituation,

@@ -9,7 +9,7 @@
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { db, today } from "@/lib/db";
+import { db, today, writeTx } from "@/lib/db";
 import { utcInstant, shiftDateStr } from "@/lib/date";
 import { zonedWallTimeToUtc } from "@/lib/calendar-ics";
 import { reconcileFlags } from "@/lib/queries";
@@ -112,6 +112,7 @@ function ctxFor(profileId: number): PersonaContext {
       saveFitnessEntry(profileId, entry, "page"),
     recordGlucoseTrace,
     seedStandardMetricSaves: (pid) => seedStandardMetricSaves(db, pid),
+    writeTx,
     diffSituations,
     serializeSituationEvents,
     episodesForSituation,
