@@ -984,6 +984,21 @@ METHOD
   That is not hypothetical -- on #4312 a lane found its date bound deleted under it
   mid-round, twice, because the dispatch pointed this brief at the lane's live tree.
   If you were handed a path, build your own anyway and say so in your report.
+- NEVER \`pkill -f <pattern>\` — not vitest, not next, not playwright, not your own
+  harness name. Sibling lanes run the same binaries in this container, so a pattern
+  kill takes their runs down with yours and they have no way to tell that from a real
+  failure. Measured 2026-09-05 on #5290: a pass killed vitest by pattern to clean up
+  after itself, and had to spend a round of its own report explaining which of the
+  failures it then saw were its own kill rather than evidence. Kill only an explicit
+  PID you captured yourself. The same applies to your waiters — poll a file you own,
+  and never arm a loop that outlives your report.
+- NEVER \`git stash\`, and never \`git checkout -- <file>\` to undo a mutation. Your
+  attacks mutate production files many times over, so this is a step you take on every
+  round. \`stash\` is one stack for the whole repository and reaches across every lane
+  in this container; \`checkout --\` restores to HEAD, which is not the state you
+  mutated from. Copy the file to \$SCRATCH with a name unique to this pass
+  (\$SCRATCH/mut-refute-${prNumber}-<file>.bak) BEFORE each mutation and restore FROM
+  THAT COPY.
 - For each claim: construct the CONCRETE input, database state, or call sequence
   that would falsify it, and run it (db tier / pure tier / a scratch script
   against an in-memory database). "I read the code and it looks right" is not a
