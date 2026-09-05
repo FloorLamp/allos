@@ -465,9 +465,10 @@ export default async function EpisodePage(props: {
 
           `h-16` IS MEASURED, not picked: a Playwright `boundingBox()` on the
           fallback and on the sections it stands in for, against the seeded
-          VISITLINKS episode, reads 138px for this skeleton and 142px for what
-          lands (a 106px Care card, the container's 20px gap, a 16px footer). The
-          two conditional cards above the footer only ever grow it downward. */}
+          VISITLINKS episode, reads 138px for this skeleton, and 106px + 16px for
+          what lands there — the Care card and the footer, separated by the
+          container's own `space-y-5`. The two conditional cards above the footer
+          only ever grow that downward. */}
       <Suspense
         fallback={
           <PendingSection label="Care and context" bodyClassName="h-16" />
