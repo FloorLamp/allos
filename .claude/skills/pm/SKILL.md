@@ -1,6 +1,6 @@
 ---
 name: pm
-description: Act as the owner's project manager over agent-run development on FloorLamp/allos — keep one or more orchestrator sessions saturated and on the ruled priority ladder, relay owner rulings, watch landing and duplication, drain needs-human with the owner present, and maintain the pinned Ladder issue. Use when the owner says "you are my project manager", "check in with the orchestrator", "keep them at max throughput", "what needs me", or asks to add or coordinate another work session. NOT for dispatching, reviewing or merging code yourself (orchestrate) and NOT for filing issues (file-issue).
+description: Act as the owner's project manager over agent-run development on FloorLamp/allos — keep the orchestrator sessions saturated and on the ruled priority ladder, relay owner rulings, watch landing and duplication, and maintain the pinned Ladder issue. Use when the owner says "you are my project manager", "check in with the orchestrator", "keep them at max throughput", "how are things", "catch me up", or adds a work session. "What needs me" is the needs-human skill, which the PM invokes. NOT for dispatching, reviewing or merging code yourself (orchestrate) and NOT for filing issues (file-issue).
 allowed-tools: Read, Grep, Glob, AskUserQuestion, Bash(curl:*), Bash(jq:*), Bash(git fetch:*), Bash(git log:*), Bash(git show:*), Bash(git grep:*), Bash(git diff:*), Bash(git ls-remote:*), Bash(date:*), mcp__Claude_Code_Remote__get_session, mcp__Claude_Code_Remote__list_sessions, mcp__Claude_Code_Remote__create_session, mcp__Claude_Code_Remote__create_trigger, mcp__Claude_Code_Remote__update_trigger, mcp__Claude_Code_Remote__delete_trigger, mcp__Claude_Code_Remote__list_triggers, mcp__Claude_Code_Remote__send_later, mcp__Claude_Code_Remote__subscribe_pr_activity, mcp__Claude_Code_Remote__unsubscribe_pr_activity, SendMessage, ListAgents
 ---
 
@@ -22,8 +22,8 @@ order, prerequisites, and each orchestrator's slice. Orchestrators read it at
 every check-in. A ladder that lives in your prompt dies at compaction.
 
 Edit it whenever the owner re-ranks, a prerequisite lands, or a session is
-added: body in place, edit time stamped, verified by re-read. The session ids
-it lists are hints, refreshed at every bootstrap — never a dependency.
+added: body in place, time stamped, verified by re-read. Its session ids are
+hints, refreshed at every bootstrap — never a dependency.
 
 ## Bootstrap — sessions do not survive an account change
 
@@ -33,16 +33,16 @@ account, or after any gap, nothing you remember about session ids is true.
 The cross-account truth is GitHub alone: `main`, remote branches, open PRs,
 `Dispatched:` notes, and the Ladder issue.
 
-1. `list_sessions` (tag `allos-orchestrator`, else title "work work"); keep
-   the ones that are live. Refresh the ids in the Ladder.
+1. `list_sessions`, title `allos-orchestrator` (a second one adds a letter);
+   keep the ones that are live. Refresh the ids in the Ladder.
 2. **No live orchestrator → create exactly one** with `create_session` in the
-   repo's environment, tagged `allos-orchestrator`. Its prompt: invoke the
+   repo's environment, titled `allos-orchestrator`. Its prompt: invoke the
    `orchestrate` skill, check in, adopt every live remote branch through
    `dispatch-brief.mjs adopt` (`recovery.md`), read the Ladder, refill.
 3. Record its id in the Ladder, arm your watch, and only then look at the
    queue. One orchestrator is the default; a second is the owner's call.
-4. Stale triggers from the old account never fire here: re-arm the watch
-   and every relay you were owed, from the Ladder's state, not from memory.
+4. The old account's triggers never fire here: re-arm the watch and every
+   relay owed, from the Ladder's state, not from memory.
 
 Usage: `rate_limit_info` says only allowed, warning or rejected. Wind down
 (`lifecycle.md` §Wind-down, hand-off on the Ladder) only when the owner says
@@ -81,8 +81,8 @@ CI-green event reaches you in minutes, not at the next watch.
 ## The digest
 
 `bash scripts/orchestration/pm-digest.sh` is the owner's catch-up (`--peek`,
-`--since ISO`, `--days N` leave its anchor). Run it before any "how are we
-doing" and at the end of a session-day. It prints data; the report is yours:
+`--since ISO`, `--days N` leave its anchor). Run it before any "how are
+things", "catch me up" or the like, and at each day's end. The report is yours:
 
 1. **Shipped for people** — the largest user-facing features and epics:
    group the release notes and the biggest product merges into three to
@@ -146,8 +146,8 @@ every question by VISIBLE impact and rules the low half itself.
 
 ## Adding an orchestrator
 
-- One orchestrator per container. A second one doubles agents and E2E lanes;
-  it does not double the serial landing path, so expect slot contention.
+- Each orchestrator gets its own cloud container (`create_session` spawns
+  one): no contention; only the landing path stays serial.
 - Partition by DOMAIN, written into the Ladder: disjoint issue sets and a
   list of paths the new slice never edits. Give the UI-consolidation chain
   to one session whole; give the other everything disjoint from it.
