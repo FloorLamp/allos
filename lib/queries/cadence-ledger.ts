@@ -551,32 +551,6 @@ export function getCadenceLedger(
   );
 }
 
-// The in-progress cadence verdict today and its immediately-prior comparable
-// verdict yesterday, oldest first. The windows overlap in rolling mode and after
-// the first day of a calendar week; cadenceCounts projects both from one bounded
-// source gather so dashboard transition detection does not add a second query.
-export function getCadenceCurrentAndPriorDay(
-  profileId: number,
-  direction: CadenceDirection
-): CadenceLedgerEntry[] {
-  const currentDay = today(profileId);
-  const previousDay = shiftDateStr(currentDay, -1);
-  const previous = cadenceWindows(profileId, {
-    weeks: 1,
-    includeCurrent: true,
-    asOf: previousDay,
-  });
-  const current = cadenceWindows(profileId, {
-    weeks: 1,
-    includeCurrent: true,
-    asOf: currentDay,
-  });
-  return cadenceLedgerForWindows(profileId, direction, [
-    ...previous,
-    ...current,
-  ]);
-}
-
 // The cadence facts ONE activity carries (#2503) — the session-level twin of the two
 // workout gathers above, reading the SAME two sources they do: the activity's own type
 // plus its components' types (`activity-type`), and the regions its logged sets map to

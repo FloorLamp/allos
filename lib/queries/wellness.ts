@@ -873,9 +873,9 @@ export function isPredictedPracticeDay(
 // predicate rather than bypassing it, because a behind target with no learned
 // rhythm has no moment a card could be answering. The standing fact is still told —
 // the weekly-target reading states "Behind" and ranks into Standing's attention
-// tier (#3543 / #3548) — the `weekly-target-transition` promotion still celebrates
-// the change, and the log action still sits one tap away in Show everything's Act
-// group. It is un-promoted, not removed.
+// tier (#3543 / #3548) — and the log action still sits one tap away in Show
+// everything's Act group. It is un-promoted, not removed. Nothing in this family
+// promotes any more: the met-transition promotion retired with #4756/#5064.
 export function frequencyTargetLogWindowOpen(
   profileId: number,
   target: Pick<FrequencyTarget, "scope_kind" | "scope_value">,
