@@ -105,11 +105,12 @@ export function laneIssues(rows) {
 
 // CLI for orchestrator-checkin.sh, which cannot import a function. It answers
 // or it EXITS; it never answers 0 for a question it could not ask. A MISSING
-// ledger is UNKNOWN, not zero — the check-in prints `?`, and `?` sends the
-// orchestrator to look. Printed as 0 it reads "no lanes are running", and an
-// empty roster is a DISPATCH ORDER, so a wrong STATE_DIR or a restart would
-// dispatch on top of live lanes nobody can see. A present-but-EMPTY ledger
-// really is zero and prints 0: the two `?` cases share unknown, not none.
+// ledger is UNKNOWN, not zero — the check-in prints UNMEASURED and names the
+// failure, which sends the orchestrator to look. Printed as 0 it reads "no
+// lanes are running", and an empty roster is a DISPATCH ORDER, so a wrong
+// STATE_DIR or a restart would dispatch on top of live lanes nobody can see. A
+// present-but-EMPTY ledger really is zero and prints 0: the two refusals share
+// unknown, not none.
 if (isMain(process.argv, import.meta.url)) {
   const [mode, file] = process.argv.slice(2);
   const from = file || ledgerPath();
