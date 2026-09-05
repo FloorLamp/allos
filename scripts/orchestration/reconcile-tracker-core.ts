@@ -217,6 +217,15 @@ export interface TrackerSnapshot {
    * reported as unverifiable rather than assumed open.
    */
   issueStates: ReadonlyMap<number, "open" | "closed">;
+  /**
+   * True when `mergedPrs` is a PREFIX of the window rather than the window:
+   * the fetch stopped at its page cap with rows still behind it. Required, not
+   * optional, for the reason `lib/__tests__/reconcile-close-contract.test.ts`
+   * records at length (#2275) — an omitted flag is indistinguishable from
+   * nobody having looked, and this is the one field where that confusion is
+   * the whole defect.
+   */
+  prsTruncated: boolean;
 }
 
 /** The repository, as data: what files exist and what is in them. */
@@ -683,6 +692,12 @@ export interface ReconcileTotals {
   /** Symbols absent from main but tiered as proposals rather than drift. */
   proposalSymbols: number;
   docsFilesExamined: number;
+  /**
+   * `prsExamined` is a FLOOR, not a count: the fetch hit its page cap. A high
+   * denominator reads as proof the run resolved things, which is exactly the
+   * belief a truncated fetch does not support.
+   */
+  prsExaminedTruncated: boolean;
 }
 
 export interface ReconcileWatermark {
@@ -1226,6 +1241,7 @@ export function gatherEvidence(
     symbolsChecked: 0,
     proposalSymbols: 0,
     docsFilesExamined: 0,
+    prsExaminedTruncated: snapshot.prsTruncated,
   };
   const dirs = topLevelDirs(index);
 
@@ -1459,8 +1475,12 @@ export function renderReport(evidence: ReconcileEvidence): string {
   const lines: string[] = [];
   lines.push(`# Tracker reconciliation — ${evidence.watermark.current}`);
   lines.push("");
+  // NOT "first run": a run with no watermark cannot tell a genuine first run
+  // from the far commoner case where the stamp step was skipped, and this
+  // tracker has had several reconciliations and never a carrier issue. What
+  // the run actually knows is that its lower bound is missing.
   lines.push(
-    `Window: ${evidence.watermark.previous ?? "(first run — no watermark)"} → ${evidence.watermark.current}`
+    `Window: ${evidence.watermark.previous ?? "(unstamped — no lower bound)"} → ${evidence.watermark.current}`
   );
   lines.push("");
   lines.push("## What was examined");
@@ -1470,7 +1490,11 @@ export function renderReport(evidence: ReconcileEvidence): string {
   );
   lines.push("");
   lines.push(`- issues examined: ${t.issuesExamined}`);
-  lines.push(`- merged PRs examined: ${t.prsExamined}`);
+  lines.push(
+    t.prsExaminedTruncated
+      ? `- merged PRs examined: ${t.prsExamined} — **TRUNCATED**: the fetch stopped at its page cap, so merges older than the oldest listed above were never fetched and no umbrella claim in them was checked. Stamp the watermark to narrow the window.`
+      : `- merged PRs examined: ${t.prsExamined}`
+  );
   lines.push(
     `- path citations parsed: ${t.pathCitations} (resolved to a file: ${t.pathsResolved})`
   );
