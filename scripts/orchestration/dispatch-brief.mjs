@@ -2571,8 +2571,15 @@ function cmdClaims(argv) {
   // A guard that fires on the ordinary case is one its readers learn to skim,
   // and they skim it the once it is right — the ignorable-alarm failure this
   // whole file exists to avoid. So the grace `list` already uses to tell a
-  // starting lane from a dead one (NO_TRACE_GRACE_MS, whose size is argued
-  // there) tells them apart here too: same fact, same constant, one question.
+  // starting lane from a dead one tells them apart here too: same fact, same
+  // constant, one question.
+  //
+  // NO_TRACE_GRACE_MS NOW HAS TWO CALLERS, and its size was argued for only one
+  // of them — `list`'s stall alarm, read once per check-in, where the cost of
+  // waiting is a late alarm. Here it is read by a lane about to edit a file,
+  // where the cost is a sibling's first minutes going unreported. Reusing it
+  // beat minting a second constant for one question, but anyone retuning it for
+  // either caller is retuning it for both.
   const now = Date.now();
   const rows = fileClaims(target, others, (d) => {
     const dir = worktrees.get(d.branch);
