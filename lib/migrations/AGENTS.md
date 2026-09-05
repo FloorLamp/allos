@@ -10,6 +10,10 @@ These instructions apply to the migration runner and migrations.
   manifest merge conflict. Name-keyed migrations have no numeric `id`.
 - Use a rebuild migration to grow a `CHECK` enum or add a foreign key. Null
   dangling links before enforcing a new foreign key.
+- A column added to a table that has an export dataset joins that dataset
+  (`columns` and `select` in `lib/export.ts`), or the reason it stays out is
+  written down. The portable export carries provenance columns, not just facts
+  (#5117).
 - Put one-shot data moves in migrations, not settings flags. Per-boot
   reconciliation belongs in `boot-tasks.ts`.
 - A migration that deletes rows must declare and exercise non-cascading child

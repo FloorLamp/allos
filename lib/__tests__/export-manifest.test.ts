@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildExportManifest } from "@/lib/export-manifest";
+import { buildExportManifest, PENDING_COLUMNS } from "@/lib/export-manifest";
 
 describe("buildExportManifest", () => {
   const base = {
@@ -77,5 +77,13 @@ describe("buildExportManifest", () => {
       "medical-files/9-gone.pdf",
     ]);
     expect(m.contents.profilePhoto).toBe("profile-photo.jpg");
+  });
+
+  it("names the columns nothing writes yet (#5273)", () => {
+    const m = buildExportManifest(base);
+    // The manifest is the only thing in the archive that explains it, so an empty
+    // column has to be readable as pending there rather than as broken.
+    expect(m.pendingColumns?.columns).toEqual(PENDING_COLUMNS);
+    expect(m.pendingColumns?.note).toContain("empty on every row");
   });
 });
