@@ -3,7 +3,7 @@
 import { requireWriteAccess } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { getUnitPrefs, type WeightUnit } from "@/lib/settings";
-import { LOGGED_VIA_FIELD } from "@/lib/logged-via";
+import { stampWebOrigin } from "@/lib/logged-via";
 import { addMeasurements } from "@/app/(app)/trends/measurement-actions";
 import { getTrackedPractices } from "@/lib/queries";
 import { practiceLogOutcomeText } from "@/lib/practice";
@@ -47,7 +47,14 @@ export async function paletteQuickLog(
   if (parsed.type === "practice") {
     // Reach the EXISTING action — its own write gate, its own revalidation of every
     // practice surface — instead of re-implementing the write here.
-    const fd = new FormData();
+    // The command palette IS the quick-log surface (#3087). Said here as well as at
+    // the weight half below because this half used to say nothing at all: the practice
+    // arm posted an unstamped body, so every session logged from the palette recorded
+    // `page` — the action's fallback — and the palette was invisible in the column
+    // #3087 added to tell these two apart. Found by #5349's brand; the import-graph
+    // walk could not see it, because this is a "use server" module reaching a sibling
+    // action and the walk only looked at CLIENTS that import one.
+    const fd = stampWebOrigin(new FormData(), "quick-log");
     fd.set("practice", parsed.practice);
     const outcome = await logPractice(fd);
     // Answered from the typed outcome, never an unconditional confirm: a session log is
@@ -62,12 +69,11 @@ export async function paletteQuickLog(
   // "when", so it posts no `occurred_at` field at all — which the action reads as "no
   // statement was made" and leaves any stored time alone (#2235's trichotomy), rather
   // than as the explicit clear an empty field means.
-  const fd = new FormData();
+  // The command palette IS the quick-log surface (#3087).
+  const fd = stampWebOrigin(new FormData(), "quick-log");
   fd.set("date", today(profile.id));
   fd.set("weight", String(parsed.value));
   fd.set("weight_unit", parsed.unit);
-  // The command palette IS the quick-log surface (#3087).
-  fd.set(LOGGED_VIA_FIELD, "quick-log");
   const saved = await addMeasurements(fd);
   // The one refusal this submission can meet: the action judges the day against the
   // profile's own today, and the line above states that very day — so this is the

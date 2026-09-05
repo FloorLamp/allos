@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useToast } from "@/components/Toast";
+import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import AddEntryPanel from "@/components/AddEntryPanel";
 import { substanceNameError, validateSubstanceName } from "@/lib/substance-use";
 import { trackSubstanceUseAction } from "./actions";
@@ -56,6 +57,7 @@ import SubmitButton from "@/components/SubmitButton";
 // decides about keeping a substance somebody stopped using.
 export default function TrackSubstanceControl() {
   const toast = useToast();
+  const stampLoggedVia = useLoggedViaStamp();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -73,7 +75,10 @@ export default function TrackSubstanceControl() {
     }
 
     setPending(true);
-    const fd = new FormData();
+    // WHICH SURFACE (#3087): this door renders on the substance-use page and inside the
+    // record's substance section, and the action cannot know which — so the mounting
+    // declares it rather than taking the `page` fallback from both.
+    const fd = stampLoggedVia(new FormData());
     fd.set("name", typed);
     const result = await trackSubstanceUseAction(fd);
     setPending(false);

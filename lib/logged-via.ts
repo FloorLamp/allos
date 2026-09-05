@@ -135,6 +135,56 @@ export function parseWebOrigin(
     : fallback;
 }
 
+// THE STAMPED PAYLOAD (#5349) — the type half of #3087, and the thing that used to be
+// missing. `parseWebOrigin` above asks "which of my mountings posted this?", and until
+// now NOTHING IN THE TYPE SYSTEM CONNECTED THE TWO: an action that read the field
+// compiled perfectly with no client ever setting it, took its fallback on every
+// request, and recorded `page` for the dashboard, the quick-log sheet and the command
+// palette alike. A 1,261-line import-graph walk reconstructed the connection from
+// source on every run, and a mounting reached by a path the walker did not know — a
+// server component passing the action down as a prop, a "use server" module calling a
+// sibling action — passed it silently. Both of those were in the tree.
+//
+// So the payload carries the declaration instead. This is the `Tx` token (lib/db.ts,
+// #2133) on the form side: a value only this module can mint, required by the actions
+// that read a surface, so the wrong caller is UNWRITABLE rather than something each
+// mounting's author remembers. Under `strictFunctionTypes` a parameter is
+// contravariant, so `(fd: StampedFormData) => …` is not assignable to
+// `<form action>`'s `(fd: FormData) => …` — a bare DOM-collected mounting fails `tsc`
+// at the JSX, which is the whole guard.
+//
+// WHAT IT DOES NOT CLAIM, and the boundary is ACCEPTED rather than overlooked: it says
+// the payload CARRIES a declared surface, never that the declared surface is the true
+// one. Nothing — type, lint or scan — can see the second, and the walk this replaced
+// could not either: its `DECLARES_RE` counted a bare `.set(LOGGED_VIA_FIELD, …)` with
+// any value as a declaration. So this is the honest limit of the mechanism, not a
+// regression against it. `parseWebOrigin` still refuses anything outside the four web
+// values, because the field rides the post and is attacker-controlled like any other.
+// The brand is a discipline on OUR mountings; the parse is the gate on THEIR request.
+// Both stay.
+declare const WEB_ORIGIN_STAMP: unique symbol;
+export type StampedFormData = FormData & { readonly [WEB_ORIGIN_STAMP]: true };
+
+/**
+ * Mint one. The ONLY door — every stamping mount reaches it through
+ * `useLoggedViaStamp()` (which binds the surface to the region context) or through
+ * `useWritePipeline`, which builds the FormData and stamps it so its callers never
+ * hold an unstamped one.
+ *
+ * It takes the surface EXPLICITLY rather than only from context because two mountings
+ * legitimately name their own: the command palette IS `quick-log` wherever it opens,
+ * and the activity editor carries the surface it was opened from across a portal.
+ * Those were `.set(LOGGED_VIA_FIELD, …)` by hand before this existed, which is the
+ * same act with nothing to check it.
+ */
+export function stampWebOrigin(
+  formData: FormData,
+  surface: WebLoggedVia
+): StampedFormData {
+  formData.set(LOGGED_VIA_FIELD, surface);
+  return formData as StampedFormData;
+}
+
 /**
  * The stamp every IMPORTER writes.
  *

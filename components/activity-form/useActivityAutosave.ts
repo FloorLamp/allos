@@ -6,6 +6,7 @@ import {
   useState,
 } from "react";
 import { saveActivity } from "@/app/(app)/training/activity-actions";
+import type { StampedFormData } from "@/lib/logged-via";
 import { saveOutcomeMessage } from "@/lib/activity-save-outcome";
 import { shouldDeferRowlessSave } from "@/lib/live-workout";
 // Declared in a leaf module so importing it from a spec cannot drag this file's
@@ -98,7 +99,7 @@ export function useActivityAutosave({
   // A "Log again"/"Repeat last" prefill create: starts the saved signature DIFFERENT
   // (an empty sentinel) so the seeded, already-complete activity auto-saves on open.
   isPrefillCreate: boolean;
-  buildFormData: (savedId: number | null) => FormData;
+  buildFormData: (savedId: number | null) => StampedFormData;
   // Both posts from here are headless — the form has already unmounted — so they
   // pass `silent` (#3699): a cue for something the person is no longer looking at is
   // a phone buzzing on a table.
