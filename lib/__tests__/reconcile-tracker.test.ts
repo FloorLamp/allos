@@ -1804,7 +1804,9 @@ describe("the toolchain granted to a reconciliation run cannot close an issue", 
     const rs = source("scripts/orchestration/reconcile-run-summary.ts");
     expect(rs.match(/"POST"/g)).toHaveLength(1);
     expect(rs).not.toMatch(/"(?:PATCH|PUT|DELETE)"/);
-    expect(rs).toContain("JSON.stringify({ body: runSummaryComment(summary) })");
+    expect(rs).toContain(
+      "JSON.stringify({ body: runSummaryComment(summary) })"
+    );
     expect(rs).toContain("issues/${RUN_SUMMARY_ISSUE}/comments");
     // Exactly one issue URL in the file, and the issue number is the constant.
     const urls = [...rs.matchAll(/https:\/\/api\.github\.com[^`"]*/g)].map(

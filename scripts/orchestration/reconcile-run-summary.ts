@@ -162,7 +162,8 @@ function main(): void {
   // report-only run patched nothing. Zero is then the truth, not a default.
   const outcomeFile = flagValue(args, "--outcome");
   const patched = outcomeFile
-    ? ((readJson(outcomeFile, "--outcome") as { applied?: number }).applied ?? 0)
+    ? ((readJson(outcomeFile, "--outcome") as { applied?: number }).applied ??
+      0)
     : 0;
 
   let summary;

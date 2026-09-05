@@ -1,7 +1,7 @@
 ---
 name: reconcile-tracker
 description: Reconcile the issue tracker and roadmap against main — verify each issue's citations, dependencies and status claims, patch only the factual drift, and flag everything that needs judgment. Use for a scheduled or on-demand tracker maintenance pass, never as a CI gate.
-allowed-tools: Read, Grep, Glob, Bash(npx tsx scripts/orchestration/reconcile-tracker.ts:*), Bash(npx tsx scripts/orchestration/reconcile-apply.ts:*), Bash(npx tsx scripts/orchestration/reconcile-labels.ts:*), Bash(npx tsx scripts/orchestration/reconcile-watermark.ts:*), Bash(git grep:*), Bash(git log:*), Bash(git show:*), Bash(git diff:*), mcp__github__issue_read, mcp__github__list_issues, mcp__github__search_issues, mcp__github__pull_request_read, mcp__github__list_pull_requests, mcp__github__search_code
+allowed-tools: Read, Grep, Glob, Bash(npx tsx scripts/orchestration/reconcile-tracker.ts:*), Bash(npx tsx scripts/orchestration/reconcile-apply.ts:*), Bash(npx tsx scripts/orchestration/reconcile-labels.ts:*), Bash(npx tsx scripts/orchestration/reconcile-watermark.ts:*), Bash(npx tsx scripts/orchestration/reconcile-run-summary.ts:*), Bash(git grep:*), Bash(git log:*), Bash(git show:*), Bash(git diff:*), mcp__github__issue_read, mcp__github__list_issues, mcp__github__search_issues, mcp__github__pull_request_read, mcp__github__list_pull_requests, mcp__github__search_code
 ---
 
 # Tracker reconciliation
@@ -228,10 +228,42 @@ npx tsx scripts/orchestration/reconcile-watermark.ts stamp \
 Stamps the GATHER's own timestamp — nothing between gather and stamp escapes
 the next window. Refuses rewinds; the first apply creates the carrier issue.
 
+## Record the run — one line on #865, every time
+
+```bash
+npx tsx scripts/orchestration/reconcile-run-summary.ts \
+  --evidence /tmp/reconcile-evidence.json \
+  --outcome /tmp/reconcile-apply.json \
+  --apply                                 # dry run without --apply
+```
+
+Every run ends here, including a run that patched nothing. One line, appended
+to #865: the run's date, the `main` SHA it swept, how much drift it patched,
+how much it flagged, and whether it was boring. Nothing else records that a
+run happened — no report is committed and the watermark holds one instant —
+so a run that skips this step leaves no trace it ever ran.
+
+`--outcome` is the applier's own count (`reconcile-apply.ts --outcome
+<file>`); without it the line reports zero patched, which is the truth for a
+report-only run. Dry-run first: it prints the exact line and posts nothing.
+Re-running on the same evidence is safe — the line is keyed on the gather's
+stamp and the writer refuses a second post for one run.
+
+**The line is a fact about the run, never a verdict on the tracker.**
+`flagged` is arithmetic: unapplied patch candidates + couldn't-verify + docs +
+label findings. `boring` is `flagged == 0`, and a run whose PR sweep was
+truncated reports `boring: not established` rather than `yes`, because zero
+findings out of a clipped window is a fact about the part that was fetched.
+
 ## Scheduling
 
-Run weekly, or on demand after a heavy merge day. Deliberately NOT wired to
-a cron: an unattended pass that writes to the tracker needs its report read.
+Run weekly, or on demand after a heavy merge day. **The cron is not wired, by
+decision** (#865, ruling 2026-09-05): `npm run reconcile` is the schedule. An
+unattended pass that writes to the tracker needs its report read, and an unread
+cron is how a routine starts patching in a shape nobody sanctioned.
 
-An unread cron is how a routine starts patching in a shape nobody
-sanctioned. Wire it when the report has been boring three runs running.
+What lifts that: **three consecutive boring runs**, counted from the summary
+lines on #865 — `Reconciliation run — …` — and the lane that wires the cron
+cites those three comments. Which is why the previous section is not optional:
+before it existed the condition could never be met, because nothing recorded
+that a run had happened at all.
