@@ -432,6 +432,23 @@ const ALLOW_EXEC: { file: string; includes: string; why: string }[] = [
 // `.prepare(sql)` sites whose argument is a runtime expression (not a string
 // literal), so the SQL can't be inspected here. Each is verified by hand to be
 // profile-scoped and listed with a justification.
+//
+// THE BAR FOR AN ENTRY, written once so the next one MEETS it rather than imitating
+// its neighbours (#5296). This scan cannot read these statements, so an entry is
+// always a claim that something else checks them. Two shapes qualify:
+//
+//   - it NAMES a db-tier test that goes RED when that statement's scoping is mutated.
+//     The test is the proof and the `why` points at it instead of re-arguing the SQL.
+//     Admission means running that mutation, not reading the test and believing it.
+//   - it shows no exemption is being granted at all: the statement's own text is
+//     scanned where it is written (lib/db.ts's preparedFor, behind hoistedStatement),
+//     or the read is deliberately profile-AGNOSTIC and says so (lib/providers-db.ts's
+//     cross-profile count).
+//
+// A `why` that only restates the SQL's shape is neither. That is how a statement stops
+// being checked while still looking checked — two entries here cited a walk over
+// PROVIDER_LINK_SELECTS that nothing ran, and loosening one of its arms put a named
+// oncology centre into an unrelated profile's export with both tiers green.
 const ALLOW_NON_LITERAL: { file: string; expr: string; why: string }[] = [
   {
     file: "lib/db.ts",
@@ -451,7 +468,17 @@ const ALLOW_NON_LITERAL: { file: string; expr: string; why: string }[] = [
   {
     file: "lib/export.ts",
     expr: "sql",
-    why: "q(sql) helper: every DATASETS query string filters the acting profile — directly (WHERE profile_id = ?) or, for the intake dose/log child tables, through the parent JOIN (WHERE ii.profile_id = ?)",
+    why: "q(sql) helper: every DATASETS query string filters the acting profile — directly (WHERE profile_id = ?) or, for the intake dose/log child tables, through the parent JOIN (WHERE ii.profile_id = ?). Not left to that sentence: lib/__db_tests__/export.test.ts seeds two profiles and asserts, per dataset, that rows(), page() and count() carry none of the OTHER profile's rows — compared by row CONTENT, so a dataset emitting no `id`, or aliasing the one it has, is judged like any other. The one dataset that comparison cannot judge (the GLOBAL providers table) is named there and asserted exhaustive against OWNED_TABLES + ownedChildTables(db), which is schema-derived and not editable from lib/export.ts.",
+  },
+  ...(["ACTIVITIES_SELECT", "ITEMS_SELECT"] as const).map((expr) => ({
+    file: "lib/export.ts",
+    expr,
+    why: `the ${expr === "ACTIVITIES_SELECT" ? "activities" : "intake_items"} dataset's full read. Both datasets fold a child table in JS after the read, so they hand-write rows()/page() instead of taking them from tableDataset — and the statement is one module const rather than three copies, because ExportDataset.select must be the SAME string the readers run for the column census to attribute its columns. Passed by name, so this scan sees an identifier. The const itself opens its WHERE with the acting profile's own \`profile_id = ?\`, and that is CHECKED rather than asserted here: lib/__db_tests__/export.test.ts seeds two profiles and proves per dataset that rows(), page() and count() carry none of the other profile's rows, compared by row content. Rewriting this const's WHERE reds that dataset's case.`,
+  })),
+  {
+    file: "lib/export.ts",
+    expr: "providersSelect(ph)",
+    why: "the providers dataset's read: `providers` is a GLOBAL table with no profile_id of its own, so there is no profile filter in this statement to check. It is read by an explicit `IN (…)` id list, and that list comes from referencedProviderIds(profileId) — the walk over PROVIDER_LINK_SELECTS, whose arms are the entire profile filter. That walk is EXERCISED rather than cited: lib/__db_tests__/export.test.ts builds one case per arm out of the same exported array the walk iterates, seeding that arm's own table with a link to a uniquely named provider, asserting it reaches its own profile's export and reaches no other. Loosening any arm's `profile_id = ?` reds that arm's case. The function exists so the placeholder count can vary; its SQL text is one hand-authored literal.",
   },
   {
     file: "lib/export-full.ts",
