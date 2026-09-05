@@ -9,6 +9,18 @@
 // these helpers run in hot render paths (e.g. per keystroke in forms), so
 // formatters are cached per locale+options. The cache stays tiny: one entry per
 // distinct (locale, timezone, options) combination the app uses.
+import type {
+  BareInstant,
+  CanonicalInstant,
+  LocalDay,
+  LocalTime,
+} from "./temporal-types";
+
+// The functions below that return a brand are its MINTERS (#2899): `isRealIsoDate`
+// validates (a type predicate, no cast); the rest construct from a Date/Intl and
+// carry their one permitted cast on a `-- <brand> minter:` disable line. See
+// lib/temporal-types.ts for the vocabulary and the rule.
+
 const fmtCache = new Map<string, Intl.DateTimeFormat>();
 export function cachedDateTimeFormat(
   locale: string,
@@ -28,7 +40,9 @@ const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 // True only for a real calendar date in ISO YYYY-MM-DD form — rejects both bad
 // formats ("12/25/2026", "2026-07") and impossible dates ("2026-13-45",
 // "2026-02-30"). Shared by DateField, form auto-save gating, and server actions.
-export function isRealIsoDate(v: string | null | undefined): v is string {
+// THE validating LocalDay minter: it checks the calendar, not the regex, so the
+// predicate narrows to the brand with no cast at all.
+export function isRealIsoDate(v: string | null | undefined): v is LocalDay {
   if (typeof v !== "string" || !ISO_DATE_RE.test(v)) return false;
   const [y, m, d] = v.split("-").map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d));
@@ -41,27 +55,32 @@ export function isRealIsoDate(v: string | null | undefined): v is string {
 
 // Calendar date (YYYY-MM-DD) for an instant in the given IANA timezone. en-CA
 // formats as ISO order natively.
-export function dateStrInTz(tz: string, d: Date = new Date()): string {
-  return cachedDateTimeFormat("en-CA", {
+export function dateStrInTz(tz: string, d: Date = new Date()): LocalDay {
+  const day = cachedDateTimeFormat("en-CA", {
     timeZone: tz,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   }).format(d);
+  // eslint-disable-next-line no-restricted-syntax -- LocalDay minter: constructs from a Date through Intl
+  return day as LocalDay;
 }
 
 // Shift a YYYY-MM-DD calendar date by N days. Anchored at UTC midnight so it never
 // crosses a DST boundary — pure calendar arithmetic, independent of any timezone.
-export function shiftDateStr(dateStr: string, deltaDays: number): string {
+// Constructs through Date, and `toISOString` throws on an unparseable input, so the
+// result is always a real calendar day.
+export function shiftDateStr(dateStr: string, deltaDays: number): LocalDay {
   const d = new Date(dateStr + "T00:00:00Z");
   d.setUTCDate(d.getUTCDate() + deltaDays);
-  return d.toISOString().slice(0, 10);
+  // eslint-disable-next-line no-restricted-syntax -- LocalDay minter: constructs from a Date
+  return d.toISOString().slice(0, 10) as LocalDay;
 }
 
 // The last `n` calendar dates ending at (and including) `anchor`, oldest first —
 // the column window shared by the supplements page and the notifier's adherence.
-export function lastNDates(anchor: string, n: number): string[] {
-  const out: string[] = [];
+export function lastNDates(anchor: string, n: number): LocalDay[] {
+  const out: LocalDay[] = [];
   for (let i = n - 1; i >= 0; i--) out.push(shiftDateStr(anchor, -i));
   return out;
 }
@@ -72,7 +91,7 @@ export function lastNDates(anchor: string, n: number): string[] {
 export function zonedDateParts(
   tz: string,
   d: Date
-): { date: string; hhmm: string } {
+): { date: LocalDay; hhmm: LocalTime } {
   const parts = cachedDateTimeFormat("en-CA", {
     timeZone: tz,
     year: "numeric",
@@ -87,8 +106,10 @@ export function zonedDateParts(
   let hour = get("hour");
   if (hour === "24") hour = "00";
   return {
-    date: `${get("year")}-${get("month")}-${get("day")}`,
-    hhmm: `${hour}:${get("minute")}`,
+    // eslint-disable-next-line no-restricted-syntax -- LocalDay minter: constructs from a Date through Intl
+    date: `${get("year")}-${get("month")}-${get("day")}` as LocalDay,
+    // eslint-disable-next-line no-restricted-syntax -- LocalTime minter: constructs from a Date through Intl
+    hhmm: `${hour}:${get("minute")}` as LocalTime,
   };
 }
 
@@ -306,8 +327,9 @@ export function zonedWallIsoToUtc(tz: string, wall: string): Date | null {
 // a hand-built string. lib/__tests__/instant-writer-scan.test.ts is the ratchet.
 
 // The canonical stored instant — UTC, second resolution, explicit `Z`. Pure.
-export function utcInstant(d: Date = new Date()): string {
-  return d.toISOString().slice(0, 19) + "Z";
+export function utcInstant(d: Date = new Date()): CanonicalInstant {
+  // eslint-disable-next-line no-restricted-syntax -- CanonicalInstant minter: constructs from a Date
+  return (d.toISOString().slice(0, 19) + "Z") as CanonicalInstant;
 }
 
 // The canonical stored instant TRUNCATED TO ITS MINUTE — the `hr_minutes.ts` bucket
@@ -320,15 +342,18 @@ export function utcInstant(d: Date = new Date()): string {
 // the rolling window (so the ingest sweep that existed to paper over that is gone), and
 // a Fitbit Takeout minute and a Health Connect minute for the same instant still
 // collide on the key instead of duplicating.
-export function utcMinute(d: Date): string {
-  return d.toISOString().slice(0, 16) + ":00Z";
+export function utcMinute(d: Date): CanonicalInstant {
+  // eslint-disable-next-line no-restricted-syntax -- CanonicalInstant minter: constructs from a Date
+  return (d.toISOString().slice(0, 16) + ":00Z") as CanonicalInstant;
 }
 
 // Re-serialize an already-stored UTC datetime — EITHER convention — as the canonical
 // instant. The one path for handing a bare-shaped value to a canonical-shaped
 // comparison (or field), so a reader never concatenates a "Z" onto a string it has
 // not actually parsed. Null on garbage/absent, like parseUtcSql. Pure.
-export function toUtcInstant(s: string | null | undefined): string | null {
+export function toUtcInstant(
+  s: string | null | undefined
+): CanonicalInstant | null {
   const d = parseUtcSql(s);
   return d ? utcInstant(d) : null;
 }
@@ -338,8 +363,9 @@ export function toUtcInstant(s: string | null | undefined): string | null {
 // identically to one written by SQLite. The LEGACY half of the convention above: the
 // columns #2205 has not yet converted still store this shape, and a write to one of
 // them comes from here rather than from a hand-built string. Pure.
-export function utcSqlString(d: Date = new Date()): string {
-  return d.toISOString().slice(0, 19).replace("T", " ");
+export function utcSqlString(d: Date = new Date()): BareInstant {
+  // eslint-disable-next-line no-restricted-syntax -- BareInstant minter: constructs from a Date
+  return d.toISOString().slice(0, 19).replace("T", " ") as BareInstant;
 }
 
 // Parse a stored UTC datetime ("YYYY-MM-DD HH:MM:SS" or ISO with a T) back to a
@@ -418,11 +444,12 @@ export function weekdayOfDateStr(dateStr: string): number {
 // Sunday). Returns the most recent week-start day on or before `dateStr`. Pure
 // calendar arithmetic (UTC-anchored, DST-immune), so it's timezone-independent and
 // matches how stored dates are compared everywhere else.
-export function startOfWeekStr(dateStr: string, weekStart = 0): string {
+export function startOfWeekStr(dateStr: string, weekStart = 0): LocalDay {
   const d = new Date(dateStr + "T00:00:00Z");
   const back = (d.getUTCDay() - weekStart + 7) % 7;
   d.setUTCDate(d.getUTCDate() - back);
-  return d.toISOString().slice(0, 10);
+  // eslint-disable-next-line no-restricted-syntax -- LocalDay minter: constructs from a Date
+  return d.toISOString().slice(0, 10) as LocalDay;
 }
 
 // The seven weekday indices (0=Sun … 6=Sat) in display order for a week that

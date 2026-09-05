@@ -84,7 +84,7 @@ export function getNiggles(profileId: number): Niggle[] {
 // composed for a stated instant) gets a deterministic answer.
 export function getLiveNiggles(
   profileId: number,
-  now = instantNow()
+  now: string = instantNow()
 ): Niggle[] {
   return liveNiggles(getNiggles(profileId), now);
 }
@@ -123,7 +123,7 @@ export type ReportNiggleOutcome =
 export function reportNiggle(
   profileId: number,
   report: NiggleReport,
-  now = instantNow()
+  now: string = instantNow()
 ): ReportNiggleOutcome {
   if (!isValidRegion(report.region))
     return { ok: false, reason: "invalid-region" };

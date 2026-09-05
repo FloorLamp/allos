@@ -152,7 +152,7 @@ export function getEndurancePlanCard(
 // read the same models.
 export function getEndurancePlanCards(
   profileId: number,
-  todayStr = today(profileId)
+  todayStr: string = today(profileId)
 ): EndurancePlanCard[] {
   return getEnduranceEvents(profileId, todayStr)
     .map((e) => e.card)
@@ -176,7 +176,7 @@ export interface EnduranceEvent {
 
 export function getEnduranceEvents(
   profileId: number,
-  todayStr = today(profileId)
+  todayStr: string = today(profileId)
 ): EnduranceEvent[] {
   return getActiveEndurancePlans(profileId)
     .filter((p) => p.eventDate >= todayStr)
