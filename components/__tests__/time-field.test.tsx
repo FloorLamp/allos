@@ -228,12 +228,21 @@ describe("TimeField — stepping the text field", () => {
 
   // THE DRAFT CLEARS ON A STEP, so the field shows the settled clock: the
   // shorthand it was typed as has just stopped being what the field holds.
-  it("settles the shorthand it stepped from into the profile's clock", () => {
+  //
+  // AND STEPPING BACK IS WHERE IT HAS TO CLEAR. The draft expires on its own the
+  // moment the value moves away from the one it was typed against, so the first
+  // arrow below reads correctly with or without the clear — measured, by deleting
+  // `setDraft(null)`, which left all of this green. It is the SECOND arrow that
+  // needs it: returning to 06:30 makes a surviving draft match again, and "630"
+  // reappears over a clock the person has since stepped twice.
+  it("settles the shorthand it stepped from, and does not resurrect it", () => {
     const { field } = mount("12h");
     fireEvent.change(field(), { target: { value: "630" } });
     expect(field().value).toBe("630");
     fireEvent.keyDown(field(), { key: "ArrowUp" });
     expect(field().value).toBe("6:31 AM");
+    fireEvent.keyDown(field(), { key: "ArrowDown" });
+    expect(field().value).toBe("6:30 AM");
   });
 });
 

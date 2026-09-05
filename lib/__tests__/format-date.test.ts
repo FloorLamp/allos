@@ -271,6 +271,11 @@ describe("parseTypedClock", () => {
     ["0p", null],
     ["13p", null],
     ["12345", null],
+    // THREE-OR-FOUR ONLY, and this is the case that says so. `12345` alone is
+    // also refused by the hour range once split (123 is no hour), so widening the
+    // run to five digits keeps it null and the rule goes unpinned; `01230` splits
+    // into a perfectly good 12:30 the moment the length stops being the limit.
+    ["01230", null],
     ["6-30", null],
     ["quarter past", null],
     ["", null],
