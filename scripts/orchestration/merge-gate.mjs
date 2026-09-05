@@ -211,6 +211,16 @@ function unresolvedThreads(owner, name) {
   return { kind: "threads", unresolved: nodes.filter((t) => !t.isResolved) };
 }
 
+/**
+ * This one CANNOT truncate, and the proof is that there is no cap to hit (#5343
+ * censused it as one of eight pagers that discard `batch.length < 100`; here that
+ * expression is the loop's only exit and nothing else competes with it). The loop
+ * runs until a short page, a page past the end is `[]` which is short, and every
+ * non-2xx leaves through `gh`'s own `process.exit` rather than back into this
+ * loop — so there is no path that returns a clipped `all`. That is deliberate:
+ * these are the reviews, PR comments and review comments a merge is decided on,
+ * and a missing CHANGES_REQUESTED or MERGE-HOLD would open the gate.
+ */
 function paged(pathname) {
   const all = [];
   for (let page = 1; ; page++) {
