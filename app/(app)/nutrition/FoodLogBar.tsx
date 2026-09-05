@@ -1399,7 +1399,7 @@ export default function FoodLogBar({
             ? { kind: "queued" }
             : { kind: "refused" };
         }
-        const fd = new FormData();
+        const fd = stampLoggedVia(new FormData());
         fd.set("group_key", slug);
         fd.set("date", activeDate);
         fd.set("meal_slot", filingSlot);
@@ -1417,7 +1417,6 @@ export default function FoodLogBar({
         // stale the render is (WhenControl invariant 4). Only an add states a time; an
         // undo removes a serving and asserts nothing about when anything was eaten.
         if (statedTime && delta === 1) fd.set("occurred_at", statedTime);
-        stampLoggedVia(fd);
         return {
           kind: "wrote",
           outcome:

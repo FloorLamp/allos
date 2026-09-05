@@ -1,6 +1,6 @@
 "use server";
 import { requireSession, requireWriteAccess } from "@/lib/auth";
-import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
+import { LOGGED_VIA_FIELD, parseWebOrigin, type StampedFormData } from "@/lib/logged-via";
 import { gateItemProfile } from "@/app/(app)/gate-item";
 
 import { revalidateRoute } from "@/lib/revalidate";
@@ -58,7 +58,7 @@ function revalidateActivitySurfaces() {
 // which the client read as success and confirmed with "Saved ✓" while nothing
 // persisted (silently losing the edit).
 export async function saveActivity(
-  formData: FormData
+  formData: StampedFormData
 ): Promise<SaveActivityOutcome> {
   // Multi-view (#1330): an EDIT card carries its subject's `profile_id`, so
   // gateItemProfile() → requireProfileWriteAccess targets (and write-gates) the
@@ -94,7 +94,7 @@ export async function saveActivity(
 // The row is the live-draft shape; an abandoned zero-content start is
 // a draft (#1205 §4), discardable and never a husk in the log.
 export async function startWorkout(
-  formData: FormData
+  formData: StampedFormData
 ): Promise<({ ok: true } & StartWorkoutResult) | { ok: false }> {
   const { profile } = await requireWriteAccess();
   const type = formData.get("type") === "cardio" ? "cardio" : "strength";

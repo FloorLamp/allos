@@ -14,6 +14,7 @@ import {
   getActiveRoutine,
 } from "@/lib/routines";
 import { createLogin, createProfile, actAs, fd } from "./harness";
+import type { StampedFormData } from "@/lib/logged-via";
 import { setProfileBirthdate } from "@/lib/settings/profile-attrs";
 
 function position(profileId: number): number {
@@ -21,7 +22,7 @@ function position(profileId: number): number {
 }
 
 // A strength saveActivity FormData for a single lift on a given date.
-function strengthFd(exercise: string, date: string): FormData {
+function strengthFd(exercise: string, date: string): StampedFormData {
   return fd({
     type: "strength",
     title: exercise,
@@ -44,7 +45,7 @@ function strengthFd(exercise: string, date: string): FormData {
   });
 }
 
-function cardioFd(date: string): FormData {
+function cardioFd(date: string): StampedFormData {
   return fd({
     type: "cardio",
     title: "Run",

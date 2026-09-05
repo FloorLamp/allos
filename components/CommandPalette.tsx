@@ -48,7 +48,7 @@ import {
 import { DOMAIN_LABEL, type RecordCitation } from "@/lib/record-qa";
 import NotesText from "@/components/NotesText";
 import { LoggedViaSurface } from "@/components/LoggedViaSurface";
-import { LOGGED_VIA_FIELD, type WebLoggedVia } from "@/lib/logged-via";
+import { stampWebOrigin, type WebLoggedVia } from "@/lib/logged-via";
 import { paletteQuickLog } from "@/app/(app)/palette-actions";
 import { logMedicationAdministration } from "@/app/(app)/medications/actions";
 import { refillMedication } from "@/app/(app)/medications/actions";
@@ -422,8 +422,10 @@ export default function CommandPalette({
       if (committing) return;
       setCommitting(true);
       try {
-        const fd = new FormData();
-        fd.set(LOGGED_VIA_FIELD, PALETTE_SURFACE);
+        // The palette names its OWN surface rather than reading the region: it is
+        // `quick-log` wherever it opens, including over a domain page that declares
+        // itself something else.
+        const fd = stampWebOrigin(new FormData(), PALETTE_SURFACE);
         fd.set("id", String(action.entityId));
         if (action.kind === "log-dose") {
           const res = await logMedicationAdministration(fd);

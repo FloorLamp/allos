@@ -5,6 +5,7 @@ import {
   LOGGED_VIA_FIELD,
   parseWebOrigin,
   type WebLoggedVia,
+  type StampedFormData,
 } from "@/lib/logged-via";
 import { requireWriteAccess } from "@/lib/auth";
 import { gateItemProfile } from "../../gate-item";
@@ -196,7 +197,7 @@ export async function recordSubstanceInstrumentAction(
 // #860/#944); nicotine/cannabis go through the substance_daily_totals core. Both answer
 // from the typed outcome — never unconditionally confirm.
 export async function logSubstanceUnitAction(
-  formData: FormData
+  formData: StampedFormData
 ): Promise<SubstanceLogResult> {
   // #4932: the quick-log sheet's subject chip mounts this SAME control cross-profile,
   // so the tap follows gateItemProfile() → requireProfileWriteAccess(subjectProfileId)

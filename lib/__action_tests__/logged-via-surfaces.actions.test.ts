@@ -20,7 +20,7 @@ import { shiftDateStr } from "@/lib/date";
 import { setTimezone } from "@/lib/settings";
 import { LOGGED_VIA_FIELD } from "@/lib/logged-via";
 import { SLEEP_METRIC } from "@/lib/vitals-input";
-import { actAs, createLogin, createProfile } from "./harness";
+import { actAs, createLogin, createProfile, fd } from "./harness";
 
 import { logUsualRoutine, markAttentionDose } from "@/app/(app)/actions";
 import { addMeasurements } from "@/app/(app)/trends/measurement-actions";
@@ -154,38 +154,36 @@ describe("each web surface stores its OWN value, through its own real action", (
     const quick = dose(profile.id, "lv sheet supplement");
     const page = dose(profile.id, "lv page supplement");
 
-    const heroForm = new FormData();
-    heroForm.set("dose_id", String(hero));
-    expect((await markAttentionDose(heroForm)).ok).toBe(true);
+    expect((await markAttentionDose(fd({ dose_id: hero }))).ok).toBe(true);
     // The attention card is a single-surface action, so it names itself rather than
     // reading a posted field — nothing else mounts it.
     expect(doseOrigin(hero, date)).toBe("dashboard-hero");
 
-    const quickForm = new FormData();
-    quickForm.set("dose_id", String(quick));
     // What components/quick-entry/QuickDoseList.tsx sets.
-    quickForm.set(LOGGED_VIA_FIELD, "quick-log");
-    expect((await markTaken(quickForm)).ok).toBe(true);
+    expect(
+      (await markTaken(fd({ dose_id: quick, [LOGGED_VIA_FIELD]: "quick-log" })))
+        .ok
+    ).toBe(true);
     expect(doseOrigin(quick, date)).toBe("quick-log");
 
-    const pageForm = new FormData();
-    pageForm.set("dose_id", String(page));
-    // The Upcoming page's inline confirm posts no surface field: `page` is the
-    // action's own home, and the fallback is what an older client gets too.
-    expect((await markTaken(pageForm)).ok).toBe(true);
+    // The Upcoming page's inline confirm posts `page` — the value its region
+    // resolves to, and the same one the action falls back to for an older client.
+    expect((await markTaken(fd({ dose_id: page }))).ok).toBe(true);
     expect(doseOrigin(page, date)).toBe("page");
   });
 
   it("a DASHBOARD-WIDGET control stores dashboard-widget", async () => {
     const { profile } = seat("lv widget");
     const date = today(profile.id);
-    const fd = new FormData();
-    fd.set("date", date);
-    fd.set("weight", "80");
-    fd.set("weight_unit", "kg");
     // What a control inside the dashboard's LoggedViaSurface region sets.
-    fd.set(LOGGED_VIA_FIELD, "dashboard-widget");
-    await addMeasurements(fd);
+    await addMeasurements(
+      fd({
+        date,
+        weight: "80",
+        weight_unit: "kg",
+        [LOGGED_VIA_FIELD]: "dashboard-widget",
+      })
+    );
     const row = weightOrigin(profile.id, date);
     expect(row?.logged_via).toBe("dashboard-widget");
     // And `source` keeps its own meaning beside it: no importer produced this row.
@@ -222,12 +220,13 @@ describe("each web surface stores its OWN value, through its own real action", (
       const day = today(p.id);
       const groups = seedUsualFoodHabit(p.id, day);
       const doseId = morningDose(p.id, name);
-      const fd = new FormData();
-      fd.set("meal_slot", "Morning");
-      fd.set("groups", groups.join(","));
-      fd.set("dose_ids", String(doseId));
-      fd.set(LOGGED_VIA_FIELD, surface);
-      expect((await logUsualRoutine(fd)).ok, surface).toBe(true);
+      const posted = fd({
+        meal_slot: "Morning",
+        groups: groups.join(","),
+        dose_ids: doseId,
+        [LOGGED_VIA_FIELD]: surface,
+      });
+      expect((await logUsualRoutine(posted)).ok, surface).toBe(true);
       expect(doseOrigin(doseId, day), surface).toBe(surface);
       // THE FOOD HALF, read back off the per-tap ledger rows the same tap wrote.
       expect(foodOrigins(p.id, day), surface).toEqual(
@@ -240,11 +239,12 @@ describe("each web surface stores its OWN value, through its own real action", (
     actAs(login, profile);
     const bareGroups = seedUsualFoodHabit(profile.id, date);
     const bare = morningDose(profile.id, "lv usual bare");
-    const fd = new FormData();
-    fd.set("meal_slot", "Morning");
-    fd.set("groups", bareGroups.join(","));
-    fd.set("dose_ids", String(bare));
-    expect((await logUsualRoutine(fd)).ok).toBe(true);
+    const barePost = fd({
+      meal_slot: "Morning",
+      groups: bareGroups.join(","),
+      dose_ids: bare,
+    });
+    expect((await logUsualRoutine(barePost)).ok).toBe(true);
     expect(doseOrigin(bare, date)).toBe("page");
     expect(foodOrigins(profile.id, date)).toEqual(
       bareGroups.map((group_key) => ({ group_key, logged_via: "page" }))
@@ -257,22 +257,23 @@ describe("each web surface stores its OWN value, through its own real action", (
     // `logPractice`. This is the case the column exists for.
     const { profile } = seat("lv practice");
 
-    const sheet = new FormData();
-    sheet.set("practice", "lv sheet practice");
-    sheet.set(LOGGED_VIA_FIELD, "quick-log");
+    const sheet = fd({
+      practice: "lv sheet practice",
+      [LOGGED_VIA_FIELD]: "quick-log",
+    });
     expect((await logPractice(sheet)).kind).toBe("logged");
     expect(practiceOrigin(profile.id, "lv sheet practice")).toBe("quick-log");
 
-    const card = new FormData();
-    card.set("practice", "lv card practice");
-    card.set(LOGGED_VIA_FIELD, "dashboard-widget");
+    const card = fd({
+      practice: "lv card practice",
+      [LOGGED_VIA_FIELD]: "dashboard-widget",
+    });
     expect((await logPractice(card)).kind).toBe("logged");
     expect(practiceOrigin(profile.id, "lv card practice")).toBe(
       "dashboard-widget"
     );
 
-    const page = new FormData();
-    page.set("practice", "lv page practice");
+    const page = fd({ practice: "lv page practice" });
     expect((await logPractice(page)).kind).toBe("logged");
     expect(practiceOrigin(profile.id, "lv page practice")).toBe("page");
   });
@@ -289,10 +290,8 @@ describe("each web surface stores its OWN value, through its own real action", (
       ["lv forged replay", "offline-replay"],
       ["lv forged junk", "not-a-surface"],
     ] as const) {
-      const fd = new FormData();
-      fd.set("practice", practice);
-      fd.set(LOGGED_VIA_FIELD, claim);
-      expect((await logPractice(fd)).kind).toBe("logged");
+      const forged = fd({ practice, [LOGGED_VIA_FIELD]: claim });
+      expect((await logPractice(forged)).kind).toBe("logged");
       expect(practiceOrigin(profile.id, practice), claim).toBe("page");
     }
   });
@@ -327,12 +326,9 @@ describe("the VITALS half of a sitting is on the same surface as its body half",
     // reproduce nothing.
     const { profile } = seat("lv vitals online");
     const date = today(profile.id);
-    const fd = new FormData();
-    fd.set("date", date);
-    fd.set("systolic", "118");
-    fd.set("diastolic", "76");
-    fd.set("spo2", "97");
-    await addMeasurements(fd);
+    await addMeasurements(
+      fd({ date, systolic: "118", diastolic: "76", spo2: "97" })
+    );
 
     const origins = vitalOrigins(profile.id, date);
     expect(Object.keys(origins).length).toBeGreaterThan(0);
@@ -345,16 +341,18 @@ describe("the VITALS half of a sitting is on the same surface as its body half",
     // `page` and `offline-replay` respectively, so a single tap on Save produced two
     // rows that disagree about where the person was standing.
     const quickDate = shiftDateStr(date, -1);
-    const quickForm = new FormData();
-    quickForm.set("date", quickDate);
-    quickForm.set("weight", "80");
-    quickForm.set("weight_unit", "kg");
-    quickForm.set("temperature", "98.6");
-    quickForm.set("temp_unit", "F");
     // The quick-log sheet's mounting of the same form (#3087) — which is also what
     // proves the value is READ rather than hard-coded on either side.
-    quickForm.set(LOGGED_VIA_FIELD, "quick-log");
-    await addMeasurements(quickForm);
+    await addMeasurements(
+      fd({
+        date: quickDate,
+        weight: "80",
+        weight_unit: "kg",
+        temperature: "98.6",
+        temp_unit: "F",
+        [LOGGED_VIA_FIELD]: "quick-log",
+      })
+    );
 
     expect(weightOrigin(profile.id, quickDate)?.logged_via).toBe("quick-log");
     const quickOrigins = vitalOrigins(profile.id, quickDate);
@@ -374,10 +372,9 @@ describe("the VITALS half of a sitting is on the same surface as its body half",
     // ledger it should not.
     const { profile } = seat("lv sleep");
     const date = today(profile.id);
-    const fd = new FormData();
-    fd.set("date", date);
-    fd.set("sleep_hours", "7.5");
-    expect((await saveSleepMoodEntry(fd)).ok).toBe(true);
+    expect(
+      (await saveSleepMoodEntry(fd({ date, sleep_hours: "7.5" }))).ok
+    ).toBe(true);
     const sample = db
       .prepare(
         `SELECT value FROM metric_samples
@@ -416,10 +413,8 @@ describe("a PRN administration is told apart by the surface that posted it", () 
         `INSERT INTO intake_item_doses (item_id, amount, sort) VALUES (?, '1', 0)`
       ).run(itemId);
       made[label] = itemId;
-      const fd = new FormData();
-      fd.set("id", String(itemId));
-      if (claim) fd.set(LOGGED_VIA_FIELD, claim);
-      expect((await logMedicationAdministration(fd)).ok).toBe(true);
+      const posted = fd({ id: itemId, [LOGGED_VIA_FIELD]: claim });
+      expect((await logMedicationAdministration(posted)).ok).toBe(true);
     }
     const via = (itemId: number) =>
       (
