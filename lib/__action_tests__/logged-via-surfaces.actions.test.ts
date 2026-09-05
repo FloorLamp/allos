@@ -28,6 +28,8 @@ import { saveSleepMoodEntry } from "@/app/(app)/sleep/actions";
 import { logMedicationAdministration } from "@/app/(app)/medications/actions";
 import { markTaken } from "@/app/(app)/upcoming/actions";
 import { logPractice } from "@/app/(app)/wellness/actions";
+import { paletteQuickLog } from "@/app/(app)/palette-actions";
+import { practiceIdentity } from "@/lib/practice";
 import { POST as replayPost } from "@/app/api/offline-replay/route";
 
 function seat(name: string) {
@@ -276,6 +278,31 @@ describe("each web surface stores its OWN value, through its own real action", (
     const page = fd({ practice: "lv page practice" });
     expect((await logPractice(page)).kind).toBe("logged");
     expect(practiceOrigin(profile.id, "lv page practice")).toBe("page");
+  });
+
+  it("records the command palette's OWN two writes as quick-log, both halves", async () => {
+    // `paletteQuickLog` is a `"use server"` module that reaches these same actions
+    // itself, building the body server-side — so its surface is not a mounting's
+    // context but a value it states, and it states `quick-log` because the palette IS
+    // the quick-log surface wherever it opens. The practice half posted NOTHING before
+    // #5349 and took `logPractice`'s `page` fallback, which the import-graph walk this
+    // replaced could not see: it looked at CLIENTS that import an action, and this is
+    // a server module calling a sibling.
+    //
+    // BOTH HALVES, because the defect was one arm agreeing with the other's comment.
+    const { profile } = seat("lv palette");
+    const date = today(profile.id);
+    db.prepare(
+      `INSERT INTO frequency_targets
+         (profile_id, scope_kind, scope_value, scope_identity, per_week, per_week_max)
+       VALUES (?, 'practice', 'Sauna', ?, 3, NULL)`
+    ).run(profile.id, practiceIdentity("Sauna"));
+
+    expect(await paletteQuickLog("log sauna")).toMatchObject({ ok: true });
+    expect(practiceOrigin(profile.id, "Sauna")).toBe("quick-log");
+
+    expect(await paletteQuickLog("weight 80 kg")).toMatchObject({ ok: true });
+    expect(weightOrigin(profile.id, date)?.logged_via).toBe("quick-log");
   });
 
   it("REFUSES a forged claim from the browser and falls back to the action's home", async () => {
