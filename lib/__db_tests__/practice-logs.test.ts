@@ -870,6 +870,10 @@ describe("live practice sessions (#3143)", () => {
     expect(started.kind).toBe("started");
     if (started.kind !== "started") return;
 
+    // KEYED ON THE PRIMARY KEY ON PURPOSE, and unscoped by profile for that reason
+    // (#5233 review): an id names one row and cannot reach another profile's. Said
+    // here so the SQL-shape scans have their answer in the file rather than in an
+    // allowlist entry someone has to go and read.
     db.prepare("UPDATE practice_logs SET start_time = NULL WHERE id = ?").run(
       started.session.id
     );

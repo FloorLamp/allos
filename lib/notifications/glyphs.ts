@@ -581,7 +581,11 @@ export const GLYPH_MODULES: readonly { module: string; why: string }[] = [
   },
   {
     module: "lib/notifications/workout-presence.ts",
-    why: "The post-workout dose prompt and the still-working-out nudge with its finish/discard controls (#560/#1205).",
+    why: "The post-workout dose prompt (#560/#1205).",
+  },
+  {
+    module: "lib/notifications/still-going.ts",
+    why: 'The one "Still going?" nudge across every open episode, with its finish/discard controls (#560/#1205/#5142).',
   },
   {
     module: "lib/notifications/workout-recap-format.ts",

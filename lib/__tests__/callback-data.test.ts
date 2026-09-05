@@ -19,11 +19,11 @@ import {
   parseRefillCallback,
   parseSkipCallback,
   parseTakeCallback,
-  parseWorkoutFinishCallback,
+  parseStillGoingCallback,
   activityTypeAskCallback,
   parseActivityTypeAskCallback,
   activityTypeAskAnswerText,
-  workoutFinishCallback,
+  stillGoingCallback,
   workoutFinishAnswerText,
   workoutDiscardAnswerText,
   preventiveAnswerText,
@@ -683,23 +683,50 @@ describe("replacementWithTitle", () => {
   });
 });
 
-// Workout finish/discard tokens (the stale-nudge buttons, #1205).
-describe("parseWorkoutFinishCallback", () => {
-  it("round-trips a finish token (build → parse)", () => {
+// "Still going?" finish/discard tokens (the nudge's buttons, #1205, one family #5142).
+describe("parseStillGoingCallback", () => {
+  it("round-trips a finish token for each kind (build → parse)", () => {
     expect(
-      parseWorkoutFinishCallback(workoutFinishCallback(3, 42, "finish"))
-    ).toEqual({ profileId: 3, activityId: 42, action: "finish" });
+      parseStillGoingCallback(stillGoingCallback("workout", 3, 42, "finish"))
+    ).toEqual({ kind: "workout", profileId: 3, rowId: 42, action: "finish" });
+    expect(
+      parseStillGoingCallback(stillGoingCallback("practice", 3, 42, "finish"))
+    ).toEqual({ kind: "practice", profileId: 3, rowId: 42, action: "finish" });
   });
   it("round-trips a discard token", () => {
     expect(
-      parseWorkoutFinishCallback(workoutFinishCallback(3, 42, "discard"))
-    ).toEqual({ profileId: 3, activityId: 42, action: "discard" });
+      parseStillGoingCallback(stillGoingCallback("practice", 3, 42, "discard"))
+    ).toEqual({ kind: "practice", profileId: 3, rowId: 42, action: "discard" });
   });
-  it("rejects a foreign prefix / bad ids", () => {
-    expect(parseWorkoutFinishCallback("take:3:42:1:2026-07-01")).toBeNull();
-    expect(parseWorkoutFinishCallback("wofinish:0:42")).toBeNull();
-    expect(parseWorkoutFinishCallback("wofinish:3:0")).toBeNull();
-    expect(parseWorkoutFinishCallback(null)).toBeNull();
+
+  // A "Still working out?" message sent minutes before #5142 shipped is sitting in a
+  // chat with these on it, and the draft it names may still be live. Refusing them
+  // would answer a real tap with "that message is out of date".
+  it("still reads the workout kind's pre-#5142 tokens", () => {
+    expect(parseStillGoingCallback("wofinish:3:42")).toEqual({
+      kind: "workout",
+      profileId: 3,
+      rowId: 42,
+      action: "finish",
+    });
+    expect(parseStillGoingCallback("wodiscard:3:42")).toEqual({
+      kind: "workout",
+      profileId: 3,
+      rowId: 42,
+      action: "discard",
+    });
+  });
+
+  it("rejects a foreign prefix / unknown kind / bad ids", () => {
+    expect(parseStillGoingCallback("take:3:42:1:2026-07-01")).toBeNull();
+    // A kind this family cannot act on is not a kind: a fast has its own lifecycle
+    // and the night the app waits for has no button at all.
+    expect(parseStillGoingCallback("sgfinish:fast:3:42")).toBeNull();
+    expect(parseStillGoingCallback("sgfinish:workout:0:42")).toBeNull();
+    expect(parseStillGoingCallback("sgfinish:workout:3:0")).toBeNull();
+    expect(parseStillGoingCallback("wofinish:0:42")).toBeNull();
+    expect(parseStillGoingCallback("wofinish:3:0")).toBeNull();
+    expect(parseStillGoingCallback(null)).toBeNull();
   });
 });
 
