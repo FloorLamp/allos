@@ -175,7 +175,12 @@ test.describe("command palette — per-hit actions (#662)", () => {
   // medication, so BOTH chips render. Non-mutating — asserts the chips are present
   // (proving searchAll attaches the write actions and the palette renders them for
   // the medication kind); the write dispatch itself is exercised below.
-  test("a medication hit renders Log dose and Refill chips", async ({
+  //
+  // AND THE LOGGED DOSES BESIDE IT CARRY NONE — the second half of this test, and a
+  // rule rather than an accident (#5245). One query renders both kinds of hit, so
+  // the pair belongs in one test: a chip is for the CATALOG ENTITY, never for the
+  // record row that names it.
+  test("a medication hit renders Log dose and Refill chips, and the logged doses beside it carry none (#5245)", async ({
     page,
   }) => {
     await page.goto("/");
@@ -184,8 +189,9 @@ test.describe("command palette — per-hit actions (#662)", () => {
 
     // SCOPED TO THE MEDICATION'S OWN GROUP. Since #5006 the palette also indexes the
     // DOSES logged against this medication, and they rank above the catalog entity —
-    // so "the first result saying Sertraline" is now a logged dose, which carries no
-    // action chips by design. The medication hit is the subject here.
+    // so "the first result saying Sertraline" is now a logged dose. The medication
+    // hit is the subject here; that a dose carries no chips is asserted below, not
+    // assumed by this locator.
     const results = page
       .getByRole("listbox", { name: "Results" })
       .getByTestId("palette-group-supplement");
@@ -197,6 +203,25 @@ test.describe("command palette — per-hit actions (#662)", () => {
     await expect(row).toBeVisible({ timeout: 20_000 });
     await expect(row.getByTestId("palette-hit-action-log-dose")).toBeVisible();
     await expect(row.getByTestId("palette-hit-action-refill")).toBeVisible();
+
+    // NO ACTION CHIPS ON A LOGGED ROW (owner ruling, #5245). A logged row is a PAST
+    // EVENT — the thing you do with it is look at it, which is what the hit already
+    // does by opening the day scrolled to that entry. "Log this again" stays where
+    // the rest of the app offers it. This is asserted rather than left implicit in
+    // the group scoping above, which encoded the rule only as a side effect.
+    const logged = page
+      .getByRole("listbox", { name: "Results" })
+      .getByTestId("palette-group-logged");
+    // PRESENCE BEFORE ABSENCE: "no chips in this group" is also satisfied by an
+    // EMPTY group, so the doses have to be on screen first or the count below means
+    // nothing. Since #5006 they are, and they rank above the medication asserted
+    // above — which is what made the scoping necessary in the first place.
+    await expect(
+      logged.getByRole("listitem").filter({ hasText: "Sertraline" })
+    ).not.toHaveCount(0);
+    // Any chip kind, not the two named above: the rule is that a logged row offers
+    // none at all, so this reddens whichever kind a builder starts attaching.
+    await expect(logged.getByTestId(/^palette-hit-action-/)).toHaveCount(0);
   });
 
   // An appointment hit offers "Mark complete" while scheduled, dispatched through
