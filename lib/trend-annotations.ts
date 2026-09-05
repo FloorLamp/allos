@@ -358,6 +358,15 @@ export function diffSituations(
 // days of a travel supplement read as due-and-missed, and turning it off must not
 // erase real past misses.
 //
+// DUENESS DOES NOT READ THIS ALONE (#3993). There used to be a `situationHistoryResolver`
+// wrapper here that the intake strips, the recap and the digest all built to score past
+// days from declarations only; every one of them now asks
+// `effectiveSituationResolver` (declared UNION derived, as of the day) instead, and the
+// wrapper is gone rather than left exported with nothing reading it. What still reads the
+// pure rule below is the question that really is about DECLARATIONS: which bands the
+// chart annotations draw, which spans a symptom episode covers, and which windows the
+// pooled situation-impact engine pools over.
+//
 // The state on `date` is decided by each situation's EARLIEST transition strictly
 // AFTER `date`: a future "start" means it was OFF on `date` (about to turn on); a
 // future "stop" means it was ON on `date` (about to turn off). With no transition
@@ -394,18 +403,6 @@ export function situationsActiveOn(
     if (wasActive) active.add(name);
   }
   return active;
-}
-
-// Build a per-date "situations active that day" resolver over a window, from the
-// current active set + the change-log (#654). One computation the intake surfaces,
-// the notifier's adherence strip, the weekly recap, and the digest all reuse so
-// their historical dueness can never disagree about when a situation was active.
-export function situationHistoryResolver(
-  currentActive: Iterable<string>,
-  events: readonly SituationEvent[]
-): (date: string) => Set<string> {
-  const current = [...currentActive];
-  return (date: string) => situationsActiveOn(date, current, events);
 }
 
 // Cap on the stored situation-event log, so a chatty toggler can't bloat the blob.

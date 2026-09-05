@@ -82,7 +82,7 @@ ACK_RELAUNCH=0
 # dispatch-brief.mjs so the roster and the ledger agree on every host (#3710).
 # The inline fallback covers a shell with no node on PATH — the measured live
 # container's own layout, so it resolves identically there.
-STATE_DIR=${SCRATCH:-$(node "$(dirname "$0")/orchestration/host.mjs" state-dir 2>/dev/null || echo /home/user/scratch)}
+STATE_DIR=${SCRATCH:-$(node "$(dirname "$0")/work/host.mjs" state-dir 2>/dev/null || echo /home/user/scratch)}
 BOOT_FILE="$STATE_DIR/.boot_id"
 SESSION_FILE="$STATE_DIR/.session_id"
 ROSTER="$STATE_DIR/.roster"
@@ -591,7 +591,7 @@ if [ -s "$ROSTER" ]; then sed 's/^/  /' "$ROSTER"; else echo "  (empty)"; fi
 LEDGER="$STATE_DIR/allos-dispatch-ledger.jsonl"
 if [ -s "$ROSTER" ] && [ -s "$LEDGER" ]; then
   roster_live=$(grep -E '^Cluster ' "$ROSTER" 2>/dev/null | awk '{print $3}' | sort -u)
-  ledger_live=$(node "$(dirname "$0")/orchestration/ledger.mjs" branches "$LEDGER" 2>/dev/null)
+  ledger_live=$(node "$(dirname "$0")/work/ledger.mjs" branches "$LEDGER" 2>/dev/null)
   only_roster=$(comm -23 <(echo "$roster_live") <(echo "$ledger_live") | grep -v '^$' || true)
   only_ledger=$(comm -13 <(echo "$roster_live") <(echo "$ledger_live") | grep -v '^$' || true)
   if [ -n "$only_roster" ] || [ -n "$only_ledger" ]; then
@@ -619,7 +619,7 @@ echo
 # that is actually full is allowed to say so.
 lanes=$(grep -cE '^Cluster ' "$ROSTER" 2>/dev/null || true)
 lanes=${lanes:-0}
-e2e_lanes=$(node "$(dirname "$0")/orchestration/ledger.mjs" e2e-count "$LEDGER" 2>/dev/null || echo "?")
+e2e_lanes=$(node "$(dirname "$0")/work/ledger.mjs" e2e-count "$LEDGER" 2>/dev/null || echo "?")
 if [ "$e2e_lanes" = "?" ]; then other_lanes="?"; else other_lanes=$((lanes - e2e_lanes)); fi
 
 # THE QUEUE IS WRITTEN DOWN (owner, 2026-08-31): candidates forgotten one at a
@@ -636,7 +636,7 @@ if [ -f "$QUEUE_FILE" ]; then
   [ -n "$queue_mtime" ] && queue_age_s=$(($(date -u +%s) - queue_mtime))
 fi
 if [ -z "$queue_age_s" ] || [ "$queue_age_s" -ge "$QUEUE_DUE_SECS" ]; then
-  node "$(dirname "$0")/orchestration/queue-snapshot.mjs" >/dev/null 2>&1 ||
+  node "$(dirname "$0")/work/queue-snapshot.mjs" >/dev/null 2>&1 ||
     echo "  *** queue snapshot FAILED (needs a read token) — $QUEUE_FILE may be stale ***"
 fi
 queue_header=$(head -1 "$QUEUE_FILE" 2>/dev/null || echo "UNWRITTEN — run queue-snapshot.mjs")
@@ -808,32 +808,13 @@ elif command -v gh >/dev/null 2>&1 && gh auth token >/dev/null 2>&1; then
 else
   echo "  GH_TOKEN: *** MISSING - see the credential-loss section of the runbook ***"
 fi
-nodebin=$(node "$(dirname "$0")/orchestration/host.mjs" node-bin 2>/dev/null)
+nodebin=$(node "$(dirname "$0")/work/host.mjs" node-bin 2>/dev/null)
 echo "  node(.nvmrc): ${nodebin:-ABSENT - install the .nvmrc major with your version manager}"
 echo "  main:   $(git -C "$REPO" ls-remote origin main 2>/dev/null | cut -c1-7)"
 echo
 
-# 6. Catch-up gate. The digest (catchup-digest.sh) was designed to wrap this
-# recorder, but the runbook routes every wake HERE, so the digest only ran
-# when a prompt happened to name it (owner, 2026-08-30) — the MCP-by-default
-# drift class: a tool that waits to be remembered is a tool that isn't run.
-# So the recorder ROUTES: anchor >= 4h stale (the queue-sweep cadence, or
-# unparseable — BSD date lands here and the digest's own 24h fallback takes
-# over) runs the digest right now, and a check-in cannot skip catching up.
-echo "--- catch-up ---"
-CATCHUP_DUE_SECS=$((4 * 3600))
-catchup_anchor=$(cat "$STATE_DIR/.last_catchup" 2>/dev/null || true)
-catchup_anchor_s=$(date -u -d "$catchup_anchor" +%s 2>/dev/null || echo "")
-now_s=$(date -u +%s)
-if [ -n "$catchup_anchor_s" ] && [ $((now_s - catchup_anchor_s)) -lt "$CATCHUP_DUE_SECS" ]; then
-  echo "  digest anchor $(((now_s - catchup_anchor_s) / 60))m old — due at 4h; \`catchup-digest.sh --peek\` any time"
-else
-  echo "  digest DUE (anchor: ${catchup_anchor:-none}) — running it now:"
-  echo
-  CATCHUP_SKIP_RECORDER=1 bash "$(dirname "$0")/orchestration/catchup-digest.sh" ||
-    echo "  *** digest FAILED — run scripts/orchestration/catchup-digest.sh by hand ***"
-fi
-echo
+# 6. The catch-up digest is the PM's now (scripts/orchestration/pm-digest.sh, run from
+# the PM session, its own anchor). An orchestrator's check-in ends at the recorder.
 
 # Stamp LAST, so a crash mid-check-in still reports the restart next time.
 #

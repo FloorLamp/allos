@@ -14,14 +14,9 @@ import DraftRestoreBanner from "@/components/DraftRestoreBanner";
 import { useFormDraft } from "@/components/useFormDraft";
 import RxNormAffordance from "@/components/intake/RxNormAffordance";
 import IntakeInteractionNotices from "@/components/intake/IntakeInteractionNotices";
-import DoseRowsEditor, {
-  emptyDose,
-  type DoseState,
-} from "@/components/intake/DoseRowsEditor";
+import DoseRowsEditor from "@/components/intake/DoseRowsEditor";
 import RetiredDoses from "@/components/intake/RetiredDoses";
-import CadenceEditor, {
-  type CadenceState,
-} from "@/components/intake/CadenceEditor";
+import CadenceEditor from "@/components/intake/CadenceEditor";
 import CriticalEscalation from "@/components/intake/CriticalEscalation";
 import RefillTracking from "@/components/intake/RefillTracking";
 import IntakeNotesField from "@/components/intake/IntakeNotesField";
@@ -29,7 +24,6 @@ import IngredientsEditor, {
   emptyIngredient,
   ingredientStates,
   ingredientsAreEmpty,
-  type IngredientState,
 } from "@/components/intake/IngredientsEditor";
 import PediatricDoseBandPicker from "@/components/medications/PediatricDoseBandPicker";
 import PediatricWeightUpdate from "@/components/medications/PediatricWeightUpdate";
@@ -41,7 +35,7 @@ import FactEditorHost, {
   useFactEditor,
 } from "@/components/facts/FactEditorHost";
 import IntakeRulesEditor from "@/components/intake/IntakeRulesEditor";
-import { parseWeekdays, cadenceLabel } from "@/lib/intake-cadence";
+import { cadenceLabel } from "@/lib/intake-cadence";
 import {
   applyProductSeed,
   bottleForOptionLabel,
@@ -122,8 +116,8 @@ import {
   type IntakeRule,
 } from "@/lib/intake-rules";
 import {
-  emptyIntakeCadence,
   intakeItemFormData,
+  intakeItemFormStateFrom,
   type IntakeItemFormState,
 } from "@/lib/intake-form-fields";
 import type {
@@ -244,8 +238,49 @@ export default function IntakeItemForm({
   const supplySeed = initialSupply ? itemSeedFromPool(initialSupply) : null;
   const seededRef = useRef(supplySeed);
 
-  // ---- The one field ----
-  const [name, setName] = useState(s?.name ?? supplySeed?.name ?? "");
+  // ---- THE ONE STATE (#4664) ----
+  // Every fact this form posts, as ONE object of the ONE type the mapping reads.
+  // It used to be 29 `useState` hooks, and the field list was then re-enumerated
+  // five more times — the seeding expressions, the posted-state memo, that memo's
+  // dependency array, the draft restore and the reset. Each was a place a new field
+  // could be forgotten, with a different silent bug per omission: a frozen draft, a
+  // dropped Resume, a leak into the next create, a blank on edit. One shape means a
+  // field added to `IntakeItemFormState` reaches all of them without an edit here.
+  //
+  // The hooks BELOW this are deliberately not part of it: an open panel, a narrowed
+  // brand list, a seed note and the prefill ledger are not facts about the item and
+  // are never saved.
+  const [state, setState] = useState<IntakeItemFormState>(() =>
+    intakeItemFormStateFrom({
+      kind: lockedKind,
+      item: s,
+      course,
+      todayStr,
+      supply: initialSupply,
+      doses: initialDoses,
+      ingredients: ingredientStates(initialIngredients),
+      purposes: initialPurposes
+        .map(purposeToDraft)
+        .filter((d): d is PurposeDraft => d != null),
+    })
+  );
+  // The ONE writer. A patch that changes nothing returns the SAME object, so a
+  // controlled child re-asserting a value from an effect (RefillTracking clears the
+  // private count a pooled item does not own) cannot spin the render loop that a
+  // fresh object every time would.
+  function patch(
+    next:
+      | Partial<IntakeItemFormState>
+      | ((current: IntakeItemFormState) => Partial<IntakeItemFormState>)
+  ) {
+    setState((current) => {
+      const delta = typeof next === "function" ? next(current) : next;
+      const keys = Object.keys(delta) as (keyof IntakeItemFormState)[];
+      return keys.some((key) => !Object.is(current[key], delta[key]))
+        ? { ...current, ...delta }
+        : current;
+    });
+  }
   // The household's bottles, offered in the SAME field as the vocabularies (#3216
   // decision 3). This is the #1705 create-mode branch promoted from the refill fold to
   // the front door: "there is a shared bottle of D3 5000 IU; add it for my daughter"
@@ -278,59 +313,11 @@ export default function IntakeItemForm({
     storedCondition: s?.condition ?? null,
   });
 
-  // ---- State: every fact the form will post ----
-  const [brand, setBrand] = useState(s?.brand ?? "");
+  // ---- UI-only state: not a fact about the item, so not in `state` ----
+  // A pick's own brand list narrowing the brand vocabulary, and the latch that says
+  // the person set the start date themselves (so an obligation flip stops moving it).
   const [brandNarrowing, setBrandNarrowing] = useState<string[] | null>(null);
-  const [product, setProduct] = useState(s?.product ?? "");
-  const [stack, setStack] = useState(s?.stack ?? "");
-  const [condition, setCondition] = useState<IntakeCondition>(
-    s?.condition ?? "daily"
-  );
-  const [obligation, setObligationState] = useState<IntakeObligation>(
-    s?.obligation ?? affordances.defaultObligation
-  );
-  const [critical, setCritical] = useState(s?.critical === 1);
-  const [escalateAfterMin, setEscalateAfterMin] = useState(
-    s?.escalate_after_min != null ? String(s.escalate_after_min) : ""
-  );
-  const [escalateChatId, setEscalateChatId] = useState(
-    s?.escalate_chat_id ?? ""
-  );
-  const [minIntervalHours, setMinIntervalHours] = useState(
-    s?.min_interval_hours != null ? String(s.min_interval_hours) : ""
-  );
-  const [maxDailyCount, setMaxDailyCount] = useState(
-    s?.max_daily_count != null ? String(s.max_daily_count) : ""
-  );
-  const [maxDailyAmountMg, setMaxDailyAmountMg] = useState(
-    s?.max_daily_amount_mg != null ? String(s.max_daily_amount_mg) : ""
-  );
-  const [redoseNotice, setRedoseNotice] = useState(s?.redose_notice === 1);
-  const [rxFlag, setRxFlag] = useState(s?.rx === 1);
-  const [prescriber, setPrescriber] = useState(s?.prescriber ?? "");
-  const [pharmacy, setPharmacy] = useState(s?.pharmacy ?? "");
-  const [rxNumber, setRxNumber] = useState(s?.rx_number ?? "");
-  const [provider, setProvider] = useState(s?.provider_name ?? "");
-  const [indicationConditionId, setIndicationConditionId] = useState(
-    s?.indication_condition_id != null ? String(s.indication_condition_id) : ""
-  );
-  const [startedOn, setStartedOn] = useState(
-    course?.started_on ?? (s?.obligation === "may" ? "" : (todayStr ?? ""))
-  );
   const [startedOnTouched, setStartedOnTouched] = useState(false);
-  const [endDate, setEndDate] = useState(course?.stopped_on ?? "");
-  const [notes, setNotes] = useState(s?.notes ?? "");
-  const [quantityOnHand, setQuantityOnHand] = useState(
-    s?.quantity_on_hand != null ? String(Math.max(0, s.quantity_on_hand)) : ""
-  );
-  const [qtyPerDose, setQtyPerDose] = useState(String(s?.qty_per_dose ?? 1));
-  const [supplyId, setSupplyId] = useState(
-    s?.supply_id != null
-      ? String(s.supply_id)
-      : initialSupply
-        ? String(initialSupply.id)
-        : ""
-  );
   const [supplyLabel, setSupplyLabel] = useState<string | null>(
     s?.supply_name ?? initialSupply?.name ?? null
   );
@@ -363,12 +350,12 @@ export default function IntakeItemForm({
     if (writes.asNeeded !== undefined)
       setObligation(writes.asNeeded ? "may" : "must");
     if (writes.minIntervalHours !== undefined)
-      setMinIntervalHours(String(writes.minIntervalHours));
+      patch({ minIntervalHours: String(writes.minIntervalHours) });
     if (writes.maxDailyCount !== undefined)
-      setMaxDailyCount(String(writes.maxDailyCount));
+      patch({ maxDailyCount: String(writes.maxDailyCount) });
     if (writes.doseAmount !== undefined || writes.timeOfDay !== undefined)
-      setDoses((ds) =>
-        ds.map((d, i) =>
+      patch((current) => ({
+        doses: current.doses.map((d, i) =>
           i === 0
             ? {
                 ...d,
@@ -376,8 +363,8 @@ export default function IntakeItemForm({
                 time_of_day: writes.timeOfDay ?? d.time_of_day,
               }
             : d
-        )
-      );
+        ),
+      }));
   }
   const [formulationSlug, setFormulationSlug] = useState("");
   const [selectedPediatricBandMinLbs, setSelectedPediatricBandMinLbs] =
@@ -386,41 +373,13 @@ export default function IntakeItemForm({
     pediatric,
     pediatric
   );
-  const [ingredients, setIngredients] = useState<IngredientState[]>(() =>
-    ingredientStates(initialIngredients)
-  );
   const [ingredientSeedNote, setIngredientSeedNote] = useState<string | null>(
     null
   );
-  const [purposes, setPurposes] = useState<PurposeDraft[]>(() =>
-    initialPurposes
-      .map(purposeToDraft)
-      .filter((d): d is PurposeDraft => d != null)
-  );
   const purposeSummary = useMemo(
-    () => purposeDraftsSummary(purposes, conditions),
-    [purposes, conditions]
+    () => purposeDraftsSummary(state.purposes, conditions),
+    [state.purposes, conditions]
   );
-  const [doses, setDoses] = useState<DoseState[]>(
-    initialDoses && initialDoses.length
-      ? initialDoses.map((d) => ({
-          id: d.id,
-          amount: d.amount ?? "",
-          time_of_day: d.time_of_day ?? "",
-          food_timing: d.food_timing,
-          weekdays: [...parseWeekdays(d.weekdays)].sort((a, b) => a - b),
-          start_date: d.start_date ?? "",
-          end_date: d.end_date ?? "",
-        }))
-      : [{ ...emptyDose(), amount: supplySeed?.amount ?? "" }]
-  );
-  const [cadence, setCadence] = useState<CadenceState>(() => ({
-    kind: s?.cadence_kind ?? "daily",
-    weekdays: [...parseWeekdays(s?.cadence_weekdays)].sort((a, b) => a - b),
-    intervalDays:
-      s?.cadence_interval_days != null ? String(s.cadence_interval_days) : "",
-    anchorDate: s?.cadence_anchor_date ?? "",
-  }));
   // The rule SENTENCES. In edit mode they are read back out of the stored row, which
   // is what makes the summary double as the item's review.
   const [rules, setRules] = useState<IntakeRule[]>(() =>
@@ -441,24 +400,27 @@ export default function IntakeItemForm({
   );
 
   function setObligation(next: IntakeObligation) {
-    setObligationState(next);
-    if (!s && !startedOnTouched)
-      setStartedOn(next === "may" ? "" : (todayStr ?? ""));
+    patch({
+      obligation: next,
+      ...(!s && !startedOnTouched
+        ? { startedOn: next === "may" ? "" : (todayStr ?? "") }
+        : {}),
+    });
   }
 
   // ---- Datasets for the derived kind ----
   const prnDefaults = useMemo(
     () =>
-      isMed && name.trim()
+      isMed && state.name.trim()
         ? prnDefaultsFor({
-            name,
+            name: state.name,
             rxcui: rx.rxcui,
             rxcuiIngredients: rx.rxcuiIngredients,
           })
         : null,
-    [isMed, name, rx.rxcui, rx.rxcuiIngredients]
+    [isMed, state.name, rx.rxcui, rx.rxcuiIngredients]
   );
-  const catalogEntry = CATALOG_BY_NAME.get(name.trim().toLowerCase());
+  const catalogEntry = CATALOG_BY_NAME.get(state.name.trim().toLowerCase());
   // One call site each for the two suggestion lists #846 found teaching wrong.
   const dosageOptions = useMemo(
     () =>
@@ -499,8 +461,8 @@ export default function IntakeItemForm({
   // context beside the field it explains — it is not a fact being saved, so it is not
   // a chip.
   const medInfo = useMemo(
-    () => (isMed ? getMedicationInfo(name) : null),
-    [isMed, name]
+    () => (isMed ? getMedicationInfo(state.name) : null),
+    [isMed, state.name]
   );
 
   // ---- Formulation (decision 2) ----
@@ -549,7 +511,7 @@ export default function IntakeItemForm({
   function pickFormulation(slug: string) {
     setFormulationSlug(slug);
     const choice = choices.find((c) => c.slug === slug) ?? null;
-    setProduct(choice?.product ?? "");
+    patch({ product: choice?.product ?? "" });
     const preset = formulationRedosePreset(prnDefaults, choice);
     // The amount stays in milligrams; the VOLUME is derived from the product at every
     // display boundary, so a switch re-derives the product and the reader does the rest.
@@ -608,7 +570,7 @@ export default function IntakeItemForm({
       supplementEntry &&
       (bottle ? lockedKind === "supplement" : !getMedicationInfo(pickedName))
     ) {
-      setName(pickedName);
+      patch({ name: pickedName });
       seedFromPick(
         withBottle({ vocabulary: "catalog", entry: supplementEntry })
       );
@@ -620,9 +582,8 @@ export default function IntakeItemForm({
       bottle ? undefined : query
     );
     const generic = bottle ? pickedName : resolved.name || pickedName;
-    setName(generic);
-    setProduct("");
-    if (resolved.brand) setBrand(resolved.brand);
+    patch({ name: generic, product: "" });
+    if (resolved.brand) patch({ brand: resolved.brand });
 
     // ONE PRN resolution per name resolution, from the code THIS pick confirmed. It
     // used to be resolved here from `rx.rxcui` as it stood before the pick — a value the
@@ -666,8 +627,8 @@ export default function IntakeItemForm({
     ]);
     // A catalogued blend's label composition (#2856). The repeater owns these rows, so
     // they are seeded only into an empty list — the person's own rows are never replaced.
-    if (pf.ingredients.length > 0 && ingredientsAreEmpty(ingredients)) {
-      setIngredients(pf.ingredients);
+    if (pf.ingredients.length > 0 && ingredientsAreEmpty(state.ingredients)) {
+      patch({ ingredients: pf.ingredients });
       setIngredientSeedNote(pf.ingredientNote);
     }
   }
@@ -682,15 +643,23 @@ export default function IntakeItemForm({
     // The NAME is product identity rather than a label figure, so it keeps the pool's
     // own previous-seed rule; the STRENGTH is an offer about a dose, so it goes through
     // the ledger with every other offer and is marked like every other offer.
-    setName((current) =>
-      applyProductSeed(current, previous?.name ?? null, seed?.name ?? "")
-    );
+    patch((current) => ({
+      name: applyProductSeed(
+        current.name,
+        previous?.name ?? null,
+        seed?.name ?? ""
+      ),
+    }));
     if (seed) {
       writePrefill(offerPrefill({ doseAmount: seed.amount }));
     } else if (ledgerRef.current.suggested.has("doseAmount")) {
       // Unlinked: the bottle that stated this strength is gone, so the offer goes with
       // it. A figure the person typed is theirs and is never withdrawn.
-      setDoses((ds) => ds.map((d, i) => (i === 0 ? { ...d, amount: "" } : d)));
+      patch((current) => ({
+        doses: current.doses.map((d, i) =>
+          i === 0 ? { ...d, amount: "" } : d
+        ),
+      }));
       setLedger(withdrawPrefill(ledgerRef.current, "doseAmount"));
     }
     onLinkSupply(supply);
@@ -698,7 +667,7 @@ export default function IntakeItemForm({
   }
 
   function onLinkSupply(supply: SupplyOption | null): void {
-    setSupplyId(supply ? String(supply.id) : "");
+    patch({ supplyId: supply ? String(supply.id) : "" });
     setSupplyLabel(supply?.name ?? null);
     if (supply && !bottles.some((option) => option.id === supply.id))
       setBottles([...bottles, supply]);
@@ -707,16 +676,16 @@ export default function IntakeItemForm({
   function selectPediatricBand(band: PediatricBand) {
     setSelectedPediatricBandMinLbs(band.minLbs);
     markTouched("doseAmount");
-    setDoses((current) =>
-      current.map((dose, index) =>
+    patch((current) => ({
+      doses: current.doses.map((dose, index) =>
         index === 0 ? { ...dose, amount: formulationDoseAmount(band.mg) } : dose
-      )
-    );
+      ),
+    }));
   }
 
   // ---- The rule sentences decide the fields they own ----
   const ruleFields = useMemo(() => fieldsFromRules(rules), [rules]);
-  const effectiveCondition = ruleFields.condition ?? condition;
+  const effectiveCondition = ruleFields.condition ?? state.condition;
 
   // THE RULES BUILDER IS THE FOOD-TIMING CONTROL, so it marks the ledger like every
   // other control does (#4665). `foodTiming` is the one prefillable field with no input
@@ -732,94 +701,31 @@ export default function IntakeItemForm({
   }
 
   // ---- The state the mapping posts ----
+  // `state` IS the posted state. Laid over it are the only fields whose CONTROL is
+  // somewhere else: the rule SENTENCES own the condition, the two situation links and
+  // the pair rules — and the dose rows' food relationship, because one sentence writes
+  // every row (#3216) — while the RxNorm confirm hook owns the code and its
+  // ingredient CUIs. Everything else rides on the spread, so a field added to
+  // `IntakeItemFormState` is posted without an edit here, and its dependency is
+  // `state` itself rather than a list that has to be remembered.
+  //
   // Memoized because it IS the draft (#1699): a new object every render would rewrite
   // the local draft on every render rather than on every change.
   const formState: IntakeItemFormState = useMemo(
     () => ({
-      id: s?.id ?? null,
-      kind,
-      name,
-      brand,
-      product,
-      stack,
+      ...state,
       condition: effectiveCondition,
       situation: ruleFields.situation,
       pauseSituation: ruleFields.pauseSituation,
-      obligation,
-      critical,
-      escalateAfterMin,
-      escalateChatId,
-      minIntervalHours,
-      maxDailyCount,
-      maxDailyAmountMg,
-      redoseNotice,
-      rx: rxFlag,
-      prescriber,
-      pharmacy,
-      rxNumber,
-      provider,
-      providerId: s?.provider_id ?? null,
-      providerLoaded: s?.provider_name ?? "",
-      indicationConditionId,
-      startedOn,
-      endDate,
-      courseId: course?.id ?? null,
-      cadence,
-      doses: doses.map((d) => ({
+      pairs: ruleFields.pairs,
+      doses: state.doses.map((d) => ({
         ...d,
         food_timing: ruleFields.foodTiming ?? "any",
       })),
-      pairs: ruleFields.pairs,
-      ingredients,
-      purposes,
-      notes,
       rxcui: rx.rxcui,
       rxcuiIngredients: rx.rxcuiIngredients ?? [],
-      quantityOnHand,
-      qtyPerDose,
-      quantityOnHandLoaded:
-        s?.quantity_on_hand != null
-          ? String(Math.max(0, s.quantity_on_hand))
-          : "",
-      supplyId,
     }),
-    [
-      s,
-      kind,
-      name,
-      brand,
-      product,
-      stack,
-      effectiveCondition,
-      ruleFields,
-      obligation,
-      critical,
-      escalateAfterMin,
-      escalateChatId,
-      minIntervalHours,
-      maxDailyCount,
-      maxDailyAmountMg,
-      redoseNotice,
-      rxFlag,
-      prescriber,
-      pharmacy,
-      rxNumber,
-      provider,
-      indicationConditionId,
-      startedOn,
-      endDate,
-      course,
-      cadence,
-      doses,
-      ingredients,
-      purposes,
-      notes,
-      rx.rxcui,
-      rx.rxcuiIngredients,
-      quantityOnHand,
-      qtyPerDose,
-      supplyId,
-    ]
+    [state, effectiveCondition, ruleFields, rx.rxcui, rx.rxcuiIngredients]
   );
 
   const suggestedFacts = useMemo(
@@ -829,40 +735,40 @@ export default function IntakeItemForm({
 
   const summary = intakeFactSummary({
     kind,
-    amount: doses[0]?.amount ?? "",
+    amount: state.doses[0]?.amount ?? "",
     formulationLabel: activeChoice?.pediatric ? activeChoice.label : "",
-    extraDoses: doses.slice(1).map((d) => ({
+    extraDoses: state.doses.slice(1).map((d) => ({
       amount: d.amount,
       timeOfDay: d.time_of_day,
     })),
-    firstDoseTimeOfDay: doses[0]?.time_of_day ?? "",
-    obligation,
-    critical,
-    minIntervalHours,
-    maxDailyCount,
-    maxDailyAmountMg,
+    firstDoseTimeOfDay: state.doses[0]?.time_of_day ?? "",
+    obligation: state.obligation,
+    critical: state.critical,
+    minIntervalHours: state.minIntervalHours,
+    maxDailyCount: state.maxDailyCount,
+    maxDailyAmountMg: state.maxDailyAmountMg,
     cadenceSentence: cadenceLabel({
-      cadence_kind: cadence.kind,
-      cadence_weekdays: cadence.weekdays.join(","),
-      cadence_interval_days: cadence.intervalDays
-        ? Number(cadence.intervalDays)
+      cadence_kind: state.cadence.kind,
+      cadence_weekdays: state.cadence.weekdays.join(","),
+      cadence_interval_days: state.cadence.intervalDays
+        ? Number(state.cadence.intervalDays)
         : null,
-      cadence_anchor_date: cadence.anchorDate,
+      cadence_anchor_date: state.cadence.anchorDate,
     }),
-    rx: rxFlag,
-    prescriber,
+    rx: state.rx,
+    prescriber: state.prescriber,
     indication:
-      conditions.find((c) => String(c.id) === indicationConditionId)?.name ??
-      "",
-    brand,
-    product,
-    stack,
+      conditions.find((c) => String(c.id) === state.indicationConditionId)
+        ?.name ?? "",
+    brand: state.brand,
+    product: state.product,
+    stack: state.stack,
     supplyLabel,
-    quantityOnHand,
-    stopDate: endDate,
-    ingredientCount: ingredients.filter((g) => g.name.trim()).length,
+    quantityOnHand: state.quantityOnHand,
+    stopDate: state.endDate,
+    ingredientCount: state.ingredients.filter((g) => g.name.trim()).length,
     purposeSummary,
-    notes,
+    notes: state.notes,
     rules,
     itemNames,
     suggestedFacts,
@@ -881,37 +787,11 @@ export default function IntakeItemForm({
     recordId: s?.id ?? null,
     formRef,
     extra: draftExtra,
+    // The whole posted state IS the draft, so restoring it is one assignment. It used
+    // to be a fan-out of 27 setters, where a field left out was silently dropped on
+    // Resume — the person's own answer, gone, with nothing to see.
     onRestore: (d) => {
-      const v = d.state;
-      setName(v.name);
-      setBrand(v.brand);
-      setProduct(v.product);
-      setStack(v.stack);
-      setCondition(v.condition);
-      setObligationState(v.obligation);
-      setCritical(v.critical);
-      setEscalateAfterMin(v.escalateAfterMin);
-      setEscalateChatId(v.escalateChatId);
-      setMinIntervalHours(v.minIntervalHours);
-      setMaxDailyCount(v.maxDailyCount);
-      setMaxDailyAmountMg(v.maxDailyAmountMg);
-      setRedoseNotice(v.redoseNotice);
-      setRxFlag(v.rx);
-      setPrescriber(v.prescriber);
-      setPharmacy(v.pharmacy);
-      setRxNumber(v.rxNumber);
-      setProvider(v.provider);
-      setIndicationConditionId(v.indicationConditionId);
-      setStartedOn(v.startedOn);
-      setEndDate(v.endDate);
-      setNotes(v.notes);
-      setQuantityOnHand(v.quantityOnHand);
-      setQtyPerDose(v.qtyPerDose);
-      setSupplyId(v.supplyId);
-      setCadence(v.cadence);
-      setDoses(v.doses);
-      setIngredients(v.ingredients);
-      setPurposes(v.purposes);
+      setState(d.state);
       setRules(d.rules ?? []);
       setFormulationSlug(d.formulationSlug ?? "");
     },
@@ -926,12 +806,12 @@ export default function IntakeItemForm({
 
   async function handle() {
     setError(null);
-    const label = name.trim() || (isMed ? "Medication" : "Supplement");
+    const label = state.name.trim() || (isMed ? "Medication" : "Supplement");
     const pause = ruleFields.pauseSituation.trim();
     if (
       pause &&
       pause !== (s?.pause_situation ?? "") &&
-      pauseLinkNeedsConfirm({ kind, obligation })
+      pauseLinkNeedsConfirm({ kind, obligation: state.obligation })
     ) {
       const ok = await confirm({
         title: "Pause reminders?",
@@ -944,11 +824,11 @@ export default function IntakeItemForm({
     // safety net you had, so it is asked only when an EXISTING must medication is
     // moved down — never for a new declaration, never on an unrelated edit.
     const wasMust = s != null && (s.obligation ?? "must") === "must";
-    if (isMed && obligation !== "must" && wasMust) {
+    if (isMed && state.obligation !== "must" && wasMust) {
       const ok = await confirm({
         title: `Reduce reminders for ${label}?`,
         message:
-          obligation === "may"
+          state.obligation === "may"
             ? `${label} will get no reminders, no missed-dose escalation, and no missed-dose safety net. It stays on your list and one tap away when you want it. Continue?`
             : `${label} will still be reminded and still counted, but it loses missed-dose escalation — no follow-up nudge if a dose goes unconfirmed, no caregiver alert. Continue?`,
         confirmLabel: "Reduce reminders",
@@ -973,43 +853,27 @@ export default function IntakeItemForm({
     reset();
   }
 
+  // Back to a blank form for the NEXT create. One assignment for every posted fact,
+  // beside the UI-only hooks that are not part of `state`.
+  //
+  // ALL FIVE MOUNTS PASS `onDone`, so `handle` returns before this and nothing
+  // shipped reaches it today; the add-mode modal starts clean by unmounting
+  // (e2e/supplement-add-reset.spec.ts). It is kept, and kept correct, because the
+  // sixth mount that does not close itself is the one that would need it.
   function reset() {
     formRef.current?.reset();
-    setName("");
+    setState({
+      ...intakeItemFormStateFrom({ kind: lockedKind, todayStr }),
+      // The course is the HOST's, not this item's: it outlives the row being cleared.
+      courseId: course?.id ?? null,
+    });
     rx.reset();
-    setBrand("");
     setBrandNarrowing(null);
-    setProduct("");
-    setStack("");
-    setCondition("daily");
-    setObligationState(affordances.defaultObligation);
-    setCritical(false);
-    setEscalateAfterMin("");
-    setEscalateChatId("");
-    setMinIntervalHours("");
-    setMaxDailyCount("");
-    setMaxDailyAmountMg("");
-    setRedoseNotice(false);
-    setRxFlag(false);
-    setPrescriber("");
-    setPharmacy("");
-    setRxNumber("");
-    setProvider("");
-    setIndicationConditionId("");
-    setStartedOn(todayStr ?? "");
     setStartedOnTouched(false);
-    setEndDate("");
-    setNotes("");
-    setQuantityOnHand("");
-    setQtyPerDose("1");
-    setSupplyId("");
     setSupplyLabel(null);
     setFormulationSlug("");
     setSelectedPediatricBandMinLbs(null);
-    setIngredients([]);
     setIngredientSeedNote(null);
-    setDoses([emptyDose()]);
-    setCadence(emptyIntakeCadence());
     setRules([]);
     setLedger(emptyPrefillLedger());
     closePanel();
@@ -1036,8 +900,9 @@ export default function IntakeItemForm({
   );
 
   const ingredientNames = useMemo(
-    () => ingredients.map((g) => g.name.trim()).filter((n) => n.length > 0),
-    [ingredients]
+    () =>
+      state.ingredients.map((g) => g.name.trim()).filter((n) => n.length > 0),
+    [state.ingredients]
   );
 
   return (
@@ -1062,21 +927,24 @@ export default function IntakeItemForm({
         <IntakeItemCombobox
           id={`intake-name-${fid}`}
           ariaLabel="Name"
-          value={name}
+          value={state.name}
           onChange={(v) => {
-            if (v !== name) {
+            if (v !== state.name) {
               setFormulationSlug("");
               setSelectedPediatricBandMinLbs(null);
             }
-            setName(v);
+            patch({ name: v });
             rx.onNameChange();
           }}
           onPick={onPickName}
           options={nameOptions}
           placeholder={affordances.namePlaceholder}
         />
-        <RxNormAffordance name={name} rx={rx} />
-        {isChildProfile && name.trim() && isMed && !prnDefaults?.pediatric ? (
+        <RxNormAffordance name={state.name} rx={rx} />
+        {isChildProfile &&
+        state.name.trim() &&
+        isMed &&
+        !prnDefaults?.pediatric ? (
           <p
             data-testid="medication-pediatric-no-chart"
             className="mt-1 text-xs text-slate-500 dark:text-slate-400"
@@ -1144,7 +1012,7 @@ export default function IntakeItemForm({
       {/* Safety surfacing never drops: the stack-interaction, PGx and food notices
           render as a passive line before Save, whichever editor is open. */}
       <IntakeInteractionNotices
-        name={name}
+        name={state.name}
         ingredientNames={ingredientNames}
         rxcui={rx.rxcui}
         rxcuiIngredients={rx.rxcuiIngredients}
@@ -1278,7 +1146,7 @@ export default function IntakeItemForm({
                         ledgerRef.current.suggested.has("doseAmount");
                       if (
                         nextResult.kind === "dose" &&
-                        (offered || !doses[0]?.amount.trim())
+                        (offered || !state.doses[0]?.amount.trim())
                       ) {
                         writePrefill(
                           offerPrefill({
@@ -1286,11 +1154,11 @@ export default function IntakeItemForm({
                           })
                         );
                       } else if (nextResult.kind !== "dose" && offered) {
-                        setDoses((current) =>
-                          current.map((dose, index) =>
+                        patch((current) => ({
+                          doses: current.doses.map((dose, index) =>
                             index === 0 ? { ...dose, amount: "" } : dose
-                          )
-                        );
+                          ),
+                        }));
                         setLedger(
                           withdrawPrefill(ledgerRef.current, "doseAmount")
                         );
@@ -1308,7 +1176,7 @@ export default function IntakeItemForm({
                     formulationSlug={activeSlug}
                     today={pediatricContext?.today ?? todayStr ?? ""}
                     selectedBandMinLbs={selectedPediatricBandMinLbs}
-                    currentAmount={doses[0]?.amount ?? ""}
+                    currentAmount={state.doses[0]?.amount ?? ""}
                     onBandSelect={selectPediatricBand}
                     onFormulationChange={pickFormulation}
                     hideFormulationSelect
@@ -1317,22 +1185,29 @@ export default function IntakeItemForm({
               </section>
             )}
             <DoseRowsEditor
-              doses={doses}
+              doses={state.doses}
               setDoses={(update) => {
                 // Any hand edit protects the dose-derived fields from a LATER pick.
                 markTouched("doseAmount", "timeOfDay");
                 setSelectedPediatricBandMinLbs(null);
-                setDoses(update);
+                patch((current) => ({
+                  doses:
+                    typeof update === "function"
+                      ? update(current.doses)
+                      : update,
+                }));
               }}
               dosageOptions={[...dosageOptions]}
               amountPlaceholder={isMed ? "e.g. 200 mg" : "amount"}
-              singleAmountOnly={obligation === "may"}
+              singleAmountOnly={state.obligation === "may"}
               hideFoodTiming
             />
             {s && (
               <RetiredDoses
                 doses={retiredDoses}
-                onRestored={(d) => setDoses((ds) => [...ds, d])}
+                onRestored={(d) =>
+                  patch((current) => ({ doses: [...current.doses, d] }))
+                }
               />
             )}
           </>
@@ -1354,7 +1229,7 @@ export default function IntakeItemForm({
                       : effectiveCondition
                   }
                   onChange={(e) =>
-                    setCondition(e.target.value as IntakeCondition)
+                    patch({ condition: e.target.value as IntakeCondition })
                   }
                   className="input"
                 >
@@ -1371,8 +1246,11 @@ export default function IntakeItemForm({
                 </p>
               </div>
             )}
-            <CadenceEditor value={cadence} onChange={setCadence} />
-            {affordances.redose && obligation === "may" && (
+            <CadenceEditor
+              value={state.cadence}
+              onChange={(next) => patch({ cadence: next })}
+            />
+            {affordances.redose && state.obligation === "may" && (
               <div
                 data-testid="redose-block"
                 className="sm:col-span-2 border-t border-black/5 pt-4 dark:border-white/5"
@@ -1387,10 +1265,12 @@ export default function IntakeItemForm({
                       data-testid="redose-prefill"
                       className="btn-ghost btn-sm"
                       onClick={() => {
-                        setMinIntervalHours(
-                          String(redoseDefaults.minIntervalHours)
-                        );
-                        setMaxDailyCount(String(redoseDefaults.maxDailyCount));
+                        patch({
+                          minIntervalHours: String(
+                            redoseDefaults.minIntervalHours
+                          ),
+                          maxDailyCount: String(redoseDefaults.maxDailyCount),
+                        });
                         markTouched("minIntervalHours", "maxDailyCount");
                       }}
                     >
@@ -1432,9 +1312,9 @@ export default function IntakeItemForm({
                       type="number"
                       min={0}
                       step="any"
-                      value={minIntervalHours}
+                      value={state.minIntervalHours}
                       onChange={(e) => {
-                        setMinIntervalHours(e.target.value);
+                        patch({ minIntervalHours: e.target.value });
                         markTouched("minIntervalHours");
                       }}
                       className="input"
@@ -1451,9 +1331,9 @@ export default function IntakeItemForm({
                       type="number"
                       min={1}
                       step={1}
-                      value={maxDailyCount}
+                      value={state.maxDailyCount}
                       onChange={(e) => {
-                        setMaxDailyCount(e.target.value);
+                        patch({ maxDailyCount: e.target.value });
                         markTouched("maxDailyCount");
                       }}
                       className="input"
@@ -1470,8 +1350,10 @@ export default function IntakeItemForm({
                       type="number"
                       min={0}
                       step="any"
-                      value={maxDailyAmountMg}
-                      onChange={(e) => setMaxDailyAmountMg(e.target.value)}
+                      value={state.maxDailyAmountMg}
+                      onChange={(e) =>
+                        patch({ maxDailyAmountMg: e.target.value })
+                      }
                       className="input"
                       placeholder="e.g. 1200"
                     />
@@ -1485,8 +1367,8 @@ export default function IntakeItemForm({
                   <input
                     type="checkbox"
                     data-testid="redose-optin"
-                    checked={redoseNotice}
-                    onChange={(e) => setRedoseNotice(e.target.checked)}
+                    checked={state.redoseNotice}
+                    onChange={(e) => patch({ redoseNotice: e.target.checked })}
                     className="h-4 w-4 rounded-sm border-slate-300 text-brand-600 dark:border-slate-600"
                   />
                   Remind me when the redose window opens
@@ -1531,7 +1413,7 @@ export default function IntakeItemForm({
               <select
                 id={`intake-obligation-${fid}`}
                 data-testid="intake-obligation"
-                value={obligation}
+                value={state.obligation}
                 onChange={(e) => {
                   setObligation(e.target.value as IntakeObligation);
                   markTouched("asNeeded");
@@ -1548,17 +1430,19 @@ export default function IntakeItemForm({
                 className="mt-1 text-xs text-slate-500 dark:text-slate-400"
                 data-testid="intake-obligation-hint"
               >
-                {OBLIGATION_HINTS[obligation]}
+                {OBLIGATION_HINTS[state.obligation]}
               </p>
             </div>
             <CriticalEscalation
               fid={fid}
-              critical={critical}
-              setCritical={setCritical}
-              escalateAfterMin={escalateAfterMin}
-              setEscalateAfterMin={setEscalateAfterMin}
-              escalateChatId={escalateChatId}
-              setEscalateChatId={setEscalateChatId}
+              critical={state.critical}
+              setCritical={(critical) => patch({ critical })}
+              escalateAfterMin={state.escalateAfterMin}
+              setEscalateAfterMin={(escalateAfterMin) =>
+                patch({ escalateAfterMin })
+              }
+              escalateChatId={state.escalateChatId}
+              setEscalateChatId={(escalateChatId) => patch({ escalateChatId })}
             />
           </>
         );
@@ -1570,13 +1454,13 @@ export default function IntakeItemForm({
               <input
                 type="checkbox"
                 data-testid="rx-toggle"
-                checked={rxFlag}
-                onChange={(e) => setRxFlag(e.target.checked)}
+                checked={state.rx}
+                onChange={(e) => patch({ rx: e.target.checked })}
                 className="h-4 w-4 rounded-sm border-slate-300 text-brand-600 dark:border-slate-600"
               />
               Prescription medication
             </label>
-            {rxFlag && (
+            {state.rx && (
               <div
                 data-testid="prescription-fields"
                 className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2"
@@ -1587,8 +1471,8 @@ export default function IntakeItemForm({
                   </label>
                   <input
                     id={`med-prescriber-${fid}`}
-                    value={prescriber}
-                    onChange={(e) => setPrescriber(e.target.value)}
+                    value={state.prescriber}
+                    onChange={(e) => patch({ prescriber: e.target.value })}
                     className="input"
                     placeholder="e.g. Dr. Rivera"
                   />
@@ -1599,8 +1483,8 @@ export default function IntakeItemForm({
                   </label>
                   <input
                     id={`med-pharmacy-${fid}`}
-                    value={pharmacy}
-                    onChange={(e) => setPharmacy(e.target.value)}
+                    value={state.pharmacy}
+                    onChange={(e) => patch({ pharmacy: e.target.value })}
                     className="input"
                     placeholder="e.g. Walgreens #1234"
                   />
@@ -1611,8 +1495,8 @@ export default function IntakeItemForm({
                   </label>
                   <input
                     id={`med-rx-${fid}`}
-                    value={rxNumber}
-                    onChange={(e) => setRxNumber(e.target.value)}
+                    value={state.rxNumber}
+                    onChange={(e) => patch({ rxNumber: e.target.value })}
                     className="input"
                     placeholder="e.g. RX7654321"
                   />
@@ -1626,7 +1510,7 @@ export default function IntakeItemForm({
                     name="provider"
                     ariaLabel="Provider / pharmacy"
                     defaultValue={s?.provider_name ?? ""}
-                    onChange={setProvider}
+                    onChange={(provider) => patch({ provider })}
                     placeholder="e.g. Sample Care East"
                   />
                 </div>
@@ -1643,8 +1527,8 @@ export default function IntakeItemForm({
             </label>
             <select
               id={`med-indication-${fid}`}
-              value={indicationConditionId}
-              onChange={(e) => setIndicationConditionId(e.target.value)}
+              value={state.indicationConditionId}
+              onChange={(e) => patch({ indicationConditionId: e.target.value })}
               className="input"
               data-testid="med-indication-picker"
             >
@@ -1668,8 +1552,8 @@ export default function IntakeItemForm({
               <IntakeItemCombobox
                 id={`intake-brand-${fid}`}
                 ariaLabel="Brand"
-                value={brand}
-                onChange={setBrand}
+                value={state.brand}
+                onChange={(brand) => patch({ brand })}
                 options={[...brandOptions]}
                 placeholder={affordances.brandPlaceholder}
               />
@@ -1682,8 +1566,8 @@ export default function IntakeItemForm({
                   </label>
                   <input
                     id={`intake-product-${fid}`}
-                    value={product}
-                    onChange={(e) => setProduct(e.target.value)}
+                    value={state.product}
+                    onChange={(e) => patch({ product: e.target.value })}
                     className="input"
                     placeholder="e.g. Vitamin D/K2"
                   />
@@ -1703,8 +1587,8 @@ export default function IntakeItemForm({
                   <IntakeItemCombobox
                     id={`intake-stack-${fid}`}
                     ariaLabel="Stack (optional)"
-                    value={stack}
-                    onChange={setStack}
+                    value={state.stack}
+                    onChange={(stack) => patch({ stack })}
                     options={catalogOptions.stacks}
                     placeholder="e.g. D3 + K2"
                   />
@@ -1720,13 +1604,13 @@ export default function IntakeItemForm({
             fid={fid}
             item={s}
             bottles={bottles}
-            supplyId={supplyId}
+            supplyId={state.supplyId}
             supplyName={supplyLabel}
             onPickSupply={s ? onLinkSupply : onPickSupply}
-            quantityOnHand={quantityOnHand}
-            setQuantityOnHand={setQuantityOnHand}
-            qtyPerDose={qtyPerDose}
-            setQtyPerDose={setQtyPerDose}
+            quantityOnHand={state.quantityOnHand}
+            setQuantityOnHand={(quantityOnHand) => patch({ quantityOnHand })}
+            qtyPerDose={state.qtyPerDose}
+            setQtyPerDose={(qtyPerDose) => patch({ qtyPerDose })}
           />
         );
 
@@ -1735,8 +1619,8 @@ export default function IntakeItemForm({
           <>
             <div>
               <label className="label" htmlFor={`intake-started-on-${fid}`}>
-                {obligation === "may" ? "Using since" : "Started on"}
-                {obligation === "may" && (
+                {state.obligation === "may" ? "Using since" : "Started on"}
+                {state.obligation === "may" && (
                   <span className="ml-1 font-normal text-slate-500 dark:text-slate-400">
                     (optional)
                   </span>
@@ -1744,15 +1628,15 @@ export default function IntakeItemForm({
               </label>
               <DateField
                 id={`intake-started-on-${fid}`}
-                value={startedOn}
+                value={state.startedOn}
                 onChange={(value) => {
-                  setStartedOn(value);
+                  patch({ startedOn: value });
                   setStartedOnTouched(true);
                 }}
                 max={todayStr}
-                required={obligation !== "may"}
+                required={state.obligation !== "may"}
               />
-              {obligation === "may" && (
+              {state.obligation === "may" && (
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   Leave blank if you don’t know when you started using it.
                 </p>
@@ -1765,9 +1649,9 @@ export default function IntakeItemForm({
                 </label>
                 <DateField
                   id={`intake-ended-on-${fid}`}
-                  value={endDate}
-                  onChange={setEndDate}
-                  min={startedOn || undefined}
+                  value={state.endDate}
+                  onChange={(endDate) => patch({ endDate })}
+                  min={state.startedOn || undefined}
                   max={todayStr}
                   data-testid="med-end-date"
                 />
@@ -1783,19 +1667,26 @@ export default function IntakeItemForm({
       case "composition":
         return affordances.composition ? (
           <div className="sm:col-span-2">
-            {ingredients.length === 0 ? (
+            {state.ingredients.length === 0 ? (
               <button
                 type="button"
                 data-testid="add-ingredients"
-                onClick={() => setIngredients([emptyIngredient()])}
+                onClick={() => patch({ ingredients: [emptyIngredient()] })}
                 className="btn-ghost btn-sm"
               >
                 List what&apos;s in this
               </button>
             ) : (
               <IngredientsEditor
-                rows={ingredients}
-                setRows={setIngredients}
+                rows={state.ingredients}
+                setRows={(update) =>
+                  patch((current) => ({
+                    ingredients:
+                      typeof update === "function"
+                        ? update(current.ingredients)
+                        : update,
+                  }))
+                }
                 seedNote={ingredientSeedNote}
               />
             )}
@@ -1805,9 +1696,16 @@ export default function IntakeItemForm({
       case "purpose":
         return (
           <PurposesEditor
-            rows={purposes}
-            setRows={setPurposes}
-            name={name}
+            rows={state.purposes}
+            setRows={(update) =>
+              patch((current) => ({
+                purposes:
+                  typeof update === "function"
+                    ? update(current.purposes)
+                    : update,
+              }))
+            }
+            name={state.name}
             ingredientNames={ingredientNames}
             conditions={conditions}
             biomarkers={biomarkers}
@@ -1816,7 +1714,13 @@ export default function IntakeItemForm({
         );
 
       case "notes":
-        return <IntakeNotesField fid={fid} value={notes} onChange={setNotes} />;
+        return (
+          <IntakeNotesField
+            fid={fid}
+            value={state.notes}
+            onChange={(notes) => patch({ notes })}
+          />
+        );
 
       case "more":
         return (

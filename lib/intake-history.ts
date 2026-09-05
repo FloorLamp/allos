@@ -21,8 +21,7 @@ import {
   getActivityDates,
   getEverLoggedItemIds,
 } from "./queries";
-import { getActiveSituations, getSituationEvents } from "./settings";
-import { situationHistoryResolver } from "./trend-annotations";
+import { effectiveSituationResolver } from "./queries/derived-situations";
 import {
   doseWindowSince,
   indexTakenByDose,
@@ -79,14 +78,22 @@ export function getIntakeHistory(
   const windowStart = dates[0] ?? today;
   const dayZone = profileDayZone(profileId);
   const workoutDays = new Set(getActivityDates(profileId));
-  // Per-day situation resolver (#654): a past day is scored against the situations
-  // active THAT day, never today's toggle applied retroactively — otherwise turning
-  // a situation on this morning would manufacture a month of misses for every item
-  // keyed to it, which is exactly the evidence a demotion suggestion must not invent.
-  const situationsOn = situationHistoryResolver(
-    getActiveSituations(profileId),
-    getSituationEvents(profileId)
-  );
+  // Per-day DUENESS resolver (#654/#3993): a past day is scored against what held THAT
+  // day — declared AND derived — never today's toggle applied retroactively, which would
+  // manufacture a month of misses for every item keyed to a situation turned on this
+  // morning.
+  //
+  // DATED, LIKE EVERY OTHER DUENESS SURFACE, and this is the gather the split used to be
+  // drawn around. Three consumers read it: the demotion evidence (which carries an
+  // Accept button), the digest delta classifier (which speaks in a push), and the page
+  // strips. None of them is a passive read-out, so none of them may score a day
+  // differently from the catch-up sheet that offered the dose. The cost that justified
+  // the split is gone: `effectiveSituationResolver` gathers the derived inputs ONCE for
+  // the window instead of once per day, so a 30-day walk costs what one day costs.
+  const situationsOn = effectiveSituationResolver(profileId, {
+    from: windowStart,
+    to: today,
+  });
   const takenByDose = indexTakenByDose(
     getIntakeAdherenceEvidence(profileId, days)
   );

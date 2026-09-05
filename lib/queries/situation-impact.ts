@@ -64,7 +64,8 @@ export function getSituationImpacts(
   // The SAME pooled comparison engine, a different WINDOW SOURCE — no new correlation
   // code, which is the whole point of making weather a situation. The #1360 rule that a
   // derived situation contributes no windows was written for per-day verdicts (poor
-  // sleep, period) that leave no reconstructable span. A weather spell is different: it
+  // sleep, period) that nothing writes transitions for — they are dated (#3993), just
+  // never logged. A weather spell is different: it
   // is a fact in a cached series, identical every time it is recomputed, so its windows
   // are derivable without anything ever being written. Still no transitions, still no
   // machine-written situations row.
