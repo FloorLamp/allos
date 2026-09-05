@@ -277,6 +277,13 @@
           "issues": [5117]
         },
         {
+          "pr": 5249,
+          "kind": "feature",
+          "category": "Reminders",
+          "title": "A practice left running gets a “Still doing…?” message with Finish and Discard",
+          "issues": [5142]
+        },
+        {
           "pr": 5267,
           "kind": "feature",
           "category": "Medical",
@@ -359,6 +366,13 @@
           "category": "Training",
           "title": "A finished weekly target sits on the weekly targets row, not in Right now",
           "issues": [5064]
+        },
+        {
+          "pr": 5332,
+          "kind": "fix",
+          "category": "Documents",
+          "title": "An export column nothing fills yet stays off the on-screen table",
+          "issues": [5273]
         }
       ]
     },
