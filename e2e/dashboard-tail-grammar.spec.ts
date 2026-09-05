@@ -371,7 +371,7 @@ test.describe("the dashboard's row grammar (#3365/#4076)", () => {
         // Waiting on the CONTROL rather than on the row is also what makes the boxes
         // below a reading of the thing being measured instead of of an empty cell.
         await expect(
-          hosts.first().getByTestId("dashboard-row-controls"),
+          hosts.first().getByTestId("dashboard-row-controls"), // first-ok: the claims below are over ALL of these rows and this only waits for the set to have rendered — on a dedicated fixture login (E2E_LOGIN_ROUTINEUSUAL), read-only
           `${viewport.width}px: Now hosts a row with a control`
         ).toBeVisible();
         const measured = await hosts.evaluateAll((rows) =>
