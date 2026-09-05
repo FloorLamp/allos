@@ -36,7 +36,11 @@ import {
   logSubstanceUnitCore,
   undoSubstanceUnitCore,
 } from "@/lib/substance-log-write";
-import { addSubstanceDailyTotalCore } from "@/lib/substance-daily-totals-write";
+import {
+  addSubstanceDailyTotalCore,
+  deleteSubstanceDailyTotalCore,
+} from "@/lib/substance-daily-totals-write";
+import { restoreDeletedRow } from "@/lib/undo-delete-db";
 import {
   collectUpcoming,
   getInferredPreventiveSatisfactions,
@@ -777,9 +781,10 @@ describe("one use, one row, one clock (#5026 phase 2)", () => {
   // A MOVE THAT WOULD STRAND A DAY'S NOTE IS REFUSED, AND WRITES NOTHING. The ledger
   // drops a counter row at zero and the day's note lives only on it, so re-dating the
   // LAST use of a noted day would delete a sentence somebody typed — through a door
-  // that captures no undo. `main` refuses the same move (its day form answers
-  // `date-conflict`), so refusing is not a capability lost here, and #5304 removes the
-  // situation by moving the note onto the use.
+  // that captures no undo. It costs a move `main` allows — its day form re-dates a
+  // noted day onto a free date and the note travels, and case one below is exactly that
+  // free destination — so this is a named regression, not an inherited posture. #5304
+  // removes the situation by moving the note onto the use.
   //
   // THE FIXTURE IS TWO PROFILES AND TWO SUBSTANCES ON PURPOSE. The refusal reads ONE
   // row — the vacated day's own — and every predicate of that read is a way to refuse
@@ -904,6 +909,59 @@ describe("one use, one row, one clock (#5026 phase 2)", () => {
     ]);
     expect(dayRows(theirs, "nicotine")).toEqual([
       { date: d, units: 1, notes: null },
+    ]);
+  });
+
+  // AND ONE PROFILE'S UNDO MAY NOT WRITE INTO ANOTHER'S RECORD, which is the same
+  // boundary on the other side of the delete. The day delete captures its use events by
+  // NATURAL KEY — (profile, substance, date) — and the restore puts back what was
+  // captured verbatim: `remapRow` drops only `id`, so a captured row carries its own
+  // `profile_id` back into the table and nothing downstream re-scopes it. The capture's
+  // profile predicate is therefore the ONLY thing between an Undo and a cross-profile
+  // write. Measured with that predicate mutated to `OR 1=1`: the delete still spared the
+  // neighbour, because its own DELETE is re-scoped, and the UNDO then gave them four
+  // events behind a counter still reading two — real by one reading and absent by the
+  // other, the state #5026 exists to remove. Nothing was watching that.
+  it("a neighbour's day delete and undo leaves this profile's uses untouched", () => {
+    const mine = newProfile("SU undo scope mine");
+    const theirs = newProfile("SU undo scope theirs");
+    const d = today(mine);
+    // SAME substance, SAME date. A fixture on two dates or two keys cannot reach the
+    // profile predicate at all — the other two predicates would refuse the row first.
+    logSubstanceUnitCore(mine, "nicotine", d, "page", `${d}T09:00:00Z`);
+    logSubstanceUnitCore(mine, "nicotine", d, "page", `${d}T10:00:00Z`);
+    for (const hour of ["11", "12", "13"])
+      logSubstanceUnitCore(
+        theirs,
+        "nicotine",
+        d,
+        "page",
+        `${d}T${hour}:00:00Z`
+      );
+
+    const theirRow = db
+      .prepare(
+        `SELECT id FROM substance_daily_totals
+          WHERE profile_id = ? AND substance = 'nicotine' AND date = ?`
+      )
+      .get(theirs, d) as { id: number };
+    const deleted = deleteSubstanceDailyTotalCore(
+      theirs,
+      "nicotine",
+      theirRow.id
+    );
+    if (deleted.kind !== "deleted")
+      throw new Error("their day was not deleted");
+    expect(restoreDeletedRow(theirs, deleted.undoId)).toBe(true);
+
+    // Both halves on both sides: their day is whole again and mine never moved.
+    expect(uses(mine, "nicotine")).toHaveLength(2);
+    expect(dayRows(mine, "nicotine")).toEqual([
+      { date: d, units: 2, notes: null },
+    ]);
+    expect(uses(theirs, "nicotine")).toHaveLength(3);
+    expect(dayRows(theirs, "nicotine")).toEqual([
+      { date: d, units: 3, notes: null },
     ]);
   });
 

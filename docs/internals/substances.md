@@ -44,7 +44,7 @@ nobody said) and `logged_via`, beside the `substance_daily_totals` counter, whic
 exactly where it is as the cap's substrate and the card's count. Every write moves both
 in one transaction, so a reader can never see a bumped count with no matching use.
 
-Three things followed, and they are the phase rather than side effects:
+Four things followed, and they are the phase rather than side effects:
 
 - **The day-count correction is gone**, not left refusing everything. Phase 1 kept it
   for these keys because for them the day WAS the stored fact; it is not any more, so a

@@ -74,9 +74,12 @@ export type SubstanceEventEditOutcome =
   // THE MOVE WOULD EMPTY A DAY WHOSE ROW CARRIES A NOTE, so it is refused and nothing
   // is written. The day counter is dropped at zero and the note lives only on it, so
   // moving a noted day's LAST use would delete a sentence somebody typed, through a
-  // door that captures no undo and says nothing about notes. Refusing is `main`'s own
-  // posture (its day form answers `date-conflict` and both notes survive); it stops
-  // being reachable when #5304 moves the note onto the use.
+  // door that captures no undo and says nothing about notes. THIS IS A CAPABILITY
+  // REGRESSION, not a preserved posture, and saying otherwise was wrong: `main`'s day
+  // form PERFORMS this move onto a free date and carries the note with it — its
+  // `date-conflict` covers an OCCUPIED destination only. What is traded is that move,
+  // for the note surviving, until #5304 puts the note on the use and the situation
+  // stops existing.
   | { kind: "day-note-stranded" };
 
 // Log one use of a substance on a day. Upserts the day's row, incrementing its
@@ -270,8 +273,10 @@ export function correctSubstanceEventCore(
       // its last (`units <= 1`) and it carries a note, the `unbump` below would drop the
       // row and take the note with it. An earlier round tried to CARRY the note to the
       // arriving day; that destroyed it whenever the arriving day already had one, and
-      // patching the carry a second time is what this refusal replaces. `main` refuses
-      // the same move for the same reason, so this is not a capability lost here.
+      // patching the carry a second time is what this refusal replaces. It costs a move
+      // `main` allows — its day form re-dates a noted day onto a free date and the note
+      // travels — so this is a regression taken deliberately and named, not a posture
+      // inherited.
       const vacated = db
         .prepare(
           `SELECT units, notes FROM substance_daily_totals

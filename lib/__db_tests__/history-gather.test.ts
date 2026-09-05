@@ -477,6 +477,40 @@ describe("alcohol is a substance on the record, not a food", () => {
       rows.filter((row) => row.kind === "food").map((row) => row.title)
     ).toEqual(["Berries"]);
   });
+
+  // NEITHER HALF OF THE SUBSTANCE PROBE MAY SEE A NEIGHBOUR. The chip is earned by two
+  // reads, because there are two stores — alcohol's drinks in `food_log_events` and
+  // every other key's uses in `substance_log_events` — and each is one dropped
+  // `profile_id` away from offering somebody a chip for a record that is not theirs.
+  // `OR 1=1` on the drink half left the whole DB tier green before this existed.
+  //
+  // ONE TEST, SEEDING BOTH, AND IT DOES NOT NAME WHICH HALF BROKE — measured, not
+  // assumed. Splitting it per store was the obvious shape and it does not work here:
+  // this tier shares one database, so both tables already hold other profiles' rows,
+  // and an unscoped probe answers yes on either arm whichever half was mutated. Both
+  // mutations red this; neither is distinguished, and a comment claiming otherwise
+  // would be describing a run nobody took.
+  it("earns no substance chip from a neighbour's drink or use", () => {
+    const neighbour = profile("history chip neighbour", 1990);
+    const subject = profile("history chip subject", 1990);
+    const loginId = login();
+    logFoodServingCore(neighbour, ALCOHOL_FOOD_GROUP, YESTERDAY, "page");
+    units(neighbour, YESTERDAY, 1);
+    // The subject has a record of its own, so "no substance chip" cannot pass by the
+    // gather having nothing to say at all.
+    serving(subject, YESTERDAY, 30);
+
+    const kinds = gatherHistoryLog(subject, {
+      loginId,
+      limit: 200,
+    }).presentKinds;
+    expect(kinds).toContain("food");
+    expect(kinds).not.toContain("substance");
+    // And the neighbour DOES earn it, so the fixture reaches the state this forbids.
+    expect(
+      gatherHistoryLog(neighbour, { loginId, limit: 200 }).presentKinds
+    ).toContain("substance");
+  });
 });
 
 // ── THE BOUND AND THE FLAG ARE ASKED IN DIFFERENT UNITS, SO BOTH ARE ASKED ───
