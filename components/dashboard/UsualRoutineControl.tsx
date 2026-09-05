@@ -1,11 +1,13 @@
 "use client";
 
 import { IconPlus } from "@tabler/icons-react";
+import Button from "@/components/Button";
 import OfferRow from "@/components/OfferRow";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { useToast } from "@/components/Toast";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import {
+  bulkLabel,
   usualRoutinePhrase,
   usualRoutineWriteAnswer,
 } from "@/lib/usual-routine";
@@ -83,22 +85,29 @@ const DASHBOARD_TEST_IDS = {
   names: "routine-usual-names",
 } as const;
 
-export default function UsualRoutineControl({
+// THE TAP, SHARED BY THE TWO SHAPES THIS OFFER IS DRAWN AS (#5320/#5066). One
+// bundle, one write, one sentence — and two hosts that cannot draw it the same way. A
+// dashboard ROW spends the one 34px control box (#4076) and states the bundle's
+// members in the row's own facts cell, so its control is a count. The quick-log sheet
+// and the record door have no facts cell to put those names in, which is exactly why
+// #3736 ruled this offer cannot compress into a pill THERE — so there it stays the
+// full-width card. The markup is the whole difference; the write, the promise and the
+// answer are decided once, here, so neither host can promise what the other does not.
+function useUsualRoutineTap({
   window,
   food,
   proteinGrams,
   doses,
   subjectName,
   date,
-  testIds = DASHBOARD_TEST_IDS,
   onLogged,
-}: UsualRoutineControlProps & UsualRoutineMountProps) {
+}: UsualRoutineControlProps & Pick<UsualRoutineMountProps, "onLogged">) {
   const toast = useToast();
-  // WHICH SURFACE THIS MOUNTING IS (#3087). This control is rendered TWICE — as the
-  // dashboard's usual-routine atom and as the phone dock's raised puck inside the
-  // quick-log sheet — and the two are one component posting one action, so the region
-  // it is mounted in is the only thing that can tell them apart. It is on neither
-  // attention card, which is what `dashboard-hero` means.
+  // WHICH SURFACE THIS MOUNTING IS (#3087). This control is rendered on the dashboard's
+  // rows, in the phone dock's quick-log sheet and on the record door — one action
+  // posted from every one of them, so the region it is mounted in is the only thing
+  // that can tell them apart. It is on neither attention card, which is what
+  // `dashboard-hero` means.
   const stampLoggedVia = useLoggedViaStamp();
   const ledger = useOptimisticLedger("routine-usual");
   const groups = food.map((f) => f.slug);
@@ -154,21 +163,77 @@ export default function UsualRoutineControl({
     });
   }
 
+  return {
+    run,
+    heading,
+    phrase,
+    blocked: ledger.blocked(),
+    // The day is named to a screen reader wherever there is one to name: the record
+    // door reaches days the reader is not living, and "your usual Morning" without
+    // one would be the same sentence for every day it can fill.
+    ariaLabel: date
+      ? `${heading} on ${date}: ${phrase}`
+      : `${heading}: ${phrase}`,
+    data: {
+      "data-groups": groups.join(","),
+      "data-doses": doseIds.join(","),
+    },
+  };
+}
+
+// THE ROW'S CONTROL: ONE 34px BOX, AND IT IS A COUNT (#5320).
+//
+// The seated slot row put this offer's CARD in its trailing cell, and the cell has no
+// width bound, so the card took the row and the dose chips wrapped one per line. The
+// row grammar's answer is the same typed `Button` the no-routine arm of that row
+// already renders (`DoseSlotTakeAll`): "Log all 9", on the count ladder #4477 ruled,
+// with the verb the bundle earns because it writes servings and not only dose
+// confirms.
+//
+// THE NAMES DO NOT VANISH WITH THE CARD, which is the #3736 rule this has to keep. The
+// row states them: the doses as its chips, the food members as facts text after them.
+// So each member is printed exactly once on the row, and the sentence a screen reader
+// gets is the whole promise, unchanged from the card's.
+//
+// NO `data-groups`/`data-doses` HERE. `Button`'s prop set is closed by owner ruling
+// (#4978) and carries no data passthrough; the wire ids stayed a card affordance. The
+// accessible name names every member, which is the promise a spec should be reading
+// anyway.
+export default function UsualRoutineControl(
+  props: UsualRoutineControlProps & UsualRoutineMountProps
+) {
+  const { run, blocked, ariaLabel } = useUsualRoutineTap(props);
+  const testIds = props.testIds ?? DASHBOARD_TEST_IDS;
+  return (
+    <Button
+      data-testid={testIds.button}
+      aria-label={ariaLabel}
+      disabled={blocked}
+      onClick={run}
+    >
+      {bulkLabel("Log", [...props.food, ...props.doses])}
+    </Button>
+  );
+}
+
+// THE OFFER AS A CARD, for the two hosts that are not rows: the quick-log sheet's
+// context region (whose reserve budgets this exact block, `LOG_SHEET_CONTEXT_RESERVE_PX`)
+// and the record door's day offers. Both are lists with no facts column, so the names
+// have nowhere else to go and the card is what #3736 ruled for them — unchanged here,
+// margin included.
+export function UsualRoutineOfferCard(
+  props: UsualRoutineControlProps & UsualRoutineMountProps
+) {
+  const { run, blocked, ariaLabel, heading, phrase, data } =
+    useUsualRoutineTap(props);
+  const testIds = props.testIds ?? DASHBOARD_TEST_IDS;
   return (
     <OfferRow
       tone="brand"
       testId={testIds.button}
-      data={{
-        "data-groups": groups.join(","),
-        "data-doses": doseIds.join(","),
-      }}
-      // The day is named to a screen reader wherever there is one to name: the record
-      // door reaches days the reader is not living, and "your usual Morning" without
-      // one would be the same sentence for every day it can fill.
-      ariaLabel={
-        date ? `${heading} on ${date}: ${phrase}` : `${heading}: ${phrase}`
-      }
-      disabled={ledger.blocked()}
+      data={data}
+      ariaLabel={ariaLabel}
+      disabled={blocked}
       onAct={run}
       className="mb-3"
     >

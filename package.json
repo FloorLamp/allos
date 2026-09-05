@@ -21,6 +21,7 @@
     "reconcile": "tsx scripts/orchestration/reconcile-tracker.ts",
     "reconcile:apply": "tsx scripts/orchestration/reconcile-apply.ts",
     "reconcile:watermark": "tsx scripts/orchestration/reconcile-watermark.ts",
+    "reconcile:summary": "tsx scripts/orchestration/reconcile-run-summary.ts",
     "schema:dump": "tsx scripts/schema-dump.ts",
     "census:dose-amounts": "tsx scripts/dose-amount-census.ts",
     "profile:dashboard": "tsx scripts/profile-dashboard.ts",

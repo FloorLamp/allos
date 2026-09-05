@@ -9,8 +9,7 @@
   silent one. Everything else the recorder prints is recoverable.
 - The wake prompt carries only DURABLE facts — holds, owner-gated items,
   standing constraints — and points at the tooling for current state. A wake
-  that enumerates PR numbers and their status is stale before it fires: three
-  in a row named work already merged (2026-08-16).
+  that enumerates PR numbers and their status is stale before it fires.
 - The check-in script and `dispatch-brief.mjs list` are ground truth on wake.
   Read them before acting on anything the prompt asserts, including your own.
 - Sweep open issues about every four hours for filings, labels, and comment
@@ -63,10 +62,8 @@
 - `merged=false` is not evidence nothing landed — work re-lands under a new PR
   from a renamed successor branch (#5220), and a squash can leave the record
   unmerged (`recovery.md` §A merge that half-landed).
-- Nor is a non-empty `git diff $(git merge-base main <branch>) <branch>`
-  evidence of unlanded work: one of #5220's 48 branches was byte-identical to
-  `main`, a sibling PR having carried the same hunk. A merge-base diff cannot
-  see that; only `git diff main <branch> -- <file>` can.
+- Nor is a non-empty merge-base diff evidence of unlanded work: a sibling PR
+  can carry the same hunk (#5220); only `git diff main <branch> -- <file>` sees it.
 
 ## Out of scope
 

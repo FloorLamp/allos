@@ -80,7 +80,11 @@ import { writeSubjectName } from "@/lib/own-profile";
 import { currentFoodSlotWindow } from "@/lib/queries/nutrition";
 import { getUsualRoutineOffer } from "@/lib/queries/usual-routine";
 import { foodGroupName } from "@/lib/food-groups";
-import { namesPhrase, usualRoutineFoodMembers } from "@/lib/usual-routine";
+import {
+  namesPhrase,
+  usualRoutineFoodMembers,
+  usualRoutinePhrase,
+} from "@/lib/usual-routine";
 import { TIME_BUCKET_LABELS, type TimeBucket } from "@/lib/intake-schedule";
 import { withAiLogContext } from "@/lib/ai-log";
 import { runRecommendation } from "@/lib/recommendation-engine";
@@ -1407,6 +1411,17 @@ async function renderDashboard(
               testid="attention-mark-taken"
             />
           ))}
+          {/* THE BUNDLE'S FOOD MEMBERS, ON THE ROW (#5320). The chips name the
+              doses; these are the servings the same tap writes, and #3736 rules
+              they may not vanish into the control. So the row prints each member
+              exactly once — chips, then this — and the control is free to be a
+              count. The `+` is the seam `usualRoutinePhrase` already spends
+              between two different kinds of write. */}
+          {routine && routine.food.length > 0 ? (
+            <span className="text-xs text-slate-500 dark:text-slate-400">
+              {`+ ${namesPhrase(routine.food.map((member) => member.name))}`}
+            </span>
+          ) : null}
         </span>
       ) : (
         namesPhrase(members.map((member) => member.name))
@@ -2391,14 +2406,22 @@ async function renderDashboard(
         routineTiming
       ),
       {
-        // A CONTROL-ONLY ROW, and the one on the page. The composed-morning offer's
-        // control IS its own label: it names EVERY serving and EVERY dose the tap
-        // will write, because a label is a promise the write core re-derives and
-        // intersects (#2458) — and #3736 already ruled that a control naming doses
-        // cannot compress into a pill. Giving the row its own label as well would
-        // print the same promise twice, which is the defect this grammar replaced.
-        // The control is unchanged from the quick-log sheet's mount, whose reserved
-        // height pins it (LOG_SHEET_CONTEXT_RESERVE_PX).
+        // THE ROW TAKES THE GRAMMAR (#5066, superseding #4362 ruling 2). It was
+        // control-only, on the argument that the offer's card was its own label —
+        // which left the card starting a full label column in from every other row
+        // and two lines tall between one-line rows. Label names the slot, facts name
+        // the members, and the trailing cell holds one 34px control. Nothing is
+        // printed twice: #3736's rule was that the names stay ON the row, and the
+        // facts cell is where a row states them.
+        label: `Usual ${routineControl.window}`,
+        detail: (
+          <span data-testid="routine-usual-names">
+            {usualRoutinePhrase(
+              routineControl.food.map((member) => member.name),
+              routineControl.doses
+            )}
+          </span>
+        ),
         control: <UsualRoutineControl {...routineControl} />,
       }
     );

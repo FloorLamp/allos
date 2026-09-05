@@ -215,9 +215,20 @@ export const SEND_MARKER_REGISTRY: readonly SendMarkerEntry[] = [
     store: "profile_settings",
     shape: "`<activityId>`",
     value: "the profile-local date the stale-draft nudge was sent",
-    writer: "lib/notifications/workout-presence.ts",
+    writer: "lib/notifications/still-going.ts",
     retention:
-      "None: one nudge per unfinished draft (#1205), keyed on an id that never recycles.",
+      "None: one nudge per unfinished draft (#1205), keyed on an id that never recycles. The key kept its pre-#5142 name when the nudge became one family: renaming it would read as 'never nudged' on every draft already carrying one and ask the same question twice.",
+  },
+  {
+    key: "notify_stale_practice_",
+    markerClass: "id-keyed",
+    cadence: "one-shot",
+    store: "profile_settings",
+    shape: "`<practiceLogId>`",
+    value: "the profile-local date the still-going nudge was sent",
+    writer: "lib/notifications/still-going.ts",
+    retention:
+      "None: one nudge per live practice row (#5142 AC 3), keyed on an id that never recycles.",
   },
 
   // ── catalog-keyed: a curated vocabulary; the topic IS the subject ───────────
