@@ -11,6 +11,7 @@ closed taxonomy, and `needs-human` handling.
 - Cluster two to six related issues by domain and files. Avoid file overlap;
   sequence work when overlap cannot be fenced. `claims <path>` names the active
   lane holding a path; CANNOT TELL is NOT clear: answer before the lane edits.
+  STARTING is a lane too young to have a worktree — it re-asks itself, not you.
 - A `design` issue is dispatchable only when its body records the owner
   decision (the #2701 shape) or a direction with stated falsifiers (#2641).
   One still carrying the design question is owner-gated; agents never explore.

@@ -521,7 +521,10 @@ ${landingLines}
   before you touch a file outside your stated scope, ASK — the roster is on disk:
       node scripts/orchestration/dispatch-brief.mjs claims <path>
   It names any other active dispatch holding that path, or says CLEAR. A worktree it
-  cannot read is CANNOT TELL, not clear: take that to the orchestrator. #4473 was
+  cannot read is CANNOT TELL, not clear: take that to the orchestrator. A dispatch too
+  YOUNG to have built its worktree is STARTING, which is neither — ask again in a few
+  minutes and it answers itself, and only escalate if it has turned into CANNOT TELL.
+  Exit codes match: 0 clear, 1 claimed, 3 cannot tell, 4 starting. #4473 was
   filed because a lane checked the three lanes its brief named, saw no conflict, and
   a fourth had been dispatched into that exact file since — it was stopped by
   happening to ask, which is not a control.
@@ -530,6 +533,38 @@ ${landingLines}
   \`timeout\` (e.g. 600000) to every gate invocation — foreground Bash caps at ~2
   minutes by default whatever the tool's stated maximum, so a slow tier reports as
   a failure it did not have.
+  THE ONE EXCEPTION, AND IT IS THE CONDITION RATHER THAN THE COMMAND: a run THE
+  HARNESS ITSELF DETACHED at its foreground cap. The prohibition exists to stop a
+  backgrounded build whose failure nobody reads — but a run the harness detached is
+  ALREADY backgrounded, and refusing the tool built for that does not un-detach it;
+  it only leaves you with no way to collect the exit code. So when the harness tells
+  you it detached your gate run, \`run_in_background\` is permitted for THAT run, and
+  you still report its exit code and its output verbatim. Nothing else qualifies:
+  you may not background a build because you expect it to be slow.
+  AND WAIT ON A FACT, NEVER ON A NAME IN THE PROCESS TABLE. This brief used to carry
+  no waiting idiom at all, so five lanes invented five, and the process table defeats
+  every one of them: a shell polling \`pgrep -f "agent-gates.sh"\` matches its OWN
+  command line, and the bracket-trick spelling \`[a]gent-gates.sh\` that is immune to
+  itself is held open by the other waiters, whose command lines carry the plain
+  string. Measured 2026-09-05 with \`ps -eo pid,etimes,args\`: EIGHT such shells alive
+  at once, the oldest past eleven hours, long after the last real gate run finished.
+  Two facts cannot be impersonated — a PID you captured yourself, and a file the run
+  wrote. Copy this; do not invent a sixth loop:
+      export SCRATCH=/home/user/scratch; L=\$SCRATCH/gates-<branch>.log
+      # start it, recording the PID and the exit code where a LATER shell can read them
+      { bash scripts/orchestration/agent-gates.sh; echo \$? > "\$L.exit"; } > "\$L" 2>&1 &
+      echo \$! > "\$L.pid"; wait
+      # ONLY if the harness detached that call. Each Bash call is a FRESH shell, so
+      # this reads the PID off disk instead of remembering it:
+      while kill -0 "\$(cat "\$L.pid")" 2>/dev/null; do sleep 10; done
+      echo "GATES EXIT=\$(cat "\$L.exit" 2>/dev/null || echo 'KILLED — no exit recorded')"
+      tail -40 "\$L"
+  \`kill -0 <pid>\` asks the KERNEL about a pid \`\$!\` handed you; no other process's
+  command line can claim it, and it stops on ANY exit — pass, fail or kill. The
+  \`.exit\` file is the second fact and it is what tells those three apart. Do not
+  substitute a poll for \`ALL GATES PASSED\`: \`agent-gates.sh\` prints that only on the
+  success path and \`=== GATE <name>: FAIL (exit N) ===\` on the other, so a loop
+  waiting for the PASS line hangs forever on a RED — the same trap wearing a green hat.
 - FETCH AND READ ALL ISSUE BODIES AND ALL ISSUE COMMENTS FIRST — a comment overrides
   the body when they conflict. Trust symbol names over line numbers.
 - A PR's REVIEWS AND ITS COMMENTS ARE TWO DIFFERENT ENDPOINTS, and a review you were
@@ -1315,8 +1350,18 @@ ${MIGRATION_LINES}
   uncommitted work. It was caught inside one test run only because the "restored" tree
   failed the same way the mutation had — a quieter mutation would have been reverted to
   a tree that no longer contained the fix, and the resulting green would have meant
-  nothing. Before EVERY mutation, copy the file to \$SCRATCH with a branch-unique name
-  (\$SCRATCH/mut-<branch>-<file>.bak) and restore from that copy. Reverting a mutation is
+  nothing. Before EVERY mutation, copy the file to \$SCRATCH under a name DERIVED FROM
+  YOUR WORKTREE, and restore from that copy:
+      MUT=\$SCRATCH/mut-\$(basename "\$(git rev-parse --show-toplevel)")
+      F=lib/activity-draft.ts; B="\$MUT-\${F//\\//_}.bak"    # e.g. mut-wt-yourtree-lib_activity-draft.ts.bak
+      cp "\$F" "\$B"      # …mutate, run the spec, then revert with: cp "\$B" "\$F"
+  NOT \`mut-<branch>-<file>.bak\`, which this brief mandated until 2026-09-05 and which a
+  DETACHED tree cannot produce: \`git rev-parse --abbrev-ref HEAD\` answers the literal
+  "HEAD" there, so a falsifying pass run in a detached worktree either skips the copy or
+  writes it under a name nothing can find — and that copy is the only thing standing
+  between a routine mutation and the lost-work trap above. \`--show-toplevel\` answers in
+  BOTH kinds of tree, and its basename is unique across the concurrent worktrees on this
+  host, which is the whole job the branch name was doing. Reverting a mutation is
   a routine step in every lane that proves its guards properly, so this is a step you
   will take many times, each one an opportunity to lose work you have not committed.
 - NEVER \`pkill -f <pattern>\` — not vitest, not next, not playwright, not your own
@@ -2158,8 +2203,6 @@ function cmdList() {
       ? durations[Math.floor(durations.length / 2)]
       : null;
   const discarded = allDurations.length - durations.length;
-  const fmt = (ms) =>
-    `${Math.floor(ms / 3_600_000)}h${String(Math.floor(ms / 60_000) % 60).padStart(2, "0")}m`;
 
   // THE THRESHOLD IS UNCHANGED; WHAT IT MEASURES IS NOT. 3x the median and the
   // under-5m filter are both sound (#2988 says so explicitly) — the defect was
@@ -2297,6 +2340,11 @@ function cmdList() {
 // Walks the tree's own files, skipping node_modules and .git — those are hard
 // links from the parent checkout and a shared .git is written by every OTHER
 // worktree's commits, which would make every tree look permanently busy.
+/** Elapsed milliseconds as `4h00m`. Shared by `list` and `claims`, which report
+ * the same clock about the same dispatches. */
+const fmt = (ms) =>
+  `${Math.floor(ms / 3_600_000)}h${String(Math.floor(ms / 60_000) % 60).padStart(2, "0")}m`;
+
 const RECENT_WRITE_MS = 10 * 60_000;
 
 // Pids whose CURRENT WORKING DIRECTORY is inside `dir`. Occupancy, asked directly
@@ -2419,17 +2467,20 @@ export const pathOverlaps = (a, b) =>
   a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
 
 /**
- * Per-dispatch verdicts for one path. `changesFor` returns either the paths a
- * dispatch is holding or the reason it could not be asked.
+ * Per-dispatch verdicts for one path. `changesFor` returns the paths a dispatch
+ * is holding, or the reason it could not be asked — and NOT-YET is a different
+ * reason from CANNOT, which is the whole of #5313's fourth ask.
  * @param {string} target repo-relative path
  * @param {{ branch: string }[]} dispatches
- * @param {(d: { branch: string }) => { paths: string[] } | { unknown: string }} changesFor
+ * @param {(d: { branch: string }) => { paths: string[] } | { unknown: string } | { starting: string }} changesFor
  */
 export function fileClaims(target, dispatches, changesFor) {
   return dispatches.map((d) => {
     const found = changesFor(d);
     if ("unknown" in found)
       return { branch: d.branch, verdict: "unknown", why: found.unknown };
+    if ("starting" in found)
+      return { branch: d.branch, verdict: "starting", why: found.starting };
     const hit = found.paths.find((p) => pathOverlaps(p, target));
     return {
       branch: d.branch,
@@ -2439,23 +2490,24 @@ export function fileClaims(target, dispatches, changesFor) {
   });
 }
 
-/** One answer for the caller: a claim outranks an unknown, and both outrank clear. */
+/**
+ * One answer for the caller, loudest first: a named claim outranks an unreadable
+ * dispatch, which outranks one that has not built its worktree yet, which
+ * outranks clear.
+ */
 export const claimsVerdict = (rows) =>
-  rows.some((r) => r.verdict === "claimed")
-    ? "claimed"
-    : rows.some((r) => r.verdict === "unknown")
-      ? "unknown"
-      : "clear";
+  ["claimed", "unknown", "starting"].find((v) =>
+    rows.some((r) => r.verdict === v)
+  ) ?? "clear";
 
 /** Exit status per verdict — 2 stays the usage error every command here uses. */
-const CLAIMS_EXIT = { claimed: 1, unknown: 3, clear: 0 };
+const CLAIMS_EXIT = { claimed: 1, unknown: 3, starting: 4, clear: 0 };
 
 // What a dispatch is HOLDING: everything in its worktree that is not in main —
 // uncommitted, committed-unpushed, and pushed-but-unlanded alike. The narrower
 // "uncommitted or unpushed" reading would call a lane's pushed branch clear, and
 // a pushed branch collides at merge exactly like a dirty tree does.
 function worktreeChanges(dir) {
-  if (!dir) return { unknown: "no worktree for this branch" };
   if (!fs.existsSync(dir))
     return { unknown: `worktree gone from disk (${dir})` };
   // Three commands that each return PLAIN PATHS. `git status --porcelain` would
@@ -2511,13 +2563,35 @@ function cmdClaims(argv) {
   const others = activeDispatches(readLedger()).filter(
     (d) => d.branch !== self
   );
-  const rows = fileClaims(target, others, (d) =>
-    worktreeChanges(worktrees.get(d.branch) ?? null)
-  );
+  // A DISPATCH WITH NO WORKTREE HAS TWO VERY DIFFERENT STORIES, and reporting
+  // both as unreadable is what made this answer ignorable. The ledger row is
+  // appended AT dispatch and the lane's first action is its `git worktree add`,
+  // so for the first minutes of every lane's life there is a row and no tree.
+  // Measured 2026-09-05 on one path ten minutes apart: CANNOT TELL, then CLEAR.
+  // A guard that fires on the ordinary case is one its readers learn to skim,
+  // and they skim it the once it is right — the ignorable-alarm failure this
+  // whole file exists to avoid. So the grace `list` already uses to tell a
+  // starting lane from a dead one (NO_TRACE_GRACE_MS, whose size is argued
+  // there) tells them apart here too: same fact, same constant, one question.
+  const now = Date.now();
+  const rows = fileClaims(target, others, (d) => {
+    const dir = worktrees.get(d.branch);
+    if (dir) return worktreeChanges(dir);
+    const mins = Math.max(0, Math.round((now - Date.parse(d.at)) / 60_000));
+    const on = d.issues?.length ? ` on #${d.issues.join(", #")}` : "";
+    return now - Date.parse(d.at) < NO_TRACE_GRACE_MS
+      ? {
+          starting: `dispatched ${mins}m ago${on}; its worktree does not exist yet`,
+        }
+      : {
+          unknown: `no worktree ${fmt(now - Date.parse(d.at))} after dispatch${on} — it may never have started`,
+        };
+  });
   const verdict = claimsVerdict(rows);
 
   const claimed = rows.filter((r) => r.verdict === "claimed");
   const unknown = rows.filter((r) => r.verdict === "unknown");
+  const starting = rows.filter((r) => r.verdict === "starting");
   if (claimed.length) {
     console.log(`CLAIMED  ${target}`);
     for (const r of claimed)
@@ -2529,6 +2603,18 @@ function cmdClaims(argv) {
     );
     for (const r of unknown) console.log(`  ${r.branch}  ${r.why}`);
     console.log("  Ask the orchestrator before touching it.");
+  }
+  if (starting.length) {
+    console.log(
+      `STARTING  ${target} — these dispatches are still setting up, so they are NOT YET readable:`
+    );
+    for (const r of starting) console.log(`  ${r.branch}  ${r.why}`);
+    // Deliberately NOT "ask the orchestrator": this one answers itself, and
+    // sending it upward is what taught lanes to ignore the answer that matters.
+    console.log(
+      `  ASK AGAIN in a few minutes — a worktree appears within ${NO_TRACE_GRACE_MS / 60_000} minutes of dispatch` +
+        " or this becomes CANNOT TELL on its own. Escalate then, not now."
+    );
   }
   if (verdict === "clear") {
     console.log(
