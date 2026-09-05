@@ -187,6 +187,44 @@ describe("#5026 phase 2 — pre-ledger rows become uses, with no invented instan
     expect([substanceEvents(db, 1), alcoholEvents(db, 1)]).toEqual(first);
   });
 
+  // A FRACTIONAL COUNTER DERIVES WHOLE USES, AND NEVER ROUNDS ONE UP (review of
+  // #5290). The recursive expansions stop at `remaining > 1`, so an unfloored 0.4 would
+  // insert one event and 1.5 would insert two — a use in the record that the counter
+  // and the weekly cap never held. Neither column stops a fraction reaching it:
+  // `food_daily_totals.servings` is REAL, and `substance_daily_totals.units` is
+  // declared INTEGER, which is an AFFINITY in SQLite and not a constraint — the
+  // `stored_as` assertion below is what proves that rather than assuming it.
+  //
+  // NO SHIPPED WRITER CAN PRODUCE THIS, said plainly: every production bump of either
+  // counter is exactly 1, so against real data the floor is a no-op and this fixture is
+  // the only thing that reaches the branch. It is here because the alternative to a
+  // no-op is inventing a use.
+  it.each([
+    [0.4, 0],
+    [1.5, 1],
+    [2.5, 2],
+    [3, 3],
+  ])("derives whole uses from a counter reading %s", (units, expected) => {
+    const db = beforeEvents();
+    db.prepare(
+      `INSERT INTO substance_daily_totals
+         (id, profile_id, date, substance, units, recorded_at)
+       VALUES (12, 1, '2026-08-06', 'nicotine', ?, '2026-08-06T10:00:00Z')`
+    ).run(units);
+    db.prepare(
+      `INSERT INTO food_daily_totals
+         (id, profile_id, date, group_key, servings, created_at)
+       VALUES (13, 1, '2026-08-06', 'alcohol', ?, '2026-08-06 10:00:00')`
+    ).run(units);
+    // The fraction really is in both columns — INTEGER affinity did not round it.
+    expect(
+      db.prepare(`SELECT units FROM substance_daily_totals`).get()
+    ).toEqual({ units });
+    runMigrations(db, MIGRATIONS);
+    expect(substanceEvents(db, 1)).toHaveLength(expected);
+    expect(alcoholEvents(db, 1)).toHaveLength(expected);
+  });
+
   // A non-alcohol food group is deliberately OUT of item 3's scope: the same shortfall
   // exists there, but the surfaces that disagree about it are nutrition's, not the
   // substance card and its cap. Pinned so the boundary is a decision on record rather

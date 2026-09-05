@@ -32,10 +32,10 @@ import type { Migration } from "../runner";
 // So a counter row's units ARE events, and where the events are missing this migration
 // CREATES them. Both ledgers, one rule:
 //
-//   • `units` rows per `substance_daily_totals` row;
-//   • `servings` MINUS the events already there, per alcohol `food_daily_totals` row
-//     (item 3 — every shipped counter bump since #950 shares its transaction with an
-//     event insert, so a shortfall means the row predates that ledger).
+//   • the WHOLE uses `substance_daily_totals` is short, per row;
+//   • the WHOLE drinks the alcohol `food_daily_totals` row is short (item 3 — every
+//     shipped counter bump since #950 shares its transaction with an event insert, so
+//     a shortfall means the row predates that ledger).
 //
 // Nothing is dropped and NO EVENT TIME IS INVENTED: `occurred_at` and `time_source`
 // are NULL on every derived row, which is the honest answer and an answer this app
@@ -61,6 +61,22 @@ import type { Migration } from "../runner";
 // already gained real taps, and the alcohol arm MUST subtract them because that is the
 // whole of what item 3 is: the rows that are missing, and only those.
 
+// WHOLE USES, AND WHY THE FLOOR IS SPELLED RATHER THAN ASSUMED. Neither counter column
+// is constrained to integers: `food_daily_totals.servings` is REAL NOT NULL (migration
+// 030), and `substance_daily_totals.units` is declared INTEGER, which in SQLite is an
+// AFFINITY and not a constraint — MEASURED, 0.4 stored into it reads back as 0.4. The
+// recursive expansions below stop at `remaining > 1`, so an unfloored fractional
+// shortfall would round UP: 0.4 → one event, 1.5 → two, 2.5 → three. That would put a
+// use in the record that the counter and the weekly cap never held, which is the one
+// thing this migration must not do.
+//
+// No shipped writer can produce a fraction — every production bump of either counter is
+// exactly 1, and undo adds back a captured whole — so against real data this CAST is a
+// no-op. It is here because the alternative to a no-op is inventing a use, and a
+// migration that writes into every profile's history should carry no branch that can.
+// CAST(... AS INTEGER) truncates toward zero, which is the floor for a non-negative
+// value, and both columns carry `CHECK (… >= 0)`.
+//
 // `food_daily_totals.created_at` is the `bare` convention — `YYYY-MM-DD HH:MM:SS`, UTC,
 // unstated (docs/internals/time-columns.md) — while `food_log_events.recorded_at` is
 // `canonical`. Converting on the way in is what keeps the new rows readable by
@@ -122,12 +138,12 @@ export function up(db: Database.Database): void {
   db.exec(`
     WITH shortfall AS (
       SELECT t.id, t.profile_id, t.substance, t.date, t.recorded_at,
-             t.units - (
+             CAST(t.units - (
                SELECT COUNT(*) FROM substance_log_events e
                 WHERE e.profile_id = t.profile_id
                   AND e.date = t.date
                   AND e.substance = t.substance
-             ) AS missing
+             ) AS INTEGER) AS missing
         FROM substance_daily_totals t
     ),
     expanded(id, profile_id, substance, date, recorded_at, remaining) AS (
@@ -153,12 +169,12 @@ export function up(db: Database.Database): void {
     WITH shortfall AS (
       SELECT d.id, d.profile_id, d.date,
              ${CANONICAL_CREATED_AT} AS stamp,
-             d.servings - (
+             CAST(d.servings - (
                SELECT COUNT(*) FROM food_log_events e
                 WHERE e.profile_id = d.profile_id
                   AND e.date = d.date
                   AND e.group_key = 'alcohol'
-             ) AS missing
+             ) AS INTEGER) AS missing
         FROM food_daily_totals d
        WHERE d.group_key = 'alcohol'
     ),

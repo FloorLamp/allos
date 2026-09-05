@@ -278,16 +278,25 @@ export function correctSubstanceEventCore(
 // the row AND the count. The day-level delete next door (`deleteSubstanceDailyTotalCore`)
 // is the other operation and removes them all — two subjects, two doors (#5026 item 1's
 // ruling 2).
+//
+// ONE AUTHORITY, AND NO PRE-READ (review of #5290). This carried an existence
+// `SELECT 1 … WHERE id = ? AND profile_id = ?` outside any transaction, which made it
+// the only core in this file not wrapped in `writeTx`. The fix is not to wrap it: the
+// read did no work `captureDelete` does not already do, since that function opens its
+// own `writeTx` and its FIRST statement is the identical `WHERE id = ? AND profile_id =
+// ?`, answering null for a row that is absent OR another profile's — which is the
+// `not-found` returned below. So the profile boundary and the existence check are one
+// statement in one transaction now, rather than two that hid each other.
+//
+// THAT IS WHY IT DIVERGES FROM `deleteFoodLogEventCore`, which keeps its pre-read and
+// its `writeTx`: that read is load-bearing. It takes five columns the capture then
+// destroys, drives a second refusal (`isProteinNudgeKey`) and derives the `vacated`
+// placement its outcome carries. This ledger has no group to refuse and no window to
+// vacate, so the same shape here would be ceremony around a duplicate predicate.
 export function deleteSubstanceEventCore(
   profileId: number,
   eventId: number
 ): { kind: "deleted"; undoId: number } | { kind: "not-found" } {
-  const row = db
-    .prepare(
-      `SELECT 1 FROM substance_log_events WHERE id = ? AND profile_id = ?`
-    )
-    .get(eventId, profileId);
-  if (!row) return { kind: "not-found" };
   const undoId = captureDelete("substance-use", profileId, eventId);
   return undoId == null ? { kind: "not-found" } : { kind: "deleted", undoId };
 }
