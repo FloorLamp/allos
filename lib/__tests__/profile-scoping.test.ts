@@ -418,6 +418,16 @@ const ALLOW_NON_LITERAL: { file: string; expr: string; why: string }[] = [
     why: "q(sql) helper: every DATASETS query string filters the acting profile — directly (WHERE profile_id = ?) or, for the intake dose/log child tables, through the parent JOIN (WHERE ii.profile_id = ?)",
   },
   {
+    file: "lib/export.ts",
+    expr: "ACTIVITIES_SELECT",
+    why: "the activities dataset's read (#5117): ONE hand-authored literal const, `SELECT … FROM activities WHERE profile_id = ?`, hoisted so the full export read, the bounded page read (which appends LIMIT/OFFSET) and the dataset's declared `select` are the same statement rather than three copies that can drift. The literal is right above the dataset in lib/export.ts and opens its WHERE with the acting profile.",
+  },
+  {
+    file: "lib/export.ts",
+    expr: "providersSelect(ph)",
+    why: "the providers dataset's read: `providers` is a GLOBAL table with no profile_id of its own, so there is no profile filter to check. It is read by an explicit `IN (…)` id list, and that list comes from referencedProviderIds(profileId) — the profile-scoped walk over PROVIDER_LINK_SELECTS — so only providers this profile's own records reference are ever returned. The function exists so the placeholder count can vary; its SQL text is one hand-authored literal.",
+  },
+  {
     file: "lib/export-full.ts",
     expr: "MEDIA_ROW_SELECTS[domain]",
     why: "the opt-in media bundle (#1846): five hand-authored literals in one Record keyed by MEDIA_DOMAINS, indexed by the loop variable so the scan sees an expression instead of the strings. Every one opens its WHERE with the exporting profile's own `profile_id = ?` — including the two that JOIN (lesion_photos, activity_videos), where the child row carries its OWN profile_id and the join matches the parent's profile_id too, so a tampered FK cannot pull another profile's label or title into the bundled index. lib/__db_tests__/export-media.test.ts asserts that per declared domain AND proves end-to-end that neither another profile's files nor its parent-row words ever enter the bundle, which is stronger than this scan's per-literal read.",
