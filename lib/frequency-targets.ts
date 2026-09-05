@@ -19,26 +19,21 @@ export type FrequencyPace = "met" | "on-pace" | "behind";
 
 // Quiet until the verdict is informative (#4758).
 //
-// Pace used to be one question — is the count behind the share of the week gone by,
-// `floor(perWeek * elapsed / 7)`. That is arithmetic about the calendar, not a finding
-// about the person: it owes a 2x/week target its first session by day 4, so someone who
-// trains at weekends read amber "Behind" every Wednesday of their life, in the band that
-// also carries safety findings.
-//
-// So a lag is now necessary but no longer sufficient. What a person can act on is not
-// "you are off a line nobody drew"; it is "the days left can no longer hold the sessions
-// left" — true whatever their pattern, and the point where the verdict stops being a
-// guess about the week and becomes a fact about it. Today is still a day they can act
-// on, so the week fits while `remaining <= remainingDays`.
+// A lag against the share of the week gone by — `floor(perWeek * elapsed / 7)` — is
+// arithmetic about the calendar, not a finding about the person: it owed a 2x/week
+// target its first session by day 4, so someone who trains at weekends read amber
+// "Behind" every Wednesday of their life, in the band that carries safety findings.
+// The lag is therefore necessary and no longer sufficient. What is worth telling
+// someone is that the days left can no longer hold the sessions left — true whatever
+// their pattern, and the point where the verdict stops guessing at their week and
+// states a fact about it. Today is one of those days, so the week fits while
+// `remaining <= remainingDays`. Below that the row still shows its plain count
+// ("0 of 2 this week"): the rule takes a verdict away, not the information.
 //
 // KEEPING THE LAG AS THE FIRST TEST IS WHAT PRESERVES PER-KIND COUNTING. `remainingDays`
-// assumes one session a day, which is true of training but not of a 14-servings-a-week
-// food group: on infeasibility alone, someone eating two a day would be told they were
-// behind from Monday. Requiring both means this rule can only ever REMOVE an amber, on
-// every scope kind, never add one.
-//
-// Below the boundary the surface still shows the plain count ("0 of 2 this week"). The
-// rule takes away a verdict, not the information.
+// assumes one session a day — true of training, not of a 14-servings-a-week food group,
+// where days-left alone would call two-a-day behind from Monday. Needing both means the
+// rule can only ever remove an amber, never add one.
 export function frequencyPace(
   count: number,
   perWeek: number,

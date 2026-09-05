@@ -61,7 +61,9 @@ describe("frequencyPace", () => {
     const days = [1, 2, 3, 4, 5, 6, 7];
     // A rule that is only ever quiet is not a rule: the day it fires is pinned here
     // alongside the days it does not, so narrowing or widening either half reds.
-    expect(days.filter((d) => frequencyPace(0, 2, d) === "behind")).toEqual([7]);
+    expect(days.filter((d) => frequencyPace(0, 2, d) === "behind")).toEqual([
+      7,
+    ]);
   });
 
   it("clamps elapsedDays into the 1..7 window", () => {

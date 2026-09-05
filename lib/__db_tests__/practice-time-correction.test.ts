@@ -721,6 +721,10 @@ describe("the pace nudge's correction lifecycle, end to end", () => {
           "18:30"
         );
 
+    // THE PREMISE, pinned: the untimed gather DOES find Red light therapy behind, so
+    // the absence below is the #2188 hold and not a target with nothing to say.
+    expect(behindPractices(pid).map((b) => b.targetId)).toContain(redLight);
+
     // The SEND withholds it: Saturday is still ahead this week.
     const pointer = await sendNudge(pid);
     const sent = keyboardTokens(pointer.keyboard);
@@ -802,9 +806,11 @@ describe("the pace nudge's correction lifecycle, end to end", () => {
   });
 
   it("closes a nudge whose only remaining claims are lapsed chips", async () => {
-    // The confirmation shape: ONE behind practice, tapped. Main closed that message on
-    // the tap; the rebuild deliberately keeps it alive to carry the chips — so the
-    // sweep has to be what closes it, and without a clock nothing ever did.
+    // The confirmation shape: ONE behind practice, tapped — and the tap takes it off
+    // behind (3×/week, two days left, one now logged), so no live claim survives it.
+    // Main closed that message on the tap; the rebuild deliberately keeps it alive to
+    // carry the chips — so the sweep has to be what closes it, and without a clock
+    // nothing ever did.
     const pid = makeProfile("lifecycle-close");
     seedLoginTelegram(pid, "5552884");
     const sauna = practiceTarget(pid, "Sauna");
