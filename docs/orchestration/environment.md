@@ -10,8 +10,12 @@
   into new worktrees as directed by the generated brief.
 - `scripts/orchestration/*` run from that MAIN CHECKOUT, whose HEAD is wherever
   the session last left it — commonly detached and behind `origin/main`, so a
-  gate, CI watch or `--check` mandate can be running stale tooling. Fetch, then
-  `git diff --stat HEAD FETCH_HEAD -- scripts/`, before trusting its verdict.
+  gate, CI watch or `--check` mandate can run stale tooling. The check-in's
+  `tooling:` line reports it every wake; act on a DIFFER verdict.
+- A helper that cannot answer says so: the check-in prints `UNMEASURED`,
+  `UNASKED`, `UNCOMPARED` or `ABSENT` and names the reader that failed. Never
+  a bare `?` — the ledger spelt its refusal that way until #5252, and it reads
+  as a value. A fallback is honest only when it IS the answer, as `MISSING` is.
 - `next build` runs in a worktree whose `node_modules` was HARD-LINKED; a
   symlinked one fails with `TurbopackInternalError`. Read that error as the
   link being wrong, never as the build being unavailable here.
