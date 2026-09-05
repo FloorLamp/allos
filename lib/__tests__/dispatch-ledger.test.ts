@@ -220,8 +220,10 @@ describe("issues in flight, the answer pm-digest.sh now asks for", () => {
   });
 
   it("refuses a missing ledger rather than printing an empty set", () => {
-    // What makes the shell write `?`. An empty in-flight set reads as "nothing
-    // is running", and the digest turns that into a dispatch order.
+    // Unknown is not none, and the callers act on the difference: an empty
+    // in-flight set reads as "nothing is running", and the queue turns that
+    // into a dispatch order. The shell's word for the refusal is UNMEASURED,
+    // never a bare `?` — #5252 retired that token (docs/orchestration/environment.md).
     const gone = spawnSync(
       process.execPath,
       [SCRIPT, "issues", path.join(dir, "gone.jsonl")],

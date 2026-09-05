@@ -29,12 +29,75 @@ import type {
   IntakeObligation,
   MedicationCourse,
 } from "./types";
+import type { PairRelation } from "./types";
 import type { IntakePairDraft } from "./intake-rules";
-import type { PurposeDraft } from "./intake-purposes";
+import {
+  normalizePurposeDrafts,
+  type PurposeDraft,
+  type PurposeWrite,
+} from "./intake-purposes";
+import {
+  normalizeIngredientDrafts,
+  type IngredientDraftResult,
+} from "./intake-ingredients";
 import { parseRxcuiIngredients, serializeRxcuiIngredients } from "./rxnorm";
 import { intakeKindAffordances } from "./intake-kind-affordances";
-import { parseWeekdays } from "./intake-cadence";
+import { FOOD_TIMINGS, type CollapsibleDose } from "./intake-schedule";
+import { normalizeWeekdays, parseWeekdays } from "./intake-cadence";
+import { isRealIsoDate } from "./date";
+import { strOrNull } from "./parse";
 import { itemSeedFromPool, type SupplyOption } from "./supply-product";
+
+// THE ONE SPELLING OF EVERY INTAKE FORM KEY (#4666). These 43 names used to be
+// written twice — once in the `set(` calls below, once in the `formData.get/has`
+// reads in app/(app)/nutrition/intake-actions.ts — with nothing connecting the two
+// copies, so a rename typechecked clean on both sides and failed at runtime as a
+// silently dropped field. Both sides now take an `IntakeField`, so renaming a key
+// here is a compile error at every site still spelling the old name.
+export type IntakeField =
+  | "id"
+  | "kind"
+  | "name"
+  | "brand"
+  | "product"
+  | "condition"
+  | "situation"
+  | "pause_situation"
+  | "obligation"
+  | "notes"
+  | "critical"
+  | "escalate_after_min"
+  | "escalate_chat_id"
+  | "cadence_kind"
+  | "cadence_weekdays"
+  | "cadence_interval_days"
+  | "cadence_anchor_date"
+  | "rx"
+  | "prescriber"
+  | "pharmacy"
+  | "rx_number"
+  | "provider"
+  | "provider_id"
+  | "provider_loaded"
+  | "indication_condition_id"
+  | "started_on"
+  | "course_id"
+  | "end_date"
+  | "min_interval_hours"
+  | "max_daily_count"
+  | "max_daily_amount_mg"
+  | "redose_notice"
+  | "stack"
+  | "ingredients"
+  | "purposes"
+  | "doses"
+  | "pairs"
+  | "rxcui"
+  | "rxcui_ingredients"
+  | "quantity_on_hand"
+  | "qty_per_dose"
+  | "quantity_on_hand_loaded"
+  | "supply_id";
 
 // One dose row, structurally what DoseRowsEditor edits (declared here so the mapping
 // stays free of React).
@@ -119,9 +182,9 @@ export function emptyIntakeCadence(): IntakeCadenceDraft {
 // second place that decides kind).
 export function intakeItemFields(
   state: IntakeItemFormState
-): [string, string][] {
-  const out: [string, string][] = [];
-  const set = (k: string, v: string) => out.push([k, v]);
+): [IntakeField, string][] {
+  const out: [IntakeField, string][] = [];
+  const set = (k: IntakeField, v: string) => out.push([k, v]);
   const affordances = intakeKindAffordances(state.kind);
 
   if (state.id != null) set("id", String(state.id));
@@ -222,6 +285,154 @@ export function intakeItemFormData(state: IntakeItemFormState): FormData {
   const fd = new FormData();
   for (const [k, v] of intakeItemFields(state)) fd.set(k, v);
   return fd;
+}
+
+// THE PAYLOAD SIDE OF THE SAME ROUND TRIP (#4666). Four fields ride as JSON, and the
+// server used to re-derive their shapes through `(p as any)`. They are parsed here,
+// beside the drafts that wrote them and KEYED ON those drafts: every value stays
+// `unknown` (untrusted client text at a write boundary), but a key the draft does not
+// have is a compile error in the parse instead of an `undefined` at runtime. The
+// distributed `keyof` is what lets a union draft (PurposeDraft) offer every variant's
+// keys rather than only the ones all three share. Anything that is not an array of
+// objects reads as NO ROWS — a malformed payload never throws.
+type PostedRow<T> = Partial<
+  Record<T extends unknown ? keyof T : never, unknown>
+>;
+
+function jsonRows<T>(formData: FormData, key: IntakeField): PostedRow<T>[] {
+  const value = formData.get(key);
+  let parsed: unknown = null;
+  try {
+    parsed = JSON.parse(typeof value === "string" ? value : "[]");
+  } catch {
+    return [];
+  }
+  return Array.isArray(parsed)
+    ? parsed.filter(
+        (r): r is PostedRow<T> => typeof r === "object" && r !== null
+      )
+    : [];
+}
+
+// Was this field posted at all? `absent` is a different statement from `empty` for the
+// two child sets below, and the key is checked like every other.
+const posted = (formData: FormData, key: IntakeField) => formData.has(key);
+
+const textOf = (v: unknown): string => (typeof v === "string" ? v : "");
+// A malformed date is dropped rather than stored: an unparseable window reads as "no
+// window", and storing it would leave a value that looks like a rule but constrains
+// nothing.
+const isoDateOrNull = (v: unknown): string | null =>
+  typeof v === "string" && isRealIsoDate(v) ? v : null;
+
+// Parse the doses JSON the form submits. Always returns at least one dose so an item
+// is never left without a schedule entry. normalizeWeekdays drops anything out of
+// range and canonicalizes the order (#1602), so an equivalent re-submission stores
+// identically and a no-op edit never looks like a change.
+export function parseIntakeDoses(formData: FormData): CollapsibleDose[] {
+  const rows = jsonRows<IntakeDoseDraft>(formData, "doses").map((d) => ({
+    id: typeof d.id === "number" ? d.id : undefined,
+    amount: strOrNull(d.amount),
+    time_of_day: strOrNull(d.time_of_day),
+    food_timing: FOOD_TIMINGS.find((t) => t === d.food_timing) ?? "any",
+    weekdays: normalizeWeekdays(
+      Array.isArray(d.weekdays) ? d.weekdays.map((x) => Number(x)) : []
+    ),
+    start_date: isoDateOrNull(d.start_date),
+    end_date: isoDateOrNull(d.end_date),
+  }));
+  return rows.length
+    ? rows
+    : [
+        {
+          amount: null,
+          time_of_day: null,
+          food_timing: "any",
+          weekdays: null,
+          start_date: null,
+          end_date: null,
+        },
+      ];
+}
+
+// A submitted pair: the relationship from the edited item to another of this
+// profile's. The id is untrusted and is checked against the profile at the write.
+export interface IntakePairInput {
+  otherId: number;
+  relation: PairRelation;
+  note: string | null;
+}
+
+// Parse the interactions JSON the form submits.
+export function parseIntakePairs(formData: FormData): IntakePairInput[] {
+  return jsonRows<IntakePairDraft>(formData, "pairs")
+    .map((p): IntakePairInput => ({
+      otherId: Number(p.otherId) || 0,
+      relation: p.relation === "with" ? "with" : "separate",
+      note: strOrNull(p.note),
+    }))
+    .filter((p) => p.otherId > 0);
+}
+
+// Parse the ingredients JSON the form's repeater submits (issue #2856). The posted
+// shape is the LABEL's own words — a name and the amount text as printed — and the
+// canonical (amount, unit) pair is derived at the write boundary by the shared pure
+// normalizer, never trusted from the client. Blank rows are dropped; a row with a name
+// and no amount is KEPT, because "this blend contains St. John's Wort" is exactly what
+// the interaction belt needs even when the label hides the milligrams.
+//
+// ABSENT MEANS UNCHANGED (review of #2856). `null` here is "this form did not post a
+// composition", which is a different statement from "this item has no composition" and
+// must not clear one. Two forms share updateIntakeItem, and only one of them renders
+// the repeater; without this distinction a medication edit — or any future form
+// reusing the action — would silently delete a person's transcribed label. An explicit
+// empty array from a form that DOES render the repeater still clears it, which is how
+// someone removes every row.
+//
+// A row whose amount carries digits but is not one clean quantity refuses the whole
+// save (see readIngredientAmount): storing it as "no stated amount" would drop a real
+// upper-limit contribution exactly as quietly as the fabricated zero it replaced.
+export function parseIntakeIngredients(
+  formData: FormData
+): IngredientDraftResult | null {
+  if (!posted(formData, "ingredients")) return null;
+  return normalizeIngredientDrafts(
+    jsonRows<IntakeIngredientDraft>(formData, "ingredients").map((g) => ({
+      name: textOf(g.name),
+      amount_text: textOf(g.amount),
+    }))
+  );
+}
+
+// Parse the purposes JSON the form submits (issue #2857) — the structured "why" of an
+// item: a goal key, a condition id, or a canonical biomarker name with an optional
+// flag direction, normalized at the write boundary by the shared pure normalizer.
+//
+// ABSENT MEANS UNCHANGED, exactly as it does for the composition above and for the same
+// reason: `null` is "this form did not post purposes", which is not "this item has no
+// purposes" and must not clear one.
+//
+// Nothing here can REFUSE a save. A purpose is an annotation; an unrenderable row is
+// dropped by the normalizer and the rest of the person's edit lands (see
+// normalizePurposeDrafts).
+export function parseIntakePurposes(formData: FormData): PurposeWrite[] | null {
+  if (!posted(formData, "purposes")) return null;
+  const drafts: PurposeDraft[] = [];
+  for (const p of jsonRows<PurposeDraft>(formData, "purposes")) {
+    if (p.kind === "goal") {
+      drafts.push({ kind: "goal", goalKey: textOf(p.goalKey) });
+    } else if (p.kind === "condition") {
+      drafts.push({ kind: "condition", conditionId: Number(p.conditionId) });
+    } else if (p.kind === "biomarker") {
+      drafts.push({
+        kind: "biomarker",
+        biomarkerKey: textOf(p.biomarkerKey),
+        direction:
+          p.direction === "low" || p.direction === "high" ? p.direction : null,
+      });
+    }
+  }
+  return normalizePurposeDrafts(drafts);
 }
 
 // A blank state for the given kind — what a create-mode form starts from and what a
