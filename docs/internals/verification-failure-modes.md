@@ -315,15 +315,15 @@ the first is the one that settles it.
   point of wanting it. Measured on the four-core agent box, `wt-tc5150` at
   `0ce1b0207`; wall time moves with the sibling lanes' load, so read the CPU column.
 
-  | measurement | command | wall | user CPU | load at start |
-  | --- | --- | --- | --- | --- |
-  | pure tier | `npm test` | 220.5 s | 351.4 s | 6.54 |
-  | DB tier | `npm run test:db` | 126.9 s | 228.7 s | 12.28 |
-  | typecheck, cold (fresh worktree) | `npm run typecheck` | 106.7 s | 114.6 s | 0.09 |
-  | typecheck, warm, nothing changed | `npm run typecheck` | 16.9 s / 14.1 s | 16.6 s / 16.4 s | 4.27 / 5.47 |
-  | typecheck, warm, one test file edited | `npm run typecheck` | 12.5 s | 17.1 s | 4.40 |
-  | typecheck, warm, one exported type changed | `tsc --noEmit` (typegen 0.8 s) | 193.2 s | 109.3 s | 3.82 |
-  | typecheck, warm, that change reverted | `npm run typecheck` | 251.1 s | 114.0 s | 22.62 |
+  | measurement                                | command                        | wall            | user CPU        | load at start |
+  | ------------------------------------------ | ------------------------------ | --------------- | --------------- | ------------- |
+  | pure tier                                  | `npm test`                     | 220.5 s         | 351.4 s         | 6.54          |
+  | DB tier                                    | `npm run test:db`              | 126.9 s         | 228.7 s         | 12.28         |
+  | typecheck, cold (fresh worktree)           | `npm run typecheck`            | 106.7 s         | 114.6 s         | 0.09          |
+  | typecheck, warm, nothing changed           | `npm run typecheck`            | 16.9 s / 14.1 s | 16.6 s / 16.4 s | 4.27 / 5.47   |
+  | typecheck, warm, one test file edited      | `npm run typecheck`            | 12.5 s          | 17.1 s          | 4.40          |
+  | typecheck, warm, one exported type changed | `tsc --noEmit` (typegen 0.8 s) | 193.2 s         | 109.3 s         | 3.82          |
+  | typecheck, warm, that change reverted      | `npm run typecheck`            | 251.1 s         | 114.0 s         | 22.62         |
 
   So a `pretest` hook costs +17 s CPU while a lane edits test files, +115 s the
   first run in a fresh worktree, and +109 s on every iteration after a shared type
