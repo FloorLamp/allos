@@ -3,6 +3,7 @@ import { type Locator, type Page } from "@playwright/test";
 import { followLink, loginAs } from "./nav";
 import { E2E_LOGIN_FEVER_AXIS, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import {
+  appContent,
   dismissToast,
   expectNoClippedContent,
   expectSvgTextInsidePlot,
@@ -161,7 +162,9 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     await expect(shareAction).toHaveAccessibleName("Share episode");
     await expect(printAction).toHaveText("");
     await expect(shareAction).toHaveText("");
-    await expect(page.getByTestId("episode-care-context")).toBeVisible();
+    await expect(
+      appContent(page).getByTestId("episode-care-context")
+    ).toBeVisible();
     await expect(page.getByTestId("episode-update-workspace")).toBeVisible();
     await expect(
       page
@@ -620,7 +623,9 @@ test.describe("Illness-episode follow-ups (#856)", () => {
         .getByTestId("episode-illness-timeline")
         .getByTestId("episode-controls")
     ).toBeVisible();
-    await expect(page.getByTestId("episode-care-context")).toBeVisible();
+    await expect(
+      appContent(page).getByTestId("episode-care-context")
+    ).toBeVisible();
     await expect(page.getByTestId("episode-update-workspace")).toBeVisible();
     const medicationRows = page.getByTestId("illness-event-medication");
     await expect(medicationRows.last()).toContainText(/mg|mL|Add amount/i);

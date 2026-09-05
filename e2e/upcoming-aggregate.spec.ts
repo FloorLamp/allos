@@ -4,6 +4,7 @@ import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { workerDbPath } from "./worker-env";
 import {
+  appContent,
   hydratedClick,
   settledClick,
   expandUpcomingAggregates,
@@ -236,7 +237,7 @@ test.describe("Upcoming display aggregation (#1504)", () => {
 
     // The dismissed note lands in the page's own "Snoozed & dismissed" complement —
     // folding never removed it from the bus, it only changed where it renders.
-    const suppressed = page.getByTestId("suppressed-section");
+    const suppressed = appContent(page).getByTestId("suppressed-section");
     await expect(suppressed).toBeVisible();
     await suppressed.locator("summary").click();
     await expect(suppressed.getByTestId("suppressed-row")).toHaveCount(1);
@@ -460,7 +461,7 @@ test.describe("the goal fold (#2579-A) and planning dates (#2579-B)", () => {
     ).toContainText("3 goal deadlines", { timeout: RERENDER_MS });
 
     // And the dismissed goal is in the bus's own complete window, not gone.
-    const suppressed = page.getByTestId("suppressed-section");
+    const suppressed = appContent(page).getByTestId("suppressed-section");
     await expect(suppressed).toBeVisible();
     await suppressed.locator("summary").click();
     await expect(suppressed.getByTestId("suppressed-row")).toHaveCount(1);

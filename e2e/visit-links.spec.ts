@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
-import { settledClick, followLink } from "./helpers";
+import { appContent, settledClick, followLink } from "./helpers";
 import { E2E_LOGIN_VISITLINKS, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // Record ↔ visit (#1050) and episode ↔ visit (#1053) linking, driven end-to-end.
@@ -89,7 +89,7 @@ test.describe("record ↔ visit / episode ↔ visit linking (#1050/#1053)", () =
         .first(), // first-ok: exactly one episode row ON THIS PAGE carries that text — the axis that makes a .first() safe is "one match on the page being clicked", not "one match in the fixture profile"
       /\/medical\/episodes\/\d+/
     );
-    const care = page.getByTestId("episode-care");
+    const care = appContent(page).getByTestId("episode-care");
     await expect(care).toBeVisible();
 
     // Link the in-range visit if still suggested (first run).
@@ -99,11 +99,13 @@ test.describe("record ↔ visit / episode ↔ visit linking (#1050/#1053)", () =
     }
 
     // Linked end-state: the Care line resolves to the visit.
-    await expect(page.getByTestId("episode-care-link")).toBeVisible();
+    await expect(
+      appContent(page).getByTestId("episode-care-link")
+    ).toBeVisible();
 
     // #1198 many-model surface: the linked visit renders in the "Visits during this
     // episode" list with its own Unlink control (the episode holds a SET of visits now).
-    const visitList = page.getByTestId("episode-care-visits");
+    const visitList = appContent(page).getByTestId("episode-care-visits");
     await expect(visitList).toBeVisible();
     await expect(visitList).toContainText(/Visit during this episode/i);
     await expect(
@@ -114,7 +116,7 @@ test.describe("record ↔ visit / episode ↔ visit linking (#1050/#1053)", () =
     // status line, linking back into the episode view.
     await followLink(
       page,
-      page.getByTestId("episode-care-link"),
+      appContent(page).getByTestId("episode-care-link"),
       /\/encounters\/\d+/
     );
     await expect(page.getByTestId("encounter-episode-trail")).toContainText(
