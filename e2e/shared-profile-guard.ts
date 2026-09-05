@@ -351,7 +351,7 @@ export function recencyHorizonStart(now: Date): string {
 //
 //   metric_samples     4 files leave a TODAY-dated row  → watched
 //   mood_logs          0 files                          → watched, free
-//   medical_records    7 files                          → NOT watched (see below)
+//   medical_records    7 files                          → watched from #5266
 //   appointments       6 · food_daily_totals 4 · body_metrics 3 · food_log_events 3
 //   profile_settings  36 files, and it has NO date column at all
 //
@@ -364,15 +364,25 @@ export function recencyHorizonStart(now: Date): string {
 //    form's default date lands, so it is where an accidental write goes. Copying
 //    activities' 84 days would red every spec that seeds a month of history, which
 //    is most of the sleep and trends fixtures, to buy a defect nobody has.
-//  • NOT `profile_settings`, on the measurement: 36 files move it, it has no date
-//    column so no horizon can bound it, and the movement is dominated by the app's
-//    own bookkeeping (`routine_position_advanced_1` alone accounts for 21 of the
-//    writes) rather than by a spec's row. Watching it is a separate piece of work
-//    with its own shape, not a wider WHERE clause.
-//  • NOT `medical_records` YET, and this is the honest next rung rather than a
-//    principled exclusion: 7 files leave a today-dated row, including the vitals
-//    half of the very form that caused this issue. It is deliberately left for its
-//    own change so this one stays provable.
+//  • NOT `profile_settings`, and #5266 censused it by KEY to find out whether a
+//    narrower watch was affordable where the whole-table one is not. It is not.
+//    36 files move it across 33 keys; dropping the four the APP writes on its own
+//    (`routine_position_advanced_1`, 17 files, and three `notify_last_esc_*`)
+//    still leaves 17 files, each needing a cleanup or a declaration. And what
+//    those 17 are moving is mostly not a CHANGE: 139 of the 147 movements
+//    MATERIALISE a key that had no row, because the settings forms post their
+//    whole field set on every save; only 4 overwrite an existing value, all four
+//    in one file. Telling a materialised default apart from a materialised change
+//    needs each key's default, which is a registry of `lib/settings`' own
+//    knowledge kept somewhere else. Not worth it; the count is the answer.
+//  • `medical_records` joined at #5266, on the same TODAY-ONWARD bound and for the
+//    same reason: its contended surfaces read the LATEST reading under a canonical
+//    name, so today's row is the one a later test sees. Re-derived at that issue
+//    from #5037's own per-test rows — 11 files move the table, 7 of them on or
+//    after the frozen day, and the 4 older ones (2019 lab imports, a 2026-04 visit
+//    undo, an August folate) are inert exactly as `palette-deeplinks`' 2019 insert
+//    is. Unlike the two above it is INSERT-only on every manual path, so most of
+//    its leaks are repairable; the one exception below is not.
 //
 // INSERTS, UPDATES AND DELETES ARE ALL IN, and they always were — the diff is a
 // MULTISET COMPARISON of the signature columns, so an in-place edit reads as one
@@ -427,6 +437,23 @@ export const WATCHED_SHARED_TABLES = [
       'sharedDayRestorePoint("metric_samples", date) from ' +
       "e2e/shared-profile-guard.ts — armed before the write, called from an " +
       "`afterEach` or a `finally` so an earlier failure cannot skip it",
+  },
+  {
+    table: "medical_records",
+    columns: ["date", "category", "name", "value", "unit"],
+    handle: "name",
+    horizonDays: 0,
+    consequence:
+      "Every reading surface here ranks by recency under a canonical name — the " +
+      "dashboard's vitals tiles, the body census, the metric detail page's " +
+      "readings table — so today's row is the one a later test reads. " +
+      "`manual-vitals` asserts a row COUNT of 1 on four metric pages because the " +
+      "seed carries none; a neighbour's respiratory rate is enough to fail it.",
+    cleanup:
+      "delete the row this test wrote (its `name` and `date` address it), from an " +
+      "`afterEach` or a `finally` so an earlier failure cannot skip it — or, if the " +
+      "write REPLACED a seeded row, sharedDayRestorePoint(\"medical_records\", date) " +
+      "from e2e/shared-profile-guard.ts, armed before the write",
   },
   {
     table: "mood_logs",
@@ -680,6 +707,14 @@ export function deleteActivitiesTitled(...titles: string[]): void {
  *
  * Restored rows come back with NEW ids, which the diff is deliberately blind to:
  * it compares signature MULTISETS, exactly as it does for training-log-merge's undo.
+ *
+ * THE NEW IDS ARE NOT FREE ON `medical_records` (#5266), which is the first watched
+ * table that is an FK PARENT: `instrument_responses`, the lab-result lifecycle and
+ * the preventive record decisions all hang off a record id, two of them
+ * `ON DELETE CASCADE`. Restoring a day whose rows have children would take the
+ * children with them. Profile 1's seed has exactly one today-dated record and it has
+ * none, so the two callers here are safe — but a spec restoring a day that holds an
+ * instrument score would not be, and should delete its own row instead.
  */
 export function sharedDayRestorePoint(
   table: WatchedSharedTableName,
