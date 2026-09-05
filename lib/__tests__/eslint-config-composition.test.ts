@@ -141,33 +141,162 @@ describe("eslint.config.mjs composes its bans instead of replacing them", () => 
   );
 });
 
-// The table above asks WHICH bans reach a file; it cannot ask whether a selector MATCHES
+// ── THE SECOND QUESTION: does the ban BITE? ─────────────────────────────────
+// The table above asks which bans REACH a file. It cannot ask whether a selector matches
 // anything, so a ban with a mis-spelled selector resolves into that list and catches
-// nothing. These rows lint forged text through the same config, and the vendor-score trio
-// is the case that earned them: `Literal` was anchored and `TemplateElement` was not, so
+// nothing — green here, silent in CI, and indistinguishable from a guard. With the nine
+// walkers deleted, nothing else in the repo asks. These rows lint forged text through the
+// real config, one per invariant this step converted.
+//
+// The vendor trio earned them: `Literal` was anchored and `TemplateElement` was not, so
 // `oura_sleep_score_v2` was an error inside a backtick and legal inside a quote (#5347).
-// Even un-anchored, all three stay strictly narrower than the walker they replace, which
-// matched raw file text and therefore its own comments.
-const FORGED_FILE = "lib/vendor-score-fixture.ts";
-const FORGED: [code: string, hits: number][] = [
-  ['export const a = "oura_sleep_score";', 1],
+// Even un-anchored, all three selectors stay strictly narrower than the walker they
+// replace, which matched raw file text and therefore its own comments.
+//
+// EVERY ZERO ROW MUST DISCRIMINATE. A converse that passes whether or not the exemption
+// exists is worse than no row: it reads as a control and proves nothing. Each is checked
+// by mutating the rule it names and confirming that row — and only that row — reds.
+const LIFT_CATALOG = "must not be sourced from the lift catalog";
+
+// A path with no file on disk; `lintText` resolves config by path, not by reading it.
+const FIXTURE = "lib/bite-fixture.ts";
+
+// file, forged source, the ban's own message fragment, how many times it must fire
+const BITES: [file: string, code: string, fragment: string, hits: number][] = [
+  // The two selectors this step revived, dead on main since #5356 landed after them.
+  // NOTE the destructure: the selector reaches `const { revalidatePath } = await
+  // import(...)` and NOT `(await import("next/cache")).revalidatePath`, which is
+  // unguarded here and on main alike. That is a limitation of the selector, not an
+  // exemption, so it is written down rather than pinned green as if it were one.
+  [
+    FIXTURE,
+    'export async function f() { const { revalidatePath } = await import("next/cache"); return revalidatePath; }',
+    REVALIDATE,
+    1,
+  ],
+  [
+    FIXTURE,
+    'export const f = (page: { on: (e: string, h: () => void) => void }) => page.on("dialog", () => {});',
+    DIALOG,
+    1,
+  ],
+
+  // rpe-opt-in (#3335): one importer of the minter, no cast past the brand, one spelling
+  // of the stored key.
+  [
+    FIXTURE,
+    'import { mintRpeTracking } from "@/lib/rpe";\nexport const f = mintRpeTracking;',
+    RPE_MINT,
+    1,
+  ],
+  [FIXTURE, "export const f = (x: unknown) => x as RpeTracking;", RPE_CAST, 1],
+  [FIXTURE, 'export const k = "strength_rpe";', RPE_KEY, 1],
+  // A shipped migration is frozen text — its sha256 is in the manifest — so it cannot
+  // carry a disable comment and is exempt by `ignores` instead.
+  [
+    "lib/migrations/versions/20260820-rpe-column-opt-in.ts",
+    'export const k = "strength_rpe";',
+    RPE_KEY,
+    0,
+  ],
+
+  // streak-scope (#1935…#1966): one caller, and it states which question it asks.
+  [
+    FIXTURE,
+    'import { currentStreak } from "./streak";\nexport const f = currentStreak;',
+    STREAK,
+    1,
+  ],
+
+  // disclaimers (#1049): a domain surface deletes its inline disclaimer rather than
+  // importing the copy; /disclaimer is the page the copy is consolidated onto.
+  [
+    "app/(app)/bite-fixture/page.tsx",
+    'import { DISCLAIMER_SECTIONS } from "@/lib/disclaimers";\nexport const f = DISCLAIMER_SECTIONS;',
+    DISCLAIMER,
+    1,
+  ],
+  [
+    "app/(app)/disclaimer/page.tsx",
+    'import { DISCLAIMER_SECTIONS } from "@/lib/disclaimers";\nexport const f = DISCLAIMER_SECTIONS;',
+    DISCLAIMER,
+    0,
+  ],
+
+  // vendor-score-engine-inert (#1069): the same characters banned in every spelling.
+  [FIXTURE, 'export const a = "oura_sleep_score";', OURA, 1],
   // A vendor score key with a suffix is still a vendor score key…
-  ['export const b = "oura_sleep_score_v2";', 1],
-  ["export const c = `oura_sleep_score_v2`;", 1],
+  [FIXTURE, 'export const b = "oura_sleep_score_v2";', OURA, 1],
+  [FIXTURE, "export const c = `oura_sleep_score_v2`;", OURA, 1],
   // …but a longer IDENTIFIER is a different symbol: a row field spelled
   // `oura_sleep_score_recorded_at` is a fact about DELIVERY, not the score — the same
-  // argument that puts lib/integrations/registry.ts on the Fitbit allowlist — and
-  // prefix-matching identifiers would ban it. That is why this form stays anchored. The
-  // first spelling tried here, `ouraSleepScoreLabel`, could not fail either way: camelCase
-  // cannot contain a snake_case kind, so the row proved nothing until it was rewritten.
-  ["export const d = { oura_sleep_score_recorded_at: 1 };", 0],
+  // argument that puts lib/integrations/registry.ts on the Fitbit allowlist — so that
+  // form stays anchored. The first spelling tried here, `ouraSleepScoreLabel`, could not
+  // fail either way: camelCase cannot contain a snake_case kind, so it proved nothing
+  // and was replaced. Do not put it back.
+  [FIXTURE, "export const d = { oura_sleep_score_recorded_at: 1 };", OURA, 0],
+  // The two allowlists stay SEPARATE — the Sleep page's query may name an Oura kind and
+  // is still banned from naming a Fitbit one.
+  ["lib/queries/sleep.ts", 'export const e = "oura_sleep_score";', OURA, 0],
+  ["lib/queries/sleep.ts", 'export const g = "fitbit_sleep_score";', FITBIT, 1],
+
+  // db-import-boundary (#3520): the startup boundary, and the leaf that makes it one.
+  [
+    "lib/metric-window-overlap.ts",
+    'import type { A } from "./integrations/health-connect";\nexport type B = A;',
+    HEALTH_CONNECT,
+    1,
+  ],
+  [
+    "lib/integrations/health-connect-metrics.ts",
+    'import type { A } from "./health-connect";\nexport type B = A;',
+    LEAF,
+    1,
+  ],
+
+  // mobility-coverage-apart (#482): "mobilized?" is not "trained?".
+  [
+    "lib/mobility-coverage.ts",
+    'import { coverageFromSets } from "./muscle-coverage";\nexport const f = coverageFromSets;',
+    STRENGTH_ENGINE,
+    1,
+  ],
+  [
+    "lib/mobility-coverage.ts",
+    'import { liftInfo } from "./lift-catalog";\nexport const f = liftInfo;',
+    LIFT_CATALOG,
+    1,
+  ],
+  [
+    "lib/mobility-coverage.ts",
+    'export const q = "exercise_sets";',
+    EXERCISE_SETS,
+    1,
+  ],
+
+  // cadence-home (#2888): a private scope_kind list is the subtraction that issue removed.
+  [
+    "app/(app)/training/bite-fixture.ts",
+    'export const f = (r: { scope_kind: string }) => r.scope_kind !== "practice";',
+    SCOPE_KIND,
+    1,
+  ],
+
+  // chrome-refresh-scan (#1878): every router.refresh() is classified or it is an error.
+  [
+    "components/BiteFixture.tsx",
+    "export const f = (router: { refresh: () => void }) => router.refresh();",
+    REFRESH,
+    1,
+  ],
 ];
 
-describe("the vendor-score ban bites the same characters in every spelling", () => {
-  it.each(FORGED)("%s", async (code, hits) => {
-    const [result] = await eslint.lintText(code, { filePath: FORGED_FILE });
-    expect(result.messages.filter((m) => m.message.includes(OURA)).length).toBe(
-      hits
-    );
+describe("each converted ban still bites the shape it was written for", () => {
+  it.each(BITES)("%s — %s", async (file, code, fragment, hits) => {
+    const [result] = await eslint.lintText(code, { filePath: file });
+    expect(
+      result.messages.filter((m) => m.message.includes(fragment)).length,
+      `${file}: expected ${hits} hit(s) on "${fragment}"`
+    ).toBe(hits);
   });
 });
