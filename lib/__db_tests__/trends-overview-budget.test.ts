@@ -3,6 +3,11 @@
 // Render the actual async TrendingDigest Server Component for a seeded profile.
 // Counting only its supplemental UNION would miss canonical cadence and nutrition
 // reads added beside it, so the budget stays at the route boundary.
+//
+// WHAT IT DOES NOT COVER, because its silence would otherwise read as coverage (#5199):
+// one route render on ONE hand-seeded profile, not the six personas the dashboard and
+// /sleep budgets walk, and not the notification tick — which runs the same query layer
+// with `cache()` degraded to identity and is measured by tick-gather-budget.test.ts.
 
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { db, today } from "@/lib/db";
