@@ -7,6 +7,7 @@ import {
   settledClick,
   settledFill,
 } from "./helpers";
+import { sharedDayRestorePoint } from "./shared-profile-guard";
 import { frozenLocalHHMM, frozenNow, workerDbPath } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
 import { utcInstant, zonedWallTimeToUtc } from "@/lib/date";
@@ -180,9 +181,13 @@ test("a collapsed group announces its value and still saves it", async ({
   }
 });
 
-// The #2154 fold spec below owns today's MANUAL vitals rows for profile 1
-// outright: an observation write always INSERTS (the fever-curve rule), so the
-// cleanup deletes exactly the rows the spec's own submission created.
+// The #2154 fold spec below needs today's MANUAL vitals rows for profile 1 to be
+// ITS OWN — both server-truth reads below assert a single row — so it clears them
+// first. That clear is not a cleanup and never was (#5037): profile 1's seed carries
+// two `peak_flow_lmin` rows for today, and this took them from every later test on
+// the worker while its comment said it deleted "exactly the rows the spec's own
+// submission created". A copy of the day is taken BEFORE the clear and restored
+// after, so the clear is a precondition this test owns rather than a hole it leaves.
 function clearTodayManualVitals(): void {
   const handle = new Database(DB_PATH);
   try {
@@ -209,6 +214,7 @@ test("the one Time drives temperature and peak flow — the folded per-measure i
   page,
 }) => {
   test.slow();
+  const restoreSharedDay = sharedDayRestorePoint("metric_samples", TODAY);
   clearTodayManualVitals();
   try {
     await page.goto("/trends");
@@ -268,6 +274,7 @@ test("the one Time drives temperature and peak flow — the folded per-measure i
     }
   } finally {
     clearTodayManualVitals();
+    restoreSharedDay();
   }
 });
 

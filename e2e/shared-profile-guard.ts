@@ -672,8 +672,7 @@ export function sharedDayRestorePoint(
   dbPath: string = workerDbPath(),
   profileId: number = SHARED_PROFILE_ID
 ): () => void {
-  const watched = WATCHED_SHARED_TABLES.find((w) => w.table === table)!;
-  const columns = ["profile_id", ...allColumns(watched)];
+  const columns = ["profile_id", ...allColumns(table, dbPath)];
   const db = new Database(dbPath);
   let held: unknown[][] = [];
   try {
@@ -717,11 +716,11 @@ export function sharedDayRestorePoint(
  * reads, but a row put back without its untouched neighbours (`value`'s units, a
  * mood's factors, an import's `origin`) is a different row to the app.
  */
-function allColumns(watched: WatchedSharedTable): string[] {
-  const db = new Database(workerDbPath(), { readonly: true });
+function allColumns(table: WatchedSharedTableName, dbPath: string): string[] {
+  const db = new Database(dbPath, { readonly: true });
   try {
     return (
-      db.prepare(`PRAGMA table_info("${watched.table}")`).all() as {
+      db.prepare(`PRAGMA table_info("${table}")`).all() as {
         name: string;
       }[]
     )

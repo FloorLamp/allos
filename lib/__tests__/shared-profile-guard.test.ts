@@ -21,7 +21,7 @@ const NOW = new Date("2026-09-05T13:00:00.000Z");
 const TODAY = "2026-09-05";
 
 const row = (
-  table: string,
+  table: SharedRowSnapshot[number]["table"],
   id: number,
   handle: string,
   signature: string
