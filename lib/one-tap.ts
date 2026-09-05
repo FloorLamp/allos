@@ -287,7 +287,8 @@ export function ledgerReducer<V>(
         // names, when a later write has already settled a newer truth over it.
         return {
           phase: "ready",
-          value: settlement.to !== undefined ? settlement.to : (state.preTap as V),
+          value:
+            settlement.to !== undefined ? settlement.to : (state.preTap as V),
           preTap: null,
         };
       }

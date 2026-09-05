@@ -211,7 +211,10 @@ export function useWritePipeline<A extends OneTapAffordance, V = void>(
   );
 
   const attempt = useCallback(
-    async <R>(spec: WriteSpec<A, R, V>, tappedAt: Date): Promise<Attempted<V>> => {
+    async <R>(
+      spec: WriteSpec<A, R, V>,
+      tappedAt: Date
+    ): Promise<Attempted<V>> => {
       const offline = spec.offline as
         ((at: Date) => OfflineDecision) | undefined;
       const online =
@@ -271,13 +274,16 @@ export function useWritePipeline<A extends OneTapAffordance, V = void>(
       // Re-read the surface's own truth only while nothing is out. Mid-burst the
       // caller's `from` is a sibling tap's PROJECTION, and taking it as settled would
       // make a rollback promise a write that has not answered yet.
-      if (projection && inFlight.current === 0) settled.current = projection.from;
+      if (projection && inFlight.current === 0)
+        settled.current = projection.from;
       inFlight.current += 1;
       // Held in a local rather than read off `tap`'s return so the ledger sees exactly
       // one settlement and the caller sees exactly one answer.
       let outcome: Attempted<V> = { result: "nothing" };
       const restore = (): LedgerSettlement<V> =>
-        projection ? { kind: "rollback", to: settled.current } : { kind: "rollback" };
+        projection
+          ? { kind: "rollback", to: settled.current }
+          : { kind: "rollback" };
       try {
         await ledger.tap({
           key: spec.key,
