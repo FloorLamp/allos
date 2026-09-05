@@ -580,7 +580,7 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     }
 
     // The disclaimer belongs to the page footer, after the unified timeline tools.
-    const footerBox = await page
+    const footerBox = await appContent(page)
       .getByTestId("episode-summary-footer")
       .boundingBox();
     const toolsBox = await page

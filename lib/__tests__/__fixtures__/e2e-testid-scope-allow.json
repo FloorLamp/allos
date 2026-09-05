@@ -164,7 +164,7 @@
   "household-setup.spec.ts": 1,
   "ia-nutrition-medications.spec.ts": 34,
   "illness-cancelled-appointment.spec.ts": 2,
-  "illness-episode-followups.spec.ts": 84,
+  "illness-episode-followups.spec.ts": 83,
   "illness-episode.spec.ts": 5,
   "illness-round3.spec.ts": 8,
   "imaging.spec.ts": 27,
