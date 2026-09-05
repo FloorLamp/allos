@@ -471,13 +471,16 @@ const ALLOW_COMPOSED: { file: string; sql: string; why: string }[] = [
 //
 // The COMPLEMENTARY class — an interpolation in an IDENTIFIER or value position,
 // `DELETE FROM ${table} WHERE …` — is deliberately NOT claimed here. Those statements
-// have a readable verb and shape and only a dynamic name, and there are 82 of them on
-// the tree that name no owned table (77 deduped): 37 raw / 36 deduped carry a
-// profile_id predicate anyway, and 45 raw / 41 deduped carry nothing the scan can
-// classify, led by lib/queries/visit-links.ts, lib/undo-delete-db.ts,
-// lib/migrations/cascade-delete.ts and app/(app)/data/manage-actions.ts. The scan
-// still drops them; the count is written down in the PR rather than this list
-// absorbing them unread.
+// have a readable verb and shape and only a dynamic name; the scan still drops the
+// ones whose remaining text names no owned table, exactly as it did before this list
+// existed. They concentrate in lib/queries/visit-links.ts, lib/undo-delete-db.ts,
+// lib/migrations/cascade-delete.ts and app/(app)/data/manage-actions.ts, where the
+// TABLE ITSELF is inside the interpolation, so the statement's table set is genuinely
+// unknowable from source. Refusing that whole class is the honest general fix and it
+// is a hand-verified justification per site across files this PR does not touch — so
+// it is named here rather than smuggled in as a wholesale allowlist. No count is
+// written down: four rounds of this PR carried a hand-derived one and it was wrong
+// every time, in a sentence nobody re-runs.
 const STATEMENT_POSITION = [
   /^\$\{/, // the statement IS the interpolation
   /\b(?:FROM|JOIN)\s*\(\s*\$\{/i, // a derived table
@@ -877,11 +880,14 @@ const without = (over: Partial<Allowlists>): Allowlists => ({
 });
 
 // WHY an ALLOW_SQL entry exempts nothing — null when it is load-bearing. THREE
-// reasons, and they need OPPOSITE fixes: a dead entry should go, but an entry that
-// merely OVERLAPS a live one is half of a pair, and "delete them" (what this said
-// until R4) names BOTH halves — follow it and requireItemWriteAccess's owner-resolution
-// read becomes an unexplained violation. Pure in its inputs so the cases below can
-// drive it with synthetic statements rather than waiting for the tree to grow one.
+// reasons, and they need DIFFERENT fixes, so each verdict says which. An entry that
+// merely OVERLAPS others is one of a set and "delete them" (what this said until R4)
+// named every member — follow it and requireItemWriteAccess's owner-resolution read
+// becomes an unexplained violation; the message names the partners and asks for ONE
+// of the set to survive, which is the n-way statement and not a two-way one. And the
+// UNNECESSARY verdict is deliberately not an unqualified "delete it": see the note on
+// it below. Pure in its inputs so the cases below can drive it with synthetic
+// statements rather than waiting for the tree to grow one.
 function staleReason(
   entry: (typeof ALLOW_SQL)[number],
   list: typeof ALLOW_SQL,
@@ -907,11 +913,16 @@ function staleReason(
   if (matched.length === 0)
     return "no live statement matches this entry — delete it";
   const gated = matched.filter((p) => classifyPrepared(p, lists([])) !== null);
+  // NOT an unqualified "delete it". `scopedByProfileId` accepts a bare
+  // `profile_id IS NOT NULL` as scoping (#5243, out of scope here), and four live
+  // statements pass on nothing else — so this verdict can land on an entry that is
+  // the only written record of a deliberately unscoped read, on a hollow pass. Say
+  // what to check before deleting.
   if (gated.length === 0)
-    return "the statement it matches passes the scan on its own — delete it";
+    return "the statement it matches passes the scan on its own — before deleting, read WHAT makes it pass: scopedByProfileId still accepts a bare `profile_id IS NOT NULL` existence check as scoping (#5243), so confirm a real filter binds the profile and not merely a NOT NULL test. If it is the existence check, the statement is unscoped and this entry is its documentation — keep it";
   const overlap = rest.filter((e) => gated.some((p) => covers(e, p)));
   if (overlap.length > 0)
-    return `another entry already covers the same statement — keep ONE of these and delete the other: ${overlap
+    return `${overlap.length} other ${overlap.length === 1 ? "entry covers" : "entries cover"} the same statement — keep exactly ONE of this entry and ${overlap.length === 1 ? "that one" : "those"}, and delete the rest: ${overlap
       .map((e) => `${e.file}: "${e.includes}"`)
       .join(" | ")}`;
   return "exempts nothing the scan asks about — delete it";
@@ -982,18 +993,36 @@ describe("the scan's allowlists stay load-bearing (#5117)", () => {
       [suffix, entry],
     ] as const) {
       const reason = staleReason(e, pair, [unscoped]);
-      expect(reason).toMatch(/keep ONE of these and delete the other/);
+      expect(reason).toMatch(/1 other entry covers the same statement/);
       expect(reason).toContain(other.includes);
     }
+    // THREE covering the same statement: the message has to say keep ONE of the
+    // three, not "delete the other" — the singular wording read as an instruction to
+    // delete two of them and was true of neither.
+    const shorter = {
+      file,
+      includes: "metric_samples WHERE token = ?",
+      why: "the same statement, shorter still",
+    };
+    const trio = [entry, suffix, shorter];
+    const threeWay = staleReason(entry, trio, [unscoped]);
+    expect(threeWay).toMatch(/2 other entries cover the same statement/);
+    expect(threeWay).toMatch(/keep exactly ONE of this entry and those/);
+    expect(threeWay).toContain(suffix.includes);
+    expect(threeWay).toContain(shorter.includes);
     // Unnecessary: the statement it matches needs no exemption at all.
     const scopedStmt = mkPrepared(
       file,
       "SELECT id FROM metric_samples WHERE profile_id = ?"
     );
     const broad = { file, includes: "FROM metric_samples", why: "unnecessary" };
-    expect(staleReason(broad, [broad], [scopedStmt])).toMatch(
-      /passes the scan on its own — delete it/
-    );
+    // …and the verdict names what to verify FIRST rather than saying delete it: a
+    // statement can pass on `profile_id IS NOT NULL` alone (#5243), in which case the
+    // entry is the only record that the read is deliberately unscoped.
+    const unnecessary = staleReason(broad, [broad], [scopedStmt])!;
+    expect(unnecessary).toMatch(/passes the scan on its own/);
+    expect(unnecessary).not.toMatch(/on its own — delete it/);
+    expect(unnecessary).toContain("#5243");
   });
 
   it("every ALLOW_NON_LITERAL entry is justified and is the reason a live statement passes", () => {

@@ -377,9 +377,9 @@ describe("the declared select is the statement the export runs (#5117)", () => {
           );
           continue;
         }
-        for (const [reader, got] of [
-          ["rows()", rows],
-          ["page()", page],
+        for (const [reader, got, fn] of [
+          ["rows()", rows, ds.rows],
+          ["page()", page, ds.page],
         ] as const) {
           const built = got.every(
             (r) => cell.column in r && r[cell.column] !== undefined
@@ -387,6 +387,16 @@ describe("the declared select is the statement the export runs (#5117)", () => {
           if (!built) {
             missing.push(
               `${ds.key}.${cell.column}: ${ds.key}.${reader} does not put it on every row — ${cell.by}() is not building it`
+            );
+          }
+          // …and `by` names THE builder, not merely a function of that name.
+          // export-completeness.test.ts reads lib/export.ts as text and can only ask
+          // whether such a function is declared — renaming this to `shapeSupplements`,
+          // a real function building a different cell, passes there. Here the reader
+          // itself is in hand, so the call can be looked for in its own source.
+          if (!new RegExp(`\\b${cell.by}\\s*\\(`).test(String(fn))) {
+            missing.push(
+              `${ds.key}.${cell.column}: ${ds.key}.${reader} never calls ${cell.by}() — jsBuilt names a function that does not build this cell`
             );
           }
         }

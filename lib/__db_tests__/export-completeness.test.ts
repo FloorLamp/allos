@@ -429,11 +429,13 @@ const COLUMN_GUARD_FHIR_CARVE_OUT = FHIR_INPUT_TABLES;
 // toCsv keys each row by. The two are the same export, so the two lists must be the
 // same list — and the comparison is by RESULT-COLUMN NAME, the thing toCsv looks up,
 // not by which table SQLite attributes a column to. The earlier version compared
-// against origin-table attribution and so could not see the 15 JOIN-sourced columns
-// across 12 datasets (`a.title AS activity`, `ii.name AS item`): deleting one from
-// `columns` shipped a JSON with the column and a CSV without it, green. Attribution
-// answers "is this table's column exported"; only the emitted NAMES answer "do the
-// JSON and the CSV agree".
+// against origin-table attribution and so could not see a JOIN-sourced column at all
+// (`a.title AS activity`, `ii.name AS item`): deleting one from `columns` shipped a
+// JSON with the column and a CSV without it, green. There are 15 such result columns
+// across 11 datasets — a result column whose `columns()` origin table is not the
+// dataset's own `table`, which is the census the loop below already walks.
+// Attribution answers "is this table's column exported"; only the emitted NAMES
+// answer "do the JSON and the CSV agree".
 //
 // Two divergences are declarable, each with its own list below, and nothing else is.
 
@@ -1086,16 +1088,29 @@ describe("every column of an exported table is exported (#5117)", () => {
         `${c.ds.key}.${c.column} is selected now — remove its jsBuilt entry`
       ).toBe(true);
       expect(c.why.trim().length).toBeGreaterThan(0);
-      // The BUILDER must exist. `by` is the one half of the declaration that was
-      // prose: renaming it to a function that is nowhere in the tree left this suite
-      // green, so the name is now read against lib/export.ts's own source. Anchored
-      // at the start of a line and requiring the parameter list, so a mention inside
-      // a comment or a string cannot satisfy it — both builders today are plain
-      // `function <name>(` declarations in that file.
+      // The BUILDER must be DECLARED. What this establishes is exactly that: a
+      // function of that name exists in lib/export.ts. It does NOT establish that
+      // this dataset's reader calls it — renaming `shapeActivities` to
+      // `shapeSupplements`, a real function building a different cell, passes here.
+      // The half that ties the name to the code needs the dataset object, so it is
+      // in lib/__db_tests__/export.test.ts: the reader that emits the cell must name
+      // `by`. Both halves, because this tier runs with no database and that one has
+      // no source text.
+      //
+      // An identifier, asserted rather than assumed — `by` is interpolated into a
+      // RegExp below, so `by: "shape.*"` would otherwise match anything.
+      expect(c.by, `${c.ds.key}.${c.column}: jsBuilt \`by\``).toMatch(
+        /^[A-Za-z_$][\w$]*$/
+      );
+      // Anchored at the start of a line and requiring the parameter list, so a
+      // mention inside a comment or a string cannot satisfy it. Both spellings the
+      // file uses: a `function <name>(` declaration and an arrow const
+      // (`providersSelect` is written that way, so refusing one would bite).
       expect(
-        new RegExp(`^\\s*(?:export\\s+)?function ${c.by}\\s*\\(`, "m").test(
-          EXPORT_SOURCE
-        ),
+        new RegExp(
+          `^\\s*(?:export\\s+)?(?:function ${c.by}\\s*\\(|const ${c.by}\\s*=\\s*\\()`,
+          "m"
+        ).test(EXPORT_SOURCE),
         `${c.ds.key}.${c.column}: jsBuilt names \`${c.by}\`, which lib/export.ts does not declare`
       ).toBe(true);
     }
