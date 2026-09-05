@@ -8,6 +8,10 @@
   `better-sqlite3` loads.
 - Use one canonical `node_modules` tree from the main checkout. Hard-link it
   into new worktrees as directed by the generated brief.
+- `scripts/orchestration/*` run from that MAIN CHECKOUT, whose HEAD is wherever
+  the session last left it — commonly detached and behind `origin/main`, so a
+  gate, CI watch or `--check` mandate can be running stale tooling. Fetch, then
+  `git diff --stat HEAD FETCH_HEAD -- scripts/`, before trusting its verdict.
 - `next build` runs in a worktree whose `node_modules` was HARD-LINKED; a
   symlinked one fails with `TurbopackInternalError`. Read that error as the
   link being wrong, never as the build being unavailable here.
@@ -23,6 +27,10 @@
 - CONTENTION CAN PRODUCE A WRONG VALUE, not just a timeout: a test timing out
   mid-write leaves state its neighbour reads (load 21.6, 92 lost, one of them a
   `document-sync-provenance` assertion). Re-run alone on any untouched-file red.
+- `pgrep -f <pattern>` matches its OWN command line, so `until ! pgrep -f "…"`
+  never fires — the wait sits there forever with nothing left running. Use
+  `ps -eo args | grep <pattern> | grep -v grep`, which exits 1 when the process
+  is gone. Costs most in lanes polling for a dev server or a long run.
 - Use `E2E_PORT`, not `PORT`. The brief generator allocates non-overlapping port
   ranges.
 
