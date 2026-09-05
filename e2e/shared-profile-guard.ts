@@ -351,7 +351,7 @@ export function recencyHorizonStart(now: Date): string {
 //
 //   metric_samples     4 files leave a TODAY-dated row  → watched
 //   mood_logs          0 files                          → watched, free
-//   medical_records    7 files                          → NOT watched (see below)
+//   medical_records    7 files                          → watched from #5266
 //   appointments       6 · food_daily_totals 4 · body_metrics 3 · food_log_events 3
 //   profile_settings  36 files, and it has NO date column at all
 //
@@ -364,15 +364,41 @@ export function recencyHorizonStart(now: Date): string {
 //    form's default date lands, so it is where an accidental write goes. Copying
 //    activities' 84 days would red every spec that seeds a month of history, which
 //    is most of the sleep and trends fixtures, to buy a defect nobody has.
-//  • NOT `profile_settings`, on the measurement: 36 files move it, it has no date
-//    column so no horizon can bound it, and the movement is dominated by the app's
-//    own bookkeeping (`routine_position_advanced_1` alone accounts for 21 of the
-//    writes) rather than by a spec's row. Watching it is a separate piece of work
-//    with its own shape, not a wider WHERE clause.
-//  • NOT `medical_records` YET, and this is the honest next rung rather than a
-//    principled exclusion: 7 files leave a today-dated row, including the vitals
-//    half of the very form that caused this issue. It is deliberately left for its
-//    own change so this one stays provable.
+//  • NOT `profile_settings`, and #5266 censused it by KEY to find out whether a
+//    narrower watch was affordable where a whole-table one is not. It is not, and
+//    the count is the finding. 36 files move it across 33 keys; dropping the four
+//    the APP writes on its own — `routine_position_advanced_1` (23 movements in 17
+//    files) and three `notify_last_esc_*` — still leaves 17 files, each of which
+//    would then need a cleanup or a declaration. And what those 17 are moving is
+//    mostly not a CHANGE: 139 of the 147 movements MATERIALISE a key that had no
+//    row, because the settings forms post their whole field set on every save;
+//    only 4 overwrite an existing value, and all four are in one file
+//    (`digest-time-suggestion`). Telling a materialised DEFAULT apart from a
+//    materialised CHANGE needs every key's default held a second time inside the
+//    guard — a copy of `lib/settings`' own knowledge, kept somewhere that cannot
+//    see it go stale — which is worth more than the defect. The unit preferences
+//    are not in this table at all: they live in `login_settings`, keyed by LOGIN,
+//    so no profile-scoped watch could ever see them. The per-key table is in
+//    docs/internals/e2e-hygiene.md.
+//  • `medical_records` joined at #5266, on the same TODAY-ONWARD bound and for the
+//    same reason: its contended surfaces read the LATEST reading under a canonical
+//    name, so today's row is the one a later test sees. Re-derived at that issue
+//    from #5037's own per-test rows — 11 files move the table and 7 of them do so
+//    on or after the frozen day:
+//
+//      fitness-percentile · illness-episode-followups · illness-round3 ·
+//      manual-vitals · measurements-form-layout · unit-mislabel-review ·
+//      view-only-access
+//
+//    The other 4 are inert exactly as `palette-deeplinks`' 2019 insert is, because
+//    every one is dated well before the run: clinical-duplicate-import (2019 CCDA
+//    lipids), lab-result-lifecycle (2026-01), clinical-undo (2026-04) and
+//    ia-nutrition-medications (an August folate it REMOVES).
+//    Unlike the two above it is INSERT-only on every manual path, so a leak here
+//    is usually a surplus row the repair below can take back out. The exception is
+//    `measurements-form-layout`, which CLEARS today's manual vitals as a
+//    precondition it owns — a REMOVED row, which no repair can invent — so it
+//    copies the day first and puts it back.
 //
 // INSERTS, UPDATES AND DELETES ARE ALL IN, and they always were — the diff is a
 // MULTISET COMPARISON of the signature columns, so an in-place edit reads as one
@@ -427,6 +453,23 @@ export const WATCHED_SHARED_TABLES = [
       'sharedDayRestorePoint("metric_samples", date) from ' +
       "e2e/shared-profile-guard.ts — armed before the write, called from an " +
       "`afterEach` or a `finally` so an earlier failure cannot skip it",
+  },
+  {
+    table: "medical_records",
+    columns: ["date", "category", "name", "value", "unit"],
+    handle: "name",
+    horizonDays: 0,
+    consequence:
+      "Every reading surface here ranks by recency under a canonical name — the " +
+      "dashboard's vitals tiles, the body census, the metric detail page's " +
+      "readings table — so today's row is the one a later test reads. " +
+      "`manual-vitals` asserts a row COUNT of 1 on four metric pages because the " +
+      "seed carries none; a neighbour's respiratory rate is enough to fail it.",
+    cleanup:
+      "delete the row this test wrote (its `name` and `date` address it), from an " +
+      "`afterEach` or a `finally` so an earlier failure cannot skip it — or, if the " +
+      'write REPLACED a seeded row, sharedDayRestorePoint("medical_records", date) ' +
+      "from e2e/shared-profile-guard.ts, armed before the write",
   },
   {
     table: "mood_logs",
@@ -680,6 +723,25 @@ export function deleteActivitiesTitled(...titles: string[]): void {
  *
  * Restored rows come back with NEW ids, which the diff is deliberately blind to:
  * it compares signature MULTISETS, exactly as it does for training-log-merge's undo.
+ *
+ * THE NEW IDS ARE NOT FREE ON `medical_records` (#5266), which is the first watched
+ * table that is an FK PARENT. Three children cascade off a record id —
+ * `instrument_responses` (066), `medical_record_revisions` (120) and
+ * `preventive_record_decisions` (20260819) — so restoring a day whose rows have
+ * children would take the children with them, and the plain
+ * `REFERENCES medical_records(id)` columns
+ * (`care_plan_items` follow-ups, `intake_items.source_record_id`) would make the
+ * restore's DELETE fail outright instead, since this function runs with
+ * `foreign_keys = ON`. Either way it is loud, not silent.
+ *
+ * Profile 1's seed carries exactly ONE record dated on or after the run's frozen
+ * day — a manual Body Temperature of 99.2 degF — and it has no rows in any of
+ * those three cascading children, so every caller here is safe. Read it back with
+ * `SELECT id, date, name, value FROM medical_records WHERE profile_id = 1 AND
+ * date >= <frozen day>` against a worker's copy of the template.
+ *
+ * A spec restoring a day that holds an instrument score is the case this does not
+ * cover; it should delete its own row instead.
  */
 export function sharedDayRestorePoint(
   table: WatchedSharedTableName,

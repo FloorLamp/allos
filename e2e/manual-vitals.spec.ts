@@ -27,20 +27,30 @@ import { frozenNow } from "./worker-env";
 // The measurements form itself is the subject here and it is the shared admin's
 // form — the vitals halves read alongside the seed's synced readings — so the write
 // stays where it is and the day is made whole again instead.
-let restoreSharedDay: (() => void) | null = null;
+//
+// THE VITALS HALF LEAKED THE SAME WAY, one table over (#5266). Every test below
+// writes today's BP, SpO₂, temperature or respiratory rate into `medical_records`
+// on profile 1, and every reading surface — the dashboard's vitals tiles, the body
+// census, a metric page's readings table — takes the LATEST row under a canonical
+// name. The third test here is its own proof: it asserts a row COUNT of 1 on four
+// metric pages "because the seed carries no reading of any of these", which is
+// exactly the assertion a neighbour's stranded respiratory rate breaks. So the same
+// two lines cover the same day in the second table.
+let restoreSharedDay: (() => void)[] = [];
 
 test.afterEach(() => {
-  restoreSharedDay?.();
-  restoreSharedDay = null;
+  for (const restore of restoreSharedDay) restore();
+  restoreSharedDay = [];
 });
 
 async function openMeasurementsForm(page: Page) {
   // The date the form will default to: the run's frozen instant, whose UTC day is
   // also the profile-local one under the suite's timezone pin.
-  restoreSharedDay = sharedDayRestorePoint(
-    "metric_samples",
-    frozenNow().toISOString().slice(0, 10)
-  );
+  const today = frozenNow().toISOString().slice(0, 10);
+  restoreSharedDay = [
+    sharedDayRestorePoint("metric_samples", today),
+    sharedDayRestorePoint("medical_records", today),
+  ];
   await page.goto("/trends");
   await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
   const form = page.getByTestId("measurements-quick-add");
