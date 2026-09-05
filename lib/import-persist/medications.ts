@@ -45,8 +45,6 @@ export function persistExtractedMedications(
   observations: PersistClinicalObservation[],
   ctx: {
     existing: MedMatchState[];
-    insMed: Stmt;
-    insMedDose: Stmt;
     // Tier-1 (#1050): resolve the prescription's encounter reference to a local
     // encounter row id, stamped onto the projected med. Absent → no linking.
     resolveEnc?: (raw: string | null | undefined) => number | null;
@@ -193,83 +191,109 @@ export function persistExtractedMedications(
     }
     // No renewable candidate: project a distinct item (#1027 concurrent).
 
-    const info = ctx.insMed.run(
-      med.name,
-      med.sig, // directions kept as the row's notes (may be null)
-      // Obligation (#1505): the sig's as-needed reading IS the `may` shape; anything
-      // scheduled lands on the medication default, `must`.
-      med.asNeeded ? "may" : "must",
-      med.prescriber,
-      med.pharmacy,
-      med.rxNumber,
-      // document_id — traces the row back to its source document for the delete-set.
-      docId,
-      providerId,
-      // import_key — the stable within-doc reprocess anchor for visit-link decisions.
-      medImportKey(docId, med.name),
-      profileId,
-      // created_at — the clock seam, not SQL's real clock (#1534); see insMed.
-      sqlNow()
-    );
-    const medId = Number(info.lastInsertRowid);
-    newItems++;
-
-    // The source-supplied RxCUI (#3070): written as source-confirmed on insert.
-    // PRODUCT level only — `rxcui_ingredients` stays null (the #279 decomposition
-    // remains its own network step) and the name-keyed safety matchers keep
-    // working meanwhile; a resolved product code plus null ingredients is an
-    // honest state, not a complete one.
-    if (rxcui) {
-      db.prepare(
-        `UPDATE intake_items SET rxcui = ? WHERE id = ? AND profile_id = ?`
-      ).run(rxcui, medId, profileId);
-    }
-
-    // Tier-1 visit link (#1050): stamp the resolved encounter id onto the med.
-    if (ctx.resolveEnc && encExt) {
-      const encId = ctx.resolveEnc(encExt);
-      if (encId != null) {
-        db.prepare(
-          `UPDATE intake_items SET encounter_id = ? WHERE id = ? AND profile_id = ?`
-        ).run(encId, medId, profileId);
-      }
-    }
-
-    // Tier-1 indication link (#1052): stamp the resolved condition id onto the med.
-    if (ctx.resolveCondition && indExt) {
-      const condId = ctx.resolveCondition(indExt);
-      if (condId != null) {
-        db.prepare(
-          `UPDATE intake_items SET indication_condition_id = ? WHERE id = ? AND profile_id = ?`
-        ).run(condId, medId, profileId);
-      }
-    }
-
-    // Courses: explicit source period(s) → one course per DERIVED course; otherwise
-    // a single open initial course. Both carry the prescriber + dose snapshot + source
-    // document. Idempotent — a reprocess first deletes the med, cascading its courses.
-    if (courses.length > 0) {
-      createImportedMedicationCourses(profileId, medId, courses, attribution);
-    } else {
-      ensureMedicationCourse(profileId, medId, null, false, attribution);
-    }
+    // Tier-1 visit link (#1050) and indication link (#1052): resolve the
+    // prescription's encounter / reason references to local row ids. Resolved BEFORE
+    // the create so they are BOUND by the insert rather than stamped by follow-up
+    // UPDATEs — the row is never briefly a medication with no visit and no reason.
+    const encounterId =
+      ctx.resolveEnc && encExt ? ctx.resolveEnc(encExt) : null;
+    const indicationConditionId =
+      ctx.resolveCondition && indExt ? ctx.resolveCondition(indExt) : null;
 
     // Dose rows: a scheduled med gets one row per inferred time bucket; an
     // as-needed med gets a single row only when a strength is known (so its
     // strength still shows) — never a scheduled reminder.
-    if (!med.asNeeded && med.timeBuckets.length > 0) {
-      med.timeBuckets.forEach((bucket, i) => {
-        ctx.insMedDose.run(medId, med.strength, bucket, i);
-      });
-    } else if (med.strength) {
-      ctx.insMedDose.run(medId, med.strength, null, 0);
+    const doses: IntakeItemDoseSeed[] =
+      !med.asNeeded && med.timeBuckets.length > 0
+        ? med.timeBuckets.map((bucket) => ({
+            amount: med.strength,
+            time_of_day: bucket,
+            food_timing: "any" as const,
+          }))
+        : med.strength
+          ? [
+              {
+                amount: med.strength,
+                time_of_day: null,
+                food_timing: "any" as const,
+              },
+            ]
+          : [];
+
+    // The SAME create core the item form and the suggestion accept go through
+    // (#4669). What this caller does not pass, it does not know: an extracted
+    // prescription has no brand, no stack, no situation and no shared bottle. What it
+    // used to omit and SHOULD have known — the Rx/OTC flag its own prescriber and Rx
+    // number imply — the core now derives, so an imported prescription stops arriving
+    // labelled OTC.
+    const created = createIntakeItemCore(profileId, {
+      name: med.name,
+      kind: "medication",
+      // The source-supplied RxCUI (#3070) is source-confirmed at creation. PRODUCT
+      // level only — `rxcui_ingredients` stays null (the #279 decomposition remains
+      // its own network step) and the name-keyed safety matchers keep working
+      // meanwhile; a resolved product code plus null ingredients is an honest state,
+      // not a complete one.
+      rxcui,
+      provenance: {
+        source: "extracted",
+        // document_id traces the row back to its source document for the delete-set;
+        // import_key is the stable within-doc reprocess anchor for visit-link
+        // decisions.
+        documentId: docId,
+        importKey: medImportKey(docId, med.name),
+      },
+      notes: med.sig, // directions kept as the row's notes (may be null)
+      condition: "daily",
+      // Obligation (#1505): the sig's as-needed reading IS the `may` shape; anything
+      // scheduled lands on the medication default, `must`.
+      obligation: med.asNeeded ? "may" : "must",
+      prescriber: med.prescriber,
+      pharmacy: med.pharmacy,
+      rxNumber: med.rxNumber,
+      // Which of those two the SOURCE asserted, and which the parser scraped out of
+      // the sig/notes. The scrape is kept as the row's text — it is what the label
+      // said — but it is not attribution, so the core will not read it as evidence of
+      // a prescription: an OTC ibuprofen whose sig says "call your doctor if symptoms
+      // persist" is not a prescription because a label heuristic found the word.
+      prescriberScraped: med.prescriberScraped,
+      rxNumberScraped: med.rxNumberScraped,
+      providerId,
+      encounterId,
+      indicationConditionId,
+      doses,
+      // Courses: explicit source period(s) → one course per DERIVED course, written
+      // by this caller below; otherwise the core opens a single initial course. Both
+      // carry the prescriber + dose snapshot. Idempotent — a reprocess first deletes
+      // the med, cascading its courses.
+      course:
+        courses.length > 0
+          ? { kind: "caller" }
+          : { kind: "open", startedOn: null, attribution },
+    });
+    if (!created.ok) {
+      // Unreachable by construction — parsePrescription's cleaned name is documented
+      // never-empty and the loop above already skipped blank source names — but an
+      // import must never half-create a medication, so a refusal aborts the
+      // transaction instead of silently dropping the drug.
+      throw new Error(
+        `Refused to create imported medication: ${created.error}`
+      );
+    }
+    const medId = created.id;
+    newItems++;
+
+    if (courses.length > 0) {
+      createImportedMedicationCourses(profileId, medId, courses, attribution);
     }
   }
   return newItems;
 }
-import type Database from "better-sqlite3";
 import { db } from "../db";
-import { sqlNow } from "../clock";
+import {
+  createIntakeItemCore,
+  type IntakeItemDoseSeed,
+} from "../intake-item-create";
 import type { ImportedMedicationCourse } from "../health-import";
 import {
   comparableNewStrength,
@@ -281,10 +305,7 @@ import { resolveExactPrescriberId } from "../providers-db";
 import {
   addRenewalCourse,
   createImportedMedicationCourses,
-  ensureMedicationCourse,
   type CourseAttribution,
   type MedMatchState,
 } from "../queries";
 import type { PersistClinicalObservation } from "../import-shape";
-
-type Stmt = Database.Statement;
