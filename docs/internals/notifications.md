@@ -1373,7 +1373,8 @@ alongside the deep-link (the two-way principle — ids only:
 workout kind's pre-#5142 `wofinish:`/`wodiscard:` tokens still parse, because a
 message sent before the change is sitting in a chat with them on it; the callback
 resolves row→profile against the chat like every other family-chat button, and each
-kind lands in its own domain's cores). Finish stamps `end_time = now` through the SHARED, auth-blind
+kind lands in its own domain's cores). Finish stamps `end_time = now` through the
+SHARED, auth-blind
 `finishWorkoutSession` core (`lib/workout-finish.ts`, the same core the
 request-path `finishWorkout` action uses) and **transforms this message in
 place** into the #924 post-workout-dose summary — the SAME

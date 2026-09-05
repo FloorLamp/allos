@@ -27,7 +27,7 @@ function profile(name: string): number {
 
 function pageTitles(profileId: number, query: string): string[] {
   return (
-    searchAll(profileId, query)
+    searchAll(profileId, query, null)
       .find((group) => group.domain === "page")
       ?.hits.map((hit) => hit.title) ?? []
   );

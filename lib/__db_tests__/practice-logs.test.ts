@@ -813,6 +813,76 @@ describe("live practice sessions (#3143)", () => {
     });
   });
 
+  // THE PRACTICE KIND'S STALE WINDOW IS ZERO-WIDTH, written down here so the next
+  // reader does not have to derive it (#5142). `EPISODE_BOUNDS.practice` has
+  // `staleMin === abandonMin === 360`, so the instant a practice stops reading as in
+  // progress is the same instant the sweep clears it: `stale` is a state the practice
+  // kind can be IN, but no clock lands in it for longer than the gap between two
+  // sweeps. That is not an oversight — practice is the one kind with no "Still going?"
+  // nudge, and a suggest nobody sends needs no window to be sent in.
+  //
+  // The two clocks below are the convention, and they are the reason `episodeIsOpen`
+  // is not dead code even though a green suite could be had without it: `staleMin` is
+  // reached INCLUSIVELY, `abandonMin` is passed STRICTLY, so exactly at the bound the
+  // row is stale-and-open and one minute later it is gone.
+  it("holds a live practice AT its bound and abandons it one minute past", () => {
+    const pid = makeProfile("live-at-the-bound");
+    setTimezone(pid, "UTC");
+    vi.setSystemTime(new Date("2026-08-31T06:00:00Z"));
+    expect(startLivePracticeSession(pid, "Sauna", "page").kind).toBe("started");
+
+    // Exactly six hours of quiet. Stale, and stale is open.
+    vi.setSystemTime(new Date("2026-08-31T12:00:00Z"));
+    expect(closeAbandonedPracticeSessions(pid)).toBe(0);
+    expect(getPracticeSessions(pid, "Sauna")[0]).toMatchObject({
+      live: 1,
+      end_time: null,
+      duration_min: null,
+    });
+
+    vi.setSystemTime(new Date("2026-08-31T12:01:00Z"));
+    expect(closeAbandonedPracticeSessions(pid)).toBe(1);
+    expect(getPracticeSessions(pid, "Sauna")[0]).toMatchObject({
+      live: 0,
+      end_time: null,
+      duration_min: null,
+    });
+  });
+
+  // THE ARM NO PRODUCT PATH REACHES, asserted so that it cannot rot silently. A live
+  // row is opened with a start and nothing in the app clears one, so `startedAt == null`
+  // is unreachable from the outside — which is exactly why it is worth pinning: an
+  // unread branch that quietly starts returning "still going" would hold a row open
+  // forever with no evidence at all behind it. The start is nulled in SQL because that
+  // is the only way to reach the state, and the assertion is that an episode with NO
+  // readable start is abandoned immediately rather than defaulted to now.
+  it("abandons a live row whose start the app cannot read at all", () => {
+    const pid = makeProfile("live-unreadable-start");
+    setTimezone(pid, "UTC");
+    vi.setSystemTime(new Date("2026-08-31T12:00:00Z"));
+    const started = startLivePracticeSession(pid, "Sauna", "page");
+    expect(started.kind).toBe("started");
+    if (started.kind !== "started") return;
+
+    // KEYED ON THE PRIMARY KEY ON PURPOSE, and unscoped by profile for that reason
+    // (#5233 review): an id names one row and cannot reach another profile's. Said
+    // here so the SQL-shape scans have their answer in the file rather than in an
+    // allowlist entry someone has to go and read.
+    db.prepare("UPDATE practice_logs SET start_time = NULL WHERE id = ?").run(
+      started.session.id
+    );
+
+    // No quiet has passed at all — it is the unreadable start, not the elapsed span,
+    // that decides this.
+    expect(closeAbandonedPracticeSessions(pid)).toBe(1);
+    expect(getPracticeSessions(pid, "Sauna")[0]).toMatchObject({
+      live: 0,
+      start_time: null,
+      end_time: null,
+      duration_min: null,
+    });
+  });
+
   it("closes a carried-over live row as start-only without fabricating values", () => {
     const pid = makeProfile("live-rollover");
     const started = startLivePracticeSession(pid, "Meditation", "page");
