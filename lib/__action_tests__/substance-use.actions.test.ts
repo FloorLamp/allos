@@ -804,6 +804,19 @@ describe("substance consumption history actions (#2009)", () => {
     const profile = createProfile("su-history-undo-collision", login.id);
     actAs(login, profile);
     const td = today(profile.id);
+    // The uses under the counter, on whichever ledger this substance keeps them.
+    const eventsOn = (substance: "alcohol" | "nicotine") =>
+      (
+        db
+          .prepare(
+            substance === "alcohol"
+              ? `SELECT COUNT(*) AS n FROM food_log_events
+                  WHERE profile_id = ? AND group_key = 'alcohol' AND date = ?`
+              : `SELECT COUNT(*) AS n FROM substance_log_events
+                  WHERE profile_id = ? AND substance = 'nicotine' AND date = ?`
+          )
+          .get(profile.id, td) as { n: number }
+      ).n;
 
     for (const substance of ["alcohol", "nicotine"] as const) {
       const added = await addSubstanceDailyTotalAction(
@@ -819,6 +832,13 @@ describe("substance consumption history actions (#2009)", () => {
         fd({ id: String(added.id), substance })
       );
       if (deleted.kind !== "deleted") throw new Error("entry was not deleted");
+      // THE DAY DELETE TOOK THE USES WITH IT. This is the only moment the two halves
+      // can be told apart: a capture that took the counter alone leaves these two
+      // standing, and by the end of the test the recreated row makes both worlds read
+      // three events. Measured — asserting only the final count, the whole DB tier
+      // stayed green with the `substance_log_events` child dropped from the
+      // `substance-history` capture.
+      expect(eventsOn(substance)).toBe(0);
 
       expect(await logSubstanceUnitAction(fd({ substance }))).toMatchObject({
         ok: true,
@@ -832,15 +852,10 @@ describe("substance consumption history actions (#2009)", () => {
           notes: `${substance} restored note`,
         }),
       ]);
+      // And the restore put them back beside the tap logged meanwhile, so the counter
+      // and the record agree on three.
+      expect(eventsOn(substance)).toBe(3);
     }
-
-    const alcoholEvents = db
-      .prepare(
-        `SELECT COUNT(*) AS n FROM food_log_events
-         WHERE profile_id = ? AND group_key = 'alcohol' AND date = ?`
-      )
-      .get(profile.id, td) as { n: number };
-    expect(alcoholEvents.n).toBe(3);
   });
 });
 
