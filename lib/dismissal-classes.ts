@@ -618,7 +618,11 @@ export const NON_DISMISSAL_PREFIXES: readonly {
   },
   {
     prefix: "notify_stale_workout_",
-    what: "profile_settings one-shot send marker (lib/notifications/workout-presence)",
+    what: "profile_settings one-shot send marker (lib/notifications/still-going)",
+  },
+  {
+    prefix: "notify_stale_practice_",
+    what: "profile_settings one-shot send marker (lib/notifications/still-going)",
   },
   {
     prefix: "notify_last_practice_recap_",

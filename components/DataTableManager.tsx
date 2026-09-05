@@ -17,6 +17,7 @@ import { currentPathHref } from "@/lib/hrefs";
 import { UNDO_TOAST_MS } from "@/lib/undo-offer";
 import PaginationControls from "@/components/PaginationControls";
 import CheckboxControl from "@/components/CheckboxControl";
+import { PENDING_COLUMNS } from "@/lib/export-manifest";
 
 interface Dataset {
   key: string;
@@ -64,6 +65,17 @@ export default function DataTableManager({
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [pending, setPending] = useState<null | "selected" | "all">(null);
   const [confirm, setConfirm] = useState<null | "selected" | "all">(null);
+
+  // Columns nothing writes yet stay OUT of the on-screen table (#5273). The
+  // export keeps them — two archives diff cleanly across versions, and the
+  // archive's manifest.json names them as pending — but a table has no manifest
+  // beside it, so a permanently blank column here reads as broken rather than as
+  // pending. Matched on the DATASET AND the column: `bundle_id` is written on
+  // intake_log and food_log_events, and hiding those would hide real values.
+  const columns = dataset.columns.filter(
+    (c) =>
+      !PENDING_COLUMNS.some((p) => p.dataset === dataset.key && p.column === c)
+  );
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const currentPage = Math.min(Math.max(page, 1), pageCount);
@@ -268,7 +280,7 @@ export default function DataTableManager({
                       />
                     </th>
                   )}
-                  {dataset.columns.map((c) => (
+                  {columns.map((c) => (
                     <th key={c} className="th whitespace-nowrap">
                       {c}
                     </th>
@@ -295,7 +307,7 @@ export default function DataTableManager({
                           />
                         </td>
                       )}
-                      {dataset.columns.map((c) => (
+                      {columns.map((c) => (
                         <td
                           key={c}
                           className="td whitespace-nowrap tabular-nums"

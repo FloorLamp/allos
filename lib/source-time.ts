@@ -1,4 +1,5 @@
 import { isRealIsoDate, utcInstant } from "./date";
+import type { CanonicalInstant, LocalDay, LocalTime } from "./temporal-types";
 
 // THE INGEST BOUNDARY FOR TIME (issue #2243, #2205 phase 0).
 //
@@ -54,17 +55,17 @@ import { isRealIsoDate, utcInstant } from "./date";
 
 export type SourceTime =
   // The source stated a day and nothing more.
-  | { grain: "day"; date: string }
+  | { grain: "day"; date: LocalDay }
   // A time AND an offset: a real instant. `instant` is UTC+Z (lib/date.ts's
   // convention); `date` is the source's own stated local day, NOT the UTC day.
-  | { grain: "instant"; date: string; instant: string }
+  | { grain: "instant"; date: LocalDay; instant: CanonicalInstant }
   // A time with NO offset — permitted by both HL7 TS and FHIR dateTime. A local
   // wall clock that cannot become an instant without a zone nobody supplied.
-  | { grain: "local"; date: string; hhmm: string };
+  | { grain: "local"; date: LocalDay; hhmm: LocalTime };
 
 // The parsed pieces both grammars reduce to, before either becomes a SourceTime.
 interface Parts {
-  date: string; // the source's stated calendar day, validated
+  date: LocalDay; // the source's stated calendar day, validated by isRealIsoDate
   hh: number | null; // null when the source stated no time at all
   mm: number;
   ss: number;
@@ -77,7 +78,8 @@ const pad2 = (n: number): string => String(n).padStart(2, "0");
 // so HL7 and FHIR cannot drift on it.
 function fromParts(p: Parts): SourceTime {
   if (p.hh == null) return { grain: "day", date: p.date };
-  const hhmm = `${pad2(p.hh)}:${pad2(p.mm)}`;
+  // eslint-disable-next-line no-restricted-syntax -- LocalTime minter: hour and minute range-checked by timeOrNone
+  const hhmm = `${pad2(p.hh)}:${pad2(p.mm)}` as LocalTime;
   if (p.offsetMinutes == null) return { grain: "local", date: p.date, hhmm };
   const [y, mo, d] = p.date.split("-").map(Number);
   const ms =
@@ -166,7 +168,7 @@ export function fhirSourceTime(v: unknown): SourceTime | null {
 //
 // A day-grained destination reads `sourceDay` and NOTHING else — never the offset,
 // never a UTC re-derivation off the instant.
-export function sourceDay(t: SourceTime | null | undefined): string | null {
+export function sourceDay(t: SourceTime | null | undefined): LocalDay | null {
   return t ? t.date : null;
 }
 
@@ -174,6 +176,8 @@ export function sourceDay(t: SourceTime | null | undefined): string | null {
 // source stated BOTH a time and an offset. A `local` source leaves the column NULL by
 // decision: a zoneless clinical timestamp is not resolvable against the profile's
 // timezone without inventing a fact.
-export function sourceInstant(t: SourceTime | null | undefined): string | null {
+export function sourceInstant(
+  t: SourceTime | null | undefined
+): CanonicalInstant | null {
   return t && t.grain === "instant" ? t.instant : null;
 }

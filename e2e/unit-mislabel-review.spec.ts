@@ -42,11 +42,10 @@ function cleanup(): void {
 }
 
 // PUT THE FIXTURE'S UNIT BACK (#5266). The Apply test corrects `unit` IN PLACE on a
-// row this file seeded on the SHARED profile, and `medical_records` is watched there
-// from today onward — 2099-02-01 is inside that bound — so the correction reads as
-// one row removed and one added on profile 1. Both are this file's own rows and it
-// still deletes them in `afterAll`; what the per-test guard is entitled to see is a
-// test that ends its own row the way it found it.
+// row this file seeded on the SHARED profile, so the correction reads as one row
+// removed and one added there. Both are this file's own rows and it still deletes
+// them in `afterAll`; what the per-test guard is entitled to see is a test that ends
+// its own row the way it found it.
 //
 // Restoring the seeded unit is also what lets the Apply test run a SECOND time at
 // all: `beforeAll` seeds once per worker, and the card only renders while the
@@ -67,13 +66,22 @@ function restoreSeededUnits(): void {
   }
 }
 
+// A DATE OUTSIDE THE SHARED-PROFILE WATCH (#5266). `beforeAll` seeds once per worker
+// and `afterAll` clears it, so these two rows exist across every test in this file —
+// and both hooks run in the window BETWEEN two tests, where the gap diff can see them
+// and can only charge them to this file's `beforeAll`. Dating them in the deep past
+// puts them outside the watched bound (`medical_records` is watched from today
+// onward) the way every other file-owned fixture on profile 1 already does, so the
+// rows are invisible to a guard that has nothing to say about them. Nothing here
+// reads the date: `getUnitMislabelReviews` filters on unit and reference range only,
+// and every locator below addresses its card by record id.
 function seedMislabel(db: Database.Database): number {
   return Number(
     db
       .prepare(
         `INSERT INTO medical_records
            (profile_id, date, category, name, panel, value, unit, canonical_name, value_num, reference_range, flag)
-         VALUES (1, '2099-02-01', 'lab', 'MCHC', ?, '33', 'g/L', 'MCHC', 33, '31-37', NULL)`
+         VALUES (1, '2019-02-01', 'lab', 'MCHC', ?, '33', 'g/L', 'MCHC', 33, '31-37', NULL)`
       )
       .run(MARKER).lastInsertRowid
   );

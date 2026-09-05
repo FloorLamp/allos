@@ -9,7 +9,7 @@
 import { WEEKDAYS_SHORT } from "./date";
 import { frequencyPace, type FrequencyPace } from "./frequency-targets";
 import { inWakingWindow } from "./notifications/schedule";
-import type { PracticeLogOutcome } from "./types";
+import type { PracticeLiveEndOutcome, PracticeLogOutcome } from "./types";
 import { rhythmMomentOpen } from "./weekly-rhythm";
 import { usual, USUAL_KINDS } from "./usual";
 import type { WeeklyRhythm } from "./weekly-rhythm";
@@ -452,4 +452,14 @@ export function practiceLogOutcomeText(
       : `Logged — ${outcome.count} sessions today`;
   }
   return "Couldn't log that session.";
+}
+
+// The same discipline for ENDING a live session (#5142 AC 3). The Wellness card's End
+// button said "Session finished" in a component and the Telegram "Still going?" nudge
+// was about to need the same sentence; one write core with one typed outcome gets one
+// wording. Never an unconditional confirm: a row the sweep already closed says so.
+export function practiceLiveEndText(outcome: PracticeLiveEndOutcome): string {
+  return outcome.kind === "ended"
+    ? "Session finished"
+    : "That session is no longer running.";
 }

@@ -5,6 +5,7 @@ import {
 } from "./activities-catalog";
 import { liftInfo } from "./lifts";
 import type { ActivityType } from "./types";
+import type { LocalTime } from "./temporal-types";
 
 // Keyword sets for inferring an activity's type from its name.
 const CARDIO_KEYWORDS = [
@@ -225,7 +226,7 @@ const ISO_CLOCK = /^\d{4}-\d{2}-\d{2}[T ](\d{1,2}):(\d{2})/;
 
 export function activityClockHHMM(
   raw: string | null | undefined
-): string | null {
+): LocalTime | null {
   if (typeof raw !== "string") return null;
   const value = raw.trim();
   if (!value) return null;
@@ -233,7 +234,8 @@ export function activityClockHHMM(
   if (!m) return null;
   const [h, min] = [Number(m[1]), Number(m[2])];
   if (h > 23 || min > 59) return null;
-  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+  // eslint-disable-next-line no-restricted-syntax -- LocalTime minter: hour and minute range-checked above
+  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}` as LocalTime;
 }
 
 /** Morning / Afternoon / Evening / Night from a "HH:MM" string, or null. */

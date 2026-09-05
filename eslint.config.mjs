@@ -16,6 +16,52 @@ const TYPESCRIPT_API_PATTERN = {
 // bridge we needed on 15.x (which only shipped classic `.eslintrc` configs) —
 // FlatCompat.extends("next/core-web-vitals") throws a "circular structure"
 // error against the 16.x native flat config, so the bridge is gone.
+// The brand names lib/temporal-types.ts exports — the cast ban below is keyed on them.
+const TEMPORAL_BRANDS = [
+  "LocalDay",
+  "LocalTime",
+  "CanonicalInstant",
+  "BareInstant",
+];
+// A reference to a brand by bare name, qualified name (`TT.LocalDay`) or
+// `import("…").LocalDay`.
+const TEMPORAL_BRAND_REF = (() => {
+  const names = `/^(?:${TEMPORAL_BRANDS.join("|")})$/`;
+  return `:matches(TSTypeReference[typeName.name=${names}], TSTypeReference[typeName.right.name=${names}], TSImportType[qualifier.name=${names}])`;
+})();
+// The shapes a cast to a brand can take, by NAME — this rule is syntactic and does
+// not chase what a name resolves to (lib/temporal-types.ts says what that leaves to
+// review). `.typeAnnotation` pins a match to the cast's TYPE side, so a brand inside
+// the expression being cast (`foo<LocalDay>() as string`) is not this rule's business;
+// the `:not(TSTypeLiteral …)` clause is the row-shape exemption.
+const TEMPORAL_BRAND_CAST_SELECTORS = (() => {
+  const cast = ":matches(TSAsExpression, TSTypeAssertion)";
+  const names = `/^(?:${TEMPORAL_BRANDS.join("|")})$/`;
+  return [
+    // `s as LocalDay`, `<LocalDay>s`, `s as unknown as LocalDay`.
+    `${cast} > ${TEMPORAL_BRAND_REF}.typeAnnotation`,
+    // The brand anywhere inside the cast's type — a union, array, tuple, intersection,
+    // `NonNullable<>`, `Readonly<>`, `Array<>` — except inside an object type literal.
+    `${cast} > *.typeAnnotation ${TEMPORAL_BRAND_REF}:not(TSTypeLiteral ${TEMPORAL_BRAND_REF})`,
+    // `type D = LocalDay`, `type D = LocalDay & {}`, `type Ds = LocalDay[]` — an alias
+    // that mentions a brand outside an object shape exists only to cast around the
+    // rule. `type Row = { d: LocalDay }` is a row shape and stays allowed.
+    `TSTypeAliasDeclaration > ${TEMPORAL_BRAND_REF}.typeAnnotation`,
+    `TSTypeAliasDeclaration > *.typeAnnotation ${TEMPORAL_BRAND_REF}:not(TSTypeLiteral ${TEMPORAL_BRAND_REF})`,
+    // `type G<T = LocalDay> = T` — the brand named in an alias's type parameters
+    // rather than its body.
+    `TSTypeAliasDeclaration > TSTypeParameterDeclaration ${TEMPORAL_BRAND_REF}`,
+    // `import { LocalDay as LD }` / `export { LocalDay as LD }` — renaming a brand
+    // takes its name out of every selector above. Covers the ES2022 string-literal
+    // spelling (`import { "LocalDay" as LD }`) and `import LD = TT.LocalDay`.
+    `:matches(ImportSpecifier, ExportSpecifier)[imported.name=${names}]:not([local.name=${names}])`,
+    `:matches(ImportSpecifier, ExportSpecifier)[imported.value=${names}]`,
+    `ExportSpecifier[local.name=${names}]:not([exported.name=${names}])`,
+    `ExportSpecifier[local.value=${names}]`,
+    `TSImportEqualsDeclaration > TSQualifiedName.moduleReference[right.name=${names}]`,
+  ];
+})();
+
 const config = [
   // Global ignores — mirror the old ignorePatterns. Build output, deps, and the
   // runtime data dir are never linted.
@@ -120,6 +166,34 @@ const config = [
     files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}"],
     rules: {
       "no-alert": "error",
+    },
+  },
+  // The temporal brands (#2899, lib/temporal-types.ts) are worth exactly as much as
+  // the weakest way to obtain one. A brand comes from a minter that validated or
+  // constructed it; the constructing minters carry their one permitted cast on a
+  // `// eslint-disable-next-line no-restricted-syntax -- <brand> minter:` line.
+  //
+  // This rule is a RATCHET over spellings, not a proof: it refuses the ways of naming
+  // a brand as a cast target, an alias or a renamed import/export that
+  // lib/__tests__/temporal-types.test.ts lists, and that list is the definition of
+  // what it catches. TypeScript's type grammar has more ways to name a type than any
+  // selector list — three falsifying passes each found new ones — so a spelling the
+  // test does not list is an ADDITION (add the selector and the test row), never a
+  // refutation, and the reviewer's job is unchanged by the rule's existence. A DB row
+  // shape (`.get(...) as { date: LocalDay }`, or an alias/interface holding one) is
+  // deliberately allowed — an object type literal is exempt — because a row may
+  // carry the brand lib/time-columns.ts declares for that column.
+  {
+    files: ["**/*.{ts,tsx,mts,cts}"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        ...TEMPORAL_BRAND_CAST_SELECTORS.map((selector) => ({
+          selector,
+          message:
+            "Do not cast or re-alias to a temporal brand. Obtain it from a minter that validates or constructs it (lib/temporal-types.ts, #2899).",
+        })),
+      ],
     },
   },
   // eslint-config-next 16 bundles eslint-plugin-react-hooks v6, whose

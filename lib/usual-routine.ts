@@ -149,12 +149,19 @@ export function namesPhrase(names: readonly string[]): string {
 // written. Beside `dosesPhrase` because the ruling is about ANY bulk control over a
 // dose set, not about the ledger's row — a second surface spelling this itself is how
 // two controls come to promise the same write in two voices.
-export function bulkTakeLabel(
-  doses: readonly Pick<UsualRoutineDose, "name">[]
+//
+// THE VERB IS THE ONE THING A CALLER STATES (#5320). The composed-usual bundle writes
+// SERVINGS as well as dose confirms, and servings are not taken, so its row control
+// says "Log". That is a word in the sentence and not a second ladder: the rungs and
+// the count are decided here for both verbs, which is what stops the composed control
+// from counting differently from the take-all on the row beside it.
+export function bulkLabel(
+  verb: "Take" | "Log",
+  members: readonly Pick<UsualRoutineDose, "name">[]
 ): string {
-  if (doses.length === 1) return `Take ${doses[0]!.name}`;
-  if (doses.length === 2) return "Take both";
-  return `Take all ${doses.length}`;
+  if (members.length === 1) return `${verb} ${members[0]!.name}`;
+  if (members.length === 2) return `${verb} both`;
+  return `${verb} all ${members.length}`;
 }
 
 // The dose half of the label, as the phrase says it (#3098) — exported because the
