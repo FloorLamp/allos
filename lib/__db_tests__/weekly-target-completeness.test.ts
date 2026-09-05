@@ -153,10 +153,10 @@ describe("every unmet weekly target reaches the ledger (#2579 ruling 1)", () => 
 
   it("a BEHIND practice target still renders, with its range in the due-text", () => {
     // The old gate's own case has to keep working — widening a filter must not move
-    // what was already inside it. Five days into the week with nothing logged is
-    // behind on a 3×/week floor.
+    // what was already inside it. Six days into the week with nothing logged is behind
+    // on a 3×/week floor: three sessions owed, two days left to hold them (#4758).
     const { profileId, anchor } = makeProfile("wtc-behind-practice");
-    setWeekStart(profileId, ((weekdayOfDateStr(anchor) + 3) % 7) as WeekStart);
+    setWeekStart(profileId, ((weekdayOfDateStr(anchor) + 2) % 7) as WeekStart);
     const id = addTarget(profileId, "practice", "Red light", 3, 5);
 
     const progress = getFrequencyTargetProgress(profileId).find(

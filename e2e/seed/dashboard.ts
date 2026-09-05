@@ -344,18 +344,18 @@ export function seedNowStrip(): void {
   }
   seedMemberLogin(E2E_LOGIN_NOWQUIET, nowQuietId);
 
-  // The other side of the day-4 boundary (#3245 / #3543 / #3548). Same shape as
+  // The other side of the behind boundary (#3245 / #3543 / #3548). Same shape as
   // Now Quiet — two untouched 2x/week strength-group targets, no rhythm to ask —
-  // with the week pinned so today is day 4 and both targets are BEHIND.
+  // with the week pinned so today is day 7 and both targets are BEHIND.
   //
   // Before #3245 that state put both log offers straight back into Now on a
-  // four-day-in-seven duty cycle. After it, `owed` composes with the moment, the
+  // multi-day duty cycle. After it, `owed` composes with the moment, the
   // groups have no moment, and the standing reading is what tells the person.
   const paceBehindId = adultFixtureProfileId(PACE_BEHIND_PROFILE);
   {
     const behindDay = today(paceBehindId);
     setWeekMode(paceBehindId, "calendar");
-    // Three days back from today's weekday, so `elapsedDays` is 4 on every run.
+    // Six days back from today's weekday, so `elapsedDays` is 7 on every run.
     const behindWeekStart =
       (new Date(behindDay + "T00:00:00Z").getUTCDay() -
         (PACE_BEHIND_WEEK_DAY - 1) +
@@ -383,7 +383,7 @@ export function seedNowStrip(): void {
   seedMemberLogin(E2E_LOGIN_PACEBEHIND, paceBehindId);
 
   console.log(
-    `e2e: seeded #1413 Now-strip fixtures — profile ${nowStripId} (${NOW_STRIP_PROFILE}, finished session + due appointment), profile ${nowSafetyId} (${NOW_SAFETY_PROFILE}, uncapped safety fact) and profile ${nowQuietId} (${NOW_QUIET_PROFILE}, handled day + unmet on-pace targets, #3224) and profile ${paceBehindId} (${PACE_BEHIND_PROFILE}, day 4 + behind targets, #3245)`
+    `e2e: seeded #1413 Now-strip fixtures — profile ${nowStripId} (${NOW_STRIP_PROFILE}, finished session + due appointment), profile ${nowSafetyId} (${NOW_SAFETY_PROFILE}, uncapped safety fact) and profile ${nowQuietId} (${NOW_QUIET_PROFILE}, handled day + unmet on-pace targets, #3224) and profile ${paceBehindId} (${PACE_BEHIND_PROFILE}, day 7 + behind targets, #3245)`
   );
 
   // Truly empty, isolated profiles for the goal-based onboarding paths (#719).
