@@ -108,6 +108,12 @@ const MISSING_CHIP =
 // row focusable WITHOUT adding a tab stop, and because the row CONTAINS the chips, Tab
 // from it continues into the row in document order rather than skipping past it.
 //
+// AND THE ROW BUYS THE GAP ITS CHIPS' REACH NEEDS (#4035). Once a chip carries the
+// coarse-pointer reach, two chips 6px apart own the same 6px of screen — the gap floor
+// the control box states is TWICE the reach, which is what `FilterPills` and the
+// record's chip row already spend. `pointer-coarse:` because the reach only exists
+// there: a mouse keeps the tighter row.
+//
 // AND IT SHOWS A RING WHEN IT HAS FOCUS. A focusable element that gives no sign it is
 // focused is its own defect, and shipping one inside a fix for a keyboard defect would
 // be a poor trade. `focus:` rather than `focus-visible:` on purpose: this element is
@@ -129,7 +135,7 @@ export default function FactChipRow({
       data-testid={testId}
       data-fact-row="true"
       tabIndex={-1}
-      className={`flex flex-wrap items-center gap-1.5 rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-hidden ${className ?? ""}`}
+      className={`flex flex-wrap items-center gap-1.5 rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-hidden pointer-coarse:gap-3 ${className ?? ""}`}
     >
       {children}
     </div>

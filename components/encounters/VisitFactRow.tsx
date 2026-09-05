@@ -92,7 +92,7 @@ export default function VisitFactRow({
               role="menu"
               aria-label="Add another detail"
               data-testid="visit-fact-more-menu"
-              className="inline-flex flex-wrap items-center gap-1.5"
+              className="inline-flex flex-wrap items-center gap-1.5 pointer-coarse:gap-3"
             >
               {summary.absent.map((key) => (
                 <button
