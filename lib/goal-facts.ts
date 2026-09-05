@@ -146,8 +146,8 @@ export type GoalTargetInput =
   | { kind: "freeform"; value: string; unit: string };
 
 const DIRECTION_WORD: Record<OutcomeGoalDirection, string> = {
-  below: "under",
-  above: "over",
+  below: "Under",
+  above: "Over",
 };
 
 /** The unit a body-metric target is entered in. Weight follows the profile's pref. */
@@ -215,7 +215,7 @@ export function deadlineFactLabel(
 ): string | null {
   const value = targetDate.trim();
   if (!value) return null;
-  return `by ${formatDateWithYear(value, prefs)}`;
+  return `By ${formatDateWithYear(value, prefs)}`;
 }
 
 /**
@@ -231,10 +231,10 @@ export function startingFromFactLabel(input: {
   asDuration?: boolean;
 }): string | null {
   if (input.value == null) return null;
-  if (input.asDuration) return `from ${formatSeconds(input.value)}`;
+  if (input.asDuration) return `From ${formatSeconds(input.value)}`;
   const unit = input.unit?.trim();
-  if (unit === "%") return `from ${input.value}%`;
-  return unit ? `from ${input.value} ${unit}` : `from ${input.value}`;
+  if (unit === "%") return `From ${input.value}%`;
+  return unit ? `From ${input.value} ${unit}` : `From ${input.value}`;
 }
 
 // ── What a goal's PROGRESS reads (#5198, absorbing #4759) ────────────────────
@@ -461,21 +461,21 @@ export function goalFactSummary(
   const target = targetFactLabel(f.target);
   chips.push(
     target == null
-      ? { key: "target", label: "add a target", state: "missing" }
+      ? { key: "target", label: "Add a target", state: "missing" }
       : { key: "target", label: target, state: "stated" }
   );
 
   if (f.equipment)
     chips.push(
       f.equipment.label == null
-        ? { key: "equipment", label: "pick a machine", state: "missing" }
+        ? { key: "equipment", label: "Pick a machine", state: "missing" }
         : { key: "equipment", label: f.equipment.label, state: "stated" }
     );
 
   const deadline = deadlineFactLabel(f.targetDate, prefs);
   chips.push(
     deadline == null
-      ? { key: "deadline", label: "add a deadline", state: "missing" }
+      ? { key: "deadline", label: "Add a deadline", state: "missing" }
       : { key: "deadline", label: deadline, state: "stated" }
   );
 
@@ -496,7 +496,7 @@ export function goalFactSummary(
     if (f.title.trim())
       chips.push({
         key: "title",
-        label: `titled “${f.title.trim()}”`,
+        label: `Titled “${f.title.trim()}”`,
         state: "stated",
       });
     else more.push("title");
@@ -515,7 +515,7 @@ export function goalFactSummary(
     // A description is a paragraph; the fact the row can honestly state is THAT
     // there is one.
     if (f.notes.trim())
-      chips.push({ key: "notes", label: "description", state: "stated" });
+      chips.push({ key: "notes", label: "Description", state: "stated" });
     else more.push("notes");
   }
 

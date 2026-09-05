@@ -108,7 +108,7 @@ test.describe("goal facts-with-editors (#3220)", () => {
       GOAL_CATEGORY
     );
     await expect(form.getByTestId("goal-fact-startingFrom")).toHaveText(
-      `from ${GOAL_START} ${GOAL_UNIT}`
+      `From ${GOAL_START} ${GOAL_UNIT}`
     );
     // Typed, not borrowed: a freeform goal has no series behind it, so its starting
     // point is a stated fact and must not carry the suggestion marking (#846).
@@ -146,7 +146,7 @@ test.describe("goal facts-with-editors (#3220)", () => {
       GOAL_CATEGORY
     );
     await expect(editForm.getByTestId("goal-fact-startingFrom")).toHaveText(
-      `from ${GOAL_START} ${GOAL_UNIT}`
+      `From ${GOAL_START} ${GOAL_UNIT}`
     );
     // An edit reads back onto the CHIPS, not onto an open editor: nothing is
     // expanded until the person asks for it.
@@ -213,7 +213,7 @@ test.describe("goal facts-with-editors (#3220)", () => {
     // property of a SHARED fixture rather than of this feature — pinning it would be
     // an exact-value assertion over someone else's seed (#2353). What this spec owns
     // is that history reached the form at all, in a unit, marked as borrowed.
-    await expect(start).toHaveText(/^from [\d.]+ (kg|lb)$/);
+    await expect(start).toHaveText(/^From [\d.]+ (kg|lb)$/);
     await expect(start).toHaveAttribute("data-suggested", "1");
 
     // Nothing was typed, so the form still dismisses in one gesture — a borrowed

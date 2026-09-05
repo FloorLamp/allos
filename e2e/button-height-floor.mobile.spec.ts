@@ -7,7 +7,7 @@ import {
   TAP_TARGET_MIN_RENDERED_PX,
 } from "@/lib/tap-floor-tokens";
 import { roundControlBoxExtraLines } from "./control-box-lines";
-import { openFoodAdd, settledClick } from "./helpers";
+import { hydratedClick, openFoodAdd, settledClick } from "./helpers";
 
 // THE CONTROL BOX (`--control-box` in app/globals.css, SECTION: Touch tap
 // targets), MEASURED — owner ruling #3938; the family floor it replaces was
@@ -883,6 +883,159 @@ test.describe("the illness cockpit's symptom row (#3954)", () => {
       geometry.overlaps,
       "two extended targets in the symptom row own the same point; the row's gap must be at least twice the reach"
     ).toEqual([]);
+  });
+});
+
+// THE FACT CHIP IS A CONTROL KIND (#4035). The fact row's chips drew their own 44 in
+// all eight consumers and were in NO vocabulary here, so nothing measured them — the
+// gap the owner reported as "these chips are huge". They wear `data-fact-chip` now and
+// this is where that is checked.
+//
+// WHY A TEST OF ITS OWN RATHER THAN A ROW IN `BOX_ROUTES`. Every entry in that table is
+// a plain `goto` plus a readiness marker, deliberately, and NO route in this app renders
+// a fact row on arrival: a fact row is a FORM's summary, and every form is behind a
+// door. One click is the smallest honest way in, so the kind is measured here instead of
+// weakening that table's contract.
+//
+// WHAT THIS FIXTURE REACHES, said plainly because a shape it cannot produce is a shape
+// this test cannot be claiming anything about. A fresh injury form states two MISSING
+// essentials and the one trailing affordance — three `solo` chips, the shape eight
+// consumers draw. The REMOVABLE chip (`pill` plus two `tiled` halves) needs a rule to
+// exist first, and it is measured where the walk that builds one already runs:
+// e2e/tap-target-census.mobile.spec.ts's "fact chip split", which asserts the same
+// effective floor and the same disjointness on exactly those two halves.
+//
+// AND THE BOUND KINDS BESIDE THEM, at the same instant: "34" also passes on a form
+// where everything shrank together, so the form's own `button-control` submit and its
+// `btn-ghost` are swept into the same one-height set rather than compared to the
+// constant alone.
+test.describe("the fact chip wears the box (#4035)", () => {
+  test.use({ viewport: PHONE });
+
+  test(`the injury form's fact row is one box at ${BOX_WIDTHS.join("/")}, with disjoint reach`, async ({
+    page,
+  }) => {
+    await page.goto("/training?tab=overview");
+    const bar = page.getByRole("main").getByTestId("injury-bar");
+    await expect(bar).toBeVisible();
+    // A pure client toggle and the first interaction after a navigation, so the tap
+    // itself can be lost pre-hydration with no error (#2942).
+    await hydratedClick(page, bar.getByTestId("injury-add-toggle"));
+    const form = bar.getByTestId("injury-form");
+    await expect(form).toBeVisible();
+    // Wait for the CONTENT this measures, not its container: a row swept before its
+    // chips mount reports an empty corpus and passes on nothing.
+    await expect(form.getByTestId("injury-fact-label")).toBeVisible();
+
+    for (const width of BOX_WIDTHS) {
+      await page.setViewportSize({ width, height: 900 });
+      const geometry = await form.evaluate((el) => {
+        const read = (t: HTMLElement) => {
+          const r = t.getBoundingClientRect();
+          const after = getComputedStyle(t, "::after");
+          const side = (raw: string) => {
+            const inset = Math.abs(Number.parseFloat(raw));
+            return after.content === "none" || !Number.isFinite(inset)
+              ? 0
+              : inset;
+          };
+          const block = side(after.top);
+          const inline = side(after.left);
+          return {
+            what:
+              t.getAttribute("data-testid") ??
+              (t.textContent ?? "").trim().slice(0, 20),
+            shape: t.getAttribute("data-fact-chip") ?? "bound kind",
+            height: r.height,
+            block,
+            inline,
+            left: r.left - inline,
+            right: r.right + inline,
+            top: r.top - block,
+            bottom: r.bottom + block,
+          };
+        };
+        const visible = (t: HTMLElement) =>
+          t.getBoundingClientRect().height > 0;
+        const chips = Array.from(
+          el.querySelectorAll<HTMLElement>("[data-fact-chip]")
+        )
+          .filter(visible)
+          .map(read);
+        const bound = Array.from(
+          el.querySelectorAll<HTMLElement>(
+            '[data-testid="injury-submit"], .btn-ghost'
+          )
+        )
+          .filter(visible)
+          .map(read);
+        const overlaps: string[] = [];
+        for (let i = 0; i < chips.length; i += 1)
+          for (let j = i + 1; j < chips.length; j += 1) {
+            const x =
+              Math.min(chips[i].right, chips[j].right) -
+              Math.max(chips[i].left, chips[j].left);
+            const y =
+              Math.min(chips[i].bottom, chips[j].bottom) -
+              Math.max(chips[i].top, chips[j].top);
+            if (x > 0 && y > 0)
+              overlaps.push(`${chips[i].what}/${chips[j].what}`);
+          }
+        return { chips, bound, overlaps };
+      });
+
+      expect(
+        geometry.chips.length,
+        `the injury fact row @${width} swept no fact chips`
+      ).toBeGreaterThan(2);
+      expect(
+        geometry.bound.length,
+        `the injury form @${width} must also render an already-bound kind to compare against`
+      ).toBeGreaterThan(0);
+      // What this fixture actually produces. Recorded rather than assumed, so a
+      // removable chip appearing on this row later reads as "extend this test" instead
+      // of as a height failure on a shape whose box is its pill's.
+      expect([...new Set(geometry.chips.map((c) => c.shape))]).toEqual([
+        "solo",
+      ]);
+
+      expect(
+        [
+          ...new Set(
+            [...geometry.chips, ...geometry.bound].map((c) =>
+              Math.round(c.height)
+            )
+          ),
+        ],
+        `the injury form @${width} renders more than one box: ${[
+          ...geometry.chips,
+          ...geometry.bound,
+        ]
+          .map((c) => `${c.what}=${c.height}`)
+          .join(", ")}`
+      ).toEqual([CONTROL_BOX_PX]);
+
+      for (const chip of geometry.chips) {
+        // A solo chip has a gap around it, so unlike a tiled one it takes the reach on
+        // BOTH axes — and the row's `pointer-coarse:gap-3` is what pays for the inline
+        // half without taking it from the chip next door.
+        expect(chip.block, `${chip.what} @${width} block reach`).toBe(
+          TAP_TARGET_INSET_PX
+        );
+        expect(chip.inline, `${chip.what} @${width} inline reach`).toBe(
+          TAP_TARGET_INSET_PX
+        );
+        expect(
+          chip.height + 2 * chip.block + TAP_FLOOR_FLOAT_EPSILON_PX,
+          `${chip.what} @${width} effective height`
+        ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+      }
+
+      expect(
+        geometry.overlaps,
+        `@${width} two extended fact chips own the same point; the row's gap must be at least twice the reach`
+      ).toEqual([]);
+    }
   });
 });
 

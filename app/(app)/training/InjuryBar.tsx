@@ -442,11 +442,11 @@ function InjuryScopeFields({
         </div>
         <fieldset hidden={openEditor !== "regions"}>
           <legend className="section-label">Affected regions</legend>
-          <div className="mt-1 flex flex-wrap gap-2">
+          <div className="mt-1 flex flex-wrap gap-2 pointer-coarse:gap-3.5">
             {REGION_SCOPES.map((r) => (
               <label
                 key={r}
-                className="flex cursor-pointer items-center gap-1.5 rounded-full border border-black/10 px-2.5 py-1 text-sm dark:border-white/15"
+                className="checkbox-control flex cursor-pointer items-center gap-1.5 rounded-full border border-black/10 px-2.5 py-1 text-sm dark:border-white/15"
               >
                 <input
                   type="checkbox"
@@ -479,11 +479,11 @@ function InjuryScopeFields({
             Pick patterns if only some movements are affected. Naming movements
             keeps the rest of the region in your suggestions.
           </p>
-          <div className="mt-1 flex flex-wrap gap-2">
+          <div className="mt-1 flex flex-wrap gap-2 pointer-coarse:gap-3.5">
             {INJURY_MOVEMENT_PATTERNS.map((m) => (
               <label
                 key={m}
-                className="flex cursor-pointer items-center gap-1.5 rounded-full border border-black/10 px-2.5 py-1 text-sm dark:border-white/15"
+                className="checkbox-control flex cursor-pointer items-center gap-1.5 rounded-full border border-black/10 px-2.5 py-1 text-sm dark:border-white/15"
               >
                 <input
                   type="checkbox"
@@ -576,14 +576,15 @@ function InjuryScopeFields({
             optional facts with nothing to state and hands off to one of them, so opening
             it still leaves exactly one editor on screen. */}
         <div hidden={openEditor !== "more"}>
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-1.5 pointer-coarse:gap-3.5">
             {summary.more.map((key) => (
               <button
                 key={key}
                 type="button"
                 data-testid={`injury-more-${key}`}
                 onClick={() => onOpen(key)}
-                className="min-h-11 rounded-full border border-(--border) px-3 py-1.5 text-sm transition hover:bg-(--ghost-hover)"
+                data-fact-chip="solo"
+                className="rounded-full border border-(--border) px-3 text-sm transition hover:bg-(--ghost-hover)"
               >
                 {INJURY_FACT_NOUNS[key]}
               </button>

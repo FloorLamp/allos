@@ -2641,6 +2641,27 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
    `<select>` and a typed `<input>` render no pseudo-element, which is the
    `chip-sm` lesson and why this floor is effective rather than rendered.
 
+   THE FACT CHIP IS A KIND (#4035). `components/facts/FactChipRow.tsx` drew its own
+   44 across all eight consumers, which is the second answer to one question this
+   section exists to stop. It marks itself `data-fact-chip` rather than adopting
+   `chip-base`, because that primitive's three roles each carry a paint and the fact
+   row's four shapes — stated, dashed missing, dashed prompt, quiet "more" — are a
+   fourth vocabulary, not a fourth role. The VALUE names the shape, and each shape
+   takes the part of the box that fits it: `solo` is a chip with a gap around it and
+   takes the whole treatment; `pill` is the wrapper of a removable chip, which draws
+   the border itself and so takes the FLOOR ALONE (the derived padding on top of its
+   own border would render 36); `tiled` is one of that pill's two halves, which
+   stretch to it and sit shoulder to shoulder exactly as a segmented track's options
+   do, so their reach is block-only (see the block-axis note below).
+
+   AND `border-style: solid` LEFT THIS RULE FOR THE FACT CHIP TO JOIN IT. It was
+   redundant — preflight already sets `border: 0 solid` on every element, so a member
+   declaring no border was solid anyway — and it was unlayered, so it BEAT a call
+   site's `border-dashed` (utilities). Measured before removing it: `btn-ghost btn-sm
+   border-dashed` (components/illness/SymptomLogBar.tsx) rendered SOLID. A dashed
+   MISSING chip is the fact row's whole grammar for "the form is waiting for this",
+   so the box could not carry the kind while that declaration stood.
+
    Guards, on RENDERED boxes at 390/639/640/1280 and never a class string:
    `e2e/button-height-floor.mobile.spec.ts` (named for the floor it used to hold)
    for the one height and the disjoint reach, and
@@ -2652,9 +2673,9 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
 .btn-danger,
 .button-control,
 .input,
-[data-segmented-option] {
+[data-segmented-option],
+[data-fact-chip="solo"] {
   border-width: var(--control-border);
-  border-style: solid;
   padding-block: calc(
     (var(--control-box) - 1lh - 2 * var(--control-border)) / 2
   );
@@ -2673,7 +2694,9 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
   .btn-danger,
   .button-control,
   .input,
-  [data-segmented-option] {
+  [data-segmented-option],
+  [data-fact-chip="solo"],
+  [data-fact-chip="pill"] {
     min-block-size: var(--control-box);
   }
 }
@@ -2699,7 +2722,8 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
     .checkbox-control,
     .tap-target,
     [data-segmented-option],
-    [data-calendar-day] {
+    [data-calendar-day],
+    [data-fact-chip] {
       position: relative;
     }
   }
@@ -2712,7 +2736,8 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
   .btn-danger::after,
   .button-control::after,
   .checkbox-control::after,
-  .tap-target::after {
+  .tap-target::after,
+  [data-fact-chip="solo"]::after {
     content: "";
     position: absolute;
     inset: calc(-1 * var(--control-reach));
@@ -2731,7 +2756,8 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
      Same 34 box, same 46 effective height; only the axis differs, and it differs
      because the arrangement does. */
   [data-segmented-option]::after,
-  [data-calendar-day]::after {
+  [data-calendar-day]::after,
+  [data-fact-chip="tiled"]::after {
     content: "";
     position: absolute;
     inset-block: calc(-1 * var(--control-reach));
