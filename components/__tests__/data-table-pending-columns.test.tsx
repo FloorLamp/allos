@@ -125,8 +125,15 @@ function mount(c: (typeof CASES)[number]) {
 describe("Data → Manage tables and the columns nothing writes yet", () => {
   // The fixture's premise, so neither direction can go quietly vacuous: an empty
   // PENDING_COLUMNS would make the absence assertions pass against a guard that
-  // does nothing. When a writer lands and its entry is deleted, this reds first
-  // and points at the case below that must move with it.
+  // does nothing.
+  //
+  // THIS RED IS DELIBERATE. When a writer lands and its PENDING_COLUMNS entry is
+  // deleted, this case and the two below it go red together, on purpose: the
+  // column now belongs ON SCREEN, and someone should have to look at that table
+  // and say so. When it fires, flip that case's `pending` to false and move
+  // `bundle_id` into its `shown` and `cells`. Do NOT derive the expectation from
+  // PENDING_COLUMNS to make the red go away — a test that cannot break stops
+  // naming what it protects.
   it.each(CASES)("$key.bundle_id pending is $pending", ({ key, pending }) => {
     expect(
       PENDING_COLUMNS.some(
