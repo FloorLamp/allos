@@ -227,11 +227,18 @@ export type LedgerPhase = "ready" | "writing" | "cooldown";
 //   adopt    — take the server's authoritative value, whatever the optimistic guess was
 //   keep     — the write was captured elsewhere (an offline queue) and the optimistic
 //              value stands in for it until replay
-//   rollback — nothing was written (a refusal or a failure): restore the pre-tap value
+//   rollback — nothing was written (a refusal or a failure): restore the pre-tap value,
+//              or `to` when the caller holds a newer one
 export type LedgerSettlement<V> =
   | { readonly kind: "adopt"; readonly value: V }
   | { readonly kind: "keep" }
-  | { readonly kind: "rollback" };
+  // `to` NAMES THE VALUE TO RETURN TO, and it exists because the pre-tap snapshot can
+  // stop being the truth while the write is out. One displayed value is often written
+  // through SEVERAL keys — the stool row's seven buttons all move one day count — so a
+  // sibling key's successful `adopt` supersedes this key's snapshot, and restoring the
+  // snapshot would erase a reading that actually landed. Omitted, the snapshot stands,
+  // which is right for the single-key surfaces this shipped with.
+  | { readonly kind: "rollback"; readonly to?: V };
 
 export interface LedgerState<V> {
   readonly phase: LedgerPhase;
@@ -276,10 +283,12 @@ export function ledgerReducer<V>(
       const settlement = event.settlement;
       if (settlement.kind === "rollback") {
         // A refused or failed write must be immediately retryable: no cooldown, and
-        // the value returns to exactly what it was before the tap.
+        // the value returns to what it was before the tap — or to whatever the caller
+        // names, when a later write has already settled a newer truth over it.
         return {
           phase: "ready",
-          value: state.preTap as V,
+          value:
+            settlement.to !== undefined ? settlement.to : (state.preTap as V),
           preTap: null,
         };
       }

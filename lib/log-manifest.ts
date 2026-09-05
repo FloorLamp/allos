@@ -891,22 +891,37 @@ export const TAP_REACH = {
   "medication-refill": { kind: "today" },
 } as const satisfies Record<OneTapAffordance, TapReach>;
 
-// Is `date` inside `id`'s declared reach, given the profile's already-resolved today?
+// Is `date` inside a declared reach, given the profile's already-resolved today?
 // The offer-side twin of `isPastWriteAccepted`, and the ONE realization of every tap
 // bound: `isDoseDateAccepted` and `isMoodDateAccepted` are this function wearing their
 // names, and the practice queue consults it to decide that a capture has aged out.
 //
 // A `today` tap accepts only today; a `dated` surface accepts what any core would.
-export function isWithinTapReach(
-  id: OneTapAffordance,
+//
+// IT TAKES THE REACH, NOT AN AFFORDANCE ID, so a mount that is not a core can ask. The
+// day context (#5211) declares a reach that is nowhere in `TAP_REACH` — the sheet's —
+// and a consumer must never re-derive "may I offer this day". Without this door its
+// only option was to restate the arithmetic below, which is the second spelling the
+// day-context key (lib/day-context-key.ts) exists to prevent.
+export function isWithinReach(
+  reach: TapReach,
   todayStr: string,
   date: string
 ): boolean {
   if (!isRealIsoDate(date)) return false;
-  const reach = TAP_REACH[id];
   if (reach.kind === "dated") return isPastWriteAccepted(todayStr, date);
   if (reach.kind === "today") return date === todayStr;
   const diff = daysBetweenDateStr(todayStr, date);
   if (diff == null) return false;
   return diff <= reach.forward && -diff <= reach.back;
+}
+
+// The same question asked of a DECLARED affordance, which is how every shipped caller
+// asks it.
+export function isWithinTapReach(
+  id: OneTapAffordance,
+  todayStr: string,
+  date: string
+): boolean {
+  return isWithinReach(TAP_REACH[id], todayStr, date);
 }

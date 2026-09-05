@@ -39,7 +39,21 @@ import {
   type EventPhysiology,
 } from "../event-physiology";
 
-/** Two hours after the window's end. See the header for what this bounds. */
+/**
+ * Two hours after the window's end. See the header for what this bounds.
+ *
+ * IT IS BOTH BOUNDS, AND NO PIPELINE SPEED MOVES EITHER (#5127 review). It carries two
+ * rules that happen to be the same number: a RETRY window, which a quicker pipeline may
+ * not lower because the send already fires the moment coverage arrives; and a MOMENT
+ * rule — "a bulletin, not a finish note" — which a slower one may not raise. #5001 made
+ * this the default and the floor of a measured wait; the cap is this same constant, so
+ * the window the dispatch computes is exactly two hours for every profile.
+ *
+ * An earlier draft of this comment promised a quicker profile "its own, shorter answer".
+ * No profile ever got one, and a stale comment on THIS constant is how the narrowing
+ * defect got in the first time. The dispatch reads it through `arrivalWait`, for that
+ * model's vocabulary rather than for a measurement; nothing else may.
+ */
 export const PRACTICE_RECAP_BOUND_MIN = 120;
 
 export const PRACTICE_RECAP_MARKER_PREFIX = "notify_last_practice_recap_";

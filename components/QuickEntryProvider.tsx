@@ -711,6 +711,7 @@ function QuickEntryBody({
           customNames={data.customNames}
           rankedKeys={data.rankedKeys}
           temperatureUnit={data.temperatureUnit}
+          timeZone={data.timeZone}
           textIntakeEnabled={data.textIntakeEnabled}
           trackingIllness={data.trackingIllness}
           subjectProfileId={subjectProfileId}

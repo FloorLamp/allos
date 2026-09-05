@@ -151,6 +151,29 @@ describe("sleepWaitingDetail", () => {
     expect(sleepWaitingDetail(unmeasured, fmt)).toBeNull();
   });
 
+  // A TIME THE STATE WILL NOT BE WAITING AT IS NOT AN ETA (#5127 falsifying pass, F4).
+  // A measured 400-minute lag is longer than the 180-minute window this state runs for,
+  // so the tile used to promise "usually in by ~13:40" at 08:40 and then say the night
+  // had not synced at 10:01 — 220 minutes early. The measurement is dropped and the
+  // copy degrades to the plain wording, which is the same thing it says to a profile
+  // that measured nothing at all: a promise nobody can keep and no promise are the same
+  // information.
+  it("quotes nothing when the measurement outruns the window it waits for", () => {
+    const outruns = sleepWaitingState(
+      signals({ minutesOfDay: MIN(6, 30), arrivalLagMin: 400 })
+    )!;
+    expect(outruns.kind).toBe("waiting");
+    expect(outruns.etaMinutes).toBeNull();
+    expect(sleepWaitingDetail(outruns, fmt)).toBeNull();
+
+    // A measurement INSIDE the window is quoted exactly as before — this bound takes
+    // nothing away from the profiles the measurement is for.
+    const inside = sleepWaitingState(
+      signals({ minutesOfDay: MIN(6, 30), arrivalLagMin: 150 })
+    )!;
+    expect(inside.etaMinutes).toBe(WAKE + 150);
+  });
+
   it("names the last check on the not-synced state", () => {
     const s = sleepWaitingState(signals({ minutesOfDay: MIN(16) }))!;
     expect(sleepWaitingDetail(s, fmt)).toBe(

@@ -26,6 +26,7 @@ import {
 import { frozenNow, workerDbPath } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
 import { zonedDateParts } from "@/lib/date";
+import { VITAL_CANONICAL } from "@/lib/vitals-input";
 
 // The run's rotating instance timezone: `practice_logs.start_time` is a profile-LOCAL wall
 // clock, so the expected minute has to be read in the same zone the app writes it in.
@@ -1564,6 +1565,152 @@ test("the palette reaches the same two surfaces the sheet does", async ({
     ).toContainText("1 day this week");
   } finally {
     clearShellPracticeLogs();
+    await page.context().close();
+  }
+});
+
+// ONE ILLNESS PANEL, AND THE TAP CENSUS THAT ARGUED FOR IT (#4712 item 2).
+//
+// The issue's whole case is a count: logging a feverish child's temperature at 2 AM
+// was "profile switch → puck → Body segment → Log measurements → type → save", about
+// seven taps, and the profile switch is not optional — the sheet's measurements form
+// renders `unavailable` for a non-acting subject (#4932 invariant 2), so the Body path
+// cannot cross the household boundary at all. So this asserts the PATH, not that a
+// field renders: the taps are counted, the acting profile is read at the end, and the
+// row is read out of the store the app writes.
+//
+// WHAT THE COUNT ACTUALLY IS, measured here rather than claimed: SEVEN taps, of which
+// two are the subject chip. #4932's "Default" clause — an opener inside a
+// subject-scoped container passing that subject — is deferred, so nothing opens this
+// sheet already naming the child; when it does, the same journey is five. Either way
+// the switch is gone: the caregiver never leaves their own profile, which is the part
+// that cost a page load and the app's whole context.
+const FEVER_READING_F = "101.4";
+
+function clearProfileTemperatures(profileId: number): void {
+  const db = openDb();
+  try {
+    db.prepare(
+      "DELETE FROM medical_records WHERE profile_id = ? AND canonical_name = ?"
+    ).run(profileId, VITAL_CANONICAL.temperature.canonical);
+  } finally {
+    db.close();
+  }
+}
+
+function profileTemperatures(
+  profileId: number
+): { value_num: number; logged_via: string | null }[] {
+  const db = openDb();
+  try {
+    return db
+      .prepare(
+        `SELECT value_num, logged_via FROM medical_records
+          WHERE profile_id = ? AND canonical_name = ?`
+      )
+      .all(profileId, VITAL_CANONICAL.temperature.canonical) as {
+      value_num: number;
+      logged_via: string | null;
+    }[];
+  } finally {
+    db.close();
+  }
+}
+
+test("the sheet's Care segment takes a household member's fever, with no profile switch (#4712 item 2)", async ({
+  browser,
+}) => {
+  const ownerId = profileIdByName(MULTI_OWNER_PROFILE);
+  const sharedId = profileIdByName(MULTI_SHARED_PROFILE);
+  clearProfileTemperatures(ownerId);
+  clearProfileTemperatures(sharedId);
+  const page = await loginAs(
+    browser,
+    { username: E2E_LOGIN_MULTI, password: E2E_MEMBER_PASSWORD },
+    PHONE_CONTEXT
+  );
+  try {
+    await page.goto("/");
+
+    let taps = 0;
+    // The count is the point, so every tap goes through one counter. `client` names
+    // the pure toggles (the chip, the fold) that post nothing and must be waited on
+    // by what they reveal, not by a POST.
+    const tap = async (
+      target: Locator,
+      kind: "client" | "posts" = "posts"
+    ): Promise<void> => {
+      taps += 1;
+      if (kind === "client") await hydratedClick(page, target);
+      else await settledClick(page, target);
+    };
+
+    // Three: the dock puck, the Care segment, the "Log symptom" row. Counted as the
+    // helper's own three rather than re-spelled, so this census cannot drift from the
+    // path every other test in this file walks. The count is of the CANONICAL path —
+    // `openLogSheet` re-taps the puck past a pre-hydration swallow, and a retry is
+    // not a tap a person makes.
+    const overlay = await openQuickEntry(page, "log-symptom");
+    taps += 3;
+    const panel = overlay.getByTestId("quick-symptom-panel");
+    await expect(panel).toBeVisible();
+
+    // Two: name the child in the title-row chip (#4932). The Body segment's
+    // measurements form cannot do this at all — it refuses a non-acting subject —
+    // which is why the pre-#4712 path had to switch profiles first.
+    await tap(overlay.getByTestId("quick-entry-subject-chip"), "client");
+    await tap(
+      overlay
+        .getByTestId("quick-entry-subject-picker")
+        .getByTestId(`quick-entry-subject-option-${sharedId}`)
+    );
+    await expect(overlay.getByTestId("quick-entry-subject-chip")).toContainText(
+      MULTI_SHARED_PROFILE
+    );
+
+    // Two: open the fold and save. The value is typed, which is not a tap.
+    await tap(panel.getByTestId("temp-quick-toggle"), "client");
+    await panel.getByTestId("temp-quick-input").fill(FEVER_READING_F);
+    await tap(panel.getByTestId("temp-quick-save"));
+
+    // EXACT ON PURPOSE, AND IT WILL GO RED BY DESIGN. When #4932's Default clause
+    // lands — an opener inside a subject-scoped container passing that subject —
+    // nothing has to name the child here and this journey becomes five taps. That
+    // red is that issue succeeding, not this path breaking. The fix then is to
+    // re-count the journey and re-pin the number, never to loosen this to a bound:
+    // a `<=` would stop noticing a regression in either direction, which is the
+    // whole reason the census is written as a count.
+    expect(taps).toBe(7);
+
+    // THE READING LANDED ON THE CHILD, from the store rather than from the toast —
+    // and none landed on the caregiver, which is the failure this path used to take
+    // when a bar posted no subject.
+    await expect(async () => {
+      expect(profileTemperatures(sharedId)).toEqual([
+        { value_num: Number(FEVER_READING_F), logged_via: "quick-log" },
+      ]);
+    }).toPass({ timeout: 15_000 }); // topass-ok: the write is a Server Action the click does not resolve for us; the row is the settle signal
+    expect(profileTemperatures(ownerId)).toEqual([]);
+
+    // THE FEVER OFFER HAS A PRE-EPISODE SURFACE AT LAST (#4712 judgement 1, which
+    // shipped in #4961 and until now rendered only on episode-gated mounts). Not
+    // accepted here — this test is about the reading's path — but its presence is
+    // what makes the panel carry the illness statement whole.
+    await expect(panel.getByTestId("fever-offer")).toBeVisible();
+    await expect(panel.getByTestId("fever-offer-open-episode")).toBeVisible();
+
+    // AND THE CAREGIVER NEVER LEFT THEIR OWN PROFILE. The acting profile reads from
+    // the drawer's identity bar (#4102) — the whole saving of this journey is that
+    // this still says the caregiver.
+    await page.keyboard.press("Escape");
+    await expect(overlay).toHaveCount(0);
+    const drawer = await openMobileDrawer(page);
+    await expect(drawer.getByTestId("profile-identity-bar")).toContainText(
+      MULTI_OWNER_PROFILE
+    );
+  } finally {
+    clearProfileTemperatures(ownerId);
+    clearProfileTemperatures(sharedId);
     await page.context().close();
   }
 });
