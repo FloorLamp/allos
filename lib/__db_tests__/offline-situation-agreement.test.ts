@@ -19,24 +19,11 @@
 // take it or skip it on that. The household card is the same shape one seat over — a
 // caregiver deciding whether to go and ask. Neither is a display divergence.
 //
-// ── THE HOUSEHOLD HALF IS CALLED, NOT SCANNED (second falsifying pass) ───────
-// The card loop assembled its day context inline in the page, so the only guard
-// available was a source scan of `page.tsx`. Two mutants walked through it: a SECOND
-// `getEffectiveActiveSituations(profileIds[0], day)` call unioned in below the pinned
-// one — scoring every card partly against the first accessible profile's situations —
-// and a comment naming the reader with its arguments, which satisfied the positive
-// assertion on its own. Both were byte-identical green across the whole db tier.
-//
-// The defect they demonstrate is a COMPOSITION one: two correctly scoped readers, with
-// one profile's honest answer handed into another profile's context. `profile-scoping`
-// and `scoping` both ask whether a READER is scoped, so neither can see it, and no
-// amount of scanning holds a shape whose vectors are "add a call" and "add a comment".
-// `intakeAdherenceOn(profileId, date)` in `lib/queries/household.ts` is the seam that
-// does: the subject and the day are its arguments, and the cases below call it.
-//
 // Fixtures are 100% synthetic (a throwaway per-file DB via setup.ts). No AI, no network.
 
 import { describe, it, expect } from "vitest";
+import { createProfile, seedActor } from "@/lib/__action_tests__/harness";
+import HouseholdPage from "@/app/(app)/household/page";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { setTimezone } from "@/lib/settings";
@@ -230,5 +217,62 @@ describe("the household card and the offline schedule agree (#5167)", () => {
 
     expect(intakeAdherenceOn(p, today(p))).toEqual({ taken: 0, due: 1 });
     expect(intakeAdherenceOn(p, rough)).toEqual({ taken: 0, due: 0 });
+  });
+});
+
+describe("the /household card scores each member against their own day (#5167)", () => {
+  // THE PAGE'S OWN LOOP, RENDERED — not a rebuild of it, and not a scan of it.
+  //
+  // The earlier round pinned `intakeAdherenceOn` and left the page's CALL observed by
+  // nothing, so two one-token mutants shipped byte-identical green across the whole db
+  // tier: swapping the card's subject to the first accessible profile, and reverting the
+  // household half of #5167 outright. The comment that justified this said there was
+  // "nothing for a test to call" because the loop is inline in a page. That was FALSE,
+  // and in-tree: `manual-sleep-window.test.ts` renders `SleepPage()` in this directory,
+  // and `dashboard-render-harness.ts` loads any App Router page under `app/`.
+  //
+  // So this awaits the page's own server component and reads the cards it built. It
+  // costs one render and it is the only thing in the suite that can see whether
+  // /household asks the question at all.
+  function cardsOf(
+    tree: unknown
+  ): { name: string; due: number; taken: number }[] {
+    const out: { name: string; due: number; taken: number }[] = [];
+    const walk = (node: unknown): void => {
+      if (Array.isArray(node)) return void node.forEach(walk);
+      if (node == null || typeof node !== "object") return;
+      const rec = node as Record<string, unknown>;
+      const profile = rec.profile as { name?: string } | undefined;
+      const adherence = rec.adherence as
+        { taken?: number; due?: number } | undefined;
+      // Keyed on the PAIR rather than on serialization order, so a reordered card
+      // model cannot quietly stop matching.
+      if (profile?.name && adherence && typeof adherence.due === "number")
+        out.push({
+          name: profile.name,
+          taken: adherence.taken ?? -1,
+          due: adherence.due,
+        });
+      for (const value of Object.values(rec)) walk(value);
+    };
+    walk(tree);
+    return out;
+  }
+
+  it("holds one member's dose for THEIR rough night, not another member's", async () => {
+    const { login, profile: rough } = seedActor({ profileName: "Rough Night" });
+    const rested = createProfile("Slept Fine", login.id);
+    for (const id of [rough.id, rested.id]) {
+      setTimezone(id, "UTC");
+      seedItem(id, "Magnesium", "paused-by");
+    }
+    seedRoughNight(rough.id);
+
+    const cards = cardsOf(JSON.parse(JSON.stringify(await HouseholdPage())));
+    const byName = Object.fromEntries(cards.map((c) => [c.name, c]));
+    // The rough sleeper's own derived pause holds their dose; the rested member's
+    // stands. A subject swap makes these two agree, which is the whole assertion.
+    expect(byName["Rough Night"]).toMatchObject({ taken: 0, due: 0 });
+    expect(byName["Slept Fine"]).toMatchObject({ taken: 0, due: 1 });
   });
 });

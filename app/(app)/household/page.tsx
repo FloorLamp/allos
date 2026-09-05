@@ -87,9 +87,7 @@ export default async function HouseholdPage() {
     const strengthTrainingRelevant = isStrengthTrainingRelevant(age);
 
     // Today's intake adherence (x/y): due doses honored via isDueOn, and the SAME
-    // effective situations the member's own page uses (#5167) — assembled in
-    // `lib/queries/household.ts` rather than here, so the subject and the day are a
-    // function's arguments that a test can pin rather than a shape only a scan can read.
+    // effective situations the member's own page uses (#5167).
     const adherence = intakeAdherenceOn(pid, day);
 
     const relevantRecent = trainingRelevant

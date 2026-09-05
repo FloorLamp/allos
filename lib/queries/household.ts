@@ -4,21 +4,7 @@
 // NO NEW SQL LIVES HERE. Every fact is asked through the reader its own domain already
 // owns, so each statement behind this module is already profile-scoped and the card
 // cannot disagree with the surfaces it reports on. `lib/household.ts` stays pure: it is
-// handed the raw results, exactly as its own header says.
-//
-// ── WHY THE SIX LINES CAME OUT OF THE PAGE (#5306 falsifying pass, second round) ──
-// /household's card loop assembled this inline, so there was nothing for a test to call
-// and the only guard available was a source scan of the page. Two passes ran at that
-// scan and both got through it: one added a SECOND call below the pinned one, scoring
-// every card partly against `profileIds[0]`'s situations, and the other satisfied its
-// positive assertion with a comment naming the reader. Both shipped green through the
-// whole db tier.
-//
-// The defect they demonstrate is a composition one — two correctly scoped readers, one
-// profile's honest answer handed into another profile's context — which is a layer above
-// where `profile-scoping.test.ts` and `scoping.test.ts` look, and it is not a shape a
-// scan can hold. A named function is, so this is one: the subject and the day are its
-// arguments, and a test that calls it pins them by behaviour.
+// handed the raw results, and this module is the fetching half its header describes.
 
 import { getActivitiesByDate } from "./training/activities";
 import { getIntakeItems, getIntakeDoses } from "./intake/schedule";
@@ -40,13 +26,22 @@ import { intakeAdherenceToday, type Adherence } from "../household";
  * resolves the accessible set once and calls this per member.
  */
 export function intakeAdherenceOn(profileId: number, date: string): Adherence {
+  const activeItemById = new Map(
+    getIntakeItems(profileId)
+      .filter((item) => item.active)
+      .map((item) => [item.id, item])
+  );
+  // NOTHING TO SCORE, NOTHING TO GATHER (#5306 falsifying pass, third round, cost).
+  // The situation resolver reads a profile's whole derived history — measured at ~8ms
+  // against ~24µs for the rest of this function — and `/household` pays it once per
+  // CARD. A member with no active intake item has no dose for a situation to hold or
+  // trigger, so that gather can only ever produce `{0, 0}`: a growth-tracked child or
+  // an unfinished profile in a caregiver's list was paying eight milliseconds for an
+  // answer that is fixed. Returning here is both the cheaper and the smaller code.
+  if (activeItemById.size === 0) return { taken: 0, due: 0 };
   return intakeAdherenceToday(
     getIntakeDoses(profileId),
-    new Map(
-      getIntakeItems(profileId)
-        .filter((item) => item.active)
-        .map((item) => [item.id, item])
-    ),
+    activeItemById,
     {
       date,
       isWorkoutDay: getActivitiesByDate(profileId, date).length > 0,
