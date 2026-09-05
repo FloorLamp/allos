@@ -283,6 +283,48 @@ describe("detectedWorkoutEnd", () => {
     ).toBe(at(90));
   });
 
+  // TWO EFFORTS IN ONE TRACE (#5289). Every fixture above holds a single effort, which
+  // is why "the effort that contains the start" and "the last elevated minute of
+  // whatever you were handed" agreed for as long as they did — the caller was bounding
+  // the trace, and the divergence was unobservable in this suite. These two are the
+  // trace that tells them apart: the answer moves by more than an hour between them.
+  function twoEfforts(): ExertionSample[] {
+    const out: ExertionSample[] = [];
+    minutes(out, 0, 30, 55);
+    minutes(out, 30, 90, 120); // the session
+    minutes(out, 90, 130, 55); // forty minutes of rest, longer than the recovery
+    minutes(out, 130, 160, 130); // a later run, a different effort
+    minutes(out, 160, 200, 55);
+    return out;
+  }
+
+  it("ends the effort the start is in, not a later one on the same trace", () => {
+    // The morning session ended at 09:30 and the evening run is not its tail. Taking
+    // the last elevated minute of the whole trace writes a sixty-minute session as a
+    // two-and-a-half-hour one, unattended.
+    expect(
+      detectedWorkoutEnd({
+        ...BASE,
+        samples: twoEfforts(),
+        startedAt: at(30),
+        lastSetAt: null,
+      })
+    ).toBe(at(90));
+  });
+
+  it("ends the LATER effort when that is the one the start is in", () => {
+    // The same trace, read for a row that began in the second effort — so the rule is
+    // "the effort containing the start" rather than "the first effort in the trace".
+    expect(
+      detectedWorkoutEnd({
+        ...BASE,
+        samples: twoEfforts(),
+        startedAt: at(130),
+        lastSetAt: null,
+      })
+    ).toBe(at(160));
+  });
+
   it("says nothing for a bare wrist — no minutes past the start", () => {
     // The 45-minute stale suggest stays the fallback; the trace decides or nothing does.
     expect(

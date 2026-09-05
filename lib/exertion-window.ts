@@ -191,6 +191,47 @@ export function exertionWindows(input: ExertionWindowInput): ExertionSpan[] {
 }
 
 /**
+ * The first effort in an ordered trace, and the quiet that closes it — nothing after.
+ *
+ * The cut is made where THIS FUNCTION'S OWN CALLER would already have declared an end:
+ * `recoveryMs` of quiet following an elevated minute, the same threshold `detectedWorkoutEnd`
+ * uses to accept a candidate. So it introduces no second judgment and cannot move a
+ * candidate that would have been chosen — the samples before the cut are unchanged, and
+ * the samples after it could only ever have OVERRIDDEN that candidate with a later
+ * effort's. A trace holding one effort is returned whole.
+ *
+ * Coverage is deliberately not re-checked here. A sparse quiet stretch may cut earlier
+ * than `quiet` would accept, and that direction is safe: a shorter trace can only make
+ * the detector refuse to answer, never answer wrongly.
+ *
+ * `samples` must already be in instant order — every caller reaches this through
+ * `sorted`. Walking an unsorted array would make the answer depend on the read's order,
+ * and a trace whose instants disagree with its array order is exactly what a
+ * mis-resolved zone produces.
+ */
+function effortFrom(
+  samples: readonly ExertionSample[],
+  ceilingBpm: number,
+  recoveryMs: number
+): ExertionSample[] {
+  let seenElevated = false;
+  let quietFrom: number | null = null;
+  for (let i = 0; i < samples.length; i++) {
+    const sample = samples[i];
+    if (sample.bpm > ceilingBpm) {
+      seenElevated = true;
+      quietFrom = null;
+      continue;
+    }
+    if (!seenElevated) continue;
+    if (quietFrom == null) quietFrom = sample.at;
+    else if (sample.at - quietFrom >= recoveryMs)
+      return samples.slice(0, i + 1);
+  }
+  return [...samples];
+}
+
+/**
  * The END an open row should adopt, or null when the trace does not say.
  *
  * Reader 1 of the detector (#5113). "Open" is the ROW's shape rather than the editor's
@@ -202,6 +243,14 @@ export function exertionWindows(input: ExertionWindowInput): ExertionSpan[] {
  * not reach the resting range for most people, and when it does, the next set reopens
  * the session — so a set on the far side of the candidate is proof the session had not
  * ended there. That is the one rule keeping this from finishing somebody mid-workout.
+ *
+ * ── THE EFFORT THAT CONTAINS THE START, AND NOTHING AFTER IT ─────────────────
+ * "The effort that contains the start" is the whole of the promise, and the loop below
+ * used to take the last elevated minute of EVERYTHING it was handed. Handed a day, an
+ * 08:00–08:40 session with an 18:00 run on it was answered 19:00: twelve hours of
+ * "strength training", written unattended. A caller can bound its own gather, but the
+ * segmenting is this function's contract rather than the caller's — so the cut is made
+ * here, and a caller may hand over as many days as it likes.
  */
 export function detectedWorkoutEnd(input: {
   samples: readonly ExertionSample[];
@@ -212,9 +261,13 @@ export function detectedWorkoutEnd(input: {
   /** The newest set's instant on this row, when there is one. */
   lastSetAt: number | null;
 }): number | null {
-  const samples = sorted(input.samples).filter((s) => s.at >= input.startedAt);
-  if (samples.length === 0) return null;
   const recovery = exertionRecoveryMin(input.usualRecoveryMin) * MINUTE_MS;
+  const samples = effortFrom(
+    sorted(input.samples).filter((s) => s.at >= input.startedAt),
+    input.ceilingBpm,
+    recovery
+  );
+  if (samples.length === 0) return null;
   const last = samples[samples.length - 1].at + MINUTE_MS;
 
   // The newest elevated minute is where this session ended, if it ended at all — an

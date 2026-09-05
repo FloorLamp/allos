@@ -445,14 +445,14 @@ describe("what a later write does to a detected end (#5212 falsifying pass)", ()
   // the same rule its `est_calories` comment spells out. So its next autosave nulls the
   // end the sweep wrote. Fixing that means either a compare-and-set on the activity save
   // or an explicit-clear contract between the form and the action, both of which change
-  // every activity edit; it is #5194's to settle, not this sweep's to bolt on.
+  // every activity edit; it is #5292's, not this sweep's to bolt on.
   //
-  // WHAT THIS PIN IS FOR is the second half, which the pass found and which the trace
+  // WHAT THIS PIN IS FOR is the second half, which the pass found and which the effort
   // bound closes: after such a clobber the row must not be finished AGAIN at some later
   // instant. The clobber's own `updated_at` is newer than the candidate, so the save
-  // stamp cancels it, and the trace bound stops a later effort from offering a candidate
-  // beyond it. The row stays open for the stale suggest, which is the degraded outcome
-  // and the safe one.
+  // stamp cancels it, and `detectedWorkoutEnd`'s own effort bound (#5289) stops a later
+  // effort from offering a candidate beyond it. The row stays open for the stale
+  // suggest, which is the degraded outcome and the safe one.
   it("is not finished a second time after a later write clears the end", () => {
     const p = newProfile("DetEndClobber");
     seedRestingHr(p, 60);

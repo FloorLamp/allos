@@ -25,6 +25,15 @@
 // that ended yesterday is not a reminder, and `isPostWorkoutReady` still opens the item
 // at the scheduled slot.
 //
+// ── IT WRITES AND SAYS NOTHING, AND THAT IS #5291 ───────────────────────────
+// #5194's AC asks the finish to SEND, carrying time-correction chips so a wrong end is
+// one tap to move. This sweep does not, and the cost is not only silence: a finished
+// row is no longer `active`, so the stale suggest that used to carry Finish/Discard
+// stops reaching it — the sweep takes away the one message a person could have argued
+// with. Filed as #5291 rather than bolted on here, because the chip family it belongs
+// to (`lib/notifications/telegram-time-correction.ts`) corrects a burst of ledger rows
+// and this corrects one row's end, which is a design decision and not a wiring job.
+
 // ── THE TRACE DECIDES, NEVER THE CLOCK ───────────────────────────────────────
 // With no HR minutes past the start, nothing happens and the stale suggest stays as the
 // fallback for a bare wrist. A wrist that comes off mid-session reads as absence rather
@@ -64,11 +73,7 @@
 import { db } from "./db";
 import { parseUtcSql, shiftDateStr, zonedWallTimeToUtc } from "./date";
 import { getTimezone } from "./settings/display";
-import {
-  detectedWorkoutEnd,
-  exertionRecoveryMin,
-  type ExertionSample,
-} from "./exertion-window";
+import { detectedWorkoutEnd, type ExertionSample } from "./exertion-window";
 import { finishWorkoutSession } from "./workout-finish";
 import { isCompletedSessionRow } from "./workout-presence";
 import { getHrInstantsInRange } from "./queries/metrics";
@@ -162,62 +167,6 @@ function openWorkoutRows(profileId: number): OpenWorkoutRow[] {
 }
 
 /**
- * THE EFFORT THAT CONTAINS THE START, and nothing after it (#5212 falsifying pass).
- *
- * `detectedWorkoutEnd`'s doc promises "the last elevated minute of the effort that
- * contains the start". Its loop takes the last elevated minute of everything it is
- * handed, and the gather was handing it two whole days — so an evening run became the
- * end of a morning session. A 08:00–08:40 session with an 18:00 run on the same day was
- * written as ending at 19:00: **twelve hours of "strength training"**, unattended, and
- * worse than the hour-late tap this module exists to replace. Its pure fixtures only
- * ever feed a single-effort trace, so the divergence had never been observable.
- *
- * The cut is made where the DETECTOR ITSELF would already have declared an end: after
- * `recovery` minutes of quiet following an elevated minute. That is the same threshold
- * it uses to accept a candidate, so this introduces no new judgment and cannot move a
- * candidate the detector would have chosen — the samples before the cut are unchanged
- * and the samples after it could only ever have OVERRIDDEN that candidate with a later
- * effort's. A trace with one effort is returned whole.
- *
- * Coverage is deliberately not re-checked here. A sparse quiet stretch may cut earlier
- * than `quiet()` would accept, and that direction is safe: a short trace can only make
- * the detector refuse to answer, never answer wrongly.
- *
- * The divergence between that docblock and that loop is #5289 — a lane does not get to
- * redefine a landed contract, and this gather does not need it to. If that issue makes
- * the loop honour its doc, this bound becomes redundant and can go.
- */
-function effortFromStart(
-  samples: readonly ExertionSample[],
-  ceilingBpm: number,
-  recoveryMs: number,
-  startedAt: number
-): ExertionSample[] {
-  // SORTED HERE, not assumed. `getHrInstantsInRange` already answers in instant order,
-  // so this is a no-op in production — but walking the array's own order would make
-  // this function's answer depend on the read's, and a trace whose instants disagree
-  // with its array order is exactly what a mis-resolved zone produces. Reading it in
-  // array order silently masked that case.
-  const ordered = [...samples].sort((a, b) => a.at - b.at);
-  let seenElevated = false;
-  let quietFrom: number | null = null;
-  for (let i = 0; i < ordered.length; i++) {
-    const sample = ordered[i];
-    if (sample.at < startedAt) continue;
-    if (sample.bpm > ceilingBpm) {
-      seenElevated = true;
-      quietFrom = null;
-      continue;
-    }
-    if (!seenElevated) continue;
-    if (quietFrom == null) quietFrom = sample.at;
-    else if (sample.at - quietFrom >= recoveryMs)
-      return ordered.slice(0, i + 1);
-  }
-  return ordered;
-}
-
-/**
  * Finish every open workout whose heart rate says it already ended.
  *
  * Returns how many rows were finished. Idempotent: a finished row is no longer
@@ -259,13 +208,11 @@ export function finishDetectedWorkouts(profileId: number): number {
       profileId,
       priorEventWindows(profileId, row.type, { date: row.date, id: row.id })
     );
+    // THE WHOLE WINDOW, HANDED OVER WHOLE. `detectedWorkoutEnd` is bounded to the effort
+    // that contains the start — its own contract (#5289), not something this gather
+    // arranges by feeding it a narrow slice. Two days go in; one effort comes back.
     const end = detectedWorkoutEnd({
-      samples: effortFromStart(
-        samples,
-        ceiling,
-        exertionRecoveryMin(recovery) * 60_000,
-        startedAt.getTime()
-      ),
+      samples,
       ceilingBpm: ceiling,
       usualRecoveryMin: recovery,
       startedAt: startedAt.getTime(),
