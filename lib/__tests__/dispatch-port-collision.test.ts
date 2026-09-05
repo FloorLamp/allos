@@ -16,7 +16,7 @@
 // Measured on 2026-08-23: `--port-base 7600` was passed for a live e2e lane while
 // a retired-but-unclosed dispatch still held 7600 in the ledger. Nothing
 // complained. Both agents drive Playwright on their band, so had the first lane's
-// agent still been alive the two would have shared worker ports — and the failure
+// agent still been alive the two would have shared orchestrator ports — and the failure
 // that produces is not a clean "address in use", it is one suite's browser
 // answering another's navigation, which reads as a flake in code neither lane
 // touched.
