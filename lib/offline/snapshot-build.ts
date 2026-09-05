@@ -109,9 +109,10 @@ function buildDoseSchedule(
   // `pause_situation`), and OMITTED one whose `situational` trigger the app derived
   // rather than the person declaring.
   //
-  // Offline is a surface a person ACTS on, so that is a divergence about what was owed
-  // rather than about what is shown: they tap what the snapshot offered and come back
-  // online to a schedule that disagrees the dose was ever due.
+  // /offline is what someone reads with NO SIGNAL, and it renders these as rows with no
+  // control on them — so the acting happens in the world rather than in the app. This is
+  // what tells a person whether a dose is owed when nothing else can, and they take it or
+  // skip it on that. A divergence about what was owed, never about what is shown.
   //
   // NO SECOND ENGINE, which is this module's own rule: `getEffectiveActiveSituations` is
   // the seam every one of those surfaces already reads, asked for the SAME subject and

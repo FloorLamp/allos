@@ -13,10 +13,11 @@
 // ways, which is why each gets its own case here: a dose the page HOLDS for a derived
 // pause was offered, and a dose whose `situational` trigger the app DERIVED was omitted.
 //
-// OFFLINE IS A SURFACE A PERSON ACTS ON. This is a divergence about what was owed, not
-// about what is displayed: they tap what the snapshot offered and come back online to a
-// schedule that says the dose was never due. The household card is read by a caregiver
-// deciding whether to go and ask.
+// OFFLINE IS WHAT SOMEONE READS WITH NO SIGNAL. /offline renders the schedule as rows
+// with no control on them, so the acting happens in the world rather than in the app:
+// this is what tells a person whether a dose is owed when nothing else can, and they
+// take it or skip it on that. The household card is the same shape one seat over — a
+// caregiver deciding whether to go and ask. Neither is a display divergence.
 //
 // Fixtures are 100% synthetic (a throwaway per-file DB via setup.ts). No AI, no network.
 
@@ -137,8 +138,8 @@ function offlineDoseNames(profileId: number): string[] {
 // What this helper pins is the ANSWER: given the effective situations, the card's x/y
 // and the snapshot's rows name the same doses. What it cannot pin is that the page asks
 // for them, because it rebuilds the page's context rather than calling it. That one bit
-// is the source scan's, which is the same trade `detected-finish-tick-order.test.ts`
-// makes for the same reason.
+// is the source scan's — the shape `dirty-seed-shape.test.ts` already uses in this
+// directory for a claim no runtime call can reach.
 /** The card's x/y, built from the same reads /household's card loop makes. */
 function householdAdherence(profileId: number): { taken: number; due: number } {
   const day = today(profileId);
@@ -230,17 +231,23 @@ describe("the household card and the offline schedule agree (#5167)", () => {
 
 describe("the /household card asks for the effective situations (#5167)", () => {
   // A SOURCE SCAN, because the card loop is inline in the page and there is nothing to
-  // call — see the note above `householdAdherence`. The one thing that can regress is
-  // the reader the page names, and that is exactly what this reads. It is deliberately
-  // narrow: it asserts which reader the page CALLS, not how the file is laid out, so an
-  // unrelated edit cannot red it. The name appearing in the comment that explains the
-  // change is not a regression, which is why this looks for the open paren.
-  it("does not call the declared-only reader", () => {
+  // call — see the note above `householdAdherence`. It is deliberately narrow: it reads
+  // the CALL, not how the file is laid out, so an unrelated edit cannot red it. The name
+  // appearing in the comment that explains the change is not a regression, which is why
+  // the negative assertion looks for the open paren.
+  //
+  // THE ARGUMENTS ARE PART OF THE CLAIM, not just the reader's name (#5306 falsifying
+  // pass, finding 2). Pinning the name alone let a subject swap ship green through the
+  // whole db tier: every card scored against the FIRST accessible profile's situations —
+  // a caregiver's card for one member showing another's rough night holding their doses.
+  // The loop already binds `pid` and `day`, so asking for them by name costs nothing and
+  // closes the half the answer-level case cannot see.
+  it("calls the effective resolver for the card's own subject and day", () => {
     const source = readFileSync(
       join(process.cwd(), "app/(app)/household/page.tsx"),
       "utf8"
     );
-    expect(source).toContain("getEffectiveActiveSituations");
+    expect(source).toContain("getEffectiveActiveSituations(pid, day)");
     expect(source).not.toMatch(/getActiveSituations\(/);
   });
 });
