@@ -481,7 +481,7 @@ const config = [
         {
           group: ["**/muscle-coverage"],
           message:
-            "Mobility coverage must not be sourced from the strength coverage engine — it would answer \"trained?\" instead of \"mobilized?\" (#482).",
+            'Mobility coverage must not be sourced from the strength coverage engine — it would answer "trained?" instead of "mobilized?" (#482).',
         },
       ]),
       "no-restricted-syntax": [
