@@ -99,6 +99,13 @@ export default function DoseConfirmButton({
   async function confirm(fd: FormData) {
     let result: DoseConfirmResult;
     try {
+      // INERT ON THE DASHBOARD TODAY, AND A TRAP THE DAY IT IS NOT. The attention row
+      // mounts this inside the dashboard's `dashboard-widget` region, so that is what
+      // the stamp says — while the row is semantically `dashboard-hero`, "a confirm on
+      // the attention card". It does not matter yet because `markAttentionDose` names
+      // its own surface and never reads the body. It starts mattering the moment that
+      // action is branded and reads the post: this call site must then declare
+      // `dashboard-hero` rather than inherit the region.
       result = await action(stampLoggedVia(fd));
     } catch {
       announce({

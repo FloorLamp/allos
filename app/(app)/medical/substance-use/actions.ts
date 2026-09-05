@@ -217,7 +217,14 @@ export async function logSubstanceUnitAction(
 // the client says nothing (an older build, or a form that never learned to declare
 // itself). The parse refuses anything outside the web subset, so a forged field cannot
 // dress a browser tap up as a Telegram one.
-function webOrigin(formData: FormData): WebLoggedVia {
+//
+// IT TAKES THE STAMPED PAYLOAD, which is what makes "every action that reads a surface
+// is branded" structural in this file rather than a fact somebody has to re-census.
+// This helper is the reason the miss was possible: three actions read the origin
+// THROUGH IT rather than by naming `parseWebOrigin`, so a sweep keyed on that name saw
+// one of the three. Narrowed here, a fourth caller cannot compile until it is branded
+// too — the census's job, done by the compiler.
+function webOrigin(formData: StampedFormData): WebLoggedVia {
   return parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page");
 }
 
@@ -284,7 +291,7 @@ export type TrackSubstanceResult =
   | { ok: false; error: string };
 
 export async function trackSubstanceUseAction(
-  formData: FormData
+  formData: StampedFormData
 ): Promise<TrackSubstanceResult> {
   const { profile } = await requireWriteAccess();
   if (isMinor(getProfileAge(profile.id)))
@@ -403,7 +410,7 @@ function statedDrinkInstant(
 // Historical add/correction (#2009). The action contract never names the backing
 // store; the auth-blind core dispatches from the validated substance catalog.
 export async function addSubstanceDailyTotalAction(
-  formData: FormData
+  formData: StampedFormData
 ): Promise<SubstanceHistoryWriteResult> {
   const { profile } = await requireWriteAccess();
   if (isMinor(getProfileAge(profile.id))) return { kind: "not-found" };
