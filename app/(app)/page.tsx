@@ -58,7 +58,8 @@ import {
 } from "@/lib/coaching";
 import { collectCoachingFindings } from "@/lib/rule-findings";
 import { pickNextAppointment } from "@/lib/household";
-import { goalPct, isGoalLive } from "@/lib/outcome-goals";
+import { isGoalLive } from "@/lib/outcome-goals";
+import { goalProgressStatement } from "@/lib/goal-facts";
 import {
   frequencyPaceLabel,
   frequencyScopeLabel,
@@ -2083,7 +2084,15 @@ async function renderDashboard(
   sourceOrder += coachingRecs.length;
 
   goals.forEach((goal, index) => {
-    const pct = goalPct(goal, goalProgress.get(goal.id));
+    // ENDPOINTS FIRST, PERCENT AS THE ANNOTATION (#5198). "Resting HR goal · 27%"
+    // asked the reader 27% of the way from WHAT to what; the row states
+    // "63 → 58 bpm · 27%" through the one goal-progress formatter every surface
+    // shares, so the percent has something to be a percent OF.
+    const statement = goalProgressStatement(
+      goal,
+      goalProgress.get(goal.id),
+      units.weightUnit
+    );
     add(
       progressCandidates.goal(
         { subject: profileSubject, sourceOrder: sourceOrder + index },
@@ -2092,7 +2101,8 @@ async function renderDashboard(
       ),
       {
         label: goal.title,
-        value: pct == null ? "In progress" : `${pct}%`,
+        value: statement.value,
+        detail: statement.percent ?? undefined,
         href: "/training?tab=goals",
         presence: "current",
       }

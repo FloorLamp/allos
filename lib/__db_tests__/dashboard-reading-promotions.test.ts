@@ -4,6 +4,11 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { recentPRs } from "@/lib/coaching";
+import { progressCandidates } from "@/lib/dashboard-candidates";
+import {
+  rankDashboardCandidates,
+  type DashboardCandidate,
+} from "@/lib/dashboard-relevance";
 import {
   clinicalResultBecameNotable,
   outcomeGoalProgressChanged,
@@ -16,7 +21,10 @@ import {
   getOutcomeGoals,
   getStrengthByExercise,
 } from "@/lib/queries";
-import { setTimezone } from "@/lib/settings";
+import { logPracticeSession } from "@/lib/practice-log";
+import { getFrequencyTargetProgress } from "@/lib/queries";
+import { setTimezone, setWeekStart, type WeekStart } from "@/lib/settings";
+import { weekdayOfDateStr } from "@/lib/date";
 
 const NOW = new Date("2026-06-17T12:00:00Z");
 
@@ -72,6 +80,66 @@ describe("dashboard reading-promotion gathers (#3137)", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  // THE MOMENT THE PROMOTION USED TO FIRE (#4756 / #5064), driven through a real
+  // write rather than a steady-state render — the receipt row the owner photographed
+  // appeared on the FIRST dashboard after the session was logged, and a fixture that
+  // only ever renders a settled week never visits that moment at all.
+  //
+  // The week is pinned to start today, so one session meets a 1x/week floor with six
+  // days still to run: `met` flips inside one render of the same week, which is the
+  // only shape in which a met-transition promotion could ever have been minted.
+  it("seats nothing in Now when a target is met by the write that meets it", () => {
+    const profileId = newProfile("dashboard-target-met-write");
+    const anchor = today(profileId);
+    setWeekStart(profileId, weekdayOfDateStr(anchor) as WeekStart);
+    db.prepare(
+      `INSERT INTO frequency_targets
+         (profile_id, scope_kind, scope_value, per_week, scope_identity, created_at)
+       VALUES (?, 'practice', 'Sauna', 1, 'sauna', ?)`
+    ).run(profileId, `${shiftDateStr(anchor, -30)} 08:00:00`);
+
+    const readingNow = () => {
+      const [progress] = getFrequencyTargetProgress(profileId);
+      return {
+        progress,
+        candidate: progressCandidates.targetProgress(
+          { subject: { scope: "profile", profileId }, sourceOrder: 0 },
+          progress.target.id,
+          !progress.met,
+          progress.pace === "behind"
+        ),
+      };
+    };
+    const placementsOf = (candidate: DashboardCandidate) =>
+      rankDashboardCandidates([candidate], {
+        activeProfileId: profileId,
+        minutesOfDay: 12 * 60,
+        today: anchor,
+        upcoming: [],
+      }).map(({ candidate: placed, lane }) => [placed.candidateId, lane]);
+
+    // The control, and it is the half that proves the assertion below can fail: an
+    // unmet target holds a real standing seat, so "no Now row" after the write is
+    // about the MET state rather than about this family having left the page.
+    const before = readingNow();
+    expect(before.progress.met).toBe(false);
+    expect(placementsOf(before.candidate)).toEqual([
+      [`target.weekly-progress:${before.progress.target.id}`, "standing"],
+    ]);
+
+    expect(logPracticeSession(profileId, "Sauna", anchor, "page").kind).toBe(
+      "logged"
+    );
+
+    const after = readingNow();
+    expect(after.progress.met).toBe(true);
+    expect(after.candidate.readingPromotion).toBeUndefined();
+    expect(after.candidate.rankReasons.changed).toBe(false);
+    expect(
+      placementsOf(after.candidate).filter(([, lane]) => lane === "now")
+    ).toEqual([]);
   });
 
   it("pairs each current clinical family with only its prior profile-scoped result", () => {
