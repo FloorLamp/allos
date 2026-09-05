@@ -1,7 +1,7 @@
 ---
 name: reconcile-tracker
 description: Reconcile the issue tracker and roadmap against main — verify each issue's citations, dependencies and status claims, patch only the factual drift, and flag everything that needs judgment. Use for a scheduled or on-demand tracker maintenance pass, never as a CI gate.
-allowed-tools: Read, Grep, Glob, Bash(npx tsx scripts/orchestration/reconcile-tracker.ts:*), Bash(npx tsx scripts/orchestration/reconcile-apply.ts:*), Bash(npx tsx scripts/orchestration/reconcile-labels.ts:*), Bash(npx tsx scripts/orchestration/reconcile-watermark.ts:*), Bash(git grep:*), Bash(git log:*), Bash(git show:*), Bash(git diff:*), mcp__github__issue_read, mcp__github__list_issues, mcp__github__search_issues, mcp__github__pull_request_read, mcp__github__list_pull_requests, mcp__github__search_code
+allowed-tools: Read, Grep, Glob, Bash(npx tsx scripts/orchestration/reconcile-tracker.ts:*), Bash(npx tsx scripts/orchestration/reconcile-apply.ts:*), Bash(npx tsx scripts/orchestration/reconcile-labels.ts:*), Bash(npx tsx scripts/orchestration/reconcile-watermark.ts:*), Bash(npx tsx scripts/orchestration/reconcile-run-summary.ts:*), Bash(git grep:*), Bash(git log:*), Bash(git show:*), Bash(git diff:*), mcp__github__issue_read, mcp__github__list_issues, mcp__github__search_issues, mcp__github__pull_request_read, mcp__github__list_pull_requests, mcp__github__search_code
 ---
 
 # Tracker reconciliation
@@ -172,31 +172,28 @@ Window: <previous watermark> → <this run>
 
 ## What was examined ← denominators FIRST
 
-## Patch candidates (n) ← grouped by kind, each with its computed correction
+## Patch candidates (n) ← by kind, each with its computed correction
 
 ## Couldn't verify (n) ← needs a human; say what you tried
 
 ## Verified clean (n)
 ```
 
-**Why denominators come first.** "0 findings across 223 citations" is a
-healthy tracker; "0 findings across 0 citations" is a broken run — and the
-clean-looking one is the one nobody investigates.
-
-A sharp drop in examined counts between runs IS the finding.
+**Why denominators come first.** "0 findings across 223 citations" is a healthy
+tracker; "0 findings across 0 citations" is a broken run, and the clean-looking
+one is the one nobody investigates. A sharp drop between runs IS the finding.
 
 ## Applying patches
 
 ```bash
-npx tsx scripts/orchestration/reconcile-apply.ts plan.json           # dry run
-npx tsx scripts/orchestration/reconcile-apply.ts plan.json --apply [--notify 123,456]
+npx tsx scripts/orchestration/reconcile-apply.ts plan.json          # dry run
+npx tsx scripts/orchestration/reconcile-apply.ts plan.json --apply \
+  [--notify 123,456] [--outcome apply.json]
 ```
 
-`plan.json` maps issue number → array of `AnchoredPatch`. Dry-run first,
-always: it re-reads every current body and reports which anchors still hold.
-
-It also lists which issues will get the announcement comment (a non-empty
-chain, or `--notify` because the dispatch is in flight).
+`plan.json` maps issue number → array of `AnchoredPatch`. Dry-run first: it
+re-reads every body, reports which anchors hold, and lists which issues get
+the announcement comment (a non-empty chain, or an in-flight `--notify`).
 
 **Never re-run a plan with `--apply` twice.** Several path refreshes contain
 their own anchor inside the replacement, so a second pass nests them. A
@@ -209,29 +206,35 @@ writing a longer anchor past it is the forbidden fuzzy fallback. Flag it.
 ## Applying label changes
 
 ```bash
-npx tsx scripts/orchestration/reconcile-labels.ts                    # dry run + worksheet
-npx tsx scripts/orchestration/reconcile-labels.ts --apply            # removals + priority
-npx tsx scripts/orchestration/reconcile-labels.ts --plan p.json --apply   # + your domain calls
+npx tsx scripts/orchestration/reconcile-labels.ts          # dry run + worksheet
+npx tsx scripts/orchestration/reconcile-labels.ts --apply  # removals + priority
+npx tsx scripts/orchestration/reconcile-labels.ts --plan p.json --apply
 ```
 
 It builds removal and priority work from the live tracker, takes domain adds
 only from `--plan`, re-reads each issue immediately before writing, and
 prints one line per write. Dry run first; never while another sweep runs.
 
-## Stamp the watermark — only after the report is read
+## Close the run — stamp, then record
 
 ```bash
-npx tsx scripts/orchestration/reconcile-watermark.ts stamp \
-  --evidence /tmp/reconcile-evidence.json --apply   # dry run without --apply
+npx tsx scripts/orchestration/reconcile-watermark.ts stamp --evidence ev.json
+npx tsx scripts/orchestration/reconcile-run-summary.ts --evidence ev.json
 ```
 
-Stamps the GATHER's own timestamp — nothing between gather and stamp escapes
-the next window. Refuses rewinds; the first apply creates the carrier issue.
+Both are dry runs until `--apply`; the summary also takes `--outcome
+apply.json`, the applier's own count of what landed. The stamp records the
+GATHER's timestamp, refuses rewinds, and on first apply makes the carrier.
+
+The summary appends ONE line to #865 (date, swept SHA, patched, flagged,
+boring) — a fact about the run, never a verdict, and defined in
+`docs/internals/tracker-reconciliation.md`. A rerun on it is refused.
 
 ## Scheduling
 
-Run weekly, or on demand after a heavy merge day. Deliberately NOT wired to
-a cron: an unattended pass that writes to the tracker needs its report read.
+Run weekly, or on demand after a heavy merge day. **The cron is not wired, by
+decision** (#865, ruling 2026-09-05): `npm run reconcile` is the schedule, and
+an unread cron is how a routine patches in a shape nobody sanctioned.
 
-An unread cron is how a routine starts patching in a shape nobody
-sanctioned. Wire it when the report has been boring three runs running.
+What lifts it: **three consecutive boring runs**, from the `Reconciliation
+run — …` lines on #865 — the only record a run happened — cited by the lane.

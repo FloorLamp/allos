@@ -697,6 +697,48 @@ describe("atomic dashboard placement", () => {
     ]);
   });
 
+  // ONE PLACEMENT PER WEEKLY TARGET (#5064). Its progress already reaches this page
+  // as the Standing `target.weekly-progress:<id>` reading, so the upcoming model's
+  // copy of the same fact mints NO candidate — which is why it opens no Ahead row
+  // and no fold entry either, rather than being hidden in one lane and left in the
+  // other. The appointment in the same fixture is the control: an ordinary
+  // week-banded item still projects, so what is asserted is the `weeklyTarget`
+  // declaration doing the work and not the horizon lane having gone quiet.
+  it("opens no dashboard lane for a weekly target's upcoming copy", () => {
+    const upcoming: UpcomingItem[] = [
+      {
+        key: "training:9",
+        domain: "training",
+        title: "Chest",
+        detail: "Weekly training target",
+        href: "/training",
+        dueDate: null,
+        band: "week",
+        dueText: "1/2 this week",
+        weeklyTarget: true,
+      },
+      {
+        key: "appt",
+        domain: "appointment",
+        title: "Checkup",
+        href: "/appointments",
+        dueDate: "2026-08-20",
+      },
+    ];
+    const candidates = attentionCandidates(subject, upcoming, "2026-08-18");
+    expect(candidates.map(({ candidateId }) => candidateId)).toEqual([
+      "attention.fact:appt",
+    ]);
+    expect(
+      rankDashboardCandidates(candidates, {
+        activeProfileId: 7,
+        minutesOfDay: 720,
+        today: "2026-08-18",
+        upcoming,
+      }).map(({ candidate, lane }) => [candidate.candidateId, lane])
+    ).toEqual([["attention.fact:appt", "ahead"]]);
+  });
+
   it("lets Standing keep a shared fact before Ahead projects the horizon", () => {
     const upcoming: UpcomingItem[] = [
       {

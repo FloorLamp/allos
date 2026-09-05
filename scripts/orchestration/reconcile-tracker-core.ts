@@ -230,6 +230,13 @@ export interface TrackerSnapshot {
 
 /** The repository, as data: what files exist and what is in them. */
 export interface RepoIndex {
+  /**
+   * The revision these files came from, as a full SHA. Required, not optional:
+   * an index is a snapshot, and a snapshot with no revision cannot say which
+   * `main` a citation was checked against. The run summary line (#865) prints
+   * it so a later reader can replay the exact tree the run swept.
+   */
+  readonly commit: string;
   /** Every tracked file, repo-relative, POSIX separators. */
   readonly files: readonly string[];
   /** File contents, or null when the path is not tracked. */
@@ -1214,6 +1221,8 @@ function deadPathDetail(index: RepoIndex, cited: string): string {
 
 export interface ReconcileEvidence {
   watermark: ReconcileWatermark;
+  /** The `main` SHA this run's claims were checked against (`RepoIndex.commit`). */
+  sweptCommit: string;
   totals: ReconcileTotals;
   findings: readonly ReconcileFinding[];
   docs: readonly DocsFinding[];
@@ -1420,7 +1429,15 @@ export function gatherEvidence(
 
   const labelFindings = checkLabelHygiene(snapshot.issues);
 
-  return { watermark, totals, findings, docs, labelFindings, verifiedClean };
+  return {
+    watermark,
+    sweptCommit: index.commit,
+    totals,
+    findings,
+    docs,
+    labelFindings,
+    verifiedClean,
+  };
 }
 
 const symbolCache = new WeakMap<RepoIndex, Map<string, boolean>>();
@@ -1482,6 +1499,10 @@ export function renderReport(evidence: ReconcileEvidence): string {
   lines.push(
     `Window: ${evidence.watermark.previous ?? "(unstamped — no lower bound)"} → ${evidence.watermark.current}`
   );
+  // The tree the claims below were checked against. The run summary line
+  // posted to #865 prints the same SHA, so the durable record and the report a
+  // human read can be matched to each other rather than merely believed.
+  lines.push(`Swept \`main\` at: ${evidence.sweptCommit}`);
   lines.push("");
   lines.push("## What was examined");
   lines.push("");
@@ -1571,4 +1592,175 @@ function renderBuckets(findings: readonly ReconcileFinding[]): string[] {
     out.push("");
   }
   return out;
+}
+
+// ---- The run summary line (#865, ruling 2026-09-05 11:50 UTC) --------------
+//
+// The cron stays unwired until the report has been boring three runs running;
+// `npm run reconcile` is the schedule until then. That condition used to be
+// unmeasurable, because NOTHING RECORDED THAT A RUN HAPPENED: no report is
+// committed, and with no watermark there is no history either. So each run now
+// appends ONE line to #865, and three consecutive boring ones are the evidence
+// the lane that wires the cron cites.
+//
+// A summary line is a FACT ABOUT A RUN, never a verdict on the tracker — the
+// same guardrail that keeps the routine from closing issues. It says what this
+// run examined and what it left for a reader; it does not say the tracker is
+// healthy, and "boring" is arithmetic (`flagged === 0`), not an opinion.
+//
+// WHY UNAPPLIED CANDIDATES COUNT AS FLAGGED. The obvious reading of "flagged"
+// is the report's `Couldn't verify` bucket, and it has a hole big enough to
+// drive the whole condition through: a run that gathers 474 patch candidates,
+// applies none of them and has an empty unverifiable bucket would print
+// `flagged 0` and read as boring. Drift nobody wrote back is still drift and
+// still a reader's job, so it is counted. Boring therefore means what the
+// ruling meant by it: the reader had nothing left to do.
+//
+// WHY THE TRUNCATION FLAG IS INSIDE THE BORING TOKEN AND NOT ONLY BESIDE IT.
+// Until the watermark carrier exists every run is unbounded, so its counts are
+// of the whole tracker rather than of a window, and the PR fetch stops at its
+// page cap (`prsExaminedTruncated`, #5311). Three "boring" runs assembled from
+// three clipped sweeps would satisfy the condition without anyone noticing —
+// which is exactly what the ruling warned about. A trailing clause does not
+// prevent that: a counter greps for the boring token and stops. So a truncated
+// run never renders a bare `boring: yes`; it renders `not established`, and the
+// clipped denominator is spelled out at the end of the same line as well.
+
+/**
+ * The ONE issue a summary line is ever posted to. Pinned here, as
+ * `WATERMARK_ISSUE_TITLE` is, so the writer's only reachable URL is this
+ * issue's comments collection and a source scan can say so.
+ */
+export const RUN_SUMMARY_ISSUE = 865;
+
+/**
+ * Every summary line opens with this. Stable on purpose: it is how a run finds
+ * its own earlier comment (never post twice for one run) and how the lane
+ * counting three boring runs finds all of them.
+ */
+export const RUN_SUMMARY_MARKER = "Reconciliation run —";
+
+/** One run, reduced to the facts the line states. */
+export interface RunSummary {
+  /** The GATHER's own stamp — this run's identity, and the line's date. */
+  ranAt: string;
+  /** The window's lower bound, or null when no watermark has ever been stamped. */
+  since: string | null;
+  /** The `main` SHA the run's claims were checked against. */
+  commit: string;
+  /** Patch candidates the gather proposed. */
+  candidates: number;
+  /** Drift the applier actually wrote back; the gather cannot know this. */
+  patched: number;
+  /** Candidates never written back — still drift, still a reader's job. */
+  candidatesUnapplied: number;
+  /** Findings the gather could not decide (`Couldn't verify`). */
+  couldntVerify: number;
+  /** Docs-contract mismatches. Flagged, never fixed. */
+  docs: number;
+  /** Label-hygiene findings. Flagged, never fixed. */
+  labels: number;
+  /** The four above, summed: what this run left a human. Zero ⇒ boring. */
+  flagged: number;
+  /** Merged PRs examined — a FLOOR, not a count, when `prsTruncated`. */
+  prsExamined: number;
+  /** The PR sweep stopped at its page cap: every count here is of a clipped window. */
+  prsTruncated: boolean;
+}
+
+/**
+ * `yes` only when the run left nothing for a reader AND swept a whole window.
+ * `not-established` is the third state the ruling's two-valued wording needs:
+ * zero flagged out of a clipped sweep is not evidence of a quiet tracker, it is
+ * evidence about the part that was fetched.
+ */
+export type BoringVerdict = "yes" | "no" | "not-established";
+
+export function boringVerdict(summary: RunSummary): BoringVerdict {
+  if (summary.flagged > 0) return "no";
+  return summary.prsTruncated ? "not-established" : "yes";
+}
+
+/**
+ * The gather's evidence plus the one number it cannot hold — how many patches
+ * the applier landed — reduced to the line's facts. Nothing is recomputed here
+ * that `renderReport` already computes; both read the same `ReconcileEvidence`.
+ */
+export function summarizeRun(
+  evidence: ReconcileEvidence,
+  patched: number
+): RunSummary {
+  if (!Number.isInteger(patched) || patched < 0) {
+    throw new Error(`patched must be a non-negative integer, got ${patched}`);
+  }
+  const candidates = evidence.findings.filter(
+    (f) => f.bucket === "changed"
+  ).length;
+  if (patched > candidates) {
+    // Not clamped: more patches landed than this gather ever proposed, which
+    // means the evidence and the apply outcome are from DIFFERENT runs. A
+    // clamp would render a tidy line about a run that never happened.
+    throw new Error(
+      `applied ${patched} patches but this evidence holds ${candidates} candidates — ` +
+        "the evidence and the apply outcome are from different runs"
+    );
+  }
+  const couldntVerify = evidence.findings.filter(
+    (f) => f.bucket === "unverifiable"
+  ).length;
+  const docs = evidence.docs.length;
+  const labels = evidence.labelFindings.length;
+  const candidatesUnapplied = candidates - patched;
+  return {
+    ranAt: evidence.watermark.current,
+    since: evidence.watermark.previous,
+    commit: evidence.sweptCommit,
+    candidates,
+    patched,
+    candidatesUnapplied,
+    couldntVerify,
+    docs,
+    labels,
+    flagged: candidatesUnapplied + couldntVerify + docs + labels,
+    prsExamined: evidence.totals.prsExamined,
+    prsTruncated: evidence.totals.prsExaminedTruncated,
+  };
+}
+
+/** Twelve characters replays a tree and still fits on one line. */
+const SHA_DISPLAY = 12;
+
+/** The line. One line — it is counted, and a counter reads line by line. */
+export function renderRunSummaryLine(summary: RunSummary): string {
+  const verdict = boringVerdict(summary);
+  const boring =
+    verdict === "not-established"
+      ? `boring: not established (flagged 0, but the PR sweep was truncated)`
+      : `boring: ${verdict}`;
+  const window = `window ${summary.since ?? "(unstamped — no lower bound)"} → ${summary.ranAt}`;
+  const prs = summary.prsTruncated
+    ? `merged PRs examined ≥${summary.prsExamined} (TRUNCATED: the sweep stopped at its page cap, so every count above is of a clipped window, not of the tracker)`
+    : `merged PRs examined ${summary.prsExamined}`;
+  return [
+    `${RUN_SUMMARY_MARKER} ${summary.ranAt}`,
+    `main \`${summary.commit.slice(0, SHA_DISPLAY)}\``,
+    `patched ${summary.patched}`,
+    `flagged ${summary.flagged} (unapplied candidates ${summary.candidatesUnapplied} · couldn't-verify ${summary.couldntVerify} · docs ${summary.docs} · labels ${summary.labels})`,
+    boring,
+    window,
+    prs,
+  ].join(" · ");
+}
+
+/**
+ * The comment body: the line, and the repo's standard trailer. The line stays
+ * ONE line so `RUN_SUMMARY_MARKER` finds exactly one per run.
+ */
+export function runSummaryComment(summary: RunSummary): string {
+  return [
+    renderRunSummaryLine(summary),
+    "",
+    "---",
+    "_Generated by [Claude Code](https://claude.ai/code)_",
+  ].join("\n");
 }
