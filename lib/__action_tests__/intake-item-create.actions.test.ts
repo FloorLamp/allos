@@ -227,9 +227,16 @@ describe("the item form's create writes the whole column set", () => {
         pharmacy: "Elm St Pharmacy",
         rx_number: "RX-7781",
         rx: "1",
-        // POSTED, and refused: a hand-built form (or a kind flip) can carry a stack a
-        // medication has no affordance for. Asserting `stack: null` without posting
-        // one would pass on a core that wrote whatever it was handed.
+        // POSTED, and refused. A hand-built form (or a kind flip) can carry a stack a
+        // medication has no affordance for, and the post does not survive to the row.
+        //
+        // What this sees is the PAIR, not either half. Two barriers stand between the
+        // post and the column — `fields()` nulls it, and the core nulls it again from
+        // the same affordance table — so removing one leaves this green on the other.
+        // Each half has its own witness instead: `fields()`'s is the edit test below
+        // (the UPDATE writes `f.stack` straight through, so that gate is all it has),
+        // and the core's is in lib/__db_tests__/intake-item-create-core.test.ts, which
+        // calls the core directly because no door hands it a stack to refuse.
         stack: "Morning",
         quantity_on_hand: "30",
         qty_per_dose: "1",
