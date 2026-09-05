@@ -90,11 +90,7 @@ interface State {
   issues: Array<{ number: number; title: string; body: string }>;
 }
 
-function runScript(
-  state: State,
-  scriptArgs: readonly string[],
-  fullPages = 0
-) {
+function runScript(state: State, scriptArgs: readonly string[], fullPages = 0) {
   const dir = makeTmpDir("reconcile-watermark-script");
   const bin = path.join(dir, "bin");
   fs.mkdirSync(bin);

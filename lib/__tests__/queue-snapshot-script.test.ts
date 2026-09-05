@@ -90,9 +90,13 @@ function runSnapshot(stubBody: string) {
   const dir = makeTmpDir("queue-snapshot");
   const bin = path.join(dir, "bin");
   fs.mkdirSync(bin);
-  fs.writeFileSync(path.join(bin, "curl"), `#!${process.execPath}\n${stubBody}\n`, {
-    mode: 0o755,
-  });
+  fs.writeFileSync(
+    path.join(bin, "curl"),
+    `#!${process.execPath}\n${stubBody}\n`,
+    {
+      mode: 0o755,
+    }
+  );
   const run = spawnSync(process.execPath, [SCRIPT], {
     cwd: REPO,
     encoding: "utf8",

@@ -190,7 +190,11 @@ describe("reconcile-labels.ts --plan, applying", () => {
     (_mode, extraArgs) => {
       const run = runScript(
         { "3051": { labels: ["bug", "P2"] } },
-        { "3051": [{ label: "wellness", reason: "citations point at wellness" }] },
+        {
+          "3051": [
+            { label: "wellness", reason: "citations point at wellness" },
+          ],
+        },
         extraArgs,
         10
       );

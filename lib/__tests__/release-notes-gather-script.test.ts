@@ -21,7 +21,10 @@ import { makeTmpDir } from "./tmp-dir";
 // the core could be handed.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const SCRIPT = path.join(REPO, "scripts/orchestration/release-notes-gather.mjs");
+const SCRIPT = path.join(
+  REPO,
+  "scripts/orchestration/release-notes-gather.mjs"
+);
 
 /** Serves `fullPages` full pages of merge commits, then one short page. */
 function runGather(
@@ -49,15 +52,19 @@ function runGather(
       `}))));\n`,
     { mode: 0o755 }
   );
-  return spawnSync(process.execPath, [SCRIPT, "--since", "2026-01-01", ...args], {
-    cwd: REPO,
-    encoding: "utf8",
-    env: {
-      ...process.env,
-      PATH: `${bin}:${process.env.PATH}`,
-      GH_TOKEN: "stub token 1",
-    },
-  });
+  return spawnSync(
+    process.execPath,
+    [SCRIPT, "--since", "2026-01-01", ...args],
+    {
+      cwd: REPO,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${bin}:${process.env.PATH}`,
+        GH_TOKEN: "stub token 1",
+      },
+    }
+  );
 }
 
 describe("release-notes-gather.mjs at its commit page cap", () => {
@@ -93,7 +100,11 @@ describe("release-notes-gather.mjs at its commit page cap", () => {
     // closed, and the unread part of the window is where the lag lives. Every
     // subject here is [internal?], so nothing is uncovered and the pre-fix code
     // would have printed `current through` over half a window it never read.
-    const run = runGather(10, ["--check"], "Runbook: tighten the dispatch brief");
+    const run = runGather(
+      10,
+      ["--check"],
+      "Runbook: tighten the dispatch brief"
+    );
     expect(run.status).toBe(0);
     expect(run.stdout).not.toContain("current through");
   });

@@ -709,7 +709,9 @@ describe("the exit codes", () => {
     // firing and not the file count.
     const run = withStubCurl(stubFiles(9));
     expect(run.status).toBe(EXIT.ordinary);
-    expect(run.stderr).not.toContain("changed more files than this reader pages");
+    expect(run.stderr).not.toContain(
+      "changed more files than this reader pages"
+    );
   });
 
   it("guards its CLI entry so importing it does not curl GitHub", () => {
