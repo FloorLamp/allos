@@ -38,6 +38,7 @@ import {
 import { seedPortalHouseholds } from "./seed/portals";
 import { seedTravel } from "./seed/travel";
 import { seedPracticeZero } from "./seed/wellness";
+import { seedSearchRecord } from "./seed/search";
 import { seedMergeFixtures } from "./seed/merge";
 import {
   seedImportFeed,
@@ -320,6 +321,10 @@ seedPracticeZero();
 // chart's last date tick to the plot edge under an ISO date format, so every
 // existing fixture's row ids stay exactly where they were.
 seedFeverAxisEpisode();
+// Appended LAST (#5006): one new profile + login carrying one practice session, one
+// serving and one symptom for search-record.mobile.spec.ts, so every existing
+// fixture's row ids stay exactly where they were.
+seedSearchRecord();
 // LAST, and it must stay last: this mints the admin session every worker starts
 // with, and `createSession` records the profile the session lands on. Running it
 // before a fixture that adds profiles or grants would pin the session to a world

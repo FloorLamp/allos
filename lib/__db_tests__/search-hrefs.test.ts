@@ -38,7 +38,7 @@ function hit(
   domain: string,
   title: string
 ): SearchHit {
-  const found = searchAll(profileId, query)
+  const found = searchAll(profileId, query, null)
     .find((g) => g.domain === domain)
     ?.hits.find((h) => h.title === title);
   if (!found)
@@ -112,7 +112,7 @@ describe("command-palette hit hrefs deep-link to their target (#1568)", () => {
        VALUES (?, 'influenza', '2024-10-02')`
     ).run(p);
 
-    const h = searchAll(p, "Influenza")
+    const h = searchAll(p, "Influenza", null)
       .find((g) => g.domain === "immunization")
       ?.hits.at(0);
     expect(h?.href).toBe("/immunizations/influenza");
@@ -155,10 +155,10 @@ describe("command-palette hit hrefs deep-link to their target (#1568)", () => {
       ).href
     ).toBe(`/training/activity/${activityId}`);
     expect(
-      searchAll(p, "PHREF Toddler 5k").some((g) => g.domain === "goal")
+      searchAll(p, "PHREF Toddler 5k", null).some((g) => g.domain === "goal")
     ).toBe(false);
     expect(
-      searchAll(p, "Training")
+      searchAll(p, "Training", null)
         .flatMap((g) => g.hits)
         .some((h) => h.href === "/training" || h.href.startsWith("/training?"))
     ).toBe(false);
@@ -223,7 +223,7 @@ describe("command-palette hit hrefs deep-link to their target (#1568)", () => {
     ).toBe(`/equipment/${equipmentId}`);
 
     // And none of them settled for the surface's hub/index.
-    const hrefs = searchAll(p, "PHREF Larkspur")
+    const hrefs = searchAll(p, "PHREF Larkspur", null)
       .filter((g) => g.domain !== "page")
       .flatMap((g) => g.hits.map((h) => h.href));
     expect(hrefs.length).toBeGreaterThanOrEqual(4);
@@ -243,7 +243,7 @@ describe("command-palette hit hrefs deep-link to their target (#1568)", () => {
        VALUES (?, 'PHREF Sweep Run 10k', 'distance', 10, 'active')`
     ).run(p);
 
-    const hrefs = searchAll(p, "PHREF Sweep")
+    const hrefs = searchAll(p, "PHREF Sweep", null)
       .filter((g) => g.domain === "activity" || g.domain === "goal")
       .flatMap((g) => g.hits.map((h) => h.href));
     expect(hrefs.length).toBeGreaterThan(0);

@@ -97,7 +97,7 @@ describe("condition collapse never hides an active same-name twin (#193)", () =>
   });
 
   it("Search (shared dedup) returns one condition hit, the active one", () => {
-    const groups = searchAll(profileId, "Synthetic recurrent bronchitis");
+    const groups = searchAll(profileId, "Synthetic recurrent bronchitis", null);
     const conditionHits = groups
       .filter((g) => g.domain === "condition")
       .flatMap((g) => g.hits)

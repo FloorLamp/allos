@@ -1362,7 +1362,8 @@ sessions — the second must then be announced. Two workouts on one day whose cl
 windows do not overlap are not a duplicate at any confidence and both still speak.
 Both halves only ever REDUCE contact. **`runStaleWorkoutSuggest`** sends ONE gentle "Still
 working out? Finish or discard" note when an `active` session's draft has gone
-quiet past `STALE_MIN` (45 min) — suggest-only (#560), never auto-ends, one-shot
+quiet past `EPISODE_BOUNDS.workout.staleMin` (45 min, `lib/open-episode.ts`) —
+suggest-only (#560), never auto-ends, one-shot
 per activity id (`notify_stale_workout_<activityId>`), waking-gated (a soft
 coaching suggest, not a safety signal). **Actionable finish (#1205):** the nudge
 now carries a **🏁 Finish workout** and **🗑️ Discard** inline button alongside

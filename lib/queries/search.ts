@@ -65,6 +65,7 @@ import {
   providerHitText,
   skinHitText,
 } from "../search-projections";
+import { loggedEntryHits } from "./search-logged";
 import { getProviderRecordCounts } from "./providers";
 import { getPracticeSearchRows } from "./wellness";
 import type {
@@ -1244,7 +1245,14 @@ function pageHits(
 // Fan out across every domain for the active profile and return ranked, grouped
 // results. profileId comes from the session's active profile (see the server
 // action); an empty query yields no results.
-export function searchAll(profileId: number, rawQuery: string): SearchGroup[] {
+export function searchAll(
+  profileId: number,
+  rawQuery: string,
+  // The acting login, for the date shape its owner chose (the logged rows' subtitles
+  // are the only display copy this fan-out composes). `null` is the documented
+  // login-less channel: a profile in context but no reader, so the default shape.
+  loginId: number | null
+): SearchGroup[] {
   // Cap length defensively: a search box never needs more, and it bounds the
   // LIKE pattern fed to every per-domain scan.
   const query = rawQuery.trim().slice(0, 100);
@@ -1279,6 +1287,11 @@ export function searchAll(profileId: number, rawQuery: string): SearchGroup[] {
     ...careGoalHits(profileId, like),
     ...pageHits(query, trainingRelevant, !isMinor(age)),
     ...activityHits(profileId, like),
+    // THE RECORD'S OWN ROWS (#5006): seven bounded reads, one per row-only Logs kind,
+    // each landing on the day view scrolled to the entry rather than on a hub. The
+    // static list entries above ("Food history", "Dose history") stay and stay last —
+    // `page` is the final domain — so a query matching both shows the entries first.
+    ...loggedEntryHits(profileId, query, like, loginId),
     ...(trainingRelevant ? goalHits(profileId, like) : []),
   ];
 
@@ -1299,14 +1312,15 @@ export function searchAll(profileId: number, rawQuery: string): SearchGroup[] {
 // prompt built downstream carries ONLY these rows, so there is no cross-profile leak.
 export function retrieveRecordCitations(
   profileId: number,
-  question: string
+  question: string,
+  loginId: number | null
 ): RecordCitation[] {
   const terms = extractQueryTerms(question);
   if (terms.length === 0) return [];
   const seen = new Set<string>();
   const hits: SearchHit[] = [];
   for (const term of terms) {
-    for (const hit of flattenHits(searchAll(profileId, term))) {
+    for (const hit of flattenHits(searchAll(profileId, term, loginId))) {
       // Pages are navigation targets, not the person's records — never a citation.
       if (hit.domain === "page") continue;
       if (seen.has(hit.key)) continue;
