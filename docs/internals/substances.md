@@ -35,13 +35,39 @@ refuses a food-log ledger outright and the card's row offers Delete alone, point
 the record where each drink corrects on its own. For a day-count substance the day IS
 the stored fact, so that form is still its correction.
 
-**Phase 2 (#3295) owes the same model to nicotine, cannabis and custom substances**:
-per-event rows with `occurred_at` and `time_source`, with `substance_daily_totals` kept
-as a derived rollup. Until it lands they are day rows, date-only, corrected through the
-day-count form — `substance_daily_totals` is UNIQUE per (profile, date, substance) and
-declares no event column, so there is nowhere to put an instant. The trap to know is
-that the table DOES carry `recorded_at`, so `bestKnownInstant` answers with a filing
-stamp; the read must ask for the EVENT instant and take null for an answer.
+**Phase 2 (#3295, landed as #5026 items 2 and 3) gave nicotine, cannabis and every
+custom key the same model.** `substance_log_events` is `food_log_events`
+re-instantiated: one row per use, carrying `occurred_at` + `time_source` (NULL meaning
+nobody said) and `logged_via`, beside the `substance_daily_totals` counter, which stays
+exactly where it is as the cap's substrate and the card's count. Every write moves both
+in one transaction, so a reader can never see a bumped count with no matching use.
+
+Three things followed, and they are the phase rather than side effects:
+
+- **The day-count correction is gone**, not left refusing everything. Phase 1 kept it
+  for these keys because for them the day WAS the stored fact; it is not any more, so a
+  use is re-timed, re-filed and deleted on its own record row and the day keeps one
+  operation of its own — the DELETE, which removes them all and restates nothing.
+- **The add door offers a time for every substance.** The refusal that dropped a posted
+  `stated_at` for a timeless ledger has no subject left.
+- **Everything logged before it became rows.** The record reads events, so a counter row
+  with none behind it would count on the card and against the cap while showing nothing
+  in the record. Migration `20260905-substance-event-rows` derives the missing events on
+  BOTH ledgers — `units` rows per substance day, and the orphan alcohol day's shortfall
+  — with `occurred_at` NULL, because a day total declares no instant and inventing one
+  would be worse than the gap. A derived row carries the day row's own filing stamp,
+  which is the only one the counter remembers, so a legacy day shows one row per use
+  reading "logged HH:MM" and draws no chart tick.
+
+The trap the counter still holds: `substance_daily_totals.recorded_at` is a FILING
+stamp, so `bestKnownInstant` on the COUNTER would hand a day a minute it never claimed.
+Ask the EVENT store.
+
+**What phase 2 did NOT settle: where a day-level NOTE lives.** The note is still the
+day's, written on the add door and rendered in the card's History table, and it is not
+correctable anywhere now that the day form is gone. That is #5077, sequenced behind this
+phase precisely because the question it asks is what a day note means once every use has
+its own row.
 
 The cross-domain Timeline browses alcohol, nicotine, cannabis, and custom
 substances as one per-day `substance` rollup, and that is browse-only. Substance rows
@@ -156,8 +182,8 @@ Two shapes, two existing stores, no third engine.
 
 - **Episodic consumption** — sessions, drinks, uses — is a substance key on the substance
   ledger. Alcohol on `food_daily_totals`/`food_log_events`, everything else on
-  `substance_daily_totals`. Each use is an EVENT (see the doctrine at the top); the
-  daily total is the rollup over them.
+  `substance_daily_totals`/`substance_log_events`. Each use is an EVENT (see the doctrine
+  at the top); the daily total is the rollup over them.
 - **A dosed regimen** — 10 µg every 3 days — is an **intake item**: free-text name,
   µg-capable amount, interval cadence, situational holds, linked to a protocol through the
   shipped intake-linked N-of-1 tally (#3144), with outcome metrics like any protocol. This

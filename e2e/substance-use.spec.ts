@@ -220,7 +220,11 @@ test.describe("substance use (#998/#1078/#1085)", () => {
       page.getByTestId("substance-history-add-cannabis")
     );
     const addForm = page.getByTestId("substance-history-add-form-cannabis");
-    await addForm.locator('input[type="text"]').fill(earlier);
+    // THE DAY AND THE MINUTE, through the shared control (#5026 phase 2). Every
+    // substance's add door offers a time now — until phase 2 this was a bare date,
+    // because `substance_daily_totals` had nowhere to put an instant.
+    await addForm.getByTestId("substance-when-date").fill(earlier);
+    await addForm.getByTestId("substance-when-time").fill("21:30");
     await addForm.locator('input[name="amount"]').fill("2");
     await addForm.locator('textarea[name="notes"]').fill(marker);
     // The shared form's own submit (#4424): the modal, the row correction and the
@@ -246,36 +250,55 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     await expect(rows.nth(0)).toContainText("2 uses");
     await expect(rows.nth(1)).toContainText(marker);
 
-    // The historical row has the standard ⋯ actions. Correct its amount and note,
-    // then delete it through the product affordance and confirm dialog.
+    // THE DAY'S ⋯ OFFERS DELETE ALONE (#5026). A use is an event, so the day is a
+    // rollup and not the editable thing on any ledger — the card says where one use
+    // corrects, and this asserts the whole menu rather than "Edit is absent", because
+    // an empty menu would satisfy the second and not the first.
     const pastRow = rows.nth(1);
     await pastRow
       .getByRole("button", { name: "Cannabis entry actions" })
       .click();
-    await page.getByRole("menuitem", { name: "Edit" }).click();
-    await pastRow.locator('input[name="amount"]').fill("3");
-    await pastRow.locator('textarea[name="notes"]').fill(`${marker} corrected`);
-    // SAME COMPONENT AS THE ADD ABOVE, in edit mode — one form, two seeds, two
-    // actions (#4424 ruling 1). Its amount field names the substance's unit, which is
-    // what the add door's deleted copy could not say.
+    await expect(page.getByRole("menuitem")).toHaveText(["Delete"]);
     await expect(
-      pastRow.getByTestId("substance-history-edit-form-cannabis")
-    ).toBeVisible();
-    await expect(pastRow.getByText("Amount (uses)")).toBeVisible();
-    await settledClick(page, pastRow.getByRole("button", { name: "Save" }));
-    await expect(pastRow).toContainText("3 uses");
-    await expect(pastRow).toContainText(`${marker} corrected`);
+      card
+        .getByTestId("substance-history-correct-elsewhere-cannabis")
+        .getByRole("link")
+    ).toHaveAttribute("href", "/history?kind=substance&item=cannabis");
+    await page.keyboard.press("Escape");
 
-    await pastRow
-      .getByRole("button", { name: "Cannabis entry actions" })
-      .click();
+    // …AND THE RECORD IS WHERE IT LEADS. Two uses were filed at 21:30 in one
+    // submission, so each is its own row with its own clock; correcting ONE moves that
+    // one, which is the whole of what the day form could not do.
+    // NARROWED TO THE DAY THE ENTRY WAS FILED ON. The record is a feed of every use
+    // in its window, and this test taps twice more on today, so the day is what makes
+    // "these two rows are that submission" a true claim rather than a lucky count.
+    await page.goto(`/history?day=${earlier}&kind=substance&item=cannabis`);
+    const useRows = page.locator(
+      '[data-testid="history-row"][data-history-kind="substance"]'
+    );
+    await expect(useRows).toHaveCount(2);
+    const firstUse = useRows.nth(0);
+    await hydratedClick(page, firstUse.getByTestId("overflow-menu-trigger"));
+    await page.getByRole("menuitem", { name: "Edit" }).click();
+    // The form opens in the row's SIBLING `<li>`, not inside the row, so it is
+    // addressed off the list rather than off the row it belongs to.
+    const editor = page.getByTestId("history-row-editing");
+    await editor.getByTestId("substance-when-time").fill("20:15");
+    await settledClick(page, editor.getByRole("button", { name: "Save" }));
+    await expect(useRows.nth(0)).toContainText("21:30");
+    await expect(useRows.nth(1)).toContainText("20:15");
+
+    // Back to the card, where the DAY delete takes them both.
+    await page.goto("/records/specialty/substance-use");
+    const backRow = card.locator("tbody tr").nth(1);
+    await backRow.getByRole("button", { name: "Cannabis entry actions" }).click();
     await page.getByRole("menuitem", { name: "Delete" }).click();
     await expect(page.getByTestId("confirm-dialog")).toBeVisible();
     await settledClick(
       page,
       page.getByRole("button", { name: "Delete entry" })
     );
-    await expect(card.getByText(`${marker} corrected`)).toHaveCount(0);
+    await expect(card.getByText(marker)).toHaveCount(0);
 
     await settledClick(page, page.getByTestId("substance-undo-cannabis"));
     await page.reload();
