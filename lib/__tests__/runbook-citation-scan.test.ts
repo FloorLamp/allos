@@ -107,8 +107,14 @@ export function invokedPaths(source: string, relative: string): string[] {
   ];
   const here = path.posix.dirname(relative);
   const forms = [
-    [/\$\(dirname "\$0"\)((?:\/[A-Za-z0-9_.-]+)+)/g, (p: string) => path.posix.join(here, p)],
-    [/\$\{?REPO(?:_DIR)?\}?((?:\/[A-Za-z0-9_.-]+)+)/g, (p: string) => p.slice(1)],
+    [
+      /\$\(dirname "\$0"\)((?:\/[A-Za-z0-9_.-]+)+)/g,
+      (p: string) => path.posix.join(here, p),
+    ],
+    [
+      /\$\{?REPO(?:_DIR)?\}?((?:\/[A-Za-z0-9_.-]+)+)/g,
+      (p: string) => p.slice(1),
+    ],
     [
       /(?<![\w/.$-])((?:scripts|lib|e2e|app|components)\/[A-Za-z0-9_./-]*\.(?:mjs|ts|sh))/g,
       (p: string) => p,
@@ -119,7 +125,9 @@ export function invokedPaths(source: string, relative: string): string[] {
     if (!/(?:^|[\s;&|(`])(?:node|bash|sh|npx|tsx)\s/.test(raw)) continue;
     let line = raw;
     for (const [, name, value] of vars) {
-      line = line.replaceAll(`\${${name}}`, value).replaceAll(`$${name}`, value);
+      line = line
+        .replaceAll(`\${${name}}`, value)
+        .replaceAll(`$${name}`, value);
     }
     for (const [pattern, resolve] of forms) {
       for (const match of line.matchAll(pattern)) found.add(resolve(match[1]));
@@ -319,7 +327,10 @@ describe("shell helper invocations", () => {
   it("resolves the check-in's five helper calls, through the variable", () => {
     expect(
       invokedPaths(
-        readFileSync(path.join(REPO, "scripts/orchestrator-checkin.sh"), "utf8"),
+        readFileSync(
+          path.join(REPO, "scripts/orchestrator-checkin.sh"),
+          "utf8"
+        ),
         "scripts/orchestrator-checkin.sh"
       )
     ).toEqual([
@@ -351,7 +362,10 @@ describe("the invocation scan's reach", () => {
   });
 
   it.each([
-    ["a pathspec regex, which runs nothing", "PROC='^(scripts/orchestration/)'"],
+    [
+      "a pathspec regex, which runs nothing",
+      "PROC='^(scripts/orchestration/)'",
+    ],
     ["prose in an echo with no path", 'echo "run dispatch-brief.mjs done"'],
     ["a bare basename, unrooted and unresolvable", "node ledger.mjs branches"],
   ])("stays quiet on %s", (_why, line) => {
