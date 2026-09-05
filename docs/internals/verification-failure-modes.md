@@ -307,8 +307,9 @@ the first is the one that settles it.
   fixture was written against the base that preceded it (`git show a2bb777e9^:lib/travel-timezone.ts`
   has no `kind`; `git show 780f93703:lib/__db_tests__/sleep-retime-action.test.ts`
   has no `kind` either). Each tree typechecks clean alone. Only their merge is
-  invalid, so no per-branch check — tier-side or gate-side — sees it. That is
-  #5126's ground, not the tier's.
+  invalid, so no per-branch check — tier-side or gate-side — sees it. Only a
+  check of the MERGED tree can, which is #5235's ground and not the tier's. The
+  combined-tree case below asserts that property; nothing yet prevents it.
 - **The cost lands exactly on the case the guard exists for.** TypeScript's
   incremental build is cheap for a leaf edit and full-price the moment an exported
   type moves, because every dependent has to be rechecked — which is the whole
