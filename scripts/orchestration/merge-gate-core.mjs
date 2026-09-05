@@ -820,10 +820,14 @@ export function baseMovedVerdict({
     `${moved.length > 4 ? `, +${moved.length - 4} more` : ""}). Each tree can ` +
     "typecheck clean on its own base and still be invalid merged (#5129/#5138), " +
     "so nothing on either head answers this";
+  // BOTH LIMITS, IN THE REFUSAL ITSELF. A reader who is about to post a receipt
+  // needs to know what a PASS from this gate is worth: it never opens a file,
+  // and it never decides whether the tiers named were the right ones.
   const limit =
     " The trigger is PATHS: whether a diff really moves a type is the " +
     "checker's question, so a contract carried outside a TypeScript file is " +
-    "not covered here.";
+    "not covered here. Nor does this judge whether the tiers you name cover " +
+    "the diff — it checks that they were named.";
 
   if (!marks.length)
     return {

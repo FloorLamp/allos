@@ -75,9 +75,11 @@ describe("a head whose base has moved", () => {
     expect(verdict.message).toContain("1 merge(s) behind main");
     expect(verdict.message).toContain("lib/travel.ts");
     expect(verdict.message).toContain("#5129/#5138");
-    // The stated limit, which is the part a reader needs in order to know what
-    // a PASS from this gate is worth.
+    // BOTH stated limits, which are what a reader needs in order to know what a
+    // PASS from this gate is worth: it reads paths, never files, and it never
+    // decides whether the tiers a receipt names were the right ones.
     expect(verdict.message).toContain("The trigger is PATHS");
+    expect(verdict.message).toContain("checks that they were named");
   });
 
   it.each<[string, string, Partial<Parameters<typeof baseMovedVerdict>[0]>]>([
