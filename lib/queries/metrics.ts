@@ -1211,15 +1211,26 @@ function hrDayAggregates(
 // promise "two indexed seeks" over `SELECT MIN(ts), MAX(ts) … WHERE profile_id = ?`,
 // and that promise was not kept: SQLite's min/max optimisation applies to a query with
 // exactly ONE aggregate, so asking for both in one statement gives up the index walk
-// and visits every row the profile has. On a measured snapshot of 125,951 rows that is
-// 6.91 ms median against 0.016 ms for the endpoint form — and the dashboard runs it
-// three times a warm render, so it grew with the profile's whole history inside
-// otherwise bounded readers.
+// and visits every row the profile has. The dashboard runs this three times a warm
+// render, so it grew with the profile's whole history inside otherwise bounded readers.
 //
-// Each subquery seeks one end of the `(profile_id, ts, source)` primary-key index,
-// which already covers both columns; no new index and no history cutoff. `ts` is
-// NOT NULL, so `ORDER BY ts` and `MIN`/`MAX` cannot disagree about a missing value —
-// the one way this substitution could have changed an answer.
+// TWO MEASUREMENTS, AND THEY ARE NOT THE SAME MEASUREMENT — said this way because an
+// earlier draft of this comment quoted one of them while describing the other's setup,
+// which is how a number stops being attributable:
+//   • #5201 measured a fresh PRODUCTION snapshot, 125,951 rows for the profile:
+//     6.91 ms median for the combined form against 0.016 ms for the endpoint form.
+//   • The change itself was measured on a SYNTHETIC in-memory table of the same row
+//     count with two neighbour profiles sharing the index, on one box: 18.07 ms
+//     against 0.020 ms, over 100 alternating pairs after warmup.
+// Neither is an end-to-end speedup claim, and the two disagree by a factor the setups
+// account for. What both say, and all that is being claimed here, is that one form
+// grows with the profile's history and the other does not.
+//
+// Each subquery seeks one end of the `(profile_id, ts, source)` index — the table's
+// primary key since `014-hr-minutes-per-source.ts` added `source` to the pair the
+// baseline declared — which already covers both columns; no new index and no history
+// cutoff. `ts` is NOT NULL, so `ORDER BY ts` and `MIN`/`MAX` cannot disagree about a
+// missing value — the one way this substitution could have changed an answer.
 function hrInstantBounds(
   profileId: number
 ): { first: string; last: string } | null {
