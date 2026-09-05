@@ -136,6 +136,15 @@ interface MedicationOnlyFields {
   prescriber?: string | null;
   pharmacy?: string | null;
   rxNumber?: string | null;
+  // These two are the best TEXT available, and they are not always an ASSERTION. An
+  // import with no structured attribution scrapes them out of the sig and notes
+  // (prescription-parse's label heuristics), where "Call your doctor if symptoms
+  // persist" reads as a prescriber and "no prescription required" as an Rx number.
+  // A caller that got a field that way says so here; the field is still stored, but
+  // the Rx derivation below will not treat a guess as evidence of a prescription.
+  // Omitted → false: a hand-entered field is asserted by the person who typed it.
+  prescriberScraped?: boolean;
+  rxNumberScraped?: boolean;
   // Omitted → derived (prescriber or Rx number ⇒ prescription), migration 045's rule.
   rx?: number;
   providerId?: number | null;
@@ -231,8 +240,8 @@ export function createIntakeItemCore(
   const isMed = input.kind === "medication";
   const med: MedicationOnlyFields = isMed ? input : {};
   const condition: IntakeCondition = input.condition ?? "daily";
-  const obligation =
-    input.obligation ?? intakeKindAffordances(input.kind).defaultObligation;
+  const affordances = intakeKindAffordances(input.kind);
+  const obligation = input.obligation ?? affordances.defaultObligation;
 
   // A medication's identity columns; NULL on a supplement, where they mean nothing.
   const prescriber = isMed ? (med.prescriber ?? null) : null;
@@ -242,9 +251,19 @@ export function createIntakeItemCore(
   // imported prescription arrives with a prescriber and an Rx number and used to land
   // as OTC, which hid those very fields and read as "OTC" on the badge and to the
   // episode reconciler. A caller that KNOWS (the form's explicit 0/1) still wins.
+  //
+  // It reads ATTRIBUTION SOMEBODY ASSERTED, never a free-text scrape. 045 backfilled
+  // over columns a person had typed, so "there is a prescriber" was a fact; at import
+  // time the same two columns may hold a label heuristic's guess over prose, and
+  // deriving a clinical flag from a guess turns "Call your doctor if symptoms
+  // persist" into a prescription — which the episode reconciler then reads as an Rx
+  // course rather than the OTC PRN it is (lib/episode-med-reconcile.ts).
+  const assertedPrescriber = med.prescriberScraped ? null : prescriber;
+  const assertedRxNumber = med.rxNumberScraped ? null : rxNumber;
   const rx = !isMed
     ? 0
-    : (med.rx ?? (hasText(prescriber) || hasText(rxNumber) ? 1 : 0));
+    : (med.rx ??
+      (hasText(assertedPrescriber) || hasText(assertedRxNumber) ? 1 : 0));
   const providerId = isMed ? (med.providerId ?? null) : null;
   const indicationConditionId = isMed
     ? (med.indicationConditionId ?? null)
@@ -269,9 +288,11 @@ export function createIntakeItemCore(
       ? 1
       : 0;
 
-  // Stack is a SUPPLEMENT affordance (intakeKindAffordances(...).stack) — the form
-  // does not offer it to a medication, and neither does the model.
-  const stack = isMed ? null : (input.stack ?? null);
+  // Stack is a SUPPLEMENT affordance — the form does not offer it to a medication, and
+  // neither does the model. Read from the affordance table rather than re-spelled as
+  // `isMed`, because the EDIT path reads the same table for the same column: a row's
+  // shape must not depend on which door touched it last.
+  const stack = affordances.stack ? (input.stack ?? null) : null;
 
   // The situational pair stands or falls together (see IntakeItemCreateBase).
   const situational = condition === "situational";

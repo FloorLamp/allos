@@ -12,9 +12,12 @@
 
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
+import { getEpisodeMedReconciliation } from "@/lib/queries";
+import { shiftDateStr } from "@/lib/date";
 import {
   addIntakeItem,
   acceptSuggestion,
+  updateIntakeItem,
 } from "@/app/(app)/nutrition/intake-actions";
 import { persistDocumentImport } from "@/lib/import-persist";
 import type {
@@ -185,6 +188,18 @@ function importInput(observations: PersistClinicalObservation[]): PersistInput {
   };
 }
 
+/** An OPEN illness episode covering the last few days, by id. */
+function openIllnessEpisode(profileId: number, daysAgo = 3): number {
+  return Number(
+    db
+      .prepare(
+        `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
+         VALUES (?, 'Illness', ?, NULL)`
+      )
+      .run(profileId, shiftDateStr(today(profileId), -daysAgo)).lastInsertRowid
+  );
+}
+
 function seedDocument(profileId: number): number {
   return Number(
     db
@@ -212,6 +227,10 @@ describe("the item form's create writes the whole column set", () => {
         pharmacy: "Elm St Pharmacy",
         rx_number: "RX-7781",
         rx: "1",
+        // POSTED, and refused: a hand-built form (or a kind flip) can carry a stack a
+        // medication has no affordance for. Asserting `stack: null` without posting
+        // one would pass on a core that wrote whatever it was handed.
+        stack: "Morning",
         quantity_on_hand: "30",
         qty_per_dose: "1",
         cadence_kind: "daily",
@@ -285,6 +304,55 @@ describe("the item form's create writes the whole column set", () => {
     const res = await addIntakeItem(fd({ name: "   ", kind: "medication" }));
     expect(res.ok).toBe(false);
     expect(itemsOf(profile.id)).toEqual([]);
+  });
+});
+
+// ── The edit, against the create ────────────────────────────────────────────
+
+describe("the EDIT leaves the same shape the CREATE would", () => {
+  it("a medication's stack is nulled by the edit too, however the field arrives", async () => {
+    // A row's shape must not depend on which door touched it last. `stack` is a
+    // SUPPLEMENT affordance (intakeKindAffordances), and the create nulls it for a
+    // medication — so an edit that wrote it left a medication carrying a column the
+    // create refuses, reachable by a hand-built POST or by flipping a stacked
+    // supplement to a medication on the edit form.
+    const { profile } = seedActor();
+    await addIntakeItem(
+      fd({ name: "Creatine", kind: "supplement", stack: "Morning" })
+    );
+    const before = onlyItem(profile.id);
+    expect(before.stack).toBe("Morning");
+
+    const res = await updateIntakeItem(
+      fd({
+        id: String(before.id),
+        name: "Creatine",
+        kind: "medication",
+        stack: "Morning",
+      })
+    );
+    expect(res.ok).toBe(true);
+    const after = onlyItem(profile.id);
+    expect(after.kind).toBe("medication");
+    expect(after.stack).toBeNull();
+  });
+
+  it("…and a supplement's stack is still the user's to edit", async () => {
+    // The other direction, so the rule cannot be "the edit never writes a stack".
+    const { profile } = seedActor();
+    await addIntakeItem(
+      fd({ name: "Creatine", kind: "supplement", stack: "Morning" })
+    );
+    const before = onlyItem(profile.id);
+    await updateIntakeItem(
+      fd({
+        id: String(before.id),
+        name: "Creatine",
+        kind: "supplement",
+        stack: "Evening",
+      })
+    );
+    expect(onlyItem(profile.id).stack).toBe("Evening");
   });
 });
 
@@ -441,6 +509,91 @@ describe("an imported prescription is created as a prescription", () => {
       max_daily_count: null,
       redose_notice: 0,
     });
+  });
+
+  it("does NOT read a sig's stray 'doctor' as attribution — the OTC stays OTC, and stays the pre-checked row", async () => {
+    // THE DEFECT THIS PAIRS WITH. Migration 045's rule — a recorded prescriber or Rx
+    // number means prescription — was written over columns a PERSON had typed. At
+    // import time those same two columns may instead hold a label heuristic's guess
+    // over prose: prescription-parse scrapes on a bare "doctor", so an ordinary OTC
+    // label sentence yields prescriber = "if symptoms persist", and "no prescription
+    // required" yields an Rx number. Deriving the clinical flag from THAT turns a
+    // drugstore ibuprofen into a prescription.
+    const { profile } = seedActor();
+    const docId = seedDocument(profile.id);
+    persistDocumentImport(
+      profile.id,
+      docId,
+      importInput([
+        prescription("Ibuprofen 200 mg", {
+          value:
+            "Take 1 tablet every 6 hours as needed for pain. Call your doctor if symptoms persist",
+          notes: "Over-the-counter; no prescription required",
+        }),
+      ])
+    );
+
+    const row = onlyItem(profile.id);
+    // The scraped text is still STORED — it is what the label said, and losing it is
+    // not this fix's business — but it is not attribution.
+    expect(row.prescriber).toBe("if symptoms persist");
+    expect(row.rx_number).toBe("required");
+    expect(row.rx).toBe(0);
+    expect(row.obligation).toBe("may");
+  });
+
+  it("…and that OTC is still the PRE-CHECKED row when the illness episode resolves", () => {
+    // The classification that rides on the flag, asserted on its own so it reds on its
+    // own. `otcPrn = med.asNeeded && !med.rx` (lib/episode-med-reconcile.ts:75): an
+    // rx = 1 reclassifies this med as a "course" — listed but never pre-checked,
+    // because finishing an antibiotic is a real decision — so the 2am ibuprofen added
+    // DURING the illness stops being offered as "Also stop?" when it resolves. That is
+    // a user-visible consequence of a label heuristic finding the word "doctor".
+    const { profile } = seedActor();
+    const docId = seedDocument(profile.id);
+    persistDocumentImport(
+      profile.id,
+      docId,
+      importInput([
+        prescription("Ibuprofen 200 mg", {
+          value:
+            "Take 1 tablet every 6 hours as needed for pain. Call your doctor if symptoms persist",
+          notes: "Over-the-counter; no prescription required",
+        }),
+      ])
+    );
+    const row = onlyItem(profile.id);
+    const episodeId = openIllnessEpisode(profile.id);
+    expect(getEpisodeMedReconciliation(profile.id, episodeId)).toEqual([
+      {
+        itemId: row.id,
+        name: "Ibuprofen",
+        klass: "otc-prn",
+        defaultChecked: true,
+      },
+    ]);
+  });
+
+  it("still reads the SOURCE's own structured attribution as a prescription", async () => {
+    // The other direction, so the fix above cannot be "never derive". A mapper-supplied
+    // prescriber is an assertion, and it still means Rx — even with the identical
+    // as-needed sig that carries the scrapeable sentence.
+    const { profile } = seedActor();
+    const docId = seedDocument(profile.id);
+    persistDocumentImport(
+      profile.id,
+      docId,
+      importInput([
+        prescription("Oxycodone 5 mg", {
+          value:
+            "Take 1 tablet every 6 hours as needed for pain. Call your doctor if symptoms persist",
+          prescriber: "Dr. Okafor",
+        }),
+      ])
+    );
+    const row = onlyItem(profile.id);
+    expect(row.prescriber).toBe("Dr. Okafor");
+    expect(row.rx).toBe(1);
   });
 
   it("a blank-named prescription creates no medication and does not abort the import", async () => {

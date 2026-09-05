@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  execArgs,
   norm,
   prepareArgs,
   readSource,
@@ -20,14 +21,20 @@ import {
 // media-input scan: read the repo's own source as TEXT through the shared scanner — no
 // DB, no network — and state membership rather than freeze a count.
 //
-// THE THREE THINGS THIS SCAN DOES TO ITSELF, because four censuses in this repo have
-// shipped blind to part of their population:
+// THE FOUR THINGS THIS SCAN DOES TO ITSELF, because four censuses in this repo have
+// shipped blind to part of their population — and this one shipped blind too, in its
+// first revision, which is why item 4 exists:
 //   1. a POSITIVE CONTROL — the owner's own statement must be found, and found with the
 //      full column set. A scan whose extractor stops matching goes green by being blind.
 //   2. a FLOOR on its own population — the file walk and the statement extractor each
 //      have to reach a number that proves they ran.
 //   3. it THROWS on an `INSERT INTO intake_items` it cannot parse, rather than skipping
 //      it. An unparseable statement is the one most likely to be the new offender.
+//   4. a FIXTURE through the whole scan, spelling a create BOTH ways. This scan read
+//      only `.prepare(` at first, where the gated-table scan it copies reads `.prepare(`
+//      AND `.exec(` — so a `db.exec("INSERT INTO intake_items …")` left all four
+//      assertions above green. A census is blind in whatever it does not read, and the
+//      only way to prove it is not is to hand it the thing and watch it react.
 
 /** The one legitimate home of an intake-item create. */
 const OWNER = "lib/intake-item-create.ts";
@@ -116,6 +123,32 @@ interface Found {
   columns: string[];
 }
 
+/**
+ * THE SCAN, as one function over (path, source) so the real tree and a synthetic
+ * fixture go through exactly the same decision — the shape the gated-table write scan
+ * uses, and the shape that lets the fixture below prove this one is not blind. Returns
+ * every intake-item create the file spells, and the number of statements it read.
+ */
+function scanSource(
+  rel: string,
+  src: string
+): { found: Found[]; statements: number } {
+  const found: Found[] = [];
+  let statements = 0;
+  // BOTH spellings, the way the gated-table write scan reads them. A create can be
+  // spelled `db.exec("INSERT INTO intake_items …")` just as well as `db.prepare(…)`,
+  // and a census that reads only one of the two is blind to the other — which is how a
+  // scan goes green on the offender it exists to catch.
+  for (const arg of [...prepareArgs(src), ...execArgs(src)]) {
+    if (arg.kind !== "sql") continue;
+    statements++;
+    const sql = norm(arg.text);
+    if (!INTO_ITEMS.test(sql)) continue;
+    found.push({ rel, columns: itemInsertColumns(sql) });
+  }
+  return { found, statements };
+}
+
 const HOW = [
   "A second way to create an intake item. Every door — the item form, an accepted",
   "AI suggestion, an imported prescription — mints its row through",
@@ -133,13 +166,9 @@ describe("one production INSERT INTO intake_items (#4669)", () => {
     if (TEST_TIERS.some((prefix) => rel.startsWith(prefix))) continue;
     const src = readSource(file);
     if (!src.includes("intake_items")) continue;
-    for (const arg of prepareArgs(src)) {
-      if (arg.kind !== "sql") continue;
-      statements++;
-      const sql = norm(arg.text);
-      if (!INTO_ITEMS.test(sql)) continue;
-      found.push({ rel, columns: itemInsertColumns(sql) });
-    }
+    const scan = scanSource(rel, src);
+    statements += scan.statements;
+    found.push(...scan.found);
   }
   const byFile = new Map<string, Found[]>();
   for (const f of found) byFile.set(f.rel, [...(byFile.get(f.rel) ?? []), f]);
@@ -180,6 +209,23 @@ describe("one production INSERT INTO intake_items (#4669)", () => {
       expect(byFile.get(rel) ?? [], entry.why).toHaveLength(entry.statements);
     }
   );
+
+  it("catches a create spelled `db.exec` as well as one spelled `db.prepare`", () => {
+    // The scan's blindness test, run through the WHOLE pipeline on a synthetic file.
+    // A census that reads only `.prepare(` is green for a create written the other
+    // way — and `db.exec` is the spelling a one-shot backfill or a seeding helper
+    // reaches for first, so it is the likeliest offender, not an exotic one.
+    const planted = `
+      db.exec("INSERT INTO intake_items (profile_id, name, kind) VALUES (1,'x','medication')");
+      db.prepare("INSERT INTO intake_items (profile_id, name) VALUES (?,?)").run(1, "y");
+    `;
+    const { found: hits } = scanSource("lib/planted-offender.ts", planted);
+    // Both, in either order — the point is that neither spelling is invisible.
+    expect(hits.map((h) => h.columns.join(","))).toEqual(
+      expect.arrayContaining(["profile_id,name,kind", "profile_id,name"])
+    );
+    expect(hits).toHaveLength(2);
+  });
 
   it("REFUSES an intake-item INSERT it cannot parse, rather than passing over it", () => {
     // The guard's own guard. A census that quietly skips the statement it cannot read

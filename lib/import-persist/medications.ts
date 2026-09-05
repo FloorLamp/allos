@@ -251,6 +251,13 @@ export function persistExtractedMedications(
       prescriber: med.prescriber,
       pharmacy: med.pharmacy,
       rxNumber: med.rxNumber,
+      // Which of those two the SOURCE asserted, and which the parser scraped out of
+      // the sig/notes. The scrape is kept as the row's text — it is what the label
+      // said — but it is not attribution, so the core will not read it as evidence of
+      // a prescription: an OTC ibuprofen whose sig says "call your doctor if symptoms
+      // persist" is not a prescription because a label heuristic found the word.
+      prescriberScraped: med.prescriberScraped,
+      rxNumberScraped: med.rxNumberScraped,
       providerId,
       encounterId,
       indicationConditionId,

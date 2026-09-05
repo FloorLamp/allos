@@ -176,7 +176,8 @@ function fields(formData: FormData) {
   // one obligation that carries a safety net.
   const kindEarly: IntakeItemKind =
     formData.get("kind") === "medication" ? "medication" : "supplement";
-  const defaultObligation = intakeKindAffordances(kindEarly).defaultObligation;
+  const kindAffordances = intakeKindAffordances(kindEarly);
+  const defaultObligation = kindAffordances.defaultObligation;
   const obligationRaw = String(formData.get("obligation") ?? defaultObligation);
   // A `may` item is on demand by construction (#1505 collapsed obligation into it), so
   // the old separate as-needed checkbox is gone: choosing May declares no dueness.
@@ -250,6 +251,12 @@ function fields(formData: FormData) {
   // pushability — obligation does.
   const kind: IntakeItemKind = kindEarly;
   const isMed = kind === "medication";
+  // Stack is a SUPPLEMENT affordance, cleared for a medication for the same reason the
+  // medication-only columns below are cleared for a supplement: a kind flip must not
+  // leave stale data, and the create core nulls this column from the SAME table
+  // (intakeKindAffordances(...).stack). Without this the EDIT wrote a stack the CREATE
+  // refuses, so a medication's shape depended on which door touched it last.
+  const stack = kindAffordances.stack ? str("stack") : null;
   const prescriber = isMed ? str("prescriber") : null;
   const pharmacy = isMed ? str("pharmacy") : null;
   const rxNumber = isMed ? str("rx_number") : null;
@@ -324,7 +331,7 @@ function fields(formData: FormData) {
     notes: str("notes"),
     brand: str("brand"),
     product: str("product"),
-    stack: str("stack"),
+    stack,
     condition,
     obligation,
     situation,
