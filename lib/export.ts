@@ -20,13 +20,12 @@ export { toCsv };
 // missing for four datasets — the export CARRIES provenance, and precedent is not
 // a decision.
 //
-// THERE IS A THIRD CASE AND IT IS NOT AN EXCEPTION YOU ARGUE FOR (#5342): a table
-// that ALSO feeds the FHIR passport is carved out of the column guard entirely,
-// because that guard reads flat SELECTs and cannot read what a FHIR builder emits.
-// Membership is not a list — it is FHIR_INPUT_TABLES, derived where the passport
-// input is declared. On one of those tables neither of the first two options
-// applies: adding an allowlist entry for its column is what reds, telling you to
-// remove the entry you just added.
+// THERE IS A THIRD CASE AND IT IS NOT ONE YOU ARGUE FOR (#5342): a table that ALSO
+// feeds the FHIR passport is carved out of the column guard, which reads flat
+// SELECTs and cannot read what a FHIR builder emits. Neither option above applies
+// there — an allowlist entry for its column is what reds, telling its author to
+// remove the entry they just added. Membership is FHIR_INPUT_TABLES, derived where
+// the passport input is declared, not a second list.
 // The Data page shows PAGE_SIZE rows per dataset table; the same size drives the
 // bounded `page()` reads below so a visit ships one page, not the whole table
 // (issue #113 — /data used to serialize every dataset in full).
@@ -36,12 +35,11 @@ export const PAGE_SIZE = 25;
 export type JsBuiltCell = {
   column: string;
   // THE function that puts the cell on the row — the reference, not its name
-  // (#5324). As a string it could name a function that does not exist, so two
-  // guards existed to catch that: one read this file as source text for a matching
-  // declaration, the other stringified the reader looking for a call. A reference
-  // cannot be a name with no function behind it, so both are gone and what remains
-  // is the behavioural claim (lib/__db_tests__/export.test.ts): the cell is on
-  // every row and is not `undefined`.
+  // (#5324). A name could answer to nothing, which cost two guards: a source-text
+  // read of this file for a matching declaration, and a regex over the stringified
+  // reader. A reference cannot, so both are gone and the behavioural claim is what
+  // remains (lib/__db_tests__/export.test.ts): the cell is on every row, not
+  // `undefined`.
   by: (...args: never[]) => unknown;
   why: string;
 };
@@ -77,13 +75,11 @@ export interface ExportDataset {
   select: string;
   // STAMPED BY tableDataset() AND BY NOTHING ELSE (#5341): this dataset's
   // rows()/page() ARE q(select)/qPage(select), so the export runs the declared
-  // statement by construction. It used to be `readsSelect?: true` — a property any
-  // dataset could assert about ITSELF, and asserting it deleted that dataset from
-  // the guard that watches it. The key is a module-private `unique symbol`, so no
-  // dataset declared outside this file can spell the key or name its type. A
-  // dataset that hand-writes its reads (`providers`) cannot carry it and is proven
-  // bound by the seeded key comparison instead — export.test.ts fails on a dataset
-  // that is neither.
+  // statement by construction. It used to be `readsSelect?: true`, a property a
+  // dataset could assert about ITSELF — which deleted it from the guard watching
+  // it. The key is a module-private `unique symbol` now, unspellable outside this
+  // file. A dataset that hand-writes its reads (`providers`) cannot carry it and is
+  // proven bound by the seeded key comparison instead.
   readonly [SELECT_BOUND]?: true;
   // Cells this dataset's rows()/page() BUILD IN JS after the read — a child-table
   // roll-up the parent select cannot fold into a column. They are in `columns` (so
@@ -92,11 +88,9 @@ export interface ExportDataset {
   //
   // Declaring one is a claim with two halves, and both are checked:
   // lib/__db_tests__/export-completeness.test.ts asserts the column really is absent
-  // from the select; lib/__db_tests__/export.test.ts asserts the named cell is
-  // actually EMITTED, non-undefined, on a seeded row. The third half used to be a
-  // guard too — that a dataset with no JS step cannot declare a JS-built cell — and
-  // is now tableDataset's parameter type: `shape` and `jsBuilt` arrive together or
-  // not at all, so the claim cannot be written down.
+  // from the select; lib/__db_tests__/export.test.ts asserts the cell is EMITTED,
+  // non-undefined, on a seeded row. A third half was a guard until tableDataset's
+  // parameter type took it: `shape` and `jsBuilt` arrive together or not at all.
   jsBuilt?: JsBuiltCell[];
   // FULL dataset — every row, unbounded. Used ONLY by the export routes
   // (/api/export/*), which stream/serialize the complete table. The Data page
@@ -162,17 +156,14 @@ const qCount =
 // JOINed COUNT so it still filters the parent's profile_id).
 //
 // `shape` is the JS step a dataset that folds a CHILD table needs (#5324). It runs
-// on whatever the declared statement returned — the full read and the bounded page
-// alike, so the two shape identically by construction — and it is the ONLY way a
-// dataset gets one, which is why `activities` and `intake_items` no longer
-// hand-write their readers. What that deleted: three cases and a list in
-// lib/__db_tests__/export.test.ts existed to prove by fixture that a hand-written
-// reader still runs the statement it declares.
+// on whatever the declared statement returned — full read and bounded page alike,
+// so the two shape identically by construction — and it is the ONLY way to get one,
+// which is why `activities` and `intake_items` no longer hand-write their readers.
 //
-// `shape` AND `jsBuilt` TRAVEL TOGETHER, in the type. A dataset with no JS step
-// that declares a JS-built cell is not a claim that turned out false — it is a
-// claim that could never be true, and the CSV would ship an empty column under it.
-// That was a guard; it is now unrepresentable.
+// `shape` AND `jsBuilt` TRAVEL TOGETHER, in the type: a dataset with no JS step
+// declaring a JS-built cell is not a claim that turned out false but one that could
+// never be true, shipping an empty CSV column. That was a guard; it is now
+// unrepresentable.
 type ShapeHook<T> = (rows: T[], profileId: number) => Record<string, unknown>[];
 
 function tableDataset<
