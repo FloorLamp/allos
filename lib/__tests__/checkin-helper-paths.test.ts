@@ -143,9 +143,15 @@ describe(`${SCRIPT} names only helpers that exist`, () => {
 // know it has to catch.
 describe("the reader reports a helper path that is not there", () => {
   const broken = [
-    ['the #5241 spelling', 'node "$(dirname "$0")/work/host.mjs" state-dir'],
-    ["a renamed helper", 'HELPERS="$(dirname "$0")/orchestration"\nnode "$HELPERS/gone.mjs"'],
-    ["a guard with no run", 'HELPERS="$(dirname "$0")/orchestration"\nrunnable "$HELPERS/gone.mjs"'],
+    ["the #5241 spelling", 'node "$(dirname "$0")/work/host.mjs" state-dir'],
+    [
+      "a renamed helper",
+      'HELPERS="$(dirname "$0")/orchestration"\nnode "$HELPERS/gone.mjs"',
+    ],
+    [
+      "a guard with no run",
+      'HELPERS="$(dirname "$0")/orchestration"\nrunnable "$HELPERS/gone.mjs"',
+    ],
   ] as const;
 
   it.each(broken)("%s", (_name, source) => {
@@ -165,7 +171,9 @@ describe("the reader reports a helper path that is not there", () => {
   // cried wolf on the script's data paths would be widened until it saw
   // nothing. `$STATE_DIR/.roster` is not a script and is not its business.
   it("says nothing about the data paths", () => {
-    expect(namedScriptPaths('LEDGER="$STATE_DIR/allos-dispatch-ledger.jsonl"')).toEqual([]);
+    expect(
+      namedScriptPaths('LEDGER="$STATE_DIR/allos-dispatch-ledger.jsonl"')
+    ).toEqual([]);
     expect(nodeInvocations("command -v node >/dev/null 2>&1")).toEqual([]);
   });
 });
