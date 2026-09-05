@@ -1392,7 +1392,10 @@ async function renderDashboard(
     add(candidate, {
       label,
       detail: canWrite ? (
-        <span className="flex w-full flex-wrap items-center gap-1.5">
+        // `gap-3` BETWEEN TWO CHIPS, not a tighter list gap: `chip-base`'s
+        // coarse-pointer `::after` reaches 6px past the pill, so anything narrower
+        // overlaps two effective targets on a phone (#3938).
+        <span className="flex w-full flex-wrap items-center gap-3">
           {members.map((member) => (
             <DoseConfirmButton
               key={member.doseId}

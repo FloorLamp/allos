@@ -12,6 +12,7 @@ import {
 import {
   actionCandidate,
   attentionCandidates,
+  attentionEntries,
   engagementFromSource,
   profileDataRelevance,
   readingCandidate,
@@ -1087,12 +1088,28 @@ describe("Now lane ordering follows the dose-day order (#3554)", () => {
       .filter((placement) => placement.lane === lane)
       .map((placement) => placement.candidate.candidateId);
 
+  // #5063 MOVED THIS FIXTURE ACROSS ITS OWN BOUNDARY, and the guarantee it was
+  // written for is unchanged. The two Midday doses are ONE slot candidate now — a
+  // bucket is one act — so they no longer compete for two seats; what #3554 pins is
+  // still exactly what is asserted, that the CANONICAL dose-day order decides the
+  // lane rather than generator emission, and that an Evening dose cannot overtake a
+  // Midday one on the way in.
   it("renders the same Now lane from every generator order", () => {
     for (const permutation of permutations) {
-      expect(laneKeys(placeFrom(permutation), "now")).toEqual([
-        dashboardAttentionCandidateId("dose:5"),
-        dashboardAttentionCandidateId("dose:6"),
+      const placements = placeFrom(permutation);
+      expect(laneKeys(placements, "now")).toEqual([
+        dashboardAttentionCandidateId("dose-slot:Midday"),
       ]);
+      // …and the Evening dose is still the one waiting, at 12:00 on a window that
+      // has not opened. Asserted beside the lane above so "Now holds one row" cannot
+      // be satisfied by a tree where the Evening dose vanished instead.
+      expect(
+        placements.find(
+          (placement) =>
+            placement.candidate.candidateId ===
+            dashboardAttentionCandidateId("dose:7")
+        )
+      ).toMatchObject({ lane: "ahead", aheadBucket: "later-today" });
     }
   });
 
@@ -1123,6 +1140,134 @@ describe("Now lane ordering follows the dose-day order (#3554)", () => {
     const backward = model([twin(12), twin(11)]).map((item) => item.key);
     expect(forward).toEqual(["dose:11", "dose:12"]);
     expect(backward).toEqual(forward);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A SLOT'S DUE DOSES ARE ONE CANDIDATE (#5063).
+//
+// Six doses declared for one bucket are one act at one moment. As one candidate each
+// the Now cap seated two and the rest fell through to the fold, so a stack was split
+// from its own smoothie. A bucket holding two or more is one `dose-slot:<bucket>`
+// candidate carrying its members; a bucket holding one is the dose itself, unchanged.
+// ---------------------------------------------------------------------------
+describe("a bucket's due doses seat as one candidate (#5063)", () => {
+  const SLOT_TODAY = "2026-08-22";
+
+  const dose = (
+    id: number,
+    name: string,
+    timeOfDay: string,
+    over: Partial<UpcomingItem> = {}
+  ): UpcomingItem =>
+    ({
+      key: `dose:${id}`,
+      domain: "dose",
+      title: name,
+      shortLabel: name,
+      href: "/nutrition?tab=supplements",
+      dueDate: null,
+      doseId: id,
+      obligation: "should",
+      // The SAME key the dose generator stamps (#297), so the fixture cannot encode
+      // a bucket the app would not derive.
+      sortHint: doseSortKey({
+        timeOfDay,
+        obligation: (over.obligation ?? "should") as "must" | "should" | "may",
+        stack: null,
+        name,
+      }),
+      ...over,
+    }) as UpcomingItem;
+
+  const MORNING = [
+    dose(1, "Beta-Glucan", "morning"),
+    dose(2, "Ground Flaxseed", "morning"),
+    dose(3, "Psyllium Husk", "morning"),
+    dose(4, "Collagen", "morning"),
+    dose(5, "Creatine", "morning"),
+    dose(6, "Vitamin B", "morning"),
+  ];
+
+  const ids = (items: UpcomingItem[]) =>
+    attentionCandidates(subject, items, SLOT_TODAY).map(
+      (candidate) => candidate.candidateId
+    );
+
+  // The whole rule in one table: what a bucket of N doses becomes. The single-dose
+  // row is a case here rather than a separate test, because "grouped" and "not
+  // grouped" are the same question asked at two counts.
+  it.each([
+    [1, ["attention.fact:dose:1"]],
+    [2, ["attention.fact:dose-slot:Morning"]],
+    [6, ["attention.fact:dose-slot:Morning"]],
+  ])("%i due Morning dose(s) place as %j", (count, expected) => {
+    expect(ids(MORNING.slice(0, count))).toEqual(expected);
+  });
+
+  it("carries the members and leaves other buckets alone", () => {
+    const entries = attentionEntries([
+      ...MORNING,
+      dose(7, "Magnesium", "before sleep"),
+    ]);
+    expect(
+      entries.map((entry) =>
+        entry.kind === "dose-slot"
+          ? [entry.bucket, entry.items.map((item) => item.doseId)]
+          : entry.item.key
+      )
+    ).toEqual([["Morning", [1, 2, 3, 4, 5, 6]], "dose:7"]);
+  });
+
+  // The seat is the same act, so it is owed as strongly as its strongest member and
+  // carries a member's safety gate. A slot that softened a `must` to `should` would
+  // be a demotion nobody asked for.
+  it("takes its strongest member's obligation and any member's safety", () => {
+    const [slot] = attentionCandidates(
+      subject,
+      [
+        dose(1, "Beta-Glucan", "morning"),
+        dose(2, "Warfarin", "morning", {
+          obligation: "must",
+          suppressionPolicy: "safety-ungated",
+        }),
+      ],
+      SLOT_TODAY
+    );
+    expect(slot).toMatchObject({
+      kind: "action",
+      obligation: "must",
+      rankReasons: { safety: true, owed: true },
+    });
+  });
+
+  // AC1: the slot takes ONE of the two ordinary seats and nothing of it is left over
+  // for the fold — which is the defect, stated as a placement.
+  it("seats the whole slot in Now and leaves no dose in the fold", () => {
+    const placements = rankDashboardCandidates(
+      [
+        ...attentionCandidates(subject, MORNING, SLOT_TODAY),
+        action("target.log:9", "should", { owed: true }),
+      ],
+      {
+        activeProfileId: 7,
+        minutesOfDay: 7 * 60,
+        today: SLOT_TODAY,
+        upcoming: [],
+      }
+    );
+    expect(
+      placements
+        .filter((placement) => placement.lane === "now")
+        .map((placement) => placement.candidate.candidateId)
+    ).toEqual(["attention.fact:dose-slot:Morning", "target.log:9"]);
+    expect(
+      placements.filter(
+        (placement) =>
+          placement.lane !== "now" &&
+          placement.candidate.candidateId.startsWith("attention.fact:dose")
+      )
+    ).toEqual([]);
   });
 });
 
