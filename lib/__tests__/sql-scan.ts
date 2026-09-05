@@ -33,6 +33,14 @@ function walk(dir: string, out: string[]) {
 
 // The source surfaces to scan: all of lib (minus tests), every server-action
 // file, and every route handler.
+//
+// "Minus tests" means the TEST DIRECTORIES too, not only the *.test.ts files in them.
+// The exclusion used to read `rel.includes("__tests__")`, which is one underscore
+// short of `__db_tests__` and `__action_tests__` — so 22 fixture and harness modules
+// (lib/__db_tests__/fixtures.ts among them) sat inside the surface every one of these
+// scans calls production. Measured: dropping a module declaring `newBundle` into
+// lib/__db_tests__/ reds one-bundle-mint.test.ts, a rule about production code, on a
+// file no production code imports.
 export function sourceFiles(): string[] {
   const all: string[] = [];
   walk(path.join(REPO, "lib"), all);
@@ -43,7 +51,7 @@ export function sourceFiles(): string[] {
     // for EVERY file — the scans silently dropped all of lib/ rather than failing.
     const rel = relPath(f);
     if (!f.endsWith(".ts") && !f.endsWith(".tsx")) return false;
-    if (rel.includes("__tests__") || f.endsWith(".test.ts")) return false;
+    if (/__[a-z_]*tests__\//.test(rel) || f.endsWith(".test.ts")) return false;
     if (rel.startsWith("lib/")) return true;
     return (
       f.endsWith("actions.ts") ||
