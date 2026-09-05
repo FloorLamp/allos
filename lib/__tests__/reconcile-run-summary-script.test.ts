@@ -118,6 +118,16 @@ function runScript(
   const bin = path.join(dir, "bin");
   fs.mkdirSync(bin);
   fs.writeFileSync(path.join(bin, "curl"), STUB_CURL, { mode: 0o755 });
+  // `gh` on PATH, authenticated only when STUB_GH_TOKEN is set — the
+  // read-credential fallback of #3710. It exists so a case can put the process
+  // in the one state that separates a read credential from a write one (no
+  // GH_TOKEN, but `gh auth token` answering), which no amount of unsetting
+  // variables can reproduce; unset, it exits 1 like an unauthenticated host.
+  fs.writeFileSync(
+    path.join(bin, "gh"),
+    `#!/bin/sh\n[ -n "$STUB_GH_TOKEN" ] || exit 1\nprintf '%s\\n' "$STUB_GH_TOKEN"\n`,
+    { mode: 0o755 }
+  );
   const stateFile = path.join(dir, "state.json");
   const log = path.join(dir, "calls.jsonl");
   fs.writeFileSync(stateFile, JSON.stringify(state));
@@ -189,6 +199,40 @@ describe("reconcile-run-summary.ts", () => {
     expect(run.status).toBe(2);
     expect(run.stderr).toContain("needs GH_TOKEN or GITHUB_TOKEN");
     expect(run.calls).toEqual([]);
+  });
+
+  it("--apply refuses a gh-auth READ credential even though a dry run uses it", () => {
+    // environment.md §GitHub access: the gh fallback is a read credential and a
+    // write rides the named variables only. Unsetting GH_TOKEN alone cannot
+    // test that — on a host with `gh` authenticated the fallback answers, and
+    // an --apply that accepted it would post with a credential nobody granted
+    // it for writing.
+    const dir = makeTmpDir("reconcile-run-summary-evidence");
+    const readOnly = {
+      GH_TOKEN: undefined,
+      GITHUB_TOKEN: undefined,
+      STUB_GH_TOKEN: "gh-read-token",
+    };
+    const posted = runScript(
+      empty(),
+      ["--evidence", evidenceFile(dir), "--apply"],
+      readOnly
+    );
+    expect(posted.status).toBe(2);
+    expect(posted.stderr).toContain("needs GH_TOKEN or GITHUB_TOKEN");
+    expect(posted.calls).toEqual([]);
+    expect(posted.state.comments).toEqual([]);
+
+    // The same credential IS enough to read, so the dry run's duplicate check
+    // runs rather than silently degrading to "would be the first".
+    const dryRun = runScript(
+      { comments: [{ id: 1, body: `${RUN_SUMMARY_MARKER} ${RAN_AT} · …` }] },
+      ["--evidence", evidenceFile(dir)],
+      readOnly
+    );
+    expect(dryRun.status).toBe(0);
+    expect(dryRun.stdout).toContain("is ALREADY on");
+    expect(dryRun.calls.every((c) => c.method === "GET")).toBe(true);
   });
 
   it("--apply posts exactly one comment and verifies by re-read", () => {
