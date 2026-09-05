@@ -53,7 +53,6 @@ export type DashboardTimingDisposition =
 // Raw numeric deltas deliberately have no representation here.
 export type DashboardReadingPromotion =
   | "clinical-non-notable-to-notable"
-  | "weekly-target-transition"
   | "outcome-goal-transition"
   | "training-best"
   | "sleep-arrived"

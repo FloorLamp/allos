@@ -75,7 +75,6 @@ function renderRow(presentation: DashboardStandingPresentation) {
     { subject: { scope: "profile", profileId: 1 }, sourceOrder: 0 },
     1,
     true,
-    false,
     true
   );
   render(

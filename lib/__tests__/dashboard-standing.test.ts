@@ -3,6 +3,7 @@ import {
   actionCandidate,
   careCandidates,
   profileDataRelevance,
+  progressCandidates,
   readingCandidate,
   sleepCandidates,
   stateCandidate,
@@ -324,7 +325,7 @@ describe("fixed Standing instrument cluster", () => {
         windowOpen: false,
         changed: true,
       },
-      readingPromotion: "weekly-target-transition",
+      readingPromotion: "training-best",
     });
     const placements = rank([promoted]);
     expect(placements).toHaveLength(1);
@@ -439,35 +440,40 @@ describe("a capped Standing family's tail", () => {
     ).toMatchObject({ lane: "everything" });
   });
 
-  it("celebrates a met weekly target once and then leaves every lane", () => {
-    const unmet = reading("target.weekly-progress:1", 400);
-    const met = (promoted: boolean) =>
-      reading("target.weekly-progress:2", 401, {
-        standingEligible: false,
-        ...(promoted
-          ? {
-              rankReasons: changedReasons,
-              readingPromotion: "weekly-target-transition" as const,
-            }
-          : {}),
-      });
+  // A MET TARGET TAKES NO SEAT AT ALL (#4756's ruling, delivered by #5064). It used
+  // to mint a promoted reading and card at the top of Right now — a receipt for work
+  // the logging surface had already confirmed. Driven through the family's OWN
+  // builder rather than a hand-assembled candidate, so re-introducing a promoted arm
+  // reds HERE and not only in the registry list: a hand-made candidate would simply
+  // stop compiling and prove nothing about what the builder emits.
+  it("leaves a met weekly target in no lane at all", () => {
+    const target = (id: number, unmet: boolean, behind = false) =>
+      progressCandidates.targetProgress(
+        { subject: profile, sourceOrder: 400 + id },
+        id,
+        unmet,
+        behind
+      );
+
+    const met = target(2, false);
+    expect(met.rankReasons.changed).toBe(false);
+    expect(met.readingPromotion).toBeUndefined();
 
     expect(
-      rank([unmet, met(true)]).map(({ candidate, lane }) => [
-        candidate.candidateId,
-        lane,
-      ])
-    ).toEqual([
-      ["target.weekly-progress:2", "now"],
-      ["target.weekly-progress:1", "standing"],
-    ]);
-
-    expect(
-      rank([unmet, met(false)]).map(({ candidate, lane }) => [
+      rank([target(1, true), met]).map(({ candidate, lane }) => [
         candidate.candidateId,
         lane,
       ])
     ).toEqual([["target.weekly-progress:1", "standing"]]);
+
+    // The converse, so the absence above is the MET state and not this family
+    // having quietly left the page: a behind target still claims its standing seat.
+    expect(
+      rank([target(3, true, true)]).map(({ candidate, lane }) => [
+        candidate.candidateId,
+        lane,
+      ])
+    ).toEqual([["target.weekly-progress:3", "standing"]]);
   });
 
   it("gathers the seats a capped family has plus its live promotions", () => {

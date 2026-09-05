@@ -44,11 +44,16 @@ export const progressCandidates = {
   // `nowScore` awards `owed` only to actions, so a behind READING never cards —
   // which is exactly the #3245 split (the card is gated by the moment, the
   // standing fact is told here).
+  //
+  // NO PROMOTION ARM AT ALL (#4756's ruling, delivered by #5064). A met target is
+  // the one state in this family needing no attention, action or decision, and
+  // promoting exactly that state seated a bare receipt at the top of Right now for
+  // work the logging surface had already confirmed. The transition is still SEEN —
+  // the standing row flips to its on-track reading — it just takes no Now seat.
   targetProgress(
     ctx: DomainCandidateContext,
     id: number,
     standingEligible = true,
-    promoted = false,
     behind = false
   ) {
     return reading(
@@ -64,11 +69,8 @@ export const progressCandidates = {
           safety: false,
           owed: behind,
           windowOpen: false,
-          changed: promoted,
+          changed: false,
         },
-        ...(promoted
-          ? { readingPromotion: "weekly-target-transition" as const }
-          : {}),
       }
     );
   },
