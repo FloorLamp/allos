@@ -1673,6 +1673,13 @@ test("the sheet's Care segment takes a household member's fever, with no profile
     await panel.getByTestId("temp-quick-input").fill(FEVER_READING_F);
     await tap(panel.getByTestId("temp-quick-save"));
 
+    // EXACT ON PURPOSE, AND IT WILL GO RED BY DESIGN. When #4932's Default clause
+    // lands — an opener inside a subject-scoped container passing that subject —
+    // nothing has to name the child here and this journey becomes five taps. That
+    // red is that issue succeeding, not this path breaking. The fix then is to
+    // re-count the journey and re-pin the number, never to loosen this to a bound:
+    // a `<=` would stop noticing a regression in either direction, which is the
+    // whole reason the census is written as a count.
     expect(taps).toBe(7);
 
     // THE READING LANDED ON THE CHILD, from the store rather than from the toast —
