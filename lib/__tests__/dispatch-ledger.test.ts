@@ -152,13 +152,13 @@ describe("ledger.mjs, driven the way orchestrator-checkin.sh drives it", () => {
     expect(run.stdout.trim()).toBe("1");
   });
 
-  // AND `?` IS NOT 0 (owner, 2026-08-31). The shell prints `?` when this exits
-  // non-zero, and `?` sends the orchestrator to LOOK. A missing ledger printed
-  // as 0 reads "no lanes are running", and an empty roster is a dispatch order
-  // — so a wrong STATE_DIR or a restart would dispatch on top of live lanes
-  // nobody can see. Only a present-but-EMPTY ledger is genuinely zero. Each
-  // row asserts stdout too: a refusal that PRINTS would make the shell's
-  // `$(node … || echo "?")` yield the number AND the `?`.
+  // AND UNKNOWN IS NOT 0 (owner, 2026-08-31). The shell prints UNMEASURED when
+  // this exits non-zero, and that sends the orchestrator to LOOK. A missing
+  // ledger printed as 0 reads "no lanes are running", and an empty roster is a
+  // dispatch order — so a wrong STATE_DIR or a restart would dispatch on top of
+  // live lanes nobody can see. Only a present-but-EMPTY ledger is genuinely
+  // zero. Each row asserts stdout too: a refusal that PRINTS would leave the
+  // shell holding a number it would then read as the answer.
   it.each([
     [["branchez"], file, "an unknown mode"],
     [

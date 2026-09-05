@@ -299,6 +299,57 @@ export function closedStatusDescription(failure) {
     : `${description.slice(0, 137)}...`;
 }
 
+// ── WHAT THE MAIN DETECTOR SAYS ABOUT ONE HEAD ──────────────────────────────
+//
+// ONE classifier, two readers. `baseDetectorNotice` states the standing beside
+// a merge decision (#4722); `main-red-history.mjs` states it for a RUN of heads
+// (#5160). Both ask the identical question, and a second answer to it is the
+// thing that would rot: the four not-green states below are each a ruling
+// (#4370 twice, #4722, and the cancelled case above), and a history tool that
+// re-derived them would drift out of agreement with the gate that merges.
+
+/**
+ * The detector's standing on one head, as a VALUE rather than a sentence.
+ *
+ * `kind` is the whole vocabulary, and none of the four not-green states may be
+ * folded into another: `unobserved` is a head the detector never ran on at all
+ * (it debounces, so a burst of merges collapses to one run at the newest head),
+ * `nothing-ran` is a push it ran on and skipped for having no runtime surface,
+ * `cancelled` is no verdict, and `pending` is not one yet.
+ *
+ * @param {{name: string, status?: string, conclusion?: string|null}[]} runs
+ * @param {string} detector
+ * @returns {{kind: "unobserved"|"cancelled"|"red"|"pending"|"nothing-ran"|"green",
+ *   detected: object[], shards: object[], red: object[], pending: object[], ran: object[]}}
+ */
+export function detectorStanding(runs, detector = "e2e-main") {
+  const detected = runs.filter((run) => run.name.startsWith(detector));
+  const shards = detected.filter(reachedAVerdict);
+  const red = shards.filter(
+    (run) =>
+      run.status === "completed" &&
+      !["success", "neutral", "skipped"].includes(run.conclusion)
+  );
+  const pending = shards.filter((run) => run.status !== "completed");
+  // A SKIPPED SHARD IS NOT A GREEN ONE (#4370). This used to fold `skipped` in
+  // with `success` and report "is green (4 shards)" over a run that executed no
+  // browser at all — the exact false confidence #4370 was filed about, printed
+  // at the moment a merge decision is taken.
+  const ran = shards.filter((run) => run.conclusion !== "skipped");
+  const kind = !shards.length
+    ? detected.length
+      ? "cancelled"
+      : "unobserved"
+    : red.length
+      ? "red"
+      : pending.length
+        ? "pending"
+        : ran.length
+          ? "green"
+          : "nothing-ran";
+  return { kind, detected, shards, red, pending, ran };
+}
+
 // What `e2e-main` says about the branch this PR merges INTO (#4722).
 //
 // That workflow runs on pushes to main, so it never appears on a PR head and
@@ -309,31 +360,21 @@ export function closedStatusDescription(failure) {
 // separate ruling.
 export function baseDetectorNotice(runs, ref, detector = "e2e-main") {
   const at = runs[0]?.head_sha ? `${ref}@${runs[0].head_sha.slice(0, 8)}` : ref;
-  const detected = runs.filter((run) => run.name.startsWith(detector));
-  const shards = detected.filter(reachedAVerdict);
-  if (!shards.length)
-    return detected.length
-      ? `${detector}: no verdict on ${at} — every shard run was cancelled; re-run it`
-      : `${detector}: no verdict on ${at} — it debounces, and skips a push with no runtime surface`;
-  const red = shards.filter(
-    (run) =>
-      run.status === "completed" &&
-      !["success", "neutral", "skipped"].includes(run.conclusion)
-  );
-  if (red.length)
-    return `${detector}: ${at} is RED — ${red.map((run) => run.name).join(", ")}. Attribute it before merging onto it (#4722)`;
-  const pending = shards.filter((run) => run.status !== "completed");
-  if (pending.length)
-    return `${detector}: still running on ${at} (${pending.length} of ${shards.length})`;
-  // A SKIPPED SHARD IS NOT A GREEN ONE (#4370). e2e-main skips a push with no
-  // runtime surface, and this line used to fold `skipped` in with `success` and
-  // report "is green (4 shards)" over a run that executed no browser at all —
-  // the exact false confidence #4370 was filed about, printed at the moment a
-  // merge decision is taken.
-  const ran = shards.filter((run) => run.conclusion !== "skipped");
-  if (!ran.length)
-    return `${detector}: ${at} ran NOTHING (${shards.length} shards skipped — no runtime surface in that push). Not a green; the nightly is what covers main`;
-  return `${detector}: ${at} is green (${ran.length} of ${shards.length} shards ran)`;
+  const { kind, shards, red, pending, ran } = detectorStanding(runs, detector);
+  switch (kind) {
+    case "cancelled":
+      return `${detector}: no verdict on ${at} — every shard run was cancelled; re-run it`;
+    case "unobserved":
+      return `${detector}: no verdict on ${at} — it debounces, and skips a push with no runtime surface`;
+    case "red":
+      return `${detector}: ${at} is RED — ${red.map((run) => run.name).join(", ")}. Attribute it before merging onto it (#4722)`;
+    case "pending":
+      return `${detector}: still running on ${at} (${pending.length} of ${shards.length})`;
+    case "nothing-ran":
+      return `${detector}: ${at} ran NOTHING (${shards.length} shards skipped — no runtime surface in that push). Not a green; the nightly is what covers main`;
+    default:
+      return `${detector}: ${at} is green (${ran.length} of ${shards.length} shards ran)`;
+  }
 }
 
 // ── MARKERS: THE PRECONDITIONS THAT USED TO LIVE ONLY IN PROSE ───────────────
@@ -375,7 +416,7 @@ export function baseDetectorNotice(runs, ref, detector = "e2e-main") {
  * dropped so a caller can say a marker went unread instead of going quiet about
  * it, which is the failure the fence rule would otherwise trade for (#5183).
  */
-function markerLines(notes, name) {
+export function markerLines(notes, name) {
   const opener = new RegExp(`^${name}\\b\\s*:?\\s*`, "i");
   // The `>` here is now only reached by a quoting line — a speaking one never
   // starts with it — and stripping it is what lets a blockquoted marker be
