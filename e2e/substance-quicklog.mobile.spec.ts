@@ -47,11 +47,18 @@ interface QuickLogFixture {
 }
 
 function clearSubstanceRows(db: Database.Database, profileId: number): void {
-  // Both ledgers: alcohol rides food_daily_totals (#860/#944) and everything else
-  // rides substance_daily_totals, and the row is gated on EITHER being present, so
-  // clearing one alone would leave the "tracks none" precondition false.
-  // BOTH HALVES of the non-food ledger since #5026 phase 2: the counter the offer is
-  // gated on, and the use events the record reads.
+  // FOUR DELETES, TWO REASONS, and they are different — a comment that folded them
+  // together would describe a gate the code does not read.
+  //
+  // The offer's gate (`hasLoggedSubstance`) reads the two COUNTERS and nothing else:
+  // alcohol rides food_daily_totals (#860/#944) and everything else rides
+  // substance_daily_totals, and the row is gated on EITHER being present, so clearing
+  // one alone would leave the "tracks none" precondition false.
+  //
+  // The two EVENT deletes are NOT part of that gate. They are here because #5026
+  // phase 2 gave both ledgers per-use event rows and the record reads THOSE: without
+  // them this profile would be substance-data-free to the sheet and still hold uses on
+  // /history, and each surviving event would have no counter left to roll it up.
   db.prepare("DELETE FROM substance_log_events WHERE profile_id = ?").run(
     profileId
   );
