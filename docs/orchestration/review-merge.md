@@ -75,8 +75,9 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
   `e2e-main` run on `main` is not a reason to hold it; a red `main` is.
 - Merges are serial; PRs are not. Every branch that passed its gates opens
   READY at once (never draft — environment.md §GitHub access), so CI and the
-  exact-head review run in parallel. After a merge, the next green head merges
-  without a re-run when `landing-independence.mjs <pr>` exits 0; else rebase.
+  exact-head review run in parallel. `landing-independence.mjs` is path-only
+  advice (#5138); the gate refuses an unchecked base-moved head (#5235).
+- Its refusal names the `MERGED-TREE-CHECKED` receipt that clears it.
 - **The exact-head review is INDEPENDENT and pinned to the SHA** (owner
   2026-08-26, #3710): a non-author reviews the candidate commit; the COMMENT
   review states SHA and reviewer — on a shared bot account, also that the
