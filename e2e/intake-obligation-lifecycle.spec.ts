@@ -6,6 +6,7 @@ import { workerDbPath, frozenNow } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
 import { utcSqlString, zonedWallTimeToUtc } from "@/lib/date";
 import {
+  appContent,
   expandUpcomingAggregates,
   hydratedClick,
   settledClick,
@@ -179,7 +180,7 @@ test("a `may` item is tracked on its page, off the due list, and inside the avai
 
     // …and the `may` one is COLLAPSED into the availability disclosure rather than
     // vanishing. Opening it shows the item, labelled as available, not as due.
-    const available = page.getByTestId("available-section");
+    const available = appContent(page).getByTestId("available-section");
     await expect(available).toBeVisible();
     await available.locator("summary").click();
     await expect(
@@ -255,7 +256,7 @@ test("accepting a demotion suggestion moves the item into the available disclosu
     ).toHaveCount(0);
 
     // It MOVED rather than disappeared — the visible half of collapse-not-remove.
-    const available = page.getByTestId("available-section");
+    const available = appContent(page).getByTestId("available-section");
     await expect(available).toBeVisible();
     await available.locator("summary").click();
     await expect(
@@ -429,7 +430,7 @@ test("an Upcoming Available row logs in one tap and stays available rather than 
     itemId = item.itemId;
 
     await page.goto("/upcoming");
-    const available = page.getByTestId("available-section");
+    const available = appContent(page).getByTestId("available-section");
     await available.locator("summary").click();
     const row = available
       .getByTestId("available-row")

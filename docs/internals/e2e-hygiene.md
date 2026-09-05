@@ -311,10 +311,13 @@ ceiling would have left the removal case green and let that file regain a bare
 lookup for free. Raising an entry is legitimate only there; never as a way to land a new bare
 lookup. Lowering is always legitimate and always wanted.
 
-**Burn down the 161 files that reach a streaming route first.** They are the files
-whose code names `/training` or `/trends`; they hold 2,298 of the 5,427 lookups and
-they are the only ones that can race today. The other 274 files / 3,129 lookups are
-frozen for uniformity and can wait indefinitely.
+**Burn down the files that reach a streaming route first.** They are the files
+whose code names a streaming route; when this heuristic was measured that was
+`/training` or `/trends` — 161 files holding 2,298 of the 5,427 lookups, against
+274 files / 3,129 lookups frozen for uniformity that can wait indefinitely. #2641
+phase 2 added `/upcoming` and `/medical/episodes/[id]` to the surface, so that
+split is now an UNDERCOUNT of what can race: re-derive it over all four route
+names before treating a file as safe.
 The freeze is immutable-downward like every other list here, so scoping a site
 and lowering its number happen in the same PR — that is the ratchet, and it is
 worth the friction to keep one guard file consistent with itself.
@@ -346,10 +349,15 @@ message asks exactly that, and the answer belongs beside the entry.
 what makes a section genuinely suspend — every read here is synchronous
 better-sqlite3, so an `async` Server Component resolves in microtasks and a bare
 `<Suspense>` never flushes early — and its call sites are the whole hazard
-surface. Today that is two routes: `/training` (the tab panel) and `/trends` (the
-Body census). The guard freezes both that list and every `<Suspense>` in `app/` and
-`components/`, so a third streaming hub cannot land without someone re-reading
-the specs that assert against it. `loading.tsx` is the other way in; `app/(app)/layout.tsx`
+surface. Today that is four routes: `/training` (the tab panel), `/trends` (the
+Body census), and — since #2641 phase 2 — `/upcoming` and
+`/medical/episodes/[id]`, which stream the below-the-fold TAIL of their page
+rather than its body, so the staged copy on those two holds only the tail's
+markers (`available-*`, `suppressed-*`, `episode-care*`,
+`episode-household-context*`, `stale-episode-*`, `episode-comparison`,
+`episode-summary-footer`). The guard freezes both that list and every
+`<Suspense>` in `app/` and `components/`, so a fifth streaming hub cannot land
+without someone re-reading the specs that assert against it. `loading.tsx` is the other way in; `app/(app)/layout.tsx`
 refuses it in prose (#530) and the guard now freezes it at zero.
 
 **`/history` and the household feed do NOT have this exposure.** They share the
