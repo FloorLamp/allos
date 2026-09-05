@@ -223,6 +223,44 @@ test("Ahead states every member with no fold of its own", async ({ page }) => {
   );
 });
 
+// ONE PLACEMENT PER WEEKLY TARGET (#5064). Standing's Longer view and Ahead's "This
+// week and later" were two lanes on one screen stating the same weekly progress in two
+// spellings — "Cardio 1 of 2 this week" and "Cardio 1/2 this week". The upcoming copy
+// is retired from the whole dashboard, not hidden in one lane, so the sweep runs with
+// Show everything OPEN and covers the fold too.
+//
+// TWO POSITIVE CONTROLS, because an absence assertion passes just as happily on a page
+// that lost the family altogether or a producer that stopped emitting the item:
+// the Standing reading is still here saying the progress once, and /upcoming's planning
+// ledger still lists the same target — completeness is that page's charter and this
+// change does not touch it.
+test("a weekly target's progress is stated once, outside Ahead", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await openDashboardAll(page);
+
+  const readings = page.locator(
+    '[data-testid="dashboard-candidate"][data-candidate-id^="target.weekly-progress:"]'
+  );
+  expect(await readings.count()).toBeGreaterThan(0);
+
+  // The two upcoming keys the weekly-target builders mint (trainingSignalKey and
+  // practiceSignalKey), inside the attention namespace the dashboard mints ids in.
+  for (const prefix of ["training:", "practice:"])
+    await expect(
+      page.locator(
+        `[data-testid="dashboard-candidate"][data-candidate-id^="attention.fact:${prefix}"]`
+      ),
+      prefix
+    ).toHaveCount(0);
+
+  await page.goto("/upcoming");
+  await expect(
+    page.locator('[data-testid^="upcoming-item-training:"]')
+  ).not.toHaveCount(0);
+});
+
 test("Show everything remembers its open state on this device", async ({
   browser,
 }) => {

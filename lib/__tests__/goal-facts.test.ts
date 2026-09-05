@@ -4,6 +4,7 @@ import {
   deadlineFactLabel,
   firstGoalProblem,
   goalFactSummary,
+  goalProgressStatement,
   goalStartingFrom,
   moreGoalFactsLabel,
   startingFromFactLabel,
@@ -11,8 +12,11 @@ import {
   type GoalFactInput,
   type GoalFactKey,
   type GoalProblemInput,
+  type GoalProgressGoal,
+  type GoalProgressReading,
   type GoalStartingFromInput,
 } from "../goal-facts";
+import type { WeightUnit } from "../settings";
 
 // #3220: what the goal form's chip row states. The chip KEYS, their states and their
 // suggestion marking are the contract; the wording is not (see the module header).
@@ -378,5 +382,133 @@ describe("which fact the form must open before it can save (#3220)", () => {
     expect(problem({ machineUnchosen: true, targetWeight: "" })?.fact).toBe(
       "target"
     );
+  });
+});
+
+// #5198 (absorbing #4759): what a goal's PROGRESS row states. Endpoints in the
+// goal's own display units, percent as the trailing annotation, and an honest
+// unknown wherever nothing has been measured — a naked "27%" answers 27% of the way
+// from what to what.
+describe("goalProgressStatement", () => {
+  const GOAL: GoalProgressGoal = {
+    kind: "body",
+    metric: null,
+    body_metric: "resting_hr",
+    target_weight_kg: null,
+    target_reps: null,
+    target_sets: null,
+    target_duration_sec: null,
+    target_value: null,
+    current_value: null,
+    unit: null,
+  };
+  const state = (
+    goal: Partial<GoalProgressGoal>,
+    progress: GoalProgressReading | undefined,
+    weightUnit: WeightUnit = "kg"
+  ) => goalProgressStatement({ ...GOAL, ...goal }, progress, weightUnit);
+
+  it.each([
+    [
+      "resting HR in bpm",
+      { kind: "body", body_metric: "resting_hr" },
+      { current: 63, target: 58, pct: 27 },
+      "kg",
+      "63 → 58 bpm · 27%",
+    ],
+    [
+      "body fat in percent",
+      { kind: "body", body_metric: "body_fat" },
+      { current: 22.4, target: 18, pct: 40 },
+      "kg",
+      "22.4 → 18% · 40%",
+    ],
+    [
+      "a bodyweight goal in the viewer's unit",
+      { kind: "body", body_metric: "weight" },
+      { current: 80, target: 75, pct: 50 },
+      "lb",
+      "176.4 → 165.3 lb · 50%",
+    ],
+    [
+      "a bench press in the viewer's unit",
+      { kind: "exercise", metric: "weight" },
+      { current: 80, target: 85, pct: 80 },
+      "lb",
+      "176.4 → 187.4 lb · 80%",
+    ],
+    [
+      "a rep target as a count",
+      { kind: "exercise", metric: "reps" },
+      { current: 8, target: 12, pct: 66 },
+      "kg",
+      "8 → 12 reps · 66%",
+    ],
+    [
+      "a hold as m:ss",
+      { kind: "exercise", metric: "hold" },
+      { current: 75, target: 120, pct: 62 },
+      "kg",
+      "1:15 → 2:00 · 62%",
+    ],
+    [
+      "a lab value in its charted unit",
+      { kind: "biomarker" },
+      { current: 128, target: 100, pct: 27, unit: "mg/dL" },
+      "kg",
+      "128 → 100 mg/dL · 27%",
+    ],
+    [
+      "a freeform goal from its manual pair",
+      { kind: "freeform", target_value: 20, current_value: 5, unit: "books" },
+      undefined,
+      "kg",
+      "5 → 20 books · 25%",
+    ],
+  ] as const)(
+    "states %s with the percent trailing",
+    (_name, goal, progress, weightUnit, expected) => {
+      const shown = state(
+        goal as Partial<GoalProgressGoal>,
+        progress as GoalProgressReading | undefined,
+        weightUnit as WeightUnit
+      );
+      expect(`${shown.value} · ${shown.percent}`).toBe(expected);
+    }
+  );
+
+  // MISSING CURRENT DATA STAYS UNKNOWN. `GoalProgress` reports `current: 0` for a
+  // goal nothing has measured, and printing "0 → 58 bpm · 0%" would be a confident
+  // lie about the person's health. The TARGET survives — it is real either way.
+  it.each([
+    ["no readings", "no-readings"],
+    ["a unit the target was not captured in", "unit-mismatch"],
+  ] as const)("keeps the current endpoint unknown with %s", (_name, reason) => {
+    expect(
+      state(
+        { kind: "biomarker" },
+        {
+          current: 0,
+          target: 100,
+          pct: 0,
+          unit: "mg/dL",
+          unavailable: reason,
+        }
+      )
+    ).toEqual({ value: "— → 100 mg/dL", percent: null });
+  });
+
+  it("states no percent where there are no endpoints to be a percent of", () => {
+    // A freeform goal before anyone gives it a number, and a measured goal whose
+    // gather produced nothing at all: both keep the plain sentence the row has
+    // always shown, and neither invents a bar.
+    expect(state({ kind: "freeform", current_value: 3 }, undefined)).toEqual({
+      value: "In progress",
+      percent: null,
+    });
+    expect(state({ kind: "body", body_metric: "weight" }, undefined)).toEqual({
+      value: "In progress",
+      percent: null,
+    });
   });
 });

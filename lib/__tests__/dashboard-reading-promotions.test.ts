@@ -5,7 +5,6 @@ import {
   outcomeGoalProgressChanged,
   outcomeGoalStateChanged,
   sleepArrivedInWakeWindow,
-  weeklyTargetStateChanged,
 } from "../dashboard-reading-promotions";
 import {
   careCandidates,
@@ -18,10 +17,12 @@ const subject = { scope: "profile" as const, profileId: 7 };
 const ctx = { subject, sourceOrder: 0 };
 
 describe("closed dashboard reading promotions", () => {
-  it("contains exactly the six owner-ratified semantic transitions", () => {
+  // FIVE, NOT SIX: `weekly-target-transition` retired with #4756/#5064. The kind is
+  // GONE from the vocabulary rather than left unused, so re-adding a met-target
+  // promotion is a typecheck failure and this list is what says so out loud.
+  it("contains exactly the five owner-ratified semantic transitions", () => {
     expect(DASHBOARD_READING_PROMOTIONS).toEqual([
       "clinical-non-notable-to-notable",
-      "weekly-target-transition",
       "outcome-goal-transition",
       "training-best",
       "sleep-arrived",
@@ -36,42 +37,6 @@ describe("closed dashboard reading promotions", () => {
     expect(clinicalResultBecameNotable("high", "low")).toBe(false);
     expect(clinicalResultBecameNotable("normal", "high")).toBe(false);
     expect(clinicalResultBecameNotable("immune", "normal")).toBe(false);
-  });
-
-  it("compares weekly target semantic states without reading a numeric delta", () => {
-    expect(
-      weeklyTargetStateChanged(
-        { pace: "behind", met: false, count: 1 },
-        { pace: "on-pace", met: false }
-      )
-    ).toBe(true);
-    expect(
-      weeklyTargetStateChanged(
-        { pace: "met", met: true, count: 3 },
-        { pace: "on-pace", met: false }
-      )
-    ).toBe(true);
-    expect(
-      weeklyTargetStateChanged(
-        { pace: "on-pace", met: false, count: 1 },
-        { pace: "on-pace", met: false }
-      )
-    ).toBe(false);
-    expect(
-      weeklyTargetStateChanged({ pace: "behind", met: false, count: 1 }, null)
-    ).toBe(false);
-    expect(
-      weeklyTargetStateChanged(
-        { pace: "behind", met: false, count: 0 },
-        { pace: "on-pace", met: false }
-      )
-    ).toBe(true);
-    expect(
-      weeklyTargetStateChanged(
-        { pace: "on-pace", met: false, count: 0 },
-        { pace: "on-pace", met: false }
-      )
-    ).toBe(false);
   });
 
   it("compares outcome-goal pace and completion states", () => {
@@ -121,7 +86,6 @@ describe("closed dashboard reading promotions", () => {
   it("routes every registered transition through its existing domain candidate", () => {
     const candidates = [
       careCandidates.lab(ctx, "LDL Cholesterol", { changed: true }),
-      progressCandidates.targetProgress(ctx, 1, true, true),
       progressCandidates.goal(ctx, 2, true),
       progressCandidates.trainingResult(ctx, "bench", "2026-06-17", 0),
       sleepCandidates.reading(

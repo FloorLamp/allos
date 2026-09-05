@@ -30,7 +30,6 @@ interface Policy {
   timing?: DashboardTiming;
   rankReasons?: DashboardRankReasons;
   readingPromotion?: DashboardReadingPromotion;
-  standingEligible?: boolean;
   episodeGroup?: DashboardEpisodeGroup;
   dashboardScope?: DashboardCandidate["dashboardScope"];
   navDuplicateOf?: DashboardCandidate["navDuplicateOf"];

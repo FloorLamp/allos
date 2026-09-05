@@ -44,13 +44,20 @@ export const progressCandidates = {
   // `nowScore` awards `owed` only to actions, so a behind READING never cards —
   // which is exactly the #3245 split (the card is gated by the moment, the
   // standing fact is told here).
-  targetProgress(
-    ctx: DomainCandidateContext,
-    id: number,
-    standingEligible = true,
-    promoted = false,
-    behind = false
-  ) {
+  //
+  // NO PROMOTION ARM AT ALL (#4756's ruling, delivered by #5064). A met target is
+  // the one state in this family needing no attention, action or decision, and
+  // promoting exactly that state seated a bare receipt at the top of Right now for
+  // work the logging surface had already confirmed. The transition is still SEEN —
+  // the standing row flips to its on-track reading — it just takes no Now seat.
+  //
+  // AND EVERY MEMBER KEEPS ITS STANDING SEAT, met included (#4756 item 2). A met
+  // target used to DECLINE its seat and rely on the promotion above to show it at
+  // all, so deleting the promotion alone would have taken a finished week off the
+  // page entirely — "Sauna 1 of 1 this week" nowhere, on the day you did it. The
+  // family's own order already sorts met members last (`orderDashboardHabits`), so
+  // a met row can never take the cap's seat from an open one.
+  targetProgress(ctx: DomainCandidateContext, id: number, behind = false) {
     return reading(
       ctx,
       `target.weekly-progress:${id}`,
@@ -59,16 +66,12 @@ export const progressCandidates = {
       "manual",
       "current",
       {
-        standingEligible,
         rankReasons: {
           safety: false,
           owed: behind,
           windowOpen: false,
-          changed: promoted,
+          changed: false,
         },
-        ...(promoted
-          ? { readingPromotion: "weekly-target-transition" as const }
-          : {}),
       }
     );
   },

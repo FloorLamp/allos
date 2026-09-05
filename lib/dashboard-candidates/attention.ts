@@ -109,6 +109,21 @@ export function doseSlotKey(bucket: TimeBucket): string {
   return `dose-slot:${bucket}`;
 }
 
+// A WEEKLY TARGET IS A STANDING READING, NOT AN UPCOMING ITEM (#5064). Its
+// progress reaches this page as `target.weekly-progress:<id>` — the family Standing
+// states, and whose behind member Attention already highlights — so the same four
+// facts arriving again through the upcoming model gave one screen two lanes saying
+// one thing in two spellings ("Cardio 1 of 2 this week" and "Cardio 1/2 this week").
+//
+// Dropped HERE, in the dashboard's own view of the attention model, and nowhere
+// else: `weeklyTarget` is the producer's declaration of what the row IS
+// (lib/queries/upcoming/plans.ts, #2579-E), and /upcoming's planning ledger, the
+// digest, the app badge and the calendar feed all still see the item — completeness
+// is that page's charter, and one dashboard is not it.
+function weeklyTargetReading(item: UpcomingItem): boolean {
+  return item.weeklyTarget === true;
+}
+
 export function attentionEntries(
   items: readonly UpcomingItem[]
 ): AttentionEntry[] {
@@ -127,6 +142,7 @@ export function attentionEntries(
   // member — so every other candidate keeps the `sourceOrder` it had, and the
   // #3554 dose-day order still decides which owed act reaches Now.
   return items.flatMap<AttentionEntry>((item, sourceIndex) => {
+    if (weeklyTargetReading(item)) return [];
     const bucket = doseSlotBucket(item);
     const run = bucket == null ? undefined : slots.get(bucket);
     if (run == null || run.items.length < 2)
