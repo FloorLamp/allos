@@ -24,8 +24,24 @@ import {
   TAP_FLOOR_FLOAT_EPSILON_PX,
   CONTROL_BOX_PX,
 } from "@/lib/tap-floor-tokens";
+import { sharedDayRestorePoint } from "./shared-profile-guard";
+import { frozenNow } from "./worker-env";
 
 const PHONE = { width: 390, height: 844 };
+
+// ONE TEST HERE LOGS A TEMPERATURE ON THE SHARED PROFILE (#5266). It lands in
+// `medical_records` on profile 1, dated today, and every reading surface there takes
+// the LATEST row under a canonical name — so a reading left behind becomes the shared
+// profile's current temperature for every later test on this worker. The day is put
+// back rather than cleared: the seed carries its own today-dated Body Temperature,
+// and deleting the day would take that from everyone downstream (#5265's ruling).
+// Restored from an `afterEach` so a failure part-way through cannot skip it.
+let restoreSharedDay: (() => void) | null = null;
+
+test.afterEach(() => {
+  restoreSharedDay?.();
+  restoreSharedDay = null;
+});
 
 async function expectClosedEpisodeAction(
   locator: Locator,
@@ -578,6 +594,10 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     await raiseSeverity(bar, "sore_throat", 3);
 
     // Log a temperature from the episode page (the entry is collapsed by default #857).
+    restoreSharedDay = sharedDayRestorePoint(
+      "medical_records",
+      frozenNow().toISOString().slice(0, 10)
+    );
     await openTempEntry(bar);
     await expect(bar.getByTestId("temp-quick-unit")).toHaveValue("F");
     await bar.getByTestId("temp-quick-input").fill("37.8");
