@@ -12,7 +12,7 @@ This is the entrypoint. Read only the procedure needed for the current job:
 - [Review and merge](orchestration/review-merge.md)
 - [Cross-session markers](orchestration/claims.md)
 - [Cadence and lifecycle](orchestration/lifecycle.md)
-- [Two orchestrators on one repo](orchestration/multi-orchestrator.md)
+- [Orchestrators on one repo](orchestration/multi-orchestrator.md)
 
 ## Standing contract
 
@@ -57,10 +57,10 @@ scripts/orchestrator-checkin.sh
 2. Cluster related, non-overlapping work into branches.
 3. Dispatch through `dispatch-brief.mjs new`.
 4. Review the full diff and verify claims against the repository.
-5. Require green CI on the exact head, then squash merge serially. A head
-   whose checks ran on an older base merges without a re-run only when
-   `scripts/orchestration/landing-independence.mjs <pr>` exits 0 — its paths are
-   disjoint from everything landed since, and no shared file on either side.
+5. Require green CI on the exact head, then squash merge serially through
+   `merge-gate.mjs`, which refuses a head whose base moved under it unless a
+   `MERGED-TREE-CHECKED` receipt says the merged tree was checked;
+   `landing-independence.mjs` is path-only advice.
 6. Run `dispatch-brief.mjs done <branch>`, confirm issue closure, and update
    release notes when appropriate.
 

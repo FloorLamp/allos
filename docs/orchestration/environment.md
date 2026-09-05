@@ -88,8 +88,6 @@ section rather than restating it, so the rule cannot drift per surface.
   body PATCH is silent, so a comment chain or in-flight lane keeps the
   pre-edit text; `reconcile-apply.ts` comments automatically (`--notify` for
   in-flight). Label changes are already timeline events — no comment.
-- Check the GraphQL rate-limit bucket before MCP-heavy work. Batch around a
-  reset; never retry in a loop.
 - GitHub closes multiple issues only when each `Fixes #N` is on its own line.
 - Gitleaks scans all checked-out refs. Read its annotation first: installation
   failure means the scan never ran.
