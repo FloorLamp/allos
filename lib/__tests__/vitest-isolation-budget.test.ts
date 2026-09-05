@@ -91,7 +91,15 @@ import { specsNeedingIsolation } from "@/vitest.isolation";
 // next/headers' cookies() and next/navigation's redirect(), so the gate has a session
 // to resolve and a refusal that can be observed. The tier cannot install either
 // shared: a tier-wide real auth would undo the stub every action spec relies on.
-const DB_ISOLATED = 38;
+// 39 since #2641 phase 2: streamed-hub-boundary-reads pins that each streamed hub's
+// tail GATHERS run inside its Suspense boundary rather than in the page — the one
+// property the two HTTP-tier specs cannot see, since a hoist leaves document order,
+// the fallback and the staged copy all unchanged. Observing it means intercepting
+// @/lib/queries and @/lib/queries/attention AS THE PAGE MODULES SEE THEM, which under
+// ESM only vi.mock can do. The tier cannot install these shared: wrapping the whole
+// @/lib/queries barrel for every db spec is a far wider blast radius than one spec's
+// own registry, which is the trade the message below asks callers to weigh.
+const DB_ISOLATED = 39;
 // 7 since #3065: Longevity's server-component FitnessSection is tested directly with
 // controlled session, age, and assembler boundaries. It must prove that minor and unknown
 // profiles return null before assembling adult population data; sharing those module stubs
