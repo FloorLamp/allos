@@ -29,9 +29,39 @@ fi
 
 set -uo pipefail
 
-STATE_DIR=${SCRATCH:-$(node "$(dirname "$0")/host.mjs" state-dir 2>/dev/null || echo /home/user/scratch)}
+HELPERS=$(dirname "$0")
+
+# A GUESSED STATE DIR IS WORSE THAN NO DIGEST, for the reason #5252 gave the
+# check-in: the window anchor, the log and the temp dir all hang off it, so a
+# wrong answer does not degrade one line — it makes the whole digest a statement
+# about a directory this host may not keep state in, and an anchor written there
+# silently re-reports a window already reported. host.mjs exists so that no
+# caller hard-codes a path (#3710), and the fallback this replaces restored
+# exactly the hard-coded value that resolver was written to delete. The only
+# honest fallback is a shell with no node at all, which cannot ask the question
+# — and even that is announced, because on any host but this one it is a guess.
+if [ -n "${SCRATCH:-}" ]; then
+  STATE_DIR=$SCRATCH
+elif ! command -v node >/dev/null 2>&1; then
+  STATE_DIR=/home/user/scratch
+  echo "*** no node on PATH: state dir ASSUMED $STATE_DIR, not resolved — export SCRATCH to be sure ***" >&2
+elif ! STATE_DIR=$(node "$HELPERS/host.mjs" state-dir); then
+  echo "=== PM DIGEST: STATE-DIR RESOLVER FAILED ===" >&2
+  echo "  node $HELPERS/host.mjs state-dir exited non-zero (its error is above)." >&2
+  echo "  The window anchor and this run's log live under that directory, so a" >&2
+  echo "  guessed one would report on a window this host never recorded." >&2
+  echo "  Restore the resolver, or export SCRATCH, before trusting a digest." >&2
+  exit 1
+fi
 ANCHOR_FILE="$STATE_DIR/.last_pm_digest"
-REPO_DIR=$(git rev-parse --show-toplevel 2>/dev/null || echo /home/user/allos)
+# Only the fallback changed: cwd's checkout is still the answer when there is
+# one. What it fell back to was one container's path, hard-coded, for the case
+# where the PM is standing outside a checkout — and every commit figure below is
+# a statement about that directory. This script's own location is not a guess.
+if ! REPO_DIR=$(git rev-parse --show-toplevel 2>/dev/null); then
+  REPO_DIR=$(cd "$HELPERS/../.." && pwd -P)
+  echo "*** cwd is not inside a git checkout: repo taken from this script's own path ($REPO_DIR) ***" >&2
+fi
 API="https://api.github.com/repos/FloorLamp/allos"
 NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 

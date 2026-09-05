@@ -168,7 +168,17 @@ if ! mkdir -p "$STATE_DIR" 2>/dev/null; then
   exit 1
 fi
 
-REPO=$(git rev-parse --show-toplevel 2>/dev/null || echo /home/user/allos)
+# THE REPO EVERY VERDICT BELOW IS ABOUT MUST NOT BE A GUESS. Only the fallback
+# changed: the caller's checkout is still the answer when there is one. What it
+# fell back to was ONE container's path, hard-coded, for the case where the
+# caller is standing outside a checkout entirely — and the worktree census, the
+# push checks and the stale-tooling verdict are all statements about whatever
+# that directory turns out to be. This script's own location is not a guess: it
+# IS the checkout whose tooling is running.
+if ! REPO=$(git rev-parse --show-toplevel 2>/dev/null); then
+  REPO=$(cd "$(dirname "$0")/.." && pwd -P)
+  echo "*** cwd is not inside a git checkout: repo taken from this script's own path ($REPO) ***"
+fi
 
 echo "=== ORCHESTRATOR CHECK-IN  $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="
 echo
@@ -390,7 +400,18 @@ echo
 # convention that the next dispatch is free to ignore. The main checkout is skipped
 # by path, not by name — it is the one entry that is not an agent's.
 echo "--- worktrees ---"
-git -C "$REPO" fetch origin main -q 2>/dev/null
+# The one fetch this run pays for. Everything compared against main below leans
+# on it — the per-worktree pushed checks here, and the stale-tooling verdict in
+# the environment section — so its failure is announced rather than swallowed:
+# a stale remote-tracking ref answers every one of those comparisons in a voice
+# indistinguishable from a fresh read.
+if git -C "$REPO" fetch origin main -q; then
+  MAIN_TIP=$(git -C "$REPO" rev-parse origin/main 2>/dev/null || echo "")
+else
+  MAIN_TIP=""
+  echo "  *** fetch of origin/main FAILED (its error is above) — every comparison"
+  echo "      against main below reads whatever was last fetched, which may be old ***"
+fi
 live_branches=$(grep -E '^Cluster ' "$ROSTER" 2>/dev/null | awk '{print $3}')
 found=0
 alarms=0
@@ -890,6 +911,39 @@ else
   echo "      install the .nvmrc major with your version manager"
 fi
 echo "  main:   $(git -C "$REPO" ls-remote origin main 2>/dev/null | cut -c1-7)"
+# THE TOOLING THIS SESSION IS ABOUT TO TRUST IS ITSELF A MEASUREMENT.
+# scripts/orchestration/* run from $REPO, whose HEAD is wherever the last
+# session left it — commonly detached and behind origin/main — so a gate, a CI
+# watch or a `--check` mandate can be a verdict from a snapshot of the tooling.
+# On 2026-09-05 that checkout sat detached and behind for a whole session; it
+# was harmless, and the only reason anyone knows that is that somebody ran the
+# diff by hand afterwards. environment.md wrote the manual check down;
+# lifecycle.md prefers tooling where there is any, so it runs here.
+#
+# IT IS A WARNING AND NEVER A REFUSAL. A stale checkout is usually harmless and
+# the session must still run; what it may not do is go unnoticed. The fetch is
+# already paid for above, so the cost is three local git reads. Each of the
+# three can fail on its own, and each failure prints UNCOMPARED rather than the
+# reassuring half of the answer it still had.
+head_here=$(git -C "$REPO" rev-parse HEAD 2>/dev/null || echo "")
+if [ -z "$MAIN_TIP" ] || [ -z "$head_here" ]; then
+  echo "  tooling: *** UNCOMPARED — could not read this checkout's HEAD or origin/main,"
+  echo "      so whether the scripts/ this session runs are current is UNKNOWN ***"
+elif ! tooling_drift=$(git -C "$REPO" diff --shortstat "$head_here" "$MAIN_TIP" -- scripts/); then
+  echo "  tooling: *** UNCOMPARED — the scripts/ diff failed (its error is above) ***"
+elif ! behind=$(git -C "$REPO" rev-list --count "$head_here..$MAIN_TIP"); then
+  echo "  tooling: *** UNCOMPARED — the commit count failed (its error is above);"
+  echo "      scripts/ ${tooling_drift:+DIFFERS from origin/main}${tooling_drift:-is identical to origin/main} ***"
+elif [ -n "$tooling_drift" ]; then
+  echo "  tooling: *** $REPO's scripts/ DIFFER from origin/main ($behind commits behind):"
+  echo "     $tooling_drift ***"
+  echo "      Every gate, CI watch and --check verdict this session runs THAT tooling."
+  echo "      git -C $REPO diff --stat HEAD origin/main -- scripts/"
+elif [ "$behind" != "0" ]; then
+  echo "  tooling: $behind commits behind origin/main, scripts/ identical — verdicts stand"
+else
+  echo "  tooling: current with origin/main"
+fi
 echo
 
 # 6. The catch-up digest is the PM's now (scripts/orchestration/pm-digest.sh, run from
