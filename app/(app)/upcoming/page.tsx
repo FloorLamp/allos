@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import DestinationLink, {
   DestinationActionLink,
@@ -67,6 +68,7 @@ import {
   isItemSuppressibleFlag,
   upcomingDueText,
   type UpcomingDomain,
+  type UpcomingDisplayUnits,
 } from "@/lib/upcoming";
 import {
   aggregateLabel,
@@ -85,6 +87,7 @@ import {
 import { formatMonthDay, type DisplayFormatPrefs } from "@/lib/format-date";
 import { getDisplayFormatPrefs } from "@/lib/settings/display";
 import { PageHeader, EmptyState } from "@/components/ui";
+import StreamedSection, { PendingSection } from "@/components/StreamedSection";
 import Avatar from "@/components/Avatar";
 import Button from "@/components/Button";
 import UpcomingRowMenu, {
@@ -240,11 +243,6 @@ export default async function UpcomingPage(props: {
   // the one-member case of this.
   const model = collectMultiProfileAttention(viewIds, units);
   const total = model.total;
-  const suppressed = collectMultiProfileSuppressed(viewIds, units);
-  // `may` items on offer today (#1505) — availability, deliberately NOT folded into
-  // `total`. The headline count answers "what do I owe"; folding an offer into it
-  // would recreate the exact inflation this model removes.
-  const offered = collectMultiProfileOffered(viewIds);
   // Today's dose progress per in-view member (#1504) — the denominator the collapsed
   // dose aggregate prints so the fold states how much of the day is already done,
   // not just how many rows it hid. `may` items are in neither number: they were
@@ -366,6 +364,80 @@ export default async function UpcomingPage(props: {
         </div>
       )}
 
+      {/* THE PAGE'S OWED WORK DOES NOT WAIT ON WHAT IT DOES NOT OWE (#2641 gap 1,
+          phase 2 of the Trends/Training pattern). Everything above this line is the
+          attention model — the count, the bands and their rows, which is what the
+          person came for. Below it are the two lists that answer a different
+          question: what is merely AVAILABLE today, and what has been snoozed or
+          dismissed. Each is its own per-member gather (the PERF NOTE on
+          collectMultiProfileAttention counts them as the page's second N), and
+          neither is above the fold.
+
+          NOT a route-level `loading.tsx` (#530): the shell here is the whole due
+          list, not a spinner in a void, and the boundary sits at the BOTTOM of the
+          page — so a pending state that reserves too much or too little grows or
+          shrinks the page downward instead of moving anything the reader is looking
+          at. That is what makes an honest-but-approximate reserve safe here; it is
+          the same placement argument /training's boundary carries (#2531/#2399,
+          carried across to pending states).
+
+          `h-0` BECAUSE THE ARRIVING CONTENT IS TWO COLLAPSED DISCLOSURES, NOT A
+          CARD, and the skeleton's own frame is already most of their height.
+          Measured in the browser against the seeded UPCOMING_AGG profile (a
+          Playwright `boundingBox()` on the fallback, and on the sections it stands
+          in for): the frame alone is 74px, so with its own `mt-8` a 106px
+          footprint. The one disclosure that rendered on that fixture is 16px, so
+          48px of footprint with its `mt-8` — and the other is the same shape. So
+          `h-0` is the closest this skeleton can get, and every remaining pixel of
+          it is over-reserve at the bottom of the page. */}
+      <Suspense
+        fallback={
+          <div className="mt-8">
+            <PendingSection label="Available & snoozed" bodyClassName="h-0" />
+          </div>
+        }
+      >
+        <StreamedSection>
+          <UpcomingTail
+            viewIds={viewIds}
+            units={units}
+            multi={multi}
+            actingProfileId={actingProfileId}
+            subjectByProfile={subjectByProfile}
+            hasPreventive={hasPreventive}
+          />
+        </StreamedSection>
+      </Suspense>
+    </div>
+  );
+}
+
+// The two below-the-fold lists, plus the suggestions disclaimer that follows them.
+// Its own component ONLY so its gathers run inside the Suspense boundary above: a
+// value computed in the page and passed down would have been read before the shell
+// could flush, which is the way a boundary ends up decorative.
+async function UpcomingTail({
+  viewIds,
+  units,
+  multi,
+  actingProfileId,
+  subjectByProfile,
+  hasPreventive,
+}: {
+  viewIds: readonly number[];
+  units: UpcomingDisplayUnits;
+  multi: boolean;
+  actingProfileId: number;
+  subjectByProfile: Map<number, SubjectInfo>;
+  hasPreventive: boolean;
+}) {
+  const suppressed = collectMultiProfileSuppressed(viewIds, units);
+  // `may` items on offer today (#1505) — availability, deliberately NOT folded into
+  // `total`. The headline count answers "what do I owe"; folding an offer into it
+  // would recreate the exact inflation this model removes.
+  const offered = collectMultiProfileOffered(viewIds);
+  return (
+    <>
       {offered.length > 0 && (
         <AvailableSection
           items={offered}
@@ -397,7 +469,7 @@ export default async function UpcomingPage(props: {
           </DestinationLink>
         </p>
       )}
-    </div>
+    </>
   );
 }
 

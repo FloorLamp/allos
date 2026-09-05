@@ -5,6 +5,7 @@ import { useToast } from "@/components/Toast";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
+import type { StampedFormData } from "@/lib/logged-via";
 import { useUndoableAction } from "@/components/useUndoableAction";
 import {
   OFFLINE_CAPTURE_REFUSED_MESSAGE,
@@ -130,7 +131,11 @@ export type WriteSpec<A extends OneTapAffordance, R, V = void> = {
   // The fields to post. The pipeline builds and stamps the FormData; a caller never
   // holds one, which is what makes an un-stamped post unrepresentable.
   readonly fields: Readonly<Record<string, string>>;
-  readonly action: (formData: FormData) => Promise<R>;
+  // Takes the STAMPED payload (#5349), which is what makes "the pipeline builds and
+  // stamps it" a fact the compiler holds rather than a promise this comment makes. An
+  // action that does not read a surface takes a plain `FormData` and is still accepted
+  // here — a parameter is contravariant, so the wider signature fits the narrower slot.
+  readonly action: (formData: StampedFormData) => Promise<R>;
   readonly settle: (result: R) => WriteSettlement<V>;
   // The value this tap moves, when the surface shows one. Omitted by a surface whose
   // server action revalidates and re-renders it.

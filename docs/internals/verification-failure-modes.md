@@ -90,6 +90,30 @@ not at all five by rote.
   the cases from a `Record<T, …>`. Then add a member locally and watch it fail,
   because the annotation is exactly the thing that reads as proof and is not.
 
+- **A guard that reconstructs a connection from source is blind to every path it
+  does not know, and it fails toward silence.** `logged-via-surface-wiring` walked
+  the import graph from every action calling `parseWebOrigin` back to the clients
+  that mount it, 1,261 lines, to prove each mounting declared which surface it was
+  on. Its own header said why it had to: "NOTHING IN THE TYPE SYSTEM CONNECTS THE
+  TWO." Two shipped mountings reached those actions unstamped anyway, because
+  neither is a client importing an action: `paletteQuickLog` is a `"use server"`
+  module calling a sibling action (its practice arm recorded `page` for every
+  session logged from the command palette), and `DoseConfirmButton` receives its
+  action as a PROP from a server component and posts a DOM-collected form. A walk
+  that cannot see a path reports the same clean result it reports for a tree with
+  no defect in it.
+
+  #5349 replaced it with a type: `StampedFormData` (lib/logged-via.ts) is a
+  branded FormData minted by `stampWebOrigin`, reached through
+  `useLoggedViaStamp()` or `useWritePipeline`, and required by every action that
+  reads a surface. Parameters are contravariant under `strictFunctionTypes`, so
+  `<form action={theAction}>` stops compiling — the connection the header said was
+  missing now exists, and it is checked on every path, including the ones nobody
+  enumerated. The same move as the `Tx` token (lib/db.ts, #2133) on the database
+  side. **When a guard's own comment says the type system cannot state the fact,
+  check that claim before you build the guard: it is the cheapest thing in this
+  file to get wrong, and the walk is the expensive way to be wrong about it.**
+
 - **Is the invariant pinned against the RIGHT event?** A proof that a change is
   safe "across operation X" is worthless if X is not the only operation that
   touches the state. #3537's fix made a nutrient matcher read

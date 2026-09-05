@@ -5,7 +5,11 @@ import {
   requireSession,
 } from "@/lib/auth";
 import { gateItemProfile } from "../gate-item";
-import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
+import {
+  LOGGED_VIA_FIELD,
+  parseWebOrigin,
+  type StampedFormData,
+} from "@/lib/logged-via";
 import { newBundle } from "@/lib/bundle";
 import { requireScope } from "@/lib/scope";
 
@@ -1120,7 +1124,7 @@ function doseStatusResult(
 // lib/queries/intake/adherence.ts, which the Telegram, offline and household paths use
 // too.
 export async function setDoseStatus(
-  formData: FormData
+  formData: StampedFormData
 ): Promise<DoseStatusResult> {
   const targetProfile = Number(formData.get("profileId"));
   let profileId: number;
@@ -1216,7 +1220,7 @@ export type ResolveDayDosesResult =
   | { ok: true; date: string; doses: DayDoseResolution[] };
 
 export async function resolveDayDoses(
-  formData: FormData
+  formData: StampedFormData
 ): Promise<ResolveDayDosesResult> {
   // #4429: the day-ledger and the quick-log sheet's past-day switcher both post a
   // FOUND row for whichever profile is on screen, which may not be the acting one —
@@ -1308,7 +1312,7 @@ export async function resolveDayDoses(
 // a wall time anchored in the CAREGIVER's zone would file the subject's dose at the
 // wrong instant.
 export async function logHistoricalDose(
-  formData: FormData
+  formData: StampedFormData
 ): Promise<FormResult> {
   const profileId = await gateItemProfile(formData);
   const { login } = await requireSession();
@@ -1586,7 +1590,9 @@ export async function deleteLedgerSelection(
 // Toggle a single dose's TAKEN log for today (taken ↔ clear). A skipped dose
 // (issue #232) counts as "not taken", so this flips it to taken. Kept as the
 // dedicated take toggle; setDoseStatus is the general tri-state path.
-export async function toggleTaken(formData: FormData): Promise<FormResult> {
+export async function toggleTaken(
+  formData: StampedFormData
+): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const doseId = Number(formData.get("dose_id"));
   if (!doseId) return formError("Couldn't find that dose.");

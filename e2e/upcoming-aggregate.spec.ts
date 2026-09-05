@@ -4,6 +4,7 @@ import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { workerDbPath } from "./worker-env";
 import {
+  appContent,
   hydratedClick,
   settledClick,
   expandUpcomingAggregates,
@@ -236,7 +237,7 @@ test.describe("Upcoming display aggregation (#1504)", () => {
 
     // The dismissed note lands in the page's own "Snoozed & dismissed" complement —
     // folding never removed it from the bus, it only changed where it renders.
-    const suppressed = page.getByTestId("suppressed-section");
+    const suppressed = appContent(page).getByTestId("suppressed-section");
     await expect(suppressed).toBeVisible();
     await suppressed.locator("summary").click();
     await expect(suppressed.getByTestId("suppressed-row")).toHaveCount(1);
@@ -460,7 +461,7 @@ test.describe("the goal fold (#2579-A) and planning dates (#2579-B)", () => {
     ).toContainText("3 goal deadlines", { timeout: RERENDER_MS });
 
     // And the dismissed goal is in the bus's own complete window, not gone.
-    const suppressed = page.getByTestId("suppressed-section");
+    const suppressed = appContent(page).getByTestId("suppressed-section");
     await expect(suppressed).toBeVisible();
     await suppressed.locator("summary").click();
     await expect(suppressed.getByTestId("suppressed-row")).toHaveCount(1);
@@ -488,6 +489,50 @@ test.describe("the goal fold (#2579-A) and planning dates (#2579-B)", () => {
       .locator('[data-testid^="upcoming-item-goal:"]')
       .filter({ hasText: UPCOMING_AGG_GOAL_NEAREST });
     await expect(goalRow.getByTestId("upcoming-status")).toContainText(nearest);
+  });
+
+  // #2641 GAP 1 PHASE 2 — THE TAIL SITS BELOW A REAL BOUNDARY, AND THAT IS ALL AN
+  // INDEX COMPARISON CAN SAY.
+  //
+  // The page's shell is its real content, not a spinner in a void (#530): the header,
+  // the count and the whole due list, with the two lists that answer a DIFFERENT
+  // question — what is merely available today, what has been snoozed — below a
+  // Suspense boundary fed by their own per-member gather.
+  //
+  // This test reads INDEXES, so it can say the boundary is there, that the shell's
+  // markers precede its pending state in the document, and that the tail rides the
+  // same response. It CANNOT say the shell was flushed earlier in time, and it does
+  // not red if the tail's gathers are hoisted back into the page (#5327). The
+  // placement property is pinned where it is observable:
+  // lib/__db_tests__/streamed-hub-boundary-reads.test.ts.
+  //
+  // Read as raw HTML rather than through the browser, because the pending state is
+  // the thing being asserted and it is gone by the time a page has settled.
+  test("the available and snoozed lists stream below the due list", async ({
+    browser,
+  }) => {
+    const { page } = await openUpcoming(browser);
+    const response = await page.request.get("/upcoming");
+    expect(response.ok()).toBe(true);
+    const html = await response.text();
+
+    // Document order: the count and the due rows precede the boundary's pending
+    // state. An arrangement, not an arrival time.
+    const total = html.indexOf('data-testid="upcoming-total"');
+    const firstRow = html.indexOf('data-testid="upcoming-item-');
+    const pending = html.indexOf('data-testid="streamed-section-loading"');
+    expect(total).toBeGreaterThan(-1);
+    expect(firstRow).toBeGreaterThan(total);
+    expect(pending).toBeGreaterThan(firstRow);
+
+    // The pending state NAMES what is arriving and RESERVES A HEIGHT (#2531/#2399,
+    // carried across to pending states). Both are pinned here: a fallback that goes
+    // back to a bare <Suspense>, or drops its stated height for the component's
+    // section-sized default, reds on this line rather than in a layout jump nobody
+    // is measuring.
+    const card = html.slice(pending, html.indexOf("</div>", pending) + 2000);
+    expect(card).toContain('data-section="Available &amp; snoozed"');
+    expect(card).toContain("dark:bg-ink-850 h-0");
   });
 
   test("This week keeps countdown grammar, where a number still means something", async ({

@@ -37,9 +37,9 @@ import { makeTmpDir } from "./tmp-dir";
 // the file's real ones, and the WRAPPER WINDOW below still spans the same source.
 //
 // It matters in both directions and the expensive one is quiet. A `<table` in prose
-// is a false positive somebody notices; the same missing step is why
-// `logged-via-surface-wiring.test.ts` once swallowed 1,244 lines of a file and
-// reported a clean sweep it never took.
+// is a false positive somebody notices; the same missing step is why the logged-via
+// wiring walk (retired by #5349) once swallowed 1,244 lines of a file and reported a
+// clean sweep it never took.
 //
 // This reads the repo's own JSX as TEXT (no DB, no browser, so it stays "pure" in
 // the vitest sense) and fails the build if any `<table>` occurrence lacks a scroll
