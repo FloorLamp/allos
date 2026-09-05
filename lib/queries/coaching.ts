@@ -1,4 +1,5 @@
 import { today } from "../db";
+import { commitCached } from "../commit-cache";
 import { localDayOf } from "../local-day-window";
 import { getLiveNiggles } from "../niggle-store";
 import { niggleLabel, type NiggleCoachingContext } from "../niggle-model";
@@ -251,7 +252,30 @@ export function getNiggleContext(profileId: number): NiggleCoachingContext[] {
   }));
 }
 
-export function gatherCoachingInput(
+// Memoized until the next commit (#5073) — the second-heaviest of the six gathers above
+// the dashboard's first candidate. The profile's DAY joins the key: almost everything
+// gathered here is asked of `todayStr`, and a quiet midnight must still move it.
+//
+// ONE FIELD IS FINER-GRAINED THAN THE KEY: `workoutActive` reads
+// `getWorkoutPresence`, whose "active" verdict expires when a draft has been quiet past
+// `EPISODE_BOUNDS.workout.abandonMin` (lib/open-episode.ts, #5142) — a clock transition
+// with no write behind it, so a memo held across it reports a session still running. It drives the rest card's TENSE and
+// nothing else (see the field below). Not split out of the memo, because doing so puts
+// that read back on every warm load; recorded here so the next reader knows the memo's
+// resolution is a day and this one field wants a minute.
+export const gatherCoachingInput = commitCached(
+  "coaching.input",
+  (
+    profileId: number,
+    weightUnit: WeightUnit,
+    distanceUnit: DistanceUnit,
+    temperatureUnit: TemperatureUnit = "C"
+  ) =>
+    `${profileId}:${today(profileId)}:${weightUnit}:${distanceUnit}:${temperatureUnit}`,
+  gatherCoachingInputUncached
+);
+
+function gatherCoachingInputUncached(
   profileId: number,
   weightUnit: WeightUnit,
   distanceUnit: DistanceUnit,
