@@ -479,6 +479,7 @@ export default function PortalsSurface({
                   // remove a live binding.
                   <button
                     type="button"
+                    role="menuitem"
                     className={MENU_ITEM}
                     data-testid="portal-identity-unignore"
                     onClick={() => {
@@ -507,6 +508,7 @@ export default function PortalsSurface({
                     </p>
                     <button
                       type="button"
+                      role="menuitem"
                       className={MENU_ITEM_DANGER}
                       data-testid="portal-identity-remove"
                       onClick={async () => {
@@ -630,6 +632,7 @@ export default function PortalsSurface({
                 <>
                   <button
                     type="button"
+                    role="menuitem"
                     className={MENU_ITEM}
                     data-testid="pending-dismiss"
                     onClick={() => {
@@ -653,6 +656,7 @@ export default function PortalsSurface({
                   {isAdmin && (
                     <button
                       type="button"
+                      role="menuitem"
                       className={MENU_ITEM_DANGER}
                       data-testid="pending-ignore"
                       onClick={async () => {
@@ -949,6 +953,7 @@ export default function PortalsSurface({
           <>
             <button
               type="button"
+              role="menuitem"
               className={MENU_ITEM}
               data-testid="account-rename"
               onClick={() => {
@@ -961,6 +966,7 @@ export default function PortalsSurface({
             </button>
             <button
               type="button"
+              role="menuitem"
               className={MENU_ITEM_DANGER}
               data-testid="portal-account-remove"
               onClick={async () => {
@@ -1079,6 +1085,7 @@ export default function PortalsSurface({
                 <>
                   <button
                     type="button"
+                    role="menuitem"
                     className={MENU_ITEM}
                     data-testid="portal-rename"
                     onClick={() => {
@@ -1091,6 +1098,7 @@ export default function PortalsSurface({
                   </button>
                   <button
                     type="button"
+                    role="menuitem"
                     className={MENU_ITEM}
                     data-testid="portal-software-edit"
                     onClick={() => {
@@ -1103,6 +1111,7 @@ export default function PortalsSurface({
                   </button>
                   <button
                     type="button"
+                    role="menuitem"
                     className={MENU_ITEM}
                     data-testid="portal-add-login"
                     onClick={() => {
@@ -1115,6 +1124,7 @@ export default function PortalsSurface({
                   </button>
                   <button
                     type="button"
+                    role="menuitem"
                     className={MENU_ITEM_DANGER}
                     data-testid="portal-remove"
                     onClick={async () => {

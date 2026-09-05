@@ -486,7 +486,11 @@ export default function RoutineBuilder({
         >
           <IconPlus className="h-4 w-4" /> Add day
         </button>
-        <SubmitButton pendingLabel="Saving…" data-testid="routine-save">
+        <SubmitButton
+          pendingLabel="Saving…"
+          data-testid="routine-save"
+          variant="primary"
+        >
           {editRoutine ? "Save changes" : "Create routine"}
         </SubmitButton>
       </div>

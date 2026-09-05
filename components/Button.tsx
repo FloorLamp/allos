@@ -36,7 +36,27 @@ export interface ButtonProps {
    * neighbour before the tap, since undo happens after.
    */
   variant?: "primary" | "danger";
+  /**
+   * The CLOSED set of layout needs a caller may state (owner ruling
+   * 2026-09-04, #4978), in place of the `className` escape and the wrapper
+   * element that the two shapes below had otherwise grown. `block` is full
+   * width; `hidden-below-sm` is the responsive hide. Both are LAYOUT only —
+   * they never touch paint, type size or the control box (#3938). There is no
+   * third value on purpose: a mount that needs one is reported on #4978 and
+   * waits, so the type is the admission rule here exactly as it is for
+   * `variant`.
+   */
+  layout?: "block" | "hidden-below-sm";
 }
+
+// `hidden sm:inline-flex` beats the `button-control` utility's own
+// `inline-flex` because Tailwind emits custom `@utility` rules BEFORE the core
+// ones (checked against the compiled sheet, not assumed), so the later `hidden`
+// wins at equal specificity and `sm:inline-flex`, later still, restores it.
+const LAYOUT_CLASS = {
+  block: "w-full",
+  "hidden-below-sm": "hidden sm:inline-flex",
+} as const;
 
 // The ordinary secondary action, the ONE primary variant the owner ruled for
 // (#3982), and the ONE destructive paint (#4978). Callers supply meaning,
@@ -62,6 +82,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
     "aria-controls": ariaControls,
     "data-testid": testId,
     variant,
+    layout,
   },
   ref
 ) {
@@ -84,13 +105,13 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
       aria-busy={busy || undefined}
       data-testid={testId}
       data-button-control=""
-      className={
-        variant === "primary"
-          ? "button-control button-control-primary"
-          : variant === "danger"
-            ? "button-control button-control-danger"
-            : "button-control"
-      }
+      className={[
+        "button-control",
+        variant && `button-control-${variant}`,
+        layout && LAYOUT_CLASS[layout],
+      ]
+        .filter(Boolean)
+        .join(" ")}
     >
       {busy && (
         <IconLoader2 className="size-4 motion-safe:animate-spin" aria-hidden />

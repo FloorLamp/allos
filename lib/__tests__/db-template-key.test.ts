@@ -314,7 +314,7 @@ describe("the DB template cache key", () => {
     const before = probeKey();
     const after = withEdited(
       "lib/migrations/versions/index.ts",
-      (s) => s + "\n// orchestrator probe\n"
+      (s) => s + "\n// worker probe\n"
     );
     expect(after).not.toBe(before);
   });

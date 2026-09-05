@@ -8,8 +8,9 @@
 // whichever situations were declared RIGHT NOW, beside a `situationsOn` resolver in the
 // same function that already dated the adherence strip.
 //
-// The TODAY branch keeps the derived widening (#1292/#1298) and is pinned here too: it is
-// a statement about now with no dated form, so it must reach today and only today.
+// The DERIVED widening (#1292/#1298) dates with it (#3993): a logged period day, a heat
+// spell and the night ending a day are all facts about that day, so a past day gets the
+// verdict its own data supports rather than an empty set.
 //
 // AND THE SIBLING SEAM REACHED WITH THE SAME `p.date` (#3994), at the bottom of this
 // file: `standingUsualOffer` -> `getUsualRoutineOffer` -> `getPendingRoutineDoses`. Two
@@ -37,7 +38,41 @@ import {
   type NormMetricSample,
 } from "@/lib/integrations/normalize";
 import { collectWindowDoses } from "@/lib/notifications/intake";
-import { getPendingRoutineDoses } from "@/lib/queries/usual-routine";
+import {
+  getPendingRoutineDoses,
+  pendingDayDoses,
+} from "@/lib/queries/usual-routine";
+import { createCycleRow } from "@/lib/cycle-store";
+import {
+  intakeAdherenceStrip,
+  indexTakenByDose,
+  missedDoseDays,
+  type AdherenceDot,
+} from "@/lib/intake-adherence";
+import { effectiveSituationResolver } from "@/lib/queries/derived-situations";
+import { travelExcusalResolver } from "@/lib/travel-excusal";
+import { lastNDates } from "@/lib/date";
+import {
+  getIntakeItems,
+  getIntakeDoses,
+  getIntakeAdherenceEvidence,
+  getActivityDates,
+} from "@/lib/queries";
+import { getTimezone } from "@/lib/settings";
+import { setHomeLocation } from "@/lib/settings";
+import { runWeatherSync } from "@/lib/integrations/weather-sync";
+import type {
+  DailyWeatherRow,
+  WeatherSource,
+} from "@/lib/integrations/open-meteo";
+import {
+  BUILTIN_HEATWAVE_SITUATION,
+  HEATWAVE_ENTER_C,
+} from "@/lib/weather-situations";
+import {
+  BUILTIN_PERIOD_SITUATION,
+  BUILTIN_POOR_SLEEP_SITUATION,
+} from "@/lib/derived-situations";
 
 let seq = 0;
 function newProfile(): number {
@@ -194,12 +229,12 @@ function night(wakeDay: string, minutes: number): NormMetricSample {
   };
 }
 
-describe("the TODAY branch keeps the derived widening (#1292/#1298)", () => {
-  it("a rough night makes a sleep-keyed item due today and on no past day", () => {
+describe("the derived widening is DATED, not today-only (#3993)", () => {
+  it("a rough night reaches today, and a past day with a healthy night stays empty", () => {
     const p = newProfile();
     seedItem(p, "Magnesium Glycinate", "Poor sleep", "due-on");
     const anchor = today(p);
-    // Six ~8h nights, then 5h last night → a MEASURED rough night, derived-on today.
+    // Six ~8h nights, then 5h last night → a MEASURED rough night on today.
     const nights = [1, 2, 3, 4, 5, 6].map((i) =>
       night(shiftDateStr(anchor, -i), 480)
     );
@@ -207,10 +242,117 @@ describe("the TODAY branch keeps the derived widening (#1292/#1298)", () => {
 
     // Today's reminder sees it through the declared ∪ derived union...
     expect(morningNames(p, anchor)).toContain("Magnesium Glycinate");
-    // ...and no past day does: "Poor sleep" was never DECLARED, and the derived verdict
-    // is a statement about now that may not be dated backwards.
+    // ...and days 1-3 do not — NOT because a past day may not hold a derived verdict,
+    // but because the night ending each of those days was a healthy 8h. The dated
+    // widening answers each day from that day's own data; here it answers no.
     for (const d of [1, 2, 3])
       expect(morningNames(p, shiftDateStr(anchor, -d))).toEqual([]);
+  });
+});
+
+// ── THE DERIVED HALF IS DATED TOO (#3993) ────────────────────────────────────────────
+//
+// Owner ruling, 2026-08-31. The declared half above dates through the #654 change log.
+// The derived half used to be dropped from every past day on the stated ground that
+// derived context "cannot be dated" — and it can, for all three of its sources: a logged
+// period day is a span in the cycle record, a heat spell is a fact in the cached daily
+// series, and a rough night is the night ENDING that day measured against the baseline
+// before it, through the same pure threshold the coaching engine calls.
+//
+// A RETROACTIVE VERDICT READS DATA AS STORED NOW. A night that syncs late changes the
+// verdict for its day — like every other read this app makes of a past day, and the
+// reason the reminder rebuild re-derives rather than replaying.
+//
+// Each row seeds its source to hold on day-2 and NOT on day-5, and asserts BOTH days in
+// one object: "due on day-2" alone is equally satisfied by a widening that never turns
+// off, which is the failure the today-only branch was standing in for.
+function dailySource(rows: DailyWeatherRow[]): WeatherSource {
+  return {
+    id: "fixture",
+    async fetchHourly() {
+      return { ok: true, rows: [] };
+    },
+    async fetchDaily() {
+      return { ok: true, rows };
+    },
+  };
+}
+
+function weatherDay(date: string, tempMaxC: number): DailyWeatherRow {
+  return {
+    date,
+    tempMaxC,
+    tempMinC: null,
+    pressureMslHpa: null,
+    precipitationMm: null,
+    weatherCode: null,
+    uvIndexMax: null,
+    aqi: null,
+    pollenTree: null,
+    pollenWeed: null,
+    pollenGrass: null,
+  };
+}
+
+describe("a past day gets the derived verdict its own data supports (#3993)", () => {
+  it.each([
+    {
+      what: "the night ending that day was rough",
+      situation: BUILTIN_POOR_SLEEP_SITUATION,
+      async seed(p: number, anchor: string) {
+        // Healthy 8h nights back to day-9, then 5h on the night ending day-2. The night
+        // ending day-5 is one of the healthy ones, so the same fixture answers NO there.
+        const nights: NormMetricSample[] = [];
+        for (let d = 9; d >= 3; d--)
+          nights.push(night(shiftDateStr(anchor, -d), 480));
+        nights.push(night(shiftDateStr(anchor, -2), 300));
+        upsertMetricSamples(p, nights, "health-connect");
+      },
+    },
+    {
+      what: "a logged period covered that day",
+      situation: BUILTIN_PERIOD_SITUATION,
+      async seed(p: number, anchor: string) {
+        // The issue's own measurement: ONE logged, closed period covering day-4 through
+        // day-0. `periodOnDate` answers true for every one of those days; the past-day
+        // gather used to return [] for all of them. A cycle row also makes cycle
+        // tracking relevant, so the built-in Period situation applies.
+        createCycleRow(p, shiftDateStr(anchor, -4), anchor, "medium", null);
+      },
+    },
+    {
+      what: "a heat spell covered that day",
+      situation: BUILTIN_HEATWAVE_SITUATION,
+      async seed(p: number, anchor: string) {
+        // 0.1° is the storage precision, and the daily cache is keyed by coarse
+        // location — so each fixture profile needs its own coordinate or one test's
+        // series becomes another's weather.
+        setHomeLocation(p, { lat: 20 + (p % 300) / 10, lng: -74 });
+        // HEATWAVE_MIN_DAYS consecutive days at/above the enter bound ending on day-2.
+        // A spell's first days are marked on retroactively, so day-4, day-3 and day-2
+        // all hold; day-5 is mild and outside it.
+        const rows: DailyWeatherRow[] = [];
+        for (let d = 9; d >= 2; d--)
+          rows.push(
+            weatherDay(
+              shiftDateStr(anchor, -d),
+              d <= 4 ? HEATWAVE_ENTER_C + 3 : 18
+            )
+          );
+        await runWeatherSync(p, dailySource(rows));
+      },
+    },
+  ])("$what", async ({ situation, seed }) => {
+    const p = newProfile();
+    seedItem(p, ITEM, situation, "due-on");
+    const anchor = today(p);
+    await seed(p, anchor);
+
+    // ONE assertion carrying both halves: the day the source held, and a day it did not.
+    expect({
+      "day-2": morningNames(p, shiftDateStr(anchor, -2)).includes(ITEM),
+      "day-5": morningNames(p, shiftDateStr(anchor, -5)).includes(ITEM),
+    }).toEqual({ "day-2": true, "day-5": false });
   });
 });
 
@@ -360,5 +502,167 @@ describe("the routine offer answers a past day's SITUATIONS as the reminder does
         [label]: [expected, expected],
       });
     }
+  });
+});
+
+// ── ONE ANSWER PER DAY, ACROSS BOTH CATCH-UP SURFACES (#221/#3993) ───────────────────
+//
+// Dating the union is only half the fix. The reminder rebuild and the catch-up sheet ask
+// "was this owed on that day"; so does the adherence strip rendered beside them. Give
+// those two questions different resolvers and the sheet offers a dose the strip scores
+// `na` — and a dose logged through that offer is dropped from the percentage entirely,
+// because the strip returns `na` before it ever consults the log. So every surface a
+// person can ACT on reads the same dated resolver.
+//
+// The long-window SUMMARY surfaces (the recap, the demotion evidence, the adherence
+// patterns, the digest) read the SAME dated resolver, because each of them either puts a
+// button under its evidence or states a miss to the person in a push. Their side of the
+// agreement is asserted in lib/__db_tests__/dated-summary-surfaces.test.ts.
+//
+// THE PAUSE IS THE DIRECTION THAT BITES. #1296's hold reads the same active set, so
+// widening the set SILENCES: a `daily` `must` medication held by Poor sleep drops out
+// of a rough day. That is what the app did live on that day, and the strip now agrees
+// instead of calling the day missed — which is the whole point. It is also why the
+// pause case below asserts the strip cell, not just the two gathers.
+// EVERY INPUT PAIRED WITH THE ONE THE SUBJECT READS — the discipline
+// lib/__action_tests__/past-dose-day.actions.test.ts writes down. This builds the strip
+// the way the medications page builds it, so what it asserts is the arrangement that
+// ships rather than one assembled to agree with the gathers beside it.
+function stripFor(profileId: number, itemName: string): AdherenceDot[] {
+  const item = getIntakeItems(profileId).find((i) => i.name === itemName)!;
+  const doses = getIntakeDoses(profileId).filter((d) => d.item_id === item.id);
+  const dates = lastNDates(today(profileId), 14);
+  return intakeAdherenceStrip(
+    item,
+    doses,
+    dates,
+    new Set(getActivityDates(profileId)),
+    effectiveSituationResolver(profileId, {
+      from: dates[0],
+      to: dates[dates.length - 1],
+    }),
+    indexTakenByDose(getIntakeAdherenceEvidence(profileId, 3650)),
+    getTimezone(profileId),
+    travelExcusalResolver(profileId)
+  );
+}
+
+function stripCellOn(
+  profileId: number,
+  date: string,
+  itemName: string
+): string {
+  return (
+    stripFor(profileId, itemName).find((d) => d.date === date)?.state ??
+    "absent"
+  );
+}
+
+describe("the strip, the reminder and the sheet answer a day the same way (#3993)", () => {
+  it("a rough night makes the day owe the dose, and the strip says so too", () => {
+    const p = newProfile();
+    seedItem(p, ITEM, BUILTIN_POOR_SLEEP_SITUATION, "due-on");
+    const anchor = today(p);
+    const nights: NormMetricSample[] = [];
+    for (let d = 9; d >= 3; d--)
+      nights.push(night(shiftDateStr(anchor, -d), 480));
+    nights.push(night(shiftDateStr(anchor, -2), 300));
+    upsertMetricSamples(p, nights, "health-connect");
+    const d2 = shiftDateStr(anchor, -2);
+
+    // Reminder, sheet and strip in ONE object: any two of them disagreeing is the bug.
+    expect({
+      reminder: morningNames(p, d2).includes(ITEM),
+      sheet: pendingDayDoses(p, d2).some((d) => d.name === ITEM),
+      strip: stripCellOn(p, d2, ITEM),
+    }).toEqual({ reminder: true, sheet: true, strip: "missed" });
+  });
+
+  it("a derived PAUSE removes the day from all three, and nothing calls it missed", () => {
+    const p = newProfile();
+    // A daily `must` medication HELD by Poor sleep (#1296) — the inverse link, so the
+    // derived context takes the dose away rather than adding it.
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, kind, condition, obligation, active, pause_situation_id)
+           VALUES (?, ?, 'medication', 'daily', 'must', 1, ?)`
+        )
+        .run(
+          p,
+          "Levothyroxine",
+          resolveSituationId(p, BUILTIN_POOR_SLEEP_SITUATION)
+        ).lastInsertRowid
+    );
+    const doseId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+           VALUES (?, '1 tab', 'Morning', 'any', 0)`
+        )
+        .run(itemId).lastInsertRowid
+    );
+    const born = `${shiftDateStr(today(p), -30)}T00:00:00Z`;
+    db.prepare("UPDATE intake_items SET created_at = ? WHERE id = ?").run(
+      born,
+      itemId
+    );
+    db.prepare("UPDATE intake_item_doses SET created_at = ? WHERE id = ?").run(
+      born,
+      doseId
+    );
+
+    const anchor = today(p);
+    const nights: NormMetricSample[] = [];
+    for (let d = 9; d >= 3; d--)
+      nights.push(night(shiftDateStr(anchor, -d), 480));
+    nights.push(night(shiftDateStr(anchor, -2), 300));
+    upsertMetricSamples(p, nights, "health-connect");
+    const d2 = shiftDateStr(anchor, -2);
+    const d3 = shiftDateStr(anchor, -3);
+
+    // day-3 is the single-variable control: same medication, healthy night, still owed.
+    // Without it "day-2 is empty" is equally true of a fixture that owes nothing ever.
+    expect({
+      heldReminder: morningNames(p, d2).includes("Levothyroxine"),
+      heldSheet: pendingDayDoses(p, d2).some((d) => d.name === "Levothyroxine"),
+      heldStrip: stripCellOn(p, d2, "Levothyroxine"),
+      heldMissed: missedDoseDays(stripFor(p, "Levothyroxine")).includes(d2),
+      controlReminder: morningNames(p, d3).includes("Levothyroxine"),
+      controlStrip: stripCellOn(p, d3, "Levothyroxine"),
+    }).toEqual({
+      heldReminder: false,
+      heldSheet: false,
+      heldStrip: "na",
+      heldMissed: false,
+      controlReminder: true,
+      controlStrip: "missed",
+    });
+  });
+
+  // The reminder LINE carries its own adherence figure, computed from the same strip.
+  // Built through a declared-only resolver it had a zero denominator, so a Poor-sleep
+  // item printed as due with no percentage and no dots — a dose named as owed on a
+  // closed day with nothing on the line saying why.
+  it("the reminder line can state the adherence of a derived-reason dose", () => {
+    const p = newProfile();
+    seedItem(p, ITEM, BUILTIN_POOR_SLEEP_SITUATION, "due-on");
+    const anchor = today(p);
+    const nights: NormMetricSample[] = [];
+    for (let d = 9; d >= 3; d--)
+      nights.push(night(shiftDateStr(anchor, -d), 480));
+    nights.push(night(shiftDateStr(anchor, -2), 300));
+    upsertMetricSamples(p, nights, "health-connect");
+
+    const entry = collectWindowDoses(p, "Morning", shiftDateStr(anchor, -2))[0];
+    expect({
+      name: entry?.item.name,
+      pct: entry?.adherence.pct,
+      applicableDays: entry?.adherence.applicableDays,
+      // 0%, not null: the dose was owed that day and nothing was logged. The figure
+      // being ZERO is the point — a declared-only strip had no applicable day at all,
+      // so `pct` was null and the line printed a due dose with no adherence column.
+    }).toEqual({ name: ITEM, pct: 0, applicableDays: 1 });
   });
 });

@@ -13,6 +13,7 @@ const FLIGHT: TimezoneSwitch = {
   at: "2026-05-01T14:00:00Z",
   from: "America/New_York",
   to: "Asia/Tokyo",
+  kind: "travel",
 };
 // New York 06:00 → Tokyo 19:00, same date: this one skips Morning (08:00) too, which
 // is the slot `bucketWindow` gives an Anytime dose.
@@ -20,6 +21,7 @@ const MORNING_FLIGHT: TimezoneSwitch = {
   at: "2026-05-01T10:00:00Z",
   from: "America/New_York",
   to: "Asia/Tokyo",
+  kind: "travel",
 };
 const DAY = "2026-05-01";
 

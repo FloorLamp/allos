@@ -10,7 +10,8 @@ import { WEEKDAYS_SHORT } from "./date";
 import { frequencyPace, type FrequencyPace } from "./frequency-targets";
 import { inWakingWindow } from "./notifications/schedule";
 import type { PracticeLogOutcome } from "./types";
-import { modalValue, rhythmMomentOpen } from "./weekly-rhythm";
+import { rhythmMomentOpen } from "./weekly-rhythm";
+import { usual, USUAL_KINDS } from "./usual";
 import type { WeeklyRhythm } from "./weekly-rhythm";
 
 // The stable suppression/identity key namespace for a wellness-practice weekly target:
@@ -150,21 +151,49 @@ export function practiceDurationPrefill(
   sessions: readonly { duration_min: number | null }[],
   declaredDefaultMin: number | null = null
 ): number | null {
-  const usual = modalValue(
+  // ALL THREE LEGS ARE `usual`'s NOW (#5143) — this header stated the order every
+  // other derivation should have followed, and it is the shared function's contract.
+  // The mode and the newest-wins tie-break are `USUAL_KINDS.practiceDuration`'s, and
+  // the declared leg's positive-only guard moved with it: a zero or negative
+  // declaration degrades to blank rather than seeding an impossible session.
+  const answer = usual(
     sessions.flatMap((session) => {
       const value = session.duration_min;
       return value != null && Number.isFinite(value) && value > 0
         ? [Math.round(value)]
         : [];
-    })
+    }),
+    declaredDefaultMin,
+    USUAL_KINDS.practiceDuration
   );
-  if (usual != null) return usual;
-  // Leg 2 — no history at all; a declared default may speak. Guarded so a zero or a
-  // negative declaration degrades to blank rather than seeding an impossible session.
-  if (declaredDefaultMin != null && declaredDefaultMin > 0)
-    return Math.round(declaredDefaultMin);
-  // Leg 3.
-  return null;
+  return answer == null ? null : Math.round(answer);
+}
+
+// ── HOW LONG A LIVE SESSION ALREADY KNOWS IT IS (#5091) ──────────────────────
+//
+// A Start now stamps the practice's usual duration on the row with `derived_window = 1`
+// (#4897), and until now nothing read it as an END: the only automatic close was the
+// six-hour abandonment sweep, which gives up without an end. So a 15-minute red-light
+// session started at 06:28 was still "running" at 10:52 and drew four hours wide,
+// growing on every page load.
+//
+// A row that knows its own length does not need a second tap. This is the ONE reading
+// of that length, and both halves take it: the sweep completes the row at start plus
+// this, and the day chart's running branch refuses to draw past it — because the sweep
+// runs on page loads, and a chart rendered before one would otherwise keep growing a
+// block past an end the row already knew.
+//
+// Null for a row with no usual duration, which stays live until End or the six-hour
+// bound exactly as before: a practice with no history has no length to complete at, and
+// inventing one is what the derived window exists to avoid.
+export function derivedSessionMinutes(session: {
+  durationMin: number | null;
+  derivedWindow: boolean;
+}): number | null {
+  if (!session.derivedWindow) return null;
+  const minutes = session.durationMin;
+  if (minutes == null || !Number.isFinite(minutes) || minutes <= 0) return null;
+  return Math.max(1, Math.round(minutes));
 }
 
 // ── WHICH PRACTICE A WINDOW ON THE DAY CHART LOOKS LIKE (#4950 item 4) ───────

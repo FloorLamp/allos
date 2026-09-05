@@ -7,6 +7,8 @@ import {
 import { ACTIVITY_TYPES } from "@/lib/types";
 import { SeriesPoint, SeriesSummary } from "@/components/SeriesAccess";
 import { StateLegend } from "@/components/StateCells";
+import DestinationLink from "@/components/DestinationLink";
+import { trainingLogDayHref, trainingLogHref } from "@/lib/hrefs";
 
 // THE WEEK SPINE (#2566, Viz 1) — Training → Overview's week, as a band.
 //
@@ -25,6 +27,12 @@ import { StateLegend } from "@/components/StateCells";
 // overflow is stated in the cell's "+N" marker and its accessible summary, never
 // silently dropped.
 const MAX_BLOCKS = 4;
+
+// One cell's geometry, shared by both of its shapes below so the linked and unlinked
+// days cannot drift apart. The grid stretches every cell to the tallest, and the
+// content starts at the top, so the destination cue a linked day carries underneath
+// its column does not move anybody's weekday label or block box.
+const CELL_CLASS = "relative flex w-full flex-col items-center gap-1";
 
 export default function WeekSpine({ spine }: { spine: WeekSpineData }) {
   // The caption states the SAME fold the band draws — `buildWeekSpine` returns both,
@@ -58,17 +66,8 @@ export default function WeekSpine({ spine }: { spine: WeekSpineData }) {
           );
           const shown = squares.slice(0, MAX_BLOCKS);
           const overflow = squares.length - shown.length;
-          return (
-            <SeriesPoint
-              key={day.date}
-              role="listitem"
-              data-testid="week-spine-day"
-              data-date={day.date}
-              data-state={day.state}
-              data-sessions={day.sessions}
-              label={summary}
-              className="relative flex flex-col items-center gap-1"
-            >
+          const marks = (
+            <>
               <span
                 className={`text-xs font-medium uppercase ${
                   day.state === "today"
@@ -106,7 +105,59 @@ export default function WeekSpine({ spine }: { spine: WeekSpineData }) {
                   </span>
                 )}
               </div>
-            </SeriesPoint>
+            </>
+          );
+          // THE LISTITEM IS THE CELL, THE LINK IS INSIDE IT (#5133). Spreading
+          // `role="listitem"` onto the anchor was the first shape here, and an
+          // explicit role OVERRIDES the implicit one — so the door announced itself as
+          // a list item and never appeared in a links list. The role cannot simply be
+          // dropped either: `role="list"` above requires listitem children. It moves
+          // outward instead, and each shape keeps the identity hooks it always had.
+          const cell = {
+            "data-testid": "week-spine-day",
+            "data-date": day.date,
+            "data-state": day.state,
+            "data-sessions": day.sessions,
+            className: CELL_CLASS,
+          };
+          // A DAY WITH SESSIONS IS A DOOR TO THAT DAY'S LOG (#5003). The block a
+          // person points at when they mean "the workout I just did" did nothing when
+          // pressed, and the ride was two surfaces away with nothing here saying so.
+          //
+          // The door is the DAY, not the block: a block is a per-type count
+          // (lib/training-week-spine.ts) and does not know which session it is, and a
+          // day door stays true when the day holds two. It is the same rule every
+          // other surface stating a day already follows (#4768), through the same
+          // builder — `trainingLogDayHref`, which also carries that ruling's reason
+          // for landing on the day rather than on an anchor inside it.
+          //
+          // `DestinationLink` draws the cue, so obviousness is the primitive's and
+          // not this cell's: `lib/__tests__/destination-link-primitive.test.ts`
+          // refuses a hand-rolled chevron, and the cue is visible at every viewport
+          // rather than waiting for a pointer (#3375/#3958).
+          //
+          // An empty or ahead day stays a `SeriesPoint` — no cue, because there is
+          // nothing behind it, and a door onto an empty log would be a promise the
+          // Log then breaks.
+          return (
+            <div key={day.date} role="listitem" className="min-w-0">
+              {day.sessions > 0 ? (
+                <DestinationLink
+                  {...cell}
+                  href={trainingLogDayHref(day.date)}
+                  // The mark's own summary plus where it goes. The whole week is still
+                  // announced once by `SeriesSummary` below, so this replaces the
+                  // hover readout rather than the keyboard's list.
+                  aria-label={`${summary} — open the day's log`}
+                >
+                  {marks}
+                </DestinationLink>
+              ) : (
+                <SeriesPoint {...cell} label={summary}>
+                  {marks}
+                </SeriesPoint>
+              )}
+            </div>
           );
         })}
       </div>
@@ -115,15 +166,21 @@ export default function WeekSpine({ spine }: { spine: WeekSpineData }) {
         items={spine.days.map(weekSpineDaySummary)}
       />
 
-      <p
-        className="mt-2 text-sm text-slate-600 dark:text-slate-300"
+      {/* The sentence leads where its own data lives: the Log at its default window
+          (#5003). Same primitive, same cue — a strip whose cells are doors and whose
+          caption is not would be teaching two rules at once. */}
+      <DestinationLink
+        href={trainingLogHref({})}
+        className="mt-2 flex text-sm text-slate-600 dark:text-slate-300"
         data-testid="week-spine-caption"
       >
-        <span className="font-semibold text-slate-900 dark:text-slate-100">
-          {sessions} {sessions === 1 ? "session" : "sessions"}
-        </span>{" "}
-        on {activeDays} {activeDays === 1 ? "day" : "days"} this week
-      </p>
+        <span>
+          <span className="font-semibold text-slate-900 dark:text-slate-100">
+            {sessions} {sessions === 1 ? "session" : "sessions"}
+          </span>{" "}
+          on {activeDays} {activeDays === 1 ? "day" : "days"} this week
+        </span>
+      </DestinationLink>
 
       {present.length > 0 && (
         <StateLegend

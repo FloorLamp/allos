@@ -41,6 +41,7 @@ import {
   type TapEvent,
 } from "./correction-time";
 import { captureDelete } from "./undo-delete-db";
+import type { BundleId } from "./bundle";
 
 // Where an event's eating instant came from (issue #2019, migration 154). `tap` is the
 // button's own contract — "I'm eating now" — which is a measurement with known error,
@@ -91,12 +92,21 @@ export function placementColumns(placement?: FoodPlacement): {
       };
 }
 
-// WHICH MESSAGE'S TAP a serving write came from (#2264): the `notify_messages` row id
-// resolved by the Telegram handler, or absent/null for every other surface (web,
-// offline replay, a chat whose pointer bookkeeping failed). Attribution for the
-// correction ride-along only — it never influences what the row says about food.
+// WHERE A SERVING WRITE CAME FROM — the two facts about the ACT rather than about the
+// food, so a new one lands here instead of growing the parameter list of both cores.
+//
+// `notifyMessageId` (#2264): the `notify_messages` row id resolved by the Telegram
+// handler, or absent/null for every other surface (web, offline replay, a chat whose
+// pointer bookkeeping failed). Attribution for the correction ride-along only.
+//
+// `bundleId` (#5082): the id the composed action that is writing this row minted, so
+// the usual tap's servings carry the same act id as its dose confirms. ABSENT is the
+// answer for every single write — one tap, one row, nothing to compose — and that
+// absence is what the ledger reads as "stated on its own". A core never mints one:
+// minting is the composed CALLER's, once per act (`newBundle`, lib/bundle.ts).
 export interface FoodWriteOrigin {
   notifyMessageId?: number | null;
+  bundleId?: BundleId | null;
 }
 
 // The typed result of a serving write, so a Telegram tap answers from what ACTUALLY
@@ -253,8 +263,8 @@ export function logFoodServingCore(
       .prepare(
         `INSERT INTO food_log_events
          (profile_id, group_key, date, recorded_at, meal_slot, occurred_at, time_source,
-          notify_message_id, logged_via)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          notify_message_id, logged_via, bundle_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         profileId,
@@ -265,7 +275,8 @@ export function logFoodServingCore(
         columns.eatenAt,
         columns.timeSource,
         origin?.notifyMessageId ?? null,
-        loggedVia
+        loggedVia,
+        origin?.bundleId ?? null
       );
     return {
       kind: "logged",

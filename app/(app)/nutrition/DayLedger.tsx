@@ -418,6 +418,7 @@ export default function DayLedger({
               <>
                 <button
                   type="button"
+                  role="menuitem"
                   className={MENU_ITEM}
                   data-testid={`ledger-serving-correct-${row.eventId}`}
                   onClick={() => {
@@ -429,6 +430,7 @@ export default function DayLedger({
                 </button>
                 <button
                   type="button"
+                  role="menuitem"
                   className={MENU_ITEM_DANGER}
                   data-testid={`ledger-serving-remove-${row.eventId}`}
                   onClick={() => {

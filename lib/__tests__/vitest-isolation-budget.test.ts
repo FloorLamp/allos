@@ -69,15 +69,22 @@ import { specsNeedingIsolation } from "@/vitest.isolation";
 // It is a separate file rather than another describe in the manifest spec for the same
 // reason entry 32 is: that file is a query budget pinned at one instant, and seeding two
 // more profiles beside it risks moving the number it exists to measure.
-// 36 since #5073: dashboard-tail-memo proves the commit-scoped memo holds and drops on
+// 36 since #3993: sleep-page-budget renders the /sleep route through the same harness
+// the dashboard query meter uses (session, scope, request cache), so the isolation scan
+// routes it here for the same reason entry 34 is routed here. It exists because neither
+// budget gate walked /sleep while a dueness resolver was added to the gather that page
+// renders per night — and it is a separate file from the dashboard manifest for the
+// reason entries 32 and 35 both give: that file is a budget pinned at one instant, and
+// seeding six more profiles beside it would move the number it exists to measure.
+// 37 since #5073: dashboard-tail-memo proves the commit-scoped memo holds and drops on
 // each of the three commit signals, and a memo whose lifetime IS a request can only be
-// exercised with a request open — the same harness cache() the two entries above install
+// exercised with a request open — the same harness cache() the entries above install
 // over lib/request-cache. Production's cache() is identity outside a Next request by
 // design, so without that substitution the spec would measure the passthrough and assert
 // nothing about the memo. Separate from the manifest spec for entry 32's reason: it
 // creates a profile per case, and seeding profiles beside a query budget pinned at one
 // instant risks moving the number that budget exists to measure.
-const DB_ISOLATED = 36;
+const DB_ISOLATED = 37;
 // 7 since #3065: Longevity's server-component FitnessSection is tested directly with
 // controlled session, age, and assembler boundaries. It must prove that minor and unknown
 // profiles return null before assembling adult population data; sharing those module stubs

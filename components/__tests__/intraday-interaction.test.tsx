@@ -8,9 +8,10 @@ import { windowFromView } from "@/lib/intraday-window";
 
 // ONE WINDOW FOR THE DAY (#4950), tested on the mechanism rather than on the pixels.
 //
-// `IntradayPanel` mounts the chart TWICE, both in the DOM at once, and the owner's
-// amendment makes something OUTSIDE the chart read "the current view". With two owners
-// there are two views and the page cannot tell which variant the viewport is showing.
+// `IntradayChart` draws its day TWICE — a compact geometry and a wide one, both in the
+// DOM at once, one displayed by a container query (#4973) — and the owner's amendment
+// makes something OUTSIDE the chart read "the current view". With two owners there are
+// two views and the page cannot tell which one the viewport is showing.
 //
 // What has to be true is a property of the state, not of the SVG: two consumers under
 // one provider see one value, and two consumers with no provider stay independent.

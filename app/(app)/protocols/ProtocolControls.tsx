@@ -185,6 +185,7 @@ export default function ProtocolControls({
                     {canRevise && (
                       <button
                         type="button"
+                        role="menuitem"
                         className={MENU_ITEM}
                         disabled={busy}
                         data-testid="protocol-edit"
@@ -199,6 +200,7 @@ export default function ProtocolControls({
                     {ongoing && (
                       <button
                         type="button"
+                        role="menuitem"
                         className={MENU_ITEM}
                         disabled={busy}
                         onClick={() => void onEnd()}
@@ -209,6 +211,7 @@ export default function ProtocolControls({
                     {canRevise && reopen.kind === "eligible" && (
                       <button
                         type="button"
+                        role="menuitem"
                         className={MENU_ITEM}
                         disabled={busy}
                         onClick={() =>
@@ -221,6 +224,7 @@ export default function ProtocolControls({
                     {canRevise && reopen.kind === "expired" && (
                       <button
                         type="button"
+                        role="menuitem"
                         className={MENU_ITEM}
                         disabled={busy}
                         onClick={() => void onRunAgain()}
@@ -230,6 +234,7 @@ export default function ProtocolControls({
                     )}
                     <button
                       type="button"
+                      role="menuitem"
                       className={MENU_ITEM_DANGER}
                       disabled={busy}
                       onClick={() => void onDelete()}

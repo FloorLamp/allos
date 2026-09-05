@@ -1221,25 +1221,49 @@ describe("actual atomic dashboard manifests", () => {
     // left four personas a query short with nothing to show for it. The numbers below
     // came from running the gate on the merged tree, which is the only thing that can
     // tell "we agree" from "we both landed on 227 by coincidence".
-    // −2 EACH (#5073), and the sign is the surprise: this change ADDS one statement
-    // per render (`SELECT total_changes()`, the memo's own version read) and still
-    // comes out negative, because three of the six memoized gathers' calls inside ONE
-    // render were duplicates. `getScheduledAppointments` is reached four times on a
-    // dashboard render — the page's Upcoming list, `kindedScheduled` from the Upcoming
-    // generators, the intake warnings and the surgery bridge — and it was request-
-    // cached by nobody. The commit memo collapses those to one, so −3 +1 = −2. The
-    // WARM table below is where this change's actual subject shows up.
-    bodybuilder: 204,
-    "marathon-runner": 205,
+    // +24 on THREE personas, +28 on the two with cycle rows, and `household` unmoved at
+    // 254 (#3993) — six personas, three deltas, which the earlier "+24 on four" did not
+    // add up to. The dueness
+    // question is now DATED on every surface that asks it, including the two summary
+    // walks this page runs — `buildAdherencePatternFindings` (56 days) and
+    // `getIntakeHistory` (30). Each builds one `effectiveSituationResolver`, and each
+    // resolver gathers the derived inputs ONCE for its window: the declared set and its
+    // change log, the suppression bus, the nightly sleep series, the cycle relevance
+    // bit, the home location, the weather-keyed gate and the cached weather series —
+    // about twelve reads, twice, plus the cycle log itself on `pregnant` and
+    // `marathon-runner`. `household`'s acting profile has no active intake items, so
+    // both walks return before building a resolver and it pays nothing.
+    //
+    // MEASURED, AND THE MEASUREMENT IS THE POINT. Dating these surfaces by asking the
+    // per-DATE resolver once per day cost +96/+112 — over the backstop, and the reason
+    // an earlier round of this branch left the summaries undated and wrote the
+    // disagreement down as a known cost instead. That was the wrong trade (a push
+    // saying "0/1 taken" about a dose the app itself would not have offered), and it
+    // was also unnecessary: only three of the twelve reads depend on the day at all,
+    // and none of them is a per-day query. Gathering per WINDOW rather than per DAY is
+    // what took the same correctness from +96 to +24.
+    //
+    // −2 EACH (#5073) ON TOP OF THE ABOVE, RE-MEASURED ON THE MERGED TREE and not
+    // carried over from the banked branch, whose base predated #3993's +24/+28. The
+    // sign is the surprise: this change ADDS one statement per render
+    // (`SELECT total_changes()`, the memo's own version read) and still comes out
+    // negative, because three of the six memoized gathers' calls inside ONE render were
+    // duplicates. `getScheduledAppointments` is reached four times on a dashboard render
+    // — the page's Upcoming list, `kindedScheduled` from the Upcoming generators, the
+    // intake warnings and the surgery bridge — and it was request-cached by nobody. The
+    // commit memo collapses those to one, so −3 +1 = −2. The WARM table below is where
+    // this change's actual subject shows up.
+    bodybuilder: 228,
+    "marathon-runner": 233,
     household: 252,
-    pregnant: 200,
-    "diabetic-cgm": 211,
+    pregnant: 228,
+    "diabetic-cgm": 235,
     // +9 (#4424 ruling 7): Upcoming's practice rows mount the shared row control, so
     // the row now resolves what that control renders — `getTrackedPractices`, which is
     // one grouped today-tally and one live sweep however many practices there are,
     // plus the usual-duration vote per practice. Assembling the same four fields
     // per-target instead measured +13.
-    biohacker: 231,
+    biohacker: 255,
     // −1 each (#5061): `getDayLoadInputs` and `getIntensitySignal` ask the same
     // question of the same 42 days — the shared HR read, kept to the activity windows
     // that bound it — and only the READ was request-cached (#5010), so each one still
@@ -1305,6 +1329,15 @@ describe("actual atomic dashboard manifests", () => {
   // decay the 535 suffered. Re-deriving is one line and is meant to happen every
   // time a gather moves these numbers.
   //
+  // HELD AT 274 WHILE THE BASELINES ROSE (#3993), which is the one direction the rule
+  // above does not re-derive in. Dating the summary surfaces spent +24/+28 and made
+  // `biohacker` the heaviest baseline at 257, so "heaviest + 20" would read 277. It is
+  // not re-derived upward: a change that spends queries would then buy back its own
+  // headroom, and the bound exists to be spent AGAINST. The headroom is 17 now, and the
+  // arithmetic below describes how 274 was arrived at, not what it would be re-derived
+  // to today. It follows the baselines DOWN, as the paragraph above says, and a later
+  // reduction re-derives it from whatever the heaviest persona then costs.
+  //
   // 275 → 274 (#5061), the same rule again and the smallest it will ever look. The
   // zone reads stopped fetching the activity windows twice, which is −1 on every
   // persona, so household is 254 and the derivation above re-runs as 254 + 20 = 274.
@@ -1332,10 +1365,17 @@ describe("actual atomic dashboard manifests", () => {
   // so deferring one defers CANDIDACY, not a payload, and that is the #3077
   // exact-once partition rather than a cost question.
   //
-  // 274 → 272 (#5073), the same rule a fourth time. The commit-scoped memo takes
-  // household 254 → 252, so the derivation above re-runs as 252 + 20 = 272. Note it
-  // still tracks the COLD number: a ceiling derived from the warm one would be a bound
-  // on a render nobody's first load ever gets.
+  // 274 → 272 (#5073), the same rule a fourth time, and the derivation is NOT the
+  // "heaviest + 20" one — that split was suspended above when #3993 spent queries and
+  // the bound was held at 274 against a 257 heaviest, i.e. a headroom of 17. The
+  // commit-scoped memo takes every persona down 2, so the heaviest (biohacker) is 255
+  // and the SAME 17 headroom re-derives as 255 + 17 = 272. Following the reduction down
+  // is the rule; re-deriving the 20 back would hand this change 3 statements of slack
+  // it did not earn, which is the "buy back your own headroom" move the paragraph above
+  // refuses in the other direction.
+  //
+  // AND IT STILL TRACKS THE COLD NUMBER: a ceiling derived from the warm table below
+  // would be a bound on a render nobody's first load ever gets.
   const QUERY_CEILING = 272;
 
   it("dashboard query budget: each persona matches its recorded main baseline", () => {
@@ -1402,6 +1442,16 @@ describe("actual atomic dashboard manifests", () => {
   // the suppression bus and `routineOrder` (deliberately unmemoized — a dismissal taken
   // since the last commit must still be read fresh), and one `SELECT total_changes()`
   // for the memo's own version read.
+  //
+  // RE-MEASURED ON THE MERGED TREE AND UNMOVED BY #3993, which is the most useful thing
+  // this table has said yet. #3993 dating the summary surfaces cost +24 on three
+  // personas and +28 on two, and every one of those statements is issued from inside
+  // `collectCoachingFindings` — `buildAdherencePatternFindings` (lib/rule-findings.ts,
+  // in the gather's own list) and `getIntakeHistory` under
+  // `buildDemotionSuggestionFindings` beside it. So the cold table above moved and this
+  // one did not: the whole of that cost falls inside the memo. `household` is the
+  // control on both tables — its acting profile has no active intake items, so #3993
+  // charged it nothing cold and it is unmoved here too.
   const WARM_BASELINE: Record<string, number> = {
     bodybuilder: 119,
     "marathon-runner": 121,

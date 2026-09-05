@@ -37,8 +37,8 @@
   agent to execute falsifying attacks; prose alone only ever reaches CONSULT.
 - On CONSULT, read the file and hunk it quotes, not the matched terms; dispatch
   when it moves what a shared surface shows about another profile.
-- The merge waits for that report. Fix each refuted claim or record a reasoned
-  override in the thread.
+- The merge waits for that report — a MARKER the gate reads (claims.md). Fix
+  each refuted claim or record a reasoned override in the thread.
 - A blocking finding fixed by changing the MECHANISM, not the value, earns a
   fresh pass. The test: does the fix create a surface the last pass could not
   have attacked? A new store, key, lifetime, or owning row is yes; a corrected
@@ -46,8 +46,6 @@
 - After two blocking rounds against one mechanism, stop patching examples.
   Re-open the premise around a shared substrate, restrictive invariant, or
   direct behavior evidence; record why the replacement closes the defect class.
-- #3011 is the worked example: three passes, and passes 2 and 3 each found a
-  real defect in what the previous fix had just built.
 
 ## What a lens looks for, and how verification lies
 
@@ -56,7 +54,8 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
 
 ## Migrations
 
-- Applied migrations are keyed by name; numbered migrations 001–185 are closed.
+- Applied migrations are keyed by name; numbered migrations 001–185 are
+  closed.
 - Add `YYYYMMDD-slug.ts`, export `{ name, up }`, append it last, then run
   `npm run gen:migration-manifest` for its hash. Never edit a shipped migration.
 - Merge order defines migration order. An APPEND-ONLY file (`versions/index.ts`,
@@ -72,17 +71,20 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
   the same breath as the merge call: GitHub merges the head it finds.
 - Serialize merges. After each merge, recheck every open PR's mergeability and
   refresh or reconcile affected branches.
-- One landing candidate gets final rebase, PR opened or refreshed READY
-  (never draft — environment.md §GitHub access), exact-head review, and full
-  CI, in order. Local pre-review never replaces it; bank later branches.
+- A green exact head merges in the TURN that finds it green. An unrelated
+  `e2e-main` run on `main` is not a reason to hold it; a red `main` is.
+- Merges are serial; PRs are not. Every branch that passed its gates opens
+  READY at once (never draft — environment.md §GitHub access), so CI and the
+  exact-head review run in parallel. After a merge, the next green head merges
+  without a re-run when `landing-independence.mjs <pr>` exits 0; else rebase.
 - **The exact-head review is INDEPENDENT and pinned to the SHA** (owner
   2026-08-26, #3710): a non-author reviews the candidate commit; the COMMENT
   review states SHA and reviewer — on a shared bot account, also that the
   reviewer did not author the change (#4258). A head change voids it.
-- **Run `scripts/orchestration/merge-gate.mjs <pr>` before every merge
-  call** — receipt on current head, checks green, no unresolved threads;
-  exit 0 is the precondition. CI mirrors it as the `merge-gate` COMMIT
-  STATUS, which check-runs does not list: all-green can still be `unstable`.
+- **Run `merge-gate.mjs <pr>` before every merge call** — receipt, green checks,
+  no threads, no hold, the mandated pass, this session's own PR (claims.md);
+  exit 0 is the precondition. CI mirrors it as the `merge-gate` COMMIT STATUS,
+  which check-runs does not list: all-green can still be `unstable`.
 - A later conflicting PR rebases only after the last earlier conflict lands.
 - Resume the author for semantic conflict resolution; do not hand-integrate
   feature code.
@@ -93,8 +95,5 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
   body aims the next lens at deleted code (failure modes).
 - Verify linked issues closed, then clean the worktree and local branch.
 
-## Merge queue
-
-- The checked-in ruleset is inactive under a personal account. Keep the
-  manual serialization and exact-head checks until organization transfer;
-  then apply it, validating the speculative merge commit first.
+- Merge queue: the checked-in ruleset is inactive under a personal account;
+  keep manual serialization until organization transfer, then validate it.

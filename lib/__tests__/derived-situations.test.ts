@@ -203,27 +203,27 @@ describe("restReasons — the #1292 coaching pin (measured unchanged, declared a
 
 describe("periodVerdict — logged / declared / off (#1298)", () => {
   it("a logged menses day is ON with basis logged", () => {
-    expect(periodVerdict({ coversToday: true, declared: false })).toEqual({
+    expect(periodVerdict({ coversDate: true, declared: false })).toEqual({
       on: true,
       basis: "logged",
     });
   });
 
   it("a gap day with a declared toggle falls back to declared", () => {
-    expect(periodVerdict({ coversToday: false, declared: true })).toEqual({
+    expect(periodVerdict({ coversDate: false, declared: true })).toEqual({
       on: true,
       basis: "declared",
     });
   });
 
   it("logged wins over declared", () => {
-    expect(periodVerdict({ coversToday: true, declared: true }).basis).toBe(
+    expect(periodVerdict({ coversDate: true, declared: true }).basis).toBe(
       "logged"
     );
   });
 
   it("a mid-cycle gap day with no declaration is OFF", () => {
-    expect(periodVerdict({ coversToday: false, declared: false })).toEqual({
+    expect(periodVerdict({ coversDate: false, declared: false })).toEqual({
       on: false,
       basis: null,
     });

@@ -17,7 +17,7 @@ import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { setTimezone } from "@/lib/settings";
 import { markDoseTaken, markDoseSkipped } from "@/lib/queries";
-import { newDoseBundle } from "@/lib/dose-bundle";
+import { newBundle } from "@/lib/bundle";
 import { pendingDayDoses } from "@/lib/queries/usual-routine";
 import { getDayDoseLedger } from "@/lib/queries/day-ledger";
 import * as scheduleQueries from "@/lib/queries/intake/schedule";
@@ -84,8 +84,8 @@ describe("ATTACK #1 — two taps of one routine in one bucket, minutes apart", (
     // this fixture reach the state the assertion forbids at all. The same four writes
     // WITHOUT bundles are the sibling case below, and they produce no stack row to put
     // an open dose on twice.
-    const first = newDoseBundle();
-    const second = newDoseBundle();
+    const first = newBundle();
+    const second = newBundle();
     process.env.ALLOS_TEST_NOW = "2026-08-28T07:07:10Z";
     for (const s of seeded.slice(0, 2))
       markDoseTaken(profile.id, s.doseId, s.itemId, date, "page", {
@@ -192,7 +192,7 @@ describe("ATTACK #2 — one composed write, one member's time amended", () => {
     // ONE composed tap at 08:07 — all three members, one bundle (#4328). Stamped rather
     // than left to a shared minute: three bare confirms are three taps now, and this
     // case is about what an amendment does to a real composed write.
-    const tap = newDoseBundle();
+    const tap = newBundle();
     process.env.ALLOS_TEST_NOW = "2026-08-28T08:07:00Z";
     for (const member of [a, b, c])
       markDoseTaken(profile.id, member.doseId, member.itemId, date, "page", {

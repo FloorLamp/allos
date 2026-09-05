@@ -23,13 +23,18 @@ import type {
   CadenceKind,
   FoodTiming,
   IntakeCondition,
+  IntakeDose,
+  IntakeItem,
   IntakeItemKind,
   IntakeObligation,
+  MedicationCourse,
 } from "./types";
 import type { IntakePairDraft } from "./intake-rules";
 import type { PurposeDraft } from "./intake-purposes";
-import { serializeRxcuiIngredients } from "./rxnorm";
+import { parseRxcuiIngredients, serializeRxcuiIngredients } from "./rxnorm";
 import { intakeKindAffordances } from "./intake-kind-affordances";
+import { parseWeekdays } from "./intake-cadence";
+import { itemSeedFromPool, type SupplyOption } from "./supply-product";
 
 // One dose row, structurally what DoseRowsEditor edits (declared here so the mapping
 // stays free of React).
@@ -273,5 +278,128 @@ export function emptyIntakeItemFormState(
     qtyPerDose: "1",
     quantityOnHandLoaded: "",
     supplyId: "",
+  };
+}
+
+// THE ONE SEEDING (#4664). What a mounted intake form starts from, for every mount:
+// the blank for the kind with the stored row, its course, its dose rows and the picked
+// bottle merged in.
+//
+// WHY IT IS HERE AND NOT IN THE COMPONENT. The form used to seed field-by-field, one
+// `item?.…` expression per `useState` — an undeduped copy of `emptyIntakeItemFormState`
+// with the row merged in, 29 expressions long. A field added to the type and to the
+// blank but forgotten here is seeded as blank on an edit, which reads as data loss and
+// nothing catches it. One factory over the one type is testable without React, so the
+// seeding rules ("a course's start date wins over today", "an as-needed item has no
+// start date", "a bottle answers the strength") are asserted rather than assumed.
+//
+// WHAT IT DOES NOT DECIDE. `situation`, `pauseSituation` and `pairs` are seeded from
+// the row, but the live form re-derives them from the rule SENTENCES it built out of
+// this same row (lib/intake-rules); likewise `rxcui`, which the RxNorm confirm hook
+// owns after mount. They are seeded so this state is a faithful reading of the row —
+// what a test of the seeding asks about — not so the form reads them back from here.
+export function intakeItemFormStateFrom(seed: {
+  kind: IntakeItemKind;
+  // Present ⇒ an edit, seeded from the row; absent ⇒ a create.
+  item?: IntakeItem | null;
+  // The open course, whose window wins over the row's own dates (#1204).
+  course?: MedicationCourse | null;
+  // The profile-local day (never `new Date()` here — the caller resolves it).
+  todayStr?: string | null;
+  // A bottle picked at the door (#1705): it answers the name and the strength, and
+  // rides as `supply_id` on this item's own save.
+  supply?: SupplyOption | null;
+  doses?: readonly IntakeDose[] | null;
+  ingredients?: readonly IntakeIngredientDraft[] | null;
+  purposes?: readonly PurposeDraft[] | null;
+  pairs?: readonly IntakePairDraft[] | null;
+}): IntakeItemFormState {
+  const item = seed.item ?? null;
+  const supplySeed = seed.supply ? itemSeedFromPool(seed.supply) : null;
+  const blank = emptyIntakeItemFormState(seed.kind);
+  const onHand =
+    item?.quantity_on_hand != null
+      ? String(Math.max(0, item.quantity_on_hand))
+      : "";
+  const sortedWeekdays = (csv: string | null | undefined) =>
+    [...parseWeekdays(csv)].sort((a, b) => a - b);
+  return {
+    ...blank,
+    id: item?.id ?? null,
+    name: item?.name ?? supplySeed?.name ?? "",
+    brand: item?.brand ?? "",
+    product: item?.product ?? "",
+    stack: item?.stack ?? "",
+    condition: item?.condition ?? blank.condition,
+    situation: item?.situation ?? "",
+    pauseSituation: item?.pause_situation ?? "",
+    obligation: item?.obligation ?? blank.obligation,
+    critical: item?.critical === 1,
+    escalateAfterMin:
+      item?.escalate_after_min != null ? String(item.escalate_after_min) : "",
+    escalateChatId: item?.escalate_chat_id ?? "",
+    minIntervalHours:
+      item?.min_interval_hours != null ? String(item.min_interval_hours) : "",
+    maxDailyCount:
+      item?.max_daily_count != null ? String(item.max_daily_count) : "",
+    maxDailyAmountMg:
+      item?.max_daily_amount_mg != null ? String(item.max_daily_amount_mg) : "",
+    redoseNotice: item?.redose_notice === 1,
+    rx: item?.rx === 1,
+    prescriber: item?.prescriber ?? "",
+    pharmacy: item?.pharmacy ?? "",
+    rxNumber: item?.rx_number ?? "",
+    provider: item?.provider_name ?? "",
+    providerId: item?.provider_id ?? null,
+    // What the form LOADED, for the action's own concurrency check — frozen at mount
+    // on purpose, because that is the value the person is editing against.
+    providerLoaded: item?.provider_name ?? "",
+    indicationConditionId:
+      item?.indication_condition_id != null
+        ? String(item.indication_condition_id)
+        : "",
+    // An as-needed item has no start date to volunteer; everything else starts today
+    // unless a course states otherwise.
+    startedOn:
+      seed.course?.started_on ??
+      (item?.obligation === "may" ? "" : (seed.todayStr ?? "")),
+    endDate: seed.course?.stopped_on ?? "",
+    courseId: seed.course?.id ?? null,
+    cadence: {
+      kind: item?.cadence_kind ?? blank.cadence.kind,
+      weekdays: sortedWeekdays(item?.cadence_weekdays),
+      intervalDays:
+        item?.cadence_interval_days != null
+          ? String(item.cadence_interval_days)
+          : "",
+      anchorDate: item?.cadence_anchor_date ?? "",
+    },
+    doses:
+      seed.doses && seed.doses.length
+        ? seed.doses.map((d) => ({
+            id: d.id,
+            amount: d.amount ?? "",
+            time_of_day: d.time_of_day ?? "",
+            food_timing: d.food_timing,
+            weekdays: sortedWeekdays(d.weekdays),
+            start_date: d.start_date ?? "",
+            end_date: d.end_date ?? "",
+          }))
+        : [{ ...blank.doses[0], amount: supplySeed?.amount ?? "" }],
+    pairs: [...(seed.pairs ?? [])],
+    ingredients: [...(seed.ingredients ?? [])],
+    purposes: [...(seed.purposes ?? [])],
+    notes: item?.notes ?? "",
+    rxcui: item?.rxcui ?? null,
+    rxcuiIngredients: parseRxcuiIngredients(item?.rxcui_ingredients ?? null),
+    quantityOnHand: onHand,
+    qtyPerDose: String(item?.qty_per_dose ?? 1),
+    quantityOnHandLoaded: onHand,
+    supplyId:
+      item?.supply_id != null
+        ? String(item.supply_id)
+        : seed.supply
+          ? String(seed.supply.id)
+          : "",
   };
 }

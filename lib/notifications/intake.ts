@@ -5,7 +5,7 @@
 // renderWindowMessage / renderMergedIntakeMessage in ./intake-format.
 
 import { today } from "../db";
-import { lastNDates, zonedDateParts } from "../date";
+import { lastNDates, shiftDateStr, zonedDateParts } from "../date";
 import {
   getIntakeItems,
   getIntakeDoses,
@@ -16,17 +16,12 @@ import {
   isPredictedWorkoutDay,
   inferWorkoutSchedule,
   getIntakeAdherenceEvidence,
-  getEffectiveActiveSituations,
+  effectiveSituationResolver,
   getMinutesSinceLastFoodLog,
 } from "../queries";
 import { foodTimingCheck } from "../food-timing-check";
-import {
-  getActiveSituations,
-  getSituationEvents,
-  getTimezone,
-  getProfileAge,
-} from "../settings";
-import { situationHistoryResolver } from "../trend-annotations";
+import { getTimezone, getProfileAge } from "../settings";
+
 import {
   adherenceSummary,
   doseStrip,
@@ -244,13 +239,17 @@ function gatherWindowDoses(
   const itemById = new Map(items.map((item) => [item.id, item]));
   const taken = getTakenDoseIds(profileId, date);
   const skipped = getSkippedDoseIds(profileId, date);
-  // Per-day situation resolver for the WHOLE gather — the day being reminded about and
-  // every day of the adherence strip below: each is scored against the situations active
-  // THAT day (#654), not today's toggle retroactively. The declared set is only its seed.
-  const situationsOn = situationHistoryResolver(
-    getActiveSituations(profileId),
-    getSituationEvents(profileId)
-  );
+  // Per-day DUENESS resolver for the whole gather — the day being reminded about and
+  // every day of the strip below, each scored against what held THAT day, declared AND
+  // derived (#654/#3993). One resolver, because a line that names a dose as owed and a
+  // strip that scores the same day `na` are the same question answered twice. The span
+  // is the strip's window widened to reach `date`, which on a late-tapped reminder can
+  // sit before it — so the whole gather costs one read of each derived input.
+  const stripStart = shiftDateStr(today(profileId), -(ADHERENCE_DAYS - 1));
+  const situationsOn = effectiveSituationResolver(profileId, {
+    from: date < stripStart ? date : stripStart,
+    to: today(profileId),
+  });
   const isForToday = date === today(profileId);
   // WHICH ACTIVITY READER, and the two are not interchangeable (#4019):
   // `getActivitiesByDate` is the raw row read, `getActivityDates` the same rows with
@@ -274,19 +273,17 @@ function gatherWindowDoses(
     isWorkoutDay: isForToday
       ? activitiesToday.length > 0
       : workoutDays.has(date),
-    // The situations active ON `date` — the history resolver owns retroactive
-    // membership on BOTH halves (#3973). The declared set is a statement about now, so
-    // scoring a past day against it moved yesterday's reminder whenever a situation was
-    // toggled today.
+    // The situations active ON `date`, declared AND derived (#3973/#3993). Scoring a
+    // past day against the set declared NOW moved yesterday's reminder whenever a
+    // situation was toggled today; scoring it without the derived half dropped the
+    // context the day actually carried.
     //
-    // The TODAY branch is deliberate, not inherited: the derived widening (#1292/#1298)
-    // judges "a rough night" and "a logged period day" against the CURRENT local day and
-    // has no dated form, so it may only ever speak for today. The two agree on today —
-    // an event logged today is not strictly after it — so the union adds exactly the
-    // derived names.
-    activeSituations: isForToday
-      ? getEffectiveActiveSituations(profileId, date)
-      : situationsOn(date),
+    // THERE IS NO TODAY/PAST BRANCH LEFT HERE, and its absence is the fix. The branch
+    // existed because the derived widening was said to have no dated form — but a logged
+    // period day, a weather spell and the night ending a day are each a fact about that
+    // day, so one resolver answers for whichever day is being rebuilt — and the strip
+    // below is built from that SAME resolver, so the line and its dots agree.
+    activeSituations: situationsOn(date),
     // TODAY ONLY, the same split (#4019). The prediction is a rhythm inferred from a
     // trailing window ending NOW, and `conditionAppliesOn` reads it as
     // `predictedWorkoutDay ?? isWorkoutDay` — so on a closed day a guess made today

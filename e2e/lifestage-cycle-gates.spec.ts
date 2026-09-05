@@ -133,11 +133,13 @@ test.describe("life-stage gates past substance use (#2807)", () => {
         page.getByRole("button", { name: "More protocol actions" })
       );
       const menu = page.getByRole("menu");
-      await expect(menu.getByRole("button", { name: "Delete" })).toBeVisible();
+      await expect(
+        menu.getByRole("menuitem", { name: "Delete" })
+      ).toBeVisible();
       await expect(menu.getByTestId("protocol-edit")).toHaveCount(0);
-      await expect(menu.getByRole("button", { name: "Run again" })).toHaveCount(
-        0
-      );
+      await expect(
+        menu.getByRole("menuitem", { name: "Run again" })
+      ).toHaveCount(0);
     } finally {
       await page.context().close();
     }

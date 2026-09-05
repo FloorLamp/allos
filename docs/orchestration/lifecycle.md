@@ -13,10 +13,6 @@
   in a row named work already merged (2026-08-16).
 - The check-in script and `dispatch-brief.mjs list` are ground truth on wake.
   Read them before acting on anything the prompt asserts, including your own.
-- Post a status pulse every check-in: in flight, merged, queued, and parked or
-  awaiting owner. Its data half is the catch-up digest, which the check-in
-  script runs itself when the digest's anchor is four hours stale — judgment
-  on the digest stays yours.
 - Sweep open issues about every four hours for filings, labels, and comment
   rulings.
 - Run one adversarial audit over the previous day of merges per session-day.
@@ -40,6 +36,21 @@
 - Institutionalize lessons in tooling or the relevant focused runbook file the
   same day — those are the only durable homes. Narrative that fits neither is
   cut, not relocated; history lives in git.
+
+## Status pulse
+
+- The pulse is the census line plus EXCEPTIONS only: a red `main`, a
+  blocker, a needs-human filed, a merge. Nobody reads the transcript — no
+  narration between tool calls, no plans, no recaps. Findings go to their
+  durable homes (PR reviews, issue comments, the ledger); the PM by SendMessage.
+- Its data half is the check-in's own recorder output. The catch-up digest
+  (`pm-digest.sh`) is the PM's, written for the owner, not an orchestrator's pulse.
+- The pulse OPENS with one census line in a fixed grammar, and the turn's
+  status detail carries the same line, so a PM reads saturation without
+  inference: `e2e 2/2 · ord 3/5 · slot #4764 green · banked 2 · blocked #4218`.
+- Read the Ladder issue (#4769, `parked` + `docs`) at every check-in: rung
+  order, your slice, prerequisites. It outranks your own ranking; a
+  disagreement goes to the PM, not into the queue.
 
 ## Wind-down
 

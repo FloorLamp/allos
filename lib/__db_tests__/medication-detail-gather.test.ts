@@ -27,12 +27,8 @@ import {
   getIntakeAdherenceEvidence,
   getMedicationCourses,
 } from "@/lib/queries";
-import {
-  getActiveSituations,
-  getSituationEvents,
-  getTimezone,
-} from "@/lib/settings";
-import { situationHistoryResolver } from "@/lib/trend-annotations";
+import { getTimezone } from "@/lib/settings";
+import { effectiveSituationResolver } from "@/lib/queries/derived-situations";
 import { medicationStartDate } from "@/lib/profile-summary";
 import { lastNDates, shiftDateStr } from "@/lib/date";
 import {
@@ -172,10 +168,25 @@ function calendarTheOldWay(
   );
   const dates = lastNDates(today(profileId), days);
   const workoutDays = new Set(getActivityDates(profileId));
-  const situationsOn = situationHistoryResolver(
-    new Set(getActiveSituations(profileId)),
-    getSituationEvents(profileId)
-  );
+  // The DUENESS resolver the page passes, not a declared-only reconstruction of it
+  // (#3993): `med-data.ts` builds `effectiveSituationResolver` over the month window the
+  // calendar draws, so a fixture on any other resolver would stop mirroring the gather
+  // it claims to reproduce — and would agree with it only on profiles with no derived
+  // context, which is a fixture asserting its own silence.
+  //
+  // WHICH IS A MIRROR AT `days = 35` AND AN EQUIVALENCE AT `days = 14`, and the reader
+  // should not have to derive that. `getMedicationAdherenceCalendar` reuses
+  // `data.adherenceInputs.situationsOn` whatever `days` it is given — a 35-day resolver
+  // — while this builds one over the `days` window it was asked for. At the default the
+  // two spans match and this really is the same resolver; at 14 the case below is
+  // asserting that a 14-day resolver and a 35-day one answer a day the same way, which
+  // is the window-independence identity (a day's answer is read from `[date − 180,
+  // date]` at both ends, so the declared span cannot move it). Benign, and it only
+  // stays benign while that identity holds.
+  const situationsOn = effectiveSituationResolver(profileId, {
+    from: dates[0],
+    to: dates[dates.length - 1],
+  });
   const takenByDose = indexTakenByDose(
     getIntakeAdherenceEvidence(profileId, days)
   );

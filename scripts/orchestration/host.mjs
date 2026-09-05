@@ -4,7 +4,7 @@
 //   node scripts/orchestration/host.mjs state-dir   # print (and create) the state dir
 //   node scripts/orchestration/host.mjs node-bin    # print the .nvmrc-major node bin dir
 //
-// The orchestration bootstrap grew up on one Linux container and hard-coded
+// The work bootstrap grew up on one Linux container and hard-coded
 // its shape: state in /home/user/scratch, node under /opt/nvm, a token always
 // in the environment. A macOS orchestrator has none of those, so dispatch
 // failed at worktree setup and the read-only reconciler refused with an
@@ -18,9 +18,9 @@
 //   1. $SCRATCH — the explicit override, exactly as before.
 //   2. /home/user/scratch when it exists — the measured live-container layout;
 //      existing state keeps resolving to where it already is.
-//   3. $XDG_STATE_HOME/allos-orchestration, else ~/.local/state/allos-orchestration
+//   3. $XDG_STATE_HOME/allos-work, else ~/.local/state/allos-work
 //      — the durable cross-platform default (macOS included; no per-OS branch).
-//   4. os.tmpdir()/allos-orchestration-state — LAST, and explicitly
+//   4. os.tmpdir()/allos-work-state — LAST, and explicitly
 //      non-durable: only when no home directory is resolvable at all.
 
 import fs from "node:fs";
@@ -54,8 +54,14 @@ export function resolveStateDir(env = process.env, io = defaultIo) {
     : io.homedir()
       ? path.join(io.homedir(), ".local", "state")
       : null;
-  if (home) return path.join(home, "allos-orchestration");
-  return path.join(io.tmpdir(), "allos-orchestration-state");
+  if (home) {
+    // The directory was named allos-orchestration until the 2026-09 rename;
+    // a machine that already holds state there keeps resolving to it.
+    const legacy = path.join(home, "allos-orchestration");
+    const current = path.join(home, "allos-work");
+    return !io.exists(current) && io.exists(legacy) ? legacy : current;
+  }
+  return path.join(io.tmpdir(), "allos-work-state");
 }
 
 /**
@@ -122,7 +128,7 @@ export function resolveReadToken(env = process.env, exec = execFileSync) {
   }
 }
 
-// CLI: used by the shell scripts (orchestrator-checkin.sh, catchup-digest.sh)
+// CLI: used by the shell scripts (orchestrator-checkin.sh, pm-digest.sh)
 // so their STATE_DIR is this resolver's answer, not a re-implementation.
 if (
   process.argv[1] &&

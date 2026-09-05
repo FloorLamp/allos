@@ -127,19 +127,27 @@ function hasWeatherKeyedItem(profileId: number): boolean {
   );
 }
 
-// Whether the profile has logged a weather-explainable symptom recently.
-function hasWeatherRelevantSymptom(profileId: number, date: string): boolean {
-  const since = shiftDateStr(date, -WEATHER_RELEVANCE_SYMPTOM_DAYS);
+// The DATES on which the profile logged a weather-explainable symptom, over an
+// inclusive range. One ranged read whatever the range's width, so the relevance gate
+// costs the same for one day as for a window of them — the per-day answer is a scan of
+// what came back, not a second query.
+function weatherRelevantSymptomDates(
+  profileId: number,
+  from: string,
+  to: string
+): string[] {
   const rows = db
     .prepare(
-      `SELECT DISTINCT symptom FROM symptom_logs
+      `SELECT DISTINCT date, symptom FROM symptom_logs
         WHERE profile_id = ? AND date >= ? AND date <= ?`
     )
-    .all(profileId, since, date) as { symptom: string }[];
-  return rows.some((r) => {
-    const s = r.symptom.toLowerCase();
-    return WEATHER_RELEVANT_SYMPTOMS.some((k) => s.includes(k));
-  });
+    .all(profileId, from, to) as { date: string; symptom: string }[];
+  return rows
+    .filter((r) => {
+      const s = r.symptom.toLowerCase();
+      return WEATHER_RELEVANT_SYMPTOMS.some((k) => s.includes(k));
+    })
+    .map((r) => r.date);
 }
 
 // Whether weather situations are relevant for this profile: weather data must exist
@@ -150,10 +158,7 @@ export function weatherSituationsRelevant(
   profileId: number,
   date: string
 ): boolean {
-  if (!getHomeLocation(profileId)) return false;
-  return (
-    hasWeatherKeyedItem(profileId) || hasWeatherRelevantSymptom(profileId, date)
-  );
+  return weatherSituationsResolver(profileId, date, date)(date).relevant;
 }
 
 // ---- Resolution -------------------------------------------------------------------
@@ -164,17 +169,85 @@ export interface ResolvedWeatherSituations {
   active: WeatherSituationState[];
   // The names to union into the effective active-situation set.
   names: Set<string>;
+  // Whether weather situations are relevant for this profile ON `date` — the gate,
+  // surfaced so a caller that only wants the gate doesn't re-ask for it.
+  relevant: boolean;
+}
+
+const NO_WEATHER_SITUATIONS: ResolvedWeatherSituations = {
+  active: [],
+  names: new Set(),
+  relevant: false,
+};
+
+// Per-day weather-situation resolution over a WINDOW of days, off ONE read of each
+// input: the home location, the keyed-item gate, the symptom dates, and the cached
+// series. Asking day by day re-read all four once per day, which is the cost that made
+// a dated answer look too expensive for the summary surfaces (#3993). It isn't: the
+// query count is the same for one day as for fifty-six, and only the in-memory
+// evaluation repeats.
+//
+// EACH DAY IS STILL ANSWERED AS-OF ITSELF, which is the part that must not be traded
+// for the saving. `evaluateSeries` backfills a spell's entering run RETROACTIVELY, so
+// handing it a series that runs past `date` can turn a day on that the app could not
+// have known about on the day. Every day here is therefore evaluated over exactly the
+// slice `getWeatherSeries(profileId, date)` would have read — the lookback ending on
+// that day — so a windowed answer and a single-day answer are the same answer.
+//
+// The window is a COST HINT, not a contract: a date outside [from, to] is answered by
+// reading its own slice, so a caller cannot get a wrong answer by mis-declaring it.
+export function weatherSituationsResolver(
+  profileId: number,
+  from: string,
+  to: string
+): (date: string) => ResolvedWeatherSituations {
+  const home = getHomeLocation(profileId);
+  if (!home) return () => NO_WEATHER_SITUATIONS;
+  // The primary gate; when it holds, the symptom half is never consulted and never read.
+  const keyed = hasWeatherKeyedItem(profileId);
+  const symptomFrom = shiftDateStr(from, -WEATHER_RELEVANCE_SYMPTOM_DAYS);
+  const symptomDates = keyed
+    ? []
+    : weatherRelevantSymptomDates(profileId, symptomFrom, to);
+  const seriesFrom = shiftDateStr(from, -WEATHER_SERIES_LOOKBACK_DAYS);
+  const series = getWeatherDays(home.lat, home.lng, seriesFrom, to);
+  return (date) => {
+    const covered = date >= from && date <= to;
+    // RELEVANCE IS BOUNDED BY THE DAY ITSELF, AT BOTH ENDS. The gathered set spans
+    // [from − 180, to], so it holds symptoms logged AFTER `date` as well as before it,
+    // and a day may not be told it was weather-relevant by a headache its person had
+    // not had yet. Both bounds are the single-day read's own range — [date − 180, date]
+    // — which is what makes a windowed answer and a single-day answer the same answer,
+    // and what stops a symptom logged today from rewriting a closed day's dueness (and
+    // with it a recap and a reminder rebuild the app already sent).
+    const since = shiftDateStr(date, -WEATHER_RELEVANCE_SYMPTOM_DAYS);
+    const relevant =
+      keyed ||
+      (covered
+        ? symptomDates.some((d) => d >= since && d <= date)
+        : weatherRelevantSymptomDates(profileId, since, date).length > 0);
+    if (!relevant) return NO_WEATHER_SITUATIONS;
+    // The series slice is bounded at both ends for the same reason, and always was:
+    // `evaluateSeries` backfills a spell's entering run retroactively, so a series
+    // running past `date` can turn a day on that the app could not have known about.
+    const seriesSince = shiftDateStr(date, -WEATHER_SERIES_LOOKBACK_DAYS);
+    const slice = covered
+      ? series.filter((d) => d.date >= seriesSince && d.date <= date)
+      : getWeatherSeries(profileId, date);
+    const active = evaluateWeatherSituations(slice, date);
+    return {
+      active,
+      names: new Set(active.map((s) => s.name)),
+      relevant: true,
+    };
+  };
 }
 
 export function resolveWeatherSituations(
   profileId: number,
   date: string
 ): ResolvedWeatherSituations {
-  if (!weatherSituationsRelevant(profileId, date))
-    return { active: [], names: new Set() };
-  const series = getWeatherSeries(profileId, date);
-  const active = evaluateWeatherSituations(series, date);
-  return { active, names: new Set(active.map((s) => s.name)) };
+  return weatherSituationsResolver(profileId, date, date)(date);
 }
 
 // The active weather-situation NAMES only — the cheap path for the dueness widening,
@@ -183,16 +256,15 @@ export function activeWeatherSituationNames(
   profileId: number,
   date: string
 ): string[] {
-  if (!weatherSituationsRelevant(profileId, date)) return [];
-  return activeWeatherSituations(getWeatherSeries(profileId, date), date);
+  return [...resolveWeatherSituations(profileId, date).names];
 }
 
 // The dated during-windows for one weather situation over the profile's cached history
 // — the input the pooled situation-impact engine consumes (#1297). Reconstructed from
-// the predicate over the cache rather than from a transition log, which is exactly why
-// a derived WEATHER situation can carry an impact card where derived poor-sleep cannot:
-// the spell is a reproducible fact in the series, not a per-day verdict (the #1360
-// window-source rule, and why weather is its documented exception).
+// the predicate over the cache rather than from a transition log, which is why a derived
+// WEATHER situation carries an impact card where derived poor-sleep does not: the spell
+// is a run of days anyone can recompute, while a rough night is dated (#3993) but never
+// collected into a span (the #1360 window-source rule, and weather's exception to it).
 export function getWeatherSituationWindows(
   profileId: number,
   situation: WeatherSituationName,

@@ -483,6 +483,53 @@ describe("buildIntradayModel — practice sessions", () => {
     expect(model!.ticks).toEqual([]);
   });
 
+  it("never draws a live block past the end its own duration states (#5091)", () => {
+    // The prod sighting: a 15-minute red-light session started at 06:28 and read at
+    // 10:52 was still "running", drawn four hours wide and growing on every load.
+    // The row completes at start plus its derived duration, and the completion is
+    // WRITTEN by the sweep that runs on page loads — so this branch reads the same
+    // bound rather than trusting that a sweep already happened. A chart is often the
+    // first thing rendered.
+    const stale = buildIntradayModel(
+      input({
+        nowMinute: 10 * 60 + 52,
+        events: [
+          practiceEvent("practice:known-length", {
+            ...win("06:28", null, 15),
+            live: true,
+            derived_duration: true,
+          }),
+        ],
+      })
+    );
+    expect(stale!.blocks[0]).toMatchObject({
+      startMinute: 6 * 60 + 28,
+      endMinute: 6 * 60 + 43,
+      // Complete, not running: past its own end the row falls through to the derived
+      // window, which is what keeps the #4948 hedge on it.
+      running: false,
+    });
+
+    // Before that instant it is still running, and still bounded.
+    const midway = buildIntradayModel(
+      input({
+        nowMinute: 6 * 60 + 35,
+        events: [
+          practiceEvent("practice:known-length", {
+            ...win("06:28", null, 15),
+            live: true,
+            derived_duration: true,
+          }),
+        ],
+      })
+    );
+    expect(midway!.blocks[0]).toMatchObject({
+      startMinute: 6 * 60 + 28,
+      endMinute: 6 * 60 + 35,
+      running: true,
+    });
+  });
+
   it("uses elapsed minutes for derived DST windows and repeated-hour live rows", () => {
     const completed = buildIntradayModel(
       input({

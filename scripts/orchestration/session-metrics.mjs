@@ -1,4 +1,4 @@
-// Session metrics — the pipeline's trend pulse, read-only. catchup-digest.sh
+// Session metrics — the pipeline's trend pulse, read-only. pm-digest.sh
 // answers "what happened since I last looked" (events, anchored); this
 // answers "how is the pipeline trending" (rates, fixed window): merge
 // throughput, review-queue depth, queue shape by priority, needs-human aging,
