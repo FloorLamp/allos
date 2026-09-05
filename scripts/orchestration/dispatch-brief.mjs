@@ -1707,8 +1707,14 @@ export function trailerSession(messages) {
  * commit is not attributable, which is the same answer `branchPrRefusal` gives
  * an unmarked PR body.
  *
- * Call this only where the PR read did NOT attribute the branch; its wording
- * says so, and that sentence is true of every case the caller reaches it in.
+ * Call this only where the PR bodies did not attribute the branch. It does NOT
+ * say WHY they did not, because it cannot tell: no open PR heads it, the one
+ * that does carries no session footer, and the PR list could not be read at all
+ * are three different worlds, and the third is the one an enumeration gets
+ * wrong. A refusal that names a cause it has not established sends its reader
+ * to look for a PR that may exist and may not — the exact harm naming the
+ * deciding reader exists to prevent — so it points at the `[pr-owner]` line the
+ * caller always prints just above it, which does know.
  *
  * @param {string|null} messages the branch's own commit messages, newest first
  * @param {string} branch the branch about to be dispatched onto
@@ -1721,9 +1727,8 @@ export function branchTrailerRefusal(messages, branch, self) {
   return (
     `REFUSED: the newest commit ${branch} carries and origin/main does not has ` +
     `a Claude-Session: trailer naming ${theirs} — ANOTHER orchestrator session ` +
-    `(this one is ${self}). The PR bodies did not answer for ${branch} (no open ` +
-    "PR heads it, or the one that does carries no session footer), so the " +
-    "COMMIT TRAILER did (#5179). " +
+    `(this one is ${self}). No PR body attributed ${branch} — the [pr-owner] ` +
+    "line above says what was read — so the COMMIT TRAILER did (#5179). " +
     "Pushing onto it is two writers on one branch. The alternative that works: " +
     "REVIEW it and COMMENT the finding on its issue or PR, and let the owning " +
     "session push the fix — that is what happened on #5139 after the fact. Or " +

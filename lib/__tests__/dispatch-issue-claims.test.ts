@@ -411,6 +411,11 @@ describe("branchOwnerVerdict — which reader answered, and what it cost", () =>
     expect(notes.join("\n")).toContain("whose body names this session (#5177)");
   });
 
+  // AND IT MUST NOT SAY WHY THE PR BODIES WERE SILENT. Three worlds reach this
+  // refusal — no open PR heads the branch, the one that does has no footer, and
+  // the list could not be read — and only the third is invisible to the trailer.
+  // A refusal that enumerated the first two would send a reader looking for a PR
+  // that may well exist, which is the harm naming the deciding reader prevents.
   it("still asks the trailer when the PR list could not be read at all", () => {
     const { refusal, notes } = branchOwnerVerdict(
       BRANCH,
@@ -418,7 +423,11 @@ describe("branchOwnerVerdict — which reader answered, and what it cost", () =>
       reads({ unknown: "API rate limit exceeded" }, own)
     );
     expect(refusal).toContain(OTHER);
+    expect(refusal).toContain("the [pr-owner] line above says what was read");
+    expect(refusal).not.toContain("no open PR heads it");
+    // The line it defers to is printed, and it names the failure.
     expect(notes.join("\n")).toContain("API rate limit exceeded");
+    expect(notes.join("\n")).toContain("[pr-owner] CANNOT TELL");
   });
 
   // #4460's posture, inherited from `branchPrRefusal`: this runs on EVERY
