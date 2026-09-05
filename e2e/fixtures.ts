@@ -305,8 +305,10 @@ async function stopServer(server: ChildProcess): Promise<void> {
 // a fresh process and a fresh (empty) one. It is what the next test's `before` is
 // compared against — the escape window, at no extra query, since both readings are
 // already taken for the per-test diff.
-let previousReading: { position: TestPosition; after: SharedRowSnapshot } | null =
-  null;
+let previousReading: {
+  position: TestPosition;
+  after: SharedRowSnapshot;
+} | null = null;
 
 /** The rows `repairAddedSharedRows` has just deleted, dropped from a reading. */
 function withoutRepaired(
@@ -344,8 +346,18 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       const before = workerApp.demo
         ? []
         : snapshotSharedRows(at, workerApp.dbPath);
+      // The enclosing `test.describe` titles. Measured on this suite, `titlePath`
+      // reads [file, …describes, title] — but taking everything after the LAST
+      // entry that names this file assumes nothing about what precedes it, and a
+      // shape that surprises us degrades to the file-only rule (describes: []),
+      // never to a wrong name.
+      const file = path.basename(testInfo.file);
+      const enclosing = testInfo.titlePath.slice(0, -1);
       const position: TestPosition = {
-        file: path.basename(testInfo.file),
+        file,
+        describes: enclosing.slice(
+          enclosing.findLastIndex((entry) => entry.endsWith(file)) + 1
+        ),
         title: testInfo.title,
       };
       // THE GAP: this reading against the one the previous test ended on (#5266).
@@ -357,7 +369,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         if (gap.added.length + gap.missing.length > 0) {
           const culprit = attributeSharedRowGap(
             previousReading.position,
-            position.file
+            position
           );
           // A row that escaped the PREVIOUS TEST belongs to nobody, so it is taken
           // out — otherwise it sits in every later reading on this worker and is
@@ -406,7 +418,10 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       )
         return;
       repairAddedSharedRows(drift, workerApp.dbPath);
-      previousReading = { position, after: withoutRepaired(after, drift.added) };
+      previousReading = {
+        position,
+        after: withoutRepaired(after, drift.added),
+      };
       throw new Error(sharedRowDriftMessage(drift, at));
     },
     { auto: true },

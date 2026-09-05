@@ -2236,6 +2236,51 @@ that move the table (`clinical-duplicate-import`, `lab-result-lifecycle`,
 `clinical-undo`, `ia-nutrition-medications`) write dates months or years before
 the run, so they sit outside the bound.
 
+`unit-mislabel-review` has since moved out of that list. Its two MCHC rows are
+seeded in `beforeAll` and cleared in `afterAll`, so they are the file's for its
+whole run rather than any one test's — and both of those hooks execute in the
+window BETWEEN two tests, where the gap diff below can only charge them to a
+hook. Dating them in the deep past puts them outside the watched bound, which is
+what every other file-owned fixture on profile 1 already does (`hearing` and
+`palette-deeplinks` at 2019, `longevity-canonical-name` at 2023,
+`annual-retrospective` two years back). Nothing reads the date:
+`getUnitMislabelReviews` filters on unit and reference range only.
+
+### The window BETWEEN two tests, and who owns it (#5266)
+
+The per-test diff cannot see a write that escapes its own window, and an escaped
+write is not merely misattributed — it enters the next test's baseline and is
+invisible from then on. So each test's `before` reading is also compared against
+the previous test's `after`. Both readings are already taken, so the comparison
+costs no extra query.
+
+Attribution is the whole problem. Playwright runs a suite's `beforeAll` — and the
+previous suite's `afterAll` — in exactly that window, so the naive reading blames
+the previous test for a hook it never ran. The rule:
+
+- two tests in the SAME suite have nothing but each other between them, so the
+  gap is charged to the previous test, by name;
+- a gap that crosses a SUITE boundary is charged to that suite's `beforeAll`,
+  named `<file> beforeAll` or `<file> › <describe> beforeAll`, and never to the
+  previous file's last test. A false accusation across files is worse than a
+  missed leak. The ruling names the FILE boundary; a `test.describe` with its own
+  `beforeAll` is the same hole one level down, and 18 spec files declare one.
+
+Only the first case is repaired. A row that escaped the previous test belongs to
+nobody, so it is removed and exactly one test fails; a row a suite's `beforeAll`
+just wrote is that suite's for the length of its run, and deleting it would fail
+every test in the file instead of one. It is reported and left, and the next gap
+is silent because both readings then hold it.
+
+**What this does NOT close, measured.** Over 14 files and 70 tests at one worker,
+the guard made 68 comparisons — 45 same-suite, 12 across a file boundary, 11
+across a describe boundary — and the window itself is **13–63 ms wide, median 22
+ms** (`Date.now()` either side of the two readings). The escapes #5037 measured
+landed 61, 106 and 76 ms after `context.close()` returned. A write slower than
+the window does not land in the gap at all: it lands inside the NEXT test's own
+window, where the per-test diff reports it against that innocent test. The gap
+diff closes the invisible case, not the misattributed one.
+
 The fourth table is close to free. Timing the guard's own SQL against a real
 worker database — one connection per snapshot, 300 iterations, three runs — the
 snapshot goes from 2.255–2.292 ms to 2.309–2.336 ms, so **+0.08 to +0.13 ms per

@@ -902,6 +902,8 @@ function driftSections(drift: SharedRowDrift, now: Date): string {
 export interface TestPosition {
   /** The spec file's name, e.g. `manual-vitals.spec.ts`. */
   file: string;
+  /** The `test.describe` titles enclosing it, outermost first. */
+  describes: readonly string[];
   /** The test's own title. */
   title: string;
 }
@@ -914,14 +916,30 @@ export type SharedRowGapCulprit =
   | { kind: "previous-test"; name: string }
   | { kind: "before-all"; name: string };
 
-/** Charge the window between `previous` and the test now starting in `currentFile`. */
+/**
+ * Charge the window between the previous test and the one now starting.
+ *
+ * A `beforeAll` runs in that window whenever the SUITE changes, and the ruling is
+ * about the file case because that is where the false accusation crosses into
+ * somebody else's spec. A `test.describe` with its own `beforeAll` is the same hole
+ * one level down — 18 spec files declare one — so the boundary is the suite, of
+ * which the file is the outermost. Two tests in the same suite have nothing but
+ * each other between them, and only then is the previous test named.
+ */
 export function attributeSharedRowGap(
   previous: TestPosition,
-  currentFile: string
+  current: TestPosition
 ): SharedRowGapCulprit {
-  return previous.file === currentFile
+  const sameSuite =
+    previous.file === current.file &&
+    previous.describes.length === current.describes.length &&
+    previous.describes.every((title, at) => title === current.describes[at]);
+  return sameSuite
     ? { kind: "previous-test", name: `${previous.file} › ${previous.title}` }
-    : { kind: "before-all", name: `${currentFile} beforeAll` };
+    : {
+        kind: "before-all",
+        name: `${[current.file, ...current.describes].join(" › ")} beforeAll`,
+      };
 }
 
 /** The failure a gap earns, naming the window's owner and never anybody else. */

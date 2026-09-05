@@ -276,26 +276,50 @@ describe("the shared-profile diff sees what a later test would see", () => {
 // exactly that window, so the naive reading blames the previous file's last test —
 // an innocent spec somebody would spend an afternoon reading.
 describe("the gap between two tests names the window's own owner", () => {
-  const previousIn = (file: string, title: string) => ({ file, title });
+  const at = (file: string, title: string, describes: string[] = []) => ({
+    file,
+    describes,
+    title,
+  });
 
   it.each([
     [
       "a FILE BOUNDARY is charged to the new file's beforeAll, never across files",
-      previousIn("sleep-page.spec.ts", "the hero shows last night"),
-      "manual-vitals.spec.ts",
+      at("sleep-page.spec.ts", "the hero shows last night"),
+      at("manual-vitals.spec.ts", "logs a blood pressure"),
       { kind: "before-all", name: "manual-vitals.spec.ts beforeAll" },
     ],
     [
-      "inside one file the previous test owned the window, so it is named",
-      previousIn("manual-vitals.spec.ts", "logs a blood pressure"),
-      "manual-vitals.spec.ts",
+      "inside one suite the previous test owned the window, so it is named",
+      at("manual-vitals.spec.ts", "logs a blood pressure"),
+      at("manual-vitals.spec.ts", "logs a temperature"),
       {
         kind: "previous-test",
         name: "manual-vitals.spec.ts › logs a blood pressure",
       },
     ],
-  ])("%s", (_name, previous, currentFile, expected) => {
-    expect(attributeSharedRowGap(previous, currentFile)).toEqual(expected);
+    // The same hole one level down: a `test.describe` has its own `beforeAll`, and
+    // it runs in exactly this window.
+    [
+      "a DESCRIBE boundary inside one file is charged to that describe's beforeAll",
+      at("encounters.spec.ts", "lists them", ["the list"]),
+      at("encounters.spec.ts", "enriches one", ["enrichment"]),
+      {
+        kind: "before-all",
+        name: "encounters.spec.ts › enrichment beforeAll",
+      },
+    ],
+    [
+      "two tests in the same describe still name the previous test",
+      at("encounters.spec.ts", "lists them", ["the list"]),
+      at("encounters.spec.ts", "filters them", ["the list"]),
+      {
+        kind: "previous-test",
+        name: "encounters.spec.ts › lists them",
+      },
+    ],
+  ])("%s", (_name, previous, current, expected) => {
+    expect(attributeSharedRowGap(previous, current)).toEqual(expected);
   });
 
   // The escaped write #5037 measured, arriving in the next test's baseline: the
@@ -305,8 +329,8 @@ describe("the gap between two tests names the window's own owner", () => {
   it("the message names the culprit, the row, and what owned the window", () => {
     const drift = diffSharedRows(snap(...SEEDED), snap(...SEEDED, ESCAPED));
     const culprit = attributeSharedRowGap(
-      previousIn("manual-vitals.spec.ts", "logs a blood pressure"),
-      "manual-vitals.spec.ts"
+      at("manual-vitals.spec.ts", "logs a blood pressure"),
+      at("manual-vitals.spec.ts", "logs a temperature")
     );
     const message = sharedRowGapMessage(culprit, drift, NOW);
     expect(message).toContain("manual-vitals.spec.ts › logs a blood pressure");
@@ -325,8 +349,8 @@ describe("the gap between two tests names the window's own owner", () => {
     const drift = diffSharedRows(snap(...SEEDED), snap(...SEEDED, ESCAPED));
     const message = sharedRowGapMessage(
       attributeSharedRowGap(
-        previousIn("sleep-page.spec.ts", "the hero shows last night"),
-        "manual-vitals.spec.ts"
+        at("sleep-page.spec.ts", "the hero shows last night"),
+        at("manual-vitals.spec.ts", "logs a blood pressure")
       ),
       drift,
       NOW
