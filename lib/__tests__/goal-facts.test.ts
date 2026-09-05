@@ -485,13 +485,16 @@ describe("goalProgressStatement", () => {
     ["a unit the target was not captured in", "unit-mismatch"],
   ] as const)("keeps the current endpoint unknown with %s", (_name, reason) => {
     expect(
-      state({ kind: "biomarker" }, {
-        current: 0,
-        target: 100,
-        pct: 0,
-        unit: "mg/dL",
-        unavailable: reason,
-      })
+      state(
+        { kind: "biomarker" },
+        {
+          current: 0,
+          target: 100,
+          pct: 0,
+          unit: "mg/dL",
+          unavailable: reason,
+        }
+      )
     ).toEqual({ value: "— → 100 mg/dL", percent: null });
   });
 

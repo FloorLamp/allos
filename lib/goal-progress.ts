@@ -260,7 +260,13 @@ export function baselineTargetProgress(
   // tell "we have no reading" from "you weigh nothing", which is the difference
   // between an honest unknown and a confident lie.
   if (current == null)
-    return { current: 0, target, pct: 0, done: false, unavailable: "no-readings" };
+    return {
+      current: 0,
+      target,
+      pct: 0,
+      done: false,
+      unavailable: "no-readings",
+    };
   if (baseline == null || baseline === target) {
     // No usable baseline to measure directional progress from (missing, or a
     // maintain goal where baseline === target): we can't compute a meaningful

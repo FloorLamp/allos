@@ -322,10 +322,9 @@ export function goalProgressStatement(
   const target = measured ? (progress?.target ?? 0) : (goal.target_value ?? 0);
   if (!(target > 0)) return { value: "In progress", percent: null };
 
-  const known =
-    measured
-      ? progress != null && progress.unavailable == null
-      : goal.current_value != null;
+  const known = measured
+    ? progress != null && progress.unavailable == null
+    : goal.current_value != null;
   const current = known
     ? measured
       ? progress!.current
