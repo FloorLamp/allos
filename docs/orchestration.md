@@ -13,6 +13,7 @@ This is the entrypoint. Read only the procedure needed for the current job:
 - [Cross-session markers](orchestration/claims.md)
 - [Cadence and lifecycle](orchestration/lifecycle.md)
 - [Two orchestrators on one repo](orchestration/multi-orchestrator.md)
+- [Standing rulings](orchestration/rulings.md)
 
 ## Standing contract
 

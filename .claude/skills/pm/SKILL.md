@@ -17,13 +17,15 @@ believed until re-read. Never search the filesystem or env for credentials.
 
 ## The Ladder issue is the priority state
 
-Issue #4769 (`parked` + `docs`, pinned) is the only durable home for rung
-order, prerequisites, and each orchestrator's slice. Orchestrators read it at
-every check-in. A ladder that lives in your prompt dies at compaction.
+Issue #4769 (`parked` + `docs`, pinned) is the durable home for rung order,
+prerequisites, and each orchestrator's slice; orchestrators read it at every
+check-in. A ladder that lives in your prompt dies at compaction.
 
 Edit it whenever the owner re-ranks, a prerequisite lands, or a session is
-added: body in place, time stamped, verified by re-read. Its session ids are
-hints, refreshed at every bootstrap — never a dependency.
+added: body in place, time stamped, verified by re-read.
+
+It carries STATE only: a rule goes to `docs/orchestration/rulings.md` the
+same day, a per-issue ruling to that issue's body; the Ladder points.
 
 ## Bootstrap — sessions do not survive an account change
 
@@ -44,9 +46,8 @@ The cross-account truth is GitHub alone: `main`, remote branches, open PRs,
 4. The old account's triggers never fire here: re-arm the watch and every
    relay owed, from the Ladder's state, not from memory.
 
-Usage: `rate_limit_info` says only allowed, warning or rejected. Wind down
-(`lifecycle.md` §Wind-down, hand-off on the Ladder) only when the owner says
-weekly usage is near 90%; a rejection is a pause, resumed after `resetsAt`.
+Usage: wind down (`lifecycle.md` §Wind-down, hand-off on the Ladder) only
+when the owner says weekly usage is near 90%; a rejection is a pause.
 
 ## The watch loop
 
