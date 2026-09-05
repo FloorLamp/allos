@@ -78,11 +78,53 @@ trap '' PIPE
 ACK_RELAUNCH=0
 [ "${1:-}" = "--relaunched" ] && ACK_RELAUNCH=1
 
+# THE HELPERS LIVE IN scripts/orchestration/ — #5158 renamed them there out of
+# a `work/` sibling, and left the five calls below naming the old, now absent
+# directory (#5241). No rename sweep could have caught them: not one of them
+# writes that directory as a rooted path, the prefix is assembled from
+# `$(dirname "$0")` at run time, so a grep came back clean — and so did the
+# scan that already checks this file's cited paths, because
+# runbook-citation-scan.test.ts skips any path holding a `$`.
+# lib/__tests__/checkin-helper-paths.test.ts resolves these names instead,
+# which is why every call below writes its path out in full rather than
+# reaching a helper through a variable that scan cannot follow.
+#
+# AND ALL FIVE WERE `2>/dev/null` PLUS A FALLBACK, so a helper that could not
+# run never read as an error. It read as `?`, as ABSENT, as "needs a read
+# token", and as a ROSTER/LEDGER DIVERGENCE naming every live lane under a
+# paragraph telling the reader to fix the roster by hand: four plausible lies
+# out of one missing directory. A guard must not fail into its permissive
+# answer, so each call below separates "I asked, the answer is X" from "I COULD
+# NOT ASK" and prints the second rather than inventing the first.
+HELPERS="$(dirname "$0")/orchestration"
+
+# Can this helper be asked at all? Deliberately does NOT run node itself, so
+# every invocation below keeps naming its own path where the scan resolves it.
+runnable() { [ -f "$1" ] && command -v node >/dev/null 2>&1; }
+
 # One resolver for the state dir (scripts/orchestration/host.mjs), shared with
 # dispatch-brief.mjs so the roster and the ledger agree on every host (#3710).
-# The inline fallback covers a shell with no node on PATH — the measured live
-# container's own layout, so it resolves identically there.
-STATE_DIR=${SCRATCH:-$(node "$(dirname "$0")/work/host.mjs" state-dir 2>/dev/null || echo /home/user/scratch)}
+if [ -n "${SCRATCH:-}" ]; then
+  STATE_DIR=$SCRATCH
+elif runnable "$HELPERS/host.mjs" &&
+  STATE_DIR=$(node "$HELPERS/host.mjs" state-dir 2>/dev/null) &&
+  [ -n "$STATE_DIR" ]; then
+  :
+else
+  # NO GUESS HERE. This used to fall back to a hard-coded /home/user/scratch —
+  # the exact hard-coding #3710's resolver exists to delete — and it is the
+  # worst place in this script to be quietly wrong: the roster, the ledger, the
+  # boot stamp and every rescue verdict are read out of this one directory. Aim
+  # it at a directory the fleet does not use and the roster reads EMPTY, an
+  # empty roster prints as 0 lanes, and 0 lanes is a DISPATCH ORDER — so the
+  # guess would order dispatch on top of live lanes nobody can see.
+  echo "*** CANNOT RESOLVE THE STATE DIR — $HELPERS/host.mjs did not answer ***"
+  echo "    (helper missing, or no node on PATH). Refusing to guess: every"
+  echo "    verdict below is read out of that directory, and a wrong one"
+  echo "    reports confidently on somebody else's fleet."
+  echo "    Fix: restore scripts/orchestration/, or export SCRATCH=<state dir>."
+  exit 1
+fi
 BOOT_FILE="$STATE_DIR/.boot_id"
 SESSION_FILE="$STATE_DIR/.session_id"
 ROSTER="$STATE_DIR/.roster"
@@ -591,16 +633,30 @@ if [ -s "$ROSTER" ]; then sed 's/^/  /' "$ROSTER"; else echo "  (empty)"; fi
 LEDGER="$STATE_DIR/allos-dispatch-ledger.jsonl"
 if [ -s "$ROSTER" ] && [ -s "$LEDGER" ]; then
   roster_live=$(grep -E '^Cluster ' "$ROSTER" 2>/dev/null | awk '{print $3}' | sort -u)
-  ledger_live=$(node "$(dirname "$0")/work/ledger.mjs" branches "$LEDGER" 2>/dev/null)
-  only_roster=$(comm -23 <(echo "$roster_live") <(echo "$ledger_live") | grep -v '^$' || true)
-  only_ledger=$(comm -13 <(echo "$roster_live") <(echo "$ledger_live") | grep -v '^$' || true)
-  if [ -n "$only_roster" ] || [ -n "$only_ledger" ]; then
-    echo "  *** ROSTER/LEDGER DIVERGENCE — they are kept in step by dispatch-brief.mjs alone ***"
-    [ -n "$only_roster" ] && echo "$only_roster" | sed 's/^/      roster says LIVE, ledger says done: /'
-    [ -n "$only_ledger" ] && echo "$only_ledger" | sed 's/^/      ledger says active, roster has no Cluster line: /'
-    echo "      A stale Cluster line makes a DEAD worktree classify LIVE above, so it is"
-    echo "      never a rescue target. Fix the roster by hand, then close via"
-    echo "      dispatch-brief.mjs done <branch> from now on."
+  # AN UNREAD LEDGER IS NOT AN EMPTY ONE, and this comparison cannot tell the
+  # difference on its own: `comm -23 <(roster) <(nothing)` returns EVERY roster
+  # branch, so a helper that did not run names all of them and never fewer —
+  # under the paragraph below telling you to fix the roster by hand. Acting on
+  # that de-rosters LIVE lanes, which is precisely the loss the comment above
+  # says the roster exists to prevent. So the comparison only runs when the
+  # ledger actually answered (#5241).
+  if ! runnable "$HELPERS/ledger.mjs" ||
+    ! ledger_live=$(node "$HELPERS/ledger.mjs" branches "$LEDGER" 2>/dev/null); then
+    echo "  *** NO DIVERGENCE VERDICT — $HELPERS/ledger.mjs did not answer ***"
+    echo "      Unasked, the ledger reads EMPTY and this check would name every"
+    echo "      branch above as 'ledger says done'. It is not saying that. The"
+    echo "      roster and the ledger have NOT been compared this run."
+  else
+    only_roster=$(comm -23 <(echo "$roster_live") <(echo "$ledger_live") | grep -v '^$' || true)
+    only_ledger=$(comm -13 <(echo "$roster_live") <(echo "$ledger_live") | grep -v '^$' || true)
+    if [ -n "$only_roster" ] || [ -n "$only_ledger" ]; then
+      echo "  *** ROSTER/LEDGER DIVERGENCE — they are kept in step by dispatch-brief.mjs alone ***"
+      [ -n "$only_roster" ] && echo "$only_roster" | sed 's/^/      roster says LIVE, ledger says done: /'
+      [ -n "$only_ledger" ] && echo "$only_ledger" | sed 's/^/      ledger says active, roster has no Cluster line: /'
+      echo "      A stale Cluster line makes a DEAD worktree classify LIVE above, so it is"
+      echo "      never a rescue target. Fix the roster by hand, then close via"
+      echo "      dispatch-brief.mjs done <branch> from now on."
+    fi
   fi
 fi
 echo
@@ -619,8 +675,21 @@ echo
 # that is actually full is allowed to say so.
 lanes=$(grep -cE '^Cluster ' "$ROSTER" 2>/dev/null || true)
 lanes=${lanes:-0}
-e2e_lanes=$(node "$(dirname "$0")/work/ledger.mjs" e2e-count "$LEDGER" 2>/dev/null || echo "?")
-if [ "$e2e_lanes" = "?" ]; then other_lanes="?"; else other_lanes=$((lanes - e2e_lanes)); fi
+# `?` IS THE LEDGER'S OWN UNKNOWN, NOT A CATCH-ALL. ledger.mjs's header is
+# explicit — it answers or it exits, and it prints `?` for a MISSING LEDGER so
+# the orchestrator goes and looks. A helper that could not be RUN was borrowing
+# that `?`, so a broken checkout arrived dressed as a ledger question (#5241).
+if ! runnable "$HELPERS/ledger.mjs"; then
+  e2e_lanes="UNASKED"
+  other_lanes="UNASKED"
+  echo "  *** e2e cap UNASKED — $HELPERS/ledger.mjs did not run. This is not \`?\`,"
+  echo "      which would mean the ledger is missing, and it is not a count. ***"
+elif ! e2e_lanes=$(node "$HELPERS/ledger.mjs" e2e-count "$LEDGER" 2>/dev/null); then
+  e2e_lanes="?"
+  other_lanes="?"
+else
+  other_lanes=$((lanes - e2e_lanes))
+fi
 
 # THE QUEUE IS WRITTEN DOWN (owner, 2026-08-31): candidates forgotten one at a
 # time — a reconcile never looked for, small issues never paired, self-filed
@@ -636,8 +705,15 @@ if [ -f "$QUEUE_FILE" ]; then
   [ -n "$queue_mtime" ] && queue_age_s=$(($(date -u +%s) - queue_mtime))
 fi
 if [ -z "$queue_age_s" ] || [ "$queue_age_s" -ge "$QUEUE_DUE_SECS" ]; then
-  node "$(dirname "$0")/work/queue-snapshot.mjs" >/dev/null 2>&1 ||
-    echo "  *** queue snapshot FAILED (needs a read token) — $QUEUE_FILE may be stale ***"
+  # "needs a read token" NAMED A CAUSE NOBODY HAD CHECKED, and it named the
+  # wrong one: the token was present and the script was not there (#5241).
+  if ! runnable "$HELPERS/queue-snapshot.mjs"; then
+    echo "  *** QUEUE NOT REFRESHED — $HELPERS/queue-snapshot.mjs did not run ***"
+    echo "      Nothing to do with the token. $QUEUE_FILE holds whatever was last"
+    echo "      written to it, and the header below is that file, not this run."
+  elif ! node "$HELPERS/queue-snapshot.mjs" >/dev/null 2>&1; then
+    echo "  *** queue snapshot ran and FAILED (a read token, or the API) — $QUEUE_FILE may be stale ***"
+  fi
 fi
 queue_header=$(head -1 "$QUEUE_FILE" 2>/dev/null || echo "UNWRITTEN — run queue-snapshot.mjs")
 
@@ -808,8 +884,17 @@ elif command -v gh >/dev/null 2>&1 && gh auth token >/dev/null 2>&1; then
 else
   echo "  GH_TOKEN: *** MISSING - see the credential-loss section of the runbook ***"
 fi
-nodebin=$(node "$(dirname "$0")/work/host.mjs" node-bin 2>/dev/null)
-echo "  node(.nvmrc): ${nodebin:-ABSENT - install the .nvmrc major with your version manager}"
+# ABSENT IS A VERDICT AND IT HAS TO BE EARNED. host.mjs exits non-zero when it
+# LOOKED and found no node matching .nvmrc's major — that is the ABSENT below.
+# A helper that never ran looked at nothing, and said ABSENT anyway (#5241).
+if ! runnable "$HELPERS/host.mjs"; then
+  echo "  node(.nvmrc): UNASKED - $HELPERS/host.mjs did not run, so nothing here"
+  echo "      is a verdict about node. ABSENT would mean the resolver looked."
+elif nodebin=$(node "$HELPERS/host.mjs" node-bin 2>/dev/null) && [ -n "$nodebin" ]; then
+  echo "  node(.nvmrc): $nodebin"
+else
+  echo "  node(.nvmrc): ABSENT - install the .nvmrc major with your version manager"
+fi
 echo "  main:   $(git -C "$REPO" ls-remote origin main 2>/dev/null | cut -c1-7)"
 echo
 
