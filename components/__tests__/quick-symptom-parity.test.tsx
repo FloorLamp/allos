@@ -6,6 +6,8 @@ import SymptomLogBar from "@/components/illness/SymptomLogBar";
 import QuickSymptomPanel from "@/components/quick-entry/QuickSymptomPanel";
 import { PICKER_SYMPTOMS } from "@/lib/symptoms";
 import { LOGGED_VIA_FIELD } from "@/lib/logged-via";
+import { dateStrInTz } from "@/lib/date";
+import { TimezoneProvider } from "@/components/TimezoneProvider";
 
 // NO SECOND WRITE PATH, ASSERTED RATHER THAN PROMISED (#4064/#1633).
 //
@@ -34,8 +36,22 @@ const actions = vi.hoisted(() => ({
   lowerSymptom: vi.fn(async () => ({ ok: true as const, severity: 1 })),
   setSymptomNote: vi.fn(async () => ({ ok: true as const })),
   removeSymptom: vi.fn(async () => ({ ok: true as const })),
-  logTemperature: vi.fn(async () => ({ ok: true as const })),
-  activateIllnessForSymptoms: vi.fn(async () => ({ ok: true as const })),
+  // Answers from the posted reading, so the fever branch this file now drives is
+  // reachable rather than mocked into existence: >= 100.4 °F is the flag the store
+  // derives.
+  logTemperature: vi.fn(async (formData: FormData) => {
+    const degF = Number(formData.get("temperature"));
+    return {
+      ok: true as const,
+      degF,
+      flag: degF >= 100.4 ? ("high" as const) : null,
+      redFlag: null,
+    };
+  }),
+  activateIllnessForSymptoms: vi.fn(async () => ({
+    ok: true as const,
+    episodeId: 900,
+  })),
   suggestSymptomsFromText: vi.fn(async () => ({
     ok: false as const,
     reason: "empty" as const,
@@ -54,6 +70,18 @@ const CUSTOMS = ["shoulder ache"];
 const RANKED = ["headache", "fatigue"];
 const COCKPIT_PROFILE = 42;
 const COCKPIT_EPISODE = 7;
+// The household member the sheet's title-row chip can name (#4932), and the zone the
+// gather resolves for THEM — deliberately not the browser's.
+const SHEET_SUBJECT = 77;
+// TWENTY-FIVE HOURS APART, deliberately: UTC+14 and UTC-11 never share a local
+// date, at any hour of any run. The fold requires a stated minute on a day that has
+// ended (#4685), so a reading saved without one goes through ONLY when the bar is
+// standing on the day the SUBJECT is having — which makes "the panel passes the
+// subject's zone" a claim these tests can fail on, rather than one that happens to
+// hold for the twelve hours a day two nearer zones agree.
+const APP_TZ = "Pacific/Kiritimati";
+const SUBJECT_TZ = "Pacific/Niue";
+const SUBJECT_TODAY = dateStrInTz(SUBJECT_TZ);
 
 /**
  * The dashboard's well-day card, exactly as app/(app)/page.tsx rendered it until
@@ -79,18 +107,24 @@ function dashboardMount() {
 }
 
 /** The quick-log sheet's Care row, exactly as QuickEntryProvider mounts it. */
-function sheetMount(trackingIllness: string[] = []) {
+function sheetMount(
+  trackingIllness: string[] = [],
+  subjectProfileId?: number,
+  today: string = TODAY
+) {
   return (
     <LoggedViaSurface value="quick-log">
       <QuickSymptomPanel
-        today={TODAY}
+        today={today}
         severities={SEVERITIES}
         notes={NOTES}
         customNames={CUSTOMS}
         rankedKeys={RANKED}
         temperatureUnit="F"
+        timeZone={SUBJECT_TZ}
         textIntakeEnabled={false}
         trackingIllness={trackingIllness}
+        subjectProfileId={subjectProfileId}
       />
     </LoggedViaSurface>
   );
@@ -224,6 +258,81 @@ describe("the sheet's symptom row posts what the retired dashboard card posted",
     expect(
       screen.queryByTestId("quick-symptom-tracking")?.textContent ?? null
     ).toBe(line);
+    view.unmount();
+  });
+});
+
+// ONE ILLNESS PANEL (#4712 item 2). The bar could always draw the temperature fold;
+// every mount that asked for it was episode-gated, so the sheet's Care segment carried
+// half the illness statement and a feverish child's reading went through the Body
+// segment's measurements form — which renders `unavailable` for a non-acting subject
+// (#4932 invariant 2), i.e. it needed a profile switch first.
+//
+// The claims a mounted tree can see: the fold IS there, what it posts carries the
+// SUBJECT the sheet's chip named and the surface the sheet declares, and the fever
+// offer resolves its episode half from the same tracked-illness list the bridge above
+// it resolves from — never offering to open the episode already running.
+describe("the sheet's symptom row takes a temperature too (#4712 item 2)", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  // The app zone the browser would otherwise fall back to, a day away from the
+  // subject's, so a bar reading the wrong one cannot pass by coincidence.
+  function renderSheet(tracking: string[], subject?: number) {
+    return render(
+      <TimezoneProvider tz={APP_TZ}>
+        <ToastProvider>
+          {sheetMount(tracking, subject, SUBJECT_TODAY)}
+        </ToastProvider>
+      </TimezoneProvider>
+    );
+  }
+
+  it("posts the reading for the chip's subject, on the quick-log surface", async () => {
+    const view = renderSheet([], SHEET_SUBJECT);
+    fireEvent.click(screen.getByTestId("temp-quick-toggle"));
+    fireEvent.change(await screen.findByTestId("temp-quick-input"), {
+      target: { value: "101.4" },
+    });
+    fireEvent.click(screen.getByTestId("temp-quick-save"));
+    await waitFor(() => expect(actions.logTemperature).toHaveBeenCalled());
+
+    const posted = Object.fromEntries(
+      [...actions.logTemperature.mock.calls.at(-1)![0].entries()].map(
+        ([k, v]) => [k, String(v)]
+      )
+    );
+    expect(posted).toMatchObject({
+      temperature: "101.4",
+      date: SUBJECT_TODAY,
+      profile_id: String(SHEET_SUBJECT),
+      [LOGGED_VIA_FIELD]: "quick-log",
+    });
+    view.unmount();
+  });
+
+  // The offer's episode half reads the SAME tracked-illness list the bridge above it
+  // reads, so the two cannot disagree about whether this subject is already sick. An
+  // active illness situation IS an open episode, so with one running the sheet has
+  // nothing to offer and the fold closes exactly as it did before this change — the
+  // fold's own `offers` rule, not a second opinion about it.
+  it.each([
+    ["offers the episode when nothing is tracked", [] as string[], true],
+    ["offers nothing while an episode is already running", ["Illness"], false],
+  ])("%s", async (_name, tracking, offered) => {
+    const view = renderSheet(tracking);
+    fireEvent.click(screen.getByTestId("temp-quick-toggle"));
+    fireEvent.change(await screen.findByTestId("temp-quick-input"), {
+      target: { value: "101.4" },
+    });
+    fireEvent.click(screen.getByTestId("temp-quick-save"));
+    // The reading LANDS either way — the offer is what differs, never the write.
+    await waitFor(() => expect(actions.logTemperature).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(Boolean(screen.queryByTestId("fever-offer-open-episode"))).toBe(
+        offered
+      )
+    );
+    expect(Boolean(screen.queryByTestId("fever-offer"))).toBe(offered);
     view.unmount();
   });
 });

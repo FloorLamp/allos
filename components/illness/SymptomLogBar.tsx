@@ -36,6 +36,7 @@ import {
   logTemperature,
   activateIllnessForSymptoms,
   suggestSymptomsFromText,
+  type IllnessActivationResult,
 } from "../../app/(app)/symptom-actions";
 import type { SymptomTextMapping } from "@/lib/symptom-text-map";
 import type { AppRoute } from "@/lib/hrefs";
@@ -71,6 +72,13 @@ type Row = { key: string; label: string; icon?: string };
 // The curated symptom labels, built once (catalog order — the picker shows the first
 // eight on an empty query).
 const SYMPTOM_LABEL_OPTIONS = symptomLabelOptions();
+
+// What a failed activation says (#4962), in the shape this file's other failures
+// already take ("Couldn't read that. Try again."). ONE sentence for BOTH doors,
+// because both make the same write and a person who taps either is owed the same
+// answer.
+const ILLNESS_ACTIVATION_FAILED =
+  "Couldn't start an illness episode. Try again.";
 
 export default function SymptomLogBar({
   date,
@@ -249,6 +257,14 @@ export default function SymptomLogBar({
   // that would leave the block up with the fold closed.
   const [feverOffer, setFeverOffer] = useState<{ degF: number } | null>(null);
   const [episodeOfferPending, setEpisodeOfferPending] = useState(false);
+  // WHICH DOOR ASKED (#4962). The offer and the "Mark as illness" bridge post the
+  // same activation, so they share one failure sentence — but it has to appear
+  // beside the control that was tapped, and the quick-log sheet renders both at
+  // once (no illness tracked, temperature fold open).
+  const [activationError, setActivationError] = useState<{
+    where: "offer" | "bridge";
+    message: string;
+  } | null>(null);
   // WHETHER THIS BLOCK WOULD CARRY A DOSE (#4712 ruling 2026-09-04 11:20, part 2).
   // The host's persistent Meds section yields only to a dose offer, never to the
   // episode half — an offer with no eligible PRN takes nothing off the screen.
@@ -260,6 +276,10 @@ export default function SymptomLogBar({
   function showFeverOffer(offer: { degF: number } | null): void {
     setFeverOffer(offer);
     yieldMeds(offer != null && offersDose);
+    // The offer's own failure sentence lives and dies with the block it is in, so
+    // a fresh reading never reopens the offer under the last attempt's error. The
+    // bridge's sentence is not this function's to clear.
+    setActivationError((e) => (e?.where === "offer" ? null : e));
   }
 
   // Free-text intake (issue #877): a typed sentence → staged, editable suggestions the
@@ -465,17 +485,49 @@ export default function SymptomLogBar({
     return stampLoggedVia(fd);
   };
 
-  // "OPEN AN EPISODE" (#4712 judgement 1) — the SAME subject-capable door the
-  // "Mark as illness" bridge already uses (#4922), for the reading's own subject.
-  // Idempotent: if one is somehow already open by the time this lands, activating
-  // again changes nothing. Dismisses the block on success; the newly-open episode
-  // is the durable surface from here, not this transient confirmation.
+  // THE ONE ACTIVATION, AND ITS ANSWER READ (#4962). Both doors below — the
+  // offer's "Open an episode" and the "Mark as illness" bridge — post this same
+  // subject-capable write (#4922), and both used to await it and throw the result
+  // away: a write that produced no episode cleared the affordance exactly like one
+  // that did, and nobody was told. `IllnessActivationResult.episodeId` is the
+  // action's own invitation to answer from what happened, so this answers from it.
+  // True only when an episode now exists.
+  //
+  // Idempotent, unchanged: if one was already open by the time this lands,
+  // activating again changes nothing and the id comes back all the same.
+  async function openIllnessEpisode(
+    where: "offer" | "bridge"
+  ): Promise<boolean> {
+    setActivationError(null);
+    let res: IllnessActivationResult;
+    try {
+      res = await activateIllnessForSymptoms(withTarget(new FormData()));
+    } catch {
+      setActivationError({ where, message: ILLNESS_ACTIVATION_FAILED });
+      return false;
+    }
+    if (!res.ok || res.episodeId == null) {
+      setActivationError({
+        where,
+        message: (res.ok ? "" : res.error) || ILLNESS_ACTIVATION_FAILED,
+      });
+      return false;
+    }
+    return true;
+  }
+
+  // "OPEN AN EPISODE" (#4712 judgement 1), for the reading's own subject.
+  // Dismisses the block on success; the newly-open episode is the durable surface
+  // from here, not this transient confirmation. On a failure the block STAYS with
+  // the sentence above under it — this is the primary action of a surface that has
+  // just told someone their temperature is high, so vanishing would report a
+  // success that did not happen (#4962).
   function acceptEpisodeOffer() {
     setEpisodeOfferPending(true);
     startTransition(async () => {
-      await activateIllnessForSymptoms(withTarget(new FormData()));
+      const opened = await openIllnessEpisode("offer");
       setEpisodeOfferPending(false);
-      showFeverOffer(null);
+      if (opened) showFeverOffer(null);
     });
   }
 
@@ -905,23 +957,26 @@ export default function SymptomLogBar({
           <button
             type="button"
             data-testid="symptom-illness-bridge-activate"
+            // THE SUBJECT RIDES THE BRIDGE (#4712), through `withTarget` — the same
+            // stamp every symptom and temperature this bar posts carries, rather
+            // than a second hand-written copy of it. Without it, a household
+            // member's bar would open an episode for the CAREGIVER.
             onClick={() =>
-              startTransition(async () => {
-                // THE SUBJECT RIDES THE BRIDGE (#4712). This bar already stamps its
-                // cross-profile target onto every symptom and temperature it posts;
-                // the illness bridge posted nothing, so on a household member's bar it
-                // would have opened an episode for the CAREGIVER. The action gates the
-                // posted subject with requireProfileWriteAccess, exactly as the writes
-                // above it do.
-                const fd = new FormData();
-                if (profileId != null) fd.set("profile_id", String(profileId));
-                await activateIllnessForSymptoms(fd);
-              })
+              startTransition(() => void openIllnessEpisode("bridge"))
             }
             className="btn-ghost btn-sm border-dashed"
           >
             + Mark as illness
           </button>
+          {activationError?.where === "bridge" && (
+            <p
+              role="alert"
+              data-testid="symptom-illness-bridge-error"
+              className="w-full text-rose-600 dark:text-rose-400"
+            >
+              {activationError.message}
+            </p>
+          )}
         </div>
       )}
 
@@ -1034,6 +1089,17 @@ export default function SymptomLogBar({
                   </div>
                 )}
               </div>
+              {/* THE FAILURE IS STATED AND THE BLOCK STAYS (#4962) — the write's
+                  own answer, not an assumption that it worked. */}
+              {activationError?.where === "offer" && (
+                <p
+                  role="alert"
+                  data-testid="fever-offer-error"
+                  className="mt-2 text-xs text-rose-600 dark:text-rose-400"
+                >
+                  {activationError.message}
+                </p>
+              )}
               {/* A LINK, NOT A THIRD BUTTON (#4712 judgement 1's row grammar). */}
               <button
                 type="button"
