@@ -106,7 +106,9 @@ describe("session-metrics reports a fetch it could not finish (#5310)", () => {
     // The WINDOW refusal specifically. "hit its 10-page cap" alone would also be
     // satisfied by either unwindowed refusal below, so it would not pin this one.
     expect(run.stderr).toContain("--days 3000 reaches back to");
-    expect(run.stderr).toContain("closed-PR fetch hit its 10-page cap at 2026-08-18");
+    expect(run.stderr).toContain(
+      "closed-PR fetch hit its 10-page cap at 2026-08-18"
+    );
     expect(run.stdout).toBe("");
   });
 
