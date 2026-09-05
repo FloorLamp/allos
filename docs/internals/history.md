@@ -244,8 +244,8 @@ styles. The add layer sits directly above the rows it creates, offers first (#48
 
 **On a wide screen that stack becomes two columns** (#4974). The day bar runs across
 the top; beneath it the rows keep the reading measure in the left column and a
-**sticky rail** on the right holds, top to bottom, the chart card, the add layer and
-the month calendar — `grid-template-columns: 48rem minmax(0, 760px)`, the page capped
+**sticky rail** on the right holds, top to bottom, the chart card and the add layer
+— `grid-template-columns: 48rem minmax(0, 760px)`, the page capped
 at their sum plus the gap (`PageContainer width="rail"`, 97rem). The reading column is
 the right width for one-line rows and the wrong one for the day's map: it left half
 the viewport empty and capped the chart inside it, and reading the rows took the map
@@ -308,14 +308,26 @@ compact drawing between 1440 and 1633 IS the ruled design (2026-09-04); the rail
 not have to hold the wide one. `xl` is payable by neither geometry — a 166px drawing
 is under the compact variant's own 300px floor too.
 
-**The calendar is open in the rail, and a door everywhere else.** It is a door
-(#4102) because the grid could not spend the ~140px chrome budget above the first
-record; in the rail it is BESIDE the rows and spends none of it, so where the rail
-exists the trigger in the pinned cluster stands down and the grid renders inline. Both
-mounts are the same `EventMonthGrid` — the binding split out of `EventCalendar` so the
-popover host and the rail host cannot drift into two answers about what a marked day
-means. `MonthCalendar`'s `href` is a function, which a Server Component cannot hand
-across the RSC boundary, so that binding lives client-side either way.
+**The calendar is a door at every width** (#5359, returning to #4102's answer). It
+is a door because the grid could not spend the ~140px chrome budget above the first
+record, and the trigger in the pinned cluster stands at 390px and at 2000px alike.
+
+#4974 mounted the grid OPEN in the rail instead, on the reasoning that beside the rows
+it spends none of that budget — and it shipped without a width. `MonthCalendar`
+renders no root element by design; it fills whatever it is given, and every other host
+gives it the 264-288px it is drawn for (the door's own `w-72` panel, `DateField`,
+`WhenControl`). The rail card was a block child of a track that reaches 760px, so the
+grid drew at 736: 28px day discs 105px apart, a weekday header spread across the width
+of the chart. The owner read it at ~2000px on 2026-09-05 and ruled the open mount out;
+this supersedes #4974's item 2, which is recorded here rather than by editing #4974.
+Capping the rail card at the door's width was considered and rejected — a 288px card
+alone in a 760px rail — as was filling the width with more months. `MonthCalendar` is
+one cursor by design (#3744).
+
+With one host again, the `EventMonthGrid` export that existed to keep the popover and
+the rail from drifting into two answers is folded back into `EventCalendar`.
+`MonthCalendar`'s `href` is a function, which a Server Component cannot hand across
+the RSC boundary, so that binding still lives client-side.
 
 **The rail cannot outgrow the viewport.** A sticky element taller than the screen pins
 its top and strands its own bottom, unreachable at any page scroll, so it is capped at
