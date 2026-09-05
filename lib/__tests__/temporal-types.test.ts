@@ -180,8 +180,35 @@ describe("temporal brands: the cast ban", () => {
     });
   }
 
-  it("refuses a bare re-alias, which exists only to cast around the rule", async () => {
-    const messages = await lint(`${header}export type D = LocalDay;\n`);
+  // An alias that mentions a brand outside an object shape exists only to cast around
+  // the rule; each is refused at the declaration, so `s as D` never needs matching.
+  const refusedAliases: Record<string, string> = {
+    bare: `type D = LocalDay`,
+    unionWithNever: `type D = LocalDay | never`,
+    intersection: `type D = LocalDay & {}`,
+    nonNullable: `type D = NonNullable<LocalDay>`,
+    array: `type Ds = LocalDay[]`,
+    functionReturn: `type Mint = (d: Date) => LocalDay`,
+  };
+
+  for (const [name, decl] of Object.entries(refusedAliases)) {
+    it(`refuses the alias ${name}: ${decl}`, async () => {
+      const messages = await lint(`${header}export ${decl};\n`);
+      expect(messages).toHaveLength(1);
+    });
+  }
+
+  it("refuses renaming a brand at import, which takes its name out of every selector", async () => {
+    const messages = await lint(
+      `import type { LocalDay as LD } from "./temporal-types";\ndeclare const s: string;\nexport const v = s as LD;\n`
+    );
+    expect(messages.map((m) => m.line)).toEqual([1]);
+  });
+
+  it("refuses renaming a brand at export", async () => {
+    const messages = await lint(
+      `export type { LocalDay as Day } from "./temporal-types";\n`
+    );
     expect(messages).toHaveLength(1);
   });
 
@@ -201,14 +228,43 @@ describe("temporal brands: the cast ban", () => {
     });
   }
 
-  it("a union of row shapes is still a row shape", async () => {
-    const messages = await lint(
-      `${header}export type Row = { date: LocalDay } | { at: CanonicalInstant };\n`
-    );
-    expect(messages).toHaveLength(0);
-  });
+  const allowedDeclarations: Record<string, string> = {
+    rowAlias: `type Row = { date: LocalDay; n: number }`,
+    unionOfRowShapes: `type Row = { date: LocalDay } | { at: CanonicalInstant }`,
+    sourceTimeShape: `type T = { grain: "day"; date: LocalDay } | { grain: "instant"; date: LocalDay; instant: CanonicalInstant }`,
+    rowInterface: `interface Row { date: LocalDay }`,
+    unrenamedImport: `type { LocalDay as LocalDay } from "./temporal-types"`,
+  };
 
-  it("names every minter on a disable line, so the inventory is greppable", async () => {
+  for (const [name, decl] of Object.entries(allowedDeclarations)) {
+    it(`leaves the declaration ${name} alone`, async () => {
+      const code =
+        name === "unrenamedImport"
+          ? `import ${decl};\n`
+          : `${header}export ${decl};\n`;
+      const messages = await lint(code);
+      expect(messages).toHaveLength(0);
+    });
+  }
+
+  // The rule is syntactic and says so (lib/temporal-types.ts): these launder a string
+  // without NAMING a brand as a cast target, and are review's, as for every other
+  // type. Pinned so the documented limit and the rule cannot drift apart silently.
+  const namedLimits: Record<string, string> = {
+    indexedAccessIntoRow: `type Row = { d: LocalDay }; export const v = s as Row["d"]`,
+    lyingPredicate: `function isDay(x: string): x is LocalDay { return true }`,
+    genericLaunderer: `declare function id<T>(x: unknown): T; export const v = id<LocalDay>(s)`,
+    asAny: `declare function f(d: LocalDay): void; f(s as any)`,
+  };
+
+  for (const [name, code] of Object.entries(namedLimits)) {
+    it(`cannot see ${name}, by design`, async () => {
+      const messages = await lint(`${header}${code};\n`);
+      expect(messages).toHaveLength(0);
+    });
+  }
+
+  it("honours a minter's disable line", async () => {
     const minted = await lint(
       `${header}// eslint-disable-next-line no-restricted-syntax -- LocalDay minter: probe\nexport const m = s as LocalDay;\n`
     );

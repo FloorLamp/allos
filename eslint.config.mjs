@@ -29,20 +29,29 @@ const TEMPORAL_BRAND_REF = (() => {
   const names = `/^(?:${TEMPORAL_BRANDS.join("|")})$/`;
   return `:matches(TSTypeReference[typeName.name=${names}], TSTypeReference[typeName.right.name=${names}], TSImportType[qualifier.name=${names}])`;
 })();
-// The three shapes a cast to a brand can take. `.typeAnnotation` pins the match to the
-// cast's TYPE side, so a brand inside the expression being cast (`foo<LocalDay>() as
-// string`) is not this rule's business; the `:not(TSTypeLiteral …)` clause is the row
-// shape exemption.
+// The shapes a cast to a brand can take, by NAME — this rule is syntactic and does
+// not chase what a name resolves to (lib/temporal-types.ts says what that leaves to
+// review). `.typeAnnotation` pins a match to the cast's TYPE side, so a brand inside
+// the expression being cast (`foo<LocalDay>() as string`) is not this rule's business;
+// the `:not(TSTypeLiteral …)` clause is the row-shape exemption.
 const TEMPORAL_BRAND_CAST_SELECTORS = (() => {
   const cast = ":matches(TSAsExpression, TSTypeAssertion)";
+  const names = `/^(?:${TEMPORAL_BRANDS.join("|")})$/`;
   return [
     // `s as LocalDay`, `<LocalDay>s`, `s as unknown as LocalDay`.
     `${cast} > ${TEMPORAL_BRAND_REF}.typeAnnotation`,
     // The brand anywhere inside the cast's type — a union, array, tuple, intersection,
     // `NonNullable<>`, `Readonly<>`, `Array<>` — except inside an object type literal.
     `${cast} > *.typeAnnotation ${TEMPORAL_BRAND_REF}:not(TSTypeLiteral ${TEMPORAL_BRAND_REF})`,
-    // `type D = LocalDay` — a bare re-alias exists only to cast around the rule.
+    // `type D = LocalDay`, `type D = LocalDay & {}`, `type Ds = LocalDay[]` — an alias
+    // that mentions a brand outside an object shape exists only to cast around the
+    // rule. `type Row = { d: LocalDay }` is a row shape and stays allowed.
     `TSTypeAliasDeclaration > ${TEMPORAL_BRAND_REF}.typeAnnotation`,
+    `TSTypeAliasDeclaration > *.typeAnnotation ${TEMPORAL_BRAND_REF}:not(TSTypeLiteral ${TEMPORAL_BRAND_REF})`,
+    // `import { LocalDay as LD }` / `export { LocalDay as LD }` — renaming a brand
+    // takes its name out of every selector above.
+    `:matches(ImportSpecifier, ExportSpecifier)[imported.name=${names}]:not([local.name=${names}])`,
+    `ExportSpecifier[local.name=${names}]:not([exported.name=${names}])`,
   ];
 })();
 
@@ -153,17 +162,17 @@ const config = [
     },
   },
   // The temporal brands (#2899, lib/temporal-types.ts) are worth exactly as much as
-  // the weakest way to obtain one, so a cast to one is an error EVERYWHERE —
-  // production, tests and scripts alike — whether direct, through `unknown`, inside a
-  // union/array/tuple/intersection/`NonNullable<>`, by qualified or `import()` name,
-  // or via a bare re-alias `type D = LocalDay`. A brand comes from a minter that
-  // validated or constructed it; each minter carries the one permitted cast on a
-  // `// eslint-disable-next-line no-restricted-syntax -- <brand> minter:` line, which
-  // makes `grep -rn "minter:" lib` the minter inventory. A DB row shape
-  // (`.get(...) as { date: LocalDay }`) is deliberately NOT matched — an object type
-  // literal is exempt — because a row may carry the brand lib/time-columns.ts declares
-  // for that column. `as any` / `as never` / a generic launderer are not syntax this
-  // rule can see; those are review's, as for every other type.
+  // the weakest way to obtain one, so a type that NAMES a brand is refused as a cast
+  // target, as an alias outside an object shape, and as a renamed import or export —
+  // in production, tests and scripts alike. A brand comes from a minter that
+  // validated or constructed it; the constructing minters carry their one permitted
+  // cast on a `// eslint-disable-next-line no-restricted-syntax -- <brand> minter:`
+  // line. A DB row shape (`.get(...) as { date: LocalDay }`, or an alias/interface
+  // holding one) is deliberately NOT matched — an object type literal is exempt —
+  // because a row may carry the brand lib/time-columns.ts declares for that column.
+  // The rule is syntactic: an indexed access into a row type, a lying type predicate,
+  // an overload, `as any` / `as never` and a generic launderer are not names it can
+  // see; those are review's, as for every other type.
   {
     files: ["**/*.{ts,tsx,mts,cts}"],
     rules: {

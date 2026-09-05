@@ -22,30 +22,38 @@
 //
 // A brand is worth exactly as much as the weakest way to obtain one. So a value of one
 // of these types comes from a function that either VALIDATED a string (`isRealIsoDate`
-// checks the calendar, not a regex) or CONSTRUCTED it from a `Date` (`utcInstant`).
-// A cast to a brand — direct, through `unknown`, inside a union, an array, a tuple, an
-// intersection, a `NonNullable<>`, a qualified or `import()` name, or a bare re-alias
-// `type D = LocalDay` — is an ESLint error everywhere (eslint.config.mjs,
-// "no-restricted-syntax"); the minters carry the only permitted casts, each on a
-// `// eslint-disable-next-line … -- <brand> minter:` line, so `grep -rn "minter:" lib`
-// IS the minter inventory. A function that receives a string and casts it is not a
-// minter and must not exist. What no syntax rule can see — `as any`, `as never`, a
-// generic launderer, `JSON.parse` — is review's, as it is for every other type.
+// checks the calendar, not a regex, and is a type predicate — no cast at all) or
+// CONSTRUCTED it from a `Date` (`utcInstant`). The constructing minters carry their one
+// permitted cast on a `// eslint-disable-next-line … -- <brand> minter:` line. A
+// function that receives a string and casts it is not a minter and must not exist.
+//
+// The cast ban (eslint.config.mjs, "no-restricted-syntax") is SYNTACTIC, and says so:
+// it refuses a type that NAMES a brand — as the target of a cast (direct, through
+// `unknown`, inside a union / array / tuple / intersection / `NonNullable<>` / by
+// qualified or `import()` name), as an alias outside an object shape (`type D =
+// LocalDay`, `type D = LocalDay & {}`, `type Ds = LocalDay[]`), or renamed at an import
+// or export. It does not chase what a name RESOLVES to. So it cannot see a string
+// laundered through an indexed access into a row type (`s as Row["d"]`), a type
+// predicate or assertion function that lies, an overload or `declare` signature, a
+// generic launderer, `as any`, `as never` or `JSON.parse`. Those are review's, exactly
+// as they are for every other type in the tree; a reader sees each of them on one line.
 //
 // The one place a brand may appear without a minter is a DB ROW SHAPE — the
-// `.get(...) as { date: LocalDay }` assertion every read already makes. A row shape may
-// carry the brand that lib/time-columns.ts declares for that column and nothing else:
-// the registry is the evidence, and the column-index scan is what keeps it true.
+// `.get(...) as { date: LocalDay }` assertion every read already makes, or an alias or
+// interface holding that shape. A row shape may carry the brand that lib/time-columns.ts
+// declares for that column and nothing else: the registry is the evidence, and the
+// column-index scan is what keeps it true.
 //
 // ── WHAT IS DELIBERATELY NOT A BRAND ─────────────────────────────────────────
 //
 // `metric_samples.started_at` / `ended_at` carry NO brand. They are the natural key
-// that makes a re-push a correction, and they hold at least four shapes — the device's
-// own instant verbatim (ISO with or without milliseconds), a `${day}T00:00:00`
-// day-midnight anchor, and a `${day}THH:MM:SS` zoneless local datetime — see the
-// registry note on that column. A union was proposed and FALSIFIED against the real
-// writers (#2899, 2026-09-05): it modelled the note, not the column. A truthful type
-// for that column needs the writers inventoried first, and normalising the values is
+// that makes a re-push a correction, and they hold whatever each writer put there: the
+// device's own value verbatim (with or without milliseconds, `Z` or an offset), a
+// `${day}T00:00:00` day-midnight anchor, a `${day}THH:MM:SS` zoneless local datetime, a
+// bare `YYYY-MM-DD`, and an `<ISO>#<stage>` key — see the registry note on that column,
+// which does not claim that list is complete. A two-shape union was proposed and
+// FALSIFIED against the real writers, twice (#2899, 2026-09-05). A truthful type for
+// that column needs every writer inventoried first, and normalising the values is
 // #2896's question. Until then the column is `string`, and saying so is the point.
 //
 // A brand is a subtype of `string`, so branding a function's RETURN breaks no caller;

@@ -16,9 +16,9 @@ import type {
   LocalTime,
 } from "./temporal-types";
 
-// The functions below that return a brand are its MINTERS (#2899): each either
-// validates a string or constructs one from a Date/Intl, and carries the only cast
-// permitted for that brand on a `-- <brand> minter:` disable line. See
+// The functions below that return a brand are its MINTERS (#2899): `isRealIsoDate`
+// validates (a type predicate, no cast); the rest construct from a Date/Intl and
+// carry their one permitted cast on a `-- <brand> minter:` disable line. See
 // lib/temporal-types.ts for the vocabulary and the rule.
 
 const fmtCache = new Map<string, Intl.DateTimeFormat>();

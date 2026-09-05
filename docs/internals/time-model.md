@@ -139,27 +139,34 @@ both would make the lexical-comparison bug the scan exists to catch look
 checked.
 
 `metric_samples.started_at` / `ended_at` carry **no brand**. They are the
-natural key that makes a re-push a correction, and they hold at least four
-shapes — the device's own instant verbatim, a `${day}T00:00:00` day-midnight
-anchor, and a `${day}THH:MM:SS` zoneless local datetime (the registry note on
-that column lists the writers). A two-shape union was proposed and falsified
-against those writers on 2026-09-05: it modelled the registry note, not the
-column. A truthful type for it needs the writers inventoried first; until then
-the column is `string`, and saying so is the point.
+natural key that makes a re-push a correction, and they hold whatever each
+writer put there: the device's own value verbatim, a `${day}T00:00:00`
+day-midnight anchor, a `${day}THH:MM:SS` zoneless local datetime, a bare
+`YYYY-MM-DD`, an `<ISO>#<stage>` key — the registry note on that column names
+the writers and does not claim its list is complete. A two-shape union was
+proposed and falsified against the writers twice on 2026-09-05: it modelled the
+registry note, not the column. A truthful type for it needs every writer
+inventoried first; until then the column is `string`, and saying so is the
+point.
 
 Three rules keep a brand worth something:
 
-- **A minter validates or constructs.** It checks the calendar or builds from a
-  `Date`. A function that receives a string and casts it is not a minter and
-  must not exist. `grep -rn "minter:" lib` is the inventory, because
-- **A cast to a brand is an ESLint error everywhere** (`eslint.config.mjs`,
-  `no-restricted-syntax`) — direct, through `unknown`, inside a union, array,
-  tuple or intersection, by qualified or `import()` name, or via a bare
-  re-alias `type D = LocalDay`. The minters carry the only permitted casts on a
-  `-- <brand> minter:` disable line. A cast that appears anywhere else is the
-  defect, not a shortcut: bring it back to #2899 rather than adding a disable.
-  `as any`, `as never` and a generic launderer are not syntax a rule can see;
-  those are review's, as for every other type.
+- **A minter validates or constructs.** `isRealIsoDate` checks the calendar and
+  is a type predicate, so it needs no cast; the constructing minters build from
+  a `Date` and carry their one permitted cast on a `-- <brand> minter:` disable
+  line. A function that receives a string and casts it is not a minter and must
+  not exist.
+- **A type that names a brand is refused by ESLint** (`eslint.config.mjs`,
+  `no-restricted-syntax`) as a cast target — direct, through `unknown`, inside
+  a union, array, tuple or intersection, by qualified or `import()` name — as
+  an alias outside an object shape (`type D = LocalDay`, `type D = LocalDay &
+{}`, `type Ds = LocalDay[]`), and as a renamed import or export. A cast that
+  appears anywhere else is the defect, not a shortcut: bring it back to #2899
+  rather than adding a disable. The rule is syntactic and does not chase what a
+  name resolves to, so an indexed access into a row type, a lying type
+  predicate, an overload, `as any`, `as never` and a generic launderer are
+  review's, as for every other type; `lib/__tests__/temporal-types.test.ts` pins
+  both the refused list and the named limits.
 - **A DB row shape may carry the brand the registry declares for that column**
   (`.get(...) as { date: LocalDay }`), and nothing else. That assertion already
   exists on every read; the brand adds what `TIME_COLUMNS` says about the column,
