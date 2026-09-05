@@ -337,7 +337,7 @@ describe("the trace is read as instants, not rebuilt from local minutes (#5212 F
   // on top of the earlier rest, the earlier rest became the quiet that closes the
   // session, and the save-stamp cancel could not save them because `updated_at` is a
   // real instant while the candidate had been shifted an hour back.
-  it("does not finish a session still in progress across a fall-back hour", async () => {
+  it("ends the effort where it really ended across a fall-back hour", async () => {
     const p = newProfile("DetEndFallBack");
     setTimezone(p, "America/New_York");
     seedRestingHrBefore(p, "2026-11-01", 60);
@@ -345,7 +345,9 @@ describe("the trace is read as instants, not rebuilt from local minutes (#5212 F
     seedInstants(p, "2026-11-01T04:40:00Z", "2026-11-01T05:20:00Z", 140);
     // rest, 01:20–02:00 EDT
     seedInstants(p, "2026-11-01T05:20:00Z", "2026-11-01T06:00:00Z", 55);
-    // lifting again, 01:00–01:35 EST — the SAME local minutes as the first block's tail
+    // a SECOND effort, 01:00–01:35 EST — the same local minutes as the first block's
+    // tail, which is what a fall-back hour does and what the round trip could not tell
+    // apart from the first pass.
     seedInstants(p, "2026-11-01T06:00:00Z", "2026-11-01T06:35:00Z", 140);
     const id = seedOpenWorkoutOn(
       p,
@@ -354,14 +356,19 @@ describe("the trace is read as instants, not rebuilt from local minutes (#5212 F
       "2026-11-01T04:45:00Z"
     );
 
-    expect(finishDetectedWorkouts(p)).toBe(0);
-    expect(rowOf(id).end_time).toBeNull();
+    // The session is the FIRST effort — the forty-minute rest after it is longer than
+    // this profile's recovery, which is the detector's own rule for an end, and the
+    // second block is a second effort rather than a continuation. What matters here is
+    // that the end is 01:20 and not a minute an hour's worth of collapsed readings put
+    // there: rebuilding the trace from local minutes lands the second block's elevation
+    // on top of the first block's quiet and moves the answer.
+    expect(finishDetectedWorkouts(p)).toBe(1);
+    expect(rowOf(id)).toEqual({ end_time: "01:20", duration_min: 40 });
   });
 
-  // The control, so the case above cannot pass for some unrelated refusal: the same
-  // timeline a week earlier, with no transition in it, is also left open — and the
-  // same timeline with a real closing quiet finishes, so the zone is not simply
-  // silencing the module.
+  // The control, and it is the property stated directly: the same timeline on a day
+  // with no transition in it reads the same way. A zone that silenced the module, or a
+  // fall-back hour that moved the answer, would show up as these two disagreeing.
   it("reads the same timeline the same way on an ordinary day", async () => {
     const p = newProfile("DetEndFallBackControl");
     setTimezone(p, "America/New_York");
@@ -369,29 +376,105 @@ describe("the trace is read as instants, not rebuilt from local minutes (#5212 F
     seedInstants(p, "2026-10-25T04:40:00Z", "2026-10-25T05:20:00Z", 140);
     seedInstants(p, "2026-10-25T05:20:00Z", "2026-10-25T06:00:00Z", 55);
     seedInstants(p, "2026-10-25T06:00:00Z", "2026-10-25T06:35:00Z", 140);
-    const still = seedOpenWorkoutOn(
+    const id = seedOpenWorkoutOn(
       p,
       "2026-10-25",
       "00:40",
       "2026-10-25T04:45:00Z"
     );
-    expect(finishDetectedWorkouts(p)).toBe(0);
-    expect(rowOf(still).end_time).toBeNull();
 
-    // …and once the effort really stops, the same profile and zone finish it.
-    const q = newProfile("DetEndFallBackFinishes");
-    setTimezone(q, "America/New_York");
-    seedRestingHrBefore(q, "2026-10-25", 60);
-    seedInstants(q, "2026-10-25T04:40:00Z", "2026-10-25T05:20:00Z", 140);
-    seedInstants(q, "2026-10-25T05:20:00Z", "2026-10-25T06:35:00Z", 55);
-    const done = seedOpenWorkoutOn(
-      q,
-      "2026-10-25",
-      "00:40",
-      "2026-10-25T04:45:00Z"
+    expect(finishDetectedWorkouts(p)).toBe(1);
+    expect(rowOf(id)).toEqual({ end_time: "01:20", duration_min: 40 });
+  });
+});
+
+describe("a cross-midnight finish is visible too (#5212 falsifying pass)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  // THE SAME SILENCING AS F4, THROUGH A DIFFERENT DOOR. `finishWorkoutSession` stores
+  // an `HH:MM` against the row's own date, so a session that started at 23:50 and ended
+  // at 00:20 has an end_time EARLIER than its start. Every other reader of a session's
+  // span treats that as a crossing (`activityWindow`); workout presence resolved it
+  // against the row's date and read an end twenty-three and a half hours BEFORE the
+  // start — so the row was never `finished` at any instant, and the safety-tier
+  // post-workout dose delivery and the #924 recap were unreachable for it.
+  //
+  // The tick ordering fix is worth nothing on a row presence cannot see as finished, so
+  // this is the same assertion F4 makes, on the shape that could not pass it.
+  it("reads as finished at the sweep instant on a session that crossed midnight", async () => {
+    // The clock sits just after the crossing, because `getWorkoutPresence` bounds its
+    // read to `date >= today - 1` — a swept draft older than that is never `finished`
+    // to presence, which is right rather than a gap: a post-workout dose reminder for a
+    // session from weeks ago is not a reminder.
+    vi.setSystemTime(new Date("2026-05-11T00:35:00Z"));
+    const p = newProfile("DetEndMidnightSafety");
+    setTimezone(p, "UTC");
+    seedRestingHrBefore(p, "2026-05-10", 60);
+    seedInstants(p, "2026-05-10T23:50:00Z", "2026-05-11T00:20:00Z", 140);
+    seedInstants(p, "2026-05-11T00:20:00Z", "2026-05-11T01:00:00Z", 55);
+    const id = seedOpenWorkoutOn(
+      p,
+      "2026-05-10",
+      "23:50",
+      "2026-05-10T23:55:00Z"
     );
-    expect(finishDetectedWorkouts(q)).toBe(1);
-    expect(rowOf(done).end_time).toBe("01:20");
+
+    expect(finishDetectedWorkouts(p)).toBe(1);
+    expect(rowOf(id).end_time).toBe("00:20");
+
+    // A quarter of an hour after the end it crossed midnight at — inside the window
+    // the finish dispatch reads.
+    expect(getWorkoutPresence(p).state).toBe("finished");
+  });
+});
+
+describe("what a later write does to a detected end (#5212 falsifying pass)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  // AC 4 OF #5194 IS NOT MET, and this fixture states what actually happens rather than
+  // implying it does. An activity form loaded BEFORE the sweep holds no end in its own
+  // state, and this form's contract is that an omitted field CLEARS the stored value —
+  // the same rule its `est_calories` comment spells out. So its next autosave nulls the
+  // end the sweep wrote. Fixing that means either a compare-and-set on the activity save
+  // or an explicit-clear contract between the form and the action, both of which change
+  // every activity edit; it is #5194's to settle, not this sweep's to bolt on.
+  //
+  // WHAT THIS PIN IS FOR is the second half, which the pass found and which the trace
+  // bound closes: after such a clobber the row must not be finished AGAIN at some later
+  // instant. The clobber's own `updated_at` is newer than the candidate, so the save
+  // stamp cancels it, and the trace bound stops a later effort from offering a candidate
+  // beyond it. The row stays open for the stale suggest, which is the degraded outcome
+  // and the safe one.
+  it("is not finished a second time after a later write clears the end", () => {
+    const p = newProfile("DetEndClobber");
+    seedRestingHr(p, 60);
+    seedRange(p, "16:00", "16:35", 140);
+    seedRange(p, "16:35", "17:00", 55);
+    // A second, later effort — the shape that offered a different instant before.
+    seedRange(p, "19:00", "19:30", 150);
+    seedRange(p, "19:30", "20:00", 55);
+    const id = seedOpenWorkout(p, "16:00", new Date("2026-07-17T16:20:00Z"));
+
+    expect(finishDetectedWorkouts(p)).toBe(1);
+    expect(rowOf(id)).toEqual({ end_time: "16:35", duration_min: 35 });
+
+    // The form's next autosave, with no end in its state: the stored end is cleared and
+    // the row is touched now.
+    db.prepare(
+      `UPDATE activities SET end_time = NULL, duration_min = NULL, updated_at = ?
+        WHERE id = ?`
+    ).run(utcSqlString(new Date("2026-07-17T20:30:00Z")), id);
+
+    expect(finishDetectedWorkouts(p)).toBe(0);
+    expect(rowOf(id)).toEqual({ end_time: null, duration_min: null });
   });
 });
 

@@ -46,6 +46,16 @@
 // The cost is the opposite case and it is worth stating plainly: someone who fixes a
 // title at 11:50, after an effort that ended at 11:35, gets no detected end. And that
 // refusal is PERMANENT rather than delayed, because `updated_at` only moves forward.
+//
+// ── WHAT THIS COSTS PER TICK, STATED RATHER THAN UNDERSTATED ─────────────────
+// A row with no trace at all costs ONE read: the sample gather returns nothing and the
+// ten prior windows are never asked for. A CONTENT-BEARING open draft that has a trace
+// but never yields an end pays the full gather every tick, forever — `expireWorkoutDrafts`
+// only deletes zero-content husks, so nothing ages it out. That is real and it is not
+// solved here: bounding it means remembering an answer across ticks, which is a
+// different mechanism from this one. Said plainly because the first draft of this
+// comment claimed the trace window was the cost bound, and the trace window bounds the
+// SIZE of each read rather than how many times it happens.
 // For those rows this changes nothing and the stale suggest is still the path. Giving
 // `exercise_sets` an instant is a schema change and an owner decision (#5194, and the
 // same absence blocked the rest timer on #5143); if it ever lands, the cancel below
@@ -54,7 +64,11 @@
 import { db } from "./db";
 import { parseUtcSql, shiftDateStr, zonedWallTimeToUtc } from "./date";
 import { getTimezone } from "./settings/display";
-import { detectedWorkoutEnd, type ExertionSample } from "./exertion-window";
+import {
+  detectedWorkoutEnd,
+  exertionRecoveryMin,
+  type ExertionSample,
+} from "./exertion-window";
 import { finishWorkoutSession } from "./workout-finish";
 import { isCompletedSessionRow } from "./workout-presence";
 import { getHrInstantsInRange } from "./queries/metrics";
@@ -148,6 +162,62 @@ function openWorkoutRows(profileId: number): OpenWorkoutRow[] {
 }
 
 /**
+ * THE EFFORT THAT CONTAINS THE START, and nothing after it (#5212 falsifying pass).
+ *
+ * `detectedWorkoutEnd`'s doc promises "the last elevated minute of the effort that
+ * contains the start". Its loop takes the last elevated minute of everything it is
+ * handed, and the gather was handing it two whole days — so an evening run became the
+ * end of a morning session. A 08:00–08:40 session with an 18:00 run on the same day was
+ * written as ending at 19:00: **twelve hours of "strength training"**, unattended, and
+ * worse than the hour-late tap this module exists to replace. Its pure fixtures only
+ * ever feed a single-effort trace, so the divergence had never been observable.
+ *
+ * The cut is made where the DETECTOR ITSELF would already have declared an end: after
+ * `recovery` minutes of quiet following an elevated minute. That is the same threshold
+ * it uses to accept a candidate, so this introduces no new judgment and cannot move a
+ * candidate the detector would have chosen — the samples before the cut are unchanged
+ * and the samples after it could only ever have OVERRIDDEN that candidate with a later
+ * effort's. A trace with one effort is returned whole.
+ *
+ * Coverage is deliberately not re-checked here. A sparse quiet stretch may cut earlier
+ * than `quiet()` would accept, and that direction is safe: a short trace can only make
+ * the detector refuse to answer, never answer wrongly.
+ *
+ * The divergence between that docblock and that loop is #5289 — a lane does not get to
+ * redefine a landed contract, and this gather does not need it to. If that issue makes
+ * the loop honour its doc, this bound becomes redundant and can go.
+ */
+function effortFromStart(
+  samples: readonly ExertionSample[],
+  ceilingBpm: number,
+  recoveryMs: number,
+  startedAt: number
+): ExertionSample[] {
+  // SORTED HERE, not assumed. `getHrInstantsInRange` already answers in instant order,
+  // so this is a no-op in production — but walking the array's own order would make
+  // this function's answer depend on the read's, and a trace whose instants disagree
+  // with its array order is exactly what a mis-resolved zone produces. Reading it in
+  // array order silently masked that case.
+  const ordered = [...samples].sort((a, b) => a.at - b.at);
+  let seenElevated = false;
+  let quietFrom: number | null = null;
+  for (let i = 0; i < ordered.length; i++) {
+    const sample = ordered[i];
+    if (sample.at < startedAt) continue;
+    if (sample.bpm > ceilingBpm) {
+      seenElevated = true;
+      quietFrom = null;
+      continue;
+    }
+    if (!seenElevated) continue;
+    if (quietFrom == null) quietFrom = sample.at;
+    else if (sample.at - quietFrom >= recoveryMs)
+      return ordered.slice(0, i + 1);
+  }
+  return ordered;
+}
+
+/**
  * Finish every open workout whose heart rate says it already ended.
  *
  * Returns how many rows were finished. Idempotent: a finished row is no longer
@@ -185,13 +255,19 @@ export function finishDetectedWorkouts(profileId: number): number {
     // trace is otherwise permanent, so that cost would have recurred every tick forever.
     if (samples.length === 0) continue;
 
+    const recovery = usualRecoveryMin(
+      profileId,
+      priorEventWindows(profileId, row.type, { date: row.date, id: row.id })
+    );
     const end = detectedWorkoutEnd({
-      samples,
-      ceilingBpm: ceiling,
-      usualRecoveryMin: usualRecoveryMin(
-        profileId,
-        priorEventWindows(profileId, row.type, { date: row.date, id: row.id })
+      samples: effortFromStart(
+        samples,
+        ceiling,
+        exertionRecoveryMin(recovery) * 60_000,
+        startedAt.getTime()
       ),
+      ceilingBpm: ceiling,
+      usualRecoveryMin: recovery,
       startedAt: startedAt.getTime(),
       // The save stamp, read as the cancel — see the header for why it is not a set.
       lastSetAt:
