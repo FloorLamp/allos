@@ -51,13 +51,27 @@ describe("arrivalWait", () => {
     ).toEqual({ kind: "overdue" });
   });
 
-  it("gives up at the max however slow the measurement says the source is", () => {
+  it("gives up at the max, and quotes no time it will not be waiting at", () => {
     // A measured six-hour lag would put the window at 390; the max is 180 and it
     // wins. This is the difference between an informative state and a stuck one.
     expect(arrivalWaitWindowMin({ ...SLEEP, measuredLagMin: 360 })).toBe(180);
+
+    // AND THE ETA IS BOUNDED BY THE SAME NUMBER (#5127 falsifying pass, F4). This
+    // answered `etaMin: 360` before: the sleep tile read "usually in by ~13:40" at
+    // 08:40 and then said the night had not synced at 10:01 — 220 minutes before the
+    // clock it had just promised. A wait may not name a time it will not still be
+    // waiting at, so the measurement is dropped and the consumer degrades to the same
+    // unquantified line it gives a profile that measured nothing at all.
     expect(
       arrivalWait({ ...SLEEP, measuredLagMin: 360, elapsedMin: 180 })
-    ).toEqual({ kind: "waiting", etaMin: 360 });
+    ).toEqual({ kind: "waiting", etaMin: null });
+
+    // A measurement exactly AT the window is still quotable: the wait is still running
+    // at that minute, so the time is one it can keep.
+    expect(
+      arrivalWait({ ...SLEEP, measuredLagMin: 180, elapsedMin: 10 })
+    ).toEqual({ kind: "waiting", etaMin: 180 });
+
     expect(
       arrivalWait({ ...SLEEP, measuredLagMin: 360, elapsedMin: 181 })
     ).toEqual({ kind: "overdue" });

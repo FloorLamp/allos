@@ -92,9 +92,28 @@ function recentlyFinishedPractices(
   //
   // What is still taken from the model is the VOCABULARY, and that is read: `ready`
   // for a window that has not finished, `waiting` for one still inside its bound,
-  // `overdue` for one that has stopped being news. Do NOT "simplify" either bound away
-  // — each one alone reintroduces exactly one of the two defects above — and do not
-  // re-add the measurement without a consumer that reads it.
+  // `overdue` for one that has stopped being news.
+  //
+  // AND THE VOCABULARY IS ALL IT IS. This call is provably equivalent to the two lines
+  // it replaced — `const since = localMinutesBetween(...); if (since < 0 || since >
+  // PRACTICE_RECAP_BOUND_MIN) continue;` — and the #5127 falsifying pass proved it the
+  // only way that counts: removing this call and restoring those two lines leaves BOTH
+  // TIERS ENTIRELY GREEN, because `practice-recap.test.ts` is the only file that reaches
+  // this dispatch and no assertion in it can tell the two apart.
+  //
+  // An earlier draft of this comment said "do NOT simplify either bound away — each one
+  // alone reintroduces exactly one of the two defects above". That was false, and it is
+  // recorded here rather than quietly deleted because it is the THIRD stale comment on
+  // this path in three rounds and each of the first two is how a defect got in. Dropping
+  // `minWindowMin`, or widening `maxMin` to 720, or zeroing `defaultLagMin`, each leaves
+  // all 18 fixtures green. The three parameters are one constant because each names a
+  // RULE above, not because a test defends it.
+  //
+  // So why route it through the model at all: because `since < 0 || since > BOUND` is a
+  // hand-rolled answer to "is this wait still open", which is the question this model
+  // exists to answer once — and because when something finally measures a practice
+  // arrival, the bound has ONE place to gain it. Do not re-add the measurement without a
+  // consumer that reads it.
   const out: { row: PracticeRow; window: ActivityWindow }[] = [];
   for (const row of rows) {
     const window = activityWindow(row);

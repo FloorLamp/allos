@@ -144,8 +144,6 @@ export function sleepWaitingState(
   if (!s.sourceHealthy) return null;
 
   const wake = s.wakeMinutes ?? DEFAULT_WAKE_MINUTES;
-  const eta =
-    s.arrivalLagMin == null ? null : (wake + s.arrivalLagMin) % (24 * 60);
 
   // Before the wake anchor, "last night" has not happened yet. Resolves from the
   // clock alone — a profile with no usable typicalWakeTime still gets this state
@@ -178,7 +176,18 @@ export function sleepWaitingState(
       // A CLOCK, not a duration: the model answers in minutes after the origin, and
       // the origin here is the wake anchor. The modulo is the day rollover a late
       // arrival crosses.
-      etaMinutes: eta,
+      //
+      // READ FROM THE MODEL, NOT RE-DERIVED (#5127 falsifying pass, F2′). This used to
+      // compute `(wake + s.arrivalLagMin) % 1440` from the raw signal before the call,
+      // which is the re-derivation `etaMin` exists to prevent — and it meant the field's
+      // BOUND did not apply here: a measured lag longer than the window quoted a time
+      // the state would stop waiting for. `arrival.etaMin` is null in exactly that case
+      // and the copy degrades to its unquantified line, which is what it already says
+      // for a profile with no measurement.
+      etaMinutes:
+        arrival.kind === "waiting" && arrival.etaMin != null
+          ? (wake + arrival.etaMin) % (24 * 60)
+          : null,
       lastCheckedAt: null,
     };
   }

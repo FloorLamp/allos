@@ -65,7 +65,20 @@ export interface ArrivalWaitInput {
 export type ArrivalWait =
   /** The origin has not passed. Nothing is due, so nothing is late. */
   | { kind: "ready" }
-  /** Inside the window. `etaMin` is minutes after the origin, or null under the gate. */
+  /**
+   * Inside the window. `etaMin` is the MEASURED minutes after the origin — null when
+   * nothing was measured to the sample gate, and null when the measurement falls
+   * OUTSIDE the window this wait will actually run for.
+   *
+   * THE SECOND NULL IS A BOUND, NOT A GAP (#5127 falsifying pass, F4). A measured 400
+   * against a 180-minute `maxMin` used to be quoted verbatim: the sleep tile read
+   * "usually in by ~13:40" at 08:40 and then said the night had not synced at 10:01,
+   * 220 minutes before the clock it had just promised. A wait may not name a time it
+   * will not still be waiting at. Under this null a consumer says the unquantified
+   * thing, which is the same answer it gives a profile with no measurement at all —
+   * and that is the honest one, because a promise nobody can keep and no promise are
+   * the same information.
+   */
   | { kind: "waiting"; etaMin: number | null }
   /** Past the window. The wait is over and the thing did not come. */
   | { kind: "overdue" };
@@ -77,6 +90,12 @@ export function arrivalWaitWindowMin(
     "measuredLagMin" | "defaultLagMin" | "graceMin" | "maxMin" | "minWindowMin"
   >
 ): number {
+  // The `?? 0` floor is INERT for every caller today, and that is worth saying because
+  // it is a dependency on another file (#5127 review): the only measured consumer is
+  // `getSleepArrivalLagMinutes`, whose sample filter drops anything below zero, so
+  // `(measured ?? default) + grace` is already positive. The floor is here for
+  // `minWindowMin`'s sake — a caller that states a shortest window gets it enforced —
+  // and it would start doing work the day a producer can return a negative lag.
   return Math.min(
     Math.max(
       (input.measuredLagMin ?? input.defaultLagMin) + input.graceMin,
@@ -88,8 +107,13 @@ export function arrivalWaitWindowMin(
 
 export function arrivalWait(input: ArrivalWaitInput): ArrivalWait {
   if (input.elapsedMin < 0) return { kind: "ready" };
-  if (input.elapsedMin <= arrivalWaitWindowMin(input)) {
-    return { kind: "waiting", etaMin: input.measuredLagMin };
+  const windowMin = arrivalWaitWindowMin(input);
+  if (input.elapsedMin <= windowMin) {
+    const measured = input.measuredLagMin;
+    return {
+      kind: "waiting",
+      etaMin: measured == null || measured > windowMin ? null : measured,
+    };
   }
   return { kind: "overdue" };
 }
