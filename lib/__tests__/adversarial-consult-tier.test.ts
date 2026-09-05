@@ -1240,14 +1240,31 @@ describe("PHI names the gate here, not the hazard (#5275)", () => {
   // Verbatim from the window the narrowing was measured over (#4144-#5282),
   // where the old pattern fired 25 times and every one of them was one of these.
   it.each([
-    ["#5272, the report this was filed on", "- phi-scan — OK, no likely-real PHI in 5566 files"],
-    ["#4188 and ten others, the author's own summary", "- lint, typecheck, PHI scan, and format passed"],
-    ["#4200, the gate list", "- canonical lint, typecheck, pure, DB, format, PHI, and E2E shard-plan gates"],
+    [
+      "#5272, the report this was filed on",
+      "- phi-scan — OK, no likely-real PHI in 5566 files",
+    ],
+    [
+      "#4188 and ten others, the author's own summary",
+      "- lint, typecheck, PHI scan, and format passed",
+    ],
+    [
+      "#4200, the gate list",
+      "- canonical lint, typecheck, pure, DB, format, PHI, and E2E shard-plan gates",
+    ],
     ["#4595, the shortest spelling", "- PHI scan: clean"],
-    ["#5029, the scan's finding as a claim about the diff", "- No PHI: the notes describe features, never anyone's data"],
-    ["#4938, the gate quoting itself", "- `phi-scan`: `phi-scan: OK — no likely-real PHI in 5450 file(s).`"],
+    [
+      "#5029, the scan's finding as a claim about the diff",
+      "- No PHI: the notes describe features, never anyone's data",
+    ],
+    [
+      "#4938, the gate quoting itself",
+      "- `phi-scan`: `phi-scan: OK — no likely-real PHI in 5450 file(s).`",
+    ],
   ])("stays silent on %s", (_case, line) => {
-    expect(vocabularyHits([{ where: "b", text: claimProse(line) }])).toEqual([]);
+    expect(vocabularyHits([{ where: "b", text: claimProse(line) }])).toEqual(
+      []
+    );
   });
 
   // #5272 END TO END, with the heading it actually used. The hunk is inert and
@@ -1267,7 +1284,13 @@ describe("PHI names the gate here, not the hazard (#5275)", () => {
     ].join("\n");
     const input = {
       files: [file],
-      patches: { [file]: ["@@ -12,3 +12,3 @@", "-  return key;", "+  return dayKey;"].join("\n") },
+      patches: {
+        [file]: [
+          "@@ -12,3 +12,3 @@",
+          "-  return key;",
+          "+  return dayKey;",
+        ].join("\n"),
+      },
       sources: [
         { where: "PR title", text: "Name the day-context key" },
         { where: "PR body", text: claimProse(body) },
@@ -1281,7 +1304,12 @@ describe("PHI names the gate here, not the hazard (#5275)", () => {
       classify({
         ...input,
         sources: [
-          { where: "PR body", text: claimProse("The new endpoint exports PHI to a login outside the household.") },
+          {
+            where: "PR body",
+            text: claimProse(
+              "The new endpoint exports PHI to a login outside the household."
+            ),
+          },
         ],
       }).verdict
     ).toBe("CONSULT");

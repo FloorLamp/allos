@@ -1219,7 +1219,11 @@ describe("merge-gate-core: whose PR is this (#5177)", () => {
       "The copy keeps `session_kinds` and `notes`." + TRAILER(SELF_SESSION),
       SELF_SESSION,
     ],
-    ["prose about `.session_id` and nothing else", "It stamps `.session_id`.", null],
+    [
+      "prose about `.session_id` and nothing else",
+      "It stamps `.session_id`.",
+      null,
+    ],
     ["no session anywhere", "No footer here.", null],
   ])("reads %s", (_case, body, expected) => {
     expect(bodySession(body)).toBe(expected);
