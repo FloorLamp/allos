@@ -10,7 +10,7 @@ closed taxonomy, and `needs-human` handling.
   that exact SHA—not moving `origin/main`—for any reset or history rewrite.
 - Cluster two to six related issues by domain and files. Avoid file overlap;
   sequence work when overlap cannot be fenced. `claims <path>` names the active
-  lane holding a path; CANNOT TELL is NOT clear — answer before the lane edits.
+  lane holding a path; CANNOT TELL is NOT clear: answer before the lane edits.
 - A `design` issue is dispatchable only when its body records the owner
   decision (the #2701 shape) or a direction with stated falsifiers (#2641).
   One still carrying the design question is owner-gated; agents never explore.
@@ -19,13 +19,11 @@ closed taxonomy, and `needs-human` handling.
   lane on every path (new/resume/adopt) and warns past the machine cap.
   Ordinary concurrency is min(harness slots, machine cap) — five on the
   4-core container (#2964); a harness exposing fewer slots caps there (#3710).
-- Revert on a DISCRIMINATING signal: a misread red actually shipped, or the
-  ledger's median dispatch duration degrades. "Agents hit the ten-minute tool
-  cap" is not one — it fired at four agents and at five, so it cannot tell them
-  apart. Measured at five: median 90 min against a 86-min cap-four baseline.
-- That cap counts agents RUNNING — a machine limit. The queue that jams first
-  is PRs awaiting REVIEW, which is serial and cannot be parallelised. Hold
-  dispatch at roughly three unreviewed PRs however few agents are running.
+- Revert the cap on a DISCRIMINATING signal only: a misread red shipped, or
+  the ledger's median dispatch duration degrades. "Agents hit the tool cap"
+  fired at four and at five alike, so it is not one.
+- The cap counts agents RUNNING. The queue that jams first is PRs awaiting
+  REVIEW, which is serial: hold dispatch at about three unreviewed PRs.
 - With ready P1s, reserve two user/data lanes and select the highest-risk ready
   P2; cap presentation/guard at one. Recompute when issues arrive or lanes free.
 - **Self-filed work joins the BACK of its queue.** An issue you or a lane
@@ -35,18 +33,17 @@ closed taxonomy, and `needs-human` handling.
 - Lanes never file issues. Findings ride the return summary; the orchestrator
   decides what becomes an issue — a filed observation displaces real work.
 - An urgent P0/P1 displaces the candidate via `promote`; run only its matrix.
-- STAGGER starts: durations cluster tightly (85±5 min), so simultaneous starts
-  are simultaneous arrivals AND gates — five at once hit load 17.7. `new` warns
-  within 25 minutes and projects both arrivals; it never refuses, a P0 preempts.
+- STAGGER starts: durations cluster (85±5 min), so simultaneous starts are
+  simultaneous gates — five at once hit load 17.7. `new` warns within 25
+  minutes; it never refuses, a P0 preempts.
 - A red in code the diff did not touch is contention until proven otherwise —
   an ASSERTION failure included, not only a timeout (#3436).
-- A refuted PR re-enters the review queue; count rework when judging depth.
 - Every brief uses the generated template and the gate order from
   `scripts/orchestration/agent-gates.sh`.
-- Push meaningful checkpoints. A branch not next to land stays branch-only —
-  no PR at all, and a draft is not a banking state. The candidate's PR opens
-  READY (environment.md §GitHub access), never for CI a pending merge will
-  invalidate.
+- Push meaningful checkpoints. A branch not next to land stays branch-only — no
+  PR at all, and a draft is not a banking state. The candidate's PR opens READY
+  (environment.md §GitHub access), never for CI a pending merge will invalidate.
+- Claim the issue, naming the branch, BEFORE briefing — [claims.md](claims.md).
 - Parallelize banked implementation/local pre-review; serialize the sole
   candidate's remote review, CI, and merge.
 - A census meant to be EXHAUSTIVE passes ripgrep's `--binary` (`-a`). Several
@@ -59,8 +56,9 @@ closed taxonomy, and `needs-human` handling.
 1. Read each issue whole via `issue-read.mjs`; `new` refuses a closed one.
 2. Generate the dispatch brief and record the branch in the task list.
 3. Require the agent to merge current `origin/main` and run the assigned gates.
-   Promote only the next landing candidate to a PR; keep later verified branches
-   banked until the preceding merge lands, then rebase once.
+   Open the PR as soon as the gates pass (title imperative, one clause, 72
+   chars max, it is the commit subject; only a `(#N …)` tail); after another
+   merge lands, run `landing-independence.mjs` before deciding to rebase.
 4. Read the full diff, verify claims, and post a substantive COMMENT review.
 5. Diagnose E2E reds locally; send code corrections back to the author unless
    the change is an orchestrator-owned E2E fix.
@@ -80,8 +78,8 @@ closed taxonomy, and `needs-human` handling.
   re-verifies the directive-reading gates. 60 s per-test ceiling here; CI 15 s.
 - `ci-watch.mjs`: wait for settled CI; exit 0 green, 1 red, 2 unsettled (a
   `cancelled` run is no verdict — re-run it, not red), 3 conflict-blocked.
-- `catchup-digest.sh`: the since-last-looked digest; the check-in runs it once
-  its anchor is 4h stale, so it needs no remembering; `--peek` any time.
+- `pm-digest.sh`: the owner's catch-up (shipped for people, incidents and the
+  workflow changes they caused, progress). The PM runs it, not an orchestrator.
 - `dependabot-eval-brief.mjs`: evaluate major dependency updates.
 - `queue-snapshot.mjs`: the dispatchable queue in `$SCRATCH/.queue`, refreshed
   4-hourly, `[lane:B]` on rows the ledger holds. A "thin" claim answers it.
@@ -95,6 +93,7 @@ closed taxonomy, and `needs-human` handling.
 - Orchestrator bookkeeping in `lib/release-notes.json`: one batch a day at
   most, entries append-only, upgrade actions in the day's `operatorNotes`.
 - One bullet per user-visible change: ≤80 characters, product words, and a
-  `category` from `RELEASE_NOTE_CATEGORIES` — `lib/release-notes.ts` validates
-  both; the app groups each day by category, most visible first.
+  `category` from `RELEASE_NOTE_CATEGORIES`; the schema validates both.
+- A `perf` note needs a measured time on a surface a person waits for, not
+  less work: #5043 (−0.53 s on Trends) yes; #5055 (fewer reads, same view) no.
 - The digest prints the uncovered lag (`--check`); non-zero = the batch is due.

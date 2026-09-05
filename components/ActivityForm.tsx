@@ -87,7 +87,10 @@ import {
 } from "@/lib/activity-session-facts";
 import { estimateActivityKcal } from "@/lib/calorie-estimate";
 import { activityDisclosureSummary } from "@/lib/activity-import-details";
-import { activityEditDataHasStrength } from "@/lib/activity-form-model";
+import {
+  activityDraftHasTypedContent,
+  activityEditDataHasStrength,
+} from "@/lib/activity-form-model";
 import { activityIconIdentitiesAreComposite } from "@/lib/activity-icon";
 
 // Re-exported so existing callers keep importing the edit-payload shape from
@@ -125,6 +128,8 @@ export default function ActivityForm({
   editData,
   prefill = null,
   initialDate,
+  initialStartTime,
+  initialEndTime,
   live = false,
   onLiveFinished,
   adoptRowId = null,
@@ -135,6 +140,7 @@ export default function ActivityForm({
   plateauHints = [],
   rpeTracking = null,
   onClose,
+  onMinimize,
   onCloseRequestReady,
   onDeleted,
   stickyFooter = false,
@@ -160,6 +166,14 @@ export default function ActivityForm({
   // Date-only create seed from a day-history link. Kept separate from a repeat
   // prefill so choosing a day never fabricates an activity type or title.
   initialDate?: string;
+  /**
+   * The clocks a window on the day chart stated (#4950 item 5), `HH:MM` local. A
+   * CREATE-only default: a row being edited keeps its own times, and a create with no
+   * window keeps the "now" it has always opened at. The start is what the person
+   * pointed at; an end they did not state stays empty.
+   */
+  initialStartTime?: string;
+  initialEndTime?: string;
   // Live workout mode (issue #340): opens the form in the in-gym layout — a
   // control strip with the rest timer + Finish above the normal form. Purely a
   // presentation flag over the same form state (no second engine); "Finish"
@@ -194,6 +208,12 @@ export default function ActivityForm({
   // surface can put an effort column on screen for a profile that never asked.
   rpeTracking?: RpeTracking | null;
   onClose: () => void;
+  // Parks a running workout on the app-wide bar. The workspace keeps this form
+  // MOUNTED while parked (the rest timer has to keep ticking), so this is not a
+  // close and must not be spelled as one — it used to arrive as `onClose` in
+  // disguise, which is how the footer's Done came to pocket a live session
+  // instead of ending it (#5111). Absent ⇒ there is nothing to park.
+  onMinimize?: () => void;
   // The containing dialog routes Escape through the same save-aware path as
   // Done, the backdrop, and the live-workout minimize control.
   onCloseRequestReady?: (
@@ -203,9 +223,10 @@ export default function ActivityForm({
   // canonical detail URL that now points at no record.
   onDeleted?: (id: number) => void;
   // In the overlay the (often taller-than-viewport) form scrolls, so the action
-  // row pins to the bottom of the screen and gains a Done button — otherwise
-  // closing means scrolling back up to the ✕. The docked editor keeps the plain
-  // row: sticking to the page viewport there would detach it from the form.
+  // row pins to the bottom of the screen and gains a Done button, within thumb
+  // reach of the header's ✕ once the form runs past a screen. The docked editor
+  // keeps the plain row: sticking to the page viewport there would detach it
+  // from the form.
   stickyFooter?: boolean;
 }) {
   const tz = useTimezone();
@@ -343,9 +364,11 @@ export default function ActivityForm({
     () => seed?.date ?? initialDate ?? todayStr(tz)
   );
   const [startTime, setStartTime] = useState(() =>
-    editData ? (editData.start_time ?? "") : nowHHMM(tz)
+    editData ? (editData.start_time ?? "") : (initialStartTime ?? nowHHMM(tz))
   );
-  const [endTime, setEndTime] = useState(editData?.end_time ?? "");
+  const [endTime, setEndTime] = useState(
+    editData?.end_time ?? initialEndTime ?? ""
+  );
   const finishStampedEndRef = useRef(false);
   const [sessionDuration, setSessionDuration] = useState(() =>
     seed?.duration_min != null ? String(Math.round(seed.duration_min)) : ""
@@ -1133,10 +1156,11 @@ export default function ActivityForm({
     canSave,
   ]);
 
-  // Save from the recap step: stamp the end time and leave live mode, collapsing to
-  // the plain editor for the now-finished session (the #340 finishWorkout landing).
-  // This explicit flush persists the fields (end time + effort + notes) before
-  // the step collapses.
+  // Save from the recap step: stamp the end time, leave live mode, and CLOSE
+  // (#5111). Saving a recap is the end of the session, and collapsing back to the
+  // plain editor for the row just finished made Save the third tap of four —
+  // scroll up, Finish, Save, Done. The finished session's editor is one tap away
+  // on its own activity page, where it already lives.
   async function saveRecapStep() {
     // Finish is an explicit commit boundary. Persist the latest title, effort,
     // notes, and end stamp before collapsing the recap so a quick Save followed
@@ -1144,21 +1168,30 @@ export default function ActivityForm({
     await autosave.flushBeforeClose();
     finishWorkout();
     if (live) onLiveFinished?.();
+    // Through the guard, not straight to onClose: a session that finished with
+    // nothing savable in it still gets the "Discard unsaved changes?" ask, and
+    // the close path stays the single one Done, Escape and the backdrop take.
+    await requestClose();
   }
 
+  // The footer's finish. Two entrypoints, one gate.
+  //
   // Plain-form "Finish workout" (#1124): the in-app finish for NON-live logging.
   // Stamp end = now and open the SAME SessionCompleteStep the live panel's Finish
   // reaches (#221, one step, two entrypoints), so a plain-form logger gets the
   // end-stamp + the session-effort capture without needing live/in-gym mode. Offered
   // only in create mode on TODAY (a retro/edit "end = now" is wrong — the DateTimeFields
   // "now" shortcut covers retro), once there's savable content and no end yet.
+  //
+  // A LIVE session is admitted rather than excluded (#5111). It satisfies that gate
+  // by construction — a create, started today, still running — and the live panel at
+  // the top of the form already offers Finish unconditionally, so gating the footer's
+  // copy on `canSave` would make the same commit appear in one place and not the
+  // other. Ending a workout is then reachable from the sticky bar the thumb is
+  // already on, instead of a scroll back up past every logged set.
   const canFinishInForm =
-    !isEdit &&
-    !liveMode &&
     !showRecap &&
-    !endTime &&
-    date === todayStr(tz) &&
-    canSave;
+    (liveMode || (!isEdit && !endTime && date === todayStr(tz) && canSave));
   function openFinishRecap() {
     finishStampedEndRef.current = !endTime;
     if (finishStampedEndRef.current) changeEndTime(nowHHMM(tz));
@@ -1260,12 +1293,21 @@ export default function ActivityForm({
       : null;
 
   // Auto-save can't persist a blocked form, so closing one with unsaved edits
-  // to a real row would silently drop them — confirm first. A blocked blank
-  // create is exempt: discarding it is the natural "cancel". The durable
-  // before-close flush lives in the auto-save hook (#1189).
+  // would silently drop them — confirm first. A ROWLESS draft is asked about
+  // too (#5111): a half-typed exercise has no row to come back to, so closing
+  // it is the one discard that loses everything. What stays exempt is the
+  // create nobody has typed into — pristine, or changed only by a tap on the
+  // date, the effort chips or the gear picker — where discarding IS the cancel.
+  // The durable before-close flush lives in the auto-save hook (#1189).
+  const hasTypedContent = activityDraftHasTypedContent({
+    parts,
+    title,
+    titleEdited,
+    notes,
+  });
   const requestClose = useCallback(
     async (beforeClose?: () => void) => {
-      if (hasRow && dirty && !canSave) {
+      if ((hasRow || hasTypedContent) && dirty && !canSave) {
         const ok = await confirm({
           title: "Discard unsaved changes?",
           message:
@@ -1280,12 +1322,22 @@ export default function ActivityForm({
       onClose();
       return true;
     },
-    [hasRow, dirty, canSave, confirm, autosave, onClose]
+    [hasRow, hasTypedContent, dirty, canSave, confirm, autosave, onClose]
   );
   useEffect(() => {
     onCloseRequestReady?.(requestClose);
     return () => onCloseRequestReady?.(null);
   }, [onCloseRequestReady, requestClose]);
+  // Parking is not closing, so it takes neither half of the close guard: nothing
+  // is discarded (this form stays mounted and its auto-save keeps running), so
+  // there is nothing to ask about. It still flushes, so the dock's label and the
+  // record behind the workspace read the latest edit rather than the last debounce.
+  const minimizeWorkout = onMinimize
+    ? async () => {
+        await autosave.flushBeforeClose();
+        onMinimize();
+      }
+    : undefined;
   return (
     <form
       ref={formElRef}
@@ -1349,7 +1401,7 @@ export default function ActivityForm({
             saveError={status === "error"}
             blocker={blocker}
             overlay={stickyFooter}
-            showMinimize={liveMode}
+            onMinimize={liveMode ? minimizeWorkout : undefined}
             onTitleChange={(value) => {
               setTitle(value);
               setTitleEdited(true);

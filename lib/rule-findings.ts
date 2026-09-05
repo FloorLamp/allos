@@ -39,11 +39,10 @@ import {
   getFiberAdequacy,
   getFindingSuppressions,
 } from "./queries";
+import { effectiveSituationResolver } from "./queries/derived-situations";
 import { activeFindings } from "./findings";
 import { exerciseHistoryKey } from "./lifts";
 import {
-  getActiveSituations,
-  getSituationEvents,
   getHomeLocation,
   getProfileSex,
   getProfileAge,
@@ -81,7 +80,7 @@ import {
   type DataQualityGap,
 } from "./data-quality";
 import { buildFoodDrugVarianceFindings } from "./food-drug-ledger-findings";
-import { situationHistoryResolver } from "./trend-annotations";
+
 import { getIntakeHistory } from "./intake-history";
 import {
   detectDemotionCandidates,
@@ -629,9 +628,23 @@ export function buildSleepClockSkewFindings(
       dedupeKey: sleepClockSkewSignalKey(firstWakeDay),
       title: `${nights} sleep times disagree with your heart rate`,
       detail:
-        `Across the newest of them your heart rate sat at ${newest.evidence.claimedBpm} bpm, ` +
-        `while an equally long window earlier the same day sat at ${newest.evidence.troughBpm} bpm — ` +
-        `the overnight low. The durations look right; the clock times ${source} recorded may not be.` +
+        // Two readings caught these nights, and each has its own true sentence. The
+        // median reading can name an equally long window elsewhere holding the
+        // overnight low; on a run finding no such window exists — that absence is why
+        // the median reading missed it — so it names the stretch inside the window
+        // instead (#5020).
+        (newest.evidence.awakeRun
+          ? // No duration in this sentence, for the same reason there is no offset in
+            // the other one: "a two-hour stretch" beside "the clock times may not be"
+            // reads as a claim about how far off the clock is, and nothing here
+            // measures that.
+            `Across the newest of them part of the recorded window ran at ` +
+            `${newest.evidence.awakeRun.bpm} bpm — a daytime level — while the window ` +
+            `as a whole sat at ${newest.evidence.claimedBpm} bpm. ` +
+            `The durations look right; the clock times ${source} recorded may not be.`
+          : `Across the newest of them your heart rate sat at ${newest.evidence.claimedBpm} bpm, ` +
+            `while an equally long window earlier the same day sat at ${newest.evidence.troughBpm} bpm — ` +
+            `the overnight low. The durations look right; the clock times ${source} recorded may not be.`) +
         (newest.nearTimezoneSwitch
           ? " Your travel log records a timezone change around then."
           : ""),
@@ -1640,13 +1653,17 @@ export function buildAdherencePatternFindings(
   const dates = lastNDates(today, ADHERENCE_PATTERN_DAYS);
   const workoutDays = new Set(getActivityDates(profileId));
   const isExcused = travelExcusalResolver(profileId);
-  // Per-day situation resolver (#654): a past day is scored against the situations
-  // active THAT day, not today's toggle applied retroactively — so a situational
-  // item's pattern observations aren't distorted by a situation activated today.
-  const situationsOn = situationHistoryResolver(
-    getActiveSituations(profileId),
-    getSituationEvents(profileId)
-  );
+  // Per-day DUENESS resolver (#654/#3993): a past day is scored against what held THAT
+  // day, declared AND derived, not today's toggle applied retroactively.
+  //
+  // This is the widest walk in the app — ADHERENCE_PATTERN_DAYS = 56 days, on the
+  // dashboard — and it is the one the cost objection was really about. It costs one
+  // gather now, not 56: the resolver reads each derived input once for the declared
+  // window. A pattern therefore counts exactly the days the strip it summarizes counts.
+  const situationsOn = effectiveSituationResolver(profileId, {
+    from: dates[0],
+    to: today,
+  });
 
   const inputs: DoseAdherenceInput[] = [];
   for (const d of doses) {

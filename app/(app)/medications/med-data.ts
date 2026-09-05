@@ -31,7 +31,6 @@ import {
   getAdministrationsForItemsOnDate,
   getPrnMedicationsForQuickLog,
   getMedicationFamilyStates,
-  getEffectiveActiveSituations,
 } from "@/lib/queries";
 import { loadIntakeFormContext } from "@/lib/intake-form-context";
 import {
@@ -65,15 +64,14 @@ import {
   type MedicationListRow,
 } from "@/lib/medication-list";
 import { parseRxcuiIngredients } from "@/lib/rxnorm";
-import { lastNDates, zonedDateParts, parseUtcSql } from "@/lib/date";
 import {
-  getActiveSituations,
-  getSituationEvents,
-  getTimezone,
-  getProfileAge,
-  type WeightUnit,
-} from "@/lib/settings";
-import { situationHistoryResolver } from "@/lib/trend-annotations";
+  lastNDates,
+  shiftDateStr,
+  zonedDateParts,
+  parseUtcSql,
+} from "@/lib/date";
+import { getTimezone, getProfileAge, type WeightUnit } from "@/lib/settings";
+import { effectiveSituationResolver } from "@/lib/queries/derived-situations";
 import {
   isDueOn,
   isPostWorkoutReady,
@@ -259,16 +257,19 @@ export function loadMedicationsData(
   const takenTimes = getTakenDoseTimes(profileId, todayStr);
   const taken = new Set(takenTimes.keys());
   const skipped = getSkippedDoseIds(profileId, todayStr);
-  const activeSituations = new Set(getActiveSituations(profileId));
-  const situationsOn = situationHistoryResolver(
-    activeSituations,
-    getSituationEvents(profileId)
-  );
-  // Derived context (#1292/#1298) widens the active set for TODAY's dueness only (a
-  // medication keyed to Poor sleep / Period goes due while the context holds); the
-  // history resolver above stays declared-only so it can't apply derived names to past
-  // days retroactively.
-  const effectiveSituations = getEffectiveActiveSituations(profileId, todayStr);
+  // Per-day DUENESS resolver (#654/#3993): every day this page scores — today's row and
+  // each past day of the strip — is asked against what held THAT day, declared AND
+  // derived. Today's set is that same resolver asked about today, so the row and the
+  // strip beside it can never disagree about whether a medication was owed. The window
+  // declared here is the WIDEST this resolver is asked about — the detail page's month
+  // calendar reads it through `data.adherenceInputs`, not the 14-day row strip — so the
+  // derived inputs are gathered once for both rather than once per drawn day (#3993).
+  const dates = lastNDates(todayStr, STRIP_DAYS);
+  const situationsOn = effectiveSituationResolver(profileId, {
+    from: shiftDateStr(todayStr, -(ADHERENCE_MONTH_DAYS - 1)),
+    to: todayStr,
+  });
+  const effectiveSituations = situationsOn(todayStr);
   const todaysActivities = getActivitiesByDate(profileId, todayStr);
   const isWorkoutDay = todaysActivities.length > 0;
   const predictedWorkoutDay = isPredictedWorkoutDay(profileId, todayStr);
@@ -293,7 +294,6 @@ export function loadMedicationsData(
   const workoutDays = new Set(getActivityDates(profileId));
   // Travel (#3263): the per-day slot excusal, resolved once for the whole gather.
   const isExcused = travelExcusalResolver(profileId);
-  const dates = lastNDates(todayStr, STRIP_DAYS);
   const takenByDose = indexTakenByDose(
     getIntakeAdherenceEvidence(profileId, STRIP_DAYS)
   );

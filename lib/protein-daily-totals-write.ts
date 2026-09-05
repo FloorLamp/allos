@@ -81,8 +81,10 @@ export function addProteinGramsCore(
   // counts for Evening); the web quick-add passes neither, where the tap-derived slot IS
   // the honest answer. Never overrides `loggedAt`, which stays the audit/tap time.
   placement?: FoodPlacement,
-  // Which message's tap this is (#2264) — the Telegram "+Xg" button only, so the
-  // protein burst's correction row renders on the message that produced it.
+  // WHERE THE ACT CAME FROM (see FoodWriteOrigin). Which message's tap this is (#2264)
+  // is the Telegram "+Xg" button's, so the protein burst's correction row renders on
+  // the message that produced it; the ACT ID (#5082) is the usual tap's, when the scoop
+  // was written as part of one.
   origin?: FoodWriteOrigin
 ): ProteinAddOutcome {
   if (!validGrams(grams)) return { kind: "invalid" };
@@ -103,8 +105,8 @@ export function addProteinGramsCore(
     db.prepare(
       `INSERT INTO food_log_events
          (profile_id, group_key, date, recorded_at, meal_slot, occurred_at, time_source,
-          notify_message_id, logged_via)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          notify_message_id, logged_via, bundle_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       profileId,
       PROTEIN_NUDGE_KEY,
@@ -114,7 +116,11 @@ export function addProteinGramsCore(
       columns.eatenAt,
       columns.timeSource,
       origin?.notifyMessageId ?? null,
-      loggedVia
+      loggedVia,
+      // The act id (#5082), from the composed caller that minted it — the usual tap's
+      // scoop is part of the same act as its servings and its doses. NULL for the
+      // quick-add and the "+Xg" nudge, which are each one write on their own.
+      origin?.bundleId ?? null
     );
     return { kind: "logged", grams: total };
   });

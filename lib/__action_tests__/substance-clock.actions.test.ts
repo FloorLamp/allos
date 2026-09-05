@@ -23,12 +23,16 @@ import {
 import { actAs, createLogin, createProfile, fd } from "./harness";
 import { setProfileSetting } from "@/lib/settings";
 import { shiftDateStr } from "@/lib/date";
-import { gatherHistoryLog } from "@/lib/history";
+import { gatherHistoryLog, type HistoryGatherOptions } from "@/lib/history";
 import {
   deleteFoodLogEventCore,
   updateFoodLogEventCore,
 } from "@/lib/food-log-write";
 import { getIntradayDay, getSubstanceDailyTotals } from "@/lib/queries";
+import {
+  deleteFoodLogEvent,
+  updateFoodLogEvent,
+} from "@/app/(app)/nutrition/actions";
 
 const TZ = "UTC";
 
@@ -65,11 +69,17 @@ function dayServings(profileId: number, date: string): number {
 }
 
 /** The record's rows for one day, and the chart the same gather feeds. */
-function dayView(loginId: number, profileId: number, date: string) {
+function dayView(
+  loginId: number,
+  profileId: number,
+  date: string,
+  narrow?: Pick<HistoryGatherOptions, "kind" | "item">
+) {
   const gather = gatherHistoryLog(profileId, {
     loginId,
     day: date,
     limit: 50,
+    ...narrow,
   });
   return {
     rows: gather.rows,
@@ -349,6 +359,54 @@ describe("the record reports the drink's instant (#3295 part 2)", () => {
     ).toEqual([]);
   });
 
+  // THE ITEM AXIS, WHICH THE DRINKS LOOP HAS TO ASK FOR ITSELF. Alcohol is the only
+  // substance with events, so that loop reads its food group unconditionally — narrowing
+  // to a different substance drops the day rows below and nothing else. Both halves
+  // leak together, which is why they are asserted as one shape: the row, and the mark
+  // pushed beside it.
+  it("keeps drinks out of another substance's filter, on the rows and on the chart", async () => {
+    const { login, profile } = seat("clock-item-axis");
+    const date = shiftDateStr(today(profile.id), -1);
+    await addSubstanceDailyTotalAction(
+      fd({
+        substance: "alcohol",
+        date,
+        amount: "1",
+        stated_at: `${date}T21:30:00Z`,
+      })
+    );
+    // Nicotine is the narrowing target BECAUSE its ledger is timeless: phase 2 gives it
+    // per-event rows, and whoever moves it must re-seat this case on a day-total
+    // substance or it stops exercising the arm the guard protects.
+    await addSubstanceDailyTotalAction(
+      fd({ substance: "nicotine", date, amount: "2" })
+    );
+
+    const seen = (item?: string) => {
+      const { rows, ticks } = dayView(login.id, profile.id, date, {
+        kind: "substance",
+        item,
+      });
+      return {
+        rows: rows.map((r) => r.title),
+        ticks: ticks.map((t) => t.minute),
+      };
+    };
+    // UNNARROWED FIRST, through the same reader and differing in ONE option, because a
+    // filter's emptiness is otherwise satisfied by a fixture that logged no drink.
+    expect(seen()).toEqual({
+      rows: ["Alcohol", "Nicotine"],
+      ticks: [21 * 60 + 30],
+    });
+    expect(seen("nicotine")).toEqual({ rows: ["Nicotine"], ticks: [] });
+    // AND THE AXIS NARROWS RATHER THAN HIDES: asking for the drinks by name still gets
+    // them, which the guard's other wrong spelling — the item test alone — would not.
+    expect(seen("alcohol")).toEqual({
+      rows: ["Alcohol"],
+      ticks: [21 * 60 + 30],
+    });
+  });
+
   it("renders an untimed drink as a row that admits its clock is a filing time, and marks nothing", async () => {
     const { login, profile } = seat("clock-untimed");
     const date = shiftDateStr(today(profile.id), -1);
@@ -368,61 +426,131 @@ describe("the record reports the drink's instant (#3295 part 2)", () => {
   });
 });
 
-// THE ALCOHOL RECONCILIATION CONTRACT (#1078/#2009), asserted for the timed write in
-// BOTH directions: the day counter equals the events that back it, and no correction
-// leaves an event stranded on a day its row has left.
-describe("events and the day total stay consistent through a timed correction", () => {
-  it("shrinks, grows and re-dates without stranding an event or a stale count", async () => {
-    const { profile } = seat("clock-reconcile");
+// THE TWO CORRECTION DOORS, AND THE ONE THAT CLOSED (#5026 item 1).
+//
+// This block used to assert the opposite: that the day-count form shrank, grew and
+// re-dated a day's drinks, clearing every stated instant as it moved them. That IS the
+// flattening the 2026-09-04 ruling rules out — a consumable is an event, the day total
+// is a rollup and not the editable thing — so the door is closed, and the same day is
+// corrected here one drink at a time through the door the record actually offers.
+//
+// BOTH DIRECTIONS, ONE FIXTURE, because the two failures are opposite and a fix that
+// only closes the day form is half of the answer: a drink nobody can correct anywhere
+// is as wrong as a drink corrected by levelling the day.
+describe("a drink is corrected on its own row, never through the day count (#5026 item 1)", () => {
+  /** Two drinks, stated at two hours, exactly as the flattening case needs them. */
+  async function twoStatedDrinks(name: string) {
+    const { login, profile } = seat(name);
     const date = shiftDateStr(today(profile.id), -4);
     const added = await addSubstanceDailyTotalAction(
       fd({
         substance: "alcohol",
         date,
-        amount: "3",
-        stated_at: `${date}T20:00:00Z`,
+        amount: "1",
+        stated_at: `${date}T21:00:00Z`,
       })
     );
-    if (added.kind !== "added") throw new Error("timed entry was not added");
-    expect(taps(profile.id, date)).toHaveLength(3);
-    expect(dayServings(profile.id, date)).toBe(3);
-
-    // SHRINK: the surplus tap leaves through the row-delete core, and the counter
-    // follows it down rather than being left to describe rows that are gone.
-    await updateSubstanceDailyTotalAction(
-      fd({ id: String(added.id), substance: "alcohol", date, amount: "1" })
-    );
-    expect(taps(profile.id, date)).toEqual([
-      { occurred_at: `${date}T20:00:00Z`, time_source: "stated" },
-    ]);
-    expect(dayServings(profile.id, date)).toBe(1);
-
-    // GROW: the appended unit is a real event, and the count is the events' count.
-    await updateSubstanceDailyTotalAction(
-      fd({ id: String(added.id), substance: "alcohol", date, amount: "3" })
-    );
-    expect(taps(profile.id, date)).toHaveLength(3);
-    expect(dayServings(profile.id, date)).toBe(3);
-
-    // RE-DATE: nobody restated an hour for the new day, so the stated instant is
-    // cleared WITH the move — an instant from the old day is exactly the cross-day
-    // pair the stated-time gate refuses to write anywhere else.
-    const moved = shiftDateStr(date, 1);
-    await updateSubstanceDailyTotalAction(
+    if (added.kind !== "added") throw new Error("first drink was not added");
+    await addSubstanceDailyTotalAction(
       fd({
-        id: String(added.id),
         substance: "alcohol",
-        date: moved,
-        amount: "3",
+        date,
+        amount: "1",
+        stated_at: `${date}T23:00:00Z`,
       })
     );
-    expect(taps(profile.id, date)).toEqual([]);
-    expect(dayServings(profile.id, date)).toBe(0);
-    expect(taps(profile.id, moved)).toEqual([
-      { occurred_at: null, time_source: null },
-      { occurred_at: null, time_source: null },
-      { occurred_at: null, time_source: null },
+    return { login, profile, date, dayId: added.id };
+  }
+
+  /** Each drink row the record shows, as the clock it reads and the event its
+   *  correction door addresses — keyed on the clock, because the row's identity to a
+   *  person is the hour, and id order is not row order. */
+  function recordDrinks(loginId: number, profileId: number, date: string) {
+    return dayView(loginId, profileId, date)
+      .rows.filter((row) => row.kind === "substance")
+      .map((row) => ({
+        at: row.sortTime,
+        door: (row.edit as { kind: string; eventId: number }).kind,
+        eventId: (row.edit as { kind: string; eventId: number }).eventId,
+      }));
+  }
+
+  it("refuses the day-count correction, and neither clock moves", async () => {
+    const { login, profile, date, dayId } =
+      await twoStatedDrinks("clock-day-door");
+    const moved = shiftDateStr(date, 1);
+
+    expect(
+      await updateSubstanceDailyTotalAction(
+        fd({
+          id: String(dayId),
+          substance: "alcohol",
+          date: moved,
+          amount: "1",
+        })
+      )
+    ).toEqual({ kind: "corrected-per-event" });
+
+    // The two stated hours, the day they were stated on, and the counter that rolls
+    // them up: all where the person left them. Asserted on the STORE, because a
+    // refusal returned after a partial write reads identically at the seam.
+    expect(taps(profile.id, date)).toEqual([
+      { occurred_at: `${date}T21:00:00Z`, time_source: "stated" },
+      { occurred_at: `${date}T23:00:00Z`, time_source: "stated" },
     ]);
-    expect(dayServings(profile.id, moved)).toBe(3);
+    expect(taps(profile.id, moved)).toEqual([]);
+    expect(dayServings(profile.id, date)).toBe(2);
+    // And the record still shows the pair, each on its own tick.
+    const { rows, ticks } = dayView(login.id, profile.id, date);
+    expect(rows.filter((row) => row.kind === "substance")).toHaveLength(2);
+    expect(ticks.map((tick) => tick.minute)).toEqual([21 * 60, 23 * 60]);
+  });
+
+  it("corrects the same day through the record's own door, one drink at a time", async () => {
+    const { login, profile, date } = await twoStatedDrinks("clock-event-door");
+    const drinks = recordDrinks(login.id, profile.id, date);
+    // THE OFFER, before the write: each drink is its own row, at its own hour (the
+    // record reads a day latest-first), and the door each one opens is the FOOD
+    // serving's form (#5025 phase 1).
+    expect(drinks.map((drink) => [drink.at, drink.door])).toEqual([
+      ["23:00", "food"],
+      ["21:00", "food"],
+    ]);
+    const first = drinks.find((drink) => drink.at === "21:00")!.eventId;
+    const second = drinks.find((drink) => drink.at === "23:00")!.eventId;
+
+    // The door the record mounts on a drink row is the food serving's own form, so
+    // this is the post that form makes: a wall time on the row's day.
+    expect(
+      (
+        await updateFoodLogEvent(
+          fd({
+            event_id: String(first),
+            profile_id: String(profile.id),
+            date,
+            occurred_at: "20:15",
+          })
+        )
+      ).ok
+    ).toBe(true);
+    // ONE DRINK MOVED. The other keeps the hour it was stated at — which is exactly
+    // what the day form could not do, and the whole reason it closed.
+    expect(recordDrinks(login.id, profile.id, date).map((d) => d.at)).toEqual([
+      "23:00",
+      "20:15",
+    ]);
+
+    // And the same door removes ONE drink, with the rollup following it down.
+    expect(
+      (
+        await deleteFoodLogEvent(
+          fd({ event_id: String(second), profile_id: String(profile.id) })
+        )
+      ).ok
+    ).toBe(true);
+    expect(dayServings(profile.id, date)).toBe(1);
+    expect(recordDrinks(login.id, profile.id, date)).toEqual([
+      { at: "20:15", door: "food", eventId: first },
+    ]);
   });
 });

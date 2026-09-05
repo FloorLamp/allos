@@ -34,6 +34,15 @@ const TOKYO = "Asia/Tokyo";
 const EVENING_UTC = "2026-05-01T21:00:00Z";
 const HONOLULU = "Pacific/Honolulu";
 
+// One leg of a JOURNEY. Almost every scenario in this file is travel, and `kind` is the
+// subject of a describe block of its own at the foot rather than a detail each case
+// restates — so the travel records are built here and the settings-kind ones say so
+// where they appear.
+const leg = (sw: Omit<TimezoneSwitch, "kind">): TimezoneSwitch => ({
+  ...sw,
+  kind: "travel",
+});
+
 const MORNING = 8 * 60;
 const MIDDAY = 13 * 60;
 const EVENING = 20 * 60;
@@ -66,34 +75,35 @@ describe("comparePositions", () => {
 describe("resolveSwitch", () => {
   it("names the direction the wall clock moved", () => {
     expect(
-      resolveSwitch({ at: NOON_UTC, from: NY, to: TOKYO })?.direction
+      resolveSwitch(leg({ at: NOON_UTC, from: NY, to: TOKYO }))?.direction
     ).toBe("forward");
     expect(
-      resolveSwitch({ at: NOON_UTC, from: TOKYO, to: NY })?.direction
+      resolveSwitch(leg({ at: NOON_UTC, from: TOKYO, to: NY }))?.direction
     ).toBe("backward");
     // Two zones reading the same wall clock at that instant — nothing skipped and
     // nothing repeated, so neither rule may fire.
     expect(
-      resolveSwitch({ at: NOON_UTC, from: "Europe/Paris", to: "Europe/Berlin" })
-        ?.direction
+      resolveSwitch(
+        leg({ at: NOON_UTC, from: "Europe/Paris", to: "Europe/Berlin" })
+      )?.direction
     ).toBe("level");
   });
 
   it("carries both endpoints as the local positions they really were", () => {
-    const r = resolveSwitch({ at: NOON_UTC, from: NY, to: TOKYO });
+    const r = resolveSwitch(leg({ at: NOON_UTC, from: NY, to: TOKYO }));
     expect(r?.left).toEqual({ day: "2026-05-01", minute: 10 * 60 });
     expect(r?.landed).toEqual({ day: "2026-05-01", minute: 23 * 60 });
   });
 
   it("answers null for a record it cannot trust, instead of throwing", () => {
     expect(
-      resolveSwitch({ at: "not-an-instant", from: NY, to: TOKYO })
+      resolveSwitch(leg({ at: "not-an-instant", from: NY, to: TOKYO }))
     ).toBeNull();
     expect(
-      resolveSwitch({ at: NOON_UTC, from: "Mars/Olympus", to: TOKYO })
+      resolveSwitch(leg({ at: NOON_UTC, from: "Mars/Olympus", to: TOKYO }))
     ).toBeNull();
     expect(
-      resolveSwitch({ at: NOON_UTC, from: NY, to: "Mars/Olympus" })
+      resolveSwitch(leg({ at: NOON_UTC, from: NY, to: "Mars/Olympus" }))
     ).toBeNull();
   });
 });
@@ -104,7 +114,7 @@ describe("resolveSwitch", () => {
 const resolved = (sw: TimezoneSwitch) => resolveSwitchHistory([sw])[0];
 
 describe("neverOccurred — the eastward vanished span", () => {
-  const flight: TimezoneSwitch = { at: NOON_UTC, from: NY, to: TOKYO };
+  const flight: TimezoneSwitch = leg({ at: NOON_UTC, from: NY, to: TOKYO });
 
   it("covers the wall clock the switch jumped over", () => {
     // 10:00 → 23:00 on the same local date: midday, evening and bedtime all
@@ -160,11 +170,11 @@ describe("neverOccurred — the eastward vanished span", () => {
 
   it("spans the calendar day the switch skipped over the date line", () => {
     // Honolulu 2026-05-01 11:00 → Tokyo 2026-05-02 06:00.
-    const dateLine: TimezoneSwitch = {
+    const dateLine: TimezoneSwitch = leg({
       at: EVENING_UTC,
       from: HONOLULU,
       to: TOKYO,
-    };
+    });
     expect(
       neverOccurred(resolved(dateLine), { day: "2026-05-01", minute: EVENING })
     ).toBe(true);
@@ -180,15 +190,15 @@ describe("neverOccurred — the eastward vanished span", () => {
   });
 
   it("never fires for a westward or a level switch", () => {
-    const westward: TimezoneSwitch = { at: NOON_UTC, from: TOKYO, to: NY };
+    const westward: TimezoneSwitch = leg({ at: NOON_UTC, from: TOKYO, to: NY });
     expect(
       neverOccurred(resolved(westward), { day: "2026-05-01", minute: MIDDAY })
     ).toBe(false);
-    const level: TimezoneSwitch = {
+    const level: TimezoneSwitch = leg({
       at: NOON_UTC,
       from: "Europe/Paris",
       to: "Europe/Berlin",
-    };
+    });
     expect(
       neverOccurred(resolved(level), { day: "2026-05-01", minute: MIDDAY })
     ).toBe(false);
@@ -196,7 +206,7 @@ describe("neverOccurred — the eastward vanished span", () => {
 });
 
 describe("occurredTwice — the westward repeated span", () => {
-  const flight: TimezoneSwitch = { at: NOON_UTC, from: TOKYO, to: NY };
+  const flight: TimezoneSwitch = leg({ at: NOON_UTC, from: TOKYO, to: NY });
 
   it("covers the wall clock the profile lives through a second time", () => {
     // 23:00 back to 10:00 on the same local date.
@@ -237,11 +247,11 @@ describe("occurredTwice — the westward repeated span", () => {
 
   it("spans backwards over the date line", () => {
     // Tokyo 2026-05-02 06:00 back to Honolulu 2026-05-01 11:00.
-    const dateLine: TimezoneSwitch = {
+    const dateLine: TimezoneSwitch = leg({
       at: EVENING_UTC,
       from: TOKYO,
       to: HONOLULU,
-    };
+    });
     expect(
       occurredTwice(resolved(dateLine), { day: "2026-05-01", minute: EVENING })
     ).toBe(true);
@@ -254,7 +264,7 @@ describe("occurredTwice — the westward repeated span", () => {
   });
 
   it("never fires for an eastward switch", () => {
-    const eastward: TimezoneSwitch = { at: NOON_UTC, from: NY, to: TOKYO };
+    const eastward: TimezoneSwitch = leg({ at: NOON_UTC, from: NY, to: TOKYO });
     expect(
       occurredTwice(resolved(eastward), { day: "2026-05-01", minute: MIDDAY })
     ).toBe(false);
@@ -264,8 +274,8 @@ describe("occurredTwice — the westward repeated span", () => {
 describe("isExcusedSlot / isRepeatedSlot over a history", () => {
   // A trip out and back: eastward on the 1st, westward on the 8th.
   const history: TimezoneSwitch[] = [
-    { at: NOON_UTC, from: NY, to: TOKYO },
-    { at: "2026-05-08T14:00:00Z", from: TOKYO, to: NY },
+    leg({ at: NOON_UTC, from: NY, to: TOKYO }),
+    leg({ at: "2026-05-08T14:00:00Z", from: TOKYO, to: NY }),
   ];
 
   it("excuses a slot the complete trip trajectory never contained", () => {
@@ -276,8 +286,8 @@ describe("isExcusedSlot / isRepeatedSlot over a history", () => {
 
   it("re-arms a skipped slot when a later reverse switch makes it occur", () => {
     const quickReturn: TimezoneSwitch[] = [
-      { at: "2026-05-01T14:00:00Z", from: NY, to: TOKYO },
-      { at: "2026-05-01T14:01:00Z", from: TOKYO, to: NY },
+      leg({ at: "2026-05-01T14:00:00Z", from: NY, to: TOKYO }),
+      leg({ at: "2026-05-01T14:01:00Z", from: TOKYO, to: NY }),
     ];
     // 10:00 -> 23:00 skips noon, then 23:01 -> 10:01 puts noon back ahead
     // of the profile. Across the combined trajectory it occurs exactly once.
@@ -291,9 +301,9 @@ describe("isExcusedSlot / isRepeatedSlot over a history", () => {
 
   it("ignores a duplicate crossing instead of cancelling a legitimate return", () => {
     const duplicatedOutbound: TimezoneSwitch[] = [
-      { at: "2026-05-01T13:59:00Z", from: NY, to: TOKYO },
-      { at: "2026-05-01T14:00:00Z", from: NY, to: TOKYO },
-      { at: "2026-05-01T14:01:00Z", from: TOKYO, to: NY },
+      leg({ at: "2026-05-01T13:59:00Z", from: NY, to: TOKYO }),
+      leg({ at: "2026-05-01T14:00:00Z", from: NY, to: TOKYO }),
+      leg({ at: "2026-05-01T14:01:00Z", from: TOKYO, to: NY }),
     ];
     expect(
       isExcusedSlot(
@@ -313,8 +323,8 @@ describe("isExcusedSlot / isRepeatedSlot over a history", () => {
 
   it("fails open across a discontinuity or a current-zone mismatch", () => {
     const disconnected: TimezoneSwitch[] = [
-      { at: "2026-05-01T14:00:00Z", from: NY, to: TOKYO },
-      { at: "2026-05-01T14:01:00Z", from: "Europe/Paris", to: TOKYO },
+      leg({ at: "2026-05-01T14:00:00Z", from: NY, to: TOKYO }),
+      leg({ at: "2026-05-01T14:01:00Z", from: "Europe/Paris", to: TOKYO }),
     ];
     // Paris 16:01 → Tokyo 23:01 appears to skip 20:00, but the unrecorded
     // boundary that put the profile in Paris can cancel that crossing. The
@@ -362,8 +372,8 @@ describe("zoneAtInstant — which zone a past instant was lived in (#4025)", () 
   // Out on the 1st, back on the 8th. The chain must end at the CURRENT zone or it is
   // rejected whole, which is why every row below passes the zone the trip ends in.
   const trip: TimezoneSwitch[] = [
-    { at: NOON_UTC, from: NY, to: TOKYO },
-    { at: "2026-05-08T14:00:00Z", from: TOKYO, to: NY },
+    leg({ at: NOON_UTC, from: NY, to: TOKYO }),
+    leg({ at: "2026-05-08T14:00:00Z", from: TOKYO, to: NY }),
   ];
 
   it.each([
@@ -393,7 +403,7 @@ describe("zoneAtInstant — which zone a past instant was lived in (#4025)", () 
 
 describe("stored switch history", () => {
   it("round-trips through the stored JSON", () => {
-    const list: TimezoneSwitch[] = [{ at: NOON_UTC, from: NY, to: TOKYO }];
+    const list: TimezoneSwitch[] = [leg({ at: NOON_UTC, from: NY, to: TOKYO })];
     expect(parseTimezoneSwitches(serializeTimezoneSwitches(list))).toEqual(
       list
     );
@@ -427,11 +437,14 @@ describe("stored switch history", () => {
     const zones = [NY, TOKYO];
     for (let i = 0; i < 200; i++) {
       const day = new Date(Date.UTC(2023, 0, 1) + i * 5 * 86_400_000);
-      history = appendTimezoneSwitch(history, {
-        at: `${day.toISOString().slice(0, 10)}T12:00:00Z`,
-        from: zones[i % 2],
-        to: zones[(i + 1) % 2],
-      });
+      history = appendTimezoneSwitch(
+        history,
+        leg({
+          at: `${day.toISOString().slice(0, 10)}T12:00:00Z`,
+          from: zones[i % 2],
+          to: zones[(i + 1) % 2],
+        })
+      );
     }
     expect(history).toHaveLength(200);
     expect(history[0].at).toBe("2023-01-01T12:00:00Z");
@@ -458,11 +471,14 @@ describe("stored switch history", () => {
   it("caps the stored history at MAX_STORED_SWITCHES, newest kept", () => {
     let history: TimezoneSwitch[] = [];
     for (let i = 0; i < MAX_STORED_SWITCHES + 5; i++) {
-      history = appendTimezoneSwitch(history, {
-        at: `2026-04-30T00:00:${String(i % 60).padStart(2, "0")}Z`,
-        from: NY,
-        to: TOKYO,
-      });
+      history = appendTimezoneSwitch(
+        history,
+        leg({
+          at: `2026-04-30T00:00:${String(i % 60).padStart(2, "0")}Z`,
+          from: NY,
+          to: TOKYO,
+        })
+      );
     }
     expect(history).toHaveLength(MAX_STORED_SWITCHES);
     expect(MAX_STORED_SWITCHES).toBeGreaterThan(200);
@@ -579,5 +595,129 @@ describe("copy", () => {
     expect(travelReturnOfferText(NY)).toBe(
       "Your device is back on New York time — move your day back?"
     );
+  });
+});
+
+// #3428 item 2. `setTimezone` writes every zone move now, so one history carries two
+// kinds of record and two readers with opposite needs read it. The owner's constraint
+// (2026-08-23T01:01:51Z): the excusal predicates read TRAVEL only — a Settings
+// correction must never start excusing or repeating a dose slot — while the
+// zone-at-instant resolver and the Health Connect body-metric reconcile read BOTH,
+// because either kind genuinely moved the zone a day was keyed under.
+describe("kind: travel | settings — one history, two readers (#3428 item 2)", () => {
+  const correction = (sw: Omit<TimezoneSwitch, "kind">): TimezoneSwitch => ({
+    ...sw,
+    kind: "settings",
+  });
+  const RETURN_UTC = "2026-05-08T14:00:00Z";
+
+  it.each([
+    {
+      why: "an absent kind is TRAVEL, because every record written before item 2 came from switchProfileTimezone",
+      stored: `[{"at":"${NOON_UTC}","from":"${NY}","to":"${TOKYO}"}]`,
+      valid: true,
+      kinds: ["travel"],
+    },
+    {
+      why: "a stored settings record round-trips",
+      stored: `[{"at":"${NOON_UTC}","from":"${NY}","to":"${TOKYO}","kind":"settings"}]`,
+      valid: true,
+      kinds: ["settings"],
+    },
+    {
+      why: "an unrecognised kind taints the whole history rather than being guessed at",
+      stored: `[{"at":"${NOON_UTC}","from":"${NY}","to":"${TOKYO}","kind":"holiday"}]`,
+      valid: false,
+      kinds: [],
+    },
+  ])("decode: $why", ({ stored, valid, kinds }) => {
+    const decoded = decodeTimezoneSwitchHistory(stored);
+    expect(decoded.valid).toBe(valid);
+    expect(decoded.switches.map((sw) => sw.kind)).toEqual(kinds);
+  });
+
+  // EVENING (20:00) sits inside the New York 10:00 → Tokyo 23:00 span this instant
+  // skips, so the first row is the positive control: over a travel record the predicate
+  // really does fire. Every row below it is the same seam declining to.
+  it.each([
+    {
+      why: "a travel record excuses the slot it skipped",
+      history: [leg({ at: NOON_UTC, from: NY, to: TOKYO })],
+      currentZone: TOKYO,
+      excused: true,
+    },
+    {
+      why: "the identical seam recorded as a correction excuses nothing",
+      history: [correction({ at: NOON_UTC, from: NY, to: TOKYO })],
+      currentZone: TOKYO,
+      excused: false,
+    },
+    {
+      why: "a correction after the trip leaves the travel legs not reaching the profile, so they fail open",
+      history: [
+        leg({ at: NOON_UTC, from: NY, to: TOKYO }),
+        correction({ at: RETURN_UTC, from: TOKYO, to: HONOLULU }),
+      ],
+      currentZone: HONOLULU,
+      excused: false,
+    },
+  ])("isExcusedSlot: $why", ({ history, currentZone, excused }) => {
+    expect(
+      isExcusedSlot(
+        resolveSwitchHistory(history, currentZone),
+        "2026-05-01",
+        EVENING
+      )
+    ).toBe(excused);
+  });
+
+  // WHY THE KIND FILTER RUNS BEFORE THE TRUST GATE, stated as the property that makes
+  // it safe: the excusal predicates see exactly the history #3263 would have stored,
+  // because before item 2 a Settings edit wrote nothing and the stored history WAS the
+  // travel sub-list. So this change cannot move a dose in or out of any denominator.
+  //
+  // Filtering after the gate would not have this property — it would keep the travel
+  // legs either side of a correction while dropping the crossing between them, and the
+  // arithmetic over that pair describes a trajectory nobody took.
+  it("hands the excusal predicates exactly what #3263 would have stored", () => {
+    const mixed: TimezoneSwitch[] = [
+      leg({ at: NOON_UTC, from: NY, to: TOKYO }),
+      correction({ at: RETURN_UTC, from: TOKYO, to: HONOLULU }),
+    ];
+    const asBeforeItem2 = mixed.filter((sw) => sw.kind === "travel");
+    for (const zone of [TOKYO, HONOLULU]) {
+      expect(resolveSwitchHistory(mixed, zone)).toEqual(
+        resolveSwitchHistory(asBeforeItem2, zone)
+      );
+    }
+  });
+
+  // THE OTHER READER, and the reason the record exists at all. `zoneAtInstant` walks the
+  // WHOLE history: the mid-trip instant below answers Tokyo only because the correction
+  // that followed is on the chain. With the travel leg alone — which is all main stored
+  // before item 2 — the chain would not reach Honolulu, the history would be rejected
+  // whole, and every one of these instants would answer Honolulu.
+  const mixedHistory: TimezoneSwitch[] = [
+    leg({ at: NOON_UTC, from: NY, to: TOKYO }),
+    correction({ at: RETURN_UTC, from: TOKYO, to: HONOLULU }),
+  ];
+  it.each([
+    { at: "2026-04-30T00:00:00Z", expected: NY, why: "before the outbound" },
+    { at: "2026-05-04T00:00:00Z", expected: TOKYO, why: "mid-trip" },
+    {
+      at: "2026-06-01T00:00:00Z",
+      expected: HONOLULU,
+      why: "after the correction",
+    },
+  ])("zoneAtInstant reads both kinds: $why → $expected", ({ at, expected }) => {
+    expect(zoneAtInstant(mixedHistory, HONOLULU, new Date(at))).toBe(expected);
+    // The control: the same instants over the travel leg alone.
+    expect(
+      zoneAtInstant(
+        mixedHistory.filter((sw) => sw.kind === "travel"),
+        HONOLULU,
+        new Date(at)
+      )
+    ).toBe(HONOLULU);
   });
 });

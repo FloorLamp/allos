@@ -26,13 +26,14 @@ const ENTRY_SCRIPTS = [
   "scripts/orchestrator-checkin.sh",
   "scripts/orchestration/adversarial-review-brief.mjs",
   "scripts/orchestration/agent-gates.sh",
-  "scripts/orchestration/catchup-digest.sh",
+  "scripts/orchestration/pm-digest.sh",
   "scripts/orchestration/ci-watch.mjs",
   "scripts/orchestration/closing-keywords.mjs",
   "scripts/orchestration/delete-unknown-labels.ts",
   "scripts/orchestration/dependabot-eval-brief.mjs",
   "scripts/orchestration/dispatch-brief.mjs",
   "scripts/orchestration/host.mjs",
+  "scripts/orchestration/landing-independence.mjs",
   "scripts/orchestration/ledger.mjs",
   "scripts/orchestration/merge-gate.mjs",
   "scripts/orchestration/post-merge-census.mjs",
@@ -44,6 +45,7 @@ const ENTRY_SCRIPTS = [
   "scripts/orchestration/reconcile-watermark.ts",
   "scripts/orchestration/release-notes-gather.mjs",
   "scripts/orchestration/session-metrics.mjs",
+  "scripts/orchestration/title-rule.mjs",
 ] as const;
 
 function runHelp(rel: string) {
@@ -102,7 +104,14 @@ describe("--help belongs to the invoked script, not to its imports", () => {
     [
       "scripts/orchestration/ledger.mjs",
       "The dispatch ledger, folded",
-      "Host resolution for orchestration",
+      "Host resolution for work",
+    ],
+    // The title rule became an entry script of its own in #5068, which made
+    // merge-gate's import of it the newest edge of exactly this shape.
+    [
+      "scripts/orchestration/merge-gate.mjs",
+      "Merge gate —",
+      "owned in one place because two things enforce it",
     ],
   ])("%s prints its OWN header", (rel, own, imported) => {
     const run = runHelp(rel);

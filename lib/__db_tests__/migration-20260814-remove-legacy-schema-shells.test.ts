@@ -59,6 +59,9 @@ describe("20260814-remove-legacy-schema-shells", () => {
       // #3087: which surface a person logged from. Additive and nullable, appended
       // by 20260822-logged-via-provenance.
       "logged_via",
+      // #5082: which composed action wrote the row — the same act id its dose rows
+      // carry. Additive and nullable, appended by 20260904-act-bundle-columns.
+      "bundle_id",
     ]);
     expect(names(db, "intake_item_logs")).toEqual([
       "id",

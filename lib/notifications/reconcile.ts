@@ -447,13 +447,17 @@ const intakeDose: FamilyReconciler = {
         if (doseId && date && resolvedFor(date).has(doseId)) dead.add(t);
       } else if (f[0] === "all") {
         // "✅ All (N)" is dead once every dose in that slot is resolved — read through
-        // the SAME collectWindowDoses the send and the tap rebuild use.
+        // the SAME collectWindowDoses the send and the tap rebuild use — AND dead when
+        // the slot rebuilds to NOTHING, the same rule `stacktake` below already applies:
+        // a button cannot outlive what it was offering. An empty rebuild used to leave
+        // it live forever, so a tap did nothing. #3993 made that reachable on an
+        // ordinary day (a derived pause can empty a past slot), but it was always
+        // reachable — every item in the slot retired, or its situation ended.
         const slot = f[2] as IntakeSendSlot;
         const date = f[3];
         if (!slot || !date) continue;
         const entries = collectWindowDoses(profileId, slot, date);
-        if (entries.length > 0 && entries.every((e) => e.taken || e.skipped))
-          dead.add(t);
+        if (entries.every((e) => e.taken || e.skipped)) dead.add(t);
       } else if (f[0] === "stacktake") {
         // "✅ <Stack> (n)" (#3098) is dead once every dose its STORED offer names is
         // resolved — the same ledger the tap handler intersects with — and dead when no

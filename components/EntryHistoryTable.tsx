@@ -107,8 +107,11 @@ export default function EntryHistoryTable<T extends { id: number }>({
   editTestId?: (item: T) => string;
   deleteTestId?: (item: T) => string;
   // The caller's inline edit form (fields, submit handling, typed-outcome
-  // refusal copy). `done` closes the edit row.
-  renderEditForm: (item: T, done: () => void) => ReactNode;
+  // refusal copy). `done` closes the edit row. OMIT IT and the ⋯ offers Delete
+  // alone: a table whose rows are a ROLLUP over events corrects those events
+  // somewhere else (#5026 item 1), and an Edit that opened a day-count form there
+  // would restate the rollup onto every event under it.
+  renderEditForm?: (item: T, done: () => void) => ReactNode;
   confirmDelete: (item: T) => {
     title: string;
     message: string;
@@ -224,7 +227,7 @@ export default function EntryHistoryTable<T extends { id: number }>({
               }
               className="border-b border-black/5 align-top last:border-0 dark:border-white/5"
             >
-              {editingId === item.id ? (
+              {renderEditForm && editingId === item.id ? (
                 <Td slot="full" colSpan={colSpan} className="px-2 py-2">
                   {renderEditForm(item, () => setEditingId(null))}
                 </Td>
@@ -285,18 +288,20 @@ export default function EntryHistoryTable<T extends { id: number }>({
                         >
                           {({ close }) => (
                             <>
-                              <button
-                                type="button"
-                                role="menuitem"
-                                data-testid={editTestId?.(item)}
-                                onClick={() => {
-                                  close();
-                                  setEditingId(item.id);
-                                }}
-                                className={MENU_ITEM}
-                              >
-                                Edit
-                              </button>
+                              {renderEditForm ? (
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  data-testid={editTestId?.(item)}
+                                  onClick={() => {
+                                    close();
+                                    setEditingId(item.id);
+                                  }}
+                                  className={MENU_ITEM}
+                                >
+                                  Edit
+                                </button>
+                              ) : null}
                               <button
                                 type="button"
                                 role="menuitem"

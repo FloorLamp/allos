@@ -423,11 +423,11 @@ export function isNotableWeatherDay(
 // heatwave affect my sleep/HRV/mood".
 //
 // The #1360 window-source rule says situation_events is DECLARED-only and a derived
-// situation contributes no windows, because a derived situation (poor sleep, period)
-// has no dated span the app can reconstruct — only a per-day verdict. Weather is the
-// case that rule was not written for: the spell is a FACT in a cached series, fully
-// reconstructable and identical every time it is computed. So the windows come from the
-// predicate over the cache, not from a transition log, and still nothing is written.
+// situation contributes no windows. The reason is the SPAN, not datability — every
+// derived source is dated per day (#3993), but a per-day verdict is not a recorded run
+// of days. Weather is the case that rule was not written for: the spell is a FACT in a
+// cached series, fully reconstructable and identical every time it is computed. So the
+// windows come from the predicate over the cache, not a log, and nothing is written.
 //
 // Contiguous qualifying dates collapse into one window. Days absent from the series
 // break a window (no data ⇒ no claim about that day).

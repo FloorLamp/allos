@@ -20,7 +20,9 @@
 // the app's 110rem shell would scale its type back up out of the band.
 //
 // Only the geometry differs between variants. The MODEL is identical, so this is
-// a variant prop over one content component, not a `hidden md:*` content fork.
+// one content component drawn twice, not a `hidden md:*` content fork — and since
+// #4973 the CHART picks which, from its own container, off `minContainerPx` below.
+// These columns are the breakpoint; there is no second set of numbers.
 
 import {
   MIN_LABEL_PX,

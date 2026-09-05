@@ -13,6 +13,7 @@ import { db, reopenDatabaseForTests } from "@/lib/db";
 import {
   adminLoginId,
   allProfileIds,
+  HR_RANGE_READ,
   installStatementTrace,
   loadDashboard,
   loadPage,
@@ -84,7 +85,10 @@ describe.skipIf(!PROBE_DB)("dashboard profile over a database copy", () => {
   it("renders, times every statement, and writes a CPU profile", async () => {
     const out = process.env.PROBE_OUT ?? path.dirname(PROBE_DB!);
     const renders = Number(process.env.PROBE_RENDERS ?? 3);
-    const trace = installStatementTrace({ timing: true });
+    const trace = installStatementTrace({
+      timing: true,
+      bindings: HR_RANGE_READ,
+    });
     const pagePath = process.env.PROBE_PAGE;
     const render = pagePath
       ? (() => {
@@ -141,6 +145,12 @@ describe.skipIf(!PROBE_DB)("dashboard profile over a database copy", () => {
             .map(([caller, ms]) => ({ caller, ms: Math.round(ms * 10) / 10 })),
         }))
         .sort((a, b) => b.ms - a.ms),
+      // The windows the heart-rate range read was BOUND to on the last render, in
+      // order. The rest of this report keys on SQL text, so three reads of three
+      // windows and three reads of one window are one row with count 3 — which is
+      // the distinction #5010's last criterion is about and the reading a snapshot
+      // run could not produce.
+      hrWindows: trace.bindings().map((execution) => execution.args),
     };
     fs.mkdirSync(out, { recursive: true });
     fs.writeFileSync(path.join(out, "profile.json"), JSON.stringify(report));

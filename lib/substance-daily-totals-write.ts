@@ -24,11 +24,7 @@ import { SUBSTANCE_USE_WRITE, isPastWriteAccepted } from "./log-manifest";
 import { isRealIsoDate } from "./date";
 import { captureDelete } from "./undo-delete-db";
 import { substanceDayCounter } from "./day-counter-ledger-db";
-import {
-  deleteFoodLogEventCore,
-  logFoodServingCore,
-  updateFoodLogEventCore,
-} from "./food-log-write";
+import { logFoodServingCore } from "./food-log-write";
 import type { FoodPlacement } from "./food-log-write";
 import {
   ALCOHOL_FOOD_GROUP,
@@ -45,7 +41,10 @@ export type SubstanceHistoryMutationOutcome =
   | { kind: "date-conflict" }
   | { kind: "invalid-date" }
   | { kind: "invalid-amount" }
-  | { kind: "unknown-substance" };
+  | { kind: "unknown-substance" }
+  // A CONSUMABLE IS AN EVENT (owner ruling, 2026-09-04), so a substance whose units
+  // ARE events is corrected on the event and never on the day that rolls them up.
+  | { kind: "corrected-per-event" };
 
 function validAmount(amount: number): boolean {
   return (
@@ -57,21 +56,6 @@ function validAmount(amount: number): boolean {
 
 function normalizedNotes(notes: string | null | undefined): string | null {
   return notes?.trim() || null;
-}
-
-// The day's alcohol taps, NEWEST FIRST. A correction that SHRINKS the day keeps the
-// head of this list and drops the tail (#2073): each tap carries its own
-// `recorded_at`, so which rows survive is what a "last drink at HH:MM" surface reads.
-function alcoholTapIds(profileId: number, date: string): number[] {
-  return (
-    db
-      .prepare(
-        `SELECT id FROM food_log_events
-       WHERE profile_id = ? AND group_key = ? AND date = ?
-       ORDER BY recorded_at DESC, id DESC`
-      )
-      .all(profileId, ALCOHOL_FOOD_GROUP, date) as { id: number }[]
-  ).map((row) => row.id);
 }
 
 // One tap per unit, through the food ledger's own log core — so a drink filed here is
@@ -179,82 +163,42 @@ export function addSubstanceDailyTotalCore(
 // #4614: each core declares its own domain; `LOG_MANIFEST`'s cores column derives.
 export const addSubstanceDailyTotalCoreDeclares = SUBSTANCE_USE_WRITE;
 
+// THE DAY-COUNT CORRECTION, AND IT IS FOR DAY COUNTS ONLY (#5026 item 1).
+//
+// A CONSUMABLE IS AN EVENT (owner ruling, 2026-09-04): a drink, like a serving and
+// like a dose, is a thing that happened at an instant, and the day total is a ROLLUP
+// rather than the editable thing. Alcohol's units already ARE events —
+// `food_log_events` rows carrying `occurred_at` and `time_source` — so this core
+// REFUSES it, and the drink is corrected on its own record row through the food
+// serving's own form (#5025 phase 1). Nicotine, cannabis and every custom key still
+// ride `substance_daily_totals`, which is UNIQUE per (profile, date, substance) and
+// structurally timeless: for them the day count IS the stored fact and this is its
+// correction. Phase 2's event ledger moves them to the same door.
+//
+// WHAT THE REFUSAL BUYS, MEASURED on this core before it was removed: two drinks
+// stated at 21:00 and 23:00, corrected to the next day through this form, came out of
+// it with `occurred_at` and `time_source` NULL on BOTH — one day-count correction
+// silently levelled two clocks that a person had typed, and with them both ticks on
+// the day chart. Shrinking the same day from 2 to 1 deleted the 21:00 drink and kept
+// the 23:00 one, because the reconcile drops the earliest-filed taps: which drink
+// died was decided by filing order rather than by the person. Both are the flattening
+// the ruling names, and neither can happen through a form that corrects one event.
 export function updateSubstanceDailyTotalCore(
   profileId: number,
   substanceInput: string,
   id: number,
-  input: { date: string; amount: number; notes?: string | null },
-  // A correction that GROWS the day appends per-unit `food_log_events` rows that did
-  // not exist before, and a row created here is created here — so the surface making
-  // the correction is required, and stamps only the rows it actually creates. The rows
-  // that survive the reconcile keep the provenance they were born with.
-  loggedVia: LoggedVia
+  input: { date: string; amount: number; notes?: string | null }
 ): SubstanceHistoryMutationOutcome {
   const substance = resolveSubstanceKey(substanceInput);
   if (substance === null) return { kind: "unknown-substance" };
+  if (substanceDef(substance).ledger === "food-log")
+    return { kind: "corrected-per-event" };
   if (!isRealIsoDate(input.date) || input.date > today(profileId))
     return { kind: "invalid-date" };
   if (!validAmount(input.amount)) return { kind: "invalid-amount" };
   const notes = normalizedNotes(input.notes);
 
   return writeTx(() => {
-    if (substanceDef(substance).ledger === "food-log") {
-      const row = db
-        .prepare(
-          `SELECT date FROM food_daily_totals
-           WHERE id = ? AND profile_id = ? AND group_key = ?`
-        )
-        .get(id, profileId, ALCOHOL_FOOD_GROUP) as { date: string } | undefined;
-      if (!row) return { kind: "not-found" as const };
-      const conflict = db
-        .prepare(
-          `SELECT 1 FROM food_daily_totals
-           WHERE profile_id = ? AND group_key = ? AND date = ? AND id != ?`
-        )
-        .get(profileId, ALCOHOL_FOOD_GROUP, input.date, id);
-      if (conflict) return { kind: "date-conflict" as const };
-      const taps = alcoholTapIds(profileId, row.date);
-      // THE DAY ROW MOVES WHOLE — it is the entry's identity and carries the note —
-      // but its COUNT is re-based on the taps, because every reconcile below is a
-      // shared-ledger write that moves the counter itself. A same-day correction
-      // starts from the taps it still has; one that MOVES starts from zero, because
-      // each surviving tap re-bumps the counter as it is re-dated. A pre-ledger row
-      // holding ticks no tap ever backed is repaired by the same line.
-      db.prepare(
-        `UPDATE food_daily_totals SET date = ?, servings = ?, notes = ?
-         WHERE id = ? AND profile_id = ? AND group_key = ?`
-      ).run(
-        input.date,
-        row.date === input.date ? taps.length : 0,
-        notes,
-        id,
-        profileId,
-        ALCOHOL_FOOD_GROUP
-      );
-      // Surplus taps leave through the row-delete core, so shrinking a day is UNDOABLE
-      // (#2642). Hard-deleting them made this the app's one unrecoverable food removal.
-      for (const tapId of taps.slice(input.amount))
-        deleteFoodLogEventCore(profileId, tapId);
-      if (row.date !== input.date) {
-        // A re-date moves the tap's DAY, so an `occurred_at` from the old day is
-        // exactly the cross-day pair `judgeEatenAt` refuses to write anywhere else.
-        // Nobody restated an hour for the new day, so the honest value is none: the
-        // instant is cleared WITH the move rather than left on the day the row left.
-        for (const tapId of taps.slice(0, input.amount))
-          updateFoodLogEventCore(profileId, tapId, {
-            date: input.date,
-            eatenAt: null,
-          });
-      }
-      appendAlcoholTaps(
-        profileId,
-        input.date,
-        input.amount - taps.length,
-        loggedVia
-      );
-      return { kind: "updated" as const, id };
-    }
-
     const row = db
       .prepare(
         `SELECT 1 FROM substance_daily_totals

@@ -194,6 +194,68 @@ async function awaitAutosaveSettled(scope: Locator): Promise<void> {
   await expect(scope.getByLabel("Saving")).toHaveCount(0);
 }
 
+// THE PAGE-SCOPED TESTID ROOT (#4890) — where a global getByTestId must NOT start.
+//
+// A page whose Suspense boundary streams (today `/training` and `/trends`, via
+// components/StreamedSection.tsx) delivers the boundary's content twice for a
+// window: React flushes it into a `<div hidden>` appended to `<body>` and an
+// inline `$RC(…)` script relocates it into place. While both exist, every marker
+// inside that boundary exists TWICE with the same testid, so a global
+// `page.getByTestId("x")` resolves to 2 elements and throws a strict-mode
+// violation instead of retrying down to one. Under CI load the window outlives
+// Playwright's retry, and the failure lands on whatever PR happened to be running
+// — three of the four known occurrences were on diffs that could not have caused
+// it (a one-comment diff, a sleep-queries diff).
+//
+// The staged copy's ancestry stops at `<body>`, so ANY scope that lives in the
+// document proper excludes it. `app-content-container` is the app shell's own
+// wrapper around every `(app)` page's children (app/(app)/layout.tsx) — one per
+// document, above every boundary — which makes it the scope that works on every
+// page for every marker, rather than one that covers the markers somebody
+// remembered to put on a helper.
+//
+// Use it as the root of a testid lookup on any `(app)` page:
+//     appContent(page).getByTestId("routine-new")
+// A narrower scope you already hold (a row, a card, a dialog) is better still —
+// this is the floor, not the ceiling.
+//
+// NOT for `/login`, `/onboarding` or anything outside the `(app)` group: those
+// render no `app-content-container` and do not stream. Nor for an overlay that
+// portals to `<body>` (toasts, sheets): a portal is client-only, so it has one
+// copy and no hazard — scope those to the overlay's own testid.
+//
+// The hygiene guard (lib/__tests__/e2e-hygiene.test.ts) freezes today's bare
+// `page.getByTestId(` count per file and fails a NEW one, so the next call site
+// gets this by default.
+export function appContent(page: Page): Locator {
+  return page.getByTestId("app-content-container");
+}
+
+// THE TWO READINGS A `band` ASSERTION IS MADE OF (#3899), in one place because the
+// assertion and the control that proves it can red have to go through the SAME
+// object. A frame read here and re-queried there proves that A query can see a
+// border, never that THIS one can.
+//
+// The frame is the border and the corner together: `border-x-0` alone leaves a
+// radius drawing a curve on a full-bleed fill, which is the shape #3673 shipped.
+export function bandFrame(locator: Locator): Promise<[number, number]> {
+  return locator.evaluate((node) => {
+    const style = getComputedStyle(node);
+    return [
+      Number.parseFloat(style.borderLeftWidth),
+      Number.parseFloat(style.borderTopLeftRadius),
+    ] as [number, number];
+  });
+}
+
+// A left edge in viewport pixels, for comparing one real element against another.
+// Never against a constant: a band that lost its frame AND its gutter still puts
+// every run at the page gutter measured this way, which is exactly the tree #3673
+// shipped and #3920 had to undo.
+export function leftEdge(locator: Locator): Promise<number> {
+  return locator.evaluate((node) => node.getBoundingClientRect().left);
+}
+
 // Wait until React has ATTACHED to this node — the one hydration probe, shared.
 //
 // React tags every host node it owns with `__reactFiber$…`/`__reactProps$…`. Their

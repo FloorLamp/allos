@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   intakeFactSummary,
   moreFactsLabel,
+  suggestedIntakeFacts,
+  PREFILL_FIELD_FACT,
   type IntakeFactInput,
   type IntakeFactKey,
 } from "@/lib/intake-facts";
+import { PREFILL_FIELDS } from "@/lib/intake-prefill";
 import { nextRuleId } from "@/lib/intake-rules";
 import fs from "node:fs";
 import path from "node:path";
@@ -235,5 +238,37 @@ describe("selection-prefill marking survives the merge (#846 → #3216)", () => 
     const dose = summary.chips.find((c) => c.key === "dose");
     expect(dose?.state).toBe("missing");
     expect(dose?.suggested).toBeUndefined();
+  });
+});
+
+describe("which fact carries a prefill's marking (#4672)", () => {
+  // The census that could not fail: the form's if/else sent every unrecognised field to
+  // the `timing` chip, so adding a PrefillField marked the wrong sentence and nothing
+  // said so. A total map cannot have a hole — this walks the whole population to prove
+  // the map is the whole population.
+  it("names a fact for every prefillable field", () => {
+    expect(Object.keys(PREFILL_FIELD_FACT).sort()).toEqual(
+      [...PREFILL_FIELDS].sort()
+    );
+    for (const field of PREFILL_FIELDS)
+      expect(PREFILL_FIELD_FACT[field], field).toBeTruthy();
+  });
+
+  it("sends the dose, redose and schedule fields to different chips", () => {
+    // POSITIVE CONTROL for the map being a map: three fields, three answers, so a
+    // catch-all that collapsed them would be visible here.
+    expect(
+      [...suggestedIntakeFacts(["doseAmount", "asNeeded", "timeOfDay"])].sort()
+    ).toEqual(["dose", "importance", "timing"]);
+  });
+
+  it("collapses fields sharing a chip to one entry", () => {
+    expect([
+      ...suggestedIntakeFacts(["minIntervalHours", "maxDailyCount"]),
+    ]).toEqual(["importance"]);
+  });
+
+  it("is empty when nothing is suggested", () => {
+    expect(suggestedIntakeFacts([]).size).toBe(0);
   });
 });

@@ -239,7 +239,7 @@ These are not review taste; each retired a green that meant nothing.
   an earlier ruling, diff it against the later one and say which survives.
 
 - **YOUR proposed fix is a hypothesis, not a specification.** A lane implements
-  an orchestrator's suggestion faithfully and without the scepticism it applies
+  a worker's suggestion faithfully and without the scepticism it applies
   to its own ideas — so a fix named in a review comment arrives with LESS
   scrutiny than one the lane invented, not more. I proposed the one-line
   `COALESCE(source_name, name)` that produced the defect above, and the lane

@@ -42,6 +42,17 @@ export interface PediatricFormContext {
 // paths from drifting onto different age gates.
 export const PEDIATRIC_MAX_AGE_MONTHS = 216; // 18 years
 
+// THE ONE SPELLING of "is this profile a child for label-dosing purposes" (#4672). It
+// was written out three times — twice in the intake form and once privately here — and
+// three copies of an age gate is three chances for one of them to drift past the
+// label's own boundary. Takes the AGE rather than the context: the caller that has a
+// context reads the months off it, and a primitive cannot be aliased by anything.
+export function isChildProfileAge(
+  ageMonths: number | null | undefined
+): boolean {
+  return ageMonths != null && ageMonths < PEDIATRIC_MAX_AGE_MONTHS;
+}
+
 // The subject's age in WHOLE YEARS, read off the same context the weight-band picker
 // runs on (#4609). The food-note age gate (#851 item 4) asks in years while the dosing
 // machinery asks in months, and the form used to take BOTH as separate props — so a

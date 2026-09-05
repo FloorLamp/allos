@@ -134,13 +134,42 @@ test("Nutrition is a Day | Manage tab umbrella (#746/#3987)", async ({
   // name/dose/time path in a modal, with advanced metadata behind a disclosure.
   const addCard = page.getByTestId("add-supplement-card");
   const addButton = addCard.getByTestId("supplement-add-toggle");
-  // THE ONE PRIMARY ACTION ON THIS SURFACE (#3987/#3982): the typed Button's primary
-  // variant, not a hand-rolled `btn btn-sm` — so the paint, the box and the focus ring
-  // are the primitive's, and the admission rule ("at most one per surface") is
-  // checkable. It is the only one here.
+  // THE ADD ACTION IS THE PRIMITIVE'S PRIMARY (#3987/#3982): the typed Button's
+  // primary variant, not a hand-rolled `btn btn-sm`, so the paint, the box and the
+  // focus ring are the primitive's.
   await expect(addButton).toHaveAttribute("data-button-control", "");
   await expect(addButton).toHaveClass(/\bbutton-control-primary\b/);
-  expect(await page.locator("main .button-control-primary").count()).toBe(1);
+
+  // THE ADMISSION RULE, ON THE UNIT THE OWNER RULED (#4978, 2026-09-04 13:05 UTC):
+  // the surface is the FORM, not the route — every form commit is primary, one per
+  // form. This route paints TWO primaries and both are correct: the add toggle
+  // above, which belongs to no form (it opens the modal that holds one), and the
+  // suggestions form's own commit. So a COUNT over the route would pin a number
+  // where a rule belongs, and would red the next time this page legitimately grows
+  // a form — a guard that fails on a correct change. What the rank forbids is one
+  // form carrying TWO commits, and a second action competing with Add on this card.
+  // Both are asserted; neither is a total.
+  await expect(addCard.locator(".button-control-primary")).toHaveCount(1);
+  const formsWithTwoPrimaries = await page
+    .locator("main form")
+    .evaluateAll((forms) =>
+      forms
+        .map((form) =>
+          Array.from(form.querySelectorAll(".button-control-primary"), (el) =>
+            (el.textContent ?? "").trim()
+          )
+        )
+        .filter((labels) => labels.length > 1)
+    );
+  expect(formsWithTwoPrimaries).toEqual([]);
+  // The positive control that keeps that sweep off an empty population: the route's
+  // OTHER primary is a form commit, so `main form` had something ranked to look at.
+  // It also names the second primary, which is the fact the rule rests on.
+  const suggestCommit = page.getByRole("button", { name: "Get suggestions" });
+  await expect(suggestCommit).toHaveClass(/\bbutton-control-primary\b/);
+  expect(
+    await suggestCommit.evaluate((el) => el.closest("form") !== null)
+  ).toBe(true);
   await expect(addButton.getByText("Add supplement")).toBeVisible();
   await expect(
     page.getByRole("dialog", { name: "Add supplement" })

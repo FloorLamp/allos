@@ -13,6 +13,7 @@ import { IntakeOptionsProvider } from "@/components/IntakeOptionsContext";
 import StaleEpisodeNudge from "@/components/illness/StaleEpisodeNudge";
 import type { DashboardIllnessCockpitModel } from "@/lib/dashboard-illness-cockpit";
 import { CockpitDayProvider } from "@/components/illness/CockpitDayContext";
+import { DoseOfferProvider } from "@/components/illness/DoseOfferContext";
 
 // The full illness-cockpit BODY for one patient (issue #858), recovery-led and compact
 // since #4752. It is the SAME machinery it always was — the one-tap SymptomLogBar with
@@ -81,107 +82,113 @@ export default function IllnessCockpitBody({
   // explicitly not allowed to touch — and no row loses its tap floor.
   return (
     <CockpitDayProvider date={date} altDate={controls?.altDate} tz={timeZone}>
-      <div
-        className="mt-3 flex w-full flex-col"
-        data-testid="illness-cockpit-body"
-      >
-        <CockpitRecoveryHeader
-          name={profileDisplayName}
-          status={status}
-          recovery={feverFree}
-          temperatureIdentity={temperatureIdentity}
-          medicationIdentity={medicationIdentity}
-          action={
-            canWrite && controls && episode.id != null ? (
-              <CockpitEndEpisode
-                episodeId={episode.id}
-                profileId={target}
-                meds={controls.medReconciliation}
-              />
-            ) : undefined
-          }
-        />
-
-        {canWrite && controls ? (
-          <section className="mt-3 border-t border-black/5 pt-3 sm:mt-4 sm:pt-4 dark:border-white/5">
-            {ownsSharedProfileControls && hasPluralOpenEpisodes ? (
-              <p
-                className="mb-2 text-xs text-slate-500 dark:text-slate-400"
-                data-testid="illness-shared-profile-controls-context"
-              >
-                Temperature and medications are shared across{" "}
-                {profileDisplayName}
-                &apos;s open episodes.
-              </p>
-            ) : null}
-            <SymptomLogBar
-              date={date}
-              altDate={controls.altDate}
-              initial={controls.initial}
-              initialAlt={controls.initialAlt}
-              initialNotes={controls.initialNotes}
-              initialAltNotes={controls.initialAltNotes}
-              symptoms={PICKER_SYMPTOMS}
-              customNames={controls.customNames}
-              rankedKeys={controls.rankedKeys}
-              suggestActivateIllness={false}
-              showTemperature={ownsSharedProfileControls}
-              temperatureUnit={temperatureUnit}
-              timeZone={timeZone}
-              profileId={target}
-              episodeId={episode.id ?? undefined}
-              showTitle={false}
-              analysisHref={crossProfile ? undefined : "/trends/symptoms"}
-              // NO DOSE OFFER HERE (#4712 judgement 1, corrected). This body's own
-              // Meds section below (`cockpit-prn`) renders whenever `controls.prnMeds`
-              // is non-empty — which is EVERY time `controls.antipyreticPrnMeds`
-              // would be too, since it is that same list narrowed. Feeding the fold's
-              // dose offer real meds here would therefore always duplicate a chip the
-              // persistent section is already showing, one situation group holding two
-              // `cockpit-med-chip-<id>` for one medication — the ruling offers what
-              // isn't already on screen, not a second copy of what is. The Meds
-              // section IS this cockpit's durable dose surface; the offer stays
-              // episode-only on this mount.
-            />
-          </section>
-        ) : null}
-
-        {canWrite && controls?.staleNudge && (
-          <div className="mt-3 border-t border-black/5 pt-3 sm:mt-4 sm:pt-4 dark:border-white/5">
-            <StaleEpisodeNudge
-              episodeId={controls.staleNudge.episodeId}
-              profileId={target}
-              lastActivityDate={controls.staleNudge.lastActivityDate}
-              quietDays={controls.staleNudge.quietDays}
-              medReconciliation={controls.medReconciliation}
-            />
-          </div>
-        )}
-
-        {canWrite &&
-          controls &&
-          ownsSharedProfileControls &&
-          (controls.prnMeds.length > 0 || !crossProfile) && (
-            <div
-              className="mt-3 border-t border-black/5 pt-3 sm:mt-4 sm:pt-4 dark:border-white/5"
-              data-testid="cockpit-prn"
-            >
-              {/* Its inline quick-add reads the SAME ranked medication options the
-              Medications page offers (#1677) — resolved for the patient whose cockpit
-              this is, not for whoever is looking at it. */}
-              <IntakeOptionsProvider options={controls.intakeOptions}>
-                <IllnessMedicationLogger
-                  meds={controls.prnMeds}
-                  tz={timeZone}
+      {/* The fold and the persistent Meds section are siblings, so the "one dose
+          prompt at a time" signal lives above both (#4712 ruling part 2). */}
+      <DoseOfferProvider>
+        <div
+          className="mt-3 flex w-full flex-col"
+          data-testid="illness-cockpit-body"
+        >
+          <CockpitRecoveryHeader
+            name={profileDisplayName}
+            status={status}
+            recovery={feverFree}
+            temperatureIdentity={temperatureIdentity}
+            medicationIdentity={medicationIdentity}
+            action={
+              canWrite && controls && episode.id != null ? (
+                <CockpitEndEpisode
+                  episodeId={episode.id}
                   profileId={target}
-                  intakeContext={controls.intakeForm}
-                  canAdd={!crossProfile}
-                  nowIso={nowIso}
+                  meds={controls.medReconciliation}
                 />
-              </IntakeOptionsProvider>
+              ) : undefined
+            }
+          />
+
+          {canWrite && controls ? (
+            <section className="mt-3 border-t border-black/5 pt-3 sm:mt-4 sm:pt-4 dark:border-white/5">
+              {ownsSharedProfileControls && hasPluralOpenEpisodes ? (
+                <p
+                  className="mb-2 text-xs text-slate-500 dark:text-slate-400"
+                  data-testid="illness-shared-profile-controls-context"
+                >
+                  Temperature and medications are shared across{" "}
+                  {profileDisplayName}
+                  &apos;s open episodes.
+                </p>
+              ) : null}
+              <SymptomLogBar
+                date={date}
+                altDate={controls.altDate}
+                initial={controls.initial}
+                initialAlt={controls.initialAlt}
+                initialNotes={controls.initialNotes}
+                initialAltNotes={controls.initialAltNotes}
+                symptoms={PICKER_SYMPTOMS}
+                customNames={controls.customNames}
+                rankedKeys={controls.rankedKeys}
+                suggestActivateIllness={false}
+                showTemperature={ownsSharedProfileControls}
+                temperatureUnit={temperatureUnit}
+                timeZone={timeZone}
+                profileId={target}
+                episodeId={episode.id ?? undefined}
+                showTitle={false}
+                analysisHref={crossProfile ? undefined : "/trends/symptoms"}
+                // THE FOLD OFFERS THE DOSE, AND THE MEDS SECTION BELOW YIELDS WHILE IT
+                // DOES (#4712, owner ruling 2026-09-04 11:20 UTC part 2). These props
+                // fed nobody for a while, because `antipyreticPrnMeds` is
+                // `controls.prnMeds` narrowed and the persistent section was already
+                // showing every one of those chips — two `cockpit-med-chip-<id>` for
+                // one medication inside one situation group. The section's `yieldsTo`
+                // below is the other half of this: one prompt for one dose, so wiring
+                // these without it is what would put the second chip back.
+                antipyreticMeds={controls.antipyreticPrnMeds}
+                intakeContext={controls.intakeForm}
+                nowIso={nowIso}
+              />
+            </section>
+          ) : null}
+
+          {canWrite && controls?.staleNudge && (
+            <div className="mt-3 border-t border-black/5 pt-3 sm:mt-4 sm:pt-4 dark:border-white/5">
+              <StaleEpisodeNudge
+                episodeId={controls.staleNudge.episodeId}
+                profileId={target}
+                lastActivityDate={controls.staleNudge.lastActivityDate}
+                quietDays={controls.staleNudge.quietDays}
+                medReconciliation={controls.medReconciliation}
+              />
             </div>
           )}
-      </div>
+
+          {canWrite &&
+            controls &&
+            ownsSharedProfileControls &&
+            (controls.prnMeds.length > 0 || !crossProfile) && (
+              <div
+                className="mt-3 border-t border-black/5 pt-3 sm:mt-4 sm:pt-4 dark:border-white/5"
+                data-testid="cockpit-prn"
+              >
+                {/* Its inline quick-add reads the SAME ranked medication options the
+              Medications page offers (#1677) — resolved for the patient whose cockpit
+              this is, not for whoever is looking at it. */}
+                <IntakeOptionsProvider options={controls.intakeOptions}>
+                  <IllnessMedicationLogger
+                    meds={controls.prnMeds}
+                    tz={timeZone}
+                    profileId={target}
+                    intakeContext={controls.intakeForm}
+                    canAdd={!crossProfile}
+                    nowIso={nowIso}
+                    yieldsTo={controls.antipyreticPrnMeds}
+                  />
+                </IntakeOptionsProvider>
+              </div>
+            )}
+        </div>
+      </DoseOfferProvider>
     </CockpitDayProvider>
   );
 }

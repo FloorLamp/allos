@@ -223,7 +223,19 @@ test("Training Log houses its primary in the header and keeps secondary actions 
     "aria-current",
     "page"
   );
-  await page.getByTestId("training-log-clear-filters").click();
+  // Scoped through `training-page`, which the STAGED copy has no ancestor of (#4890).
+  // Each Suspense boundary's content lands in a `<div hidden>` on `<body>` before an
+  // inline script relocates it, so through that window this testid exists twice and an
+  // unscoped locator throws a strict-mode violation rather than retrying down to one.
+  // The two clicks above navigate through the log's GET form, which is what puts this
+  // assertion inside the streaming window; #5017's shard refresh made the wait long
+  // enough under load to outlive Playwright's retry. Same one-line scoping #4833
+  // applied to `training-log-search-depth.spec.ts` and `unclassified-activity.spec.ts`;
+  // #4890 still owns the other twenty-one call sites.
+  await page
+    .getByTestId("training-page")
+    .getByTestId("training-log-clear-filters")
+    .click();
   await page.waitForURL(/\/training\?tab=log$/);
   await expect(types.getByRole("link", { name: "All" })).toHaveAttribute(
     "aria-current",
@@ -1044,7 +1056,14 @@ test("strength set controls step, clamp, and toggle without losing their phone g
   await expect(warmup).toHaveAttribute("aria-pressed", "true");
 
   // Reps returned to empty, so the set stays half-filled and nothing auto-saves.
+  // Escape is still the leave gesture, but the draft it leaves has a name typed
+  // into it and no row behind it, so it is asked about now rather than dropped in
+  // silence (#5111) — the answer is part of the close, not scenery after it.
   await page.keyboard.press("Escape");
+  const discard = page.getByTestId("confirm-dialog"); // testid-scope-ok: the confirm sheet portals to <body> (BottomSheet), one copy
+  await expect(discard).toContainText("Discard unsaved changes?");
+  await discard.getByRole("button", { name: "Close anyway" }).click();
+  await expect(page.getByTestId("activity-form")).toHaveCount(0); // testid-scope-ok: ActivityOverlay portals the workspace to <body>, one copy
 });
 
 test("the bilateral (per-side) reps stepper steps down too (#1524)", async ({
@@ -1076,7 +1095,13 @@ test("the bilateral (per-side) reps stepper steps down too (#1524)", async ({
   await downs.first().click(); // first-ok: same per-side pair — the left side's control
   await expect(left.locator("input")).toHaveValue("");
 
+  // Same close as the test above: a picked lift with no completed set is a typed,
+  // rowless draft, and since #5111 leaving one asks first.
   await page.keyboard.press("Escape");
+  const discard = page.getByTestId("confirm-dialog"); // testid-scope-ok: the confirm sheet portals to <body> (BottomSheet), one copy
+  await expect(discard).toContainText("Discard unsaved changes?");
+  await discard.getByRole("button", { name: "Close anyway" }).click();
+  await expect(page.getByTestId("activity-form")).toHaveCount(0); // testid-scope-ok: ActivityOverlay portals the workspace to <body>, one copy
 });
 
 test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)", async ({
@@ -1111,16 +1136,73 @@ test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)
   // (`activity-autosave-retriable`, measured on this case). Both end at
   // `setStatus("error")`, so both raise this indicator — which is why the case is
   // honest, and why the count below is what says the abort actually happened.
+  //
+  // WHAT THE HANDLER SAW, RECORDED AS IT RAN (#4741). This case has now reded three
+  // times on CI, twice on diffs that cannot reach a route handler, and never once on
+  // this box across 27 runs — so the one thing nobody has is the interception state
+  // inside the runner's browser. Playwright can be asked afterwards for the requests
+  // a PAGE made; it cannot be asked what THIS handler matched, which is the question.
+  // So every field below is written by the handler as it runs, and read at the moment
+  // the poll gives up. Do not delete it because the poll is green: green is when it
+  // costs nothing, and the one run it has to speak for is one nobody can watch.
   let abortedActionPosts = 0;
+  let routeInstalled = false;
+  const seen = {
+    requests: 0,
+    posts: 0,
+    nextActionHeaders: 0,
+    postPaths: [] as string[],
+  };
+  // WHERE A REQUEST THAT NEVER ARRIVED ACTUALLY WENT (#4741, the fourth firing's
+  // instrument). `installed=true, requests seen=0` is the reading that killed every
+  // earlier hypothesis: the handler was reached by NOTHING — not the action POST, not
+  // a GET, not an RSC prefetch. A page that made no requests at all is not a page that
+  // made the wrong one, so the next question is not "did the discriminator match" but
+  // "was this handler even on the path the request took".
+  //
+  // `page.route` taps requests attributed to the PAGE. A page under a service worker
+  // can have its fetches attributed to the WORKER instead (`request.serviceWorker()`
+  // is non-null for those), and a page-scoped handler never sees them — which is the
+  // one shape that explains an installed handler hearing silence while the app plainly
+  // works. `public/sw.js` passes non-GET straight through, so the abort SHOULD be an
+  // ordinary browser request; that is the claim, and this is what tests it.
+  //
+  // So a second witness rides on the CONTEXT, which sees both kinds and can say which,
+  // and it is installed at the same moment as the page handler so the two counts cover
+  // the same window and can be compared as they stand. It only ever reads.
+  const contextSeen = {
+    requests: 0,
+    fromServiceWorker: 0,
+    posts: 0,
+    nextActionHeaders: 0,
+  };
+  page.context().on("request", (req) => {
+    contextSeen.requests += 1;
+    if (req.serviceWorker()) contextSeen.fromServiceWorker += 1;
+    if (req.method() === "POST") contextSeen.posts += 1;
+    if (req.headers()["next-action"]) contextSeen.nextActionHeaders += 1;
+  });
+
   await page.route("**/*", async (route) => {
     const req = route.request();
-    if (req.method() === "POST" && req.headers()["next-action"]) {
-      abortedActionPosts += 1;
-      await route.abort("failed");
-      return;
+    seen.requests += 1;
+    // Counted over EVERY method rather than only POST: an action arriving as
+    // something this discriminator rejects is a shape that would explain a miss, and
+    // a POST-scoped count could not tell that apart from no action at all.
+    const nextAction = Boolean(req.headers()["next-action"]);
+    if (nextAction) seen.nextActionHeaders += 1;
+    if (req.method() === "POST") {
+      seen.posts += 1;
+      seen.postPaths.push(new URL(req.url()).pathname);
+      if (nextAction) {
+        abortedActionPosts += 1;
+        await route.abort("failed");
+        return;
+      }
     }
     await route.continue();
   });
+  routeInstalled = true;
 
   // Open a fresh create form and fill it enough to be savable (same flow as the
   // est-calories spec — see its note on why fields are addressed by testid/role).
@@ -1145,13 +1227,63 @@ test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)
   // its ceiling is free: waiting longer cannot invent a POST that was never made.
   // It comes FIRST so that when this case reds, the report already says whether the
   // interception applied — the question #4741 was opened to settle.
-  await expect
-    .poll(() => abortedActionPosts, {
-      message:
-        "no Server Action POST was intercepted — the forced failure never fired, " +
-        "so nothing below this line is a test of #332 (see #4741)",
-    })
-    .toBeGreaterThan(0);
+  //
+  // The report is assembled INSIDE the polled function, so the failure prints the
+  // state at the poll's LAST READ rather than a reading taken afterwards.
+  //
+  // READ "installed" HONESTLY: `routeInstalled` is near-vacuous by construction —
+  // the `await page.route(...)` above precludes false — so it is there to be visibly
+  // true, not to discriminate. The halves that carry weight are `page.isClosed()`,
+  // which really can be false and takes the handler with it, and `requests`, which
+  // says whether an installed handler is still being REACHED. An installed handler
+  // that saw zero requests is the deaf case; one that saw dozens of them, none
+  // carrying a next-action header, is a different bug entirely — and today both
+  // print "Received: 0" and nothing else.
+  let interception = "the poll never read the handler";
+  const readAbortedActionPosts = () => {
+    interception =
+      `route handler installed=${routeInstalled && !page.isClosed()}; ` +
+      `requests seen=${seen.requests}, of them POSTs=${seen.posts}, ` +
+      `carrying a next-action header=${seen.nextActionHeaders}; ` +
+      `POST paths: ${seen.postPaths.join(" ") || "(none)"}`;
+    return abortedActionPosts;
+  };
+  try {
+    await expect
+      .poll(readAbortedActionPosts, {
+        message:
+          "no Server Action POST was intercepted — the forced failure never fired, " +
+          "so nothing below this line is a test of #332 (see #4741)",
+      })
+      .toBeGreaterThan(0);
+  } catch (failure) {
+    // expect.poll's `message` is fixed when the assertion is CONSTRUCTED, so this is
+    // the only place the state at the miss can reach the failure line.
+    //
+    // The service-worker reading is taken HERE rather than inside the poll: whether a
+    // page is controlled is state that changes on the scale of a registration, not of
+    // a poll tick, and reading it every tick would put an evaluate into the very window
+    // whose quietness is the observation. If the page is gone, that is itself the
+    // answer and is printed as such rather than swallowed.
+    const controller = page.isClosed()
+      ? "unreadable — the page was closed"
+      : await page
+          .evaluate(() => {
+            const c = navigator.serviceWorker?.controller;
+            return c ? `${c.scriptURL} (${c.state})` : "none";
+          })
+          .catch((e: unknown) => `unreadable — ${(e as Error).message}`);
+    throw new Error(
+      `${(failure as Error).message}` +
+        `\n  interception at the moment of the miss: ${interception}` +
+        `\n  the context saw: requests=${contextSeen.requests}, ` +
+        `of them issued by a service worker=${contextSeen.fromServiceWorker}, ` +
+        `POSTs=${contextSeen.posts}, ` +
+        `carrying a next-action header=${contextSeen.nextActionHeaders}` +
+        `\n  this page's service-worker controller: ${controller}; ` +
+        `workers in this context=${page.context().serviceWorkers().length}`
+    );
+  }
 
   // The failure must surface as the error indicator (SaveStatus, aria-label
   // "Couldn’t save"), and the success check must never appear.

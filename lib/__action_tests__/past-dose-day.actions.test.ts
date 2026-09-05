@@ -18,13 +18,13 @@ import { setActiveSituations, setTimezone } from "@/lib/settings";
 import { doseLogDays, isDoseDateAccepted } from "@/lib/dose-log-window";
 import { markDoseTaken } from "@/lib/queries";
 import { loadQuickEntry } from "@/app/(app)/quick-entry-actions";
-import {
-  getActiveSituations,
-  getSituationEvents,
-  getTimezone,
-} from "@/lib/settings";
+import { getActiveSituations, getTimezone } from "@/lib/settings";
 import { setProfileSetting } from "@/lib/settings";
-import { situationHistoryResolver } from "@/lib/trend-annotations";
+import { effectiveSituationResolver } from "@/lib/queries/derived-situations";
+import {
+  upsertMetricSamples,
+  type NormMetricSample,
+} from "@/lib/integrations/normalize";
 import {
   intakeAdherenceStrip,
   indexTakenByDose,
@@ -536,7 +536,8 @@ describe("the submitted day is bounded by the days the sheet offers", () => {
 //
 //   dates            doseLogDays(today)      ← the switcher's own three days
 //   workoutDays      getActivityDates        ← husk-free list, both sides (#3189)
-//   situationsOn     situationHistoryResolver ← situationsActiveOn, both sides (#654)
+//   situationsOn     effectiveSituationResolver ← declared AND derived, both sides
+//                                                 (#654/#3993)
 //   takenByDose      full history            ← see EVIDENCE below
 //   tz               getTimezone             ← both sides
 //   isExcused        travelExcusalResolver   ← both sides (#3263)
@@ -562,10 +563,10 @@ function stripFor(
     doses,
     dates,
     new Set(getActivityDates(profileId)),
-    situationHistoryResolver(
-      getActiveSituations(profileId),
-      getSituationEvents(profileId)
-    ),
+    effectiveSituationResolver(profileId, {
+      from: dates[0],
+      to: dates[dates.length - 1],
+    }),
     indexTakenByDose(getIntakeAdherenceEvidence(profileId, evidenceDays)),
     getTimezone(profileId),
     travelExcusalResolver(profileId)
@@ -628,6 +629,58 @@ describe("the sheet's offer agrees with the adherence strip, day for day", () =>
     // THE contract, stated as the relationship rather than as two literals: the sheet
     // offers a dose on a day exactly when the strip says that day still owes it.
     expect(offered.includes(doseId)).toBe(expected === "missed");
+  });
+
+  // THE CASE THIS TABLE WAS MISSING, and its absence is why the strip and the sheet
+  // could drift apart under #3993 while all twelve cases above stayed green: every one
+  // of them seeds DECLARED context, so both sides agreed no matter which resolver they
+  // were given. A day is owed here for a reason nobody declared — the night ending it
+  // was rough — and the contract is the same one: the strip says the day owes it, so
+  // the sheet must offer it.
+  it("a day owed for a DERIVED reason is 'missed' and IS offered (#3993)", async () => {
+    const login = createLogin();
+    const profile = createProfile("agree-derived", login.id);
+    actAs(login, profile);
+    setTimezone(profile.id, "UTC");
+    const doseId = seedDose(profile.id, "Magnesium derived", {
+      condition: "situational",
+      situation: "Poor sleep",
+      createdDaysAgo: 30,
+    });
+    const itemId = (
+      db
+        .prepare("SELECT item_id AS id FROM intake_item_doses WHERE id = ?")
+        .get(doseId) as { id: number }
+    ).id;
+    const day = shiftDateStr(today(profile.id), -1);
+
+    // Healthy 8h nights back to day-8, then a 5h night ENDING `day`. Poor sleep was
+    // never declared, so the ONLY thing that can make this day owe the dose is the
+    // derived verdict for that day.
+    const nights: NormMetricSample[] = [];
+    for (let d = 8; d >= 2; d -= 1) {
+      const wake = shiftDateStr(today(profile.id), -d);
+      nights.push({
+        metric: "sleep_min",
+        date: wake,
+        started_at: `${shiftDateStr(wake, -1)}T23:00:00Z`,
+        ended_at: `${wake}T08:00:00Z`,
+        value: 480,
+      });
+    }
+    nights.push({
+      metric: "sleep_min",
+      date: day,
+      started_at: `${shiftDateStr(day, -1)}T23:00:00Z`,
+      ended_at: `${day}T05:00:00Z`,
+      value: 300,
+    });
+    upsertMetricSamples(profile.id, nights, "health-connect");
+    expect(getActiveSituations(profile.id)).toEqual([]);
+
+    const dot = stripFor(profile.id, itemId).find((d) => d.date === day)!;
+    expect(dot.state).toBe("missed");
+    expect((await offeredByDay()).get(day) ?? []).toContain(doseId);
   });
 
   it("a day the clock made impossible is 'excused' and is not offered (#3263)", async () => {

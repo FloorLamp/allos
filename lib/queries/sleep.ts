@@ -23,6 +23,7 @@ import {
   OURA_READINESS_SCORE_METRIC,
 } from "../integrations/oura";
 import { HEALTH_CONNECT_ID } from "../integrations/health-connect";
+import { restampedTwinPairs } from "../integrations/sleep-overlap-db";
 import { sleepOverlapPairs, type SleepSessionRow } from "../sleep-overlap";
 import { getMoodLogs } from "./mood";
 import { getSuspectSleepSessions } from "./sleep-clock-skew";
@@ -37,17 +38,13 @@ import {
   shiftDateStr,
   zonedDateParts,
 } from "../date";
-import {
-  getActiveSituations,
-  getTimezone,
-  getSituationEvents,
-  getFreeDays,
-} from "../settings";
+import { getTimezone, getSituationEvents, getFreeDays } from "../settings";
+import { effectiveSituationResolver } from "./derived-situations";
 import { doseWindowSince, indexTakenByDose } from "../intake-adherence";
 import { profileDayZone } from "../travel-excusal";
 import { zoneOf } from "../travel-timezone";
 import { doseBucketOn, doseDueOn } from "../intake-schedule";
-import { situationHistoryResolver } from "../trend-annotations";
+
 import {
   bedtimeDoseDisposition,
   summarizeBedtimeSupplements,
@@ -437,10 +434,20 @@ function bedtimeSupplementsByWakeDay(
     getIntakeLogsInRange(profileId, windowDays + 1)
   );
   const workoutDays = new Set(getActivityDates(profileId));
-  const situationsOn = situationHistoryResolver(
-    getActiveSituations(profileId),
-    getSituationEvents(profileId)
-  );
+  // Per-day DUENESS resolver (#654/#3993): each wake-day's bedtime doses are scored
+  // against what held THAT day, declared AND derived — the same answer the surfaces that
+  // offered those doses gave.
+  //
+  // THE WINDOW IS DECLARED IN THE DAYS IT IS ASKED ABOUT, which here are the SLEEP
+  // dates, not the wake days: the loop below resolves each night's supplements on
+  // `sleepDate`, normally `wakeDay − 1`. Declaring the wake-day span left the earliest
+  // sleep date one day outside it — still answered correctly, since the window is a
+  // cost hint, but off its own re-read rather than the window's single gather.
+  const sleepDateList = [...sleepDateByWakeDay.values()].sort();
+  const situationsOn = effectiveSituationResolver(profileId, {
+    from: sleepDateList[0],
+    to: sleepDateList[sleepDateList.length - 1],
+  });
   const summaries = new Map<string, BedtimeSupplementSummary>();
 
   for (const [wakeDay, sleepDate] of sleepDateByWakeDay) {
@@ -546,19 +553,62 @@ export function getSleepMoodData(
   // cannot fight over `sleepSampleId`: a night is either the duration-only manual row
   // that pass identified, or a synced session the detector contradicted — never both, and
   // a suspect night stays UNeditable either way (`sleepEditable` is untouched here).
-  const suspectSampleByWakeDay = new Map(
-    getSuspectSleepSessions(profileId, since).map((s) => [
-      s.wakeDay,
-      s.sampleId,
-    ])
+  //
+  // The evidence's settled instant rides along (#5021): the hedge's second line names
+  // when the body actually settled, and the row is where every surface already looks
+  // for whether to hedge at all. Projected to a profile-local MINUTE here, through the
+  // zone in force at that instant, because this is the boundary that owns the zone —
+  // `lib/sleep-clock-skew.ts` is pure and the components downstream have only a clock
+  // format.
+  //
+  // The CLAIMED window rides along for the same reason (#5021): the Fix times door
+  // states the times it is about to move and offers the stored length as the ± the
+  // person can take, and both are read off the evidence rather than re-queried. The
+  // elapsed length is computed from the INSTANTS, never from the two local minutes —
+  // a night across a zone transition is not `end - start` on a wall clock, and that
+  // length is the one the store half refuses a change to.
+  const skewZone = profileDayZone(profileId);
+  const localMinutes = (at: Date): number | null =>
+    Number.isFinite(at.getTime())
+      ? hhmmToMinutes(zonedDateParts(zoneOf(skewZone, at), at).hhmm)
+      : null;
+  const suspectByWakeDay = new Map(
+    getSuspectSleepSessions(profileId, since).map((s) => {
+      const settledAt = new Date(s.evidence.troughStart);
+      const claimStart = new Date(s.evidence.start);
+      const claimEnd = new Date(s.evidence.end);
+      const startMinutes = localMinutes(claimStart);
+      const endMinutes = localMinutes(claimEnd);
+      return [
+        s.wakeDay,
+        {
+          sampleId: s.sampleId,
+          settledMinutes: localMinutes(settledAt),
+          claimedWindow:
+            startMinutes == null || endMinutes == null
+              ? null
+              : {
+                  startMinutes,
+                  endMinutes,
+                  elapsedMin: Math.round(
+                    (claimEnd.getTime() - claimStart.getTime()) / 60_000
+                  ),
+                },
+        },
+      ] as const;
+    })
   );
   const history = editableHistory.map((row) => {
-    const suspectSampleId = suspectSampleByWakeDay.get(row.date) ?? null;
+    const suspect = suspectByWakeDay.get(row.date) ?? null;
     return {
       ...row,
       bedtimeSupplements: bedtimeByWakeDay.get(row.date) ?? null,
-      sleepSuspect: suspectSampleId != null,
-      sleepSampleId: row.sleepSampleId ?? suspectSampleId,
+      sleepSuspect: suspect != null,
+      sleepSampleId: row.sleepSampleId ?? suspect?.sampleId ?? null,
+      /** Minutes since profile-local midnight where the heart rate settled, for the
+       *  hedge's second line. Null when there is no suspect night on this row. */
+      sleepSettledMinutes: suspect?.settledMinutes ?? null,
+      sleepClaimedWindow: suspect?.claimedWindow ?? null,
     };
   });
   return {
@@ -908,7 +958,13 @@ export function getOverlappingSleepSessions(
       HEALTH_CONNECT_ID,
       shiftDateStr(today(profileId), -SLEEP_OVERLAP_REVIEW_DAYS)
     ) as (SleepSessionRow & { date: string; value: number })[];
-  return sleepOverlapPairs(rows).map(({ a, b }) => ({
+  // The twin rule needs the stage read, so it lives with the store half; Review lists
+  // what the collapse pairs, or a pair it left undecided would never reach the person
+  // (#5020).
+  return [
+    ...sleepOverlapPairs(rows),
+    ...restampedTwinPairs(profileId, HEALTH_CONNECT_ID, rows),
+  ].map(({ a, b }) => ({
     // `sleepOverlapPairs` only pairs rows of one non-null origin, so either side names it.
     origin: a.origin as string,
     sessions: [a, b].map((s) => ({

@@ -25,6 +25,16 @@ edit payload. It stays a `substance` row — the life-stage gate and "the act in
 person's own terms" are the record's reasons for that and neither is amended;
 `edit.kind` names the correction door, `kind` names what the thing is.
 
+**Both of a drink's doors agree (#5026 item 1).** The substance-use card's history is
+that same rollup, one row per day, and it used to open the day-count form on an alcohol
+row — so the same drink had two correction doors disagreeing about what the editable
+thing is. Measured on that path: two drinks stated at 21:00 and 23:00, corrected to the
+next day, came back with `occurred_at` and `time_source` NULL on both, and shrinking the
+day from 2 to 1 deleted whichever was filed first. Now `updateSubstanceDailyTotalCore`
+refuses a food-log ledger outright and the card's row offers Delete alone, pointing at
+the record where each drink corrects on its own. For a day-count substance the day IS
+the stored fact, so that form is still its correction.
+
 **Phase 2 (#3295) owes the same model to nicotine, cannabis and custom substances**:
 per-event rows with `occurred_at` and `time_source`, with `substance_daily_totals` kept
 as a derived rollup. Until it lands they are day rows, date-only, corrected through the

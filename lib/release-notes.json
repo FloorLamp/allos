@@ -1,6 +1,221 @@
 {
   "days": [
     {
+      "date": "2026-09-05",
+      "entries": [
+        {
+          "pr": 5071,
+          "kind": "fix",
+          "category": "Sleep",
+          "title": "Review flags two more kinds of night recorded at the wrong clock time",
+          "issues": [5020]
+        },
+        {
+          "pr": 5072,
+          "kind": "perf",
+          "category": "Training",
+          "title": "The dashboard’s training load and intensity figures load faster",
+          "issues": [5061]
+        },
+        {
+          "pr": 5080,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "Correct a drink on its own row in the record, not through the day’s count",
+          "issues": [5026]
+        },
+        {
+          "pr": 5081,
+          "kind": "feature",
+          "category": "History",
+          "title": "Drag the day chart, then add — the form opens on the window you picked",
+          "issues": [4950]
+        },
+        {
+          "pr": 5081,
+          "kind": "feature",
+          "category": "History",
+          "title": "The add row names the time it will use, like “Add at 19:10–20:40”",
+          "issues": [4950]
+        },
+        {
+          "pr": 5088,
+          "kind": "fix",
+          "category": "Training",
+          "title": "Zone minutes count up to today, not to a device’s future-dated reading",
+          "issues": [5069]
+        },
+        {
+          "pr": 5092,
+          "kind": "fix",
+          "category": "Sleep",
+          "title": "A long wake-up inside a real night is no longer flagged as mis-timed",
+          "issues": []
+        },
+        {
+          "pr": 5094,
+          "kind": "feature",
+          "category": "Medical",
+          "title": "An episode’s peak fever leads its symptoms, with the reading and its time",
+          "issues": [4712]
+        },
+        {
+          "pr": 5094,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "When a temperature offers a dose, that medicine’s chip appears once",
+          "issues": [4712]
+        },
+        {
+          "pr": 5101,
+          "kind": "fix",
+          "category": "Training",
+          "title": "A live practice ends at the duration it states instead of growing all day",
+          "issues": [5091]
+        },
+        {
+          "pr": 5102,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "The day chart sizes its labels to the space it has, not to your screen",
+          "issues": [4973]
+        },
+        {
+          "pr": 5106,
+          "kind": "fix",
+          "category": "Training",
+          "title": "The ride page’s metric buttons keep their labels whole on a phone",
+          "issues": [5002]
+        },
+        {
+          "pr": 5112,
+          "kind": "feature",
+          "category": "Sleep",
+          "title": "Fix the times on a night the app has questioned, instead of deleting it",
+          "issues": [5021]
+        },
+        {
+          "pr": 5112,
+          "kind": "feature",
+          "category": "Sleep",
+          "title": "Review settles an overlapping pair of nights with Keep this one",
+          "issues": [5021]
+        },
+        {
+          "pr": 5119,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Every form’s commit button is the same primary button, on every page",
+          "issues": [4978]
+        },
+        {
+          "pr": 5120,
+          "kind": "feature",
+          "category": "Training",
+          "title": "Tap a logged day in Training’s week strip to open that day’s log",
+          "issues": [5003]
+        },
+        {
+          "pr": 5128,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "A past day is judged on what was true that day, not on what you logged since",
+          "issues": [3993]
+        },
+        {
+          "pr": 5128,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "A digest and the row it describes no longer disagree about a missed dose",
+          "issues": [3993]
+        },
+        {
+          "pr": 5129,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Correcting your time zone in Settings no longer excuses a missed dose",
+          "issues": [3428]
+        },
+        {
+          "pr": 5129,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "A first trip excuses its switch-day slots even if you never set a zone",
+          "issues": [3428]
+        },
+        {
+          "pr": 5130,
+          "kind": "feature",
+          "category": "Training",
+          "title": "The activity workspace has a close button on every screen size",
+          "issues": [5111]
+        },
+        {
+          "pr": 5130,
+          "kind": "fix",
+          "category": "Training",
+          "title": "A running workout’s footer offers Finish workout instead of nothing",
+          "issues": [5111]
+        },
+        {
+          "pr": 5130,
+          "kind": "fix",
+          "category": "Training",
+          "title": "Saving a workout’s recap closes the workspace instead of reopening its form",
+          "issues": [5111]
+        },
+        {
+          "pr": 5137,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "The week strip’s day links are announced as links by a screen reader",
+          "issues": [5133]
+        },
+        {
+          "pr": 5151,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Full-width sections line up on the same page edges as everything else",
+          "issues": [3899]
+        },
+        {
+          "pr": 5176,
+          "kind": "feature",
+          "category": "History",
+          "title": "A wide screen puts the day view’s chart, adding and calendar beside the rows",
+          "issues": [4974]
+        },
+        {
+          "pr": 5180,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "Remove condition on an episode’s menu says whether it worked",
+          "issues": [2641]
+        },
+        {
+          "pr": 5185,
+          "kind": "feature",
+          "category": "Medications",
+          "title": "Picking a household bottle fills the dose from the bottle, not the label",
+          "issues": [4665]
+        },
+        {
+          "pr": 5185,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "A later prefill never writes over a dose, interval or food rule you set",
+          "issues": [4665]
+        },
+        {
+          "pr": 5191,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "A kebab menu’s items are announced as menu items by a screen reader",
+          "issues": [5181]
+        }
+      ]
+    },
+    {
       "date": "2026-09-04",
       "entries": [
         {
@@ -107,6 +322,90 @@
           "category": "History",
           "title": "A drink with a stated time draws its own tick on the day chart",
           "issues": [3295]
+        },
+        {
+          "pr": 5023,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "A workout note is corrected once a fuller copy of that session arrives",
+          "issues": [4996]
+        },
+        {
+          "pr": 5023,
+          "kind": "feature",
+          "category": "Reminders",
+          "title": "A workout note still asking the type says details follow when Strava syncs",
+          "issues": [4996]
+        },
+        {
+          "pr": 5031,
+          "kind": "feature",
+          "category": "Medications",
+          "title": "You can check off and log doses on the medication page of someone you help",
+          "issues": [4429]
+        },
+        {
+          "pr": 5031,
+          "kind": "feature",
+          "category": "Medications",
+          "title": "You can mark a dose taken from the “Today across everyone” strip",
+          "issues": [4429]
+        },
+        {
+          "pr": 5039,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "The measurements sheet opens wide enough for four fields to a row",
+          "issues": [4977]
+        },
+        {
+          "pr": 5039,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "Blood pressure has room for both numbers, labelled Systolic and Diastolic",
+          "issues": [4977]
+        },
+        {
+          "pr": 5039,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "The measurements form’s standing sentence moves behind an info icon",
+          "issues": [4977]
+        },
+        {
+          "pr": 5042,
+          "kind": "fix",
+          "category": "Sleep",
+          "title": "A night that crosses a clock change reads its bed and wake on one clock",
+          "issues": [5018]
+        },
+        {
+          "pr": 5042,
+          "kind": "fix",
+          "category": "Sleep",
+          "title": "The sleep consistency strip stops calling a clock-change night off schedule",
+          "issues": [5018]
+        },
+        {
+          "pr": 5043,
+          "kind": "perf",
+          "category": "Trends",
+          "title": "Trends loads faster when you have a lot of biomarkers tracked",
+          "issues": []
+        },
+        {
+          "pr": 5028,
+          "kind": "fix",
+          "category": "Sleep",
+          "title": "A daytime nap stops making that night’s times look like a wrong clock",
+          "issues": [5019]
+        },
+        {
+          "pr": 5028,
+          "kind": "fix",
+          "category": "Sleep",
+          "title": "Deleting the flagged session removes the night, not that day’s nap",
+          "issues": [5019]
         }
       ]
     },
@@ -663,14 +962,14 @@
           "pr": 4966,
           "kind": "feature",
           "category": "Trends",
-          "title": "A chart whose data source has stopped links to Review and offers Fix a range",
+          "title": "A chart whose data source has stopped links to Review and offers “Fix a range”",
           "issues": [4925]
         },
         {
           "pr": 4967,
           "kind": "fix",
           "category": "Connected apps",
-          "title": "HRV, respiratory rate and skin temperature are being stored again",
+          "title": "Health Connect stores HRV, respiratory rate and skin temperature again",
           "issues": [4956]
         },
         {
@@ -684,7 +983,7 @@
           "pr": 4967,
           "kind": "fix",
           "category": "Connected apps",
-          "title": "Sync details no longer draw an empty box on a run with nothing to report",
+          "title": "Sync details no longer draw an empty box on a sync with nothing to report",
           "issues": [4956]
         },
         {

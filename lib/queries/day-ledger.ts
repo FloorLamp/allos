@@ -23,7 +23,7 @@ import { bestKnownInstant } from "../row-instants";
 import { detailSegment } from "../history-format";
 import { doseBucketOn } from "../intake-schedule";
 import type { LedgerDose } from "../day-ledger";
-import type { DoseBundleId } from "../dose-bundle";
+import type { BundleId } from "../bundle";
 import type { IntakeDose } from "../types/intake";
 import { getIntakeDosesForHistory } from "./intake/schedule";
 
@@ -111,7 +111,7 @@ export function getDayDoseLedger(
       // The composed action that wrote this row (#4328), or null when nothing composed
       // it. Carried across as stored: it is an identity two rows either share or do
       // not, never a value anybody reads.
-      bundleId: row.bundle_id as DoseBundleId | null,
+      bundleId: row.bundle_id as BundleId | null,
     });
   }
   return out;

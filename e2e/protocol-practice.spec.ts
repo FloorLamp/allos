@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import {
   expectNoClippedContent,
   hydratedClick,
+  openConfirm,
   settledBoxes,
   settledClick,
 } from "./helpers";
@@ -120,7 +121,7 @@ test("protocol references recovery gear + tracks practice adherence (#344)", asy
   );
   await page
     .getByRole("menu")
-    .getByRole("button", { name: "Delete", exact: true })
+    .getByRole("menuitem", { name: "Delete", exact: true })
     .click();
   await settledClick(
     page,
@@ -251,7 +252,10 @@ test("wellness practice: range target + one-tap logging (#1259)", async ({
     page,
     detailMain.getByRole("button", { name: "More protocol actions" })
   );
-  await page.getByRole("menu").getByRole("button", { name: "End now" }).click();
+  await page
+    .getByRole("menu")
+    .getByRole("menuitem", { name: "End now" })
+    .click();
   await settledClick(
     page,
     page
@@ -341,7 +345,7 @@ test("wellness practice: range target + one-tap logging (#1259)", async ({
   );
   await page
     .getByRole("menu")
-    .getByRole("button", { name: "Delete", exact: true })
+    .getByRole("menuitem", { name: "Delete", exact: true })
     .click();
   await settledClick(
     page,
@@ -398,7 +402,7 @@ test("activity and food protocols open their owning prefilled loggers (#1584)", 
     );
     await page
       .getByRole("menu")
-      .getByRole("button", { name: "Delete", exact: true })
+      .getByRole("menuitem", { name: "Delete", exact: true })
       .click();
     await settledClick(
       page,
@@ -435,7 +439,15 @@ test("activity and food protocols open their owning prefilled loggers (#1584)", 
   await expect(
     activityForm.getByRole("button", { name: "Cardio", exact: true })
   ).toHaveAttribute("aria-pressed", "true");
-  await activityForm.getByRole("button", { name: "Done" }).click();
+  // The protocol’s logger opens a form prefilled with its practice TYPE, and this
+  // one leaves with a typed name and no distance behind it — rowless and unsavable,
+  // so since #5111 closing it asks rather than dropping the draft in silence.
+  const discardDraft = await openConfirm(
+    page,
+    activityForm.getByRole("button", { name: "Done" })
+  );
+  await discardDraft.getByRole("button", { name: "Close anyway" }).click();
+  await expect(activityForm).toHaveCount(0);
 
   // Ending removes both the live weekly badge and every new-data action while
   // preserving the lifecycle menu and historical usage (#1592).
@@ -444,7 +456,10 @@ test("activity and food protocols open their owning prefilled loggers (#1584)", 
     page,
     detailMain.getByRole("button", { name: "More protocol actions" })
   );
-  await page.getByRole("menu").getByRole("button", { name: "End now" }).click();
+  await page
+    .getByRole("menu")
+    .getByRole("menuitem", { name: "End now" })
+    .click();
   await settledClick(
     page,
     page

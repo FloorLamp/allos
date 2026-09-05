@@ -53,7 +53,7 @@
 
 - Reproduce locally before pushing a fix. Preserve and inspect Playwright's
   `error-context.md`.
-- Run failures in failing order and use one worker when investigating shared
+- Run failures in failing order and use one orchestrator when investigating shared
   state or cross-spec poisoning.
 - Check the actual command exit code; pipelines can hide it.
 - For mass failures, check memory pressure, then run failures individually.
