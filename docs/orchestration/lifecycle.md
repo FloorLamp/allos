@@ -17,9 +17,9 @@
 - Run one adversarial audit over the previous day of merges per session-day.
   File findings against the introducing PR.
 - **An issue of its own** (owner, 2026-09-05) is user-reachable, breaks main
-  or a merge, or is a measured reproduction no open issue scopes. A scan gap
-  is a line on its #5346 adopter, a harness nit a line on the rolling harness
-  issue, a flake joins its mechanism, a prose slip is fixed in the PR.
+  or a merge, a measured reproduction no open issue scopes, or removes a
+  parallel concept (CLAUDE.md). A scan gap is a line on its #5346 adopter, a
+  harness nit a line on the harness issue, a flake joins its mechanism.
 - After each UI-affecting merge, while its PR context is fresh, run
   `UX_SEED=1 node scripts/orchestration/post-merge-census.mjs HEAD^ HEAD --run`.
   It scopes territories, expands shared UI to a census, stops on a manual plan.
