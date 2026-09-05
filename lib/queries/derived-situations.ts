@@ -4,18 +4,35 @@
 //
 //   • the per-context VERDICTS (with basis) the visible state lines format over, and
 //   • getEffectiveActiveSituations(profileId, date) — the profile's active-situation
-//     NAME set WIDENED by any derived context that holds today, the ONE seam every
-//     dueness surface (Supplements bar, Medications, check-in count, Upcoming, notify
-//     tick, digest) unions in so a situational item keyed to Poor sleep / Period goes
-//     due exactly while the derived context holds (surfacing-paths-only, #558/#1292).
+//     NAME set on `date`, WIDENED by any derived context that held that day: the ONE
+//     seam every dueness surface (Supplements bar, Medications, check-in count,
+//     Upcoming, notify tick, digest) unions in so a situational item keyed to Poor
+//     sleep / Period goes due exactly while the derived context holds
+//     (surfacing-paths-only, #558/#1292).
 //
-// Derived context belongs to the profile's LOCAL calendar day (`date` is today in the
+// EVERY DERIVED SOURCE IS DATED (#3993, owner ruling), each from its own record: a
+// period log is a span periodOnDate reads for any day inside its horizon (#2613, which
+// refuses the FUTURE, not the past); a weather spell is a fact in the cached series; a
+// rough night is the night ENDING the day, against the baseline before it, through the
+// threshold the coaching engine calls. The old ground for answering only about NOW —
+// that derived context "cannot be dated" — was never true of any of the three.
+//
+// A RETROACTIVE VERDICT READS DATA AS STORED NOW, the caveat the ruling recorded rather
+// than smoothed away: a night that syncs late changes the verdict for its day, as a dose
+// logged late moves that day's adherence. It is why this re-derives from the record
+// instead of replaying a stored answer.
+//
+// Derived context belongs to the profile's LOCAL calendar day (`date` is a day in the
 // profile's timezone, resolved by the caller): a "night" and a "logged period day" are
 // both judged against that local date, never UTC (the per-profile-context trap). No
 // `.prepare` here — every read delegates to an already profile-scoped reader — so the
 // scoping guard is unaffected.
 
-import { getSleepSignal } from "./coaching";
+import { sleepSignalResolver } from "./coaching";
+import type { SleepSignal } from "../coaching";
+import { today } from "../db";
+import { situationsActiveOn, type SituationEvent } from "../trend-annotations";
+import { getSituationEvents } from "../settings/profile-attrs";
 import { tickCached } from "../tick-cache";
 import { getFindingSuppressions } from "./upcoming/suppressions";
 import { getIntakeItems } from "./intake/schedule";
@@ -42,13 +59,14 @@ import {
   WEATHER_SITUATIONS,
   type WeatherSituationState,
 } from "../weather-situations";
-import { resolveWeatherSituations } from "./weather-situations";
+import { weatherSituationsResolver } from "./weather-situations";
 import type { TemperatureUnit } from "../settings";
 import type { IntakeObligation } from "../types";
 
 // Whether a declared-situation NAME set contains a given built-in (name-keyed, #560).
-function declared(active: readonly string[], name: string): boolean {
-  return active.some((s) => sameSituation(s, name));
+function declared(active: ReadonlySet<string>, name: string): boolean {
+  for (const s of active) if (sameSituation(s, name)) return true;
+  return false;
 }
 
 export interface DerivedSituations {
@@ -65,17 +83,18 @@ export interface DerivedSituations {
   weather: WeatherSituationState[];
   // The DERIVED situation names to union into the active set (only those turned on by
   // derivation, i.e. NOT already declared — a declared toggle is already in the set).
+  // Dated: these are the names derivation turned on ON `date` (#3993).
   derivedNames: Set<string>;
 }
 
-// Resolve every derived situation for the profile on `today` (its local calendar day).
+// Resolve every derived situation for the profile on `date` (a day in its local calendar).
 //
-// The parameter is named `today` because every caller resolves it that way (the dashboard's
-// `on`, med-data's `todayStr`) and because every verdict below is a statement about NOW —
-// the period field is literally `coversToday`, and the weather series deliberately ends
-// today rather than reading its forecast tail. It matters to #2613: the period read takes a
-// horizon, and passing the subject day as its own horizon is only sound where the subject
-// really is today. Naming it says so instead of leaving a guard that silently cannot fire.
+// The parameter is `date`, not `today` (#3993). Every verdict below is a statement about
+// THAT DAY, read from the record the day left: the night that ended it, the period log
+// that covered it, the cached weather series through it. The #2613 horizon is now passed
+// as what it is — the profile's real today — so periodOnDate can refuse a future day
+// instead of being handed the subject day as its own horizon, which is the arrangement
+// that made the guard unable to fire.
 //
 // TICK-MEMOIZED (#2724), measured first on #2674's evidence standard. One digest gather
 // reaches this resolver from FOUR unrelated callers (two getEffectiveActiveSituations
@@ -84,6 +103,16 @@ export interface DerivedSituations {
 // call against a seeded profile (mean 1746 µs, p50 1621 µs, n=5000 — the weather-series
 // scan dominates), so the four collapse to one for ~5.2 ms per profile per digest gather
 // (~5% of the ~97 ms gather), against ~23 µs for #2674's whole prize.
+//
+// THE MEMO IS ON THE INPUTS, NOT ON THE ANSWER (#3993), and that placement is the whole
+// of its soundness. It used to wrap this single-DATE entry point, which the window
+// resolver below does not go through — so inside one tick scope, with a
+// `poor-sleep-override:` dismissal landing mid-scope, the reminder rebuild (single-date,
+// memoized) and the catch-up sheet (windowed, unmemoized) answered the SAME day two
+// different ways. #2724's bound had quietly become a split. Memoizing the profile's
+// date-independent SOURCES instead puts every consumer in a tick on one snapshot,
+// whichever entry point it came through, which is what "bounded to one profile's tick"
+// was always claiming.
 //
 // The writers, enumerated, which is what actually decides it (lib/tick-cache.ts):
 //   • IN SCOPE, the one upcoming_dismissals writer the tick reaches is `runPreventive`'s
@@ -110,71 +139,229 @@ export interface DerivedSituations {
 // FIRST tick-memoized gather that reads `upcoming_dismissals` at all — the bus #2674
 // fenced off — so it is a first of its kind rather than one more of a kind.
 //
-// WHAT IS AND IS NOT SNAPSHOTTED. `getActiveSituations` is read inside here, so the
-// DECLARED set is snapshotted with everything else. The dueness seam survives that only
-// because `getEffectiveActiveSituations` unions a FRESH `getActiveSituations` read with
-// this resolver's memoized DERIVED names — so a situation toggled mid-tick still lands,
-// and the memo's blast radius is the derived half alone.
+// WHAT IS AND IS NOT SNAPSHOTTED — and the DECLARED set is NOT (#3993). It used to be:
+// the snapshot carried `getActiveSituations` + `getSituationEvents` while the dueness
+// seam unioned a FRESH declared read with this resolver's memoized derived names. That
+// left one call mixing a fresh declared half with a derived half computed from the STALE
+// one — a torn read, and the tear is not harmless, because the dependence is not
+// monotone: `roughNightVerdict` short-circuits on `declared` and so never reaches
+// `derivedNames`, and a stale-TRUE declared therefore SUPPRESSES a measured derivation. A
+// chip toggled off mid-tick over a genuinely rough night gave an answer that was neither
+// the before answer nor the after answer, and the item stopped being due for the rest of
+// the tick. Both halves now read the declared set through ONE `declaredSituationsResolver`
+// per resolver, so the memo holds only what is genuinely declaration-independent and its
+// blast radius really is the derived half alone. (The tear pre-dates this branch, which
+// routes five more summary readers through here; both directions are pinned by
+// lib/__db_tests__/tick-derived-situations-memo.test.ts.)
 //
-// This memoizes the RESOLVER, not `getFindingSuppressions`: the bus read itself stays
-// unmemoized (#2674 stands; lib/__db_tests__/tick-suppression-freshness.test.ts pins it).
-// The scope boundary, BOTH halves of the key, and the fact that no consumer mutates the
-// returned object are pinned by lib/__db_tests__/tick-derived-situations-memo.test.ts.
-export const resolveDerivedSituations = tickCached(
-  "derived-situations.resolve",
-  (profileId: number, today: string) => `${profileId}:${today}`,
-  resolveDerivedSituationsUncached
+// Moving that pair out costs the memo nothing: `getActiveSituations` is one hoisted
+// statement (`snapshotCached` on top of it for page renders) and `getSituationEvents` is
+// one profile-setting read, against the ~1.7 ms weather-series scan the memo exists for.
+// Outside a tick scope it is a net saving — the declared pair used to be read twice per
+// resolver, once by the seam and once through the memo's passthrough.
+//
+// THE DATE IS NOT A MEMO KEY ANY MORE, it is an evaluation parameter. Every day's answer
+// is computed from the one snapshot, so two days cannot be served each other's answer by
+// a key that forgot to project one of them — the failure `tickCached` warns about is now
+// unreachable here rather than guarded against.
+//
+// This memoizes the SOURCES, not `getFindingSuppressions` itself: the bus read stays
+// unmemoized for everyone else (#2674 stands; lib/__db_tests__/tick-suppression-
+// freshness.test.ts pins it). The scope boundary, the profile key, the per-day
+// independence, the agreement of the two entry points, and the fact that no consumer
+// mutates the snapshot are pinned by lib/__db_tests__/tick-derived-situations-memo.test.ts.
+// The profile-scoped inputs every derived verdict reads that do NOT depend on which day
+// is being asked about, and — since the torn read above — that the DECLARED set does not
+// decide either. Each is one read whose pure rule then slices per day: the suppression
+// bus, the nightly sleep series, the cycle relevance bit and the period log, plus the
+// profile's real today as the #2613 horizon.
+interface DerivedSources {
+  horizon: string;
+  suppressions: ReturnType<typeof getFindingSuppressions>;
+  sleepOn: (wakeDay: string) => SleepSignal | null;
+  cycleRelevant: boolean;
+  periods: ReturnType<typeof listCyclePeriods>;
+}
+
+const derivedSources = tickCached(
+  "derived-situations.sources",
+  (profileId: number) => `${profileId}`,
+  (profileId: number): DerivedSources => {
+    const cycleRelevant = getNavRelevance(profileId).cycle;
+    return {
+      horizon: today(profileId),
+      suppressions: getFindingSuppressions(profileId),
+      sleepOn: sleepSignalResolver(profileId),
+      cycleRelevant,
+      periods: cycleRelevant ? listCyclePeriods(profileId) : [],
+    };
+  }
 );
 
-function resolveDerivedSituationsUncached(
+// The DECLARED half, dated (#654/#3973): the active-situation names as they stood on
+// `date`, from the current set plus its change log. NEVER tick-memoized, and read ONCE
+// per resolver so both halves of the union — the fallback each verdict carries and the
+// set the dueness seam starts from — are the same declaration. That sharing is the whole
+// point: a fresh declared half beside a derived half computed from a stale one is the
+// torn read documented above, not a conservative snapshot.
+//
+// Lazy and per-date-cached, like everything else here: a resolver nobody asks reads
+// nothing, and `situationsActiveOn` runs once per distinct day. The returned set is the
+// resolver's own, so callers copy before widening it.
+function declaredSituationsResolver(
+  profileId: number
+): (date: string) => ReadonlySet<string> {
+  const byDate = new Map<string, ReadonlySet<string>>();
+  let declaredNow: string[] | null = null;
+  let events: SituationEvent[] | null = null;
+  return (date) => {
+    const cached = byDate.get(date);
+    if (cached) return cached;
+    declaredNow ??= getActiveSituations(profileId);
+    events ??= getSituationEvents(profileId);
+    const set = situationsActiveOn(date, declaredNow, events);
+    byDate.set(date, set);
+    return set;
+  };
+}
+
+// The weather half is the one input that depends on the WINDOW rather than only on the
+// profile, so it is memoized per declared span. Nothing the tick runs writes the weather
+// cache, the symptom log or the keyed-item set after `syncIntegrations`, so two spans in
+// one tick cannot disagree about a day they share.
+const derivedWeatherOn = tickCached(
+  "derived-situations.weather",
+  (profileId: number, from: string, to: string) => `${profileId}:${from}:${to}`,
+  weatherSituationsResolver
+);
+
+// Every derived situation for the profile on `date` — the single-DATE entry point, which
+// is this file's window resolver over a one-day window. One implementation, so the two
+// cannot drift.
+export function resolveDerivedSituations(
   profileId: number,
-  today: string
+  date: string
 ): DerivedSituations {
-  const active = getActiveSituations(profileId);
+  return derivedSituationsResolver(profileId, date, date)(date);
+}
 
-  // ---- Poor sleep (#1292) ----
-  // Missing data ⇒ getSleepSignal null ⇒ measured never fires ⇒ OFF unless declared
-  // (the conservative missing-data-OFF posture). The override is a date-scoped
-  // suppression row on the shared bus; only today's key is ever consulted, so a stale
-  // yesterday override never touches today.
-  const suppressions = getFindingSuppressions(profileId);
-  const poorSleep = roughNightVerdict({
-    sleep: getSleepSignal(profileId),
-    thresholds: DEFAULT_COACHING_THRESHOLDS,
-    declared: declared(active, BUILTIN_POOR_SLEEP_SITUATION),
-    overridden: suppressions.has(poorSleepOverrideKey(today)),
-  });
+// EVERY INPUT ABOVE IS READ ONCE, NOT ONCE PER DAY — which is what lets the whole app
+// share one dated answer instead of splitting into dated and undated halves (#3993).
+//
+// The split this replaces was never about what the surfaces MEAN. It was a measured
+// cost: the per-date resolver re-read the sleep series, the cycle log, the weather cache
+// and the suppression bus for every day a window walked, so dating a 56-day adherence
+// pattern cost 56 gathers. Only THREE of those reads even depend on the day (the nights
+// before it, the periods covering it, the weather through it) and none of them is a
+// per-day query — each is one profile-scoped read the pure rule then slices. Gathering
+// once and slicing per day makes a window cost what a single day costs, and the seam
+// stops paying for itself.
+//
+// SAME ANSWER, DAY FOR DAY, as `resolveDerivedSituations` — which is not a claim about
+// two implementations agreeing, because there is only one: the single-date entry point
+// above is this resolver over a one-day window. Each day is evaluated AS OF ITSELF (the
+// nights up to it, the period log's view of it, the weather slice ending on it), so a
+// window's answer for a day and a single-day call about it cannot diverge.
+//
+// The window is a COST HINT, not a contract. A date outside [from, to] is still answered
+// correctly — the weather half reads its own slice for it — so a caller that mis-declares
+// its window pays more, never lies.
+//
+// SNAPSHOT LIFETIME IS THE RESOLVER: a
+// caller that wants a fresh read builds a fresh resolver. The inputs are gathered LAZILY
+// on the first date asked about, so a caller that builds one and never uses it — the
+// common case on a profile with nothing keyed to a derived context — pays nothing.
+export function derivedSituationsResolver(
+  profileId: number,
+  from: string,
+  to: string,
+  // The declared half, injected so the caller that also unions it reads it ONCE. Left to
+  // default for the callers that only want the verdicts; either way it is fresh per
+  // resolver rather than tick-memoized.
+  declaredOn: (
+    date: string
+  ) => ReadonlySet<string> = declaredSituationsResolver(profileId)
+): (date: string) => DerivedSituations {
+  interface Inputs extends DerivedSources {
+    weatherOn: ReturnType<typeof weatherSituationsResolver>;
+  }
+  let inputs: Inputs | null = null;
+  const load = (): Inputs => {
+    if (inputs) return inputs;
+    const gathered: Inputs = {
+      ...derivedSources(profileId),
+      weatherOn: derivedWeatherOn(profileId, from, to),
+    };
+    inputs = gathered;
+    return gathered;
+  };
 
-  // ---- Period (#1298) ----
-  // Gated on the SAME cycle relevance bit the nav uses (#1042): a profile that doesn't
-  // track cycles never sees the built-in Period situation. Derived = today covered by a
-  // logged period (factual, non-predictive — periodOnDate); declared is the fallback.
-  const cycleRelevant = getNavRelevance(profileId).cycle;
-  const period: PeriodVerdict | null = cycleRelevant
-    ? periodVerdict({
-        coversToday:
-          periodOnDate(listCyclePeriods(profileId), today, today) != null,
-        declared: declared(active, BUILTIN_PERIOD_SITUATION),
-      })
-    : null;
+  return (date) => {
+    const i = load();
+    // A day that has not happened leaves no record to read (#2613: unknowable, not
+    // merely uncertain). periodOnDate refuses its own future and no night ends on one,
+    // but the weather cache reaches a week AHEAD — so with `date` free, all three need
+    // the refusal.
+    if (date > i.horizon)
+      return {
+        poorSleep: { on: false, basis: null },
+        period: null,
+        weather: [],
+        derivedNames: new Set(),
+      };
+    // The DECLARED set as it stood on `date` (#654/#3973), so the fallback each verdict
+    // below carries is dated with the rest — a chip toggled this morning must not report
+    // a rough night for last Tuesday. On today it is the current set exactly, read fresh
+    // rather than out of the tick snapshot, and it is the SAME read the dueness seam
+    // unions.
+    const active = declaredOn(date);
 
-  // ---- Weather (#1726) ----
-  // Gated on weather relevance (a home location plus either a weather-keyed item or a
-  // symptom these situations explain), then decided purely by the cached daily series
-  // ending TODAY — never on the forecast tail, so a situation cannot activate on
-  // weather that has not happened. No data ⇒ no situation.
-  const weather = resolveWeatherSituations(profileId, today).active;
+    // ---- Poor sleep (#1292) ----
+    // Missing data ⇒ no sleep signal ⇒ measured never fires ⇒ OFF unless declared (the
+    // conservative missing-data-OFF posture). The measured half is the night ENDING
+    // `date` against the baseline of the nights before it — the same threshold function
+    // the coaching engine calls, so the two can never disagree about what a rough night
+    // is. The override is a date-scoped suppression row on the shared bus, so the key
+    // for THIS day is the one consulted and a neighbouring day's override never reaches
+    // it.
+    const poorSleep = roughNightVerdict({
+      sleep: i.sleepOn(date),
+      thresholds: DEFAULT_COACHING_THRESHOLDS,
+      declared: declared(active, BUILTIN_POOR_SLEEP_SITUATION),
+      overridden: i.suppressions.has(poorSleepOverrideKey(date)),
+    });
 
-  // Only the names turned on by DERIVATION (not already declared) need adding — a
-  // declared toggle is already in getActiveSituations.
-  const derivedNames = new Set<string>();
-  if (poorSleep.on && poorSleep.basis === "measured")
-    derivedNames.add(BUILTIN_POOR_SLEEP_SITUATION);
-  if (period?.on && period.basis === "logged")
-    derivedNames.add(BUILTIN_PERIOD_SITUATION);
-  for (const w of weather) derivedNames.add(w.name);
+    // ---- Period (#1298) ----
+    // Gated on the SAME cycle relevance bit the nav uses (#1042): a profile that doesn't
+    // track cycles never sees the built-in Period situation. Derived = `date` covered by
+    // a logged period (factual, non-predictive — periodOnDate, which takes the subject
+    // day and the horizon separately); declared is the fallback.
+    const period: PeriodVerdict | null = i.cycleRelevant
+      ? periodVerdict({
+          coversDate: periodOnDate(i.periods, date, i.horizon) != null,
+          declared: declared(active, BUILTIN_PERIOD_SITUATION),
+        })
+      : null;
 
-  return { poorSleep, period, weather, derivedNames };
+    // ---- Weather (#1726) ----
+    // Gated on weather relevance (a home location plus either a weather-keyed item or a
+    // symptom these situations explain), then decided purely by the cached daily series
+    // ending on `date` — never on the forecast tail, so a situation cannot activate on
+    // weather that has not happened. Already dated: this is the source the #1360
+    // window-source rule names as fully reconstructable. No data ⇒ no situation.
+    const weather = i.weatherOn(date).active;
+
+    // Only the names turned on by DERIVATION (not already declared) need adding — a
+    // declared toggle is already in getActiveSituations.
+    const derivedNames = new Set<string>();
+    if (poorSleep.on && poorSleep.basis === "measured")
+      derivedNames.add(BUILTIN_POOR_SLEEP_SITUATION);
+    if (period?.on && period.basis === "logged")
+      derivedNames.add(BUILTIN_PERIOD_SITUATION);
+    for (const w of weather) derivedNames.add(w.name);
+
+    return { poorSleep, period, weather, derivedNames };
+  };
 }
 
 // The number of active situational items keyed to `situation` (name-keyed, #560) that
@@ -277,23 +464,100 @@ export function getDerivedSituationLines(
   };
 }
 
-// The active-situation NAME set widened by today's derived context — the ONE set every
-// dueness surface consumes so a Poor sleep / Period situational item goes due exactly
-// while its derived context holds. Declared ∪ derived (idempotent — a declared toggle
-// is already present). Replaces `new Set(getActiveSituations(profileId))` at the
-// dueness-surfacing call sites.
+// The active-situation NAME set ON `date`, widened by the derived context that held that
+// day — the ONE set every dueness surface consumes so a Poor sleep / Period / weather
+// situational item goes due exactly while its context holds. Replaces
+// `new Set(getActiveSituations(profileId))` at the dueness-surfacing call sites.
 //
-// THE UNION IS ALSO WHAT BOUNDS THE #2724 MEMO. The declared half is re-read here on
-// every call, and only the DERIVED half comes out of the tick-scoped snapshot — so a
-// situation toggled by hand mid-tick reaches this seam immediately, and the memo can
-// only ever hold the derived names stale. The returned Set is this function's own, so a
-// caller mutating it cannot reach the memoized object behind `derivedNames`.
+// BOTH HALVES ARE DATED, which is what lets a past-day caller stop branching (#3993):
+// the declared half through #654's change log, the derived half from each source's own
+// record. A surface asking about a closed day gets one answer about that day rather than
+// a dated half beside a now half, and today's answer is unchanged either way.
+//
+// ONE QUESTION, ONE ANSWER, ON EVERY SURFACE. "Was this dose owed on that day" is asked
+// by the surfaces a person acts on (the reminder rebuild, the catch-up sheet, the
+// medications and supplements rows) and by the surfaces that summarise those days back
+// to them (the adherence strips, the weekly recap, the demotion evidence, the morning
+// digest's "0/1 taken", the adherence pattern findings). They all read this seam, so
+// they cannot disagree. Handing the summaries a DECLARED-ONLY resolver instead is what
+// let a catch-up sheet offer a dose the strip beside it scored `na` and then discard the
+// log when it was taken, and what let the digest push "0/1 taken" for a paused day no
+// surface would ever have offered.
+//
+// A SUMMARY IS AN ACT-ON SURFACE. That is the rule the split got wrong: the morning
+// digest states a miss to the person in a push, and the demotion suggestion puts an
+// Accept button under its evidence. Neither is a passive read-out, and neither may be
+// answered from a different day's facts than the row the person is looking at.
+//
+// THE DECLARED-ONLY RECONSTRUCTION IS GONE, not moved. `situationsActiveOn` is still the
+// pure rule that dates the declared half — the symptom-episode spans and the pooled
+// situation-impact windows read it directly, because membership really is their question
+// — but nothing in the app now asks for dueness from declarations alone.
+//
+// THE UNION IS ALSO WHAT BOUNDS THE #2724 MEMO, and the bound is real only because the
+// declared set is outside the memo on BOTH sides now (#3993). One `declaredSituations-
+// Resolver` per resolver feeds this union AND the fallback inside every verdict, so a
+// situation toggled by hand mid-tick reaches this seam immediately and reaches the
+// verdicts with it. Unioning a fresh declared half over a derived half computed from the
+// stale one is what used to make a toggled-off chip suppress a measured rough night —
+// an answer that was neither the before answer nor the after one. The memo can now only
+// hold the derived names stale, which is the exposure the resolver above documents. The
+// returned Set is the caller's own, so a caller mutating it reaches neither the declared
+// cache nor the snapshot behind `derivedNames`.
+//
+// ONE IMPLEMENTATION: this is the window resolver over a one-day window, built fresh per
+// call, which is what keeps the whole answer — not just the declared half — fresh per
+// call for the tick.
 export function getEffectiveActiveSituations(
   profileId: number,
   date: string
 ): Set<string> {
-  const set = new Set(getActiveSituations(profileId));
-  for (const name of resolveDerivedSituations(profileId, date).derivedNames)
-    set.add(name);
-  return set;
+  return effectiveSituationResolver(profileId, { from: date, to: date })(date);
+}
+
+// The same set for a WINDOW of days, off ONE gather (#3993).
+//
+// IT MEMOIZES PER DATE, and that is not an optimization — it is the difference between
+// this being shippable and not. `intakeAdherenceStrip` asks its resolver once per ITEM
+// per DAY, so a 20-item page over a 14-day window asks 280 times.
+//
+// AND IT GATHERS ONCE PER WINDOW, which is what removed the cost that used to justify
+// leaving the summary surfaces undated. `window` names the span the caller is about to
+// score, so the derived inputs are read once for the span rather than once per day —
+// see `derivedSituationsResolver`. It is a COST HINT, not a contract: a date outside the
+// span is answered correctly, just less cheaply.
+//
+// The snapshot lifetime is the RESOLVER: each call site builds one for the window it is
+// about to score, so a caller that wants a fresh read builds a fresh resolver. That is
+// the one behavioural difference from asking `getEffectiveActiveSituations` per day,
+// which builds a fresh one-day resolver every time — the single-day entry point keeps
+// that freshness, and this one keeps a window's days consistent with each other. It is a
+// property of holding a resolver, not of any memo: it holds identically outside a tick
+// scope, which is exactly what distinguishes it from the #2724 split above.
+export function effectiveSituationResolver(
+  profileId: number,
+  window: { from: string; to: string }
+): (date: string) => Set<string> {
+  const byDate = new Map<string, Set<string>>();
+  // ONE declared read for BOTH halves — this union and the fallback inside every verdict
+  // — so the two cannot be a day's answer apart. Built here rather than inside the
+  // derived resolver because this is the caller that unions it.
+  const declaredOn = declaredSituationsResolver(profileId);
+  let derivedOn: ((date: string) => DerivedSituations) | null = null;
+  return (date) => {
+    let set = byDate.get(date);
+    if (set) return set;
+    derivedOn ??= derivedSituationsResolver(
+      profileId,
+      window.from,
+      window.to,
+      declaredOn
+    );
+    // Copied, because `declaredOn` caches its answer per date and this set is the
+    // caller's to widen (and to scribble on).
+    set = new Set(declaredOn(date));
+    for (const name of derivedOn(date).derivedNames) set.add(name);
+    byDate.set(date, set);
+    return set;
+  };
 }

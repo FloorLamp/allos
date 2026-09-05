@@ -13,7 +13,7 @@
 // GitHub API — laneIssues() coerces, and a reader comparing them raw matches
 // nothing while looking entirely correct.
 //
-// A FOURTH reader survived that convergence: catchup-digest.sh carried its own
+// A FOURTH reader survived that convergence: pm-digest.sh carried its own
 // last-row-wins fold, so an `update` row would have dropped its branch out of
 // the in-flight set and offered that lane's issues back as pickable — the same
 // defect this file's header describes, in the one place that decides what gets

@@ -80,6 +80,7 @@ vi.mock("@/lib/notifications/telegram-api", async (importActual) => {
 });
 
 import { db, today } from "@/lib/db";
+import { getTakenDoseIds } from "@/lib/queries";
 import { shiftDateStr, utcSqlString } from "@/lib/date";
 import { formatMonthDay } from "@/lib/format-date";
 import {
@@ -379,6 +380,33 @@ describe("a dose resolved IN THE APP stops being displayed as outstanding", () =
       markDoseTaken(pid, d.doseId, d.itemId, today(pid), "page");
 
     expect((await reconcileProfileMessages(pid)).closed).toBe(1);
+  });
+
+  // THE "✅ All" BUTTON MUST BE ABLE TO DIE THE SAME WAY, and its arm had the opposite
+  // guard: dead only when `entries.length > 0 && every resolved`, so a slot that
+  // rebuilds to NOTHING left it live forever and a tap rebuilt nothing. #3993 made that
+  // ordinary — a derived pause can empty a past slot — but retiring every item in the
+  // slot has always done it, which is what this seeds, because it needs no clock.
+  it("the All button dies when its slot rebuilds to nothing", async () => {
+    const pid = newProfile("Empty Emma");
+    const a = seedDose(pid, "Emma A");
+    seedDose(pid, "Emma B");
+    seedLoginTelegram(pid, "5553993");
+    await sendMorningReminder(pid);
+    expect(liveTokens(pid).some((t) => t.startsWith("all:"))).toBe(true);
+
+    // Retired, NOT resolved: nothing is taken or skipped, so the "every resolved" half
+    // of the old guard is vacuously true and only the length half was holding it live.
+    db.prepare("UPDATE intake_items SET active = 0 WHERE profile_id = ?").run(
+      pid
+    );
+    await reconcileProfileMessages(pid);
+
+    expect({
+      allToken: liveTokens(pid).some((t) => t.startsWith("all:")),
+      // The dose was never resolved — this is not the button dying of resolution.
+      resolved: getTakenDoseIds(pid, today(pid)).has(a.doseId),
+    }).toEqual({ allToken: false, resolved: false });
   });
 
   // RE-OFFERING THE SAME BUNDLE IS A READ. The stack button is re-derived on every

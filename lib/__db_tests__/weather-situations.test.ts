@@ -39,7 +39,9 @@ import {
 } from "@/lib/queries";
 import {
   getWeatherSituationWindows,
+  resolveWeatherSituations,
   weatherSituationsRelevant,
+  weatherSituationsResolver,
 } from "@/lib/queries/weather-situations";
 import { getSituationImpacts } from "@/lib/queries/situation-impact";
 import {
@@ -276,6 +278,36 @@ describe("situational intake gating on weather (#1726 payoff 1)", () => {
     ).toBe(false);
   });
 
+  // AND THE OTHER DIRECTION, which only became askable when the resolver was dated
+  // (#3993): the test above asks about TODAY and ignores the tail, this one asks ABOUT a
+  // tail day. Weather is the source that proves the refusal — periodOnDate refuses its
+  // own future (#2613) and no night ends on a day that has not happened, but the cache
+  // really does hold WEATHER_FORECAST_DAYS ahead, so a free `date` could otherwise turn
+  // a situation on from weather nobody has lived through.
+  it("refuses a day that has not happened, spell or no spell", async () => {
+    const p = newProfile("heat-future");
+    keyItem(p, "Electrolytes", BUILTIN_HEATWAVE_SITUATION);
+    const anchor = today(p);
+    // Hot from day-5 through day+3, so today AND tomorrow sit inside the spell — the
+    // difference between them is only that one of them has happened.
+    await runWeatherSync(
+      p,
+      dailySource(
+        trailing(shiftDateStr(anchor, 3), 9, () => ({
+          tempMaxC: HEATWAVE_ENTER_C + 3,
+        }))
+      )
+    );
+    expect({
+      today: getEffectiveActiveSituations(p, anchor).has(
+        BUILTIN_HEATWAVE_SITUATION
+      ),
+      tomorrow: getEffectiveActiveSituations(p, shiftDateStr(anchor, 1)).has(
+        BUILTIN_HEATWAVE_SITUATION
+      ),
+    }).toEqual({ today: true, tomorrow: false });
+  });
+
   it("stays silent for a profile with no home location", async () => {
     const id = Number(
       db.prepare("INSERT INTO profiles (name) VALUES ('no-home-weather')").run()
@@ -321,6 +353,79 @@ describe("relevance gating (#1726)", () => {
     expect(
       resolveDerivedSituations(p, anchor).weather.map((s) => s.name)
     ).toContain(BUILTIN_HEATWAVE_SITUATION);
+  });
+
+  // THE RELEVANCE GATE IS BOUNDED BY THE SUBJECT DAY, AT BOTH ENDS (#3993).
+  //
+  // The windowed resolver gathers symptom dates over [from − 180, to], which reaches
+  // PAST any day inside the window; the single-day call reads [date − 180, date]. So a
+  // headache logged AFTER a day, but inside the window a caller happened to declare, was
+  // turning relevance on for that day — and with it every weather situation that held on
+  // it. That is not a weather curiosity: a #1296 hold whose `pause_situation_id` points
+  // at a weather situation rides this same gate (`hasWeatherKeyedItem` reads only
+  // `condition = 'situational'` rows), so the day's DUENESS moved with it.
+  //
+  // Asserted as an identity rather than as a list of expected days: for every day, the
+  // window's answer IS the single-day answer, over window shapes that put the symptom
+  // before, on, and after the day being asked about.
+  it("a symptom logged after a day never makes that day relevant", async () => {
+    const p = newProfile("weather-relevance-bound");
+    const anchor = today(p);
+    // Hot for a fortnight, so the heat spell holds on every day below and relevance is
+    // the ONLY thing that can differ between them.
+    await runWeatherSync(
+      p,
+      dailySource(
+        trailing(anchor, 14, () => ({ tempMaxC: HEATWAVE_ENTER_C + 3 }))
+      )
+    );
+    // ONE weather-explainable symptom, three days ago. Nothing before it.
+    const symptomDay = shiftDateStr(anchor, -3);
+    db.prepare(
+      `INSERT INTO symptom_logs (profile_id, date, symptom, severity)
+       VALUES (?, ?, 'Headache', 2)`
+    ).run(p, symptomDay);
+
+    const days = [6, 5, 4, 3, 2, 1, 0].map((i) => shiftDateStr(anchor, -i));
+    const alone = Object.fromEntries(
+      days.map((d) => [d, resolveWeatherSituations(p, d).relevant])
+    );
+    // The day the symptom was logged is the first relevant one; the days before it are
+    // not. That is the fixture being real — without it every assertion below is about a
+    // profile that is relevant (or irrelevant) on every day.
+    expect(alone).toEqual({
+      [shiftDateStr(anchor, -6)]: false,
+      [shiftDateStr(anchor, -5)]: false,
+      [shiftDateStr(anchor, -4)]: false,
+      [symptomDay]: true,
+      [shiftDateStr(anchor, -2)]: true,
+      [shiftDateStr(anchor, -1)]: true,
+      [anchor]: true,
+    });
+
+    // Four window shapes, including two that OVERLAP: the same day scored by two
+    // resolvers with different spans must get one answer, or "the window is a cost hint,
+    // not a contract" is false.
+    for (const [from, to] of [
+      [shiftDateStr(anchor, -6), anchor],
+      [shiftDateStr(anchor, -6), shiftDateStr(anchor, -4)],
+      [shiftDateStr(anchor, -5), shiftDateStr(anchor, -1)],
+      [shiftDateStr(anchor, -2), anchor],
+    ] as const) {
+      const on = weatherSituationsResolver(p, from, to);
+      expect(
+        Object.fromEntries(days.map((d) => [d, on(d).relevant])),
+        `relevance over [${from}, ${to}]`
+      ).toEqual(alone);
+      expect(
+        Object.fromEntries(days.map((d) => [d, [...on(d).names].sort()])),
+        `situations over [${from}, ${to}]`
+      ).toEqual(
+        Object.fromEntries(
+          days.map((d) => [d, [...resolveWeatherSituations(p, d).names].sort()])
+        )
+      );
+    }
   });
 
   it("an unrelated symptom does not", async () => {

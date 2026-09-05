@@ -396,6 +396,7 @@ export default function EpisodeTimeline({
           <>
             <button
               type="button"
+              role="menuitem"
               className={MENU_ITEM}
               onClick={() => {
                 close();
@@ -408,6 +409,7 @@ export default function EpisodeTimeline({
             {event.kind !== "symptom" && (
               <button
                 type="button"
+                role="menuitem"
                 className={MENU_ITEM_DANGER}
                 onClick={async () => {
                   close();

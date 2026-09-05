@@ -9,16 +9,19 @@
 // chart annotations stay declared-only"). A DERIVED situation (#1292 Poor sleep, #1298
 // Period) writes NO transitions, so it contributes NO windows through THIS module and never
 // yields an impact card from the log. Analytics ride the same declared window source the
-// chart annotations + adherence strip already read (situationHistoryResolver), never a
-// re-derived span.
+// chart annotations read (`situationsActiveOn` over situation_events), never a re-derived
+// span. THE
+// ADHERENCE STRIP IS NOT ON THAT SOURCE (#3993): dueness asks declared ∪ derived per day,
+// through `effectiveSituationResolver`. Membership over a span and dueness on a day are
+// different questions, and this module answers only the first.
 //
-// The WEATHER situations (#1726) are the documented exception, and they do not weaken the
-// rule: the reason a derived situation contributes no windows is that a per-day verdict
-// ("last night was rough") leaves no span anyone can reconstruct. A heatwave does — it is a
-// run of days in a cached meteorological series, recomputed identically every time. So
-// weatherSituationWindows (lib/weather-situations.ts) produces those windows from the
-// PREDICATE rather than from a log, and feeds them to the same buildSituationImpact below.
-// Nothing is written either way; the builder is window-source-agnostic by construction.
+// The WEATHER situations (#1726) are the documented exception, and #3993 corrected what the
+// rule rests on: every derived source IS dated per day, so "it cannot be dated" was never
+// the reason. What a derived source lacks is a RECORDED span — nothing writes start/stop
+// transitions for it. Weather derives its windows from the predicate over a cached series
+// instead (weatherSituationWindows), recomputed identically every time, and feeds them to
+// the same buildSituationImpact below. A logged period is a span in the cycle record and
+// could be given that treatment; it has not been, which is a scope choice, not a limit.
 
 import { shiftDateStr } from "./date";
 import { sameSituation } from "./situations";

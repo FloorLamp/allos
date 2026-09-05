@@ -120,7 +120,7 @@ test("protocol references recovery gear + tracks practice adherence (#344)", asy
   );
   await page
     .getByRole("menu")
-    .getByRole("button", { name: "Delete", exact: true })
+    .getByRole("menuitem", { name: "Delete", exact: true })
     .click();
   await settledClick(
     page,
@@ -251,7 +251,10 @@ test("wellness practice: range target + one-tap logging (#1259)", async ({
     page,
     detailMain.getByRole("button", { name: "More protocol actions" })
   );
-  await page.getByRole("menu").getByRole("button", { name: "End now" }).click();
+  await page
+    .getByRole("menu")
+    .getByRole("menuitem", { name: "End now" })
+    .click();
   await settledClick(
     page,
     page
@@ -341,7 +344,7 @@ test("wellness practice: range target + one-tap logging (#1259)", async ({
   );
   await page
     .getByRole("menu")
-    .getByRole("button", { name: "Delete", exact: true })
+    .getByRole("menuitem", { name: "Delete", exact: true })
     .click();
   await settledClick(
     page,
@@ -398,7 +401,7 @@ test("activity and food protocols open their owning prefilled loggers (#1584)", 
     );
     await page
       .getByRole("menu")
-      .getByRole("button", { name: "Delete", exact: true })
+      .getByRole("menuitem", { name: "Delete", exact: true })
       .click();
     await settledClick(
       page,
@@ -444,7 +447,10 @@ test("activity and food protocols open their owning prefilled loggers (#1584)", 
     page,
     detailMain.getByRole("button", { name: "More protocol actions" })
   );
-  await page.getByRole("menu").getByRole("button", { name: "End now" }).click();
+  await page
+    .getByRole("menu")
+    .getByRole("menuitem", { name: "End now" })
+    .click();
   await settledClick(
     page,
     page

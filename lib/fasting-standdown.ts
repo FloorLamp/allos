@@ -65,7 +65,8 @@ export function isFastSuppressibleKind(kind: NotificationKind): boolean {
 // a page the silenced nudge was supposed to bring them to.
 //
 // So the stand-down is bounded by the SAME plausibility bound the surface uses
-// (`fastControlState`, FAST_STALE_HOURS). Once a fast reads as STALE it has stopped
+// (`fastControlState`, and behind it the fast kind's `EPISODE_BOUNDS` row). Once a
+// fast reads as STALE it has stopped
 // being evidence that the user is not eating and started being evidence that a row was
 // abandoned — and an abandoned row is not consent to silence. The nudge comes back
 // precisely when the claim stops being credible, which is also exactly when the user

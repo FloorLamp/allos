@@ -26,7 +26,7 @@ import {
 // as the last twenty did.
 //
 // SCOPE. The test tiers, which are what run constantly on a long-lived
-// orchestration container. `scripts/` is deliberately out: those run by hand, once,
+// work container. `scripts/` is deliberately out: those run by hand, once,
 // and `scripts/gen-zip-centroids.ts` cleans up after itself.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));

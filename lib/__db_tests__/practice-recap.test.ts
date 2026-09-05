@@ -523,7 +523,7 @@ describe("Start now stamps the practice's usual duration (owner ruling 2026-09-0
     const started = startLivePracticeSession(p, "Sauna", "page");
     const liveId = started.kind === "started" ? started.session.id : 0;
 
-    // Seven hours on — past LIVE_PRACTICE_STALE_HOURS, and it does not matter: the
+    // Seven hours on — past the practice kind's bound, and it does not matter: the
     // completion is checked first, because a row that knew its own end still knew it
     // whether or not a gather ran in time to write it.
     vi.setSystemTime(new Date(NOW.getTime() + 7 * 60 * 60_000));

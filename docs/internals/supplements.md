@@ -1032,9 +1032,39 @@ surface (Supplements bar, Medications, check-in count, Upcoming, notify tick,
 digest) unions in — declared ∪ derived — so an item keyed to a derived situation
 goes due exactly while that context holds. Two tenants today:
 
+EVERY DERIVED SOURCE IS DATED (#3993, owner ruling 2026-08-31). `date` is the day
+being asked about, not "now": a period log is a span, a weather spell is a fact in
+the cached series, and a rough night is the night ENDING that day. So a past-day
+dueness surface (the reminder rebuild, `pendingDayDoses`) scores a day against the
+context that actually held on it, and the callers that used to branch on
+`isForToday` no longer do. The claim that derived context "cannot be dated" was
+false for all three and has been removed wherever it was written. The caveat that
+replaces it: a retroactive verdict reads data AS STORED NOW, so a night that syncs
+late changes the verdict for its day — as a dose logged late moves that day's
+adherence. A day that has not happened is refused outright, because the weather
+cache reaches `WEATHER_FORECAST_DAYS` ahead.
+
+ONE DATED ANSWER PER DAY, ON EVERY SURFACE. `effectiveSituationResolver` is what the
+acting surfaces (reminder rebuild, catch-up sheet, medications/supplements rows) and the
+summarising ones (adherence strips, weekly recap, demotion evidence, adherence patterns,
+morning digest) both read. A summary counts as an acting surface: the digest states
+"💊 Medications: 0/1 taken" in a push, and the demotion suggestion puts a one-tap Accept
+under its evidence. Giving the summaries a declared-only resolver made the app report a
+paused day as missed and discard a dose logged through an offer it had just made.
+There is no declared-only dueness resolver left: `situationHistoryResolver` had no
+production caller once the summaries moved, so it is deleted rather than kept exported.
+The pure `situationsActiveOn` still dates the declared half for the questions that really
+are about declarations — the chart annotation bands, symptom-episode spans, and the
+pooled situation-impact windows.
+
+The resolver takes the WINDOW it is about to score and gathers the derived inputs once
+for it, not once per day: only three of them depend on the day (the nights before it, the
+period log's view of it, the weather slice ending on it) and none is a per-day query. That
+is what made dating the whole seam affordable (+24 dashboard queries, not +96).
+
 - **Poor sleep (#1292)** = declared (the Poor sleep situation toggled —
-  self-report / no-wearable) **OR** derived-measured (last night vs baseline
-  trips the SAME `measureRoughNight` threshold the coaching engine's rest-sleep
+  self-report / no-wearable) **OR** derived-measured (the night ENDING the day
+  asked about, vs the baseline before it, trips the SAME `measureRoughNight` threshold the coaching engine's rest-sleep
   trigger uses — extracted so coaching and dueness can never disagree, and a
   _declared_ rough night now also tilts `restRecommendation` with basis-aware
   copy, `poorSleepDeclared` on `CoachingInput`). **On-with-override:** the
@@ -1046,7 +1076,7 @@ goes due exactly while that context holds. Two tenants today:
   Missing/stale sleep or no baseline ⇒ derived OFF (never a guess).
   `roughNightVerdict` — the USER WINS over the data (a declared night reports
   basis `declared`).
-- **Period (#1298)** = a LOGGED menses day (`periodOnDate` covers today —
+- **Period (#1298)** = a LOGGED menses day (`periodOnDate` covers that day —
   factual, non-predictive, menses only; phase-level keying is deliberately
   deferred) **OR** a declared fallback toggle. Gated on the SAME `cycle`
   relevance bit the nav uses (`withPeriodOption`) — a profile that doesn't track
@@ -1066,16 +1096,17 @@ goes due exactly while that context holds. Two tenants today:
   is HYSTERETIC (enter high, exit lower) and the duration ones need consecutive
   qualifying days, so a borderline series can't flap the context on and off; a
   GAP in the series breaks every run (no data ⇒ no situation). The series handed
-  to the predicates ends TODAY, so the forecast tail the cache also holds can
-  never activate a situation ahead of time. **Relevance-gated** like Period, one
+  to the predicates ends on the day asked about, and the resolver refuses a day
+  that has not happened, so the forecast tail the cache also holds can never
+  activate a situation ahead of time. **Relevance-gated** like Period, one
   gate wider (`withWeatherSituationOptions`): a home location, plus either an
   item already keyed to a weather situation or a recently logged symptom these
   situations could explain. The five join the item form's PICKER when relevant —
   never the toggle chip row, because a derived situation has nothing to toggle.
   **The impact exception:** `situation_events` stays declared-only, but weather
-  situations still yield #1297 impact cards, because the rule's reason (a per-day
-  verdict leaves no reconstructable span) doesn't apply — a heatwave IS a run of
-  days in a cached series, recomputed identically every time, so
+  situations still yield #1297 impact cards, because the rule's reason (nothing
+  WRITES transitions for a derived situation) is not a claim about datability — a
+  heatwave IS a run of days in a cached series, recomputed identically every time, so
   `weatherSituationWindows` derives its windows from the predicate and still
   writes nothing.
 

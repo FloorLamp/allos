@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   fieldsFromRules,
+  foodRuleStatement,
   keepApartNote,
   nextRuleId,
   parseKeepApartNote,
@@ -161,5 +162,31 @@ describe("intake rule sentences (#3216)", () => {
     expect(fieldsFromRules([] as IntakeRule[]).foodTiming).toBeNull();
     expect(suggestedRulesForFoodTiming("any")).toEqual([]);
     expect(suggestedRulesForFoodTiming(null)).toEqual([]);
+  });
+
+  // The form asks one question of this: did the person just say something about food?
+  // (#4665 — `foodTiming` is the prefillable field with no input of its own, so a
+  // change to these sentences is how its control speaks.)
+  it("states the food answer, and states it the same way `fieldsFromRules` reads it", () => {
+    const withFood: IntakeRule[] = [
+      { id: "a", type: "food", timing: "with_food" },
+    ];
+    const beforeMeal: IntakeRule[] = [
+      { id: "b", type: "food", timing: "before_meal" },
+    ];
+    // Editing the sentence, adding one, and deleting it all change the statement.
+    expect(foodRuleStatement(withFood)).not.toBe(foodRuleStatement(beforeMeal));
+    expect(foodRuleStatement([])).not.toBe(foodRuleStatement(withFood));
+    // A rule about something else does not.
+    const alsoPaused: IntakeRule[] = [
+      ...withFood,
+      { id: "c", type: "pause-while", situation: "a stomach bug" },
+    ];
+    expect(foodRuleStatement(alsoPaused)).toBe(foodRuleStatement(withFood));
+    // A second food sentence is a different statement even though `fieldsFromRules`
+    // reports only the last — which is exactly the case a seed used to create.
+    const both = [...withFood, ...beforeMeal];
+    expect(fieldsFromRules(both).foodTiming).toBe("before_meal");
+    expect(foodRuleStatement(both)).not.toBe(foodRuleStatement(beforeMeal));
   });
 });

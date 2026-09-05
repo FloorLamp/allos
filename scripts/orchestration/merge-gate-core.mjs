@@ -28,23 +28,114 @@ const sentences = (text) =>
     .map((s) => s.trim())
     .filter(Boolean);
 
-const quotedLine = (line) => /^\s*>/.test(line);
+// ── WHAT COUNTS AS QUOTATION (#5183) ────────────────────────────────────────
+//
+// ONE splitter for both readers below, because "is this line speaking, or is it
+// showing you what somebody else said" is one question, and two answers to it
+// is a second convention to remember. #5183 is what the second answer cost: the
+// receipt reader dropped a blockquote and the marker reader did not, so a PR
+// comment explaining the marker grammar — with its examples in a fenced block,
+// the shape anyone documenting anything reaches for — placed a live hold and a
+// stale pass verdict on two unrelated PRs. The grammar could not be written
+// down on the surface it is read from, including in the reviews this gate asks
+// for.
+//
+// A line QUOTES when it sits inside a ``` or ~~~ fence, inside an indented code
+// block, or behind a `>`. Every other line SPEAKS.
+//
+// BLOCKQUOTES QUOTE, and that is the ruling #5183 left open rather than the
+// inheritance. The case for reading them was that a blockquoted hold relaying
+// somebody else's hold is still a hold. Two things settle it the other way. A
+// marker is not only a brake — a pass verdict OPENS a merge — so a reader that
+// honours quoted markers lets anybody quote a pass into existence, the exact
+// forgery `independenceClaim` drops a quoted claim to prevent. And GitHub's own
+// "Quote reply" blockquotes the comment it answers under a NEW timestamp, while
+// markers are newest-wins: quoting a long-lifted hold would re-place it. A
+// relayed hold is one keystroke away from a placed one; a forged pass is not
+// recoverable at all.
+//
+// AN UNTERMINATED FENCE RUNS TO THE END OF THE BODY. That is CommonMark's rule
+// and therefore what the writer SEES rendered on GitHub; the alternative —
+// reading an unpaired ``` as ordinary text — would re-arm every example under
+// it. But a parser that swallows the rest of a comment in silence is its own
+// way to lose a real hold, so nothing here is silent: both readers keep the
+// marker-shaped lines they skipped, and SAY that they skipped them.
+const FENCE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+const INDENTED_CODE = /^(?: {4}|\t)/;
+
+/**
+ * A body's lines, split into the ones that speak and the ones that quote.
+ *
+ * @param {string} body
+ * @returns {{ asserting: string[], quoting: string[] }}
+ */
+function speechLines(body) {
+  const asserting = [];
+  const quoting = [];
+  let fence = null;
+  let indented = false;
+  let paragraph = false;
+  for (const raw of String(body ?? "").split("\n")) {
+    if (fence) {
+      quoting.push(raw);
+      const close = FENCE.exec(raw);
+      if (
+        close &&
+        close[1][0] === fence.char &&
+        close[1].length >= fence.length &&
+        !close[2].trim()
+      )
+        fence = null;
+      continue;
+    }
+    const opener = FENCE.exec(raw);
+    if (opener) {
+      fence = { char: opener[1][0], length: opener[1].length };
+      quoting.push(raw);
+      indented = paragraph = false;
+      continue;
+    }
+    if (!raw.trim()) {
+      asserting.push(raw);
+      paragraph = false;
+      continue;
+    }
+    if (/^\s*>/.test(raw)) {
+      quoting.push(raw);
+      indented = paragraph = false;
+      continue;
+    }
+    // An indented code block cannot interrupt a paragraph, by CommonMark and by
+    // what GitHub renders — so a continued or wrapped line that happens to be
+    // indented still speaks. Only an indent that STARTS a block is code.
+    if (INDENTED_CODE.test(raw) && (indented || !paragraph)) {
+      quoting.push(raw);
+      indented = true;
+      continue;
+    }
+    asserting.push(raw);
+    indented = false;
+    paragraph = true;
+  }
+  return { asserting, quoting };
+}
 
 /**
  * Does this review body ASSERT that its writer did not author the change?
  *
- * Blockquoted lines are dropped before the test: a receipt that quotes somebody
- * else's independence claim is reporting one, not making one. Hedged sentences
- * are dropped too. `why` names which of those swallowed the only candidate, so
- * the refusal can say "your markdown ate the phrase" rather than leaving the
- * writer to guess — the second cost #5166 records.
+ * Quoting lines are dropped before the test — blockquoted, fenced, or indented
+ * as code (#5183): a receipt that quotes somebody else's independence claim, or
+ * shows one as an example, is reporting one rather than making it. Hedged
+ * sentences are dropped too. `why` names which of those swallowed the only
+ * candidate, so the refusal can say "your markdown ate the phrase" rather than
+ * leaving the writer to guess — the second cost #5166 records.
  *
  * @param {string} body
  * @returns {{ asserts: boolean, why: null | "quoted" | "hedged" }}
  */
 export function independenceClaim(body) {
-  const lines = String(body ?? "").split("\n");
-  const own = lines.filter((line) => !quotedLine(line)).join("\n");
+  const { asserting, quoting } = speechLines(body);
+  const own = asserting.join("\n");
   if (
     sentences(own).some((s) => ASSERTS_INDEPENDENCE.test(s) && !HEDGED.test(s))
   )
@@ -53,9 +144,7 @@ export function independenceClaim(body) {
     return { asserts: false, why: "hedged" };
   return {
     asserts: false,
-    why: sentences(lines.filter(quotedLine).join("\n")).some((s) =>
-      ASSERTS_INDEPENDENCE.test(s)
-    )
+    why: sentences(quoting.join("\n")).some((s) => ASSERTS_INDEPENDENCE.test(s))
       ? "quoted"
       : null,
   };
@@ -124,8 +213,9 @@ export function receiptVerdict(pr, reviews, head = pr.head.sha) {
         "the reviewer did not author the change (#4258); re-post the review " +
         "with that statement" +
         (swallowed === "quoted"
-          ? ". The only such sentence here is BLOCKQUOTED — quoting somebody " +
-            "else's claim is reporting one, not making one"
+          ? ". The only such sentence here QUOTES — BLOCKQUOTED, fenced, or " +
+            "indented as code — and quoting somebody else's claim is " +
+            "reporting one, not making one"
           : swallowed === "hedged"
             ? '. The only such sentence here is HEDGED ("could not", ' +
               '"unable to") — that sentence says the opposite of the claim'
@@ -270,23 +360,36 @@ export function baseDetectorNotice(runs, ref, detector = "e2e-main") {
 //
 // Either may be posted as a review or as a PR comment — both are where the
 // #5112 hold was actually written — and the same markdown normalisation the
-// receipt gets applies here, so an emphasised or blockquote-indented marker
-// still reads.
+// receipt gets applies here, so an emphasised marker still reads. A marker that
+// QUOTES does not: see the splitter above for why writing the grammar down had
+// to stop placing holds (#5183).
 //
 // A HOLD IS NOT HEAD-BOUND AND A PASS IS. That asymmetry is the whole point of
 // each: a hold that a push could lift is a hold anyone can walk through by
 // pushing, and a pass verdict that survived a push would be evidence about code
 // that no longer exists — the same void the receipt takes on a head change.
 
-/** Marker lines carried by a note set, newest first. */
+/**
+ * The markers a note set carries: `found` newest first, and `ignored` — the
+ * marker-shaped lines that QUOTE rather than speak. Those are kept rather than
+ * dropped so a caller can say a marker went unread instead of going quiet about
+ * it, which is the failure the fence rule would otherwise trade for (#5183).
+ */
 function markerLines(notes, name) {
   const opener = new RegExp(`^${name}\\b\\s*:?\\s*`, "i");
+  // The `>` here is now only reached by a quoting line — a speaking one never
+  // starts with it — and stripping it is what lets a blockquoted marker be
+  // RECOGNISED well enough to be reported as unread.
+  const normalise = (raw) =>
+    unemphasise(raw)
+      .replace(/^[>\s]+/, "")
+      .trim();
   const found = [];
+  const ignored = [];
   for (const note of notes ?? []) {
-    for (const raw of String(note.body ?? "").split("\n")) {
-      const line = unemphasise(raw)
-        .replace(/^[>\s]+/, "")
-        .trim();
+    const { asserting, quoting } = speechLines(note.body);
+    for (const raw of asserting) {
+      const line = normalise(raw);
       if (!opener.test(line)) continue;
       found.push({
         line,
@@ -295,12 +398,29 @@ function markerLines(notes, name) {
         who: note.user ?? "someone",
       });
     }
+    for (const raw of quoting) {
+      const line = normalise(raw);
+      if (opener.test(line))
+        ignored.push({ line, who: note.user ?? "someone" });
+    }
   }
   // Newest first, and a HOLD wins a tie: two markers stamped the same second
   // are not ordered by anything, and the conservative reading is the one that
   // does not open a gate on a coin flip.
-  return found.sort((a, b) => (a.at === b.at ? 0 : a.at < b.at ? 1 : -1));
+  return {
+    found: found.sort((a, b) => (a.at === b.at ? 0 : a.at < b.at ? 1 : -1)),
+    ignored,
+  };
 }
+
+/** What to say about marker-shaped lines that quoted rather than spoke. */
+const unreadNote = (ignored, name) =>
+  ignored.length
+    ? ` NOTE: ${ignored.length} ${name} line(s) here QUOTE — blockquoted, ` +
+      `fenced, or indented as code — and were NOT read as markers (#5183). ` +
+      `${ignored[0].who} wrote "${ignored[0].line}". Post it unquoted if it ` +
+      "was meant as one."
+    : "";
 
 /**
  * The general hold (#5126): an orchestrator's machine-readable "not yet", for
@@ -309,8 +429,9 @@ function markerLines(notes, name) {
  * @param {{ body: string, at?: string, user?: string }[]} notes reviews and PR comments
  */
 export function holdVerdict(notes) {
-  const marks = markerLines(notes, "MERGE-HOLD");
-  if (!marks.length) return { held: false, message: null };
+  const { found: marks, ignored } = markerLines(notes, "MERGE-HOLD");
+  const unread = unreadNote(ignored, "MERGE-HOLD");
+  if (!marks.length) return { held: false, message: unread || null };
   const newest = marks[0].at;
   const current = marks.filter((m) => m.at === newest);
   const held = current.find((m) => !/^lifted\b/i.test(m.rest));
@@ -320,12 +441,15 @@ export function holdVerdict(notes) {
       message:
         `MERGE HOLD in force — ${held.who} wrote "${held.line}" at ` +
         `${held.at || "an unrecorded time"}. A hold outlives a push, by design; ` +
-        'lift it with a "MERGE-HOLD LIFTED: <reason>" note when what it names is settled',
+        'lift it with a "MERGE-HOLD LIFTED: <reason>" note when what it names is settled' +
+        unread,
     };
   }
   return {
     held: false,
-    message: `merge hold LIFTED at ${current[0].at || "an unrecorded time"} — "${current[0].line}"`,
+    message:
+      `merge hold LIFTED at ${current[0].at || "an unrecorded time"} — ` +
+      `"${current[0].line}"${unread}`,
   };
 }
 
@@ -343,7 +467,8 @@ export function holdVerdict(notes) {
  */
 export function falsifyingPassVerdict(notes, head, grounds) {
   if (!grounds) return { ok: true, kind: "not-required", message: null };
-  const marks = markerLines(notes, "FALSIFYING-PASS");
+  const { found: marks, ignored } = markerLines(notes, "FALSIFYING-PASS");
+  const unread = unreadNote(ignored, "FALSIFYING-PASS");
   const post =
     "post the pass's own verdict as \"FALSIFYING-PASS: SURVIVES " +
     `${head.slice(0, 8)}" (or FALSIFIED) on the PR`;
@@ -354,7 +479,8 @@ export function falsifyingPassVerdict(notes, head, grounds) {
       message:
         `MANDATORY adversarial review and NO falsifying-pass verdict on ` +
         `${head.slice(0, 8)} — the merge waits for the pass (#5126). Grounds: ` +
-        `${grounds}. When it reports, ${post}`,
+        `${grounds}. When it reports, ${post}` +
+        unread,
     };
   }
   const statesHead = (mark) =>
@@ -369,7 +495,8 @@ export function falsifyingPassVerdict(notes, head, grounds) {
       message:
         `the head changed since ${marks[0].who}'s falsifying pass, which VOIDS ` +
         `it exactly as it voids a receipt — re-run the pass on ${head.slice(0, 8)} ` +
-        `and ${post}. The void verdict was "${marks[0].line}"`,
+        `and ${post}. The void verdict was "${marks[0].line}"` +
+        unread,
     };
   }
   // The pass's OWN line, quoted rather than restated: the merger reads what the

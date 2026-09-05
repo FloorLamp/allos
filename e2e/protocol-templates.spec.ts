@@ -115,7 +115,7 @@ test("the outcome combobox saves stored and derived biomarkers (#1586)", async (
   );
   await page
     .getByRole("menu")
-    .getByRole("button", { name: "Delete", exact: true })
+    .getByRole("menuitem", { name: "Delete", exact: true })
     .click();
   await settledClick(
     page,

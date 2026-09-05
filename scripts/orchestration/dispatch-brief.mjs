@@ -72,7 +72,7 @@
 //
 // The ledger and the roster MUST default to the same directory, and that
 // directory must be the durable one. `$SCRATCH` is UNSET in the live
-// orchestration container (measured), so a `/tmp` fallback here would have put
+// work container (measured), so a `/tmp` fallback here would have put
 // the restart-proof ledger in the least durable place on the box — the one
 // swept for stale `allos-db-shared-*` dirs — while the roster it must stay in
 // sync with landed in /home/user/scratch. Two defaults that disagree is the

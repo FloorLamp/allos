@@ -38,17 +38,13 @@ import {
   shiftDateStr,
   zonedDateParts,
 } from "../date";
-import {
-  getActiveSituations,
-  getTimezone,
-  getSituationEvents,
-  getFreeDays,
-} from "../settings";
+import { getTimezone, getSituationEvents, getFreeDays } from "../settings";
+import { effectiveSituationResolver } from "./derived-situations";
 import { doseWindowSince, indexTakenByDose } from "../intake-adherence";
 import { profileDayZone } from "../travel-excusal";
 import { zoneOf } from "../travel-timezone";
 import { doseBucketOn, doseDueOn } from "../intake-schedule";
-import { situationHistoryResolver } from "../trend-annotations";
+
 import {
   bedtimeDoseDisposition,
   summarizeBedtimeSupplements,
@@ -438,10 +434,20 @@ function bedtimeSupplementsByWakeDay(
     getIntakeLogsInRange(profileId, windowDays + 1)
   );
   const workoutDays = new Set(getActivityDates(profileId));
-  const situationsOn = situationHistoryResolver(
-    getActiveSituations(profileId),
-    getSituationEvents(profileId)
-  );
+  // Per-day DUENESS resolver (#654/#3993): each wake-day's bedtime doses are scored
+  // against what held THAT day, declared AND derived — the same answer the surfaces that
+  // offered those doses gave.
+  //
+  // THE WINDOW IS DECLARED IN THE DAYS IT IS ASKED ABOUT, which here are the SLEEP
+  // dates, not the wake days: the loop below resolves each night's supplements on
+  // `sleepDate`, normally `wakeDay − 1`. Declaring the wake-day span left the earliest
+  // sleep date one day outside it — still answered correctly, since the window is a
+  // cost hint, but off its own re-read rather than the window's single gather.
+  const sleepDateList = [...sleepDateByWakeDay.values()].sort();
+  const situationsOn = effectiveSituationResolver(profileId, {
+    from: sleepDateList[0],
+    to: sleepDateList[sleepDateList.length - 1],
+  });
   const summaries = new Map<string, BedtimeSupplementSummary>();
 
   for (const [wakeDay, sleepDate] of sleepDateByWakeDay) {

@@ -69,7 +69,14 @@ import { specsNeedingIsolation } from "@/vitest.isolation";
 // It is a separate file rather than another describe in the manifest spec for the same
 // reason entry 32 is: that file is a query budget pinned at one instant, and seeding two
 // more profiles beside it risks moving the number it exists to measure.
-const DB_ISOLATED = 35;
+// 36 since #3993: sleep-page-budget renders the /sleep route through the same harness
+// the dashboard query meter uses (session, scope, request cache), so the isolation scan
+// routes it here for the same reason entry 34 is routed here. It exists because neither
+// budget gate walked /sleep while a dueness resolver was added to the gather that page
+// renders per night — and it is a separate file from the dashboard manifest for the
+// reason entries 32 and 35 both give: that file is a budget pinned at one instant, and
+// seeding six more profiles beside it would move the number it exists to measure.
+const DB_ISOLATED = 36;
 // 7 since #3065: Longevity's server-component FitnessSection is tested directly with
 // controlled session, age, and assembler boundaries. It must prove that minor and unknown
 // profiles return null before assembling adult population data; sharing those module stubs

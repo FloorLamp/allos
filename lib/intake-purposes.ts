@@ -281,3 +281,31 @@ export function purposeToDraft(p: IntakeItemPurpose): PurposeDraft | null {
   }
   return null;
 }
+
+// The declared purposes as ONE phrase for the intake form's fact chip (#4672).
+//
+// Pure over the drafts and the profile's condition names, because a purpose row stores
+// the condition's ID (#203) and only the caller holds the live names. It lived inside
+// the form as a memo, which meant the one place the phrase is built could not be
+// exercised without rendering the form.
+export function purposeDraftsSummary(
+  purposes: readonly PurposeDraft[],
+  conditions: readonly { id: number; name: string }[]
+): string {
+  return purposes
+    .map((d) =>
+      purposeLabel(
+        {
+          kind: d.kind,
+          goal_key: d.kind === "goal" ? d.goalKey : null,
+          biomarker_key: d.kind === "biomarker" ? d.biomarkerKey : null,
+          direction: d.kind === "biomarker" ? (d.direction ?? null) : null,
+        },
+        d.kind === "condition"
+          ? (conditions.find((c) => c.id === d.conditionId)?.name ?? null)
+          : null
+      )
+    )
+    .filter((l): l is string => !!l)
+    .join(" · ");
+}

@@ -112,7 +112,7 @@ test.describe("protocol chart annotations (#660 ask 1)", () => {
     );
     await page
       .getByRole("menu")
-      .getByRole("button", { name: "Delete", exact: true })
+      .getByRole("menuitem", { name: "Delete", exact: true })
       .click();
     await settledClick(
       page,
