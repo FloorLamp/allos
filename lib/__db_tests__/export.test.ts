@@ -37,9 +37,9 @@ beforeAll(() => {
       )
       .run().lastInsertRowid
   );
-  for (const { p, bpm } of [
-    { p: a, bpm: 60 },
-    { p: b, bpm: 99 },
+  for (const { p, bpm, mgdl } of [
+    { p: a, bpm: 60, mgdl: 92 },
+    { p: b, bpm: 99, mgdl: 141 },
   ]) {
     db.prepare(
       `INSERT INTO allergies (profile_id, substance, reaction, severity, status)
@@ -56,6 +56,14 @@ beforeAll(() => {
       `INSERT INTO hr_minutes (profile_id, ts, bpm, n, source)
        VALUES (?, '2024-01-02T08:00', ?, 3, 'health-connect')`
     ).run(p.profileId, bpm);
+    // The second composite-key dataset, seeded for the same reason hr_minutes is:
+    // both are profile-OWNED with no `id` anywhere in the table, and the scoping loop
+    // below compares rows rather than ids precisely so that shape gets a real case
+    // instead of an exemption. Distinct mgdl per profile, so the two rows differ.
+    db.prepare(
+      `INSERT INTO glucose_trace (profile_id, ts, mgdl, source)
+       VALUES (?, '2024-01-02T08:00', ?, 'health-connect')`
+    ).run(p.profileId, mgdl);
     // Two of the four datasets this PR gave `bundle_id` had no seeded row on either
     // profile, so the per-dataset scoping loop below would have been silent about
     // exactly the columns the change touches.
@@ -432,20 +440,32 @@ describe("the declared select is the statement the export runs (#5117)", () => {
 // `food_log_events` select left profile-scoping.test.ts, export.test.ts and
 // export-completeness.test.ts all green.
 //
-// The comparison is by ROW ID: A's rows() and A's page() may carry no id that belongs
-// to B. Two things a dataset can be that an id comparison cannot judge, and both are
-// NAMED below rather than filtered out — a silent skip would move the very problem
-// this loop exists to close one level up.
+// The comparison is by ROW CONTENT, and it used to be by `id`. That mattered: whether
+// a row carries an `id` is a property of the SELECT, decided in lib/export.ts — the
+// same file a leak is written in — so the exempt list below could be made true by the
+// leak it was meant to catch. Aliasing `id AS row_id`, adding `row_id` to `columns`
+// and dropping the WHERE admitted the dataset as "an id comparison cannot judge it",
+// deleted its case, and shipped a real cross-profile leak with the whole db tier
+// green. A's rows and B's rows are the same statement run twice, so a row that
+// reaches both is a row one of them should never have seen — and that question needs
+// no `id` at all. `hr_minutes` and `glucose_trace`, composite-keyed with no `id` in
+// the table, therefore get ordinary cases here instead of exemptions.
 
-// Ids that are legitimately shared, or not there at all.
-const SCOPING_ID_EXEMPT: { key: string; why: string }[] = [
-  {
-    key: "hr_minutes",
-    why: "a composite-key browse dataset: its rows carry no `id` to compare (asserted above), so its scoping is pinned on the seeded bpm by the case above instead",
-  },
+// Rows as comparable values. Both profiles run the same prepared statement, so the
+// keys and their order are identical and string equality is row equality.
+const fingerprints = (ds: (typeof DATASETS)[number], profileId: number) =>
+  ds.rows(profileId).map((r) => JSON.stringify(r));
+
+// The one thing a row comparison cannot judge: a dataset over a GLOBAL table, where
+// both profiles seeing the SAME row is the design. The property that admits an entry
+// is read off OWNED_TABLES + ownedChildTables(db) — the ownership the profile-delete
+// sweep walks and the profile-scoping scan derives from the schema — so an entry
+// here has to be bought by changing what the instance considers profile-owned, in
+// another file, against a test that checks that set against the schema source.
+const SCOPING_GLOBAL: { key: string; why: string }[] = [
   {
     key: "providers",
-    why: "the one GLOBAL dataset. A provider row belongs to the instance, not to a profile, and both profiles' encounters reference the SAME row on purpose — a shared id here is the design. What scopes it is the id list referencedProviderIds(profileId) walks, and that the reader runs the declared statement is the select-binding case above",
+    why: "the one GLOBAL dataset. A provider row belongs to the instance, not to a profile, and both profiles' encounters reference the SAME row on purpose — identical rows here are the design. What scopes it is the id list referencedProviderIds(profileId) gathers, and every arm of that walk has its own case below; that the reader runs the declared statement is the select-binding case above",
   },
 ];
 
@@ -466,7 +486,6 @@ const SCOPING_UNSEEDED = [
   "cycles",
   "mood_logs",
   "dose_schedule_versions",
-  "glucose_trace",
   "procedures",
   "genomic_variants",
   "imaging_studies",
@@ -497,41 +516,42 @@ const SCOPING_UNSEEDED = [
 
 describe("every dataset's rows() and page() are profile-scoped (#5117)", () => {
   const skipped = new Set([
-    ...SCOPING_ID_EXEMPT.map((e) => e.key),
+    ...SCOPING_GLOBAL.map((e) => e.key),
     ...SCOPING_UNSEEDED,
   ]);
   const checked = DATASETS.filter((ds) => !skipped.has(ds.key)).map(
     (ds) => ds.key
   );
 
-  it.each(checked)(
-    "%s carries no row belonging to the other profile",
-    (key) => {
-      const ds = getDataset(key)!;
-      const idsB = new Set(ds.rows(b.profileId).map((r) => r.id));
-      // The fixture has to REACH the state the assertion forbids: with no B row there
-      // is no id that could leak, and every assertion below would pass on an empty set.
-      expect(
-        idsB.size,
-        `${key}: nothing seeded for the other profile`
-      ).toBeGreaterThan(0);
-      const rowsA = ds.rows(a.profileId);
-      const pageA = ds.page(a.profileId, 1000, 0);
-      expect(rowsA.length, `${key}.rows()`).toBeGreaterThan(0);
-      expect(pageA.length, `${key}.page()`).toBeGreaterThan(0);
-      expect(
-        rowsA.filter((r) => idsB.has(r.id)).map((r) => r.id),
-        `${key}.rows() returned the other profile's rows`
-      ).toEqual([]);
-      expect(
-        pageA.filter((r) => idsB.has(r.id)).map((r) => r.id),
-        `${key}.page() returned the other profile's rows`
-      ).toEqual([]);
-    }
-  );
+  it.each(checked)("%s carries none of the other profile's rows", (key) => {
+    const ds = getDataset(key)!;
+    const rowsB = new Set(fingerprints(ds, b.profileId));
+    // The fixture has to REACH the state the assertion forbids: with no B row there
+    // is nothing that could leak, and every assertion below would pass on an empty
+    // set.
+    expect(
+      rowsB.size,
+      `${key}: nothing seeded for the other profile`
+    ).toBeGreaterThan(0);
+    const rowsA = fingerprints(ds, a.profileId);
+    const pageA = ds.page(a.profileId, 1000, 0).map((r) => JSON.stringify(r));
+    expect(rowsA.length, `${key}.rows()`).toBeGreaterThan(0);
+    expect(pageA.length, `${key}.page()`).toBeGreaterThan(0);
+    // A failure here is a leak — unless the fixture seeded a row that is identical
+    // on BOTH profiles, in which case it is telling you the case cannot see one:
+    // make the two profiles' rows distinguishable rather than exempting the dataset.
+    expect(
+      rowsA.filter((r) => rowsB.has(r)),
+      `${key}.rows() returned the other profile's rows`
+    ).toEqual([]);
+    expect(
+      pageA.filter((r) => rowsB.has(r)),
+      `${key}.page() returned the other profile's rows`
+    ).toEqual([]);
+  });
 
   it("the datasets the loop skips are exactly the ones named", () => {
-    const exempt = new Set(SCOPING_ID_EXEMPT.map((e) => e.key));
+    const exempt = new Set(SCOPING_GLOBAL.map((e) => e.key));
     const unseeded = DATASETS.filter((ds) => !exempt.has(ds.key))
       .filter(
         (ds) =>
@@ -542,9 +562,9 @@ describe("every dataset's rows() and page() are profile-scoped (#5117)", () => {
       unseeded,
       `\nDatasets the loop above is silent about. Seed one in this file and delete its name from SCOPING_UNSEEDED, or add a newly unseeded one to it:\n${unseeded.join("\n")}\n`
     ).toEqual(SCOPING_UNSEEDED);
-    // An id-exempt dataset must still be SEEDED — otherwise its exemption is really
-    // the unseeded one wearing a reason, and the reason stops being true unnoticed.
-    for (const e of SCOPING_ID_EXEMPT) {
+    // A global dataset must still be SEEDED — otherwise its exemption is really the
+    // unseeded one wearing a reason, and the reason stops being true unnoticed.
+    for (const e of SCOPING_GLOBAL) {
       expect(e.why.trim().length).toBeGreaterThan(0);
       expect(
         getDataset(e.key)!.rows(a.profileId).length,
@@ -555,13 +575,13 @@ describe("every dataset's rows() and page() are profile-scoped (#5117)", () => {
         e.key
       ).toBeGreaterThan(0);
     }
-    // …and this list is asserted EXACT too, on the property that ADMITS an entry —
-    // a seeded dataset the id comparison cannot judge, which is one whose rows carry
-    // no `id`, or whose table belongs to the instance rather than to a profile (not
-    // owned and not an owned table's FK child). Seeded + a reason was true of every
-    // dataset, so a line added here used to delete that dataset's case in silence.
-    // The property is read off the row shape and the schema, never off the ids
-    // themselves, so a leak cannot make its own exemption true.
+    // …and this list is asserted EXACT too, on the ONE property that admits an entry:
+    // a seeded dataset whose TABLE is not profile-owned, so both profiles reading the
+    // same row is the design. Seeded + a reason was true of every dataset, so a line
+    // added here used to delete that dataset's case in silence. The property is read
+    // off OWNED_TABLES + ownedChildTables(db) — schema-derived, and load-bearing for
+    // profile deletion — never off what a SELECT emits, so an edit in lib/export.ts
+    // cannot make its own exemption true.
     const profileScoped = new Set([
       ...OWNED_TABLES,
       ...ownedChildTables(db).keys(),
@@ -570,12 +590,12 @@ describe("every dataset's rows() and page() are profile-scoped (#5117)", () => {
       (ds) =>
         ds.rows(a.profileId).length > 0 &&
         ds.rows(b.profileId).length > 0 &&
-        (!("id" in ds.rows(a.profileId)[0]) || !profileScoped.has(ds.table))
+        !profileScoped.has(ds.table)
     ).map((ds) => ds.key);
     expect(
       exemptable.sort(),
-      `\nDatasets an id comparison cannot judge. SCOPING_ID_EXEMPT must name exactly these — every other seeded dataset gets a case:\n${exemptable.join("\n")}\n`
-    ).toEqual(SCOPING_ID_EXEMPT.map((e) => e.key).sort());
+      `\nSeeded datasets over a GLOBAL table. SCOPING_GLOBAL must name exactly these — every other seeded dataset gets a case:\n${exemptable.join("\n")}\n`
+    ).toEqual(SCOPING_GLOBAL.map((e) => e.key).sort());
     expect(checked.length).toBeGreaterThan(0);
   });
 });
