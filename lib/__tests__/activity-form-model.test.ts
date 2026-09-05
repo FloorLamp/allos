@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { activityDraftHasTypedContent } from "@/lib/activity-form-model";
 import {
   blankPart,
   buildActivityTypePrefill,
@@ -129,6 +130,33 @@ describe("buildRepeatPrefill", () => {
     const withSubject: ActivityEditData = { ...source, subjectProfileId: 77 };
     const p = buildRepeatPrefill(withSubject, "2026-07-09");
     expect(p.subjectProfileId).toBeUndefined();
+  });
+});
+
+describe("activityDraftHasTypedContent — what the close guard asks about (#5111)", () => {
+  const draft = (o: Partial<Parameters<typeof activityDraftHasTypedContent>[0]>) => ({
+    parts: [blankPart()],
+    title: "",
+    titleEdited: false,
+    notes: "",
+    ...o,
+  });
+  // The two shapes a looser reading gets wrong, and they pull opposite ways: a
+  // half-typed exercise is content that `namedParts` cannot see (it needs a
+  // RECOGNIZED name), and the GENERATED title is not content at all — the form
+  // derives it from the parts, so a bare `title.trim()` would call every blank
+  // create dirty enough to ask about.
+  it.each([
+    ["a pristine blank create", draft({}), false],
+    ["a half-typed exercise nothing recognizes", draft({ parts: [part({ name: "Ben" })] }), true],
+    ["a name that is only whitespace", draft({ parts: [part({ name: "   " })] }), false],
+    ["a second part typed under a blank first", draft({ parts: [blankPart(), part({ name: "Running" })] }), true],
+    ["a title the person typed", draft({ title: "Morning Push", titleEdited: true }), true],
+    ["the title the form generated", draft({ title: "Morning Push", titleEdited: false }), false],
+    ["a title typed and then cleared", draft({ title: "  ", titleEdited: true }), false],
+    ["notes with no exercise yet", draft({ notes: "shoulder felt off" }), true],
+  ])("%s", (_label, state, expected) => {
+    expect(activityDraftHasTypedContent(state)).toBe(expected);
   });
 });
 
