@@ -18,6 +18,7 @@
 import { metEntryForName, metsMeta, type MetTier } from "./datasets/mets";
 import type { ActivityComponent, ActivityType } from "./types";
 
+import { parseDay } from "./date";
 export type { MetTier } from "./datasets/mets";
 
 // Map a stored intensity string to a MET tier. The activity form stores
@@ -70,8 +71,8 @@ export interface DatedWeight {
 // Whole-day distance between two YYYY-MM-DD strings (unsigned), via UTC midnight so
 // DST never shifts it. Used to pick the nearest weigh-in.
 function absDayDiff(a: string, b: string): number {
-  const da = Date.parse(`${a}T00:00:00Z`);
-  const db = Date.parse(`${b}T00:00:00Z`);
+  const da = parseDay(a);
+  const db = parseDay(b);
   if (Number.isNaN(da) || Number.isNaN(db)) return Number.POSITIVE_INFINITY;
   return Math.abs(Math.round((da - db) / 86_400_000));
 }

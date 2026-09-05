@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { utcMinute } from "@/lib/date";
+import { utcMinute, parseDay} from "@/lib/date";
 import {
   decideSleepOverlap,
   observeHeartRate,
@@ -52,7 +52,7 @@ const CANDIDATE_DAY_RADIUS = 2;
 const STAGE_METRICS_SQL = `(${SLEEP_STAGE_METRICS.map((m) => `'${m}'`).join(",")})`;
 
 function dayOffset(date: string, days: number): string {
-  const ms = Date.parse(`${date}T00:00:00Z`);
+  const ms = parseDay(date);
   if (!Number.isFinite(ms)) return date;
   return new Date(ms + days * 86_400_000).toISOString().slice(0, 10);
 }

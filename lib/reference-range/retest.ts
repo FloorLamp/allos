@@ -1,3 +1,4 @@
+import { parseDay } from "../date";
 export const STALE_AFTER_DAYS = 365;
 // Back-compat alias; the same value read as a default rather than the sole rule.
 export const DEFAULT_RETEST_DAYS = STALE_AFTER_DAYS;
@@ -38,8 +39,8 @@ export function isBeyondRetestHorizon(
 
 // Whole days between two YYYY-MM-DD dates (toISO - fromISO), or 0 if unparseable.
 export function daysBetween(fromISO: string, toISO: string): number {
-  const a = Date.parse(`${fromISO}T00:00:00Z`);
-  const b = Date.parse(`${toISO}T00:00:00Z`);
+  const a = parseDay(fromISO);
+  const b = parseDay(toISO);
   if (Number.isNaN(a) || Number.isNaN(b)) return 0;
   return Math.round((b - a) / 86_400_000);
 }

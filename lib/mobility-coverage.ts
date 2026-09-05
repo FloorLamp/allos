@@ -18,6 +18,7 @@ import {
   type MuscleRegion,
 } from "./lifts";
 
+import { parseDay } from "./date";
 // One mobility session: its date and the move slugs tapped.
 export interface MobilitySessionInput {
   date: string; // YYYY-MM-DD
@@ -39,8 +40,8 @@ export function regionsForMove(slug: string): MuscleRegion[] {
 // Days (YYYY-MM-DD dates) fall within the window `[today - windowDays + 1, today]`.
 function inWindow(date: string, today: string, windowDays: number): boolean {
   if (windowDays <= 0) return true;
-  const d = Date.parse(`${date}T00:00:00Z`);
-  const t = Date.parse(`${today}T00:00:00Z`);
+  const d = parseDay(date);
+  const t = parseDay(today);
   if (Number.isNaN(d) || Number.isNaN(t)) return false;
   const diff = Math.round((t - d) / 86_400_000);
   return diff >= 0 && diff < windowDays;

@@ -20,6 +20,7 @@
 import type { AdherenceDot } from "./intake-adherence";
 import type { TimeBucket } from "./intake-schedule";
 
+import { parseDay } from "./date";
 // ---- Window + thresholds --------------------------------------------------
 
 // How many trailing days the pattern detectors read. Eight weeks gives ~8
@@ -183,7 +184,7 @@ const WEEKDAY_NAMES = [
 // UTC weekday index (0 = Sunday … 6 = Saturday) for an ISO YYYY-MM-DD date, or -1
 // if unparseable. UTC so it never drifts with the runner's local timezone.
 export function weekdayIndex(dateISO: string): number {
-  const t = Date.parse(`${dateISO}T00:00:00Z`);
+  const t = parseDay(dateISO);
   if (Number.isNaN(t)) return -1;
   return new Date(t).getUTCDay();
 }

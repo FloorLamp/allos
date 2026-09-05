@@ -30,6 +30,7 @@ import { convertToCanonical } from "./unit-conversions";
 import type { Sex } from "./types";
 import { ADULT_MIN_AGE, isAdultForClinical } from "./life-stage";
 
+import { parseDay } from "./date";
 // The canonical output names — each MUST exist as a canonical_result_definitions row so
 // the shared reference/optimal-range + flag machinery treats a derived value like
 // any other analyte (ranges, badges, digest classification).
@@ -846,8 +847,8 @@ function toCanonicalByDate(
 
 // Whole days between two YYYY-MM-DD dates (|b - a|), or Infinity if unparseable.
 function absDays(a: string, b: string): number {
-  const ta = Date.parse(`${a}T00:00:00Z`);
-  const tb = Date.parse(`${b}T00:00:00Z`);
+  const ta = parseDay(a);
+  const tb = parseDay(b);
   if (Number.isNaN(ta) || Number.isNaN(tb)) return Infinity;
   return Math.abs(Math.round((tb - ta) / 86_400_000));
 }

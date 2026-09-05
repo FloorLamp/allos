@@ -24,7 +24,7 @@ import {
   movementLoadKey,
   type MovementPattern,
 } from "./lifts";
-import { shiftDateStr } from "./date";
+import { shiftDateStr, parseDay} from "./date";
 import { theilSenSlopePerDay, median, type DatedPoint } from "./robust-stats";
 import {
   plateauFindingDetail,
@@ -236,8 +236,8 @@ export const STALE_MAX_DAYS = 56;
 
 // Whole days from an ISO date to `today`, or Infinity if unparseable.
 function daysSince(dateISO: string, today: string): number {
-  const a = Date.parse(`${dateISO}T00:00:00Z`);
-  const b = Date.parse(`${today}T00:00:00Z`);
+  const a = parseDay(dateISO);
+  const b = parseDay(today);
   if (Number.isNaN(a) || Number.isNaN(b)) return Infinity;
   return Math.round((b - a) / 86_400_000);
 }

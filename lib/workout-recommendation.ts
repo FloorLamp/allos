@@ -24,7 +24,7 @@ import {
   type MuscleRegion,
   type BodyGroup,
 } from "./lifts";
-import { weekdayOfDateStr, WEEKDAYS_LONG } from "./date";
+import { weekdayOfDateStr, WEEKDAYS_LONG, parseDay} from "./date";
 import { daysLeftPhrase, reachableWithoutToday } from "./effort-class";
 import {
   deRankUnavailableLifts,
@@ -127,8 +127,8 @@ export function regionRecoveryDays(region: MuscleRegion): number {
 // Whole days from an ISO date to `today` (both YYYY-MM-DD), or Infinity if
 // unparseable.
 function daysBetween(dateISO: string, today: string): number {
-  const a = Date.parse(`${dateISO}T00:00:00Z`);
-  const b = Date.parse(`${today}T00:00:00Z`);
+  const a = parseDay(dateISO);
+  const b = parseDay(today);
   if (Number.isNaN(a) || Number.isNaN(b)) return Infinity;
   return Math.round((b - a) / 86_400_000);
 }

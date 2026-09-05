@@ -16,6 +16,7 @@
 
 import type { DateRange } from "./timeline-format";
 
+import { parseDay } from "./date";
 export type AnnotationKind =
   "medication" | "appointment" | "situation" | "protocol";
 
@@ -212,14 +213,14 @@ export function snapAnnotationsToDates(
   // of days per chart. Semantics are unchanged, ties included.
   const days: { epoch: number; date: string }[] = [];
   for (const d of dates) {
-    const epoch = Date.parse(`${d.slice(0, 10)}T00:00:00Z`);
+    const epoch = parseDay(d.slice(0, 10));
     if (!Number.isNaN(epoch)) days.push({ epoch, date: d });
   }
   if (days.length === 0) return [];
   days.sort((a, b) => a.epoch - b.epoch);
   const out: TrendAnnotation[] = [];
   for (const a of annotations) {
-    const target = Date.parse(`${a.date.slice(0, 10)}T00:00:00Z`);
+    const target = parseDay(a.date.slice(0, 10));
     if (Number.isNaN(target)) continue;
     // First charted day at or after the marker; its neighbour below is the other
     // candidate. On a tie the LATER day wins, matching the original scan.

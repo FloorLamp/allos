@@ -1,3 +1,4 @@
+import { parseDay } from "./date";
 // Body-metric data hygiene (issue #45, domain 5): detect a day-over-day weight
 // reading that jumped more than can be physiologically real, so a scale glitch or a
 // lb/kg entry mix-up gets caught before it poisons every downstream trend, chart,
@@ -63,16 +64,16 @@ export const ANOMALY_LOOKBACK_DAYS = 60;
 // Whole days from an ISO date to `today` (both YYYY-MM-DD), or Infinity if
 // unparseable.
 function daysSince(dateISO: string, today: string): number {
-  const a = Date.parse(`${dateISO}T00:00:00Z`);
-  const b = Date.parse(`${today}T00:00:00Z`);
+  const a = parseDay(dateISO);
+  const b = parseDay(today);
   if (Number.isNaN(a) || Number.isNaN(b)) return Infinity;
   return Math.round((b - a) / 86_400_000);
 }
 
 // Whole days between two ISO dates (absolute), or Infinity if unparseable.
 function daysBetween(a: string, b: string): number {
-  const ta = Date.parse(`${a}T00:00:00Z`);
-  const tb = Date.parse(`${b}T00:00:00Z`);
+  const ta = parseDay(a);
+  const tb = parseDay(b);
   if (Number.isNaN(ta) || Number.isNaN(tb)) return Infinity;
   return Math.abs(Math.round((tb - ta) / 86_400_000));
 }
