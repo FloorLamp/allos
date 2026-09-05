@@ -1660,9 +1660,10 @@ describe("actual atomic dashboard manifests", () => {
 // PERSONAS or QUERY_BASELINE above, so a change here cannot silently move either.
 //
 // Rolling mode (the default; no week_start/week_mode setting is written) makes the
-// window always fully elapsed (#748 item 3's `elapsedDays: 7`), so a fresh
-// per_week >= 1 target with zero sessions in the trailing week is BEHIND by
-// construction — no calendar alignment to pin. That is the fixture every case below
+// window always fully elapsed (#748 item 3's `elapsedDays: 7`), so the only day left
+// to act on is today and a fresh per_week >= 2 target with zero sessions in the
+// trailing week is BEHIND by construction — no calendar alignment to pin. (Two, not
+// one: since #4758 a single owed session still fits in the day that is left.) That is the fixture every case below
 // reuses, varied on exactly the one axis each case is about.
 describe("the practice-target row logs in place (#4076)", () => {
   const adminLoginId = (): number =>
