@@ -69,6 +69,7 @@ import {
 import { flushPostWorkoutDispatches } from "../notifications/post-workout-queue";
 import { runPracticeRecaps } from "../notifications/practice-recap-dispatch";
 import { expireWorkoutDrafts } from "../workout-finish";
+import { finishDetectedWorkouts } from "../workout-detected-end";
 import { runRefills } from "../notifications/refill";
 import { runPoolRefills } from "../notifications/supply-pool";
 import { runPreventive } from "../notifications/preventive";
@@ -991,6 +992,20 @@ export async function tickProfile(
   // Draft expiry (#2870 step 3): abandoned zero-content session husks age out
   // after DRAFT_EXPIRE_HOURS. Housekeeping, not a notification — every tick,
   // not waking-gated; the core skips anything with content.
+  // THE OPEN WORKOUT FINISHES ITSELF FIRST (#5194). The heart rate already says when
+  // the session ended, and reading it costs nothing when there is no open row. It runs
+  // BEFORE the stale suggest so a row that just finished itself is not also nudged, and
+  // it is NOT waking-gated: the session ended whether or not the person is awake, and
+  // gating the write would make the recorded end depend on a sleep schedule.
+  try {
+    finishDetectedWorkouts(profileId, now);
+  } catch (e) {
+    log.error("detected workout finish failed", {
+      profile: profileId,
+      err: e instanceof Error ? e : String(e),
+    });
+  }
+
   try {
     expireWorkoutDrafts(profileId, now);
   } catch (e) {
