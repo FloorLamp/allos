@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Browser, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { settledClick, followLink, expectInView } from "./helpers";
+import { appContent, settledClick, followLink, expectInView } from "./helpers";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_HHHIST,
@@ -176,7 +176,7 @@ test.describe("Care-trail surface (#1373 Part 2)", () => {
     // The child's Flu overlaps the parent's Flu → the card shows, naming the parent.
     const overlappingId = episodeId(HH_HISTORY_CHILD_PROFILE, "Flu");
     await page.goto(`/medical/episodes/${overlappingId}`);
-    const card = page.getByTestId("episode-household-context");
+    const card = appContent(page).getByTestId("episode-household-context");
     await expect(card).toBeVisible();
     await expect(card).toContainText(HH_HISTORY_PARENT_PROFILE);
     await expect(card).toContainText("overlapped");
@@ -184,7 +184,9 @@ test.describe("Care-trail surface (#1373 Part 2)", () => {
     // The parent's far-past Chickenpox overlaps nobody → no card (not an empty shell).
     const lonelyId = episodeId(HH_HISTORY_PARENT_PROFILE, "Chickenpox");
     await page.goto(`/medical/episodes/${lonelyId}`);
-    await expect(page.getByTestId("episode-household-context")).toHaveCount(0);
+    await expect(
+      appContent(page).getByTestId("episode-household-context")
+    ).toHaveCount(0);
 
     await close();
   });

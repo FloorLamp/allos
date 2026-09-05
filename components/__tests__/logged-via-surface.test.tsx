@@ -1,13 +1,23 @@
-import { describe, expect, it } from "vitest";
-import { render, renderHook, screen } from "@testing-library/react";
-
+import { describe, expect, it, vi } from "vitest";
 import {
-  LoggedViaField,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+
+import DoseConfirmButton from "@/components/DoseConfirmButton";
+import {
   LoggedViaSurface,
   useLoggedVia,
   useLoggedViaStamp,
 } from "@/components/LoggedViaSurface";
-import { LOGGED_VIA_FIELD } from "@/lib/logged-via";
+import { LOGGED_VIA_FIELD, type StampedFormData } from "@/lib/logged-via";
+
+vi.mock("@/components/useUndoableAction", () => ({
+  useUndoableAction: () => () => {},
+}));
 
 // WHICH SURFACE A MOUNTING IS (#3087) — the half that only exists once something is
 // mounted, which is what this tier is for (docs/internals/component-tests.md).
@@ -72,31 +82,40 @@ describe("a control reports the region it is mounted in", () => {
   });
 });
 
-describe("the hidden field, for a plain <form action={…}>", () => {
-  it("carries the declared region into a form that builds its own FormData", () => {
-    // A `<form action>` never passes through a callback, so the declaration has to be
-    // in the DOM. Read back off the rendered input rather than off the component's
-    // props: what the browser posts is the value that is actually there.
-    render(
-      <LoggedViaSurface value="dashboard-widget">
-        <form aria-label="widget form">
-          <LoggedViaField />
-        </form>
-      </LoggedViaSurface>
-    );
-    const form = screen.getByLabelText("widget form") as HTMLFormElement;
-    expect(new FormData(form).get(LOGGED_VIA_FIELD)).toBe("dashboard-widget");
-  });
-
-  it("posts `page` when no region is declared, never nothing", () => {
-    // An absent field and a `page` field are the same thing to the server's parse.
-    // Posting one anyway is what makes a wired form visibly wired.
-    render(
-      <form aria-label="page form">
-        <LoggedViaField />
-      </form>
-    );
-    const form = screen.getByLabelText("page form") as HTMLFormElement;
-    expect(new FormData(form).get(LOGGED_VIA_FIELD)).toBe("page");
-  });
+describe("a DOM-collected `<form action={…}>` reaches its action stamped", () => {
+  // THE OTHER SHAPE, and the one a hidden `<LoggedViaField />` used to serve (#5349).
+  // A `<form action>` builds its FormData from the DOM, so nothing the control did
+  // earlier is in it — and `DoseConfirmButton` is that form: the server component
+  // hands it `markTaken`, which reads the posted surface. The declaration therefore
+  // has to happen in the submit handler, between the browser's FormData and the
+  // action, which is what the brand now makes the only compiling arrangement.
+  //
+  // Driven through a real submit rather than by calling the handler, because the
+  // FormData under test is the one the BROWSER builds.
+  it.each([["dashboard-widget"], [null]] as const)(
+    "posts the region %s declares",
+    async (region) => {
+      const posted: (string | null)[] = [];
+      const button = (
+        <DoseConfirmButton
+          action={async (fd: StampedFormData) => {
+            posted.push(fd.get(LOGGED_VIA_FIELD) as string | null);
+            return { ok: true, outcome: "logged" };
+          }}
+          fields={{ dose_id: 7 }}
+        >
+          Mark taken
+        </DoseConfirmButton>
+      );
+      render(
+        region ? (
+          <LoggedViaSurface value={region}>{button}</LoggedViaSurface>
+        ) : (
+          button
+        )
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Mark taken" }));
+      await waitFor(() => expect(posted).toEqual([region ?? "page"]));
+    }
+  );
 });

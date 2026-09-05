@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Button from "@/components/Button";
+import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { LabeledVerbChip } from "@/components/OfferRow";
 import { useUndoableAction } from "@/components/useUndoableAction";
 import {
@@ -14,6 +15,7 @@ import type {
   DoseConfirmResult,
   DoseUndoResult,
 } from "@/lib/dose-outcome-text";
+import type { StampedFormData } from "@/lib/logged-via";
 
 // The dose-confirm form for surfaces whose feedback channel is a toast (#2106): the
 // household card's per-member "Confirm" and the dashboard atom's "Mark
@@ -45,7 +47,15 @@ import type {
 // both, and never neither, so there is no runtime branch to police and no state
 // where the visible words come from two places at once.
 type DoseConfirmButtonProps = {
-  action: (formData: FormData) => Promise<DoseConfirmResult>;
+  // Takes the STAMPED payload (#5349). Both arms below build or receive a plain
+  // FormData — the chip mints one, the button arm is a DOM-collected
+  // `<form action={confirm}>` — and neither could say which surface it was on, so
+  // Upcoming's rows, the dashboard attention row and the household card all reached
+  // `markTaken` with nothing in the body and it recorded `page` for every one. The
+  // import-graph walk this replaced could not see any of them: the action is imported
+  // by a SERVER component and handed down as a prop, which is not a client posting an
+  // action it imported. `confirm` stamps the region before the action sees it.
+  action: (formData: StampedFormData) => Promise<DoseConfirmResult>;
   // The typed inverse for this surface (#2642). Optional: a surface with no inverse
   // wired simply offers no Undo, which is the honest default rather than a broken one.
   undoAction?: (formData: FormData) => Promise<DoseUndoResult>;
@@ -83,12 +93,20 @@ export default function DoseConfirmButton({
   children,
 }: DoseConfirmButtonProps) {
   const announce = useUndoableAction();
+  const stampLoggedVia = useLoggedViaStamp();
   const [pending, setPending] = useState(false);
 
   async function confirm(fd: FormData) {
     let result: DoseConfirmResult;
     try {
-      result = await action(fd);
+      // INERT ON THE DASHBOARD TODAY, AND A TRAP THE DAY IT IS NOT. The attention row
+      // mounts this inside the dashboard's `dashboard-widget` region, so that is what
+      // the stamp says — while the row is semantically `dashboard-hero`, "a confirm on
+      // the attention card". It does not matter yet because `markAttentionDose` names
+      // its own surface and never reads the body. It starts mattering the moment that
+      // action is branded and reads the post: this call site must then declare
+      // `dashboard-hero` rather than inherit the region.
+      result = await action(stampLoggedVia(fd));
     } catch {
       announce({
         message: "Couldn't log that dose. Try again.",

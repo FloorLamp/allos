@@ -408,7 +408,7 @@ describe("the four spans the old stripper deleted", () => {
   // day someone deletes the `*/` later on that line; it is listed with its measured
   // zero so the count is not inflated.
   const SURVIVORS: [string, number, string][] = [
-    ["components/ActivityForm.tsx", 240, "useLoggedViaStamp"],
+    ["components/ActivityForm.tsx", 241, "useLoggedViaStamp"],
     ["lib/notify-log-format.ts", 82, "NOTIFY_DECLINE_MESSAGES"],
     ["lib/migrations/snapshot-policy.ts", 64, "MIGRATION_SNAPSHOT_KEEP"],
     ["lib/card-meta-value-census.ts", 144, "test(container)"],

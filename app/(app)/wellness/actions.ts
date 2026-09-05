@@ -1,7 +1,11 @@
 "use server";
 
 import { revalidateRoute } from "@/lib/revalidate";
-import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
+import {
+  LOGGED_VIA_FIELD,
+  parseWebOrigin,
+  type StampedFormData,
+} from "@/lib/logged-via";
 import { requireWriteAccess } from "@/lib/auth";
 import { gateItemProfile } from "../gate-item";
 import { today } from "@/lib/db";
@@ -68,7 +72,7 @@ function optionalNumber(formData: FormData, key: string): number | null {
 // posting a byte-identical body. This is what replaced `logUpcomingPractice`'s own
 // copy of the same two-branch gate.
 export async function logPractice(
-  formData: FormData
+  formData: StampedFormData
 ): Promise<PracticeLogOutcome> {
   const profileId = await gateItemProfile(formData);
   const practice = String(formData.get("practice") ?? "").trim();
@@ -120,7 +124,7 @@ export async function logPractice(
 // same gate: a control mounted on a household member's row must not start the ACTING
 // profile's session (#4424 ruling 4).
 export async function startPracticeLive(
-  formData: FormData
+  formData: StampedFormData
 ): Promise<PracticeLiveStartOutcome> {
   const profileId = await gateItemProfile(formData);
   const practice = String(formData.get("practice") ?? "").trim();

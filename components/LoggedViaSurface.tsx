@@ -1,7 +1,11 @@
 "use client";
 
 import { createContext, useCallback, useContext } from "react";
-import { LOGGED_VIA_FIELD, type WebLoggedVia } from "@/lib/logged-via";
+import {
+  stampWebOrigin,
+  type StampedFormData,
+  type WebLoggedVia,
+} from "@/lib/logged-via";
 
 // WHICH SURFACE THIS SUBTREE IS (#3087) — the mechanism behind "each mounting declares
 // itself", and the reason it is a CONTEXT rather than a prop on every control.
@@ -58,28 +62,25 @@ export function useLoggedVia(): WebLoggedVia {
 }
 
 /**
- * Stamp a FormData with the surface it is about to be posted from.
+ * Stamp a FormData with the surface it is about to be posted from, and hand back the
+ * `StampedFormData` the surface-reading actions require (#5349).
  *
  * The hook form (rather than a bare function taking the surface) is what keeps the
  * declaration and the post in one place: a control that builds its own FormData calls
  * this and cannot then forget which mounting it is in.
+ *
+ * There used to be a `<LoggedViaField />` beside this — a hidden input for a plain
+ * `<form action={serverAction}>`, which collects its own FormData from the DOM and
+ * never passes through a callback. It is gone with #5349, because the brand makes that
+ * mounting uncompilable on purpose: the surface would be in the POST and invisible to
+ * the type, which is the exact "declared somewhere the compiler cannot see it" state
+ * this replaces. A DOM-collected form reaches a surface-reading action through its own
+ * submit handler now (`DoseConfirmButton`), stamping the FormData the browser built.
  */
-export function useLoggedViaStamp(): (formData: FormData) => FormData {
+export function useLoggedViaStamp(): (formData: FormData) => StampedFormData {
   const surface = useLoggedVia();
   return useCallback(
-    (formData: FormData) => {
-      formData.set(LOGGED_VIA_FIELD, surface);
-      return formData;
-    },
+    (formData: FormData) => stampWebOrigin(formData, surface),
     [surface]
   );
-}
-
-/**
- * The same declaration for a plain `<form action={…}>`, which builds its own FormData
- * from the DOM and never passes through a callback.
- */
-export function LoggedViaField() {
-  const surface = useLoggedVia();
-  return <input type="hidden" name={LOGGED_VIA_FIELD} value={surface} />;
 }

@@ -16,7 +16,11 @@ import { today } from "@/lib/db";
 import { isPastWriteAccepted } from "@/lib/log-manifest";
 import type { StatedTimeRefusal } from "@/lib/stated-time";
 import type { SleepWindowRefusal } from "@/lib/vitals-input";
-import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
+import {
+  LOGGED_VIA_FIELD,
+  parseWebOrigin,
+  type StampedFormData,
+} from "@/lib/logged-via";
 
 // The combined "Log measurements" write path (issue #1486).
 //
@@ -65,7 +69,7 @@ export interface MeasurementsSaveResult {
 }
 
 export async function addMeasurements(
-  formData: FormData
+  formData: StampedFormData
 ): Promise<MeasurementsSaveResult> {
   // #4932: the quick-log sheet's subject chip mounts this SAME form cross-profile,
   // so the write follows `gateItemProfile` like every other sheet body — posted
