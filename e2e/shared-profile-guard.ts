@@ -20,6 +20,21 @@ import { workerDbPath } from "./worker-env";
 // unlucky neighbour that notices three specs later. A global teardown could only
 // name the run.
 //
+// THAT ATTRIBUTION IS BEST-EFFORT, AND THE GAP IS MEASURED (#4788, confirmed under
+// #5037). A Server Action does not stop when its browser context does: a probe that
+// filled the measurements form, waited only for the POST to LEAVE the browser, then
+// closed the context, saw the row land 61 ms, 106 ms and 76 ms AFTER
+// `context.close()` returned, in three consecutive runs on this suite's own
+// harness. The guard's reading happens right after that close, so a write still in
+// flight when a test ends is not attributed to it — and it is not attributed to
+// anyone: it lands in the NEXT test's `before` snapshot and is thereafter invisible.
+// Closing the context is NOT evidence that the server drained.
+//
+// In practice a test that ends with an assertion on its own save has already waited
+// for the response, so the window is open only for an action nothing awaited. What
+// this guard therefore promises is: every leak it REPORTS belongs to the test it
+// names. It does not promise to see every leak.
+//
 // PROFILE 1 ONLY, deliberately. A spec that legitimately needs a live draft gives it
 // a profile of its own and disposes of it — the fixture-ownership rule (#868, #3029,
 // #3040, #3106) — and the seeded ones already do: the `Push day` draft the workout
