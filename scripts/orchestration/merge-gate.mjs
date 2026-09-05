@@ -417,14 +417,11 @@ const baseMoved = baseMovedVerdict({
 if (baseMoved.ok) pass(baseMoved.message);
 else fail(baseMoved.message);
 
-// BOTH ENDPOINTS, ONE VERDICT (#5022). A commit's statuses live on their own
-// endpoint and are invisible to `/check-runs`; this gate read only the first
-// until now, so a red posted by anything other than Actions could not close it.
-// A read that FAILS exits 2 through `gh` rather than answering `[]` — an
-// unreadable status must refuse, because "I could not see it" reading as
-// "there was nothing there" is the reassuring-lie direction this gate exists
-// to refuse. The gate's own `merge-gate` context is excluded inside `ciVerdict`
-// (see GATE_STATUS_CONTEXT) and recomputed by every check above.
+// BOTH ENDPOINTS, ONE VERDICT (#5022). Statuses live on their own endpoint and
+// are invisible to `/check-runs`, so until now a red posted by anything but
+// Actions could not close this gate. A read that FAILS exits 2 through `gh`
+// rather than answering `[]`: "I could not see it" must not read as "there was
+// nothing there". The `merge-gate` context is excluded inside `ciVerdict`.
 const combined = gh(`repos/${repo}/commits/${head}/status`);
 const checks = ciVerdict({
   checkRuns: all_runs,

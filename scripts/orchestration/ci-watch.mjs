@@ -20,16 +20,14 @@
 //   - An unauthenticated poll silently reports nothing (the curl 401s and the
 //     parse yields empty), which reads as "no failures" — a lie in the
 //     reassuring direction. The token is asserted before the first request.
-//   - A commit's CHECK RUNS and its COMMIT STATUSES are disjoint sets on two
-//     endpoints (#5022). This watcher read only the first and printed GREEN on
-//     a head whose `merge-gate` status said the gate was closed. Both are read
-//     now, and every row names the endpoint it came from — `merge-gate` the
-//     status and `merge-gate-job` the check run differ by one word.
+//   - CHECK RUNS and COMMIT STATUSES are disjoint sets on two endpoints
+//     (#5022). This watcher read only the first and printed GREEN on a head
+//     whose `merge-gate` status said the gate was closed. Both are read now,
+//     and every row names its endpoint — `merge-gate` the status and
+//     `merge-gate-job` the check run differ by one word.
 //   - Two matching fingerprints can BOTH land before a check registers, and
-//     the check that arrives late is the merge gate (#5317). `mergeable_state`
-//     held the contradiction and this script printed it without reading it, so
-//     settlement now also requires that an `unstable` state be EXPLAINED by
-//     something we can see.
+//     the late one is the merge gate (#5317). Settlement now also requires
+//     that an `unstable` `mergeable_state` be EXPLAINED by something we see.
 //
 // Usage:
 //   node scripts/orchestration/ci-watch.mjs <pr-number> \
@@ -142,15 +140,12 @@ async function checkRuns(sha) {
   }
 }
 
-// THE OTHER ENDPOINT (#5022). Commit statuses are a disjoint set that
-// `/check-runs` never mentions, and this watcher printed `GREEN — all 19
-// registered checks settled and passing` on PR #5319 while `merge-gate` on
-// this endpoint read `failure`. One page: the combined endpoint returns the
-// NEWEST status per context, and a commit with more than 100 distinct
-// contexts is not a shape this repo can produce. The top-level `state` is NOT
-// read — it is `pending` for a commit with no statuses at all, which would
-// make every ordinary head unsettled forever; the per-context rows are the
-// evidence, and an empty list is the "absent" case that must behave as today.
+// THE OTHER ENDPOINT (#5022). One page, because the combined endpoint returns
+// the NEWEST status per context and this repo cannot produce 100 of them. The
+// top-level `state` is NOT read: it is `pending` for a commit with no statuses
+// at all, which would leave every ordinary head unsettled forever. The
+// per-context rows are the evidence, and an empty list is the "absent" case
+// that must go on behaving exactly as it did.
 const commitStatuses = async (sha) =>
   (await gh(`repos/${repo}/commits/${sha}/status?per_page=100`)).statuses ?? [];
 
@@ -167,15 +162,13 @@ const commitStatuses = async (sha) =>
 // premature green is not.
 function snapshot(runs, statuses) {
   const { rows, noVerdict } = ciRows({ checkRuns: runs, statuses });
-  // THE GATE'S OWN STATUS IS REPORTED, NEVER RED HERE. `merge-gate` is
-  // merge-gate.mjs's own last answer (merge-gate-core.mjs says why the gate
-  // must not read it back), and the runbook posts the receipt it asks for
-  // AFTER this watcher runs — dispatch.md steps 3-6 — so it is legitimately
-  // `failure` on every healthy PR at the moment anyone asks whether CI is
-  // green. Reddening on it would red every PR, every time, which is how a
-  // check gets ignored and then deleted. It rides its own line instead, which
-  // is what #5022 actually asked for: not that this exit code change, but that
-  // `GREEN` stop meaning "the endpoint I happened to read agrees".
+  // THE GATE'S OWN STATUS IS REPORTED, NEVER RED HERE. The runbook posts the
+  // receipt `merge-gate` asks for AFTER this watcher runs (dispatch.md steps
+  // 3-6), so that context is legitimately `failure` on every healthy PR at the
+  // moment anyone asks whether CI is green — reddening on it would red every
+  // PR, every time, which is how a check gets ignored and then deleted. It
+  // rides its own line instead, which is what #5022 asked for: not a different
+  // exit code, but that `GREEN` stop meaning "the endpoint I read agrees".
   const echo = (row) =>
     row.source === "status" && row.name === GATE_STATUS_CONTEXT;
   const checks = rows.filter((row) => row.source === "check-run");

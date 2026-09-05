@@ -125,10 +125,9 @@ for (const p of prs.sort((a, b) => a.number - b.number)) {
   // state now, and it keeps the row off GREEN.
   const unreadable = combined === null;
   const ctx = Array.isArray(combined?.statuses) ? combined.statuses : [];
-  // ONE READER, SHARED WITH THE GATE AND THE WATCHER (#5022). The cancelled-run
+  // ONE READER, SHARED WITH THE GATE AND THE WATCHER (#5022): the cancelled-run
   // reading (#4800, #4802) and the `neutral`/`skipped` alignment live in
-  // merge-gate-core.mjs's `ciRows`, so the three tools cannot drift apart on
-  // what a row means — which was the whole point of the issue.
+  // merge-gate-core.mjs, so the three tools cannot drift on what a row means.
   const { rows, noVerdict } = ciRows({ checkRuns: list, statuses: ctx });
   const ok = rows.filter((r) => r.state === "success").length;
   // A name whose every run was cancelled has no verdict — not green, and not

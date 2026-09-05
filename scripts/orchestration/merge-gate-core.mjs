@@ -259,16 +259,11 @@ export const reachedAVerdict = (run) => run.conclusion !== "cancelled";
 // carries its SOURCE: a bare `merge-gate` in a diagnostic is the same trap
 // wearing the fix's clothes.
 //
-// Rows, not a verdict, because the three callers ask three questions of one
-// classification — the gate asks "may this merge", the watcher asks "has
-// registration stopped moving", the board asks for a line per PR.
-//
-// `state` is the whole vocabulary and each value is a different action:
-// `pending` waits, `failed` stops, `success` passes; a name whose every run
-// was CANCELLED reaches no state at all and comes back in `noVerdict`, which
-// asks for a re-run rather than sending anyone to hunt a failure that never
-// happened. Statuses cannot be cancelled and have four states, of which
-// `error` and `failure` are both a red.
+// Rows, not a verdict: the gate asks "may this merge", the watcher asks "has
+// registration stopped moving", the board asks for a line per PR. A name whose
+// every run was CANCELLED reaches no `state` at all and comes back in
+// `noVerdict`, which asks for a re-run rather than sending anyone to hunt a
+// failure that never happened.
 //
 /**
  * @typedef {{name: string, id?: number, status?: string,
@@ -330,19 +325,15 @@ export function ciRows({ checkRuns = [], statuses = [], ignoreCheck = null }) {
 export const rowName = (row) => `${row.source} ${row.name}`;
 
 // THE GATE'S OWN PUBLISHED STATUS IS NOT EVIDENCE TO THE GATE (#5022).
-// `merge-gate` is the only commit status this repo posts, and
-// .github/workflows/merge-gate.yml posts it by running THIS script. So a gate
-// that counted its own context would be reading back its own last answer: a
-// `failure` posted before the receipt landed would close the gate, the
-// workflow would re-run the gate, the gate would read the failure it had just
-// posted, and post it again — a self-block with no way out, in the one tool
-// whose refusal stops every merge. It is excluded here and recomputed instead,
-// in full, by every other check in merge-gate.mjs.
-//
-// EVERY OTHER CONTEXT STILL COUNTS, and that half is the point of the issue: a
-// deploy gate, a coverage bot or any future required context is exactly what
-// nothing in this script recomputes, so ignoring it is how a merge goes out
-// over a red nobody read.
+// .github/workflows/merge-gate.yml posts the `merge-gate` status by running
+// THIS script, so a gate counting its own context reads back its own last
+// answer: a `failure` posted before the receipt landed closes the gate, the
+// workflow re-runs the gate, the gate reads the failure it just posted and
+// posts it again — a self-block with no way out, in the one tool whose refusal
+// stops every merge. It is recomputed here instead, by every other check in
+// merge-gate.mjs. EVERY OTHER CONTEXT STILL COUNTS: a deploy gate or a
+// coverage bot is exactly what nothing here recomputes, and ignoring one is
+// how a merge goes out over a red nobody read.
 export const GATE_STATUS_CONTEXT = "merge-gate";
 
 /**
