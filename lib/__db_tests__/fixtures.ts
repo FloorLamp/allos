@@ -247,3 +247,78 @@ export function seedLoginTelegram(
   ).run(loginId, chatId);
   return loginId;
 }
+
+// One row in `table` belonging to `profileId`, with `values` set by name and every
+// other required column filled from the schema (#5117). It exists so a guard over a
+// LIST OF SQL ARMS can build its case from the arm itself — the arm names a table and
+// a column, and nothing else about the table has to be written down beside the guard,
+// so an arm added tomorrow arrives with its case already written.
+//
+// The fill order is the whole of it: `profile_id` gets the seeded profile, an FK
+// column gets an id from its parent (the seeded profile's row, where the parent is
+// itself profile-owned — that is how a CHILD table reaches profile_id at all), and
+// any other NOT NULL column takes an existing row's value where the table has one,
+// which is what satisfies CHECK'd columns such as activities.type, or a plain filler.
+//
+// Used by lib/__db_tests__/timeline.test.ts (the getTimelineDates UNION arms) and
+// lib/__db_tests__/export.test.ts (the PROVIDER_LINK_SELECTS arms). It is a test
+// fixture and nothing production reads it.
+type SchemaCol = {
+  name: string;
+  type: string;
+  notnull: number;
+  dflt_value: string | null;
+  pk: number;
+};
+type SchemaFk = { from: string; table: string; to: string };
+const pragma = <T>(q: string) => db.pragma(q) as T[];
+
+export function seedSchemaRow(
+  table: string,
+  values: Record<string, unknown>,
+  profileId: number
+): void {
+  const fks = new Map(
+    pragma<SchemaFk>(`foreign_key_list(${table})`).map((f) => [f.from, f])
+  );
+  const row = new Map<string, unknown>(Object.entries(values));
+  for (const c of pragma<SchemaCol>(`table_info(${table})`)) {
+    if (row.has(c.name)) continue;
+    // Before the pk skip: a composite-key table carries profile_id IN its key.
+    if (c.name === "profile_id") {
+      row.set(c.name, profileId);
+      continue;
+    }
+    if (c.pk) continue;
+    const required = c.notnull === 1 && c.dflt_value === null;
+    const fk = fks.get(c.name);
+    if (fk) {
+      const scoped = pragma<SchemaCol>(`table_info(${fk.table})`).some(
+        (p) => p.name === "profile_id"
+      );
+      const parent = db
+        .prepare(
+          `SELECT ${fk.to} AS id FROM ${fk.table} ${scoped ? "WHERE profile_id = ?" : ""} LIMIT 1`
+        )
+        .get(...(scoped ? [profileId] : [])) as { id: number } | undefined;
+      if (parent) row.set(c.name, parent.id);
+      else if (required)
+        throw new Error(`${table}.${c.name}: no ${fk.table} row to point at`);
+      continue;
+    }
+    if (!required) continue;
+    const seen = db
+      .prepare(
+        `SELECT ${c.name} AS v FROM ${table} WHERE ${c.name} IS NOT NULL LIMIT 1`
+      )
+      .get() as { v: unknown } | undefined;
+    row.set(
+      c.name,
+      seen?.v ?? (/INT|REAL|NUM|DOUB|FLOA/i.test(c.type) ? 1 : "x")
+    );
+  }
+  const names = [...row.keys()];
+  db.prepare(
+    `INSERT INTO ${table} (${names.join(", ")}) VALUES (${names.map(() => "?").join(", ")})`
+  ).run(...row.values());
+}

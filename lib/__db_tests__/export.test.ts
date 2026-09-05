@@ -10,13 +10,19 @@
 // per-file temp DB by lib/__db_tests__/setup.ts before this file is imported.
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { DATASETS, DELETE_POLICY, getDataset, toCsv } from "@/lib/export";
+import {
+  DATASETS,
+  DELETE_POLICY,
+  getDataset,
+  PROVIDER_LINK_SELECTS,
+  toCsv,
+} from "@/lib/export";
 import { OWNED_TABLES } from "@/lib/owned-tables";
 import { ownedChildTables } from "@/lib/profile-delete";
 import { stripComments } from "../__tests__/strip-comments";
 import { PENDING_COLUMNS } from "@/lib/export-manifest";
 import { db } from "@/lib/db";
-import { seedProfile, type SeededProfile } from "./fixtures";
+import { seedProfile, seedSchemaRow, type SeededProfile } from "./fixtures";
 
 let a: SeededProfile;
 let b: SeededProfile;
@@ -465,7 +471,7 @@ const fingerprints = (ds: (typeof DATASETS)[number], profileId: number) =>
 const SCOPING_GLOBAL: { key: string; why: string }[] = [
   {
     key: "providers",
-    why: "the one GLOBAL dataset. A provider row belongs to the instance, not to a profile, and both profiles' encounters reference the SAME row on purpose — identical rows here are the design. What scopes it is the id list referencedProviderIds(profileId) gathers, and every arm of that walk has its own case below; that the reader runs the declared statement is the select-binding case above",
+    why: "the one GLOBAL dataset. A provider row belongs to the instance, not to a profile, and both profiles' encounters reference the SAME row on purpose — identical rows here are the design. What scopes it is the id list referencedProviderIds(profileId) gathers, and every arm of that walk gets its own seeded case below, built out of PROVIDER_LINK_SELECTS itself; that the reader runs the declared statement is the select-binding case above",
   },
 ];
 
@@ -598,6 +604,85 @@ describe("every dataset's rows() and page() are profile-scoped (#5117)", () => {
     ).toEqual(SCOPING_GLOBAL.map((e) => e.key).sort());
     expect(checked.length).toBeGreaterThan(0);
   });
+});
+
+// EVERY ARM OF THE PROVIDER WALK IS PROFILE-SCOPED (#5117).
+//
+// `providers` is GLOBAL, so the providers dataset's own SELECT has no profile filter
+// to read and the profile-scoping scan's ALLOW_NON_LITERAL entry for
+// `providersSelect(ph)` says exactly that. What the entry then CITES is
+// referencedProviderIds() — the walk that decides which provider ids this profile may
+// see. Nothing ran that claim, and it is the whole filter: turning one arm's
+// `profile_id = ?` into `profile_id != ?` puts another profile's providers, an
+// oncology centre by name, into this profile's export with both tiers green. A `why`
+// that names a mechanism nothing exercises is worse than no `why`.
+//
+// The cases are built FROM the array referencedProviderIds iterates, not from a list
+// beside it, so an arm cannot enter the walk without entering this loop: an eleventh
+// link table arrives with its case already written.
+describe("every PROVIDER_LINK_SELECTS arm is profile-scoped (#5117)", () => {
+  const tableOf = (arm: string) => /\bFROM\s+(\w+)/i.exec(arm)?.[1];
+  const colOf = (arm: string) =>
+    /^\s*SELECT\s+(?:\w+\.)?(\w+)\s+AS\s+pid\b/i.exec(arm)?.[1];
+
+  // A third profile, so the absence below is asserted against a profile that shares
+  // nothing with the one the arm rows belong to.
+  let leaky: SeededProfile;
+  beforeAll(() => {
+    leaky = seedProfile("PLNK");
+  });
+
+  const providerNames = (profileId: number) =>
+    getDataset("providers")!
+      .rows(profileId)
+      .map((r) => r.name);
+
+  it("reads the arm list off the walk itself", () => {
+    // A parse that silently found nothing would make every case below vacuous.
+    expect(PROVIDER_LINK_SELECTS.length).toBeGreaterThan(5);
+    for (const arm of PROVIDER_LINK_SELECTS) {
+      expect(tableOf(arm), arm).toBeTruthy();
+      expect(colOf(arm), arm).toBeTruthy();
+      // …and each arm is ONE simple SELECT. A compound arm would gain a case whose
+      // seeding only ever reaches its first FROM, while the second half goes
+      // unwatched — which is what makes it look covered.
+      expect(
+        arm.match(/\bSELECT\b/gi)?.length,
+        `this arm is itself a compound — split it into separate arms: ${arm}`
+      ).toBe(1);
+    }
+  });
+
+  it.each(
+    PROVIDER_LINK_SELECTS.map(
+      (arm, i) => [i, tableOf(arm)!, colOf(arm)!] as const
+    )
+  )(
+    "arm %i (%s.%s) keeps its own profile's providers out of another profile's export",
+    (i, table, col) => {
+      const name = `Arm ${i} Oncology Centre`;
+      const providerId = Number(
+        db
+          .prepare(
+            `INSERT INTO providers (name, type, dedup_key) VALUES (?, 'organization', ?)`
+          )
+          .run(name, `arm ${i} oncology|organization`).lastInsertRowid
+      );
+      seedSchemaRow(table, { [col]: providerId }, leaky.profileId);
+      // The positive control runs through the SAME reader the absence is asserted
+      // on: the seeded link really does carry this provider into its own profile's
+      // export, so the absence next door is about the arm's filter and not about a
+      // row that never reached the walk.
+      expect(
+        providerNames(leaky.profileId),
+        `arm ${i} (${table}.${col}) never reached the providers export — the case below would pass on nothing`
+      ).toContain(name);
+      expect(
+        providerNames(a.profileId),
+        `arm ${i} (${table}.${col}) put another profile's provider in this profile's export`
+      ).not.toContain(name);
+    }
+  );
 });
 
 // PROVENANCE COLUMNS REACH THE ARCHIVE (#5117).

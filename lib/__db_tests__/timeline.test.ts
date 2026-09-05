@@ -13,7 +13,7 @@ import {
   TIMELINE_DATE_UNION,
   timelineDatesUnionSql,
 } from "@/lib/timeline";
-import { seedProfile, type SeededProfile } from "./fixtures";
+import { seedProfile, seedSchemaRow, type SeededProfile } from "./fixtures";
 import { setStoredAge, setTimezone } from "@/lib/settings";
 
 let imperial: SeededProfile;
@@ -471,71 +471,19 @@ describe("getTimelineEvents", () => {
 // Each row is built from the arm's own table, so an eighteenth arm arrives with its
 // case already written, wherever in timelineDatesUnionSql it is added.
 describe("getTimelineDates: every UNION arm is profile-scoped", () => {
-  type Col = {
-    name: string;
-    type: string;
-    notnull: number;
-    dflt_value: string | null;
-    pk: number;
-  };
-  type Fk = { from: string; table: string; to: string };
-  const pragma = <T>(q: string) => db.pragma(q) as T[];
   const tableOf = (arm: string) => /\bFROM\s+(\w+)/i.exec(arm)?.[1];
   const dateColOf = (arm: string) =>
     /^\s*SELECT\s+(?:\w+\.)?(\w+)/i.exec(arm)?.[1];
 
-  // One row in the arm's own table, on `date`, belonging to `profileId`. Columns are
-  // filled from the schema: profile_id and the arm's date column by name, every other
-  // NOT NULL column with an existing row's value where the table has one (that is what
-  // satisfies CHECK'd columns such as activities.type) or a plain filler, and every
-  // foreign key with an id from its parent — the seeded profile's, where the parent is
-  // itself profile-owned. That last part is how the one CHILD arm (intake_item_logs)
-  // reaches profile_id at all: through its intake_items parent.
+  // One row in the arm's own table, on `date`, belonging to `profileId` — the rest of
+  // the columns filled from the schema by the shared fixture seeder, which is also
+  // what the PROVIDER_LINK_SELECTS arm rule in lib/__db_tests__/export.test.ts builds
+  // its cases with.
   function seedArmRow(arm: string, profileId: number, date: string) {
     const table = tableOf(arm);
     const dateCol = dateColOf(arm);
     expect(table && dateCol, `unreadable arm: ${arm}`).toBeTruthy();
-    const fks = new Map(
-      pragma<Fk>(`foreign_key_list(${table})`).map((f) => [f.from, f])
-    );
-    const row = new Map<string, unknown>([[dateCol as string, date]]);
-    for (const c of pragma<Col>(`table_info(${table})`)) {
-      if (c.pk || row.has(c.name)) continue;
-      if (c.name === "profile_id") {
-        row.set(c.name, profileId);
-        continue;
-      }
-      const required = c.notnull === 1 && c.dflt_value === null;
-      const fk = fks.get(c.name);
-      if (fk) {
-        const scoped = pragma<Col>(`table_info(${fk.table})`).some(
-          (p) => p.name === "profile_id"
-        );
-        const parent = db
-          .prepare(
-            `SELECT ${fk.to} AS id FROM ${fk.table} ${scoped ? "WHERE profile_id = ?" : ""} LIMIT 1`
-          )
-          .get(...(scoped ? [profileId] : [])) as { id: number } | undefined;
-        if (parent) row.set(c.name, parent.id);
-        else if (required)
-          throw new Error(`${table}.${c.name}: no ${fk.table} row to point at`);
-        continue;
-      }
-      if (!required) continue;
-      const seen = db
-        .prepare(
-          `SELECT ${c.name} AS v FROM ${table} WHERE ${c.name} IS NOT NULL LIMIT 1`
-        )
-        .get() as { v: unknown } | undefined;
-      row.set(
-        c.name,
-        seen?.v ?? (/INT|REAL|NUM|DOUB|FLOA/i.test(c.type) ? 1 : "x")
-      );
-    }
-    const names = [...row.keys()];
-    db.prepare(
-      `INSERT INTO ${table} (${names.join(", ")}) VALUES (${names.map(() => "?").join(", ")})`
-    ).run(...row.values());
+    seedSchemaRow(table as string, { [dateCol as string]: date }, profileId);
   }
 
   let leaky: SeededProfile;

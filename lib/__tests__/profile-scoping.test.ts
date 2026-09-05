@@ -402,7 +402,7 @@ const ALLOW_NON_LITERAL: { file: string; expr: string; why: string }[] = [
   {
     file: "lib/export.ts",
     expr: "providersSelect(ph)",
-    why: "the providers dataset's read: `providers` is a GLOBAL table with no profile_id of its own, so there is no profile filter to check. It is read by an explicit `IN (…)` id list, and that list comes from referencedProviderIds(profileId) — the profile-scoped walk over PROVIDER_LINK_SELECTS — so only providers this profile's own records reference are ever returned. The function exists so the placeholder count can vary; its SQL text is one hand-authored literal.",
+    why: "the providers dataset's read: `providers` is a GLOBAL table with no profile_id of its own, so there is no profile filter to check. It is read by an explicit `IN (…)` id list, and that list comes from referencedProviderIds(profileId) — the walk over PROVIDER_LINK_SELECTS, whose arms are the entire profile filter and which this scan cannot read, because the walk prepares a loop variable. So the walk is EXERCISED rather than cited: lib/__db_tests__/export.test.ts builds one case per arm out of the same exported array the walk iterates — seeding that arm's own table with a link to a uniquely named provider, asserting it reaches its own profile's export, and asserting it reaches no other. Loosening any arm's `profile_id = ?` reds that arm's case. The function exists so the placeholder count can vary; its SQL text is one hand-authored literal.",
   },
   {
     file: "lib/export-full.ts",

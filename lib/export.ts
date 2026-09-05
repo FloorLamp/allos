@@ -317,7 +317,12 @@ function shapeSupplements(
 // active profile's rows: the id-gathering SELECTs are each profile-scoped (owned
 // tables), and the final providers read is by id only. Browse/export-only (deleting a
 // shared provider would affect other profiles), so no DELETE_POLICY entry.
-const PROVIDER_LINK_SELECTS = [
+//
+// Exported because these arms ARE the profile filter on a global table, and the
+// profile-scoping scan cannot read them — `referencedProviderIds` prepares a loop
+// variable. lib/__db_tests__/export.test.ts builds one case per arm out of this very
+// array, so an arm cannot enter the walk without entering the guard (#5117).
+export const PROVIDER_LINK_SELECTS = [
   `SELECT provider_id AS pid FROM encounters WHERE profile_id = ? AND provider_id IS NOT NULL`,
   `SELECT location_provider_id AS pid FROM encounters WHERE profile_id = ? AND location_provider_id IS NOT NULL`,
   `SELECT provider_id AS pid FROM procedures WHERE profile_id = ? AND provider_id IS NOT NULL`,
