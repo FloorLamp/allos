@@ -796,6 +796,23 @@ describe("live practice sessions (#3143)", () => {
     expect(getPracticeUsualDuration(pid, "Rowing")).toBe(15);
   });
 
+  it("closes a live row whose start is stranded ahead of the clock", () => {
+    // A westward timezone edit can leave a stored wall clock reading as future. It is
+    // not a session in progress however little quiet has passed, and this is the claim
+    // about the ROW that the shared episode model (#5142) deliberately does not make:
+    // the model bounds quiet, and a start ahead of the clock is judged here.
+    const pid = makeProfile("live-future-start");
+    const started = startLivePracticeSession(pid, "Rowing", "page");
+    expect(started.kind).toBe("started");
+    vi.setSystemTime(new Date("2026-08-31T09:00:00Z")); // three hours BEFORE the start
+    expect(closeAbandonedPracticeSessions(pid)).toBe(1);
+    expect(getPracticeSessions(pid, "Rowing")[0]).toMatchObject({
+      live: 0,
+      end_time: null,
+      duration_min: null,
+    });
+  });
+
   it("closes a carried-over live row as start-only without fabricating values", () => {
     const pid = makeProfile("live-rollover");
     const started = startLivePracticeSession(pid, "Meditation", "page");

@@ -23,6 +23,7 @@ import {
 } from "./correction-time";
 import { eventInstant, recordInstant } from "./row-instants";
 import { getTimezone } from "./settings";
+import { episodeIsOpen, episodeState, type EpisodeState } from "./open-episode";
 import { derivedSessionMinutes, normalizePracticeName } from "./practice";
 import type {
   PracticeLogOutcome,
@@ -323,19 +324,12 @@ export function updatePracticeSession(
   });
 }
 
-// ── The live session's plausibility bound (#3143 review, the fasting shape) ─────
-//
-// Past this many hours an open lifecycle stops reading as "in progress" and starts
-// reading as "you tapped Start and forgot", which is the same judgement
-// `FAST_STALE_HOURS` makes one domain over. Six hours is longer than any practice this
-// app is a logger for — a sauna, a meditation, a mobility block — and short enough that
-// a Start tapped in the evening is abandoned before the next morning's page load. It is
-// a plausibility bound, not a measurement.
-export const LIVE_PRACTICE_STALE_HOURS = 6;
-
 // Minutes this live row has been running at `at`, or null when it is no longer a
 // session the app will complete: its start cannot be read, its start has not happened
-// yet, or it has been open past the bound above.
+// yet, or it has been open past the practice kind's bound (`EPISODE_BOUNDS`, #5142 —
+// six hours, which is longer than any practice this app is a logger for and short
+// enough that a Start tapped in the evening is abandoned before the next morning's
+// page load).
 //
 // ELAPSED TIME, NOT A DAY LABEL, and that is the correction this replaces. The day
 // comparison was widened from `<` to `<>` so a westward timezone edit could not strand
@@ -345,23 +339,52 @@ export const LIVE_PRACTICE_STALE_HOURS = 6;
 // both sit on a day that is not the profile's today. Measuring the elapsed span
 // separates them, and the same quantity bounds the duration `End` derives — so the
 // sweep and the write cannot disagree about what is still a session.
+//
+// A practice produces no evidence between its two taps, so its start IS the freshest
+// evidence it is still going — which is why the episode's quiet is its elapsed span.
 function liveElapsedMin(
   tz: string,
   row: { date: string; start_time: string | null },
   at: Date
 ): number | null {
   const started = eventInstant("practice_logs", row, tz);
-  if (!started.known) return null;
-  const minutes = (at.getTime() - Date.parse(started.at)) / 60_000;
-  if (minutes < 0 || minutes > LIVE_PRACTICE_STALE_HOURS * 60) return null;
-  return minutes;
+  const state = practiceEpisodeState(
+    started.known ? Date.parse(started.at) : null,
+    // NO EXPECTED END IS OFFERED HERE, and that is the whole of what this asks: only
+    // whether the row is still a session. The End tap is an observation and beats a
+    // derived end, so a row already past the length it guessed at Start must still
+    // end on the tap rather than be refused by it.
+    null,
+    at
+  );
+  return episodeIsOpen(state) ? state.quietMin : null;
+}
+
+// The practice kind's episode, including the two claims about the ROW that no bound
+// on quiet can make: a start the app cannot read at all, and a start ahead of the
+// clock. The day comparison this replaced was widened from `<` to `<>` so a westward
+// timezone edit could not strand a future-dated row, and it was right about that
+// case — it is kept here, where the stored wall clock it judges lives.
+function practiceEpisodeState(
+  startedAt: number | null,
+  expectedEnd: number | null,
+  at: Date
+): EpisodeState {
+  if (startedAt == null) return { kind: "abandoned", quietMin: 0 };
+  if (startedAt > at.getTime())
+    return { kind: "abandoned", quietMin: (at.getTime() - startedAt) / 60_000 };
+  return episodeState(
+    { kind: "practice", lastSignalAt: startedAt, expectedEnd },
+    at.getTime()
+  );
 }
 
 // Settle every live lifecycle this profile holds. TWO transitions, and they are
 // different claims about the same row:
 //
-//   * ABANDONED — the six-hour bound above gave up. Nothing is invented: `live` is
-//     cleared and the row keeps exactly what was observed, no end and no duration.
+//   * ABANDONED — the practice kind's bound gave up (#5142). Nothing is invented:
+//     `live` is cleared and the row keeps exactly what was observed, no end and no
+//     duration.
 //   * COMPLETE (#5091) — the row KNOWS its own length. A Start now stamps the
 //     practice's usual duration with `derived_window = 1` (#4897), and a row that
 //     carries one does not need a second tap to say when it finished: at start plus
@@ -370,7 +393,7 @@ function liveElapsedMin(
 //     15-minute session was otherwise "running" four hours later and drawing that wide.
 //
 // A live row with NO usual duration is untouched by the second branch and behaves
-// exactly as before: live until End or the six-hour bound.
+// exactly as before: live until End or the plausibility bound.
 //
 // Request gathers that render the offer state call this first; both transitions are
 // idempotent. The day chart applies the same completion bound as a READ
@@ -401,22 +424,27 @@ export function closeAbandonedPracticeSessions(profileId: number): number {
         durationMin: row.duration_min,
         derivedWindow: row.derived_window === 1,
       });
-      // COMPLETE IS CHECKED FIRST, AND NOT BOUNDED BY THE SIX HOURS. A row that knew
-      // its own end still knew it whether or not a gather ran in time to write it —
-      // a Start at 06:28 on a 15-minute practice ended at 06:43 even if nothing swept
-      // until the evening. Letting the abandonment branch reach it would clear `live`
-      // and discard an end the row already had, which is the defect one step removed.
-      if (
-        startedAt != null &&
-        derived != null &&
-        at.getTime() - startedAt >= derived * 60_000
-      ) {
+      // THE ROW READ AS ONE OPEN EPISODE (#5142). Its expected end is the one it
+      // stamped at Start (#5091); `episodeState` reads that BEFORE any bound, so a
+      // row that knew its own end is finished at that end rather than swept.
+      const state = practiceEpisodeState(
+        startedAt,
+        derived == null || startedAt == null
+          ? null
+          : startedAt + derived * 60_000,
+        at
+      );
+      // FINISHED — the row keeps the end it already had. A Start at 06:28 on a
+      // 15-minute practice ended at 06:43 whether or not a gather ran in time to
+      // write it; letting abandonment reach it first would clear `live` and discard
+      // that end, which is the defect one step removed.
+      if (state.kind === "finished") {
         // THE ROW'S OWN START PLUS ITS OWN DURATION, read as instants so a session
         // across a DST jump lands on the wall clock it actually ended at — the same
         // quantity `endLivePracticeSession` derives from. The row keeps the DAY it
         // started on; an end earlier than the start is the midnight crossing
         // `activityWindow` already reads.
-        const endsAt = new Date(startedAt + derived * 60_000);
+        const endsAt = new Date(state.endedAt);
         closed += db
           .prepare(
             `UPDATE practice_logs SET live = 0, end_time = ?
@@ -425,7 +453,10 @@ export function closeAbandonedPracticeSessions(profileId: number): number {
           .run(zonedDateParts(tz, endsAt).hhmm, row.id, profileId).changes;
         continue;
       }
-      if (liveElapsedMin(tz, row, at) != null) continue;
+      // STILL OPEN — running, or stale with nothing but a tap left to close it.
+      if (episodeIsOpen(state)) continue;
+      // ABANDONED: nothing is invented. `live` is cleared and the row keeps exactly
+      // what was observed — no end and no duration.
       closed += db
         .prepare(
           `UPDATE practice_logs SET live = 0 WHERE id = ? AND profile_id = ?`

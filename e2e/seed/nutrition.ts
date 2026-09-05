@@ -668,7 +668,7 @@ export function seedLogSheetReserve(): void {
   rename.run("Magnesium Glycinate 200 (e2e)", reserveId, "Collagen");
 
   // A live session is an in-app activity row on TODAY with a start and no end, touched
-  // inside ACTIVE_MAX_QUIET_MIN (lib/workout-presence.ts). Both timestamps come off the
+  // inside the workout draft's abandon bound (lib/open-episode.ts). Both timestamps come off the
   // FROZEN clock, not `datetime('now')`: the run's wall time is hours from the app's,
   // and a draft "touched" then reads as abandoned rather than live.
   db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(reserveId);
