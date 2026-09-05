@@ -71,7 +71,8 @@ const LABEL = {
 };
 
 /** The merge PR a squashed main commit came from, per this repo's subjects. */
-export const mergePr = (subject) => /\(#(\d+)\)\s*$/.exec(subject ?? "")?.[1] ?? null;
+export const mergePr = (subject) =>
+  /\(#(\d+)\)\s*$/.exec(subject ?? "")?.[1] ?? null;
 
 /**
  * Classify a window of heads (oldest first) and find where its record of
@@ -153,8 +154,7 @@ export function verdictFor(heads, index) {
           : "")
     );
   }
-  for (const failure of fresh)
-    evidence.push(`first red here: ${failure}`);
+  for (const failure of fresh) evidence.push(`first red here: ${failure}`);
   if (carried.length && !fresh.length)
     return {
       headline:
@@ -221,11 +221,16 @@ export function renderHistory({ heads, firstRed }, attribution = new Map()) {
     const head = heads[i];
     const pr = mergePr(head.subject);
     const { headline, evidence } = verdictFor(heads, i);
-    out.push(`${head.sha}  RED  ${pr ? `merged by #${pr}` : "no merge PR in the subject"}`);
+    out.push(
+      `${head.sha}  RED  ${pr ? `merged by #${pr}` : "no merge PR in the subject"}`
+    );
     for (const failure of head.failures) out.push(`    failing  ${failure}`);
     out.push(`    reading  ${headline}`);
     for (const line of evidence) out.push(`    note     ${line}`);
-    out.push(...attributionLines(head, pr, attribution).map((l) => `    ${l}`), "");
+    out.push(
+      ...attributionLines(head, pr, attribution).map((l) => `    ${l}`),
+      ""
+    );
   }
   return out;
 }
@@ -332,7 +337,10 @@ function main(argv) {
   const { get, count } = reader(token);
 
   const commits = get(`repos/${repo}/commits?sha=${ref}&per_page=${limit}`);
-  let window = commits.map((c) => ({ sha: c.sha, subject: c.commit.message.split("\n")[0] }));
+  let window = commits.map((c) => ({
+    sha: c.sha,
+    subject: c.commit.message.split("\n")[0],
+  }));
   if (since) {
     const at = window.findIndex((c) => c.sha.startsWith(since));
     if (at === -1) {
@@ -346,12 +354,16 @@ function main(argv) {
   window.reverse();
 
   for (const head of window) {
-    const runs = get(`repos/${repo}/commits/${head.sha}/check-runs?per_page=100`).check_runs ?? [];
+    const runs =
+      get(`repos/${repo}/commits/${head.sha}/check-runs?per_page=100`)
+        .check_runs ?? [];
     head.runs = runs;
     head.failures = [
       ...new Set(
         detectorStanding(runs, detector)
-          .red.flatMap((run) => get(`repos/${repo}/check-runs/${run.id}/annotations`))
+          .red.flatMap((run) =>
+            get(`repos/${repo}/check-runs/${run.id}/annotations`)
+          )
           // The Playwright reporter writes the failing test's full title on the
           // annotation that points at the spec; the job-level ones carry only
           // "Process completed with exit code 1", which names nothing.

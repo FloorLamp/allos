@@ -20,8 +20,18 @@ const source = fs.readFileSync(
 
 describe("the brief states the history it can actually reach", () => {
   it.each([
-    [true, "abc1234 (2026-07-09) Initial public release", "SHALLOW", "UNREACHABLE"],
-    [false, "abc1234 (2026-07-09) Initial public release", "FULL history", "IS checkable here"],
+    [
+      true,
+      "abc1234 (2026-07-09) Initial public release",
+      "SHALLOW",
+      "UNREACHABLE",
+    ],
+    [
+      false,
+      "abc1234 (2026-07-09) Initial public release",
+      "FULL history",
+      "IS checkable here",
+    ],
   ])("shallow=%s says %s", (shallow, first, verdict, consequence) => {
     const line = historyDepthLine(shallow, first);
     expect(line).toContain(verdict);
@@ -31,11 +41,14 @@ describe("the brief states the history it can actually reach", () => {
 
   // The root read can fail — a bare repo, a git that will not answer. Saying
   // "could not be read" is the honest third state; inventing a boundary is not.
-  it.each([true, false])("names the unreadable root when shallow=%s", (shallow) => {
-    expect(historyDepthLine(shallow, null)).toContain(
-      "oldest reachable commit could not be read"
-    );
-  });
+  it.each([true, false])(
+    "names the unreadable root when shallow=%s",
+    (shallow) => {
+      expect(historyDepthLine(shallow, null)).toContain(
+        "oldest reachable commit could not be read"
+      );
+    }
+  );
 
   // SCOPED TO THE TEMPLATE, not to the file. The comment above the helper
   // QUOTES the sentence that was removed, in order to argue against it, and a
@@ -47,7 +60,9 @@ describe("the brief states the history it can actually reach", () => {
     // The converse of the absences: a sweep for a removed sentence passes just
     // as happily on a template that lost the whole rule.
     expect(template).toContain("CHECK WHAT YOURS CAN REACH BEFORE YOU CLAIM");
-    expect(template).not.toContain("THIS CLONE IS SHALLOW, history begins two days");
+    expect(template).not.toContain(
+      "THIS CLONE IS SHALLOW, history begins two days"
+    );
     expect(template).not.toContain("starts on 2026-08-29");
   });
 });

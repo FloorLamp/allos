@@ -60,7 +60,9 @@ describe("the recorded c6d2b2ed incident", () => {
     expect(evidence.join("\n")).toContain(`already red at c6d2b2ed: ${SLEEP}`);
     // Four heads ran green between the two reds, which is what makes
     // "intermittent, cross-test, not this merge" a recorded RESULT.
-    expect(evidence.join("\n")).toMatch(/4 observed-GREEN head\(s\).*INTERMITTENT/s);
+    expect(evidence.join("\n")).toMatch(
+      /4 observed-GREEN head\(s\).*INTERMITTENT/s
+    );
   });
 
   // "First observed" is a fact about what RAN. The tool states the bound and
@@ -192,7 +194,10 @@ describe("what the run of heads can and cannot say", () => {
   });
 
   it("says when no annotation was readable rather than implying a match", () => {
-    const rows = readHistory([run("green", "aa000008"), run("red", "bb000009")]);
+    const rows = readHistory([
+      run("green", "aa000008"),
+      run("red", "bb000009"),
+    ]);
     expect(verdictFor(rows.heads, 1).evidence.join("\n")).toContain(
       "no failing-test annotation was readable"
     );
@@ -200,14 +205,24 @@ describe("what the run of heads can and cannot say", () => {
 });
 
 describe("a red carries a verdict or it carries none", () => {
-  const note = (body: string) => [{ body, at: "2026-09-05T00:00:00Z", user: "someone" }];
+  const note = (body: string) => [
+    { body, at: "2026-09-05T00:00:00Z", user: "someone" },
+  ];
 
   it.each([
-    [`${MARKER}: c6d2b2ed intermittent, cross-test, not this merge`, true, false],
+    [
+      `${MARKER}: c6d2b2ed intermittent, cross-test, not this merge`,
+      true,
+      false,
+    ],
     [`${MARKER}: a2bb777e some other head`, false, false],
     ["nothing here names the head at all", false, false],
     [`> ${MARKER}: c6d2b2ed quoted from elsewhere`, false, true],
-    ["```\n" + `${MARKER}: c6d2b2ed shown as an example\n` + "```", false, true],
+    [
+      "```\n" + `${MARKER}: c6d2b2ed shown as an example\n` + "```",
+      false,
+      true,
+    ],
   ])("reads %j as verdict=%s unread=%s", (body, found, unread) => {
     const result = verdictNote(note(body), "c6d2b2ed");
     expect(Boolean(result.verdict)).toBe(found);
