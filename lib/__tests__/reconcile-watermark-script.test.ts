@@ -42,7 +42,21 @@ const reply = (code, body) => {
   process.exit(0);
 };
 if (method === "GET" && url.includes("/issues?")) {
-  reply(200, url.includes("page=1") || !/page=\\d/.test(url) ? state.issues : []);
+  // STUB_FULL_PAGES serves that many FULL pages of ordinary open issues, so the
+  // carrier search runs out of pages instead of out of collection.
+  const page = Number((url.match(/[?&]page=(\\d+)/) ?? [, "1"])[1]);
+  const full = Number(process.env.STUB_FULL_PAGES ?? "0");
+  if (page <= full) {
+    reply(
+      200,
+      Array.from({ length: 100 }, (_, i) => ({
+        number: page * 1000 + i,
+        title: "an ordinary open issue",
+        body: "",
+      }))
+    );
+  }
+  reply(200, page === 1 ? state.issues : []);
 }
 const one = url.match(/\\/issues\\/(\\d+)$/);
 if (method === "GET" && one) {
@@ -76,7 +90,11 @@ interface State {
   issues: Array<{ number: number; title: string; body: string }>;
 }
 
-function runScript(state: State, scriptArgs: readonly string[]) {
+function runScript(
+  state: State,
+  scriptArgs: readonly string[],
+  fullPages = 0
+) {
   const dir = makeTmpDir("reconcile-watermark-script");
   const bin = path.join(dir, "bin");
   fs.mkdirSync(bin);
@@ -94,6 +112,7 @@ function runScript(state: State, scriptArgs: readonly string[]) {
       GH_TOKEN: "stub token 1",
       STUB_STATE: stateFile,
       STUB_LOG: log,
+      STUB_FULL_PAGES: String(fullPages),
     },
   });
   const calls = fs
@@ -174,6 +193,27 @@ describe("reconcile-watermark.ts", () => {
     expect(run.stderr).toContain("refusing to rewind");
     expect(run.state.issues[0].body).toContain(NEW);
   });
+
+  // THE PAGE CAP (#5343). `findCarrier` searches open issues for one title, and
+  // its `null` used to mean "not there" OR "gave up at page ten" — both read as a
+  // first run. Ten FULL pages is the state that separates them; the fixtures
+  // above sit on the other side of it (an empty or short page is a completed
+  // sweep), which is why "the FIRST --apply creates the carrier" still creates.
+  it.each([
+    ["read", [] as string[], 2],
+    ["stamp --apply", ["stamp", NEW, "--apply"], 2],
+  ])(
+    "%s refuses when the carrier search runs out of pages",
+    (_mode, args, status) => {
+      const run = runScript({ issues: [carrier(OLD)] }, args, 10);
+      expect(run.status).toBe(status);
+      expect(run.stderr).toContain("the carrier may be behind the cap");
+      // Neither the reassuring read nor — the costly one — a SECOND carrier.
+      expect(run.stdout).not.toContain("first run");
+      expect(run.calls.filter((c) => c.method === "POST")).toEqual([]);
+      expect(run.state.issues).toHaveLength(1);
+    }
+  );
 
   it("rejects a non-ISO stamp before touching the network", () => {
     const run = runScript({ issues: [carrier(OLD)] }, [

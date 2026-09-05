@@ -85,32 +85,55 @@ describe("buildSnapshot", () => {
   });
 });
 
+/** Runs the real script with `stubBody` standing in for curl's response. */
+function runSnapshot(stubBody: string) {
+  const dir = makeTmpDir("queue-snapshot");
+  const bin = path.join(dir, "bin");
+  fs.mkdirSync(bin);
+  fs.writeFileSync(path.join(bin, "curl"), `#!${process.execPath}\n${stubBody}\n`, {
+    mode: 0o755,
+  });
+  const run = spawnSync(process.execPath, [SCRIPT], {
+    cwd: REPO,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      PATH: `${bin}:${process.env.PATH}`,
+      GH_TOKEN: "stub token 1",
+      SCRATCH: dir,
+    },
+  });
+  return { run, queueFile: path.join(dir, ".queue") };
+}
+
 describe("queue-snapshot.mjs, driven as a script", () => {
   it("writes $SCRATCH/.queue from the swept issues", () => {
-    const dir = makeTmpDir("queue-snapshot");
-    const bin = path.join(dir, "bin");
-    fs.mkdirSync(bin);
-    fs.writeFileSync(
-      path.join(bin, "curl"),
-      `#!${process.execPath}\n` +
-        `process.stdout.write(JSON.stringify([{number: 7, title: "a candidate", body: "", labels: [{name: "P1"}, {name: "db"}]}]));\n`,
-      { mode: 0o755 }
+    const { run, queueFile } = runSnapshot(
+      `process.stdout.write(JSON.stringify([{number: 7, title: "a candidate", body: "", labels: [{name: "P1"}, {name: "db"}]}]));`
     );
-    const run = spawnSync(process.execPath, [SCRIPT], {
-      cwd: REPO,
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        PATH: `${bin}:${process.env.PATH}`,
-        GH_TOKEN: "stub token 1",
-        SCRATCH: dir,
-      },
-    });
     expect(run.status).toBe(0);
-    const written = fs.readFileSync(path.join(dir, ".queue"), "utf8");
+    const written = fs.readFileSync(queueFile, "utf8");
     expect(written).toContain("1 candidates");
     expect(written).toContain("P1 #7 a candidate");
     expect(run.stdout).toBe(written);
+  });
+
+  // THE PAGE CAP (#5343). `batch.length < 100` is the exhaustion signal, and the
+  // sweep used to spend it on a bare `break` — so a clipped sweep and a complete
+  // one wrote byte-identical files, and a shorter `.queue` reads as a thinner
+  // queue. That is the idle direction the missing-token refusal above already
+  // names, so the cap takes the same answer. Ten FULL pages is the state that
+  // reaches it; the fixture above serves one short page and therefore sits on
+  // the completed-sweep side of the new boundary, unchanged.
+  it("refuses at the page cap rather than writing a shorter queue", () => {
+    const { run, queueFile } = runSnapshot(
+      `const page = Number((process.argv[process.argv.length - 1].match(/[?&]page=(\\d+)/) ?? [, "1"])[1]);` +
+        `process.stdout.write(JSON.stringify(Array.from({ length: 100 }, (_, i) => ({number: page * 1000 + i, title: "an ordinary open issue", body: "", labels: [{name: "P3"}]}))));`
+    );
+    expect(run.status).toBe(2);
+    expect(run.stderr).toContain("open-issue sweep hit its 10-page cap");
+    // The file the check-in cites is not written at all, rather than written short.
+    expect(fs.existsSync(queueFile)).toBe(false);
   });
 });
 

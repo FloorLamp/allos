@@ -45,7 +45,23 @@ const emit = (value) => {
   process.stdout.write(JSON.stringify(value));
   process.exit(0);
 };
-if (method === "GET" && url.includes("/issues?")) emit(Object.values(state));
+if (method === "GET" && url.includes("/issues?")) {
+  // STUB_FULL_PAGES serves that many FULL pages, so the sweep runs out of pages
+  // instead of out of collection.
+  const page = Number((url.match(/[?&]page=(\\d+)/) ?? [, "1"])[1]);
+  if (page <= Number(process.env.STUB_FULL_PAGES ?? "0")) {
+    emit(
+      Array.from({ length: 100 }, (_, i) => ({
+        number: page * 1000 + i,
+        title: "an ordinary open issue",
+        body: "",
+        state: "open",
+        labels: [],
+      }))
+    );
+  }
+  emit(page === 1 ? Object.values(state) : []);
+}
 const one = url.match(/\\/issues\\/(\\d+)$/);
 if (method === "GET" && one) emit(state[one[1]]);
 const add = url.match(/\\/issues\\/(\\d+)\\/labels$/);
@@ -71,7 +87,8 @@ interface Run {
 function runScript(
   issues: Record<string, { labels: string[]; body?: string }>,
   plan: Record<string, Array<{ label: string; reason: string }>>,
-  extraArgs: readonly string[]
+  extraArgs: readonly string[],
+  fullPages = 0
 ): Run {
   const dir = makeTmpDir("reconcile-labels-script");
   const bin = path.join(dir, "bin");
@@ -109,6 +126,7 @@ function runScript(
       GH_TOKEN: "stub token 1",
       STUB_STATE: state,
       STUB_LOG: log,
+      STUB_FULL_PAGES: String(fullPages),
     },
   });
   const writes = fs
@@ -158,6 +176,31 @@ describe("reconcile-labels.ts --plan, applying", () => {
     expect(run.stdout).toContain("#3054 +P1: REFUSED (not-a-domain)");
     expect(run.stdout).toContain("wrote 2 · refused 3");
   });
+
+  // THE PAGE CAP (#5343), the same refusal the sibling gatherer makes on the same
+  // collection (#5311): `batch.length < 100` is the exhaustion signal and a bare
+  // `break` discarded it, so a clipped sweep and a complete one printed the same
+  // worksheet and the same tally. Ten FULL pages is that state — the fixtures
+  // above serve a handful on one page and stay on the completed-sweep side of it.
+  it.each([
+    ["an --apply run", ["--apply"]],
+    ["a dry run", []],
+  ])(
+    "refuses at the page cap rather than reconciling a subset — %s",
+    (_mode, extraArgs) => {
+      const run = runScript(
+        { "3051": { labels: ["bug", "P2"] } },
+        { "3051": [{ label: "wellness", reason: "citations point at wellness" }] },
+        extraArgs,
+        10
+      );
+      expect(run.status).toBe(2);
+      expect(run.stderr).toContain("open-issue sweep hit its 10-page cap");
+      expect(run.writes).toEqual([]);
+      // No tally either: a partial run must not print as a reconciliation.
+      expect(run.stdout).not.toContain("refused");
+    }
+  );
 
   it("promises exactly the writes an --apply run would make", () => {
     // THE HALF A RE-READ CANNOT FIX. With no --apply nothing is written, so every
