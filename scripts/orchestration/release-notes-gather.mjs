@@ -161,7 +161,7 @@ if (newestDay && since === newestDay.date) {
   for (const e of newestDay.entries) console.log(`  covered: ${e.title}`);
 }
 console.log(
-  `\nCuration stays yours (docs/orchestration.md, Release notes): at most two
+  `\nCuration stays yours (docs/orchestration/dispatch.md, Release notes): at most two
 batches/day, ONE concise bullet per change (the title is the whole entry — the
 validator refuses bodies), upgrade actions in the day's operatorNotes, internal
 merges omitted. The [internal?] marker is a guess — overrule it in both
