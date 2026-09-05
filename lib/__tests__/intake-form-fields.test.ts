@@ -266,7 +266,7 @@ describe("the one intake seeding (#4664)", () => {
   });
 
   it("leaves no field of a fully-stated row on its blank", () => {
-    const blank = emptyIntakeItemFormState("medication") as Record<
+    const blank = emptyIntakeItemFormState("medication") as unknown as Record<
       string,
       unknown
     >;
