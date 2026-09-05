@@ -107,8 +107,9 @@ const KIND_LABELS: Record<string, string> = {
 // another unit, and then taps Undo, that new row occupies the captured row's
 // natural key. Restoring must fold the captured amount into the live aggregate
 // instead of failing its UNIQUE constraint. Newer live metadata wins; a captured
-// note only fills an otherwise blank live note. Alcohol's captured event rows are
-// restored separately by the generic entity loop below.
+// note only fills an otherwise blank live note. The captured event rows — alcohol's
+// `food_log_events` and, since #5026 phase 2, every other substance's
+// `substance_log_events` — are restored separately by the generic entity loop below.
 function mergeRecreatedSubstanceHistoryRoot(
   profileId: number,
   kind: string,

@@ -682,11 +682,11 @@ export function gatherHistoryLog(
     // DRINKS, ONE ROW PER EVENT, through the reader that already serves this ledger.
     // `getFoodLedgerPage` is the food gather's own reader asked for the one group the
     // food gather excludes, so there is no second query shape and no second idea of
-    // what a serving row is. Alcohol is the ONLY substance with events to read:
+    // what a serving row is. Alcohol is the only substance THIS loop reads:
     // `substanceDef(key).ledger` is `food-log` for alcohol and `substance-log` for
     // nicotine, cannabis and every custom key, and `nicotine`/`cannabis` are not food
-    // groups at all, so nothing else can reach this branch. Phase 2 gives the others
-    // their own events; until then they are day rows below.
+    // groups at all, so nothing else can reach this branch. Every other substance is
+    // one row per event too since #5026 phase 2, off its own ledger, in the loop below.
     if (!item || item === "alcohol") {
       const def = substanceDef("alcohol");
       const drinks = getFoodLedgerPage(

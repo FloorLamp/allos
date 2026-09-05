@@ -196,36 +196,74 @@ describe("deleteDatasetRows — undoable datasets capture each row", () => {
     expect(practiceCount(profile.id)).toBe(3);
   });
 
-  // #5026 phase 2 MOVED THIS ONE, and the shape it moved to is what is pinned. The day
-  // row's undo kind now captures that day's use EVENTS beside it — a convention
-  // sibling, not the row's own child — which is exactly what disqualifies a kind from a
-  // bulk mapping (the 1:1 rule, lib/__tests__/dataset-undo.test.ts), so both substance
-  // datasets joined the argued exclusions their alcohol twins were already in. The bulk
-  // delete is a plain permanent one; the CARD's row-menu delete is still undoable, and
-  // that is where a person deletes a substance day.
-  it("bulk-deleted substance history is a plain delete, not an undoable one (#5026)", async () => {
-    const { profile } = seedActor();
-    const id = Number(
-      db
-        .prepare(
-          "INSERT INTO substance_daily_totals (profile_id, date, substance, units) VALUES (?, '2026-02-02', 'nicotine', 3)"
+  // #5026 phase 2 CLOSED THIS DOOR, and what is pinned is that BOTH halves survive it.
+  // A use is a `substance_log_events` row and a tick of the `substance_daily_totals`
+  // counter, written in one transaction; this action's delete is a plain
+  // `DELETE … WHERE id IN (…) AND profile_id = ?` and can only move ONE of them. So the
+  // two tables became browse-only (lib/export.ts) and the action answers "Unknown
+  // dataset" for both, through `resolve`, which reads DELETE_POLICY.
+  //
+  // THE ROWS ARE WHAT THIS ASSERTS, not the error string. A test that checked only
+  // `ok: false` would pass on an action that refused AFTER deleting the counter, and
+  // the state this closure exists to prevent is precisely a counter and a record that
+  // disagree — so both are counted, and both doors are asked.
+  it.each([
+    ["substance_daily_totals", "day counter"],
+    ["substance_log_events", "use events"],
+  ])(
+    "refuses to bulk-delete the substance %s, leaving BOTH halves standing (#5026)",
+    async (key) => {
+      const { profile } = seedActor();
+      const dayId = Number(
+        db
+          .prepare(
+            "INSERT INTO substance_daily_totals (profile_id, date, substance, units) VALUES (?, '2026-02-02', 'nicotine', 3)"
+          )
+          .run(profile.id).lastInsertRowid
+      );
+      const eventIds = [1, 2, 3].map((n) =>
+        Number(
+          db
+            .prepare(
+              `INSERT INTO substance_log_events
+                 (profile_id, date, substance, recorded_at)
+               VALUES (?, '2026-02-02', 'nicotine', ?)`
+            )
+            .run(profile.id, `2026-02-02T0${n}:00:00Z`).lastInsertRowid
         )
-        .run(profile.id).lastInsertRowid
-    );
+      );
+      const halves = () => ({
+        counters: (
+          db
+            .prepare(
+              "SELECT COUNT(*) AS n FROM substance_daily_totals WHERE profile_id = ?"
+            )
+            .get(profile.id) as { n: number }
+        ).n,
+        events: (
+          db
+            .prepare(
+              "SELECT COUNT(*) AS n FROM substance_log_events WHERE profile_id = ?"
+            )
+            .get(profile.id) as { n: number }
+        ).n,
+      });
 
-    const res = await deleteDatasetRows("substance_daily_totals", [id]);
-    expect(res.ok).toBe(true);
-    if (!res.ok) return;
-    expect(res.deleted).toBe(1);
-    expect(res.undoIds).toHaveLength(0);
-    expect(
-      db
-        .prepare(
-          "SELECT COUNT(*) AS n FROM substance_daily_totals WHERE profile_id = ?"
-        )
-        .get(profile.id)
-    ).toEqual({ n: 0 });
-  });
+      const ids = key === "substance_daily_totals" ? [dayId] : eventIds;
+      expect(await deleteDatasetRows(key, ids)).toEqual({
+        ok: false,
+        error: "Unknown dataset.",
+      });
+      expect(halves()).toEqual({ counters: 1, events: 3 });
+      // Delete-all takes the same `resolve`, and it is the door that would otherwise
+      // wipe every counter row in one tap while every event stayed behind.
+      expect(await deleteAllDatasetRows(key)).toEqual({
+        ok: false,
+        error: "Unknown dataset.",
+      });
+      expect(halves()).toEqual({ counters: 1, events: 3 });
+    }
+  );
 
   it("delete-all still tombstones a synced practice session (#653 — undo never covers delete-all)", async () => {
     // Regression for the guard this fix removed from tombstoneAllPreImages: with

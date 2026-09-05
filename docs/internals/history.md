@@ -156,10 +156,12 @@ which is the same shape through a door that already existed.
 **Everything logged before phase 2 became rows rather than disappearing.** The record
 reads events, so a counter row with none behind it would count on the substance card
 and against the weekly cap while showing nothing here. Migration
-`20260905-substance-event-rows` derives the missing events on both ledgers — `units`
-rows per substance day, and the alcohol day's shortfall (item 3, the state #5085
-measures from the other side) — with `occurred_at` NULL, because a day total declares
-no instant and inventing one would be worse than the gap. So a legacy day shows one row
+`20260905-substance-event-rows` derives the missing events on both ledgers — the whole
+uses each substance day is SHORT, and the alcohol day's shortfall (item 3, the state
+#5085 measures from the other side) — with `occurred_at` NULL, because a day total
+declares no instant and inventing one would be worse than the gap. A shortfall, not a
+count: a day that already carries real taps is topped up rather than doubled, and the
+subtraction is floored so a fraction can never round a use up into the record. So a legacy day shows one row
 per use, each reading "logged HH:MM" off the day's own filing stamp, and draws nothing.
 
 **The drink does not disappear, and the totals do not move.** The food door writes

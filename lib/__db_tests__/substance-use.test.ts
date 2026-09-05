@@ -32,6 +32,7 @@ import {
 import { logFoodServingCore } from "@/lib/food-log-write";
 import {
   correctSubstanceEventCore,
+  deleteSubstanceEventCore,
   logSubstanceUnitCore,
   undoSubstanceUnitCore,
 } from "@/lib/substance-log-write";
@@ -770,6 +771,79 @@ describe("one use, one row, one clock (#5026 phase 2)", () => {
     ).toEqual({ kind: "invalid-stated-at", reason: "other-day" });
     expect(uses(p, "nicotine")).toEqual([
       { id: only.id, date, occurred_at: null, time_source: null },
+    ]);
+  });
+
+  // THE DAY'S NOTE SURVIVES A CORRECTION THAT EMPTIES THE DAY (review of #5290, F3).
+  // The move is an unbump plus a bump, and the ledger DROPS a counter row at zero — but
+  // that row carries the day's note, and no correction path captures undo. So re-dating
+  // the only use of a day used to destroy a note through an operation that says nothing
+  // about notes. The note is write-once until #5304 moves it onto the use; it must not
+  // be DESTROYABLE in the meantime.
+  //
+  // The three rows of this table are the three positions relative to the boundary: the
+  // day empties and the arrival is blank (carry), the day does not empty (nothing
+  // moves, both notes stay put), and the day empties onto a day that already says
+  // something (the arrival keeps what it says — the same rule `addSubstanceDailyTotalCore`
+  // and the undo path's recreate-merge both apply where two day notes meet).
+  it.each([
+    ["empties the day", 1, null, [null, "smoked outside"]],
+    ["leaves a use behind", 2, null, ["smoked outside", null]],
+    ["empties onto a day that already has one", 1, "birthday", [null, "birthday"]],
+  ] as const)(
+    "carries the day's note when the correction %s",
+    (_label, amount, arrivalNote, [fromNotes, toNotes]) => {
+      const p = newProfile(`SU note carry ${_label}`);
+      const date = shiftDateStr(today(p), -3);
+      const moved = shiftDateStr(date, 1);
+      addSubstanceDailyTotalCore(
+        p,
+        "nicotine",
+        { date, amount, notes: "smoked outside" },
+        "page"
+      );
+      if (arrivalNote)
+        addSubstanceDailyTotalCore(
+          p,
+          "nicotine",
+          { date: moved, amount: 1, notes: arrivalNote },
+          "page"
+        );
+      const [first] = uses(p, "nicotine");
+
+      expect(
+        correctSubstanceEventCore(p, first.id, { date: moved }).kind
+      ).toBe("updated");
+
+      const rows = dayRows(p, "nicotine");
+      expect(rows.find((r) => r.date === date)?.notes ?? null).toBe(fromNotes);
+      expect(rows.find((r) => r.date === moved)?.notes ?? null).toBe(toNotes);
+    }
+  );
+
+  // ONE PROFILE'S DELETE MOVES ONE PROFILE'S COUNTER. The `substance-use` kind captures
+  // its day counter through a `childWhere` that filters on the EVENT's own profile, and
+  // `captureDelete` then unbumps once per captured row against the ACTING profile — so
+  // with that predicate gone a neighbour's counter row on the same (date, substance)
+  // makes the acting profile's counter fall by two. A single-profile fixture cannot see
+  // that, which is why this one has two.
+  it("deleting a use decrements only this profile's counter, never a neighbour's", () => {
+    const mine = newProfile("SU counter mine");
+    const theirs = newProfile("SU counter theirs");
+    const d = today(mine);
+    logSubstanceUnitCore(mine, "nicotine", d, "page", `${d}T09:00:00Z`);
+    logSubstanceUnitCore(mine, "nicotine", d, "page", `${d}T10:00:00Z`);
+    logSubstanceUnitCore(theirs, "nicotine", d, "page", `${d}T11:00:00Z`);
+
+    const [first] = uses(mine, "nicotine");
+    expect(deleteSubstanceEventCore(mine, first.id).kind).toBe("deleted");
+
+    // Two units minus the one deleted, not minus two — and the neighbour is untouched.
+    expect(dayRows(mine, "nicotine")).toEqual([
+      { date: d, units: 1, notes: null },
+    ]);
+    expect(dayRows(theirs, "nicotine")).toEqual([
+      { date: d, units: 1, notes: null },
     ]);
   });
 

@@ -130,6 +130,18 @@ export function up(db: Database.Database): void {
     db.exec(`ALTER TABLE ${table} ADD COLUMN logged_via TEXT`);
   }
 
+  backfill(db);
+}
+
+// THE TWO BACKFILLS, SEPARATE FROM THE SCHEMA STEP SO THEY CAN BE RUN TWICE (review of
+// #5290, finding F4). Their idempotence is the whole claim this migration makes about
+// replay, and it used to be "asserted" by calling `up` again — which throws
+// `duplicate column name: logged_via` at the ALTER above, BEFORE either statement here
+// runs, so the assertion held on a migration whose arithmetic had never executed a
+// second time. The schema step genuinely is not replayable and does not need to be (the
+// runner is name-keyed); the shortfall arithmetic is, and this is the seam that lets a
+// test prove it by running it.
+export function backfill(db: Database.Database): void {
   // ── The substance ledger's own backfill (item 2) ──────────────────────────
   //
   // One row per outstanding unit. The recursive CTE counts the SHORTFALL between the

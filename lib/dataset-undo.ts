@@ -46,21 +46,16 @@ type DeletableUndoRoot = Extract<UndoRootTable, DeletableDatasetTable>;
 //     a DECREMENT of the food_daily_totals day counter. The dataset's documented contract
 //     (lib/export.ts) is "clear the timing layer, counters untouched"; mapping it
 //     would silently turn that into a servings decrement across a second dataset.
-//   • substance_daily_totals and substance_log_events — the same PAIR of arguments, on
-//     the ledger #5026 phase 2 gave nicotine, cannabis and every custom key. The day
-//     row's kind ("substance-history") now captures and deletes that day's use events
-//     beside the selected row, which is a convention sibling and not the row's own
-//     child; the event's kind ("substance-use") carries the day-counter decrement.
-//     `substance_daily_totals` was mapped until phase 2 gave it that sibling — its
-//     bulk delete is a plain permanent one now, exactly as its alcohol twin's has
-//     always been, and the row-menu delete on the card is still undoable.
+//
+// `substance_daily_totals` and `substance_log_events` need no entry here, and that is
+// the point: #5026 phase 2 made them BROWSE-ONLY datasets (lib/export.ts), so they are
+// not `DeletableDatasetTable`s any more and `Extract` drops them from the set this file
+// decides about. An exclusion would have been the wrong answer to that pair — it routes
+// the bulk delete to the plain `DELETE … WHERE id IN (…)`, which moves the counter or
+// the events but never both, and their disagreement is the state phase 2 repairs.
 type ExcludedUndoRoot = Extract<
   DeletableUndoRoot,
-  | "frequency_targets"
-  | "food_daily_totals"
-  | "food_log_events"
-  | "substance_daily_totals"
-  | "substance_log_events"
+  "frequency_targets" | "food_daily_totals" | "food_log_events"
 >;
 
 // For a root table, the undo kinds actually rooted there — so a mapping cannot

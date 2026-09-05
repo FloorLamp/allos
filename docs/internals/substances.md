@@ -52,12 +52,21 @@ Three things followed, and they are the phase rather than side effects:
   operation of its own — the DELETE, which removes them all and restates nothing.
 - **The add door offers a time for every substance.** The refusal that dropped a posted
   `stated_at` for a timeless ledger has no subject left.
+- **Both substance tables became BROWSE-ONLY on Data → Manage.** A use is a counter tick
+  and an event row written in one transaction; the manage delete is a plain
+  `DELETE … WHERE id IN (…) AND profile_id = ?` and can only ever move one of them, so
+  it would leave the card counting uses the record does not show, or the reverse — the
+  exact split the migration above exists to repair. They still export and browse. The
+  doors that move BOTH halves are unchanged and still undoable: the card's ⋯ deletes a
+  whole day, the record's ⋯ deletes one use and gives the counter its tick back.
 - **Everything logged before it became rows.** The record reads events, so a counter row
   with none behind it would count on the card and against the cap while showing nothing
   in the record. Migration `20260905-substance-event-rows` derives the missing events on
-  BOTH ledgers — `units` rows per substance day, and the orphan alcohol day's shortfall
-  — with `occurred_at` NULL, because a day total declares no instant and inventing one
-  would be worse than the gap. A derived row carries the day row's own filing stamp,
+  BOTH ledgers — the whole uses each substance day is SHORT, and the orphan alcohol
+  day's shortfall — with `occurred_at` NULL, because a day total declares no instant and
+  inventing one would be worse than the gap. It tops up a shortfall rather than
+  inserting a count, so a day that already has real taps is not doubled, and the
+  subtraction is floored so a fraction never rounds a use up. A derived row carries the day row's own filing stamp,
   which is the only one the counter remembers, so a legacy day shows one row per use
   reading "logged HH:MM" and draws no chart tick.
 
@@ -67,9 +76,13 @@ Ask the EVENT store.
 
 **What phase 2 did NOT settle: where a day-level NOTE lives.** The note is still the
 day's, written on the add door and rendered in the card's History table, and it is not
-correctable anywhere now that the day form is gone. That is #5077, sequenced behind this
-phase precisely because the question it asks is what a day note means once every use has
-its own row.
+correctable anywhere now that the day form is gone. That is #5077, ruled as #5304 — the
+note moves onto the use — and sequenced after this phase because the question it asks is
+what a day note means once every use has its own row. Until it lands, the note is
+write-once, and the one thing phase 2 owes it is that no other operation may DESTROY it:
+re-dating the last use of a day drops that day's counter row, so `correctSubstanceEventCore`
+carries the note to the day the use lands on, filling a blank note there and never
+overwriting one.
 
 The cross-domain Timeline browses alcohol, nicotine, cannabis, and custom
 substances as one per-day `substance` rollup, and that is browse-only. Substance rows

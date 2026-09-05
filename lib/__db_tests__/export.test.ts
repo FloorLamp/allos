@@ -193,6 +193,13 @@ describe("dataset delete affordance", () => {
     expect(getDataset("conditions")!.deletable).not.toBe(false);
     expect(getDataset("encounters")!.deletable).not.toBe(false);
     expect(getDataset("metric_samples")!.deletable).not.toBe(false);
+    // #5026 phase 2: the substance COUNTER and its EVENT ledger are one fact in two
+    // tables, and the manage delete is a plain id + profile_id statement that can only
+    // move one of them — so both are browse-only, together. Named here rather than left
+    // to the sync invariants below, which only check that the flag and the policy
+    // AGREE: re-adding both entries would satisfy them and reopen the split.
+    expect(del("substance_daily_totals")).toBe(false);
+    expect(del("substance_log_events")).toBe(false);
   });
 });
 
