@@ -389,6 +389,10 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `substance_daily_totals` | `date` | day | day | n/a |  |
 | `substance_daily_totals` | `recorded_at` | record | instant | canonical |  |
 | `substance_daily_totals` | `created_at` | bookkeeping | instant | bare |  |
+| `substance_log_events` | `date` | day | day | n/a |  |
+| `substance_log_events` | `recorded_at` | record | instant | canonical | The tap instant, born canonical by DEFAULT and by writer (#5026 phase 2). A row DERIVED from a pre-ledger day count carries that day row's own `substance_daily_totals.recorded_at` — the LAST tap's stamp, shared by every event the migration derived from that day — because the counter remembers exactly one and it is the only filing instant there is. |
+| `substance_log_events` | `created_at` | bookkeeping | instant | bare |  |
+| `substance_log_events` | `occurred_at` | event | instant | canonical | When the use happened. NULL means nobody stated one and that is a real answer, never filled in from the tap — the food_log_events.occurred_at rule, re-instantiated for nicotine, cannabis and every custom key (#5026 phase 2). `time_source` records whether a present value was a tap contract or a stated one. Every row the backfill derived from a day count has NULL here: a day total declares no instant, and the migration refuses to invent one. |
 | `symptom_logs` | `date` | day | day | n/a |  |
 | `symptom_logs` | `created_at` | record | instant | bare |  |
 | `symptom_photos` | `date` | day | day | n/a |  |

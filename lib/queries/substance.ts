@@ -17,6 +17,7 @@
 // formatting over that tenant.
 
 import { db } from "../db";
+import { pageCount, pageOffset } from "../pagination";
 import {
   cadenceWindows,
   getCadenceScopeCounts,
@@ -184,6 +185,65 @@ export function getAllSubstanceDailyTotals(
   return getProfileSubstanceKeys(profileId)
     .flatMap((substance) => getSubstanceDailyTotals(profileId, substance))
     .sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
+}
+
+// ── THE USE LEDGER (#5026 phase 2) ───────────────────────────────────────────
+//
+// One page of USE rows — the event table rather than its day counter, because the
+// record names a single use and corrects it there. `getFoodLedgerPage`
+// (lib/queries/nutrition.ts) re-instantiated for `substance_log_events`: same window,
+// same ordering rule (stated instant first, tap stamp as the fallback), same
+// bounded-page contract, so `/history` reads both consumable ledgers through one shape.
+export interface SubstanceLedgerRow {
+  id: number;
+  substance: string;
+  date: string;
+  recorded_at: string;
+  occurred_at: string | null;
+}
+
+export function getSubstanceLedgerPage(
+  profileId: number,
+  from: string,
+  options: { untilDate?: string | null; substance?: string },
+  page: number,
+  pageSize: number
+): { rows: SubstanceLedgerRow[]; total: number; page: number } {
+  const requestedPage = Math.max(1, Math.floor(page));
+  const boundedSize = Math.max(1, Math.floor(pageSize));
+  const where = ["date >= ?"];
+  const args: Array<string | number> = [profileId, from];
+  if (options.untilDate) {
+    where.push("date <= ?");
+    args.push(options.untilDate);
+  }
+  if (options.substance) {
+    where.push("substance = ?");
+    args.push(options.substance);
+  }
+  const total = (
+    db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM substance_log_events
+          WHERE profile_id = ? AND ${where.join(" AND ")}`
+      )
+      .get(...args) as { n: number }
+  ).n;
+  const boundedPage = Math.min(requestedPage, pageCount(total, boundedSize));
+  const rows = db
+    .prepare(
+      `SELECT id, substance, date, recorded_at, occurred_at
+         FROM substance_log_events
+        WHERE profile_id = ? AND ${where.join(" AND ")}
+        ORDER BY date DESC, COALESCE(occurred_at, recorded_at) DESC, id DESC
+        LIMIT ? OFFSET ?`
+    )
+    .all(
+      ...args,
+      boundedSize,
+      pageOffset(boundedPage, boundedSize)
+    ) as SubstanceLedgerRow[];
+  return { rows, total, page: boundedPage };
 }
 
 export function getSubstanceTarget(

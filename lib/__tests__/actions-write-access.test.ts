@@ -473,14 +473,20 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   },
   {
     file: "app/(app)/medical/substance-use/actions.ts",
-    fn: "updateSubstanceDailyTotalAction",
-    why: "record correction (#4009): corrects the ROW's substance day via gateItemProfile() → requireProfileWriteAccess(rowProfileId); the isMinor age gate and the today() bound are asked of the SUBJECT, matching the gate lib/history.ts applies to the read",
+    fn: "correctSubstanceUseAction",
+    why: "record correction (#4009/#5026 phase 2): corrects the ROW's substance USE via gateItemProfile() → requireProfileWriteAccess(rowProfileId); the isMinor age gate and the today() bound are asked of the SUBJECT, matching the gate lib/history.ts applies to the read",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/medical/substance-use/actions.ts",
+    fn: "deleteSubstanceUseAction",
+    why: "record correction (#4009/#5026 phase 2): removes the ROW's substance use via gateItemProfile() → requireProfileWriteAccess(rowProfileId); same subject-keyed isMinor gate as the correction",
     gate: "gateItemProfile",
   },
   {
     file: "app/(app)/medical/substance-use/actions.ts",
     fn: "deleteSubstanceDailyTotalAction",
-    why: "record correction (#4009): removes the ROW's substance day via gateItemProfile() → requireProfileWriteAccess(rowProfileId); same subject-keyed isMinor gate as the update",
+    why: "record correction (#4009): removes the ROW's substance DAY — the card's own operation, which takes every use under it — via gateItemProfile() → requireProfileWriteAccess(rowProfileId); same subject-keyed isMinor gate as the correction",
     gate: "gateItemProfile",
   },
   {

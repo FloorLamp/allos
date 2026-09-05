@@ -18,7 +18,8 @@ import {
   setSubstanceTargetAction,
   clearSubstanceTargetAction,
   addSubstanceDailyTotalAction,
-  updateSubstanceDailyTotalAction,
+  correctSubstanceUseAction,
+  deleteSubstanceUseAction,
   deleteSubstanceDailyTotalAction,
   trackSubstanceUseAction,
 } from "@/app/(app)/medical/substance-use/actions";
@@ -639,18 +640,8 @@ describe("substance consumption history actions (#2009)", () => {
     expect(eventCount.n).toBe(3);
     expect(eventCount.via).toBe("quick-log,dashboard-widget");
 
-    // The day-count correction is refused, and the day it addressed does not move.
-    expect(
-      await updateSubstanceDailyTotalAction(
-        fd({
-          id: String(added.id),
-          substance: "alcohol",
-          date: td,
-          amount: "9",
-          notes: "Corrected amount",
-        })
-      )
-    ).toEqual({ kind: "corrected-per-event" });
+    // There is no day-count correction to reach for at all since #5026 phase 2 — the
+    // day is a rollup on every ledger — so what the day still holds is what was filed.
     expect(getSubstanceDailyTotals(profile.id, "alcohol")).toEqual([
       {
         id: added.id,
@@ -683,7 +674,7 @@ describe("substance consumption history actions (#2009)", () => {
   // correction that took somebody past their weekly cap said nothing anywhere. Bound
   // to the shared line rather than to a sentence, so this stays a claim about WHICH
   // state is described and not about wording.
-  it("answers an add and a correction with the cap verdict the write produced, and with none where no cap was set", async () => {
+  it("answers an add with the cap verdict the write produced, and with none where no cap was set", async () => {
     const login = createLogin();
     const profile = createProfile("su-history-cap", login.id);
     actAs(login, profile);
@@ -705,19 +696,15 @@ describe("substance consumption history actions (#2009)", () => {
     expect(uncapped).toMatchObject({ kind: "added", capProgress: null });
     if (uncapped.kind !== "added") throw new Error("entry was not added");
 
+    // THE STATE THE WRITE PRODUCED, not the one before it: adding onto the cap'd week
+    // answers with the week as it now stands, 5 against a cap of 3.
     await setSubstanceTargetAction(fd({ substance: "nicotine", cap: "3" }));
-    const corrected = await updateSubstanceDailyTotalAction(
-      fd({
-        id: String(uncapped.id),
-        substance: "nicotine",
-        date: td,
-        amount: "5",
-      })
+    const over = await addSubstanceDailyTotalAction(
+      fd({ substance: "nicotine", date: td, amount: "3" })
     );
-    // THE STATE THE WRITE PRODUCED, not the one before it: 5 against a cap of 3.
-    expect(corrected).toMatchObject({ kind: "updated" });
-    expect(corrected.capProgress).toBe(verdict("nicotine"));
-    expect(corrected.capProgress).toContain("over your 3-use weekly cap");
+    expect(over).toMatchObject({ kind: "added" });
+    expect(over.capProgress).toBe(verdict("nicotine"));
+    expect(over.capProgress).toContain("over your 3-use weekly cap");
 
     await setSubstanceTargetAction(fd({ substance: "cannabis", cap: "7" }));
     const added = await addSubstanceDailyTotalAction(
@@ -785,25 +772,15 @@ describe("substance consumption history actions (#2009)", () => {
       { id: first.id, date: td, amount: 3 },
     ]);
 
-    // A CORRECTION still refuses: moving a day onto one that already holds the same
-    // substance would merge two entries the user named separately.
+    // AND THE DAY-CONFLICT REFUSAL IS GONE WITH THE DOOR THAT RAISED IT (#5026 phase
+    // 2). A use moved onto a day that already holds the same substance JOINS it, which
+    // is what "the day is a rollup" means: the counter takes the tick, nothing merges,
+    // and the two uses stay two rows.
     await addSubstanceDailyTotalAction(
       fd({ substance: "cannabis", date: yesterday, amount: "1" })
     );
     expect(
-      await updateSubstanceDailyTotalAction(
-        fd({
-          id: String(first.id),
-          substance: "cannabis",
-          date: yesterday,
-          amount: "2",
-        })
-      )
-    ).toEqual({ kind: "date-conflict" });
-    expect(
-      await updateSubstanceDailyTotalAction(
-        fd({ id: "999999", substance: "cannabis", date: td, amount: "2" })
-      )
+      await correctSubstanceUseAction(fd({ event_id: "999999", date: td }))
     ).toEqual({ kind: "not-found" });
   });
 
@@ -827,6 +804,19 @@ describe("substance consumption history actions (#2009)", () => {
     const profile = createProfile("su-history-undo-collision", login.id);
     actAs(login, profile);
     const td = today(profile.id);
+    // The uses under the counter, on whichever ledger this substance keeps them.
+    const eventsOn = (substance: "alcohol" | "nicotine") =>
+      (
+        db
+          .prepare(
+            substance === "alcohol"
+              ? `SELECT COUNT(*) AS n FROM food_log_events
+                  WHERE profile_id = ? AND group_key = 'alcohol' AND date = ?`
+              : `SELECT COUNT(*) AS n FROM substance_log_events
+                  WHERE profile_id = ? AND substance = 'nicotine' AND date = ?`
+          )
+          .get(profile.id, td) as { n: number }
+      ).n;
 
     for (const substance of ["alcohol", "nicotine"] as const) {
       const added = await addSubstanceDailyTotalAction(
@@ -842,6 +832,13 @@ describe("substance consumption history actions (#2009)", () => {
         fd({ id: String(added.id), substance })
       );
       if (deleted.kind !== "deleted") throw new Error("entry was not deleted");
+      // THE DAY DELETE TOOK THE USES WITH IT. This is the only moment the two halves
+      // can be told apart: a capture that took the counter alone leaves these two
+      // standing, and by the end of the test the recreated row makes both worlds read
+      // three events. Measured — asserting only the final count, the whole DB tier
+      // stayed green with the `substance_log_events` child dropped from the
+      // `substance-history` capture.
+      expect(eventsOn(substance)).toBe(0);
 
       expect(await logSubstanceUnitAction(fd({ substance }))).toMatchObject({
         ok: true,
@@ -855,15 +852,10 @@ describe("substance consumption history actions (#2009)", () => {
           notes: `${substance} restored note`,
         }),
       ]);
+      // And the restore put them back beside the tap logged meanwhile, so the counter
+      // and the record agree on three.
+      expect(eventsOn(substance)).toBe(3);
     }
-
-    const alcoholEvents = db
-      .prepare(
-        `SELECT COUNT(*) AS n FROM food_log_events
-         WHERE profile_id = ? AND group_key = 'alcohol' AND date = ?`
-      )
-      .get(profile.id, td) as { n: number };
-    expect(alcoholEvents.n).toBe(3);
   });
 });
 
@@ -897,17 +889,6 @@ describe("substance history actions refuse another profile's row (#2072)", () =>
     );
     actAs(intruder, intruderProfile);
 
-    expect(
-      await updateSubstanceDailyTotalAction(
-        fd({
-          id: String(added.id),
-          substance: "alcohol",
-          date: td,
-          amount: "9",
-          notes: "Rewritten by another profile",
-        })
-      )
-    ).toEqual({ kind: "corrected-per-event" });
     expect(
       await deleteSubstanceDailyTotalAction(
         fd({ id: String(added.id), substance: "alcohol" })
@@ -954,17 +935,21 @@ describe("substance history actions refuse another profile's row (#2072)", () =>
     );
     actAs(intruder, intruderProfile);
 
+    // The USE door takes the same boundary: an intruder holding another profile's
+    // event id gets `not-found`, which cannot confirm or deny that the row exists.
+    const useId = (
+      db
+        .prepare(
+          `SELECT id FROM substance_log_events WHERE profile_id = ? LIMIT 1`
+        )
+        .get(ownerProfile.id) as { id: number }
+    ).id;
     expect(
-      await updateSubstanceDailyTotalAction(
-        fd({
-          id: String(added.id),
-          substance: "nicotine",
-          date: td,
-          amount: "9",
-          notes: "Rewritten by another profile",
-        })
-      )
+      await correctSubstanceUseAction(fd({ event_id: String(useId), date: td }))
     ).toEqual({ kind: "not-found" });
+    expect(
+      await deleteSubstanceUseAction(fd({ event_id: String(useId) }))
+    ).toMatchObject({ kind: "not-found", undoId: null });
     expect(
       await deleteSubstanceDailyTotalAction(
         fd({ id: String(added.id), substance: "nicotine" })
@@ -1095,15 +1080,11 @@ describe("substance-use actions refuse a known minor (#1279)", () => {
       )
     ).toEqual({ kind: "not-found" });
     expect(
-      await updateSubstanceDailyTotalAction(
-        fd({
-          id: "1",
-          substance: "alcohol",
-          date: "2026-07-01",
-          amount: "2",
-        })
-      )
+      await correctSubstanceUseAction(fd({ event_id: "1", date: "2026-07-01" }))
     ).toEqual({ kind: "not-found" });
+    expect(await deleteSubstanceUseAction(fd({ event_id: "1" }))).toMatchObject(
+      { kind: "not-found", undoId: null }
+    );
     expect(
       await deleteSubstanceDailyTotalAction(
         fd({ id: "1", substance: "alcohol" })

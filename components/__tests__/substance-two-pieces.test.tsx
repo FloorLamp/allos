@@ -47,9 +47,9 @@ vi.mock("@/app/(app)/medical/substance-use/actions", () => ({
     record("add")(fd);
     return addResult;
   },
-  updateSubstanceDailyTotalAction: async (fd: FormData) => {
+  correctSubstanceUseAction: async (fd: FormData) => {
     record("update")(fd);
-    return { kind: "updated", id: 4, capProgress: null };
+    return { kind: "updated", eventId: 4, date: "2026-08-18" };
   },
   logSubstanceUnitAction: async (fd: FormData) => {
     record("log")(fd);
@@ -69,11 +69,10 @@ vi.mock("@/components/Toast", () => ({
 const TODAY = "2026-08-20";
 const FOUND_DAY = "2026-08-18";
 const ROW = {
-  id: 4,
+  eventId: 4,
   substance: "nicotine",
   date: FOUND_DAY,
-  amount: 3,
-  notes: "after lunch",
+  statedAt: `${FOUND_DAY}T13:15:00.000Z`,
 };
 
 beforeEach(() => {
@@ -129,33 +128,40 @@ async function save(label: string): Promise<void> {
 }
 
 describe("SubstanceForm is ONE form for add and for edit", () => {
-  it("draws the same fields in both modes and differs only in seed and action", async () => {
+  // ONE FORM, TWO SUBJECTS (#4424 ruling 1, narrowed by #5026 phase 2). The seam is no
+  // longer "the same field set in both modes": a correction addresses ONE USE, so the
+  // day's amount and the day's note are not on it — restating either would be the day
+  // form coming back through the edit door. What both modes DO share is the layout,
+  // the When control and the day, and that is what this asserts, in both directions:
+  // the fields edit mode drops, and the fields it must keep.
+  it("keeps the When control in both modes and drops the day's own fields from edit", async () => {
     openForm();
     const addFields = fieldSignature();
-    const addSeed = (screen.getByLabelText(/^Amount/) as HTMLInputElement)
-      .value;
+    expect(addFields).toEqual(expect.arrayContaining(["Notes"]));
+    expect(screen.getByLabelText(/^Amount/)).toBeTruthy();
     await save("Add");
     const added = payload("add");
 
     cleanup();
     openForm(ROW);
-    // THE SEAM. Not "both surfaces render an amount box" — the whole labelled field
-    // set, so a field that appears in one mode and not the other reddens this.
-    expect(fieldSignature()).toEqual(addFields);
-    expect((screen.getByLabelText(/^Amount/) as HTMLInputElement).value).toBe(
-      String(ROW.amount)
-    );
-    expect(addSeed).not.toBe(String(ROW.amount));
+    expect(screen.queryByLabelText(/^Amount/)).toBeNull();
+    expect(screen.queryByLabelText(/^Notes/)).toBeNull();
+    // …and the day is still asked for, through the same control, seeded from the row.
+    // The field renders a DISPLAY date, so the pin is on what gets POSTED below.
+    expect(document.querySelector("#substance-when-date")).toBeTruthy();
     await save("Save");
     const updated = payload("update");
 
-    // Same wire shape, different action and one extra address field: the row's id.
-    expect(Object.keys(updated).sort()).toEqual(
-      [...Object.keys(added), "id"].sort()
-    );
-    expect(updated.id).toBe(String(ROW.id));
+    // The correction's wire shape: the event's address and the pair it may move.
+    expect(Object.keys(updated).sort()).toEqual([
+      "date",
+      "event_id",
+      "logged_via",
+      "stated_at",
+    ]);
+    expect(updated.event_id).toBe(String(ROW.eventId));
+    expect(updated.date).toBe(FOUND_DAY);
     expect(added.date).toBe(FOUND_DAY);
-    expect(updated.notes).toBe(ROW.notes);
   });
 
   it("carries the SUBJECT when the mount names one, and nothing when it does not", async () => {
@@ -228,11 +234,11 @@ describe("SubstanceForm is ONE form for add and for edit", () => {
   });
 
   it("reports a refusal instead of announcing a save that did not happen", async () => {
-    addResult = { kind: "date-conflict" };
+    addResult = { kind: "invalid-amount" };
     openForm();
     await save("Add");
     expect(toasts).toEqual([]);
-    expect(screen.getByRole("alert").textContent).toMatch(/already exists/i);
+    expect(screen.getByRole("alert").textContent).toMatch(/Enter an amount/i);
   });
 });
 
@@ -309,51 +315,60 @@ describe("SubstanceUnitControl is ONE row control", () => {
   });
 });
 
-// A DRINK MAY STATE A TIME, AND ONLY A DRINK (#3295 phase 1 part 1). The seam the
-// field-signature test above pins is deliberately broken in exactly one place: the
-// ADD door, for the food-log ledger. Every other combination keeps the bare date,
-// because `substance_daily_totals` has nowhere to put an instant and a control that
-// collects a value the store must throw away is worse than no control.
-describe("the substance add door states a drink's minute", () => {
+// EVERY SUBSTANCE MAY STATE A TIME (#3295 phase 1, widened by #5026 phase 2). A time
+// was offered on the ADD door for the food-log ledger alone, because
+// `substance_daily_totals` had nowhere to put an instant and a control that collects a
+// value the store must throw away is worse than no control. Both ledgers hold one now,
+// so the offer is unconditional — and the CORRECTION door has it too, which is the
+// whole of what "a use is a thing that happened at a time" buys somebody who mistyped.
+describe("the substance doors state a use's minute", () => {
   const timeField = () => document.querySelector("#substance-when-time");
 
   it.each([
-    ["alcohol", undefined, true],
-    ["alcohol", ROW, false],
-    ["nicotine", undefined, false],
-    ["cannabis", undefined, false],
-  ] as const)(
-    "%s (row seeded: %o) offers a time: %s",
-    (substance, row, offered) => {
-      openForm(row && { ...row, substance }, substance);
-      expect(Boolean(timeField())).toBe(offered);
-      // The day is asked for either way — the control owns the PAIR, so replacing the
-      // date field must not lose the date.
-      expect(
-        document.querySelector("#substance-when-date") ??
-          screen.getByLabelText(/^Date/)
-      ).toBeTruthy();
+    ["alcohol", undefined],
+    ["nicotine", undefined],
+    ["cannabis", undefined],
+    ["Kratom", undefined],
+    ["nicotine", ROW],
+  ] as const)("%s (row seeded: %o) offers a time", (substance, row) => {
+    openForm(row && { ...row, substance }, substance);
+    expect(timeField()).toBeTruthy();
+    // The day is asked for beside it — the control owns the PAIR, so offering a time
+    // must not lose the date.
+    expect(document.querySelector("#substance-when-date")).toBeTruthy();
+  });
+
+  it("seeds the correction from the row's own stated minute", () => {
+    openForm(ROW);
+    // Non-empty and not the placeholder: the exact wall clock depends on the runner's
+    // zone, so what is pinned is that the row's instant reached the field at all — a
+    // form that dropped it would open empty and clear the time on the next save.
+    expect((timeField() as HTMLInputElement).value).toMatch(/^\d{2}:\d{2}$/);
+  });
+
+  it.each(["alcohol", "nicotine"])(
+    "%s posts the stated instant it collected, and an empty one when untouched",
+    async (substance) => {
+      openForm(undefined, substance);
+      await save("Add");
+      // ALWAYS POSTED, EVEN EMPTY: absent means "leave it alone" to the correction
+      // action, so a form that omitted the field could never clear a stated time.
+      expect(payload("add").stated_at).toBe("");
+      expect(payload("add").date).toBe(FOUND_DAY);
+
+      cleanup();
+      openForm(undefined, substance);
+      await act(async () =>
+        fireEvent.change(timeField() as HTMLInputElement, {
+          target: { value: "21:30" },
+        })
+      );
+      await save("Add");
+      // The instant's profile-local day IS the entry's date, which is what the shared
+      // control's pair rule guarantees and the action re-checks.
+      const timed = posted.add[1];
+      expect(String(timed.get("stated_at"))).toContain(FOUND_DAY);
+      expect(String(timed.get("date"))).toBe(FOUND_DAY);
     }
   );
-
-  it("posts the stated instant it collected, and posts none when the field is untouched", async () => {
-    openForm(undefined, "alcohol");
-    await save("Add");
-    expect(payload("add").stated_at).toBeUndefined();
-    expect(payload("add").date).toBe(FOUND_DAY);
-
-    cleanup();
-    openForm(undefined, "alcohol");
-    await act(async () =>
-      fireEvent.change(timeField() as HTMLInputElement, {
-        target: { value: "21:30" },
-      })
-    );
-    await save("Add");
-    // The instant's profile-local day IS the entry's date, which is what the shared
-    // control's pair rule guarantees and the action re-checks.
-    const timed = posted.add[1];
-    expect(String(timed.get("stated_at"))).toContain(FOUND_DAY);
-    expect(String(timed.get("date"))).toBe(FOUND_DAY);
-  });
 });
