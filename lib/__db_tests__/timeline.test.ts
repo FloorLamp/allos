@@ -567,9 +567,10 @@ describe("getTimelineDates: every UNION arm is profile-scoped", () => {
     // and no case would be invisible here, so that containment is asserted rather
     // than assumed.
     for (const arm of timelineDatesUnionSql(false).split(TIMELINE_DATE_UNION))
-      expect(arms, `an arm only the bounded statement carries: ${arm}`).toContain(
-        arm
-      );
+      expect(
+        arms,
+        `an arm only the bounded statement carries: ${arm}`
+      ).toContain(arm);
   });
 
   it.each(arms.map((arm, i) => [i, tableOf(arm), arm] as const))(
