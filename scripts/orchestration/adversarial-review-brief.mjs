@@ -987,7 +987,7 @@ METHOD
 - NEVER \`pkill -f <pattern>\` — not vitest, not next, not playwright, not your own
   harness name. Sibling lanes run the same binaries in this container, so a pattern
   kill takes their runs down with yours and they have no way to tell that from a real
-  failure. Measured 2026-09-05 on this PR: a pass killed vitest by pattern to clean up
+  failure. Measured 2026-09-05 on #5290: a pass killed vitest by pattern to clean up
   after itself, and had to spend a round of its own report explaining which of the
   failures it then saw were its own kill rather than evidence. Kill only an explicit
   PID you captured yourself. The same applies to your waiters — poll a file you own,
