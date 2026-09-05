@@ -305,6 +305,30 @@ These are not review taste; each retired a green that meant nothing.
   is not the test; a citation nobody can follow later is how one value comes to
   look like two.
 
+- **A measurement instrument that errs GENEROUSLY manufactures findings.** A
+  wrong count that is too small reports nothing and is caught by the next reader;
+  a wrong set that is too large reports work that does not exist, and it arrives
+  wearing the authority of a measurement. A lane censusing which files a change
+  removed from a scan's surface first computed `removed` as a superset — 34
+  files where the real delta was 22 — and that superset produced a phantom
+  offender it nearly reported as a finding (2026-09-05). Making the filter
+  exactly old-minus-new dissolved it. **State an instrument's definition before
+  you trust its output**, and prefer the definition that can only under-report:
+  a census that misses something reds later, a census that invents something
+  spends a round.
+
+- **A scoping error propagates UPWARD and comes back with authority attached.**
+  A lane proposed a cut list, put one item in the wrong bucket by association,
+  and the orchestrator adopted its scoping verbatim and returned it as an
+  instruction. Only a provenance check at the point of EXECUTION caught it —
+  the const in question was census scaffolding the branch introduced, not
+  scanner scaffolding the cut removed, and deleting it would have punched a hole
+  in the branch's own subject (2026-09-05, `ACTIVITIES_SELECT`). The proposer and
+  the approver were reasoning from the same wrong sentence, so no amount of
+  review closed it. **Check a claim where it is acted on, not where it is
+  made** — an instruction that came back from someone senior is still your own
+  mis-scoping if you wrote it first.
+
 ## Vitest passing is not a type verdict
 
 **Both non-browser tiers transpile. Neither asks the checker anything, so a type
@@ -378,3 +402,16 @@ command handed only the diff's own files would have reported one of the 44.
   attack", so a body describing a construction a later round removed sends the
   reviewer hunting constructs that no longer exist. #3438 reached round 10 with
   round 9's body naming four deleted symbols.
+
+- **A head-bound verdict and a moving base chase each other, and only the
+  merged-tree receipt terminates.** The gate voids a falsifying pass whose SHA is
+  not the current head — deliberately, since a verdict that survived a push is
+  evidence about code that no longer exists — and separately refuses a head that
+  is behind main on paths that could move a compile contract. With several
+  sessions landing, main moves faster than a pass runs, so "merge main, then
+  pass" is a loop: the merge clears the base check, the base moves during the
+  pass, and merging again voids the pass. `MERGED-TREE-CHECKED:` is the exit and
+  the reason it exists — it clears a moved base WITHOUT moving the head, so the
+  pass stays valid. Run the tiers it names against the merged tree and post what
+  you ran. Treating it as a shortcut to be declined on principle (2026-09-05,
+  twice) sends lanes round a loop that has no other exit.
