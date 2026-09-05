@@ -62,6 +62,170 @@ const TEMPORAL_BRAND_CAST_SELECTORS = (() => {
   ];
 })();
 
+// ── The scanners that used to reread the tree ────────────────────────────────
+//
+// Everything from here to the config array is an invariant that used to live in a
+// Vitest file walking `lib/`, `app/` and `components/` with its own `readdirSync`
+// and matching source text by regex (#5346/#5347). Each is a SYNTAX shape with no
+// type surface, so it belongs on the parse ESLint already runs; the scans' own
+// same-line reason markers become `// eslint-disable-next-line <rule> -- <reason>`
+// and their per-file allowlists become `files`/`ignores` overrides.
+//
+// ONE MECHANIC GOVERNS ALL OF THEM, and getting it wrong is silent: a flat config
+// REPLACES a rule's options rather than merging them, so a narrower `files` block
+// switches OFF every ban an earlier block put on the same rule for those files. The
+// accumulating constants below are the fix — each block spreads the level it sits
+// inside — and a block that `ignores` a file leaves that file on the level above,
+// which is why the temporal-brand block stays first and broadest.
+
+// Test tiers are not shipped surfaces: a fixture may name anything it is asserting
+// about. Every scan replaced below excluded them.
+const TEST_TREES = [
+  "**/__tests__/**",
+  "**/__db_tests__/**",
+  "**/__action_tests__/**",
+  "**/*.test.ts",
+  "**/*.test.tsx",
+];
+const PRODUCTION_TREES = [
+  "lib/**/*.{ts,tsx}",
+  "app/**/*.{ts,tsx}",
+  "components/**/*.{ts,tsx}",
+  "scripts/**/*.{ts,tsx}",
+];
+
+// #1636/#2149 — was inline in the revalidate block below; named here so the blocks
+// added after it can re-state it (see the mechanic above).
+const REVALIDATE_PATH_BAN = {
+  name: "next/cache",
+  importNames: ["revalidatePath"],
+  message:
+    "Use revalidateRoute from lib/revalidate.ts so the target remains compile-checked (#1636/#2149).",
+};
+
+// #3335 — the RPE opt-in seam. `RpeTracking` is minted on one branch of one module,
+// so exactly one production module may import the minter and nothing may cast past
+// the brand. (was lib/__tests__/rpe-opt-in.test.ts)
+const RPE_MINTER_BAN = {
+  name: "@/lib/rpe",
+  importNames: ["mintRpeTracking"],
+  message:
+    "Only lib/rpe-tracking.ts mints an RpeTracking — a second producer is the drift the opt-in seam exists to prevent (#3335).",
+};
+const RPE_BRAND_CAST = {
+  selector:
+    ":matches(TSAsExpression, TSTypeAssertion) > TSTypeReference[typeName.name='RpeTracking'].typeAnnotation",
+  message:
+    "Do not cast to RpeTracking. Obtain it from mintRpeTracking, which is reached only when the profile opted in (lib/rpe.ts, #3335).",
+};
+// The stored key is an identity: two spellings of it would be two opt-ins.
+const RPE_KEY_LITERAL = [
+  {
+    selector: "Literal[value='strength_rpe']",
+    message:
+      "The RPE opt-in key is spelled once, in lib/rpe-tracking.ts — import RPE_TRACKING_KEY (#3335).",
+  },
+  {
+    selector: "TemplateElement[value.raw=/strength_rpe/]",
+    message:
+      "The RPE opt-in key is spelled once, in lib/rpe-tracking.ts — import RPE_TRACKING_KEY (#3335).",
+  },
+];
+
+// #1935/#1936/#1937/#1939/#1966 — one streak computation survives and one module may
+// call it. A new caller has to state which "you have done too much of this in a row"
+// question it answers; a run to MAINTAIN is not one of them.
+// (was lib/__tests__/streak-scope.test.ts)
+const STREAK_MODULE_BAN = {
+  group: ["**/streak"],
+  message:
+    'lib/streak answers the overtraining question only. A new caller must say which "you have done too much of this in a row" question it asks — a run to MAINTAIN is not one (#1935/#1936/#1937/#1939/#1966).',
+};
+
+// #1049 — the disclaimer copy is consolidated onto /disclaimer and footer-linked from
+// every page, so a domain surface deletes its inline disclaimer rather than importing
+// the constant. (was the import half of lib/__tests__/disclaimers.test.ts)
+const DISCLAIMERS_BAN = {
+  name: "@/lib/disclaimers",
+  message:
+    "The disclaimer lives on /disclaimer and is footer-linked from every page — delete the inline disclaimer rather than importing the copy (#1049).",
+};
+
+// #1069 — a vendor's own daily score is a store-what-the-source-said display value.
+// Nothing may COMPUTE with one, so only the display/ingest surfaces may name the kinds,
+// by literal or by the exported constant. The two vendors keep SEPARATE allowlists (a
+// Sleep-page query may name an Oura kind and still not an imported Fitbit one), which
+// is why three blocks below and not one.
+// (was lib/__tests__/vendor-score-engine-inert.test.ts)
+const vendorScoreBan = (vendor, names) =>
+  [
+    `Identifier[name=/^(?:${names.join("|")})$/]`,
+    `Literal[value=/^(?:${names.join("|")})$/]`,
+    `TemplateElement[value.raw=/(?:${names.join("|")})/]`,
+  ].map((selector) => ({
+    selector,
+    message: `${vendor}'s own daily score is displayed attributed and feeds NO engine — not the pillars, not coaching, not the digest, not risk/cadence (#1069).`,
+  }));
+const OURA_SCORE_KINDS = vendorScoreBan("Oura", [
+  "oura_sleep_score",
+  "oura_readiness_score",
+  "OURA_SLEEP_SCORE_METRIC",
+  "OURA_READINESS_SCORE_METRIC",
+]);
+const FITBIT_SCORE_KINDS = vendorScoreBan("Fitbit", [
+  "fitbit_sleep_score",
+  "fitbit_readiness_score",
+  "FITBIT_SLEEP_SCORE_METRIC",
+  "FITBIT_READINESS_SCORE_METRIC",
+]);
+// Each a display/ingest/bounds surface, never an engine that derives a decision.
+const OURA_SURFACES = [
+  // Definitions + the pure parser that mints the samples.
+  "lib/integrations/oura.ts",
+  // The sync that ingests the two daily-score endpoints into metric_samples.
+  "lib/integrations/oura-sync.ts",
+  // Plausibility bounds (0-100) — storage hygiene, not synthesis.
+  "lib/ingest-bounds.ts",
+  // The SOLE read path: the Sleep page's display query.
+  "lib/queries/sleep.ts",
+  // The display surfaces (Sleep page + its attributed tiles).
+  "app/(app)/sleep/page.tsx",
+  "app/(app)/sleep/OuraScores.tsx",
+];
+const FITBIT_SURFACES = [
+  // Definitions + the pure parser that mints the samples.
+  "lib/integrations/fitbit-takeout.ts",
+  // Plausibility bounds (0-100) — storage hygiene, not synthesis.
+  "lib/ingest-bounds.ts",
+  // The DECLARATION of which streams only a Takeout archive can deliver (#2164). It is
+  // DATA, not code: a literal array with type-only imports, where the kinds appear only
+  // as the `metric` selector saying WHICH ROWS to look at. Its reader asks MAX(date) and
+  // selects no `value` column, so the ask is a fact about DELIVERY, never about what
+  // Fitbit scored.
+  "lib/integrations/registry.ts",
+];
+
+// Accumulating levels, narrowest last — see the mechanic at the top of this section.
+const SYNTAX_ALL = TEMPORAL_BRAND_CAST_SELECTORS.map((selector) => ({
+  selector,
+  message:
+    "Do not cast or re-alias to a temporal brand. Obtain it from a minter that validates or constructs it (lib/temporal-types.ts, #2899).",
+}));
+const SYNTAX_PRODUCTION = [...SYNTAX_ALL, RPE_BRAND_CAST];
+const SYNTAX_PRODUCTION_KEYED = [...SYNTAX_PRODUCTION, ...RPE_KEY_LITERAL];
+const SYNTAX_LIB_APP = [
+  ...SYNTAX_PRODUCTION_KEYED,
+  ...OURA_SCORE_KINDS,
+  ...FITBIT_SCORE_KINDS,
+];
+const IMPORT_PATHS_PRODUCTION = [REVALIDATE_PATH_BAN, RPE_MINTER_BAN];
+const IMPORT_PATTERNS_PRODUCTION = [TYPESCRIPT_API_PATTERN];
+const IMPORT_PATTERNS_LIB_APP = [
+  ...IMPORT_PATTERNS_PRODUCTION,
+  STREAK_MODULE_BAN,
+];
+const restrictImports = (paths, patterns) => ["error", { paths, patterns }];
+
 const config = [
   // Global ignores — mirror the old ignorePatterns. Build output, deps, and the
   // runtime data dir are never linted.
@@ -186,20 +350,216 @@ const config = [
   {
     files: ["**/*.{ts,tsx,mts,cts}"],
     rules: {
-      "no-restricted-syntax": [
-        "error",
-        ...TEMPORAL_BRAND_CAST_SELECTORS.map((selector) => ({
-          selector,
-          message:
-            "Do not cast or re-alias to a temporal brand. Obtain it from a minter that validates or constructs it (lib/temporal-types.ts, #2899).",
-        })),
-      ],
+      "no-restricted-syntax": ["error", ...SYNTAX_ALL],
     },
   },
   // eslint-config-next 16 bundles eslint-plugin-react-hooks v6, whose
   // next/core-web-vitals preset newly enables the "React Compiler" rule family.
   // Every compiler rule family has completed its product-reviewed burn-down and
   // stays enforced alongside exhaustive-deps and the rest of the prior surface.
+  // ── The retired scanners' rules, narrowest LAST ──────────────────────────────
+  // Each block re-states the level it sits inside; a file listed in `ignores` falls
+  // back to that level rather than to nothing. See the mechanic above the constants.
+  //
+  // Production, everywhere: the RPE opt-in seam (#3335). lib/rpe-tracking.ts carries
+  // the one permitted import of the minter and the one spelling of the stored key on
+  // its own disable line, and lib/rpe.ts the one permitted cast — the same shape the
+  // temporal-brand minters use.
+  {
+    files: PRODUCTION_TREES,
+    ignores: [...TEST_TREES, "lib/revalidate.ts"],
+    rules: {
+      "no-restricted-imports": restrictImports(
+        IMPORT_PATHS_PRODUCTION,
+        IMPORT_PATTERNS_PRODUCTION
+      ),
+      "no-restricted-syntax": ["error", ...SYNTAX_PRODUCTION],
+    },
+  },
+  // The opt-in KEY, everywhere except migrations. A shipped migration is frozen text
+  // (its sha256 is in lib/migrations/manifest.json), so the one that back-fills the
+  // column keeps its own spelling of the key and cannot carry a disable comment.
+  {
+    files: PRODUCTION_TREES,
+    ignores: [...TEST_TREES, "lib/revalidate.ts", "lib/migrations/**"],
+    rules: {
+      "no-restricted-syntax": ["error", ...SYNTAX_PRODUCTION_KEYED],
+    },
+  },
+  // lib/ + app/, outside both vendor allowlists: the streak scope (#1935…#1966) and
+  // the vendor daily scores (#1069).
+  {
+    files: [
+      "lib/**/*.{ts,tsx}",
+      "app/**/*.{ts,tsx}",
+      "components/**/*.{ts,tsx}",
+    ],
+    ignores: [
+      ...TEST_TREES,
+      "lib/revalidate.ts",
+      "lib/migrations/**",
+      ...OURA_SURFACES,
+      ...FITBIT_SURFACES,
+    ],
+    rules: {
+      "no-restricted-imports": restrictImports(
+        IMPORT_PATHS_PRODUCTION,
+        IMPORT_PATTERNS_LIB_APP
+      ),
+      "no-restricted-syntax": ["error", ...SYNTAX_LIB_APP],
+    },
+  },
+  // An Oura display/ingest surface may name an Oura kind — and still not a Fitbit one.
+  {
+    files: OURA_SURFACES,
+    ignores: FITBIT_SURFACES,
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        ...SYNTAX_PRODUCTION_KEYED,
+        ...FITBIT_SCORE_KINDS,
+      ],
+    },
+  },
+  // …and the converse.
+  {
+    files: FITBIT_SURFACES,
+    ignores: OURA_SURFACES,
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        ...SYNTAX_PRODUCTION_KEYED,
+        ...OURA_SCORE_KINDS,
+      ],
+    },
+  },
+  // #3520 — the migration registry reaches this helper at DB startup, so it stays on
+  // the leaf metric policy and off the full Health Connect parser and its application
+  // graph. (was lib/__tests__/db-import-boundary.test.ts)
+  {
+    files: ["lib/metric-window-overlap.ts"],
+    rules: {
+      "no-restricted-imports": restrictImports(IMPORT_PATHS_PRODUCTION, [
+        ...IMPORT_PATTERNS_LIB_APP,
+        {
+          group: ["**/integrations/health-connect"],
+          message:
+            "lib/db.ts loads the migration registry, which reaches this helper — import the shared constants from ./integrations/health-connect-metrics, not the full parser (#3520).",
+        },
+      ]),
+    },
+  },
+  // …and the leaf it depends on stays dependency-free, which is what makes it a leaf.
+  {
+    files: ["lib/integrations/health-connect-metrics.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        ...SYNTAX_PRODUCTION_KEYED,
+        ...[
+          "ImportDeclaration",
+          "ImportExpression",
+          "TSImportEqualsDeclaration",
+          "CallExpression[callee.name='require']",
+        ].map((selector) => ({
+          selector,
+          message:
+            "The shared Health Connect metric policy is imported at DB startup and stays dependency-free — keep it a leaf module (#3520).",
+        })),
+      ],
+    },
+  },
+  // #482/#840 — mobility coverage answers "mobilized?", strength coverage answers
+  // "trained?". Merging them gives a false all-clear, so this module reads mobility
+  // move slugs and never the lift catalog's coverage engine or strength set rows.
+  // (was the scan half of lib/__tests__/mobility-coverage-apart.test.ts)
+  {
+    files: ["lib/mobility-coverage.ts"],
+    rules: {
+      "no-restricted-imports": restrictImports(IMPORT_PATHS_PRODUCTION, [
+        ...IMPORT_PATTERNS_LIB_APP,
+        {
+          group: ["**/muscle-coverage"],
+          message:
+            "Mobility coverage must not be sourced from the strength coverage engine — it would answer \"trained?\" instead of \"mobilized?\" (#482).",
+        },
+      ]),
+      "no-restricted-syntax": [
+        "error",
+        ...SYNTAX_LIB_APP,
+        {
+          selector:
+            ":matches(ImportSpecifier[imported.name='liftInfo'], Identifier[name='coverageFromSets'])",
+          message:
+            "Mobility coverage must not be sourced from the lift catalog or the strength coverage engine (#482).",
+        },
+        {
+          selector:
+            ":matches(Literal[value=/exercise_sets/], TemplateElement[value.raw=/exercise_sets/])",
+          message:
+            "Mobility coverage is counted from mobility sessions, never from strength set rows (#482).",
+        },
+      ],
+    },
+  },
+  // #1049 — no domain surface imports the disclaimer copy. /disclaimer is the page the
+  // copy is consolidated onto, so it is the one importer, exactly as lib/revalidate.ts
+  // is the one module allowed to expose the raw revalidate API.
+  {
+    files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}"],
+    ignores: [
+      ...TEST_TREES,
+      ...OURA_SURFACES.filter((f) => f.startsWith("app/")),
+      "app/(app)/disclaimer/page.tsx",
+    ],
+    rules: {
+      "no-restricted-imports": restrictImports(
+        [...IMPORT_PATHS_PRODUCTION, DISCLAIMERS_BAN],
+        IMPORT_PATTERNS_LIB_APP
+      ),
+    },
+  },
+  // #1878 — every `router.refresh()` is classified. A background actor repaints
+  // through `useChromeRefresh` so the dirty-form registry can hold it; a repaint the
+  // person asked for calls the router directly and carries its reason on a file-level
+  // disable, which is the granularity the retired allowlist had (it listed FILES).
+  // (was the first test of lib/__tests__/chrome-refresh-scan.test.ts)
+  {
+    files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}"],
+    ignores: TEST_TREES,
+    rules: {
+      "no-restricted-properties": [
+        "error",
+        {
+          object: "router",
+          property: "refresh",
+          message:
+            "Decide which this is: CHROME (a background actor — repaint through useChromeRefresh so a half-typed form is not emptied) or USER (the person asked for it — keep the direct call and say why on an eslint-disable line) (#1878).",
+        },
+      ],
+    },
+  },
+  // #2888 — the training surfaces reach the registry. `scope_kind !== "practice"` was a
+  // private membership rule that disagreed with the two surfaces beside it, and a
+  // subtraction only excludes what its author remembered; filter with
+  // getFrequencyTargetProgressForHome so membership stays declared once in
+  // CADENCE_SCOPES.home. (was the literal half of lib/__tests__/cadence-home.test.ts)
+  {
+    files: ["app/(app)/training/**/*.{ts,tsx}"],
+    ignores: TEST_TREES,
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        ...SYNTAX_LIB_APP,
+        {
+          selector:
+            "BinaryExpression[operator=/^[!=]==?$/][right.type='Literal']:matches([left.name='scope_kind'], [left.property.name='scope_kind'])",
+          message:
+            'Filter with getFrequencyTargetProgressForHome(profileId, "training") — a private scope_kind list is the subtraction #2888 removed.',
+        },
+      ],
+    },
+  },
 ];
 
 export default config;

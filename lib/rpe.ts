@@ -63,6 +63,7 @@ export function mintRpeTracking(): RpeTracking {
     max: RPE_MAX,
     step: RPE_STEP,
     seed: RPE_SEED,
+  // eslint-disable-next-line no-restricted-syntax -- RpeTracking minter: this is the one construction site the brand is worth anything for
   } as RpeTracking;
 }
 
