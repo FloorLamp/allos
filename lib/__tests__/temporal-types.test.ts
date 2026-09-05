@@ -189,6 +189,7 @@ describe("temporal brands: the cast ban", () => {
     nonNullable: `type D = NonNullable<LocalDay>`,
     array: `type Ds = LocalDay[]`,
     functionReturn: `type Mint = (d: Date) => LocalDay`,
+    typeParameterDefault: `type G<T = LocalDay> = T`,
   };
 
   for (const [name, decl] of Object.entries(refusedAliases)) {
@@ -198,19 +199,36 @@ describe("temporal brands: the cast ban", () => {
     });
   }
 
-  it("refuses renaming a brand at import, which takes its name out of every selector", async () => {
-    const messages = await lint(
-      `import type { LocalDay as LD } from "./temporal-types";\ndeclare const s: string;\nexport const v = s as LD;\n`
-    );
-    expect(messages.map((m) => m.line)).toEqual([1]);
-  });
+  // Renaming a brand takes its name out of every selector above, so the rename
+  // itself is refused — on the specifier's line, never on the later cast.
+  const refusedRenames: Record<string, string> = {
+    importAs: `import type { LocalDay as LD } from "./temporal-types";`,
+    importStringLiteral: `import type { "LocalDay" as LD } from "./temporal-types";`,
+    importEquals: `import * as TT from "./temporal-types";\nimport LD = TT.LocalDay;`,
+  };
 
-  it("refuses renaming a brand at export", async () => {
-    const messages = await lint(
-      `export type { LocalDay as Day } from "./temporal-types";\n`
-    );
-    expect(messages).toHaveLength(1);
-  });
+  for (const [name, decl] of Object.entries(refusedRenames)) {
+    it(`refuses renaming a brand: ${name}`, async () => {
+      const messages = await lint(
+        `${decl}\ndeclare const s: string;\nexport const v = s as LD;\n`
+      );
+      const specifierLine = decl.split("\n").length;
+      expect(messages.map((m) => m.line)).toEqual([specifierLine]);
+    });
+  }
+
+  const refusedExportRenames: Record<string, string> = {
+    exportAs: `export type { LocalDay as Day } from "./temporal-types";`,
+    exportStringLiteral: `export type { "LocalDay" as Day } from "./temporal-types";`,
+    exportLocalAs: `${header}export type { LocalDay as Day };`,
+  };
+
+  for (const [name, decl] of Object.entries(refusedExportRenames)) {
+    it(`refuses renaming a brand at export: ${name}`, async () => {
+      const messages = await lint(`${decl}\n`);
+      expect(messages).toHaveLength(1);
+    });
+  }
 
   // The row-shape exemption, and casts that are none of this rule's business.
   const allowed: Record<string, string> = {
@@ -247,11 +265,14 @@ describe("temporal brands: the cast ban", () => {
     });
   }
 
-  // The rule is syntactic and says so (lib/temporal-types.ts): these launder a string
-  // without NAMING a brand as a cast target, and are review's, as for every other
-  // type. Pinned so the documented limit and the rule cannot drift apart silently.
+  // The rule is a ratchet over spellings and says so (lib/temporal-types.ts): these
+  // launder a string through what a name RESOLVES to rather than by naming a brand in
+  // a cast target, alias or specifier, and are review's, as for every other type.
+  // Pinned so the documented limit and the rule cannot drift apart silently.
   const namedLimits: Record<string, string> = {
     indexedAccessIntoRow: `type Row = { d: LocalDay }; export const v = s as Row["d"]`,
+    interfaceHeritage: `interface Ds extends Array<LocalDay> {} export const v = ([s] as Ds)[0]`,
+    methodReturningBrand: `export const v = (s as unknown as { toString(): LocalDay }).toString()`,
     lyingPredicate: `function isDay(x: string): x is LocalDay { return true }`,
     genericLaunderer: `declare function id<T>(x: unknown): T; export const v = id<LocalDay>(s)`,
     asAny: `declare function f(d: LocalDay): void; f(s as any)`,

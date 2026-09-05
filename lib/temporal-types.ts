@@ -27,16 +27,20 @@
 // permitted cast on a `// eslint-disable-next-line … -- <brand> minter:` line. A
 // function that receives a string and casts it is not a minter and must not exist.
 //
-// The cast ban (eslint.config.mjs, "no-restricted-syntax") is SYNTACTIC, and says so:
-// it refuses a type that NAMES a brand — as the target of a cast (direct, through
-// `unknown`, inside a union / array / tuple / intersection / `NonNullable<>` / by
-// qualified or `import()` name), as an alias outside an object shape (`type D =
-// LocalDay`, `type D = LocalDay & {}`, `type Ds = LocalDay[]`), or renamed at an import
-// or export. It does not chase what a name RESOLVES to. So it cannot see a string
-// laundered through an indexed access into a row type (`s as Row["d"]`), a type
+// The cast ban (eslint.config.mjs, "no-restricted-syntax") is a RATCHET over spellings,
+// not a proof. It refuses the ways of naming a brand as a cast target, as an alias, or
+// as a renamed import/export that lib/__tests__/temporal-types.test.ts lists — and that
+// list is the definition of what it catches. TypeScript's type grammar has more ways to
+// name a type than any selector list (three falsifying passes on #5356 each found new
+// ones: a re-alias, a renamed import, a type-parameter default, a string-literal
+// specifier), so a spelling the test does not list is an addition — add the selector
+// and the test row — never a refutation. What the rule does not chase at all, and
+// says so: what a name RESOLVES to (an indexed access into a row type, an interface's
+// heritage or call signature, an object literal whose METHOD returns a brand), a type
 // predicate or assertion function that lies, an overload or `declare` signature, a
-// generic launderer, `as any`, `as never` or `JSON.parse`. Those are review's, exactly
-// as they are for every other type in the tree; a reader sees each of them on one line.
+// generic launderer, `as any`, `as never`, `JSON.parse`, and `.js` files. Those are
+// review's, exactly as they are for every other type in the tree; a reader sees each of
+// them on one line, and the rule's existence changes nothing about that job.
 //
 // The one place a brand may appear without a minter is a DB ROW SHAPE — the
 // `.get(...) as { date: LocalDay }` assertion every read already makes, or an alias or

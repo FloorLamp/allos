@@ -156,17 +156,21 @@ Three rules keep a brand worth something:
   a `Date` and carry their one permitted cast on a `-- <brand> minter:` disable
   line. A function that receives a string and casts it is not a minter and must
   not exist.
-- **A type that names a brand is refused by ESLint** (`eslint.config.mjs`,
-  `no-restricted-syntax`) as a cast target — direct, through `unknown`, inside
-  a union, array, tuple or intersection, by qualified or `import()` name — as
-  an alias outside an object shape (`type D = LocalDay`, `type D = LocalDay &
-{}`, `type Ds = LocalDay[]`), and as a renamed import or export. A cast that
-  appears anywhere else is the defect, not a shortcut: bring it back to #2899
-  rather than adding a disable. The rule is syntactic and does not chase what a
-  name resolves to, so an indexed access into a row type, a lying type
-  predicate, an overload, `as any`, `as never` and a generic launderer are
-  review's, as for every other type; `lib/__tests__/temporal-types.test.ts` pins
-  both the refused list and the named limits.
+- **A cast to a brand is refused by ESLint as a ratchet, not a proof**
+  (`eslint.config.mjs`, `no-restricted-syntax`). The rule refuses the ways of
+  naming a brand as a cast target, as an alias, or as a renamed import/export
+  that `lib/__tests__/temporal-types.test.ts` lists, and that list is the
+  definition of what it catches. TypeScript's type grammar has more ways to
+  name a type than any selector list — three falsifying passes each found new
+  ones — so a spelling the test does not list is an addition (a selector and a
+  test row), never a refutation, and the reviewer's job is unchanged. A cast
+  that appears anywhere outside a minter is the defect, not a shortcut: bring
+  it back to #2899 rather than adding a disable. The rule does not chase what a
+  name resolves to (an indexed access into a row type, an interface's heritage
+  or call signature, an object literal whose method returns a brand), a lying
+  type predicate, an overload, `as any`, `as never`, a generic launderer or a
+  `.js` file; those are review's, as for every other type, and the test pins
+  them as named limits so the documented limit and the rule cannot drift apart.
 - **A DB row shape may carry the brand the registry declares for that column**
   (`.get(...) as { date: LocalDay }`), and nothing else. That assertion already
   exists on every read; the brand adds what `TIME_COLUMNS` says about the column,
