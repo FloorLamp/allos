@@ -286,6 +286,25 @@ These are not review taste; each retired a green that meant nothing.
   not a wait or a reset: it is to keep the state you are asserting on scoped to
   the thing under test, so the oracle cannot be reached by anyone else.
 
+- **A comment that CITES a mechanism is the least-checked claim in a diff, and
+  the cited mechanism is often not the one doing the work.** Prose naming a
+  function, a filter or a constraint reads as evidence — a reviewer who has just
+  verified the code around it accepts the sentence without following the name to
+  its definition, because the conclusion is usually true. It is the reason that
+  is wrong, and a wrong reason survives every test: nothing reds on a citation.
+  Five in one session (2026-09-05), each found only by reading the cited thing:
+  a `SCOPING_ID_EXEMPT` `why` citing `referencedProviderIds(profileId)` as what
+  scopes a read nothing runs it for; a manifest check documented as verifying the
+  SELECT when it reads only the `columns` array; a fixture explaining its pin with
+  a pace rule that had been retired an hour earlier; a re-export justified as
+  keeping the name "existing importers use", which had none in `lib`, `app`,
+  `scripts` or `e2e`; and a comparator-free `Float64Array#sort` justified by an
+  `isFinite` check "at intake" that is not on the value's path — the guarantee is
+  a `NOT NULL` column constraint instead. **Follow every name a comment cites to
+  its definition, and check the path actually reaches it.** The conclusion holding
+  is not the test; a citation nobody can follow later is how one value comes to
+  look like two.
+
 ## Vitest passing is not a type verdict
 
 **Both non-browser tiers transpile. Neither asks the checker anything, so a type
