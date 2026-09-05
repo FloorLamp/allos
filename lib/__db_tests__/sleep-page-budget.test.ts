@@ -8,6 +8,12 @@
 // trust: nothing in the suite could say whether the route can reach the same ceiling the
 // dashboard is held to. It can be measured, so it is.
 //
+// WHAT THIS GATE DOES NOT COVER, because its silence would otherwise read as coverage
+// (#5199). It walks ONE ROUTE RENDER with a request cache open. It says nothing about
+// the notification tick, which runs the same query layer with `cache()` degraded to
+// identity — that is tick-gather-budget.test.ts — and nothing about wall time, which is
+// docs/internals/profiling.md's reading.
+//
 // THE CEILING IS THE DASHBOARD'S, borrowed rather than re-derived. /sleep is a single
 // domain page against the dashboard's whole placement census, so it has no business
 // costing what the dashboard costs; 274 is a backstop it should not come near, and the
@@ -161,17 +167,24 @@ describe("/sleep route query budget (#3993)", () => {
   // passthrough were each reading `getActiveSituations` + `getSituationEvents`, and one
   // shared read serves both halves now. Fixing the torn read made the page two queries
   // cheaper, not dearer.
+  //
+  // +1 ON BIOHACKER ONLY (#5034), 109 → 110: that persona now seeds an all-day Oura
+  // heart-rate trace, and the page's overnight reader stops returning at its bounds
+  // check. ONE statement, not one per night — the bounds read is what was missing, and
+  // everything under it was already inside the request memo. The other five personas
+  // seed no `hr_minutes` and are flat, which is what makes this line legible: the move
+  // is the seam becoming reachable, not the page changing.
   const BASELINES: Record<string, number> = {
     bodybuilder: 69,
     "marathon-runner": 69,
     household: 69,
     pregnant: 69,
     "diabetic-cgm": 69,
-    biohacker: 109,
+    biohacker: 110,
   };
 
   // The dashboard's backstop, borrowed. /sleep is one domain page; reaching this would
-  // mean it costs what the entire dashboard census costs. The heaviest persona is 109
+  // mean it costs what the entire dashboard census costs. The heaviest persona is 110
   // against it — the answer to the question nobody had asked, which was whether this
   // route could exceed a ceiling no gate applies to it.
   const QUERY_CEILING = 274;
