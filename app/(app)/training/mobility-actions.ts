@@ -1,7 +1,11 @@
 "use server";
 
 import { requireWriteAccess } from "@/lib/auth";
-import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
+import {
+  LOGGED_VIA_FIELD,
+  parseWebOrigin,
+  type StampedFormData,
+} from "@/lib/logged-via";
 import { revalidateRoute } from "@/lib/revalidate";
 import { today } from "@/lib/db";
 import {
@@ -35,7 +39,7 @@ function revalidate(): void {
 
 // Add a move to the day's session (creating the row if absent). Idempotent.
 export async function logMobilityMove(
-  formData: FormData
+  formData: StampedFormData
 ): Promise<MobilityLogResult> {
   const { profile } = await requireWriteAccess();
   if (!isTrainingRelevant(getProfileAge(profile.id)))
@@ -70,7 +74,7 @@ export async function unlogMobilityMove(
 
 // Set (or clear) the session's optional overall duration in minutes.
 export async function setMobilityDuration(
-  formData: FormData
+  formData: StampedFormData
 ): Promise<MobilityLogResult> {
   const { profile } = await requireWriteAccess();
   if (!isTrainingRelevant(getProfileAge(profile.id)))

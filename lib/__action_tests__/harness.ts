@@ -7,6 +7,7 @@ import type { Access, CurrentSession, Role } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { hashPasswordSync } from "@/lib/password";
 import type { WeightUnit, DistanceUnit } from "@/lib/settings";
+import type { StampedFormData } from "@/lib/logged-via";
 import { ACTION_TEST_PASSWORD } from "./password-fixture";
 import { peekActingTokenHash, setActingSession } from "./session-state";
 
@@ -148,15 +149,23 @@ export function seedActor(
 // A FormData builder — the argument shape every form-based action takes. Values are
 // stringified (FormData coerces anyway) and null/undefined entries are skipped, so a
 // test can express "field absent" by passing null.
+//
+// IT MINTS `StampedFormData` (#5349), and the cast is the honest spelling rather than a
+// hole in the brand. The brand is a discipline on MOUNTINGS — it says a client that
+// posts a surface-reading action declared which surface it is — and this tier is not a
+// mounting: it drives the action directly, standing in for the browser's POST. What
+// the server may believe about that body is unchanged and is `parseWebOrigin`'s job,
+// not the type's: a body with no `logged_via` still parses to the action's own
+// fallback, which is exactly what a test that states no surface here is exercising.
 export function fd(
   fields: Record<string, string | number | null | undefined>
-): FormData {
+): StampedFormData {
   const form = new FormData();
   for (const [k, v] of Object.entries(fields)) {
     if (v === null || v === undefined) continue;
     form.set(k, String(v));
   }
-  return form;
+  return form as StampedFormData;
 }
 
 /**

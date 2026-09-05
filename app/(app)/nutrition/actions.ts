@@ -2,7 +2,11 @@
 
 import { requireWriteAccess } from "@/lib/auth";
 import { gateItemProfile } from "../gate-item";
-import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
+import {
+  LOGGED_VIA_FIELD,
+  parseWebOrigin,
+  type StampedFormData,
+} from "@/lib/logged-via";
 import { revalidateRoute } from "@/lib/revalidate";
 import { db, today, writeTx } from "@/lib/db";
 import { canonicalFoodGroup, isValidFoodGroup } from "@/lib/food-groups";
@@ -153,7 +157,7 @@ function parseFields(
 // write itself is the auth-blind lib core (shared with the Telegram button handler,
 // #682); this action owns the auth gate + validation + revalidation.
 export async function logFoodServing(
-  formData: FormData
+  formData: StampedFormData
 ): Promise<FoodLogResult> {
   // ONE SPELLING FOR THE SUBJECT (#4730). Every mount stamps `profile_id`, and
   // `gateItemProfile` is this repo's one reader of it; this action hand-rolled the
@@ -565,7 +569,7 @@ function parseProteinFields(
 // auth-blind lib core (addProteinGramsCore); this action owns the auth gate + validation
 // + revalidation and returns the day's new total for optimistic reconciliation.
 export async function addProteinGrams(
-  formData: FormData
+  formData: StampedFormData
 ): Promise<ProteinLogResult> {
   const { profile } = await requireWriteAccess();
   const fields = parseProteinFields(formData, profile.id);

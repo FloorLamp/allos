@@ -90,6 +90,30 @@ not at all five by rote.
   the cases from a `Record<T, …>`. Then add a member locally and watch it fail,
   because the annotation is exactly the thing that reads as proof and is not.
 
+- **A guard that reconstructs a connection from source is blind to every path it
+  does not know, and it fails toward silence.** `logged-via-surface-wiring` walked
+  the import graph from every action calling `parseWebOrigin` back to the clients
+  that mount it, 1,261 lines, to prove each mounting declared which surface it was
+  on. Its own header said why it had to: "NOTHING IN THE TYPE SYSTEM CONNECTS THE
+  TWO." Two shipped mountings reached those actions unstamped anyway, because
+  neither is a client importing an action: `paletteQuickLog` is a `"use server"`
+  module calling a sibling action (its practice arm recorded `page` for every
+  session logged from the command palette), and `DoseConfirmButton` receives its
+  action as a PROP from a server component and posts a DOM-collected form. A walk
+  that cannot see a path reports the same clean result it reports for a tree with
+  no defect in it.
+
+  #5349 replaced it with a type: `StampedFormData` (lib/logged-via.ts) is a
+  branded FormData minted by `stampWebOrigin`, reached through
+  `useLoggedViaStamp()` or `useWritePipeline`, and required by every action that
+  reads a surface. Parameters are contravariant under `strictFunctionTypes`, so
+  `<form action={theAction}>` stops compiling — the connection the header said was
+  missing now exists, and it is checked on every path, including the ones nobody
+  enumerated. The same move as the `Tx` token (lib/db.ts, #2133) on the database
+  side. **When a guard's own comment says the type system cannot state the fact,
+  check that claim before you build the guard: it is the cheapest thing in this
+  file to get wrong, and the walk is the expensive way to be wrong about it.**
+
 - **Is the invariant pinned against the RIGHT event?** A proof that a change is
   safe "across operation X" is worthless if X is not the only operation that
   touches the state. #3537's fix made a nutrient matcher read
@@ -305,6 +329,30 @@ These are not review taste; each retired a green that meant nothing.
   is not the test; a citation nobody can follow later is how one value comes to
   look like two.
 
+- **A measurement instrument that errs GENEROUSLY manufactures findings.** A
+  wrong count that is too small reports nothing and is caught by the next reader;
+  a wrong set that is too large reports work that does not exist, and it arrives
+  wearing the authority of a measurement. A lane censusing which files a change
+  removed from a scan's surface first computed `removed` as a superset — 34
+  files where the real delta was 22 — and that superset produced a phantom
+  offender it nearly reported as a finding (2026-09-05, on the branch that
+  landed as #5329). Making the filter exactly old-minus-new dissolved it. **State an instrument's definition before
+  you trust its output**, and prefer the definition that can only under-report:
+  a census that misses something reds later, a census that invents something
+  spends a round.
+
+- **A scoping error propagates UPWARD and comes back with authority attached.**
+  A lane proposed a cut list, put one item in the wrong bucket by association,
+  and the orchestrator adopted its scoping verbatim and returned it as an
+  instruction. Only a provenance check at the point of EXECUTION caught it —
+  the const in question was census scaffolding the branch introduced, not
+  scanner scaffolding the cut removed, and deleting it would have punched a hole
+  in the branch's own subject (2026-09-05, `ACTIVITIES_SELECT`). The proposer and
+  the approver were reasoning from the same wrong sentence, so no amount of
+  review closed it. **Check a claim where it is acted on, not where it is
+  made** — an instruction that came back from someone senior is still your own
+  mis-scoping if you wrote it first.
+
 ## Vitest passing is not a type verdict
 
 **Both non-browser tiers transpile. Neither asks the checker anything, so a type
@@ -378,3 +426,30 @@ command handed only the diff's own files would have reported one of the 44.
   attack", so a body describing a construction a later round removed sends the
   reviewer hunting constructs that no longer exist. #3438 reached round 10 with
   round 9's body naming four deleted symbols.
+
+- **A head-bound verdict and a moving base chase each other, and the merged-tree
+  receipt is what breaks the chase.** The gate voids a falsifying pass whose SHA
+  is not the current head — deliberately, since a verdict that survived a push is
+  evidence about code that no longer exists — and separately refuses a head that
+  is behind main. The trigger for that second refusal is the paths the merges ON
+  MAIN touched, never the PR's own diff, so a docs-only head is refused as
+  readily as a schema one. With several sessions landing, main moves faster than
+  a pass runs, so "merge main, then pass" becomes a loop: the merge clears the
+  base check, the base moves during the pass, and merging again voids the pass.
+  `MERGED-TREE-CHECKED:` is what that loop lacks — it clears a moved base WITHOUT
+  moving the head, so the pass stays valid. It is not the gate's only exit: the
+  gate itself names merging and letting CI re-run, and the check does not fire
+  at all when nothing type-bearing landed. The receipt is the exit when merging
+  would cost a pass. Post it as its own paragraph — a receipt inside a fence, an indented
+  block or a blockquote quotes rather than speaks, and the gate keeps that line
+  only to say it went unread (#5183) — and state all four literals the grammar
+  wants: the head SHA, the base SHA — each at least eight characters —
+  `npm run typecheck`, and a test tier named as its own npm script. The gate
+  checks that they were named, never that they cover the diff. Treating the receipt as a shortcut
+  to be declined on principle (2026-09-05, twice) sends lanes round the loop with
+  the one thing that shortens it withheld. And the receipt is bound to the base
+  it names, so it stales the moment main moves — run it and merge in one pass,
+  not as a step you bank in advance. Measured the same day: receipts naming
+  `bc7349b4` and `d248567d` were both void by the time the gate read them, and
+  the merge that worked re-ran the check against the base main actually had and
+  merged in the same breath.

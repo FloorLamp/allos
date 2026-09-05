@@ -28,7 +28,11 @@ import {
   usualRoutineDayOffers,
   type UsualRoutineDayOffer,
 } from "@/lib/queries/usual-routine";
-import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
+import {
+  LOGGED_VIA_FIELD,
+  parseWebOrigin,
+  type StampedFormData,
+} from "@/lib/logged-via";
 import {
   logUsualRoutineCore,
   recordUsualBackfillAudit,
@@ -278,7 +282,7 @@ export async function undoAttentionDose(
 // write outside the bundle that currently stands. The `date` field is optional and
 // defaults to today (#4118); its reach is the CORE's bound, not this parse.
 export async function logUsualRoutine(
-  formData: FormData
+  formData: StampedFormData
 ): Promise<UsualRoutineResult> {
   const { login, profile } = await requireWriteAccess();
   const rawWindow = String(formData.get("meal_slot") ?? "").trim();

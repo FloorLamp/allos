@@ -1,6 +1,7 @@
 "use client";
 import { measurementsSavedText } from "@/lib/body-metric-input";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
+import type { StampedFormData } from "@/lib/logged-via";
 
 import { useMemo, useState, useTransition, type FormEvent } from "react";
 import {
@@ -475,7 +476,7 @@ export default function SymptomLogBar({
   // illness Now cockpit for a non-active profile. A no-op on the default mounts (profileId
   // undefined), which write the session's active profile. ONE SPELLING, `profile_id`
   // (#4424 ruling 4) — the same field every record row posts and `gateItemProfile` reads.
-  const withTarget = (fd: FormData): FormData => {
+  const withTarget = (fd: FormData): StampedFormData => {
     if (profileId != null) fd.set("profile_id", String(profileId));
     if (episodeId != null) fd.set("episodeId", String(episodeId));
     // WHICH SURFACE (#3087). This bar is mounted on the dashboard, on the Timeline,
