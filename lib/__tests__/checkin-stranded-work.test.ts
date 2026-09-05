@@ -255,9 +255,10 @@ describe("a probe that cannot run says so instead of answering", () => {
     const line = lineFor(out, "wt-unreadable");
     expect(line).toContain("STATUS UNREAD");
     expect(line).not.toContain("clean — nothing to rescue");
-    // And the all-clear cannot print over a tree nobody could read. The control
-    // for this one is the sibling test above: the same two benign shapes DO
-    // print it once no read has failed.
+    // And the all-clear cannot print over a tree nobody could read. That this
+    // regex can match at all is proven by the sibling test above, on a fixture
+    // of benign shapes — without it, an absence assertion on a pattern nothing
+    // ever produces would pass forever.
     expect(out).not.toMatch(ALL_CLEAR);
   });
 });
