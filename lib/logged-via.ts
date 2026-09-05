@@ -153,11 +153,15 @@ export function parseWebOrigin(
 // `<form action>`'s `(fd: FormData) => …` — a bare DOM-collected mounting fails `tsc`
 // at the JSX, which is the whole guard.
 //
-// WHAT IT DOES NOT CLAIM, and the boundary matters: it says the payload CARRIES a
-// declared surface, never that the surface is the true one. `parseWebOrigin` still
-// refuses anything outside the four web values, because the field rides the post and
-// is attacker-controlled like any other. The brand is a discipline on OUR mountings;
-// the parse is the gate on THEIR request. Both stay.
+// WHAT IT DOES NOT CLAIM, and the boundary is ACCEPTED rather than overlooked: it says
+// the payload CARRIES a declared surface, never that the declared surface is the true
+// one. Nothing — type, lint or scan — can see the second, and the walk this replaced
+// could not either: its `DECLARES_RE` counted a bare `.set(LOGGED_VIA_FIELD, …)` with
+// any value as a declaration. So this is the honest limit of the mechanism, not a
+// regression against it. `parseWebOrigin` still refuses anything outside the four web
+// values, because the field rides the post and is attacker-controlled like any other.
+// The brand is a discipline on OUR mountings; the parse is the gate on THEIR request.
+// Both stay.
 declare const WEB_ORIGIN_STAMP: unique symbol;
 export type StampedFormData = FormData & { readonly [WEB_ORIGIN_STAMP]: true };
 
