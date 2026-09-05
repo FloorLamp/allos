@@ -1,4 +1,5 @@
-import { act, render, screen } from "@testing-library/react";
+import { useState } from "react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LoggedViaSurface } from "@/components/LoggedViaSurface";
 import {
@@ -255,6 +256,257 @@ describe("the client write pipeline (#3276)", () => {
       "Dose confirm undone",
       expect.anything()
     );
+  });
+});
+
+// ── THE OPTIMISTIC-VALUE CHANNEL (#3728) ─────────────────────────────────────
+//
+// One displayed number, taps keyed the way a multi-target surface keys them (the stool
+// row's seven buttons over one day count), and the REAL ledger underneath. What is
+// asserted is the value a person is looking at after each ending — the matrix the
+// adopters used to each spell for themselves.
+
+type DoseOutcome = { ok: true } | { ok: false; error: string };
+
+// A gate the case opens when it wants the write to answer, so the painted value can be
+// read while the request is genuinely still out.
+function gate() {
+  let open!: () => void;
+  const promise = new Promise<void>((resolve) => (open = resolve));
+  return { promise, open };
+}
+
+interface CounterTap {
+  readonly key: string;
+  /** Resolves once the request is allowed to answer; may throw to drop it. */
+  readonly action: () => Promise<DoseOutcome>;
+  /** The server's own figure, when the write names one. */
+  readonly landed?: number;
+}
+
+function Counter({
+  start,
+  taps,
+  onResult,
+}: {
+  start: number;
+  taps: readonly CounterTap[];
+  onResult: (key: string, result: WriteResult) => void;
+}) {
+  const pipeline = useWritePipeline<"dose-status", number>("dose-status");
+  const [value, setValue] = useState(start);
+  return (
+    <div>
+      <span data-testid="value">{value}</span>
+      {taps.map((tap) => (
+        <button
+          key={tap.key}
+          type="button"
+          data-testid={`tap-${tap.key}`}
+          onClick={() =>
+            void pipeline
+              .run({
+                key: tap.key,
+                // Read from this render, exactly as an adopter's handler reads its own
+                // state — so the concurrency case below is the real one and not a ref
+                // the harness kept fresh on the pipeline's behalf.
+                optimistic: { from: value, to: value + 1, commit: setValue },
+                fields: { dose_id: "7" },
+                action: tap.action,
+                settle: (result) =>
+                  result.ok
+                    ? {
+                        wrote: true,
+                        announce: "silent" as const,
+                        ...(tap.landed === undefined
+                          ? {}
+                          : { value: tap.landed }),
+                      }
+                    : {
+                        wrote: false,
+                        announce: {
+                          message: result.error,
+                          tone: "error" as const,
+                          undo: null,
+                        },
+                      },
+                failureMessage: "Couldn't update this dose. Try again.",
+                offline: (tappedAt) => ({
+                  kind: "capture",
+                  flow: "dose",
+                  date: dateStrInTz(PROFILE_TZ, tappedAt),
+                  payload: { doseId: 7, clientTakenAt: tappedAt.toISOString() },
+                  keptMessage:
+                    "Dose saved offline — will sync when you reconnect.",
+                }),
+              })
+              .then((result) => onResult(tap.key, result))
+          }
+        >
+          {tap.key}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const shown = () => Number(screen.getByTestId("value").textContent);
+
+describe("the optimistic value a quick-log tap moves (#3728)", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  // THE FIVE ENDINGS, all from a 5 that this tap paints as a 6. Two leave the
+  // projection standing and three take it back, and the difference is read off the same
+  // typed outcome that picks the sentence — never off the ask.
+  it.each([
+    {
+      name: "adopts the server's own total over the guess",
+      online: true,
+      answer: () => ({ ok: true }) as DoseOutcome,
+      landed: 9,
+      result: "wrote",
+      after: 9,
+    },
+    {
+      name: "leaves the projection standing when the write names no figure",
+      online: true,
+      answer: () => ({ ok: true }) as DoseOutcome,
+      result: "wrote",
+      after: 6,
+    },
+    {
+      name: "takes the projection back on a typed refusal",
+      online: true,
+      answer: () =>
+        ({ ok: false, error: "That dose was retired." }) as DoseOutcome,
+      result: "nothing",
+      after: 5,
+    },
+    {
+      name: "takes the projection back when the request dies online",
+      online: true,
+      answer: (): DoseOutcome => {
+        throw new Error("boom");
+      },
+      result: "nothing",
+      after: 5,
+    },
+    {
+      name: "leaves the projection standing for a capture the device keeps",
+      online: false,
+      enqueue: "kept",
+      result: "captured",
+      after: 6,
+    },
+    {
+      name: "takes the projection back when the device refuses the capture",
+      online: false,
+      enqueue: "failed",
+      result: "nothing",
+      after: 5,
+    },
+  ])("$name", async ({ online, enqueue, answer, landed, result, after }) => {
+    vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(online);
+    const held = gate();
+    if (enqueue)
+      mocks.enqueue.mockImplementation(async () => {
+        await held.promise;
+        return enqueue;
+      });
+    const answered: WriteResult[] = [];
+    render(
+      <LoggedViaSurface value="quick-log">
+        <Counter
+          start={5}
+          onResult={(_key, value) => answered.push(value)}
+          taps={[
+            {
+              key: "a",
+              action: async () => {
+                await held.promise;
+                return answer!();
+              },
+              ...(landed === undefined ? {} : { landed }),
+            },
+          ]}
+        />
+      </LoggedViaSurface>
+    );
+
+    await act(async () => {
+      screen.getByTestId("tap-a").click();
+    });
+    // The tap is acknowledged in the same frame — no ending is bought by making the
+    // person wait for the round trip.
+    expect(shown()).toBe(6);
+
+    await act(async () => {
+      held.open();
+      await waitFor(() => expect(answered).toHaveLength(1));
+    });
+    expect(answered[0]).toBe(result);
+    expect(shown()).toBe(after);
+  });
+
+  // THE ENDING NO ADOPTER COULD REACH ALONE, and the reason this channel is not just
+  // three lines moved. Seven buttons write one count, so a refusal's "pre-tap value" is
+  // a snapshot a sibling tap may already have settled over. Restoring it erases a
+  // reading that landed.
+  it("restores what the server last took, not the snapshot a later write replaced", async () => {
+    vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(true);
+    const first = gate();
+    const second = gate();
+    const answered: string[] = [];
+    render(
+      <LoggedViaSurface value="quick-log">
+        <Counter
+          start={0}
+          onResult={(key, result) => answered.push(`${key}:${result}`)}
+          taps={[
+            {
+              key: "a",
+              action: async () => {
+                await first.promise;
+                return { ok: false, error: "That reading was refused." };
+              },
+            },
+            {
+              key: "b",
+              action: async () => {
+                await second.promise;
+                return { ok: true };
+              },
+              landed: 1,
+            },
+          ]}
+        />
+      </LoggedViaSurface>
+    );
+
+    await act(async () => {
+      screen.getByTestId("tap-a").click();
+    });
+    expect(shown()).toBe(1);
+    await act(async () => {
+      screen.getByTestId("tap-b").click();
+    });
+    expect(shown()).toBe(2);
+
+    // b answers first, and the server says the day holds ONE reading — a's is not in it.
+    await act(async () => {
+      second.open();
+      await waitFor(() => expect(answered).toEqual(["b:wrote"]));
+    });
+    expect(shown()).toBe(1);
+
+    // a is then refused. Its own pre-tap snapshot was 0; putting that back would drop
+    // the reading b just landed.
+    await act(async () => {
+      first.open();
+      await waitFor(() => expect(answered).toHaveLength(2));
+    });
+    expect(answered[1]).toBe("a:nothing");
+    expect(shown()).toBe(1);
   });
 });
 
