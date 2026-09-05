@@ -7,8 +7,13 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
-import { getTimelineDates, getTimelineEvents } from "@/lib/timeline";
-import { seedProfile, type SeededProfile } from "./fixtures";
+import {
+  getTimelineDates,
+  getTimelineEvents,
+  TIMELINE_DATE_UNION,
+  timelineDatesUnionSql,
+} from "@/lib/timeline";
+import { seedProfile, seedSchemaRow, type SeededProfile } from "./fixtures";
 import { setStoredAge, setTimezone } from "@/lib/settings";
 
 let imperial: SeededProfile;
@@ -454,6 +459,79 @@ describe("getTimelineEvents", () => {
       `activity:${oldActivityId}`
     );
   });
+});
+
+// EVERY UNION arm of getTimelineDates filters by profile (#5117). The arms are
+// literals inside ONE prepared statement, so the profile-scoping scan reads the
+// wrapper and never them — its ALLOW_COMPOSED entry rests on this block instead.
+//
+// The cases are SPLIT OUT OF THE STRING getTimelineDates interpolates, not read from
+// a list beside it: while the array was assembled in getTimelineDates, an arm pushed
+// between the call and the `.prepare` reached the running statement and no case here.
+// Each row is built from the arm's own table, so an eighteenth arm arrives with its
+// case already written, wherever in timelineDatesUnionSql it is added.
+describe("getTimelineDates: every UNION arm is profile-scoped", () => {
+  const tableOf = (arm: string) => /\bFROM\s+(\w+)/i.exec(arm)?.[1];
+  const dateColOf = (arm: string) =>
+    /^\s*SELECT\s+(?:\w+\.)?(\w+)/i.exec(arm)?.[1];
+
+  // One row in the arm's own table, on `date`, belonging to `profileId` — the rest of
+  // the columns filled from the schema by the shared fixture seeder, which is also
+  // what the PROVIDER_LINK_SELECTS arm rule in lib/__db_tests__/export.test.ts builds
+  // its cases with.
+  function seedArmRow(arm: string, profileId: number, date: string) {
+    const table = tableOf(arm);
+    const dateCol = dateColOf(arm);
+    expect(table && dateCol, `unreadable arm: ${arm}`).toBeTruthy();
+    seedSchemaRow(table as string, { [dateCol as string]: date }, profileId);
+  }
+
+  let leaky: SeededProfile;
+  beforeAll(() => {
+    leaky = seedProfile("ARMS");
+  });
+
+  const arms = timelineDatesUnionSql(true).split(TIMELINE_DATE_UNION);
+
+  it("reads the arm list off the statement itself", () => {
+    // A parse that silently found nothing would make every case below vacuous.
+    expect(arms.length).toBeGreaterThan(10);
+    for (const arm of arms) {
+      expect(tableOf(arm), arm).toBeTruthy();
+      expect(dateColOf(arm), arm).toBeTruthy();
+      // …and each slice is ONE simple SELECT. The split is on the separator
+      // literal, and each case reads only the FIRST `FROM` of its slice — so an arm
+      // that is itself a compound (an indented `UNION` of its own) is one slice
+      // whose second half no case ever looks at, while still GAINING a case, which
+      // is what makes it look covered. Refused by naming the offence: write it as
+      // separate arms and each half gets its own case.
+      expect(
+        arm.match(/\bSELECT\b/gi)?.length,
+        `this arm is itself a compound — split it into separate arms: ${arm}`
+      ).toBe(1);
+    }
+    // The cases are built from the includeTrainingEvents=true statement, which today
+    // is a superset: the flag only PUSHES arms. An arm reaching the `false` statement
+    // and no case would be invisible here, so that containment is asserted rather
+    // than assumed.
+    for (const arm of timelineDatesUnionSql(false).split(TIMELINE_DATE_UNION))
+      expect(
+        arms,
+        `an arm only the bounded statement carries: ${arm}`
+      ).toContain(arm);
+  });
+
+  it.each(arms.map((arm, i) => [i, tableOf(arm), arm] as const))(
+    "arm %i (%s) keeps its own profile's dates off another profile's calendar",
+    (i, _table, arm) => {
+      const date = `2007-05-${String(i + 1).padStart(2, "0")}`;
+      seedArmRow(arm, leaky.profileId, date);
+      // The positive control: the seeded row REACHES the read, so the absence
+      // asserted next is about the filter and not about an unreachable fixture.
+      expect(getTimelineDates(leaky.profileId)).toContain(date);
+      expect(getTimelineDates(imperial.profileId)).not.toContain(date);
+    }
+  );
 });
 
 describe("getTimelineDates — tz-correct created-at fallback (#619)", () => {

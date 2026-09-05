@@ -254,6 +254,132 @@
           "category": "Medications",
           "title": "Editing an imported medicine’s schedule no longer re-judges the days before it",
           "issues": [4669]
+        },
+        {
+          "pr": 5127,
+          "kind": "fix",
+          "category": "Sleep",
+          "title": "“Waiting for last night’s sleep” stops naming a time it will not wait until",
+          "issues": [5001]
+        },
+        {
+          "pr": 5203,
+          "kind": "fix",
+          "category": "Documents",
+          "title": "A data export says which entries were written by the same action",
+          "issues": [5117]
+        },
+        {
+          "pr": 5203,
+          "kind": "fix",
+          "category": "Documents",
+          "title": "The export manifest names the columns that are in the archive but still empty",
+          "issues": [5117]
+        },
+        {
+          "pr": 5249,
+          "kind": "feature",
+          "category": "Reminders",
+          "title": "A practice left running gets a “Still doing…?” message with Finish and Discard",
+          "issues": [5142]
+        },
+        {
+          "pr": 5267,
+          "kind": "feature",
+          "category": "Medical",
+          "title": "Take a temperature from the quick-log sheet, for whoever the sheet is set to",
+          "issues": [4712]
+        },
+        {
+          "pr": 5267,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "Open an episode and Mark as illness say when the episode did not open",
+          "issues": [4962]
+        },
+        {
+          "pr": 5269,
+          "kind": "perf",
+          "category": "General",
+          "title": "The dashboard loads faster the longer your heart-rate history gets",
+          "issues": [5201]
+        },
+        {
+          "pr": 5280,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "A failed stool tap no longer erases a count another tap already saved",
+          "issues": [3728]
+        },
+        {
+          "pr": 5282,
+          "kind": "perf",
+          "category": "Sleep",
+          "title": "The dashboard’s check for a night recorded at the wrong clock time is faster",
+          "issues": [5035]
+        },
+        {
+          "pr": 5294,
+          "kind": "fix",
+          "category": "Training",
+          "title": "A weekly target says Behind only when the week can no longer fit what is left",
+          "issues": [4758]
+        },
+        {
+          "pr": 5295,
+          "kind": "feature",
+          "category": "Medications",
+          "title": "Doses due in the same slot are one dashboard row with one tap to take them all",
+          "issues": [5063]
+        },
+        {
+          "pr": 5295,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Snooze and dismiss for a dose in a grouped slot moved to Upcoming",
+          "issues": [5063]
+        },
+        {
+          "pr": 5322,
+          "kind": "feature",
+          "category": "Training",
+          "title": "A goal row states “63 → 58 bpm”, with the percent as a trailing note",
+          "issues": [5198]
+        },
+        {
+          "pr": 5322,
+          "kind": "fix",
+          "category": "Training",
+          "title": "A goal with no reading yet shows its target and no percent, not 0%",
+          "issues": [5198]
+        },
+        {
+          "pr": 5322,
+          "kind": "fix",
+          "category": "Training",
+          "title": "A weekly target is stated once on the dashboard, not in two places at once",
+          "issues": [5064]
+        },
+        {
+          "pr": 5322,
+          "kind": "fix",
+          "category": "Training",
+          "title": "A finished weekly target sits on the weekly targets row, not in Right now",
+          "issues": [5064]
+        },
+        {
+          "pr": 5332,
+          "kind": "fix",
+          "category": "Documents",
+          "title": "An export column nothing fills yet stays off the on-screen table",
+          "issues": [5273]
+        },
+        {
+          "pr": 5339,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "A dashboard row with a button no longer squeezes its chips one to a line",
+          "issues": [5320, 5066]
         }
       ]
     },

@@ -13,7 +13,10 @@ import {
   intakeItemExists,
   getDoseEscalateChatId,
   escalationAckState,
+  endLivePracticeSession,
+  deletePracticeSession,
 } from "../queries";
+import { practiceLiveEndText } from "../practice";
 import { today } from "../db";
 import { instantNow } from "../clock";
 import {
@@ -109,13 +112,14 @@ import {
   parseMoodKeepCallback,
   parseSymptomPickCallback,
   parseSymptomSeverityCallback,
-  parseWorkoutFinishCallback,
+  parseStillGoingCallback,
+  practiceDiscardAnswerText,
   workoutDiscardAnswerText,
   workoutFinishAnswerText,
   parseActivityTypeAskCallback,
   activityTypeAskAnswerText,
   type ActivityTypeAskCallback,
-  type WorkoutFinishCallback,
+  type StillGoingCallback,
   preventiveAnswerText,
   preventiveCloseText,
   refillAnswerText,
@@ -447,12 +451,14 @@ export const CALLBACK_REGISTRY = [
     dateGuard: "exact-day",
   }),
 
-  // Stale-workout nudge (#1205): 🏁 Finish workout / 🗑️ Discard — resolve a quiet
-  // live draft in place through the shared finish/discard cores.
+  // "Still going?" nudge (#1205, one family at #5142): 🏁 Finish / 🗑️ Discard — resolve
+  // a quiet open episode in place through the shared cores its own domain exposes.
+  // The `wo*` prefixes are the workout kind's pre-#5142 tokens: still parsed, because
+  // a message sent minutes before the deploy is sitting in a chat with them on it.
   callbackEntry({
-    prefixes: ["wofinish", "wodiscard"],
-    parse: parseWorkoutFinishCallback,
-    handle: handleWorkoutFinishTap,
+    prefixes: ["sgfinish", "sgdiscard", "wofinish", "wodiscard"],
+    parse: parseStillGoingCallback,
+    handle: handleStillGoingTap,
   }),
 
   // The post-workout TYPE ask (#2272): the source recorded a workout but declined to
@@ -968,9 +974,9 @@ async function handleEscalationTap(
 // finish marker as delivered so the hourly tick sends no SECOND notification. With no
 // pending doses the message becomes a plain "Workout finished ✅". Rebuild rides the one
 // chokepoint (rebuildMessage), which re-applies the shared-chat "[Name] " prefix.
-async function handleWorkoutFinishTap(
+async function handleStillGoingTap(
   cq: TelegramCallbackQuery,
-  token: WorkoutFinishCallback
+  token: StillGoingCallback
 ): Promise<TapWrote> {
   const chatId = cq.message?.chat?.id;
   const profileId =
@@ -983,8 +989,14 @@ async function handleWorkoutFinishTap(
   }
   const messageId = cq.message?.message_id;
 
+  // THE KIND DECIDES WHICH CORE RUNS, and nothing else about the tap changes: the
+  // chat still resolves the profile, every write still re-verifies ownership, and the
+  // answer still comes from the domain's own typed outcome.
+  if (token.kind === "practice")
+    return handlePracticeStillGoing(cq, token, profileId, chatId, messageId);
+
   if (token.action === "discard") {
-    const outcome = discardWorkoutSession(profileId, token.activityId);
+    const outcome = discardWorkoutSession(profileId, token.rowId);
     await answerCallbackQuery(cq.id, workoutDiscardAnswerText(outcome));
     if (chatId != null && messageId != null) {
       await closeMessage(
@@ -1002,7 +1014,7 @@ async function handleWorkoutFinishTap(
     return outcome.kind === "discarded" ? profileId : undefined;
   }
 
-  const outcome = finishWorkoutSession(profileId, token.activityId);
+  const outcome = finishWorkoutSession(profileId, token.rowId);
   await answerCallbackQuery(cq.id, workoutFinishAnswerText(outcome));
   // Only a REAL finish transforms the message + suppresses the separate dispatch. An
   // already-finished re-tap is a no-op (no re-edit surprise); an empty draft keeps its
@@ -1013,11 +1025,7 @@ async function handleWorkoutFinishTap(
   const date = today(profileId);
   // Mark the #924 finish nudge as already delivered (via THIS edit) so the hourly
   // tick's separate post-workout dispatch doesn't fire a duplicate.
-  setProfileSetting(
-    profileId,
-    postWorkoutFinishMarkerKey(token.activityId),
-    date
-  );
+  setProfileSetting(profileId, postWorkoutFinishMarkerKey(token.rowId), date);
 
   // Transform into the finish summary: the pending post-workout doses with take/skip
   // buttons, or — when nothing is pending — a plain finished confirmation (no dangling
@@ -1032,6 +1040,55 @@ async function handleWorkoutFinishTap(
       chatId,
       messageId,
       replacementWithTitle(cq.message?.text, `Workout finished ${GLYPH.done}`)
+    );
+  }
+  return profileId;
+}
+
+// The practice kind's half of the same tap (#5142 AC 3). "Finish" ends the live row
+// through `endLivePracticeSession`, the SAME core the Wellness card's End button
+// runs, so a session finished from a chat and one finished from the page derive the
+// same duration from the same instants. "Discard" DELETES the row, because a practice
+// draft is not a husk the way an empty workout draft is — the row IS the session, and
+// a person saying "no, that did not happen" is asking for it to be gone. The delete
+// rides `deletePracticeSession`, so it is captured and undoable like every other.
+async function handlePracticeStillGoing(
+  cq: TelegramCallbackQuery,
+  token: StillGoingCallback,
+  profileId: number,
+  chatId: string | number | undefined,
+  messageId: number | undefined
+): Promise<TapWrote> {
+  if (token.action === "discard") {
+    const outcome = deletePracticeSession(profileId, token.rowId);
+    await answerCallbackQuery(cq.id, practiceDiscardAnswerText(outcome));
+    if (chatId != null && messageId != null) {
+      await closeMessage(
+        profileId,
+        chatId,
+        messageId,
+        replacementWithTitle(
+          cq.message?.text,
+          outcome.kind === "deleted"
+            ? `Session discarded ${GLYPH.discarded}`
+            : OUTDATED_MESSAGE_TEXT
+        )
+      );
+    }
+    return outcome.kind === "deleted" ? profileId : undefined;
+  }
+
+  const outcome = endLivePracticeSession(profileId, token.rowId);
+  await answerCallbackQuery(cq.id, practiceLiveEndText(outcome));
+  // Only a real end transforms the message. A row the sweep already closed keeps its
+  // buttons and its text — the answer already said what happened.
+  if (outcome.kind !== "ended") return;
+  if (chatId != null && messageId != null) {
+    await closeMessage(
+      profileId,
+      chatId,
+      messageId,
+      replacementWithTitle(cq.message?.text, `Session finished ${GLYPH.done}`)
     );
   }
   return profileId;

@@ -99,7 +99,11 @@ import {
   openPickerAnchor,
   type CorrectionPrefixes,
 } from "./correction-rows";
-import { getPracticeCorrectionBursts } from "../queries";
+import {
+  getPracticeCorrectionBursts,
+  openPracticeSessionIds,
+} from "../queries";
+import { parseStillGoingCallback } from "./callback-data";
 import { getDoseCorrectionBursts } from "../queries/intake/adherence";
 import {
   countVisibleFoodButtons,
@@ -179,7 +183,7 @@ const log = createLogger("notify");
 // subject, #2224 added counts, #2274 added names — each time for one family pair. Nine
 // of eleven families still closed to "handled in the app." WHILE HOLDING THE OUTCOME:
 // `mood`'s own resolution predicate reads the recorded mood and keeps only the null
-// check; `workoutDraft` knows whether the session was finished or DISCARDED, two
+// check; `stillGoing` knows whether the session was finished or DISCARDED, two
 // opposite outcomes rendering identically.
 //
 // The cause is mechanical: `tally?()` was OPTIONAL, and "this family declares none" was
@@ -1060,50 +1064,56 @@ const mood: FamilyReconciler = {
   },
 };
 
-// ── workout-draft ────────────────────────────────────────────────────────────
-// `wofinish|wodiscard:<profileId>:<activityId>` — dead once that draft is no longer the
-// live session (finished or discarded in the app), read through the SAME presence
-// computation the nudge is gated on.
-const workoutDraft: FamilyReconciler = {
+// ── still-going ──────────────────────────────────────────────────────────────
+// `sgfinish|sgdiscard:<kind>:<profileId>:<rowId>` (and the workout kind's pre-#5142
+// `wofinish|wodiscard:<profileId>:<activityId>`) — dead once that episode is no longer
+// open, read through the SAME domain reading the nudge is gated on. The tokens are
+// parsed rather than indexed, because the two shapes put the row id in different
+// positions and a hand-counted field is exactly how that goes wrong.
+const stillGoing: FamilyReconciler = {
   dead(profileId, tokens) {
     const presence = getWorkoutPresence(profileId);
+    const live = new Set(openPracticeSessionIds(profileId));
     return new Set(
       tokens.filter((t) => {
-        const f = fields(t);
-        if (f[0] !== "wofinish" && f[0] !== "wodiscard") return false;
-        const activityId = Number(f[2]);
-        if (!activityId) return false;
+        const token = parseStillGoingCallback(t);
+        if (!token) return false;
+        if (token.kind === "practice") return !live.has(token.rowId);
         return !(
-          presence.state === "active" && presence.activityId === activityId
+          presence.state === "active" && presence.activityId === token.rowId
         );
       })
     );
   },
   // FINISHED OR DISCARDED (#2275) — the single most valuable case this contract exists
   // for, because they are OPPOSITE outcomes that rendered identically. `dead` only asks
-  // "is this still the live session?", which both answer the same way; the difference is
-  // in the row, and it is the difference between a session that was kept and one that
-  // was thrown away.
+  // "is this still open?", which both answer the same way; the difference is in the
+  // row, and it is the difference between a session that was kept and one that was
+  // thrown away.
   //
-  // `discardWorkoutSession` DELETES the draft and its sets, `finishWorkoutSession`
-  // stamps `end_time` — so the row itself is the record, read profile-scoped. A draft
-  // that is still open (no end_time, but old enough that presence no longer covers it)
-  // has no outcome to state and gets the plain sentence rather than a guess.
+  // Both kinds record it the same way: the discard DELETES the row, the finish stamps
+  // an end on it. An episode still open — no end, but old enough that the domain no
+  // longer covers it — has no outcome to state and gets the plain sentence rather than
+  // a guess.
   closeStates: "outcome-detail",
   detail(profileId, tokens) {
     const groups: CloseGroup[] = [];
-    const seen = new Set<number>();
+    const seen = new Set<string>();
     for (const t of tokens) {
-      const f = fields(t);
-      if (f[0] !== "wofinish" && f[0] !== "wodiscard") continue;
-      const activityId = Number(f[2]);
-      if (!activityId || seen.has(activityId)) continue;
-      seen.add(activityId);
-      const row = db
-        .prepare(
-          "SELECT end_time FROM activities WHERE id = ? AND profile_id = ?"
-        )
-        .get(activityId, profileId) as { end_time: string | null } | undefined;
+      const token = parseStillGoingCallback(t);
+      if (!token) continue;
+      const key = `${token.kind}:${token.rowId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const row = (
+        token.kind === "practice"
+          ? db.prepare(
+              "SELECT end_time FROM practice_logs WHERE id = ? AND profile_id = ?"
+            )
+          : db.prepare(
+              "SELECT end_time FROM activities WHERE id = ? AND profile_id = ?"
+            )
+      ).get(token.rowId, profileId) as { end_time: string | null } | undefined;
       if (!row) groups.push({ outcome: "session discarded" });
       else if (row.end_time) groups.push({ outcome: "session finished" });
     }
@@ -1297,7 +1307,7 @@ const FAMILIES: Record<ReconcileFamily, FamilyReconciler> = {
   refill,
   symptom,
   mood,
-  "workout-draft": workoutDraft,
+  "still-going": stillGoing,
   practice,
 };
 

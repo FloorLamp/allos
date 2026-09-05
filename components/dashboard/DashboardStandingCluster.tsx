@@ -235,7 +235,15 @@ export function DashboardFactRow({
       linked
     )
   ) : (
-    <div className={rowClass}>
+    // THE FACTS CELL IS THE ROW'S GROWER (#5320). A row with a control has two cells
+    // and neither declared which one absorbs the free width, so both sized to
+    // max-content: a wide control took the row and the facts wrapped one chip per
+    // line beside it. `flex-1` here is that declaration — the controls cell is
+    // `shrink-0` at the control box, so everything left over is the facts'. It is
+    // spent only on the control branch because that is the only branch whose parent
+    // is a flex row; `linked` renders straight into the `<li>`, where it would mean
+    // nothing.
+    <div className={control == null ? rowClass : `${rowClass} flex-1`}>
       {content}
       {rowDisclosure ? <InfoTooltipIcon label={rowDisclosure} /> : null}
     </div>

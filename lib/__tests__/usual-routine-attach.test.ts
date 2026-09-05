@@ -7,10 +7,8 @@ import {
   USUAL_ROW,
 } from "@/lib/notifications/usual-routine-attach";
 import { dispatchableUsual } from "@/lib/notifications/usual-routine-plan";
-import {
-  offerCallback,
-  TELEGRAM_CALLBACK_DATA_MAX_BYTES,
-} from "@/lib/notifications/callback-data";
+import { offerCallback } from "@/lib/notifications/callback-data";
+import { TELEGRAM_CALLBACK_DATA_MAX_BYTES } from "@/lib/notifications/callback-tokens";
 import { usualRoutinePhrase } from "@/lib/usual-routine";
 import { plainBody } from "@/lib/notifications/rich-text";
 import type { NotificationMessage } from "@/lib/notifications/types";

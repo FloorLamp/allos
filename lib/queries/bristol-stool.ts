@@ -44,7 +44,7 @@ export function getBristolReadings(
  */
 export function getBristolPanel(
   profileId: number,
-  todayDate = today(profileId)
+  todayDate: string = today(profileId)
 ): BristolPanel {
   const dates = bristolPanelDates(todayDate);
   return buildBristolPanel(

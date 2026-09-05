@@ -33,7 +33,7 @@ import type { NotificationMessage, NotificationAction } from "./types";
 import { formatMedicationDoseProduct } from "../medication-dose-format";
 import { formatMessageLine } from "./message-line";
 import { GLYPH } from "./glyphs";
-import { callbackDataFits, MED_STOP_PREFIX } from "./callback-data";
+import { callbackDataFits, MED_STOP_PREFIX } from "./callback-tokens";
 
 export type ReminderWindow = "Morning" | "Midday" | "Evening" | "Bedtime";
 
