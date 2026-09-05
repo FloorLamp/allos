@@ -279,11 +279,13 @@ export function seedNowStrip(): void {
   // with nothing left in it. Now must be empty — the targets' log offers belong in
   // Show everything's Act group, not in the two slots the strip has.
   //
-  // Determinism is the week window. A zero count is "behind" from the moment the
-  // week is far enough along to owe one (floor(2 × elapsed / 7) ≥ 1, i.e. day 4 of
-  // 7). So the profile's calendar week is pinned to start on the run's own frozen
-  // weekday: today is day 1, the targets owe nothing yet, and the fixture reads the
-  // same on every CI day. Since #3245 the pin no longer changes whether these card
+  // Determinism is the week window. A zero count is "behind" only once the week has
+  // also stopped fitting what is left of the target, counting today as a day it can
+  // still be acted on (#4758) — the elapsed-share lag is necessary and no longer
+  // sufficient — so a 2×/week target reads behind from day 7 of 7, not day 4. So the
+  // profile's calendar week is pinned to start on the run's own frozen weekday: today
+  // is day 1, on-pace under either rule, and the fixture reads the same on every CI
+  // day. Since #3245 the pin no longer changes whether these card
   // — a group target has no rhythm moment, so `owed` cannot promote it on any day —
   // and what it holds fixed is the ON-PACE reading (#3543's negative control).
   // Idempotent hard-clear; synthetic, no PHI.
