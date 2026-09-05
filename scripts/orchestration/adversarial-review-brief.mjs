@@ -417,6 +417,24 @@ export function diffSignals(files, patches) {
 // pairs, #2916's contraindications, #2910's age-gated route), so the rate of
 // CONSULTs an orchestrator would resent is 3 in 153, 2.0%. The starting vocabulary
 // — the terms the ruling listed, unnarrowed — measured 52% on the first window.
+
+// The movement PHI's `why` names, in the words this repo writes it with. Kept
+// beside the term it narrows rather than inlined twice, which is the only reason
+// it is a string: `minor` spells its co-location out both ways in one literal and
+// is half the length.
+const LEAVES_A_SURFACE =
+  "(?:export\\w*|expos\\w*|leak\\w*|disclos\\w*|shares?|shared|sharing|render\\w*|" +
+  "logs?|logged|logging|sends?|sent|sending|emails?|emailed|prints?|printed|" +
+  "copy|copies|copied|surfaces?|surfaced|surfacing|redact\\w*|mask\\w*|" +
+  "transmit\\w*|upload\\w*|download\\w*|screenshots?)";
+
+// `(?!-)` still holds `phi-scan` out even when a disclosure word is beside it.
+const PHI_DISCLOSURE = new RegExp(
+  `\\bPHI\\b(?!-)(?=[^.!?\\n]{0,90}\\b${LEAVES_A_SURFACE}\\b)|` +
+    `\\b${LEAVES_A_SURFACE}\\b[^.!?\\n]{0,90}\\bPHI\\b(?!-)`,
+  "i"
+);
+
 export const SAFETY_VOCABULARY = [
   {
     term: "minor (the person)",
@@ -461,11 +479,25 @@ export const SAFETY_VOCABULARY = [
     why: "the masking itself; under-masking discloses, over-masking destroys",
   },
   {
-    // Uppercase and standalone: `phi-scan` is the gate's NAME, and lowercase
-    // `phi` matched 19 of 73 path-ordinary PRs through it and through the PR
-    // template's own "No PHI in code" checkbox.
+    // `PHI` NAMES THE GATE HERE, not the hazard (#5275). Uppercase-and-unhyphenated
+    // was meant to leave `phi-scan` alone; the repo writes the gate a dozen other
+    // ways — `PHI scan`, `PHI checks`, `PHI and format`, and the scan's own "no
+    // likely-real PHI in 5566 files", which the dispatch brief REQUIRES a body to
+    // quote. Over PRs #4144-#5282 the bare term fired 25 times, every one of them
+    // the gate's name or its output and none a claim about a person's data, and 13
+    // of those flipped a path-ordinary PR from `ordinary` to CONSULT.
+    //
+    // NO SECTION RULE REACHES THEM, which is why this is narrowed at the TERM.
+    // #4842 keyed the transcript on a `Gates` heading and #5272 spelled it
+    // `Verification`; most of the other 24 are the author's own one-line summary
+    // under no heading at all, so they are not quotation in any form a parser
+    // could recognise. What separates the senses is the same thing that separated
+    // `minor`'s: the hazard sense never stands alone — PHI is only a disclosure
+    // when something MOVES it, which is what this term's `why` has always said.
+    // Narrowed, it fires 0 times across those same 600 PRs and still reads every
+    // disclosure claim in the test beside it.
     term: "PHI",
-    rx: /\bPHI\b(?!-)/,
+    rx: PHI_DISCLOSURE,
     why: "protected health information leaving the surface it was recorded on",
   },
   {
