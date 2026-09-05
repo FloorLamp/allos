@@ -7,6 +7,7 @@
 // login's display unit HERE (the units boundary), keeping the engine unit-agnostic.
 
 import { db } from "../db";
+import { commitCached } from "../commit-cache";
 import { isDraftActivityRow, type DraftCandidateRow } from "../activity-draft";
 import { getAllBiomarkerSeries, getCanonicalResultDefinition } from "./medical";
 import { getLogicalBodyMetricDailySeries } from "./logical-outcomes";
@@ -1076,7 +1077,25 @@ export interface ActiveProtocolSummary {
 // most-recently-started first (getProtocols order). `today` is the profile-local
 // date; `weightUnit` threads the display unit into the outcome comparison (the units
 // boundary lives in getProtocolComparison). Profile-scoped throughout.
-export function getActiveProtocolSummaries(
+// Memoized until the next commit (#5073) — one of the six gathers above the dashboard's
+// first candidate. `frequencyProgress` is an argument the caller may compute and filter
+// itself (the dashboard does), so it is projected into the key in full rather than
+// assumed to be the default; an omitted argument keys as "*" and the default inside is
+// itself a function of the profile, the day and the version.
+export const getActiveProtocolSummaries = commitCached(
+  "protocols.activeSummaries",
+  (
+    profileId: number,
+    today: string,
+    weightUnit: WeightUnit,
+    frequencyProgress?: readonly FrequencyTargetProgress[]
+  ) =>
+    `${profileId}:${today}:${weightUnit}:` +
+    (frequencyProgress ? JSON.stringify(frequencyProgress) : "*"),
+  getActiveProtocolSummariesUncached
+);
+
+function getActiveProtocolSummariesUncached(
   profileId: number,
   today: string,
   weightUnit: WeightUnit,

@@ -5,6 +5,7 @@
 // profile-owned appointments row while the provider row it points at is global.
 
 import { db, hoistedStatement } from "../db";
+import { commitCached } from "../commit-cache";
 import type { Appointment } from "../types";
 import type { KindedAppointment } from "../preventive-appointment";
 
@@ -17,8 +18,9 @@ const SELECT_COLS = `
   title, location, notes, status, kind, encounter_id,
   document_id, source, created_at`;
 
-// Both list reads fan out across profile-aware surfaces. Cache the compiled SQL,
-// never the values, so writes remain visible within the same request.
+// Both list reads fan out across profile-aware surfaces. Cache the compiled SQL, not
+// the values — the scheduled read's VALUES are memoized separately, and only until the
+// next commit (`commitCached` below).
 const APPOINTMENTS_STMT = hoistedStatement(
   `SELECT ${SELECT_COLS} FROM appointments
    WHERE profile_id = ?
@@ -61,9 +63,16 @@ export function appointmentForEncounter(
 // Only the still-scheduled appointments (completed/cancelled drop off), soonest
 // first — the forward-looking set the Upcoming aggregation bands. A past-and-
 // still-scheduled row is included on purpose so it can surface as Overdue.
-export function getScheduledAppointments(profileId: number): Appointment[] {
-  return SCHEDULED_APPOINTMENTS_STMT.all(profileId) as Appointment[];
-}
+// Memoized until the next commit (#5073): this is one of the six gathers above the
+// dashboard's first candidate, and it is also read by Upcoming, the intake warnings and
+// the surgery bridge on the same render. No clock in the key — the row set is a plain
+// profile-scoped SELECT, so only a write can change it.
+export const getScheduledAppointments = commitCached(
+  "appointments.scheduled",
+  (profileId: number) => String(profileId),
+  (profileId: number): Appointment[] =>
+    SCHEDULED_APPOINTMENTS_STMT.all(profileId) as Appointment[]
+);
 
 // A profile's still-scheduled appointments reduced to the shape the pure
 // scheduled-match (scheduledMatchForRule) uses — kind + date + status. Profile-
