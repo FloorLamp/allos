@@ -46,9 +46,21 @@ type DeletableUndoRoot = Extract<UndoRootTable, DeletableDatasetTable>;
 //     a DECREMENT of the food_daily_totals day counter. The dataset's documented contract
 //     (lib/export.ts) is "clear the timing layer, counters untouched"; mapping it
 //     would silently turn that into a servings decrement across a second dataset.
+//   • substance_daily_totals and substance_log_events — the same PAIR of arguments, on
+//     the ledger #5026 phase 2 gave nicotine, cannabis and every custom key. The day
+//     row's kind ("substance-history") now captures and deletes that day's use events
+//     beside the selected row, which is a convention sibling and not the row's own
+//     child; the event's kind ("substance-use") carries the day-counter decrement.
+//     `substance_daily_totals` was mapped until phase 2 gave it that sibling — its
+//     bulk delete is a plain permanent one now, exactly as its alcohol twin's has
+//     always been, and the row-menu delete on the card is still undoable.
 type ExcludedUndoRoot = Extract<
   DeletableUndoRoot,
-  "frequency_targets" | "food_daily_totals" | "food_log_events"
+  | "frequency_targets"
+  | "food_daily_totals"
+  | "food_log_events"
+  | "substance_daily_totals"
+  | "substance_log_events"
 >;
 
 // For a root table, the undo kinds actually rooted there — so a mapping cannot
@@ -66,7 +78,6 @@ export const DATASET_UNDO_KIND = {
   // practice_logs deliberately takes "practice-session" (one row), never
   // "wellness-practice-history" (which drags every same-practice sibling along).
   practice_logs: "practice-session",
-  substance_daily_totals: "substance-history",
   // #2127: one period row, no children — the row-menu delete and the dataset's bulk
   // delete now speak the same restorable kind (the very hole the type guard exists
   // to keep closed: an undoable root that is a deletable dataset must be decided).

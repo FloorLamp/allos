@@ -78,6 +78,7 @@ const KIND_LABELS: Record<string, string> = {
   "practice-session": "practice session",
   cycle: "period",
   "food-serving": "food serving",
+  "substance-use": "substance use",
   // Clinical passport kinds (#1847). Generic and non-PHI like every label here —
   // "allergy", never the substance; "condition", never the diagnosis.
   allergy: "allergy",

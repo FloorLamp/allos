@@ -1372,6 +1372,20 @@ export const DATASETS: ExportDataset[] = [
     countSql: `SELECT COUNT(*) AS n FROM substance_daily_totals WHERE profile_id = ?`,
   }),
   tableDataset({
+    // The substance EVENT ledger (#5026 phase 2): one append-only row per use, carrying
+    // the tap `recorded_at` and the stated `occurred_at` — what makes a use a thing that
+    // happened rather than a number on a day. The counter above stays the cap's
+    // substrate and the card's count. User-entered health data, so it is in the portable
+    // export; id-keyed + owned, deletable like the other logged datasets.
+    key: "substance_log_events",
+    label: "Substance log events",
+    table: "substance_log_events",
+    columns: ["date", "substance", "recorded_at", "occurred_at", "time_source"],
+    select: `SELECT id, date, substance, recorded_at, occurred_at, time_source
+       FROM substance_log_events WHERE profile_id = ? ORDER BY recorded_at DESC`,
+    countSql: `SELECT COUNT(*) AS n FROM substance_log_events WHERE profile_id = ?`,
+  }),
+  tableDataset({
     // Protein-grams quick-add log (#824): one row per date with a running gram total
     // (protein powder / shakes have no food-group home). User-entered health data, so
     // it's in the portable export; id-keyed + owned, deletable like the other logged
@@ -1642,6 +1656,9 @@ export const DELETE_POLICY = {
   food_log_events: { revalidate: ["/nutrition", "/"] },
   substance_daily_totals: {
     revalidate: ["/records/specialty/substance-use", "/"],
+  },
+  substance_log_events: {
+    revalidate: ["/records/specialty/substance-use", "/history", "/"],
   },
   protein_daily_totals: { revalidate: ["/nutrition", "/"] },
   // The fasting card and its history live on the nutrition tab. A plain id + profile_id

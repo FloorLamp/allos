@@ -103,7 +103,7 @@ export interface TimeColumn {
 // with a reason so the scan's completeness rule can be strict about everything else.
 export const NOT_TEMPORAL: Record<string, string> = {
   time_source:
-    "food_log_events: an enum ('tap' | 'stated'), the provenance of occurred_at.",
+    "food_log_events / substance_log_events: an enum ('tap' | 'stated'), the provenance of occurred_at.",
   weekdays:
     "intake_item_doses / schedule versions: a weekday mask for a schedule, not a moment.",
   cadence_weekdays:
@@ -1669,6 +1669,29 @@ export const TIME_COLUMNS = {
       semantic: "bookkeeping",
       grain: "instant",
       convention: "bare",
+    },
+  ],
+  substance_log_events: [
+    { column: "date", semantic: "day", grain: "day", convention: "n/a" },
+    {
+      column: "recorded_at",
+      semantic: "record",
+      grain: "instant",
+      convention: "canonical",
+      note: "The tap instant, born canonical by DEFAULT and by writer (#5026 phase 2). A row DERIVED from a pre-ledger day count carries that day row's own `substance_daily_totals.recorded_at` — the LAST tap's stamp, shared by every event the migration derived from that day — because the counter remembers exactly one and it is the only filing instant there is.",
+    },
+    {
+      column: "created_at",
+      semantic: "bookkeeping",
+      grain: "instant",
+      convention: "bare",
+    },
+    {
+      column: "occurred_at",
+      semantic: "event",
+      grain: "instant",
+      convention: "canonical",
+      note: "When the use happened. NULL means nobody stated one and that is a real answer, never filled in from the tap — the food_log_events.occurred_at rule, re-instantiated for nicotine, cannabis and every custom key (#5026 phase 2). `time_source` records whether a present value was a tap contract or a stated one. Every row the backfill derived from a day count has NULL here: a day total declares no instant, and the migration refuses to invent one.",
     },
   ],
   symptom_logs: [
