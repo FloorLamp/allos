@@ -20,6 +20,13 @@ import {
 import { OWNED_TABLES } from "@/lib/owned-tables";
 import { ownedChildTables } from "@/lib/profile-delete";
 import { stripComments } from "../__tests__/strip-comments";
+import {
+  execArgs,
+  prepareArgs,
+  readSource,
+  relPath,
+  sourceFiles,
+} from "../__tests__/sql-scan";
 import { PENDING_COLUMNS } from "@/lib/export-manifest";
 import { db } from "@/lib/db";
 import { seedProfile, seedSchemaRow, type SeededProfile } from "./fixtures";
@@ -786,6 +793,29 @@ describe("bundle_id reaches both spellings of every dataset that carries it (#51
     ).not.toContain(OTHER_BUNDLE);
   });
 
+  // Every production statement that writes `table`.`column`, by repo-relative path.
+  // Read off the source through the shared scanner, because the claim PENDING_COLUMNS
+  // makes is about WRITERS and there is no other way to ask about a writer that does
+  // not exist. Scoped to the column's own table: `bundle_id` has real writers on
+  // intake_item_logs and food_log_events, so an unscoped sweep for the name would be
+  // red on the two entries that are true.
+  const writersOf = (table: string, column: string) => {
+    const wrote = new RegExp(
+      `\\b(?:INSERT(?:\\s+OR\\s+\\w+)?\\s+INTO|UPDATE)\\s+${table}\\b`,
+      "i"
+    );
+    const names = new RegExp(`\\b${column}\\b`);
+    const hits = new Set<string>();
+    for (const file of sourceFiles()) {
+      const src = readSource(file);
+      for (const arg of [...prepareArgs(src), ...execArgs(src)]) {
+        if (wrote.test(arg.text) && names.test(arg.text))
+          hits.add(relPath(file));
+      }
+    }
+    return [...hits].sort();
+  };
+
   it("the columns nothing writes yet are named in the manifest (#5273)", () => {
     // `body_metrics.bundle_id` and `practice_logs.bundle_id` have no writer: a single
     // weigh-in or practice entry is one row, so nothing mints an act id for them. The
@@ -805,5 +835,23 @@ describe("bundle_id reaches both spellings of every dataset that carries it (#51
       );
       expect(Object.keys(rows[0]), `${dataset}.rows()`).toContain(column);
     }
+  });
+
+  it("nothing production writes a column the manifest calls pending (#5296)", () => {
+    // The two cases above check the column is PRESENT. Presence is not the claim
+    // manifest.json makes to a person — "nothing writes them yet, so they are empty
+    // on every row" is — and presence is true of every shipped column, so swapping
+    // `bundle_id` for `weight_kg` passed both arms while telling a family their
+    // weight is empty in the archive they just downloaded. This asks the claim.
+    const written = PENDING_COLUMNS.map(({ dataset, column }) => ({
+      at: `${getDataset(dataset)!.table}.${column}`,
+      by: writersOf(getDataset(dataset)!.table, column),
+    })).filter((e) => e.by.length > 0);
+    expect(
+      written,
+      `\nmanifest.json calls these columns pending — "empty on every row" — and production writes them. Delete the PENDING_COLUMNS entry now its writer has landed:\n${written
+        .map((e) => `${e.at} written by ${e.by.join(", ")}`)
+        .join("\n")}\n`
+    ).toEqual([]);
   });
 });
