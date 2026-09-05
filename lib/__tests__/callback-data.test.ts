@@ -12,8 +12,6 @@ import {
   parseAllCallback,
   offerCallback,
   parseOfferCallback,
-  callbackDataFits,
-  TELEGRAM_CALLBACK_DATA_MAX_BYTES,
   parseEscalationCallback,
   parsePreventiveCallback,
   parseRefillCallback,
@@ -43,6 +41,10 @@ import {
   tapSkipAnswerText,
   type InlineKeyboard,
 } from "../notifications/callback-data";
+import {
+  callbackDataFits,
+  TELEGRAM_CALLBACK_DATA_MAX_BYTES,
+} from "../notifications/callback-tokens";
 
 describe("parseTakeCallback", () => {
   it("parses a full take token", () => {

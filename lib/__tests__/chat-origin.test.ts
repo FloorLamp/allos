@@ -10,7 +10,7 @@ import {
   originFromToken,
   withChatOrigin,
 } from "@/lib/notifications/chat-origin";
-import { TELEGRAM_CALLBACK_DATA_MAX_BYTES } from "@/lib/notifications/callback-data";
+import { TELEGRAM_CALLBACK_DATA_MAX_BYTES } from "@/lib/notifications/callback-tokens";
 import {
   FOOD_NUDGE_WINDOWS,
   foodLogCallbackData,
