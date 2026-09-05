@@ -211,7 +211,29 @@ const SYNTAX_ALL = TEMPORAL_BRAND_CAST_SELECTORS.map((selector) => ({
   message:
     "Do not cast or re-alias to a temporal brand. Obtain it from a minter that validates or constructs it (lib/temporal-types.ts, #2899).",
 }));
-const SYNTAX_PRODUCTION = [...SYNTAX_ALL, RPE_BRAND_CAST];
+// These two used to sit inline in the revalidate block and had been DEAD since the
+// temporal-brand block landed after it: flat config replaces a rule's options, so the
+// broader block was switching both off for every file the narrower one governs. Named
+// here, re-stated by every block below, and proven with a forged violation.
+const APP_SURFACE_SYNTAX = [
+  {
+    selector:
+      "VariableDeclarator[id.type='ObjectPattern']:has(Property[key.name='revalidatePath']) ImportExpression[source.value='next/cache']",
+    message:
+      "Use revalidateRoute from lib/revalidate.ts so the target remains compile-checked (#1636/#2149).",
+  },
+  {
+    selector:
+      "CallExpression[callee.type='MemberExpression'][callee.object.name='page'][callee.property.name=/^(?:on|once)$/][arguments.0.value='dialog']",
+    message:
+      "Do not install a Playwright dialog handler: native browser dialogs are prohibited, and accepting one would hide a regression.",
+  },
+];
+const SYNTAX_PRODUCTION = [
+  ...SYNTAX_ALL,
+  ...APP_SURFACE_SYNTAX,
+  RPE_BRAND_CAST,
+];
 const SYNTAX_PRODUCTION_KEYED = [...SYNTAX_PRODUCTION, ...RPE_KEY_LITERAL];
 const SYNTAX_LIB_APP = [
   ...SYNTAX_PRODUCTION_KEYED,
@@ -274,6 +296,27 @@ const config = [
       ],
     },
   },
+  // The temporal brands (#2899, lib/temporal-types.ts) are worth exactly as much as
+  // the weakest way to obtain one. A brand comes from a minter that validated or
+  // constructed it; the constructing minters carry their one permitted cast on a
+  // `// eslint-disable-next-line no-restricted-syntax -- <brand> minter:` line.
+  //
+  // This rule is a RATCHET over spellings, not a proof: it refuses the ways of naming
+  // a brand as a cast target, an alias or a renamed import/export that
+  // lib/__tests__/temporal-types.test.ts lists, and that list is the definition of
+  // what it catches. TypeScript's type grammar has more ways to name a type than any
+  // selector list — three falsifying passes each found new ones — so a spelling the
+  // test does not list is an ADDITION (add the selector and the test row), never a
+  // refutation, and the reviewer's job is unchanged by the rule's existence. A DB row
+  // shape (`.get(...) as { date: LocalDay }`, or an alias/interface holding one) is
+  // deliberately allowed — an object type literal is exempt — because a row may
+  // carry the brand lib/time-columns.ts declares for that column.
+  {
+    files: ["**/*.{ts,tsx,mts,cts}"],
+    rules: {
+      "no-restricted-syntax": ["error", ...SYNTAX_ALL],
+    },
+  },
   // Production code revalidates through lib/revalidate.ts, whose generated-route
   // parameter makes stale paths a compile error (#1636/#2149). This restriction
   // used to be a Vitest source scanner that reread every file after ESLint had
@@ -304,21 +347,7 @@ const config = [
           ],
         },
       ],
-      "no-restricted-syntax": [
-        "error",
-        {
-          selector:
-            "VariableDeclarator[id.type='ObjectPattern']:has(Property[key.name='revalidatePath']) ImportExpression[source.value='next/cache']",
-          message:
-            "Use revalidateRoute from lib/revalidate.ts so the target remains compile-checked (#1636/#2149).",
-        },
-        {
-          selector:
-            "CallExpression[callee.type='MemberExpression'][callee.object.name='page'][callee.property.name=/^(?:on|once)$/][arguments.0.value='dialog']",
-          message:
-            "Do not install a Playwright dialog handler: native browser dialogs are prohibited, and accepting one would hide a regression.",
-        },
-      ],
+      "no-restricted-syntax": ["error", ...SYNTAX_ALL, ...APP_SURFACE_SYNTAX],
     },
   },
   // Native alert/confirm/prompt calls bypass the app's accessible dialog primitives.
@@ -330,27 +359,6 @@ const config = [
     files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}"],
     rules: {
       "no-alert": "error",
-    },
-  },
-  // The temporal brands (#2899, lib/temporal-types.ts) are worth exactly as much as
-  // the weakest way to obtain one. A brand comes from a minter that validated or
-  // constructed it; the constructing minters carry their one permitted cast on a
-  // `// eslint-disable-next-line no-restricted-syntax -- <brand> minter:` line.
-  //
-  // This rule is a RATCHET over spellings, not a proof: it refuses the ways of naming
-  // a brand as a cast target, an alias or a renamed import/export that
-  // lib/__tests__/temporal-types.test.ts lists, and that list is the definition of
-  // what it catches. TypeScript's type grammar has more ways to name a type than any
-  // selector list — three falsifying passes each found new ones — so a spelling the
-  // test does not list is an ADDITION (add the selector and the test row), never a
-  // refutation, and the reviewer's job is unchanged by the rule's existence. A DB row
-  // shape (`.get(...) as { date: LocalDay }`, or an alias/interface holding one) is
-  // deliberately allowed — an object type literal is exempt — because a row may
-  // carry the brand lib/time-columns.ts declares for that column.
-  {
-    files: ["**/*.{ts,tsx,mts,cts}"],
-    rules: {
-      "no-restricted-syntax": ["error", ...SYNTAX_ALL],
     },
   },
   // eslint-config-next 16 bundles eslint-plugin-react-hooks v6, whose
