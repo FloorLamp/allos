@@ -2257,20 +2257,53 @@ movements: **139 materialise, 4 overwrite, 0 delete.** The settings forms post
 their whole field set on every save, so what looks like a spec changing a setting
 is nearly always a default becoming a row.
 
-| key | files | movements | who writes it |
-| --- | --- | --- | --- |
-| `routine_position_advanced_1` | 17 | 23 | the app — `creditRoutineSession` (#740) |
-| `digest_mode` | 7 | 11 | Settings → Profile notifications |
-| `notify_digest_hour` | 7 | 11 | Settings → Profile notifications |
-| `digest_sleep_enabled` | 7 | 9 | Settings → Profile notifications |
-| `food_telegram_enabled`, `mood_checkin_enabled`, `mood_recap_enabled`, `notify_milestones`, `notify_preventive`, `notify_recap_day`, `notify_recap_hour`, `notify_recap_scale`, `notify_supp_bedtime_hour` | 7 each | 7 each | Settings → Profile notifications |
-| `calendar_feed_enabled` | 2 | 2 | the calendar-feed form |
-| `emergency_card_offline` | 2 | 4 | the directives / emergency-card forms |
-| `calendar_feed_categories`, `calendar_feed_past_days`, `calendar_feed_reminders`, `code_status`, `code_status_note`, `directive_documents_at`, `healthcare_proxy_name`, `healthcare_proxy_phone`, `organ_donor`, `offline_snapshots`, `protein_quickadd_last`, `recommendation_cadence`, `risk_attributes_reviewed`, `week_start`, `zone2_weekly_target_min` | 1 each | 1–2 each | one form each |
-| `notify_last_esc_28`, `notify_last_esc_99`, `notify_last_esc_100` | 1 each | 1 each | the app — per-dose escalation dedup marker (#328) |
+| key                           | files | movements | moved by                                             |
+| ----------------------------- | ----- | --------- | ---------------------------------------------------- |
+| `routine_position_advanced_1` | 17    | 23        | the app, not a spec — `creditRoutineSession` (#740)  |
+| `digest_mode`                 | 7     | 13        | 7 settings/notification specs                        |
+| `notify_digest_hour`          | 7     | 13        | 7 settings/notification specs                        |
+| `digest_sleep_enabled`        | 7     | 9         | 7 settings/notification specs                        |
+| `food_telegram_enabled`       | 7     | 7         | 7 settings/notification specs                        |
+| `mood_checkin_enabled`        | 7     | 7         | 7 settings/notification specs                        |
+| `mood_recap_enabled`          | 7     | 7         | 7 settings/notification specs                        |
+| `notify_milestones`           | 7     | 7         | 7 settings/notification specs                        |
+| `notify_preventive`           | 7     | 7         | 7 settings/notification specs                        |
+| `notify_recap_day`            | 7     | 7         | 7 settings/notification specs                        |
+| `notify_recap_hour`           | 7     | 7         | 7 settings/notification specs                        |
+| `notify_recap_scale`          | 7     | 7         | 7 settings/notification specs                        |
+| `notify_supp_bedtime_hour`    | 7     | 7         | 7 settings/notification specs                        |
+| `emergency_card_offline`      | 2     | 4         | `advance-directives`, `emergency-card`               |
+| `calendar_feed_enabled`       | 2     | 2         | `calendar-feed-customization`, `calendar-feed-token` |
+| `offline_snapshots`           | 1     | 2         | `offline-write-gate`                                 |
+| `zone2_weekly_target_min`     | 1     | 2         | `training-zones`                                     |
+| `calendar_feed_categories`    | 1     | 1         | `calendar-feed-customization`                        |
+| `calendar_feed_past_days`     | 1     | 1         | `calendar-feed-customization`                        |
+| `calendar_feed_reminders`     | 1     | 1         | `calendar-feed-customization`                        |
+| `code_status`                 | 1     | 1         | `advance-directives`                                 |
+| `code_status_note`            | 1     | 1         | `advance-directives`                                 |
+| `directive_documents_at`      | 1     | 1         | `advance-directives`                                 |
+| `healthcare_proxy_name`       | 1     | 1         | `advance-directives`                                 |
+| `healthcare_proxy_phone`      | 1     | 1         | `advance-directives`                                 |
+| `notify_last_esc_100`         | 1     | 1         | the app, not a spec — escalation dedup (#328)        |
+| `notify_last_esc_28`          | 1     | 1         | the app, not a spec — escalation dedup (#328)        |
+| `notify_last_esc_99`          | 1     | 1         | the app, not a spec — escalation dedup (#328)        |
+| `organ_donor`                 | 1     | 1         | `advance-directives`                                 |
+| `protein_quickadd_last`       | 1     | 1         | `offline-food-log`                                   |
+| `recommendation_cadence`      | 1     | 1         | `ai-settings`                                        |
+| `risk_attributes_reviewed`    | 1     | 1         | `risk-factors`                                       |
+| `week_start`                  | 1     | 1         | `home-location`                                      |
+
+All four overwrites are in `digest-time-suggestion.spec.ts`, which sets a digest
+mode and hour that already had rows. Every other movement in the census is a
+default becoming a row for the first time.
 
 Dropping the four keys the app writes by itself — `routine_position_advanced_1`
-and the three `notify_last_esc_*` — still leaves **17 files**, each of which would
+and the three `notify_last_esc_*` — still leaves **17 files**:
+`advance-directives`, `ai-settings`, `calendar-feed-customization`,
+`calendar-feed-token`, `digest-modes`, `digest-time-suggestion`,
+`emergency-card`, `food-telegram`, `form-hygiene`, `home-location`,
+`offline-food-log`, `offline-write-gate`, `preventive-nudge`, `quiet-hours`,
+`risk-factors`, `training-zones`, `wake-aware-mornings` — each of which would
 need a cleanup or a declaration before a key-scoped watch could go green. And the
 watch could not tell those 17 apart from noise anyway: separating a materialised
 DEFAULT from a materialised CHANGE means holding every key's default a second time

@@ -468,7 +468,7 @@ export const WATCHED_SHARED_TABLES = [
     cleanup:
       "delete the row this test wrote (its `name` and `date` address it), from an " +
       "`afterEach` or a `finally` so an earlier failure cannot skip it — or, if the " +
-      "write REPLACED a seeded row, sharedDayRestorePoint(\"medical_records\", date) " +
+      'write REPLACED a seeded row, sharedDayRestorePoint("medical_records", date) ' +
       "from e2e/shared-profile-guard.ts, armed before the write",
   },
   {
