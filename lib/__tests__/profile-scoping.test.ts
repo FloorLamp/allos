@@ -397,7 +397,7 @@ const ALLOW_NON_LITERAL: { file: string; expr: string; why: string }[] = [
   {
     file: "lib/export.ts",
     expr: "sql",
-    why: "q(sql) helper: every DATASETS query string filters the acting profile — directly (WHERE profile_id = ?) or, for the intake dose/log child tables, through the parent JOIN (WHERE ii.profile_id = ?)",
+    why: "q(sql) helper: every DATASETS query string filters the acting profile — directly (WHERE profile_id = ?) or, for the intake dose/log child tables, through the parent JOIN (WHERE ii.profile_id = ?). Not left to that sentence: lib/__db_tests__/export.test.ts seeds two profiles and loops over DATASETS asserting rows() carries no id belonging to the other, and the datasets that loop cannot judge are named in it and asserted exhaustive — read that list before trusting this line, because it is where the gap is written down.",
   },
   {
     file: "lib/export.ts",
@@ -441,7 +441,7 @@ const ALLOW_COMPOSED: { file: string; sql: string; why: string }[] = [
   {
     file: "lib/export.ts",
     sql: "${sql} LIMIT ? OFFSET ?",
-    why: "qPage(sql): the bounded twin of the q(sql) helper allowlisted above, and the same argument — it appends LIMIT/OFFSET to whatever complete SELECT its caller declared, so there is no statement of its own to read here. Every string it is called with is a dataset `select` in the same file, each filtering the acting profile directly (WHERE profile_id = ?) or through the parent JOIN (WHERE ii.profile_id = ?), and lib/__db_tests__/export.test.ts seeds two profiles and asserts per dataset that page() returns only the querying profile's rows.",
+    why: "qPage(sql): the bounded twin of the q(sql) helper allowlisted above, and the same argument — it appends LIMIT/OFFSET to whatever complete SELECT its caller declared, so there is no statement of its own to read here. Every string it is called with is a dataset `select` in the same file, each filtering the acting profile directly (WHERE profile_id = ?) or through the parent JOIN (WHERE ii.profile_id = ?). What CHECKS that is lib/__db_tests__/export.test.ts, which seeds two profiles and loops over DATASETS asserting page() returns no row id belonging to the other. It is a loop over the whole list, not a hand-picked subset — but it is not silently exhaustive either: a dataset the shared fixture seeds no row for, and the two whose ids are legitimately shared or absent, are NAMED there and that list is asserted exact. This sentence is worth exactly what that list leaves out, which is why the list is in the test rather than in this string.",
   },
   {
     file: "lib/timeline.ts",
