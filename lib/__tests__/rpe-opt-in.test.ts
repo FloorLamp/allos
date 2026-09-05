@@ -1,5 +1,4 @@
 import { describe, it, expect } from "vitest";
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,9 +13,14 @@ import { fileURLToPath } from "node:url";
 // nothing to render rather than a check it might forget. This is #3323's cap boundary
 // re-instantiated (docs/internals/substances.md, "Where the opt-in boundary is").
 //
-// EVERY TEST HERE IS A SOURCE CLAIM AND IS NAMED AS ONE (#3300). The source tier is the
-// right tier for "did a second producer appear", which genuinely is a question about
-// source. The RUNTIME halves live where they can be observed:
+// "DID A SECOND PRODUCER APPEAR" IS AN eslint.config.mjs RULE NOW (#5347): the minter
+// may be imported only by the seam module, nothing may cast past the brand, and the
+// stored key has one spelling — each grandfathered site carries its reason on its own
+// disable line. What is left here is the shape of the seam itself, which no selector can
+// read: that the mint sits on ONE branch, and that the two signatures either side of the
+// opt-in still say what makes the null mean something.
+//
+// The RUNTIME halves live where they can be observed:
 //   - lib/__db_tests__/rpe-column-opt-in.test.ts — the row is the seam, and the
 //     back-fill hands the column to profiles that were already logging RPE;
 //   - e2e/rpe-logging.spec.ts — the column is absent until opted in, the opt-in is one
@@ -24,53 +28,12 @@ import { fileURLToPath } from "node:url";
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
-// Spelled this way, rather than as a string escape, so THIS file stays plain text and
-// never has to appear in the deliberate-NUL registry (#3206).
-const NUL = String.fromCharCode(0);
-const sourceCache = new Map<string, string>();
-
-function read(rel: string): string {
-  let source = sourceCache.get(rel);
-  if (source === undefined) {
-    source = readFileSync(path.join(REPO, rel), "utf8");
-    sourceCache.set(rel, source);
-  }
-  return source;
-}
-
-function trackedSources(): string[] {
-  return execFileSync("git", ["ls-files", "-z"], {
-    cwd: REPO,
-    maxBuffer: 64 * 1024 * 1024,
-  })
-    .toString("utf8")
-    .split(NUL)
-    .filter(Boolean)
-    .filter((rel) => /\.tsx?$/.test(rel))
-    .sort();
-}
+const read = (rel: string) => readFileSync(path.join(REPO, rel), "utf8");
 
 const SCALE_MODULE = "lib/rpe.ts";
 const SEAM_MODULE = "lib/rpe-tracking.ts";
 
-// A test may mint a tracking directly — it is asserting on the scale, not deciding who
-// gets one. Production may not, and that is the whole point of the census below.
-const isTest = (rel: string) =>
-  rel.includes("__tests__") ||
-  rel.includes("__db_tests__") ||
-  rel.includes("__action_tests__") ||
-  rel.startsWith("e2e/");
-
-const productionFiles = trackedSources().filter((rel) => !isTest(rel));
-
 describe("the RPE opt-in seam is structural — source claims (#3335)", () => {
-  it("source: exactly one production module imports the minter", () => {
-    const importers = productionFiles.filter(
-      (rel) => rel !== SCALE_MODULE && /\bmintRpeTracking\b/.test(read(rel))
-    );
-    expect(importers).toEqual([SEAM_MODULE]);
-  });
-
   it("source: the seam module mints on exactly one branch", () => {
     const seam = read(SEAM_MODULE);
     expect(seam.match(/mintRpeTracking\(\)/g) ?? []).toHaveLength(1);
@@ -78,26 +41,6 @@ describe("the RPE opt-in seam is structural — source claims (#3335)", () => {
     // production path to a tracking would have to go through `getRpeTracking`, which
     // is this ternary.
     expect(seam).toMatch(/getProfileSetting\([\s\S]*?\)\s*!=\s*null/);
-  });
-
-  it("source: nothing outside the scale module casts its way past the brand", () => {
-    const casters = productionFiles.filter(
-      (rel) => rel !== SCALE_MODULE && /\bas\s+RpeTracking\b/.test(read(rel))
-    );
-    expect(casters).toEqual([]);
-  });
-
-  // The stored key is an identity. Two spellings of it would be two opt-ins, which is
-  // the same drift by another route — so the literal appears only where the seam is
-  // defined and where the one-time back-fill writes it.
-  it("source: the opt-in key is spelled in one place, plus its back-fill migration", () => {
-    const spellers = productionFiles.filter((rel) =>
-      /["']strength_rpe["']/.test(read(rel))
-    );
-    expect(spellers).toEqual([
-      "lib/migrations/versions/20260820-rpe-column-opt-in.ts",
-      SEAM_MODULE,
-    ]);
   });
 
   // `stepRpe` is what makes the null MEAN something: a surface with no tracking cannot
