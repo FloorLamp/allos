@@ -350,22 +350,24 @@ for (;;) {
     }
     // THE VERDICT NAMES ITS ENDPOINTS (#5022). "all N registered checks" was a
     // claim about `/check-runs` alone, read by everyone as "this PR is good".
+    // And the word PASSING has to stay true of everything it covers: when the
+    // gate's own context is closed, it is counted as READ, never as passing.
     console.log(
-      `GREEN — all ${s.decided} check run(s) and ${s.statuses} commit ` +
-        "status(es) settled and passing."
+      s.gateClosed.length
+        ? `GREEN — all ${s.decided} check run(s) settled and passing; ` +
+            `${s.statuses} commit status(es) read, ${s.gateClosed.length} not green.`
+        : `GREEN — all ${s.decided} check run(s) and ${s.statuses} commit ` +
+            "status(es) settled and passing."
     );
-    // The gate's own context, said out loud on both streams rather than folded
-    // into the verdict: it is not a CI failure and it does not red this run,
-    // but a reader who stops at GREEN must not miss that this head cannot
-    // merge yet. `merge-gate.mjs` recomputes it before every merge.
-    for (const r of s.gateClosed) {
-      const line =
+    // The gate's own context, said out loud rather than folded into the
+    // verdict: it is not a CI failure and it does not red this run, but a
+    // reader who stops at GREEN must not miss that this head cannot merge yet.
+    for (const r of s.gateClosed)
+      console.log(
         `NOT MERGEABLE YET — ${rowName(r)} ${r.state}: ${r.detail}\n` +
-        "  That is a commit status, not a check run, and merge-gate.mjs " +
-        "recomputes it before every merge.";
-      console.log(line);
-      console.error(line);
-    }
+          "  That is a commit status, not a check run, and merge-gate.mjs " +
+          "recomputes it before every merge."
+      );
     if (pr.mergeable_state === "behind") {
       console.log(
         "CAUTION: the PR is BEHIND main — this green is a claim about the base it ran on. If a\n" +

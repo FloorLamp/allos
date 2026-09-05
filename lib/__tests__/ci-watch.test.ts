@@ -276,6 +276,12 @@ it.each([
     0,
     "NOT MERGEABLE YET — status merge-gate failed:",
   ],
+  [
+    "and the word PASSING never covers it",
+    statuses({ context: "merge-gate", state: "failure" }),
+    0,
+    "1 commit status(es) read, 1 not green",
+  ],
 ])("both endpoints: %s", (_case, commitStatuses, code, expected) => {
   const result = watch({ COMMIT_STATUSES: commitStatuses });
 
