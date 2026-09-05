@@ -213,7 +213,7 @@ test.describe("goal facts-with-editors (#3220)", () => {
     // property of a SHARED fixture rather than of this feature — pinning it would be
     // an exact-value assertion over someone else's seed (#2353). What this spec owns
     // is that history reached the form at all, in a unit, marked as borrowed.
-    await expect(start).toHaveText(/^from [\d.]+ (kg|lb)$/);
+    await expect(start).toHaveText(/^From [\d.]+ (kg|lb)$/);
     await expect(start).toHaveAttribute("data-suggested", "1");
 
     // Nothing was typed, so the form still dismisses in one gesture — a borrowed
