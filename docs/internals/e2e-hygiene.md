@@ -2213,9 +2213,27 @@ later test on the worker. Use `sharedDayRestorePoint(table, date)` from
 `e2e/shared-profile-guard.ts`: it copies the shared profile's rows for that day
 before the write and puts them back from an `afterEach` or a `finally`. It is
 safe because a worker runs one test at a time, so nothing else can have written
-in between. The guard now watches `metric_samples` and `mood_logs` for TODAY AND
-LATER as well as `activities` for 84 days, so a spec that skips this fails in its
-own teardown.
+in between. The guard now watches `metric_samples`, `mood_logs` and
+`medical_records` for TODAY AND LATER as well as `activities` for 84 days, so a
+spec that skips this fails in its own teardown.
+
+`medical_records` (#5266) is INSERT-only on every manual path, so most of its
+leaks are a row to delete rather than a day to restore — but it is also the first
+watched table that is an FK PARENT (`instrument_responses` and the preventive
+record decisions cascade off a record id), so restore a day only when nothing in
+it has children.
+
+**`profile_settings` was censused by key and left unwatched (#5266).** It has no
+date column, so nothing bounds it; 36 files move it across 33 keys. Dropping the
+four the app writes by itself (`routine_position_advanced_1`, in 17 files, and
+three `notify_last_esc_*`) still leaves 17 files. And 139 of the 147 movements
+merely MATERIALISE a key that had no row — the settings forms post their whole
+field set on every save — while only 4 overwrite an existing value, all four in
+`digest-time-suggestion.spec.ts`. Separating a materialised default from a
+materialised change needs every key's default held a second time inside the
+guard, which is worth more than the defect. Note the unit preferences are not
+here at all: they live in `login_settings`, keyed by login, so no profile-scoped
+watch could ever see them.
 
 ### Reproducing one — a green shard proves nothing
 
