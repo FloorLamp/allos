@@ -25,8 +25,10 @@
 - Keep `parked` labels and status reports consistent.
 - Merge Dependabot minors on green current main. Send majors through
   `dependabot-eval-brief.mjs` within a day.
-- Give infrastructure issues priorities; active bottlenecks are P1 and isolated
-  latent flakes are P3.
+- Give infrastructure issues priorities; active bottlenecks (a red main, a
+  blocked queue) are P1 and isolated latent flakes are P3. Only the owner or a
+  red main makes a P1: an agent that raises a priority names the rule it
+  applies, and the PM audits every open P1 each watch (#4741 cost three days).
 - Never edit a live agent's worktree without messaging it and receiving an
   acknowledgement.
 - Rerun failed Actions jobs only after all jobs in the run have completed.
