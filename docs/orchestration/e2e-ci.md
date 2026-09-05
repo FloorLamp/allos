@@ -49,6 +49,20 @@
   merge gate prints "ran NOTHING" rather than a shard count. Its nightly run
   (00:41 UTC) is unconditional and is what covers main between code pushes.
 
+## Attributing a main red
+
+- `node scripts/orchestration/main-red-history.mjs [--since <sha>] [--limit 40]`
+  prints the first failing `e2e-main` head in the window and every head after
+  it, with the failing test off each red's check annotations. Use it before
+  naming a merge; three sampled heads is not verification (#5160).
+- UNOBSERVED and NOTHING RAN heads are neither green nor red, and the tool
+  prints them as their own state. A red whose previous observed head is not
+  its parent bounds the range at the whole gap, not at the merge.
+- A red is examined when its own merge PR carries
+  `E2E-MAIN-VERDICT: <sha8> <why>`. "Intermittent, cross-test, not this merge"
+  is a verdict — a result, not a dodge. Do not re-run to green instead: a
+  re-run is how an intermittent failure gets laundered into a pass.
+
 ## Diagnosing a red
 
 - Reproduce locally before pushing a fix. Preserve and inspect Playwright's

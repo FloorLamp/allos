@@ -84,7 +84,9 @@ export function readHistory(heads, detector = "e2e-main") {
   const classified = heads.map((head) => {
     const standing = detectorStanding(head.runs ?? [], detector);
     return {
-      sha: head.sha,
+      // Abbreviated ONCE, here, so every line the reader compares — the table,
+      // a verdict headline, the marker to post — spells a head the same way.
+      sha: String(head.sha).slice(0, 8),
       subject: head.subject ?? "",
       kind: standing.kind,
       shards: [...new Set(standing.detected.map((run) => run.name))].sort(),
@@ -361,7 +363,8 @@ function main(argv) {
 
   const history = readHistory(window, detector);
   const attribution = new Map();
-  if (!argv.includes("--no-attribution")) {
+  const lookedUp = !argv.includes("--no-attribution");
+  if (lookedUp) {
     for (const head of history.heads) {
       if (head.kind !== "red") continue;
       const pr = mergePr(head.subject);
@@ -401,9 +404,12 @@ function main(argv) {
   );
   if (!unexamined.length) return;
   console.log(
-    `${unexamined.length} red head(s) carry no verdict: ` +
-      `${unexamined.map((h) => h.sha).join(", ")}. A verdict is a result, not a ` +
-      "re-run — post one per head with the line above."
+    `${unexamined.length} red head(s) ` +
+      (lookedUp
+        ? "carry no verdict"
+        : "were not looked up (--no-attribution)") +
+      `: ${unexamined.map((h) => h.sha).join(", ")}. A verdict is a result, ` +
+      "not a re-run — post one per head with the line above."
   );
   process.exit(1);
 }
