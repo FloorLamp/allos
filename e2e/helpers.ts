@@ -282,10 +282,12 @@ export function leftEdge(locator: Locator): Promise<number> {
 //
 // `not hydrated yet` is the assumption the wait walked in with, so it is the one
 // sentence that cannot advance a diagnosis: it reports that the marker was absent
-// and nothing about why. `offline-food-log.spec.ts:46` went red on three main heads
-// (`63901385`, `59a94164`, `db376bfa`) with green heads interleaved and no code
-// between them touching the path — a race whose losing side was never reported,
-// because every one of those occurrences printed that same sentence.
+// and nothing about why. `offline-food-log.spec.ts:46` went red on FOUR main heads —
+// `63901385`, `59a94164`, `db376bfa`, `9474fbf6`, with six observed-GREEN heads
+// interleaved and no code between them touching the path, per
+// `scripts/orchestration/main-red-history.mjs --limit 40`. A race whose losing side
+// was never reported, because every one of those occurrences printed that same
+// sentence and nothing else.
 //
 // ONE reading, taken once on the way out — never inside the poll, where a
 // whole-document scan every 100ms would change the timing it is measuring. It
