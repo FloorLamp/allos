@@ -3,6 +3,7 @@ import {
   setProfileSetting,
   deleteProfileSetting,
 } from "@/lib/settings/kv";
+// eslint-disable-next-line no-restricted-imports -- the seam module mints on one branch, reached only when the profile's opt-in row was found (#3335)
 import { mintRpeTracking, type RpeTracking } from "@/lib/rpe";
 
 // Whether a profile logs per-set RPE (#3335) — the opt-in seam for the set grid's
@@ -24,6 +25,7 @@ import { mintRpeTracking, type RpeTracking } from "@/lib/rpe";
 // opt-in never reads as data loss. That back-fill is a one-time migration and NOT a
 // read-time "…or has some RPE data" fallback: a second way to be opted in would be
 // a second producer, and the two would drift.
+// eslint-disable-next-line no-restricted-syntax -- the seam module is where the opt-in key is spelled; every other reader imports RPE_TRACKING_KEY from here
 export const RPE_TRACKING_KEY = "strength_rpe";
 
 /** The profile's RPE scale, or null when it never opted in. THE producer. */

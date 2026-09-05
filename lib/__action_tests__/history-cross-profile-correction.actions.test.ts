@@ -74,6 +74,7 @@ import { logBristolStool } from "@/lib/offline/writes";
 import { BRISTOL_STOOL_METRIC } from "@/lib/bristol-stool";
 import { createCycleRow } from "@/lib/cycle-store";
 import { createLogin, createProfile, actAs, fd } from "./harness";
+import type { StampedFormData } from "@/lib/logged-via";
 
 // ── Seeds: one correctable row per kind, owned by `profileId` ─────────────────
 // Each returns the id the row's ⋯ would post back, plus a `count` the assertions read.
@@ -291,7 +292,7 @@ interface Kind {
   corrected: unknown;
   /** The forged/legitimate correction post, minus `profile_id`. */
   correct: (id: number, date: string) => Record<string, string | number>;
-  correctFn: (form: FormData) => Promise<unknown>;
+  correctFn: (form: StampedFormData) => Promise<unknown>;
   /**
    * The delete post, minus `profile_id`. ONE SUBJECT FIELD FOR ALL SEVEN (#4424
    * ruling 4): `removeSymptom` used to read #858's `profileId` where the other six
@@ -300,7 +301,7 @@ interface Kind {
    * threaded through it and the caller below supplies the one field.
    */
   remove: (id: number) => Record<string, string | number>;
-  removeFn: (form: FormData) => Promise<unknown>;
+  removeFn: (form: StampedFormData) => Promise<unknown>;
   /** Whether the row still exists, for the delete half. */
   present: (id: number, profileId: number, date: string) => boolean;
 }

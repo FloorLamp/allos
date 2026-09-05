@@ -7,6 +7,7 @@ import IconButton from "@/components/IconButton";
 import NotesText from "@/components/NotesText";
 import SymptomSeverityControl from "@/components/illness/SymptomSeverityControl";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
+import type { StampedFormData } from "@/lib/logged-via";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import { useToast } from "@/components/Toast";
 import { UNDO_TOAST_MS } from "@/components/useUndoableDelete";
@@ -66,7 +67,7 @@ export default function SymptomRowControl({
   const [draft, setDraft] = useState("");
 
   // Every write this control makes names the same row and the same subject.
-  const post = (): FormData => {
+  const post = (): StampedFormData => {
     const fd = new FormData();
     fd.set("symptom", symptom);
     fd.set("date", date);

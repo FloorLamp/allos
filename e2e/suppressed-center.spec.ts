@@ -16,7 +16,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { settledBoxes, settledClick } from "./helpers";
+import { appContent, settledBoxes, settledClick } from "./helpers";
 import {
   E2E_LOGIN_SUPPRESSED,
   SUPPRESSED_PROFILE,
@@ -84,7 +84,7 @@ test("Snoozed & dismissed spans care + coaching + suggestion rows, grouped with 
   });
   await page.goto("/upcoming");
 
-  const section = page.getByTestId("suppressed-section");
+  const section = appContent(page).getByTestId("suppressed-section");
   await expect(section).toBeVisible();
   await section.locator("summary").click();
 
@@ -129,7 +129,7 @@ test("restoring a suggestion dismissal clears it from the section (#1151)", asyn
   });
   await page.goto("/upcoming");
 
-  const section = page.getByTestId("suppressed-section");
+  const section = appContent(page).getByTestId("suppressed-section");
   await section.locator("summary").click();
   const bridgeRow = section
     .getByTestId("suppressed-row")
@@ -157,8 +157,8 @@ test("the suppression summary keeps native disclosure semantics and responsive t
   try {
     await page.goto("/upcoming");
 
-    const section = page.getByTestId("suppressed-section");
-    const summary = page.getByTestId("suppressed-summary");
+    const section = appContent(page).getByTestId("suppressed-section");
+    const summary = appContent(page).getByTestId("suppressed-summary");
     await expect(summary).toBeVisible();
     await expect(summary).toHaveAccessibleName("Snoozed & dismissed (3)");
     await expect(section).toHaveJSProperty("open", false);

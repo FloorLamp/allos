@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { now as clockNow } from "@/lib/clock";
 import {
@@ -65,11 +66,13 @@ import { schoolReturnStatusFor } from "@/lib/school-return-data";
 import { schoolReturnCompactLabel } from "@/lib/school-return";
 import CardGroup, { CardGroupSection } from "@/components/CardGroup";
 import PageContainer from "@/components/PageContainer";
+import StreamedSection, { PendingSection } from "@/components/StreamedSection";
 import { episodeReopenEligibility } from "@/lib/illness-episode-reopen";
 import { getEpisodeReopenMedRestore } from "@/lib/illness-episode-write";
 import { IconCamera } from "@tabler/icons-react";
 import BackLink from "@/components/BackLink";
 import { EPISODES_HREF } from "@/lib/hrefs";
+import type { DisplayFormatPrefs } from "@/lib/format-date";
 
 export const dynamic = "force-dynamic";
 
@@ -135,12 +138,9 @@ export default async function EpisodePage(props: {
   const promoted = assembled.conditions.some((c) => c.fromEpisode);
   const canReopen =
     episodeReopenEligibility(row.end_date, assembled.asOf).kind === "eligible";
-  // Item 1: the SUGGEST-ONLY stale nudge, shown only when THIS episode is the current
-  // open one AND it has gone quiet. Item 2: the school-return countdown, when a fever
-  // has been logged in this (open) episode. Both format over the ONE gathers (#221).
-  const staleNudge = canWrite ? staleEpisodeNudgeFor(profileId) : null;
-  const showStaleNudge =
-    staleNudge?.episodeId === episodeId ? staleNudge : null;
+  // Item 2: the school-return countdown, when a fever has been logged in this (open)
+  // episode. Formats over the ONE gathers (#221). Item 1 — the SUGGEST-ONLY stale
+  // nudge — reads below the streaming boundary, with the rest of Episode context.
   const schoolReturn = assembled.ongoing
     ? schoolReturnStatusFor(profileId, assembled)
     : null;
@@ -172,9 +172,6 @@ export default async function EpisodePage(props: {
     assembled.firstDay,
     assembled.lastActiveDay
   );
-  const comparison = assembled.ongoing
-    ? episodeComparisonFor(profileId, episodeId)
-    : null;
   // Item 6: the redose window + Log button — most useful for an OPEN episode (the 9pm
   // caregiver). Reuses the shared PRN content over the SAME redoseWindowStatus (one
   // computation), never a second redose engine.
@@ -254,63 +251,7 @@ export default async function EpisodePage(props: {
         label: symptomLabel(s.symptom),
       }))
     : [];
-  const hasCareContext = showStaleNudge != null || comparison != null;
   const hasUpdateWorkspace = canWrite;
-
-  // Household context (issue #1009 Ask 3): other ACCESSIBLE members' episodes that
-  // overlap or closely precede/follow THIS episode's window — "did this go around the
-  // house?" answered in place. Grant-scoped exactly like the merged history: only the
-  // viewing login's accessible profiles (minus the subject) are considered, so an
-  // ungranted member never appears. The SAME summarize gather the merged view uses,
-  // windowed to this episode's dates (one computation — no second engine). Renders
-  // NOTHING (not an empty shell) when there are no other accessible profiles or no
-  // overlapping/adjacent illness.
-  const otherProfileIds = accessible
-    .map((p) => p.id)
-    .filter((pid) => pid !== profileId);
-  const householdContexts =
-    otherProfileIds.length > 0
-      ? gatherHouseholdEpisodeContext(
-          profileId,
-          {
-            firstDay: assembled.firstDay,
-            lastActiveDay: assembled.lastActiveDay,
-          },
-          otherProfileIds
-        )
-      : [];
-  const householdNames = disambiguateProfileNames(accessible);
-  const accessibleById = new Map(accessible.map((p) => [p.id, p]));
-
-  // Episode ↔ visit links (#1198): the "Care" line now lists the SET of linked visits
-  // (date-ordered). `episodeVisitSuggestion` keeps suggesting the in-range visits NOT
-  // yet linked (so it doesn't go silent once one is linked); `careManualOptions` is the
-  // "Link a visit…" picker to ADD more, excluding already-linked encounters and ordered
-  // by DATE PROXIMITY to the episode window (#1196), in-range first.
-  const careVisits = encountersForEpisode(profileId, episodeId);
-  const linkedEncounterIds = new Set(
-    linkedEncounterIdsForEpisode(profileId, episodeId)
-  );
-  const episodeVisitSuggestion = suggestionForEpisode(profileId, {
-    id: episodeId,
-    start: assembled.firstDay,
-    lastActiveDay: assembled.lastActiveDay,
-  });
-  const careManualOptions: CareVisitOption[] = !canWrite
-    ? []
-    : orderEpisodeManualCandidates(
-        getEncounters(profileId).filter((e) => !linkedEncounterIds.has(e.id)),
-        assembled.firstDay,
-        assembled.lastActiveDay
-      ).map((e) => ({
-        id: e.id,
-        label: `${e.type || "Visit"} · ${e.date}`,
-        inRange:
-          assembled.firstDay != null &&
-          assembled.lastActiveDay != null &&
-          e.date >= assembled.firstDay &&
-          e.date <= assembled.lastActiveDay,
-      }));
 
   return (
     <PageContainer width="reading" className="mx-auto space-y-5">
@@ -505,6 +446,147 @@ export default async function EpisodePage(props: {
         }
       />
 
+      {/* THE EPISODE DOES NOT WAIT ON ITS CONTEXT (#2641 gap 1, phase 2 of the
+          Trends/Training pattern). Everything above this line is the ONE assembly
+          (#221) the page exists to show — who this is, what was logged, and the
+          controls to add to it. Below it are three sections that answer questions
+          ABOUT the episode from other tables: the visits it can be linked to (the
+          whole encounter list, ordered by proximity), a comparison with past
+          episodes, and whether it went around the house (a gather per other
+          accessible member).
+
+          NOT a route-level `loading.tsx` (#530): the shell here is the episode
+          itself, not a spinner in a void. The boundary is the LAST thing on the
+          page, so a pending state that reserves too much or too little grows or
+          shrinks the page downward rather than moving anything the reader is
+          looking at — which is what lets one honest card-height reserve stand in
+          for a tail whose real height is 0 to 3 cards (#2531/#2399, carried across
+          to pending states).
+
+          `h-16` IS MEASURED, not picked: a Playwright `boundingBox()` on the
+          fallback and on the sections it stands in for, against the seeded
+          VISITLINKS episode, reads 138px for this skeleton, and 106px + 16px for
+          what lands there — the Care card and the footer, separated by the
+          container's own `space-y-5`. The two conditional cards above the footer
+          only ever grow that downward. */}
+      <Suspense
+        fallback={
+          <PendingSection label="Care and context" bodyClassName="h-16" />
+        }
+      >
+        <StreamedSection>
+          <EpisodeContextSections
+            profileId={profileId}
+            episodeId={episodeId}
+            target={target}
+            canWrite={canWrite}
+            ongoing={assembled.ongoing}
+            firstDay={assembled.firstDay}
+            lastActiveDay={assembled.lastActiveDay}
+            accessible={accessible}
+            formatPrefs={formatPrefs}
+            timeZone={timeZone}
+            medReconciliation={medReconciliation}
+          />
+        </StreamedSection>
+      </Suspense>
+    </PageContainer>
+  );
+}
+
+// The below-the-fold half of the page: Care, Episode context, household context and
+// the footer. Its own component ONLY so its gathers run inside the Suspense boundary
+// above — a value computed in the page and passed down would have been read before
+// the shell could flush, which is the way a boundary ends up decorative.
+async function EpisodeContextSections({
+  profileId,
+  episodeId,
+  target,
+  canWrite,
+  ongoing,
+  firstDay,
+  lastActiveDay,
+  accessible,
+  formatPrefs,
+  timeZone,
+  medReconciliation,
+}: {
+  profileId: number;
+  episodeId: number;
+  target: number | undefined;
+  canWrite: boolean;
+  ongoing: boolean;
+  firstDay: string | null;
+  lastActiveDay: string | null;
+  accessible: Awaited<ReturnType<typeof getAccessibleProfiles>>;
+  formatPrefs: DisplayFormatPrefs;
+  timeZone: string;
+  medReconciliation: ReturnType<typeof getEpisodeMedReconciliation>;
+}) {
+  // Episode ↔ visit links (#1198): the "Care" line lists the SET of linked visits
+  // (date-ordered). `episodeVisitSuggestion` keeps suggesting the in-range visits NOT
+  // yet linked (so it doesn't go silent once one is linked); `careManualOptions` is the
+  // "Link a visit…" picker to ADD more, excluding already-linked encounters and ordered
+  // by DATE PROXIMITY to the episode window (#1196), in-range first.
+  const careVisits = encountersForEpisode(profileId, episodeId);
+  const linkedEncounterIds = new Set(
+    linkedEncounterIdsForEpisode(profileId, episodeId)
+  );
+  const episodeVisitSuggestion = suggestionForEpisode(profileId, {
+    id: episodeId,
+    start: firstDay,
+    lastActiveDay,
+  });
+  const careManualOptions: CareVisitOption[] = !canWrite
+    ? []
+    : orderEpisodeManualCandidates(
+        getEncounters(profileId).filter((e) => !linkedEncounterIds.has(e.id)),
+        firstDay,
+        lastActiveDay
+      ).map((e) => ({
+        id: e.id,
+        label: `${e.type || "Visit"} · ${e.date}`,
+        inRange:
+          firstDay != null &&
+          lastActiveDay != null &&
+          e.date >= firstDay &&
+          e.date <= lastActiveDay,
+      }));
+
+  // Item 1: the SUGGEST-ONLY stale nudge, shown only when THIS episode is the current
+  // open one AND it has gone quiet.
+  const staleNudge = canWrite ? staleEpisodeNudgeFor(profileId) : null;
+  const showStaleNudge =
+    staleNudge?.episodeId === episodeId ? staleNudge : null;
+  const comparison = ongoing
+    ? episodeComparisonFor(profileId, episodeId)
+    : null;
+  const hasCareContext = showStaleNudge != null || comparison != null;
+
+  // Household context (issue #1009 Ask 3): other ACCESSIBLE members' episodes that
+  // overlap or closely precede/follow THIS episode's window — "did this go around the
+  // house?" answered in place. Grant-scoped exactly like the merged history: only the
+  // viewing login's accessible profiles (minus the subject) are considered, so an
+  // ungranted member never appears. The SAME summarize gather the merged view uses,
+  // windowed to this episode's dates (one computation — no second engine). Renders
+  // NOTHING (not an empty shell) when there are no other accessible profiles or no
+  // overlapping/adjacent illness.
+  const otherProfileIds = accessible
+    .map((p) => p.id)
+    .filter((pid) => pid !== profileId);
+  const householdContexts =
+    otherProfileIds.length > 0
+      ? gatherHouseholdEpisodeContext(
+          profileId,
+          { firstDay, lastActiveDay },
+          otherProfileIds
+        )
+      : [];
+  const householdNames = disambiguateProfileNames(accessible);
+  const accessibleById = new Map(accessible.map((p) => [p.id, p]));
+
+  return (
+    <>
       <EpisodeCareLine
         profileId={target ?? profileId}
         episodeId={episodeId}
@@ -554,6 +636,6 @@ export default async function EpisodePage(props: {
         generatedOnDay={dateStrInTz(timeZone)}
         formatPrefs={formatPrefs}
       />
-    </PageContainer>
+    </>
   );
 }

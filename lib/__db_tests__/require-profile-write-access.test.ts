@@ -70,6 +70,7 @@ import {
   requireProfileWriteAccess,
 } from "@/lib/auth";
 import { setDoseStatus } from "@/app/(app)/nutrition/intake-actions";
+import { fd } from "@/lib/__action_tests__/harness";
 
 // ── The instrument for the ORDER of the two checks ───────────────────────────────────
 //
@@ -305,10 +306,7 @@ describe("a cross-profile Server Action gated by the shipped body", () => {
     signIn(login);
     const doseId = seedScheduledDose(target);
 
-    const form = new FormData();
-    form.set("dose_id", String(doseId));
-    form.set("status", "taken");
-    form.set("profileId", String(target));
+    const form = fd({ dose_id: doseId, status: "taken", profileId: target });
 
     if (expected === "taken") {
       expect((await setDoseStatus(form)).ok).toBe(true);

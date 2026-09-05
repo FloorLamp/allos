@@ -810,8 +810,7 @@ describe("the dose-history panel collects its subject's wall clock (#4693)", () 
 // the caregiver's clock.
 //
 // A RENDER TEST CANNOT REACH IT WITHOUT A WHOLE CARD FIXTURE, which buys far more than
-// this seam needs, so the seam is read as SOURCE — the `code(…)` idiom of
-// lib/__tests__/logged-via-surface-wiring.test.ts, through the SHARED `stripComments`
+// this seam needs, so the seam is read as SOURCE — through the SHARED `stripComments`
 // (a hand-rolled stripper is a known defect class, registered in
 // lib/__tests__/strip-comments.test.ts). Scoped to the element and not to the file
 // because `tz={timezone}` appears three times in that card for three different

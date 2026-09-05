@@ -1,6 +1,6 @@
 "use client";
 import { LoggedViaSurface, useLoggedVia } from "@/components/LoggedViaSurface";
-import { LOGGED_VIA_FIELD, type WebLoggedVia } from "@/lib/logged-via";
+import { stampWebOrigin, type WebLoggedVia } from "@/lib/logged-via";
 
 import {
   createContext,
@@ -472,8 +472,10 @@ export default function ActivityEditorProvider({
       setRepeatNonce((n) => n + 1);
       setOpen(true);
 
-      const fd = new FormData();
-      fd.set(LOGGED_VIA_FIELD, openedFromRef.current);
+      // The surface the editor was OPENED from, carried in a ref across the portal
+      // — the provider renders outside whatever region launched it, so there is no
+      // context here to read.
+      const fd = stampWebOrigin(new FormData(), openedFromRef.current);
       fd.set("type", kind.type);
       fd.set("title", kind.title);
       void startWorkout(fd)

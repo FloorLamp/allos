@@ -2,7 +2,11 @@
 
 import { requireWriteAccess, requireProfileWriteAccess } from "@/lib/auth";
 import { gateItemProfile } from "@/app/(app)/gate-item";
-import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
+import {
+  LOGGED_VIA_FIELD,
+  parseWebOrigin,
+  type StampedFormData,
+} from "@/lib/logged-via";
 import { revalidateRoute } from "@/lib/revalidate";
 import { today } from "@/lib/db";
 import { now as clockNow } from "@/lib/clock";
@@ -116,7 +120,7 @@ function revalidateSymptoms(): void {
 
 // Log (tap) a symptom at a severity — keeps the day's WORST severity (a tap only raises).
 export async function logSymptom(
-  formData: FormData
+  formData: StampedFormData
 ): Promise<SymptomLogResult> {
   const target = Number(formData.get("profile_id"));
   let profileId: number;
@@ -157,7 +161,7 @@ export async function logSymptom(
 
 // Explicit edit: SET the severity exactly (may LOWER) and set the note exactly.
 export async function editSymptom(
-  formData: FormData
+  formData: StampedFormData
 ): Promise<SymptomLogResult> {
   // THE ROW'S PROFILE, NOT THE ACTING ONE (#3958's multiprofile clause / #2106).
   // It takes the shared gateItemProfile() rather than inlining the gate its
@@ -374,7 +378,7 @@ export type TemperatureLogResult =
   | { ok: false; error: string };
 
 export async function logTemperature(
-  formData: FormData
+  formData: StampedFormData
 ): Promise<TemperatureLogResult> {
   const target = Number(formData.get("profile_id"));
   let profileId: number;
