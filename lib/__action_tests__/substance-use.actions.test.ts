@@ -930,9 +930,7 @@ describe("substance history actions refuse another profile's row (#2072)", () =>
         .get(ownerProfile.id) as { id: number }
     ).id;
     expect(
-      await correctSubstanceUseAction(
-        fd({ event_id: String(useId), date: td })
-      )
+      await correctSubstanceUseAction(fd({ event_id: String(useId), date: td }))
     ).toEqual({ kind: "not-found" });
     expect(
       await deleteSubstanceUseAction(fd({ event_id: String(useId) }))
@@ -1069,9 +1067,9 @@ describe("substance-use actions refuse a known minor (#1279)", () => {
     expect(
       await correctSubstanceUseAction(fd({ event_id: "1", date: "2026-07-01" }))
     ).toEqual({ kind: "not-found" });
-    expect(
-      await deleteSubstanceUseAction(fd({ event_id: "1" }))
-    ).toMatchObject({ kind: "not-found", undoId: null });
+    expect(await deleteSubstanceUseAction(fd({ event_id: "1" }))).toMatchObject(
+      { kind: "not-found", undoId: null }
+    );
     expect(
       await deleteSubstanceDailyTotalAction(
         fd({ id: "1", substance: "alcohol" })

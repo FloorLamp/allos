@@ -94,9 +94,7 @@ describe("#5026 phase 2 — pre-ledger rows become uses, with no invented instan
     // move the half that was already right.
     expect(
       db
-        .prepare(
-          `SELECT units FROM substance_daily_totals ORDER BY profile_id`
-        )
+        .prepare(`SELECT units FROM substance_daily_totals ORDER BY profile_id`)
         .all()
     ).toEqual([{ units: 3 }, { units: 1 }]);
   });

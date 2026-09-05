@@ -227,7 +227,9 @@ export function historyPresentKinds(profileId: number): HistoryKind[] {
       )
       .get(profileId, ALCOHOL_FOOD_GROUP);
     const use = db
-      .prepare("SELECT 1 FROM substance_log_events WHERE profile_id = ? LIMIT 1")
+      .prepare(
+        "SELECT 1 FROM substance_log_events WHERE profile_id = ? LIMIT 1"
+      )
       .get(profileId);
     if (drink != null || use != null) out.push("substance");
   }

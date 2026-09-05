@@ -187,7 +187,10 @@ describe("a drink states a time (#3295 part 1)", () => {
         substance,
         eventId: expect.any(Number),
       });
-      expect(ticks.map((tick) => tick.minute)).toEqual([21 * 60 + 30, 21 * 60 + 30]);
+      expect(ticks.map((tick) => tick.minute)).toEqual([
+        21 * 60 + 30,
+        21 * 60 + 30,
+      ]);
     }
   );
 
@@ -200,9 +203,7 @@ describe("a drink states a time (#3295 part 1)", () => {
     async (substance) => {
       const { login, profile } = seat(`clock-untimed-${substance}`);
       const date = shiftDateStr(today(profile.id), -1);
-      await addSubstanceDailyTotalAction(
-        fd({ substance, date, amount: "1" })
-      );
+      await addSubstanceDailyTotalAction(fd({ substance, date, amount: "1" }));
       const { rows, ticks } = dayView(login.id, profile.id, date);
       const use = rows.find((r) => r.kind === "substance");
       // It is STILL an event row — a use nobody timed is a use — and it reads like the

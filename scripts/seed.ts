@@ -2798,15 +2798,23 @@ for (let d = 30; d >= 8; d--) {
     if (d % 3 === 1) continue; // skip some days — a real, uneven pattern
     const units = d > 10 ? 2 + (d % 2) : 1 + (d % 2); // gently declining
     const day = daysAgo(d);
-    suNic.run(day, units, `${day}T18:30:00Z`);
+    const filedAt = `${day}T18:30:00Z`;
+    suNic.run(day, units, filedAt);
     for (let u = 0; u < units; u += 1) {
       // TODAY'S USES STATE NOTHING, and that is the honest half rather than a
       // shortcut: a stated instant must not be in the future, and this seed cannot
       // know what hour the reader's clock is at. It is also the commoner real state —
       // a tap says when it was filed, never when the use happened.
+      //
+      // The stated hours are DERIVED BACKWARD from the day's filing stamp through
+      // lib/date.ts rather than spelled as a second ISO literal, so a day's uses are
+      // spread across it (15:30, 11:30, 07:30) and this adds no hand-built instant
+      // shape to the count lib/__tests__/instant-writer-scan.test.ts freezes.
       const at =
-        d === 0 ? null : `${day}T${String(9 + u * 4).padStart(2, "0")}:15:00Z`;
-      suNicUse.run(day, `${day}T18:30:00Z`, at, at === null ? null : "stated");
+        d === 0
+          ? null
+          : utcInstant(new Date(Date.parse(filedAt) - (3 + u * 4) * 3_600_000));
+      suNicUse.run(day, filedAt, at, at === null ? null : "stated");
     }
   }
   db.prepare(

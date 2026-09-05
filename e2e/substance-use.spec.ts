@@ -1,7 +1,12 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
-import { hydratedClick, settledClick, settledFill } from "./helpers";
+import {
+  appContent,
+  hydratedClick,
+  settledClick,
+  settledFill,
+} from "./helpers";
 import { frozenNow } from "./worker-env";
 import {
   E2E_LOGIN_SUBSTANCE,
@@ -282,7 +287,7 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     await page.getByRole("menuitem", { name: "Edit" }).click();
     // The form opens in the row's SIBLING `<li>`, not inside the row, so it is
     // addressed off the list rather than off the row it belongs to.
-    const editor = page.getByTestId("history-row-editing");
+    const editor = appContent(page).getByTestId("history-row-editing");
     await editor.getByTestId("substance-when-time").fill("20:15");
     await settledClick(page, editor.getByRole("button", { name: "Save" }));
     await expect(useRows.nth(0)).toContainText("21:30");
@@ -291,7 +296,9 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     // Back to the card, where the DAY delete takes them both.
     await page.goto("/records/specialty/substance-use");
     const backRow = card.locator("tbody tr").nth(1);
-    await backRow.getByRole("button", { name: "Cannabis entry actions" }).click();
+    await backRow
+      .getByRole("button", { name: "Cannabis entry actions" })
+      .click();
     await page.getByRole("menuitem", { name: "Delete" }).click();
     await expect(page.getByTestId("confirm-dialog")).toBeVisible();
     await settledClick(
