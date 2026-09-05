@@ -491,12 +491,20 @@ test.describe("the goal fold (#2579-A) and planning dates (#2579-B)", () => {
     await expect(goalRow.getByTestId("upcoming-status")).toContainText(nearest);
   });
 
-  // #2641 GAP 1 PHASE 2 — THE TAIL STREAMS, THE OWED WORK DOES NOT WAIT ON IT.
+  // #2641 GAP 1 PHASE 2 — THE TAIL SITS BELOW A REAL BOUNDARY, AND THAT IS ALL AN
+  // INDEX COMPARISON CAN SAY.
   //
   // The page's shell is its real content, not a spinner in a void (#530): the header,
-  // the count and the whole due list flush first, and the two lists that answer a
-  // DIFFERENT question — what is merely available today, what has been snoozed —
-  // arrive after, from their own per-member gather.
+  // the count and the whole due list, with the two lists that answer a DIFFERENT
+  // question — what is merely available today, what has been snoozed — below a
+  // Suspense boundary fed by their own per-member gather.
+  //
+  // This test reads INDEXES, so it can say the boundary is there, that the shell's
+  // markers precede its pending state in the document, and that the tail rides the
+  // same response. It CANNOT say the shell was flushed earlier in time, and it does
+  // not red if the tail's gathers are hoisted back into the page (#5327). The
+  // placement property is pinned where it is observable:
+  // lib/__db_tests__/streamed-hub-boundary-reads.test.ts.
   //
   // Read as raw HTML rather than through the browser, because the pending state is
   // the thing being asserted and it is gone by the time a page has settled.
@@ -508,8 +516,8 @@ test.describe("the goal fold (#2579-A) and planning dates (#2579-B)", () => {
     expect(response.ok()).toBe(true);
     const html = await response.text();
 
-    // The shell reaches the wire first: the count and the due rows precede the
-    // boundary's pending state, so a reader has the page before the tail exists.
+    // Document order: the count and the due rows precede the boundary's pending
+    // state. An arrangement, not an arrival time.
     const total = html.indexOf('data-testid="upcoming-total"');
     const firstRow = html.indexOf('data-testid="upcoming-item-');
     const pending = html.indexOf('data-testid="streamed-section-loading"');

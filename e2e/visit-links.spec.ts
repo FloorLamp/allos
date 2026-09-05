@@ -124,13 +124,21 @@ test.describe("record ↔ visit / episode ↔ visit linking (#1050/#1053)", () =
     );
   });
 
-  // #2641 GAP 1 PHASE 2 — CARE AND CONTEXT STREAM BELOW THE EPISODE ITSELF.
+  // #2641 GAP 1 PHASE 2 — CARE AND CONTEXT SIT BELOW A REAL BOUNDARY, AND THAT IS
+  // ALL AN INDEX COMPARISON CAN SAY.
   //
   // The shell is the ONE assembly (#221) the page exists to show — who this is, what
   // was logged, the controls to add to it — not a spinner in a void (#530). Care,
   // Episode context and the household context each read from other tables (the whole
   // encounter list ordered by proximity, a comparison across past episodes, a gather
-  // per other accessible member) and arrive after it.
+  // per other accessible member) and sit below a Suspense boundary.
+  //
+  // This test reads INDEXES, so it can say the boundary is there, that the summary
+  // precedes its pending state in the document, and that the tail rides the same
+  // response. It CANNOT say the shell was flushed earlier in time, and it does not
+  // red if those gathers are hoisted back into the page (#5327). The placement
+  // property is pinned where it is observable:
+  // lib/__db_tests__/streamed-hub-boundary-reads.test.ts.
   //
   // Read as raw HTML rather than through the browser, because the pending state is
   // the thing being asserted and it is gone by the time a page has settled.
@@ -146,7 +154,7 @@ test.describe("record ↔ visit / episode ↔ visit linking (#1050/#1053)", () =
     expect(response.ok()).toBe(true);
     const html = await response.text();
 
-    // The episode reaches the wire first; the boundary's pending state follows it.
+    // Document order: the summary precedes the boundary's pending state.
     const summary = html.indexOf('data-testid="episode-summary-header"');
     const pending = html.indexOf('data-testid="streamed-section-loading"');
     expect(summary).toBeGreaterThan(-1);
