@@ -133,7 +133,7 @@ export function up(db: Database.Database): void {
   backfill(db);
 }
 
-// THE TWO BACKFILLS, SEPARATE FROM THE SCHEMA STEP SO THEY CAN BE RUN TWICE (review of
+// THE BACKFILLS, SEPARATE FROM THE SCHEMA STEP SO THEY CAN BE RUN TWICE (review of
 // #5290, finding F4). Their idempotence is the whole claim this migration makes about
 // replay, and it used to be "asserted" by calling `up` again — which throws
 // `duplicate column name: logged_via` at the ALTER above, BEFORE either statement here
@@ -200,6 +200,112 @@ export function backfill(db: Database.Database): void {
       (profile_id, group_key, date, recorded_at, occurred_at, time_source)
     SELECT profile_id, 'alcohol', date, stamp, NULL, NULL FROM expanded;
   `);
+
+  rewriteTrashedDays(db);
+}
+
+// ── The third place a day row lives: the trash (fourth falsifying pass of #5290) ──
+//
+// A `substance-history` capture taken before this migration has ONE entity — the
+// counter row — because there was no use ledger under it to capture. `restoreDeletedRow`
+// reads `payload.rows[entity.entity] ?? []` (lib/undo-delete-db.ts), so the entity an old
+// capture lacks restores as NOTHING and raises nothing: Data → Trash would hand back a
+// counter of 3 with an empty record — the state the header above says this migration
+// exists to remove — manufactured AFTER it ran, through a shipped door. Trash retention
+// is 30 days (DEFAULT_TRASH_RETENTION_DAYS), so every capture taken in the month before
+// the deploy is live at deploy time. So the stored snapshots are rewritten in the same
+// one-shot move, exactly as 183-food-event-occurred-at did for the food ledger's rename.
+//
+// This serves BOTH restore arms, because both read the same `rows.events`: the plain
+// re-insert, and the merge arm that folds a capture into a day row re-taken since the
+// capture (mergeRecreatedSubstanceHistoryRoot) — which adds the captured `units` back to
+// the live counter and would otherwise add no uses beside them.
+//
+// The payload already carries everything a derived use needs: the captured counter's own
+// `units` and `recorded_at`, which is exactly what the live arm above derives from. The
+// same rules hold — whole uses only, and no invented `occurred_at`.
+//
+// `substance-alcohol-history` is deliberately untouched: its `events` entity is on `main`,
+// so its captures are complete and nothing here adds an entity to them.
+//
+// THIS ARM IS FOR THE DEPLOY WINDOW, AND ON MOST DATABASES IT MATCHES NOTHING — said
+// plainly because a reader who goes looking for the rows it fixed will find none. The
+// production census taken the evening this shipped (2026-09-05 23:00Z) held ZERO live
+// pre-upgrade `substance-history` captures, so this is not repair of data that exists;
+// it is the guarantee that a capture taken by the PREVIOUS build, at any point in the
+// 30-day retention window that straddles the deploy, restores as a counter WITH its
+// uses. Its correctness therefore rests on the reproduction in
+// lib/__db_tests__/substance-use.test.ts (a stripped capture, this backfill, then a
+// Trash restore) and on its idempotence, not on any row in production. On a database
+// with no such capture it is a no-op, which is the expected outcome.
+function rewriteTrashedDays(db: Database.Database): void {
+  const hasTrash = db
+    .prepare(
+      `SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'deleted_rows'`
+    )
+    .get();
+  if (!hasTrash) return;
+  const update = db.prepare(`UPDATE deleted_rows SET payload = ? WHERE id = ?`);
+  const rows = db
+    .prepare(`SELECT id, payload FROM deleted_rows WHERE kind = ?`)
+    .all("substance-history") as { id: number; payload: string }[];
+  for (const row of rows) {
+    if (typeof row.payload !== "string") continue;
+    const next = withDerivedUses(row.payload);
+    if (next !== null) update.run(next, row.id);
+  }
+}
+
+// One stored payload, rewritten — or null when there is nothing to do. IDEMPOTENT BY
+// CONSTRUCTION: the entity KEY's presence is the discriminator, so a payload this has
+// already rewritten and every capture taken after the deploy are both skipped, and the
+// key is set even when it derives nothing (a zero-unit day carrying only a note) so the
+// second run has the same thing to look at as the first.
+function withDerivedUses(json: string): string | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    // A payload that does not parse is already unrestorable; leave it exactly as found
+    // rather than making this migration the thing that lost it (183's rule).
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") return null;
+  const rows = (parsed as { rows?: unknown }).rows;
+  if (!rows || typeof rows !== "object") return null;
+  const bag = rows as Record<string, unknown>;
+  if ("events" in bag) return null;
+  const captured = bag.entry;
+  if (!Array.isArray(captured)) return null;
+
+  const derived: Record<string, unknown>[] = [];
+  for (const entry of captured) {
+    if (!entry || typeof entry !== "object") continue;
+    const row = entry as Record<string, unknown>;
+    if (
+      typeof row.profile_id !== "number" ||
+      typeof row.substance !== "string" ||
+      typeof row.date !== "string" ||
+      typeof row.recorded_at !== "string" ||
+      typeof row.units !== "number"
+    )
+      continue;
+    // WHOLE uses, the CAST(... AS INTEGER) of the live arm in JavaScript: the column's
+    // CHECK is `units >= 0`, so flooring is that truncation. Rounding up would restore a
+    // use the counter never held.
+    for (let i = Math.floor(row.units); i > 0; i--)
+      derived.push({
+        profile_id: row.profile_id,
+        substance: row.substance,
+        date: row.date,
+        recorded_at: row.recorded_at,
+        occurred_at: null,
+        time_source: null,
+        logged_via: null,
+      });
+  }
+  bag.events = derived;
+  return JSON.stringify(parsed);
 }
 
 export const migration: Migration = {

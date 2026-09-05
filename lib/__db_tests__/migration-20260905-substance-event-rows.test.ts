@@ -322,6 +322,74 @@ describe("#5026 phase 2 — pre-ledger rows become uses, with no invented instan
     expect(alcoholEvents(db, 1)).toHaveLength(expected);
   });
 
+  // THE THIRD PLACE A DAY ROW LIVES (fourth falsifying pass of #5290). A capture taken
+  // before this migration has one entity (`entry`); restore reads
+  // `payload.rows[entity] ?? []`, so the `events` entity this change adds would come
+  // back empty and Data → Trash would hand back a counter with nothing behind it —
+  // after the migration, through a shipped door, and inside the 30-day retention window
+  // every pre-deploy capture is still in. So the snapshots are rewritten too (183's
+  // treatment). The three payloads here are the three cases: one to derive, one already
+  // carrying the entity (a capture taken after the deploy), and one of another kind.
+  it("gives a pre-deploy trash capture the uses its counter stands for", () => {
+    const db = beforeEvents();
+    const capture = (id: number, kind: string, rows: unknown) =>
+      db
+        .prepare(
+          `INSERT INTO deleted_rows (id, profile_id, kind, label, payload)
+           VALUES (?, 1, ?, 'substance day', ?)`
+        )
+        .run(id, kind, JSON.stringify({ v: 1, kind, rows }));
+    const entry = {
+      id: 9,
+      profile_id: 1,
+      date: "2026-08-07",
+      substance: "nicotine",
+      units: 2,
+      recorded_at: "2026-08-07T18:04:00Z",
+      notes: "on the balcony",
+    };
+    capture(1, "substance-history", { entry: [entry] });
+    capture(2, "substance-history", { entry: [entry], events: [] });
+    capture(3, "substance-alcohol-history", {
+      entry: [{ ...entry, units: 3 }],
+    });
+
+    const payloadOf = (id: number) =>
+      JSON.parse(
+        (
+          db
+            .prepare(`SELECT payload FROM deleted_rows WHERE id = ?`)
+            .get(id) as { payload: string }
+        ).payload
+      ) as { rows: Record<string, unknown[]> };
+
+    runMigrations(db, MIGRATIONS);
+
+    // One use per unit the counter holds, carrying the counter's own filing stamp and
+    // stating no time — the derived rows of the live arm, in a payload.
+    const derived = {
+      profile_id: 1,
+      substance: "nicotine",
+      date: "2026-08-07",
+      recorded_at: "2026-08-07T18:04:00Z",
+      occurred_at: null,
+      time_source: null,
+      logged_via: null,
+    };
+    expect(payloadOf(1).rows.events).toEqual([derived, derived]);
+    // The counter row itself is untouched — the capture is still what was deleted.
+    expect(payloadOf(1).rows.entry).toEqual([entry]);
+    // A capture that already carries the entity is left alone (this is also what makes
+    // the rewrite idempotent), and another kind's payload is none of this migration's
+    // business.
+    expect(payloadOf(2).rows.events).toEqual([]);
+    expect(Object.keys(payloadOf(3).rows)).toEqual(["entry"]);
+
+    // Replayed, it adds nothing: the entity KEY is the discriminator.
+    backfill(db);
+    expect(payloadOf(1).rows.events).toEqual([derived, derived]);
+  });
+
   // A non-alcohol food group is deliberately OUT of item 3's scope: the same shortfall
   // exists there, but the surfaces that disagree about it are nutrition's, not the
   // substance card and its cap. Pinned so the boundary is a decision on record rather

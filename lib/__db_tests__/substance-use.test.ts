@@ -41,6 +41,9 @@ import {
   deleteSubstanceDailyTotalCore,
 } from "@/lib/substance-daily-totals-write";
 import { restoreDeletedRow } from "@/lib/undo-delete-db";
+// The deploy step itself, so the pre-deploy trash capture below meets it in the
+// order a real upgrade does.
+import { backfill } from "@/lib/migrations/versions/20260905-substance-event-rows";
 import {
   collectUpcoming,
   getInferredPreventiveSatisfactions,
@@ -962,6 +965,97 @@ describe("one use, one row, one clock (#5026 phase 2)", () => {
     expect(uses(theirs, "nicotine")).toHaveLength(3);
     expect(dayRows(theirs, "nicotine")).toEqual([
       { date: d, units: 3, notes: null },
+    ]);
+  });
+
+  // AND THE OTHER TWO PREDICATES OF THAT CAPTURE ARE THE SAME QUESTION INSIDE ONE
+  // PROFILE. The events `childWhere` is (profile, substance, date); the test above
+  // holds the first. Drop either of the others and a day delete carries off rows it
+  // never counted — the same day's OTHER substance, or the SAME substance's other
+  // days — and each of those counters is left standing over an empty record, the
+  // state #5026 exists to remove. One profile is the point rather than a shortcut:
+  // this predicate pair needs no neighbour to go wrong.
+  it("a day delete takes only that substance and only that date", () => {
+    const p = newProfile("SU day delete scope");
+    const d = today(p);
+    const before = shiftDateStr(d, -1);
+    logSubstanceUnitCore(p, "nicotine", d, "page", `${d}T09:00:00Z`);
+    logSubstanceUnitCore(p, "cannabis", d, "page", `${d}T10:00:00Z`);
+    logSubstanceUnitCore(p, "nicotine", before, "page", `${before}T21:00:00Z`);
+
+    const row = db
+      .prepare(
+        `SELECT id FROM substance_daily_totals
+          WHERE profile_id = ? AND substance = 'nicotine' AND date = ?`
+      )
+      .get(p, d) as { id: number };
+    expect(deleteSubstanceDailyTotalCore(p, "nicotine", row.id).kind).toBe(
+      "deleted"
+    );
+
+    // The day it named is gone on both halves…
+    expect(dayRows(p, "nicotine")).toEqual([
+      { date: before, units: 1, notes: null },
+    ]);
+    // …and the two uses it did not name are still there, each behind its own counter.
+    expect(uses(p, "nicotine").map((u) => u.date)).toEqual([before]);
+    expect(uses(p, "cannabis")).toHaveLength(1);
+    expect(dayRows(p, "cannabis")).toEqual([
+      { date: d, units: 1, notes: null },
+    ]);
+  });
+
+  // A DAY DELETED BEFORE THIS DEPLOY IS STILL IN THE TRASH ON THE DAY OF IT. The
+  // capture taken by `main` has one entity (`entry`) because there was no use ledger
+  // under it; restore reads `payload.rows[entity] ?? []`, so the entity a pre-deploy
+  // capture lacks comes back as NOTHING and says nothing about it. Trash retention is
+  // 30 days, so every capture from the month before the deploy is live at deploy time
+  // and Data → Trash is the door onto it — a restore would hand back a counter of 3
+  // with an empty record, manufacturing the exact state this migration exists to
+  // remove, AFTER it ran. So the migration rewrites the stored snapshots too, the way
+  // 183-food-event-occurred-at did one table over.
+  //
+  // The fixture strips `events` from a real capture, which IS the pre-deploy payload,
+  // and then runs the migration's own backfill seam over it — the deploy, in the order
+  // it happens.
+  it("a day deleted before the ledger shipped restores its uses, not just its count", () => {
+    const p = newProfile("SU legacy trash restore");
+    const d = today(p);
+    for (const hour of ["08", "09", "10"])
+      logSubstanceUnitCore(p, "nicotine", d, "page", `${d}T${hour}:00:00Z`);
+    const row = db
+      .prepare(
+        `SELECT id FROM substance_daily_totals
+          WHERE profile_id = ? AND substance = 'nicotine' AND date = ?`
+      )
+      .get(p, d) as { id: number };
+    const deleted = deleteSubstanceDailyTotalCore(p, "nicotine", row.id);
+    if (deleted.kind !== "deleted") throw new Error("the day was not deleted");
+
+    const stored = db
+      .prepare(`SELECT payload FROM deleted_rows WHERE id = ?`)
+      .get(deleted.undoId) as { payload: string };
+    const legacy = JSON.parse(stored.payload) as {
+      rows: Record<string, unknown[]>;
+    };
+    delete legacy.rows.events;
+    db.prepare(`UPDATE deleted_rows SET payload = ? WHERE id = ?`).run(
+      JSON.stringify(legacy),
+      deleted.undoId
+    );
+
+    backfill(db);
+
+    expect(restoreDeletedRow(p, deleted.undoId)).toBe(true);
+    expect(dayRows(p, "nicotine")).toEqual([
+      { date: d, units: 3, notes: null },
+    ]);
+    // Three uses behind the three the counter reads — and no instant invented for
+    // any of them, exactly as the migration's derived rows carry none.
+    expect(uses(p, "nicotine")).toEqual([
+      { id: expect.any(Number), date: d, occurred_at: null, time_source: null },
+      { id: expect.any(Number), date: d, occurred_at: null, time_source: null },
+      { id: expect.any(Number), date: d, occurred_at: null, time_source: null },
     ]);
   });
 
