@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  FAST_STALE_HOURS,
   fastAttributedDay,
   fastControlLabel,
   fastControlState,
@@ -15,6 +14,9 @@ import {
   type Fast,
 } from "../fasting";
 import { utcInstant } from "../date";
+import { EPISODE_BOUNDS } from "../open-episode";
+
+const FAST_STALE_HOURS = EPISODE_BOUNDS.fast.staleMin / 60;
 
 // The fasting lifecycle's PURE derivations (#2756). No DB, no clock: every case here
 // states the instants it judges, which is also what lets the day-boundary cases below

@@ -13,7 +13,10 @@ import {
   SAFETY_NOTIFICATION_KINDS,
 } from "../notifications/kinds";
 import type { NotificationKind } from "../notifications/types";
-import { FAST_STALE_HOURS, type Fast } from "../fasting";
+import { type Fast } from "../fasting";
+import { EPISODE_BOUNDS } from "../open-episode";
+
+const FAST_STALE_HOURS = EPISODE_BOUNDS.fast.staleMin / 60;
 
 // The fasting stand-down's SAFETY PROOF (#2757).
 //

@@ -1153,6 +1153,36 @@ test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)
     nextActionHeaders: 0,
     postPaths: [] as string[],
   };
+  // WHERE A REQUEST THAT NEVER ARRIVED ACTUALLY WENT (#4741, the fourth firing's
+  // instrument). `installed=true, requests seen=0` is the reading that killed every
+  // earlier hypothesis: the handler was reached by NOTHING — not the action POST, not
+  // a GET, not an RSC prefetch. A page that made no requests at all is not a page that
+  // made the wrong one, so the next question is not "did the discriminator match" but
+  // "was this handler even on the path the request took".
+  //
+  // `page.route` taps requests attributed to the PAGE. A page under a service worker
+  // can have its fetches attributed to the WORKER instead (`request.serviceWorker()`
+  // is non-null for those), and a page-scoped handler never sees them — which is the
+  // one shape that explains an installed handler hearing silence while the app plainly
+  // works. `public/sw.js` passes non-GET straight through, so the abort SHOULD be an
+  // ordinary browser request; that is the claim, and this is what tests it.
+  //
+  // So a second witness rides on the CONTEXT, which sees both kinds and can say which,
+  // and it is installed at the same moment as the page handler so the two counts cover
+  // the same window and can be compared as they stand. It only ever reads.
+  const contextSeen = {
+    requests: 0,
+    fromServiceWorker: 0,
+    posts: 0,
+    nextActionHeaders: 0,
+  };
+  page.context().on("request", (req) => {
+    contextSeen.requests += 1;
+    if (req.serviceWorker()) contextSeen.fromServiceWorker += 1;
+    if (req.method() === "POST") contextSeen.posts += 1;
+    if (req.headers()["next-action"]) contextSeen.nextActionHeaders += 1;
+  });
+
   await page.route("**/*", async (route) => {
     const req = route.request();
     seen.requests += 1;
@@ -1229,8 +1259,29 @@ test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)
   } catch (failure) {
     // expect.poll's `message` is fixed when the assertion is CONSTRUCTED, so this is
     // the only place the state at the miss can reach the failure line.
+    //
+    // The service-worker reading is taken HERE rather than inside the poll: whether a
+    // page is controlled is state that changes on the scale of a registration, not of
+    // a poll tick, and reading it every tick would put an evaluate into the very window
+    // whose quietness is the observation. If the page is gone, that is itself the
+    // answer and is printed as such rather than swallowed.
+    const controller = page.isClosed()
+      ? "unreadable — the page was closed"
+      : await page
+          .evaluate(() => {
+            const c = navigator.serviceWorker?.controller;
+            return c ? `${c.scriptURL} (${c.state})` : "none";
+          })
+          .catch((e: unknown) => `unreadable — ${(e as Error).message}`);
     throw new Error(
-      `${(failure as Error).message}\n  interception at the moment of the miss: ${interception}`
+      `${(failure as Error).message}` +
+        `\n  interception at the moment of the miss: ${interception}` +
+        `\n  the context saw: requests=${contextSeen.requests}, ` +
+        `of them issued by a service worker=${contextSeen.fromServiceWorker}, ` +
+        `POSTs=${contextSeen.posts}, ` +
+        `carrying a next-action header=${contextSeen.nextActionHeaders}` +
+        `\n  this page's service-worker controller: ${controller}; ` +
+        `workers in this context=${page.context().serviceWorkers().length}`
     );
   }
 

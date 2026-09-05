@@ -3,11 +3,13 @@ import {
   computeWorkoutPresence,
   householdPresenceChip,
   isCompletedSessionRow,
-  ACTIVE_MAX_QUIET_MIN,
   FINISHED_WINDOW_MIN,
-  STALE_MIN,
   type PresenceActivityRow,
 } from "../workout-presence";
+import { EPISODE_BOUNDS } from "../open-episode";
+
+const STALE_MIN = EPISODE_BOUNDS.workout.staleMin;
+const ACTIVE_MAX_QUIET_MIN = EPISODE_BOUNDS.workout.abandonMin;
 
 // All fixtures use UTC so a date + "HH:MM" wall time maps directly to the same
 // UTC instant, keeping the arithmetic obvious. The zone math itself is covered by
