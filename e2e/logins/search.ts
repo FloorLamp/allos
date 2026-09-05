@@ -14,7 +14,12 @@
 // both halves would be a lottery there. The spec only READS — it opens the palette,
 // types, and follows the hit — so the fixture survives --repeat-each untouched.
 export const E2E_LOGIN_SEARCH_RECORD = "e2e_search_record";
-export const SEARCH_RECORD_PROFILE = "Search Record (e2e)";
+// NOT NAMED "Search …": the sidebar's own Search control is reached by
+// `getByRole("button", { name: /^Search/ })` in e2e/nav-consolidation.spec.ts and
+// e2e/profile-identity-bar.spec.ts, and every fixture profile a login can switch to
+// renders a button carrying that profile's name. A profile called "Search Record"
+// made those locators resolve to three elements instead of one.
+export const SEARCH_RECORD_PROFILE = "Logged Rows (e2e)";
 
 // The three seeded entries. Each name is deliberately unlike anything in the shared
 // seed's vocabulary, so a hit carrying it can only be this fixture's row.
