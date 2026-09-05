@@ -696,13 +696,16 @@ if [ -f "$QUEUE_FILE" ]; then
   [ -n "$queue_mtime" ] && queue_age_s=$(($(date -u +%s) - queue_mtime))
 fi
 if [ -z "$queue_age_s" ] || [ "$queue_age_s" -ge "$QUEUE_DUE_SECS" ]; then
-  # Its stderr is NOT suppressed. This line used to name one cause — "needs a
-  # read token" — which reads as a diagnosis and hid every other one, including
-  # a reader that was not on disk at all (#5242): the snapshot never ran for as
-  # long as that was true, and the check-in kept printing the stale file's own
-  # header as though it were today's queue.
-  node "$HELPERS/queue-snapshot.mjs" >/dev/null ||
-    echo "  *** queue snapshot FAILED (its error is above) — $QUEUE_FILE was NOT refreshed; the count below is as of its own header line ***"
+  # THE REASON IS CAPTURED, NOT NAMED. This line used to assert one cause —
+  # "needs a read token" — which reads as a diagnosis and hid every other one,
+  # including a reader that was not on disk at all (#5242): the snapshot never
+  # ran for as long as that was true, and the check-in kept reprinting the
+  # stale file's own header as though it were today's queue. The sweep's stderr
+  # carries a success line too, so it is held and printed only on failure.
+  if ! snapshot_err=$(node "$HELPERS/queue-snapshot.mjs" 2>&1 >/dev/null); then
+    echo "  *** queue snapshot FAILED — $QUEUE_FILE was NOT refreshed; the count below is as of its own header ***"
+    echo "$snapshot_err" | sed 's/^/      /'
+  fi
 fi
 queue_header=$(head -1 "$QUEUE_FILE" 2>/dev/null || echo "UNWRITTEN — run queue-snapshot.mjs")
 
