@@ -461,10 +461,16 @@ export default async function EpisodePage(props: {
           shrinks the page downward rather than moving anything the reader is
           looking at — which is what lets one honest card-height reserve stand in
           for a tail whose real height is 0 to 3 cards (#2531/#2399, carried across
-          to pending states). */}
+          to pending states).
+
+          `h-16` IS MEASURED, not picked: a Playwright `boundingBox()` on the
+          fallback and on the sections it stands in for, against the seeded
+          VISITLINKS episode, reads 138px for this skeleton and 142px for what
+          lands (a 106px Care card, the container's 20px gap, a 16px footer). The
+          two conditional cards above the footer only ever grow it downward. */}
       <Suspense
         fallback={
-          <PendingSection label="Care and context" bodyClassName="h-24" />
+          <PendingSection label="Care and context" bodyClassName="h-16" />
         }
       >
         <StreamedSection>

@@ -491,6 +491,42 @@ test.describe("the goal fold (#2579-A) and planning dates (#2579-B)", () => {
     await expect(goalRow.getByTestId("upcoming-status")).toContainText(nearest);
   });
 
+  // #2641 GAP 1 PHASE 2 — THE TAIL STREAMS, THE OWED WORK DOES NOT WAIT ON IT.
+  //
+  // The page's shell is its real content, not a spinner in a void (#530): the header,
+  // the count and the whole due list flush first, and the two lists that answer a
+  // DIFFERENT question — what is merely available today, what has been snoozed —
+  // arrive after, from their own per-member gather.
+  //
+  // Read as raw HTML rather than through the browser, because the pending state is
+  // the thing being asserted and it is gone by the time a page has settled.
+  test("the available and snoozed lists stream below the due list", async ({
+    browser,
+  }) => {
+    const { page } = await openUpcoming(browser);
+    const response = await page.request.get("/upcoming");
+    expect(response.ok()).toBe(true);
+    const html = await response.text();
+
+    // The shell reaches the wire first: the count and the due rows precede the
+    // boundary's pending state, so a reader has the page before the tail exists.
+    const total = html.indexOf('data-testid="upcoming-total"');
+    const firstRow = html.indexOf('data-testid="upcoming-item-');
+    const pending = html.indexOf('data-testid="streamed-section-loading"');
+    expect(total).toBeGreaterThan(-1);
+    expect(firstRow).toBeGreaterThan(total);
+    expect(pending).toBeGreaterThan(firstRow);
+
+    // The pending state NAMES what is arriving and RESERVES A HEIGHT (#2531/#2399,
+    // carried across to pending states). Both are pinned here: a fallback that goes
+    // back to a bare <Suspense>, or drops its stated height for the component's
+    // section-sized default, reds on this line rather than in a layout jump nobody
+    // is measuring.
+    const card = html.slice(pending, html.indexOf("</div>", pending) + 2000);
+    expect(card).toContain('data-section="Available &amp; snoozed"');
+    expect(card).toContain("dark:bg-ink-850 h-0");
+  });
+
   test("This week keeps countdown grammar, where a number still means something", async ({
     browser,
   }) => {

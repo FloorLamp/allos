@@ -123,4 +123,46 @@ test.describe("record ↔ visit / episode ↔ visit linking (#1050/#1053)", () =
       "During illness episode: sinus infection"
     );
   });
+
+  // #2641 GAP 1 PHASE 2 — CARE AND CONTEXT STREAM BELOW THE EPISODE ITSELF.
+  //
+  // The shell is the ONE assembly (#221) the page exists to show — who this is, what
+  // was logged, the controls to add to it — not a spinner in a void (#530). Care,
+  // Episode context and the household context each read from other tables (the whole
+  // encounter list ordered by proximity, a comparison across past episodes, a gather
+  // per other accessible member) and arrive after it.
+  //
+  // Read as raw HTML rather than through the browser, because the pending state is
+  // the thing being asserted and it is gone by the time a page has settled.
+  test("Care and context stream below the episode summary", async () => {
+    await page.goto("/medical/episodes");
+    const href = await appContent(page)
+      .getByTestId("episode-index-row")
+      .filter({ hasText: /sinus infection/i })
+      .first() // first-ok: exactly one episode row ON THIS PAGE carries that text
+      .getAttribute("href");
+    expect(href).toMatch(/\/medical\/episodes\/\d+/);
+    const response = await page.request.get(href!);
+    expect(response.ok()).toBe(true);
+    const html = await response.text();
+
+    // The episode reaches the wire first; the boundary's pending state follows it.
+    const summary = html.indexOf('data-testid="episode-summary-header"');
+    const pending = html.indexOf('data-testid="streamed-section-loading"');
+    expect(summary).toBeGreaterThan(-1);
+    expect(pending).toBeGreaterThan(summary);
+    // …and the tail rides the SAME streamed response rather than being dropped: the
+    // footer is the one thing below the boundary that always renders.
+    expect(
+      html.indexOf('data-testid="episode-summary-footer"')
+    ).toBeGreaterThan(pending);
+
+    // The pending state NAMES what is arriving and RESERVES A HEIGHT (#2531/#2399,
+    // carried across to pending states). Both are pinned here: a fallback that goes
+    // back to a bare <Suspense>, or drops its stated height for the component's
+    // default, reds on this line rather than in a layout jump nobody is measuring.
+    const card = html.slice(pending, html.indexOf("</div>", pending) + 2000);
+    expect(card).toContain('data-section="Care and context"');
+    expect(card).toContain("dark:bg-ink-850 h-16");
+  });
 });

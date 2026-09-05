@@ -379,11 +379,21 @@ export default async function UpcomingPage(props: {
           shrinks the page downward instead of moving anything the reader is looking
           at. That is what makes an honest-but-approximate reserve safe here; it is
           the same placement argument /training's boundary carries (#2531/#2399,
-          carried across to pending states). */}
+          carried across to pending states).
+
+          `h-0` BECAUSE THE ARRIVING CONTENT IS TWO COLLAPSED DISCLOSURES, NOT A
+          CARD, and the skeleton's own frame is already most of their height.
+          Measured in the browser against the seeded UPCOMING_AGG profile (a
+          Playwright `boundingBox()` on the fallback, and on the sections it stands
+          in for): the frame alone is 74px, plus its own `mt-8` a 106px footprint;
+          the two collapsed disclosures are 16px each plus an `mt-8` each — a 96px
+          footprint when both render, 48px when one does. So `h-0` is the closest
+          this skeleton can get, and every remaining pixel of it is over-reserve at
+          the bottom of the page. */}
       <Suspense
         fallback={
           <div className="mt-8">
-            <PendingSection label="Available & snoozed" bodyClassName="h-8" />
+            <PendingSection label="Available & snoozed" bodyClassName="h-0" />
           </div>
         }
       >
