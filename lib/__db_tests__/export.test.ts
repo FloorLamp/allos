@@ -470,59 +470,122 @@ const SCOPING_GLOBAL: { key: string; why: string }[] = [
   },
 ];
 
-// Datasets the shared fixture seeds no row for, on either profile. The loop has
-// nothing to compare for these and is therefore silent about them, so they are
-// written down and the list is asserted EXACT: seeding one means deleting its name
-// here, and a dataset that stops being seeded has to be added rather than quietly
-// dropping out of the sweep.
-const SCOPING_UNSEEDED = [
-  "activity_routes",
-  "activity_telemetry",
-  "activity_laps",
-  "activity_segment_efforts",
-  "medical_record_revisions",
-  "injuries",
-  "niggles",
-  "endurance_plans",
-  "cycles",
-  "mood_logs",
-  "dose_schedule_versions",
-  "procedures",
-  "genomic_variants",
-  "imaging_studies",
-  "dental_procedures",
-  "skin_lesions",
-  "optical_prescriptions",
-  "family_history",
-  "care_goals",
-  "appointments",
-  "preventive_events",
-  "preventive_overrides",
-  "preventive_record_decisions",
-  "protocols",
-  "milestones",
-  "equipment",
-  "frequency_targets",
-  "food_daily_totals",
-  "substance_daily_totals",
-  "protein_daily_totals",
-  "fasts",
-  "symptom_logs",
-  "situations",
-  "medication_courses",
-  "intake_item_ingredients",
-  "intake_item_purposes",
-  "intake_item_side_effects",
-];
+// EVERY OTHER DATASET IS SEEDED, NOT LISTED (#5314). This used to be
+// SCOPING_UNSEEDED, 37 names the loop below was silent about: the shared fixture
+// seeds no row for them, both profiles came back empty, and `WHERE profile_id = ?`
+// could be deleted from any of those 37 statements with nothing observing it. A
+// shorter list would have grown back, so there is no list — the row is DERIVED from
+// the dataset:
+//
+//   - WHICH column distinguishes the two profiles is read off the dataset's own
+//     select (a text or numeric column of ds.table that the select emits and that is
+//     not a key, an FK or profile_id), because the loop compares row CONTENT: two
+//     rows that differ only by `id` would let an id-shaped leak through.
+//   - EVERYTHING ELSE the row needs comes from seedSchemaRow, which fills required
+//     columns from the schema and reaches profile_id through the parent FK for a
+//     child table.
+//
+// So a dataset added tomorrow arrives with its case already written, and one this
+// cannot seed THROWS naming itself — an unseedable dataset is the defect, not an
+// exemption.
+type PhysicalColumn = { name: string; type: string; pk: number };
+
+// Columns of ds.table this dataset actually emits, minus the ones that cannot carry a
+// per-profile difference: keys renumber, FKs point at a parent already scoped, and
+// profile_id is the thing under test.
+function distinguishableColumns(ds: (typeof DATASETS)[number]): string[] {
+  const emitted = new Set(
+    db
+      .prepare(ds.select)
+      .columns()
+      .filter((c) => c.table === ds.table && c.column)
+      .map((c) => c.column!)
+  );
+  const fks = new Set(
+    (
+      db.pragma(`foreign_key_list(${ds.table})`) as { from: string }[]
+    ).map((f) => f.from)
+  );
+  const cols = db.pragma(`table_info(${ds.table})`) as PhysicalColumn[];
+  const usable = cols.filter(
+    (c) =>
+      emitted.has(c.name) && !c.pk && c.name !== "profile_id" && !fks.has(c.name)
+  );
+  // Text first: a free-form text column is the one least likely to be CHECK'd to a
+  // closed set of values, and the fallback below tries the rest in turn anyway.
+  return [
+    ...usable.filter((c) => /CHAR|CLOB|TEXT/i.test(c.type)),
+    ...usable.filter((c) => !/CHAR|CLOB|TEXT/i.test(c.type)),
+  ].map((c) => c.name);
+}
+
+// The rows the derivation above cannot produce, because a MULTI-COLUMN CHECK ties
+// several columns together and no single made-up value satisfies it. This is a list
+// of ROWS, not of exemptions: a dataset here still gets its case, and its row still
+// has to differ between the profiles or the case reds. Keep it as short as the
+// schema forces.
+const SCOPING_SEEDS: Record<string, (tag: string) => Record<string, unknown>> = {
+  // CHECK ties `kind` to exactly one of goal_key / condition_id / biomarker_key, with
+  // `direction` allowed only on the biomarker arm.
+  intake_item_purposes: (tag) => ({
+    kind: "goal",
+    goal_key: `${tag.toLowerCase()}-purpose`,
+    condition_id: null,
+    biomarker_key: null,
+    direction: null,
+  }),
+};
+
+// One row of `ds`, belonging to `p`, whose emitted content differs from the other
+// profile's. Candidate columns are tried in turn because a CHECK constraint can
+// refuse a made-up value; the FIRST that inserts is the one used, and running out is
+// an error naming the dataset.
+function seedForScoping(
+  ds: (typeof DATASETS)[number],
+  p: SeededProfile,
+  ordinal: number
+): void {
+  const explicit = SCOPING_SEEDS[ds.key];
+  if (explicit) {
+    seedSchemaRow(ds.table, explicit(p.tag), p.profileId);
+    return;
+  }
+  const refusals: string[] = [];
+  for (const column of distinguishableColumns(ds)) {
+    const type = (db.pragma(`table_info(${ds.table})`) as PhysicalColumn[]).find(
+      (c) => c.name === column
+    )!.type;
+    const value = /CHAR|CLOB|TEXT/i.test(type) ? `${p.tag} scope` : ordinal;
+    try {
+      seedSchemaRow(ds.table, { [column]: value }, p.profileId);
+      return;
+    } catch (e) {
+      refusals.push(`${column}=${String(value)}: ${(e as Error).message}`);
+    }
+  }
+  throw new Error(
+    `${ds.key}: could not seed a row on ${ds.table} that differs between profiles. Seed one by hand in this file's beforeAll.\n${refusals.join("\n")}`
+  );
+}
 
 describe("every dataset's rows() and page() are profile-scoped (#5117)", () => {
-  const skipped = new Set([
-    ...SCOPING_GLOBAL.map((e) => e.key),
-    ...SCOPING_UNSEEDED,
-  ]);
+  const skipped = new Set(SCOPING_GLOBAL.map((e) => e.key));
   const checked = DATASETS.filter((ds) => !skipped.has(ds.key)).map(
     (ds) => ds.key
   );
+
+  // Fill the gaps the shared fixture leaves, so every case below has both profiles'
+  // rows to compare (#5314). Datasets seeded above keep the rows they already have.
+  beforeAll(() => {
+    for (const ds of DATASETS) {
+      if (skipped.has(ds.key)) continue;
+      let ordinal = 0;
+      for (const p of [a, b]) {
+        ordinal += 1;
+        if (ds.rows(p.profileId).length === 0) seedForScoping(ds, p, ordinal);
+      }
+    }
+  });
 
   it.each(checked)("%s carries none of the other profile's rows", (key) => {
     const ds = getDataset(key)!;
@@ -571,10 +634,13 @@ describe("every dataset's rows() and page() are profile-scoped (#5117)", () => {
           ds.rows(a.profileId).length === 0 || ds.rows(b.profileId).length === 0
       )
       .map((ds) => ds.key);
+    // NOT a list to append to (#5314). Every dataset the export can emit is seeded on
+    // both profiles and gets a case; the only skip is a GLOBAL table, asserted exact
+    // below against schema-derived ownership.
     expect(
       unseeded,
-      `\nDatasets the loop above is silent about. Seed one in this file and delete its name from SCOPING_UNSEEDED, or add a newly unseeded one to it:\n${unseeded.join("\n")}\n`
-    ).toEqual(SCOPING_UNSEEDED);
+      `\nDatasets the loop above is silent about — they have no row on one of the two profiles, so their case cannot fail. seedForScoping() above should have filled this in:\n${unseeded.join("\n")}\n`
+    ).toEqual([]);
     // A global dataset must still be SEEDED — otherwise its exemption is really the
     // unseeded one wearing a reason, and the reason stops being true unnoticed.
     for (const e of SCOPING_GLOBAL) {
