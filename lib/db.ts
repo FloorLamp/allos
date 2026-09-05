@@ -2,7 +2,8 @@ import Database from "better-sqlite3";
 import path from "node:path";
 import fs from "node:fs";
 import { resolveTimezone } from "./timezone";
-import { dateStrInTz, shiftDateStr, zonedMinuteStr } from "./date";
+import { dateStrInTz, shiftDateStr, zonedDateParts } from "./date";
+import type { LocalDay, LocalTime } from "./temporal-types";
 import { now } from "./clock";
 import { runMigrations } from "./migrations/runner";
 import { bootTasks } from "./migrations/boot-tasks";
@@ -315,14 +316,14 @@ function resolveAppTimezone(profileId: number): string {
   return resolveTimezone(prof, instance);
 }
 
-export function today(profileId: number): string {
+export function today(profileId: number): LocalDay {
   // The clock seam (lib/clock.ts): `now()` is the real instant in production (the
   // env override is unset) and the frozen ALLOS_TEST_NOW instant under e2e, so a
   // suite run can't cross local midnight out from under its "today"-seeded fixtures.
   return dateStrInTz(appTimezone(profileId), now());
 }
 
-export function yesterday(profileId: number): string {
+export function yesterday(profileId: number): LocalDay {
   return shiftDateStr(today(profileId), -1);
 }
 
@@ -331,6 +332,6 @@ export function yesterday(profileId: number): string {
 // is it" can never be answered from two different zones. Added for #2204's one-tap
 // practice stamp; anything else that needs to record WHEN a server-side tap happened
 // should read it here rather than trusting a device clock (#450).
-export function nowTime(profileId: number): string {
-  return zonedMinuteStr(appTimezone(profileId), now()).slice(11);
+export function nowTime(profileId: number): LocalTime {
+  return zonedDateParts(appTimezone(profileId), now()).hhmm;
 }

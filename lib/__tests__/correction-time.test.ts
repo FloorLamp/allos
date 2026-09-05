@@ -919,7 +919,7 @@ describe("a day-keyed domain's offers stay on the burst's own day (#2875)", () =
     id: number,
     at: Date,
     label = "Sauna",
-    day = zonedDateParts(TZ, at).date
+    day: string = zonedDateParts(TZ, at).date
   ): TapEvent {
     return { id, tapAt: at.toISOString(), localDay: day, label };
   }
