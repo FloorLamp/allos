@@ -35,12 +35,10 @@ import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import { setRpeTrackingAction } from "@/app/(app)/training/activity-actions";
 import { getExerciseGuide } from "@/lib/exercise-guides";
 import { round, stripNonPositive } from "@/lib/units";
-import { type NextSet } from "@/lib/coaching";
 import {
   blockedRing,
   type PartEntry,
   type SetEntry,
-  type RepeatSourceSet,
   type PartFault,
 } from "@/lib/activity-form-model";
 import ActivityCombobox from "@/components/ActivityCombobox";
@@ -60,7 +58,7 @@ import FactEditorHost, {
 } from "@/components/facts/FactEditorHost";
 import EquipmentRegistryLink from "./EquipmentRegistryLink";
 import EquipmentQuickAdd, { categoryForVariant } from "./EquipmentQuickAdd";
-import type { PlateTarget } from "./useActivityParts";
+import type { PlateTarget, SetFill } from "./useActivityParts";
 
 // The brand-filled checkbox the options facts are edited with. It moved here from
 // StrengthSets with the row it belongs to (#3349) and has no other caller.
@@ -161,10 +159,7 @@ export default function ActivityPartsList({
   onAddSet,
   onRemoveSet,
   onUpdatePartName,
-  onApplySuggestion,
-  onApplyPerSideSuggestion,
-  onFillFromSession,
-  onPlateFromSuggestion,
+  onFill,
   onPlateTarget,
 }: {
   parts: PartEntry[];
@@ -224,14 +219,7 @@ export default function ActivityPartsList({
     name: string,
     extra?: Partial<PartEntry>
   ) => void;
-  onApplySuggestion: (pi: number, ns: NextSet) => void;
-  onApplyPerSideSuggestion: (
-    pi: number,
-    left: NextSet | null,
-    right: NextSet | null
-  ) => void;
-  onFillFromSession: (pi: number, sessionSets: RepeatSourceSet[]) => void;
-  onPlateFromSuggestion: (pi: number, weightKg: number) => void;
+  onFill: (pi: number, fill: SetFill) => void;
   onPlateTarget: (target: PlateTarget) => void;
 }) {
   // The exercise how-to overlay (#734) lives HERE, with the part header that
@@ -857,18 +845,9 @@ export default function ActivityPartsList({
                   onUpdatePartName={(name, extra) =>
                     onUpdatePartName(pi, name, extra)
                   }
-                  onApplySuggestion={(ns) => onApplySuggestion(pi, ns)}
-                  onApplyPerSideSuggestion={(left, right) =>
-                    onApplyPerSideSuggestion(pi, left, right)
-                  }
-                  onFillFromSession={(sessionSets) =>
-                    onFillFromSession(pi, sessionSets)
-                  }
-                  onPlateFromSuggestion={(weightKg) =>
-                    onPlateFromSuggestion(pi, weightKg)
-                  }
-                  onPlateTarget={(si, field) =>
-                    onPlateTarget({ pi, si, field })
+                  onFill={(fill) => onFill(pi, fill)}
+                  onPlateTarget={(si, field, seed) =>
+                    onPlateTarget({ pi, si, field, seed })
                   }
                 />
               )}
