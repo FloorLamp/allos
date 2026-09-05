@@ -373,6 +373,13 @@
           "category": "Documents",
           "title": "An export column nothing fills yet stays off the on-screen table",
           "issues": [5273]
+        },
+        {
+          "pr": 5339,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "A dashboard row with a button no longer squeezes its chips one to a line",
+          "issues": [5320, 5066]
         }
       ]
     },
