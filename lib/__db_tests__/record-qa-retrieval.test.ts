@@ -58,7 +58,8 @@ describe("retrieveRecordCitations — grounded, profile-scoped retrieval (#878)"
   it("retrieves the asking profile's own matching rows for a natural-language question", () => {
     const cites = retrieveRecordCitations(
       mine,
-      "when did I last take antibiotics?"
+      "when did I last take antibiotics?",
+      null
     );
     const titles = cites.map((c) => c.title);
     expect(titles).toContain("Amoxicillin");
@@ -70,20 +71,21 @@ describe("retrieveRecordCitations — grounded, profile-scoped retrieval (#878)"
   it("NEVER leaks another profile's rows into the answer (active-profile-only scope)", () => {
     const cites = retrieveRecordCitations(
       mine,
-      "when did I last take antibiotics?"
+      "when did I last take antibiotics?",
+      null
     );
     expect(cites.map((c) => c.title)).not.toContain("Cephalexin");
 
     // And the other profile only sees ITS own antibiotics med, not mine.
-    const theirs = retrieveRecordCitations(other, "antibiotics");
+    const theirs = retrieveRecordCitations(other, "antibiotics", null);
     expect(theirs.map((c) => c.title)).toContain("Cephalexin");
     expect(theirs.map((c) => c.title)).not.toContain("Amoxicillin");
   });
 
   it("returns no citations for a stopword-only question (upstream refusal)", () => {
-    expect(retrieveRecordCitations(mine, "when did I last take it?")).toEqual(
-      []
-    );
+    expect(
+      retrieveRecordCitations(mine, "when did I last take it?", null)
+    ).toEqual([]);
   });
 
   it("finds singular-named rows from a PLURAL question term (#1597)", () => {
@@ -91,19 +93,24 @@ describe("retrieveRecordCitations — grounded, profile-scoped retrieval (#878)"
     // singular reaches the row, so this is the whole bug in one assertion.
     const colds = retrieveRecordCitations(
       mine,
-      "how did his last three colds compare?"
+      "how did his last three colds compare?",
+      null
     );
     expect(colds.map((c) => c.subtitle ?? c.title).join(" ")).toContain("cold");
     expect(colds.length).toBeGreaterThan(0);
 
     // Same for the flagship allergy phrasing: "nuts" misses "Peanut", "nut" hits.
-    const allergies = retrieveRecordCitations(mine, "any allergies to nuts?");
+    const allergies = retrieveRecordCitations(
+      mine,
+      "any allergies to nuts?",
+      null
+    );
     expect(allergies.map((c) => c.title)).toContain("Peanut");
   });
 
   it("returns no citations when nothing matches", () => {
     expect(
-      retrieveRecordCitations(mine, "chemotherapy radiation dialysis")
+      retrieveRecordCitations(mine, "chemotherapy radiation dialysis", null)
     ).toEqual([]);
   });
 });

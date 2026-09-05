@@ -31,6 +31,7 @@ import {
   IconSparkles,
   IconStethoscope,
   IconTarget,
+  IconTimelineEvent,
   IconTools,
   IconVaccine,
   IconVirus,
@@ -109,6 +110,10 @@ const DOMAIN_ICONS: Record<
   dental: (p) => <IconDental {...p} />,
   skin: (p) => <IconBandage {...p} />,
   activity: (p) => <IconBarbell {...p} />,
+  // THE RECORD'S OWN GLYPH (#5006). One group holds all seven logged kinds, so it
+  // wears the icon the record itself wears in the nav and the dock (`IconTimelineEvent`,
+  // components/Nav.tsx) — the hit's subtitle names the kind.
+  logged: (p) => <IconTimelineEvent {...p} />,
   supplement: (p) => <IconPill {...p} />,
   protocol: (p) => <IconFlask2 {...p} />,
   practice: (p) => <IconSparkles {...p} />,
@@ -852,7 +857,15 @@ function SearchResults({
   return (
     <>
       {groups.map((group, groupIndex) => (
-        <div key={group.domain} className="mb-2">
+        // Named by its DOMAIN, so a test can address the group a hit came from: the
+        // record's rows and the entity that names them share a title on purpose
+        // ("Moonlight breathwork" is a session and a practice), and which one a tap
+        // opens is the difference between the entry and its list.
+        <div
+          key={group.domain}
+          data-testid={`palette-group-${group.domain}`}
+          className="mb-2"
+        >
           <div className="px-2 pb-1 pt-2 section-label">{group.label}</div>
           <ul>
             {group.hits.map((hit, hitIndex) => {
