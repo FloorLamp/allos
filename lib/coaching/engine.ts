@@ -6,6 +6,7 @@ import {
 } from "../frequency-targets";
 import { formatRelativeDate } from "../format-date";
 import { shiftDateStr } from "../date";
+// eslint-disable-next-line no-restricted-imports -- the overtraining nudge's "trained N days in a row" — strict, over hard-session dates, telling the user to rest
 import { currentStreak } from "../streak";
 import { classifyPolarization, type PolarizedSplit } from "../training-zones";
 import { measureRoughNight } from "../derived-situations";

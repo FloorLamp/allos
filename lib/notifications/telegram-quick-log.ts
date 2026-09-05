@@ -1458,18 +1458,20 @@ import { fmtTemp } from "../units";
 import { formatMedicationDoseProduct } from "../medication-dose-format";
 import { queueTempRedFlagDispatch } from "./temp-red-flag";
 import {
-  moodKeepAnswerText,
-  moodKeepCloseText,
   parseTempReply,
   parseTempReplyMarker,
   parseWeightReplyMarker,
+  tempReplyMarker,
+  weightReplyMarker,
+} from "./reply-markers";
+import {
+  moodKeepAnswerText,
+  moodKeepCloseText,
   removeButton,
   removeRowContaining,
   replacementWithTitle,
   resolveTapProfile,
   SYMPTOM_SEVERITY_LABELS,
-  tempReplyMarker,
-  weightReplyMarker,
   OUTDATED_MESSAGE_TEXT,
   type DigestTimeCallback,
   type MoodCheckinCallback,

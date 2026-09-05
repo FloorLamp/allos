@@ -10,7 +10,15 @@ import path from "node:path";
 // not to — the fix is back to whack-a-mole, and the failure is the silent kind:
 // a half-typed record form emptied by a repaint nobody asked for.
 //
-// So this scan requires every refresh call site to be in exactly one bucket:
+// FINDING an unclassified call site is an eslint.config.mjs rule now (#5347): a
+// `router.refresh()` under app/ or components/ is an error until someone decides
+// which bucket it is in, and a USER site says so on its own file-level disable
+// line, carrying the reason that used to sit in the record below. What stays here
+// is the converse and the residual, neither of which a selector can see: that
+// every listed site STILL refreshes, that every chrome actor is listed, and that
+// no listed actor observes through a Server Action.
+//
+// The buckets:
 //
 //   CHROME  — a background actor repainting on its own initiative. It must route
 //             through `useChromeRefresh` and must NOT call `router.refresh()`.
@@ -52,32 +60,23 @@ const CHROME_CALL_SITES = [
 ];
 
 /**
- * User-initiated repaints, with the reason each one is the user's. These keep
- * calling `router.refresh()` directly and are deliberately NOT registry-gated.
+ * User-initiated repaints. These keep calling `router.refresh()` directly and are
+ * deliberately NOT registry-gated; each file's own eslint-disable line says why it
+ * is the user's, which is where the reason is readable beside the call.
  */
-const USER_CALL_SITES: Record<string, string> = {
-  "components/PullToRefresh.tsx":
-    "the overscroll gesture IS the request for current data",
-  "components/ReprocessDiffPanel.tsx":
-    "follows the user's own 'Save changes' commit; deferring it would leave them staring at the rows they just replaced",
-  "components/ImportDetailActions.tsx":
-    "follows the user's own confirmed re-import",
-  "app/(app)/settings/server/SmtpSettings.tsx":
-    "follows the user's own 'Send test email', which persists the form without revalidating",
-  "app/(app)/integrations/fitbit-takeout/TakeoutUpload.tsx":
-    "follows the user's own upload",
-  "app/(app)/training/activity/DiscardDraftButton.tsx":
-    "follows the user's own Discard tap when the server KEPT the row (a save raced the tap) — the page must repaint into its real record state right now",
-  "app/(app)/training/activity/[id]/NiggleConfirmChip.tsx":
-    "follows the user's own 'Track it' tap (#2948) — the tap IS the write, and the chip must repaint away the moment the niggle it offered exists, or the page keeps asking about something already tracked",
-  "app/(app)/history/HistoryAddDoor.tsx":
-    "follows the user's own submit in the record's Add door (#4045) — the door writes a row into the very feed they are reading, and without the repaint it closes over a record that still shows the gap they opened it to fill",
-  "components/import/ImportedNameOffer.tsx":
-    "follows the user's own 'Use this name' tap (#3480) — the tap IS the rename, and the row must repaint into the name they just chose rather than keep offering it",
+const USER_CALL_SITES = [
+  "components/PullToRefresh.tsx",
+  "components/ReprocessDiffPanel.tsx",
+  "components/ImportDetailActions.tsx",
+  "app/(app)/settings/server/SmtpSettings.tsx",
+  "app/(app)/integrations/fitbit-takeout/TakeoutUpload.tsx",
+  "app/(app)/training/activity/DiscardDraftButton.tsx",
+  "app/(app)/training/activity/[id]/NiggleConfirmChip.tsx",
+  "app/(app)/history/HistoryAddDoor.tsx",
+  "components/import/ImportedNameOffer.tsx",
   // The registry itself: the drain it owes, and the no-provider fallback.
-  "components/DirtyFormRegistry.tsx":
-    "the registry IS the chokepoint — this is the deferred repaint finally landing",
-};
+  "components/DirtyFormRegistry.tsx",
+];
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -142,18 +141,8 @@ function isServerActionModule(file: string): boolean {
 }
 
 describe("router.refresh() call sites are classified chrome or user (#1878)", () => {
-  it("has no unclassified call site", () => {
-    const found = files.filter((f) => callsRefresh(f.source)).map((f) => f.rel);
-    const classified = new Set(Object.keys(USER_CALL_SITES));
-    const unknown = found.filter((f) => !classified.has(f));
-    expect(
-      unknown,
-      "A new router.refresh(): decide whether it is CHROME (route it through useChromeRefresh) or USER (add it to USER_CALL_SITES with the reason)."
-    ).toEqual([]);
-  });
-
   it("keeps every user-initiated refresh direct and undeferred", () => {
-    for (const rel of Object.keys(USER_CALL_SITES)) {
+    for (const rel of USER_CALL_SITES) {
       const file = files.find((f) => f.rel === rel);
       if (!file) throw new Error(`${rel} not found`);
       expect(callsRefresh(file!.source), `${rel} no longer refreshes`).toBe(
@@ -179,7 +168,7 @@ describe("router.refresh() call sites are classified chrome or user (#1878)", ()
 
   it("does not let a file be both", () => {
     for (const rel of CHROME_CALL_SITES) {
-      expect(Object.keys(USER_CALL_SITES)).not.toContain(rel);
+      expect(USER_CALL_SITES).not.toContain(rel);
     }
   });
 
