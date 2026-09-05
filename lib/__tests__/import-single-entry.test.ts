@@ -33,13 +33,20 @@ const FOOTPRINT_TABLE_NAMES = new Set(
   IMPORT_FOOTPRINT_TABLES.map((t) => t.table)
 );
 
-// The ONE file allowed to bind a document_id on insert: the persist core.
+// The ONE file allowed to bind a document_id on insert: the persist core. The shared
+// intake-item create core it delegates the medication insert to (#4669) is an ALLOW
+// entry below rather than a second home, so the rule still names one owner per table.
 const PERSIST_FILE = "lib/import-persist.ts";
 
 // document_id-binding INSERTs that legitimately live OUTSIDE the persist core, keyed
 // by file + a normalized-SQL substring (mirrors profile-scoping.test.ts's ALLOW_SQL).
 // Empty today — every import write goes through the core. Keep it SHORT and justified.
 const ALLOW: { file: string; includes: string; why: string }[] = [
+  {
+    file: "lib/intake-item-create.ts",
+    includes: "INSERT INTO intake_items",
+    why: "createIntakeItemCore (#4669) — the ONE statement that mints an intake item, shared by the item form, the accepted suggestion and the importer. The import still reaches it only through the persist core (persistDocumentImport → insertImportRows → persistExtractedMedications), inside that core's transaction, and it binds document_id ONLY from an `extracted` provenance, so a document-bound row cannot be spelled from any other door. intake_items is a footprint table, so clear/reassign/count already handle these rows. The rule this exempts — a document_id-binding INSERT lives where the import owns it — is unchanged for every other table.",
+  },
   {
     file: "lib/migrations/versions/092-consolidate-imported-prescriptions.ts",
     includes:

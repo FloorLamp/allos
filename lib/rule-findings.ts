@@ -13,6 +13,7 @@
 // No owned SQL is added here, so the profile-scoping guard is unaffected.
 
 import { joinNamesForSentence } from "./summarize-names";
+import { commitCached } from "./commit-cache";
 import { profileDayZone, travelExcusalResolver } from "./travel-excusal";
 import {
   getStrengthByExercise,
@@ -490,7 +491,24 @@ export function closureFindingSnapshot(
 // `prefs` (#1020): the viewer's date shape for the dates some finding texts embed
 // (fitness-check, weight-anomaly) — the same threading precedent as `wu` for
 // weights (#1019). Defaults keep login-less callers on the documented fixed shape.
-export function collectCoachingFindings(
+// Memoized until the next commit (#5073) — the heaviest of the six gathers above the
+// dashboard's first candidate. The day is already an argument; `prefs` is two closed
+// unions and both join the key. NOT the suppression bus: `getFindingSuppressions` and
+// `routineOrder` stay per request, so a dismissal taken since the last commit is still
+// read fresh over this set. `closureFindingSnapshot` above is deliberately separate and
+// unmemoized — it is read on BOTH sides of a write.
+export const collectCoachingFindings = commitCached(
+  "rule-findings.coaching",
+  (
+    profileId: number,
+    today: string,
+    wu: WeightUnit,
+    prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
+  ) => `${profileId}:${today}:${wu}:${prefs.timeFormat}:${prefs.dateFormat}`,
+  collectCoachingFindingsUncached
+);
+
+function collectCoachingFindingsUncached(
   profileId: number,
   today: string,
   wu: WeightUnit,

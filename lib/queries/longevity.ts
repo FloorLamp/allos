@@ -17,6 +17,7 @@
 // `.prepare` lives here and the scoping guard is unaffected.
 
 import { today } from "../db";
+import { commitCached } from "../commit-cache";
 import { getProfileSex, getProfileAge } from "../settings";
 import { retestDaysForBiomarker } from "../biomarker-retest";
 import {
@@ -68,7 +69,17 @@ function sriTrendArrow(profileId: number): PillarTrend | null {
 // independently and only supplied to buildPillars when it's present, so a pillar
 // with no data (age/sex unset, no readings, child-gated bio-age) simply doesn't
 // appear — pillars hide when their data is absent, no composite score.
-export function getHealthspanPillars(profileId: number): Pillar[] {
+// Memoized until the next commit (#5073) — one of the six gathers above the dashboard's
+// first candidate, and the longevity page reads the same one. The profile's DAY joins
+// the key: age comes from the birthdate against today, so a birthday must move this
+// even when nothing was written.
+export const getHealthspanPillars = commitCached(
+  "longevity.healthspanPillars",
+  (profileId: number) => `${profileId}:${today(profileId)}`,
+  getHealthspanPillarsUncached
+);
+
+function getHealthspanPillarsUncached(profileId: number): Pillar[] {
   const sex = getProfileSex(profileId);
   const age = getProfileAge(profileId);
 
