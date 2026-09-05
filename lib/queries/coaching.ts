@@ -257,9 +257,9 @@ export function getNiggleContext(profileId: number): NiggleCoachingContext[] {
 // gathered here is asked of `todayStr`, and a quiet midnight must still move it.
 //
 // ONE FIELD IS FINER-GRAINED THAN THE KEY: `workoutActive` reads
-// `getWorkoutPresence`, whose "active" verdict expires when a draft has been QUIET for
-// ACTIVE_MAX_QUIET_MIN — a clock transition with no write behind it, so a memo held
-// across it reports a session still running. It drives the rest card's TENSE and
+// `getWorkoutPresence`, whose "active" verdict expires when a draft has been quiet past
+// `EPISODE_BOUNDS.workout.abandonMin` (lib/open-episode.ts, #5142) — a clock transition
+// with no write behind it, so a memo held across it reports a session still running. It drives the rest card's TENSE and
 // nothing else (see the field below). Not split out of the memo, because doing so puts
 // that read back on every warm load; recorded here so the next reader knows the memo's
 // resolution is a day and this one field wants a minute.
