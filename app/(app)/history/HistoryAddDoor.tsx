@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import InlineError from "@/components/InlineError";
 import { useToast } from "@/components/Toast";
 import type { UsualRoutineDayOffer } from "@/lib/queries/usual-routine";
-import UsualRoutineControl from "@/components/dashboard/UsualRoutineControl";
+import { UsualRoutineOfferCard } from "@/components/dashboard/UsualRoutineControl";
 import HistoricalDoseForm from "@/components/medications/HistoricalDoseForm";
 import {
   doseOptionsFor,
@@ -144,14 +144,14 @@ export function HistoryUsualOffers({
   return (
     // A PLAIN BLOCK, NOT A GRID (#4918 ruling 6). A grid track's default minimum is
     // its item's max-content width, so the offer button was sized to its own
-    // single-line summary and `UsualRoutineControl`'s `truncate` span never got a
+    // single-line summary and `UsualRoutineOfferCard`'s `truncate` span never got a
     // narrower box to truncate in — the card ran ~400px past the column every other
     // block on the page stops at. One or two offers stack the same way in a block,
     // and the shared control's own `min-w-0` seam (components/OfferRow.tsx) is what
     // stops any future host repeating it.
     <div data-testid="history-add-usual">
       {offers.map((offer) => (
-        <UsualRoutineControl
+        <UsualRoutineOfferCard
           key={offer.window}
           window={offer.window}
           food={offer.food}

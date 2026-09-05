@@ -12,7 +12,7 @@ import { pinnedTimezone } from "./pinned-timezone";
 import { utcSqlString, zonedWallTimeToUtc, shiftDateStr } from "@/lib/date";
 import { DOSE_LOG_DATE_WINDOW_DAYS } from "@/lib/dose-log-window";
 import { TIME_BUCKET_LABELS } from "@/lib/intake-schedule";
-import { bulkTakeLabel } from "@/lib/usual-routine";
+import { bulkLabel } from "@/lib/usual-routine";
 import { THEME_STORAGE_KEY } from "@/lib/theme";
 
 // THE DAY LEDGER (#3987 phase 1), on its own seeded stack.
@@ -704,7 +704,7 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     // asserting WHICH doses the control promises while the ladder's own rungs are
     // pinned against literals in the copy test above.
     const promise = (ids: readonly number[]) =>
-      bulkTakeLabel(ids.map((id) => ({ name: nameOf(id) })));
+      bulkLabel("Take", ids.map((id) => ({ name: nameOf(id) })));
     await expect(takeAll).toHaveText(promise(named));
 
     // THE STALE TAP, forged deliberately: one of the doses this row NAMES is resolved
