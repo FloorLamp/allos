@@ -129,7 +129,10 @@ export default async function ProfilePage() {
         {emergencyEnabled && card ? (
           <EmergencyCardView card={card} />
         ) : (
-          <div className="max-w-2xl rounded-xl border border-(--border) bg-surface p-6 print:hidden">
+          <div
+            data-testid="emergency-card-off"
+            className="band max-w-2xl rounded-xl border border-(--border) bg-surface p-6 print:hidden"
+          >
             <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
               Offline emergency card is off
             </h3>

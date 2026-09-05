@@ -8,7 +8,7 @@
 import { db, hoistedStatement, today, writeTx } from "../../db";
 import { readAllForUpdate } from "../../tx";
 import type { LoggedVia } from "../../logged-via";
-import type { DoseBundleId } from "../../dose-bundle";
+import type { BundleId } from "../../bundle";
 import { clampPage, pageCount, pageOffset } from "../../pagination";
 import {
   cadenceOn,
@@ -264,7 +264,7 @@ interface DoseResolveOptions {
   // for the same reason: it records the write EVENT, and an amendment months later is
   // not a new event. The Day ledger's collapse reads it instead of guessing a bundle
   // from a shared write minute.
-  bundleId?: DoseBundleId;
+  bundleId?: BundleId;
 }
 
 // WHAT EACH DOOR LETS ITS CALLER STATE (#4742, #4745), derived from the one options
@@ -872,7 +872,7 @@ export function logHistoricalDose(
   // The composed action this backfill is one row of (#4328). The composed one-tap
   // reaches this writer instead of `markDoseTaken` once the day is past the ±2 window
   // (#4305), and one tap is one tap whichever writer it lands in.
-  bundleId?: DoseBundleId
+  bundleId?: BundleId
 ): HistoricalDoseOutcome {
   const tz = getTimezone(profileId);
   const todayStr = today(profileId);

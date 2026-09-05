@@ -127,8 +127,11 @@ export function logUsualFoodCore(
   // Nutrition page's own, or the composed Telegram one-tap. Required, no default.
   loggedVia: LoggedVia,
   loggedAt: string = instantNow(),
-  // Which message's tap this is (#2264/#2460) — the Telegram composed one-tap only;
-  // the web control passes nothing and stores NULL, exactly as the bar does.
+  // WHERE THE ACT CAME FROM (see FoodWriteOrigin), passed straight to every serving so
+  // the set this one tap writes agrees about it. Which message's tap this is
+  // (#2264/#2460) is the Telegram composed one-tap's only; the ACT ID (#5082) is
+  // whatever the composed caller minted, and the web control passing nothing stores
+  // NULL for both, exactly as the bar does.
   origin?: FoodWriteOrigin
 ): UsualFoodOutcome {
   const t = today(profileId);

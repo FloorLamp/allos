@@ -28,6 +28,8 @@ import {
 } from "./intake-schedule";
 import type { IntakeRule } from "./intake-rules";
 
+import type { PrefillField } from "./intake-prefill";
+
 export type IntakeFactKey =
   | "dose"
   | "timing"
@@ -107,6 +109,30 @@ export interface IntakeFactInput {
   itemNames: ReadonlyMap<number, string>;
   // Facts still showing a label-derived suggestion the person has not touched (#846).
   suggestedFacts?: ReadonlySet<IntakeFactKey>;
+}
+
+// Which FACT each prefillable field belongs to, so a chip can carry the #846 marking
+// the old always-visible inputs carried on their labels.
+//
+// TOTAL, and that is the point (#4672). The form spelled this as an if/else whose
+// catch-all sent everything unrecognised to the `timing` chip — so a new PrefillField
+// would have marked the wrong sentence, silently, with nothing to fail. A Record over
+// the field union makes an unhandled field a type error instead.
+export const PREFILL_FIELD_FACT: Record<PrefillField, IntakeFactKey> = {
+  doseAmount: "dose",
+  asNeeded: "importance",
+  minIntervalHours: "importance",
+  maxDailyCount: "importance",
+  foodTiming: "timing",
+  timeOfDay: "timing",
+};
+
+export function suggestedIntakeFacts(
+  fields: Iterable<PrefillField>
+): Set<IntakeFactKey> {
+  const out = new Set<IntakeFactKey>();
+  for (const field of fields) out.add(PREFILL_FIELD_FACT[field]);
+  return out;
 }
 
 export const INTAKE_FACT_NOUNS: Record<IntakeFactKey, string> = {

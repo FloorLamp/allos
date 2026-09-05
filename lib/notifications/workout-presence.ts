@@ -11,7 +11,7 @@
 //      finish was never observed. `isPostWorkoutReady` stays the dueness truth —
 //      this only changes DELIVERY timing.
 //
-//   2. runStaleWorkoutSuggest — an `active` session gone quiet past STALE_MIN gets
+//   2. runStaleWorkoutSuggest — an `active` session gone quiet past its stale bound gets
 //      ONE gentle "Still working out? Finish or discard" suggest (#560). Never
 //      auto-ends; suggest-only, deep-links back to the session. Waking-gated (a
 //      workout is a waking activity and this is a soft coaching suggest, not a

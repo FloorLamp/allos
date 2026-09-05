@@ -129,7 +129,7 @@ export default function NowCards({
     );
 
   return (
-    <ul className="band flex min-w-0 flex-col overflow-hidden rounded-xl border border-(--border) bg-surface">
+    <ul className="band flex min-w-0 flex-col overflow-hidden rounded-xl border border-(--border) bg-surface px-0!">
       {rows.map((row, index) => {
         const animating = motion.animate.has(row.id);
         // THE LABEL IS THE CLUSTER'S FIRST ROW'S (#4752 item 6). The ranker already

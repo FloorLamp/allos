@@ -13,23 +13,23 @@ import type { IntradayView } from "@/lib/intraday-layout";
 
 // ONE ZOOM AND ONE CROSSHAIR FOR THE DAY, NOT ONE PER CHART (#4950).
 //
-// `components/IntradayPanel.tsx` mounts `IntradayChart` TWICE — `variant="compact"`
-// under `sm:hidden` and `variant="wide"` under `hidden sm:block` — and both are in the
-// DOM at once. That was harmless while the view and the cursor were private: only the
-// visible one receives pointer events, so only it ever moved.
+// `IntradayChart` renders its day TWICE — a compact drawing and a wide one, both in
+// the DOM at once, with a container query displaying whichever the chart's own width
+// earns (#4973). That was harmless while the view and the cursor were private: only
+// the displayed drawing receives pointer events, so only it ever moved.
 //
 // It stops being harmless the moment anything OUTSIDE the chart reads them. The owner's
 // amendment makes the add row read the window off "the current view", and with two
 // owners there are two views and no way for the page to know which one the viewport is
 // showing. Every cheaper channel — a `window` CustomEvent like `revealShellChrome`, or a
-// context each chart WRITES into — has the same collision, and survives today only
-// because a hidden chart happens to receive no events. That is true because of a CSS
-// class, and it would go quietly false the first time someone changes the breakpoint or
-// renders both; the failure is an add row offering clocks from the chart nobody is
-// looking at.
+// context each drawing WRITES into — has the same collision, and survives today only
+// because a hidden drawing happens to receive no events. That is true because of a CSS
+// declaration, and it would go quietly false the first time someone changes the
+// breakpoint or displays both; the failure is an add row offering clocks from the
+// drawing nobody is looking at.
 //
-// So the state is lifted and the charts become readers of it. There is one window
-// because there is one view, and "which variant is showing?" stops being a question
+// So the state is lifted and the drawings become readers of it. There is one window
+// because there is one view, and "which geometry is showing?" stops being a question
 // anyone has to answer.
 //
 // NO PROVIDER IS ALSO A VALID MOUNT. A chart rendered outside the day page — a test, a

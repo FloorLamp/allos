@@ -125,7 +125,9 @@ export default async function InsightsSection({
             {/* One button per recap SCALE, from the registry (#2178) — the
                   narrative periods and the recap's own cadence are one
                   vocabulary, so a fourth scale would not need a fourth button
-                  written by hand. */}
+                  written by hand. They stay SECONDARY: three peers choosing a
+                  period are not one commit, and the one rank per surface
+                  (#3982) has nothing to pick between them. */}
             {REVIEW_CADENCES.map((sc) => (
               <SubmitButton
                 key={sc.scale}
@@ -185,7 +187,7 @@ export default async function InsightsSection({
                 defaultValue={today(profile.id)}
               />
             </div>
-            <SubmitButton pendingLabel="Generating…">
+            <SubmitButton pendingLabel="Generating…" variant="primary">
               ✦ Generate analysis
             </SubmitButton>
             <p className="text-xs text-slate-500 dark:text-slate-400">

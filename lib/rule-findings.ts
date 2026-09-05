@@ -13,6 +13,7 @@
 // No owned SQL is added here, so the profile-scoping guard is unaffected.
 
 import { joinNamesForSentence } from "./summarize-names";
+import { commitCached } from "./commit-cache";
 import { profileDayZone, travelExcusalResolver } from "./travel-excusal";
 import {
   getStrengthByExercise,
@@ -39,11 +40,10 @@ import {
   getFiberAdequacy,
   getFindingSuppressions,
 } from "./queries";
+import { effectiveSituationResolver } from "./queries/derived-situations";
 import { activeFindings } from "./findings";
 import { exerciseHistoryKey } from "./lifts";
 import {
-  getActiveSituations,
-  getSituationEvents,
   getHomeLocation,
   getProfileSex,
   getProfileAge,
@@ -81,7 +81,7 @@ import {
   type DataQualityGap,
 } from "./data-quality";
 import { buildFoodDrugVarianceFindings } from "./food-drug-ledger-findings";
-import { situationHistoryResolver } from "./trend-annotations";
+
 import { getIntakeHistory } from "./intake-history";
 import {
   detectDemotionCandidates,
@@ -491,7 +491,24 @@ export function closureFindingSnapshot(
 // `prefs` (#1020): the viewer's date shape for the dates some finding texts embed
 // (fitness-check, weight-anomaly) — the same threading precedent as `wu` for
 // weights (#1019). Defaults keep login-less callers on the documented fixed shape.
-export function collectCoachingFindings(
+// Memoized until the next commit (#5073) — the heaviest of the six gathers above the
+// dashboard's first candidate. The day is already an argument; `prefs` is two closed
+// unions and both join the key. NOT the suppression bus: `getFindingSuppressions` and
+// `routineOrder` stay per request, so a dismissal taken since the last commit is still
+// read fresh over this set. `closureFindingSnapshot` above is deliberately separate and
+// unmemoized — it is read on BOTH sides of a write.
+export const collectCoachingFindings = commitCached(
+  "rule-findings.coaching",
+  (
+    profileId: number,
+    today: string,
+    wu: WeightUnit,
+    prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
+  ) => `${profileId}:${today}:${wu}:${prefs.timeFormat}:${prefs.dateFormat}`,
+  collectCoachingFindingsUncached
+);
+
+function collectCoachingFindingsUncached(
   profileId: number,
   today: string,
   wu: WeightUnit,
@@ -1654,13 +1671,17 @@ export function buildAdherencePatternFindings(
   const dates = lastNDates(today, ADHERENCE_PATTERN_DAYS);
   const workoutDays = new Set(getActivityDates(profileId));
   const isExcused = travelExcusalResolver(profileId);
-  // Per-day situation resolver (#654): a past day is scored against the situations
-  // active THAT day, not today's toggle applied retroactively — so a situational
-  // item's pattern observations aren't distorted by a situation activated today.
-  const situationsOn = situationHistoryResolver(
-    getActiveSituations(profileId),
-    getSituationEvents(profileId)
-  );
+  // Per-day DUENESS resolver (#654/#3993): a past day is scored against what held THAT
+  // day, declared AND derived, not today's toggle applied retroactively.
+  //
+  // This is the widest walk in the app — ADHERENCE_PATTERN_DAYS = 56 days, on the
+  // dashboard — and it is the one the cost objection was really about. It costs one
+  // gather now, not 56: the resolver reads each derived input once for the declared
+  // window. A pattern therefore counts exactly the days the strip it summarizes counts.
+  const situationsOn = effectiveSituationResolver(profileId, {
+    from: dates[0],
+    to: today,
+  });
 
   const inputs: DoseAdherenceInput[] = [];
   for (const d of doses) {

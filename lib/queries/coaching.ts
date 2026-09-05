@@ -1,9 +1,9 @@
 import { today } from "../db";
+import { commitCached } from "../commit-cache";
 import { localDayOf } from "../local-day-window";
 import { getLiveNiggles } from "../niggle-store";
 import { niggleLabel, type NiggleCoachingContext } from "../niggle-model";
 import { getMainSleepNightlyMinutes } from "./sleep";
-import { isLastNight } from "../sleep-summary";
 import { getLatestBodyMetricDailyPoints } from "./metrics";
 import {
   getActivityDates,
@@ -88,28 +88,73 @@ function spread(values: number[]): number | undefined {
 // deficit. Baseline is the mean of the prior nights in the window (falls back to
 // all nights when only one).
 //
-// FRESHNESS IS PART OF THE ANSWER. The field is `lastNightMin` and every consumer
-// states it as a fact about last night — the rest-sleep nudge ("You slept 5h last
-// night"), the derived poor-sleep situation, the morning digest. The newest
-// recorded night is NOT automatically last night: on any morning before the
-// tracker pushes, the newest night is the one before it, and returning it named
-// the wrong night's sleep as this morning's. So this refuses rather than
-// substitutes — no sleep signal is a state every consumer already handles (they
-// simply don't fire), while a confidently wrong one is not.
-export function getSleepSignal(profileId: number): SleepSignal | null {
-  const nights = getMainSleepNightlyMinutes(profileId, RECOVERY_BASELINE_DAYS); // oldest → newest, main overnight session per night
-  if (nights.length === 0) return null;
-  const last = nights[nights.length - 1];
-  if (!isLastNight(last.date, today(profileId))) return null;
-  const lastNightMin = last.value;
-  const prior = nights.slice(0, -1);
-  const baseNights = prior.length ? prior : nights;
-  const baselineMin = mean(baseNights.map((n) => n.value));
-  const baselineSpreadMin = spread(prior.map((n) => n.value));
-  return {
-    lastNightMin,
-    baselineMin,
-    ...(baselineSpreadMin != null ? { baselineSpreadMin } : {}),
+// FRESHNESS IS PART OF THE ANSWER, and `wakeDay` is what names it. The field is
+// `lastNightMin` and every consumer states it as a fact about the night ending that
+// day — the rest-sleep nudge ("You slept 5h last night"), the derived poor-sleep
+// situation, the morning digest. The newest recorded night is NOT automatically the
+// night asked about: on any morning before the tracker pushes, the newest night is the
+// one before it, and returning it named the wrong night's sleep as this morning's. So
+// this refuses rather than substitutes — no sleep signal is a state every consumer
+// already handles (they simply don't fire), while a confidently wrong one is not.
+//
+// DATED (#3993). `wakeDay` used to be implicit ("last night", checked with isLastNight
+// against the profile's today), which is why the derived poor-sleep situation could only
+// ever speak for today. It is the same question with its subject named, so a past-day
+// dueness surface can ask what the night ending THAT day was, against the baseline of
+// the nights before it.
+//
+// TODAY'S ANSWER MOVED IN EXACTLY ONE CASE, written down rather than claimed away: the
+// old reader took the NEWEST recorded night and refused if it was not the day asked
+// about, so a single future-dated row (clock skew, a bad import — see
+// lib/sleep-clock-skew.ts) silenced the signal entirely. The day asked about now selects
+// its own night, so junk stamped ahead of today cannot hide the night that really ended
+// it. Every other call answers exactly as before.
+//
+// The baseline is the RECOVERY_BASELINE_DAYS nights ending at `wakeDay`, drawn from the
+// reader's own most-recent window — so a `wakeDay` older than that window holds no night
+// here and the signal is null, the same conservative missing-data posture as an unsynced
+// night. A RETROACTIVE READ SEES DATA AS STORED NOW: a night that syncs late changes the
+// verdict for its day, as every other read of a past day does.
+export function getSleepSignal(
+  profileId: number,
+  wakeDay: string
+): SleepSignal | null {
+  return sleepSignalResolver(profileId)(wakeDay);
+}
+
+// The same answer for a WINDOW of wake-days, off ONE read of the nightly series.
+//
+// The read was never per-day: `getMainSleepNightlyMinutes` returns the profile's whole
+// recent series and the signal is a filter plus a slice over it. Asking day by day
+// re-read the series once per day, which is what made a dated poor-sleep verdict look
+// expensive enough to be worth a seam (#3993). It is not — the query count is the same
+// for one day and for fifty-six.
+//
+// Per-day answers are IDENTICAL to `getSleepSignal`'s by construction: the same
+// filter-and-slice, over the same rows. The resolver holds a snapshot for its lifetime —
+// the same rule `effectiveSituationResolver` states — so a caller wanting a fresh read
+// builds a fresh resolver.
+export function sleepSignalResolver(
+  profileId: number
+): (wakeDay: string) => SleepSignal | null {
+  // oldest → newest, main overnight session per night
+  const series = getMainSleepNightlyMinutes(profileId);
+  return (wakeDay) => {
+    const nights = series
+      .filter((n) => n.date <= wakeDay)
+      .slice(-RECOVERY_BASELINE_DAYS);
+    const last = nights[nights.length - 1];
+    if (last?.date !== wakeDay) return null;
+    const lastNightMin = last.value;
+    const prior = nights.slice(0, -1);
+    const baseNights = prior.length ? prior : nights;
+    const baselineMin = mean(baseNights.map((n) => n.value));
+    const baselineSpreadMin = spread(prior.map((n) => n.value));
+    return {
+      lastNightMin,
+      baselineMin,
+      ...(baselineSpreadMin != null ? { baselineSpreadMin } : {}),
+    };
   };
 }
 
@@ -207,7 +252,30 @@ export function getNiggleContext(profileId: number): NiggleCoachingContext[] {
   }));
 }
 
-export function gatherCoachingInput(
+// Memoized until the next commit (#5073) — the second-heaviest of the six gathers above
+// the dashboard's first candidate. The profile's DAY joins the key: almost everything
+// gathered here is asked of `todayStr`, and a quiet midnight must still move it.
+//
+// ONE FIELD IS FINER-GRAINED THAN THE KEY: `workoutActive` reads
+// `getWorkoutPresence`, whose "active" verdict expires when a draft has been quiet past
+// `EPISODE_BOUNDS.workout.abandonMin` (lib/open-episode.ts, #5142) — a clock transition
+// with no write behind it, so a memo held across it reports a session still running. It drives the rest card's TENSE and
+// nothing else (see the field below). Not split out of the memo, because doing so puts
+// that read back on every warm load; recorded here so the next reader knows the memo's
+// resolution is a day and this one field wants a minute.
+export const gatherCoachingInput = commitCached(
+  "coaching.input",
+  (
+    profileId: number,
+    weightUnit: WeightUnit,
+    distanceUnit: DistanceUnit,
+    temperatureUnit: TemperatureUnit = "C"
+  ) =>
+    `${profileId}:${today(profileId)}:${weightUnit}:${distanceUnit}:${temperatureUnit}`,
+  gatherCoachingInputUncached
+);
+
+function gatherCoachingInputUncached(
   profileId: number,
   weightUnit: WeightUnit,
   distanceUnit: DistanceUnit,
@@ -257,7 +325,7 @@ export function gatherCoachingInput(
     activeRoutine: getActiveRoutine(profileId),
     deloadWeek:
       getRoutineCycleStatus(profileId, todayStr)?.isDeloadWeek ?? false,
-    sleep: getSleepSignal(profileId),
+    sleep: getSleepSignal(profileId, todayStr),
     // The Poor sleep situation is DECLARED (manually toggled) — the rest-sleep trigger
     // tilts on the UNIFIED verdict so a self-reported rough night reaches coaching too
     // (#1292; the user wins over the data). Name-keyed via sameSituation (#560).

@@ -13,6 +13,7 @@
 // period, the send on the one that closed (#1021).
 
 import { today } from "../db";
+import { commitCached } from "../commit-cache";
 import { daysBetweenDateStr, shiftDateStr, weekdayOfDateStr } from "../date";
 import {
   getActivitiesSince,
@@ -73,9 +74,8 @@ import {
 } from "../recap-scale";
 import type { ActivityType } from "../types/training";
 import { getRecentPeriodRecaps } from "../queries";
+import { effectiveSituationResolver } from "../queries/derived-situations";
 import {
-  getActiveSituations,
-  getSituationEvents,
   getWeekMode,
   getProfileMoodRecap,
   getWeekStart,
@@ -95,7 +95,7 @@ import {
   isTrainingRelevant,
 } from "../life-stage";
 import { isTrainingFrequencyScope } from "../frequency-targets";
-import { situationHistoryResolver } from "../trend-annotations";
+
 import { illnessDaysInWindow } from "../illness-episode-store";
 import { getLatestFitnessAssessmentDate } from "../fitness-assessment";
 import { assembleFitnessCheckModel } from "../fitness-check-assemble";
@@ -157,12 +157,15 @@ function windowAdherence(
     itemById.has(d.item_id)
   );
   if (doses.length === 0) return null;
-  // Per-day situation resolver (#654): each past day in the recap window is scored
-  // against the situations active THAT day, not today's toggle applied retroactively.
-  const situationsOn = situationHistoryResolver(
-    getActiveSituations(profileId),
-    getSituationEvents(profileId)
-  );
+  // Per-day DUENESS resolver (#654/#3993): each past day in the recap window is scored
+  // against what held THAT day, declared AND derived — the same answer the catch-up
+  // sheet gave when it offered the dose. It has to be: the loop below builds `dueIds`
+  // first and intersects the logged set second, so a day this resolver called `na` would
+  // silently discard a dose the person really did take.
+  const situationsOn = effectiveSituationResolver(profileId, {
+    from: start,
+    to: end,
+  });
 
   let taken = 0;
   let skipped = 0;
@@ -596,14 +599,18 @@ export function gatherRecapInput(
 // are the same gather (#221) and differ only in which period they name — the card shows
 // the period you are living in (so it keeps matching the routine counters, #223), the
 // send narrates the one that closed.
-export function getRecapCard(
-  profileId: number,
-  weightUnit: WeightUnit = "kg"
-): Recap {
-  return buildRecap(
-    gatherRecapInput(profileId, weightUnit, getRecapScale(profileId))
-  );
-}
+// Memoized until the next commit (#5073) — one of the six gathers above the dashboard's
+// first candidate. The profile's DAY joins the key because the period this card names is
+// the one you are living in, which rolls over on the clock rather than on a write.
+export const getRecapCard = commitCached(
+  "recap.card",
+  (profileId: number, weightUnit: WeightUnit = "kg") =>
+    `${profileId}:${weightUnit}:${today(profileId)}`,
+  (profileId: number, weightUnit: WeightUnit = "kg"): Recap =>
+    buildRecap(
+      gatherRecapInput(profileId, weightUnit, getRecapScale(profileId))
+    )
+);
 
 // Gather + build a recap at an explicit scale (issue #20, #2178): the AI narrative
 // generator reuses this so the weekly/monthly/quarterly AI read narrates over the SAME

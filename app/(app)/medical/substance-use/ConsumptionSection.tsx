@@ -33,6 +33,7 @@ import {
   setSubstanceTargetAction,
 } from "./actions";
 import Disclosure from "@/components/Disclosure";
+import SubmitButton from "@/components/SubmitButton";
 import Link from "next/link";
 
 export default function ConsumptionSection({
@@ -394,14 +395,13 @@ export default function ConsumptionSection({
               >
                 Cancel
               </button>
-              <button
-                type="submit"
-                className="btn"
+              <SubmitButton
+                variant="primary"
                 disabled={pending || capInput === ""}
                 data-testid={`substance-cap-save-${substance}`}
               >
                 {pending ? "Saving…" : "Save cap"}
-              </button>
+              </SubmitButton>
             </div>
           </form>
         </ModalShell>

@@ -296,6 +296,32 @@ describe("episodeComparisonFor (#856 item 10)", () => {
     expect(c.priorCount).toBe(2);
     expect(c.minDays).toBe(4);
     expect(c.maxDays).toBe(6);
+    expect(c.medianDays).toBe(5);
+  });
+
+  it("states a whole number of days when the priors straddle a half", () => {
+    // The line counts DAYS, so an even number of priors averaging 4.5 says five. The
+    // module used to spell that with a private median of its own; it now reads the
+    // shared habit model (#5143) and rounds where the counting happens.
+    const p = newProfile("compare-half");
+    for (const [start, end] of [
+      ["2026-01-01", "2026-01-04"], // 4 days
+      ["2026-03-01", "2026-03-05"], // 5 days
+    ]) {
+      db.prepare(
+        `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
+         VALUES (?, 'Illness', ?, ?)`
+      ).run(p, start, end);
+    }
+    const openId = Number(
+      db
+        .prepare(
+          `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
+           VALUES (?, 'Illness', ?, NULL)`
+        )
+        .run(p, shiftDateStr(today(p), -1)).lastInsertRowid
+    );
+    expect(episodeComparisonFor(p, openId)!.medianDays).toBe(5);
   });
 
   it("is null with no prior closed episodes", () => {

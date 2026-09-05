@@ -86,6 +86,7 @@ import {
 import { FLOW_LABELS, FLOW_LEVELS } from "@/lib/cycle";
 import MoodForm from "@/components/mood/MoodForm";
 import { formatMonthDay } from "@/lib/format-date";
+import SubmitButton from "@/components/SubmitButton";
 
 // THE RECORD'S ROWS (#3958 phase 1) — one line, at every viewport.
 //
@@ -536,9 +537,9 @@ export default function HistoryRows({
 
     const buttons = (
       <div className="flex items-end gap-2">
-        <button className="btn" type="submit" disabled={submitting}>
+        <SubmitButton variant="primary" disabled={submitting}>
           {submitting ? "Saving…" : "Save"}
-        </button>
+        </SubmitButton>
         <button className="btn-ghost" type="button" onClick={done}>
           Cancel
         </button>
@@ -1121,7 +1122,10 @@ export default function HistoryRows({
     // value, so nothing above `sm` moves. Without `band` this list would draw the
     // per-surface card frame the flat ban removed, on the one page built to be
     // scanned.
-    <ul className={`${LOGGED_EVENT_LIST} band`} data-testid="history-rows">
+    <ul
+      className={`${LOGGED_EVENT_LIST} band px-0!`}
+      data-testid="history-rows"
+    >
       {rows.map(renderRow)}
       {/* THE DAY'S FIXED LAST LINES (#3958). An aggregate has no honest single instant,
           so it takes a fixed position rather than competing for one in the sort — and

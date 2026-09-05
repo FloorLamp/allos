@@ -8,7 +8,7 @@
 //   node scripts/orchestration/release-notes-gather.mjs --check
 //
 // --check prints ONE line — how many user-visible-looking merges the notes
-// have not covered — and always exits 0. It exists for catchup-digest.sh:
+// have not covered — and always exits 0. It exists for pm-digest.sh:
 // the batch used to fall behind silently (#4077 caught four uncovered merges
 // by hand), and a lag nobody is shown is a lag nobody closes.
 //
@@ -72,6 +72,7 @@ const INTERNAL_GUESS = [
   /^Release notes\b/i,
   /^Add (the )?release notes\b/i,
   /^Bump /,
+  // `orchestrat` stays for commit messages written before the 2026-09 rename.
   /\b(runbook|orchestrat|e2e|flake|shard|worktree|dispatch)\b/i,
   /\b(merge-gate|watermark|reconcil\w*|taxonomy|brevity|catch-up digest)\b/i,
 ];

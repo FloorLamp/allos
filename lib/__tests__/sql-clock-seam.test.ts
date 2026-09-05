@@ -36,7 +36,7 @@ import { sqlNow } from "../clock";
 // now to decide whether a live draft has gone quiet — so the stamp was not merely
 // displayed, it was compared. Under the e2e freeze nudge (lib/e2e-freeze-instant.ts)
 // the seam leads real time by 30–60 minutes, and a draft saved seconds earlier read
-// as 58 minutes quiet, past STALE_MIN. The test to apply is not "is this a display
+// as 58 minutes quiet, past the workout draft's stale bound. The test to apply is not "is this a display
 // stamp" but "does anything ever compare this value to the seam's now — as a DAY or
 // as an ELAPSED interval?" If it does, bind sqlNow(). An audit stamp only nothing
 // reads back against the app's clock may still stay here, with that said out loud.

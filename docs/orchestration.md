@@ -1,6 +1,6 @@
-# Orchestrating development on FloorLamp/allos
+# Working development on FloorLamp/allos
 
-Status: **living** · process rules for agent-orchestrated development sessions
+Status: **living** · process rules for agent-run development sessions
 
 This is the entrypoint. Read only the procedure needed for the current job:
 
@@ -10,11 +10,13 @@ This is the entrypoint. Read only the procedure needed for the current job:
 - [Queue labels](orchestration/labels.md)
 - [E2E and CI](orchestration/e2e-ci.md)
 - [Review and merge](orchestration/review-merge.md)
+- [Cross-session markers](orchestration/claims.md)
 - [Cadence and lifecycle](orchestration/lifecycle.md)
+- [Two orchestrators on one repo](orchestration/multi-orchestrator.md)
 
 ## Standing contract
 
-> Orchestrate all development; prioritize P0/P1 bugs over features; delegate to
+> Work all development; prioritize P0/P1 bugs over features; delegate to
 > coding agents; GitHub REST for ALL READS + MOST WRITES; open PRs as ready; allow at most two
 > agents working on E2E; only the orchestrator runs full E2E suites; parallelize
 > non-E2E work; review every PR, adversarial when needed
@@ -35,7 +37,7 @@ This is the entrypoint. Read only the procedure needed for the current job:
   (`dispatch.md`); labels come only from the closed taxonomy (`labels.md`).
 - Dispatch continuously while viable work exists. Do not ask permission to
   resume or refill the pipeline — and never block on the owner: no
-  `AskUserQuestion` while orchestrating; questions become `needs-human`
+  `AskUserQuestion` while working; questions become `needs-human`
   labels with the owner assigned, and the session keeps moving.
 
 ## Start every check-in
@@ -55,10 +57,10 @@ scripts/orchestrator-checkin.sh
 2. Cluster related, non-overlapping work into branches.
 3. Dispatch through `dispatch-brief.mjs new`.
 4. Review the full diff and verify claims against the repository.
-5. Require green CI on the exact head, then squash merge serially. A second
-   merge needs checks that ran on a base containing the first: compare
-   `started_at` to the previous merge; `mergeable_state` reports `clean` either
-   way. Re-run, or write down why the two file sets cannot interact.
+5. Require green CI on the exact head, then squash merge serially. A head
+   whose checks ran on an older base merges without a re-run only when
+   `scripts/orchestration/landing-independence.mjs <pr>` exits 0 — its paths are
+   disjoint from everything landed since, and no shared file on either side.
 6. Run `dispatch-brief.mjs done <branch>`, confirm issue closure, and update
    release notes when appropriate.
 

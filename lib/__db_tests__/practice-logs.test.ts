@@ -697,6 +697,188 @@ describe("live practice sessions (#3143)", () => {
     ).toEqual({ kind: "not-live" });
   });
 
+  // #5091 — A LIVE ROW THAT KNOWS ITS OWN LENGTH COMPLETES ITSELF. A Start now stamps
+  // the practice's usual duration with `derived_window = 1` (#4897) and nothing read it
+  // as an END, so a 15-minute red-light session started at 06:28 was still "running" at
+  // 10:52 and drew four hours wide. The second tap is the tap the one-tap doctrine says
+  // a person should not owe when the row already knows when it finished.
+  //
+  // `Rowing` is given two 15-minute sessions first, because the usual duration IS the
+  // history: a practice with none has nothing to complete at, which is the third case
+  // below.
+  function seedUsual(pid: number, minutes: number): void {
+    for (const date of ["2026-08-29", "2026-08-30"])
+      logPracticeSession(pid, "Rowing", date, "page", { durationMin: minutes });
+  }
+
+  it("completes a known-length session at start plus its duration, with no tap", () => {
+    const pid = makeProfile("live-completes");
+    seedUsual(pid, 15);
+    expect(getPracticeUsualDuration(pid, "Rowing")).toBe(15);
+    const started = startLivePracticeSession(pid, "Rowing", "page");
+    expect(started.kind).toBe("started");
+
+    vi.setSystemTime(new Date("2026-08-31T12:20:00Z"));
+    closeAbandonedPracticeSessions(pid);
+    const [row] = getPracticeSessions(pid, "Rowing");
+    expect(row).toMatchObject({
+      date: "2026-08-31",
+      start_time: "12:00",
+      // The row's OWN start plus its OWN duration, not the minute the sweep ran.
+      end_time: "12:15",
+      duration_min: 15,
+      live: 0,
+      // Still derived, so the chart and the note go on hedging the end (#4948). A
+      // completion that cleared this would turn a derived end into a stated one.
+      derived_window: 1,
+    });
+  });
+
+  it("is still live before that instant, and an End tap writes the observed end", () => {
+    const pid = makeProfile("live-before-derived");
+    seedUsual(pid, 15);
+    const started = startLivePracticeSession(pid, "Rowing", "page");
+    expect(started.kind).toBe("started");
+    if (started.kind !== "started") return;
+
+    vi.setSystemTime(new Date("2026-08-31T12:10:00Z"));
+    closeAbandonedPracticeSessions(pid);
+    expect(getPracticeSessions(pid, "Rowing")[0]).toMatchObject({ live: 1 });
+    // The End tap still wins before the derived end: what was observed beats what was
+    // expected, which is the whole reason the tap stays.
+    expect(endLivePracticeSession(pid, started.session.id)).toMatchObject({
+      kind: "ended",
+      session: { end_time: "12:10", duration_min: 10, live: 0 },
+    });
+  });
+
+  it("leaves a session with no usual duration exactly as it was", () => {
+    // The unchanged case, read at the SAME offsets as the two above rather than by
+    // reading the branch: a practice with no history has no length to complete at.
+    const pid = makeProfile("live-no-usual");
+    const started = startLivePracticeSession(pid, "Rowing", "page");
+    expect(started.kind).toBe("started");
+    for (const at of ["2026-08-31T12:10:00Z", "2026-08-31T12:20:00Z"]) {
+      vi.setSystemTime(new Date(at));
+      closeAbandonedPracticeSessions(pid);
+      expect(getPracticeSessions(pid, "Rowing")[0]).toMatchObject({
+        live: 1,
+        end_time: null,
+        duration_min: null,
+      });
+    }
+    // ...and the six-hour bound still closes it start-only.
+    vi.setSystemTime(new Date("2026-08-31T19:00:00Z"));
+    expect(closeAbandonedPracticeSessions(pid)).toBe(1);
+    expect(getPracticeSessions(pid, "Rowing")[0]).toMatchObject({
+      live: 0,
+      end_time: null,
+      duration_min: null,
+    });
+  });
+
+  it("leaves the usual duration no abandoned derived row to vote with (#4900)", () => {
+    // ASSERTED AS AN ABSENCE, with its reason: #4900 was about a row that was never
+    // finished voting in the usual. For a practice that HAS a usual, such a row can no
+    // longer exist — it completes at its own derived end long before the six-hour
+    // bound — so the vote is over finished sessions only.
+    const pid = makeProfile("live-no-abandoned-vote");
+    seedUsual(pid, 15);
+    startLivePracticeSession(pid, "Rowing", "page");
+    vi.setSystemTime(new Date("2026-08-31T19:00:00Z"));
+    closeAbandonedPracticeSessions(pid);
+    expect(
+      getPracticeSessions(pid, "Rowing").filter(
+        (row) =>
+          row.live === 0 && row.start_time !== null && row.end_time === null
+      )
+    ).toEqual([]);
+    expect(getPracticeUsualDuration(pid, "Rowing")).toBe(15);
+  });
+
+  it("closes a live row whose start is stranded ahead of the clock", () => {
+    // A westward timezone edit can leave a stored wall clock reading as future. It is
+    // not a session in progress however little quiet has passed, and this is the claim
+    // about the ROW that the shared episode model (#5142) deliberately does not make:
+    // the model bounds quiet, and a start ahead of the clock is judged here.
+    const pid = makeProfile("live-future-start");
+    const started = startLivePracticeSession(pid, "Rowing", "page");
+    expect(started.kind).toBe("started");
+    vi.setSystemTime(new Date("2026-08-31T09:00:00Z")); // three hours BEFORE the start
+    expect(closeAbandonedPracticeSessions(pid)).toBe(1);
+    expect(getPracticeSessions(pid, "Rowing")[0]).toMatchObject({
+      live: 0,
+      end_time: null,
+      duration_min: null,
+    });
+  });
+
+  // THE PRACTICE KIND'S STALE WINDOW IS ZERO-WIDTH, written down here so the next
+  // reader does not have to derive it (#5142). `EPISODE_BOUNDS.practice` has
+  // `staleMin === abandonMin === 360`, so the instant a practice stops reading as in
+  // progress is the same instant the sweep clears it: `stale` is a state the practice
+  // kind can be IN, but no clock lands in it for longer than the gap between two
+  // sweeps. That is not an oversight — practice is the one kind with no "Still going?"
+  // nudge, and a suggest nobody sends needs no window to be sent in.
+  //
+  // The two clocks below are the convention, and they are the reason `episodeIsOpen`
+  // is not dead code even though a green suite could be had without it: `staleMin` is
+  // reached INCLUSIVELY, `abandonMin` is passed STRICTLY, so exactly at the bound the
+  // row is stale-and-open and one minute later it is gone.
+  it("holds a live practice AT its bound and abandons it one minute past", () => {
+    const pid = makeProfile("live-at-the-bound");
+    setTimezone(pid, "UTC");
+    vi.setSystemTime(new Date("2026-08-31T06:00:00Z"));
+    expect(startLivePracticeSession(pid, "Sauna", "page").kind).toBe("started");
+
+    // Exactly six hours of quiet. Stale, and stale is open.
+    vi.setSystemTime(new Date("2026-08-31T12:00:00Z"));
+    expect(closeAbandonedPracticeSessions(pid)).toBe(0);
+    expect(getPracticeSessions(pid, "Sauna")[0]).toMatchObject({
+      live: 1,
+      end_time: null,
+      duration_min: null,
+    });
+
+    vi.setSystemTime(new Date("2026-08-31T12:01:00Z"));
+    expect(closeAbandonedPracticeSessions(pid)).toBe(1);
+    expect(getPracticeSessions(pid, "Sauna")[0]).toMatchObject({
+      live: 0,
+      end_time: null,
+      duration_min: null,
+    });
+  });
+
+  // THE ARM NO PRODUCT PATH REACHES, asserted so that it cannot rot silently. A live
+  // row is opened with a start and nothing in the app clears one, so `startedAt == null`
+  // is unreachable from the outside — which is exactly why it is worth pinning: an
+  // unread branch that quietly starts returning "still going" would hold a row open
+  // forever with no evidence at all behind it. The start is nulled in SQL because that
+  // is the only way to reach the state, and the assertion is that an episode with NO
+  // readable start is abandoned immediately rather than defaulted to now.
+  it("abandons a live row whose start the app cannot read at all", () => {
+    const pid = makeProfile("live-unreadable-start");
+    setTimezone(pid, "UTC");
+    vi.setSystemTime(new Date("2026-08-31T12:00:00Z"));
+    const started = startLivePracticeSession(pid, "Sauna", "page");
+    expect(started.kind).toBe("started");
+    if (started.kind !== "started") return;
+
+    db.prepare("UPDATE practice_logs SET start_time = NULL WHERE id = ?").run(
+      started.session.id
+    );
+
+    // No quiet has passed at all — it is the unreadable start, not the elapsed span,
+    // that decides this.
+    expect(closeAbandonedPracticeSessions(pid)).toBe(1);
+    expect(getPracticeSessions(pid, "Sauna")[0]).toMatchObject({
+      live: 0,
+      start_time: null,
+      end_time: null,
+      duration_min: null,
+    });
+  });
+
   it("closes a carried-over live row as start-only without fabricating values", () => {
     const pid = makeProfile("live-rollover");
     const started = startLivePracticeSession(pid, "Meditation", "page");

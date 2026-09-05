@@ -22,4 +22,25 @@ describe("bounded read snapshots", () => {
 
     expect(read(1).read).toBe(5);
   });
+
+  // #5012 measured that the Trends sections run with the page's scope closed,
+  // and this pins which half of that is NOT the cause. `StreamedSection` resumes
+  // the section on a double `setImmediate`, and the scope follows it; what does
+  // not follow is the Server Component boundary itself, which no unit tier can
+  // reach. Without this, the next reader re-derives the wrong culprit.
+  it("survives the macrotask yield StreamedSection resumes on", async () => {
+    const read = snapshotCached(
+      "test.yield",
+      () => "key",
+      () => ({})
+    );
+
+    await withReadSnapshot(async () => {
+      const before = read();
+      await new Promise<void>((resolve) =>
+        setImmediate(() => setImmediate(resolve))
+      );
+      expect(read()).toBe(before);
+    });
+  });
 });

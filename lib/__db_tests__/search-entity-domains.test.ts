@@ -78,7 +78,8 @@ function hits(
   domain: SearchDomain
 ): SearchHit[] {
   return (
-    searchAll(profileId, query).find((g) => g.domain === domain)?.hits ?? []
+    searchAll(profileId, query, null).find((g) => g.domain === domain)?.hits ??
+    []
   );
 }
 
@@ -523,7 +524,7 @@ describe("equipment is searchable (#343/#1595)", () => {
 // questions the issue names as guaranteed "nothing found" before the change.
 describe("grounded record Q&A can now cite the new domains (#878 × #1595)", () => {
   it("cites an imaging study for 'when was her last MRI'", () => {
-    const cites = retrieveRecordCitations(mine, "when was her last MRI?");
+    const cites = retrieveRecordCitations(mine, "when was her last MRI?", null);
     expect(cites.map((c) => c.domain)).toContain("imaging");
     expect(cites.find((c) => c.domain === "imaging")?.title).toBe(
       "MRI Left Knee"
@@ -537,7 +538,11 @@ describe("grounded record Q&A can now cite the new domains (#878 × #1595)", () 
     // March") still depends on the retrieval VOCABULARY — domain nouns and date
     // phrases are not retrieval keys, the same boundary #1597 drew for plurals —
     // and that is deliberately not what this change claims to fix.
-    const cites = retrieveRecordCitations(mine, "how did the sauna block go?");
+    const cites = retrieveRecordCitations(
+      mine,
+      "how did the sauna block go?",
+      null
+    );
     expect(cites.map((c) => c.domain)).toContain("protocol");
     expect(cites.find((c) => c.domain === "protocol")?.href).toBe(
       `/protocols/${protocolId}`
@@ -545,14 +550,18 @@ describe("grounded record Q&A can now cite the new domains (#878 × #1595)", () 
   });
 
   it("cites the dental record and its dentist for 'which dentist did the crown'", () => {
-    const cites = retrieveRecordCitations(mine, "which dentist did the crown?");
+    const cites = retrieveRecordCitations(
+      mine,
+      "which dentist did the crown?",
+      null
+    );
     const domains = cites.map((c) => c.domain);
     expect(domains).toContain("dental");
     expect(domains).toContain("provider");
   });
 
   it("still never cites another profile's row", () => {
-    const cites = retrieveRecordCitations(mine, "MRI shoulder Lakeside");
+    const cites = retrieveRecordCitations(mine, "MRI shoulder Lakeside", null);
     expect(cites.map((c) => c.title)).not.toContain("MRI Shoulder");
   });
 });

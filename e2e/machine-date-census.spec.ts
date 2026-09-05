@@ -104,6 +104,42 @@ interface CensusRoute {
   sweep?: () => void;
 }
 
+// THE PALETTE'S LOGGED-ROW PROBE (#5006). Global search now indexes the record's
+// row-only kinds, and each hit's subtitle states the day it is filed under — the
+// first date this surface has ever printed. The shared seed cannot be relied on to
+// put one in front of a fixed query, and a route whose subject never renders is a
+// route whose silence means nothing, so the census plants its own symptom row and
+// sweeps it. A symptom on purpose: it is the one logged kind with no catalog entity
+// beside it, so the query returns this row and nothing else.
+const LOGGED_SYMPTOM_PROBE = "Census itch";
+const LOGGED_SYMPTOM_DAY = "2026-01-09";
+
+function sweepLoggedSymptomProbe(): void {
+  const handle = new Database(workerDbPath());
+  try {
+    handle
+      .prepare("DELETE FROM symptom_logs WHERE profile_id = 1 AND symptom = ?")
+      .run(LOGGED_SYMPTOM_PROBE);
+  } finally {
+    handle.close();
+  }
+}
+
+function plantLoggedSymptomProbe(): void {
+  sweepLoggedSymptomProbe();
+  const handle = new Database(workerDbPath());
+  try {
+    handle
+      .prepare(
+        `INSERT INTO symptom_logs (profile_id, date, symptom, severity)
+         VALUES (1, ?, ?, 2)`
+      )
+      .run(LOGGED_SYMPTOM_DAY, LOGGED_SYMPTOM_PROBE);
+  } finally {
+    handle.close();
+  }
+}
+
 const FOLLOWUP_COPY_PROBE = "e2e:lab-unit-census-followup";
 const RESOLVING_COPY_PROBE = "e2e:lab-unit-census-resolving";
 const REFERENCE_COPY_PROBE = "e2e:lab-unit-census-reference";
@@ -241,6 +277,40 @@ const ROUTES: CensusRoute[] = [
           has: page.getByText("Selenium", { exact: true }),
         })
       ).toBeVisible();
+    },
+  },
+  {
+    path: "/?quick=search",
+    why: "Global search's logged-row subtitles — the day each record row is filed under (#5006).",
+    minTextNodes: 40,
+    kinds: ["date"],
+    // THE SUBJECT IS THE WHOLE GUARD ON THIS ROUTE, and that is measured rather than
+    // assumed: the collector below walks `document.querySelector("main")`, and the
+    // palette is a dialog rendered OUTSIDE main, so no palette copy has ever entered
+    // the offender sweep — on this route or on the lab-unit one above it. Forcing the
+    // subtitle to the machine shape leaves the sweep silent and reds THIS line, which
+    // is the assertion doing the work. Widening the collector past `main` would put
+    // every dialog on every route into the sweep at once; that is its own change.
+    //
+    // The hit itself, not the group box: the group renders before its rows, and an
+    // assertion taken between the two is a claim about an empty list.
+    subject: '[data-testid="palette-group-logged"] [role="option"]',
+    plant: plantLoggedSymptomProbe,
+    sweep: sweepLoggedSymptomProbe,
+    reveal: async (page) => {
+      const input = page.getByRole("combobox", {
+        name: "Search or run a command",
+      });
+      await expect(input).toBeVisible();
+      await settledFill(page, input, LOGGED_SYMPTOM_PROBE);
+      // The palette mounts as a SIBLING of <main> (app/(app)/layout.tsx — <main>
+      // closes, then <CommandPalette>), so it sits outside `app-content-container`
+      // and outside every StreamedSection call site. appContent() scoping cannot
+      // reach it, and there is no staged copy for a bare lookup to match.
+      const group = page.getByTestId("palette-group-logged"); // testid-scope-ok: outside <main>
+      await expect(
+        group.getByRole("option", { name: LOGGED_SYMPTOM_PROBE })
+      ).toBeVisible({ timeout: 15_000 });
     },
   },
   {

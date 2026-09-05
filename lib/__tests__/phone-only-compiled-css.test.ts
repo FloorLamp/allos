@@ -40,6 +40,9 @@ const RANKING_UTILITIES = [
   "card-gutter-standard",
   "card-gutter-compact",
   "card-gutter-action",
+  // #3899: the band's gutter is only as good as the opt-out that outranks it, so
+  // the delegating band's own token is compiled here beside the rules it beats.
+  "px-0!",
 ] as const;
 
 function normalized(value: string) {
@@ -282,6 +285,13 @@ describe("compiled phone-only CSS proof (#3518/#3727)", () => {
     [".band", "margin-inline", true, "utilities", true],
     [".band", "border-radius", true, "utilities", true],
     [".band .band", "margin-inline", true, "utilities", true],
+    // #3899: the band's gutter takes the CARD's ranking, not the band's own.
+    // Unlayered and normal, so a call site's `p-6` in `utilities` loses to it and
+    // a band that delegates its gutter to its rows still wins with `px-0!` —
+    // important in `utilities`, which for important declarations outranks
+    // unlayered. Both halves are one row each, read off a real compile.
+    [".band", "padding-inline", true, null, false],
+    [".px-0\\!", "padding-inline", false, "utilities", true],
     [".card, .card-quiet", "margin-inline", true, null, false],
     [".card, .card-quiet", "padding-inline", true, null, false],
     [".card, .card-quiet", "max-width", true, null, false],

@@ -16,7 +16,7 @@
 // schedule engine already answered.
 
 import { TIME_BUCKETS, type TimeBucket } from "./intake-schedule";
-import type { DoseBundleId } from "./dose-bundle";
+import type { BundleId } from "./bundle";
 import type { PendingDayDose } from "./queries/usual-routine";
 
 /** A serving or a dose as it reads on one line, with the clock already resolved. */
@@ -59,7 +59,7 @@ export interface LedgerDose extends LedgerRowBase {
    * dose — and null for every row written before the column existed, which is why an
    * old day states its doses one by one.
    */
-  bundleId: DoseBundleId | null;
+  bundleId: BundleId | null;
 }
 
 /**
@@ -224,7 +224,7 @@ export function buildDayLedger(input: {
     //
     // AND THE BUNDLE'S WIDTH IS A FACT ABOUT ITS MINT, NOT ABOUT THE COLUMN. `bundle_id`
     // is plain nullable TEXT with no CHECK; what holds the width to 16 characters is that
-    // `newDoseBundle` is the only door (lib/dose-bundle.ts) and the only thing production
+    // `newBundle` is the only door (lib/bundle.ts) and the only thing production
     // writes. So this argument rests on that mint, and a second way to spell a bundle
     // would be what breaks it — not a long routine label, which is bounded either way.
     const key = [

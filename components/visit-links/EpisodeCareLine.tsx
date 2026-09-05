@@ -61,7 +61,7 @@ export default function EpisodeCareLine({
 
   return (
     <section
-      className="rounded-xl border border-(--border) bg-surface p-4 shadow-xs"
+      className="band rounded-xl border border-(--border) bg-surface p-4 shadow-xs"
       data-testid="episode-care"
     >
       <h2 className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-200">

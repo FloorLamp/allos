@@ -29,6 +29,7 @@ import {
   getSleepArrivals,
   latestSleepSyncAt,
   getEffectiveActiveSituations,
+  effectiveSituationResolver,
   getDerivedSituationLines,
   getStrengthByExercise,
   getCardioByActivity,
@@ -95,8 +96,6 @@ import {
   heldItemsBy,
 } from "../intake-schedule";
 import {
-  getActiveSituations,
-  getSituationEvents,
   digestDemotionsForProfile,
   getNotifySchedule,
   getProfileSetting,
@@ -106,7 +105,7 @@ import {
   getPublicUrl,
 } from "../settings";
 import type { NotifySchedule } from "../settings";
-import { situationHistoryResolver } from "../trend-annotations";
+
 import { getIntakeDeltas } from "../intake-history";
 import { currentEpisodeForProfile } from "../illness-episode";
 import { episodeHeadline } from "../illness-episode-format";
@@ -191,7 +190,7 @@ export function gatherDigestSleep(
   demoted: readonly DigestCategory[] = []
 ): DigestSleep | null {
   if (!getProfileSleepDigest(profileId)) return null;
-  const signal = getSleepSignal(profileId);
+  const signal = getSleepSignal(profileId, today(profileId));
   if (!signal) return null;
 
   const sessions = getSleepSessions(profileId);
@@ -401,13 +400,16 @@ export function gatherDigestInput(
   const doses = getIntakeDoses(profileId).filter((d) =>
     itemById.has(d.item_id)
   );
-  // Per-day situation resolver (#654): "today" sees the current set (no events after
-  // today), while yesterday's adherence is scored against the situations active THAT
-  // day, not today's toggle applied retroactively.
-  const situationsOn = situationHistoryResolver(
-    getActiveSituations(profileId),
-    getSituationEvents(profileId)
-  );
+  // Per-day DUENESS resolver (#654/#3993): yesterday's adherence is scored against what
+  // held THAT day, declared AND derived — the same answer every surface that could have
+  // offered or removed the dose gave. The digest states this count to the person as
+  // "💊 Medications: 0/1 taken", so scoring it from a different day's facts than the
+  // catch-up sheet is a false miss pushed to a phone about a dose the app itself would
+  // not have offered.
+  const situationsOn = effectiveSituationResolver(profileId, {
+    from: yd,
+    to: yd,
+  });
 
   // Yesterday's adherence still scores against the LOGGED reality of that day, so
   // it keeps its own dueness helper (no predicted-training-day guess for the past).

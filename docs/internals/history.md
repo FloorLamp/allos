@@ -242,6 +242,97 @@ the add layer does not spend the chrome budget below; what it fixes is that the 
 own content had the weakest position on its own page, under three frames of three
 styles. The add layer sits directly above the rows it creates, offers first (#4832).
 
+**On a wide screen that stack becomes two columns** (#4974). The day bar runs across
+the top; beneath it the rows keep the reading measure in the left column and a
+**sticky rail** on the right holds, top to bottom, the chart card, the add layer and
+the month calendar — `grid-template-columns: 48rem minmax(0, 760px)`, the page capped
+at their sum plus the gap (`PageContainer width="rail"`, 97rem). The reading column is
+the right width for one-line rows and the wrong one for the day's map: it left half
+the viewport empty and capped the chart inside it, and reading the rows took the map
+off screen. With the rail sticky, a tick tap scrolls the rows beside a chart that
+stays put.
+
+**Below the threshold nothing changes** — no grid, the same source order, the same
+widths. The rail comes FIRST in the document and is placed into column 2 explicitly, because
+source order is what the stacked layout reads and there the chart and the add layer
+belong above the rows they map and create. The left track is a fixed `48rem` rather
+than `minmax(0, 48rem)`: two flexible tracks share free space evenly, which at the
+threshold would hand the rows 568px and call it a reading column. Measured rail
+widths, content minus the column and the gap: **208px at 1280, 337 at 1409, 368 at
+1440, 528 at 1600, 760 at 1832** (the ceiling, where the page cap takes over).
+
+**The threshold is 1440px, ruled off a measurement — #4974 rules `xl`, and `xl`
+cannot pay for it.** The rail is `viewport - 1072` and the chart's card spends a
+further 42px of padding, so the DRAWING gets `viewport - 1114`. Each chart geometry
+computes its label size from the narrowest container it declares, so the type clears
+#1518's 9px floor there and nowhere narrower (`lib/intraday-layout.ts`). Since #4973
+the chart picks its geometry from THAT box rather than from the viewport, so the
+binding floor is the compact one: `11 × container ÷ 360`, which needs 294.55px.
+
+The table below is what the RAIL ARRANGEMENT would hand the chart at each viewport —
+that is the question the threshold answers, so it has to be asked at widths where the
+rail does not open. Rows at and above the threshold are measured in the browser; the
+rows beneath it are the derivation, and they are why the rail does not open there. At
+those widths the shipped page has no rail at all and the chart takes the whole reading
+column instead (726px, 12.60px measured), so do not read them as a description of what
+1409 renders today.
+
+| viewport                 | drawing container | variant | smallest label                        |
+| ------------------------ | ----------------- | ------- | ------------------------------------- |
+| 1280 (`xl`), derived     | 166px             | compact | 5.07px                                |
+| 1400, derived            | 286px             | compact | 8.74px                                |
+| 1409, derived            | 295px             | compact | 9.01px — the first width that pays    |
+| **1440** (the threshold) | 326px             | compact | **9.96px**                            |
+| 1600                     | 486px             | compact | 12.83px                               |
+| **1634**                 | 520px             | wide    | **9.03px** — the tightest width above |
+| 1832                     | 718px             | wide    | 12.47px                               |
+
+1409 pays the floor by 0.014px, and every term is an integer this page or the shell
+owns — one pixel on the gap, the page gutters or the card's padding would put it
+under. So the threshold is **1440**, which is #4974's own acceptance criterion and
+carries 0.96px; laptops between 1409 and 1439 keep the stack, which the owner accepted
+as the cost of that margin (ruling 2026-09-04).
+
+**The floor is not monotonic above the threshold**, so 1440 is not the width to
+re-check after a change to any term. Compact type grows with the container to 12.83px
+at 1600; then the box reaches `INTRADAY_VARIANTS.wide.minContainerPx` and the wide
+geometry takes over at 1634 with a 9.03px label. `e2e/history-day-view.spec.ts` drives
+the pair either side of the boundary — 1439 stacked, 1440 railed — and measures the
+labels at 1440 rather than trusting the arithmetic.
+
+**The rail's chart is the COMPACT geometry**, which is where #4974's premise — "the
+rail simply gives it 760px" — is wrong: at 1440 it gives 326. Wide needs 520px of
+container and so a 1634px viewport; below that the container query in
+`components/IntradayChart.tsx` picks compact, and the type is _larger_ for it. That
+compact drawing between 1440 and 1633 IS the ruled design (2026-09-04); the rail does
+not have to hold the wide one. `xl` is payable by neither geometry — a 166px drawing
+is under the compact variant's own 300px floor too.
+
+**The calendar is open in the rail, and a door everywhere else.** It is a door
+(#4102) because the grid could not spend the ~140px chrome budget above the first
+record; in the rail it is BESIDE the rows and spends none of it, so where the rail
+exists the trigger in the pinned cluster stands down and the grid renders inline. Both
+mounts are the same `EventMonthGrid` — the binding split out of `EventCalendar` so the
+popover host and the rail host cannot drift into two answers about what a marked day
+means. `MonthCalendar`'s `href` is a function, which a Server Component cannot hand
+across the RSC boundary, so that binding lives client-side either way.
+
+**The rail cannot outgrow the viewport.** A sticky element taller than the screen pins
+its top and strands its own bottom, unreachable at any page scroll, so it is capped at
+`100dvh` minus its two `1.5rem` insets and scrolls past that. The scroll chains at the
+ends rather than being contained, so reaching the bottom keeps scrolling the page.
+
+**But the chart's box is outside that scroll container** (owner ruling, 2026-09-04),
+which is why the cap and the overflow sit on two elements: the rail caps its height
+and lays its children out in a column, and only the layers BELOW the chart scroll
+(`history-day-rail-scroll`). A wheel goes to its nearest scrollable ancestor, so with
+the chart inside the scrolling box a reader aiming at the largest, most pointed-at
+thing in the rail scrolled the rail instead of the page — and the chart's own
+full-day wheel hand-off (#4852) was handed to the rail rather than to the page it was
+written for. Over the chart the wheel is the page's. The **jump-rail scrubber does not exist on the day view at all** —
+`windowed` is null when `?day=` is set, so there are no ticks and `railGutter` is
+empty there; the rail spends no lane of its own.
+
 **The day bar names the day** (#4918): `TimelineDayNav` prints
 `Wed, September 3 — 15 records` between its arrows, in the #3958 header grammar and
 with "0 records" on an empty day. The per-group `<h2>` is the FEED's only — on the day

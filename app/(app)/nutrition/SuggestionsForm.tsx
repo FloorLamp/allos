@@ -22,7 +22,9 @@ export default function SuggestionsForm() {
           className="input flex-1"
           placeholder="Optional: how you're feeling / training for… (leave blank to use recent labs)"
         />
-        <SubmitButton pendingLabel="Generating…">Get suggestions</SubmitButton>
+        <SubmitButton pendingLabel="Generating…" variant="primary">
+          Get suggestions
+        </SubmitButton>
       </form>
       {state && (
         <p

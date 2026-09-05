@@ -21,6 +21,7 @@
 
 import { shiftDateStr } from "./date";
 import { activityWindow } from "./training-zones";
+import { derivedSessionMinutes } from "./practice";
 import {
   timelineEntryAnchorId,
   type TimelineCategory,
@@ -400,13 +401,29 @@ export function buildIntradayModel(input: IntradayInput): IntradayModel {
     const win = event.clockWindow;
     if (!win) continue;
     const liveStart = win.live ? clockMinute(win.start_time) : null;
+    // A LIVE ROW THAT KNOWS ITS OWN LENGTH IS BOUNDED HERE, NOT ONLY BY THE SWEEP
+    // (#5091). The completion is written where `closeAbandonedPracticeSessions` runs —
+    // page loads on Wellness, History and protocols — so a chart rendered before one
+    // would keep growing the block past an end the row already knew, which is the
+    // four-hours-wide 15-minute session this fixes. Reading the same bound means the
+    // block is right whether or not a sweep has happened yet.
+    const derivedMin = derivedSessionMinutes({
+      durationMin: win.duration_min ?? null,
+      derivedWindow: win.derived_duration === true,
+    });
+    const derivedEnd =
+      liveStart != null && derivedMin != null ? liveStart + derivedMin : null;
     const running =
       liveStart != null &&
       input.nowMinute != null &&
+      // Past its own derived end the row is complete, so it falls through to the
+      // derived window below rather than drawing as still running.
+      (derivedEnd == null || input.nowMinute < derivedEnd) &&
       (win.elapsed_min != null || input.nowMinute >= liveStart);
     const runningEnd = running
       ? Math.min(
           MINUTES_IN_DAY,
+          derivedEnd ?? MINUTES_IN_DAY,
           Math.max(
             liveStart! + 1,
             win.elapsed_min != null

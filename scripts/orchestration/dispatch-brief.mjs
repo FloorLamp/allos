@@ -17,7 +17,7 @@
 //   node scripts/orchestration/dispatch-brief.mjs new --branch <branch> \
 //     [--worktree wt-<name>] [--issues 123,456] [--task "one line"] \
 //     [--e2e] [--port-base N] [--candidate] [--priority P1] \
-//     [--lane user-data]
+//     [--lane user-data] [--adopt-claim]
 //   node scripts/orchestration/dispatch-brief.mjs list
 //   node scripts/orchestration/dispatch-brief.mjs brief <branch>
 //   node scripts/orchestration/dispatch-brief.mjs promote <branch>
@@ -29,7 +29,14 @@
 //     [--issues 123,456] [--task "one line"] [--e2e] [--port-base N]
 //   node scripts/orchestration/dispatch-brief.mjs claims <path>
 //
-// `new` prints a complete brief block (stdout) and appends a ledger entry.
+// `new` prints a complete brief block (stdout) and appends a ledger entry. It
+//   REFUSES an issue another lane already claimed with a `Dispatched:` comment,
+//   and refuses just as firmly when those comments cannot be READ — an
+//   unreachable claim is not an absent one (#5108). `--adopt-claim` is the
+//   explicit override for a claim you have judged stale. `new` and `adopt`
+//   also REFUSE a branch that already heads an open PR belonging to ANOTHER
+//   orchestrator session, read off that PR's body footer (#5177), under the
+//   same override — and say out loud when they could not ask.
 // `list` shows active dispatches with ages, flagging anything that has not
 //   MOVED in 3x the median completed-dispatch duration (the runbook's stall
 //   threshold, applied to idleness rather than to age — see cmdList).
@@ -65,7 +72,7 @@
 //
 // The ledger and the roster MUST default to the same directory, and that
 // directory must be the durable one. `$SCRATCH` is UNSET in the live
-// orchestration container (measured), so a `/tmp` fallback here would have put
+// work container (measured), so a `/tmp` fallback here would have put
 // the restart-proof ledger in the least durable place on the box — the one
 // swept for stale `allos-db-shared-*` dirs — while the roster it must stay in
 // sync with landed in /home/user/scratch. Two defaults that disagree is the
@@ -78,6 +85,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { helpGuard, isMain } from "./usage.mjs";
 import { discoverNodeBin, resolveReadToken, resolveStateDir } from "./host.mjs";
+import { bodySession, normaliseSession } from "./merge-gate-core.mjs";
 import {
   activeDispatches,
   ledgerPath as resolveLedgerPath,
@@ -1319,6 +1327,7 @@ function parseArgs(argv) {
     candidate: false,
     priority: "unclassified",
     lane: "unclassified",
+    adoptClaim: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -1337,6 +1346,7 @@ function parseArgs(argv) {
     else if (a === "--e2e") opts.e2e = true;
     else if (a === "--port-base") opts.portBase = Number(argv[++i]);
     else if (a === "--candidate") opts.candidate = true;
+    else if (a === ADOPT_CLAIM) opts.adoptClaim = true;
     else if (a === "--priority") opts.priority = argv[++i];
     else if (a === "--lane") opts.lane = argv[++i];
     else throw new Error(`unknown flag: ${a}`);
@@ -1439,6 +1449,262 @@ function issueStates(
       };
     }
   });
+}
+
+// A CLAIM IS PUBLIC, AND NOTHING BETWEEN READING AN ISSUE AND WRITING A
+// DISPATCH LOOKED AT IT (#5108).
+//
+// Twice in three hours on 2026-09-04 two orchestrators dispatched onto one
+// bug. On #5091 the claim was posted at 15:18:42Z, printed by issue-read.mjs,
+// and filtered out of a `sed` pipe; on #5125 no claim was written at all, so
+// the other orchestrator read an unclaimed issue and behaved correctly. Being
+// first is not the same as having claimed. A convention that cannot be held by
+// remembering it has to be held here, at the point that can refuse.
+//
+// NOT A LOCK. This reads what is already public and refuses on it. It writes
+// no claim, reserves nothing, and asks the other orchestrator for nothing
+// beyond the convention already in use — a script that claimed on your behalf
+// would claim for dry runs and abandoned drafts.
+//
+// AND IT REFUSES WHERE THE STALENESS CHECK ABOVE ONLY WARNS. #4460 ruled that
+// a check that cannot run must not block, and that ruling still governs the
+// OPEN/CLOSED read: its failure costs a lane an empty diff. This one's failure
+// costs two lanes one bug, so an unreadable claim is CANNOT TELL, not CLEAR —
+// the verdict `claims` gives an unreadable worktree (#4473). The override is
+// the door out, and it is explicit.
+
+/** The override: skip the claim check for a claim you have judged stale. */
+const ADOPT_CLAIM = "--adopt-claim";
+
+// Spelled `--adopt-claim`, not the issue's illustrative `--adopt`, because
+// `dispatch-brief.mjs adopt <branch>` already means something else entirely —
+// bring a RUNNING agent under the ledger. `new --adopt` would read as that.
+
+// How the claim is actually written here, sampled from the tracker rather than
+// from the issue's prose: "Dispatched: B, branch `live-practice-self-complete-5091`"
+// and "Dispatched: branch `dispatch-claim-refusal-5108` (orchestrator A, …)".
+// The opener is the stable part; markdown emphasis and quoting are not.
+const CLAIM_OPENER = /^[*_>\s]*dispatched\s*:/i;
+
+/** The claim's own first line, emphasis stripped, short enough to read. */
+const claimQuote = (body) =>
+  (body.split("\n").find((l) => l.trim()) ?? "")
+    .replace(/\*\*|__/g, "")
+    .trim()
+    .slice(0, 160);
+
+/**
+ * Per-issue claim verdicts, with the reader injected so the refusal paths are
+ * drivable without a network (the #4473 shape).
+ *
+ * WHOSE CLAIM IS IT: the discriminator is the BRANCH, never the author. Both
+ * orchestrators post as the same account, so `user.login` cannot separate them
+ * — but a claim names the branch it dispatched, and `new --branch X` is about
+ * to create X. A claim naming X IS this dispatch's own claim, posted by the
+ * convention that says claim before briefing; a claim naming anything else is
+ * somebody else's lane. The one way this reads CLEAR wrongly is another
+ * orchestrator writing your exact branch name into their claim, which would
+ * make it the same lane anyway.
+ *
+ * @param {string[]} numbers issue numbers being dispatched
+ * @param {string} branch the branch `new` is about to create
+ * @param {(n: string) => { comments: { at: string, body: string }[] } | { unknown: string }} commentsFor
+ */
+export function issueClaims(numbers, branch, commentsFor) {
+  return numbers.map((number) => {
+    const got = commentsFor(number);
+    if ("unknown" in got)
+      return { number, verdict: "unknown", why: got.unknown };
+    const held = got.comments.find(
+      (c) => CLAIM_OPENER.test(c.body) && !c.body.includes(branch)
+    );
+    return held
+      ? {
+          number,
+          verdict: "claimed",
+          at: held.at,
+          quote: claimQuote(held.body),
+        }
+      : { number, verdict: "clear" };
+  });
+}
+
+/** Refusal text when another lane already holds one of these, else null. */
+export function claimedIssueRefusal(rows) {
+  const held = rows.filter((r) => r.verdict === "claimed");
+  if (!held.length) return null;
+  return (
+    "REFUSED: " +
+    held
+      .map((r) => `#${r.number} was claimed ${r.at} — "${r.quote}"`)
+      .join("; ") +
+    ". One bug, one lane; the earlier claim holds. Re-read it WHOLE with " +
+    "issue-read.mjs (no pipe — filtering the claim out of one is how #5091 " +
+    `collided), drop it from --issues, and dispatch the rest. Use ${ADOPT_CLAIM} ` +
+    "if you are taking over a claim that is genuinely stale."
+  );
+}
+
+/** Refusal text when a claim could not be READ, else null. */
+export function unreadableClaimRefusal(rows) {
+  const blind = rows.filter((r) => r.verdict === "unknown");
+  if (!blind.length) return null;
+  return (
+    "REFUSED: could not read the claims on " +
+    blind.map((r) => `#${r.number}: ${r.why}`).join("; ") +
+    ". AN UNREACHABLE CLAIM IS NOT AN ABSENT ONE — this is CANNOT TELL, not " +
+    "CLEAR (#5108). Retry when GitHub answers, or read the issue yourself and " +
+    `pass ${ADOPT_CLAIM} once you have seen that nobody holds it.`
+  );
+}
+
+// THE SAME QUESTION, ABOUT A PR (#5177). The claim above guards an ISSUE; on
+// 2026-09-04 the collision arrived through the other door — a fix round
+// dispatched onto #5139's branch, which pushed three commits onto the other
+// session's open PR. Every ledger check said CLEAR, correctly: the branch was
+// never in this session's ledger, because it was never this session's lane.
+//
+// The discriminator here is not the branch (the branch is exactly what both
+// sessions would name) and not the author (one account). It is the session
+// footer in the PR's own body, which is the marker `merge-gate.mjs` reads for
+// the same question at merge time — one reader, not a third convention.
+
+/**
+ * Refusal when an OPEN PR already has this branch as its head and its body
+ * names a session other than the one running. Null when it does not, and null
+ * when there is nothing to compare against — those are WARNINGS the caller
+ * prints, because unlike the issue claim this read happens on EVERY dispatch
+ * and #4460 governs a check whose failure would cost every lane its start.
+ *
+ * @param {{ head?: { ref?: string }, number?: number, body?: string }[]} prs
+ * @param {string} branch the branch about to be dispatched onto
+ * @param {string|null} self the running session, normalised
+ */
+export function branchPrRefusal(prs, branch, self) {
+  if (!self) return null;
+  const pr = (prs ?? []).find((p) => p?.head?.ref === branch);
+  const theirs = pr ? normaliseSession(bodySession(pr.body)) : null;
+  if (!theirs || theirs === self) return null;
+  return (
+    `REFUSED: ${branch} is the head of open PR #${pr.number}, whose body names ` +
+    `${theirs} — ANOTHER orchestrator session (this one is ${self}). Pushing ` +
+    "onto it is two writers on one branch, and merging it takes that session's " +
+    "control of its own landing slot (#5177). Dispatch onto a branch of your " +
+    `own, or pass ${ADOPT_CLAIM} if the two sessions have actually agreed.`
+  );
+}
+
+/** Open PRs over the live API, or a stated reason they could not be read. */
+function openPrsReader(repo = process.env.RECONCILE_REPO || "FloorLamp/allos") {
+  const token = resolveReadToken();
+  if (!token) return { unknown: "no read token in $GH_TOKEN or $GITHUB_TOKEN" };
+  try {
+    const raw = execFileSync(
+      "curl",
+      [
+        "-sS",
+        "--fail-with-body",
+        "-H",
+        "Authorization: Bearer " + token,
+        "-H",
+        "Accept: application/vnd.github+json",
+        `https://api.github.com/repos/${repo}/pulls?state=open&per_page=100`,
+      ],
+      { encoding: "utf8", timeout: 30_000 }
+    );
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? { prs: parsed }
+      : { unknown: String(parsed?.message ?? "the PR list was not a list") };
+  } catch (err) {
+    // The BODY, never err.message: execFileSync puts the Bearer token in it.
+    const body = String(err.stdout ?? "").trim();
+    return { unknown: body.slice(0, 200) || "curl exited " + err.status };
+  }
+}
+
+/**
+ * The branch-ownership check as `new` and `adopt` run it. It prints what it
+ * examined either way, so an answer it could not reach never passes for a
+ * clean one, and it exits 1 on a positive finding.
+ */
+function refuseAnotherSessionsBranch(branch, adopted) {
+  if (adopted) return;
+  const self = normaliseSession(process.env.CLAUDE_CODE_REMOTE_SESSION_ID);
+  if (!self) {
+    console.error(
+      `[pr-owner] UNCHECKED: this host exposes no session id, so whether ${branch} ` +
+        "belongs to another session was not asked (#5177)."
+    );
+    return;
+  }
+  const got = openPrsReader();
+  if ("unknown" in got) {
+    console.error(
+      `[pr-owner] CANNOT TELL: could not read the open PRs (${got.unknown}) — ` +
+        `whether ${branch} is another session's landing slot is UNANSWERED (#5177).`
+    );
+    return;
+  }
+  const refusal = branchPrRefusal(got.prs, branch, self);
+  if (refusal) {
+    console.error(refusal);
+    process.exit(1);
+  }
+  console.error(
+    `[pr-owner] ${branch} heads none of the ${got.prs.length} open PRs (#5177).`
+  );
+}
+
+/** `commentsFor` over the live API. Every failure names itself; none is CLEAR. */
+function issueCommentsReader(
+  repo = process.env.RECONCILE_REPO || "FloorLamp/allos"
+) {
+  const token = resolveReadToken();
+  return (number) => {
+    if (!token)
+      return { unknown: "no read token in $GH_TOKEN or $GITHUB_TOKEN" };
+    const url =
+      "https://api.github.com/repos/" +
+      repo +
+      "/issues/" +
+      number +
+      "/comments?per_page=100";
+    let raw;
+    try {
+      raw = execFileSync(
+        "curl",
+        [
+          "-sS",
+          "--fail-with-body",
+          "-H",
+          "Authorization: Bearer " + token,
+          "-H",
+          "Accept: application/vnd.github+json",
+          url,
+        ],
+        { encoding: "utf8", timeout: 30_000 }
+      );
+    } catch (err) {
+      // Quote the BODY, never err.message: execFileSync puts the whole command
+      // in it, Bearer token included (the lesson issueStates above carries).
+      const body = String(err.stdout ?? "").trim();
+      return { unknown: body.slice(0, 200) || "curl exited " + err.status };
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed))
+        return {
+          comments: parsed.map((c) => ({
+            at: c.created_at,
+            body: String(c.body ?? ""),
+          })),
+        };
+    } catch {
+      // fall through to the one honest answer: we did not get comments.
+    }
+    return { unknown: "unreadable reply: " + raw.trim().slice(0, 120) };
+  };
 }
 
 function cmdNew(argv) {
@@ -1554,6 +1820,25 @@ function cmdNew(argv) {
       process.exit(1);
     }
   }
+
+  // And is it already someone else's? Still before anything is written.
+  if (opts.adoptClaim) {
+    console.error(
+      `*** ${ADOPT_CLAIM}: claim check SKIPPED — you are asserting that any ` +
+        `existing claim on ${opts.issues.join(", ") || "these issues"} is stale. ***`
+    );
+  } else if (opts.issues.length) {
+    const claims = issueClaims(opts.issues, opts.branch, issueCommentsReader());
+    const refusals = [
+      claimedIssueRefusal(claims),
+      unreadableClaimRefusal(claims),
+    ].filter(Boolean);
+    if (refusals.length) {
+      for (const refusal of refusals) console.error(refusal);
+      process.exit(1);
+    }
+  }
+  refuseAnotherSessionsBranch(opts.branch, opts.adoptClaim);
 
   const { brief, portBase } = buildBrief(opts);
   const entry = {
@@ -2434,6 +2719,7 @@ function cmdAdopt(argv) {
     );
     process.exit(1);
   }
+  refuseAnotherSessionsBranch(branch, opts.adoptClaim);
   // `git worktree list` includes the main checkout, and the orchestrator's own
   // branch lives there — adopting it would roster the orchestrator as an agent.
   //
