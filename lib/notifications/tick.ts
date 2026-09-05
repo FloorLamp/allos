@@ -532,8 +532,9 @@ export async function tickProfile(
   // lib/__tests__/fasting-standdown.test.ts rather than assumed here. The read is
   // memoized for the profile's tick.
   //
-  // BOUNDED BY PLAUSIBILITY, not merely by the row existing: past FAST_STALE_HOURS an
-  // active fast reads as ABANDONED rather than as "not eating", and the nudge resumes.
+  // BOUNDED BY PLAUSIBILITY, not merely by the row existing: past the fast kind's stale
+  // bound (#5142) an active fast reads as abandoned rather than as "not eating", and the
+  // nudge resumes.
   // A suppression whose only exit is the user opening the app would be silencing the
   // very channel that would have brought them there.
   if (
@@ -985,7 +986,7 @@ export async function tickProfile(
   }
 
   // Stale-session suggest (#921/#560): an `active` workout draft that's gone quiet
-  // past STALE_MIN gets ONE gentle "Still working out? Finish or discard" nudge —
+  // past the workout kind's stale bound (#5142) gets ONE gentle "Still working out? Finish or discard" nudge —
   // suggest-only, deep-links back to the session, NEVER auto-ends. One-shot per
   // activity id; waking-gated (a soft coaching suggest, not a safety signal).
   // Draft expiry (#2870 step 3): abandoned zero-content session husks age out
