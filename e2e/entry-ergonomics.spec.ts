@@ -1060,10 +1060,10 @@ test("strength set controls step, clamp, and toggle without losing their phone g
   // into it and no row behind it, so it is asked about now rather than dropped in
   // silence (#5111) — the answer is part of the close, not scenery after it.
   await page.keyboard.press("Escape");
-  const discard = page.getByTestId("confirm-dialog");
+  const discard = page.getByTestId("confirm-dialog"); // testid-scope-ok: the confirm sheet portals to <body> (BottomSheet), one copy
   await expect(discard).toContainText("Discard unsaved changes?");
   await discard.getByRole("button", { name: "Close anyway" }).click();
-  await expect(page.getByTestId("activity-form")).toHaveCount(0);
+  await expect(page.getByTestId("activity-form")).toHaveCount(0); // testid-scope-ok: ActivityOverlay portals the workspace to <body>, one copy
 });
 
 test("the bilateral (per-side) reps stepper steps down too (#1524)", async ({
@@ -1098,10 +1098,10 @@ test("the bilateral (per-side) reps stepper steps down too (#1524)", async ({
   // Same close as the test above: a picked lift with no completed set is a typed,
   // rowless draft, and since #5111 leaving one asks first.
   await page.keyboard.press("Escape");
-  const discard = page.getByTestId("confirm-dialog");
+  const discard = page.getByTestId("confirm-dialog"); // testid-scope-ok: the confirm sheet portals to <body> (BottomSheet), one copy
   await expect(discard).toContainText("Discard unsaved changes?");
   await discard.getByRole("button", { name: "Close anyway" }).click();
-  await expect(page.getByTestId("activity-form")).toHaveCount(0);
+  await expect(page.getByTestId("activity-form")).toHaveCount(0); // testid-scope-ok: ActivityOverlay portals the workspace to <body>, one copy
 });
 
 test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)", async ({

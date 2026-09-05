@@ -342,8 +342,8 @@ test("the set row's tab order is the same with the effort column on and off (#33
   // (#5111). Answering leaves the workspace shut, which is what this test's own
   // "no cleanup beyond putting the opt-in back" depends on.
   await page.keyboard.press("Escape");
-  const discard = page.getByTestId("confirm-dialog");
+  const discard = page.getByTestId("confirm-dialog"); // testid-scope-ok: the confirm sheet portals to <body> (BottomSheet), one copy
   await expect(discard).toContainText("Discard unsaved changes?");
   await discard.getByRole("button", { name: "Close anyway" }).click();
-  await expect(page.getByTestId("activity-form")).toHaveCount(0);
+  await expect(page.getByTestId("activity-form")).toHaveCount(0); // testid-scope-ok: ActivityOverlay portals the workspace to <body>, one copy
 });
