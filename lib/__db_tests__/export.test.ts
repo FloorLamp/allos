@@ -88,6 +88,15 @@ beforeAll(() => {
       `INSERT INTO food_log_events (profile_id, group_key, date, recorded_at)
        VALUES (?, ?, '2024-01-02', '2024-01-02T12:00:00Z')`
     ).run(p.profileId, `${p.tag.toLowerCase()}-lunch`);
+    // The substance ledger #5026 phase 2 added, SEEDED rather than named in
+    // SCOPING_UNSEEDED: its select and its countSql are new statements with new
+    // profile filters, which is exactly what the loop below exists to watch, and an
+    // unseeded dataset is one the loop is silent about. Distinct substance per
+    // profile, so the two rows are distinguishable and a leak has something to be.
+    db.prepare(
+      `INSERT INTO substance_log_events (profile_id, substance, date, recorded_at)
+       VALUES (?, ?, '2024-01-02', '2024-01-02T21:00:00Z')`
+    ).run(p.profileId, `${p.tag} Nicotine`);
   }
 });
 
