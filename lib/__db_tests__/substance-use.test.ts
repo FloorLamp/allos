@@ -789,7 +789,12 @@ describe("one use, one row, one clock (#5026 phase 2)", () => {
   it.each([
     ["empties the day", 1, null, [null, "smoked outside"]],
     ["leaves a use behind", 2, null, ["smoked outside", null]],
-    ["empties onto a day that already has one", 1, "birthday", [null, "birthday"]],
+    [
+      "empties onto a day that already has one",
+      1,
+      "birthday",
+      [null, "birthday"],
+    ],
   ] as const)(
     "carries the day's note when the correction %s",
     (_label, amount, arrivalNote, [fromNotes, toNotes]) => {
@@ -811,9 +816,9 @@ describe("one use, one row, one clock (#5026 phase 2)", () => {
         );
       const [first] = uses(p, "nicotine");
 
-      expect(
-        correctSubstanceEventCore(p, first.id, { date: moved }).kind
-      ).toBe("updated");
+      expect(correctSubstanceEventCore(p, first.id, { date: moved }).kind).toBe(
+        "updated"
+      );
 
       const rows = dayRows(p, "nicotine");
       expect(rows.find((r) => r.date === date)?.notes ?? null).toBe(fromNotes);

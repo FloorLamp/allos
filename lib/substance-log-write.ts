@@ -276,8 +276,7 @@ export function correctSubstanceEventCore(
             WHERE profile_id = ? AND date = ? AND substance = ?`
         )
         .get(profileId, row.date, row.substance) as
-        | { notes: string | null }
-        | undefined;
+        { notes: string | null } | undefined;
       const left = substanceDayCounter.unbump(
         profileId,
         row.date,
