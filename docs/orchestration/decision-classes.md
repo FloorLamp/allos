@@ -38,6 +38,10 @@ the thirty issues that reached the owner mid-flight on 2026-09-04.
 - **A visual A/B question carries screenshots.** Density, a primary's rank, a
   placement: the lane renders both options at 390 and 1280 and attaches them
   before the question is raised; prose alone does not reach the owner (#4978).
+- **Attached means on the GitHub comment** (owner, 2026-09-05): the API takes
+  no uploads, so the orchestrator pushes the PNGs to the orphan `screenshots`
+  branch under `<issue>/` with `[skip ci]` and embeds each by its raw URL.
+  Never a session, an artifact page or an external host; only the owner deletes.
 
 ## Not catchable at filing
 
