@@ -476,7 +476,8 @@ describe("getTimelineDates: every UNION arm is profile-scoped", () => {
   type Fk = { from: string; table: string; to: string };
   const pragma = <T>(q: string) => db.pragma(q) as T[];
   const tableOf = (arm: string) => /\bFROM\s+(\w+)/i.exec(arm)?.[1];
-  const dateColOf = (arm: string) => /^\s*SELECT\s+(?:\w+\.)?(\w+)/i.exec(arm)?.[1];
+  const dateColOf = (arm: string) =>
+    /^\s*SELECT\s+(?:\w+\.)?(\w+)/i.exec(arm)?.[1];
 
   // One row in the arm's own table, on `date`, belonging to `profileId`. Columns are
   // filled from the schema: profile_id and the arm's date column by name, every other
@@ -517,9 +518,14 @@ describe("getTimelineDates: every UNION arm is profile-scoped", () => {
       }
       if (!required) continue;
       const seen = db
-        .prepare(`SELECT ${c.name} AS v FROM ${table} WHERE ${c.name} IS NOT NULL LIMIT 1`)
+        .prepare(
+          `SELECT ${c.name} AS v FROM ${table} WHERE ${c.name} IS NOT NULL LIMIT 1`
+        )
         .get() as { v: unknown } | undefined;
-      row.set(c.name, seen?.v ?? (/INT|REAL|NUM|DOUB|FLOA/i.test(c.type) ? 1 : "x"));
+      row.set(
+        c.name,
+        seen?.v ?? (/INT|REAL|NUM|DOUB|FLOA/i.test(c.type) ? 1 : "x")
+      );
     }
     const names = [...row.keys()];
     db.prepare(
