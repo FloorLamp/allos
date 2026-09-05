@@ -172,7 +172,7 @@ Food _totals_ and the nutrition arithmetic are untouched: this is the record's r
 
 `lib/history.ts` composes the readers each ledger already used
 (`getIntakeDoseLedgerPage`, `getFoodLedgerPage`, `getPracticeLedgerPage`,
-`getAllSubstanceDailyTotals`, plus the `body_metrics` rows the metric detail
+`getSubstanceLedgerPage`, plus the `body_metrics` rows the metric detail
 pages render). Every read takes `profileId` first and is scoped by it in SQL; the
 module imports no auth.
 

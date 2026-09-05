@@ -31,9 +31,11 @@ row — so the same drink had two correction doors disagreeing about what the ed
 thing is. Measured on that path: two drinks stated at 21:00 and 23:00, corrected to the
 next day, came back with `occurred_at` and `time_source` NULL on both, and shrinking the
 day from 2 to 1 deleted whichever was filed first. Now `updateSubstanceDailyTotalCore`
-refuses a food-log ledger outright and the card's row offers Delete alone, pointing at
-the record where each drink corrects on its own. For a day-count substance the day IS
-the stored fact, so that form is still its correction.
+refused a food-log ledger outright and the card's row offered Delete alone, pointing at
+the record where each drink corrects on its own. The day-count substances kept that form
+for one more phase, because for them the day still WAS the stored fact; phase 2 below
+took the last of it, so the card's ⋯ offers Delete alone on every substance and
+`updateSubstanceDailyTotalCore` is gone rather than left refusing everything.
 
 **Phase 2 (#3295, landed as #5026 items 2 and 3) gave nicotine, cannabis and every
 custom key the same model.** `substance_log_events` is `food_log_events`
