@@ -1,0 +1,344 @@
+[
+  {
+    "sha": "68b5db32",
+    "subject": "Let the intraday chart pick its geometry from its own container",
+    "runs": {
+      "e2e-main (2)": "success",
+      "e2e-main (3)": "success",
+      "e2e-main (4)": "success",
+      "e2e-main (1)": "success"
+    },
+    "failures": []
+  },
+  {
+    "sha": "c6d2b2ed",
+    "subject": "Flag an awake-level run only where it touches the claim's edge (#5092)",
+    "runs": {
+      "e2e-main (4)": "success",
+      "e2e-main (3)": "success",
+      "e2e-main (2)": "success",
+      "e2e-main (1)": "failure"
+    },
+    "failures": [
+      "[chromium] › e2e/sleep-page.spec.ts:600:7 › Sleep page (#1066) › the Add entry action opens the shared sleep and mood editor"
+    ]
+  },
+  {
+    "sha": "38e36a85",
+    "subject": "Complete a live practice at the end its own duration states (#5101)",
+    "runs": {},
+    "failures": []
+  },
+  {
+    "sha": "1dbb1774",
+    "subject": "Give the ride's two metric pickers labels that stay whole (#5106)",
+    "runs": {
+      "e2e-main (4)": "success",
+      "e2e-main (2)": "success",
+      "e2e-main (3)": "success",
+      "e2e-main (1)": "success"
+    },
+    "failures": []
+  },
+  {
+    "sha": "a309d869",
+    "subject": "Let a person re-time a hedged sleep night instead of losing it (#5112)",
+    "runs": {
+      "e2e-main (2)": "success",
+      "e2e-main (4)": "success",
+      "e2e-main (3)": "success",
+      "e2e-main (1)": "success"
+    },
+    "failures": []
+  },
+  {
+    "sha": "209a7f85",
+    "subject": "Every form commit is a primary SubmitButton (#5119)",
+    "runs": {
+      "e2e-main (2)": "success",
+      "e2e-main (1)": "success",
+      "e2e-main (4)": "success",
+      "e2e-main (3)": "success"
+    },
+    "failures": []
+  },
+  {
+    "sha": "2a56a19f",
+    "subject": "Make the week's logged days doors to that day's training log (#5120)",
+    "runs": {
+      "e2e-main (2)": "success",
+      "e2e-main (3)": "success",
+      "e2e-main (1)": "success",
+      "e2e-main (4)": "success"
+    },
+    "failures": []
+  },
+  {
+    "sha": "a2bb777e",
+    "subject": "Every zone move is recorded and only a trip can excuse a dose (#5129)",
+    "runs": {
+      "e2e-main (4)": "success",
+      "e2e-main (1)": "failure",
+      "e2e-main (2)": "success",
+      "e2e-main (3)": "success"
+    },
+    "failures": [
+      "[chromium] › e2e/sleep-page.spec.ts:600:7 › Sleep page (#1066) › the Add entry action opens the shared sleep and mood editor"
+    ]
+  },
+  {
+    "sha": "780f9370",
+    "subject": "Lock the sleep re-time on the session, its stages and one zone (#5138)",
+    "runs": {
+      "e2e-main (1)": "failure",
+      "e2e-main (2)": "success",
+      "e2e-main (3)": "success",
+      "e2e-main (4)": "success"
+    },
+    "failures": [
+      "[chromium] › e2e/sleep-page.spec.ts:600:7 › Sleep page (#1066) › the Add entry action opens the shared sleep and mood editor"
+    ]
+  },
+  {
+    "sha": "8c9ce64a",
+    "subject": "Say which kind of zone move the re-time fixture records (#5148)",
+    "runs": {
+      "e2e-main": "skipped"
+    },
+    "failures": []
+  },
+  {
+    "sha": "6f885dac",
+    "subject": "Record that a page's read snapshot never reaches its sections (#5136)",
+    "runs": {
+      "e2e-main (2)": "success",
+      "e2e-main (4)": "success",
+      "e2e-main (1)": "failure",
+      "e2e-main (3)": "success"
+    },
+    "failures": [
+      "[chromium] › e2e/sleep-page.spec.ts:600:7 › Sleep page (#1066) › the Add entry action opens the shared sleep and mood editor"
+    ]
+  },
+  {
+    "sha": "71422106",
+    "subject": "Give the activity workspace an exit and a footer that finishes (#5130)",
+    "runs": {},
+    "failures": []
+  },
+  {
+    "sha": "5ccac738",
+    "subject": "Own the night the Add-entry test asserts a read-only dialog for (#5156)",
+    "runs": {
+      "e2e-main (3)": "success",
+      "e2e-main (2)": "success",
+      "e2e-main (4)": "success",
+      "e2e-main (1)": "success"
+    },
+    "failures": []
+  },
+  {
+    "sha": "113861bf",
+    "subject": "Refuse a dispatch onto an issue another lane already claimed (#5152)",
+    "runs": {
+      "e2e-main": "skipped"
+    },
+    "failures": []
+  },
+  {
+    "sha": "c5049aaf",
+    "subject": "A band spends the page gutter and its delegating rows say so (#5151)",
+    "runs": {
+      "e2e-main (3)": "success",
+      "e2e-main (1)": "success",
+      "e2e-main (4)": "success",
+      "e2e-main (2)": "success"
+    },
+    "failures": []
+  },
+  {
+    "sha": "fc5c30f1",
+    "subject": "Announce the week's day door as the link it already is (#5137)",
+    "runs": {},
+    "failures": []
+  },
+  {
+    "sha": "2ee4f537",
+    "subject": "Answer what a person usually does in one place (#5159)",
+    "runs": {
+      "e2e-main (1)": "success",
+      "e2e-main (3)": "success",
+      "e2e-main (4)": "success",
+      "e2e-main (2)": "success"
+    },
+    "failures": []
+  },
+  {
+    "sha": "20002049",
+    "subject": "Move the day view's rail threshold to the ruled 1440 (#5176)",
+    "runs": {
+      "e2e-main (2)": "success",
+      "e2e-main (4)": "success",
+      "e2e-main (3)": "success",
+      "e2e-main (1)": "success"
+    },
+    "failures": []
+  },
+  {
+    "sha": "8d37d59e",
+    "subject": "Record one act id on every row a composed write touches (#5145)",
+    "runs": {
+      "e2e-main (1)": "success",
+      "e2e-main (2)": "success",
+      "e2e-main (3)": "success",
+      "e2e-main (4)": "success"
+    },
+    "failures": []
+  },
+  {
+    "sha": "a821220b",
+    "subject": "Report the outcome of the episode kebab's remove-condition write (#5180)",
+    "runs": {
+      "e2e-main (3)": "success",
+      "e2e-main (2)": "success",
+      "e2e-main (4)": "success",
+      "e2e-main (1)": "success"
+    },
+    "failures": []
+  },
+  {
+    "sha": "010bbfe2",
+    "subject": "Make the merge gate refuse a hold and a mandated pass (#5182)",
+    "runs": {
+      "e2e-main": "skipped"
+    },
+    "failures": []
+  },
+  {
+    "sha": "eed1e109",
+    "subject": "Answer two more habit questions from the one usual (#5178)",
+    "runs": {
+      "e2e-main (4)": "success",
+      "e2e-main (1)": "success",
+      "e2e-main (2)": "success",
+      "e2e-main (3)": "success"
+    },
+    "failures": []
+  },
+  {
+    "sha": "e49fb8d3",
+    "subject": "Read a quoted merge marker as quotation, not as a marker (#5190)",
+    "runs": {
+      "e2e-main": "skipped"
+    },
+    "failures": []
+  },
+  {
+    "sha": "4bccb496",
+    "subject": "Make every kebab menu item an item of its menu (#5191)",
+    "runs": {
+      "e2e-main (4)": "success",
+      "e2e-main (1)": "success",
+      "e2e-main (3)": "success",
+      "e2e-main (2)": "success"
+    },
+    "failures": []
+  },
+  {
+    "sha": "63901385",
+    "subject": "Give every intake seed path one prefill ledger (#5185)",
+    "runs": {
+      "e2e-main (1)": "failure",
+      "e2e-main (3)": "success",
+      "e2e-main (2)": "success",
+      "e2e-main (4)": "success"
+    },
+    "failures": [
+      "[chromium] › e2e/offline-food-log.spec.ts:46:7 › protein quick-add hydration (#4399) › the arming fill survives a forced pre-hydration window",
+      "[chromium] › e2e/day-ledger.spec.ts:520:7 › the Day ledger (#3987 phase 1) › record"
+    ]
+  },
+  {
+    "sha": "59a94164",
+    "subject": "Read what a session was off the heart rate that measured it (#5139)",
+    "runs": {
+      "e2e-main (4)": "success",
+      "e2e-main (2)": "success",
+      "e2e-main (1)": "failure",
+      "e2e-main (3)": "success"
+    },
+    "failures": [
+      "[chromium] › e2e/offline-food-log.spec.ts:46:7 › protein quick-add hydration (#4399) › the arming fill survives a forced pre-hydration window",
+      "[chromium] › e2e/day-ledger.spec.ts:520:7 › the Day ledger (#3987 phase 1) › record"
+    ]
+  },
+  {
+    "sha": "b101d457",
+    "subject": "Score a past day against the derived context that held on it (#5128)",
+    "runs": {
+      "e2e-main (1)": "success",
+      "e2e-main (3)": "success",
+      "e2e-main (2)": "success",
+      "e2e-main (4)": "success"
+    },
+    "failures": []
+  },
+  {
+    "sha": "9e655e95",
+    "subject": "Give the intake form one state shape (#5200)",
+    "runs": {
+      "e2e-main (1)": "success",
+      "e2e-main (2)": "success",
+      "e2e-main (3)": "success",
+      "e2e-main (4)": "success"
+    },
+    "failures": []
+  },
+  {
+    "sha": "e5ce86fb",
+    "subject": "Write the 2026-09-05 release notes for the day's user-visible merges (#5207)",
+    "runs": {
+      "e2e-main (2)": "success",
+      "e2e-main (4)": "success",
+      "e2e-main (3)": "success",
+      "e2e-main (1)": "success"
+    },
+    "failures": []
+  },
+  {
+    "sha": "db376bfa",
+    "subject": "Add the PM role, the Ladder bootstrap and the landing tooling (#5158)",
+    "runs": {
+      "e2e-main (2)": "failure",
+      "e2e-main (4)": "success",
+      "e2e-main (1)": "failure",
+      "e2e-main (3)": "success"
+    },
+    "failures": [
+      "[mobile] › e2e/mobile-density-sweep.mobile.spec.ts:539:5 › #3899 a band's frame is gone at 390",
+      "[chromium] › e2e/offline-food-log.spec.ts:46:7 › protein quick-add hydration (#4399) › the arming fill survives a forced pre-hydration window"
+    ]
+  },
+  {
+    "sha": "3dde0913",
+    "subject": "Read every open episode against one bound and one vocabulary (#5168)",
+    "runs": {
+      "e2e-main (3)": "success",
+      "e2e-main (4)": "success",
+      "e2e-main (2)": "success",
+      "e2e-main (1)": "success"
+    },
+    "failures": []
+  },
+  {
+    "sha": "0ce1b020",
+    "subject": "Ask where the request went when the handler heard nothing (#5184)",
+    "runs": {
+      "e2e-main (4)": "success",
+      "e2e-main (2)": "success",
+      "e2e-main (1)": "success",
+      "e2e-main (3)": "success"
+    },
+    "failures": []
+  }
+]
