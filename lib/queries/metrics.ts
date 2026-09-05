@@ -1433,6 +1433,51 @@ export const getHrMinutesInRange = cache(function getHrMinutesInRange(
   ).map(({ ts, bpm }) => ({ ts, bpm }));
 });
 
+// THE SAME WINDOW AND THE SAME ONE-SOURCE-PER-DAY PICK, ANSWERED IN INSTANTS (#5212
+// falsifying pass, F3). The projection above is the right answer for everything that
+// groups or renders BY DAY — but it is lossy, and exactly once a year it loses the
+// thing a duration reader needs. In a fall-back hour two stored instants project to
+// the SAME local minute, so a caller that resolves the local string back through the
+// zone gets the first of the two for both: an hour of a person's readings collapses
+// onto the hour before it, the newest measured minute moves an hour into the past, and
+// a quiet stretch appears where there was effort.
+//
+// A caller measuring real elapsed spans therefore reads the stored instant, which
+// `hr_minutes.ts` has been since #2205. The local day is still what decides which
+// source wins a day (#14), so the projection is still computed — it is used for
+// GROUPING and thrown away, rather than returned as if it were the fact.
+export const getHrInstantsInRange = cache(function getHrInstantsInRange(
+  profileId: number,
+  since: string,
+  until: string
+): { at: number; bpm: number }[] {
+  const tz = getTimezone(profileId);
+  if (!hrInstantBounds(profileId)) return [];
+  if (until < since) return [];
+  const { startUtc, endUtc } = localDaySpan(tz, since, until);
+  const rows = db
+    .prepare(
+      `SELECT ts, bpm, source FROM hr_minutes
+        WHERE profile_id = ? AND ts >= ? AND ts < ?
+        ORDER BY ts ASC`
+    )
+    .all(profileId, startUtc, endUtc) as {
+    ts: string;
+    bpm: number;
+    source: string | null;
+  }[];
+  const toLocalMinute = localMinuteProjector(tz, startUtc, endUtc);
+  return pickRowsOneSourcePerDay(
+    rows,
+    resolutionFor(profileId, "heart_rate"),
+    (r) => (toLocalMinute(r.ts) ?? r.ts).slice(0, 10),
+    (r) => r.source
+  )
+    .map(({ ts, bpm }) => ({ at: Date.parse(ts), bpm }))
+    .filter((r) => Number.isFinite(r.at))
+    .sort((left, right) => left.at - right.at);
+});
+
 function bodyMetricColumn(metric: BodyMetricKind): string {
   return metric === "weight"
     ? "weight_kg"
