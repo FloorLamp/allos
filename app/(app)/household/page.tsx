@@ -32,11 +32,11 @@ import {
 } from "@/lib/data-quality";
 import { activeByKey } from "@/lib/findings";
 import {
-  getActiveSituations,
   getDisplayFormatPrefs,
   getProfileAge,
   getUnitPrefs,
 } from "@/lib/settings";
+import { getEffectiveActiveSituations } from "@/lib/queries/derived-situations";
 import {
   isStrengthTrainingRelevant,
   isTrainingRelevant,
@@ -95,6 +95,12 @@ export default async function HouseholdPage() {
     const strengthTrainingRelevant = isStrengthTrainingRelevant(age);
 
     // Today's intake adherence (x/y): due doses honored via isDueOn.
+    //
+    // THE SAME SITUATIONS THE MEMBER'S OWN PAGE USES (#5167). This asked
+    // `getActiveSituations` — the declared half, as of now — so a card's x/y counted a
+    // dose the member's medications page holds for a derived pause, and missed one whose
+    // `situational` trigger the app derived. A caregiver reading "1/3" beside a page that
+    // says "1/2" has no way to tell which is the schedule.
     const activeItemById = new Map(
       getIntakeItems(pid)
         .filter((s) => s.active)
@@ -106,7 +112,7 @@ export default async function HouseholdPage() {
       {
         date: day,
         isWorkoutDay: getActivitiesByDate(pid, day).length > 0,
-        activeSituations: new Set(getActiveSituations(pid)),
+        activeSituations: getEffectiveActiveSituations(pid, day),
       },
       getTakenDoseIds(pid, day)
     );

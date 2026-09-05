@@ -31,11 +31,11 @@ import {
   getRecentByExercise,
 } from "@/lib/queries";
 import {
-  getActiveSituations,
   getTimezone,
   getDisplayFormatPrefs,
   getUnitPrefs,
 } from "@/lib/settings";
+import { getEffectiveActiveSituations } from "@/lib/queries/derived-situations";
 import {
   doseDueOn,
   isOnDemand,
@@ -99,10 +99,28 @@ function buildDoseSchedule(
   // The SAME day context every intake surface builds (the household card, the digest,
   // the reminders): dueness is `doseDueOn`, never a local filter, so an alternating-
   // amount pair or a taper window means the same thing offline as on the page (#1602).
+  // THE SITUATIONS THE ONLINE PAGE WOULD HAVE USED, dated to this day (#5167).
+  //
+  // This read was `new Set(getActiveSituations(...))` — the DECLARED half alone, asked
+  // as of now. Every online surface that decides whether a dose is due moved to the
+  // effective resolver (declared ∪ derived, dated per day) and the snapshot did not come
+  // with them, so the offline schedule had neither the holding nor the widening: it
+  // OFFERED a dose the medications page holds for a derived pause (a rough night against
+  // `pause_situation`), and OMITTED one whose `situational` trigger the app derived
+  // rather than the person declaring.
+  //
+  // Offline is a surface a person ACTS on, so that is a divergence about what was owed
+  // rather than about what is shown: they tap what the snapshot offered and come back
+  // online to a schedule that disagrees the dose was ever due.
+  //
+  // NO SECOND ENGINE, which is this module's own rule: `getEffectiveActiveSituations` is
+  // the seam every one of those surfaces already reads, asked for the SAME subject and
+  // the SAME day the snapshot is built for. The browser recomputes nothing — it could
+  // not, from offline data — and the answer travels as the fact it already is.
   const dayCtx = {
     date: ctx.date,
     isWorkoutDay: getActivitiesByDate(ctx.profileId, ctx.date).length > 0,
-    activeSituations: new Set(getActiveSituations(ctx.profileId)),
+    activeSituations: getEffectiveActiveSituations(ctx.profileId, ctx.date),
   };
   const taken = getTakenDoseIds(ctx.profileId, ctx.date);
   const skipped = getSkippedDoseIds(ctx.profileId, ctx.date);
