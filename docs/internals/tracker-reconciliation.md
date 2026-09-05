@@ -31,7 +31,13 @@ npm run reconcile                        # report to stdout
 npm run reconcile -- --json ev.json --out report.md
 npm run reconcile -- --issue 2603,2589   # one or two issues
 npm run reconcile:apply plan.json        # dry run; add --apply to write
+npm run reconcile:watermark              # read the stamp
+npm run reconcile:watermark -- stamp --evidence ev.json --apply
 ```
+
+Every step of the protocol has a name you can type. The stamp step did not
+until 2026-09-05, which is the likeliest reason it is the one step nothing has
+ever run — the carrier issue has never existed on this tracker.
 
 The run window starts at the previous run's watermark, stored in the tracker
 itself as the body of the issue titled "Reconcile watermark (machine state)" —
