@@ -75,11 +75,27 @@ function suggestedAttrs(
     : { "data-suggested": suggested ? "1" : "0" };
 }
 
+// THE BOX, NOT A HEIGHT OF OUR OWN (#4035). Every shape here drew `min-h-11` and its
+// own `py-1.5`, which made the fact row 10px taller than every other control kind in
+// all eight consumers. `data-fact-chip` puts them in the control-box selector list
+// (app/globals.css, SECTION: Touch tap targets): 34px rendered, the padding derived
+// from the element's own line box, and the 44px floor met EFFECTIVELY by the reach a
+// coarse pointer gets around the box. No shape restates a height.
+//
+// THE ATTRIBUTE'S VALUE IS THE SHAPE, because the row has three of them. A `solo`
+// chip has a gap around it and takes the whole treatment. A REMOVABLE chip is one
+// `pill` drawing its own border with two halves stretched inside it, so the pill
+// takes the floor alone — the derived padding on top of its border would render 36 —
+// and the halves take the reach. Those halves are flush by construction, so their
+// reach is `tiled`, i.e. block-only: an inline reach could only be taken from the
+// half next door, moving the boundary between two targets rather than enlarging
+// either. That is #3954's rule for a segmented track, and this is the same
+// arrangement wearing a different name.
 const STATED_CHIP =
-  "min-h-11 rounded-full border border-(--border) bg-surface px-3 py-1.5 text-sm text-slate-700 transition hover:bg-(--ghost-hover) dark:text-slate-200";
+  "rounded-full border border-(--border) bg-surface px-3 text-sm text-slate-700 transition hover:bg-(--ghost-hover) dark:text-slate-200";
 
 const MISSING_CHIP =
-  "min-h-11 rounded-full border border-dashed border-brand-400 px-3 py-1.5 text-sm font-medium text-brand-700 transition hover:bg-brand-50 dark:border-brand-500 dark:text-brand-300 dark:hover:bg-brand-950";
+  "rounded-full border border-dashed border-brand-400 px-3 text-sm font-medium text-brand-700 transition hover:bg-brand-50 dark:border-brand-500 dark:text-brand-300 dark:hover:bg-brand-950";
 
 // The row itself: the facts in reading order, wrapping on narrow viewports. Consumers
 // pass their chips as children so a surface can order its own facts and append its own
@@ -91,6 +107,12 @@ const MISSING_CHIP =
 // on <body> drops a keyboard user at the top of the document. `tabIndex={-1}` makes the
 // row focusable WITHOUT adding a tab stop, and because the row CONTAINS the chips, Tab
 // from it continues into the row in document order rather than skipping past it.
+//
+// AND THE ROW BUYS THE GAP ITS CHIPS' REACH NEEDS (#4035). Once a chip carries the
+// coarse-pointer reach, two chips 6px apart own the same 6px of screen — the gap floor
+// the control box states is TWICE the reach, which is what `FilterPills` and the
+// record's chip row already spend. `pointer-coarse:` because the reach only exists
+// there: a mouse keeps the tighter row.
 //
 // AND IT SHOWS A RING WHEN IT HAS FOCUS. A focusable element that gives no sign it is
 // focused is its own defect, and shipping one inside a fix for a keyboard defect would
@@ -113,7 +135,7 @@ export default function FactChipRow({
       data-testid={testId}
       data-fact-row="true"
       tabIndex={-1}
-      className={`flex flex-wrap items-center gap-1.5 rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-hidden ${className ?? ""}`}
+      className={`flex flex-wrap items-center gap-1.5 rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-hidden pointer-coarse:gap-3.5 ${className ?? ""}`}
     >
       {children}
     </div>
@@ -167,6 +189,7 @@ export function FactChip({
         data-focus-key={focusKey}
         {...suggestedAttrs(suggested)}
         aria-expanded={expanded}
+        data-fact-chip="solo"
         onClick={() => onOpen(focusKey)}
         className={state === "missing" ? MISSING_CHIP : STATED_CHIP}
       >
@@ -180,14 +203,16 @@ export function FactChip({
       data-testid={testId}
       data-fact-state={state}
       {...suggestedAttrs(suggested)}
-      className="inline-flex min-h-11 items-stretch rounded-full border border-(--border) bg-surface text-sm text-slate-700 dark:text-slate-200"
+      data-fact-chip="pill"
+      className="inline-flex items-stretch rounded-full border border-(--border) bg-surface text-sm text-slate-700 dark:text-slate-200"
     >
       <button
         type="button"
         data-focus-key={focusKey}
+        data-fact-chip="tiled"
         aria-expanded={expanded}
         onClick={() => onOpen(focusKey)}
-        className="flex min-h-11 items-center py-1.5 pl-3 text-left"
+        className="flex items-center pl-3 text-left"
       >
         {label}
         {badge}
@@ -195,9 +220,10 @@ export function FactChip({
       <button
         type="button"
         data-testid={remove.testId}
+        data-fact-chip="tiled"
         aria-label={remove.label}
         onClick={remove.onClick}
-        className="flex min-h-11 w-11 items-center justify-center rounded-full text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950 dark:hover:text-rose-400"
+        className="flex w-(--control-box) items-center justify-center rounded-full text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950 dark:hover:text-rose-400"
       >
         ×
       </button>
@@ -229,9 +255,10 @@ export function FactAddChip({
       type="button"
       data-testid={testId}
       data-focus-key={focusKey}
+      data-fact-chip="solo"
       aria-expanded={expanded}
       onClick={() => onOpen(focusKey)}
-      className="inline-flex min-h-11 items-center gap-1 rounded-full border border-dashed border-(--border) px-3 py-1.5 text-sm text-slate-600 transition hover:bg-(--ghost-hover) dark:text-slate-300"
+      className="inline-flex items-center gap-1 rounded-full border border-dashed border-(--border) px-3 text-sm text-slate-600 transition hover:bg-(--ghost-hover) dark:text-slate-300"
     >
       <IconPlus className="h-3.5 w-3.5" stroke={2} aria-hidden="true" />
       {label}
@@ -242,6 +269,10 @@ export function FactAddChip({
 // The mini variant: the ONE trailing affordance holding the optional facts with nothing
 // to state. Quiet, because it is not a fact — it is where the absent ones live. Its label
 // names them (see `moreFactsLabel` in each consumer's fact module).
+//
+// IT DRAWS NO BORDER AND SO HAS TO RESERVE ONE. `border-transparent` is `chip-base`'s
+// own trick: the derived padding is computed against a 1px border, so a shape that
+// declares none renders 32 beside its neighbours' 34.
 export function FactMoreChip({
   label,
   focusKey,
@@ -266,9 +297,10 @@ export function FactMoreChip({
       // primitive rather than found by a consumer testid, because this is the one
       // trailing affordance by contract — see FactEditorHost's restore.
       data-fact-more="true"
+      data-fact-chip="solo"
       aria-expanded={expanded}
       onClick={() => onOpen(focusKey)}
-      className="min-h-11 rounded-full px-3 py-1.5 text-sm text-slate-500 underline-offset-2 transition hover:underline dark:text-slate-400"
+      className="rounded-full border-transparent px-3 text-sm text-slate-500 underline-offset-2 transition hover:underline dark:text-slate-400"
     >
       {label}
     </button>

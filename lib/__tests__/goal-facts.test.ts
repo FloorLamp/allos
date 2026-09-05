@@ -79,7 +79,7 @@ describe("the goal chip row states the sentence it will write (#3220)", () => {
       "Bench Press",
       "Exercise goal",
       "100 kg × 5",
-      "by Dec 31, 2026",
+      "By Dec 31, 2026",
     ]);
   });
 
@@ -106,10 +106,10 @@ describe("the goal chip row states the sentence it will write (#3220)", () => {
   it("holds the starting point back when history has nothing to say, and marks it as borrowed when it does", () => {
     expect(summary({ subject: "Bench Press" }).more).toContain("startingFrom");
     const stated = chip(
-      { subject: "Bench Press", startingFrom: "from 92.5 kg" },
+      { subject: "Bench Press", startingFrom: "From 92.5 kg" },
       "startingFrom"
     );
-    expect(stated?.label).toBe("from 92.5 kg");
+    expect(stated?.label).toBe("From 92.5 kg");
     expect(stated?.suggested).toBe(true);
     // A freeform goal's starting point is typed, not borrowed — tracked and false.
     expect(
@@ -117,7 +117,7 @@ describe("the goal chip row states the sentence it will write (#3220)", () => {
         {
           kind: "freeform",
           subject: "Run a half marathon",
-          startingFrom: "from 5 km",
+          startingFrom: "From 5 km",
           startingFromSuggested: false,
         },
         "startingFrom"
@@ -220,7 +220,7 @@ describe("what each target reads (#3220)", () => {
         value: "100",
         unit: "mg/dL",
       })
-    ).toBe("under 100 mg/dL");
+    ).toBe("Under 100 mg/dL");
     expect(
       targetFactLabel({
         kind: "biomarker",
@@ -228,7 +228,7 @@ describe("what each target reads (#3220)", () => {
         value: "45",
         unit: "ug / L",
       })
-    ).toBe("over 45 µg / L");
+    ).toBe("Over 45 µg / L");
     expect(
       targetFactLabel({
         kind: "biomarker",
@@ -236,7 +236,7 @@ describe("what each target reads (#3220)", () => {
         value: "30",
         unit: null,
       })
-    ).toBe("over 30");
+    ).toBe("Over 30");
     expect(targetFactLabel({ kind: "freeform", value: "21", unit: "km" })).toBe(
       "21 km"
     );
@@ -252,15 +252,15 @@ describe("what each target reads (#3220)", () => {
   });
 
   it("reads a deadline as a date and nothing as nothing", () => {
-    expect(deadlineFactLabel("2026-12-31")).toBe("by Dec 31, 2026");
+    expect(deadlineFactLabel("2026-12-31")).toBe("By Dec 31, 2026");
     expect(deadlineFactLabel("")).toBeNull();
   });
 
   it("reads a hold's starting point as m:ss, because nobody says 120 s", () => {
     expect(
       startingFromFactLabel({ value: 120, unit: null, asDuration: true })
-    ).toBe("from 2:00");
-    expect(startingFromFactLabel({ value: 18, unit: "%" })).toBe("from 18%");
+    ).toBe("From 2:00");
+    expect(startingFromFactLabel({ value: 18, unit: "%" })).toBe("From 18%");
     expect(startingFromFactLabel({ value: null, unit: "kg" })).toBeNull();
   });
 });
@@ -283,9 +283,9 @@ describe("where the goal is starting from (#3220)", () => {
     goalStartingFrom({ ...BASE, ...over });
 
   it("reads the movement's best for the metric the goal is on", () => {
-    expect(from({})).toBe("from 92.5 kg");
-    expect(from({ metric: "reps" })).toBe("from 12 reps");
-    expect(from({ metric: "hold" })).toBe("from 1:30");
+    expect(from({})).toBe("From 92.5 kg");
+    expect(from({ metric: "reps" })).toBe("From 12 reps");
+    expect(from({ metric: "hold" })).toBe("From 1:30");
   });
 
   it("has nothing to say about a sets target, which is a property of the target", () => {
@@ -295,15 +295,15 @@ describe("where the goal is starting from (#3220)", () => {
   it("converts a canonical kg through the form's own display boundary", () => {
     expect(
       from({ toDisplayWeight: (kg) => Math.round(kg * 2.2), weightUnit: "lb" })
-    ).toBe("from 204 lb");
+    ).toBe("From 204 lb");
   });
 
   it("reads a body metric and a lab result from their own stores", () => {
     expect(from({ kind: "body", bodyLatest: 80, bodyMetric: "weight" })).toBe(
-      "from 80 kg"
+      "From 80 kg"
     );
     expect(from({ kind: "body", bodyLatest: 21, bodyMetric: "body_fat" })).toBe(
-      "from 21%"
+      "From 21%"
     );
     expect(
       from({
@@ -311,13 +311,13 @@ describe("where the goal is starting from (#3220)", () => {
         biomarkerLatest: 45,
         biomarkerUnit: "ug / L",
       })
-    ).toBe("from 45 µg / L");
+    ).toBe("From 45 µg / L");
   });
 
   it("takes a freeform goal's starting point from the field, not from history", () => {
     expect(
       from({ kind: "freeform", currentValue: "5", freeformUnit: "km" })
-    ).toBe("from 5 km");
+    ).toBe("From 5 km");
     expect(from({ kind: "freeform", currentValue: "" })).toBeNull();
     expect(from({ kind: "freeform", currentValue: "abc" })).toBeNull();
   });

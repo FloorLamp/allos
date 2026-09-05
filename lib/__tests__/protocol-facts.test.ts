@@ -111,16 +111,16 @@ describe("the protocol chip row states the sentence it will write (#3219)", () =
   it("states the link once, whichever of its two fields answered it", () => {
     // ONE QUESTION — "what is this protocol about" — answered in either vocabulary.
     // Two chips would state one fact twice and leave one permanently absent.
-    expect(labelOf({ intakeItemName: "Omega-3" }, "link")).toBe("with Omega-3");
+    expect(labelOf({ intakeItemName: "Omega-3" }, "link")).toBe("With Omega-3");
     expect(labelOf({ equipmentName: "Sauna cabin" }, "link")).toBe(
-      "using Sauna cabin"
+      "Using Sauna cabin"
     );
     expect(
       labelOf(
         { intakeItemName: "Omega-3", equipmentName: "Sauna cabin" },
         "link"
       )
-    ).toBe("with Omega-3 · Sauna cabin");
+    ).toBe("With Omega-3 · Sauna cabin");
   });
 
   it("names the practice by its own noun, never by the counting phrase", () => {
@@ -143,19 +143,19 @@ describe("the window chip states a length, not two dates (#3219)", () => {
     expect(windowFactLabel("2026-01-01", "2026-01-02")).toBe("1 day");
     expect(windowFactLabel("2026-01-01", "2026-01-04")).toBe("3 days");
     // 11 weeks 3 days is arithmetic nobody asked for, so it states the endpoint.
-    expect(windowFactLabel("2026-01-01", "2026-03-20")).toContain("until ");
+    expect(windowFactLabel("2026-01-01", "2026-03-20")).toContain("Until ");
   });
 
   it("states the endpoint it has when the window is open at one end", () => {
-    expect(windowFactLabel("2026-01-01", "")).toContain("from ");
-    expect(windowFactLabel("", "2026-03-26")).toContain("until ");
+    expect(windowFactLabel("2026-01-01", "")).toContain("From ");
+    expect(windowFactLabel("", "2026-03-26")).toContain("Until ");
     expect(windowFactLabel("", "")).toBeNull();
   });
 
   it("does not claim a length for a window that ends before it starts", () => {
     // A negative span is a typo in progress, not a fact. It states the end date
     // rather than "-42 days", which would read as a number the form intends to write.
-    expect(windowFactLabel("2026-03-26", "2026-01-01")).toContain("until ");
+    expect(windowFactLabel("2026-03-26", "2026-01-01")).toContain("Until ");
   });
 });
 

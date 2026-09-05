@@ -153,7 +153,7 @@ export default function PurposesEditor({
       {suggested.length > 0 && (
         <div
           data-testid="purpose-suggestions"
-          className="mb-2 flex flex-wrap items-center gap-1.5"
+          className="mb-2 flex flex-wrap items-center gap-1.5 pointer-coarse:gap-3.5"
         >
           <span className="text-xs text-slate-500 dark:text-slate-400">
             From what&apos;s in it:
@@ -164,7 +164,8 @@ export default function PurposesEditor({
               type="button"
               data-testid={`purpose-suggest-${key}`}
               onClick={() => add({ kind: "goal", goalKey: key })}
-              className="min-h-11 rounded-full border border-dashed border-(--border) px-2.5 py-1 text-sm"
+              data-fact-chip="solo"
+              className="rounded-full border border-dashed border-(--border) px-2.5 text-sm"
             >
               + {goalPurposeLabel(key)}
             </button>
@@ -172,7 +173,7 @@ export default function PurposesEditor({
         </div>
       )}
 
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap gap-1.5 pointer-coarse:gap-3.5">
         {GOAL_PURPOSES.map((g) => {
           const key = draftKey({ kind: "goal", goalKey: g.key });
           if (chosen.has(key)) return null;
@@ -182,7 +183,8 @@ export default function PurposesEditor({
               type="button"
               data-testid={`purpose-goal-${g.key}`}
               onClick={() => add({ kind: "goal", goalKey: g.key })}
-              className="min-h-11 rounded-full border border-(--border) px-2.5 py-1 text-sm transition hover:bg-(--ghost-hover)"
+              data-fact-chip="solo"
+              className="rounded-full border border-(--border) px-2.5 text-sm transition hover:bg-(--ghost-hover)"
             >
               {g.label}
             </button>
