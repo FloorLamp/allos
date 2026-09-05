@@ -7,18 +7,20 @@
 // the editable thing, so two drinks at two hours are two rows and two ticks, and each
 // corrects through the food serving's own form.
 //
-// THE DAY-ONLY ARM IS THE POINT OF THE NEGATIVE CASES. `substance_daily_totals` is
-// UNIQUE per (profile, date, substance) and declares no event column, so nicotine,
-// cannabis and custom substances have no minute to claim — but they DO carry
-// `recorded_at`, which is what `bestKnownInstant` would answer with. A permissive read
-// there prints a FILING stamp as a use time and puts a tick on the chart at the hour
-// somebody typed, which nothing on screen would contradict.
+// AND SINCE #5026 PHASE 2, SO DOES EVERY OTHER SUBSTANCE. The negative cases here used
+// to be about nicotine, cannabis and custom keys having no minute to claim, because
+// `substance_daily_totals` declares no event column — but they DID carry `recorded_at`,
+// which is what a permissive read would have answered with, printing a FILING stamp as
+// a use time. Phase 2 gave them `substance_log_events`, so the same statement lands on
+// the same columns and the same rule keeps a filing stamp off the chart: the row may
+// say "logged", the TICK reads the event instant only.
 
 import { describe, expect, it } from "vitest";
 import { db, today } from "@/lib/db";
 import {
   addSubstanceDailyTotalAction,
-  updateSubstanceDailyTotalAction,
+  correctSubstanceUseAction,
+  deleteSubstanceUseAction,
 } from "@/app/(app)/medical/substance-use/actions";
 import { actAs, createLogin, createProfile, fd } from "./harness";
 import { setProfileSetting } from "@/lib/settings";
@@ -153,11 +155,12 @@ describe("a drink states a time (#3295 part 1)", () => {
     expect(dayServings(profile.id, date)).toBe(1);
   });
 
-  // THE WIDENING THIS LANE MUST NOT DO. `substance_daily_totals` has no column to hold
-  // an instant, so a posted one is refused rather than half-kept: the day row must not
-  // come back carrying a minute nobody could have stated.
+  // THE WIDENING PHASE 2 IS. This case used to assert a REFUSAL — a posted time for a
+  // timeless ledger must not be half-kept — and its inverse is now the contract: the
+  // store holds the instant, so the statement lands and the record reads it back as one
+  // row and one tick per use, the drink's own shape.
   it.each(["nicotine", "cannabis", "Kratom"])(
-    "refuses a posted time for %s, whose ledger is timeless",
+    "keeps a posted time for %s, one row and one tick per use",
     async (substance) => {
       const { login, profile } = seat(`clock-dayonly-${substance}`);
       const date = shiftDateStr(today(profile.id), -1);
@@ -169,17 +172,46 @@ describe("a drink states a time (#3295 part 1)", () => {
           stated_at: `${date}T21:30:00Z`,
         })
       );
+      // The day counter still rolls them up — it is the cap's substrate and the card's
+      // count, and phase 2 did not move it.
       expect(getSubstanceDailyTotals(profile.id, substance)[0]).toMatchObject({
         date,
         amount: 2,
       });
       const { rows, ticks } = dayView(login.id, profile.id, date);
-      const row = rows.find((r) => r.kind === "substance");
-      // ONE DAY ROW, DATE-ONLY, AND ITS CORRECTION IS STILL THE DAY-COUNT FORM: these
-      // ledgers have no events until phase 2. `recorded_at` IS populated on the row —
-      // the read must not reach for it.
-      expect(row).toMatchObject({ clock: null, sortTime: null });
-      expect(row?.edit).toMatchObject({ kind: "substance", amount: 2 });
+      const uses = rows.filter((r) => r.kind === "substance");
+      expect(uses).toHaveLength(2);
+      expect(uses[0]).toMatchObject({ clock: "21:30", clockKind: "stated" });
+      expect(uses[0].edit).toMatchObject({
+        kind: "substance",
+        substance,
+        eventId: expect.any(Number),
+      });
+      expect(ticks.map((tick) => tick.minute)).toEqual([21 * 60 + 30, 21 * 60 + 30]);
+    }
+  );
+
+  // THE CONVERSE, and it is the half a "the time is kept" assertion cannot see: a use
+  // nobody timed still keeps a NULL instant, so the row admits its clock is a filing
+  // time and the chart is left alone. `recorded_at` IS populated on these rows — the
+  // read must not reach for it when it draws.
+  it.each(["nicotine", "Kratom"])(
+    "leaves an untimed %s use with no instant, and draws no tick for it",
+    async (substance) => {
+      const { login, profile } = seat(`clock-untimed-${substance}`);
+      const date = shiftDateStr(today(profile.id), -1);
+      await addSubstanceDailyTotalAction(
+        fd({ substance, date, amount: "1" })
+      );
+      const { rows, ticks } = dayView(login.id, profile.id, date);
+      const use = rows.find((r) => r.kind === "substance");
+      // It is STILL an event row — a use nobody timed is a use — and it reads like the
+      // drink beside it: the record chain's minute, prefixed `logged`.
+      expect(use?.clockKind).toBe("logged");
+      expect(use?.clock).toMatch(/^logged /);
+      // BUT IT DRAWS NOTHING. A backfill's `recorded_at` is the minute somebody typed,
+      // on whatever day they typed it; the rail is a map of the person's day, so the
+      // mark reads the event instant only.
       expect(ticks).toEqual([]);
     }
   );
@@ -375,9 +407,9 @@ describe("the record reports the drink's instant (#3295 part 2)", () => {
         stated_at: `${date}T21:30:00Z`,
       })
     );
-    // Nicotine is the narrowing target BECAUSE its ledger is timeless: phase 2 gives it
-    // per-event rows, and whoever moves it must re-seat this case on a day-total
-    // substance or it stops exercising the arm the guard protects.
+    // Nicotine is the narrowing target, UNTIMED: phase 2 gave it per-event rows, so the
+    // arm this guard protects is no longer "a timeless ledger" but "a use nobody stated
+    // a minute for" — two rows on the record and nothing on the rail.
     await addSubstanceDailyTotalAction(
       fd({ substance: "nicotine", date, amount: "2" })
     );
@@ -395,10 +427,13 @@ describe("the record reports the drink's instant (#3295 part 2)", () => {
     // UNNARROWED FIRST, through the same reader and differing in ONE option, because a
     // filter's emptiness is otherwise satisfied by a fixture that logged no drink.
     expect(seen()).toEqual({
-      rows: ["Alcohol", "Nicotine"],
+      rows: ["Alcohol", "Nicotine", "Nicotine"],
       ticks: [21 * 60 + 30],
     });
-    expect(seen("nicotine")).toEqual({ rows: ["Nicotine"], ticks: [] });
+    expect(seen("nicotine")).toEqual({
+      rows: ["Nicotine", "Nicotine"],
+      ticks: [],
+    });
     // AND THE AXIS NARROWS RATHER THAN HIDES: asking for the drinks by name still gets
     // them, which the guard's other wrong spelling — the item test alone — would not.
     expect(seen("alcohol")).toEqual({
@@ -437,7 +472,7 @@ describe("the record reports the drink's instant (#3295 part 2)", () => {
 // BOTH DIRECTIONS, ONE FIXTURE, because the two failures are opposite and a fix that
 // only closes the day form is half of the answer: a drink nobody can correct anywhere
 // is as wrong as a drink corrected by levelling the day.
-describe("a drink is corrected on its own row, never through the day count (#5026 item 1)", () => {
+describe("a use is corrected on its own row, never through the day count (#5026)", () => {
   /** Two drinks, stated at two hours, exactly as the flattening case needs them. */
   async function twoStatedDrinks(name: string) {
     const { login, profile } = seat(name);
@@ -475,36 +510,80 @@ describe("a drink is corrected on its own row, never through the day count (#502
       }));
   }
 
-  it("refuses the day-count correction, and neither clock moves", async () => {
-    const { login, profile, date, dayId } =
-      await twoStatedDrinks("clock-day-door");
-    const moved = shiftDateStr(date, 1);
-
-    expect(
-      await updateSubstanceDailyTotalAction(
+  /** The same, for a substance whose ledger phase 2 built. */
+  async function twoStatedUses(name: string, substance: string) {
+    const { login, profile } = seat(name);
+    const date = shiftDateStr(today(profile.id), -4);
+    for (const hour of ["21:00", "23:00"])
+      await addSubstanceDailyTotalAction(
         fd({
-          id: String(dayId),
-          substance: "alcohol",
-          date: moved,
+          substance,
+          date,
           amount: "1",
+          stated_at: `${date}T${hour}:00Z`,
         })
-      )
-    ).toEqual({ kind: "corrected-per-event" });
+      );
+    return { login, profile, date };
+  }
 
-    // The two stated hours, the day they were stated on, and the counter that rolls
-    // them up: all where the person left them. Asserted on the STORE, because a
-    // refusal returned after a partial write reads identically at the seam.
-    expect(taps(profile.id, date)).toEqual([
-      { occurred_at: `${date}T21:00:00Z`, time_source: "stated" },
-      { occurred_at: `${date}T23:00:00Z`, time_source: "stated" },
-    ]);
-    expect(taps(profile.id, moved)).toEqual([]);
-    expect(dayServings(profile.id, date)).toBe(2);
-    // And the record still shows the pair, each on its own tick.
-    const { rows, ticks } = dayView(login.id, profile.id, date);
-    expect(rows.filter((row) => row.kind === "substance")).toHaveLength(2);
-    expect(ticks.map((tick) => tick.minute)).toEqual([21 * 60, 23 * 60]);
-  });
+  /** The day's use counter for a substance-log key, the counter's own arm of `taps`. */
+  function dayUnits(profileId: number, substance: string, date: string) {
+    const row = db
+      .prepare(
+        `SELECT units FROM substance_daily_totals
+          WHERE profile_id = ? AND substance = ? AND date = ?`
+      )
+      .get(profileId, substance, date) as { units: number } | undefined;
+    return row?.units ?? 0;
+  }
+
+  // THE SAME STORY ON THE OTHER LEDGER (#5026 phase 2). What used to sit here was the
+  // refusal — the day form flattening two stated hours onto one — and that door does
+  // not exist any more for any substance. This is the shape that replaced it, asserted
+  // against the defect it replaced: correct ONE use, and its neighbour does not move.
+  it.each(["nicotine", "Kratom"])(
+    "re-times and deletes ONE %s use of a day, and the rollup follows",
+    async (substance) => {
+      const { login, profile, date } = await twoStatedUses(
+        `clock-use-door-${substance}`,
+        substance
+      );
+      const uses = recordDrinks(login.id, profile.id, date);
+      expect(uses.map((use) => [use.at, use.door])).toEqual([
+        ["23:00", "substance"],
+        ["21:00", "substance"],
+      ]);
+      const first = uses.find((use) => use.at === "21:00")!.eventId;
+      const second = uses.find((use) => use.at === "23:00")!.eventId;
+
+      expect(
+        await correctSubstanceUseAction(
+          fd({
+            event_id: String(first),
+            profile_id: String(profile.id),
+            date,
+            stated_at: `${date}T20:15:00Z`,
+          })
+        )
+      ).toEqual({ kind: "updated", eventId: first, date });
+      // ONE USE MOVED. The other keeps the hour it was stated at — which is exactly
+      // what a day-count correction could not do, and the whole reason it is gone.
+      expect(
+        recordDrinks(login.id, profile.id, date).map((use) => use.at)
+      ).toEqual(["23:00", "20:15"]);
+
+      // And the same door removes ONE use, with the rollup following it down.
+      expect(
+        await deleteSubstanceUseAction(
+          fd({ event_id: String(second), profile_id: String(profile.id) })
+        )
+      ).toMatchObject({ kind: "deleted" });
+      expect(dayUnits(profile.id, substance, date)).toBe(1);
+      expect(recordDrinks(login.id, profile.id, date)).toEqual([
+        { at: "20:15", door: "substance", eventId: first },
+      ]);
+    }
+  );
 
   it("corrects the same day through the record's own door, one drink at a time", async () => {
     const { login, profile, date } = await twoStatedDrinks("clock-event-door");
