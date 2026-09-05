@@ -341,7 +341,9 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       // The BEFORE reading of the saved-row diff (#3946). It is taken here rather
       // than in a `beforeEach` so that a `beforeAll` fixture — which runs before
       // any test's fixtures — is already in it: a row a whole FILE owns and tears
-      // down in `afterAll` is in both readings and is correctly invisible here.
+      // down in `afterAll` is in both readings, so no TEST is blamed for it. The
+      // gap below is where such a row IS visible, charged to the hook that wrote
+      // it and to no test at all (#5266).
       const at = frozenNow();
       const before = workerApp.demo
         ? []
@@ -362,8 +364,9 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       };
       // THE GAP: this reading against the one the previous test ended on (#5266).
       // Everything that moved in between escaped BOTH per-test windows, so this is
-      // the only place it is ever visible — and the culprit is whoever owned the
-      // window, which across a file boundary is the new file's `beforeAll`.
+      // the only place it is ever visible — and it is charged to whoever owned the
+      // window, which across a suite boundary is that suite's `beforeAll` and
+      // never the previous test.
       if (!workerApp.demo && previousReading) {
         const gap = diffSharedRows(previousReading.after, before);
         if (gap.added.length + gap.missing.length > 0) {
