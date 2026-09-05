@@ -523,6 +523,40 @@ function scopedByProfileId(sql: string): boolean {
   return false;
 }
 
+// STALENESS for ALLOW_EXEC (#5239). An allowlist entry is a claim about the tree, and a
+// claim nothing re-checks stops being true quietly. Not hypothetical: the ALLOW_SQL entry
+// for resolvePortalIdentity had matched NO live statement since #3011 added a column to
+// its select list, and nothing went red — because the statement it named was passing the
+// scan anyway, on a `profile_id IS NOT NULL` that does not scope. Two silent failures
+// pointing the same way, so the entry read as live from outside.
+//
+// LOAD-BEARING, not merely present: some live `.exec()` literal in the entry's OWN file
+// must both match it and NEED it. An entry whose statement was deleted fails this; so
+// does one whose statement was rewritten to scope itself, which is a permission left
+// behind for code that changed.
+//
+// PURE in its inputs, because the live tree cannot exercise it. All three owned-table
+// exec literals here are unscoped, so the second verdict has ZERO fixtures and would ship
+// as an unread branch; the cases at the bottom drive both verdicts with synthetic
+// statements instead of waiting for the tree to grow one.
+type ExecStatement = { rel: string; sql: string };
+function staleExecReason(
+  entry: (typeof ALLOW_EXEC)[number],
+  statements: ExecStatement[]
+): string | null {
+  const matched = statements.filter(
+    (p) => p.rel.endsWith(entry.file) && p.sql.includes(entry.includes)
+  );
+  if (matched.length === 0)
+    return "no live .exec() statement matches this entry; its statement was deleted or rewritten, so delete the entry";
+  // Deliberately NOT an unqualified "delete it". An entry can look unnecessary because
+  // the scan started accepting something that does not actually scope — which is exactly
+  // how a live waiver gets deleted on a hollow pass (#5243). Say what to check first.
+  if (matched.every((p) => scopedByProfileId(p.sql)))
+    return "the statement it matches passes the scan on its own, so this entry exempts nothing. Before deleting, read WHAT makes it pass: confirm a real predicate binds the profile, not a bare existence check on the column (#5243). If it is the existence check, the read is unscoped and this entry is its only documentation — keep it";
+  return null;
+}
+
 describe("profile scoping: every owned-table query filters by profile_id", () => {
   const files = sourceFiles();
 
@@ -606,17 +640,6 @@ describe("profile scoping: every owned-table query filters by profile_id", () =>
     expect(violations, `\n${violations.join("\n")}\n`).toEqual([]);
   });
 
-  // STALENESS for ALLOW_EXEC (#5239). An allowlist entry is a claim about the tree, and
-  // a claim nothing re-checks stops being true quietly. This one is not hypothetical:
-  // the ALLOW_SQL entry for resolvePortalIdentity had matched NO live statement since
-  // #3011 renamed its select list, and nothing went red — because the statement it named
-  // was passing the scan anyway on a `profile_id IS NOT NULL` that does not scope. Two
-  // silent failures pointing the same way, and the entry read as live from outside.
-  //
-  // LOAD-BEARING, not merely present: some live `.exec()` literal in the entry's OWN file
-  // must both match it and NEED it — an owned-table statement the positional rule refuses.
-  // An entry whose statement was deleted fails this; so does one whose statement was
-  // rewritten to scope itself, which is a permission left behind for code that changed.
   it("every ALLOW_EXEC entry is justified and is the reason a live statement passes", () => {
     const live = files.flatMap((file) => {
       const rel = relPath(file);
@@ -626,25 +649,14 @@ describe("profile scoping: every owned-table query filters by profile_id", () =>
         .map((a) => ({ rel, sql: norm(a.text) }))
         .filter((p) => OWNED_RE.test(p.sql));
     });
+    // Guards against the assertion passing because it found nothing to look at.
+    expect(live.length).toBeGreaterThanOrEqual(ALLOW_EXEC.length);
 
     const dead: string[] = [];
     for (const entry of ALLOW_EXEC) {
       expect(entry.why.trim().length).toBeGreaterThan(0);
-      const matched = live.filter(
-        (p) => p.rel.endsWith(entry.file) && p.sql.includes(entry.includes)
-      );
-      // The verdict says WHICH fix it needs, and the second one deliberately stops short
-      // of "delete it": an entry can look unnecessary because the scan started accepting
-      // something that does not actually scope, which is how a live waiver gets deleted
-      // on a hollow pass (#5243). Send the reader to check the predicate first.
-      if (matched.length === 0)
-        dead.push(
-          `${entry.file}: "${entry.includes}" — no live .exec() statement matches this entry; its statement was deleted or rewritten, so delete the entry`
-        );
-      else if (matched.every((p) => scopedByProfileId(p.sql)))
-        dead.push(
-          `${entry.file}: "${entry.includes}" — the statement it matches passes the scan on its own, so this entry exempts nothing. Before deleting, read WHAT makes it pass: confirm a real predicate binds the profile, not a bare existence check on the column (#5243). If it is the existence check, the read is unscoped and this entry is its only documentation — keep it`
-        );
+      const stale = staleExecReason(entry, live);
+      if (stale) dead.push(`${entry.file}: "${entry.includes}" — ${stale}`);
     }
     expect(
       dead,
@@ -714,7 +726,10 @@ describe("profile-scoping scanner rules (issue #1208)", () => {
     ["SELECT 1 FROM t WHERE profile_id IS NULL", false],
     // Qualified, lower-cased, and loosely spaced spellings of the same thing — this is
     // how the four live portal statements actually write it.
-    ["SELECT 1 FROM portal_identities pi WHERE pi.profile_id IS NOT NULL", false],
+    [
+      "SELECT 1 FROM portal_identities pi WHERE pi.profile_id IS NOT NULL",
+      false,
+    ],
     ["SELECT 1 FROM t WHERE profile_id is not null", false],
     ["SELECT 1 FROM t WHERE profile_id IS  NOT  NULL", false],
     // The existence check does not poison a statement that ALSO filters properly.
@@ -726,6 +741,56 @@ describe("profile-scoping scanner rules (issue #1208)", () => {
     ["SELECT 1 FROM portal_identities pi WHERE pi.profile_id IS ?", true],
   ])("IS as a scoping operator: %s -> %s", (sql, scoped) => {
     expect(scopedByProfileId(sql)).toBe(scoped);
+  });
+
+  // Both ALLOW_EXEC staleness verdicts, on synthetic statements — the live tree carries
+  // three owned-table exec literals and every one is unscoped, so neither the "gone" nor
+  // the "unnecessary" branch is reachable from it. A verdict nothing can execute is a
+  // verdict nobody has read.
+  it("ALLOW_EXEC staleness says WHICH fix a stale entry needs: gone, or unnecessary", () => {
+    const rel = "lib/fake-boot-tasks.ts";
+    const entry = {
+      file: rel,
+      includes: "UPDATE import_jobs SET status = 'failed'",
+      why: "a global boot reap",
+    };
+    const unscoped = {
+      rel,
+      sql: "UPDATE import_jobs SET status = 'failed' WHERE status = 'processing'",
+    };
+    // Load-bearing: the statement matches and the scan refuses it without this entry.
+    expect(staleExecReason(entry, [unscoped])).toBeNull();
+    // An entry in ANOTHER file does not ride this one's statement.
+    expect(
+      staleExecReason({ ...entry, file: "lib/elsewhere.ts" }, [unscoped])
+    ).toMatch(/no live \.exec\(\) statement matches/);
+    // Gone: the statement was deleted or rewritten past the entry's text.
+    expect(staleExecReason(entry, [])).toMatch(
+      /no live \.exec\(\) statement matches/
+    );
+    // Unnecessary: the statement now scopes itself, so the entry exempts nothing — and
+    // the verdict must send the reader to check WHAT makes it pass before deleting,
+    // because a bare existence check reads as a pass (#5243) and the entry would then be
+    // the only record that the read is deliberately unscoped.
+    const scoped = {
+      rel,
+      sql: "UPDATE import_jobs SET status = 'failed' WHERE profile_id = ?",
+    };
+    const unnecessary = staleExecReason(entry, [scoped])!;
+    expect(unnecessary).toMatch(/passes the scan on its own/);
+    expect(unnecessary).toMatch(/read WHAT makes it pass/);
+    expect(unnecessary).toContain("#5243");
+    expect(unnecessary).toMatch(/keep it$/);
+    // …and an existence check is NOT what makes a statement pass, so an entry covering
+    // one stays load-bearing rather than being reported as unnecessary.
+    expect(
+      staleExecReason(entry, [
+        {
+          rel,
+          sql: "UPDATE import_jobs SET status = 'failed' WHERE profile_id IS NOT NULL",
+        },
+      ])
+    ).toBeNull();
   });
 
   it("db.exec scan: an owned-table exec without an allowlist entry is flagged", () => {
