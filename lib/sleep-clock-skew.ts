@@ -176,8 +176,19 @@ const SEARCH_RADIUS_MS = 12 * 60 * MINUTE_MS;
 // apples whatever the session's length.
 const SEARCH_STEP_MS = 15 * MINUTE_MS;
 
+// SORTED WITHOUT A COMPARATOR (#5035). `[...values].sort((a, b) => a - b)` calls a JS
+// closure at every comparison, and this median runs once per quarter-hour window across
+// a whole day — the profile in #5035 put roughly half the detector's self time in that
+// comparator alone, and removing it is worth more than any change to the algorithm
+// around it.
+//
+// `Float64Array#sort` sorts numerically ascending with no comparator, which is the same
+// order `(a, b) => a - b` produces for every value that can reach here: `bpm` is checked
+// with `Number.isFinite` at intake, so there is no NaN to sort differently and no
+// `undefined` to sort last. The values themselves are unchanged, so the even-count
+// average of the two middle elements is the same double it always was.
 function median(values: number[]): number {
-  const sorted = [...values].sort((a, b) => a - b);
+  const sorted = Float64Array.from(values).sort();
   const mid = sorted.length >> 1;
   return sorted.length % 2 === 1
     ? sorted[mid]
@@ -191,12 +202,68 @@ function median(values: number[]): number {
 //
 // The MEAN is carried only to break ties between windows of equal median (see the
 // search below); nothing compares it across windows of different medians.
-function bpmIn(
+// THE TRACE, PLUS THE ONE FACT THAT LETS A WINDOW BE SLICED RATHER THAN SCANNED.
+//
+// Every window read below asks for the samples inside a half-open span. On a trace whose
+// instants are non-decreasing those samples are a CONTIGUOUS RANGE, so the read is a
+// binary search and a walk instead of a pass over the whole day — and this detector asks
+// ~97 times for the trough search alone, plus once per quarter-hour inside the claim.
+//
+// WHY THE FLAG RATHER THAN JUST SORTING (#5035). Sorting would be safe for the median,
+// which sorts a copy anyway. It is NOT safe for the MEAN: floating-point addition is not
+// associative, so summing the same values in a different order can differ in the last
+// bit — and that mean is the tie-break between windows of equal median, whose winner's
+// instant the copy quotes. A reorder could move `troughStart` by a quarter-hour, which
+// is a wrong statement rather than a rounding. So nothing is ever reordered: an ordered
+// trace takes the slice, and anything else takes the original scan, verbatim.
+//
+// The production caller reads `ORDER BY ts` (lib/queries/sleep-clock-skew.ts), so the
+// fast path is the one that runs. The flag exists because this function is exported and
+// "the caller happens to sort" is not a property of the function.
+interface SkewTrace {
+  readonly samples: readonly { at: number; bpm: number }[];
+  readonly ordered: boolean;
+}
+
+function traceOf(samples: readonly { at: number; bpm: number }[]): SkewTrace {
+  let ordered = true;
+  for (let i = 1; i < samples.length; i++) {
+    if (samples[i].at < samples[i - 1].at) {
+      ordered = false;
+      break;
+    }
+  }
+  return { samples, ordered };
+}
+
+/** The index of the first sample at or after `from`, on an ordered trace. */
+function firstAtOrAfter(
   samples: readonly { at: number; bpm: number }[],
-  from: number,
-  to: number
-): number[] {
+  from: number
+): number {
+  let lo = 0;
+  let hi = samples.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (samples[mid].at < from) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+function bpmIn(trace: SkewTrace, from: number, to: number): number[] {
+  const { samples } = trace;
   const inside: number[] = [];
+  if (trace.ordered) {
+    // Index order on an ordered trace IS scan order, so the values arrive in the same
+    // sequence the scan below would have produced them — which is what keeps the mean's
+    // summation identical.
+    for (let i = firstAtOrAfter(samples, from); i < samples.length; i++) {
+      if (samples[i].at >= to) break;
+      inside.push(samples[i].bpm);
+    }
+    return inside;
+  }
   for (const s of samples) {
     if (s.at >= from && s.at < to) inside.push(s.bpm);
   }
@@ -213,11 +280,11 @@ function covered(sampleCount: number, from: number, to: number): boolean {
 }
 
 function windowStats(
-  samples: readonly { at: number; bpm: number }[],
+  trace: SkewTrace,
   from: number,
   to: number
 ): { median: number; mean: number } | null {
-  const inside = bpmIn(samples, from, to);
+  const inside = bpmIn(trace, from, to);
   if (!covered(inside.length, from, to)) return null;
   return {
     median: median(inside),
@@ -254,7 +321,7 @@ function windowStats(
 // MIDDLE, which is a person who was awake at 3 a.m. and not a source with a wrong
 // clock. It no longer receives the hedge or the doors.
 function awakeRunInside(
-  samples: readonly { at: number; bpm: number }[],
+  trace: SkewTrace,
   start: number,
   end: number,
   awakeMedian: number,
@@ -271,7 +338,7 @@ function awakeRunInside(
   let longest: { at: number; to: number; bpm: number[] } | null = null;
   for (let from = start; from + SEARCH_STEP_MS <= end; from += SEARCH_STEP_MS) {
     const to = from + SEARCH_STEP_MS;
-    const block = bpmIn(samples, from, to);
+    const block = bpmIn(trace, from, to);
     if (!covered(block.length, from, to) || median(block) < floor) {
       run = null;
       continue;
@@ -325,8 +392,9 @@ export function detectSleepClockSkew(
       samples.push({ at, bpm: s.bpm });
   }
   if (samples.length === 0) return null;
+  const trace = traceOf(samples);
 
-  const claimed = windowStats(samples, start, end);
+  const claimed = windowStats(trace, start, end);
   if (claimed == null) return null;
 
   // Every equal-width window in the surrounding day that does NOT overlap the claim.
@@ -358,7 +426,7 @@ export function detectSleepClockSkew(
     from += SEARCH_STEP_MS
   ) {
     if (from < end && from + width > start) continue; // overlaps the claim
-    const stats = windowStats(samples, from, from + width);
+    const stats = windowStats(trace, from, from + width);
     if (stats == null) continue;
     if (comparable == null) {
       comparable = { low: { ...stats, at: from }, awakeMedian: stats.median };
@@ -383,13 +451,7 @@ export function detectSleepClockSkew(
   // Reading two: the claim holds an awake-level run no single night could hold awake.
   const run = bulkReadsAwake
     ? null
-    : awakeRunInside(
-        samples,
-        start,
-        end,
-        comparable.awakeMedian,
-        claimed.median
-      );
+    : awakeRunInside(trace, start, end, comparable.awakeMedian, claimed.median);
   // Neither reading spoke, which is the answer for every ordinary night.
   if (!bulkReadsAwake && run == null) return null;
 
@@ -421,7 +483,7 @@ export function detectSleepClockSkew(
     from <= start + SEARCH_RADIUS_MS;
     from += SEARCH_STEP_MS
   ) {
-    const stats = windowStats(samples, from, from + width);
+    const stats = windowStats(trace, from, from + width);
     if (stats == null) continue;
     if (
       stats.median < settled.median ||

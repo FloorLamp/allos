@@ -69,17 +69,32 @@ function ghGet(config: RunConfig, url: string): unknown {
   return JSON.parse(out);
 }
 
-function ghGetAll(config: RunConfig, pathAndQuery: string): unknown[] {
+const PAGE_CAP = 10;
+
+/**
+ * Pages a collection, and says whether it stopped because the collection ran
+ * out or because it hit `PAGE_CAP`. The second answer used to be thrown away,
+ * and a thrown-away truncation is the worst shape a denominator can take: the
+ * report printed `merged PRs examined: 969` — a number high enough to read as
+ * proof the run resolved things — when the fetch had clipped 1000 of this
+ * repo's 2544 closed PRs and the rest were never looked at.
+ */
+function ghGetAll(
+  config: RunConfig,
+  pathAndQuery: string
+): { items: unknown[]; truncated: boolean } {
   const out: unknown[] = [];
-  for (let page = 1; page <= 10; page++) {
+  for (let page = 1; page <= PAGE_CAP; page++) {
     const sep = pathAndQuery.includes("?") ? "&" : "?";
     const url = `https://api.github.com/repos/${config.repo}${pathAndQuery}${sep}per_page=100&page=${page}`;
     const batch = ghGet(config, url);
-    if (!Array.isArray(batch) || batch.length === 0) break;
+    if (!Array.isArray(batch) || batch.length === 0)
+      return { items: out, truncated: false };
     out.push(...batch);
-    if (batch.length < 100) break;
+    if (batch.length < 100) return { items: out, truncated: false };
   }
-  return out;
+  // Every page came back full, so page PAGE_CAP + 1 would have had rows too.
+  return { items: out, truncated: true };
 }
 
 function main(): void {
@@ -117,7 +132,19 @@ function main(): void {
 
   const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 
-  const rawIssues = ghGetAll(config, "/issues?state=open") as GhIssue[];
+  const issuePages = ghGetAll(config, "/issues?state=open");
+  if (issuePages.truncated) {
+    // Same refusal as the missing token above, for the same reason: a swept
+    // subset that reads as the whole tracker is a clean report earned by not
+    // looking. The PR half survives truncation because the report SAYS it was
+    // truncated; the issue half has no such line, so it refuses instead.
+    console.error(
+      "reconcile-tracker: the open-issue fetch hit its page cap. Every issue " +
+        "past it would be silently unswept. Refusing."
+    );
+    process.exit(2);
+  }
+  const rawIssues = issuePages.items as GhIssue[];
   const openIssues = rawIssues.filter((i) => !i.pull_request);
   const wanted = new Set(config.only);
   const allIssues: TrackerIssue[] = openIssues.map((i) => ({
@@ -137,11 +164,11 @@ function main(): void {
     (i) => wanted.size === 0 || wanted.has(i.number)
   );
 
-  const rawPrs = ghGetAll(
+  const prPages = ghGetAll(
     config,
     "/pulls?state=closed&sort=updated&direction=desc"
-  ) as GhPr[];
-  const mergedPrs: TrackerPr[] = rawPrs
+  );
+  const mergedPrs: TrackerPr[] = (prPages.items as GhPr[])
     .filter((p) => p.merged_at !== null)
     .filter((p) => (previous ? p.merged_at! > previous : true))
     .map((p) => ({
@@ -177,7 +204,7 @@ function main(): void {
   }
 
   const evidence = gatherEvidence(
-    { issues, mergedPrs, issueStates: states },
+    { issues, mergedPrs, issueStates: states, prsTruncated: prPages.truncated },
     buildRepoIndex(process.cwd()),
     watermark
   );

@@ -279,13 +279,16 @@ export function seedNowStrip(): void {
   // with nothing left in it. Now must be empty — the targets' log offers belong in
   // Show everything's Act group, not in the two slots the strip has.
   //
-  // Determinism is the week window. A zero count is "behind" from the moment the
-  // week is far enough along to owe one (floor(2 × elapsed / 7) ≥ 1, i.e. day 4 of
-  // 7). So the profile's calendar week is pinned to start on the run's own frozen
-  // weekday: today is day 1, the targets owe nothing yet, and the fixture reads the
-  // same on every CI day. Since #3245 the pin no longer changes whether these card
-  // — a group target has no rhythm moment, so `owed` cannot promote it on any day —
-  // and what it holds fixed is the ON-PACE reading (#3543's negative control).
+  // Determinism is the week window. A zero count is "behind" only once the week has
+  // also stopped fitting what is left of the target, counting today as a day it can
+  // still be acted on (#4758) — the elapsed-share lag is necessary and no longer
+  // sufficient — so a 2×/week target reads behind from day 7 of 7, not day 4. So the
+  // profile's calendar week is pinned to start on the run's own frozen weekday: today
+  // is day 1, on-pace under either rule, and the fixture reads the same on every CI
+  // day. Since #3245 the pin no longer decides whether these two targets card into
+  // Now — a group target has no rhythm moment, so `owed` cannot promote it on any
+  // day. What it still holds fixed is the ON-PACE reading (#3543's negative
+  // control).
   // Idempotent hard-clear; synthetic, no PHI.
   const nowQuietId = adultFixtureProfileId(NOW_QUIET_PROFILE);
   {
@@ -342,18 +345,18 @@ export function seedNowStrip(): void {
   }
   seedMemberLogin(E2E_LOGIN_NOWQUIET, nowQuietId);
 
-  // The other side of the day-4 boundary (#3245 / #3543 / #3548). Same shape as
+  // The other side of the behind boundary (#3245 / #3543 / #3548). Same shape as
   // Now Quiet — two untouched 2x/week strength-group targets, no rhythm to ask —
-  // with the week pinned so today is day 4 and both targets are BEHIND.
+  // with the week pinned so today is day 7 and both targets are BEHIND.
   //
   // Before #3245 that state put both log offers straight back into Now on a
-  // four-day-in-seven duty cycle. After it, `owed` composes with the moment, the
+  // multi-day duty cycle. After it, `owed` composes with the moment, the
   // groups have no moment, and the standing reading is what tells the person.
   const paceBehindId = adultFixtureProfileId(PACE_BEHIND_PROFILE);
   {
     const behindDay = today(paceBehindId);
     setWeekMode(paceBehindId, "calendar");
-    // Three days back from today's weekday, so `elapsedDays` is 4 on every run.
+    // Six days back from today's weekday, so `elapsedDays` is 7 on every run.
     const behindWeekStart =
       (new Date(behindDay + "T00:00:00Z").getUTCDay() -
         (PACE_BEHIND_WEEK_DAY - 1) +
@@ -381,7 +384,7 @@ export function seedNowStrip(): void {
   seedMemberLogin(E2E_LOGIN_PACEBEHIND, paceBehindId);
 
   console.log(
-    `e2e: seeded #1413 Now-strip fixtures — profile ${nowStripId} (${NOW_STRIP_PROFILE}, finished session + due appointment), profile ${nowSafetyId} (${NOW_SAFETY_PROFILE}, uncapped safety fact) and profile ${nowQuietId} (${NOW_QUIET_PROFILE}, handled day + unmet on-pace targets, #3224) and profile ${paceBehindId} (${PACE_BEHIND_PROFILE}, day 4 + behind targets, #3245)`
+    `e2e: seeded #1413 Now-strip fixtures — profile ${nowStripId} (${NOW_STRIP_PROFILE}, finished session + due appointment), profile ${nowSafetyId} (${NOW_SAFETY_PROFILE}, uncapped safety fact) and profile ${nowQuietId} (${NOW_QUIET_PROFILE}, handled day + unmet on-pace targets, #3224) and profile ${paceBehindId} (${PACE_BEHIND_PROFILE}, day 7 + behind targets, #3245)`
   );
 
   // Truly empty, isolated profiles for the goal-based onboarding paths (#719).

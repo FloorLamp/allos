@@ -4,6 +4,17 @@
 // machine-readable table of contents a user (or a re-importer) reads first to know
 // what the archive holds and where each piece lives.
 
+// Columns the archive carries that nothing writes yet (#5273). They are in
+// datasets/<key>.csv and .json like any other column, and empty on every row until
+// their writer lands. Named here so a reader of manifest.json can tell a pending
+// column from a broken one, and so two archives keep diffing cleanly when the
+// writer arrives. Delete an entry when its writer lands; the db-tier export test
+// checks each one is really a column of that dataset.
+export const PENDING_COLUMNS: { dataset: string; column: string }[] = [
+  { dataset: "body_metrics", column: "bundle_id" },
+  { dataset: "practice_logs", column: "bundle_id" },
+];
+
 export interface ExportManifestInput {
   appVersion: string;
   exportedAt: string; // ISO 8601 timestamp
@@ -45,6 +56,11 @@ export interface ExportManifest {
       missing?: string[];
     };
     manifest: string;
+  };
+  // Present only while some column has no writer — see PENDING_COLUMNS.
+  pendingColumns?: {
+    note: string;
+    columns: { dataset: string; column: string }[];
   };
   totals: {
     datasets: number;
@@ -104,6 +120,14 @@ export function buildExportManifest(
         : {}),
       manifest: "manifest.json",
     },
+    ...(PENDING_COLUMNS.length
+      ? {
+          pendingColumns: {
+            note: "These columns are in the export but nothing writes them yet, so they are empty on every row.",
+            columns: PENDING_COLUMNS,
+          },
+        }
+      : {}),
     totals: {
       datasets: datasets.length,
       rows,
