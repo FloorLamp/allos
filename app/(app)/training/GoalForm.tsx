@@ -1155,7 +1155,7 @@ export default function GoalForm({
             optional facts with nothing to state and hands off to one of them, so
             opening it still leaves exactly one editor on screen. */}
         <div hidden={openEditor !== "more"}>
-          <div className="flex flex-wrap gap-1.5 pointer-coarse:gap-3">
+          <div className="flex flex-wrap gap-1.5 pointer-coarse:gap-3.5">
             {summary.more.map((key) => (
               <button
                 key={key}

@@ -51,7 +51,7 @@ export function WeekdayChips({
   return (
     <div
       data-testid={`${idPrefix}-weekdays`}
-      className="flex flex-wrap gap-1 pointer-coarse:gap-y-3"
+      className="flex flex-wrap gap-1 pointer-coarse:gap-y-3.5"
     >
       {weekdayOrder(weekStart).map((d) => {
         const on = selected.has(d);

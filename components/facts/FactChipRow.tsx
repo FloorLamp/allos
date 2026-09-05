@@ -135,7 +135,7 @@ export default function FactChipRow({
       data-testid={testId}
       data-fact-row="true"
       tabIndex={-1}
-      className={`flex flex-wrap items-center gap-1.5 rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-hidden pointer-coarse:gap-3 ${className ?? ""}`}
+      className={`flex flex-wrap items-center gap-1.5 rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-hidden pointer-coarse:gap-3.5 ${className ?? ""}`}
     >
       {children}
     </div>

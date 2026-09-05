@@ -185,7 +185,7 @@ export default function IntakeRulesEditor({
       ))}
 
       {adding ? (
-        <div className="flex flex-wrap gap-1.5 pointer-coarse:gap-3">
+        <div className="flex flex-wrap gap-1.5 pointer-coarse:gap-3.5">
           {offered.map((type) => (
             <button
               key={type}

@@ -1724,7 +1724,7 @@ export default function IntakeItemForm({
 
       case "more":
         return (
-          <div className="flex flex-wrap gap-1.5 pointer-coarse:gap-3 sm:col-span-2">
+          <div className="flex flex-wrap gap-1.5 pointer-coarse:gap-3.5 sm:col-span-2">
             {summary.more.map((key) => (
               <button
                 key={key}
