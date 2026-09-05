@@ -150,9 +150,11 @@ function mintedPrefixes(): Map<string, string[]> {
     for (const m of src.matchAll(/type OfferPrefix\s*=\s*([^;]+);/g)) {
       for (const lit of m[1].matchAll(/"([a-z][a-z0-9]*)"/g)) note(lit[1], rel);
     }
-    // 8. `MED_STOP_PREFIX` is declared in callback-data and imported by the dose-row
-    // renderer, so rule (5)'s deliberately same-file lookup cannot resolve it. Read
-    // this one declaration rather than broadening the source scanner.
+    // 8. `MED_STOP_PREFIX` is declared in the token leaf (`callback-tokens.ts`, #2961
+    // step 1) and imported by both the parser and the dose-row renderer, so rule (5)'s
+    // deliberately same-file lookup cannot resolve it. Read this one declaration rather
+    // than broadening the source scanner. The scan walks every file in lib/notifications,
+    // so moving the declaration between files in that directory does not move this rule.
     for (const m of src.matchAll(
       /const MED_STOP_PREFIX\s*=\s*"([a-z][a-z0-9]*)"\s*;/g
     )) {
