@@ -554,6 +554,18 @@ describe("every dataset's rows() and page() are profile-scoped (#5117)", () => {
       pageA.filter((r) => rowsB.has(r)),
       `${key}.page() returned the other profile's rows`
     ).toEqual([]);
+    // count() runs its OWN statement — tableDataset's `countSql`, not the select the
+    // two assertions above cover — and it discloses row VOLUME: it feeds
+    // manifest.json's datasetCounts and the Data page total. Leaking the countSql of
+    // body_metrics, practice_logs and food_log_events at once left the whole db tier
+    // green. Both profiles, because a count that dropped its filter agrees with
+    // neither.
+    for (const p of [a, b]) {
+      expect(
+        ds.count(p.profileId),
+        `${key}.count() disagrees with ${key}.rows() — a count that counts another profile's rows discloses their volume`
+      ).toBe(ds.rows(p.profileId).length);
+    }
   });
 
   it("the datasets the loop skips are exactly the ones named", () => {
@@ -572,14 +584,17 @@ describe("every dataset's rows() and page() are profile-scoped (#5117)", () => {
     // unseeded one wearing a reason, and the reason stops being true unnoticed.
     for (const e of SCOPING_GLOBAL) {
       expect(e.why.trim().length).toBeGreaterThan(0);
-      expect(
-        getDataset(e.key)!.rows(a.profileId).length,
-        e.key
-      ).toBeGreaterThan(0);
-      expect(
-        getDataset(e.key)!.rows(b.profileId).length,
-        e.key
-      ).toBeGreaterThan(0);
+      for (const p of [a, b]) {
+        const rows = getDataset(e.key)!.rows(p.profileId);
+        expect(rows.length, e.key).toBeGreaterThan(0);
+        // Its count() is watched here too — a global dataset skips the case above,
+        // so this is the only place it is read. `providers` has no countSql: its
+        // count re-runs referencedProviderIds, so what this catches is that count
+        // and rows drift apart, not a dropped predicate.
+        expect(getDataset(e.key)!.count(p.profileId), `${e.key}.count()`).toBe(
+          rows.length
+        );
+      }
     }
     // …and this list is asserted EXACT too, on the ONE property that admits an entry:
     // a seeded dataset whose TABLE is not profile-owned, so both profiles reading the
