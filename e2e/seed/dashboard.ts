@@ -640,7 +640,13 @@ export function seedNowStrip(): void {
     `DELETE FROM food_daily_totals WHERE profile_id = ? AND group_key = 'alcohol'`
   ).run(substanceId);
   // The non-food ledger (#1078: nicotine/cannabis one-tap counts) — same empty
-  // contract as the alcohol food-log rows above.
+  // contract as the alcohol food-log rows above, and BOTH its halves since #5026
+  // phase 2: the counter and the use events beside it. Clearing one alone leaves the
+  // "substance-data-free" claim half true, in whichever direction the surface under
+  // test happens to read.
+  db.prepare(`DELETE FROM substance_log_events WHERE profile_id = ?`).run(
+    substanceId
+  );
   db.prepare(`DELETE FROM substance_daily_totals WHERE profile_id = ?`).run(
     substanceId
   );

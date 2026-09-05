@@ -50,6 +50,11 @@ function clearSubstanceRows(db: Database.Database, profileId: number): void {
   // Both ledgers: alcohol rides food_daily_totals (#860/#944) and everything else
   // rides substance_daily_totals, and the row is gated on EITHER being present, so
   // clearing one alone would leave the "tracks none" precondition false.
+  // BOTH HALVES of the non-food ledger since #5026 phase 2: the counter the offer is
+  // gated on, and the use events the record reads.
+  db.prepare("DELETE FROM substance_log_events WHERE profile_id = ?").run(
+    profileId
+  );
   db.prepare("DELETE FROM substance_daily_totals WHERE profile_id = ?").run(
     profileId
   );

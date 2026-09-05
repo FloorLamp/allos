@@ -2783,10 +2783,31 @@ for (let d = 30; d >= 8; d--) {
     `INSERT INTO substance_daily_totals (profile_id, date, substance, units, recorded_at, logged_via)
      VALUES (1, ?, 'nicotine', ?, ?, ${VIA_SEEDED})`
   );
+  // AND ITS EVENTS (#5026 phase 2). A use is a thing that happened at a time, and the
+  // record reads the events rather than the counter — so a seed that wrote the counter
+  // alone would hand every demo profile the orphan state phase 2's migration exists to
+  // reconcile: days that count on the card and against the cap while the record shows
+  // nothing for them. One row per unit, each stating its own hour so the day rail has
+  // something to draw and the two uses of a day are visibly two.
+  const suNicUse = db.prepare(
+    `INSERT INTO substance_log_events
+       (profile_id, substance, date, recorded_at, occurred_at, time_source, logged_via)
+     VALUES (1, 'nicotine', ?, ?, ?, ?, ${VIA_SEEDED})`
+  );
   for (let d = 20; d >= 0; d -= 1) {
     if (d % 3 === 1) continue; // skip some days — a real, uneven pattern
     const units = d > 10 ? 2 + (d % 2) : 1 + (d % 2); // gently declining
-    suNic.run(daysAgo(d), units, `${daysAgo(d)}T18:30:00Z`);
+    const day = daysAgo(d);
+    suNic.run(day, units, `${day}T18:30:00Z`);
+    for (let u = 0; u < units; u += 1) {
+      // TODAY'S USES STATE NOTHING, and that is the honest half rather than a
+      // shortcut: a stated instant must not be in the future, and this seed cannot
+      // know what hour the reader's clock is at. It is also the commoner real state —
+      // a tap says when it was filed, never when the use happened.
+      const at =
+        d === 0 ? null : `${day}T${String(9 + u * 4).padStart(2, "0")}:15:00Z`;
+      suNicUse.run(day, `${day}T18:30:00Z`, at, at === null ? null : "stated");
+    }
   }
   db.prepare(
     `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week, created_at)
