@@ -17,6 +17,12 @@ import type { TapReach } from "./log-manifest";
 // restated: `TapReach` is declared once, beside `TAP_REACH`, and a consumer that is not
 // a core reaches it here with the key it travels with. Add reach kinds there, never
 // here — a second `bounded` is the drift this re-export exists to prevent.
+//
+// ASKING a reach whether it covers a day is `isWithinReach`, in that same file, added
+// with this module so a consumer that holds the key has somewhere to ask instead of
+// restating the arithmetic (clause 4). It is deliberately NOT re-exported here: a
+// behaviour has one door, and a second import path for a function is how two call
+// sites end up looking like two functions.
 export type { TapReach } from "./log-manifest";
 
 // NUL IS THE SEPARATOR, the composite-key spelling this repo already uses
