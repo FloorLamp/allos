@@ -1,7 +1,11 @@
 "use server";
 
 import { requireWriteAccess } from "@/lib/auth";
-import { LOGGED_VIA_FIELD, parseWebOrigin, type StampedFormData } from "@/lib/logged-via";
+import {
+  LOGGED_VIA_FIELD,
+  parseWebOrigin,
+  type StampedFormData,
+} from "@/lib/logged-via";
 import { revalidateRoute } from "@/lib/revalidate";
 import { today } from "@/lib/db";
 import {

@@ -1,6 +1,10 @@
 "use server";
 import { requireSession, requireWriteAccess } from "@/lib/auth";
-import { LOGGED_VIA_FIELD, parseWebOrigin, type StampedFormData } from "@/lib/logged-via";
+import {
+  LOGGED_VIA_FIELD,
+  parseWebOrigin,
+  type StampedFormData,
+} from "@/lib/logged-via";
 import { gateItemProfile } from "@/app/(app)/gate-item";
 
 import { revalidateRoute } from "@/lib/revalidate";

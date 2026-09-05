@@ -2,7 +2,11 @@
 
 import { requireWriteAccess } from "@/lib/auth";
 import { gateItemProfile } from "../gate-item";
-import { LOGGED_VIA_FIELD, parseWebOrigin, type StampedFormData } from "@/lib/logged-via";
+import {
+  LOGGED_VIA_FIELD,
+  parseWebOrigin,
+  type StampedFormData,
+} from "@/lib/logged-via";
 import { revalidateRoute } from "@/lib/revalidate";
 import { db, today, writeTx } from "@/lib/db";
 import { canonicalFoodGroup, isValidFoodGroup } from "@/lib/food-groups";

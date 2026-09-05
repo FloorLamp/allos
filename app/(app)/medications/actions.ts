@@ -35,7 +35,11 @@ import {
 import { leftRefillTrackedSet, refillMarkerKey } from "@/lib/refill-nudge";
 import { formError, formOk, type FormResult } from "@/lib/types";
 import { strOrNull } from "@/lib/parse";
-import { LOGGED_VIA_FIELD, parseWebOrigin, type StampedFormData } from "@/lib/logged-via";
+import {
+  LOGGED_VIA_FIELD,
+  parseWebOrigin,
+  type StampedFormData,
+} from "@/lib/logged-via";
 
 export type MedicationAdministrationResult =
   { ok: true; outcome: "logged" | "duplicate" } | { ok: false; error: string };

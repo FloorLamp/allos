@@ -1,7 +1,11 @@
 "use server";
 
 import { revalidateRoute } from "@/lib/revalidate";
-import { LOGGED_VIA_FIELD, parseWebOrigin, type StampedFormData } from "@/lib/logged-via";
+import {
+  LOGGED_VIA_FIELD,
+  parseWebOrigin,
+  type StampedFormData,
+} from "@/lib/logged-via";
 import { requireWriteAccess, requireProfileWriteAccess } from "@/lib/auth";
 import { today } from "@/lib/db";
 import {
@@ -87,7 +91,9 @@ export async function explainFindingAction(
 // request was understood", and the existing server-form caller ignores it.
 export type MarkTakenResult = DoseConfirmResult;
 
-export async function markTaken(formData: StampedFormData): Promise<MarkTakenResult> {
+export async function markTaken(
+  formData: StampedFormData
+): Promise<MarkTakenResult> {
   const pid = await gateItemProfile(formData);
   const doseId = Number(formData.get("dose_id"));
   if (!doseId) return { ok: false, error: "Couldn't find that dose." };

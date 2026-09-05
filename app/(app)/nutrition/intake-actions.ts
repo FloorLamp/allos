@@ -5,7 +5,11 @@ import {
   requireSession,
 } from "@/lib/auth";
 import { gateItemProfile } from "../gate-item";
-import { LOGGED_VIA_FIELD, parseWebOrigin, type StampedFormData } from "@/lib/logged-via";
+import {
+  LOGGED_VIA_FIELD,
+  parseWebOrigin,
+  type StampedFormData,
+} from "@/lib/logged-via";
 import { newBundle } from "@/lib/bundle";
 import { requireScope } from "@/lib/scope";
 
@@ -1586,7 +1590,9 @@ export async function deleteLedgerSelection(
 // Toggle a single dose's TAKEN log for today (taken ↔ clear). A skipped dose
 // (issue #232) counts as "not taken", so this flips it to taken. Kept as the
 // dedicated take toggle; setDoseStatus is the general tri-state path.
-export async function toggleTaken(formData: StampedFormData): Promise<FormResult> {
+export async function toggleTaken(
+  formData: StampedFormData
+): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const doseId = Number(formData.get("dose_id"));
   if (!doseId) return formError("Couldn't find that dose.");
