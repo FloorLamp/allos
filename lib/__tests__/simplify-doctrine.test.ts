@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 // (owner, 2026-08-31): most work should leave the code smaller or straighter,
 // invariants are enforced with TYPES rather than guards/registries, and
 // adding complexity is the signal to stop and re-ask what the real goal
-// costs in less code. The doctrine is only real where the workers read it,
+// costs in less code. The doctrine is only real where the orchestrators read it,
 // so these pins hold it to all three surfaces: the brief every lane
 // receives, the reviewer's checklist, and the filing skill that shapes
 // proposals before any lane exists.

@@ -1,7 +1,7 @@
 // THE CI CEILING CANNOT BE OVERRIDDEN — the executable half of #3436's design.
 //
 // Both vitest tiers take their per-test ceiling from vitest.timeouts.ts, and the
-// design is a division of labour: the orchestration gate PERMITS at 60 000 ms so
+// design is a division of labour: the work gate PERMITS at 60 000 ms so
 // a loaded box stops manufacturing reds, and CI DETECTS at 15 000 ms because CI
 // is the quiet environment. That only holds while CI actually keeps the strict
 // number. If `ALLOS_VITEST_TIMEOUT_MS` ever reached a runner — exported by a
@@ -23,7 +23,7 @@ import {
 } from "../../vitest.timeouts";
 
 describe("the vitest per-test ceiling", () => {
-  it("ignores the orchestration override whenever CI is set", () => {
+  it("ignores the work override whenever CI is set", () => {
     // The mutation this exists to catch: drop the `env.CI` check in
     // vitest.timeouts.ts and this returns 60000.
     expect(

@@ -66,7 +66,7 @@ export const HIGH_STAKES = [
     glob: /^lib\/migrations\//,
     why: "migration runner/versions — a bug corrupts every database at boot",
   },
-  { glob: /^lib\/db\.ts$/, why: "connection + boot orchestration" },
+  { glob: /^lib\/db\.ts$/, why: "connection + boot work" },
   // The authorization boundary.
   {
     glob: /^lib\/auth\.ts$/,
@@ -966,7 +966,7 @@ METHOD
   writer; the rolled-back build meeting the new schema; the row a sweep or
   cleanup path must not orphan; the caller that reaches a core WITHOUT the new
   guard (grep for every caller — the calling surface is not evidence).
-- Migration diffs specifically: idempotency under re-run, the parallel-boot-worker
+- Migration diffs specifically: idempotency under re-run, the parallel-boot-orchestrator
   race, order divergence, every historical schema shape the probe claims to
   handle (a probe that cannot tell 'predates the table' from 'typo' is the #2444
   defect), and what a HALF-APPLIED failure leaves behind.

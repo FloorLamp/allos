@@ -63,7 +63,7 @@ paths_changed() {
 #
 # `scripts/` is in because ~30 `lib/datasets/` modules import their generator's
 # types from it; `scripts/orchestration/` is the one subtree the walk proves the
-# tier never reaches, and it is what the orchestration agents edit. Entries are
+# tier never reaches, and it is what the work agents edit. Entries are
 # directories rather than files where the reach is broad, so the set over-runs
 # the gate in places (a `scripts/*.sh` edit runs it) — that is the safe
 # direction and the deliberate one.
