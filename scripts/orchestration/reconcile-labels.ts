@@ -144,7 +144,11 @@ function buildRepoIndex(root: string): RepoIndex {
   })
     .split("\n")
     .filter(Boolean);
-  return { files, read: () => null };
+  const commit = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: root,
+    encoding: "utf8",
+  }).trim();
+  return { commit, files, read: () => null };
 }
 
 /** Removal. Names the label in the PATH and sends no body whatsoever. */

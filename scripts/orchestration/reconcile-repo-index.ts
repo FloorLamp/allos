@@ -27,8 +27,16 @@ export function buildRepoIndex(root: string): RepoIndex {
   })
     .split("\n")
     .filter(Boolean);
+  // The revision the file list came from. Read HERE rather than at report or
+  // summary time: the tracker moves hourly and so does this checkout, and a
+  // SHA read later names a tree the run never looked at.
+  const commit = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: root,
+    encoding: "utf8",
+  }).trim();
   const cache = new Map<string, string | null>();
   return {
+    commit,
     files,
     read(file: string): string | null {
       const hit = cache.get(file);
