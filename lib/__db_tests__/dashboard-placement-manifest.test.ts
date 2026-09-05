@@ -1443,6 +1443,16 @@ describe("actual atomic dashboard manifests", () => {
   // since the last commit must still be read fresh), and one `SELECT total_changes()`
   // for the memo's own version read.
   //
+  // WHAT THIS TABLE CANNOT SEE IS A GATHER LEAVING THE TAIL, and it is worth saying
+  // because the cold-is-cheaper line below reads as though it guards the thing it
+  // measures. A memoized gather costs 0 on a warm render whether it is memoized or
+  // ABSENT, so the two readings are indistinguishable from here. Measured: removing
+  // `getHealthspanPillars` from app/(app)/page.tsx entirely leaves every number in this
+  // table unmoved and the warm census below green, while the cold table above goes
+  // −8/−6/−8/−7/−8/−14 and three of the semantic assertions fire. MEMBERSHIP IS THE
+  // COLD TABLE'S TO POLICE, together with those assertions; this table measures what a
+  // warm load COSTS, not what it contains.
+  //
   // RE-MEASURED ON THE MERGED TREE AND UNMOVED BY #3993, which is the most useful thing
   // this table has said yet. #3993 dating the summary surfaces cost +24 on three
   // personas and +28 on two, and every one of those statements is issued from inside
@@ -1452,6 +1462,32 @@ describe("actual atomic dashboard manifests", () => {
   // one did not: the whole of that cost falls inside the memo. `household` is the
   // control on both tables — its acting profile has no active intake items, so #3993
   // charged it nothing cold and it is unmoved here too.
+  //
+  // THESE NUMBERS DESCRIBE A SECOND LOAD ARRIVING WITHIN FIVE SECONDS OF THE FIRST, and
+  // the condition belongs beside the table because the table is meant to be re-pasted by
+  // whoever re-measures next. It is a fact about two OTHER memos, not about this change:
+  // `tzMemo` (lib/db.ts) and `versionsMemo` (lib/queries/intake/schedule.ts) are both
+  // TTL-bounded at 5 s and both measure that duration off `Date.now()`. This tier freezes
+  // Date (lib/__db_tests__/frozen-clock.ts), so neither can expire between the two renders
+  // in the loop above, and both are already warm when the second one runs.
+  //
+  // MEASURED, not reasoned about. Moving the clock six seconds between the cold and the
+  // warm render — an ordinary reload interval — raises every number here:
+  //
+  //   bodybuilder 119 → 122   marathon-runner 121 → 124   household 177 → 185
+  //   pregnant    119 → 124   diabetic-cgm    128 → 133   biohacker  134 → 137
+  //
+  // AND THE WHOLE OF THAT DELTA IS THE TWO TTLs. Clearing `versionsMemo` alone between
+  // the renders costs +1 on every persona except `household`, which has no active intake
+  // items to re-join and is the control here for the same reason it is above; clearing
+  // `tzMemo` alone costs +2/+2/+8/+4/+4/+2. The two sum to the six-second delta exactly,
+  // on all six personas, which leaves nothing for the memo under test to account for —
+  // and nothing in lib/commit-cache.ts is bounded by the clock in the first place. The
+  // cold table above does not move under the same six seconds.
+  //
+  // SO RE-MEASURING THIS TABLE MEANS RENDERING TWICE WITH NO CLOCK MOVEMENT IN BETWEEN,
+  // the way the loop above does. A re-measure that let real time pass would watch those
+  // two TTLs expire and record it as this memo weakening.
   const WARM_BASELINE: Record<string, number> = {
     bodybuilder: 119,
     "marathon-runner": 121,

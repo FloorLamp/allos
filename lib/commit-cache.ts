@@ -79,6 +79,17 @@ interface Store {
 // the shared-registry DB tier swaps the database between test files, and a new handle
 // must not inherit the old file's answers. That is also why this module needs no entry
 // in setup-shared.ts's `resetCarriedState` — the swap drops the store with the handle.
+//
+// WHAT IT RETAINS, AND WHY THAT NEEDS NO EVICTION. One entry per (gather, key) for every
+// profile this process has served SINCE THE LAST COMMIT, and any write anywhere empties
+// the whole store — so the live set is one version's worth of dashboards, never a
+// history, and the key space cannot creep behind it either: changing a unit or a format
+// preference is itself a write. Measured across the six seeded personas, the heaviest
+// (bodybuilder) holds 61 588 bytes of JSON-equivalent, 52 124 of it `gatherCoachingInput`
+// alone. That byte count UNDERSTATES it in one way worth naming: `gatherCoachingInput`'s
+// result carries closures — `weather.canDo` is
+// `(candidate) => canDoIndoorActivity(profileId, candidate)` (lib/queries/coaching.ts) —
+// which JSON does not see, so their captured scopes are held until the next commit too.
 const stores = new WeakMap<Database.Database, Store>();
 
 function storeAt(version: string): Store {
