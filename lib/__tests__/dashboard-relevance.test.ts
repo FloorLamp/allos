@@ -1219,6 +1219,42 @@ describe("a bucket's due doses seat as one candidate (#5063)", () => {
     ).toEqual([["Morning", [1, 2, 3, 4, 5, 6]], "dose:7"]);
   });
 
+  // THE SEAT IS THE FIRST MEMBER'S INDEX, OFFSET BY THE MODEL'S BASE. `sourceOrder`
+  // is the Now cap's tiebreak (#3554), so a slot that took its LAST member's index —
+  // or dropped the index entirely — would silently reorder the lane. Nothing guarded
+  // that arithmetic before this issue: with `entry.sourceIndex` deleted the rest of
+  // this file stayed green, which is why it is asserted directly, against the model's
+  // own indices and from a non-zero base so the offset is exercised rather than
+  // assumed. The `dose:7` row landing on 103 is the other half — the slot consumes
+  // its members' positions without shifting what follows.
+  it("orders a slot at its first member's index, offset by the base", () => {
+    const notADose = {
+      key: "review",
+      domain: "review",
+      title: "For review",
+      href: "/data",
+      dueDate: null,
+      signalGroup: "review",
+    } as unknown as UpcomingItem;
+    expect(
+      attentionCandidates(
+        subject,
+        [
+          notADose,
+          dose(1, "Beta-Glucan", "morning"),
+          dose(2, "Ground Flaxseed", "morning"),
+          dose(7, "Magnesium", "before sleep"),
+        ],
+        SLOT_TODAY,
+        100
+      ).map((candidate) => [candidate.candidateId, candidate.sourceOrder])
+    ).toEqual([
+      ["attention.fact:review", 100],
+      ["attention.fact:dose-slot:Morning", 101],
+      ["attention.fact:dose:7", 103],
+    ]);
+  });
+
   // The seat is the same act, so it is owed as strongly as its strongest member and
   // carries a member's safety gate. A slot that softened a `must` to `should` would
   // be a demotion nobody asked for.

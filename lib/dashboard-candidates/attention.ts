@@ -146,6 +146,10 @@ function attentionDueNow(item: UpcomingItem, today: string): boolean {
   return item.signalGroup == null && (band === "overdue" || band === "today");
 }
 
+// The whole model's candidates, in the model's order. A two-line passthrough over
+// the two functions below, in the order the dashboard calls them — kept because the
+// test tier drives it, and safe to keep only because it can no longer differ from
+// that path: it decides nothing this file's own producer does not decide.
 export function attentionCandidates(
   subject: DashboardSubject,
   items: readonly UpcomingItem[],
@@ -153,26 +157,28 @@ export function attentionCandidates(
   sourceOrder = 0
 ): DashboardCandidate[] {
   return attentionEntries(items).map((entry) =>
-    attentionEntryCandidate(
-      subject,
-      entry,
-      today,
-      sourceOrder + entry.sourceIndex
-    )
+    attentionEntryCandidate(subject, entry, today, sourceOrder)
   );
 }
 
 // ONE ENTRY, ONE CANDIDATE. Both arms mint their id through the same attention
 // identity helper, so a slot and a dose share one namespace and the exact-once
 // partition still holds over `factKey`.
+//
+// `sourceOrder` IS THE MODEL'S BASE, and the entry's own index is added HERE rather
+// than by each caller. Both callers used to spell `sourceOrder + entry.sourceIndex`
+// themselves, which is the one seam on which the page's path and the path the test
+// tier drives could have drifted apart while both stayed green. There is one place
+// to get it wrong now, and it is the place under test.
 export function attentionEntryCandidate(
   subject: DashboardSubject,
   entry: AttentionEntry,
   today: string,
   sourceOrder: number
 ): DashboardCandidate {
+  const order = sourceOrder + entry.sourceIndex;
   if (entry.kind === "item")
-    return attentionItemCandidate(subject, entry.item, today, sourceOrder);
+    return attentionItemCandidate(subject, entry.item, today, order);
   const key = doseSlotKey(entry.bucket);
   const dueNow = entry.items.some((item) => attentionDueNow(item, today));
   return actionCandidate({
@@ -193,7 +199,7 @@ export function attentionEntryCandidate(
     // Every member was declared for this bucket, so the slot's window IS the
     // bucket's — the same span each member carried alone.
     timing: localTimeWindow(TIME_BUCKET_OPENS_AT[entry.bucket], 24 * 60 - 1),
-    sourceOrder,
+    sourceOrder: order,
     // AS STRONGLY OWED AS ITS STRONGEST MEMBER. A `must` dose may not be softened
     // by the `should` doses it now shares a seat with — the seat is the same act.
     obligation: entry.items.reduce<DashboardObligation>((strongest, item) => {

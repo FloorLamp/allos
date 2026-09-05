@@ -1425,7 +1425,7 @@ async function renderDashboard(
       profileSubject,
       entry,
       on,
-      sourceOrder + entry.sourceIndex
+      sourceOrder
     );
     if (entry.kind === "dose-slot") {
       seatedDoseSlots.add(entry.bucket);
