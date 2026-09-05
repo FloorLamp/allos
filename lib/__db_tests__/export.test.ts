@@ -11,6 +11,7 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { DATASETS, DELETE_POLICY, getDataset, toCsv } from "@/lib/export";
+import { PENDING_COLUMNS } from "@/lib/export-manifest";
 import { db } from "@/lib/db";
 import { seedProfile, type SeededProfile } from "./fixtures";
 
@@ -220,5 +221,71 @@ describe("DATASETS ⇄ DELETE_POLICY stay in sync", () => {
   it("immunizations is deletable and now covered by DELETE_POLICY", () => {
     expect(getDataset("immunizations")!.deletable).not.toBe(false);
     expect(DELETE_POLICY.immunizations).toBeDefined();
+  });
+});
+
+// PROVENANCE COLUMNS REACH THE ARCHIVE (#5117).
+//
+// `bundle_id` records that one act wrote several rows. Four exported tables carry it,
+// and the archive ships each dataset twice: datasets/<key>.json is whatever rows()
+// emits, datasets/<key>.csv is toCsv(ds.columns, rows). A column has to be in BOTH
+// spellings to reach the person reading the archive — in the SELECT but not `columns`
+// and the CSV drops it; in `columns` but not the SELECT and the CSV header promises a
+// column that is empty on every row. Each dataset is checked in both.
+const BUNDLE_ID_DATASETS = [
+  { key: "body_metrics", bundle: "bundle-metrics-1" },
+  { key: "practice_logs", bundle: "bundle-practice-1" },
+  { key: "food_log_events", bundle: "bundle-food-1" },
+  { key: "intake_log", bundle: "bundle-dose-1" },
+];
+
+describe("bundle_id reaches both spellings of every dataset that carries it (#5117)", () => {
+  beforeAll(() => {
+    // The fixture already seeds a weigh-in and a dose log for this profile; the other
+    // two tables have no seeded row, so add one. Values are set here rather than
+    // through a writer because two of these four have no writer (see the case below).
+    db.prepare(
+      `UPDATE body_metrics SET bundle_id = 'bundle-metrics-1' WHERE profile_id = ?`
+    ).run(a.profileId);
+    db.prepare(
+      `UPDATE intake_item_logs SET bundle_id = 'bundle-dose-1'
+         WHERE item_id IN (SELECT id FROM intake_items WHERE profile_id = ?)`
+    ).run(a.profileId);
+    db.prepare(
+      `INSERT INTO practice_logs (profile_id, practice, date, duration_min, bundle_id)
+       VALUES (?, 'breathwork', '2024-01-02', 20, 'bundle-practice-1')`
+    ).run(a.profileId);
+    db.prepare(
+      `INSERT INTO food_log_events
+         (profile_id, group_key, date, recorded_at, bundle_id)
+       VALUES (?, 'lunch', '2024-01-02', '2024-01-02T12:00:00Z', 'bundle-food-1')`
+    ).run(a.profileId);
+  });
+
+  it.each(BUNDLE_ID_DATASETS)(
+    "$key ships bundle_id in both the dataset JSON and the dataset CSV",
+    ({ key, bundle }) => {
+      const ds = getDataset(key)!;
+      const rows = ds.rows(a.profileId);
+      const row = rows.find((r) => r.bundle_id === bundle);
+      // datasets/<key>.json — the value the SELECT read, on the row it belongs to.
+      expect(row, `${key}.rows() carries no bundle_id`).toBeDefined();
+      // datasets/<key>.csv — the header names it and the cell carries it. bundle_id
+      // is the last declared column of all four, so the line ends with its cell.
+      const [header, line] = toCsv(ds.columns, [row!]).trimEnd().split("\n");
+      expect(header.endsWith(",bundle_id"), header).toBe(true);
+      expect(line.endsWith(`,${bundle}`), line).toBe(true);
+    }
+  );
+
+  it("the columns nothing writes yet are named in the manifest (#5273)", () => {
+    // `body_metrics.bundle_id` and `practice_logs.bundle_id` have no writer: a single
+    // weigh-in or practice entry is one row, so nothing mints an act id for them. The
+    // columns still ship, so two archives keep diffing cleanly when a writer lands —
+    // and manifest.json names them, so the empty column reads as pending. The values
+    // above were set by hand for exactly that reason.
+    for (const { dataset, column } of PENDING_COLUMNS) {
+      expect(getDataset(dataset)?.columns, dataset).toContain(column);
+    }
   });
 });
