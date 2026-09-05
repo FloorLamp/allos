@@ -12,12 +12,12 @@ import path from "node:path";
 import { installStreamRevealGuard } from "./helpers";
 import { pinnedTimezone } from "./pinned-timezone";
 import {
-  diffRecentActivities,
+  diffSharedRows,
   NO_LEFTOVERS,
-  repairAddedActivities,
-  sharedActivityDriftMessage,
+  repairAddedSharedRows,
+  sharedRowDriftMessage,
   type SharedProfileLeftovers,
-  snapshotRecentActivities,
+  snapshotSharedRows,
   strandedDraftMessage,
   takeStrandedDrafts,
 } from "./shared-profile-guard";
@@ -91,7 +91,8 @@ type WorkerFixtures = {
 
 type TestFixtures = {
   /**
-   * The standing shared-fixture guard (#3173, widened by #3946) — automatic, so no
+   * The standing shared-fixture guard (#3173, widened by #3946 and #5037) —
+   * automatic, so no
    * spec can opt out and no new spec has to remember to opt in. See
    * e2e/shared-profile-guard.ts.
    */
@@ -318,24 +319,24 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       const at = frozenNow();
       const before = workerApp.demo
         ? []
-        : snapshotRecentActivities(at, workerApp.dbPath);
+        : snapshotSharedRows(at, workerApp.dbPath);
       // eslint-disable-next-line react-hooks/rules-of-hooks
       await use();
       if (workerApp.demo) return;
       const stranded = takeStrandedDrafts(workerApp.dbPath);
       if (stranded.length > 0) throw new Error(strandedDraftMessage(stranded));
       if (
-        sharedProfileLeftovers.titles.length > 0 &&
+        sharedProfileLeftovers.rows.length > 0 &&
         !sharedProfileLeftovers.why.trim()
       )
         throw new Error(
-          `sharedProfileLeftovers declares ${sharedProfileLeftovers.titles.length} ` +
-            `title(s) with no \`why\` — say what makes these rows worth leaving on ` +
+          `sharedProfileLeftovers declares ${sharedProfileLeftovers.rows.length} ` +
+            `row(s) with no \`why\` — say what makes these rows worth leaving on ` +
             `the shared profile (#3946).`
         );
-      const drift = diffRecentActivities(
+      const drift = diffSharedRows(
         before,
-        snapshotRecentActivities(at, workerApp.dbPath),
+        snapshotSharedRows(at, workerApp.dbPath),
         sharedProfileLeftovers
       );
       if (
@@ -345,8 +346,8 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         0
       )
         return;
-      repairAddedActivities(drift, workerApp.dbPath);
-      throw new Error(sharedActivityDriftMessage(drift, at));
+      repairAddedSharedRows(drift, workerApp.dbPath);
+      throw new Error(sharedRowDriftMessage(drift, at));
     },
     { auto: true },
   ],
