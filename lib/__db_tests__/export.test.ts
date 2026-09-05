@@ -22,6 +22,17 @@ beforeAll(() => {
   b = seedProfile("EXPB");
   // The shared fixture doesn't seed the clinical / heart-rate datasets, so add a
   // tagged row per profile to prove the new dataset queries are profile-scoped.
+  // One shared (global) provider, referenced by each profile's encounter, so the
+  // `providers` dataset — the one whose reads are bounded by an id list rather than
+  // by a statement — has rows to compare against its declared select.
+  const providerId = Number(
+    db
+      .prepare(
+        `INSERT INTO providers (name, type, dedup_key)
+         VALUES ('Quest Labs', 'organization', 'quest-labs|organization')`
+      )
+      .run().lastInsertRowid
+  );
   for (const { p, bpm } of [
     { p: a, bpm: 60 },
     { p: b, bpm: 99 },
@@ -34,8 +45,9 @@ beforeAll(() => {
       `INSERT INTO conditions (profile_id, name, status) VALUES (?, ?, 'active')`
     ).run(p.profileId, `${p.tag} Hypertension`);
     db.prepare(
-      `INSERT INTO encounters (profile_id, date, type) VALUES (?, '2024-01-02', ?)`
-    ).run(p.profileId, `${p.tag} Office Visit`);
+      `INSERT INTO encounters (profile_id, date, type, provider_id)
+       VALUES (?, '2024-01-02', ?, ?)`
+    ).run(p.profileId, `${p.tag} Office Visit`, providerId);
     db.prepare(
       `INSERT INTO hr_minutes (profile_id, ts, bpm, n, source)
        VALUES (?, '2024-01-02T08:00', ?, 3, 'health-connect')`
@@ -220,5 +232,115 @@ describe("DATASETS ⇄ DELETE_POLICY stay in sync", () => {
   it("immunizations is deletable and now covered by DELETE_POLICY", () => {
     expect(getDataset("immunizations")!.deletable).not.toBe(false);
     expect(DELETE_POLICY.immunizations).toBeDefined();
+  });
+});
+
+// THE DECLARED SELECT IS THE STATEMENT THE EXPORT RUNS (#5117).
+//
+// `ExportDataset.select` is what the column guard
+// (lib/__db_tests__/export-completeness.test.ts) prepares to decide which columns the
+// export carries. That makes it a measurement of a DECLARATION unless something binds
+// it to the reads: `activities`, `intake_items` and `providers` hand-write their
+// rows()/page() SQL, so dropping a column from one of them while `select` keeps it
+// used to ship a JSON without the column and a CSV header promising it, with every
+// export spec green.
+//
+// This compares the KEYS the readers actually emit against the result columns the
+// declared select emits — the same names toCsv keys on. A dataset with no seeded rows
+// has no keys to read, so the check is silent about it; that is why the two lists
+// below exist, and why the last case fails on a dataset that is bound by neither.
+const JS_BUILT_CELLS: Record<string, string[]> = {
+  // Child-table roll-ups built after the read (shapeActivities / shapeSupplements),
+  // declared in the same terms as export-completeness's CSV_COLUMNS_BUILT_IN_JS.
+  activities: ["exercises"],
+  intake_items: ["schedule"],
+};
+
+// The datasets that do NOT carry the `readsSelect` marker — they hand-write their
+// reads instead of taking q(select)/qPage(select) from tableDataset — so the binding
+// has to be PROVEN on seeded rows rather than held by construction.
+const HAND_AUTHORED_READS = ["activities", "intake_items", "providers"];
+
+describe("the declared select is the statement the export runs (#5117)", () => {
+  const expectedKeys = (ds: (typeof DATASETS)[number]) =>
+    new Set([
+      ...db
+        .prepare(ds.select)
+        .columns()
+        .map((c) => c.name),
+      ...(JS_BUILT_CELLS[ds.key] ?? []),
+    ]);
+
+  // A dataset that folds a child table in builds its rows as an object LITERAL
+  // (shapeActivities), so dropping a column from the read leaves the key in place and
+  // the value `undefined` — the key set alone cannot see it. A shipped cell is a value
+  // or SQL NULL; `undefined` means a shaper read a field the statement never selected.
+  const unselectedCells = (rows: Record<string, unknown>[], key: string) => {
+    const bad: string[] = [];
+    for (const row of rows) {
+      for (const [k, v] of Object.entries(row)) {
+        if (v === undefined) bad.push(`${key}.${k}`);
+      }
+    }
+    return [...new Set(bad)];
+  };
+
+  it("rows() emits exactly what the declared select selects", () => {
+    for (const ds of DATASETS) {
+      const rows = ds.rows(a.profileId);
+      if (rows.length === 0) continue; // nothing seeded — see the case below
+      expect(new Set(Object.keys(rows[0])), `${ds.key}.rows()`).toEqual(
+        expectedKeys(ds)
+      );
+      expect(
+        unselectedCells(rows, ds.key),
+        `\n${ds.key}.rows() ships cells its statement never selected — the JSON has no value and the CSV header still promises the column:\n`
+      ).toEqual([]);
+    }
+  });
+
+  it("page() emits exactly what the declared select selects", () => {
+    for (const ds of DATASETS) {
+      const page = ds.page(a.profileId, 25, 0);
+      if (page.length === 0) continue;
+      expect(new Set(Object.keys(page[0])), `${ds.key}.page()`).toEqual(
+        expectedKeys(ds)
+      );
+      expect(
+        unselectedCells(page, ds.key),
+        `\n${ds.key}.page() ships cells its statement never selected:\n`
+      ).toEqual([]);
+    }
+  });
+
+  it("the hand-authored datasets really are exercised above", () => {
+    // Without rows the two cases above are vacuous for exactly the datasets that can
+    // drift, so the seeding is part of the check, not setup for it.
+    for (const key of HAND_AUTHORED_READS) {
+      expect(getDataset(key)!.rows(a.profileId).length, key).toBeGreaterThan(0);
+      expect(
+        getDataset(key)!.page(a.profileId, 25, 0).length,
+        key
+      ).toBeGreaterThan(0);
+    }
+  });
+
+  it("every dataset is bound to its select — by construction or by the case above", () => {
+    // tableDataset() sets `readsSelect`, and its rows/page ARE q(select)/qPage(select).
+    // Anything else must be in HAND_AUTHORED_READS, which the seeded comparison covers.
+    const unbound = DATASETS.filter(
+      (d) => !d.readsSelect && !HAND_AUTHORED_READS.includes(d.key)
+    ).map((d) => d.key);
+    expect(
+      unbound,
+      `\nThese datasets hand-write their reads and nothing proves the reads match their declared select.\nSeed them in this file and add them to HAND_AUTHORED_READS:\n${unbound.join("\n")}\n`
+    ).toEqual([]);
+    // …and nothing is listed that tableDataset now builds.
+    const stale = HAND_AUTHORED_READS.filter(
+      (key) => getDataset(key)?.readsSelect
+    );
+    expect(stale, `built by tableDataset now — remove from the list`).toEqual(
+      []
+    );
   });
 });

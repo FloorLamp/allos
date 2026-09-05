@@ -420,6 +420,21 @@ describe("FHIR export/import symmetry (issue #465)", () => {
 // grow by accident.
 const COLUMN_GUARD_FHIR_CARVE_OUT = FHIR_INPUT_TABLES;
 
+// ── The JSON ⇄ CSV agreement, in BOTH directions ─────────────────────────────
+//
+// The archive ships each dataset twice: datasets/<key>.json (whatever the rows carry)
+// and a CSV whose header is the dataset's declared `columns`, which is also what
+// toCsv keys each row by. The two are the same export, so the two lists must be the
+// same list — and the comparison is by RESULT-COLUMN NAME, the thing toCsv looks up,
+// not by which table SQLite attributes a column to. The earlier version compared
+// against origin-table attribution and so could not see the 15 JOIN-sourced columns
+// across 12 datasets (`a.title AS activity`, `ii.name AS item`): deleting one from
+// `columns` shipped a JSON with the column and a CSV without it, green. Attribution
+// answers "is this table's column exported"; only the emitted NAMES answer "do the
+// JSON and the CSV agree".
+//
+// Two divergences are declarable, each with its own list below, and nothing else is.
+
 // Result columns a dataset SELECTs — so they reach datasets/<key>.json — but keeps
 // out of `columns`, the CSV header. `id` is the contract-wide one (every dataset
 // carries the row's primary key for the manage UI, deliberately not a CSV column);
@@ -434,6 +449,28 @@ const CSV_OMITTED_RESULT_COLUMNS: {
     key: "milestones",
     column: "key",
     why: "the milestone's stable identity (`first-5k`), which is also its once-only fired marker (lib/milestones.ts). It rides datasets/milestones.json for a re-importer that must not re-fire a milestone; the CSV a person reads shows the milestone itself — kind, threshold, title, detail, achieved_on.",
+  },
+];
+
+// The other direction: CSV header cells the `select` never emits. Left unchecked,
+// adding a name to `columns` ships a column of permanently empty cells — and a name
+// the column allowlist may simultaneously certify as deliberately un-exported. The
+// only legitimate case is a cell BUILT IN JS after the read, from a child table the
+// parent select cannot fold in; each is named here with the function that builds it.
+const CSV_COLUMNS_BUILT_IN_JS: {
+  key: string;
+  column: string;
+  why: string;
+}[] = [
+  {
+    key: "activities",
+    column: "exercises",
+    why: "the activity's exercise_sets folded into one prose summary by shapeActivities() in lib/export.ts — a child-table roll-up, not a column of activities. The sets themselves export in full via the exercise_sets dataset.",
+  },
+  {
+    key: "intake_items",
+    column: "schedule",
+    why: "the item's intake_item_doses folded into one readable dose summary by shapeSupplements() in lib/export.ts — a child-table roll-up, not a column of intake_items. The doses themselves export in full via the intake_doses dataset.",
   },
 ];
 
@@ -855,10 +892,12 @@ function columnCensus(): {
   tables: TableColumnCensus[];
   carvedOut: string[];
   csvOmitted: { key: string; column: string }[];
+  csvOnly: { key: string; column: string }[];
 } {
   const exported = new Map<string, Set<string>>();
   const datasetTables: string[] = [];
   const csvOmitted: { key: string; column: string }[] = [];
+  const csvOnly: { key: string; column: string }[] = [];
 
   for (const ds of DATASETS) {
     if (!ds.select?.trim()) {
@@ -878,12 +917,21 @@ function columnCensus(): {
       datasetTables.push(ds.table);
     }
     const carried = exported.get(ds.table)!;
+    // Origin-table attribution answers the completeness question (which columns of
+    // THIS table the export carries) — JOINed columns belong to their own table's
+    // dataset and are counted there.
+    for (const c of own) carried.add(c.column!);
+    // The JSON ⇄ CSV question is asked of EVERY result column by the name it lands
+    // under, JOIN-sourced ones included: that name is the key toCsv reads.
     const csvHeader = new Set(ds.columns);
-    for (const c of own) {
-      carried.add(c.column!);
-      if (c.name !== "id" && !csvHeader.has(c.name)) {
-        csvOmitted.push({ key: ds.key, column: c.name });
+    const emitted = new Set(result.map((c) => c.name));
+    for (const name of emitted) {
+      if (name !== "id" && !csvHeader.has(name)) {
+        csvOmitted.push({ key: ds.key, column: name });
       }
+    }
+    for (const name of ds.columns) {
+      if (!emitted.has(name)) csvOnly.push({ key: ds.key, column: name });
     }
   }
 
@@ -904,21 +952,33 @@ function columnCensus(): {
     }
     tables.push({ table, physical, exported: exported.get(table)! });
   }
-  return { tables, carvedOut, csvOmitted };
+  return { tables, carvedOut, csvOmitted, csvOnly };
 }
 
-// The floor. Not a target — a tripwire under the census, so a scan that reads an
-// empty or truncated population fails LOUD instead of passing green over nothing.
+// The floor. Not a target — a tripwire under the census, so a scan that reads a
+// TRUNCATED SCHEMA fails LOUD instead of passing green over nothing.
+//
+// WHAT IT MEASURES IS SCHEMA BREADTH, not data: the census reads PRAGMA table_info
+// and prepared-statement metadata and never touches a row, so it is green against an
+// empty fixture database and cannot notice an empty or partial EXPORT. What it
+// catches is the population shrinking — a dataset dropped, a table gone.
+//
+// And it is COARSE even at that: the population is exactly 47/583 with zero headroom,
+// so `>=` on a sum admits a same-size population that has diverged — a dropped column
+// and an added one cancel. The assertions above do fire in that state (the dropped
+// column is unexported, the added one is not in the allowlist), which is why this
+// stays a backstop under them rather than the guard itself.
+//
 // These are the counts at the time #5117 landed; they only ever move up, and moving
 // one down means the export lost a table.
 const MIN_TABLES_CHECKED = 47;
 const MIN_COLUMNS_CHECKED = 583;
 
 describe("every column of an exported table is exported (#5117)", () => {
-  const { tables, carvedOut, csvOmitted } = columnCensus();
+  const { tables, carvedOut, csvOmitted, csvOnly } = columnCensus();
   const columnsChecked = tables.reduce((n, t) => n + t.physical.length, 0);
 
-  it("checks a real population, not an empty one", () => {
+  it("checks a real population, not a truncated schema", () => {
     expect(
       tables.length,
       `only ${tables.length} dataset tables reached the column census`
@@ -1005,6 +1065,28 @@ describe("every column of an exported table is exported (#5117)", () => {
       expect(
         actual.has(`${c.key}.${c.column}`),
         `${c.key}.${c.column} is in the CSV now — remove its entry`
+      ).toBe(true);
+      expect(c.why.trim().length).toBeGreaterThan(0);
+    }
+  });
+
+  it("what the CSV header promises, the dataset actually selects", () => {
+    const named = new Set(
+      CSV_COLUMNS_BUILT_IN_JS.map((c) => `${c.key}.${c.column}`)
+    );
+    const undeclared = csvOnly
+      .map((c) => `${c.key}.${c.column}`)
+      .filter((c) => !named.has(c));
+    expect(
+      undeclared,
+      `\nPromised by the CSV header (dataset \`columns\`) but selected by nothing — every row ships an empty cell:\nAdd it to the dataset's select in lib/export.ts, or, if a JS step builds it after the read, name it in CSV_COLUMNS_BUILT_IN_JS with the function that does:\n${undeclared.join("\n")}\n`
+    ).toEqual([]);
+    // …and nothing is declared that the select emits after all.
+    const actual = new Set(csvOnly.map((c) => `${c.key}.${c.column}`));
+    for (const c of CSV_COLUMNS_BUILT_IN_JS) {
+      expect(
+        actual.has(`${c.key}.${c.column}`),
+        `${c.key}.${c.column} is selected now — remove its entry`
       ).toBe(true);
       expect(c.why.trim().length).toBeGreaterThan(0);
     }

@@ -13,7 +13,9 @@ import {
   prepareArgs,
   readSource,
   relPath,
+  resolveSqlConsts,
   sourceFiles,
+  sqlConsts,
 } from "./sql-scan";
 import {
   DYNAMIC_TABLE_RENAMES,
@@ -27,7 +29,9 @@ import {
 
 // Static leak-detection for the multi-user conversion. This
 // reads the repo's own source as TEXT — no DB, no network, so it stays "pure" in
-// the vitest sense — extracts the first argument of every `.prepare(` call, and
+// the vitest sense — extracts the first argument of every `.prepare(` call,
+// substitutes the module-scope SQL consts it is composed from (#5117: hoisting a
+// read into a const must not cost it the check), and
 // fails if a statement touches a profile-OWNED table without `profile_id`
 // appearing in it (child tables reach profile_id via a JOIN to their parent, so a
 // statement that joins the parent naturally mentions the parent table + its
@@ -84,6 +88,12 @@ function isVersionedMigration(rel: string): boolean {
 // the file they live in (so an unrelated file can't ride the exemption). Each is
 // matched as a normalized-SQL substring. Keep this list SHORT and justified.
 const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
+  {
+    file: "lib/portals.ts",
+    includes:
+      "FROM portal_identities pi JOIN portals p ON p.id = pi.portal_id JOIN portal_accounts a ON a.id = pi.account_id ORDER BY p.name COLLATE NOCASE",
+    why: "listPortalIdentities: EVERY binding on the instance, for the portal setup card — 'which patient label goes to which profile', which is a question about the mapping itself and has no one profile to filter to. Deliberately scope-blind at this layer, with the CALLER filtering to what its viewer may see (the comment above it in lib/portals.ts says so). It carries no clinical payload: portal/account names, a patient label, and the profile_id the row assigns. Read by the scan only since #5117 taught it to resolve module-scope SQL consts — before that its `${IDENTITY_COLS} ${IDENTITY_FROM}` text named no table and the statement was dropped unseen.",
+  },
   {
     file: "lib/migrations/boot-tasks.ts",
     includes:
@@ -419,11 +429,6 @@ const ALLOW_NON_LITERAL: { file: string; expr: string; why: string }[] = [
   },
   {
     file: "lib/export.ts",
-    expr: "ACTIVITIES_SELECT",
-    why: "the activities dataset's read (#5117): ONE hand-authored literal const, `SELECT … FROM activities WHERE profile_id = ?`, hoisted so the full export read, the bounded page read (which appends LIMIT/OFFSET) and the dataset's declared `select` are the same statement rather than three copies that can drift. The literal is right above the dataset in lib/export.ts and opens its WHERE with the acting profile.",
-  },
-  {
-    file: "lib/export.ts",
     expr: "providersSelect(ph)",
     why: "the providers dataset's read: `providers` is a GLOBAL table with no profile_id of its own, so there is no profile filter to check. It is read by an explicit `IN (…)` id list, and that list comes from referencedProviderIds(profileId) — the profile-scoped walk over PROVIDER_LINK_SELECTS — so only providers this profile's own records reference are ever returned. The function exists so the placeholder count can vary; its SQL text is one hand-authored literal.",
   },
@@ -453,6 +458,18 @@ const ALLOW_NON_LITERAL: { file: string; expr: string; why: string }[] = [
     file: "lib/profile-delete.ts",
     expr: "step.sql",
     why: "the schema-derived profile-delete sweep (#2126): each statement is a DELETE on a CHILD table (no profile_id of its own) whose WHERE reaches profile_id through nested subqueries along its FK path to an OWNED_TABLES parent (table/column names come from sqlite_master, never user input). lib/__db_tests__/profile-delete-fk-scan.test.ts pins the plan's coverage and ordering.",
+  },
+];
+
+// Statements whose OWN TEXT begins inside an interpolation, so neither the verb nor
+// the table can be read even after the module-scope consts are substituted — the
+// whole statement is the caller's. Same SHORT-and-justified discipline as the lists
+// above; today there is exactly one such site in the repo.
+const ALLOW_COMPOSED: { file: string; sql: string; why: string }[] = [
+  {
+    file: "lib/export.ts",
+    sql: "${sql} LIMIT ? OFFSET ?",
+    why: "qPage(sql): the bounded twin of the q(sql) helper allowlisted above, and the same argument — it appends LIMIT/OFFSET to whatever complete SELECT its caller declared, so there is no statement of its own to read here. Every string it is called with is a dataset `select` in the same file, each filtering the acting profile directly (WHERE profile_id = ?) or through the parent JOIN (WHERE ii.profile_id = ?), and lib/__db_tests__/export.test.ts seeds two profiles and asserts per dataset that page() returns only the querying profile's rows.",
   },
 ];
 
@@ -507,8 +524,18 @@ describe("profile scoping: every owned-table query filters by profile_id", () =>
       // authorization boundary. Keep the request/runtime surface fully scanned.
       if (isVersionedMigration(rel)) continue;
       const src = readSource(file);
+      // Module-scope SQL consts, so a statement ASSEMBLED from them is read rather
+      // than dropped: `.prepare(ACTIVITIES_SELECT)` and the page reader's
+      // `${ACTIVITIES_SELECT} LIMIT ? OFFSET ?` are the same statement this scan saw
+      // when it was written out longhand, and hoisting it must not cost the check
+      // (#5117 — the activities page read went unscanned for exactly that reason).
+      const consts = sqlConsts(src);
       for (const arg of prepareArgs(src)) {
-        if (arg.kind === "expr") {
+        const composed = resolveSqlConsts(
+          arg.kind === "expr" ? `\${${arg.text}}` : arg.text,
+          consts
+        );
+        if (arg.kind === "expr" && !composed.resolved) {
           const ok = ALLOW_NON_LITERAL.some(
             (a) => rel.endsWith(a.file) && arg.text === a.expr
           );
@@ -519,7 +546,23 @@ describe("profile scoping: every owned-table query filters by profile_id", () =>
           }
           continue;
         }
-        const sql = norm(arg.text);
+        const sql = norm(composed.text);
+        // A statement that STARTS inside an unresolved interpolation has no readable
+        // verb and no readable table, so "names no owned table" would be an answer
+        // about the fragment rather than about the statement. Refuse it instead of
+        // dropping it: silently unclassified is the state this guard exists to
+        // prevent.
+        if (!composed.resolved && sql.startsWith("${")) {
+          const ok = ALLOW_COMPOSED.some(
+            (a) => rel.endsWith(a.file) && norm(a.sql) === sql
+          );
+          if (!ok) {
+            violations.push(
+              `${rel}: composed .prepare(\`${sql}\`) — the statement begins inside an interpolation, so neither its verb nor its table can be read; allowlist it with a justification if it is safe`
+            );
+          }
+          continue;
+        }
         if (!OWNED_RE.test(sql)) continue; // no owned table → nothing to enforce
         if (scopedByProfileId(sql)) continue; // profile_id in a scoping position
         const allowed = ALLOW_SQL.some(
@@ -638,6 +681,83 @@ describe("profile-scoping scanner rules (issue #1208)", () => {
     expect(
       flag("DELETE FROM metric_samples WHERE profile_id = ? AND date = ?")
     ).toBe(false);
+  });
+});
+
+// UNIT cases for the composed-statement rules (#5117), pinned on inline source so
+// they hold independently of the live tree. The regression they exist for: hoisting
+// the activities read into a const turned a statement the scan READ into a template
+// whose text named no table, and the scan dropped it — no violation, no allowlist
+// entry, nothing to notice. A mutant that removed `WHERE profile_id = ?` from that
+// const was green here while export.test.ts still caught it behaviourally.
+describe("composed-statement scanning (#5117)", () => {
+  const SOURCE = [
+    "const SEL = `SELECT id FROM activities WHERE profile_id = ?`;",
+    "const LEAK = `SELECT id FROM activities WHERE ? IS NOT NULL`;",
+    "db.prepare(`${SEL} LIMIT ? OFFSET ?`);",
+    "db.prepare(SEL);",
+    "db.prepare(`${LEAK} LIMIT ? OFFSET ?`);",
+    "function f() {",
+    "  const LOCAL = `SELECT id FROM activities WHERE profile_id = ?`;",
+    "  db.prepare(`${LOCAL} LIMIT ?`);",
+    "  db.prepare(`${runtime} LIMIT ?`);",
+    "}",
+  ].join("\n");
+  const consts = sqlConsts(SOURCE);
+  const read = prepareArgs(SOURCE).map((arg) =>
+    resolveSqlConsts(arg.kind === "expr" ? `\${${arg.text}}` : arg.text, consts)
+  );
+  const sqlAt = (i: number) => norm(read[i].text);
+
+  it("substitutes a module-scope SQL const into a template statement", () => {
+    expect(sqlAt(0)).toBe(
+      "SELECT id FROM activities WHERE profile_id = ? LIMIT ? OFFSET ?"
+    );
+    expect(OWNED_RE.test(sqlAt(0))).toBe(true);
+    expect(scopedByProfileId(sqlAt(0))).toBe(true);
+  });
+
+  it("substitutes a bare-identifier .prepare argument too", () => {
+    expect(sqlAt(1)).toBe("SELECT id FROM activities WHERE profile_id = ?");
+    expect(scopedByProfileId(sqlAt(1))).toBe(true);
+  });
+
+  it("a composed read that lost its profile filter is a violation again", () => {
+    // The mutant: `WHERE profile_id = ?` becomes `WHERE ? IS NOT NULL` inside the
+    // const. Before resolution the page read named no owned table and was dropped.
+    expect(OWNED_RE.test(sqlAt(2))).toBe(true);
+    expect(scopedByProfileId(sqlAt(2))).toBe(false);
+  });
+
+  it("a function-local const stays unresolved (module scope is what makes it sound)", () => {
+    expect(read[3].resolved).toBe(false);
+    expect(sqlAt(3)).toBe("${LOCAL} LIMIT ?");
+  });
+
+  it("a statement beginning inside an unresolved interpolation is refused, not dropped", () => {
+    // Neither the verb nor the table is readable, so "names no owned table" would be
+    // an answer about the fragment. The scan requires an ALLOW_COMPOSED entry.
+    expect(read[4].resolved).toBe(false);
+    expect(sqlAt(4).startsWith("${")).toBe(true);
+    expect(OWNED_RE.test(sqlAt(4))).toBe(false);
+  });
+
+  it("every ALLOW_COMPOSED entry is justified and still matches a live statement", () => {
+    for (const entry of ALLOW_COMPOSED) {
+      expect(entry.why.trim().length).toBeGreaterThan(0);
+      expect(norm(entry.sql).startsWith("${")).toBe(true);
+      const src = readSource(path.join(REPO, entry.file));
+      const fileConsts = sqlConsts(src);
+      const matches = prepareArgs(src).some(
+        (arg) =>
+          arg.kind === "sql" &&
+          norm(resolveSqlConsts(arg.text, fileConsts).text) === norm(entry.sql)
+      );
+      expect(
+        matches,
+        `${entry.file}: ${entry.sql} matches no .prepare site`
+      ).toBe(true);
+    }
   });
 });
 

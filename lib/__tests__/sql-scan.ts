@@ -130,4 +130,56 @@ export const execArgs = (src: string) => firstStringArgs(src, /\.exec\s*\(/g);
 
 export const norm = (s: string) => s.replace(/\s+/g, " ").trim();
 
+// ── Composed statements ───────────────────────────────────────────────────────
+//
+// A prepared statement is often assembled from module-scope SQL consts:
+//
+//     const ACTIVITIES_SELECT = `SELECT … FROM activities WHERE profile_id = ?`;
+//     db.prepare(`${ACTIVITIES_SELECT} LIMIT ? OFFSET ?`)
+//
+// The extracted literal is then `${ACTIVITIES_SELECT} LIMIT ? OFFSET ?` — text that
+// names no table, so a scan asking "does this touch an owned table" answers no and
+// DROPS the statement. Silently: no violation, no allowlist entry, nothing to read.
+// That is how the activities page read stopped being checked when it was hoisted
+// (#5117), and the fix is not a new allowlist entry but reading what was written:
+// substitute the consts and scan the statement the code actually prepares.
+//
+// MODULE SCOPE ONLY (`const` at column 0), because that is what makes the
+// substitution sound — a function-local const is indented and could be rebound per
+// call, so it stays unresolved and the caller decides what to do with an unresolved
+// statement. Same reason only a BARE IDENTIFIER is substituted: `${a.b}`,
+// `${f(x)}` and `${xs.join(",")}` are runtime values, not text this scan can read.
+export function sqlConsts(src: string): Map<string, string> {
+  const consts = new Map<string, string>();
+  const re =
+    /(?:^|\n)const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:`([^`]*)`|"([^"\\]*)")\s*;/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(src))) consts.set(m[1], m[2] ?? m[3]);
+  return consts;
+}
+
+// Substitute every `${IDENT}` that names one of `consts`, recursively (a const may
+// itself be composed). `resolved` is false when any interpolation survives — the
+// statement is then only PARTLY readable, and its reader must say so out loud rather
+// than treat the remaining text as the whole statement.
+export function resolveSqlConsts(
+  text: string,
+  consts: Map<string, string>,
+  depth = 0
+): { text: string; resolved: boolean } {
+  if (depth > 5) return { text, resolved: false };
+  let resolved = true;
+  const out = text.replace(/\$\{([^}]*)\}/g, (whole, expr: string) => {
+    const value = consts.get(expr.trim());
+    if (value === undefined) {
+      resolved = false;
+      return whole;
+    }
+    const inner = resolveSqlConsts(value, consts, depth + 1);
+    if (!inner.resolved) resolved = false;
+    return inner.text;
+  });
+  return { text: out, resolved };
+}
+
 export const readSource = (file: string) => fs.readFileSync(file, "utf8");

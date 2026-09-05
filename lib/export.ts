@@ -33,14 +33,30 @@ export interface ExportDataset {
   table: string;
   columns: string[];
   // The profile-scoped SELECT this dataset's rows come from, complete through its
-  // WHERE — exactly the statement `rows`/`page` execute (page only appends
-  // LIMIT/OFFSET). It is here so the column-completeness guard
+  // ORDER BY. It is here so the column-completeness guard
   // (lib/__db_tests__/export-completeness.test.ts) can prepare it and let SQLite
   // attribute every emitted column back to its origin table + column, instead of
   // reading this file's source text. A dataset that folds a CHILD table into a
   // summary cell gives the PARENT select here; the child's coverage is argued
   // against its own dataset (or the guard's column allowlist).
+  //
+  // WHAT `page()` DOES TO IT, exactly — the earlier wording ("page only appends
+  // LIMIT/OFFSET") was not true of all three hand-authored datasets:
+  //   - tableDataset() datasets, `activities` and `intake_items`: page() prepares
+  //     `<select> LIMIT ? OFFSET ?` and nothing else.
+  //   - `providers`: the declared select carries ONE `?` standing in for the
+  //     runtime `IN (…)` id list, and page() slices the ordered rows in JS rather
+  //     than running a bounded statement.
+  // A declaration is not a binding, so it is not left as one: the seeded key
+  // comparison in lib/__db_tests__/export.test.ts asserts that what rows() and
+  // page() actually emit is exactly what this statement selects.
   select: string;
+  // Set by tableDataset(): this dataset's rows()/page() ARE q(select)/qPage(select),
+  // so the export runs the declared statement by construction. A dataset that
+  // hand-writes its reads (activities, intake_items, providers) leaves this unset
+  // and is proven bound by the seeded key comparison instead — export.test.ts fails
+  // on a dataset that is neither.
+  readsSelect?: true;
   // FULL dataset — every row, unbounded. Used ONLY by the export routes
   // (/api/export/*), which stream/serialize the complete table. The Data page
   // must NOT call this (it's the 22.5 MB / 2.1 s stall in #113); it reads the
@@ -114,6 +130,7 @@ function tableDataset(cfg: {
     table: cfg.table,
     columns: cfg.columns,
     select: cfg.select,
+    readsSelect: true,
     deletable: cfg.deletable,
     rows: q(cfg.select),
     page: qPage(cfg.select),
@@ -231,12 +248,14 @@ type DoseRow = {
   food_timing: string | null;
 };
 
-// Parent intake_items read (supplements + medications). The page reader appends
-// LIMIT/OFFSET; both filter profile_id directly.
+// Parent intake_items read (supplements + medications), complete through its ORDER
+// BY so the full read, the bounded page read (which appends only LIMIT/OFFSET) and
+// the dataset's declared `select` are the same statement. Both filter profile_id
+// directly.
 const ITEMS_SELECT = `SELECT id, name, kind, brand, product, condition, obligation, situation,
           stack, active, critical, prescriber, pharmacy, rx_number,
           quantity_on_hand, notes
-   FROM intake_items WHERE profile_id = ?`;
+   FROM intake_items WHERE profile_id = ? ORDER BY name`;
 // Dose-schedule read, scoped to the profile through the intake_items JOIN. The
 // page reader appends `AND d.item_id IN (...)` to fetch only the shown
 // items' doses.
@@ -311,8 +330,11 @@ const PROVIDER_COLUMNS = [
 
 // The providers read, parameterised by its `IN (...)` placeholder list: one row per
 // provider some exported record actually references. `providersSelect("?")` is the
-// dataset's `select` (a preparable statement of the same shape), so the guard reads
-// the columns this function emits rather than a copy that can drift from it.
+// dataset's `select` — the same statement with ONE placeholder standing for the
+// runtime id list — so the guard reads the columns this function emits rather than a
+// copy that can drift from it. This dataset's page() slices those ordered rows in JS
+// (the id list, not a LIMIT, is what bounds the read), which is why it does not carry
+// the `readsSelect` marker and is proven bound by export.test.ts instead.
 const providersSelect = (placeholders: string) =>
   `SELECT id, name, type, npi, identifier, phone, address
          FROM providers WHERE id IN (${placeholders}) ORDER BY name, id`;
@@ -824,9 +846,10 @@ export const DATASETS: ExportDataset[] = [
       `SELECT COUNT(*) AS n FROM intake_items WHERE profile_id = ?`
     ),
     rows: (profileId: number) => {
-      const items = db
-        .prepare(`${ITEMS_SELECT} ORDER BY name`)
-        .all(profileId) as Record<string, unknown>[];
+      const items = db.prepare(ITEMS_SELECT).all(profileId) as Record<
+        string,
+        unknown
+      >[];
       // Doses reach profile_id through the intake_items JOIN (child table); the
       // WHERE ii.profile_id = ? keeps this scoped just like the old dose dataset.
       const doses = db
@@ -836,7 +859,7 @@ export const DATASETS: ExportDataset[] = [
     },
     page: (profileId: number, limit: number, offset: number) => {
       const items = db
-        .prepare(`${ITEMS_SELECT} ORDER BY name LIMIT ? OFFSET ?`)
+        .prepare(`${ITEMS_SELECT} LIMIT ? OFFSET ?`)
         .all(profileId, limit, offset) as Record<string, unknown>[];
       if (items.length === 0) return [];
       // Fetch doses only for the shown items (still profile-scoped via the JOIN);
