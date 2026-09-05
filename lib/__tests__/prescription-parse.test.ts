@@ -459,6 +459,38 @@ describe("parsePrescription — full record → structured med", () => {
     expect(p.rxNumber).toBe("RX-555012");
     expect(p.timesPerDay).toBe(1);
     expect(p.timeBuckets).toEqual(["Before sleep"]);
+    // …and the source SAID so, which is a different fact from the text being present.
+    expect(p.prescriberScraped).toBe(false);
+    expect(p.rxNumberScraped).toBe(false);
+  });
+
+  it("says which attribution it SCRAPED, because the scrape guesses over prose", () => {
+    // The label heuristics fire on a bare "doctor" and on the word "prescription", so
+    // an ordinary OTC label sentence yields a prescriber of "if symptoms persist" and
+    // an Rx number of "required". That is a known looseness of the scraper and not
+    // this flag's business to fix — the flag's business is that a reader who DERIVES
+    // something (the Rx/OTC flag, #851) can tell a guess from an assertion.
+    const p = parsePrescription({
+      name: "Ibuprofen 200 mg",
+      value:
+        "Take 1 tablet as needed for pain. Call your doctor if symptoms persist",
+      notes: "Over-the-counter; no prescription required",
+    });
+    expect(p.prescriber).toBe("if symptoms persist");
+    expect(p.rxNumber).toBe("required");
+    expect(p.prescriberScraped).toBe(true);
+    expect(p.rxNumberScraped).toBe(true);
+  });
+
+  it("a record with no attribution at all scrapes nothing and claims nothing", () => {
+    const p = parsePrescription({
+      name: "Metformin 500 mg",
+      value: "Take 1 tablet daily",
+    });
+    expect(p.prescriber).toBeNull();
+    expect(p.rxNumber).toBeNull();
+    expect(p.prescriberScraped).toBe(false);
+    expect(p.rxNumberScraped).toBe(false);
   });
 
   // #2939 — the two strings observed in production, each stored whole as the

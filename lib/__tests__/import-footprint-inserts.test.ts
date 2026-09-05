@@ -21,7 +21,14 @@ import { IMPORT_FOOTPRINT_TABLES } from "@/lib/import-footprint";
 // inserts is caught too.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const PERSIST_FILE = "lib/import-persist.ts";
+
+// The persist core's INSERT surface. `lib/import-persist.ts` holds all of it except
+// the projected medication's own row and dose rows, which the core delegates to the
+// ONE intake-item create core (#4669) — the same one the item form and the accepted
+// suggestion go through. Reading only the first file again would let an import write
+// slip out of the footprint simply by being delegated, which is the exact drift this
+// reflection binding exists to make impossible.
+const PERSIST_FILES = ["lib/import-persist.ts", "lib/intake-item-create.ts"];
 
 // INSERT targets in the persist core that are DELIBERATELY not footprint tables —
 // each justified. A footprint table is one whose rows must be individually
@@ -49,8 +56,9 @@ function insertTargets(src: string): string[] {
 }
 
 describe("import footprint: reflection-bound to the persist core's INSERTs", () => {
-  const src = fs.readFileSync(path.join(REPO, PERSIST_FILE), "utf8");
-  const inserted = insertTargets(src);
+  const inserted = PERSIST_FILES.flatMap((rel) =>
+    insertTargets(fs.readFileSync(path.join(REPO, rel), "utf8"))
+  );
   const insertedSet = new Set(inserted);
   const footprint = new Set(IMPORT_FOOTPRINT_TABLES.map((t) => t.table));
   const allowed = new Set(ALLOW_INSERT.map((a) => a.table));
@@ -76,7 +84,7 @@ describe("import footprint: reflection-bound to the persist core's INSERTs", () 
     const orphans = [...footprint].filter((t) => !insertedSet.has(t));
     expect(
       orphans,
-      `\nfootprint table(s) not INSERTed by lib/import-persist.ts:\n${orphans.join("\n")}\n`
+      `\nfootprint table(s) not INSERTed by ${PERSIST_FILES.join(" / ")}:\n${orphans.join("\n")}\n`
     ).toEqual([]);
   });
 

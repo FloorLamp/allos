@@ -182,11 +182,17 @@ test.describe("command palette — per-hit actions (#662)", () => {
     const input = await openCommandPalette(page);
     await input.fill("Sertraline");
 
-    const results = page.getByRole("listbox", { name: "Results" });
+    // SCOPED TO THE MEDICATION'S OWN GROUP. Since #5006 the palette also indexes the
+    // DOSES logged against this medication, and they rank above the catalog entity —
+    // so "the first result saying Sertraline" is now a logged dose, which carries no
+    // action chips by design. The medication hit is the subject here.
+    const results = page
+      .getByRole("listbox", { name: "Results" })
+      .getByTestId("palette-group-supplement");
     const row = results
       .getByRole("listitem")
       .filter({ hasText: "Sertraline" })
-      .first(); // first-ok: filtered to the Sertraline palette result — one match for the searched med
+      .first(); // first-ok: one medication hit for the searched med
     // Same first-search warm-up ceiling as the clinical-result hit above.
     await expect(row).toBeVisible({ timeout: 20_000 });
     await expect(row.getByTestId("palette-hit-action-log-dose")).toBeVisible();

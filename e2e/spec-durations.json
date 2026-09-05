@@ -355,6 +355,7 @@
   "e2e/safety-coverage.spec.ts": 2.737,
   "e2e/saved-star.mobile.spec.ts": 4.468,
   "e2e/screening-coldstart.spec.ts": 1.254,
+  "e2e/search-record.mobile.spec.ts": 6.826,
   "e2e/security-headers.spec.ts": 5.674,
   "e2e/session-recap.spec.ts": 10.954,
   "e2e/settings-ia.mobile.spec.ts": 4.239,

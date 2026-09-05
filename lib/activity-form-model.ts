@@ -348,6 +348,31 @@ export const blankPart = (): PartEntry => ({
   toFailure: false,
 });
 
+// Text a person actually entered into a draft, as opposed to what the form
+// derived for them or what they merely tapped (#5111). The close guard asks
+// about THIS rather than about `dirty`, which a create trips from a date, an
+// effort chip or a gear pick alone — discarding those silently is the natural
+// cancel. It is not `namedParts` either: that needs a RECOGNIZED name, and a
+// half-typed exercise is precisely the draft no auto-save can hold. The
+// generated title is derived, so only an edited one counts.
+export function activityDraftHasTypedContent({
+  parts,
+  title,
+  titleEdited,
+  notes,
+}: {
+  parts: PartEntry[];
+  title: string;
+  titleEdited: boolean;
+  notes: string;
+}): boolean {
+  return (
+    parts.some((p) => p.name.trim() !== "") ||
+    (titleEdited && title.trim() !== "") ||
+    notes.trim() !== ""
+  );
+}
+
 // The declared intent a part's UI edits and its sets are saved with. Intent
 // only applies to rep-based bilateral parts — elsewhere it's inert and nulled
 // on save so stale values can't linger. The single source for the control's
