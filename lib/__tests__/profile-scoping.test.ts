@@ -432,6 +432,23 @@ const ALLOW_EXEC: { file: string; includes: string; why: string }[] = [
 // `.prepare(sql)` sites whose argument is a runtime expression (not a string
 // literal), so the SQL can't be inspected here. Each is verified by hand to be
 // profile-scoped and listed with a justification.
+//
+// THE BAR FOR AN ENTRY, written once so the next one MEETS it rather than imitating
+// its neighbours (#5296). This scan cannot read these statements, so an entry is
+// always a claim that something else checks them. Two shapes qualify:
+//
+//   - it NAMES a db-tier test that goes RED when that statement's scoping is mutated.
+//     The test is the proof and the `why` points at it instead of re-arguing the SQL.
+//     Admission means running that mutation, not reading the test and believing it.
+//   - it shows no exemption is being granted at all: the statement's own text is
+//     scanned where it is written (lib/db.ts's preparedFor, behind hoistedStatement),
+//     or the read is deliberately profile-AGNOSTIC and says so (lib/providers-db.ts's
+//     cross-profile count).
+//
+// A `why` that only restates the SQL's shape is neither. That is how a statement stops
+// being checked while still looking checked — two entries here cited a walk over
+// PROVIDER_LINK_SELECTS that nothing ran, and loosening one of its arms put a named
+// oncology centre into an unrelated profile's export with both tiers green.
 const ALLOW_NON_LITERAL: { file: string; expr: string; why: string }[] = [
   {
     file: "lib/db.ts",
