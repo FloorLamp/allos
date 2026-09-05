@@ -18,7 +18,7 @@ import {
   IconSparkles,
 } from "@tabler/icons-react";
 import SegmentedControl from "./SegmentedControl";
-import UsualRoutineControl from "./dashboard/UsualRoutineControl";
+import { UsualRoutineOfferCard } from "./dashboard/UsualRoutineControl";
 import { useActivityEditor } from "./ActivityEditorProvider";
 import { useQuickEntry } from "./QuickEntryProvider";
 import { useResettableState } from "./useResettableState";
@@ -60,9 +60,10 @@ import { microMotionPlan } from "@/lib/micro-motion";
 // rendered here so the thing you most likely came to log is the first thing
 // under your thumb:
 //
-//   • the composed morning one-tap (#2458) — the SAME <UsualRoutineControl> the
-//     dashboard's usual-routine atom renders, over the SAME server-resolved offer.
-//     Not a copy: the component, the props and the write core are one each.
+//   • the composed morning one-tap (#2458) — <UsualRoutineOfferCard>, over the SAME
+//     server-resolved offer as the dashboard's row control and posting through the
+//     same tap. Not a copy: the props and the write core are one each, and the card
+//     is the shape #3736 ruled for a list with no facts column to name members in.
 //   • doses due now — names from `collectDueDosesNow`, the arrived-slot slice of
 //     the app's shared scheduled-dose computation. The chip OPENS the existing
 //     dose overlay; it confirms nothing itself.
@@ -220,10 +221,10 @@ export default function QuickLogMenu({
 
   // EVERY control inside this menu IS the quick-log surface (#3087) — the same
   // declaration `QuickEntryProvider` makes over the overlay a row opens. The
-  // composed one-tap below is the SAME <UsualRoutineControl> the dashboard
-  // renders, posting the SAME action, so the server can only tell this menu from
-  // the dashboard atom if the menu says so. Declared at the region root rather
-  // than on the control, which is mounted in both places.
+  // composed one-tap below posts the SAME action the dashboard's row control does,
+  // off the same shared tap, so the server can only tell this menu from the
+  // dashboard atom if the menu says so. Declared at the region root rather than on
+  // the control, which is mounted in both places.
   // The panel's whole reserve, spent by the trailing spacer at the very bottom.
   const reservePx = logSheetReservePx(segments);
 
@@ -263,7 +264,9 @@ export default function QuickLogMenu({
                   It is why the offers below took ITS full-width shape rather than the
                   other way round — a control that names doses cannot compress into a
                   pill (#3736). */}
-              {context.routine && <UsualRoutineControl {...context.routine} />}
+              {context.routine && (
+                <UsualRoutineOfferCard {...context.routine} />
+              )}
               <div className="flex flex-col gap-1">
                 {context.dueDoses.items.length > 0 && (
                   <SheetRow
