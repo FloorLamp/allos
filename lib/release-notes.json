@@ -233,6 +233,27 @@
           "category": "History",
           "title": "Search finds a dose, meal or session you logged and opens it in the record",
           "issues": [5006]
+        },
+        {
+          "pr": 5209,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "An imported prescription is badged Rx, with its prescriber, pharmacy and number",
+          "issues": [4669]
+        },
+        {
+          "pr": 5209,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "An imported medicine’s adherence counts from the dose, not from long before",
+          "issues": [4669]
+        },
+        {
+          "pr": 5209,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Editing an imported medicine’s schedule no longer re-judges the days before it",
+          "issues": [4669]
         }
       ]
     },
