@@ -79,12 +79,38 @@ describe("branchGitArgs", () => {
       args.remoteExists.at(-1),
       args.localExists.at(-1),
       args.deleteLocal.at(-1),
+      args.onRemote.at(-1),
     ]).toEqual([
       `refs/heads/${branch}`,
       `refs/remotes/origin/${branch}`,
       `refs/remotes/origin/${branch}`,
       `refs/heads/${branch}`,
       branch,
+      `refs/heads/${branch}`,
+    ]);
+  });
+
+  // A SQUASH MERGE CARRIES THE TRAILERS IT SQUASHED, so a branch sitting at
+  // main's head names whoever last landed — and an ownership check that read
+  // it would refuse a freshly cut branch on most days. `--not origin/main` is
+  // what keeps the trailer read about THIS branch's work (#5179).
+  it("reads a branch's own commits, never main's", () => {
+    const args = branchGitArgs("x");
+    expect([args.localOwn, args.remoteOwn]).toEqual([
+      [
+        "log",
+        "--format=%B",
+        "refs/heads/x",
+        "--not",
+        "refs/remotes/origin/main",
+      ],
+      [
+        "log",
+        "--format=%B",
+        "refs/remotes/origin/x",
+        "--not",
+        "refs/remotes/origin/main",
+      ],
     ]);
   });
 });

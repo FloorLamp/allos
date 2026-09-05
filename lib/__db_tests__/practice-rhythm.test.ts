@@ -139,27 +139,30 @@ describe("per-practice rhythm inference + retimed nudge (#2188)", () => {
 
   it("holds a behind practice for its predicted day and fires at the typical hour", () => {
     const pid = makeProfile("rhythm-retime");
-    const t = today(pid); // Tuesday 2026-06-16
+    // Friday: three sessions still owed and two days left, so the pace verdict has
+    // fired (#4758) — earlier in the week it is quiet and there is nothing to retime.
+    vi.setSystemTime(new Date("2026-06-19T08:00:00Z"));
+    const t = today(pid); // Friday 2026-06-19
     const tid = practiceTarget(pid, "Red light therapy", 3);
     seedWeeklyHabit(pid, "Red light therapy", t, 3, 8, "18:30"); // Wednesdays…
-    seedWeeklyHabit(pid, "Red light therapy", t, 5, 8, "18:30"); // …and Fridays
+    seedWeeklyHabit(pid, "Red light therapy", t, 6, 8, "18:30"); // …and Saturdays
 
-    // Behind on Tuesday under the UNTIMED gather (the pace decision is untouched)…
+    // Behind on Friday under the UNTIMED gather (the pace decision is untouched)…
     expect(behindPractices(pid).map((b) => b.targetId)).toEqual([tid]);
-    // …but the timed gather HOLDS: Wednesday is still ahead this week.
-    expect(behindPractices(pid, at(2, 8 * 60))).toEqual([]);
-    expect(buildPracticeReminder(pid, "n0", "", at(2, 8 * 60))).toBeNull();
+    // …but the timed gather HOLDS: Saturday is still ahead this week.
+    expect(behindPractices(pid, at(5, 8 * 60))).toEqual([]);
+    expect(buildPracticeReminder(pid, "n0", "", at(5, 8 * 60))).toBeNull();
 
-    // Wednesday morning: predicted day, but before the typical hour → still held.
-    vi.setSystemTime(new Date("2026-06-17T08:00:00Z"));
-    expect(behindPractices(pid, at(3, 8 * 60))).toEqual([]);
+    // Saturday morning: predicted day, but before the typical hour → still held.
+    vi.setSystemTime(new Date("2026-06-20T08:00:00Z"));
+    expect(behindPractices(pid, at(6, 8 * 60))).toEqual([]);
 
-    // Wednesday at the typical hour → released, and the line names the rhythm as
-    // data ("usually Wed/Fri"), not advice.
-    const msg = buildPracticeReminder(pid, "n1", "", at(3, 18 * 60))!;
+    // Saturday at the typical hour → released, and the line names the rhythm as
+    // data ("usually Wed/Sat"), not advice.
+    const msg = buildPracticeReminder(pid, "n1", "", at(6, 18 * 60))!;
     expect(msg).toBeTruthy();
     expect(msg.body).toContain("Red light therapy — 0 of 3 this week");
-    expect(msg.body).toContain("usually Wed/Fri");
+    expect(msg.body).toContain("usually Wed/Sat");
     expect(msg.actions?.some((a) => a.data === `pdone:${pid}:${tid}:n1`)).toBe(
       true
     );
@@ -183,13 +186,15 @@ describe("per-practice rhythm inference + retimed nudge (#2188)", () => {
 
   it("a practice with no pattern keeps today's schedule byte-for-byte", () => {
     const pid = makeProfile("rhythm-none");
+    // Saturday, so the practice is behind and there is a send to compare (#4758).
+    vi.setSystemTime(new Date("2026-06-20T08:00:00Z"));
     const t = today(pid);
     practiceTarget(pid, "Breathwork", 3);
     // One session last week: far under the habitual-weekday gate → no pattern.
     logPracticeSession(pid, "Breathwork", shiftDateStr(t, -8), "page");
 
     const untimed = buildPracticeReminder(pid, "n3");
-    const timed = buildPracticeReminder(pid, "n3", "", at(2, 8 * 60));
+    const timed = buildPracticeReminder(pid, "n3", "", at(6, 8 * 60));
     expect(untimed).not.toBeNull();
     // The SAME message at the flip-day moment — the timing changes nothing.
     expect(timed).toEqual(untimed);

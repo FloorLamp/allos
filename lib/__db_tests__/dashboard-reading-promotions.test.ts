@@ -231,7 +231,7 @@ describe("dashboard reading-promotion gathers (#3137)", () => {
         name: "west-admitted",
         timezone: "America/Los_Angeles",
         createdAt: "2026-06-17 00:30:00",
-        expectedPrevious: { pace: "behind", met: false },
+        expectedPrevious: { pace: "on-pace", met: false },
         changed: true,
       },
       {
@@ -250,15 +250,12 @@ describe("dashboard reading-promotion gathers (#3137)", () => {
            (profile_id, scope_kind, scope_value, per_week, created_at)
          VALUES (?, 'food_group', 'vegetables', 7, ?)`
       ).run(profileId, scenario.createdAt);
-      db.prepare(
-        `INSERT INTO food_daily_totals
-           (profile_id, date, group_key, servings)
-         VALUES (?, '2026-06-16', 'vegetables', 1),
-                (?, '2026-06-17', 'vegetables', 1)`
-      ).run(profileId, profileId);
-
+      // Nothing logged: a daily target on day 2 of its week already needs seven
+      // servings out of six remaining days, so today's reading is "behind" and the
+      // zero-evidence opening it is compared against is not (#4758). Without that
+      // difference the transition under test could not fire at all.
       const [progress] = getFrequencyTargetProgress(profileId);
-      expect(progress).toMatchObject({ count: 2, pace: "on-pace" });
+      expect(progress).toMatchObject({ count: 0, pace: "behind" });
       expect(progress.previous).toEqual(scenario.expectedPrevious);
       expect(
         weeklyTargetStateChanged(progress, progress.previous ?? null)
@@ -298,7 +295,7 @@ describe("dashboard reading-promotion gathers (#3137)", () => {
       ).run(profileId);
 
       const [progress] = getFrequencyTargetProgress(profileId);
-      expect(progress).toMatchObject({ count: 0, pace: "behind" });
+      expect(progress).toMatchObject({ count: 0, pace: "on-pace" });
       expect(progress.previous).toEqual(scenario.expectedPrevious);
       expect(
         weeklyTargetStateChanged(progress, progress.previous ?? null)
@@ -324,7 +321,7 @@ describe("dashboard reading-promotion gathers (#3137)", () => {
     const [progress] = getFrequencyTargetProgress(profileId);
     expect(progress).toMatchObject({
       count: 0,
-      pace: "behind",
+      pace: "on-pace",
       previous: { pace: "met", met: true },
     });
     expect(weeklyTargetStateChanged(progress, progress.previous ?? null)).toBe(

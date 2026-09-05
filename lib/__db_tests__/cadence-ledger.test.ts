@@ -14,12 +14,14 @@
 //     reaches a floor reader, and no floor target reaches a cap reader.
 //
 // Rolling week mode throughout, so a week window is exactly the trailing 7 days
-// and every offset below reads as "N days ago".
+// and every offset below reads as "N days ago" — except the last case, which is
+// about where a CALENDAR week's boundary falls and says so.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
-import { setWeekMode } from "@/lib/settings";
+import { setWeekMode, setWeekStart, type WeekStart } from "@/lib/settings";
+import type { FrequencyPace } from "@/lib/frequency-targets";
 import { practiceIdentity } from "@/lib/practice";
 import {
   cadenceWindows,
@@ -418,8 +420,8 @@ describe("the cadence ledger (#2034)", () => {
       )
     );
     expect(training.map((p) => [p.count, p.per_week, p.met, p.pace])).toEqual([
-      [1, 2, false, "behind"],
-      [1, 2, false, "behind"],
+      [1, 2, false, "on-pace"],
+      [1, 2, false, "on-pace"],
     ]);
   });
 
@@ -488,4 +490,40 @@ describe("the cadence ledger (#2034)", () => {
     expect(progress.count).toBe(1);
     expect(progress.met).toBe(false);
   });
+
+  // ---- where the pace verdict falls in a CALENDAR week (#4758) --------------
+  //
+  // The complaint: three amber "Behind" readings on a Wednesday, each 0 of 2 for the
+  // week. The frozen clock here IS that Wednesday, and every profile below shares it
+  // — same instant, same untouched 2x/week target, same zero count. All that differs
+  // is where each profile's own week starts, which is what decides how many days are
+  // left to hold the two sessions. `daysLeftInWindow` is the days AFTER today, so the
+  // week can still hold them while `2 <= daysLeftInWindow + 1`.
+  it.each<{
+    starts: string;
+    weekStart: WeekStart;
+    day: number;
+    daysLeft: number;
+    pace: FrequencyPace;
+  }>([
+    // The reported Wednesday: four days left, so nothing to say yet.
+    { starts: "Sunday", weekStart: 0, day: 4, daysLeft: 3, pace: "on-pace" },
+    // Two days left for two sessions — the week still fits them.
+    { starts: "Friday", weekStart: 5, day: 6, daysLeft: 1, pace: "on-pace" },
+    // Today is the last day and two are owed: it cannot.
+    { starts: "Thursday", weekStart: 4, day: 7, daysLeft: 0, pace: "behind" },
+  ])(
+    "a week starting $starts puts this Wednesday on day $day of 7 and reads $pace",
+    ({ starts, weekStart, daysLeft, pace }) => {
+      const pid = newProfile(`cl-pace-${starts}`);
+      setWeekMode(pid, "calendar");
+      setWeekStart(pid, weekStart);
+      makeTarget(pid, "group", "Lower", 2);
+
+      const [progress] = getFrequencyTargetProgress(pid);
+      expect(progress).toMatchObject({ count: 0, per_week: 2, met: false });
+      expect(progress.daysLeftInWindow).toBe(daysLeft);
+      expect(progress.pace).toBe(pace);
+    }
+  );
 });
