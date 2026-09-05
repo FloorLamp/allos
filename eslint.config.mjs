@@ -159,8 +159,14 @@ const DISCLAIMERS_BAN = {
 // (was lib/__tests__/vendor-score-engine-inert.test.ts)
 const vendorScoreBan = (vendor, names) =>
   [
+    // ANCHORED, and the two literal forms below are not: a longer IDENTIFIER is a
+    // different symbol (`ouraSleepScoreLabel` is not the kind), so prefix-matching
+    // identifiers would fire on unrelated names. A longer STRING containing the key is
+    // the key plus a suffix — `oura_sleep_score_v2` is still a vendor score key — so the
+    // quote and the backtick spellings must ban the same twenty characters. They did not
+    // until #5347: the string was legal and the template was not.
     `Identifier[name=/^(?:${names.join("|")})$/]`,
-    `Literal[value=/^(?:${names.join("|")})$/]`,
+    `Literal[value=/(?:${names.join("|")})/]`,
     `TemplateElement[value.raw=/(?:${names.join("|")})/]`,
   ].map((selector) => ({
     selector,

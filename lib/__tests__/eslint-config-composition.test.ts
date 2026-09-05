@@ -140,3 +140,34 @@ describe("eslint.config.mjs composes its bans instead of replacing them", () => 
     }
   );
 });
+
+// The table above asks WHICH bans reach a file; it cannot ask whether a selector MATCHES
+// anything, so a ban with a mis-spelled selector resolves into that list and catches
+// nothing. These rows lint forged text through the same config, and the vendor-score trio
+// is the case that earned them: `Literal` was anchored and `TemplateElement` was not, so
+// `oura_sleep_score_v2` was an error inside a backtick and legal inside a quote (#5347).
+// Even un-anchored, all three stay strictly narrower than the walker they replace, which
+// matched raw file text and therefore its own comments.
+const FORGED_FILE = "lib/vendor-score-fixture.ts";
+const FORGED: [code: string, hits: number][] = [
+  ['export const a = "oura_sleep_score";', 1],
+  // A vendor score key with a suffix is still a vendor score key…
+  ['export const b = "oura_sleep_score_v2";', 1],
+  ["export const c = `oura_sleep_score_v2`;", 1],
+  // …but a longer IDENTIFIER is a different symbol: a row field spelled
+  // `oura_sleep_score_recorded_at` is a fact about DELIVERY, not the score — the same
+  // argument that puts lib/integrations/registry.ts on the Fitbit allowlist — and
+  // prefix-matching identifiers would ban it. That is why this form stays anchored. The
+  // first spelling tried here, `ouraSleepScoreLabel`, could not fail either way: camelCase
+  // cannot contain a snake_case kind, so the row proved nothing until it was rewritten.
+  ["export const d = { oura_sleep_score_recorded_at: 1 };", 0],
+];
+
+describe("the vendor-score ban bites the same characters in every spelling", () => {
+  it.each(FORGED)("%s", async (code, hits) => {
+    const [result] = await eslint.lintText(code, { filePath: FORGED_FILE });
+    expect(
+      result.messages.filter((m) => m.message.includes(OURA)).length
+    ).toBe(hits);
+  });
+});
