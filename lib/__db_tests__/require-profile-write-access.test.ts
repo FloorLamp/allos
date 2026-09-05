@@ -91,7 +91,8 @@ const asked: Asked[] = [];
 function label(sql: string): Asked["statement"] | null {
   const flat = sql.replace(/\s+/g, " ").trim();
   if (/^SELECT access FROM login_profiles\b/i.test(flat)) return "grant-access";
-  if (/FROM profiles p JOIN login_profiles\b/i.test(flat)) return "reachable-set";
+  if (/FROM profiles p JOIN login_profiles\b/i.test(flat))
+    return "reachable-set";
   return null;
 }
 
@@ -312,9 +313,7 @@ describe("a cross-profile Server Action gated by the shipped body", () => {
     if (expected === "taken") {
       expect((await setDoseStatus(form)).ok).toBe(true);
     } else {
-      await expect(setDoseStatus(form)).rejects.toThrow(
-        request.RedirectSignal
-      );
+      await expect(setDoseStatus(form)).rejects.toThrow(request.RedirectSignal);
     }
     expect(doseStatus(doseId, today(target))).toBe(expected);
   });
