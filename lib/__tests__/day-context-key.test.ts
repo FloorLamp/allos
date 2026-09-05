@@ -47,8 +47,14 @@ describe("the day-context key", () => {
   it.each([
     ["the subject", { ...BASE, profileId: 8 }],
     ["the day", { ...BASE, day: "2026-09-04" }],
-    ["the reach kind, to dated", { ...BASE, reach: { kind: "dated" } as TapReach }],
-    ["the reach kind, to today", { ...BASE, reach: { kind: "today" } as TapReach }],
+    [
+      "the reach kind, to dated",
+      { ...BASE, reach: { kind: "dated" } as TapReach },
+    ],
+    [
+      "the reach kind, to today",
+      { ...BASE, reach: { kind: "today" } as TapReach },
+    ],
     ["the reach's back count", { ...BASE, reach: bounded(1, 0) }],
     ["the reach's forward count", { ...BASE, reach: bounded(2, 1) }],
   ])("moves when %s moves", (_what, parts: DayContextParts) => {
