@@ -122,4 +122,25 @@ describe("arrivalLagMedian", () => {
     // An ordinary sample is untouched.
     expect(arrivalLagMedian([30, 40, 50, 60, 70])).toBe(50);
   });
+
+  // THE SORT IS LOAD-BEARING AND NOTHING SAW IT (#5127 falsifying pass). Deleting
+  // `.sort((a, b) => a - b)` left the whole pure tier green, because every fixture
+  // above happens to hand it an already-ascending or all-equal array. That is not what
+  // the producer hands it: `getSleepArrivalLagMinutes` reads rows `ORDER BY
+  // r.created_at DESC` — newest ARRIVAL first — so the lags arrive in chronological
+  // order and a profile whose pipeline varies delivers them unsorted. Over the pass's
+  // 400,000 random row sets the missing sort changed the answer in 298,940 of them.
+  //
+  // Both parities, because they fail differently: an odd count reads the wrong single
+  // element, an even count averages the wrong pair.
+  it("sorts the sample before taking the middle of it", () => {
+    // Sorted: 10, 20, 30, 40, 100 → 30. Unsorted, the third element is 20.
+    expect(arrivalLagMedian([10, 100, 20, 30, 40])).toBe(30);
+    // Sorted: 10, 20, 30, 40, 50, 100 → (30 + 40) / 2 = 35. Unsorted: (20 + 30) / 2.
+    expect(arrivalLagMedian([100, 10, 20, 30, 40, 50])).toBe(35);
+    // And the answer does not depend on the order it was given in.
+    expect(arrivalLagMedian([10, 100, 20, 30, 40])).toBe(
+      arrivalLagMedian([100, 40, 30, 20, 10])
+    );
+  });
 });

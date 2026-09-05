@@ -436,6 +436,87 @@ describe("troughStart names where the body settled", () => {
     expect(at).toBeLessThan(Date.parse("2026-08-30T08:37:00Z"));
   });
 
+  // THE EVEN-COUNT MEDIAN IS THE AVERAGE OF THE TWO MIDDLE VALUES, and nothing held
+  // that until now (#5035). The refactor of `median` onto a typed-array sort is
+  // value-preserving, but "preserving" is a claim, and replacing the even-count branch
+  // with `sorted[mid]` left all twenty-two fixtures green — every one of them builds a
+  // window whose samples are a single bpm, where the two middle values are equal and
+  // the average of them is that value.
+  //
+  // The claim below spans an even number of minutes split between two levels, so the
+  // middle pair differs and the reported `claimedBpm` is a number neither sample
+  // carries. That is the property, and it is reported rather than internal: the copy
+  // quotes this.
+  it("averages the two middle values of an even-count window", () => {
+    const start = Date.parse(SKEWED_SESSION.start);
+    const end = Date.parse(SKEWED_SESSION.end);
+    const minutes = Math.round((end - start) / MIN);
+    expect(minutes % 2).toBe(0);
+
+    const hr: HrMinuteSample[] = [];
+    for (let t = Date.parse(DAY_FROM); t < Date.parse(DAY_TO); t += MIN) {
+      const inTrough =
+        t >= Date.parse("2026-08-30T03:39:00Z") &&
+        t < Date.parse("2026-08-30T08:37:00Z");
+      const inClaim = t >= start && t < end;
+      const bpm = inTrough
+        ? ASLEEP
+        : inClaim
+          ? // Two levels, half the claim each: the middle pair is 74 and 76.
+            t < start + (minutes / 2) * MIN
+            ? AWAKE
+            : AWAKE + 2
+          : AWAKE;
+      hr.push({ ts: new Date(t).toISOString(), bpm });
+    }
+
+    const found = detectSleepClockSkew(SKEWED_SESSION, hr);
+    expect(found).not.toBeNull();
+    // Neither half's value — the average of the two middle samples.
+    expect(found!.claimedBpm).toBe(AWAKE + 1);
+  });
+
+  // ── The window read's fast path (#5035) ──────────────────────────────────
+  //
+  // Every window read is a slice rather than a scan when the trace's instants are
+  // non-decreasing, which is what the production caller's `ORDER BY ts` guarantees.
+  // These two cases pin the boundary between the two paths, because a fast path taken
+  // on the wrong input is silent: a binary search over an unordered array finds a
+  // plausible index and the samples it misses simply do not exist as far as the
+  // coverage test is concerned.
+  const REAL_TROUGH = {
+    from: "2026-08-30T03:39:00Z",
+    to: "2026-08-30T08:37:00Z",
+  };
+
+  it("reads a shuffled trace exactly as it reads the ordered one", () => {
+    const ordered = trace(DAY_FROM, DAY_TO, REAL_TROUGH);
+    // A deterministic shuffle — no clock, no randomness, and every sample survives.
+    const shuffled = ordered
+      .map((s, i) => ({ s, k: (i * 7919) % ordered.length }))
+      .sort((a, b) => a.k - b.k)
+      .map(({ s }) => s);
+    expect(shuffled.map((s) => s.ts)).not.toEqual(ordered.map((s) => s.ts));
+
+    expect(detectSleepClockSkew(SKEWED_SESSION, shuffled)).toEqual(
+      detectSleepClockSkew(SKEWED_SESSION, ordered)
+    );
+  });
+
+  // AND THE SLICE IS NOT MERELY EQUIVALENT ON THE ORDERED TRACE — it is what runs.
+  // A trace with one instant out of order must still be read completely, so a single
+  // swap cannot change the verdict either.
+  it("still reads the whole trace when one instant is out of order", () => {
+    const ordered = trace(DAY_FROM, DAY_TO, REAL_TROUGH);
+    const swapped = [...ordered];
+    const i = Math.floor(swapped.length / 2);
+    [swapped[i], swapped[i + 1]] = [swapped[i + 1], swapped[i]];
+
+    expect(detectSleepClockSkew(SKEWED_SESSION, swapped)).toEqual(
+      detectSleepClockSkew(SKEWED_SESSION, ordered)
+    );
+  });
+
   it("reports nothing extra on a night that does not flag", () => {
     // The second pass runs only after a verdict, so a quiet night pays none of it and
     // returns null exactly as before.
