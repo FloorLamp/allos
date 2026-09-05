@@ -49,11 +49,7 @@ import { sqlNow } from "./clock";
 import { intakeKindAffordances } from "./intake-kind-affordances";
 import { ensureMedicationCourse, recordScheduleVersion } from "./queries";
 import type { CourseAttribution } from "./queries";
-import type {
-  FoodTiming,
-  IntakeCondition,
-  IntakeObligation,
-} from "./types";
+import type { FoodTiming, IntakeCondition, IntakeObligation } from "./types";
 import type { CadenceKind } from "./intake-cadence";
 
 /** The one refusal a create can return. Rendered verbatim by the form. */

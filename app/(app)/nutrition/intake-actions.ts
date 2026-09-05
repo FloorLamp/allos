@@ -1987,6 +1987,17 @@ export async function generateSuggestions(
   };
 }
 
+// A create the accept's core refused, raised so it ABORTS that accept's transaction
+// (see below) and re-typed as a form refusal outside it. Not a control-flow shortcut:
+// a throw is the only way to undo a compare-and-swap that already landed in the
+// transaction.
+class CreateRefused extends Error {
+  constructor(readonly refusal: string) {
+    super(refusal);
+    this.name = "CreateRefused";
+  }
+}
+
 export async function acceptSuggestion(
   formData: FormData
 ): Promise<FormResult> {
@@ -1999,8 +2010,9 @@ export async function acceptSuggestion(
   // across a slow response, two devices) produce exactly one medication and one honest
   // refusal — the old guard was a plain read before the transaction, and both racers
   // passed it.
-  const accepted = writeTx(
-    (tx): boolean | "workout-schedule-unavailable" | { refused: string } => {
+  let accepted: boolean | "workout-schedule-unavailable";
+  try {
+    accepted = writeTx((tx): boolean | "workout-schedule-unavailable" => {
       const s = readForUpdate<{
         status: string;
         name: string;
@@ -2072,18 +2084,22 @@ export async function acceptSuggestion(
           food_timing: s.food_timing ?? "any",
         })),
       });
-      // A refusal rolls the whole accept back — the claim above included — so the
-      // suggestion stays pending rather than being consumed by a create that failed.
-      if (!created.ok) return { refused: created.error };
+      // A refusal must ROLL THE CLAIM BACK, not merely be reported: returning it
+      // would commit an `accepted` suggestion that produced no item, losing it
+      // silently. A throw is the only thing better-sqlite3 treats as an abort, so the
+      // refusal leaves the transaction as one and is re-typed on the way out.
+      if (!created.ok) throw new CreateRefused(created.error);
       return true;
-    }
-  );
+    });
+  } catch (e) {
+    if (e instanceof CreateRefused) return formError(e.refusal);
+    throw e;
+  }
   if (accepted === "workout-schedule-unavailable") {
     return formError(
       "Workout-based supplement schedules aren't available for this profile's age."
     );
   }
-  if (typeof accepted === "object") return formError(accepted.refused);
   if (!accepted) return formError("That suggestion is no longer available.");
   revalidateIntake();
   return formOk();
