@@ -52,7 +52,11 @@ const PS_ROWS = {
 // in the per-tree "clean — nothing to rescue" note.
 const ALL_CLEAR = /every tree was clean and pushed|no rescue targets/;
 
-type Shape = "mutated" | "probes" | "clean" | "unreadable";
+type Shape = "mutated" | "many-mutated" | "probes" | "clean" | "unreadable";
+
+/** The base commit's tracked files. Six, so `many-mutated` can cross the
+ *  four-path display cap and the "+N more" tail is an exercised branch. */
+const TRACKED = ["callbacks.ts", "a.ts", "b.ts", "c.ts", "d.ts", "e.ts"];
 
 function git(cwd: string, ...args: string[]) {
   const run = spawnSync("git", args, { cwd, encoding: "utf8" });
@@ -72,8 +76,10 @@ function buildFixture(shapes: readonly Shape[]) {
   git(repo, "init", "-q", "-b", "main", ".");
   git(repo, "config", "user.email", "fixture@example.test");
   git(repo, "config", "user.name", "fixture");
-  fs.writeFileSync(path.join(repo, "callbacks.ts"), "const REGISTRY = 1;\n");
-  git(repo, "add", "callbacks.ts");
+  for (const f of TRACKED) {
+    fs.writeFileSync(path.join(repo, f), "const REGISTRY = 1;\n");
+  }
+  git(repo, "add", ...TRACKED);
   git(repo, "commit", "-qm", "base");
   for (const shape of shapes) {
     const wt = path.join(root, `wt-${shape}`);
@@ -84,7 +90,13 @@ function buildFixture(shapes: readonly Shape[]) {
       fs.writeFileSync(path.join(wt, "callbacks.ts"), "const REGISTRY = 2;\n");
       fs.writeFileSync(path.join(wt, "probe.test.ts"), "");
     }
-    if (shape === "probes") fs.writeFileSync(path.join(wt, "probe.test.ts"), "");
+    if (shape === "many-mutated") {
+      for (const f of TRACKED) {
+        fs.writeFileSync(path.join(wt, f), "const REGISTRY = 2;\n");
+      }
+    }
+    if (shape === "probes")
+      fs.writeFileSync(path.join(wt, "probe.test.ts"), "");
   }
   return { root, repo };
 }
@@ -159,6 +171,14 @@ describe("a detached commitless worktree is classified by what it changed", () =
     // The untracked file in the SAME tree is not a rescue subject, so the count
     // above and the paths below are both the TRACKED set, not the dirty set.
     expect(out).not.toContain("probe.test.ts");
+  });
+
+  it("caps the named paths at four and says how many it hid", () => {
+    const many = buildFixture(["many-mutated"]);
+    const out = checkin({ repo: many.repo });
+    expect(out).toContain("MUTATED, NOT SCRATCH: 6 TRACKED file(s) modified");
+    expect(out.match(/ {8}modified: {2}M /g)).toHaveLength(4);
+    expect(out).toContain("modified: +2 more");
   });
 
   it("withholds the all-clear, which this fixture can otherwise print", () => {

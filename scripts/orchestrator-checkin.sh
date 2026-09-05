@@ -571,11 +571,21 @@ while read -r d; do
       "$(basename "$d")" "(detached)" "lane" "${h:0:7}" "$wt_note"
     # NAME THE PATHS. The whole failure was a reader accepting a summary, so the
     # line that overturns it has to carry what a reader would otherwise open the
-    # tree to see. Four is enough to recognise a source file among fixtures.
+    # tree to see. Four is enough to recognise a source file among fixtures, and
+    # the count of what the cap hid comes from the SAME pass, so the list cannot
+    # describe a different set than the number beside it.
+    #
+    # ONE awk RATHER THAN `grep | head`, and that is not a style preference:
+    # `trap '' PIPE` at the top of this file is INHERITED BY CHILDREN, so a
+    # `head` that closes the pipe early gives its upstream EPIPE instead of a
+    # signal — "grep: write error: Broken pipe" on stderr and a status of 2,
+    # measured here with `seq 1 200000 | grep . | head -4`. This tree's status
+    # is far too small to fill a pipe buffer today, which is exactly why the
+    # instance would sit here harmless until some tree was not.
     if [ "$dirty" != "UNREAD" ] && [ "$wt_mod" -gt 0 ]; then
-      printf '%s\n' "$wt_status" | grep '^[^?]' | head -4 |
-        sed 's/^/        modified: /'
-      [ "$wt_mod" -gt 4 ] && echo "        modified: +$((wt_mod - 4)) more"
+      printf '%s\n' "$wt_status" | awk '
+        /^[^?]/ { n++; if (n <= 4) print "        modified: " $0 }
+        END { if (n > 4) print "        modified: +" n - 4 " more" }'
     fi
     continue
   fi
