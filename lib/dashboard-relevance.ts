@@ -53,7 +53,6 @@ export type DashboardTimingDisposition =
 // Raw numeric deltas deliberately have no representation here.
 export type DashboardReadingPromotion =
   | "clinical-non-notable-to-notable"
-  | "weekly-target-transition"
   | "outcome-goal-transition"
   | "training-best"
   | "sleep-arrived"
@@ -114,7 +113,6 @@ export interface DashboardCandidateBase {
   timing: DashboardTiming;
   rankReasons: DashboardRankReasons;
   readingPromotion?: DashboardReadingPromotion;
-  standingEligible?: boolean;
   sourceOrder: number;
   // Explicitly authorized illness context that remains useful after an episode
   // closes. Apart from open `episodeGroup` context, this is the only cross-profile

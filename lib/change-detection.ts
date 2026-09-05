@@ -242,7 +242,7 @@ export const CHANGE_DETECTION_DOMAIN_CENSUS = {
     "Symptoms are presented in episode context; a generic cross-episode movement verdict would erase that context."
   ),
   substance: arguedExclusion(
-    "Substance targets are cap-direction cadence tenants, while Dashboard weekly-target transitions consume only the floor-direction progress rollup; no existing cap surface promotes a cross-window change."
+    "Substance targets are cap-direction cadence tenants, while every weekly-target reading is built from the floor-direction progress rollup alone; no existing cap surface promotes a cross-window change."
   ),
   document: arguedExclusion(
     "A document is a container that produces domain records, not a measured series or arrival pipeline with its own change verdict."

@@ -58,7 +58,8 @@ import {
 } from "@/lib/coaching";
 import { collectCoachingFindings } from "@/lib/rule-findings";
 import { pickNextAppointment } from "@/lib/household";
-import { goalPct, isGoalLive } from "@/lib/outcome-goals";
+import { isGoalLive } from "@/lib/outcome-goals";
+import { goalProgressStatement } from "@/lib/goal-facts";
 import {
   frequencyPaceLabel,
   frequencyScopeLabel,
@@ -302,7 +303,6 @@ import {
   clinicalResultBecameNotable,
   outcomeGoalProgressChanged,
   sleepArrivedInWakeWindow,
-  weeklyTargetStateChanged,
 } from "@/lib/dashboard-reading-promotions";
 import {
   biomarkerFlagDismissalKey,
@@ -2084,7 +2084,15 @@ async function renderDashboard(
   sourceOrder += coachingRecs.length;
 
   goals.forEach((goal, index) => {
-    const pct = goalPct(goal, goalProgress.get(goal.id));
+    // ENDPOINTS FIRST, PERCENT AS THE ANNOTATION (#5198). "Resting HR goal · 27%"
+    // asked the reader 27% of the way from WHAT to what; the row states
+    // "63 → 58 bpm · 27%" through the one goal-progress formatter every surface
+    // shares, so the percent has something to be a percent OF.
+    const statement = goalProgressStatement(
+      goal,
+      goalProgress.get(goal.id),
+      units.weightUnit
+    );
     add(
       progressCandidates.goal(
         { subject: profileSubject, sourceOrder: sourceOrder + index },
@@ -2093,7 +2101,8 @@ async function renderDashboard(
       ),
       {
         label: goal.title,
-        value: pct == null ? "In progress" : `${pct}%`,
+        value: statement.value,
+        detail: statement.percent ?? undefined,
         href: "/training?tab=goals",
         presence: "current",
       }
@@ -2128,17 +2137,11 @@ async function renderDashboard(
       progressCandidates.targetProgress(
         { subject: profileSubject, sourceOrder: sourceOrder + index * 2 },
         id,
-        !progress.met,
         // Owner ruling #3548: a behind target is a HIGHLIGHTED READING in Standing's
-        // attention tier, "not a Now card". A calendar week compares against its own
-        // zero-evidence opening, so crossing into behind on day 4 stays a live
-        // transition for the rest of the week — which, before this, kept both
-        // readings parked in Now exactly as #3245 described the log offers doing.
-        // The crossing is still told; `owed` is where it is told from. What the
-        // promotion keeps is the transitions that remain Now facts: reaching met,
-        // and coming back onto pace.
-        weeklyTargetStateChanged(progress, progress.previous ?? null) &&
-          !behind,
+        // attention tier, "not a Now card". The crossing is told by `owed`, and by
+        // #4756/#5064 that is the ONLY thing this family tells Now — the met and
+        // back-on-pace transitions used to mint a promoted reading, and a promoted
+        // reading of a finished week is a receipt, not a moment.
         behind
       ),
       {
