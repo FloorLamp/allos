@@ -196,7 +196,14 @@ describe("deleteDatasetRows — undoable datasets capture each row", () => {
     expect(practiceCount(profile.id)).toBe(3);
   });
 
-  it("bulk-deleted substance history restores from its undo token (#2125)", async () => {
+  // #5026 phase 2 MOVED THIS ONE, and the shape it moved to is what is pinned. The day
+  // row's undo kind now captures that day's use EVENTS beside it — a convention
+  // sibling, not the row's own child — which is exactly what disqualifies a kind from a
+  // bulk mapping (the 1:1 rule, lib/__tests__/dataset-undo.test.ts), so both substance
+  // datasets joined the argued exclusions their alcohol twins were already in. The bulk
+  // delete is a plain permanent one; the CARD's row-menu delete is still undoable, and
+  // that is where a person deletes a substance day.
+  it("bulk-deleted substance history is a plain delete, not an undoable one (#5026)", async () => {
     const { profile } = seedActor();
     const id = Number(
       db
@@ -210,16 +217,14 @@ describe("deleteDatasetRows — undoable datasets capture each row", () => {
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.deleted).toBe(1);
-    expect(res.undoIds).toHaveLength(1);
-
-    const { restoreDeletedRow } = await import("@/lib/undo-delete-db");
-    expect(restoreDeletedRow(profile.id, res.undoIds[0])).toBe(true);
-    const row = db
-      .prepare(
-        "SELECT substance, units FROM substance_daily_totals WHERE profile_id = ? AND date = '2026-02-02'"
-      )
-      .get(profile.id);
-    expect(row).toEqual({ substance: "nicotine", units: 3 });
+    expect(res.undoIds).toHaveLength(0);
+    expect(
+      db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM substance_daily_totals WHERE profile_id = ?"
+        )
+        .get(profile.id)
+    ).toEqual({ n: 0 });
   });
 
   it("delete-all still tombstones a synced practice session (#653 — undo never covers delete-all)", async () => {

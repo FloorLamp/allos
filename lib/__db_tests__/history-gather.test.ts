@@ -8,6 +8,7 @@ import { logFoodServingCore } from "@/lib/food-log-write";
 import { logBristolStool } from "@/lib/offline/writes";
 import { BRISTOL_STOOL_METRIC } from "@/lib/bristol-stool";
 import { ALCOHOL_FOOD_GROUP } from "@/lib/substance-use";
+import { logSubstanceUnitCore } from "@/lib/substance-log-write";
 
 // THE RECORD'S GATHER (#3958 phase 1). What the pure tier cannot reach: whose rows
 // come back, which kinds a chip is earned by, and the two boundaries that decide what
@@ -58,11 +59,19 @@ function weighIn(profileId: number, date: string, kg: number): void {
   ).run(profileId, date, kg);
 }
 
-function units(profileId: number, date: string, n: number): void {
-  db.prepare(
-    `INSERT INTO substance_daily_totals (profile_id, substance, date, units)
-     VALUES (?, 'nicotine', ?, ?)`
-  ).run(profileId, date, n);
+// THROUGH THE WRITE CORE, not a raw counter INSERT (#5026 phase 2). A substance's
+// units are event rows now and the record reads THOSE, so a fixture that wrote the
+// counter alone would seed the very orphan state the phase's migration exists to
+// reconcile — present on the card, absent from the record — and every assertion here
+// would be about a shape no shipped path can produce.
+function units(
+  profileId: number,
+  date: string,
+  n: number,
+  substance = "nicotine"
+): void {
+  for (let i = 0; i < n; i += 1)
+    logSubstanceUnitCore(profileId, substance, date, "page");
 }
 
 function mood(profileId: number, date: string, valence: number): void {
@@ -86,7 +95,9 @@ describe("gatherHistoryLog", () => {
     practice(mine, YESTERDAY, "history breathwork");
     mood(mine, YESTERDAY, 4);
     weighIn(mine, YESTERDAY, 71.5);
-    units(mine, YESTERDAY, 2);
+    // ONE use, so this stays a claim about WHICH profile's rows come back rather than
+    // about how many rows a day of them makes (#5026 phase 2 turned that day into two).
+    units(mine, YESTERDAY, 1);
     serving(theirs, YESTERDAY, 2);
     practice(theirs, YESTERDAY, "stranger breathwork");
     mood(theirs, YESTERDAY, 1);
@@ -198,7 +209,7 @@ describe("gatherHistoryLog", () => {
     const loginId = login();
     const adult = profile("history adult", 1990);
     const minor = profile("history minor", new Date().getFullYear() - 11);
-    units(adult, YESTERDAY, 3);
+    units(adult, YESTERDAY, 1);
     units(minor, YESTERDAY, 4);
     serving(minor, YESTERDAY, 5);
 
@@ -674,23 +685,24 @@ describe("every kind's edit payload carries the stored row", () => {
     });
   });
 
-  it("substance: the key, the amount and the note the action rewrites", () => {
+  it("substance: the use event and the minute stated on it", () => {
     const p = profile("history edit substance", 1990);
     const loginId = login();
-    db.prepare(
-      `INSERT INTO substance_daily_totals (profile_id, substance, date, units, notes)
-       VALUES (?, 'nicotine', ?, 3, 'after lunch')`
-    ).run(p, YESTERDAY);
-    const [row] = gatherHistoryLog(p, {
+    units(p, YESTERDAY, 3);
+    const rows = gatherHistoryLog(p, {
       loginId,
       limit: 200,
       kind: "substance",
     }).rows;
-    expect(row.edit).toMatchObject({
+    // THREE ROWS FOR THREE USES (#5026 phase 2): the day's arithmetic moved onto the
+    // rows, so the correction door addresses an EVENT and carries no day amount or
+    // day note to restate.
+    expect(rows).toHaveLength(3);
+    expect(rows[0].edit).toMatchObject({
       kind: "substance",
       substance: "nicotine",
-      amount: 3,
-      notes: "after lunch",
+      eventId: expect.any(Number),
+      statedAt: null,
     });
   });
 
@@ -810,15 +822,8 @@ describe("a row title links only to a home of its own (#3958/#4045)", () => {
   it("gives two substances of one profile no destination at all", () => {
     const p = profile("history substance titles", 1990);
     const loginId = login();
-    for (const [substance, n] of [
-      ["nicotine", 3],
-      ["cannabis", 1],
-    ] as const) {
-      db.prepare(
-        `INSERT INTO substance_daily_totals (profile_id, substance, date, units)
-         VALUES (?, ?, ?, ?)`
-      ).run(p, substance, YESTERDAY, n);
-    }
+    units(p, YESTERDAY, 1, "nicotine");
+    units(p, YESTERDAY, 1, "cannabis");
     const rows = gatherHistoryLog(p, {
       loginId,
       limit: 200,
