@@ -31,6 +31,7 @@ export * from "./logins/notifications";
 export * from "./logins/nutrition";
 export * from "./logins/portals";
 export * from "./logins/shared";
+export * from "./logins/search";
 export * from "./logins/situations";
 export * from "./logins/history";
 export * from "./logins/training";

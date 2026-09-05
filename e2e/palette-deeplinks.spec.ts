@@ -259,6 +259,15 @@ test("the entity domains added in #1595 are searchable and land on their own sur
   const option = (text: string) =>
     results.getByRole("option").filter({ hasText: text }).first(); // first-ok: filtered to a marker THIS spec planted — exactly one row per domain carries it
 
+  // EXCEPT the practice, since #5006: this spec's own `practice_logs` row is now BOTH
+  // a `logged` hit and the session tally behind the `practice` entity, and the logged
+  // group sits above the catalog, so an unscoped `.first()` would silently start
+  // reading the session instead of the practice this line is about.
+  const practiceOption = () =>
+    results
+      .getByTestId("palette-group-practice")
+      .getByRole("option", { name: PRACTICE_NAME });
+
   // Each hit names its record the way that record's own page does — the domain's
   // canonical display label, not a re-invented one. (Imaging, genomics, dental,
   // skin, and practices render no per-row anchor, so their hits land on the owning
@@ -268,7 +277,7 @@ test("the entity domains added in #1595 are searchable and land on their own sur
   await expect(option(`${DENTAL_NAME} · #30`)).toBeVisible();
   await expect(option(PROVIDER_NAME)).toBeVisible();
   await expect(option(SKIN_LABEL)).toBeVisible();
-  await expect(option(PRACTICE_NAME)).toBeVisible();
+  await expect(practiceOption()).toBeVisible();
 
   // A protocol hit deep-links its detail route, not a hub (#1568).
   await followLink(

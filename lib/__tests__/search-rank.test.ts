@@ -308,3 +308,104 @@ describe("flattenHits", () => {
     expect(flattenHits(groups).map((h) => h.key)).toEqual(["b1", "b2", "s1"]);
   });
 });
+
+// #5006: the record's seven row-only Logs kinds are ONE `logged` domain (owner ruling,
+// 2026-09-04): capped at five ACROSS all of them, ranked date-first, and sitting above
+// the catalog entities that name what the rows were logged against. The kind is in the
+// subtitle, so this domain is the only one whose group mixes kinds.
+describe("the logged domain (#5006)", () => {
+  const idx = (d: SearchDomain) => SEARCH_DOMAIN_ORDER.indexOf(d);
+
+  it("is labelled, and ordered above the catalog entities and the page entries", () => {
+    expect(SEARCH_DOMAIN_LABELS.logged).toBe("Logged");
+    for (const below of [
+      "supplement",
+      "protocol",
+      "practice",
+      "equipment",
+      "page",
+    ] as const) {
+      expect(idx("logged")).toBeLessThan(idx(below));
+    }
+  });
+
+  it("sorts the logged group by date first, an entity group by match quality first", () => {
+    const cases = [
+      ["logged", ["newer-sub", "older-exact"]],
+      ["practice", ["older-exact", "newer-sub"]],
+    ] as const;
+    for (const [domain, order] of cases) {
+      const out = sortHits(
+        [
+          hit({
+            domain,
+            title: "Sauna",
+            key: "older-exact",
+            date: "2026-01-02",
+          }),
+          hit({
+            domain,
+            title: "Sauna, infrared",
+            key: "newer-sub",
+            date: "2026-08-29",
+          }),
+        ],
+        "sauna"
+      );
+      expect(out.map((h) => h.key)).toEqual(order);
+    }
+  });
+
+  it("still breaks a same-day tie by match quality", () => {
+    const out = sortHits(
+      [
+        hit({
+          domain: "logged",
+          title: "Berries and cream",
+          key: "sub",
+          date: "2026-08-29",
+        }),
+        hit({
+          domain: "logged",
+          title: "Berries",
+          key: "exact",
+          date: "2026-08-29",
+        }),
+      ],
+      "berries"
+    );
+    expect(out.map((h) => h.key)).toEqual(["exact", "sub"]);
+  });
+
+  // THE CAP IS FIVE ACROSS ALL KINDS, RANKED BEFORE IT IS APPLIED. The fixture is
+  // built so the three candidate implementations disagree: three kinds each hold SIX
+  // matching rows, and the union's newest five are three practices and two doses.
+  // Five-per-kind would return fifteen; a round-robin would reach the symptom (whose
+  // newest row is sixth overall) and drop the third practice.
+  it("keeps the newest five of the union, not five of each kind", () => {
+    const logged = [
+      ["practice", ["08-31", "08-30", "08-29", "08-20", "08-19", "08-18"]],
+      ["dose", ["08-28", "08-27", "08-17", "08-16", "08-15", "08-14"]],
+      ["symptom", ["08-26", "08-25", "08-24", "08-23", "08-22", "08-21"]],
+    ] as const;
+    const hits = logged.flatMap(([kind, days]) =>
+      days.map((day) =>
+        hit({
+          domain: "logged",
+          title: "Birch sauna",
+          key: `${kind}:${day}`,
+          date: `2026-${day}`,
+        })
+      )
+    );
+    const groups = rankAndGroup(hits, "birch");
+    expect(groups).toHaveLength(1);
+    expect(groups[0].hits.map((h) => h.key)).toEqual([
+      "practice:08-31",
+      "practice:08-30",
+      "practice:08-29",
+      "dose:08-28",
+      "dose:08-27",
+    ]);
+  });
+});

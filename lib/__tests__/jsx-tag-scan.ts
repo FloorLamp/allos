@@ -33,12 +33,22 @@ import { fileURLToPath } from "node:url";
 //
 // `jsxTags` handles both: it skips comments wherever they may appear and
 // descends into any braced attribute value that turns out to hold JSX.
+//
+// TWO MORE, HIDING TAGS RATHER THAN WHOLE FILES (#5204): an apostrophe in JSX
+// child text ("Don't stop") and a quote inside a regex character class
+// (`/['"]/`). Neither opens a string, and treating them as if they did swallowed
+// every tag up to the next matching quote. `skipString` below decides.
 
 export const REPO = path.resolve(
   fileURLToPath(new URL("../..", import.meta.url))
 );
 
-function skipString(s: string, i: number): number {
+/**
+ * End of the quoted run starting at `i` — the matching quote — or -1 when it
+ * never closes. A JSX attribute value is not a JS literal: it may span lines,
+ * so this is what an attribute list reads with.
+ */
+function skipQuoted(s: string, i: number): number {
   const q = s[i];
   i++;
   while (i < s.length) {
@@ -48,7 +58,31 @@ function skipString(s: string, i: number): number {
       i = skipBraces(s, i + 1);
     } else i++;
   }
-  return i;
+  return -1;
+}
+
+/**
+ * End of the JS string literal starting at `i`, or -1 when that quote does not
+ * open one. Two shapes in this tree are quotes that do not, and reading them as
+ * string openers swallowed every tag up to the next matching quote (#5204):
+ *
+ *   * AN APOSTROPHE IN JSX CHILD TEXT. "Don't", "won't", "today's" is ordinary
+ *     menu copy. A quote directly after an identifier, a number, `)` or `]` sits
+ *     where JS requires an operator, so it cannot be opening a string.
+ *   * A QUOTE INSIDE A REGEX LITERAL. `/['"]/` is a character class, and one
+ *     `const q = /['"]/;` used to take the rest of the file with it. A `'` or
+ *     `"` literal closes on its own line, so a quote whose match is on a later
+ *     line — or absent — was not one.
+ *
+ * A backtick is exempt from both: a template literal spans lines, and a tagged
+ * template legitimately follows an identifier.
+ */
+function skipString(s: string, i: number): number {
+  if (s[i] === "`") return skipQuoted(s, i);
+  if (/[\w$)\]]/.test(s[i - 1] ?? "")) return -1;
+  const end = skipQuoted(s, i);
+  if (end === -1 || s.slice(i, end).includes("\n")) return -1;
+  return end;
 }
 
 /** End of the comment starting at `i`, or -1 when `i` does not start one. */
@@ -70,8 +104,11 @@ function skipBraces(s: string, i: number): number {
   while (i < s.length) {
     const c = s[i];
     if (c === '"' || c === "'" || c === "`") {
-      i = skipString(s, i);
-      continue;
+      const str = skipString(s, i);
+      if (str !== -1) {
+        i = str;
+        continue;
+      }
     }
     const comment = skipComment(s, i);
     if (comment !== -1) {
@@ -115,7 +152,8 @@ function parseTag(text: string, start: number, out: JsxTag[]): JsxTag | null {
   while (j < text.length) {
     const c = text[j];
     if (c === '"' || c === "'" || c === "`") {
-      const end = skipString(text, j);
+      const end = skipQuoted(text, j);
+      if (end === -1) return null;
       attrs += text.slice(j, end);
       attrsBare += text.slice(j, end);
       j = end;
@@ -165,8 +203,11 @@ function scanRange(
   while (i < to) {
     const c = text[i];
     if (c === '"' || c === "'" || c === "`") {
-      i = skipString(text, i);
-      continue;
+      const str = skipString(text, i);
+      if (str !== -1) {
+        i = str;
+        continue;
+      }
     }
     const comment = skipComment(text, i);
     if (comment !== -1) {
