@@ -1757,6 +1757,7 @@ describe("the practice-target row logs in place (#4076)", () => {
     const canvas = surface.props
       .children as ReactElement<DashboardPlacementCanvasProps>;
     return {
+      placements: canvas.props.placements,
       candidateIds: canvas.props.placements.map(
         (placement) => placement.candidate.candidateId
       ),
@@ -1823,7 +1824,8 @@ describe("the practice-target row logs in place (#4076)", () => {
     db.prepare(
       `INSERT INTO practice_logs (profile_id, practice, date, logged_via) VALUES (?, 'Sauna', ?, 'page')`
     ).run(profileId, today0);
-    const { candidateIds, presentations } = await renderFor(profileId);
+    const { candidateIds, presentations, placements } =
+      await renderFor(profileId);
 
     const rowId = candidateIds.find((id) =>
       id.startsWith("target.weekly-progress:")
@@ -1833,6 +1835,13 @@ describe("the practice-target row logs in place (#4076)", () => {
     // A met target is never "owed" a log — this asserts the family's existing
     // `!progress.met` applicability, not anything this change touches.
     expect(candidateIds.some((id) => id.startsWith("target.log:"))).toBe(false);
+    // AND IT IS STANDING, NOT NOW (#4756 / #5064). This fixture used to reach its
+    // row through the met-target promotion, which seated it at the top of Right now
+    // as a receipt; the row is the same fact in the lane that states the week.
+    expect(
+      placements.find((placement) => placement.candidate.candidateId === rowId)
+        ?.lane
+    ).toBe("standing");
   });
 
   // THE OTHER CONVERSE: a behind target OUTSIDE the practice domain (training's
