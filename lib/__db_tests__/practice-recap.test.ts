@@ -394,7 +394,7 @@ describe("the practice finish message waits for the stream", () => {
   });
 
   it("gives up at the same minute however extreme the measurement", async () => {
-    // An eleven-hour measured lag is inside what `getArrivalLagMinutes` will report,
+    // An eleven-hour measured lag is inside what an arrival measurement may report,
     // so nothing upstream is doing this refusing — the moment rule is. Read beside
     // the 400-minute case above, the pair says the bound does not scale with the
     // measurement at all.

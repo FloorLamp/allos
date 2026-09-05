@@ -36,7 +36,6 @@ import { getFrequencyTargetProgress } from "../queries";
 import { getEventPhysiology } from "../queries/event-physiology";
 import { getSessionCadenceFacts } from "../queries/cadence-ledger";
 import { getConnection, STRAVA_ID } from "../integrations/connections";
-import { getArrivalLagMinutes } from "../queries/integrations";
 import type { ActivityType } from "../types/training";
 import type { NotificationMessage } from "./types";
 import type { MessagePointer } from "./message-pointers";
@@ -45,7 +44,7 @@ import { parseActivityTypeAskCallback } from "./callback-data";
 import { recapRebuildTarget } from "./post-workout-marker";
 import {
   ACTIVITY_TYPE_ASK_PROMPT,
-  stravaDetailsFollowLine,
+  STRAVA_DETAILS_FOLLOW_LINE,
   activityTypeAskActions,
   composeFinishNudge,
   importedRecapLine,
@@ -199,19 +198,8 @@ export function finishRecapParts(
       ? {
           prompt: ACTIVITY_TYPE_ASK_PROMPT,
           actions: activityTypeAskActions(profileId, activityId),
-          // The promise, and — when this profile's own Strava arrivals clear the
-          // sample gate — how long it usually takes (#5001). Measured only where the
-          // line is actually going out, so a profile with no Strava connection never
-          // pays for the query.
           ...(stravaDetailsFollow(profileId, finishRow)
-            ? {
-                provisional: stravaDetailsFollowLine(
-                  getArrivalLagMinutes(profileId, {
-                    targetTable: "activities",
-                    sourceId: STRAVA_ID,
-                  })
-                ),
-              }
+            ? { provisional: STRAVA_DETAILS_FOLLOW_LINE }
             : {}),
         }
       : null;

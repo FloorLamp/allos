@@ -6,12 +6,18 @@
 // Strava syncs. Only the sleep one MEASURED, and nothing in its arithmetic was about
 // sleep. This is that arithmetic with sleep's names removed.
 //
+// TWO OF THE THREE ARE WIRED HERE. The Strava details line is not, and the reason is
+// worth stating: it needs an arrival lag for `activities`, which no query measures,
+// and the four ways a generalised measurement got that number wrong are #5227. The
+// line keeps its unquantified wording until a measurement it can stand on exists —
+// wrong minutes in front of a rider are worse than no minutes.
+//
 // THE MEASURED LAG AND THE DEFAULT ARE NOT INTERCHANGEABLE, and keeping them apart is
 // the point of the shape below. The default BOUNDS the window; it is never quoted as an
 // ETA, because a number nobody measured is not a promise anyone may make. So `etaMin`
 // is the measured value or nothing at all — the sample gate lives in whatever produced
-// `measuredLagMin` (`getArrivalLagMinutes` returns null under it), and a caller that
-// wants to quote an ETA reads this field rather than re-deriving one.
+// `measuredLagMin` (`getSleepArrivalLagMinutes` returns null under it), and a caller
+// that wants to quote an ETA reads this field rather than re-deriving one.
 //
 // AND EVERY WAIT IS BOUNDED. `maxMin` is the whole difference between an informative
 // state and a stuck one (the rule #2097 wrote for the sleep window, at

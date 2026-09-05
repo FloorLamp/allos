@@ -61,12 +61,13 @@ import {
   type SleepRegularity,
   type SleepRegularityOptions,
 } from "../sleep-regularity";
-import { sleepWaitingState, type SleepWaitingState } from "../sleep-waiting";
 import {
-  getArrivalLagMinutes,
-  getIntegrationAttention,
-  getLatestSyncEvent,
-} from "./integrations";
+  sleepWaitingState,
+  MIN_ARRIVAL_SAMPLES,
+  type SleepWaitingState,
+} from "../sleep-waiting";
+import { ARRIVAL_LAG_MAX_MIN } from "../arrival-wait";
+import { getIntegrationAttention, getLatestSyncEvent } from "./integrations";
 import {
   isLastNight,
   isSleepTracking,
@@ -816,24 +817,53 @@ export function getSyncedSleepSources(
   ).map((r) => r.source);
 }
 
-// How long after a night ENDS its `sleep_min` row actually lands, in minutes.
+// How long after a night ENDS its row actually lands, in minutes. Joins each inserted
+// `sleep_min` row to the sync-row provenance that wrote it (#1333) and takes the
+// median.
 //
-// The MEASUREMENT moved (#5001): it was never about sleep — join an inserted row to
-// the sync provenance that wrote it and take the median — so it is
-// `getArrivalLagMinutes` now, and the practice bound and the recap's provisional line
-// read the same one. What stays here is the sleep CALL: `metric_samples` filtered to
-// `sleep_min`, every source, exactly as before.
-export { ARRIVAL_LAG_MAX_MIN } from "@/lib/arrival-wait";
+// `inserted` only, and lags outside a plausible same-morning band are dropped: an
+// ARCHIVE import (a Fitbit Takeout zip) inserts hundreds of nights at once, whose
+// "lag" is months, and letting those into the sample would quote an ETA measured on
+// a one-off backfill instead of the daily rhythm this state is about.
+//
+// Returns null under MIN_ARRIVAL_SAMPLES — `integration_sync_rows` retention reaches
+// back ~12 days, so the sample is often thin, and a median built on three mornings
+// is not something to put on screen as a promise.
+//
+// THE QUERY HAS NOT MOVED, AND THAT IS DELIBERATE (#5227). `lib/arrival-wait.ts` is
+// now the one home for the WAIT — the bounds, the sample gate, the plausibility cut —
+// because three surfaces were each writing their own. Generalising this READ to any
+// table is a separate change with its own defects to answer, so it is its own issue.
+// Only the two constants are shared from here, so there is one 12 hours and one 5.
+export { ARRIVAL_LAG_MAX_MIN };
 
 export function getSleepArrivalLagMinutes(
   profileId: number,
   limit = 28
 ): number | null {
-  return getArrivalLagMinutes(profileId, {
-    targetTable: "metric_samples",
-    metric: "sleep_min",
-    limit,
-  });
+  const rows = db
+    .prepare(
+      `SELECT (julianday(r.created_at) - julianday(s.ended_at)) * 1440 AS lag
+         FROM integration_sync_rows r
+         JOIN integration_sync_events e ON e.id = r.event_id
+         JOIN metric_samples s ON s.id = r.target_id
+        WHERE e.profile_id = ? AND s.profile_id = ?
+          AND r.target_table = 'metric_samples'
+          AND r.disposition = 'inserted'
+          AND s.metric = 'sleep_min'
+        ORDER BY r.created_at DESC, r.id DESC
+        LIMIT ?`
+    )
+    .all(profileId, profileId, limit * 4) as { lag: number | null }[];
+  const lags = rows
+    .map((r) => r.lag)
+    .filter((v): v is number => v != null && v >= 0 && v <= ARRIVAL_LAG_MAX_MIN)
+    .slice(0, limit)
+    .sort((a, b) => a - b);
+  if (lags.length < MIN_ARRIVAL_SAMPLES) return null;
+  const mid = Math.floor(lags.length / 2);
+  const median = lags.length % 2 ? lags[mid] : (lags[mid - 1] + lags[mid]) / 2;
+  return Math.round(median);
 }
 
 // The profile's morning waiting state, or null when the ordinary surfaces have
