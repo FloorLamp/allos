@@ -94,12 +94,11 @@ posture — recommendations make questions cheap to answer).
 
 These questions go to a person: lead with what each option means in plain
 terms — what they'd see or get — with code-level detail underneath,
-answerable without reading the codebase. Typical survivors:
+answerable without reading the codebase.
 
-- **Scope boundaries** — which surfaces are in, what is explicitly out.
-  "Out of scope" lines prevent well-meaning scope creep.
-- **Design calls with real alternatives** — 2–3 options with costs, the way
-  #2837 and #2830 do; the user picks before filing.
+`docs/orchestration/decision-classes.md` names the seven classes owners got
+mid-flight in one day: two readings, placement, a number, wrong-result cost,
+two rulings on one name, coupled issues, edges of an "every X" rule. Ask each.
 
 Priority is NOT a question: set it from the calibration in step 6 and state
 it in the draft. Ask only when the calibration genuinely can't settle it.
@@ -116,6 +115,10 @@ unbaked decisions is the failure this skill exists to prevent.
 ## 5. Draft in house style
 
 Read one exemplar first: #2856/#2857 for features, #2843/#2845 for bugs.
+
+**Title.** One clause, 72 characters max, no colon or dash tail; detail is the
+body's first line. A bug names the defect ("HRV drops silently since Aug 29");
+a feature names the outcome ("Button is the only button"). Rule: #4983.
 
 **Citations.** Every path rooted in a real top-level directory
 (`lib/dri.ts`, never bare `dri.ts`). When citing a line, name what is ON it,

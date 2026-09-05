@@ -142,7 +142,7 @@ function verifiedDirs(): string[] {
 let walked: string[] | null = null;
 
 /**
- * Every source file the app, the browser harness, or the non-orchestration scripts
+ * Every source file the app, the browser harness, or the non-work scripts
  * could load — i.e. everything whose import of a skipped directory would mean the
  * browser CAN reach it.
  *
@@ -411,7 +411,7 @@ describe("the skip-set scan's reach", () => {
     // union — so a reach that never leaves it cannot make a skipped diff unsafe.
     //
     // Non-vacuous, and this is the whole reason to assert it: the reach is real.
-    // `lib/__tests__/reconcile-tracker.test.ts` imports the orchestration module
+    // `lib/__tests__/reconcile-tracker.test.ts` imports the work module
     // it tests. Verify BOTH entries naively, one file at a time, and that honest
     // import is an offender against `scripts/orchestration/`.
     const file = "lib/__tests__/reconcile-tracker.test.ts";

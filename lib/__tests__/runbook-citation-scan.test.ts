@@ -21,9 +21,9 @@ import { describe, expect, it } from "vitest";
 
 const REPO = process.cwd();
 
-/** The scanned surface: runbook, skills, PR template, orchestration scripts. */
+/** The scanned surface: runbook, skills, PR template, work scripts. */
 function scannedFiles(): string[] {
-  const orchestration = readdirSync(path.join(REPO, "docs/orchestration"))
+  const work = readdirSync(path.join(REPO, "docs/orchestration"))
     .filter((name) => name.endsWith(".md"))
     .map((name) => path.posix.join("docs/orchestration", name));
   const skills = readdirSync(path.join(REPO, ".claude/skills"), {
@@ -36,7 +36,7 @@ function scannedFiles(): string[] {
   );
   return [
     "docs/orchestration.md",
-    ...orchestration,
+    ...work,
     ...skills,
     ".github/pull_request_template.md",
     ...scripts,
@@ -112,7 +112,7 @@ function anchorResolves(anchor: string, heading: string): boolean {
  */
 const DELIBERATE_REFS: Record<string, readonly string[]> = {
   // PROC_PATHS regex fragments: `\.sh` splits one, the other is a prefix.
-  "scripts/orchestration/catchup-digest.sh": [
+  "scripts/orchestration/pm-digest.sh": [
     "scripts/orchestrator-checkin",
     "docs/internals/e2e",
   ],

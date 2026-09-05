@@ -194,7 +194,7 @@ describe("migration bodies re-entered by the SQLITE_BUSY retry (#3590)", () => {
   // #3999 set 2x testTimeout and derived it from the 3 505 ms green reading (8.6x),
   // which against the observed worst is 2x — not the ~4x vitest.timeouts.ts states.
   // 4x testTimeout is 60 000 ms on CI, ~4x the observed worst, and it scales with the
-  // orchestration override the way a literal would not. This is the one ceiling whose
+  // work override the way a literal would not. This is the one ceiling whose
   // subject grows monotonically: the chain gains a body on every merge (#3436).
   it(
     "leaves the same database when EVERY shipped up() is re-entered after a real busy at COMMIT",

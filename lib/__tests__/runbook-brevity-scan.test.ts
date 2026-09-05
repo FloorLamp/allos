@@ -134,6 +134,7 @@ const FILE_BUDGETS = {
   "lib/migrations/AGENTS.md": { lines: 80, genre: "prose" },
   "lib/queries/AGENTS.md": { lines: 60, genre: "prose" },
   "docs/orchestration.md": { lines: 80, genre: "runbook" },
+  "docs/orchestration/decision-classes.md": { lines: 60, genre: "runbook" },
   // The markers two orchestrator sessions coordinate through (#5153). A focused
   // document because dispatch.md and review-merge.md are both AT their budgets,
   // and this gate's answer to that is to move detail out, never to raise one.
@@ -143,6 +144,7 @@ const FILE_BUDGETS = {
   "docs/orchestration/environment.md": { lines: 100, genre: "runbook" },
   "docs/orchestration/labels.md": { lines: 40, genre: "runbook" },
   "docs/orchestration/lifecycle.md": { lines: 80, genre: "runbook" },
+  "docs/orchestration/multi-orchestrator.md": { lines: 60, genre: "runbook" },
   "docs/orchestration/recovery.md": { lines: 50, genre: "runbook" },
   "docs/orchestration/review-merge.md": { lines: 100, genre: "runbook" },
 } as const satisfies Record<string, { lines: number; genre: Genre }>;
@@ -160,6 +162,7 @@ const SKILL_BUDGETS = {
   ".claude/skills/file-issue/SKILL.md": { lines: 225, genre: "prose" },
   ".claude/skills/needs-human/SKILL.md": { lines: 205, genre: "prose" },
   ".claude/skills/orchestrate/SKILL.md": { lines: 235, genre: "prose" },
+  ".claude/skills/pm/SKILL.md": { lines: 190, genre: "prose" },
   ".claude/skills/reconcile-tracker/SKILL.md": { lines: 250, genre: "prose" },
   ".claude/skills/ux-walkthrough/SKILL.md": { lines: 370, genre: "prose" },
   ".github/pull_request_template.md": { lines: 25, genre: "prose" },
@@ -211,13 +214,15 @@ function guardedFiles(): string[] {
   // untracked instructions without walking build outputs, dependencies or runtime
   // data that cannot contribute a source instruction.
   const agentFiles = repositoryAgentFiles();
-  const orchestrationFiles = readdirSync(
+  const workFiles = readdirSync(
     path.join(process.cwd(), "docs", "orchestration"),
-    { withFileTypes: true }
+    {
+      withFileTypes: true,
+    }
   )
     .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
     .map((entry) => path.posix.join("docs/orchestration", entry.name));
-  return [...agentFiles, "docs/orchestration.md", ...orchestrationFiles].sort();
+  return [...agentFiles, "docs/orchestration.md", ...workFiles].sort();
 }
 
 type Block = {
@@ -331,7 +336,7 @@ function brevityViolations(source: string, paragraphLines: number): string[] {
 }
 
 describe("runbook brevity", () => {
-  it("registers every agent and orchestration instruction file", () => {
+  it("registers every agent and work instruction file", () => {
     expect(guardedFiles()).toEqual(Object.keys(FILE_BUDGETS).sort());
   });
 
