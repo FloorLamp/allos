@@ -602,7 +602,8 @@ export const DATASETS: ExportDataset[] = [
     table: "body_metrics",
     // source + edited carry provenance (which integration wrote it, whether a hand
     // edit locked it) that the export used to drop (#466); bundle_id says which rows
-    // one act wrote (#5117).
+    // one act wrote (#5117). Nothing writes body_metrics.bundle_id yet, so it is
+    // empty on every row until one does — manifest.json says so (#5273).
     columns: [
       "date",
       "weight_kg",
@@ -825,6 +826,9 @@ export const DATASETS: ExportDataset[] = [
     key: "practice_logs",
     label: "Practice sessions",
     table: "practice_logs",
+    // bundle_id says which rows one act wrote (#5117). Nothing writes
+    // practice_logs.bundle_id yet, so it is empty on every row until one does —
+    // manifest.json says so (#5273).
     columns: [
       "practice",
       "date",

@@ -14,6 +14,7 @@ import { DATASETS, DELETE_POLICY, getDataset, toCsv } from "@/lib/export";
 import { OWNED_TABLES } from "@/lib/owned-tables";
 import { ownedChildTables } from "@/lib/profile-delete";
 import { stripComments } from "../__tests__/strip-comments";
+import { PENDING_COLUMNS } from "@/lib/export-manifest";
 import { db } from "@/lib/db";
 import { seedProfile, type SeededProfile } from "./fixtures";
 
@@ -576,5 +577,113 @@ describe("every dataset's rows() and page() are profile-scoped (#5117)", () => {
       `\nDatasets an id comparison cannot judge. SCOPING_ID_EXEMPT must name exactly these — every other seeded dataset gets a case:\n${exemptable.join("\n")}\n`
     ).toEqual(SCOPING_ID_EXEMPT.map((e) => e.key).sort());
     expect(checked.length).toBeGreaterThan(0);
+  });
+});
+
+// PROVENANCE COLUMNS REACH THE ARCHIVE (#5117).
+//
+// `bundle_id` records that one act wrote several rows. Four exported tables carry it,
+// and the archive ships each dataset twice: datasets/<key>.json is whatever rows()
+// emits, datasets/<key>.csv is toCsv(ds.columns, rows). A column has to be in BOTH
+// spellings to reach the person reading the archive — in the SELECT but not `columns`
+// and the CSV drops it; in `columns` but not the SELECT and the CSV header promises a
+// column that is empty on every row. Each dataset is checked in both.
+const BUNDLE_ID_DATASETS = [
+  "body_metrics",
+  "practice_logs",
+  "food_log_events",
+  "intake_log",
+];
+
+// One bundle id per profile, stamped on all four tables. `bundle_id` is minted per
+// act and never shared between profiles, so a value is an unambiguous label for whose
+// row this is — which is what lets the same column answer the scoping question below.
+const OWN_BUNDLE = "bundle-own-profile";
+const OTHER_BUNDLE = "bundle-other-profile";
+
+// The fixture already seeds a weigh-in and a dose log for each profile; the other two
+// tables have no seeded row, so add one. Values are set here rather than through a
+// writer because two of these four have no writer (see the last case).
+const stampBundle = (profileId: number, bundle: string) => {
+  db.prepare(`UPDATE body_metrics SET bundle_id = ? WHERE profile_id = ?`).run(
+    bundle,
+    profileId
+  );
+  db.prepare(
+    `UPDATE intake_item_logs SET bundle_id = ?
+       WHERE item_id IN (SELECT id FROM intake_items WHERE profile_id = ?)`
+  ).run(bundle, profileId);
+  db.prepare(
+    `INSERT INTO practice_logs (profile_id, practice, date, duration_min, bundle_id)
+     VALUES (?, 'breathwork', '2024-01-02', 20, ?)`
+  ).run(profileId, bundle);
+  db.prepare(
+    `INSERT INTO food_log_events
+       (profile_id, group_key, date, recorded_at, bundle_id)
+     VALUES (?, 'lunch', '2024-01-02', '2024-01-02T12:00:00Z', ?)`
+  ).run(profileId, bundle);
+};
+
+describe("bundle_id reaches both spellings of every dataset that carries it (#5117)", () => {
+  beforeAll(() => {
+    stampBundle(a.profileId, OWN_BUNDLE);
+    // BOTH profiles, because the scoping half below needs a row that is there to
+    // leak: an assertion run against an empty other profile passes on an export that
+    // returns every profile's rows.
+    stampBundle(b.profileId, OTHER_BUNDLE);
+  });
+
+  it.each(BUNDLE_ID_DATASETS)(
+    "%s ships bundle_id in both the dataset JSON and the dataset CSV",
+    (key) => {
+      const ds = getDataset(key)!;
+      const rows = ds.rows(a.profileId);
+      const row = rows.find((r) => r.bundle_id === OWN_BUNDLE);
+      // datasets/<key>.json — the value the SELECT read, on the row it belongs to.
+      expect(row, `${key}.rows() carries no bundle_id`).toBeDefined();
+      // datasets/<key>.csv — the header names it and the cell carries it. bundle_id
+      // is the last declared column of all four, so the line ends with its cell.
+      const [header, line] = toCsv(ds.columns, [row!]).trimEnd().split("\n");
+      expect(header.endsWith(",bundle_id"), header).toBe(true);
+      expect(line.endsWith(`,${OWN_BUNDLE}`), line).toBe(true);
+    }
+  );
+
+  // The column that carries provenance also answers "whose row is this?", so it is
+  // what proves each of these four SELECTs is still profile-scoped. Nothing else in
+  // the suite watches three of them: rewriting `WHERE profile_id = ?` to
+  // `WHERE (profile_id = ? OR 1=1)` in the body_metrics, practice_logs or
+  // food_log_events select leaves every other test in both tiers green, and every
+  // profile's rows reach every profile's export.
+  it.each(BUNDLE_ID_DATASETS)("%s exports no other profile's row", (key) => {
+    const bundles = getDataset(key)!
+      .rows(a.profileId)
+      .map((r) => r.bundle_id);
+    expect(bundles, `${key}.rows() is not empty`).toContain(OWN_BUNDLE);
+    expect(
+      bundles,
+      `${key}.rows() returned the other profile's rows`
+    ).not.toContain(OTHER_BUNDLE);
+  });
+
+  it("the columns nothing writes yet are named in the manifest (#5273)", () => {
+    // `body_metrics.bundle_id` and `practice_logs.bundle_id` have no writer: a single
+    // weigh-in or practice entry is one row, so nothing mints an act id for them. The
+    // columns still ship, so two archives keep diffing cleanly when a writer lands —
+    // and manifest.json names them, so the empty column reads as pending. The values
+    // above were set by hand for exactly that reason.
+    //
+    // BOTH spellings, for the reason at the top of this block: a pending column named
+    // only in `columns` is a CSV header promise with no JSON row behind it, which is
+    // a worse thing to tell a person than saying nothing.
+    for (const { dataset, column } of PENDING_COLUMNS) {
+      const ds = getDataset(dataset)!;
+      expect(ds.columns, `${dataset}.columns`).toContain(column);
+      const rows = ds.rows(a.profileId);
+      expect(rows.length, `${dataset} has no seeded row here`).toBeGreaterThan(
+        0
+      );
+      expect(Object.keys(rows[0]), `${dataset}.rows()`).toContain(column);
+    }
   });
 });

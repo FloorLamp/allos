@@ -347,10 +347,11 @@ test("a frequency-target act row names its target and says Log once", async ({
 
 // ── The behind week: #3245, #3543 and #3548 on one fixture ──────────────────────────
 //
-// PACE_BEHIND sits on day 4 with two untouched 2x/week strength-group targets, so
-// `frequencyPace` reads BEHIND and neither target has a rhythm moment. That is the
-// exact state #3245 was filed about: before the ruling both log offers went straight
-// back into Now from day 4 of every week.
+// PACE_BEHIND sits on day 7 with two untouched 2x/week strength-group targets — two
+// sessions owed and one day to hold them — so `frequencyPace` reads BEHIND and
+// neither target has a rhythm moment. That is the exact state #3245 was filed about:
+// before the ruling both log offers went straight back into Now for the rest of the
+// week.
 test("a behind target tells its pace in Standing and takes no Now slot", async ({
   browser,
 }) => {
@@ -382,8 +383,8 @@ test("a behind target tells its pace in Standing and takes no Now slot", async (
       PACE_BEHIND_TARGETS.length
     );
 
-    // And the point of the whole ruling: with the pace told where it belongs, day 4
-    // of the week is a settled day again.
+    // And the point of the whole ruling: with the pace told where it belongs, a
+    // behind day is a settled day again.
     const strip = page.getByTestId("now-strip");
     await expect(strip).toHaveAttribute("data-count", "0");
     await expect(strip.getByTestId("now-strip-empty")).toHaveText(

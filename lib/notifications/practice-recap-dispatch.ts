@@ -26,6 +26,7 @@ import {
   USUAL_RECENT_EVENTS,
 } from "../event-physiology";
 import { activityWindow, type ActivityWindow } from "../training-zones";
+import { arrivalWait } from "../arrival-wait";
 import {
   practiceRecapBody,
   practiceRecapFacts,
@@ -66,14 +67,68 @@ function recentlyFinishedPractices(
         ORDER BY id DESC`
     )
     .all(profileId, shiftDateStr(todayStr, -1)) as PracticeRow[];
+  // THIS CONSUMER TAKES THE MODEL'S VOCABULARY AND NONE OF ITS MEASUREMENT, and that
+  // is a decision rather than an oversight (#5001, and the #5127 review that settled
+  // it). `PRACTICE_RECAP_BOUND_MIN` carries TWO rules that are the same number:
+  //
+  //   * the RETRY rule — how long the app must wait for coverage. A quicker pipeline
+  //     may not lower it, because the send already fires the moment coverage arrives.
+  //     Shortening buys nothing and costs the send: a practice that ended 25 minutes
+  //     ago on a profile measuring a 20-minute lag would read `overdue`, and `overdue`
+  //     sends nothing and burns no marker — silencing the finish note for exactly the
+  //     profiles whose data arrived soonest.
+  //   * the MOMENT rule — how long a finish note stays worth sending. A slower pipeline
+  //     may not raise it: a message about a sauna three hours ago is a bulletin, not a
+  //     finish note, and that is a claim about the moment rather than about the
+  //     pipeline. A profile whose pipeline is genuinely slower LOSES the note, which is
+  //     the answer that shipped before this lane.
+  //
+  // Both being the constant makes the window `min(max(measured ?? 120, 120), 120)` — a
+  // CONSTANT — so the measurement cannot move either end of it. `wait.etaMin` is the
+  // only place the number could still surface and nothing on this path reads it, so
+  // querying it was a two-join read per dispatch pass whose value could not alter a
+  // single outcome. It is gone; the three arrival fixtures pass unchanged without it,
+  // which is what proves it was inert rather than merely unused.
+  //
+  // What is still taken from the model is the VOCABULARY, and that is read: `ready`
+  // for a window that has not finished, `waiting` for one still inside its bound,
+  // `overdue` for one that has stopped being news.
+  //
+  // AND THE VOCABULARY IS ALL IT IS. This call is provably equivalent to the two lines
+  // it replaced — `const since = localMinutesBetween(...); if (since < 0 || since >
+  // PRACTICE_RECAP_BOUND_MIN) continue;` — and the #5127 falsifying pass proved it the
+  // only way that counts: removing this call and restoring those two lines leaves BOTH
+  // TIERS ENTIRELY GREEN, because `practice-recap.test.ts` is the only file that reaches
+  // this dispatch and no assertion in it can tell the two apart.
+  //
+  // An earlier draft of this comment said "do NOT simplify either bound away — each one
+  // alone reintroduces exactly one of the two defects above". That was false, and it is
+  // recorded here rather than quietly deleted because it is the THIRD stale comment on
+  // this path in three rounds and each of the first two is how a defect got in. Dropping
+  // `minWindowMin`, or widening `maxMin` to 720, or zeroing `defaultLagMin`, each leaves
+  // all 18 fixtures green. The three parameters are one constant because each names a
+  // RULE above, not because a test defends it.
+  //
+  // So why route it through the model at all: because `since < 0 || since > BOUND` is a
+  // hand-rolled answer to "is this wait still open", which is the question this model
+  // exists to answer once — and because when something finally measures a practice
+  // arrival, the bound has ONE place to gain it. Do not re-add the measurement without a
+  // consumer that reads it.
   const out: { row: PracticeRow; window: ActivityWindow }[] = [];
   for (const row of rows) {
     const window = activityWindow(row);
     if (!window) continue;
-    const since = localMinutesBetween(window.end, nowLocal);
     // Half-open at both ends on purpose: a window that has not finished yet is not a
-    // finish, and one past the bound has stopped being news.
-    if (since < 0 || since > PRACTICE_RECAP_BOUND_MIN) continue;
+    // finish (`ready`), and one past the bound has stopped being news (`overdue`).
+    const wait = arrivalWait({
+      measuredLagMin: null,
+      defaultLagMin: PRACTICE_RECAP_BOUND_MIN,
+      graceMin: 0,
+      minWindowMin: PRACTICE_RECAP_BOUND_MIN,
+      maxMin: PRACTICE_RECAP_BOUND_MIN,
+      elapsedMin: localMinutesBetween(window.end, nowLocal),
+    });
+    if (wait.kind !== "waiting") continue;
     out.push({ row, window });
   }
   return out;

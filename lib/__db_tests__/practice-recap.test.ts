@@ -274,6 +274,143 @@ describe("the practice finish message waits for the stream", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  // #5001/#5127: WHAT THE MEASUREMENT MAY AND MAY NOT DO TO THIS BOUND.
+  //
+  // `PRACTICE_RECAP_BOUND_MIN` carries two rules, and the cases below pin both. As a
+  // RETRY window it is a floor a quicker pipeline may not lower, because the send
+  // already fires the moment coverage arrives. As a MOMENT rule it is a ceiling a
+  // slower pipeline may not raise, because a message about a sauna three hours ago is
+  // a bulletin and not a finish note. Both bounds are the same number, so this
+  // consumer's window is that constant and the measurement moves neither end of it.
+  //
+  // THE SEEDED ARRIVALS BELOW ARE DELIBERATELY INERT, and that is what they are for.
+  // Since the #5127 review the dispatch does not query the arrival lag at all — a
+  // constant window meant the value could not alter a single outcome, and nothing on
+  // this path reads the ETA. These fixtures seed pipelines from 20 to 660 minutes and
+  // every one of them lands on the same two-hour bound. If a later lane re-adds the
+  // measurement AND raises the cap, this is the block that says what that costs.
+  function seedArrivals(
+    profileId: number,
+    lagMin: number,
+    count: number
+  ): void {
+    const event = db.prepare(
+      `INSERT INTO integration_sync_events (profile_id, source_id, at, ok, inserted)
+       VALUES (?, 'health-connect', ?, 1, 1)`
+    );
+    const link = db.prepare(
+      `INSERT INTO integration_sync_rows
+         (event_id, target_table, target_id, disposition, created_at)
+       VALUES (?, 'metric_samples', ?, 'inserted', ?)`
+    );
+    const sample = db.prepare(
+      `INSERT INTO metric_samples
+         (profile_id, source, metric, date, started_at, ended_at, value)
+       VALUES (?, 'health-connect', 'sleep_min', ?, ?, ?, 420)`
+    );
+    for (let i = 1; i <= count; i++) {
+      const date = `2026-07-${String(10 - i).padStart(2, "0")}`;
+      const endedAt = `${date}T07:00:00Z`;
+      const arrivedAt = new Date(Date.parse(endedAt) + lagMin * 60_000)
+        .toISOString()
+        .replace(/\.\d{3}Z$/, "Z");
+      const sampleId = Number(
+        sample.run(profileId, date, `${date}T00:00:00Z`, endedAt)
+          .lastInsertRowid
+      );
+      const eventId = Number(event.run(profileId, arrivedAt).lastInsertRowid);
+      link.run(eventId, sampleId, arrivedAt);
+    }
+  }
+
+  it("never lets a QUICK pipeline shorten the wait (#5127 review)", async () => {
+    // THE DEFECT THIS PINS. With the measurement as the whole window, a profile whose
+    // Health Connect pushes land in 20 minutes stopped being eligible at 21 — so the
+    // finish note went silent for exactly the profiles whose data arrived soonest,
+    // which inverts the point. The send already fires the moment coverage arrives; a
+    // shorter bound buys nothing and costs the send.
+    const p = newProfile("PracQuickPipeline");
+    const date = today(p);
+    seedPractice(p, date);
+    seedHrMinutes(p, date, 30);
+    seedArrivals(p, 20, 5);
+    const fetchMock = stubFetch();
+    // 17:45 — 25 minutes after the 17:20 end, past a 20-minute measurement and well
+    // inside the two hours this row is still news for.
+    expect((await tick(p, new Date("2026-07-17T17:45:00Z"))).sent).toBe(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets a SLOW pipeline lose the note rather than send a bulletin", async () => {
+    // THE DEFECT THIS PINS (#5127 review, second finding). Raising the cap to the
+    // sample's plausibility bound let a measurement lengthen this wait to twelve
+    // hours, so a profile measuring a 400-minute lag would have sent a finish note
+    // nearly six hours after the practice ended. That deleted a rule the constant was
+    // carrying: how long the thing stays WORTH SAYING is not a fact about the
+    // pipeline, and a slower pipeline losing the note is the honest answer to it.
+    const p = newProfile("PracSlowMeasured");
+    const date = today(p);
+    const rowId = seedPractice(p, date);
+    seedHrMinutes(p, date, 30);
+    seedArrivals(p, 400, 5);
+    const fetchMock = stubFetch();
+    // 19:21 — one minute past the constant, and far inside what this profile's own
+    // measurement would have allowed.
+    expect((await tick(p, new Date("2026-07-17T19:21:00Z"))).sent).toBe(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+    // Nothing is burned either: `overdue` writes no marker, so a later fix to the
+    // pipeline is not locked out of this row by a send that never happened.
+    expect(
+      getProfileSetting(p, practiceRecapMarkerKey(rowId)) ?? null
+    ).toBeNull();
+  });
+
+  it("is still news AT the constant, on that same slow profile", async () => {
+    // The other side of the same edge, so "loses the note" cannot be read as "the
+    // measurement shortened it after all": at exactly the bound this row still sends.
+    const p = newProfile("PracSlowAtBound");
+    const date = today(p);
+    seedPractice(p, date);
+    seedHrMinutes(p, date, 30);
+    seedArrivals(p, 400, 5);
+    const fetchMock = stubFetch();
+    // 19:20 — the 17:20 end plus exactly two hours.
+    expect((await tick(p, new Date("2026-07-17T19:20:00Z"))).sent).toBe(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the constant as the bound for an unmeasured profile", async () => {
+    const p = newProfile("PracThinSample");
+    const date = today(p);
+    seedPractice(p, date);
+    seedHrMinutes(p, date, 30);
+    // Four arrivals — under what the sample gate would have required back when this
+    // path queried one. It reads the same as every other profile now, which is the
+    // point: the doc's number is the answer for all of them.
+    seedArrivals(p, 30, 4);
+    const fetchMock = stubFetch();
+    expect((await tick(p, new Date("2026-07-17T19:19:00Z"))).sent).toBe(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives up at the same minute however extreme the measurement", async () => {
+    // An eleven-hour measured lag is inside what an arrival measurement may report,
+    // so nothing upstream is doing this refusing — the moment rule is. Read beside
+    // the 400-minute case above, the pair says the bound does not scale with the
+    // measurement at all.
+    const p = newProfile("PracVerySlow");
+    const date = today(p);
+    const rowId = seedPractice(p, date);
+    seedHrMinutes(p, date, 30);
+    seedArrivals(p, 660, 5);
+    const fetchMock = stubFetch();
+    expect((await tick(p, new Date("2026-07-17T19:21:00Z"))).sent).toBe(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(
+      getProfileSetting(p, practiceRecapMarkerKey(rowId)) ?? null
+    ).toBeNull();
+  });
+
   it("is not eligible before the window has finished", async () => {
     const p = newProfile("PracRunning");
     const date = today(p);
