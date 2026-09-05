@@ -391,7 +391,7 @@ export function findPracticeTarget(
 
 export function getWellnessPractices(
   profileId: number,
-  asOf = profileToday(profileId),
+  asOf: string = profileToday(profileId),
   weekStart = 0
 ): WellnessPractice[] {
   const targets = getPracticeTargets(profileId);
@@ -539,7 +539,7 @@ export interface TrackedPractice {
 // rows are a bounded set.
 export function getTrackedPractices(
   profileId: number,
-  asOf = profileToday(profileId)
+  asOf: string = profileToday(profileId)
 ): TrackedPractice[] {
   const targets = getPracticeTargets(profileId);
   if (targets.length === 0) return [];
@@ -647,7 +647,7 @@ export function getTrackedPractices(
 // in its history. Handing it eight weeks would quietly change which hour it settles on.
 export function getPracticeRhythms(
   profileId: number,
-  asOf = profileToday(profileId)
+  asOf: string = profileToday(profileId)
 ): Map<string, WeeklyRhythm> {
   const rows = db
     .prepare(
@@ -952,7 +952,7 @@ export interface PracticeTrend {
 export function getPracticeTrends(
   profileId: number,
   weeks: number,
-  asOf = profileToday(profileId)
+  asOf: string = profileToday(profileId)
 ): PracticeTrend[] {
   const history = getFrequencyTargetWeeklyHistory(
     profileId,

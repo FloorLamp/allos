@@ -109,9 +109,55 @@ Known gaps, stated rather than implied:
   ingest NORMALIZER is not seen. Those feed `metric_samples`, whose natural-key
   dedupe is keyed on the stored instant — converting them is a value change with
   an idempotency blast radius, so phase 1 leaves them and the registry does not
-  claim them.
+  claim them. The type vocabulary below is what closes this: a `CanonicalInstant`
+  is visible to the compiler wherever it is built, SQL or not, so the gap shrinks
+  each time a normalizer's output is narrowed to the brand — and the
+  `metric_samples` writers narrow to `MetricSampleInstant`, never to canonical.
 - Column `DEFAULT`s live in shipped, immutable migrations and cannot be scanned
   from source. A converted table's `DEFAULT` is pinned by its own migration test.
+
+## The type vocabulary (#2899)
+
+The scans above reach SQL and stop at the writer. Nothing in them makes it a
+compile error to pass a profile-local day where an instant is wanted, or an
+`HH:MM` clock reading where a day is wanted — three different questions that
+#2883 finished separating, and that review alone was keeping apart. So the
+registry's grain and convention are also stated as TYPES, beside the scans and
+never instead of them. `lib/temporal-types.ts` owns the vocabulary:
+
+| brand                 | shape                                  | minted by                                                                               |
+| --------------------- | -------------------------------------- | --------------------------------------------------------------------------------------- |
+| `LocalDay`            | `YYYY-MM-DD`, a real day               | `isRealIsoDate` (validates); `today`, `dateStrInTz`, `shiftDateStr`, `startOfWeekStr` … |
+| `LocalTime`           | `HH:MM`, profile-local                 | `zonedDateParts`, `nowTime`, `activityClockHHMM`, the `SourceTime` local arm            |
+| `CanonicalInstant`    | `…THH:MM:SSZ`                          | `utcInstant`, `utcMinute`, `toUtcInstant`, `instantNow`, `sourceInstant`                |
+| `BareInstant`         | `YYYY-MM-DD HH:MM:SS`                  | `utcSqlString`, `sqlNow`                                                                |
+| `MetricSampleInstant` | vendor ISO-ms **or** `${day}T00:00:00` | `vendorInstant` (validates), `dayMidnightAnchor` (constructs) — a union, one per shape  |
+
+Grain and serialization are separate axes, so `CanonicalInstant` and
+`BareInstant` are two types and there is no umbrella instant brand: one over
+both would make the lexical-comparison bug the scan exists to catch look
+checked. `metric_samples.started_at` / `ended_at` are never canonical — they
+hold two shapes inside the natural key, so they are the union, never a cast.
+
+Three rules keep a brand worth something:
+
+- **A minter validates or constructs.** It checks the calendar or builds from a
+  `Date`. A function that receives a string and casts it is not a minter and
+  must not exist. `grep -rn "minter:" lib` is the inventory, because
+- **`x as LocalDay` is an ESLint error everywhere** (`eslint.config.mjs`,
+  `no-restricted-syntax`), and the minters carry the only permitted casts on a
+  `-- <brand> minter:` disable line. A cast that appears anywhere else is the
+  defect, not a shortcut: bring it back to #2899 rather than adding a disable.
+- **A DB row shape may carry the brand the registry declares for that column**
+  (`.get(...) as { date: LocalDay }`), and nothing else. That assertion already
+  exists on every read; the brand adds what `TIME_COLUMNS` says about the column,
+  and the column-index scan is what keeps the two in agreement.
+
+A brand is a subtype of `string`, so branding a minter's RETURN broke no caller.
+Narrowing a PARAMETER is where a consumer starts being checked, and that happens
+at each consumer as it is touched — the three-way confusion becomes a compile
+error one signature at a time, with the cast ban holding at every intermediate
+state. There is no sweep to schedule and no cast to grow around.
 
 ## One reader per question (phase 3)
 
