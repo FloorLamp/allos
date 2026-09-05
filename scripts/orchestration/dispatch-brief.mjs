@@ -1684,8 +1684,10 @@ export function branchPrRefusal(prs, branch, self) {
  * messages here quote refusals and each other, and a commit that quotes
  * `session_x` — or quotes a whole trailer, indented, as a quotation is written
  * — is not a commit `session_x` wrote. `--format=%B` prints a message raw, so
- * a real trailer is always unindented and this costs nothing. The FIRST trailer wins, because the reader hands this the
- * branch's own commits NEWEST FIRST — so the first trailer in the text is the
+ * a real trailer is always unindented and this costs nothing.
+ *
+ * The FIRST trailer wins, because the reader hands this the branch's own
+ * commits NEWEST FIRST — so the first trailer in the text is the
  * most recent commit that signed one, and a `git merge origin/main` commit
  * (which signs nothing) falls through to the work underneath it instead of
  * reading as an unowned branch.
