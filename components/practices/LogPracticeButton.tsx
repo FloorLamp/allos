@@ -570,7 +570,7 @@ export default function LogPracticeButton({
             <span
               data-fact-chip="pill"
               data-testid="practice-duration-chip"
-              className="inline-flex items-stretch overflow-hidden rounded-lg border border-black/10 bg-white/70 text-sm dark:border-white/10 dark:bg-ink-850"
+              className="inline-flex items-stretch overflow-hidden rounded-lg border border-(--border) bg-surface text-sm text-slate-700 dark:text-slate-200"
             >
               <button
                 type="button"
@@ -581,7 +581,7 @@ export default function LogPracticeButton({
                 onClick={() => setDurationOpen((open) => !open)}
                 data-testid="practice-duration-toggle"
                 aria-label={`Adjust the duration of this ${practice} session`}
-                className="flex items-center px-3 text-slate-600 transition hover:bg-white disabled:opacity-50 dark:text-slate-300 dark:hover:bg-ink-750"
+                className="flex items-center px-3 transition hover:bg-(--ghost-hover) disabled:opacity-50"
               >
                 {durationLabel}
               </button>
