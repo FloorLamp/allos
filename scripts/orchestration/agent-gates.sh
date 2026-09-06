@@ -55,15 +55,18 @@ paths_changed() {
 }
 
 # The paths the DB+action tier's inputs live in — every file reachable from
-# `vitest.db.config.ts`'s include set. VERIFIED, NEVER HAND-MAINTAINED: the
-# import walk in lib/__tests__/db-gate-trigger-set.test.ts reads THIS array and
-# fails when the tier reaches a file no entry covers, the discipline #2786
-# established for CI's skip set one level up. A hand-list here would not fail
-# when it went stale; it would quietly stop running the gate.
+# `vitest.db.config.ts`'s include set. HAND-MAINTAINED as of 2026-09-06: the
+# import walk that verified it was a guard on dev config, which is forbidden, so
+# it is gone. lib/__tests__/db-gate-trigger-set.test.ts is now a RATCHET on the
+# entry COUNT alone — it catches a set that GROWS, and nothing catches an entry
+# that is simply WRONG. An entry that stops covering what the tier imports now
+# quietly stops running the gate; add one only against "what does the tier
+# import", because nothing downstream will ask that question for you.
 #
 # `scripts/` is in because ~30 `lib/datasets/` modules import their generator's
-# types from it; `scripts/orchestration/` is the one subtree the walk proves the
-# tier never reaches, and it is what the work agents edit. Entries are
+# types from it; `scripts/orchestration/` is the one subtree the walk MEASURED the
+# tier never to reach, and it is what the work agents edit. Past tense on purpose:
+# that walk is gone, so this exclusion is now an unverified claim like the rest. Entries are
 # directories rather than files where the reach is broad, so the set over-runs
 # the gate in places (a `scripts/*.sh` edit runs it) — that is the safe
 # direction and the deliberate one.
@@ -139,8 +142,8 @@ db_tier_paths=(
 # boot-lock-race.test.ts compares two writes against a same-runner baseline and
 # still fails under load. Re-run that file alone — see environment.md.
 # Copying this export into a CI job would do nothing: vitest.timeouts.ts ignores
-# the variable whenever `CI` is set, and lib/__tests__/vitest-timeouts.test.ts
-# holds that shut. The permitter cannot become the detector by accident.
+# the variable whenever `CI` is set. The permitter cannot become the detector by
+# accident.
 export ALLOS_VITEST_TIMEOUT_MS="${ALLOS_VITEST_TIMEOUT_MS:-60000}"
 
 run_gate "lint" npm run lint

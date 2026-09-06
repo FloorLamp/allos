@@ -17,6 +17,7 @@ import {
 import { isValidDuration, parseSeconds } from "./duration";
 import { isRealIsoDate } from "./date";
 import {
+  doneSets,
   setComplete,
   setPartial,
   sideComplete,
@@ -180,14 +181,17 @@ export function analyzeActivityForm(
   // stranded in state after its field hid must pause the save.
   const partHasContent = (p: PartEntry) =>
     partType(p) === "strength"
-      ? p.sets.some((s) => setComplete(p.name, s, p.perSide))
+      ? doneSets(p).some((s) => setComplete(p.name, s, p.perSide))
       : (partNeedsDistance(p) && !!p.distance.trim()) ||
         !!p.durationMin.trim() ||
         timeRange;
   const hasContent = namedParts.every(partHasContent);
+  // Only a set the person is ENTERING can be half-filled (#5373). A planned row's
+  // numbers are placeholder paint — a blank one is the plan, not a stalled entry, and
+  // pausing auto-save on it would block a session before the first set was lifted.
   const partHasPartialSet = (p: PartEntry) =>
     partType(p) === "strength" &&
-    p.sets.some((s) => setPartial(p.name, s, p.perSide));
+    doneSets(p).some((s) => setPartial(p.name, s, p.perSide));
   const noPartialSets = namedParts.every((p) => !partHasPartialSet(p));
   const dateValid = isRealIsoDate(date);
   const canSave =
@@ -207,7 +211,7 @@ export function analyzeActivityForm(
     lastType !== null &&
     (!needsEquipment(lastPart.name) || lastPart.equipmentId != null) &&
     (lastType !== "strength" ||
-      lastPart.sets.some((s) =>
+      doneSets(lastPart).some((s) =>
         setComplete(lastPart.name, s, lastPart.perSide)
       ));
 
@@ -372,7 +376,10 @@ export function buildActivityPayload(
     if (partType(p) !== "strength") continue;
     const timed = isTimed(p.name);
     const intent = partIntent(p);
-    for (const s of p.sets) {
+    // ONLY WHAT WAS CONFIRMED REACHES THE SAVE (#5373). A ghost that was never
+    // confirmed or corrected is a plan, and a plan is not a record — the two sets the
+    // person never reached leave no rows.
+    for (const s of doneSets(p)) {
       const perSide = p.perSide;
       // For timed holds the "effort" is duration; otherwise it's reps.
       const hasLeft = sideComplete(p.name, s.weight, s.reps, s.duration);
