@@ -11,6 +11,7 @@
   E2E lane.
 - A new navigation item requires updating `TOP_LEVEL_ORDER` in
   `e2e/nav-consolidation.spec.ts`.
+- What earns a new spec, scan or guard: `what-earns-a-guard.md`.
 
 ## The first round in a new worktree
 
@@ -58,9 +59,8 @@
 - Check the actual command exit code; pipelines can hide it.
 - For mass failures, check memory pressure, then run failures individually.
   Passing alone suggests starvation; failing alone suggests a defect.
-- Compare with clean main under the same conditions to identify pre-existing
-  failures — `main-red-history.mjs` reads `e2e-main`'s run of heads (#5160).
-- Before calling a PR's e2e red unrelated, check `E2E (main)` on the PR's base.
+- Before calling a PR's e2e red unrelated, compare with clean main: `E2E (main)`
+  on the PR's base, and `main-red-history.mjs` over `e2e-main`'s heads (#5160).
   Several PRs failing the same untouched specs is a base regression until that
   run says otherwise — not a coincidence of flakes (#2791).
 - `next dev` and `next start` differ. Interaction fixes must work in both.

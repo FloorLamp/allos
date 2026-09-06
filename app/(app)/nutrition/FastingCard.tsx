@@ -439,7 +439,7 @@ export default function FastingCard({
       <Disclosure data-testid="fasting-card" className="mb-4">
         <summary
           data-testid="fasting-fold"
-          className="flex min-h-11 cursor-pointer list-none items-center gap-1.5 text-sm font-medium text-slate-600 [&::-webkit-details-marker]:hidden dark:text-slate-300"
+          className="fold-control flex list-none items-center gap-1.5 text-sm font-medium text-slate-600 [&::-webkit-details-marker]:hidden dark:text-slate-300"
         >
           <IconPlus className="h-4 w-4 shrink-0" stroke={2} />
           <span className="flex-1">Start fast</span>

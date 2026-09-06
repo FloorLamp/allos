@@ -39,8 +39,7 @@ closed taxonomy, and `needs-human` handling.
   migration run. A lane states what the owner would run; the owner runs it.
 - A red in code the diff did not touch is contention until proven otherwise —
   an ASSERTION failure included, not only a timeout (#3436).
-- Every brief uses the generated template and the gate order from
-  `scripts/orchestration/agent-gates.sh`.
+- Every brief uses the generated template and `agent-gates.sh`'s gate order.
 - Push meaningful checkpoints. A branch not next to land stays branch-only — no
   PR at all, and a draft is not a banking state. The candidate's PR opens READY
   (environment.md §GitHub access), never for CI a pending merge will invalidate.
@@ -76,6 +75,7 @@ closed taxonomy, and `needs-human` handling.
 - `agent-gates.sh`: lint, typecheck, unit, DB, E2E hygiene, PHI scan, format.
   DB and E2E-hygiene run only when the diff touches them; a format rewrite
   re-verifies the directive-reading gates. 60 s per-test ceiling here; CI 15 s.
+  `run-gates-recorded.sh <branch>` records its PID and exit; `--wait` resumes.
 - `ci-watch.mjs`: settled CI over BOTH endpoints, source per row; a closed
   `merge-gate` STATUS reads NOT MERGEABLE YET, not red (#5022). Exit 0 green,
   1 red (`cancelled` is no verdict), 2 unsettled and says on what, 3 blocked.

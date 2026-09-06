@@ -189,7 +189,6 @@ describe("the post-merge e2e detector and ci-main.yml's header", () => {
   // as "ran and passed". Hoisting it into its own job is what makes the shards
   // report `skipped` instead, so the guard is that the gating is at JOB level:
   // a per-step `if:` on the browser steps is the defect, whatever it is worded
-  // like. `baseDetectorNotice`'s own half of this is in merge-gate-script.test.
   it("gates the browser matrix at job level, so a skip reports as a skip", () => {
     const e2eMain = read("e2e-main.yml");
     expect(e2eMain).toMatch(/^\s+needs: detect$/m);

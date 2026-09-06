@@ -429,7 +429,7 @@ export default function ScheduleGrid({
                       >
                         <button
                           type="button"
-                          className="tap-target flex h-8 w-full items-center gap-2 whitespace-nowrap rounded-sm text-left focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500"
+                          className="tap-target flex h-(--control-box) w-full items-center gap-2 whitespace-nowrap rounded-sm text-left focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500"
                           data-testid="schedule-grid-vaccine-trigger"
                           data-schedule-tip-key={`vaccine:${entry.code}`}
                           aria-label={`Details for ${entry.name}`}
@@ -484,7 +484,7 @@ export default function ScheduleGrid({
                             {content ? (
                               <button
                                 type="button"
-                                className="tap-target mx-auto flex h-8 min-w-8 items-center justify-center rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500"
+                                className="tap-target mx-auto flex h-(--control-box) min-w-(--control-box) items-center justify-center rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500"
                                 data-testid="schedule-grid-dose-trigger"
                                 data-schedule-tip-key={`dose:${entry.code}:${i}`}
                                 aria-label={`Details for ${entry.name}, ${b.label}`}

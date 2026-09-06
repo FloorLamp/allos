@@ -5,6 +5,7 @@ import EventCalendar from "@/components/EventCalendar";
 import SidebarLogButton from "@/components/SidebarLogButton";
 import OverflowMenu, { MENU_ITEM } from "@/components/OverflowMenu";
 import DateField from "@/components/DateField";
+import TimeField from "@/components/TimeField";
 import { TimezoneProvider } from "@/components/TimezoneProvider";
 import { WeekStartProvider } from "@/components/WeekStartProvider";
 import { FormatPrefsProvider } from "@/components/FormatPrefsProvider";
@@ -167,21 +168,38 @@ describe("an anchored popover that declares a role (#3905)", () => {
   // THE CONVERSE, and it is why the rule is keyed on `role` rather than applied to
   // every popover. DateField opens its calendar when the FIELD takes focus, and
   // manual ISO entry has to keep working at every width (#3376) — a panel that
-  // stole focus here would make the field untypable. Its trigger promises no popup
-  // and its panel claims no role, so the primitive leaves it alone.
-  it("leaves a role-less field popover's focus in the field", () => {
-    render(
-      <Providers>
-        <DateField data-testid="due" />
-      </Providers>
-    );
-    const input = screen.getByTestId("due");
-    input.focus();
-    fireEvent.focus(input);
-    const calendar = screen.getByTestId("date-field-calendar");
-    expect(calendar.parentElement).toBe(document.body);
-    expect(calendar.getAttribute("role")).toBe(null);
-    expect(calendar.querySelector('[aria-label="Month"]')).toBeTruthy();
-    expect(document.activeElement).toBe(input);
-  });
+  // stole focus here would make the field untypable. TimeField opens its wheel
+  // the same way (#5360), and a browser showed what a role costs there: the
+  // caret left for the hour column and the next keystroke went with it. Their
+  // triggers promise no popup and their panels claim no role, so the primitive
+  // leaves both alone.
+  it.each([
+    {
+      field: "DateField",
+      mount: () => <DateField data-testid="due" />,
+      panel: "date-field-calendar",
+      content: '[aria-label="Month"]',
+    },
+    {
+      field: "TimeField",
+      mount: () => (
+        <TimeField data-testid="due" value="" onChange={() => {}} label="At" />
+      ),
+      panel: "time-field-wheel",
+      content: '[aria-label="Hour"]',
+    },
+  ])(
+    "leaves a role-less $field popover's focus in the field",
+    ({ mount, panel, content }) => {
+      render(<Providers>{mount()}</Providers>);
+      const input = screen.getByTestId("due");
+      input.focus();
+      fireEvent.focus(input);
+      const popover = screen.getByTestId(panel);
+      expect(popover.parentElement).toBe(document.body);
+      expect(popover.getAttribute("role")).toBe(null);
+      expect(popover.querySelector(content)).toBeTruthy();
+      expect(document.activeElement).toBe(input);
+    }
+  );
 });

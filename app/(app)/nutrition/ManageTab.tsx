@@ -724,7 +724,7 @@ export default async function ManageTab({
 
       {paused.length > 0 && (
         <Disclosure>
-          <summary className="cursor-pointer section-label">
+          <summary className="fold-control section-label">
             Paused ({paused.length})
           </summary>
           <div className="mt-2 space-y-3">
@@ -951,7 +951,7 @@ export default async function ManageTab({
                   by hiding what you own. */}
                 {unscheduledItems.length > 0 && (
                   <Disclosure open className="mt-4">
-                    <summary className="cursor-pointer section-label">
+                    <summary className="fold-control section-label">
                       Not scheduled ({unscheduledItems.length})
                     </summary>
                     <div

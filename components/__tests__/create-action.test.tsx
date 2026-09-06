@@ -4,7 +4,9 @@ import CreateAction, {
   CREATE_ACTIONS,
   SectionCreateHeader,
   type CreateActionDeclaration,
+  type CreateActionHousing,
   type CreateActionKind,
+  type HousedKind,
   useCreateActionLabel,
 } from "@/components/CreateAction";
 import TabFirstPage from "@/components/TabFirstPage";
@@ -82,15 +84,25 @@ function DriftingControl() {
   return <button type="button">{label.replace("Add", "New")}</button>;
 }
 
+function housedIn<H extends CreateActionHousing>(
+  kind: CreateActionKind,
+  housing: H
+): kind is HousedKind<H> {
+  const declared: readonly CreateActionHousing[] = CREATE_ACTIONS[kind].housing;
+  return declared.includes(housing);
+}
+
 function housedAction(
   kind: CreateActionKind,
   control: React.ReactElement
 ): React.ReactElement {
-  const createAction = { kind, control };
-  return CREATE_ACTIONS[kind].housing === "page" ? (
-    <PageHeader title="Test page" createAction={createAction} />
+  return housedIn(kind, "page") ? (
+    <PageHeader title="Test page" createAction={{ kind, control }} />
   ) : (
-    <SectionCreateHeader title="Test section" createAction={createAction} />
+    <SectionCreateHeader
+      title="Test section"
+      createAction={{ kind, control }}
+    />
   );
 }
 
@@ -205,15 +217,36 @@ describe("CreateAction", () => {
     expect(() => assertCanonicalRender("goal", <DriftingControl />)).toThrow();
   });
 
-  it("refuses wrong-housing create actions at render time", () => {
-    expect(() =>
+  // A kind mounts in ANY housing it declared and is refused in one it did not —
+  // whether a housing another kind declared or one outside the vocabulary (#4667).
+  // At a literal call site the type already forbids the refused rows; the table's
+  // union is what reaches the runtime guard, so it needs the one expect-error.
+  it.each([
+    ["medication", "page", null],
+    ["medication", "section", null],
+    ["goal", "page", "goal create action requires section housing"],
+    [
+      "medication",
+      "modal",
+      "medication create action requires page or section housing",
+    ],
+  ] as const)("%s mounted in %s housing", (kind, housing, refusal) => {
+    const mount = () =>
       render(
         <CreateAction
-          declaration={{ kind: "goal", control: <TestControl /> }}
-          housing="page"
+          declaration={{ kind, control: <TestControl /> }}
+          // @ts-expect-error The refused rows are the ones the runtime guard proves.
+          housing={housing}
         />
-      )
-    ).toThrow("goal create action requires section housing");
+      );
+    if (refusal) {
+      expect(mount).toThrow(refusal);
+    } else {
+      mount();
+      expect(
+        screen.getByRole("button", { name: CREATE_ACTIONS[kind].label })
+      ).toBeTruthy();
+    }
   });
 
   it("renders every exact registered trigger with registry-owned copy", () => {
@@ -286,18 +319,18 @@ describe("CreateAction", () => {
 
   it("keeps the registry closed to canonical copy and housing", () => {
     expect(CREATE_ACTIONS).toEqual({
-      medication: { label: "Add medication", housing: "page" },
+      medication: { label: "Add medication", housing: ["page", "section"] },
       practice: {
         label: "Add practice",
         dialogTitle: "Add a practice",
-        housing: "page",
+        housing: ["page"],
       },
-      "training-activity": { label: "Add activity", housing: "page" },
-      protocol: { label: "Add protocol", housing: "section" },
-      goal: { label: "Add goal", housing: "section" },
-      routine: { label: "Add routine", housing: "section" },
-      equipment: { label: "Add equipment", housing: "section" },
-      supplement: { label: "Add supplement", housing: "section" },
+      "training-activity": { label: "Add activity", housing: ["page"] },
+      protocol: { label: "Add protocol", housing: ["section"] },
+      goal: { label: "Add goal", housing: ["section"] },
+      routine: { label: "Add routine", housing: ["section"] },
+      equipment: { label: "Add equipment", housing: ["section"] },
+      supplement: { label: "Add supplement", housing: ["section"] },
     });
 
     const accepts = (_declaration: CreateActionDeclaration) => undefined;

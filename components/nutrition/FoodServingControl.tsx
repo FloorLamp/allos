@@ -29,8 +29,8 @@ import RollingNumber from "@/components/RollingNumber";
 // out of the primitive: no control box at all (this renders a fragment into the row's own
 // flex), an asymmetric pair rather than one button style (a ghost minus beside the page's
 // primary brand-filled chip, which also carries the settle animation), tabler glyphs
-// rather than the primitive's text pair, `h-8` round with `.tap-target` rather than
-// `h-11`/`sm:h-9 w-7`, and a minus that is ABSENT below one rather than disabled. Adopting
+// rather than the primitive's text pair, `--control-box` round with `.tap-target` rather
+// than `h-11`/`sm:h-9 w-7`, and a minus that is ABSENT below one rather than disabled. Adopting
 // it would need a variant or mode prop, which is the outcome #4542 rules out by name.
 // `ProteinQuickAdd` is the same shape with a per-tap magnitude field in place of the
 // reading; `RpeStepper` is a real stepper still waiting on #4505.
@@ -64,7 +64,7 @@ export default function FoodServingControl({
           data-testid={`undo-${slug}`}
           aria-label={`Remove a ${name} serving from ${slot}`}
           onClick={() => onBump(-1)}
-          className="tap-target flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 dark:hover:bg-ink-800"
+          className="tap-target flex h-(--control-box) w-(--control-box) items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 dark:hover:bg-ink-800"
         >
           <IconMinus className="h-4 w-4" stroke={2} />
         </button>
@@ -84,7 +84,7 @@ export default function FoodServingControl({
         data-testid={`log-${slug}`}
         aria-label={`Add a ${name} serving to ${slot}`}
         onClick={() => onBump(1)}
-        className="group tap-target flex h-8 w-8 items-center justify-center rounded-full text-white"
+        className="group tap-target flex h-(--control-box) w-(--control-box) items-center justify-center rounded-full text-white"
       >
         {/* The full-size painted chip inside carries the one-shot settle class. It is
             still the tapped chip people see, while the button keeps focus and its 44px

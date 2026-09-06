@@ -3,7 +3,10 @@
 import { useState } from "react";
 import { IconPlus, IconX } from "@tabler/icons-react";
 import { PageHeader } from "@/components/ui";
-import { useCreateActionLabel } from "@/components/CreateAction";
+import {
+  CREATE_ACTIONS,
+  useCreateActionLabel,
+} from "@/components/CreateAction";
 import IntakeItemForm from "@/components/IntakeItemForm";
 import type { InteractionItem } from "@/lib/drug-interactions";
 import type { PgxVariantInput } from "@/lib/pgx";
@@ -105,7 +108,7 @@ export default function MedicationAddWorkspace({
         >
           <div>
             <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">
-              Add medication
+              {CREATE_ACTIONS.medication.label}
             </h2>
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
               Start with the name — everything else is a tap away.

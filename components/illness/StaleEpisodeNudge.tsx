@@ -52,7 +52,7 @@ export default function StaleEpisodeNudge({
           episode as of {lastActivityDate}?
         </span>
       </p>
-      <div className="mt-2 flex flex-wrap gap-2">
+      <div className="mt-2 flex flex-wrap gap-2 pointer-coarse:gap-3.5">
         <EndEpisodeReconcile
           episodeId={episodeId}
           profileId={profileId}
@@ -78,7 +78,7 @@ export default function StaleEpisodeNudge({
               toast("Keeping the episode open.");
             })
           }
-          className="badge cursor-pointer border border-black/10 bg-transparent text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-white/15 dark:text-slate-300 dark:hover:bg-ink-850"
+          className="btn-ghost"
         >
           Keep open
         </button>

@@ -37,8 +37,8 @@ export interface FrequencyTargetProgress {
   // At/above the ceiling (per_week_max != null && count >= per_week_max). Silences the
   // nudge and flips the surfaces to the calm plenty state (#1259).
   atCeiling: boolean;
-  // Paced status (#748 item 3): "met" once complete, "on-pace" while keeping up with the
-  // share of the week elapsed, else "behind". Computed once here so every surface agrees.
+  // Paced status (#748 item 3; the quiet state, #5395): frequencyPace's verdict,
+  // computed once here so every surface agrees.
   pace: FrequencyPace;
   // On-days remaining in the profile's week window AFTER today (0..6) — the same window
   // `pace` is computed against, carried so a surface can ask "is this still reachable

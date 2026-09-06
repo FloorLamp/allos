@@ -46,7 +46,7 @@ import {
   type WindowDose,
 } from "./intake-format";
 import { preWorkoutSlotMinute } from "./schedule";
-import { offerCallback } from "./callback-data";
+import { offerCallback } from "./offer-tokens";
 import { mintOffer, readOfferRow } from "./offer-store";
 import { isDoseDateAccepted } from "../dose-log-window";
 import type { NotificationMessage } from "./types";

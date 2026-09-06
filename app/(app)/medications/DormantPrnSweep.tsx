@@ -136,7 +136,7 @@ export default function DormantPrnSweep({
                     disabled={busyId != null}
                     aria-label={`Dismiss ${s.name}`}
                     data-testid="dormant-prn-dismiss"
-                    className="tap-target flex h-8 w-8 items-center justify-center rounded-sm text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-ink-750 dark:hover:text-slate-200"
+                    className="tap-target flex h-(--control-box) w-(--control-box) items-center justify-center rounded-sm text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-ink-750 dark:hover:text-slate-200"
                   >
                     <IconX className="h-4 w-4" />
                   </button>
@@ -149,7 +149,7 @@ export default function DormantPrnSweep({
 
       {dismissed.length > 0 && (
         <Disclosure className="mt-2" data-testid="dormant-prn-dismissed">
-          <summary className="cursor-pointer section-label hover:underline">
+          <summary className="fold-control section-label hover:underline">
             Dismissed ({dismissed.length})
           </summary>
           <div className="mt-2 space-y-2">

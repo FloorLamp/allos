@@ -270,6 +270,9 @@ export function repeatSessionFill(
         s.duration_sec_right != null ? formatSeconds(s.duration_sec_right) : "",
       warmup: !!s.warmup,
       rpe: null as number | null,
+      // What a fill maps is a RECORD; the caller decides whether it lands as one or as
+      // this session's plan (`asPlan`, #5373).
+      plan: null,
     }));
   return { sets: out, perSide };
 }
@@ -287,7 +290,22 @@ export interface SetEntry {
   // a number (not a text field) — the set row edits it through a stepper, and the
   // save boundary canonicalizes it (lib/rpe.ts).
   rpe: number | null;
+  // Client-only (#5373): what this row OFFERS while nobody has confirmed it. A planned
+  // row's numbers live HERE and its fields stay blank, so the grid paints them as
+  // placeholders and typing into one starts from empty rather than landing on top of a
+  // value nobody asked for (#1971) — which is also why the plan cannot simply be the
+  // fields plus a flag.
+  //
+  // `null` is the whole answer to "is this a record": confirming or correcting a row
+  // moves the plan into the fields and clears it, so the two can never disagree, and
+  // the payload, the totals and the judgement all read `setDone`. Never saved — the
+  // stored shape is unchanged, and every stored set opens as a record.
+  plan: SetPlan | null;
 }
+
+// The numbers a planned row offers. Exactly the value half of a set: warmup and RPE
+// are what the person says about a row they did, never part of a prescription.
+export type SetPlan = Omit<SetEntry, "warmup" | "rpe" | "plan">;
 export interface PartEntry {
   name: string;
   // Free-text activity the user explicitly committed via the combobox's
@@ -308,11 +326,30 @@ export interface PartEntry {
   // signal compares actual reps against this instead of rep variance.
   targetReps: string;
   toFailure: boolean;
+  // Client-only (#5371): the set grid states this exercise's weight per set — a
+  // "Vary" tap, or the loads differing — and stays that way. Never saved: the
+  // entry carries it only so it travels with the exercise through a reorder or a
+  // removal above it, where an editor keyed by slot would hand it to the next one.
+  varied: boolean;
 }
 
 // What the editor can reconstruct of a stored exercise: everything in
-// PartEntry except the cardio-only fields.
-export type EditedPart = Omit<PartEntry, "distance" | "durationMin">;
+// PartEntry except the cardio-only fields and its own client-only state.
+export type EditedPart = Omit<PartEntry, "distance" | "durationMin" | "varied">;
+
+// THE PARTS AS THE SERVER WOULD SEE THEM (#5442) — the auto-save signature's view.
+// `varied` (#5371) and a set's `plan` (#5373) are PRESENTATIONAL: they decide how the
+// grid renders, and `buildActivityPayload` cannot express either. Left in the
+// signature they make a change out of a tap that changes no data, and the update path
+// then rewrites `updated_at` and — on a row an integration owns — sets `edited = 1`
+// permanently, so a re-ingest stops correcting it. Being out of the PAYLOAD is not the
+// same as being out of what COUNTS as a change; a client-only field needs both, and a
+// third one arriving is meant to be added here.
+export const savedShapeOfParts = (parts: PartEntry[]) =>
+  parts.map(({ varied: _varied, sets, ...p }) => ({
+    ...p,
+    sets: sets.map(({ plan: _plan, ...s }) => s),
+  }));
 
 export const todayStr = (tz: string) => dateStrInTz(tz);
 // Runs on every render (the "now" shortcut's visibility check), so use the
@@ -334,7 +371,49 @@ export const blankSet = (): SetEntry => ({
   durationRight: "",
   warmup: false,
   rpe: null,
+  // A fresh row is a plan with nothing to offer: an exercise with no history states no
+  // prescription, and its one empty row is the plan (#5373).
+  plan: BLANK_PLAN,
 });
+const BLANK_PLAN: SetPlan = {
+  weight: "",
+  reps: "",
+  weightRight: "",
+  repsRight: "",
+  duration: "",
+  durationRight: "",
+};
+// The same row OFFERED rather than recorded (#5373): its numbers move into the plan and
+// its fields go blank. Every plan source runs through this — the coached prescription
+// and the Recent panel's session repeat alike — so a ghost can never be minted two ways.
+export const asPlan = (s: SetEntry): SetEntry => ({
+  ...blankSet(),
+  warmup: s.warmup,
+  plan: {
+    weight: s.weight,
+    reps: s.reps,
+    weightRight: s.weightRight,
+    repsRight: s.repsRight,
+    duration: s.duration,
+    durationRight: s.durationRight,
+  },
+});
+// Confirming a planned row: the person's own numbers where they typed any — the
+// exercise-level load, a corrected rep count — and the plan's where they did not.
+// Clearing `plan` is what makes it a record, and it is the ONE patch every gesture that
+// confirms a set sends, so the confirm control and a correction cannot drift apart.
+export const confirmSet = (s: SetEntry): Partial<SetEntry> =>
+  s.plan
+    ? {
+        weight: s.weight || s.plan.weight,
+        reps: s.reps || s.plan.reps,
+        weightRight: s.weightRight || s.plan.weightRight,
+        repsRight: s.repsRight || s.plan.repsRight,
+        duration: s.duration || s.plan.duration,
+        durationRight: s.durationRight || s.plan.durationRight,
+        plan: null,
+      }
+    : {};
 export const blankPart = (): PartEntry => ({
   name: "",
   custom: false,
@@ -346,7 +425,28 @@ export const blankPart = (): PartEntry => ({
   durationMin: "",
   targetReps: "",
   toFailure: false,
+  varied: false,
 });
+
+// The load a row STATES: what was typed into it, else what it still offers (#5373).
+// A plan of `125 × 12, 120 × 10` is a varying grid before a single row is confirmed,
+// so the question has to be asked of what the person is reading.
+const shownLoad = (s: SetEntry, side: "weight" | "weightRight") =>
+  s[side] || s.plan?.[side] || "";
+// One load across every set — both sides of it, for a per-side lift — which the set
+// grid states once, above the rows (#5371).
+export const sharesLoad = (p: Pick<PartEntry, "sets" | "perSide">) =>
+  p.sets.every(
+    (s) =>
+      shownLoad(s, "weight") === shownLoad(p.sets[0], "weight") &&
+      (!p.perSide ||
+        shownLoad(s, "weightRight") === shownLoad(p.sets[0], "weightRight"))
+  );
+// Sets that arrive or are filled at differing loads keep their own weights from then
+// on; every writer that puts values into a part's sets says so here, so the grid's
+// render never has to write state to remember what it showed.
+export const latchVaried = (p: PartEntry): PartEntry =>
+  p.varied || sharesLoad(p) ? p : { ...p, varied: true };
 
 // Text a person actually entered into a draft, as opposed to what the form
 // derived for them or what they merely tapped (#5111). The close guard asks
@@ -442,6 +542,9 @@ export function groupEditSets(
         s.duration_sec_right != null ? formatSeconds(s.duration_sec_right) : "",
       warmup: !!s.warmup,
       rpe: s.rpe ?? null,
+      // A stored set is a record, so an edit opens every set done (#5373) — nothing
+      // the person already logged is offered back to them as a plan.
+      plan: null,
     });
   }
   return byName;
@@ -474,7 +577,7 @@ export function initialPartsFromSeed(
         // Spread the reconstructed part wholesale (keeping the component's
         // casing for the name) so new EditedPart fields can't be missed.
         return g
-          ? { ...blankPart(), ...g, name: c.name }
+          ? latchVaried({ ...blankPart(), ...g, name: c.name })
           : { ...blankPart(), name: c.name };
       }
       // Any non-curated cardio/sport name is a custom activity: load it
@@ -496,10 +599,9 @@ export function initialPartsFromSeed(
   }
   if (seed.type === "strength") {
     const g = groupEditSets(seed.sets, units.weightUnit);
-    return (g.length ? g : [blankPart()]).map((e) => ({
-      ...blankPart(),
-      ...e,
-    }));
+    return (g.length ? g : [blankPart()]).map((e) =>
+      latchVaried({ ...blankPart(), ...e })
+    );
   }
   // Legacy cardio/sport rows (no components): the part name is derived
   // from the freeform title (see legacyActivityName); a non-curated one
@@ -538,6 +640,15 @@ export const setPartial = (name: string, set: SetEntry, perSide: boolean) =>
   (perSide &&
     sidePartial(name, set.weightRight, set.repsRight, set.durationRight));
 
+// THE SETS THAT ARE A RECORD (#5373). Every set arrives as a plan; a confirmed one is
+// what happened. So everything that asks what this part DID — the payload, the volume
+// total, the target judgement, the compact sentence, the save gate — asks THIS, and a
+// planned row answers none of them however filled its fields look. `setComplete` keeps
+// its own meaning (a row whose fields make a set); the two questions are different and
+// the payload needs both.
+export const setDone = (s: SetEntry) => s.plan === null;
+export const doneSets = (p: Pick<PartEntry, "sets">) => p.sets.filter(setDone);
+
 // ---- The compact set notation (#3336) ----
 
 // How many sets a run has to be before stating it as one sentence beats reading the
@@ -574,9 +685,12 @@ export const MIN_COMPACT_SETS = 2;
  * so a part whose sets differ only in effort still compresses, and says so.
  */
 export function partSetsSummary(p: PartEntry, unit: WeightUnit): string | null {
-  if (p.sets.length < MIN_COMPACT_SETS) return null;
-  const first = p.sets[0];
-  const uniform = p.sets.every(
+  // Over the RECORD, never the plan (#5373): three ghost rows are an offer, and a
+  // sentence stating them would announce work nobody has done yet.
+  const done = doneSets(p);
+  if (done.length < MIN_COMPACT_SETS) return null;
+  const first = done[0];
+  const uniform = done.every(
     (s) =>
       !s.warmup &&
       s.weight === first.weight &&
@@ -602,7 +716,7 @@ export function partSetsSummary(p: PartEntry, unit: WeightUnit): string | null {
   if (!complete) return null;
 
   const timed = isTimed(p.name);
-  const rows: SetRow[] = p.sets.map((s, i) => ({
+  const rows: SetRow[] = done.map((s, i) => ({
     set_number: i + 1,
     weight_kg: s.weight ? toKg(Number(s.weight), unit) : null,
     reps: timed ? null : s.reps ? Number(s.reps) : null,
@@ -618,10 +732,11 @@ export function partSetsSummary(p: PartEntry, unit: WeightUnit): string | null {
   return summarizeExercise(rows, unit).text;
 }
 
-// Working-set volume (weight × reps, summed across sets and both sides).
-// Warmups are excluded (#338) — they're not working volume.
+// Working-set volume (weight × reps, summed across sets and both sides) over the sets
+// the person confirmed (#5373). Warmups are excluded (#338) — they're not working
+// volume.
 export function partTotal(p: PartEntry): number {
-  return p.sets.reduce((sum, s) => {
+  return doneSets(p).reduce((sum, s) => {
     if (s.warmup) return sum;
     let v = (Number(s.weight) || 0) * (Number(s.reps) || 0);
     if (p.perSide)

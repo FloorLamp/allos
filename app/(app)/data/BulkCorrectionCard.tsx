@@ -185,7 +185,7 @@ export default function BulkCorrectionCard({
       open={initialField != null}
     >
       <summary
-        className="flex cursor-pointer list-none items-center gap-2"
+        className="fold-control flex list-none items-center gap-2"
         data-testid="bulk-correction-toggle"
       >
         <IconAdjustments className="h-5 w-5 text-brand-600 dark:text-brand-400" stroke={1.75} />

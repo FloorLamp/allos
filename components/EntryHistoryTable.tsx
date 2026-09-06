@@ -252,7 +252,7 @@ export default function EntryHistoryTable<T extends { id: number }>({
                     <Td slot="toggle" className={`px-2 py-2 ${CARD_MODE_ONLY}`}>
                       <button
                         type="button"
-                        className="tap-target flex h-8 w-8 items-center justify-center rounded-full text-slate-500 dark:text-slate-400"
+                        className="tap-target flex h-(--control-box) w-(--control-box) items-center justify-center rounded-full text-slate-500 dark:text-slate-400"
                         aria-expanded={detailId === item.id}
                         aria-label={
                           detailId === item.id ? "Hide details" : "Show details"

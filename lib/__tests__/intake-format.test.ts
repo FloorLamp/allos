@@ -8,7 +8,7 @@ import {
   type StackOfferToken,
   type WindowDose,
 } from "../notifications/intake-format";
-import { offerCallback } from "../notifications/callback-data";
+import { offerCallback } from "../notifications/offer-tokens";
 import { renderPostWorkoutFinishMessage } from "../notifications/workout-presence";
 import type { IntakeItemKind } from "../types";
 import type { AdherenceSummary } from "../intake-adherence";

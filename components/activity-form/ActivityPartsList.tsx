@@ -211,7 +211,11 @@ export default function ActivityPartsList({
   onRemovePart: (pi: number) => void;
   onAddPart: () => void;
   onUpdatePart: (pi: number, patch: Partial<PartEntry>) => void;
-  onUpdateSet: (pi: number, si: number, patch: Partial<SetEntry>) => void;
+  onUpdateSet: (
+    pi: number,
+    si: number | "all",
+    patch: Partial<SetEntry>
+  ) => void;
   onAddSet: (pi: number) => void;
   onRemoveSet: (pi: number, si: number) => void;
   onUpdatePartName: (

@@ -20,16 +20,19 @@ import {
   partIntent,
   initialPartsFromSeed,
   repeatSessionFill,
-  setComplete,
-  setPartial,
+  latchVaried,
+  asPlan,
+  setDone,
 } from "@/lib/activity-form-model";
 
 // Which set's weight field the plate builder is targeting, if open. `seed`
 // (display-unit weight) pre-loads the builder from the coached suggestion instead
-// of the field's current value (#335); omitted for a plain icon tap.
+// of the field's current value (#335); omitted for a plain icon tap. `"all"` is the
+// exercise-level weight (#5371): while every set shares one load the builder is
+// seeded from it and its result lands on every set, so the grid stays shared.
 export interface PlateTarget {
   pi: number;
-  si: number;
+  si: number | "all";
   field: "weight" | "weightRight";
   seed?: number;
 }
@@ -78,8 +81,10 @@ export function useActivityParts({
   // Type-scoped protocol creates keep their requested cardio/sport type as the
   // fallback for a newly committed free-text name whose type cannot be inferred.
   defaultCustomType: "cardio" | "sport" | null;
-  // Fires when a set is "checked off" (a new set added) — the parent starts the
-  // live-mode rest timer off this (#340).
+  // Fires when a set is CHECKED OFF — confirmed, by its confirm control or by a
+  // correction to its numbers (#5373). The parent starts the live-mode rest timer and
+  // its haptic off this (#340); before #5373 the implicit gesture was adding the next
+  // row, which fired whether or not the previous set had happened.
   onSetCheckedOff: () => void;
 }): {
   parts: PartEntry[];
@@ -90,7 +95,7 @@ export function useActivityParts({
   updatePartName: (i: number, name: string, extra?: Partial<PartEntry>) => void;
   typePartName: (i: number, v: string) => void;
   pickPartName: (i: number, rawName: string) => void;
-  updateSet: (pi: number, si: number, patch: Partial<SetEntry>) => void;
+  updateSet: (pi: number, si: number | "all", patch: Partial<SetEntry>) => void;
   addSet: (pi: number) => void;
   movePart: (i: number, dir: -1 | 1) => void;
   removeSet: (pi: number, si: number) => void;
@@ -224,44 +229,52 @@ export function useActivityParts({
       perSide: false,
     });
   }
-  function updateSet(pi: number, si: number, patch: Partial<SetEntry>) {
+  // Patch one set, or every set at once — the exercise-level weight (#5371) is one
+  // load stated for the whole grid, so it writes through the same door as a row.
+  //
+  // AND CONFIRMING IS A PATCH LIKE ANY OTHER (#5373). A set row's own controls send
+  // `confirmSet`'s patch with whatever they changed, and the confirm control sends it
+  // alone — so "correcting is confirming" needs no second writer and cannot drift from
+  // the tap. Turning a PLANNED set into a record is the check-off gesture (#340), fired
+  // here rather than by each control that can confirm, so it happens exactly once per
+  // set however the person got there.
+  function updateSet(pi: number, si: number | "all", patch: Partial<SetEntry>) {
+    if (
+      patch.plan === null &&
+      parts[pi]?.sets.some((s, j) => (si === "all" || j === si) && !setDone(s))
+    )
+      onSetCheckedOff();
     setParts((prev) =>
       prev.map((p, idx) =>
         idx === pi
           ? {
               ...p,
-              sets: p.sets.map((s, j) => (j === si ? { ...s, ...patch } : s)),
+              sets: p.sets.map((s, j) =>
+                si === "all" || j === si ? { ...s, ...patch } : s
+              ),
             }
           : p
       )
     );
   }
+  // Append a further set as a PLAN copied from the last one the person confirmed
+  // (#5373) — the rows already carry the prescription, so this is the fourth set you
+  // decided to do while standing there. It no longer stands in for the check-off:
+  // confirming a set is its own gesture now, and firing the rest timer here as well
+  // would start it twice for one set.
   function addSet(pi: number) {
-    // Adding the next set is the "checked off the previous set" gesture — in live
-    // mode that's when the rest timer starts (issue #340).
-    onSetCheckedOff();
     setParts((prev) =>
       prev.map((p, idx) => {
         if (idx !== pi) return p;
-        const last = p.sets[p.sets.length - 1];
+        const last = [...p.sets].reverse().find(setDone);
         return {
           ...p,
           sets: [
             ...p.sets,
-            {
-              weight: last?.weight ?? "",
-              reps: last?.reps ?? "",
-              weightRight: last?.weightRight ?? "",
-              repsRight: last?.repsRight ?? "",
-              duration: last?.duration ?? "",
-              durationRight: last?.durationRight ?? "",
-              // A new set is a working set by default — never inherit the
-              // previous row's warmup flag (#338).
-              warmup: false,
-              // RPE is logged per set, never carried forward (#743) — blank by
-              // default, so the next set starts unrated.
-              rpe: null,
-            },
+            // A new set is a working set by default — never inherit the previous row's
+            // warmup flag (#338) — and its RPE is blank, because RPE is logged per set
+            // and never carried forward (#743).
+            asPlan({ ...(last ?? blankSet()), warmup: false, rpe: null }),
           ],
         };
       })
@@ -300,10 +313,12 @@ export function useActivityParts({
   //
   // A session repeat replaces the part's sets outright and adopts the source's
   // side-tracking — the explicit gesture is gated on a pristine part in the set
-  // editor, so it can never clobber entry in progress (#923).
+  // editor, so it can never clobber entry in progress (#923). It replaces the GHOSTS
+  // (#5373): a prior session is another way to state this session's plan, and each
+  // row still waits to be confirmed.
   //
-  // A coached set fills the last row while that row is still UNTOUCHED (nothing
-  // counted, nothing half-entered), else arrives as a new set. It leaves the landing
+  // A coached set fills the last row while that row is still UNCONFIRMED, else
+  // arrives as a new set. It leaves the landing
   // row's warmup flag and RPE alone: those are what the person said about the row,
   // not what the suggestion says about the load. When the suggestion progresses a
   // declared rep target, adopt it as the exercise's intent — unless the user already
@@ -318,7 +333,9 @@ export function useActivityParts({
     if (fill.source === "session") {
       setParts((prev) =>
         prev.map((part, idx) =>
-          idx === pi ? { ...part, sets, perSide } : part
+          idx === pi
+            ? latchVaried({ ...part, sets: sets.map(asPlan), perSide })
+            : part
         )
       );
       return;
@@ -327,18 +344,22 @@ export function useActivityParts({
     setParts((prev) =>
       prev.map((part, idx) => {
         if (idx !== pi) return part;
-        const li = part.sets.length - 1;
-        const last = part.sets[li];
-        const untouched =
-          !!last &&
-          !setComplete(part.name, last, part.perSide) &&
-          !setPartial(part.name, last, part.perSide);
+        // The NEXT row still on offer — the set the person is about to do. It used to
+        // be the last row, because a pristine part had exactly one; with the whole
+        // prescription on the grid (#5373) the last row is the third set, and landing
+        // a coached set there would answer a question nobody asked. A part whose every
+        // row is a record has none, and the set arrives as a new one.
+        const li = part.sets.findIndex((s) => !setDone(s));
+        const untouched = li >= 0;
+        // The Use tap is #335's explicit single-set write, so the set it lands is a
+        // RECORD (#5373) — unlike the Recent panel's session repeat, which replaces
+        // the ghosts and leaves the person to confirm each row.
         const land = (row: SetEntry): SetEntry => ({
           ...values,
           warmup: row.warmup,
           rpe: row.rpe,
         });
-        return {
+        return latchVaried({
           ...part,
           sets: untouched
             ? part.sets.map((s, j) => (j === li ? land(s) : s))
@@ -350,7 +371,7 @@ export function useActivityParts({
             !part.toFailure
               ? String(targetReps)
               : part.targetReps,
-        };
+        });
       })
     );
   }
