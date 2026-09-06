@@ -22,7 +22,8 @@ import {
   type SetEntry,
 } from "@/lib/activity-form-model";
 
-// THE TWO SEAMS #5377 BUILT, at the tier where they are cheap to ask about.
+// THE TWO SEAMS #5377 BUILT, and the shared load #5371 stated over them, at the tier
+// where they are cheap to ask about.
 //
 // Neither had a test of any kind before this file: the strength editor's fill paths
 // and its per-side rows were reached only through e2e, which drives the LEFT side and
@@ -194,8 +195,12 @@ function Harness({ initial }: { initial: PartEntry }) {
   });
   const { setParts } = h;
   useEffect(() => setParts([initial]), [initial, setParts]);
-  latest = h.parts;
-  latestFill = (fill) => h.fillSets(0, fill);
+  // Published after each commit, so a test reads the state a tap produced rather
+  // than a mocked callback's arguments.
+  useEffect(() => {
+    latest = h.parts;
+    latestFill = (fill) => h.fillSets(0, fill);
+  });
   return (
     <StrengthSets
       part={h.parts[0]}
