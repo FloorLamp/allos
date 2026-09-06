@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { IconPlus, IconX } from "@tabler/icons-react";
 import Button from "@/components/Button";
 import Combobox from "@/components/Combobox";
 import SubmitButton from "@/components/SubmitButton";
 import NotesText from "@/components/NotesText";
+import { trainingEventPageHref } from "@/lib/hrefs";
 import {
   createEndurancePlan,
   setEndurancePlanStatus,
@@ -100,12 +102,15 @@ export default function EndurancePlanBar({
                 <span className="shrink-0 rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-700 dark:bg-sky-500/15 dark:text-sky-300">
                   {p.badge}
                 </span>
-                <span
-                  className="font-medium text-slate-800 dark:text-slate-100"
+                {/* The title opens the event's page (#3285 item 2): the plan, its
+                    day and its linked result. */}
+                <Link
+                  href={trainingEventPageHref(p.id)}
+                  className="font-medium text-slate-800 hover:underline dark:text-slate-100"
                   data-testid="endurance-plan-title"
                 >
                   {p.title}
-                </span>
+                </Link>
                 <span className="text-xs text-slate-500 dark:text-slate-400">
                   {p.eventDate} ·{" "}
                   {p.weeksToEvent <= 0

@@ -753,6 +753,11 @@ export function seedEndurancePlans(): void {
     [6, 10, "long run"],
     [4, 6, null],
     [1, 8, null], // this week so far
+    // Race day is TODAY (#3285 item 2): an event dated today lists this run on
+    // its page, and the spec links it as the result. Labelled the way Strava
+    // labels a race, so the row reads as one on the page; no plan exists at seed
+    // time, so nothing auto-links.
+    [0, 10, "race"],
   ] as const) {
     db.prepare(
       `INSERT INTO activities (profile_id, date, type, title, distance_km, workout_type)

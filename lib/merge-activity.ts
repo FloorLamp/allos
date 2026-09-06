@@ -11,6 +11,7 @@
 // mis-merge can be undone from a toast (issue #64 / #30).
 
 import { db } from "./db";
+import { eventLinkDecisionSeq } from "./endurance-plan";
 import {
   keeperFoldState,
   type KeeperFoldState,
@@ -272,6 +273,15 @@ export function writeActivityFold(
 // Write a computed KeeperFoldState onto the keeper row. The ONE statement that moves
 // the keeper's fold columns, shared by the fold and its undo (#1884) so the two can
 // never drift apart on which columns a merge owns. Profile-scoped.
+//
+// `endurance_link_decided_seq` travels WITH the link it belongs to (#3285 item 2):
+// the fold keeps the newest decision in the cluster and writes that decision's own
+// ordinal, so the pair the keeper ends up with is one a person actually made. It is
+// written exactly rather than raised to a max — a max would leave the row claiming a
+// decision ordinal whose link had been undone, freezing a session out of the
+// auto-link on account of a decision made about a different row. Nothing here can
+// lose a decision instead: the fold only ever takes the NEWEST of the cluster's own
+// rows, and the undo below keeps a decision made after the merge.
 function writeKeeperFoldState(
   profileId: number,
   keeperId: number,
@@ -286,7 +296,8 @@ function writeKeeperFoldState(
             max_speed_kmh = ?, relative_effort = ?, avg_power_w = ?,
             max_power_w = ?, weighted_avg_power_w = ?, avg_cadence = ?,
             avg_temp_c = ?, kilojoules = ?, workout_type = ?,
-            equipment_id = ?,
+            equipment_id = ?, endurance_plan_id = ?,
+            endurance_link_decided_seq = ?,
             edited = ?
       WHERE id = ? AND profile_id = ?`
   ).run(
@@ -311,6 +322,8 @@ function writeKeeperFoldState(
     f.kilojoules ?? null,
     f.workout_type ?? null,
     state.equipmentId,
+    state.endurancePlanId,
+    state.enduranceLinkDecidedSeq,
     state.edited,
     keeperId,
     profileId
@@ -332,6 +345,11 @@ export function snapshotKeeperFold(
   // Session-level equipment link (#342): captured alongside the fold fields so undo
   // restores the keeper's pre-fold gear, undoing any gap-fill the merge applied.
   snap.equipment_id = keep.equipment_id ?? null;
+  // The event link (#3285 item 2): same reason, same shape. Its decision ordinal
+  // rides along so the re-fold sees the keeper's own pre-merge decision, and can tell
+  // it apart from one made after the merge.
+  snap.endurance_plan_id = keep.endurance_plan_id ?? null;
+  snap.endurance_link_decided_seq = keep.endurance_link_decided_seq ?? 0;
   return snap;
 }
 
@@ -494,6 +512,55 @@ export function revertActivityMerge(
       .get(state.equipmentId, profileId)
   )
     state.equipmentId = null;
+  // A decision made AFTER the merge is the person's latest word on this session and it
+  // outlives the undo, WHICHEVER WAY IT WENT: putting the keeper's pre-merge columns
+  // back must not hand back a link they have since removed, and must not remove a link
+  // they have since made. An attach and a detach are the same kind of decision here.
+  //
+  // "After the merge" is a question the decision ordinals answer exactly (#3285 item
+  // 2): every row this undo can speak for — the keeper's pre-merge snapshot, the drops
+  // still folded in (both already in `state`), and the drop coming back — carries the
+  // ordinal it had when the merge ran. A live keeper ordinal NEWER than all of them
+  // can only have come from a hand move made since. Anything not newer came IN with
+  // the merge and belongs to the row that made it, which is carrying it back.
+  const liveKeeper = db
+    .prepare(
+      `SELECT endurance_plan_id, endurance_link_decided_seq FROM activities
+        WHERE id = ? AND profile_id = ?`
+    )
+    .get(merge.keeperId, profileId) as
+    | {
+        endurance_plan_id: number | null;
+        endurance_link_decided_seq: number | null;
+      }
+    | undefined;
+  const restoredSeq = eventLinkDecisionSeq(
+    (
+      db
+        .prepare(
+          `SELECT endurance_link_decided_seq AS seq FROM activities
+            WHERE id = ? AND profile_id = ?`
+        )
+        .get(newDropId, profileId) as { seq: number | null } | undefined
+    )?.seq
+  );
+  const liveSeq = eventLinkDecisionSeq(liveKeeper?.endurance_link_decided_seq);
+  if (
+    liveKeeper &&
+    liveSeq > Math.max(state.enduranceLinkDecidedSeq, restoredSeq)
+  ) {
+    state.endurancePlanId = liveKeeper.endurance_plan_id;
+    state.enduranceLinkDecidedSeq = liveSeq;
+  }
+  // The event link is the same class: deleteEndurancePlanCore unlinks only LIVE
+  // activities, so a captured snapshot can still name a deleted event.
+  if (
+    state.endurancePlanId != null &&
+    !db
+      .prepare("SELECT 1 FROM endurance_plans WHERE id = ? AND profile_id = ?")
+      .get(state.endurancePlanId, profileId)
+  )
+    state.endurancePlanId = null;
   writeKeeperFoldState(profileId, merge.keeperId, state);
 
   // 3. Clear the recorded 'merged' decision so the un-merged pair re-detects (#200).
