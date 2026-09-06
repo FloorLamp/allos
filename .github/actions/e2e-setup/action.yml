@@ -1,7 +1,7 @@
 # Shared setup for every Playwright job: Node + node_modules + Chromium + the
-# production Next build. Extracted so ci.yml's sharded e2e matrix, its
-# changed-spec lane, and the on-demand full-suite workflow (e2e-full.yml) can't
-# drift apart. Checkout stays in the calling job (fetch-depth differs per job).
+# production Next build, shared by the PR matrix, main detector, and
+# weekly/on-demand full-suite workflow (e2e-full.yml). Checkout stays in the
+# calling job (fetch-depth differs per job).
 name: E2E setup
 description: Node, dependencies, Playwright Chromium, and the Next production build
 
@@ -107,8 +107,8 @@ runs:
     # NEXT_SKIP_TYPECHECK drops `next build`'s own `tsc` pass (see the `typescript`
     # block in next.config.js). It is REDUNDANT here, not skipped: the `check` job
     # runs `npm run typecheck` over the same tsconfig and more files, on every pull
-    # request. Without this, every Playwright job — the 8-way shard matrix, the
-    # changed-spec lane, the on-demand full suite — re-ran that identical check on
+    # request. Without this, every Playwright job — the PR shard matrix, the
+    # main detector, the on-demand full suite — re-ran that identical check on
     # the critical path, inside the per-shard floor ci.yml wants to lower. Only
     # this action sets it, so a local build and the deploy image build are
     # unchanged.
