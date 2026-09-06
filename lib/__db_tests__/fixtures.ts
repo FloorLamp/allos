@@ -273,6 +273,60 @@ type SchemaCol = {
 type SchemaFk = { from: string; table: string; to: string };
 const pragma = <T>(q: string) => db.pragma(q) as T[];
 
+// The first value a `CHECK (<col> IN ('a','b'))` admits, for a required column with no
+// precedent row to copy — the plain "x" filler is refused by those, and an empty table
+// is exactly the case a seeder is called for (#5314: preventive_overrides.kind).
+function checkedValue(table: string, column: string): string | undefined {
+  const ddl =
+    (
+      db
+        .prepare(
+          `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?`
+        )
+        .get(table) as { sql: string } | undefined
+    )?.sql ?? "";
+  const clause = new RegExp(`\\b${column}\\b\\s+IN\\s*\\(([^)]*)\\)`, "i").exec(
+    ddl
+  );
+  return clause ? /'([^']*)'/.exec(clause[1])?.[1] : undefined;
+}
+
+// A row of the FK's parent table that BELONGS TO this profile. Directly, when the
+// parent carries profile_id; otherwise through the parent's OWN owned parent — a
+// grandchild table (intake_dose_schedule_versions → intake_item_doses →
+// intake_items) reaches the profile two hops up, and picking any parent row put the
+// seeded grandchild under whichever profile happened to be first, so the dataset
+// scoped it back out and the row was invisible to the guard it was seeded for
+// (#5314). Where no hop reaches profile_id the table is global and any row will do.
+function parentRow(
+  fk: SchemaFk,
+  profileId: number
+): { id: number } | undefined {
+  const has = (table: string) =>
+    pragma<SchemaCol>(`table_info(${table})`).some(
+      (c) => c.name === "profile_id"
+    );
+  if (has(fk.table))
+    return db
+      .prepare(
+        `SELECT ${fk.to} AS id FROM ${fk.table} WHERE profile_id = ? LIMIT 1`
+      )
+      .get(profileId) as { id: number } | undefined;
+  const up = pragma<SchemaFk>(`foreign_key_list(${fk.table})`).find((g) =>
+    has(g.table)
+  );
+  if (up)
+    return db
+      .prepare(
+        `SELECT p.${fk.to} AS id FROM ${fk.table} p
+           JOIN ${up.table} g ON g.${up.to} = p.${up.from}
+          WHERE g.profile_id = ? LIMIT 1`
+      )
+      .get(profileId) as { id: number } | undefined;
+  return db.prepare(`SELECT ${fk.to} AS id FROM ${fk.table} LIMIT 1`).get() as
+    { id: number } | undefined;
+}
+
 export function seedSchemaRow(
   table: string,
   values: Record<string, unknown>,
@@ -293,14 +347,7 @@ export function seedSchemaRow(
     const required = c.notnull === 1 && c.dflt_value === null;
     const fk = fks.get(c.name);
     if (fk) {
-      const scoped = pragma<SchemaCol>(`table_info(${fk.table})`).some(
-        (p) => p.name === "profile_id"
-      );
-      const parent = db
-        .prepare(
-          `SELECT ${fk.to} AS id FROM ${fk.table} ${scoped ? "WHERE profile_id = ?" : ""} LIMIT 1`
-        )
-        .get(...(scoped ? [profileId] : [])) as { id: number } | undefined;
+      const parent = parentRow(fk, profileId);
       if (parent) row.set(c.name, parent.id);
       else if (required)
         throw new Error(`${table}.${c.name}: no ${fk.table} row to point at`);
@@ -314,7 +361,9 @@ export function seedSchemaRow(
       .get() as { v: unknown } | undefined;
     row.set(
       c.name,
-      seen?.v ?? (/INT|REAL|NUM|DOUB|FLOA/i.test(c.type) ? 1 : "x")
+      seen?.v ??
+        checkedValue(table, c.name) ??
+        (/INT|REAL|NUM|DOUB|FLOA/i.test(c.type) ? 1 : "x")
     );
   }
   const names = [...row.keys()];

@@ -67,7 +67,14 @@ export function relPath(file: string): string {
   return path.relative(REPO, file).split(path.sep).join("/");
 }
 
-export type SqlArg = { kind: "sql" | "expr"; text: string };
+// `composed` marks a LITERAL whose statement POSITION is an interpolation — the text
+// begins with `${…}`, so the FROM and the WHERE live in whatever that expression
+// holds and the scan can read neither. It is still `kind: "sql"` (the text is a
+// literal, and every other scan reads it as one); the flag exists so the
+// profile-scoping guard can REFUSE such a statement instead of skipping it for
+// naming no owned table, which is what it did (#5323). A `FROM ${table}` literal is
+// NOT this: the scan can still see that statement's shape and its predicates.
+export type SqlArg = { kind: "sql" | "expr"; text: string; composed?: true };
 
 // Extract the first argument of every call matching `opener` (a global RegExp that
 // ends at the call's opening paren, e.g. /\.prepare\s*\(/g or /\.exec\s*\(/g).
@@ -98,7 +105,11 @@ export function firstStringArgs(src: string, opener: RegExp): SqlArg[] {
         buf += c;
         j++;
       }
-      out.push({ kind: "sql", text: buf });
+      out.push(
+        /^\s*\$\{/.test(buf)
+          ? { kind: "sql", text: buf, composed: true }
+          : { kind: "sql", text: buf }
+      );
       re.lastIndex = j + 1;
     } else {
       // Non-literal expression argument: capture up to the matching ')'.
