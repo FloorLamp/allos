@@ -43,7 +43,7 @@ import {
   STREAM_OFFBOARD_PREFIX,
   STREAM_ONBOARD_PREFIX,
 } from "./integrations/stream-lifecycle";
-import { OFFER_ASKED_PREFIX } from "./dismissal-keys";
+import { EXERTION_SPAN_PREFIX, OFFER_ASKED_PREFIX } from "./dismissal-keys";
 
 /**
  * How a dismissal key is protected from re-attaching to a subject the user never
@@ -369,6 +369,15 @@ export const DISMISSAL_KEY_REGISTRY: readonly DismissalKeyEntry[] = [
   },
 
   // ---- anchored: a date / period / episode anchor bounds re-attachment -------
+  {
+    prefix: EXERTION_SPAN_PREFIX,
+    keyClass: "anchored",
+    shape: "`<local YYYY-MM-DDTHH:MM the effort began>` (#5113)",
+    // A detected effort IS a moment, so the anchor is the whole tail: declining the
+    // 10:40 effort can never silence tomorrow's, and there is no name in the key to
+    // recycle. Offered by the form prefill, the day chart and the Telegram ask, which
+    // is why the decline is stored ONCE here rather than per surface.
+  },
   {
     prefix: STREAM_OFFBOARD_PREFIX,
     keyClass: "anchored",

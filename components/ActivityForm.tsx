@@ -73,6 +73,7 @@ import {
 import type { PartEntry } from "@/lib/activity-form-model";
 import ActivityFormHeader from "./activity-form/ActivityFormHeader";
 import DateTimeFields from "./activity-form/DateTimeFields";
+import { useExertionPrefill } from "./activity-form/useExertionPrefill";
 import IntensityPicker from "./activity-form/IntensityPicker";
 import ActivityMoreDetails from "./activity-form/ActivityMoreDetails";
 import ActivityFormFooter from "./activity-form/ActivityFormFooter";
@@ -372,6 +373,56 @@ export default function ActivityForm({
     editData?.end_time ?? initialEndTime ?? ""
   );
   const finishStampedEndRef = useRef(false);
+  // ── THE EFFORT THE HEART RATE FOUND (#5195, reader 2 of #5113) ──────────────
+  //
+  // A create form that stated no clocks of its own asks what the day's trace says an
+  // unclaimed effort was, and defaults Start and End to it — marked, because a value
+  // the person did not state has to say where it came from. An EDIT carries the row's
+  // own times, a LIVE session is already running, and a form opened ON a window
+  // (#4950's chart door) was told what it is about: none of the three has anything to
+  // ask, and none of them is offered anything.
+  //
+  // THE MARK IS ABOUT THE PAIR, NOT ABOUT EITHER CLOCK. Adjusting Start alone drops it
+  // while End still holds the offer's minute, and that is the intended reading: once
+  // one of the two is the person's, "From your heart rate" is no longer true of what
+  // the pair says, and a label that stayed would be claiming the trace agreed with a
+  // span the person has just moved. A per-field mark was the alternative and is not
+  // what shipped — two labels under one paired field, to say something the person has
+  // just done themselves.
+  const [timesFromHeartRate, setTimesFromHeartRate] = useState(false);
+  // THE FIELD WINS, AND THIS REF IS THE WHOLE OF THAT CLAIM. The answer arrives over
+  // the network, so the form is fully usable before it lands — somebody who types a
+  // Start while the request is in flight must keep it. Set by the two change funnels
+  // and by a draft restore, read every time an answer arrives; once it is set no
+  // answer applies again, so a later render cannot put a span's minute back.
+  const timesTouchedRef = useRef(false);
+  // What the Duration field held before any offer wrote one, so a withdrawn offer can
+  // put it back. "Log again" seeds a duration from the repeated row, and an offer that
+  // was taken back must not take that with it.
+  const preOfferDurationRef = useRef<string | null>(null);
+  const exertionAnswer = useExertionPrefill({
+    enabled: !editData && !live && !initialStartTime && !initialEndTime,
+    date,
+  });
+  // AN OFFER IS THREE FIELDS AND ONE DAY. Both clocks, the duration between them, and
+  // the mark — applied together, and withdrawn together when the answer for a NEW date
+  // is that its trace says nothing. The date is mutable (`onDate` below), so an answer
+  // that only ever wrote would leave yesterday's form showing today's minutes under a
+  // label saying the heart rate found them.
+  useEffect(() => {
+    if (!exertionAnswer || timesTouchedRef.current) return;
+    const { offer } = exertionAnswer;
+    const priorDuration = (preOfferDurationRef.current ??= sessionDuration);
+    setStartTime(offer?.start ?? "");
+    setEndTime(offer?.end ?? "");
+    if (offer) rememberClockDuration(offer.start, offer.end);
+    else setSessionDuration(priorDuration);
+    setTimesFromHeartRate(offer != null);
+    // Keyed on the ANSWER, which is a new value per question asked — including the
+    // answer "nothing", which is what makes a date change take the last offer back.
+    // Re-running on the clocks it just set would be the re-apply the guard refuses.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the answer alone: re-running on the fields it sets is the re-apply this refuses
+  }, [exertionAnswer]);
   const [sessionDuration, setSessionDuration] = useState(() =>
     seed?.duration_min != null ? String(Math.round(seed.duration_min)) : ""
   );
@@ -707,10 +758,14 @@ export default function ActivityForm({
     if (duration != null) setSessionDuration(String(Math.round(duration)));
   }
   function changeStartTime(nextStart: string) {
+    timesTouchedRef.current = true;
+    setTimesFromHeartRate(false);
     setStartTime(nextStart);
     rememberClockDuration(nextStart, endTime);
   }
   function changeEndTime(nextEnd: string) {
+    timesTouchedRef.current = true;
+    setTimesFromHeartRate(false);
     setEndTime(nextEnd);
     rememberClockDuration(startTime, nextEnd);
   }
@@ -1061,6 +1116,10 @@ export default function ActivityForm({
     ownsUnsavedMarker: true,
     onRestore: (d) => {
       setDate(d.date);
+      // A restored draft is what the person had typed, so it takes the clocks over
+      // from any offer still in flight (#5195).
+      timesTouchedRef.current = true;
+      setTimesFromHeartRate(false);
       setStartTime(d.startTime);
       setEndTime(d.endTime);
       setSessionDuration(d.sessionDuration);
@@ -1566,6 +1625,23 @@ export default function ActivityForm({
               onEndTime={changeEndTime}
               onSessionDuration={setSessionDuration}
             />
+            {timesFromHeartRate && (
+              <p
+                data-testid="times-from-heart-rate"
+                className="mt-2 flex items-baseline gap-2 text-xs text-slate-500 dark:text-slate-400"
+              >
+                <span>From your heart rate</span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    document.getElementById("activity-start-time")?.focus()
+                  }
+                  className="-my-2 py-2 text-link"
+                >
+                  Adjust
+                </button>
+              </p>
+            )}
             {showTimeBreakdown && (
               <p
                 data-testid="activity-time-breakdown"
