@@ -14,6 +14,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { finishDetectedWorkouts } from "@/lib/workout-detected-end";
 import { getWorkoutPresence } from "@/lib/queries/presence";
+import {
+  priorEventWindows,
+  usualRecoveryMin,
+} from "@/lib/queries/event-physiology";
 import { utcSqlString } from "@/lib/date";
 import { setTimezone } from "@/lib/settings";
 
@@ -587,6 +591,67 @@ describe("one unmeasured minute is not a shorter rest (#5212 fifth pass)", () =>
     expect(finishDetectedWorkouts(p)).toBe(0);
     expect(rowOf(id).end_time).toBeNull();
     expect(getWorkoutPresence(p, sweepAt).state).toBe("active");
+  });
+});
+
+describe("a usual recovery that rounds to 0 is absent (#5212 sixth pass)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  // THE R2 CLASS THROUGH THE PRIORS. A session finished by the stale suggest's TAP has
+  // its end stamped after the heart rate came down, so `recoveryMin` measures 0 for it,
+  // and three of those are a usual of 0 with no zero guard between them and the
+  // detector. Rounded to 0, the recovery emptied the frontier test and the sweep wrote
+  // `end_time 16:52` on somebody lifting at 140 — presence `finished`, the dispatch
+  // reached, the Finish button gone. The save stamp (16:30) cannot cancel a 16:52.
+  /** A finished session on `day` in the shape the tap writes: resting well before the end. */
+  function seedTapStampedPrior(profileId: number, day: string): void {
+    db.prepare(
+      `INSERT INTO activities (profile_id, date, type, title, start_time, end_time, duration_min)
+       VALUES (?, ?, 'strength', 'Session', '16:00', '17:00', 60)`
+    ).run(profileId, day);
+    seedInstants(profileId, `${day}T16:00:00Z`, `${day}T16:35:00Z`, 140);
+    seedInstants(profileId, `${day}T16:35:00Z`, `${day}T17:30:00Z`, 55);
+  }
+  function seedLifterWithTapStampedPriors(name: string): {
+    p: number;
+    id: number;
+  } {
+    const p = newProfile(name);
+    seedRestingHr(p, 60);
+    for (const day of ["2026-07-14", "2026-07-15", "2026-07-16"])
+      seedTapStampedPrior(p, day);
+    seedRange(p, "16:00", "16:52", 140);
+    const id = seedOpenWorkout(p, "16:00", new Date("2026-07-17T16:30:00Z"));
+    // The door is real: the priors measure a 0 usual, not "no usual".
+    expect(
+      usualRecoveryMin(
+        p,
+        priorEventWindows(p, "strength", { date: today(p), id })
+      )
+    ).toBe(0);
+    return { p, id };
+  }
+
+  it("leaves a session alone while its trace is still elevated", () => {
+    vi.setSystemTime(new Date("2026-07-17T16:52:00Z"));
+    const { p, id } = seedLifterWithTapStampedPriors("DetEndZeroUsual");
+    expect(getWorkoutPresence(p).state).toBe("active");
+    expect(finishDetectedWorkouts(p)).toBe(0);
+    expect(rowOf(id).end_time).toBeNull();
+    expect(getWorkoutPresence(p).state).toBe("active");
+  });
+
+  // THE CONTROL: the 0 reads as the default, not as a profile the sweep refuses.
+  it("finishes that same session once the default's quiet has arrived", () => {
+    vi.setSystemTime(new Date("2026-07-17T17:06:00Z"));
+    const { p, id } = seedLifterWithTapStampedPriors("DetEndZeroUsualRested");
+    seedRange(p, "16:52", "17:05", 55);
+    expect(finishDetectedWorkouts(p)).toBe(1);
+    expect(rowOf(id)).toEqual({ end_time: "16:52", duration_min: 52 });
   });
 });
 

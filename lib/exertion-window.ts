@@ -135,9 +135,18 @@ export function exertionFloorMin(minWindowMin: number | null): number {
   return Math.round(minWindowMin ?? EXERTION_MIN_WINDOW_DEFAULT_MIN);
 }
 
-/** How long the quiet either side of a span must run, FOR THIS PROFILE. */
+/**
+ * How long the quiet either side of a span must run, FOR THIS PROFILE.
+ *
+ * A usual that rounds to 0 is ABSENT, as a declared 0 is to `usual()`. Nobody is back
+ * inside their resting range within the minute; a measured 0 is a prior whose end was
+ * stamped after its recovery — the tap-late Finish this module exists to replace — and
+ * ten of those average to 0. Obeyed, it emptied both quiet tests and finished a session
+ * still elevated at its frontier (#5212, sixth pass).
+ */
 export function exertionRecoveryMin(usualRecoveryMin: number | null): number {
-  return Math.round(usualRecoveryMin ?? EXERTION_RECOVERY_DEFAULT_MIN);
+  const usual = Math.round(usualRecoveryMin ?? 0);
+  return usual > 0 ? usual : EXERTION_RECOVERY_DEFAULT_MIN;
 }
 
 /**
@@ -276,7 +285,9 @@ export function detectedWorkoutEnd(input: {
   for (const sample of samples)
     if (sample.bpm > input.ceilingBpm) candidate = sample.at + MINUTE_MS;
   // 4. AND THEY HAVE COME BACK DOWN. A trace still elevated at its frontier is a session
-  //    in progress, measured rather than assumed.
+  //    in progress, measured rather than assumed: a candidate at or past the newest
+  //    measured minute refuses, whatever the recovery, because `exertionRecoveryMin`
+  //    never hands back less than a minute and the frontier is inside it.
   if (candidate + recovery > last) return null;
   if (!quiet(samples, input.ceilingBpm, candidate, candidate + recovery))
     return null;

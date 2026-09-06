@@ -448,6 +448,44 @@ describe("detectedWorkoutEnd", () => {
     ).toBeNull();
   });
 
+  // THE SIXTH PASS'S DOOR. Ten tap-stamped priors measure a 0 recovery each and their
+  // mean rounds to 0, which emptied the frontier test (`candidate + 0 > last` never
+  // fires) and the quiet after it (an empty stretch is vacuously quiet): a session
+  // elevated at its frontier was finished, and one quiet minute into a rest would have
+  // been too. A usual that rounds to 0 is absent, and the default stands in for it.
+  it.each([
+    [null, 0],
+    [0, 0],
+    [0.4, 0],
+    [1, 0],
+    [0, 1],
+  ])(
+    "says nothing with a usual recovery of %s and %s quiet minute(s) at the frontier",
+    (usualRecoveryMin, quietMin) => {
+      expect(
+        detectedWorkoutEnd({
+          ...BASE,
+          usualRecoveryMin,
+          samples: minutes(minutes([], 0, 50, 120), 50, 50 + quietMin, 55),
+          startedAt: at(0),
+          lastSetAt: at(30),
+        })
+      ).toBeNull();
+    }
+  );
+
+  it("answers that trace for a usual of 0 once the DEFAULT's quiet has arrived", () => {
+    expect(
+      detectedWorkoutEnd({
+        ...BASE,
+        usualRecoveryMin: 0,
+        samples: minutes(minutes([], 0, 50, 120), 50, 60, 55),
+        startedAt: at(0),
+        lastSetAt: at(30),
+      })
+    ).toBe(at(50));
+  });
+
   it("says nothing about that same trace once it comes to rest, either", () => {
     // The cool-down lets the frontier rule through and the answer is still no: two
     // efforts, and the trace does not say which one the row was.
