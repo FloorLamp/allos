@@ -173,7 +173,12 @@ const DECLARED_ROWS = Object.values(LOG_MANIFEST)
 //           (`quick-entry-asof`); `shell` — the props ride the app shell (#4091);
 //           `none` — ARGUED: no honest copy exists, so the row shows the retry state
 //           rather than a form over invented data.
-//   queues: the queue flow one tap leaves, or null where the driver only opens.
+//   queues: the queue flow one tap leaves, or null where the driver only opens. The
+//           intent is asserted where it is DURABLE — the badge count after the tap and
+//           the stored rows at the end — never by the tap's toast: one toast shows at
+//           a time with the rest queued behind it (components/Toast.tsx), so a walk
+//           asserting each row's sentence would be asserting the toast queue's timing.
+//           Each write flow's own spec owns its sentence.
 //   closes: the tap ENDS the sheet (a transaction with an end closes itself), so the
 //           walk waits for it to go rather than reaching for a Close control that is
 //           already playing its exit — measured here as a 15s click timeout.
@@ -181,7 +186,7 @@ type Driver = {
   copy: "device" | "shell" | "none";
   queues: string | null;
   closes: boolean;
-  open: (overlay: Locator, page: Page) => Promise<void>;
+  open: (overlay: Locator) => Promise<void>;
 };
 
 const DRIVERS: Partial<Record<QuickLogId, Driver>> = {
@@ -191,28 +196,22 @@ const DRIVERS: Partial<Record<QuickLogId, Driver>> = {
     // The fixture's one dose is the day's last: taking it leaves nothing in the
     // window, and QuickDoseList closes the sheet on exactly that.
     closes: true,
-    open: async (overlay, page) => {
+    open: async (overlay) => {
       const row = overlay.getByTestId(`quick-entry-dose-${shellDoseId()}`);
       await expect(row).toBeVisible();
       await row.getByTestId("dose-take").click();
-      await expect(
-        page.getByText("Dose saved offline — will sync when you reconnect.")
-      ).toBeVisible();
     },
   },
   "log-practice": {
     copy: "device",
     queues: "practice",
     closes: false,
-    open: async (overlay, page) => {
+    open: async (overlay) => {
       const row = overlay.getByTestId(
         `quick-entry-practice-${practiceIdentity(SHELL_PRACTICE)}`
       );
       await expect(row).toBeVisible();
       await row.getByTestId("practice-log-button").click();
-      await expect(
-        page.getByText("Saved offline — it'll sync when you're back online.")
-      ).toBeVisible();
     },
   },
   "log-mood": {
@@ -315,12 +314,21 @@ function shellDoseId(): number {
   }
 }
 
-function clearShellDoseLogs(): void {
+// The Shell fixture's dose and practice, both left UNLOGGED for today so the snapshot
+// captured below has a tap to offer: a dose already taken is not due, and a practice
+// already logged today makes an offline tap say so instead of queueing
+// (LogPracticeButton's same-day narrowing). quick-log-overlay.mobile.spec.ts owns
+// the fixture and clears both at its own start; this does the same, whichever spec
+// ran last in this worker.
+function clearShellLogs(): void {
   const db = new Database(workerDbPath());
   try {
     db.prepare("DELETE FROM intake_item_logs WHERE dose_id = ?").run(
       shellDoseId()
     );
+    db.prepare(
+      "DELETE FROM practice_logs WHERE profile_id = (SELECT id FROM profiles WHERE name = ?)"
+    ).run(SHELL_PROFILE);
   } finally {
     db.close();
   }
@@ -336,12 +344,18 @@ async function openRow(page: Page, id: QuickLogId): Promise<Locator> {
   return overlay;
 }
 
-// The sheet's own Close control, which calls onClose unguarded (BottomSheet):
-// Escape and the scrim go through the gesture route, which a body holding work
-// may answer with a question rather than a close.
+// Escape is this sheet's exit: the host mounts BottomSheet without `showClose`, so
+// there is no Close control to reach for (quick-log-overlay.mobile.spec.ts closes it
+// the same way). FOCUS THE PANEL FIRST: the trap's initial focus lands on the body's
+// first focusable, and where that is an InfoTooltipIcon (the measurements form's help
+// glyph) focusing it OPENS the tooltip, which then owns the first Escape as its own
+// layer (useFocusTrap's `data-escape-layer` rule) — measured here as a sheet that
+// stayed open on exactly that row. Nothing here types into a body, so the exit's
+// dirty guard never asks.
 async function dismiss(page: Page): Promise<void> {
   const overlay = page.getByTestId("quick-entry-sheet"); // testid-scope-ok: portals to <body> (BottomSheet), one copy
-  await overlay.getByTestId("quick-entry-sheet-close").click();
+  await overlay.locator("[data-sheet-panel]").focus();
+  await page.keyboard.press("Escape");
   await expect(overlay).toHaveCount(0);
 }
 
@@ -350,11 +364,7 @@ test("every flow the manifest declares offline-capable OPENS with no connection 
 }) => {
   test.slow();
   expect(Object.keys(DRIVERS).sort()).toEqual(DECLARED_ROWS);
-  // The Mobile Shell fixture: one due dose and one tracked practice, both seeded
-  // untaken (quick-log-overlay.mobile.spec.ts owns it and clears the dose's logs at
-  // its own start; this does the same so the snapshot captured below has a dose to
-  // offer whichever spec ran last).
-  clearShellDoseLogs();
+  clearShellLogs();
   const page = await loginAs(
     browser,
     { username: E2E_LOGIN_SHELL, password: E2E_MEMBER_PASSWORD },
@@ -409,7 +419,7 @@ test("every flow the manifest declares offline-capable OPENS with no connection 
         if (driver.copy === "device") {
           await expect(asOf).toBeVisible();
         }
-        await driver.open(overlay, page);
+        await driver.open(overlay);
         if (driver.copy !== "device") await expect(asOf).toHaveCount(0);
         if (driver.queues) {
           queued += 1;

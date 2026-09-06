@@ -74,12 +74,18 @@ async function openRow(page: Page, id: QuickLogId): Promise<Locator> {
   return overlay;
 }
 
-// The sheet's own Close control, which calls onClose unguarded (BottomSheet):
-// Escape and the scrim go through the gesture route, which a body holding work
-// may answer with a question rather than a close.
+// Escape is this sheet's exit: the host mounts BottomSheet without `showClose`, so
+// there is no Close control to reach for (quick-log-overlay.mobile.spec.ts closes it
+// the same way). FOCUS THE PANEL FIRST: the trap's initial focus lands on the body's
+// first focusable, and where that is an InfoTooltipIcon (the measurements form's help
+// glyph) focusing it OPENS the tooltip, which then owns the first Escape as its own
+// layer (useFocusTrap's `data-escape-layer` rule) — measured here as a sheet that
+// stayed open on exactly that row. Nothing here types into a body, so the exit's
+// dirty guard never asks.
 async function dismiss(page: Page): Promise<void> {
   const overlay = page.getByTestId("quick-entry-sheet"); // testid-scope-ok: portals to <body> (BottomSheet), one copy
-  await overlay.getByTestId("quick-entry-sheet-close").click();
+  await overlay.locator("[data-sheet-panel]").focus();
+  await page.keyboard.press("Escape");
   await expect(overlay).toHaveCount(0);
 }
 
