@@ -240,35 +240,34 @@ describe("shared pace tone→class map", () => {
       targetDate: "2026-01-11", // 10-day window
       today: "2026-01-05", // 4/10 elapsed → owes 40%; 40% done → on-pace
     });
-    const habitPace = frequencyPace(2, 5, 3); // 3/7 elapsed, floor(5*3/7)=2, 2≥2 → on-pace
     expect(goalTone).toBe("on-pace");
-    expect(habitPace).toBe("on-pace");
+    expect(frequencyPace(2, 5, 3)).toBe("on-pace"); // 3/7 elapsed, floor(5*3/7)=2, 2≥2
     // The chip's tone is its FrequencyPace; both index the same map.
-    expect(PACE_FILL_CLASS[goalTone]).toBe(PACE_FILL_CLASS[habitPace]);
+    expect(PACE_FILL_CLASS[goalTone]).toBe(PACE_FILL_CLASS["on-pace"]);
     expect(PACE_FILL_CLASS[goalTone]).toBe("bg-brand-600");
   });
 });
 
-// #780 regression: a fresh week's habit chip must never colour rose. frequencyPace is
-// 3-state (met/on-pace/behind) so it CAN'T return a failed/rose tone at all.
+// #780 regression: a fresh week's habit chip must never colour rose. FrequencyPace has
+// no failed state, so the type already forbids the rose tone; what is left to pin is
+// that an untouched week is never MET and never ON PACE either (#5395) — only quiet,
+// or behind once the week cannot fit the target.
 describe("frequencyPace never fails a week (Monday-morning regression)", () => {
-  it("a not-started habit early in the week is on-pace or behind, never failed", () => {
+  it("a not-started habit is quiet or behind, never met and never on pace", () => {
     for (let perWeek = 1; perWeek <= 7; perWeek++) {
       for (let elapsedDays = 1; elapsedDays <= 7; elapsedDays++) {
-        const p = frequencyPace(0, perWeek, elapsedDays);
-        expect(["on-pace", "behind"]).toContain(p);
-        expect(p).not.toBe("met");
-        // Whatever the tone, it maps into the shared map without a rose.
-        expect(PACE_FILL_CLASS[p]).not.toContain("rose");
+        expect(["quiet", "behind"]).toContain(
+          frequencyPace(0, perWeek, elapsedDays)
+        );
       }
     }
   });
 
-  it("Monday morning (day 1) of a fresh week is on-pace, not behind", () => {
+  it("Monday morning (day 1) of a fresh week is quiet, not behind", () => {
     // Day 1 leaves all seven days, so every cadence up to daily still fits (#4758).
     // Before that ruling a 7×/week habit already owed one on day 1 and read behind.
     for (let perWeek = 1; perWeek <= 7; perWeek++) {
-      expect(frequencyPace(0, perWeek, 1)).toBe("on-pace");
+      expect(frequencyPace(0, perWeek, 1)).toBe("quiet");
     }
   });
 });
