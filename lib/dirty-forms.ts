@@ -129,10 +129,17 @@ export function fieldHoldsUnsavedInput(field: TrackedField): boolean {
  * only alternative is to keep the field out of the autosaving `<form>`.
  *
  * Nothing in the tree is shaped that way today: no `useSaveStatus` consumer renders a
- * `<form>` around a control this registry tracks. A source census used to say so on
- * every run (#3352) and was deleted in #5351 — it never fired, and it could not see a
- * surface nested more than one render site deep inside a form, so what it actually
- * proved was narrower than what it appeared to.
+ * `<form>` around a control this registry tracks. A source census re-asserted that on
+ * every run (#3352) and was deleted in #5351 — it never fired, and its own comment
+ * bounded it to one render site of ancestry, so a surface nested deeper was always
+ * invisible to it.
+ *
+ * SO READ THE SENTENCE ABOVE AS UNCHECKED, because it is, and that is the trade the
+ * deletion made with its eyes open — the census's own header argued that a sentence
+ * here would be true the day it was written and unverified after. If you are adding an
+ * autosaving surface, the question to ask yourself is the one the census asked: is any
+ * `name=` on a control `isTrackable` accepts, inside a `<form>` this file or its render
+ * site supplies?
  */
 export function resolveServerValue(field: {
   /** The DOM `defaultValue` right now. */
