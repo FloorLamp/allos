@@ -126,6 +126,7 @@ import type * as M77 from "@/app/(app)/training/goal-actions";
 import type * as M78 from "@/app/(app)/training/injury-actions";
 import type * as M79 from "@/app/(app)/training/mobility-actions";
 import type * as MNiggles from "@/app/(app)/training/niggle-actions";
+import type * as MTrainingPhotos from "@/app/(app)/training/photo-actions";
 import type * as M80 from "@/app/(app)/training/video-actions";
 import type * as MTravel from "@/app/(app)/travel-actions";
 import type * as M81 from "@/app/(app)/trends/actions";
@@ -355,6 +356,9 @@ type Census = {
   >;
   "app/(app)/training/niggle-actions.ts": Expect<
     ActionsAreSerializable<typeof MNiggles>
+  >;
+  "app/(app)/training/photo-actions.ts": Expect<
+    ActionsAreSerializable<typeof MTrainingPhotos>
   >;
   "app/(app)/training/video-actions.ts": Expect<
     ActionsAreSerializable<typeof M80>

@@ -352,12 +352,13 @@ function collectEvents(
   const includeTrainingEvents = options.includeTrainingEvents ?? true;
   const tz = getTimezone(profileId);
   const events: TimelineEvent[] = [];
-  // The photo counts both training blocks below need, read ONCE in one grouped
-  // statement rather than probed per row (#3285 item 3, the symptom-photo precedent
-  // in lib/history.ts). Skipped entirely when training events are excluded.
-  const trainingMedia = includeTrainingEvents
-    ? trainingPhotoCounts(profileId)
-    : null;
+  // The photo counts both training blocks below need (#3285 item 3), read ONCE in one
+  // grouped statement rather than probed per row — the symptom-photo precedent in
+  // lib/history.ts. LAZY: a gather that emits no session and no event row never asks,
+  // so a profile that does not train pays nothing for the column.
+  let trainingMedia: ReturnType<typeof trainingPhotoCounts> | null = null;
+  const trainingPhotos = () =>
+    (trainingMedia ??= trainingPhotoCounts(profileId));
 
   // Exact bounds for tables whose event date IS a stored calendar column.
   const exact = (col: string) =>
@@ -451,7 +452,7 @@ function collectEvents(
           },
           meta: a.source ? [a.source] : undefined,
           detailItems: setSummaries.get(a.id),
-          media: trainingMedia?.byActivity.get(a.id) ?? 0,
+          media: trainingPhotos().byActivity.get(a.id) ?? 0,
           iconType: a.type,
           iconTitle: a.title,
           iconSportNames: activityComponentSportNames(a.components),
@@ -1285,7 +1286,7 @@ function collectEvents(
           tone: p.status === "completed" ? "good" : "default",
           // The event's OWN uploads only. The linked sessions' photos are counted on
           // those sessions' own rows, so the record never counts one photo twice.
-          media: trainingMedia?.byEvent.get(p.id) ?? 0,
+          media: trainingPhotos().byEvent.get(p.id) ?? 0,
         },
         options
       );

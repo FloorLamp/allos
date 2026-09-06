@@ -82,9 +82,7 @@ export default function TrainingPhotoStrip({
   // chip that filters to everything would be dead UI.
   const series = useMemo(() => {
     const seen = new Set(photos.map((p) => p.ownerLabel));
-    return seen.size > 1
-      ? [...seen].map((key) => ({ key, label: key }))
-      : [];
+    return seen.size > 1 ? [...seen].map((key) => ({ key, label: key })) : [];
   }, [photos]);
 
   function ownerFields(fd: FormData) {

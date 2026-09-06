@@ -40,8 +40,7 @@ import { storeProcessedPhoto, unlinkPhotoFiles } from "./photo/store";
 // neither. The union is the schema CHECK in the type system, so every call site
 // names one owner and no reader has to ask whether a row is well-formed.
 export type TrainingPhotoOwner =
-  | { kind: "activity"; activityId: number }
-  | { kind: "event"; planId: number };
+  { kind: "activity"; activityId: number } | { kind: "event"; planId: number };
 
 export interface TrainingPhotoRow {
   id: number;
@@ -64,9 +63,10 @@ export type AddTrainingPhotoOutcome =
 
 // The owner columns for one owner: exactly one is non-null, so the INSERT and every
 // scoped read bind the same pair and neither can drift from the CHECK.
-function ownerColumns(
-  owner: TrainingPhotoOwner
-): { activityId: number | null; planId: number | null } {
+function ownerColumns(owner: TrainingPhotoOwner): {
+  activityId: number | null;
+  planId: number | null;
+} {
   return owner.kind === "activity"
     ? { activityId: owner.activityId, planId: null }
     : { activityId: null, planId: owner.planId };
@@ -172,7 +172,10 @@ export function updateTrainingPhotoCaptionCore(
 
 // Delete one training photo — the row AND its on-disk files (row-op side-state
 // #199/#203; path-contained by the core store). Idempotent; profile-scoped by id.
-export function deleteTrainingPhotoCore(profileId: number, id: number): boolean {
+export function deleteTrainingPhotoCore(
+  profileId: number,
+  id: number
+): boolean {
   return writeTx(() => {
     const row = db
       .prepare(
@@ -180,8 +183,7 @@ export function deleteTrainingPhotoCore(profileId: number, id: number): boolean 
           WHERE id = ? AND profile_id = ?`
       )
       .get(id, profileId) as
-      | { stored_path: string; thumb_path: string | null }
-      | undefined;
+      { stored_path: string; thumb_path: string | null } | undefined;
     if (!row) return false;
     db.prepare(
       `DELETE FROM training_photos WHERE id = ? AND profile_id = ?`
@@ -201,7 +203,10 @@ export function deleteTrainingPhotoCore(profileId: number, id: number): boolean 
 // activity delete is UNDOABLE, the `activity` undo kind captures these rows beside the
 // clips, and their content-named files are reclaimed at PURGE (#1847) so a restore
 // re-points at the same bytes.
-export function deleteEventPhotosForPlan(profileId: number, planId: number): void {
+export function deleteEventPhotosForPlan(
+  profileId: number,
+  planId: number
+): void {
   const rows = db
     .prepare(
       `SELECT stored_path, thumb_path FROM training_photos

@@ -63,6 +63,7 @@ const ROOTS = {
   symptomPhoto: SYMPTOM_PHOTO_DIR,
   symptomVideo: videoDomainRoot("symptom"),
   activityVideo: videoDomainRoot("activity"),
+  training: photoDomainRoot("training"),
 };
 
 let lesionId: number;
@@ -74,7 +75,7 @@ beforeAll(() => {
   theirs = newProfile("MEDIA-THEIRS");
   minor = newProfile("MEDIA-MINOR");
 
-  // ── The exporting profile: one file in each of the five domains ────────────
+  // ── The exporting profile: one file in each media domain ──────────────────
   db.prepare(
     `INSERT INTO progress_photos
        (profile_id, date, pose, stored_path, content_hash, caption)
@@ -131,6 +132,18 @@ beforeAll(() => {
     mine,
     activityId,
     writeMediaFile(ROOTS.activityVideo, mine, "actv1.mp4", "ACTV-MINE")
+  );
+
+  // One TRAINING photo (#3285 item 3), owned by the activity above — the domain's
+  // other owner (an event) travels the same statement, since one table holds both.
+  db.prepare(
+    `INSERT INTO training_photos
+       (profile_id, activity_id, stored_path, content_hash, caption)
+     VALUES (?, ?, ?, 'hash-train', 'Third set, front on')`
+  ).run(
+    mine,
+    activityId,
+    writeMediaFile(ROOTS.training, mine, "trainp1.jpg", "TRAIN-MINE")
   );
 
   // ── Another profile's lesion photo, byte-for-byte the shape of the one above ──
@@ -213,7 +226,7 @@ describe("media stays out unless the download opts in (#1846)", () => {
 describe("the opt-in bundle holds exactly this profile's files (#1846)", () => {
   it("bundles one file per domain, under media/<domain>/<rowId>-<name>", () => {
     const files = listProfileMediaFiles(mine);
-    expect(files).toHaveLength(5);
+    expect(files).toHaveLength(MEDIA_DOMAINS.length);
     // Domains come out in MEDIA_DOMAINS order, so the archive is deterministic.
     expect(files.map((f) => f.domain)).toEqual([...MEDIA_DOMAINS]);
     for (const f of files) {
@@ -343,7 +356,7 @@ describe("the opt-in bundle holds exactly this profile's files (#1846)", () => {
     try {
       const after = listProfileMediaFiles(mine);
       expect(after.map((f) => f.domain)).not.toContain("progress-photos");
-      expect(after).toHaveLength(4);
+      expect(after).toHaveLength(MEDIA_DOMAINS.length - 1);
     } finally {
       fs.writeFileSync(progress.absPath, "PROG-MINE");
     }
