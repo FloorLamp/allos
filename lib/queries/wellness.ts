@@ -451,7 +451,7 @@ export function getWellnessPractices(
         countThisWeek: targetProgress?.count ?? 0,
         met: targetProgress?.met ?? false,
         atCeiling: targetProgress?.atCeiling ?? false,
-        pace: targetProgress?.pace ?? "on-pace",
+        pace: targetProgress?.pace ?? "quiet",
         sessionCount: item.sessions.length,
         lastUsed: latest?.date ?? null,
         previousDurationMin: getPracticeUsualDuration(
@@ -614,7 +614,7 @@ export function getTrackedPractices(
       perWeekMax: target.per_week_max,
       countThisWeek: targetProgress?.count ?? 0,
       atCeiling: targetProgress?.atCeiling ?? false,
-      pace: targetProgress?.pace ?? "on-pace",
+      pace: targetProgress?.pace ?? "quiet",
       todayCount: todayByIdentity.get(identity) ?? 0,
       // The SAME pure resolution the Wellness card's expanded form reads — one
       // question, one computation. A practice with no logs at all resolves through
