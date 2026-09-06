@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  lookupRxNormCandidates,
+  lookupRxNormIngredients,
   parseApproximateTerm,
   parseRelatedIngredients,
   parseRxcuiIngredients,
@@ -169,5 +171,78 @@ describe("rxcui_ingredients codec", () => {
     );
     expect(parseRxcuiIngredients(big).length).toBeLessThanOrEqual(25);
     expect(parseRxcuiIngredients('["1","1","2"]')).toEqual(["1", "2"]);
+  });
+});
+
+// ---- The unexpected degrade is distinguishable from a real no-match (#5468) ----
+//
+// RxNav is the only outbound host in production code that takes NO credential, so
+// there is no missing-token state to explain a failure away. Every row here returns
+// the SAME [] — that contract is unchanged and deliberately re-asserted — and the
+// rows differ only in whether a line was written. The 200-with-no-match rows are the
+// control: they are the state the assertion forbids a line in, and they prove the
+// signal can be silent rather than merely that it can fire.
+//
+// Observed through the REAL logger's console sink rather than a `vi.mock` of it: the
+// mock would route this whole file into the isolated project (vitest.isolation.ts),
+// and it would prove that a stub was called rather than that a line is emitted.
+describe("a failed lookup logs; a genuine no-match does not", () => {
+  const okJson = (json: unknown) =>
+    ({ ok: true, json: async () => json }) as unknown as Response;
+  let errs: string[];
+
+  beforeEach(() => {
+    errs = [];
+    vi.spyOn(console, "error").mockImplementation((...a: unknown[]) => {
+      errs.push(a.join(" "));
+    });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  const REJECTED = () => ({ ok: false, status: 503 }) as Response;
+  const THREW = () => {
+    throw new Error("connect ECONNREFUSED");
+  };
+
+  it.each([
+    ["non-OK response", REJECTED, 1],
+    ["network throw", THREW, 1],
+    ["200 with no candidates", () => okJson({ approximateGroup: {} }), 0],
+  ])("candidates — %s", async (_label, respond, lines) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => respond())
+    );
+    await expect(lookupRxNormCandidates("ibuprofen")).resolves.toEqual([]);
+    expect(errs).toHaveLength(lines);
+  });
+
+  it.each([
+    ["non-OK response", REJECTED, 1],
+    ["network throw", THREW, 1],
+    ["200 with no ingredients", () => okJson({ relatedGroup: {} }), 0],
+  ])("ingredients — %s", async (_label, respond, lines) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => respond())
+    );
+    await expect(lookupRxNormIngredients("5640")).resolves.toEqual([]);
+    expect(errs).toHaveLength(lines);
+  });
+
+  // The name a person is taking must not reach the log. The status is what an
+  // operator can act on; the term is the one thing this feature sends off-box.
+  it("names the scope but never the searched term", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => REJECTED())
+    );
+    await lookupRxNormCandidates("Sertraline");
+    expect(errs).toHaveLength(1);
+    expect(errs[0]).toContain("rxnorm");
+    expect(errs[0]).not.toContain("Sertraline");
   });
 });
