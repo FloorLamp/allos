@@ -24,6 +24,16 @@ thing it protects.
 - **Deleting a dead guard or spec needs no issue of its own.** The PR states
   what it protected, what protects it now, and how the deletion was measured —
   the same bar as adding one.
+- **A TEST OR GUARD ON DEV CONFIG IS STRICTLY FORBIDDEN** (owner, 2026-09-06).
+  No test asserts on `eslint.config.mjs`, `vitest.config*`, `vitest.timeouts`,
+  `tsconfig`, `package.json`, `.nvmrc`, `.github/workflows/**`, the gate
+  scripts' trigger and skip sets, or Node flags. There is no exception and no
+  allowlist: a config that is wrong fails the first time it runs, and a guard
+  that restates it is a second copy of the config that can disagree with it.
+  Existing ones are deleted, not converted — this outranks the conversion work
+  in `#5346`, and the cost is accepted with open eyes: a wrong CI skip-set or
+  gate-trigger entry will fail silently rather than red, which is the trade the
+  owner made when the guards outgrew the thing they guard.
 - **The verification slice ranks its queue by NET LINES** (owner, 2026-09-06):
   subtractive work first, neutral next, additive last and only for a named
   defect or a security gap. A conversion PR states its own `+/-` in the body
