@@ -9,7 +9,7 @@ import FilterPills from "@/components/FilterPills";
 import JumpRailScrubber, {
   type ScrubberStop,
 } from "@/components/JumpRailScrubber";
-import EventCalendar, { EventMonthGrid } from "@/components/EventCalendar";
+import EventCalendar from "@/components/EventCalendar";
 import type { DoseLedgerItem } from "@/components/intake/dose-ledger-entry";
 import HistoryRows from "./HistoryRows";
 import HistoryAddDoor, { HistoryUsualOffers } from "./HistoryAddDoor";
@@ -839,10 +839,11 @@ export default async function HistoryPage(props: {
   const rowCount = renderedDays.reduce((n, d) => n + d.events.length, 0);
   const hasMore = feeds.some((feed) => feed.gather.hasMore);
 
-  // EVERY DAY THE VIEWED MEMBERS HAVE AN EVENT ON, read ONCE (#4280). The day view
-  // has two mounts for this month grid — the door in the filter row, the open grid
-  // in the rail — and only one of them is ever visible, so reading the union twice
-  // would double ~20 queries per viewed member to render nothing extra.
+  // EVERY DAY THE VIEWED MEMBERS HAVE AN EVENT ON, read ONCE (#4280). It feeds the
+  // one mount this page has for the month grid — the door in the filter row, at every
+  // width (#5359). The day view's rail carried a second, open mount between #4974 and
+  // #5359; this read was already shared and stays a single ~20 queries per viewed
+  // member.
   const eventDates = memberIds.flatMap((id) => getTimelineDates(id));
 
   // THE DAY VIEW'S SECOND COLUMN (#4974).
@@ -1030,15 +1031,13 @@ export default async function HistoryPage(props: {
             until now, which read as one body's marks beside a merged record.
             Under `?view=everyone` that is ~20 queries per viewed member on this
             page; single view is unchanged. */}
-        {/* THE DOOR STANDS EVERYWHERE EXCEPT THE DAY VIEW WITH A RAIL (#4974). It
-            is a door because the grid could not spend the ~140px chrome budget above
-            the first record; in the rail the grid is BESIDE the rows and spends none
-            of it, so where the rail exists the door would be a second way to a thing
-            already open. `contents` keeps the button the flex item it has always
-            been — the wrapper adds no box of its own to this row at any width. */}
-        <span className={day ? "contents min-[1440px]:hidden" : "contents"}>
-          <EventCalendar eventDates={eventDates} everyone={everyone} />
-        </span>
+        {/* THE DOOR STANDS AT EVERY WIDTH (#5359, returning to #4102). It is a door
+            because the grid could not spend the ~140px chrome budget above the first
+            record, and that is as true of a 2000px screen as of a phone: #4974 mounted
+            the grid open in the day view's rail instead, where a card with no width of
+            its own drew the 264px grid at 736 — 28px discs 105px apart. The rail holds
+            the chart card and the add layer; the calendar is this one button. */}
+        <EventCalendar eventDates={eventDates} everyone={everyone} />
       </div>
 
       {/* THE KIND-SCOPED REFINEMENT ROW, PER FAMILY — "never in All" (#3958). It is a
@@ -1251,20 +1250,6 @@ export default async function HistoryPage(props: {
                       vocabulary={addVocabulary}
                     />
                   ) : null}
-                </div>
-              ) : null}
-
-              {/* THE MONTH GRID, OPEN, AND ONLY IN THE RAIL (#4974). The SAME grid and
-          the SAME binding the door opens — `EventMonthGrid` is that binding, split
-          out of `EventCalendar` so the two hosts (popover, rail) cannot drift into
-          two answers about what a marked day means. No `onNavigate`, because
-          nothing here has to close. */}
-              {day ? (
-                <div
-                  className="card mb-3 hidden p-3 min-[1440px]:block"
-                  data-testid="history-calendar-open"
-                >
-                  <EventMonthGrid eventDates={eventDates} everyone={everyone} />
                 </div>
               ) : null}
             </div>

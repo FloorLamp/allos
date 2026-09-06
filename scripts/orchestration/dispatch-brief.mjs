@@ -549,22 +549,26 @@ ${landingLines}
   string. Measured 2026-09-05 with \`ps -eo pid,etimes,args\`: EIGHT such shells alive
   at once, the oldest past eleven hours, long after the last real gate run finished.
   Two facts cannot be impersonated — a PID you captured yourself, and a file the run
-  wrote. Copy this; do not invent a sixth loop:
-      export SCRATCH=/home/user/scratch; L=\$SCRATCH/gates-<branch>.log
-      # start it, recording the PID and the exit code where a LATER shell can read them
-      { bash scripts/orchestration/agent-gates.sh; echo \$? > "\$L.exit"; } > "\$L" 2>&1 &
-      echo \$! > "\$L.pid"; wait
+  wrote. scripts/orchestration/run-gates-recorded.sh owns both. Run it from the
+  worktree root and invent nothing:
+      bash scripts/orchestration/run-gates-recorded.sh ${opts.branch}
       # ONLY if the harness detached that call. Each Bash call is a FRESH shell, so
       # this reads the PID off disk instead of remembering it:
-      while kill -0 "\$(cat "\$L.pid")" 2>/dev/null; do sleep 10; done
-      echo "GATES EXIT=\$(cat "\$L.exit" 2>/dev/null || echo 'KILLED — no exit recorded')"
-      tail -40 "\$L"
-  \`kill -0 <pid>\` asks the KERNEL about a pid \`\$!\` handed you; no other process's
-  command line can claim it, and it stops on ANY exit — pass, fail or kill. The
-  \`.exit\` file is the second fact and it is what tells those three apart. Do not
-  substitute a poll for \`ALL GATES PASSED\`: \`agent-gates.sh\` prints that only on the
-  success path and \`=== GATE <name>: FAIL (exit N) ===\` on the other, so a loop
-  waiting for the PASS line hangs forever on a RED — the same trap wearing a green hat.
+      bash scripts/orchestration/run-gates-recorded.sh ${opts.branch} --wait
+  It writes ${STATE_DIR}/gates-${opts.branch}.log, \`.log.pid\` and \`.log.exit\`, waits
+  with \`kill -0\` on the PID it captured — the KERNEL's answer, which no other process's
+  command line can claim, and which stops on ANY exit: pass, fail or kill — and reads
+  the \`.exit\` file, the second fact, which tells those three apart.
+  DO NOT PASTE THE OLD INLINE FORM: an \`&&\` chain ending in \`&\` backgrounds the WHOLE
+  chain, so \`cd … && L=… && { … } & echo \$! > "\$L.pid"\` ran with \`\$L\` EMPTY in the
+  foreground — two lanes on 2026-09-06 wrote \`.pid\` into the main checkout and read a
+  finished gate as KILLED. The script holds the assignments and the \`&\` in ONE shell.
+  And never wait on \`pgrep -f agent-gates.sh\`: every lane runs the same script, so
+  a NAME matches your siblings (#5366) — only the PID and the \`.exit\` file are yours.
+  Do not substitute a poll for \`ALL GATES PASSED\` either:
+  \`agent-gates.sh\` prints that only on the success path and
+  \`=== GATE <name>: FAIL (exit N) ===\` on the other, so a loop waiting for the PASS
+  line hangs forever on a RED — the same trap wearing a green hat.
 - FETCH AND READ ALL ISSUE BODIES AND ALL ISSUE COMMENTS FIRST — a comment overrides
   the body when they conflict. Trust symbol names over line numbers.
 - A PR's REVIEWS AND ITS COMMENTS ARE TWO DIFFERENT ENDPOINTS, and a review you were
