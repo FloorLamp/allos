@@ -378,9 +378,9 @@ describe("linkEventActivity / unlinkEventActivity (#3285 item 2)", () => {
       })
     );
     revalidate.mockClear();
-    expect((await unlinkEventActivity(fd({ activity_id: activityId }))).ok).toBe(
-      true
-    );
+    expect(
+      (await unlinkEventActivity(fd({ activity_id: activityId }))).ok
+    ).toBe(true);
     expect(
       db
         .prepare("SELECT endurance_plan_id AS p FROM activities WHERE id = ?")

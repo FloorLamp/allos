@@ -1545,10 +1545,15 @@ describe("events link their activities (#3285 item 2)", () => {
     form.set("date", "2026-06-13");
     form.set("distance", "10.1");
     expect(
-      saveActivityCore(profileId, form, {
-        weightUnit: "kg",
-        distanceUnit: "km",
-      }, "page").ok
+      saveActivityCore(
+        profileId,
+        form,
+        {
+          weightUnit: "kg",
+          distanceUnit: "km",
+        },
+        "page"
+      ).ok
     ).toBe(true);
     expect(rowOf(raced).date).toBe("2026-06-13");
     expect(linkOf(raced)).toBe(planId);
