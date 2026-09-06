@@ -154,7 +154,9 @@ describe("the sheet's practice row states one thing at a time", () => {
     // says a session is running offers only the exit, and a row that does not offers
     // only the two ways in.
     expect(screen.queryByTestId("practice-end-button") != null).toBe(running);
-    expect(screen.queryByTestId("practice-start-button") != null).toBe(!running);
+    expect(screen.queryByTestId("practice-start-button") != null).toBe(
+      !running
+    );
     expect(screen.queryByTestId("practice-log-button") != null).toBe(!running);
     // The deleted chrome, asserted absent on the surface it was deleted from.
     expect(screen.queryByText("No sessions yet")).toBeNull();
