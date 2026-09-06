@@ -1483,28 +1483,37 @@ export default function StrengthSets({
                       testId={si === 0 ? "set1-rpe" : undefined}
                     />
                   )}
-                  <div className="flex items-center justify-end gap-1 sm:items-start">
-                    {/* CONFIRM THIS SET (#5373). The row is the plan until this is
+                  {/* CONFIRM THIS SET (#5373). The row is the plan until this is
                 tapped: it turns the ghost's numbers into the record and, in live
                 mode, starts the rest timer exactly as checking a set off always did
-                (#340). It is the same gesture as correcting the reps, so it
-                disappears the moment either happens — a confirmed row has nothing
-                left to confirm.
+                (#340). It is the same gesture as correcting the reps, so it goes
+                away the moment either happens — a confirmed row has nothing left to
+                confirm.
 
                 MOUNTS IconButton, whose own box is the 34px `--control-box` the
                 options column's controls share (#3938); the geometry is the
-                primitive's, not restated here. It sits at the row's trailing edge
-                beside W, so the eye runs load → reps → done. */}
-                    {!setDone(s) && (
-                      <IconButton
-                        tone="brand"
-                        onClick={() => onUpdateSet(si, confirmSet(s))}
-                        label={`Confirm set ${si + 1}`}
-                        data-testid={`set-confirm-${si + 1}`}
-                      >
-                        <IconCheck className="h-4 w-4" stroke={2.5} />
-                      </IconButton>
-                    )}
+                primitive's, not restated here.
+
+                A LINE OF THE OPTIONS COLUMN, NOT A THIRD CONTROL ON THE W/✕ ONE.
+                That line is already full: `sm:w-7` + `sm:w-8` + the gap is the
+                column's whole 64px, which is pinned because widening it shrinks the
+                weight/reps inputs below their #337 tap-target width. A 34px button
+                added beside W overflowed LEFT over the row's own "Vary" control and
+                swallowed its taps — measured: the entry-ergonomics Vary click could
+                not land. Stacked here it is beside W on a phone, where the column
+                unrolls into one horizontal toolbar band (#1612), and above it on
+                desktop, where the column is a column. */}
+                  {!setDone(s) && (
+                    <IconButton
+                      tone="brand"
+                      onClick={() => onUpdateSet(si, confirmSet(s))}
+                      label={`Confirm set ${si + 1}`}
+                      data-testid={`set-confirm-${si + 1}`}
+                    >
+                      <IconCheck className="h-4 w-4" stroke={2.5} />
+                    </IconButton>
+                  )}
+                  <div className="flex items-center justify-end gap-1 sm:items-start">
                     {/* Warmup toggle (#338): a light per-set "W" — a warmup is excluded
                 from the part's volume total and target markers. One toggle per
                 set (both sides of a per-side set share it).

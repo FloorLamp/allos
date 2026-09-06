@@ -1056,19 +1056,38 @@ test("strength set controls step, clamp, and toggle without losing their phone g
     disjoint: true,
   });
 
+  // THE CONFIRM CONTROL (#5373), in the options column at the row's trailing edge:
+  // no set is a record yet, so every row offers one. It is the shared IconButton,
+  // whose own box is the column's 34px control (#3938) around a 44px phone target —
+  // asserted through the same sweep the column's other controls take, not with a
+  // number of its own.
+  const row1 = page.getByTestId("set-row-1"); // testid-scope-ok: the set grid is inside the held editor overlay, one copy
+  const confirm = row1.getByTestId("set-confirm-1");
+  await expect(confirm).toHaveAttribute("data-icon-button", "");
+  await expectPhoneTapTargets(page, "strength-set confirm", [confirm]);
+
   // Weight and RPE were symmetric (− and +) from the start; reps shipped with only
   // a +, so a mis-tapped rep count could only be fixed by editing the field by hand.
+  // The count starts from the PLANNED reps this row is offering (#5373) — stepping is
+  // how a person says "I got two fewer than that" — so the arithmetic is stated
+  // against the ghost rather than against a zero the row never showed.
+  const plannedReps = Number(await repsInput.getAttribute("placeholder"));
+  expect(plannedReps).toBeGreaterThan(0);
   await hydratedClick(page, stepTargets[3]);
   await hydratedClick(page, stepTargets[3]);
-  await expect(repsInput).toHaveValue("2");
+  await expect(repsInput).toHaveValue(String(plannedReps + 2));
   await hydratedClick(page, stepTargets[2]);
-  await expect(repsInput).toHaveValue("1");
+  await expect(repsInput).toHaveValue(String(plannedReps + 1));
   // Clamped at 0: the field empties rather than going negative, and staying at the
   // floor is a no-op.
-  await hydratedClick(page, stepTargets[2]);
+  for (let i = 0; i <= plannedReps; i++)
+    await hydratedClick(page, stepTargets[2]);
   await expect(repsInput).toHaveValue("");
   await hydratedClick(page, stepTargets[2]);
   await expect(repsInput).toHaveValue("");
+  // …and CORRECTING IS CONFIRMING (#5373): the first of those steps recorded the set,
+  // so there is nothing left to confirm and the control is gone.
+  await expect(row1.getByTestId("set-confirm-1")).toHaveCount(0);
 
   // Each set carries a light "W" warmup toggle (default off). Toggling flips its
   // aria-pressed state — the flag excludes the set from volume/target/records.
@@ -1076,18 +1095,6 @@ test("strength set controls step, clamp, and toggle without losing their phone g
   await expect(warmup).toHaveAttribute("aria-pressed", "false");
   await hydratedClick(page, warmup);
   await expect(warmup).toHaveAttribute("aria-pressed", "true");
-
-  // THE CONFIRM CONTROL (#5373), beside W at the row's trailing edge: this row is
-  // still the plan, so it is offered. It is the shared IconButton, whose own box is
-  // the options column's 34px control (#3938) around a 44px phone target — asserted
-  // through the same sweep the column's other controls take, not with a number of its
-  // own. Confirming is the last thing a row needs, so it goes away once tapped.
-  const row1 = page.getByTestId("set-row-1"); // testid-scope-ok: the set grid is inside the held editor overlay, one copy
-  const confirm = row1.getByTestId("set-confirm-1");
-  await expect(confirm).toHaveAttribute("data-icon-button", "");
-  await expectPhoneTapTargets(page, "strength-set confirm", [confirm]);
-  await hydratedClick(page, confirm);
-  await expect(row1.getByTestId("set-confirm-1")).toHaveCount(0);
 
   // Reps returned to empty, so the set stays half-filled and nothing auto-saves — a
   // confirmed row with a missing half is still a half-filled set, so confirming it
