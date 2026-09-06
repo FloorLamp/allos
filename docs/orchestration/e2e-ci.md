@@ -4,9 +4,12 @@
 
 - The sharded CI E2E matrix is the full-suite authority. Local runs diagnose;
   they do not replace the merge gate.
-- Run every changed spec with `--repeat-each=3 --retries=0`. When tests share a
-  profile or worker state, also run the whole file with `--workers=1
---repeat-each=1 --retries=0` for leaks (#3653). Use the assigned port.
+- Run authored or edited specs once locally at `--retries=0`. When tests share
+  a profile or worker state, run the whole file with `--workers=1` for leaks (#3653).
+  Use repeats when diagnosing a timing failure, not as a routine merge step.
+- CI runs the full browser suite once. The duplicate `e2e-changed` job and its
+  required-check entry are removed. All 12 E2E shard checks remain required.
+  The weekly and on-demand `e2e-full.yml` workflow owns repeated flake detection.
 - Only the orchestrator runs a full local suite. Keep at most two agents in the
   E2E lane.
 - A new navigation item requires updating `TOP_LEVEL_ORDER` in
@@ -72,8 +75,8 @@
 
 ## Flake evidence
 
-- Exonerating a flake requires a 3/3 local CI-parity pass of the exact spec and
-  a stated mechanism.
+- A passing rerun alone does not exonerate a failure. Identify the mechanism,
+  fix or remove the flaky test, and use targeted repeats to verify a timing fix.
 - A second occurrence of the same spec attaches both CI runs to the owning
   mechanism/root-cause issue or to the matching failure-class entry; recurrence
   alone is not a reason to mint a new census issue.

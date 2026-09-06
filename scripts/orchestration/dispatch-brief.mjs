@@ -935,8 +935,8 @@ ${MIGRATION_LINES}
   difference is where CI catches you. When a change makes a previously
   UNCONDITIONAL element CONDITIONAL — a field moving behind a disclosure, a row
   behind a fold — EVERY spec that addresses that element is affected whether or not
-  you edited it, and \`e2e-changed\` cannot see them because it selects on files
-  edited. #3216 ran its 25 changed spec files green (267 tests) while three affected
+  you edited it. A local run selected by changed filenames cannot see them.
+  #3216 ran its 25 changed spec files green (267 tests) while three affected
   specs it had never touched were red. The sweep that works: enumerate the moved
   markers FROM THE COMPONENTS — testids AND accessible labels, since a spec using
   getByLabel names no testid — then grep the whole tree. Over-matching costs a
@@ -1189,14 +1189,11 @@ ${MIGRATION_LINES}
   to say out loud what a bound is bounding is the check. Demand the stated unit even
   when the constant looks obviously right.
 - E2E SPLITS IN TWO, AND ONLY ONE HALF RUNS ON THIS BOX.
-  * SPECS YOU AUTHORED OR EDITED: run locally, with repeat scrutiny, on your assigned port
-    range: E2E_PORT=${portBase} ... --repeat-each=3 --retries=0. The variable is
-    E2E_PORT, never PORT. This is usually one to three files and it is where you can
-    actually introduce a flake, so the repeat is earned here.
-    If tests in one changed file share a profile or other worker-scoped mutable
-    state, ALSO run that whole file at E2E_PORT=${portBase} with
-    --workers=1 --repeat-each=1 --retries=0. Repeat scrutiny and shared-fixture
-    parity answer different questions (#3653); neither substitutes for the other.
+  * SPECS YOU AUTHORED OR EDITED: run once locally on your assigned port range:
+    E2E_PORT=${portBase} ... --retries=0. The variable is E2E_PORT, never PORT.
+    If tests share a profile or other worker-scoped mutable state, run the whole
+    file with --workers=1 so a writer and reader share the same worker (#3653).
+    Use repeat scrutiny to diagnose a timing failure, not as a routine merge step.
   * EVERY OTHER SPEC — the blast radius, the geometry-asserting sweep, the specs that
     merely exercise code you changed: DO NOT RUN THEM LOCALLY. ${blastRadiusInstruction}
   Do NOT run the full suite locally — the orchestrator owns full-suite runs.
@@ -1207,14 +1204,6 @@ ${MIGRATION_LINES}
   nine of them to cover a blast radius — call it 30 minutes, for a fraction of the
   coverage, on four cores it is sharing with every sibling lane. CI is both faster
   and more complete, and it costs this box nothing.
-
-  AND \`--repeat-each=3\` BUYS ALMOST NOTHING ON THE BLAST RADIUS, which is the part
-  that makes this a correctness argument and not only a speed one. The failures a
-  repeat would catch in a spec you did NOT author are co-residency effects — a spec
-  behaving differently because of WHO IT RAN BESIDE. Those depend on shard
-  composition, and an ORDINARY local run does not reproduce it. So repeating a
-  blast-radius spec locally re-rolls a die that is not the die CI throws.
-  Repeat what you wrote; let CI run what you did not.
 
   BUT THE SHARD *IS* REPRODUCIBLE WHEN YOU NEED IT, and an earlier version of this
   brief said flatly that it was not. That was wrong and it cost a diagnosis:

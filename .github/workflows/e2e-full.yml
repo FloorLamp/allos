@@ -10,7 +10,7 @@ name: E2E full suite (on demand)
 # workflow-dispatch endpoint) and trust its verdict.
 #
 # Defaults are the strict, flake-revealing form: --retries=0 (a spec must pass
-# first try). Bump repeat_each to 3 to apply the changed-spec lane's bar
+# first try). Bump repeat_each to 3 for repeated flake detection
 # suite-wide when hardening (expect ~3x the runtime).
 #
 # Same sharded shape as ci.yml's e2e job, on its own 4-way split (this is an
@@ -45,12 +45,12 @@ on:
   workflow_dispatch:
     inputs:
       retries:
-        description: "Playwright --retries (0 = strict; 1 = ci.yml's tolerant full-suite mode)"
+        description: "Playwright --retries (0 = strict; 1 = measure pass-on-retry flakes)"
         type: choice
         options: ["0", "1"]
         default: "0"
       repeat_each:
-        description: "Playwright --repeat-each (3 = the changed-spec lane's bar, suite-wide)"
+        description: "Playwright --repeat-each (3 = three independent attempts per test)"
         type: choice
         options: ["1", "2", "3"]
         default: "1"
