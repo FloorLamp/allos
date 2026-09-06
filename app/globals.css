@@ -806,6 +806,13 @@
   @apply mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400;
 }
 
+@utility section-heading {
+  /* THE RUNG ABOVE THE EYEBROW (#5376): a heading that names what a block IS. NOT
+     uppercase — that is what tells it apart from the two below at a glance, with no
+     help from the page title's size. Typography only, as they are. */
+  @apply text-base font-semibold text-slate-900 dark:text-slate-50;
+}
+
 @utility section-label {
   /* Uppercase micro-heading / section label. Typography only (no margin or
      layout) so call sites keep their own element + spacing; a brand/rose/tone

@@ -1531,8 +1531,13 @@ export default function ActivityForm({
             // back to the chip that opened it.
             onKeyDown={onFactKeyDown}
           >
+            {/* Rung 2 (#5376), the same node the exercise names use — so the two
+                headings on this form cannot drift apart. */}
             <div className="mb-3 flex items-center gap-3">
-              <h3 id="session-details-title" className="label mb-0 shrink-0">
+              <h3
+                id="session-details-title"
+                className="section-heading shrink-0"
+              >
                 Session
               </h3>
               <span

@@ -105,7 +105,7 @@ export default function EquipmentQuickAdd({
       data-testid="strength-equipment-quickadd"
       className="mt-2 w-full rounded-md border border-black/10 bg-surface px-2.5 py-2 dark:border-white/10"
     >
-      <div className="section-label">New equipment</div>
+      <div className="label mb-0">New equipment</div>
       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
         <input
           type="text"
