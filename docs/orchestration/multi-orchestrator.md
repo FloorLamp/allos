@@ -55,7 +55,6 @@ fleet moves one REPLACEMENT at a time (`recovery.md` §Replacing a session).
 ## Bookkeeping
 
 - The PM writes the day's release-notes batch off its digest's gather (owner,
-  2026-09-06). Orchestrators send nothing; the gather reads `main`, so no merge
-  rides on a handoff.
+  2026-09-06); the gather reads `main`, so orchestrators send nothing.
 - Report the census line (`lifecycle.md` §Status pulse) to the PM on request
   by SendMessage. The PM arbitrates fence disputes and slot starvation.
