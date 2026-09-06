@@ -63,8 +63,8 @@ const set = (
 ): PartEntry["sets"][number] => ({
   ...blankSet(),
   // These fixtures are sets a person ENTERED — the plan/record split (#5373) is
-  // asked about in its own cases below, where `done` is stated explicitly.
-  done: true,
+  // asked about where a planned row is built explicitly.
+  plan: null,
   weight: "",
   reps: "",
   weightRight: "",

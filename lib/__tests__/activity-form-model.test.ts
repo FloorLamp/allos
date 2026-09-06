@@ -224,7 +224,7 @@ describe("partIntent", () => {
 describe("partTotal", () => {
   // A recorded set: the running total is what this session HAS lifted (#5373), and a
   // planned row's numbers are an offer — its own case is at the end of this block.
-  const done = () => ({ ...blankPart().sets[0], done: true });
+  const done = () => ({ ...blankPart().sets[0], plan: null });
 
   it("sums weight × reps across sets", () => {
     const p = part({
@@ -269,7 +269,7 @@ describe("partSetsSummary — the compact set notation (#3336)", () => {
   // is never in it (#5373) — that case is asked about on its own below.
   const set = (o: Partial<PartEntry["sets"][number]>) => ({
     ...blankPart().sets[0],
-    done: true,
+    plan: null,
     ...o,
   });
   const run = (n: number, o: Partial<PartEntry["sets"][number]>) =>

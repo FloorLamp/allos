@@ -55,7 +55,10 @@ import {
   IconTrendingDown,
 } from "@tabler/icons-react";
 import {
+  asPlan,
+  confirmSet,
   doneSets,
+  setDone,
   partIntent,
   partTotal,
   recentSessionsForForm,
@@ -67,6 +70,7 @@ import {
   sharesLoad,
   type PartEntry,
   type SetEntry,
+  type SetPlan,
   type RepeatSourceSet,
   type PartFault,
 } from "./model";
@@ -222,7 +226,7 @@ function LoadField({
   weightStep,
   showPlate,
   ids = null,
-  planned,
+  plan = null,
   blocked,
   inputRef,
   onChange,
@@ -236,12 +240,13 @@ function LoadField({
   weightStep: number;
   showPlate: boolean;
   ids?: SetRowIds | null;
-  // Whether this load is still a PLAN (#5373) — the set it states has not been
-  // confirmed. A planned load is painted as a PLACEHOLDER over an empty field, never
-  // written into it: focus is arrival, not intent, so typing "60" into a ghost must
-  // give 60 and not 77.560 (#1971). The band's plan is the grid's: it is a ghost
-  // until some set of the exercise is done (#5371).
-  planned: boolean;
+  // What this load is OFFERED as while nobody has stated it (#5373), or null. The plan
+  // is painted as a PLACEHOLDER over an empty field, never written into it: focus is
+  // arrival, not intent, so typing "60" over a ghost must give 60 and not 77.560
+  // (#1971). The exercise-level band takes set 1's plan, which is how #5371's band is
+  // itself a ghost until a set is done — and why a load typed INTO the band shows at
+  // once, plan or no plan.
+  plan?: SetPlan | null;
   blocked: boolean;
   // Hands the input up on mount, so a "Vary" tap can put the caret in the weight it
   // just revealed.
@@ -259,11 +264,11 @@ function LoadField({
   // Increment steppers (issue #337). The weight step is lift-appropriate and
   // plate-loadable — the SAME weightIncrementKg/Lb the next-set suggestion adds
   // (5 kg squat vs 2.5 kg accessory), in the user's display unit.
+  // Steps from the PLAN while the field is a ghost: the offer is what a person nudges
+  // up or down, not a zero.
   const stepWeight = (direction: -1 | 1) => {
-    const next = Math.max(
-      0,
-      round((Number(set[f.weight]) || 0) + direction * weightStep, 2)
-    );
+    const from = Number(set[f.weight] || plan?.[f.weight]) || 0;
+    const next = Math.max(0, round(from + direction * weightStep, 2));
     onChange({ [f.weight]: next > 0 ? String(next) : "" });
   };
   const input = (
@@ -274,7 +279,7 @@ function LoadField({
       min="0"
       inputMode="decimal"
       data-testid={ids?.weight}
-      value={planned ? "" : set[f.weight]}
+      value={set[f.weight]}
       onChange={(e) => onChange({ [f.weight]: stripNegative(e.target.value) })}
       onKeyDown={(e) => {
         if (e.key === "Enter") {
@@ -282,7 +287,7 @@ function LoadField({
           onEnter();
         }
       }}
-      placeholder={(planned && set[f.weight]) || unit}
+      placeholder={plan?.[f.weight] || unit}
       className={
         stepped
           ? "number-no-spinner min-w-0 w-full border-x border-y-0 border-black/10 bg-transparent px-2 py-2 text-sm outline-hidden focus:ring-0 dark:border-white/10 dark:text-slate-100 dark:placeholder:text-slate-500"
@@ -388,9 +393,8 @@ function SetRow({
   // placeholders, and the first step or keystroke into them writes the value AND
   // confirms the set — correcting IS confirming, so a failed set is two taps on
   // reps `−` and never a separate confirm afterwards.
-  const planned = !set.done;
   const confirm = (patch: Partial<SetEntry>) =>
-    onChange({ ...patch, done: true });
+    onChange({ ...confirmSet(set), ...patch });
   const flags = flagsFor(set[f.weight], set[f.reps], set[f.duration]);
   const reps = useRef<HTMLInputElement | null>(null);
   const effortRef = (el: HTMLInputElement | null) => {
@@ -400,7 +404,8 @@ function SetRow({
   // Steps from the PLAN's reps while the row is a ghost — "stepping row 2's reps
   // down twice" is `reps − 2` at the planned load, not a count started from zero.
   const stepReps = (direction: -1 | 1) => {
-    const next = Math.max(0, (Number(set[f.reps]) || 0) + direction);
+    const from = Number(set[f.reps] || set.plan?.[f.reps]) || 0;
+    const next = Math.max(0, from + direction);
     confirm({ [f.reps]: next > 0 ? String(next) : "" });
   };
   // The "effort" input is reps for normal lifts, a m:ss hold time for timed.
@@ -411,9 +416,9 @@ function SetRow({
       ref={effortRef}
       type="text"
       inputMode="numeric"
-      value={planned ? "" : set[f.duration]}
+      value={set[f.duration]}
       onChange={(e) => confirm({ [f.duration]: e.target.value })}
-      placeholder={(planned && set[f.duration]) || "m:ss"}
+      placeholder={set.plan?.[f.duration] || "m:ss"}
       aria-invalid={holdInvalid || undefined}
       className={`input ${
         holdInvalid
@@ -430,7 +435,7 @@ function SetRow({
       min="1"
       inputMode="numeric"
       data-testid={ids?.reps}
-      value={planned ? "" : set[f.reps]}
+      value={set[f.reps]}
       onChange={(e) => confirm({ [f.reps]: stripNonPositive(e.target.value) })}
       onKeyDown={
         onEnter
@@ -444,7 +449,7 @@ function SetRow({
             }
           : undefined
       }
-      placeholder={(planned && set[f.reps]) || "reps"}
+      placeholder={set.plan?.[f.reps] || "reps"}
       // Divider on BOTH sides now that the reps stepper is symmetric
       // (#1524: − input +), exactly like the weight stepper's input.
       className="number-no-spinner min-w-0 w-full border-x border-y-0 border-black/10 bg-transparent px-2 py-2 text-sm outline-hidden focus:ring-0 dark:border-white/10 dark:text-slate-100 dark:placeholder:text-slate-500"
@@ -463,7 +468,7 @@ function SetRow({
             weightStep={weightStep}
             showPlate={showPlate}
             ids={ids}
-            planned={planned}
+            plan={set.plan}
             blocked={flags.weight}
             inputRef={loadRef}
             onChange={confirm}
@@ -808,7 +813,7 @@ export default function StrengthSets({
   };
   // A further set copies the last one the person CONFIRMED (#5373) — until one
   // exists the rows already state the plan, and there is nothing to add to.
-  const lastDone = [...p.sets].reverse().find((s) => s.done) ?? null;
+  const lastDone = [...p.sets].reverse().find(setDone) ?? null;
   const canAddSet = !!lastDone && setComplete(p.name, lastDone, p.perSide);
   const total = partTotal(p);
   // The sentence this part's sets read as, or null when they are not a uniform run and
@@ -835,7 +840,7 @@ export default function StrengthSets({
   // typing speed and at 6x CPU throttle — not a race. Focus is ARRIVAL, not
   // intent, and this repo's rule is that context gates an offer but the user's
   // tap is the write. The tap is the Next-set card's "Use" button below.
-  const partUntouched = p.sets.every((s) => !s.done);
+  const partUntouched = !p.sets.some(setDone);
   // Live version of the training log card's missed-target marker, judged by the
   // same shared rule the saved data will be (completed sets only).
   const intent = partIntent(p);
@@ -884,7 +889,7 @@ export default function StrengthSets({
         set_number: i + 1,
       })),
       units.weightUnit
-    ).sets;
+    ).sets.map(asPlan);
   };
   // What a fresh part inherits from the plan, seeded ONCE per exercise: the rows
   // above, and the rep target the scheme declares (#335) so a fixed-scheme lifter
@@ -1285,7 +1290,7 @@ export default function StrengthSets({
                       weightStep={weightStep}
                       showPlate={showPlate}
                       ids={p.perSide ? null : rowIds(0)}
-                      planned={partUntouched}
+                      plan={p.sets[0].plan}
                       blocked={p.sets.some(
                         (s) =>
                           sideFlags(
@@ -1490,10 +1495,10 @@ export default function StrengthSets({
                 options column's controls share (#3938); the geometry is the
                 primitive's, not restated here. It sits at the row's trailing edge
                 beside W, so the eye runs load → reps → done. */}
-                    {!s.done && (
+                    {!setDone(s) && (
                       <IconButton
                         tone="brand"
-                        onClick={() => onUpdateSet(si, { done: true })}
+                        onClick={() => onUpdateSet(si, confirmSet(s))}
                         label={`Confirm set ${si + 1}`}
                         data-testid={`set-confirm-${si + 1}`}
                       >

@@ -216,7 +216,7 @@ function renderForm() {
   const set: SetEntry = {
     // An entered set, so the row shows its values and its options rather than the
     // confirm control a planned row carries (#5373).
-    done: true,
+    plan: null,
     weight: "60",
     reps: "5",
     weightRight: "",

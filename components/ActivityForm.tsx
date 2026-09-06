@@ -90,6 +90,7 @@ import { estimateActivityKcal } from "@/lib/calorie-estimate";
 import { activityDisclosureSummary } from "@/lib/activity-import-details";
 import {
   activityDraftHasTypedContent,
+  savedShapeOfParts,
   activityEditDataHasStrength,
 } from "@/lib/activity-form-model";
 import { activityIconIdentitiesAreComposite } from "@/lib/activity-icon";
@@ -880,6 +881,10 @@ export default function ActivityForm({
   }
 
   // --- Auto-save: debounced persist that keeps the form open. ---
+  // WHAT COUNTS AS AN UNSAVED CHANGE. Shaped through `savedShapeOfParts` so the grid's
+  // presentational state — #5371's Vary latch, #5373's per-set plan — cannot make one:
+  // both are invisible to `buildActivityPayload`, so a signature that moved on them
+  // would schedule a save whose form data is byte-identical (#5442).
   const formSig = useMemo(
     () =>
       JSON.stringify({
@@ -888,7 +893,7 @@ export default function ActivityForm({
         endTime,
         intensity,
         notes,
-        parts,
+        parts: savedShapeOfParts(parts),
         title: effectiveTitle,
         estCalories: persistedEstCalories,
         sessionDuration,

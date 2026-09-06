@@ -3,6 +3,7 @@ import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { comboboxRows, deleteActivityFromForm } from "./helpers";
+import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 import { E2E_LOGIN_FORM_PLATEAU, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
 
@@ -65,11 +66,11 @@ test("a three-set plan finishes as the two sets that happened (#5373)", async ({
     PHONE_CONTEXT
   );
   try {
+    // The phone's own entry to a fresh draft: the dock's Train segment. "Add activity"
+    // is a desktop header control and does not render at 390px.
     await page.goto("/training?tab=log");
-    await page
-      .getByRole("main")
-      .getByRole("button", { name: "Add activity" })
-      .click();
+    const sheet = await openLogSheet(page);
+    await (await showLogRow(sheet, "log-activity")).click();
     await pickActivity(page, "Skullcrusher");
     const form = page.getByTestId("activity-form"); // testid-scope-ok: ActivityOverlay portals the workspace to <body>, one copy
     await form.getByLabel("Activity name").fill(marker);

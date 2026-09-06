@@ -21,6 +21,8 @@ import {
   initialPartsFromSeed,
   repeatSessionFill,
   latchVaried,
+  asPlan,
+  setDone,
 } from "@/lib/activity-form-model";
 
 // Which set's weight field the plate builder is targeting, if open. `seed`
@@ -231,15 +233,15 @@ export function useActivityParts({
   // load stated for the whole grid, so it writes through the same door as a row.
   //
   // AND CONFIRMING IS A PATCH LIKE ANY OTHER (#5373). A set row's own controls send
-  // `done: true` with whatever they changed, and the confirm control sends it alone —
-  // so "correcting is confirming" needs no second writer and cannot drift from the
-  // tap. Turning a PLANNED set into a record is the check-off gesture (#340), fired
+  // `confirmSet`'s patch with whatever they changed, and the confirm control sends it
+  // alone — so "correcting is confirming" needs no second writer and cannot drift from
+  // the tap. Turning a PLANNED set into a record is the check-off gesture (#340), fired
   // here rather than by each control that can confirm, so it happens exactly once per
   // set however the person got there.
   function updateSet(pi: number, si: number | "all", patch: Partial<SetEntry>) {
     if (
-      patch.done &&
-      parts[pi]?.sets.some((s, j) => (si === "all" || j === si) && !s.done)
+      patch.plan === null &&
+      parts[pi]?.sets.some((s, j) => (si === "all" || j === si) && !setDone(s))
     )
       onSetCheckedOff();
     setParts((prev) =>
@@ -264,26 +266,15 @@ export function useActivityParts({
     setParts((prev) =>
       prev.map((p, idx) => {
         if (idx !== pi) return p;
-        const last = [...p.sets].reverse().find((s) => s.done);
+        const last = [...p.sets].reverse().find(setDone);
         return {
           ...p,
           sets: [
             ...p.sets,
-            {
-              weight: last?.weight ?? "",
-              reps: last?.reps ?? "",
-              weightRight: last?.weightRight ?? "",
-              repsRight: last?.repsRight ?? "",
-              duration: last?.duration ?? "",
-              durationRight: last?.durationRight ?? "",
-              // A new set is a working set by default — never inherit the
-              // previous row's warmup flag (#338).
-              warmup: false,
-              // RPE is logged per set, never carried forward (#743) — blank by
-              // default, so the next set starts unrated.
-              rpe: null,
-              done: false,
-            },
+            // A new set is a working set by default — never inherit the previous row's
+            // warmup flag (#338) — and its RPE is blank, because RPE is logged per set
+            // and never carried forward (#743).
+            asPlan({ ...(last ?? blankSet()), warmup: false, rpe: null }),
           ],
         };
       })
@@ -342,7 +333,9 @@ export function useActivityParts({
     if (fill.source === "session") {
       setParts((prev) =>
         prev.map((part, idx) =>
-          idx === pi ? latchVaried({ ...part, sets, perSide }) : part
+          idx === pi
+            ? latchVaried({ ...part, sets: sets.map(asPlan), perSide })
+            : part
         )
       );
       return;
@@ -355,8 +348,8 @@ export function useActivityParts({
         const last = part.sets[li];
         // A row nobody has confirmed is still an OFFER, so the coached set lands on
         // it (#5373). This used to infer that from empty fields, which a planned row
-        // no longer has — the flag says it directly, and a record is never clobbered.
-        const untouched = !!last && !last.done;
+        // still has — the plan says it directly, and a record is never clobbered.
+        const untouched = !!last && !setDone(last);
         // The Use tap is #335's explicit single-set write, so the set it lands is a
         // RECORD (#5373) — unlike the Recent panel's session repeat, which replaces
         // the ghosts and leaves the person to confirm each row.
@@ -364,7 +357,6 @@ export function useActivityParts({
           ...values,
           warmup: row.warmup,
           rpe: row.rpe,
-          done: true,
         });
         return latchVaried({
           ...part,

@@ -15,9 +15,13 @@ import {
   type SetFill,
 } from "@/components/activity-form/useActivityParts";
 import {
+  asPlan,
   blankPart,
   blankSet,
+  confirmSet,
   doneSets,
+  savedShapeOfParts,
+  setDone,
   partTotal,
   type PartEntry,
   type RepeatSourceSet,
@@ -183,7 +187,9 @@ describe("fillSets (#5377)", () => {
       })
     );
     expect(result.current.parts[0].perSide).toBe(false);
-    expect(result.current.parts[0].sets.map((s) => s.weight)).toEqual([
+    // A repeat states that session as this session's PLAN (#5373), so its loads land
+    // in the offer rather than in the fields.
+    expect(result.current.parts[0].sets.map((s) => s.plan?.weight)).toEqual([
       "60",
       "65",
     ]);
@@ -194,7 +200,9 @@ describe("fillSets (#5377)", () => {
 // timer and its haptic off this one callback, and it must fire once per set however
 // the person confirmed — so the count is what these cases assert, not the flag.
 describe("the check-off gesture (#5373)", () => {
-  const planned = { ...blankSet(), weight: "60", reps: "8" };
+  const planned = asPlan({ ...blankSet(), weight: "60", reps: "8" });
+  const confirmRow = (h: ReturnType<typeof setUp>) =>
+    confirmSet(h.result.current.parts[0].sets[0]);
   const run = (drive: (h: ReturnType<typeof setUp>) => void) => {
     const checkedOff = vi.fn();
     const h = setUp(checkedOff);
@@ -207,12 +215,12 @@ describe("the check-off gesture (#5373)", () => {
     [
       "a confirm",
       (h: ReturnType<typeof setUp>) =>
-        h.result.current.updateSet(0, 0, { done: true }),
+        h.result.current.updateSet(0, 0, confirmRow(h)),
     ],
     [
       "a correction",
       (h: ReturnType<typeof setUp>) =>
-        h.result.current.updateSet(0, 0, { reps: "6", done: true }),
+        h.result.current.updateSet(0, 0, { ...confirmRow(h), reps: "6" }),
     ],
   ])(
     "%s checks the set off exactly once, and only the first time",
@@ -319,12 +327,15 @@ function Harness({
 }
 const mountLive = (...initial: PartEntry[]) =>
   render(<Harness initial={initial} />);
-// Sets the person RECORDED — `done`, so the rows show their values rather than the
+// Sets the person RECORDED — no plan, so the rows show their values rather than the
 // ghost placeholders a plan renders (#5373). The plan's own cases build their rows
 // without it.
 const sets = (...loads: [string, string][]): SetEntry[] =>
-  loads.map(([weight, reps]) => ({ ...blankSet(), weight, reps, done: true }));
+  loads.map(([weight, reps]) => ({ ...blankSet(), weight, reps, plan: null }));
 const weights = () => latest[0].sets.map((s) => s.weight);
+// What each row STATES: what was typed into it, else what it still offers (#5373).
+const shownLoads = () =>
+  latest[0].sets.map((s) => s.weight || s.plan?.weight || "");
 const byId = (id: string) => screen.getByTestId(id);
 const rowOf = (label: string) =>
   // The L/R label renders in the exercise-level band AND in the set row (#5371);
@@ -359,7 +370,7 @@ describe("SetRow's per-side field mapping (#5377)", () => {
         [weightKey]: "20",
         [repsKey]: "1",
         // Correcting a row's reps IS confirming it (#5373).
-        done: true,
+        plan: null,
       });
     }
   );
@@ -449,8 +460,10 @@ describe("the shared weight stepper (#5371)", () => {
     expect(byId("set2-weight")).toHaveProperty("placeholder", "120");
     // Editing set 2 to match set 1 is a choice about set 2, not a request to fold.
     fireEvent.change(byId("set2-weight"), { target: { value: "125" } });
-    expect(weights()).toEqual(["125", "125"]);
-    expect(latest[0].sets.map((s) => s.done)).toEqual([false, true]);
+    // Set 2 is now a record at 125; set 1 is still the plan's 125, so the two match
+    // and the grid STILL does not fold — the latch is what refuses, as it must.
+    expect(latest[0].sets.map(setDone)).toEqual([false, true]);
+    expect(shownLoads()).toEqual(["125", "125"]);
     expect(screen.queryByTestId("exercise-weight")).toBeNull();
   });
 
@@ -529,8 +542,8 @@ describe("the shared weight stepper (#5371)", () => {
     mountLive(part());
     drive();
     expect(latest[0].sets).toStrictEqual([
-      { ...blankSet(), weight: "60", reps: "8", done: true },
-      { ...blankSet(), weight: "65", reps: "8", done: true },
+      { ...blankSet(), weight: "60", reps: "8", plan: null },
+      { ...blankSet(), weight: "65", reps: "8", plan: null },
     ]);
   });
 
@@ -618,7 +631,7 @@ describe("sets arrive as a plan (#5373)", () => {
   it("opens a pristine part as one ghost row per planned set, and saves none of them", () => {
     mountPlanned();
     expect(rows()).toHaveLength(3);
-    expect(rows().every((s) => !s.done)).toBe(true);
+    expect(rows().some(setDone)).toBe(false);
     // The load is stated once, above reps-only rows (#5371) — and it is a ghost too,
     // because no set of this exercise is a record yet.
     expect(shown("set1-weight")).toEqual({ value: "", ghost: "62.5" });
@@ -661,9 +674,9 @@ describe("sets arrive as a plan (#5373)", () => {
     (_how, drive, si, expected) => {
       mountPlanned();
       drive();
-      expect(rows()[si]).toMatchObject({ ...expected, done: true });
+      expect(rows()[si]).toMatchObject({ ...expected, plan: null });
       // The other two rows are still the plan, and the payload is the one done set.
-      expect(rows().filter((s) => s.done)).toHaveLength(1);
+      expect(rows().filter(setDone)).toHaveLength(1);
       expect(payload()).toHaveLength(1);
       expect(payload()[0]).toMatchObject({
         exercise: bench,
@@ -700,13 +713,16 @@ describe("sets arrive as a plan (#5373)", () => {
   it("a part with no history keeps its one empty row, and typing confirms it", () => {
     mountPlanned({});
     expect(rows()).toHaveLength(1);
-    expect(rows()[0].done).toBe(false);
+    expect(setDone(rows()[0])).toBe(false);
     fireEvent.change(byId("set1-weight"), { target: { value: "40" } });
     fireEvent.change(byId("set1-reps"), { target: { value: "10" } });
-    expect(rows()[0]).toMatchObject({ weight: "40", reps: "10", done: true });
+    expect(rows()[0]).toMatchObject({ weight: "40", reps: "10", plan: null });
     // Now there IS a record to add to, and a further set is a ghost copied from it.
     fireEvent.click(screen.getByText("+ Add set"));
-    expect(rows()[1]).toMatchObject({ weight: "40", reps: "10", done: false });
+    expect(rows()[1]).toMatchObject({
+      weight: "",
+      plan: { weight: "40", reps: "10" },
+    });
     expect(payload()).toHaveLength(1);
   });
 
@@ -730,15 +746,14 @@ describe("sets arrive as a plan (#5373)", () => {
       { perSide: true }
     );
     expect(rows()).toHaveLength(2);
-    expect(rows()[0]).toMatchObject({
+    expect(rows()[0].plan).toMatchObject({
       weight: "22.5",
       weightRight: "20.5",
       reps: "5",
       repsRight: "5",
-      done: false,
     });
     fireEvent.click(byId("set-confirm-1"));
-    expect(rows()[0].done).toBe(true);
+    expect(setDone(rows()[0])).toBe(true);
     // ONE flag for the row, so both sides became a record together.
     expect(payload()[0]).toMatchObject({ weight: 22.5, weightRight: 20.5 });
   });
@@ -750,7 +765,7 @@ describe("sets arrive as a plan (#5373)", () => {
         history={history()}
       />
     );
-    expect(rows().every((s) => s.done)).toBe(true);
+    expect(rows().every(setDone)).toBe(true);
     expect(screen.queryByTestId("set-confirm-1")).toBeNull();
     expect(shown("set1-weight").value).toBe("60");
     expect(payload()).toHaveLength(2);
@@ -758,36 +773,109 @@ describe("sets arrive as a plan (#5373)", () => {
 });
 
 // THE PAYLOAD RULE, ASKED OF THE BUILDER ITSELF: a ghost that was never confirmed
-// must not reach the save, however complete its fields look. The fixture REACHES the
-// forbidden state — a planned row carries the whole prescription, weight and reps —
-// so deleting the `done` filter in buildActivityPayload turns this red rather than
-// leaving it green on an empty row it could never have caught.
+// must not reach the save, however complete its fields look.
+//
+// THE FIXTURE FORGES THE FORBIDDEN STATE ON PURPOSE, and this is the whole reason the
+// case can fail. The model as built never mints it — `asPlan` moves the numbers OUT of
+// the fields, so an ordinary ghost has nothing for the payload to pick up and a fixture
+// made of one would go green with the filter deleted. This row carries a plan AND the
+// fields, which is what a `done: boolean` beside untouched values would have looked
+// like, and it is what the `doneSets` filter is there to refuse.
 describe("only a confirmed set reaches the payload (#5373)", () => {
   const named = (over: Partial<PartEntry>) =>
     buildActivityPayload(classifier, [
       { ...blankPart(), name: "Barbell Bench Press", ...over },
     ]).flat;
-  const planned = { ...blankSet(), weight: "60", reps: "8", done: false };
+  const record = { ...blankSet(), weight: "60", reps: "8", plan: null };
+  const planned = { ...record, plan: { ...record } };
 
   it.each([
     ["every row planned", [planned, planned, planned], 0],
-    ["one confirmed", [{ ...planned, done: true }, planned, planned], 1],
-    ["all confirmed", [1, 2, 3].map(() => ({ ...planned, done: true })), 3],
-  ])("%s ⇒ %i saved sets", (_case, rows, saved) => {
+    ["one confirmed", [record, planned, planned], 1],
+    ["all confirmed", [record, record, record], 3],
+  ])("%s: only the confirmed rows are saved", (_case, rows, saved) => {
     expect(named({ sets: rows })).toHaveLength(saved);
   });
 
   // The judgement reads the same filter: a plan cannot miss a target it was never
   // measured against, and the volume total counts what was lifted.
+  // And an ordinary ghost — the shape the grid actually builds — carries nothing for a
+  // payload to find in the first place, which is the structural half of the same rule.
+  it("an ordinary ghost has no values to save at all", () => {
+    const ghost = asPlan(record);
+    expect(ghost.weight).toBe("");
+    expect(ghost.plan).toMatchObject({ weight: "60", reps: "8" });
+    expect(named({ sets: [ghost, ghost] })).toEqual([]);
+  });
+
   it("judges and totals the record, not the plan", () => {
     const p = {
       ...blankPart(),
       name: "Barbell Bench Press",
       targetReps: "8",
-      sets: [{ ...planned, done: true, reps: "6" }, planned, planned],
+      sets: [{ ...record, reps: "6" }, planned, planned],
     };
     expect(doneSets(p)).toHaveLength(1);
     expect(partTotal(p)).toBe(360);
     expect(partTotal({ ...p, sets: [planned, planned, planned] })).toBe(0);
+  });
+});
+
+// #5442 — A CONTROL THAT CHANGES NO DATA MUST NOT COUNT AS A CHANGE.
+//
+// `varied` (#5371) and a set's `plan` (#5373) decide how the grid RENDERS; neither can
+// be expressed by `buildActivityPayload`. Left in the auto-save signature they make an
+// unsaved change out of a tap that changes nothing, and the update path then rewrites
+// `updated_at` and — on a row an integration owns — sets `edited = 1` permanently, so a
+// re-ingest stops correcting it. Being out of the PAYLOAD is not being out of what
+// counts as a CHANGE.
+//
+// Driven through the real controls, as the audit's probe was: the shaped object is
+// exactly where the bug hides, so reading it instead of the grid proves nothing.
+describe("presentational state is not an unsaved change (#5442)", () => {
+  // The two quantities the defect separated: what the auto-save would call a change,
+  // and what it would actually send. Every case below asserts them TOGETHER, because
+  // the bug is one moving without the other.
+  const sig = () => JSON.stringify(savedShapeOfParts(latest));
+  const sent = () =>
+    JSON.stringify(
+      buildActivityPayload(
+        classifier,
+        latest.filter((p) => p.name.trim())
+      ).flat
+    );
+
+  it("tapping Vary re-renders the grid and moves neither", () => {
+    mountLive(
+      part({
+        name: "Barbell Bench Press",
+        sets: sets(["60", "8"], ["60", "8"]),
+      })
+    );
+    const before = { sig: sig(), sent: sent() };
+    fireEvent.click(byId("set-vary-2"));
+    // The tap DID something — without this the case passes on a dead button.
+    expect(latest[0].varied).toBe(true);
+    expect(screen.queryByTestId("exercise-weight")).toBeNull();
+    expect({ sig: sig(), sent: sent() }).toEqual(before);
+  });
+
+  it("a plan the person has not confirmed is not a change either", () => {
+    const planned = asPlan({ ...blankSet(), weight: "62.5", reps: "5" });
+    mountLive(
+      part({ name: "Barbell Bench Press", sets: [planned, planned, planned] })
+    );
+    // Three rows of prescription, and nothing in either quantity that says so.
+    expect(screen.getAllByTestId(/^set-confirm-\d+$/)).toHaveLength(3);
+    expect(sig()).not.toContain("62.5");
+    expect(sent()).toBe("[]");
+
+    // Confirming one IS data, so both move together — which is what makes the two
+    // assertions above a claim about presentation rather than about nothing happening.
+    const before = { sig: sig(), sent: sent() };
+    fireEvent.click(byId("set-confirm-1"));
+    expect(sig()).toContain("62.5");
+    expect(sig()).not.toBe(before.sig);
+    expect(sent()).not.toBe(before.sent);
   });
 });
