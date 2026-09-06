@@ -453,9 +453,8 @@ export async function addSubstanceDailyTotalAction(
 
 // CORRECT ONE RECORDED USE (#5026 phase 2), replacing the day-count correction that
 // stood here. A consumable is an EVENT, so what a correction addresses is the event:
-// its DAY and the minute somebody stated for it. Amount is gone from the contract
-// because one event is one unit, and so is the day's NOTE, which belongs to the day and
-// not to any use under it (#5077 owns where it lives now).
+// its DAY, the minute somebody stated for it, and its NOTE (#5304). Amount is gone
+// from the contract because one event is one unit.
 export async function correctSubstanceUseAction(
   formData: FormData
 ): Promise<SubstanceEventEditOutcome> {
@@ -476,9 +475,14 @@ export async function correctSubstanceUseAction(
       : String(raw).trim() === ""
         ? null
         : new Date(String(raw));
+  // THE NOTE, ON THE SAME TERMS: absent leaves it, present states it — including
+  // present-and-empty, which is how a note is CLEARED (#5077's ask). The core folds
+  // blank to NULL.
+  const rawNotes = formData.get("notes");
   const outcome = correctSubstanceEventCore(profileId, eventId, {
     date,
     statedAt,
+    notes: rawNotes === null ? undefined : String(rawNotes),
   });
   if (outcome.kind !== "updated") return outcome;
   revalidateSubstanceUse();

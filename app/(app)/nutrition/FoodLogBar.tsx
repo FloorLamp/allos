@@ -209,6 +209,9 @@ export interface FoodLogEvent {
   eatenAt: string | null;
   // Profile-local "HH:MM" of the audit/tap instant. Always present, never edited.
   loggedTime: string;
+  // What the person wrote about this serving (#5304), or null. Seeds the correction
+  // sheet's note field so a save can restate or clear it rather than open blank.
+  notes: string | null;
 }
 
 export interface FoodLogDay {
@@ -2427,6 +2430,7 @@ export default function FoodLogBar({
                 mealSlot: editing.mealSlot,
                 eatenAt: editing.eatenAt,
                 loggedAt: editing.loggedTime,
+                notes: editing.notes,
               }}
               subjectProfileId={
                 subjectProfileId ?? activeProfileId ?? undefined

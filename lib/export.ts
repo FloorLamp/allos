@@ -1477,8 +1477,15 @@ export const DATASETS: ExportDataset[] = [
     key: "food_log_events",
     label: "Food log events",
     table: "food_log_events",
-    columns: ["date", "group_key", "recorded_at", "meal_slot", "bundle_id"],
-    select: `SELECT id, date, group_key, recorded_at, meal_slot, bundle_id
+    columns: [
+      "date",
+      "group_key",
+      "recorded_at",
+      "meal_slot",
+      "notes",
+      "bundle_id",
+    ],
+    select: `SELECT id, date, group_key, recorded_at, meal_slot, notes, bundle_id
        FROM food_log_events WHERE profile_id = ? ORDER BY recorded_at DESC`,
     countSql: `SELECT COUNT(*) AS n FROM food_log_events WHERE profile_id = ?`,
   }),
@@ -1519,8 +1526,15 @@ export const DATASETS: ExportDataset[] = [
     key: "substance_log_events",
     label: "Substance log events",
     table: "substance_log_events",
-    columns: ["date", "substance", "recorded_at", "occurred_at", "time_source"],
-    select: `SELECT id, date, substance, recorded_at, occurred_at, time_source
+    columns: [
+      "date",
+      "substance",
+      "recorded_at",
+      "occurred_at",
+      "time_source",
+      "notes",
+    ],
+    select: `SELECT id, date, substance, recorded_at, occurred_at, time_source, notes
        FROM substance_log_events WHERE profile_id = ? ORDER BY recorded_at DESC`,
     countSql: `SELECT COUNT(*) AS n FROM substance_log_events WHERE profile_id = ?`,
   }),
