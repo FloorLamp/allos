@@ -2913,12 +2913,18 @@ attached to that day.
 
 The same contract holds at the bulk surface (#2125): selecting rows of an
 undoable kind on **Data → Manage** — activities, body metrics, biomarker
-records, supplements/medications, practice sessions, substance history,
-allergies, conditions, immunizations, visits, device/manual measurements, mood
-check-ins and symptom days — captures each row and offers one
-"Deleted N · Undo" toast, so the row menu and the bulk checkbox never disagree
-about whether a delete is reversible. ("Delete all" on a dataset stays
-deliberately permanent, and says so.)
+records, supplements/medications, practice sessions, allergies, conditions,
+immunizations, visits, device/manual measurements, mood check-ins and symptom
+days — captures each row and offers one "Deleted N · Undo" toast, so the row
+menu and the bulk checkbox never disagree about whether a delete is reversible.
+("Delete all" on a dataset stays deliberately permanent, and says so.)
+
+Substance history is not on that list any more. A use is a count on the day AND
+a row in the record, written together, and a bulk delete there could only remove
+one of the two — leaving uses the count no longer knows about, or a count with
+nothing behind it. So the substance tables browse and export on Data → Manage
+and are deleted where both halves move together: the ⋯ on a day, or the ⋯ on a
+single use in the record. Both offer Undo.
 
 The toast is no longer the only way back. **Data → Trash** (issue #2013) lists
 every capture that is still restorable — what it was, when you deleted it, how

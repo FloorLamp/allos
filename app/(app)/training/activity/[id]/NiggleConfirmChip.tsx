@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable no-restricted-properties -- USER-initiated repaint (#1878): follows the user's own 'Track it' tap (#2948) — the tap IS the write, and the chip must repaint away the moment the niggle it offered exists, or the page keeps asking about something already tracked */
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";

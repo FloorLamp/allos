@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable no-restricted-properties -- USER-initiated repaint (#1878): the registry IS the chokepoint — this is the deferred repaint finally landing */
 
 import {
   createContext,

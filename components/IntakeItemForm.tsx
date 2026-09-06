@@ -1724,14 +1724,15 @@ export default function IntakeItemForm({
 
       case "more":
         return (
-          <div className="flex flex-wrap gap-1.5 sm:col-span-2">
+          <div className="flex flex-wrap gap-1.5 pointer-coarse:gap-3.5 sm:col-span-2">
             {summary.more.map((key) => (
               <button
                 key={key}
                 type="button"
                 data-testid={`intake-more-${key}`}
                 onClick={() => setOpenPanel(key)}
-                className="min-h-11 rounded-full border border-(--border) px-3 py-1.5 text-sm transition hover:bg-(--ghost-hover)"
+                data-fact-chip="solo"
+                className="rounded-full border border-(--border) px-3 text-sm transition hover:bg-(--ghost-hover)"
               >
                 {INTAKE_FACT_NOUNS[key]}
               </button>

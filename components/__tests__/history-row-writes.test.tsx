@@ -89,12 +89,12 @@ vi.mock("@/app/(app)/wellness/actions", () => ({
   },
 }));
 vi.mock("@/app/(app)/medical/substance-use/actions", () => ({
-  updateSubstanceDailyTotalAction: async (fd: FormData) => {
-    record("updateSubstanceDailyTotalAction")(fd);
-    return { kind: "updated" };
+  correctSubstanceUseAction: async (fd: FormData) => {
+    record("correctSubstanceUseAction")(fd);
+    return { kind: "updated", eventId: 4, date: "2026-08-18" };
   },
-  deleteSubstanceDailyTotalAction: async (fd: FormData) => {
-    record("deleteSubstanceDailyTotalAction")(fd);
+  deleteSubstanceUseAction: async (fd: FormData) => {
+    record("deleteSubstanceUseAction")(fd);
     return { kind: "deleted", undoId: 1 };
   },
 }));
@@ -601,7 +601,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
     expect(only("updateFoodLogEvent").occurred_at).toBeUndefined();
   });
 
-  it("substance carries every field its action rewrites", async () => {
+  it("substance corrects ONE use, addressed by its event", async () => {
     await openEdit([
       row({
         id: "substance:nicotine:4",
@@ -609,29 +609,26 @@ describe("the record's ⋯ posts to the domain's own action", () => {
         title: "Nicotine",
         edit: {
           kind: "substance",
-          rowId: 4,
+          eventId: 4,
           substance: "nicotine",
-          amount: 3,
-          notes: "after lunch",
+          statedAt: "2026-08-18T13:15:00.000Z",
         },
       }),
     ]);
-    // The amount names the substance's own unit word since #4424's substance leg —
-    // matched on the prefix so this stays about the FIELD, not about the wording.
-    fireEvent.change(screen.getByLabelText(/^Amount/), {
-      target: { value: "5" },
-    });
     await act(async () =>
       fireEvent.click(screen.getByRole("button", { name: "Save" }))
     );
 
-    const fd = only("updateSubstanceDailyTotalAction");
-    expect(fd.substance).toBe("nicotine");
-    expect(fd.id).toBe("4");
-    expect(fd.amount).toBe("5");
+    const fd = only("correctSubstanceUseAction");
+    expect(fd.event_id).toBe("4");
     expect(fd.date).toBe("2026-08-18");
-    // `historyInput` stores what it reads, so a form without this field cleared it.
-    expect(fd.notes).toBe("after lunch");
+    // ALWAYS POSTED, so a time somebody wants gone can actually go: an absent field
+    // means "leave it alone" to the action, an empty one means "clear it".
+    expect(fd.stated_at).toBeDefined();
+    // A USE IS NOT A DAY (#5026 phase 2): neither the day's amount nor its note is on
+    // this door, so the correction cannot restate either through the back way.
+    expect(fd.amount).toBeUndefined();
+    expect(fd.notes).toBeUndefined();
   });
 
   it("dose amends through the domain's own form, seeded from the STATED instant", async () => {
@@ -754,19 +751,18 @@ describe("the record's ⋯ posts to the domain's own action", () => {
         title: "Nicotine",
         edit: {
           kind: "substance",
-          rowId: 4,
+          eventId: 4,
           substance: "nicotine",
-          amount: 3,
-          notes: "after lunch",
+          statedAt: null,
         },
       }),
-      "updateSubstanceDailyTotalAction",
+      "correctSubstanceUseAction",
       {
-        id: "4",
-        substance: "nicotine",
+        event_id: "4",
         date: "2026-08-18",
-        amount: "3",
-        notes: "after lunch",
+        // Empty rather than absent: nobody stated a minute for this use, and the
+        // correction's three wire states make that different from "leave it alone".
+        stated_at: "",
         // The shared form declares its surface (#3087) as the symptom form beside it
         // already did; the hand-rolled substance form it replaced posted nothing, so
         // every correction made here was stamped by the action's fallback instead.
@@ -986,14 +982,13 @@ describe("the record's ⋯ posts to the domain's own action", () => {
         title: "Nicotine",
         edit: {
           kind: "substance",
-          rowId: 4,
+          eventId: 4,
           substance: "nicotine",
-          amount: 3,
-          notes: null,
+          statedAt: null,
         },
       }),
-      "deleteSubstanceDailyTotalAction",
-      { id: "4", substance: "nicotine" },
+      "deleteSubstanceUseAction",
+      { event_id: "4" },
     ],
     [
       "body",

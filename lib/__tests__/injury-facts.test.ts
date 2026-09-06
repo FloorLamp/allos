@@ -146,8 +146,8 @@ describe("the status chip states what SAVE will write, and only that", () => {
 
 describe("what each chip reads", () => {
   it("says both sides rather than 'bilateral side'", () => {
-    expect(lateralityFactLabel("right")).toBe("right side");
-    expect(lateralityFactLabel("bilateral")).toBe("both sides");
+    expect(lateralityFactLabel("right")).toBe("Right side");
+    expect(lateralityFactLabel("bilateral")).toBe("Both sides");
     expect(lateralityFactLabel("")).toBeNull();
     expect(lateralityFactLabel(null)).toBeNull();
   });
@@ -158,14 +158,14 @@ describe("what each chip reads", () => {
     expect(loadFactorFactLabel("")).toBeNull();
     expect(loadFactorFactLabel("   ")).toBeNull();
     expect(loadFactorFactLabel("not-a-number")).toBeNull();
-    expect(loadFactorFactLabel("0.7")).toBe("easing to 70%");
+    expect(loadFactorFactLabel("0.7")).toBe("Easing to 70%");
     const s = injuryFactSummary(input({ label: "x", regions: ["Legs"] }));
     expect(s.more).toContain("loadFactor");
   });
 
   it("dates the review reminder and drops a blank one", () => {
     expect(reviewDateFactLabel("")).toBeNull();
-    expect(reviewDateFactLabel("2026-09-12")).toContain("revisit");
+    expect(reviewDateFactLabel("2026-09-12")).toContain("Revisit");
     expect(reviewDateFactLabel("2026-09-12")).toContain("12");
   });
 
@@ -195,8 +195,14 @@ describe("the vocabulary is lib/injury-model's, with no parallel list (#2948)", 
       const s = injuryFactSummary(input({ label: "x", regions: [r] }));
       expect(chip(s, "regions")?.label).toBe(r);
     }
+    // Case-insensitively, because #4035 sentence-cases the first word of a composed
+    // chip label. The claim is unchanged and is the one that matters here: the side
+    // in the label is DERIVED from the model's own value, not looked up in a second
+    // table of spellings.
     for (const l of INJURY_LATERALITIES)
-      expect(lateralityFactLabel(l)).toContain(l === "bilateral" ? "both" : l);
+      expect(lateralityFactLabel(l)?.toLowerCase()).toContain(
+        l === "bilateral" ? "both" : l
+      );
   });
 });
 

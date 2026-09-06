@@ -63,7 +63,7 @@ export const ACTIVITY_SESSION_FACT_NOUNS: Record<
   ActivitySessionFactKey,
   string
 > = {
-  equipment: "equipment",
+  equipment: "Equipment",
 };
 
 export function activitySessionFactSummary(

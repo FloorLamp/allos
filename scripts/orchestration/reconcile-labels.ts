@@ -123,14 +123,40 @@ function readIssue(issue: number): TrackerIssue {
   );
 }
 
+/**
+ * Every open issue, or nothing. The same refusal `reconcile-tracker.ts` makes on
+ * the same collection (#5311): `batch.length < 100` is the exhaustion signal and
+ * a bare `break` threw it away, so a clipped sweep and a complete one printed the
+ * same worksheet and the same "N wrote, M refused" tally. A worksheet is read as
+ * the tracker's whole domain-gap list, and `--only <n>` is worse still — an issue
+ * behind the cap comes back as nothing to do, which is indistinguishable from
+ * already correct.
+ */
+const PAGE_CAP = 10;
+
 function readOpenIssues(): TrackerIssue[] {
   const out: GhIssue[] = [];
-  for (let page = 1; page <= 10; page++) {
+  let swept = false;
+  for (let page = 1; page <= PAGE_CAP; page++) {
     const url = `https://api.github.com/repos/${config.repo}/issues?state=open&per_page=100&page=${page}`;
     const batch = curlJson(["-X", "GET", ...authHeaders(), url]);
-    if (!Array.isArray(batch) || batch.length === 0) break;
+    if (!Array.isArray(batch) || batch.length === 0) {
+      swept = true;
+      break;
+    }
     out.push(...(batch as GhIssue[]));
-    if (batch.length < 100) break;
+    if (batch.length < 100) {
+      swept = true;
+      break;
+    }
+  }
+  if (!swept) {
+    console.error(
+      `reconcile-labels: the open-issue sweep hit its ${PAGE_CAP}-page cap. ` +
+        "Every issue past it would be silently unswept in a run that reads as " +
+        "the whole tracker. Refusing."
+    );
+    process.exit(2);
   }
   return out.filter((i) => !i.pull_request).map(toTrackerIssue);
 }

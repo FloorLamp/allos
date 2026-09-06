@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable no-restricted-properties -- USER-initiated repaint (#1878): follows the user's own submit in the record's Add door (#4045) — the door writes a row into the very feed they are reading, and without the repaint it closes over a record that still shows the gap they opened it to fill */
 
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";

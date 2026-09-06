@@ -280,11 +280,24 @@ export type HistoryRowEdit =
       notes: string | null;
     }
   | {
+      /**
+       * ONE RECORDED USE (#5026 phase 2), addressed by its EVENT id. It was a DAY row
+       * — `rowId` on `substance_daily_totals`, with the day's amount and note — until
+       * every substance's units became events; a day count has nothing left to correct,
+       * so what the door opens onto is this use's day and the minute stated for it.
+       * Amount is gone because one event is one unit, and the day's note stayed on the
+       * day (#5077).
+       */
       kind: "substance";
-      rowId: number;
+      eventId: number;
       substance: string;
-      amount: number;
-      notes: string | null;
+      /**
+       * The row's OWN `occurred_at`, and never `sortTime` — the practice row's rule
+       * next door, for the same reason: `sortTime` falls back to the record chain, and
+       * the correction rewrites what it reads, so posting it back would stamp a filing
+       * clock into the event column.
+       */
+      statedAt: string | null;
     }
   | {
       kind: "mood";
