@@ -36,7 +36,10 @@ function oneDose(amount: string) {
   return [
     {
       amount,
-      time_of_day: "",
+      // STATED, because this file's subject is the LIFETIME clamp (#1442): an untimed
+      // dose is not due on any day (#5285) and would score every case "na" for a
+      // reason that has nothing to do with the bound being tested.
+      time_of_day: "morning",
       food_timing: "any" as const,
       weekdays: [],
       start_date: "",
