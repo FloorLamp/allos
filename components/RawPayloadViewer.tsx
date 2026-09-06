@@ -50,7 +50,7 @@ export default function RawPayloadViewer({ id }: { id: number }) {
         if ((e.currentTarget as HTMLDetailsElement).open) void load();
       }}
     >
-      <summary className="cursor-pointer text-xs text-link">View raw</summary>
+      <summary className="fold-control text-xs text-link">View raw</summary>
       {state === "loading" && (
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           Loading…

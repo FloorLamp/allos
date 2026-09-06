@@ -34,7 +34,7 @@ export default function SettingsAdvanced({
       className="mt-6 group"
       testId={testId}
       summary={
-        <summary className="cursor-pointer list-none rounded-lg px-1 py-2 text-sm font-medium text-slate-600 marker:content-none hover:text-slate-800 dark:text-slate-300 dark:hover:text-slate-100">
+        <summary className="fold-control list-none rounded-lg px-1 text-sm font-medium text-slate-600 marker:content-none hover:text-slate-800 dark:text-slate-300 dark:hover:text-slate-100">
           <span
             aria-hidden
             className="mr-1 inline-block transition-transform group-open:rotate-90"

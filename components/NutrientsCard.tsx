@@ -27,7 +27,7 @@ export default function NutrientsCard({
       <Heading className="mb-4 section-label">{title}</Heading>
       <div className="space-y-5">{children}</div>
       <Disclosure className="mt-5 border-t border-black/5 pt-3 text-xs text-slate-500 dark:border-white/5 dark:text-slate-400">
-        <summary className="cursor-pointer font-medium text-slate-600 dark:text-slate-300">
+        <summary className="fold-control font-medium text-slate-600 dark:text-slate-300">
           How estimates work
         </summary>
         <p className="mt-2 leading-relaxed">

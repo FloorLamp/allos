@@ -144,7 +144,7 @@ export default function TrajectoryWatchCard({
                 className="mt-3"
                 data-testid="trajectory-findings-more"
               >
-                <summary className="cursor-pointer list-none text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400 [&::-webkit-details-marker]:hidden">
+                <summary className="fold-control list-none text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400 [&::-webkit-details-marker]:hidden">
                   <span className="group-open:hidden">
                     Show all {rollup.groups.length} →
                   </span>

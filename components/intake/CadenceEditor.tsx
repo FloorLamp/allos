@@ -1,5 +1,6 @@
 "use client";
 
+import Chip from "@/components/Chip";
 import DateField from "@/components/DateField";
 import { WEEKDAYS_SHORT, weekdayOrder } from "@/lib/date";
 import {
@@ -36,6 +37,13 @@ export const emptyCadence = (): CadenceState => ({
 // Weekday toggle chips, shared by the item cadence and the per-dose row override so a
 // weekday means the same thing (and is picked the same way) in both places. Ordered by
 // the profile's first-day-of-week for the same reason every other calendar surface is.
+//
+// FILTER CHIPS IN A WRAPPING ROW, NOT A SEGMENTED TRACK (#4505, after #5399). These
+// sit in a gapped, wrapping strip, so they take the reach on every side and the gap
+// pays for it: `gap-3.5` where the reach exists, because `gap-3` against 6px a side
+// lands the extended targets on exactly zero margin. Marked `data-segmented-option`
+// they had drawn the box's reserved border as a hairline and taken the block-only
+// reach a tiled track gets, on a row that has gaps to spend.
 export function WeekdayChips({
   value,
   onChange,
@@ -51,28 +59,22 @@ export function WeekdayChips({
   return (
     <div
       data-testid={`${idPrefix}-weekdays`}
-      className="flex flex-wrap gap-1 pointer-coarse:gap-y-3.5"
+      className="flex flex-wrap gap-1.5 pointer-coarse:gap-3.5"
     >
       {weekdayOrder(weekStart).map((d) => {
         const on = selected.has(d);
         return (
-          <button
+          <Chip
             key={d}
-            type="button"
-            aria-pressed={on}
-            data-testid={`${idPrefix}-weekday-${d}`}
+            role="filter"
+            pressed={on}
+            testId={`${idPrefix}-weekday-${d}`}
             onClick={() =>
               onChange(on ? value.filter((x) => x !== d) : [...value, d].sort())
             }
-            data-segmented-option=""
-            className={`inline-flex items-center justify-center rounded-lg px-2 text-xs font-medium transition ${
-              on
-                ? "bg-sky-600 text-white dark:bg-sky-500"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-            }`}
           >
             {WEEKDAYS_SHORT[d]}
-          </button>
+          </Chip>
         );
       })}
     </div>

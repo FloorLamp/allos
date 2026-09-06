@@ -177,7 +177,7 @@ export default function IntakeRulesEditor({
             type="button"
             aria-label="Remove rule"
             onClick={() => setRules(rules.filter((r) => r.id !== rule.id))}
-            className="tap-target flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 dark:text-slate-400 dark:hover:bg-rose-950"
+            className="tap-target flex h-(--control-box) w-(--control-box) items-center justify-center rounded-lg text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 dark:text-slate-400 dark:hover:bg-rose-950"
           >
             ×
           </button>
