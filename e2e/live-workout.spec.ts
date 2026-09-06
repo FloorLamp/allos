@@ -32,7 +32,10 @@ async function pickActivity(page: Page, name: string) {
   await settledFill(page, field, name);
   const option = comboboxRows(page).filter({ hasText: name }).first(); // eslint-disable-line no-restricted-properties -- first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
   await hydratedClick(page, option);
-  await expect(field).toHaveValue(name);
+  // The pick settles the exercise into its heading (#5370), which is the observable
+  // proof the pick landed.
+  const heading = page.getByTestId("part-name-heading").first(); // eslint-disable-line no-restricted-properties -- first-ok: the part this helper just named; testid-scope-ok: the editor's own exercise heading, never inside a streamed boundary
+  await expect(heading).toContainText(name);
 }
 
 // Starting is one interaction with two completion boundaries: the imperative
