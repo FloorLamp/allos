@@ -50,6 +50,7 @@ import {
   formatDateWithYear,
   type DisplayFormatPrefs,
 } from "./format-date";
+import { goalPct } from "./outcome-goals";
 
 // The facts, in reading order. `subject` is the seeding pick and comes first because
 // it is what the rest of the sentence is about — and, since #3220, because it is
@@ -330,7 +331,6 @@ export function goalProgressStatement(
       ? progress!.current
       : goal.current_value!
     : null;
-  const pct = known ? (measured ? progress!.pct : null) : null;
 
   const value = (() => {
     if (goal.kind === "exercise") {
@@ -372,13 +372,8 @@ export function goalProgressStatement(
     );
   })();
 
-  // The freeform kind keeps its own capped current/target arithmetic (goalPct's
-  // second basis) rather than borrowing a measured goal's bar.
-  const shown =
-    pct ??
-    (known && !measured
-      ? Math.min(100, Math.round((goal.current_value! / target) * 100))
-      : null);
+  // The percent is goalPct's — the one computation every surface shares (#5396).
+  const shown = goalPct(goal, progress);
   return { value, percent: shown == null ? null : `${shown}%` };
 }
 

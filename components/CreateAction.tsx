@@ -7,58 +7,70 @@ import {
   type ReactNode,
 } from "react";
 
+export type CreateActionHousing = "page" | "section";
+
 // The closed semantic vocabulary for page- and section-level creates. The
 // registry owns copy and housing; callers get no label, styling, or
-// visual-variant seam.
+// visual-variant seam. A kind lists EVERY housing it is mounted in (#4667):
+// medication has a page door and the illness fold's section door, and a kind
+// that could declare only one forced the second door to hand-roll its trigger.
 export const CREATE_ACTIONS = {
   medication: {
     label: "Add medication",
-    housing: "page",
+    housing: ["page", "section"],
   },
   practice: {
     label: "Add practice",
     dialogTitle: "Add a practice",
-    housing: "page",
+    housing: ["page"],
   },
   "training-activity": {
     label: "Add activity",
-    housing: "page",
+    housing: ["page"],
   },
   protocol: {
     label: "Add protocol",
-    housing: "section",
+    housing: ["section"],
   },
   goal: {
     label: "Add goal",
-    housing: "section",
+    housing: ["section"],
   },
   routine: {
     label: "Add routine",
-    housing: "section",
+    housing: ["section"],
   },
   equipment: {
     label: "Add equipment",
-    housing: "section",
+    housing: ["section"],
   },
   supplement: {
     label: "Add supplement",
-    housing: "section",
+    housing: ["section"],
   },
 } as const satisfies Record<
   string,
   {
     label: `Add ${string}`;
     dialogTitle?: `Add ${string}`;
-    housing: "page" | "section";
+    housing: readonly [CreateActionHousing, ...CreateActionHousing[]];
   }
 >;
 
 export type CreateActionKind = keyof typeof CREATE_ACTIONS;
 export type CreateActionLabel =
   (typeof CREATE_ACTIONS)[CreateActionKind]["label"];
+// The kinds that declared housing H — what a host of that housing may mount.
+export type HousedKind<H extends CreateActionHousing> = {
+  [
+    K in CreateActionKind
+  ]: H extends (typeof CREATE_ACTIONS)[K]["housing"][number] ? K : never;
+}[CreateActionKind];
 
-export interface CreateActionDeclaration {
-  kind: CreateActionKind;
+export interface CreateActionDeclaration<
+  K extends CreateActionKind = CreateActionKind,
+> {
+  kind: K;
   available?: boolean;
   control: ReactElement;
 }
@@ -82,17 +94,19 @@ export function useCreateActionDialogTitle(): `Add ${string}` {
   return "dialogTitle" in action ? action.dialogTitle : action.label;
 }
 
-export default function CreateAction({
+export default function CreateAction<H extends CreateActionHousing>({
   declaration,
   housing,
 }: {
-  declaration: CreateActionDeclaration;
-  housing: "page" | "section";
+  declaration: CreateActionDeclaration<HousedKind<H>>;
+  housing: H;
 }) {
   if (declaration.available === false) return null;
-  if (housing !== CREATE_ACTIONS[declaration.kind].housing)
+  const declared: readonly CreateActionHousing[] =
+    CREATE_ACTIONS[declaration.kind].housing;
+  if (!declared.includes(housing))
     throw new Error(
-      `${declaration.kind} create action requires ${CREATE_ACTIONS[declaration.kind].housing} housing`
+      `${declaration.kind} create action requires ${declared.join(" or ")} housing`
     );
   return (
     <CreateActionKindContext value={declaration.kind}>
@@ -114,7 +128,7 @@ export function SectionCreateHeader({
   title: string;
   subtitle?: ReactNode;
   leading?: ReactElement;
-  createAction?: CreateActionDeclaration;
+  createAction?: CreateActionDeclaration<HousedKind<"section">>;
   action?: ReactNode;
 }) {
   const createAvailable =

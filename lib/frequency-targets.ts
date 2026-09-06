@@ -15,7 +15,14 @@ const GROUP_LABELS: Record<string, string> = {
   Full: "Full body",
 };
 
-export type FrequencyPace = "met" | "on-pace" | "behind";
+// A verdict is printed only where it states a fact about the week (#5395): "met" (the
+// count is there), "behind" (the days left cannot hold what is left), or "on-pace"
+// (something is logged AND it keeps up with the share of the week gone by). Every
+// other state is "quiet" — nothing logged yet, or lagging the share while the week
+// still fits, which is exactly the verdict #4758 withheld — and quiet has no label:
+// the row prints its count and no badge. The type carries the state so that no
+// surface decides it alone.
+export type FrequencyPace = "met" | "on-pace" | "behind" | "quiet";
 
 // Quiet until the verdict is informative (#4758).
 //
@@ -44,7 +51,8 @@ export function frequencyPace(
   const behindShare = count < Math.floor((perWeek * elapsed) / 7);
   const remainingDays = 7 - elapsed + 1; // days left in the window, today included
   const weekStillFits = perWeek - count <= remainingDays;
-  return behindShare && !weekStillFits ? "behind" : "on-pace";
+  if (behindShare) return weekStillFits ? "quiet" : "behind";
+  return count > 0 ? "on-pace" : "quiet";
 }
 
 export const WEEKLY_PACE_MAX_NAMED = 3;
@@ -67,7 +75,11 @@ export function weeklyTargetPaceLine(
   return `${head} — behind on ${tail}`;
 }
 
-export function frequencyPaceLabel(pace: FrequencyPace): string {
+// The parameter type is what keeps a quiet week unlabelled: a surface holding a
+// FrequencyPace must narrow past "quiet" before it can print a badge at all.
+export function frequencyPaceLabel(
+  pace: Exclude<FrequencyPace, "quiet">
+): string {
   return pace === "met"
     ? "On track"
     : pace === "on-pace"

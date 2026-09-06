@@ -173,13 +173,15 @@ export default function WeeklyHabits({
                       <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
                         of {habit.per_week}
                       </span>
-                      <span
-                        data-testid={`habit-pace-${row.slug}`}
-                        data-pace={habit.pace}
-                        className={`badge ${PACE_BADGE_CLASS[habit.pace]}`}
-                      >
-                        {frequencyPaceLabel(habit.pace)}
-                      </span>
+                      {habit.pace !== "quiet" && (
+                        <span
+                          data-testid={`habit-pace-${row.slug}`}
+                          data-pace={habit.pace}
+                          className={`badge ${PACE_BADGE_CLASS[habit.pace]}`}
+                        >
+                          {frequencyPaceLabel(habit.pace)}
+                        </span>
+                      )}
                       <UntrackHabitButton
                         targetId={habit.target.id}
                         protocolName={
