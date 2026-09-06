@@ -2,9 +2,10 @@
 //
 // This is the boundary no static scan can see across, so it is where the core's
 // never-trust-the-client promise has to be proved: the STORED file is EXIF/GPS-free
-// even when the client posts a GPS-tagged capture. Beside it, the two things a forged
-// form could otherwise reach — a photo owned by nothing or by two things, and another
-// profile's photo by id through the serve route.
+// even when the client posts a GPS-tagged capture. Beside it, the things a forged form
+// could otherwise reach — a photo owned by nothing or by two things — and the serve
+// route's access rule, which has to refuse a login with no grant on the photo's owner
+// while still serving one that holds a grant but is acting as a different profile.
 
 import { describe, it, expect, beforeAll } from "vitest";
 import fs from "node:fs";
@@ -99,7 +100,7 @@ describe("uploadTrainingPhotoAction", () => {
         caption: "Mile 12",
       })
     );
-    expect(res).toEqual({ ok: true });
+    expect(res).toEqual({ ok: true, duplicate: false });
 
     const row = db
       .prepare(
@@ -146,6 +147,39 @@ describe("uploadTrainingPhotoAction", () => {
     ).toEqual({ c: 0 });
   });
 
+  // The re-upload is a success that adds nothing, and it has to SAY so. The dedup is
+  // per-profile across the whole domain, so the second session is a different owner
+  // and still gets no row — which is why "Photo added." over an unchanged strip was a
+  // claim about something that did not happen.
+  it("reports a re-upload as a duplicate, not as an add", async () => {
+    const { profile } = seedActor();
+    const monday = addActivity(profile.id);
+    const friday = addActivity(profile.id);
+    const bytes = await uniqueJpeg(31);
+
+    expect(
+      await uploadTrainingPhotoAction(
+        photoForm(bytes, { activity_id: String(monday) })
+      )
+    ).toEqual({ ok: true, duplicate: false });
+    expect(
+      await uploadTrainingPhotoAction(
+        photoForm(bytes, { activity_id: String(friday) })
+      )
+    ).toEqual({ ok: true, duplicate: true });
+
+    expect(
+      db
+        .prepare(`SELECT COUNT(*) c FROM training_photos WHERE activity_id = ?`)
+        .get(friday)
+    ).toEqual({ c: 0 });
+    expect(
+      db
+        .prepare(`SELECT COUNT(*) c FROM training_photos WHERE profile_id = ?`)
+        .get(profile.id)
+    ).toEqual({ c: 1 });
+  });
+
   it("refuses a read-only member and writes nothing", async () => {
     const login = createLogin();
     const profile = createProfile("Read Only", login.id);
@@ -164,35 +198,72 @@ describe("uploadTrainingPhotoAction", () => {
   });
 });
 
-describe("caption edit and delete are scoped to the acting profile", () => {
-  it("refuses another profile's photo id, then serves and deletes its owner's", async () => {
-    const mine = seedActor().profile;
-    const activityId = addActivity(mine.id);
-    expect(
-      await uploadTrainingPhotoAction(
-        photoForm(await uniqueJpeg(21), { activity_id: String(activityId) })
-      )
-    ).toEqual({ ok: true });
-    const photoId = (
-      db
-        .prepare(
-          `SELECT id FROM training_photos WHERE profile_id = ? ORDER BY id DESC LIMIT 1`
-        )
-        .get(mine.id) as { id: number }
-    ).id;
+// Grant an EXISTING profile to a login — the household shape `createProfile`'s own
+// grant argument cannot express, since it only grants the profile it just made.
+function grant(loginId: number, profileId: number, access = "write"): void {
+  db.prepare(
+    "INSERT OR REPLACE INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, ?)"
+  ).run(loginId, profileId, access);
+}
 
-    // A second household member acts, and reaches for the id.
-    const other = seedActor().profile;
-    expect(other.id).not.toBe(mine.id);
-    const params = Promise.resolve({ id: String(photoId) });
-    expect(
-      (
-        await serveTrainingPhoto(
-          new Request(`http://localhost/api/training-photo/${photoId}`),
-          { params }
-        )
-      ).status
-    ).toBe(404);
+async function attachPhoto(profileId: number, seed: number): Promise<number> {
+  expect(
+    await uploadTrainingPhotoAction(
+      photoForm(await uniqueJpeg(seed), {
+        activity_id: String(addActivity(profileId)),
+      })
+    )
+  ).toEqual({ ok: true, duplicate: false });
+  return (
+    db
+      .prepare(
+        `SELECT id FROM training_photos WHERE profile_id = ? ORDER BY id DESC LIMIT 1`
+      )
+      .get(profileId) as { id: number }
+  ).id;
+}
+
+function serve(photoId: number, thumb = false): Promise<Response> {
+  return serveTrainingPhoto(
+    new Request(
+      `http://localhost/api/training-photo/${photoId}${thumb ? "?thumb=1" : ""}`
+    ),
+    { params: Promise.resolve({ id: String(photoId) }) }
+  );
+}
+
+// The serve route's access rule (#1696). TrainingPhotoStrip mounts on a household
+// member's activity page with `subjectProfileId` set, next to ActivityMediaStrip, so
+// the tiles it emits name photos the ACTING profile does not own — the route resolves
+// the owner from the row and gates the session on THAT profile. These are the three
+// answers that rule has to give, and acting-profile scoping gets only the last right.
+//
+// ABOUT THE ACTORS: `seedActor()`/`createLogin()` mint an ADMIN by default, and admins
+// are implicit-all (auth.ts accessibleProfiles), so a second seedActor() is not a
+// stranger — it can reach every profile. The stranger below is a `member` login
+// granted its own profile only, which is what makes the refusal mean "no grant"
+// rather than "not the acting profile".
+describe("the serve route resolves the photo's owner, then gates the session on it", () => {
+  it("refuses a member with no grant, exactly as it refuses an id that is not there", async () => {
+    const owner = seedActor().profile;
+    const photoId = await attachPhoto(owner.id, 21);
+
+    const strangerLogin = createLogin({ role: "member" });
+    const strangerProfile = createProfile("Stranger", strangerLogin.id);
+    actAs(strangerLogin, strangerProfile);
+
+    for (const thumb of [false, true]) {
+      const res = await serve(photoId, thumb);
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({ ok: false, error: "not found" });
+    }
+    // Refused identically to a nonexistent id: the answer says nothing about
+    // whether the photo is there.
+    const missing = await serve(photoId + 10_000);
+    expect(missing.status).toBe(404);
+    expect(await missing.json()).toEqual({ ok: false, error: "not found" });
+
+    // And the write paths stay shut for the same login.
     const edit = new FormData();
     edit.set("photo_id", String(photoId));
     edit.set("caption", "not theirs to write");
@@ -200,25 +271,74 @@ describe("caption edit and delete are scoped to the acting profile", () => {
     const remove = new FormData();
     remove.set("photo_id", String(photoId));
     expect((await deleteTrainingPhotoAction(remove)).ok).toBe(false);
+  });
 
-    // The owner: the full image and the thumbnail both serve, and the delete lands.
-    const session = actAs(createLogin(), mine);
-    expect(session.profile.id).toBe(mine.id);
-    for (const url of [
-      `http://localhost/api/training-photo/${photoId}`,
-      `http://localhost/api/training-photo/${photoId}?thumb=1`,
-    ]) {
-      const served = await serveTrainingPhoto(new Request(url), {
-        params: Promise.resolve({ id: String(photoId) }),
-      });
-      expect(served.status).toBe(200);
-      expect(served.headers.get("X-Content-Type-Options")).toBe("nosniff");
+  it("serves a member acting as one profile the photo owned by ANOTHER they hold", async () => {
+    const subject = seedActor({ profileName: "Mia" }).profile;
+    const photoId = await attachPhoto(subject.id, 22);
+
+    // One member login, two profiles: acting as Dad, looking at Mia's page.
+    const memberLogin = createLogin({ role: "member" });
+    const acting = createProfile("Dad", memberLogin.id);
+    grant(memberLogin.id, subject.id);
+    const session = actAs(memberLogin, acting);
+    expect(session.profile.id).not.toBe(subject.id);
+
+    for (const thumb of [false, true]) {
+      const res = await serve(photoId, thumb);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
       expect(
-        Buffer.from(await served.arrayBuffer())
+        Buffer.from(await res.arrayBuffer())
           .subarray(0, 3)
           .toString("hex")
       ).toBe("ffd8ff"); // a JPEG, and the strip re-encoded it as one
     }
+
+    // `active_profile_id` keeps meaning the ACTING profile; the subject rides in
+    // `detail`, so a cross-profile read still names whose photo it was.
+    expect(
+      db
+        .prepare(
+          `SELECT active_profile_id, detail FROM audit_events
+            WHERE target = ? ORDER BY id DESC LIMIT 1`
+        )
+        .get(`training-photo:${photoId}:thumb`)
+    ).toEqual({
+      active_profile_id: acting.id,
+      detail: `profile:${subject.id}`,
+    });
+
+    // A READ grant is enough to look and still not enough to write.
+    grant(memberLogin.id, subject.id, "read");
+    actAs(memberLogin, acting);
+    expect((await serve(photoId)).status).toBe(200);
+    const remove = new FormData();
+    remove.set("photo_id", String(photoId));
+    remove.set("profile_id", String(subject.id));
+    await expect(deleteTrainingPhotoAction(remove)).rejects.toThrow();
+  });
+
+  it("serves the owner, and the owner's delete lands", async () => {
+    const mine = seedActor().profile;
+    const photoId = await attachPhoto(mine.id, 23);
+
+    const session = actAs(createLogin(), mine);
+    expect(session.profile.id).toBe(mine.id);
+    for (const thumb of [false, true]) {
+      const served = await serve(photoId, thumb);
+      expect(served.status).toBe(200);
+      expect(
+        Buffer.from(await served.arrayBuffer())
+          .subarray(0, 3)
+          .toString("hex")
+      ).toBe("ffd8ff");
+    }
+
+    const remove = new FormData();
+    remove.set("photo_id", String(photoId));
     expect((await deleteTrainingPhotoAction(remove)).ok).toBe(true);
+    // The row is gone, so the id really is nonexistent now.
+    expect((await serve(photoId)).status).toBe(404);
   });
 });

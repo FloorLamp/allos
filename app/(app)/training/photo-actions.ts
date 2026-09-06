@@ -47,10 +47,19 @@ function ownerFrom(formData: FormData): TrainingPhotoOwner | null {
     : { kind: "event", planId };
 }
 
+// What the upload did, for a caller that has to describe it. A re-upload of the
+// identical capture is a calm SUCCESS — the bytes are already among this profile's
+// training photos and the core reuses that row — but it is not an ADD, and a strip
+// that says "Photo added." over zero written rows is telling the person something
+// that did not happen. The richer success arm is the nutrition precedent
+// (`{ ok: true; servings }`); the failure arm is the shared one.
+export type UploadTrainingPhotoResult =
+  { ok: true; duplicate: boolean } | { ok: false; error: string };
+
 // Attach a photo to a logged session or to an event.
 export async function uploadTrainingPhotoAction(
   formData: FormData
-): Promise<FormResult> {
+): Promise<UploadTrainingPhotoResult> {
   const profileId = await gateItemProfile(formData);
   const owner = ownerFrom(formData);
   if (!owner) return formError("That session is no longer available.");
@@ -69,10 +78,8 @@ export async function uploadTrainingPhotoAction(
     caption
   );
   if (outcome.kind === "invalid") return formError(outcome.error);
-  // "duplicate" is a calm success: the identical capture is already attached, and the
-  // event page shows its linked sessions' photos, so it is already where it belongs.
   revalidateTrainingPhotoSurfaces();
-  return formOk();
+  return { ok: true, duplicate: outcome.kind === "duplicate" };
 }
 
 // Correct the caption without replacing the image (#1934). The core's SET list holds

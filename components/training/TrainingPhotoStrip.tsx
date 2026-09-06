@@ -37,8 +37,10 @@ export interface TrainingPhotoView {
 //
 // The door is <MediaInput>, the one add-media surface (#3286): camera-first on a
 // phone, file-first on a desktop, drop or paste either way. Each photo streams from
-// the session-scoped serve route (/api/training-photo/[id], `?thumb=1` for the grid);
-// nothing here is on a share, printable or export surface.
+// /api/training-photo/[id] (`?thumb=1` for the grid), which resolves the photo's owner
+// and gates the session on it — this strip mounts cross-profile, so acting-profile
+// scoping there would 404 every tile on a household member's page (#1696). Nothing
+// here is on a share, printable or export surface.
 export default function TrainingPhotoStrip({
   owner,
   photos,
@@ -96,8 +98,15 @@ export default function TrainingPhotoStrip({
   // One upload per file so a refusal names the file it refused, and ONE toast for the
   // set. The batch shares the caption on screen: several shots of one finish line are
   // one moment.
+  //
+  // A DUPLICATE is a success that added nothing: the identical capture is already
+  // among this profile's training photos, so the core reuses that row and no tile
+  // appears here. The toast says so rather than claiming an add, because "Photo
+  // added." over an unchanged strip is the app telling the person something untrue.
   async function onPick(files: File[]): Promise<string | null> {
     const failed: string[] = [];
+    let added = 0;
+    let duplicates = 0;
     for (const file of files) {
       const fd = new FormData();
       fd.set("photo", file);
@@ -105,17 +114,22 @@ export default function TrainingPhotoStrip({
       ownerFields(fd);
       const res = await uploadTrainingPhotoAction(fd);
       if (!res.ok) failed.push(`${file.name}: ${res.error}`);
+      else if (res.duplicate) duplicates++;
+      else added++;
     }
     if (failed.length === files.length) return failed.join("; ");
-    const added = files.length - failed.length;
     setCaption("");
-    toast(
-      failed.length > 0
-        ? `Added ${added} of ${files.length}. ${failed.join("; ")}`
-        : added > 1
-          ? `${added} photos added.`
-          : "Photo added."
-    );
+    const said: string[] = [];
+    if (added > 0)
+      said.push(added > 1 ? `${added} photos added.` : "Photo added.");
+    if (duplicates > 0)
+      said.push(
+        duplicates > 1
+          ? `${duplicates} were already attached elsewhere.`
+          : "That photo is already attached elsewhere."
+      );
+    if (failed.length > 0) said.push(failed.join("; "));
+    toast(said.join(" "));
     return null;
   }
 

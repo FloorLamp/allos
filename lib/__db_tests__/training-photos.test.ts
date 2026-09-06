@@ -33,11 +33,22 @@ import {
 } from "@/lib/endurance-plans";
 import { captureDelete, restoreDeletedRow } from "@/lib/undo-delete-db";
 import { getTimelineEvents } from "@/lib/timeline";
+import { gatherHistoryLog } from "@/lib/history";
 
 function makeProfile(name: string): number {
   return Number(
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
       .lastInsertRowid
+  );
+}
+
+// A login row — `gatherHistoryLog` reads the record as a login acting on a profile,
+// and the id is all it wants here.
+function makeLogin(): number {
+  return Number(
+    db
+      .prepare("INSERT INTO logins (username, password_hash) VALUES (?, 'x')")
+      .run(`photos_${Math.random().toString(36).slice(2, 8)}`).lastInsertRowid
   );
 }
 
@@ -251,6 +262,40 @@ describe("the record's Photos filter counts sessions and events apart", () => {
     // The control: a session with no photos still reports a number, not undefined.
     const quiet = events.find((e) => e.id === `activity:${otherSessionId}`);
     expect(quiet?.media).toBe(1);
+  });
+
+  // THE COUNT HAS TO SURVIVE ONE MORE HOP. `getTimelineEvents` filling `media` is
+  // half the answer; the record's row composer is what `?media=1` actually reads, and
+  // every feed composer but this one still writes a literal `media: 0`. Without this
+  // case the composer's `media: event.media ?? 0` could be reverted to `media: 0` and
+  // nothing anywhere would go red — the filter would silently stop narrowing to
+  // training rows while the timeline kept counting them.
+  it("carries the count into the record's rows, which is what ?media=1 filters on", () => {
+    const p = makeProfile("PHOTOS-RECORD");
+    const loginId = makeLogin();
+    const shot = addActivity(p, "2026-05-17", "Race day run");
+    const quiet = addActivity(p, "2026-05-16", "Easy shakeout");
+    expect(
+      addTrainingPhotoCore(
+        p,
+        { kind: "activity", activityId: shot },
+        processed("record one")
+      ).kind
+    ).toBe("added");
+
+    const all = gatherHistoryLog(p, { loginId, limit: 200 });
+    expect(all.rows.find((r) => r.id === `feed:activity:${shot}`)?.media).toBe(
+      1
+    );
+    // Both directions: a session with no photo reports 0, so the filter below is
+    // narrowing rather than passing everything through.
+    expect(all.rows.find((r) => r.id === `feed:activity:${quiet}`)?.media).toBe(
+      0
+    );
+
+    const filtered = gatherHistoryLog(p, { loginId, limit: 200, media: true });
+    expect(filtered.mediaApplied).toBe(true);
+    expect(filtered.rows.map((r) => r.title)).toEqual(["Race day run"]);
   });
 });
 
