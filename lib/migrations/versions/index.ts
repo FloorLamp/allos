@@ -232,6 +232,7 @@ import { migration as mBodyMetricMeasureInstants } from "./20260902-body-metric-
 import { migration as mEventsGeneralizeEndurancePlans } from "./20260903-events-generalize-endurance-plans";
 import { migration as mSubstanceEventRows } from "./20260905-substance-event-rows";
 import { migration as mActBundleColumns } from "./20260904-act-bundle-columns";
+import { migration as mEventNotes } from "./20260905-event-notes";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -473,6 +474,7 @@ export const MIGRATIONS: Migration[] = [
   mEventsGeneralizeEndurancePlans,
   mActBundleColumns,
   mSubstanceEventRows,
+  mEventNotes,
 ];
 
 // The CLOSED numbered era (001–185): ids frozen, each === its array position + 1

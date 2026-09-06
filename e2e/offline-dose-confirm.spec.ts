@@ -36,8 +36,8 @@ async function createMorningSupplement(page: Page, name: string) {
   const addCard = page.getByRole("dialog", { name: "Add supplement" });
   await addCard.getByLabel("Name").fill(name);
   const doseEditor1 = await openFact(page, "dose", addCard);
-  await doseEditor1.getByLabel("Amount").first().fill("10 mg"); // first-ok: the add-supplement form's own first dose-row field (deterministic within one form render, not a seeded list)
-  await doseEditor1.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the add-supplement form's own first dose-row field (deterministic within one form render, not a seeded list)
+  await doseEditor1.getByLabel("Amount").first().fill("10 mg"); // eslint-disable-line no-restricted-properties -- first-ok: the add-supplement form's own first dose-row field (deterministic within one form render, not a seeded list)
+  await doseEditor1.getByLabel("Time of day").first().selectOption("Morning"); // eslint-disable-line no-restricted-properties -- first-ok: the add-supplement form's own first dose-row field (deterministic within one form render, not a seeded list)
   await closeEditor(page, addCard);
   await addCard.getByRole("button", { name: "Add", exact: true }).click();
   await expect(addCard).toHaveCount(0);
@@ -82,7 +82,7 @@ test("a dose confirmed offline queues, then replays as a real taken dose (#1427)
   page,
   context,
 }) => {
-  const name = `Offline Dose Iron ${Date.now()}`; // clock-ok: unique fixture-name suffix, never a stored timestamp
+  const name = `Offline Dose Iron ${Date.now()}`; // eslint-disable-line no-restricted-properties -- clock-ok: unique fixture-name suffix, never a stored timestamp
   await createMorningSupplement(page, name);
 
   // The dead-reception moment: the pills are in your hand, the network isn't there.
@@ -133,7 +133,7 @@ test("a queued confirm that lands on an already-skipped dose is surfaced, not si
   context,
   browser,
 }) => {
-  const name = `Offline Dose Zinc ${Date.now()}`; // clock-ok: unique fixture-name suffix, never a stored timestamp
+  const name = `Offline Dose Zinc ${Date.now()}`; // eslint-disable-line no-restricted-properties -- clock-ok: unique fixture-name suffix, never a stored timestamp
   await createMorningSupplement(page, name);
   const origin = new URL(page.url()).origin;
   const row = await ledgerRow(page, name);

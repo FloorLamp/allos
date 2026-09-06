@@ -485,7 +485,7 @@ test("the activity ledger's ‹older› shows the step, and five taps dispatch o
   await page.goto(STRENGTH_ANALYZE);
   await followLink(
     page,
-    page.getByTestId("analyze-sessions").getByRole("link").first(), // first-ok: the newest seeded session; the ledger step is what's under test
+    page.getByTestId("analyze-sessions").getByRole("link").first(), // eslint-disable-line no-restricted-properties -- first-ok: the newest seeded session; the ledger step is what's under test
     /\/training\/activity\/\d+$/
   );
   const older = page.getByTestId("activity-older-link");

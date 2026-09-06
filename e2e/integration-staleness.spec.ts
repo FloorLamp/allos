@@ -108,7 +108,7 @@ test("Data → Review shows a stopped sync with its own copy, not the reauth wor
 
 test("the stopped sync is counted by the Review badge", async ({ page }) => {
   await page.goto("/data?section=review");
-  const badge = page.getByTestId("review-badge").first(); // first-ok: the review badge also renders in the mobile drawer; either mirror carries the same count
+  const badge = page.getByTestId("review-badge").first(); // eslint-disable-line no-restricted-properties -- first-ok: the review badge also renders in the mobile drawer; either mirror carries the same count
   await expect(badge).toBeVisible();
   const withStale = Number((await badge.textContent())?.trim());
 

@@ -231,9 +231,10 @@ test("a live workout edited through a deploy reloads itself and comes back with 
     await expect(page.getByTestId("live-workout-panel")).toBeVisible();
     await settledFill(page, page.getByLabel("Activity name"), LIVE_TITLE);
     await page.getByPlaceholder(/What did you do/).fill("Barbell Bench Press");
+    // eslint-disable-next-line no-restricted-properties -- first-ok: transient combobox list this spec just opened by typing
     await comboboxRows(page)
       .filter({ hasText: "Barbell Bench Press" })
-      .first() // first-ok: transient combobox list this spec just opened by typing
+      .first()
       .click();
     await page
       .getByTestId("next-set-card")

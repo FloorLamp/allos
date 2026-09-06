@@ -30,9 +30,12 @@ import {
 async function pickActivity(page: Page, name: string) {
   const field = page.getByPlaceholder(/What did you do/);
   await settledFill(page, field, name);
-  const option = comboboxRows(page).filter({ hasText: name }).first(); // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
+  const option = comboboxRows(page).filter({ hasText: name }).first(); // eslint-disable-line no-restricted-properties -- first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
   await hydratedClick(page, option);
-  await expect(field).toHaveValue(name);
+  // The pick settles the exercise into its heading (#5370), which is the observable
+  // proof the pick landed.
+  const heading = page.getByTestId("part-name-heading").first(); // eslint-disable-line no-restricted-properties -- first-ok: the part this helper just named; testid-scope-ok: the editor's own exercise heading, never inside a streamed boundary
+  await expect(heading).toContainText(name);
 }
 
 // Starting is one interaction with two completion boundaries: the imperative
@@ -171,9 +174,10 @@ test("editing another activity resumes an empty live workout without stranding i
   // SCOPED TO AN ACTIVITY ROW, and followed through its TITLE (#4079). The Log
   // renders the whole Training family through the shared substrate, so an unscoped
   // row can be a milestone or an endurance event, and the row itself is not a link.
+  // eslint-disable-next-line no-restricted-properties -- first-ok: live drafts are excluded from the log, so every visible activity row is an older stored one
   const olderActivity = page
     .locator('[data-testid="history-row"][data-history-kind="activity"]')
-    .first(); // first-ok: live drafts are excluded from the log, so every visible activity row is an older stored one
+    .first();
   await hydratedClick(page, olderActivity.getByTestId("history-row-title"));
   await page.waitForURL(/\/training\/activity\/\d+$/);
   await hydratedClick(page, page.getByTestId("activity-page-edit"));

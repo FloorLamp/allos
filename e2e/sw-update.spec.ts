@@ -297,6 +297,7 @@ test("the update lands on the user's tap, exactly once (#1700)", async ({
 // before the listener is attached does nothing, so re-dispatch until the bar lands;
 // the read settles on the first mismatch, so extra dispatches are no-ops.
 async function provokeVersionCheck(page: Page) {
+  // eslint-disable-next-line no-restricted-properties -- topass-ok: re-dispatches the visibility check until the registrar's effect has attached its listener — there is no POST or navigation to settle on
   await expect(async () => {
     await page.evaluate(() =>
       document.dispatchEvent(new Event("visibilitychange"))
@@ -304,7 +305,7 @@ async function provokeVersionCheck(page: Page) {
     await expect(page.getByTestId("update-ready-bar")).toBeVisible({
       timeout: 1500,
     });
-  }).toPass({ timeout: 25_000, intervals: [300, 700, 1500] }); // topass-ok: re-dispatches the visibility check until the registrar's effect has attached its listener — there is no POST or navigation to settle on
+  }).toPass({ timeout: 25_000, intervals: [300, 700, 1500] });
 
   return page.getByTestId("update-ready-bar");
 }
@@ -388,6 +389,7 @@ test("that bar's Reload loads the document, and nothing re-offers (#2329)", asyn
   // …and the update the user just took is not offered again. The settle point is the
   // detector's own read: once the reloaded page has asked the server for its commit
   // and been told it is already on it, nothing is left that could raise a bar.
+  // eslint-disable-next-line no-restricted-properties -- topass-ok: same re-dispatch as above — the listener is attached asynchronously after load, and the response being waited for IS the settle point rather than a timeout
   await expect(async () => {
     const answered = page.waitForResponse(
       (res) => res.url().includes("/api/version"),
@@ -397,6 +399,6 @@ test("that bar's Reload loads the document, and nothing re-offers (#2329)", asyn
       document.dispatchEvent(new Event("visibilitychange"))
     );
     await answered;
-  }).toPass({ timeout: 25_000, intervals: [300, 700, 1500] }); // topass-ok: same re-dispatch as above — the listener is attached asynchronously after load, and the response being waited for IS the settle point rather than a timeout
+  }).toPass({ timeout: 25_000, intervals: [300, 700, 1500] });
   await expect(page.getByTestId("update-ready-bar")).toHaveCount(0);
 });

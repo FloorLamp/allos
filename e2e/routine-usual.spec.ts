@@ -80,7 +80,7 @@ test("the dashboard offers the whole morning in one tap, and collapses once it i
     // rows re-render under the tap, so a burst of clicks on the head of the set can
     // land twice on the same element.
     for (let left = 3; left > 0; left--) {
-      await settledClick(page, taken.first()); // first-ok: the confirmed rows are interchangeable here — each pass clears exactly one and the count is asserted immediately
+      await settledClick(page, taken.first()); // eslint-disable-line no-restricted-properties -- first-ok: the confirmed rows are interchangeable here — each pass clears exactly one and the count is asserted immediately
       await expect(taken).toHaveCount(left - 1);
     }
     await page.goto("/nutrition");

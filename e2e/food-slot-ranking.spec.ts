@@ -43,12 +43,13 @@ test("the one-tap bar order follows every selected meal slot (#950)", async ({
     // The chip label reads the same window (label and ranking share one derivation).
     await expect(chip).toHaveText(slot!);
 
+    // eslint-disable-next-line no-restricted-properties -- first-ok: the TOP-ranked food-group row IS the assertion (deterministic seeded ranking for this spec's own profile)
     const firstRow = page
       .getByTestId("food-log-bar")
       .locator(
         '[data-testid^="food-group-"]:not([data-testid="food-group-icon"])'
       )
-      .first(); // first-ok: the TOP-ranked food-group row IS the assertion (deterministic seeded ranking for this spec's own profile)
+      .first();
     await expect(firstRow).toHaveAttribute(
       "data-testid",
       `food-group-${SLOT_LEADER[slot!]}`
@@ -107,7 +108,7 @@ test("a tracked habit shows the N-week consistency trend; a fresh one shows a sh
     const greensTrend = page.getByTestId("habit-trend-leafy_greens");
     await expect(greensTrend).toBeVisible();
     await expect(
-      greensTrend.locator('span[data-state="na"]').first() // first-ok: a not-applicable cold-start cell of the freshly-created greens habit — order-agnostic
+      greensTrend.locator('span[data-state="na"]').first() // eslint-disable-line no-restricted-properties -- first-ok: a not-applicable cold-start cell of the freshly-created greens habit — order-agnostic
     ).toBeVisible();
     // And the strip's accessible name says so, in the same words.
     const greensLabel = (await greensTrend.getAttribute("aria-label")) ?? "";

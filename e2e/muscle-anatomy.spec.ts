@@ -19,9 +19,9 @@ test("per-exercise anatomy renders in the detail panel guide section (#737)", as
 
   // Back Squat has logged sessions, so the guide sits behind the collapsed
   // "How to" disclosure (#2895) — open it before asserting its content.
-  const disclosure = main.getByTestId("exercise-guide-disclosure").first(); // first-ok: asserts a guide disclosure renders — order-agnostic presence
+  const disclosure = main.getByTestId("exercise-guide-disclosure").first(); // eslint-disable-line no-restricted-properties -- first-ok: asserts a guide disclosure renders — order-agnostic presence
   await disclosure.locator("summary").click();
-  const guide = main.getByTestId("exercise-guide").first(); // first-ok: asserts an exercise guide renders — order-agnostic presence
+  const guide = main.getByTestId("exercise-guide").first(); // eslint-disable-line no-restricted-properties -- first-ok: asserts an exercise guide renders — order-agnostic presence
   await expect(guide).toBeVisible();
 
   // The accompanying TEXT list (never color-only): primary/secondary muscles.
@@ -56,10 +56,11 @@ test("activity detail reuses muscle coverage scoped to that workout and omits un
 }) => {
   await page.goto("/training?tab=log");
 
+  // eslint-disable-next-line no-restricted-properties -- first-ok: the newest seeded Push day session — order-agnostic
   const pushRow = page
     .getByTestId("history-row")
     .filter({ hasText: "Push day" })
-    .first(); // first-ok: the newest seeded Push day session — order-agnostic
+    .first();
   await followLink(
     page,
     pushRow.getByRole("link", { name: "Push day", exact: true }),
@@ -104,7 +105,7 @@ test("activity detail reuses muscle coverage scoped to that workout and omits un
     0
   );
   await expect(
-    coverage.locator("summary").first() // first-ok: asserts any workout-scoped muscle disclosure exposes its accessible toggle label
+    coverage.locator("summary").first() // eslint-disable-line no-restricted-properties -- first-ok: asserts any workout-scoped muscle disclosure exposes its accessible toggle label
   ).toHaveAttribute("aria-label", /Show or hide what counts for/);
 
   const benchRow = pushCard.getByTestId("training-log-strength-row").filter({
@@ -114,7 +115,7 @@ test("activity detail reuses muscle coverage scoped to that workout and omits un
     }),
   });
   const chest = figure.locator('[data-muscle-target="coverage-chest"]');
-  await chest.locator("path").first().hover(); // first-ok: either bilateral chest path bubbles to the same muscle highlight target
+  await chest.locator("path").first().hover(); // eslint-disable-line no-restricted-properties -- first-ok: either bilateral chest path bubbles to the same muscle highlight target
   await expect(benchRow).toHaveAttribute("data-highlighted", "true");
 
   await benchRow.hover();
@@ -137,14 +138,15 @@ test("activity detail reuses muscle coverage scoped to that workout and omits un
   await expect(page.getByTestId("training-log-tag-filter")).toHaveText("Chest");
   // A real narrowing that still admits the session it came from.
   await expect(
-    page.getByTestId("history-row").filter({ hasText: "Push day" }).first() // first-ok: the Chest-tagged Push day this test opened — order-agnostic
+    page.getByTestId("history-row").filter({ hasText: "Push day" }).first() // eslint-disable-line no-restricted-properties -- first-ok: the Chest-tagged Push day this test opened — order-agnostic
   ).toBeVisible();
 
   await page.goto("/training?tab=log");
+  // eslint-disable-next-line no-restricted-properties -- first-ok: the session row THIS spec created (unique name)
   const customRow = page
     .getByTestId("history-row")
     .filter({ hasText: "Custom-only lift day (e2e)" })
-    .first(); // first-ok: the session row THIS spec created (unique name)
+    .first();
   await customRow
     .getByRole("link", { name: "Custom-only lift day (e2e)", exact: true })
     .click();
@@ -167,7 +169,7 @@ test("coverage anatomy renders beside the list on Training → Overview (#737)",
 
   // The #736 list-first rendering is permanent — still present with the figure.
   await expect(
-    coverage.getByTestId("muscle-coverage-row").first() // first-ok: asserts a muscle-coverage row renders — order-agnostic presence
+    coverage.getByTestId("muscle-coverage-row").first() // eslint-disable-line no-restricted-properties -- first-ok: asserts a muscle-coverage row renders — order-agnostic presence
   ).toBeVisible();
 
   const figure = coverage.getByTestId("muscle-anatomy");
@@ -191,7 +193,7 @@ test("coverage anatomy renders beside the list on Training → Overview (#737)",
   await expect(furthestRow).not.toBeInViewport();
   await hydratedClick(
     page,
-    figure.locator(`[data-muscle-target="${targetId}"] path`).first() // first-ok: either bilateral path bubbles to the same muscle disclosure target
+    figure.locator(`[data-muscle-target="${targetId}"] path`).first() // eslint-disable-line no-restricted-properties -- first-ok: either bilateral path bubbles to the same muscle disclosure target
   );
   await expect(furthestDisclosure).toHaveAttribute("open", "");
   await expect(furthestRow).toBeInViewport();

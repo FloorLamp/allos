@@ -115,22 +115,21 @@ async function openMoreDetails(page: Page) {
     '[data-testid="activity-more-details"] button[aria-expanded]'
   );
   await expect(moreDetails).toBeVisible();
+  // eslint-disable-next-line no-restricted-properties -- topass-ok: drives a client-only disclosure open past the pre-hydration swallow — no server POST to await, so settledClick doesn't apply
   await expect(async () => {
     if ((await moreDetails.getAttribute("aria-expanded")) !== "true") {
       await moreDetails.click();
     }
     await expect(moreDetails).toHaveAttribute("aria-expanded", "true");
-  }).toPass({ timeout: 20_000 }); // topass-ok: drives a client-only disclosure open past the pre-hydration swallow — no server POST to await, so settledClick doesn't apply
+  }).toPass({ timeout: 20_000 });
 }
 
 // Pick an activity in the editor's exercise combobox (the shape-tolerant matcher the
 // training specs document: an exact typed match collapses the list to one 'Use "…"').
 async function pickActivity(page: Page, name: string) {
   await page.getByPlaceholder(/What did you do/).fill(name);
-  await comboboxRows(page)
-    .filter({ hasText: name })
-    .first() // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
-    .click();
+  // eslint-disable-next-line no-restricted-properties -- first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
+  await comboboxRows(page).filter({ hasText: name }).first().click();
 }
 
 test("upload → poster grid → open player → Range serve → location warning → delete (activity media)", async ({
@@ -147,11 +146,12 @@ test("upload → poster grid → open player → Range serve → location warnin
 
     // Follow the seeded row to its canonical page, where activity media lives;
     // the slim feed deliberately omits it.
+    // eslint-disable-next-line no-restricted-properties -- first-ok: the fixture profile's one seeded activity — order-agnostic
     const row = page
       .getByRole("main")
       .getByTestId("history-row")
       .filter({ hasText: "Squat session (e2e)" })
-      .first(); // first-ok: the fixture profile's one seeded activity — order-agnostic
+      .first();
     await followLink(
       page,
       row.getByRole("link", { name: "Squat session (e2e)", exact: true }),
@@ -180,12 +180,13 @@ test("upload → poster grid → open player → Range serve → location warnin
       '[data-testid="activity-more-details"] button[aria-expanded]'
     );
     await expect(moreDetails).toBeVisible();
+    // eslint-disable-next-line no-restricted-properties -- topass-ok: drives a client-only disclosure open past the pre-hydration swallow — no server POST to await, so settledClick doesn't apply
     await expect(async () => {
       if ((await moreDetails.getAttribute("aria-expanded")) !== "true") {
         await moreDetails.click();
       }
       await expect(moreDetails).toHaveAttribute("aria-expanded", "true");
-    }).toPass({ timeout: 20_000 }); // topass-ok: drives a client-only disclosure open past the pre-hydration swallow — no server POST to await, so settledClick doesn't apply
+    }).toPass({ timeout: 20_000 });
     const mediaSection = page.getByTestId("activity-form-media");
     await expect(mediaSection).toBeVisible({ timeout: 20_000 });
     await expect(
@@ -212,7 +213,7 @@ test("upload → poster grid → open player → Range serve → location warnin
     // The clip lands in the editor's grid (server-sniffed, stored) and its
     // location-metadata privacy note renders.
     await expect(
-      editorStrip.locator('[data-testid^="video-clip-item-"]').first() // first-ok: the fixture profile owns exactly one clip after the isolated cleanup
+      editorStrip.locator('[data-testid^="video-clip-item-"]').first() // eslint-disable-line no-restricted-properties -- first-ok: the fixture profile owns exactly one clip after the isolated cleanup
     ).toBeVisible({ timeout: 20_000 });
     await expect(
       editorStrip.locator('[data-testid^="video-clip-location-"]')
@@ -230,7 +231,7 @@ test("upload → poster grid → open player → Range serve → location warnin
     await expect(strip).toBeVisible();
     // Read surface: playback and per-clip controls, but no add affordance here.
     await expect(strip.getByTestId("video-clip-add")).toHaveCount(0);
-    const clipTile = strip.locator('[data-testid^="video-clip-item-"]').first(); // first-ok: the fixture profile owns exactly one clip after the isolated cleanup
+    const clipTile = strip.locator('[data-testid^="video-clip-item-"]').first(); // eslint-disable-line no-restricted-properties -- first-ok: the fixture profile owns exactly one clip after the isolated cleanup
     await expect(clipTile).toBeVisible({ timeout: 20_000 });
     await expect(
       strip.locator('[data-testid^="video-clip-location-"]')

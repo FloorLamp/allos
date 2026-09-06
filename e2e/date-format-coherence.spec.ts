@@ -61,7 +61,7 @@ test("the admin ops tables agree on one timestamp convention (#1448)", async ({
   const rows = page.getByTestId("audit-row");
   const auditCount = await rows.count();
   if (auditCount > 0) {
-    const first = (await rows.first().locator("td").first().innerText()).trim(); // first-ok: any audit row proves the column's rendered shape — order-agnostic
+    const first = (await rows.first().locator("td").first().innerText()).trim(); // eslint-disable-line no-restricted-properties -- first-ok: any audit row proves the column's rendered shape — order-agnostic
     expect(first, "the audit Time column is not in the shared shape").toMatch(
       TIMESTAMP
     );

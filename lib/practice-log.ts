@@ -39,6 +39,7 @@ import {
   getPracticeSession,
   getPracticeSpellings,
   getPracticeUsualDuration,
+  liveSessionOf,
 } from "./queries/wellness";
 import { ADMIN_DEDUP_WINDOW_SEC } from "./queries/intake/adherence";
 
@@ -565,15 +566,22 @@ function openPracticeSession(
   if (spellings.length === 0) return null;
   const row = db
     .prepare(
-      `SELECT id, date, start_time
+      `SELECT id, date, start_time, duration_min, derived_window
          FROM practice_logs
         WHERE profile_id = ? AND live = 1
           AND practice IN (${inClause(spellings)})
         ORDER BY id DESC LIMIT 1`
     )
     .get(profileId, ...spellings) as
-    { id: number; date: string; start_time: string } | undefined;
-  return row ? { id: row.id, date: row.date, startTime: row.start_time } : null;
+    | {
+        id: number;
+        date: string;
+        start_time: string;
+        duration_min: number | null;
+        derived_window: number;
+      }
+    | undefined;
+  return row ? liveSessionOf(profileId, row) : null;
 }
 
 export function startLivePracticeSession(

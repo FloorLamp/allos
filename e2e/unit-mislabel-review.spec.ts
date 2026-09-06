@@ -132,10 +132,11 @@ test.describe("Data → Review unit-mislabel correction (#761)", () => {
     // Apply the correction — the card clears (a swallowed click in the hydration
     // window leaves the card; retry until the row is gone).
     const apply = card.getByTestId("unit-mislabel-apply");
+    // eslint-disable-next-line no-restricted-properties -- topass-ok: re-click Apply until the card clears past the hydration swallow — no single re-click+await event for the client-cleared row
     await expect(async () => {
       if (await card.isVisible()) await apply.click({ timeout: 2000 });
       await expect(card).toHaveCount(0, { timeout: 3000 });
-    }).toPass({ timeout: 20_000 }); // topass-ok: re-click Apply until the card clears past the hydration swallow — no single re-click+await event for the client-cleared row
+    }).toPass({ timeout: 20_000 });
 
     // The stored unit is now the canonical g/dL — the false flag is gone at the source.
     expect(unitOf(applyId)).toBe("g/dL");
@@ -149,10 +150,11 @@ test.describe("Data → Review unit-mislabel correction (#761)", () => {
     await expect(card).toBeVisible();
 
     const dismiss = card.getByTestId("unit-mislabel-dismiss");
+    // eslint-disable-next-line no-restricted-properties -- topass-ok: re-click Dismiss until the card clears past the hydration swallow — no single re-click+await event
     await expect(async () => {
       if (await card.isVisible()) await dismiss.click({ timeout: 2000 });
       await expect(card).toHaveCount(0, { timeout: 3000 });
-    }).toPass({ timeout: 20_000 }); // topass-ok: re-click Dismiss until the card clears past the hydration swallow — no single re-click+await event
+    }).toPass({ timeout: 20_000 });
 
     // Dismiss suppresses the detection but never mutates the reading's unit.
     expect(unitOf(dismissId)).toBe("g/L");

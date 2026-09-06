@@ -303,12 +303,13 @@ test.describe("fewer taps to common actions (#1416 B/E)", () => {
     // No drawer detour, and no top bar either: since #4102 the magnifier IS a dock
     // slot, so the one tap it always promised is now a tap at the bottom edge —
     // inside the thumb's range instead of at the far corner.
+    // eslint-disable-next-line no-restricted-properties -- topass-ok: re-tap the dock's Search slot past the pre-hydration swallow (#500) — a pure client toggle with no POST to settle on, and the visibility guard keeps a late tap from re-closing it
     await expect(async () => {
       if (!(await input.isVisible())) {
         await page.getByTestId("dock-slot-search").click();
       }
       await expect(input).toBeVisible({ timeout: 1000 });
-    }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-tap the dock's Search slot past the pre-hydration swallow (#500) — a pure client toggle with no POST to settle on, and the visibility guard keeps a late tap from re-closing it
+    }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] });
   });
 
   test("the dock puck absorbs the bar's log cluster and keeps the workout offer", async ({
@@ -429,12 +430,13 @@ test.describe("fewer taps to common actions (#1416 B/E)", () => {
   test("Escape and the backdrop both dismiss the sheet", async ({ page }) => {
     await page.goto("/");
     const sheet = page.getByTestId("quick-log-sheet");
+    // eslint-disable-next-line no-restricted-properties -- topass-ok: re-tap the puck past the pre-hydration swallow (#500) — a pure client toggle, visibility-guarded
     await expect(async () => {
       if (!(await sheet.isVisible())) {
         await page.getByTestId("dock-log-puck").click();
       }
       await expect(sheet).toBeVisible({ timeout: 1000 });
-    }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-tap the puck past the pre-hydration swallow (#500) — a pure client toggle, visibility-guarded
+    }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] });
 
     await page.keyboard.press("Escape");
     await expect(sheet).toHaveCount(0);
@@ -590,12 +592,13 @@ test.describe("reduced motion (#1416 F)", () => {
 
     // The sheet too.
     const sheet = page.getByTestId("quick-log-sheet");
+    // eslint-disable-next-line no-restricted-properties -- topass-ok: re-tap the puck past the pre-hydration swallow (#500) — a pure client toggle, visibility-guarded
     await expect(async () => {
       if (!(await sheet.isVisible())) {
         await page.getByTestId("dock-log-puck").click();
       }
       await expect(sheet).toBeVisible({ timeout: 1000 });
-    }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-tap the puck past the pre-hydration swallow (#500) — a pure client toggle, visibility-guarded
+    }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] });
     await page.keyboard.press("Escape");
     await expect(sheet).toHaveCount(0);
 

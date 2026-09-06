@@ -143,9 +143,10 @@ test.describe("symptom trends (#1852)", () => {
       ).run(PROFILE, day, RECURRING);
 
       await page.goto("/");
+      // eslint-disable-next-line no-restricted-properties -- first-ok: the acting profile's own symptom bar — order-agnostic
       const link = page
         .getByTestId("symptom-log-bar")
-        .first() // first-ok: the acting profile's own symptom bar — order-agnostic
+        .first()
         .getByTestId("symptom-analysis-link");
       await expect(link).toBeVisible();
       await link.click();

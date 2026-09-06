@@ -42,6 +42,7 @@ import {
   type PartFault,
 } from "@/lib/activity-form-model";
 import ActivityCombobox from "@/components/ActivityCombobox";
+import PartNameField from "./PartNameField";
 import ModalShell from "@/components/ModalShell";
 import ExerciseGuideSection from "@/components/ExerciseGuideSection";
 import CustomTypeChips from "./CustomTypeChips";
@@ -232,6 +233,22 @@ export default function ActivityPartsList({
   // toolbar without duplicating either. Holds the index of the part whose guide
   // is open, so at most one overlay exists no matter how many parts are entered.
   const [guideFor, setGuideFor] = useState<number | null>(null);
+  // WHICH PART IS BEING SEARCHED (#5370). A named part is a HEADING, not a mounted
+  // search field; the picker — with its search glyph and its own Clear — is one tap
+  // behind it. Holds an index for the same reason `guideFor` does.
+  const [searchingPart, setSearchingPart] = useState<number | null>(null);
+  // Settling unmounts the field the caret was in, so the heading has to take the focus
+  // back or a keyboard pick drops it on <body>. The heading does not exist yet when the
+  // settle is decided, so this is a REQUEST that the heading's own ref callback fulfils
+  // on mount — not React state, because the fulfilment is a DOM call at commit time and
+  // clearing a state flag from an effect is the cascading render eslint refuses (and
+  // would be right to: nothing renders differently for it).
+  const refocusHeading = useRef<number | null>(null);
+  const settleName = (pi: number, focus: boolean) => {
+    setSearchingPart((cur) => (cur === pi ? null : cur));
+    // Always assigned, so a settle that focuses nothing also drops a stale request.
+    refocusHeading.current = focus ? pi : null;
+  };
   // WHICH PART'S EQUIPMENT EDITOR IS OPEN (#3349), for the same reason `guideFor`
   // holds an index: at most one is open no matter how many parts are entered. That is
   // what keeps the registry door — which lives inside the panel — to ONE PER FORM
@@ -256,10 +273,12 @@ export default function ActivityPartsList({
   // otherwise the same key silently targets its new neighbour (#4185).
   const movePart = (pi: number, dir: -1 | 1) => {
     closePartFact();
+    setSearchingPart(null);
     onMovePart(pi, dir);
   };
   const removePart = (pi: number) => {
     closePartFact();
+    setSearchingPart(null);
     onRemovePart(pi);
   };
   // One RPE opt-in round-trip at a time (#3335). ONE flag for the list rather than one
@@ -641,6 +660,13 @@ export default function ActivityPartsList({
           const t = partType(p);
           const valid = t !== null;
           const muscle = t === "strength" ? muscleFor(p.name) : null;
+          // One badge, whether it sits in the heading or inside the open field.
+          const muscleBadge = muscle ? (
+            <span className="badge bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300">
+              {muscle}
+            </span>
+          ) : undefined;
+          const searching = searchingPart === pi;
           // Hoist companions of the OTHER entered lifts to the top of this
           // part's picker (issue #195); excludes this part's own name so it
           // can't bias its own list. No-op until a lift is entered.
@@ -697,11 +723,39 @@ export default function ActivityPartsList({
                 data-testid="part-header"
                 className="sticky top-edge-safe z-10 -mx-1 flex flex-col gap-1 bg-surface/95 px-1 py-1 backdrop-blur-sm sm:flex-row sm:items-center sm:gap-2 md:static md:mx-0 md:bg-transparent md:px-0 md:py-0 md:backdrop-blur-none dark:md:bg-transparent"
               >
-                <div className="min-w-0 sm:flex-1">
+                <PartNameField
+                  name={p.name}
+                  badge={muscleBadge}
+                  searching={searching}
+                  onOpen={() => setSearchingPart(pi)}
+                  // Nothing to hand the focus to when the name is empty: that part
+                  // stays the picker.
+                  onEscape={() => settleName(pi, p.name.trim() !== "")}
+                  headingRef={(node) => {
+                    if (!node || refocusHeading.current !== pi) return;
+                    refocusHeading.current = null;
+                    node.focus();
+                  }}
+                >
                   <ActivityCombobox
                     value={p.name}
-                    onChange={(v) => onTypePartName(pi, v)}
-                    onPick={(v) => onPickPartName(pi, v)}
+                    // TYPING IS SEARCHING. Without this the part would settle on the
+                    // first keystroke — `settled` is derived from the name, and a
+                    // half-typed name is a name — pulling the field out from under
+                    // the caret. The state has to say "this part is being searched",
+                    // not "this part has no name yet".
+                    onChange={(v) => {
+                      setSearchingPart(pi);
+                      onTypePartName(pi, v);
+                    }}
+                    onPick={(v) => {
+                      onPickPartName(pi, v);
+                      settleName(pi, true);
+                    }}
+                    // A name typed and left — a free-text custom activity — settles the
+                    // same way a picked one does, without stealing focus from whatever
+                    // the person moved to.
+                    onInputBlur={() => settleName(pi, false)}
                     allowFreeText
                     // Composed variant names ("Dumbbell Curl") aren't in the
                     // options list but pick as the known lift — don't promise
@@ -720,17 +774,11 @@ export default function ActivityPartsList({
                         ? "What did you do? e.g. Bench Press, Running, Tennis"
                         : "Add another activity…"
                     }
-                    autoFocus={pi === 0 && !isEdit}
+                    autoFocus={searching || (pi === 0 && !isEdit)}
                     // A committed custom part isn't "unrecognized" — its
                     // pending type shows as amber chips, not a red border.
                     invalid={p.name.trim() !== "" && !valid && !p.custom}
-                    badge={
-                      muscle ? (
-                        <span className="badge bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300">
-                          {muscle}
-                        </span>
-                      ) : undefined
-                    }
+                    badge={muscleBadge}
                     badgeFor={(opt) => {
                       const m = muscleFor(opt);
                       return m ? (
@@ -740,7 +788,7 @@ export default function ActivityPartsList({
                       ) : null;
                     }}
                   />
-                </div>
+                </PartNameField>
                 {hasActions && (
                   <div
                     data-testid="part-actions"

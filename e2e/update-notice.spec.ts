@@ -102,6 +102,7 @@ async function loads(page: Page): Promise<string | null> {
 // attached does nothing, so re-dispatch until the bar lands; the detector settles
 // after the first mismatch, so extra dispatches are no-ops.
 async function provokeVersionCheck(page: Page) {
+  // eslint-disable-next-line no-restricted-properties -- topass-ok: re-dispatches the visibility check past the hydration window — the listener only exists once the registrar's effect has settled, and there is no POST or navigation to settle on
   await expect(async () => {
     await page.evaluate(() =>
       document.dispatchEvent(new Event("visibilitychange"))
@@ -109,7 +110,7 @@ async function provokeVersionCheck(page: Page) {
     await expect(page.getByTestId("update-ready-bar")).toBeVisible({
       timeout: 1500,
     });
-  }).toPass({ timeout: 25_000, intervals: [300, 700, 1500] }); // topass-ok: re-dispatches the visibility check past the hydration window — the listener only exists once the registrar's effect has settled, and there is no POST or navigation to settle on
+  }).toPass({ timeout: 25_000, intervals: [300, 700, 1500] });
 
   return page.getByTestId("update-ready-bar");
 }
@@ -496,7 +497,7 @@ test("a keystroke inside the autosave debounce is flushed, not crossed (#3371)",
 
     // A keystroke the way the browser delivers one, so React's onChange runs and the
     // draft hook's own `input` listener on the <form> fires synchronously.
-    const started = performance.now(); // clock-ok: a duration inside one page task, not a wall-clock read
+    const started = performance.now(); // a duration inside one page task, not a wall-clock read
     const setter = Object.getOwnPropertyDescriptor(
       HTMLInputElement.prototype,
       "value"
@@ -512,11 +513,11 @@ test("a keystroke inside the autosave debounce is flushed, not crossed (#3371)",
     const deadline = 400;
     while (
       form.getAttribute("data-unsaved") !== "true" &&
-      performance.now() - started < deadline // clock-ok: same duration
+      performance.now() - started < deadline // same duration
     ) {
       await new Promise((r) => requestAnimationFrame(() => r(null)));
     }
-    const markedAt = performance.now() - started; // clock-ok: same duration
+    const markedAt = performance.now() - started; // same duration
 
     // THE PRECONDITION, PROVEN RATHER THAN ASSUMED: nothing is durable yet. If the
     // debounce had already fired this test would be exercising the safe path and
@@ -552,7 +553,7 @@ test("a keystroke inside the autosave debounce is flushed, not crossed (#3371)",
     // THE FLIP. Hidden short-circuits `autoReloadPlan` past the quiet window, so this
     // is the tab-switch or screen-lock that reproduces the hazard, taken inside the
     // debounce and in the same page task as the keystroke.
-    const flippedAt = performance.now() - started; // clock-ok: same duration
+    const flippedAt = performance.now() - started; // same duration
     (window as unknown as { __goHidden: () => void }).__goHidden();
     document.dispatchEvent(new Event("visibilitychange"));
     return { markedAt, flippedAt, draftsBefore };
@@ -683,10 +684,8 @@ test("a keystroke inside the autosave debounce is flushed, not crossed (#3371)",
 // construct out: the hygiene scan is textual, so a comment naming it counts itself.)
 async function pickActivity(page: Page, name: string) {
   await page.getByPlaceholder(/What did you do/).fill(name);
-  await comboboxRows(page)
-    .filter({ hasText: name })
-    .first() // first-ok: transient combobox list this test just opened by typing `name`; the first filtered match is the intended option
-    .click();
+  // eslint-disable-next-line no-restricted-properties -- first-ok: transient combobox list this test just opened by typing `name`; the first filtered match is the intended option
+  await comboboxRows(page).filter({ hasText: name }).first().click();
 }
 
 test("a create form that re-keys onto its saved row leaves the registry empty (#3443)", async ({

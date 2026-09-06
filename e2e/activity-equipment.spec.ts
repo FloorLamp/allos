@@ -57,10 +57,11 @@ test("a cardio session shows its gear chip and preloads the equipment picker (#3
   await page.goto("/training?tab=log&q=" + encodeURIComponent("Zone 2 bike"));
 
   // The feed renders slim rows; gear lives on the canonical activity page.
+  // eslint-disable-next-line no-restricted-properties -- first-ok: the seeded "Zone 2 bike" activity row (filtered by its unique title)
   const row = page
     .getByTestId("history-row")
     .filter({ hasText: "Zone 2 bike" })
-    .first(); // first-ok: the seeded "Zone 2 bike" activity row (filtered by its unique title)
+    .first();
   await expect(row).toBeVisible();
   await followLink(
     page,
@@ -127,10 +128,11 @@ test("a run offers shoes (not the bike) in the equipment picker (#339)", async (
   await page.goto("/training?tab=log");
 
   // Follow the run's slim row to its canonical page, then open the shared editor.
+  // eslint-disable-next-line no-restricted-properties -- first-ok: the seeded "5k run" activity row (filtered by its unique title)
   const row = page
     .getByTestId("history-row")
     .filter({ hasText: "5k run" })
-    .first(); // first-ok: the seeded "5k run" activity row (filtered by its unique title)
+    .first();
   await expect(row).toBeVisible();
   await followLink(
     page,
@@ -271,7 +273,7 @@ test("the strength picker creates and selects a travel machine without losing th
   test.slow(); // local next dev compiles /training on first hit
   await page.setViewportSize({ width: 1280, height: 900 });
 
-  const stamp = `${Date.now()}`; // clock-ok: unique-name suffix for this run's probe activity + equipment, never a stored timestamp
+  const stamp = `${Date.now()}`; // eslint-disable-line no-restricted-properties -- clock-ok: unique-name suffix for this run's probe activity + equipment, never a stored timestamp
   const title = `${GEAR_PREFIX} session ${stamp}`;
   const gearName = `${GEAR_PREFIX} ${stamp}`;
 
@@ -290,9 +292,10 @@ test("the strength picker creates and selects a travel machine without losing th
     // pick before it can save) — and its "Barbell" variant is what the quick-add
     // defaults the new row's category from.
     await page.getByPlaceholder(/What did you do/).fill("Barbell Bench Press");
+    // eslint-disable-next-line no-restricted-properties -- first-ok: transient combobox list this spec just opened by typing the name
     await comboboxRows(page)
       .filter({ hasText: "Barbell Bench Press" })
-      .first() // first-ok: transient combobox list this spec just opened by typing the name
+      .first()
       .click();
 
     // Enter a complete working set FIRST — the whole point is that creating equipment
@@ -427,9 +430,10 @@ test("the strength form shows an equipment door with no gear on file (#1611)", a
     );
 
     await page.getByPlaceholder(/What did you do/).fill("Barbell Bench Press");
+    // eslint-disable-next-line no-restricted-properties -- first-ok: transient combobox list this spec just opened by typing the name
     await comboboxRows(page)
       .filter({ hasText: "Barbell Bench Press" })
-      .first() // first-ok: transient combobox list this spec just opened by typing the name
+      .first()
       .click();
 
     // No gear on file and a lift with a normal implement: the row STATES that
@@ -505,7 +509,7 @@ test("gear chosen behind a closed panel still saves, and still counts as a chang
   page,
 }) => {
   test.slow(); // local next dev compiles /training on first hit
-  const stamp = `${Date.now()}`; // clock-ok: unique-name suffix for this run's probe activity, never a stored timestamp
+  const stamp = `${Date.now()}`; // eslint-disable-line no-restricted-properties -- clock-ok: unique-name suffix for this run's probe activity, never a stored timestamp
   const title = `${GEAR_CHIP_PREFIX} ${stamp}`;
   // The form's own dirty marker (#3351): "true" while it holds a change the server has
   // not got yet, "false" once autosave has caught up. It is autosave's `dirty` — the
@@ -525,10 +529,8 @@ test("gear chosen behind a closed panel still saves, and still counts as a chang
 
     await page.getByRole("textbox", { name: "Activity name" }).fill(title);
     await page.getByPlaceholder(/What did you do/).fill("Rowing");
-    await comboboxRows(page)
-      .filter({ hasText: "Rowing" })
-      .first() // first-ok: transient combobox list this spec just opened by typing the name
-      .click();
+    // eslint-disable-next-line no-restricted-properties -- first-ok: transient combobox list this spec just opened by typing the name
+    await comboboxRows(page).filter({ hasText: "Rowing" }).first().click();
     // A duration makes the session savable, so it auto-saves and gains a real row.
     await settledFill(page, page.getByTestId("cardio-duration"), "30");
     // Delete appearing is the stable "the server stored this row" signal — the same
@@ -650,11 +652,12 @@ test("gear chosen behind a closed panel still saves, and still counts as a chang
     // The payoff: gear chosen in a panel that was closed before the save reaches the
     // stored row. Read back off the canonical activity page, through the server.
     await page.goto("/training?tab=log");
+    // eslint-disable-next-line no-restricted-properties -- first-ok: this run's uniquely-titled probe activity
     const row = page
       .getByRole("main")
       .getByTestId("history-row")
       .filter({ hasText: title })
-      .first(); // first-ok: this run's uniquely-titled probe activity
+      .first();
     await expect(row).toBeVisible();
     await followLink(
       page,
@@ -698,7 +701,7 @@ test("a strength part states its implement, and the registry door is one per for
   page,
 }) => {
   test.slow(); // local next dev compiles /training on first hit
-  const stamp = `${Date.now()}`; // clock-ok: unique-name suffix for this run's probe activity, never a stored timestamp
+  const stamp = `${Date.now()}`; // eslint-disable-line no-restricted-properties -- clock-ok: unique-name suffix for this run's probe activity, never a stored timestamp
   const title = `${PART_GEAR_PREFIX} ${stamp}`;
   // The form's own dirty marker (#3351) — readable at any moment, so nothing here waits
   // on the `Saved ✓` check to fade. See the #3334 test above for the measured budget.
@@ -723,8 +726,11 @@ test("a strength part states its implement, and the registry door is one per for
     await firstName.fill("Curl");
     // The dropdown is open over the row below; Escape dismisses it without committing
     // a pick, which is exactly what this state needs.
+    // Escape settles the typed name back to its heading (#5370) without committing
+    // a pick, which is exactly what this state needs.
     await firstName.press("Escape");
-    await expect(firstName).toHaveValue("Curl");
+    const firstHeading = form.getByTestId("part-name-heading");
+    await expect(firstHeading).toContainText("Curl");
     await expect(chips).toHaveCount(1);
     await expect(chips).toHaveText("Pick equipment");
     await expect(chips).toHaveAttribute("data-fact-state", "missing");
@@ -742,7 +748,7 @@ test("a strength part states its implement, and the registry door is one per for
     );
     await expect(doors).toHaveCount(1);
     await page.getByRole("button", { name: "Barbell", exact: true }).click();
-    await expect(firstName).toHaveValue("Barbell Curl");
+    await expect(firstHeading).toContainText("Barbell Curl");
     // The dirty half, asserted FIRST — `dirty` is transient, and reading it after the
     // panel closes would be reading it after the state it names has passed.
     await expect(form).toHaveAttribute("data-unsaved", "true");
@@ -769,11 +775,15 @@ test("a strength part states its implement, and the registry door is one per for
     // The composed variant is a catalog name but not a picker OPTION (the options list
     // bases; the concrete variants are reached through the equipment chips), so this is
     // the free-text "Use …" row — which `pickPartName` still resolves as a known lift.
+    // eslint-disable-next-line no-restricted-properties -- first-ok: transient combobox list this spec just opened by typing the name
     await comboboxRows(page)
       .filter({ hasText: "Barbell Bench Press" })
-      .first() // first-ok: transient combobox list this spec just opened by typing the name
+      .first()
       .click();
-    await expect(secondName).toHaveValue("Barbell Bench Press");
+    // The pick settles it into its heading (#5370).
+    await expect(
+      form.getByTestId("part-name-heading").nth(1) // nth-ok: the part this spec just added
+    ).toContainText("Barbell Bench Press");
 
     // TWO PARTS, TWO CONCLUSIONS, AND STILL NO DOOR. The second part's implement comes
     // from the lift's own name rather than from a pick, and it is stated the same way.

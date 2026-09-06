@@ -85,7 +85,7 @@ test("a stale page's retire tap renders the typed refusal (#2138)", async ({
 }) => {
   // Unique marker so a CI retry / repeat-each and the sibling test above can't
   // collide on the per-profile name-uniqueness guard.
-  const name = `E2E Stale Retire Bar ${Date.now()}`; // clock-ok: unique-name suffix, never a stored timestamp
+  const name = `E2E Stale Retire Bar ${Date.now()}`; // eslint-disable-line no-restricted-properties -- clock-ok: unique-name suffix, never a stored timestamp
   await page.goto("/equipment");
   await page.getByRole("button", { name: "Add equipment" }).click();
   await page.getByLabel("Name").fill(name);

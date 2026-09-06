@@ -147,7 +147,7 @@ test.describe("protocols create → compare (issue #161)", () => {
   }) => {
     test.slow(); // next dev compiles these routes on first hit
 
-    const uniqueName = `E2E Creatine ${Date.now()}`; // clock-ok: unique fixture-name suffix, never a stored timestamp
+    const uniqueName = `E2E Creatine ${Date.now()}`; // eslint-disable-line no-restricted-properties -- clock-ok: unique fixture-name suffix, never a stored timestamp
     const updatedName = `${uniqueName} updated`;
     // A relative past start so the baseline/intervention windows both have seeded
     // weekly body-metric readings (never a hardcoded date that ages out).

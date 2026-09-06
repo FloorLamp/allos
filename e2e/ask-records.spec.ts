@@ -42,7 +42,7 @@ test.describe("ask your records (#878)", () => {
     const citation = panel
       .getByTestId("ask-records-citation")
       .filter({ hasText: ASK_RECORDS_MED });
-    await expect(citation.first()).toBeVisible(); // first-ok: the med citation in this spec's own isolated fixture — order-agnostic
+    await expect(citation.first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: the med citation in this spec's own isolated fixture — order-agnostic
   });
 
   test("an unmatched question refuses with 'nothing found', never speculates", async ({

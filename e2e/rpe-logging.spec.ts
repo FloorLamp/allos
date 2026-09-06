@@ -58,7 +58,7 @@ function cardsByTitle(page: Page, text: string | RegExp) {
 async function openEditorFromRow(page: Page, row: Locator): Promise<void> {
   await hydratedClick(
     page,
-    row.getByRole("link").first() // first-ok: the canonical title link precedes any exercise links in the row
+    row.getByRole("link").first() // eslint-disable-line no-restricted-properties -- first-ok: the canonical title link precedes any exercise links in the row
   );
   await page
     .getByTestId("training-activity-page")
@@ -70,10 +70,8 @@ async function openEditorFromRow(page: Page, row: Locator): Promise<void> {
 // the entry-ergonomics / live-workout specs document).
 async function pickActivity(page: Page, name: string) {
   await page.getByPlaceholder(/What did you do/).fill(name);
-  await comboboxRows(page)
-    .filter({ hasText: name })
-    .first() // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
-    .click();
+  // eslint-disable-next-line no-restricted-properties -- first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
+  await comboboxRows(page).filter({ hasText: name }).first().click();
 }
 
 // Confirm the dialog-scoped Delete and await the captureDelete Server Action POST.
@@ -115,7 +113,7 @@ async function sweepProbes(page: Page): Promise<void> {
   for (let guard = 0; guard < 12; guard++) {
     const n = await probes.count();
     if (n === 0) break;
-    const row = probes.first(); // first-ok: every PROBE_PREFIX row is this spec's own leftover; cleanup is order-agnostic
+    const row = probes.first(); // eslint-disable-line no-restricted-properties -- first-ok: every PROBE_PREFIX row is this spec's own leftover; cleanup is order-agnostic
     await openEditorFromRow(page, row);
     await confirmDelete(page);
     await page.goto("/training?tab=log");
@@ -135,7 +133,7 @@ test("RPE selector round-trips through the activity form (#743)", async ({
   // Open a fresh CREATE editor from the Training page-header action.
   await page.getByTestId("training-log-add-activity").click();
 
-  const title = `${PROBE_PREFIX} ${Date.now()}-${++probeSeq}`; // clock-ok: unique probe-name suffix, never a stored timestamp
+  const title = `${PROBE_PREFIX} ${Date.now()}-${++probeSeq}`; // eslint-disable-line no-restricted-properties -- clock-ok: unique probe-name suffix, never a stored timestamp
   await page.getByRole("textbox", { name: "Activity name" }).fill(title);
   // Pick the fully-qualified variant, NOT the bare base "Bench Press": a bare
   // variant base needs a per-set equipment pick before it can save (#342), and the
@@ -222,6 +220,7 @@ test("RPE selector round-trips through the activity form (#743)", async ({
   // 8.5 is committed above, so a single reload reads it (the toPass is a cheap
   // guard against a slow reopen render, not the persistence race the await closed).
   await page.keyboard.press("Escape");
+  // eslint-disable-next-line no-restricted-properties -- topass-ok: reopen-until-persisted: re-goto + reopen the stored session until the persisted half-point RPE renders — a reload-until-rendered nav, no single awaitable event
   await expect(async () => {
     await page.goto("/training?tab=log");
     const row = cardsByTitle(page, title);
@@ -231,7 +230,7 @@ test("RPE selector round-trips through the activity form (#743)", async ({
     await expect(page.getByLabel("Activity name")).toHaveValue(title);
     // The RPE selector reloaded the persisted half-point value — the round-trip.
     await expect(page.getByTestId("set1-rpe-value")).toHaveText("8.5");
-  }).toPass({ timeout: 20_000 }); // topass-ok: reopen-until-persisted: re-goto + reopen the stored session until the persisted half-point RPE renders — a reload-until-rendered nav, no single awaitable event
+  }).toPass({ timeout: 20_000 });
 
   // OPTING BACK OUT HIDES THE COLUMN; IT IS NOT A DELETE (#3335). Migrating a
   // shipped behaviour to opt-in must not take away what people already logged, and

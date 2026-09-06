@@ -186,10 +186,11 @@ test("a ride hit picked FROM /training navigates to its activity detail", async 
   await input.fill(ACTIVITY_MARKER);
 
   const results = page.getByRole("listbox", { name: "Results" });
+  // eslint-disable-next-line no-restricted-properties -- first-ok: filtered to a marker THIS spec planted — exactly one activity carries it
   const hit = results
     .getByRole("option")
     .filter({ hasText: ACTIVITY_MARKER })
-    .first(); // first-ok: filtered to a marker THIS spec planted — exactly one activity carries it
+    .first();
   await expect(hit).toBeVisible();
 
   // The destination, not merely "the palette closed": the canonical record URL.
@@ -210,10 +211,11 @@ test("a medication hit navigates to that medication's detail page", async ({
   await input.fill(MED_MARKER);
 
   const results = page.getByRole("listbox", { name: "Results" });
+  // eslint-disable-next-line no-restricted-properties -- first-ok: filtered to a marker THIS spec planted — exactly one medication carries it
   const hit = results
     .getByRole("option")
     .filter({ hasText: MED_MARKER })
-    .first(); // first-ok: filtered to a marker THIS spec planted — exactly one medication carries it
+    .first();
   await expect(hit).toBeVisible();
 
   await followLink(page, hit, new RegExp(`/medications/${medId}$`));
@@ -257,7 +259,7 @@ test("the entity domains added in #1595 are searchable and land on their own sur
   }
 
   const option = (text: string) =>
-    results.getByRole("option").filter({ hasText: text }).first(); // first-ok: filtered to a marker THIS spec planted — exactly one row per domain carries it
+    results.getByRole("option").filter({ hasText: text }).first(); // eslint-disable-line no-restricted-properties -- first-ok: filtered to a marker THIS spec planted — exactly one row per domain carries it
 
   // EXCEPT the practice, since #5006: this spec's own `practice_logs` row is now BOTH
   // a `logged` hit and the session tally behind the `practice` entity, and the logged
@@ -293,11 +295,12 @@ test("the entity domains added in #1595 are searchable and land on their own sur
   await episodeInput.fill(EPISODE_SITUATION);
   await followLink(
     page,
+    // eslint-disable-next-line no-restricted-properties -- first-ok: filtered to a marker THIS spec planted — exactly one episode carries it
     page
       .getByRole("listbox", { name: "Results" })
       .getByRole("option")
       .filter({ hasText: EPISODE_SITUATION })
-      .first(), // first-ok: filtered to a marker THIS spec planted — exactly one episode carries it
+      .first(),
     new RegExp(`/medical/episodes/${episodeId}$`)
   );
 
@@ -306,11 +309,12 @@ test("the entity domains added in #1595 are searchable and land on their own sur
   await gearInput.fill(EQUIPMENT_NAME);
   await followLink(
     page,
+    // eslint-disable-next-line no-restricted-properties -- first-ok: filtered to a marker THIS spec planted — exactly one equipment row carries it
     page
       .getByRole("listbox", { name: "Results" })
       .getByRole("option")
       .filter({ hasText: EQUIPMENT_NAME })
-      .first(), // first-ok: filtered to a marker THIS spec planted — exactly one equipment row carries it
+      .first(),
     new RegExp(`/equipment/${equipmentId}$`)
   );
   await expect(page.getByRole("main")).toContainText(EQUIPMENT_NAME);

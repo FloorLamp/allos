@@ -33,7 +33,7 @@ async function clearPlans(page: Page): Promise<void> {
   while (n > 0) {
     await settledClick(
       page,
-      page.getByRole("button", { name: /^Delete / }).first() // first-ok: deletes the endurance plan THIS spec created
+      page.getByRole("button", { name: /^Delete / }).first() // eslint-disable-line no-restricted-properties -- first-ok: deletes the endurance plan THIS spec created
     );
     await expect(cards).toHaveCount(n - 1);
     n--;
@@ -106,9 +106,10 @@ test.describe("endurance event plans (#839)", () => {
       await distanceSelect.selectOption("mi");
       await expect(page.getByLabel("Saved")).toBeVisible();
       await page.goto("/upcoming");
+      // eslint-disable-next-line no-restricted-properties -- first-ok: the endurance-event upcoming item from the plan THIS spec created
       const eventItem = page
         .locator('[data-testid^="upcoming-item-endurance-event:"]')
-        .first(); // first-ok: the endurance-event upcoming item from the plan THIS spec created
+        .first();
       await expect(eventItem).toBeVisible();
       await expect(eventItem).toContainText("6.21 mi");
       await expect(eventItem).not.toContainText("10 km");
@@ -161,7 +162,7 @@ test.describe("endurance event plans (#839)", () => {
     // Completing the meet retires it from the bar (the lifecycle is unchanged).
     await settledClick(
       page,
-      page.getByTestId("endurance-set-completed").first() // first-ok: the meet card THIS test created
+      page.getByTestId("endurance-set-completed").first() // eslint-disable-line no-restricted-properties -- first-ok: the meet card THIS test created
     );
     await expect(card).toHaveCount(1);
 

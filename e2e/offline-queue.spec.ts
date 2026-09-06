@@ -17,7 +17,7 @@ test("a body metric logged offline queues, then syncs exactly once on reconnect 
   page,
   context,
 }) => {
-  const marker = `offline-e2e-${Date.now()}`; // clock-ok: unique notes marker, never a stored timestamp
+  const marker = `offline-e2e-${Date.now()}`; // eslint-disable-line no-restricted-properties -- clock-ok: unique notes marker, never a stored timestamp
 
   await page.goto("/trends");
   // #1486: the body quick-add is now the combined "Log measurements" form behind
@@ -78,7 +78,7 @@ test("an offline weight is kept when its waist reading needs a connection (#4142
     frozenNow().toISOString().slice(0, 10)
   );
   try {
-    const marker = `offline-partial-${Date.now()}`; // clock-ok: unique notes marker, never a stored timestamp
+    const marker = `offline-partial-${Date.now()}`; // eslint-disable-line no-restricted-properties -- clock-ok: unique notes marker, never a stored timestamp
     await page.goto("/trends");
     await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
     const form = page.getByTestId("measurements-quick-add");
@@ -129,7 +129,7 @@ test("a rejected offline entry is surfaced for review, not silently dropped (#47
   page,
   context,
 }) => {
-  const marker = `offline-reject-${Date.now()}`; // clock-ok: unique notes marker, never a stored timestamp
+  const marker = `offline-reject-${Date.now()}`; // eslint-disable-line no-restricted-properties -- clock-ok: unique notes marker, never a stored timestamp
 
   await page.goto("/trends");
   // #1486: the body quick-add is now the combined "Log measurements" form behind

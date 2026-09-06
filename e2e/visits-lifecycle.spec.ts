@@ -106,9 +106,10 @@ test.describe("Visits lifecycle — book → complete → log visit → detail (
     // The linked visit now appears in the Past section with the kind mapped to its
     // encounter type, and deep-links to its detail page.
     const past = page.getByTestId("visits-past");
+    // eslint-disable-next-line no-restricted-properties -- first-ok: the visit THIS spec just logged, in its own Past section — order-agnostic
     const visitLink = past
       .getByRole("link", { name: "Physical / check-up" })
-      .first(); // first-ok: the visit THIS spec just logged, in its own Past section — order-agnostic
+      .first();
     await expect(visitLink).toBeVisible({ timeout: 15_000 });
     await expect(visitLink).toHaveAttribute("href", /\/encounters\/\d+$/);
 

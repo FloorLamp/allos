@@ -44,12 +44,13 @@ export interface SubstanceTarget {
 // The unified consumption-history row (#2009). There is deliberately no ledger
 // field: each card and every mutation addresses a substance plus this row id,
 // while the query layer owns dispatch to food_daily_totals or substance_daily_totals.
+// No note: a note is a use's fact and lives on the event (#5304); the day columns
+// that used to hold one are left standing, uncollected and unread.
 export interface SubstanceDailyTotal {
   id: number;
   substance: SubstanceKey;
   date: string;
   amount: number;
-  notes: string | null;
 }
 
 export function getSubstanceDailyTotals(
@@ -60,7 +61,7 @@ export function getSubstanceDailyTotals(
     substanceDef(substance).ledger === "food-log"
       ? (db
           .prepare(
-            `SELECT id, date, servings AS amount, notes
+            `SELECT id, date, servings AS amount
              FROM food_daily_totals
              WHERE profile_id = ? AND group_key = ?
              ORDER BY date DESC, id DESC`
@@ -69,11 +70,10 @@ export function getSubstanceDailyTotals(
           id: number;
           date: string;
           amount: number;
-          notes: string | null;
         }[])
       : (db
           .prepare(
-            `SELECT id, date, units AS amount, notes
+            `SELECT id, date, units AS amount
              FROM substance_daily_totals
              WHERE profile_id = ? AND substance = ?
              ORDER BY date DESC, id DESC`
@@ -82,7 +82,6 @@ export function getSubstanceDailyTotals(
           id: number;
           date: string;
           amount: number;
-          notes: string | null;
         }[]);
   return rows.map((row) => ({ ...row, substance }));
 }
@@ -200,6 +199,7 @@ export interface SubstanceLedgerRow {
   date: string;
   recorded_at: string;
   occurred_at: string | null;
+  notes: string | null;
 }
 
 export function getSubstanceLedgerPage(
@@ -232,7 +232,7 @@ export function getSubstanceLedgerPage(
   const boundedPage = Math.min(requestedPage, pageCount(total, boundedSize));
   const rows = db
     .prepare(
-      `SELECT id, substance, date, recorded_at, occurred_at
+      `SELECT id, substance, date, recorded_at, occurred_at, notes
          FROM substance_log_events
         WHERE profile_id = ? AND ${where.join(" AND ")}
         ORDER BY date DESC, COALESCE(occurred_at, recorded_at) DESC, id DESC

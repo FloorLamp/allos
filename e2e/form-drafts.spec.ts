@@ -221,8 +221,8 @@ test("a long record form restores its state-only rows, then clears on submit (#1
     // The dose rows never exist as named inputs — they are React state serialized
     // into FormData at submit — so this is the `extra` half of the draft.
     const doseEditor1 = await openFact(page, "dose", addCard);
-    await doseEditor1.getByLabel("Amount").first().fill("25 mg"); // first-ok: this form's own first dose row, one render, not a seeded list
-    await doseEditor1.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: same row
+    await doseEditor1.getByLabel("Amount").first().fill("25 mg"); // eslint-disable-line no-restricted-properties -- first-ok: this form's own first dose row, one render, not a seeded list
+    await doseEditor1.getByLabel("Time of day").first().selectOption("Morning"); // eslint-disable-line no-restricted-properties -- first-ok: same row
     await closeEditor(page, addCard);
 
     // WAIT FOR THE CONTENT, NOT FOR THE ROW. Counting drafts is satisfied by the
@@ -255,15 +255,15 @@ test("a long record form restores its state-only rows, then clears on submit (#1
 
     await expect(reopened.getByLabel("Name")).toHaveValue(SUPPLEMENT_NAME);
     const doseEditor2 = await openFact(page, "dose", reopened);
-    await expect(doseEditor2.getByLabel("Amount").first()).toHaveValue("25 mg"); // first-ok: this form's own first dose row
+    await expect(doseEditor2.getByLabel("Amount").first()).toHaveValue("25 mg"); // eslint-disable-line no-restricted-properties -- first-ok: this form's own first dose row
     await expect(
-      doseEditor2.getByLabel("Time of day").first() // first-ok: this form's own first dose row, one render, not a seeded list
+      doseEditor2.getByLabel("Time of day").first() // eslint-disable-line no-restricted-properties -- first-ok: this form's own first dose row, one render, not a seeded list
     ).toHaveValue("Morning");
     await closeEditor(page, reopened);
 
     await reopened.getByRole("button", { name: "Add", exact: true }).click();
     await expect(reopened).toHaveCount(0);
-    await expect(page.getByText(SUPPLEMENT_NAME).first()).toBeVisible(); // first-ok: the row this spec just created
+    await expect(page.getByText(SUPPLEMENT_NAME).first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: the row this spec just created
 
     // Submitted ⇒ the draft is gone, and reopening the add form offers nothing.
     await expect
@@ -336,8 +336,8 @@ test("the reactive unsaved signature is cheap enough to run per keystroke (#3371
     // A dose row, so `extra` carries the state-only half rather than an empty object
     // — that half is what `draftSig` actually spends its time on.
     const doseEditor = await openFact(page, "dose", addCard);
-    await doseEditor.getByLabel("Amount").first().fill("25 mg"); // first-ok: this form's own first dose row
-    await doseEditor.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: same row
+    await doseEditor.getByLabel("Amount").first().fill("25 mg"); // eslint-disable-line no-restricted-properties -- first-ok: this form's own first dose row
+    await doseEditor.getByLabel("Time of day").first().selectOption("Morning"); // eslint-disable-line no-restricted-properties -- first-ok: same row
     await closeEditor(page, addCard);
 
     // WAIT FOR THE CONTENT BEFORE MEASURING IT. The draft reaching IndexedDB is the
