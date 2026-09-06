@@ -211,39 +211,6 @@ const FITBIT_SURFACES = [
   "lib/integrations/registry.ts",
 ];
 
-// #5338 — THE CLOCK SEAM. `Date.parse` on a zoneless date-TIME string is SERVER-LOCAL
-// by specification, and silently so: a date-ONLY string is UTC, a stamp ending in `Z`
-// is UTC, and only the middle case moves with the host. Production writers emit a `Z`
-// and CI runs UTC, which is why a wrong write took four falsifying passes to surface.
-//
-// The replacement is a TYPE, not a convention: `parseInstant` takes
-// `CanonicalInstant | BareInstant` and `parseDay` takes `LocalDay` (lib/date.ts), so a
-// caller holding a bare `string` cannot reach either and has to say which shape it has.
-//
-// THE EXCEPTION CONVENTION, and it is the same one the temporal-brand minters use: a
-// site that cannot be typed yet keeps `parseUtcSql` — which appends the `Z` itself, so
-// it is UTC either way, and needs no disable because it is not the banned call — with a
-// SAME-LINE COMMENT NAMING THE SHAPE IT EXPECTS. `metric_samples.started_at` / `ended_at` are the
-// population that needs it: that column deliberately carries no brand (#2899,
-// 2026-09-05) because it holds the device's verbatim instant, a `${day}T00:00:00` day
-// anchor AND a zoneless `${day}THH:MM:SS`, and the zoneless halves are this issue's
-// hazard class. A reason that says which of those the reader expects is the thing the
-// next person can check; a bare disable is not.
-const DATE_PARSE_BAN = {
-  object: "Date",
-  property: "parse",
-  message:
-    "Date.parse answers in the SERVER's zone for a zoneless date-time string. Parse through parseInstant / parseDay (lib/date.ts), whose parameter type says the value is UTC. A value no brand describes yet — metric_samples.started_at/ended_at — goes through parseUtcSql with a same-line comment naming the shape expected (#5338).",
-};
-// #1878 — was inline in the block below; named here so the Date.parse level can be
-// re-stated alongside it (see the mechanic above the constants).
-const ROUTER_REFRESH_BAN = {
-  object: "router",
-  property: "refresh",
-  message:
-    "Decide which this is: CHROME (a background actor — repaint through useChromeRefresh so a half-typed form is not emptied) or USER (the person asked for it — keep the direct call and say why on an eslint-disable line) (#1878).",
-};
-
 // Accumulating levels, narrowest last — see the mechanic at the top of this section.
 const SYNTAX_ALL = TEMPORAL_BRAND_CAST_SELECTORS.map((selector) => ({
   selector,
@@ -285,9 +252,80 @@ const IMPORT_PATTERNS_LIB_APP = [
   ...IMPORT_PATTERNS_PRODUCTION,
   STREAK_MODULE_BAN,
 ];
-const PROPERTIES_PRODUCTION = [DATE_PARSE_BAN];
-const PROPERTIES_APP_SURFACE = [...PROPERTIES_PRODUCTION, ROUTER_REFRESH_BAN];
 const restrictImports = (paths, patterns) => ["error", { paths, patterns }];
+
+// ── #5338 — THE CLOCK SEAM ───────────────────────────────────────────────────
+//
+// `Date.parse` on a zoneless date-TIME string answers in the SERVER's zone, by
+// specification and silently: a date-only string is UTC, a stamp ending in `Z` is
+// UTC, and only the middle case moves with the host. Production writers emit a `Z`
+// and CI runs UTC, which is how a wrong write took four falsifying passes to surface.
+// The replacement is a TYPE rather than a convention: `parseInstant` takes
+// `CanonicalInstant | BareInstant` and `parseDay` takes `LocalDay` (lib/date.ts), so
+// a caller holding a bare `string` cannot reach either and has to say which shape it
+// has. A column no brand describes yet (`metric_samples.started_at`/`ended_at`, a
+// settings value) keeps `parseUtcSql` — UTC either way, and not the banned call —
+// with a same-line comment naming the shape it expects.
+const DATE_PARSE_BAN = {
+  object: "Date",
+  property: "parse",
+  message:
+    "Date.parse answers in the SERVER's zone for a zoneless date-time string. Parse through parseInstant / parseDay (lib/date.ts), whose parameter type says the value is UTC; a value no brand describes yet goes through parseUtcSql with a same-line comment naming the shape expected (#5338).",
+};
+// The population that pre-dates the ban, exempt BY FILE the way the vendor-score
+// surfaces are. The ruling migrates it ON TOUCH: converting a site in one of these
+// files means converting every site in it and deleting the line here, so the list
+// only shrinks. Every entry was a literal-`Z` or bare-variable `Date.parse` when the
+// ban landed; none is an endorsement.
+const DATE_PARSE_ON_TOUCH = [
+  "app/(auth)/login/actions.ts",
+  "components/illness/FeverChart.tsx",
+  "lib/adherence-patterns.ts",
+  "lib/ai-usage-rollup.ts",
+  "lib/backup-verify.ts",
+  "lib/calorie-estimate.ts",
+  "lib/chart-time-axis.ts",
+  "lib/clinical-parse.ts",
+  "lib/coaching/common.ts",
+  "lib/coaching/engine.ts",
+  "lib/derived-biomarkers.ts",
+  "lib/endurance-plan.ts",
+  "lib/food-drug-ledger.ts",
+  "lib/goal-pacing.ts",
+  "lib/integrations/backfill-progress.ts",
+  "lib/integrations/health-connect.ts",
+  "lib/local-day-window.ts",
+  "lib/metric-snapshot.ts",
+  "lib/metric-sources.ts",
+  "lib/metric-window-overlap.ts",
+  "lib/mobility-coverage.ts",
+  "lib/niggle-model.ts",
+  "lib/offline/writes.ts",
+  "lib/optical-prescription.ts",
+  "lib/photo/metadata-backfill.ts",
+  "lib/practice-log.ts",
+  "lib/queries/continuous-streams.ts",
+  "lib/queries/correction-history.ts",
+  "lib/queries/intake/refill.ts",
+  "lib/queries/steps-target.ts",
+  "lib/recommendation-run.ts",
+  "lib/reference-range/retest.ts",
+  "lib/sleep-retime-db.ts",
+  "lib/training-observations.ts",
+  "lib/travel-timezone.ts",
+  "lib/trend-annotations.ts",
+  "lib/weight-anomaly.ts",
+  "lib/workout-recommendation.ts",
+  "scripts/seed.ts",
+];
+// #1878 — was inline in its block below; named so the clock-seam block after it can
+// re-state it for app/ and components/ (the flat-config mechanic above).
+const ROUTER_REFRESH_BAN = {
+  object: "router",
+  property: "refresh",
+  message:
+    "Decide which this is: CHROME (a background actor — repaint through useChromeRefresh so a half-typed form is not emptied) or USER (the person asked for it — keep the direct call and say why on an eslint-disable line) (#1878).",
+};
 
 const config = [
   // Global ignores — mirror the old ignorePatterns. Build output, deps, and the
@@ -568,15 +606,6 @@ const config = [
       ),
     },
   },
-  // #5338 — the clock seam, across every production tree. lib/date.ts needs no
-  // exemption: the seam is built on `parseUtcSql`, which appends the `Z` itself.
-  {
-    files: PRODUCTION_TREES,
-    ignores: TEST_TREES,
-    rules: {
-      "no-restricted-properties": ["error", ...PROPERTIES_PRODUCTION],
-    },
-  },
   // #1878 — every `router.refresh()` is classified. A background actor repaints
   // through `useChromeRefresh` so the dirty-form registry can hold it; a repaint the
   // person asked for calls the router directly and carries its reason on a file-level
@@ -586,7 +615,26 @@ const config = [
     files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}"],
     ignores: TEST_TREES,
     rules: {
-      "no-restricted-properties": ["error", ...PROPERTIES_APP_SURFACE],
+      "no-restricted-properties": ["error", ROUTER_REFRESH_BAN],
+    },
+  },
+  // #5338 — the clock seam, over every production tree except the on-touch
+  // population. lib/date.ts needs no exemption: the seam is built on `parseUtcSql`,
+  // which appends the `Z` itself. app/ and components/ re-state #1878 beside it so
+  // the narrower block above does not switch the ban off for them; an on-touch file
+  // there falls back to that block and keeps #1878 alone.
+  {
+    files: PRODUCTION_TREES,
+    ignores: [...TEST_TREES, ...DATE_PARSE_ON_TOUCH],
+    rules: {
+      "no-restricted-properties": ["error", DATE_PARSE_BAN],
+    },
+  },
+  {
+    files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}"],
+    ignores: [...TEST_TREES, ...DATE_PARSE_ON_TOUCH],
+    rules: {
+      "no-restricted-properties": ["error", DATE_PARSE_BAN, ROUTER_REFRESH_BAN],
     },
   },
   // #2888 — the training surfaces reach the registry. `scope_kind !== "practice"` was a

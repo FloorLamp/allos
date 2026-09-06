@@ -379,36 +379,26 @@ export function parseUtcSql(s: string | null | undefined): Date | null {
 
 // ── THE CLOCK SEAM (#5338) ───────────────────────────────────────────────────
 //
-// `Date.parse` is banned (eslint.config.mjs, "no-restricted-properties") because it
-// answers in the SERVER's zone for a zoneless date-TIME string, and silently: a
-// date-ONLY string is UTC, a stamp ending in `Z` is UTC, and only the middle case
-// moves. So the hazard is exactly a variable that MIGHT hold a zoneless stamp,
-// parsed on a host whose TZ is not UTC — which self-hosting makes a real
-// configuration (`seedTimezoneFromEnv`), not a hypothetical.
+// `Date.parse` is banned in production (eslint.config.mjs): for a zoneless date-TIME
+// string it answers in the SERVER's zone, silently, and a self-host that sets TZ
+// (`seedTimezoneFromEnv`) is a real configuration. These two are the typed way in.
+// They take #2899's brands rather than `string`, so "is this value UTC?" is answered
+// by the type: a caller holding a bare `string` cannot reach them, and that refusal
+// is where the reader is made to say which shape the value has.
 //
-// These two are the typed way in. They take #2899's brands rather than `string`, so
-// the question "is this value UTC?" is answered by the type instead of by the
-// reader: `CanonicalInstant` and `BareInstant` are both UTC by construction, and
-// `LocalDay` is a real calendar day. A caller holding a bare `string` cannot reach
-// them, and that refusal IS the check — it is where the reader is made to say which
-// shape the value has.
-//
-// Both return EPOCH MILLISECONDS, not a Date, for one reason: that is what every
-// call site wanted from `Date.parse`, so migrating a site is a swap rather than a
-// rewrite, and a site that keeps its `Number.isFinite` guard keeps the fail-closed
-// behaviour it already had. `NaN` on a malformed value, exactly like `Date.parse` —
-// a brand carried by a DB ROW SHAPE is asserted rather than validated, so a corrupt
-// row must still be able to read as unparseable.
+// Both return EPOCH MILLISECONDS — what every `Date.parse` site wanted — so a
+// migration is a swap, and `NaN` on a malformed value keeps each site's existing
+// `Number.isFinite` guard fail-closed: a brand carried by a DB row shape is asserted,
+// not validated, so a corrupt row must still read as unparseable.
 
 // A stored UTC instant, on either serialization, as epoch milliseconds.
 export function parseInstant(s: CanonicalInstant | BareInstant): number {
   return parseUtcSql(s)?.getTime() ?? NaN;
 }
 
-// A profile-local calendar day, as the epoch milliseconds of its UTC midnight —
-// the anchor the day-arithmetic in this repo has always used (`${day}T00:00:00Z`).
-// It is NOT the instant the day began where the profile stands; `zonedWallTimeToUtc`
-// is that question.
+// A calendar day as the epoch milliseconds of its UTC midnight — the anchor this
+// repo's day arithmetic has always used (`${day}T00:00:00Z`). NOT the instant the
+// day began where the profile stands; `zonedWallTimeToUtc` is that question.
 export function parseDay(day: LocalDay): number {
   return parseUtcSql(`${day}T00:00:00`)?.getTime() ?? NaN;
 }

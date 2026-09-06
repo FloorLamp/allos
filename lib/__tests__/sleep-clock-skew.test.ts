@@ -5,6 +5,7 @@ import {
   MIN_MEDIAN_BPM_GAP,
   type HrMinuteSample,
 } from "@/lib/sleep-clock-skew";
+import { utcInstant } from "@/lib/date";
 
 // The PURE discriminator for issue #4299. The whole point of this module is that it
 // keys on the HR contradiction and on nothing else, so these fixtures differ ONLY in
@@ -44,7 +45,7 @@ function segmentTrace(
     const at = start + i * MIN;
     const hit = bounds.find((b) => at >= b.lo && at < b.hi);
     out.push({
-      ts: new Date(at).toISOString().slice(0, 19) + "Z",
+      ts: utcInstant(new Date(at)),
       bpm: hit ? hit.bpm : AWAKE,
     });
   }
@@ -467,7 +468,7 @@ describe("troughStart names where the body settled", () => {
             ? AWAKE
             : AWAKE + 2
           : AWAKE;
-      hr.push({ ts: new Date(t).toISOString(), bpm });
+      hr.push({ ts: utcInstant(new Date(t)), bpm });
     }
 
     const found = detectSleepClockSkew(SKEWED_SESSION, hr);

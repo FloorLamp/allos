@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { utcMinute } from "@/lib/date";
+import { parseUtcSql, shiftDateStr, utcMinute } from "@/lib/date";
 import {
   decideSleepOverlap,
   observeHeartRate,
@@ -50,12 +50,6 @@ const CANDIDATE_DAY_RADIUS = 2;
 // DERIVED from the one list, never restated: a second spelling here could drift from
 // the one the re-time reads (#5021) and strand a stage row on a night that has moved.
 const STAGE_METRICS_SQL = `(${SLEEP_STAGE_METRICS.map((m) => `'${m}'`).join(",")})`;
-
-function dayOffset(date: string, days: number): string {
-  const ms = Date.parse(`${date}T00:00:00Z`);
-  if (!Number.isFinite(ms)) return date;
-  return new Date(ms + days * 86_400_000).toISOString().slice(0, 10);
-}
 
 /** The declared silence a worn heart-rate stream may show — see `corroboratesSleep`. */
 function dipToleranceMs(source: string): number | null {
@@ -223,11 +217,16 @@ function awakeReference(
       )
       .all(
         profileId,
-        dayOffset(new Date(spanStartMs).toISOString().slice(0, 10), -1),
-        dayOffset(new Date(spanEndMs).toISOString().slice(0, 10), 1)
+        shiftDateStr(new Date(spanStartMs).toISOString().slice(0, 10), -1),
+        shiftDateStr(new Date(spanEndMs).toISOString().slice(0, 10), 1)
       ) as { started_at: string; ended_at: string }[]
   )
-    .map((r) => ({ s: Date.parse(r.started_at), e: Date.parse(r.ended_at) }))
+    // parseUtcSql: `metric_samples.started_at`/`ended_at` carry no brand; a synced
+    // session's own absolute instant is the shape expected here (#5338).
+    .map((r) => ({
+      s: parseUtcSql(r.started_at)?.getTime() ?? NaN,
+      e: parseUtcSql(r.ended_at)?.getTime() ?? NaN,
+    }))
     .filter((r) => Number.isFinite(r.s) && Number.isFinite(r.e) && r.e > r.s)
     .sort((x, y) => x.s - y.s);
 
@@ -311,8 +310,8 @@ export function collapseSleepSessionOverlaps(
 
   for (const session of touched) {
     if (settled.has(session.id)) continue;
-    const from = dayOffset(session.date, -CANDIDATE_DAY_RADIUS);
-    const to = dayOffset(session.date, CANDIDATE_DAY_RADIUS);
+    const from = shiftDateStr(session.date, -CANDIDATE_DAY_RADIUS);
+    const to = shiftDateStr(session.date, CANDIDATE_DAY_RADIUS);
     const neighbourhood = findSessions.all(
       profileId,
       source,
