@@ -393,6 +393,24 @@ export function deleteEndurancePlanCore(
 // result of. An event's result is the set of activities pointing at it; an activity
 // is the result of at most one event.
 
+/**
+ * The auto-link OPT-OUT (`activities.endurance_link_optout`): a person unlinked this
+ * session from an event by hand, so the sync must not attach it again.
+ *
+ * The auto-link below re-runs after every value-changing re-sync, so without a
+ * remembered decision a title fix on Strava silently re-attaches a session the person
+ * detached — a sync undoing a person's decision. This is deliberately NOT the #133
+ * `edited` lock: `edited` holds the WHOLE row out of re-ingest and labels it
+ * "<source> · edited" with the sync-resume affordance, so taking it here would stop
+ * the provider correcting the session's distance because someone detached it from an
+ * event, and would leave that permanent lock behind even after the person re-linked.
+ * One flag, one consequence. Its census row is the `event-link-optout` family in
+ * lib/side-state.ts; read the column only through this predicate.
+ */
+export function isEventLinkOptedOut(flag: number | null | undefined): boolean {
+  return flag === 1;
+}
+
 // Link an activity to an event, MANUALLY. Both rows must be the profile's, and the
 // activity must be logged on the event's day — the one statement carries every rule,
 // so a cross-profile id or an off-day session simply changes nothing. IMMEDIATE.
@@ -405,7 +423,7 @@ export function linkEventActivityCore(
     () =>
       db
         .prepare(
-          `UPDATE activities SET endurance_plan_id = ?
+          `UPDATE activities SET endurance_plan_id = ?, endurance_link_optout = 0
             WHERE id = ? AND profile_id = ?
               AND date = (SELECT event_date FROM endurance_plans
                            WHERE id = ? AND profile_id = ?)`
@@ -416,6 +434,11 @@ export function linkEventActivityCore(
 
 // Detach an activity from whatever event it is linked to. Profile-scoped; false
 // when the row is not the profile's or was not linked. IMMEDIATE.
+//
+// The detach is REMEMBERED (`endurance_link_optout`, above): this is a person saying
+// the session is not that event's result, and the auto-link runs again on the next
+// value-changing re-sync. A hand link clears the flag — the person changed their mind
+// — so it is a decision, not a trap.
 export function unlinkEventActivityCore(
   profileId: number,
   activityId: number
@@ -424,7 +447,8 @@ export function unlinkEventActivityCore(
     () =>
       db
         .prepare(
-          `UPDATE activities SET endurance_plan_id = NULL
+          `UPDATE activities
+              SET endurance_plan_id = NULL, endurance_link_optout = 1
             WHERE id = ? AND profile_id = ? AND endurance_plan_id IS NOT NULL`
         )
         .run(activityId, profileId).changes > 0
@@ -438,6 +462,9 @@ export function unlinkEventActivityCore(
 // and a session already linked, by hand or by an earlier sync, is left exactly where
 // it is. Active or completed events both count: a race synced the evening after it
 // was marked done still belongs to it. An abandoned event never attracts a result.
+// A session the person has UNLINKED by hand is never claimed again, whatever the
+// source later says about it — an explicit detach is a decision and a sync must not
+// undo it (`isEventLinkOptedOut`).
 // Called by the integration upsert after every insert or value-changing update;
 // returns whether a link was written. IMMEDIATE (a SAVEPOINT under the sync's lock).
 export function linkRaceActivityCore(
@@ -447,7 +474,8 @@ export function linkRaceActivityCore(
   return writeTx(() => {
     const a = db
       .prepare(
-        `SELECT date, type, title, workout_type, endurance_plan_id
+        `SELECT date, type, title, workout_type, endurance_plan_id,
+                endurance_link_optout
            FROM activities WHERE id = ? AND profile_id = ?`
       )
       .get(activityId, profileId) as
@@ -457,11 +485,13 @@ export function linkRaceActivityCore(
           title: string;
           workout_type: string | null;
           endurance_plan_id: number | null;
+          endurance_link_optout: number | null;
         }
       | undefined;
     if (
       !a ||
       a.endurance_plan_id != null ||
+      isEventLinkOptedOut(a.endurance_link_optout) ||
       a.type !== "cardio" ||
       a.workout_type !== "race"
     )

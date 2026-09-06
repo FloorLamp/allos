@@ -4,6 +4,7 @@
 // every surface renders — one computation (#221). All SQL filters profile_id.
 
 import { db, today } from "../db";
+import { isDraftActivityRow, type DraftCandidateRow } from "../activity-draft";
 import { getWeekStart } from "../settings";
 import { startOfWeekStr } from "../date";
 import { parseComponents, type ActivityComponent } from "../types";
@@ -225,15 +226,31 @@ export interface EventDayActivity {
   durationMin: number | null;
   workoutType: string | null;
   linked: boolean;
+  // Already the result of a DIFFERENT event of the profile's — same day, two
+  // events. An activity is the result of at most one event, so linking it here
+  // MOVES it; the row says so rather than letting the tap take it silently.
+  linkedElsewhere: boolean;
 }
 
 export interface EventDay {
   plan: EndurancePlan;
-  // Linked first, then the rest of the day in logged order.
+  // This event's result first, then the day's FREE sessions, then any session
+  // already linked to another event — the offer nearest to "yours" first and the
+  // one that would take a result off another event last.
   activities: EventDayActivity[];
 }
 
 // Profile-scoped; undefined when the plan is not the profile's.
+//
+// DRAFTS DO NOT APPEAR (#3056 / #3189–#3191), for the reason every sibling reader
+// applies the same rule: a create-at-start session that logged nothing is an address,
+// not an entry — and this list is one tap from making one the event's RESULT. The
+// rule is not restated in SQL; the query gathers the draft-candidate columns
+// `isDraftActivityRow` already reads off a row, and the fold applies THAT function.
+// Still ONE prepared statement — the "has any set" half folds on as a correlated
+// EXISTS (`idx_sets_activity` serves it). `getWorkoutPresence` is the census's ONE
+// argued exception and this is not it: the dock keeps the husk so a live session can
+// be finished or discarded, while an event's result is a thing that was done.
 export function getEventDay(
   profileId: number,
   planId: number
@@ -242,33 +259,45 @@ export function getEventDay(
   if (!plan) return undefined;
   const rows = db
     .prepare(
-      `SELECT id, date, type, title, distance_km, duration_min, workout_type,
-              endurance_plan_id
-         FROM activities
-        WHERE profile_id = ? AND (date = ? OR endurance_plan_id = ?)
-        ORDER BY (endurance_plan_id = ?) DESC, date ASC, start_time ASC, id ASC`
+      `SELECT a.id, a.date, a.type, a.title, a.distance_km, a.duration_min,
+              a.workout_type, a.endurance_plan_id,
+              a.start_time, a.end_time, a.components, a.notes, a.source,
+              EXISTS (
+                SELECT 1 FROM exercise_sets s WHERE s.activity_id = a.id
+              ) AS has_sets
+         FROM activities a
+        WHERE a.profile_id = ? AND (a.date = ? OR a.endurance_plan_id = ?)
+        ORDER BY CASE WHEN a.endurance_plan_id = ? THEN 0
+                      WHEN a.endurance_plan_id IS NULL THEN 1
+                      ELSE 2 END,
+                 a.date ASC, a.start_time ASC, a.id ASC`
     )
-    .all(profileId, plan.eventDate, plan.id, plan.id) as {
+    .all(profileId, plan.eventDate, plan.id, plan.id) as (DraftCandidateRow & {
     id: number;
     date: string;
     type: string;
     title: string;
     distance_km: number | null;
-    duration_min: number | null;
     workout_type: string | null;
     endurance_plan_id: number | null;
-  }[];
+    /** 0 or 1 — the draft rule only asks whether ANY set exists (`setCount > 0`). */
+    has_sets: number;
+  })[];
   return {
     plan,
-    activities: rows.map((r) => ({
-      id: r.id,
-      date: r.date,
-      type: r.type,
-      title: r.title,
-      distanceKm: r.distance_km,
-      durationMin: r.duration_min,
-      workoutType: r.workout_type,
-      linked: r.endurance_plan_id === plan.id,
-    })),
+    activities: rows
+      .filter((r) => !isDraftActivityRow(r, r.has_sets))
+      .map((r) => ({
+        id: r.id,
+        date: r.date,
+        type: r.type,
+        title: r.title,
+        distanceKm: r.distance_km,
+        durationMin: r.duration_min,
+        workoutType: r.workout_type,
+        linked: r.endurance_plan_id === plan.id,
+        linkedElsewhere:
+          r.endurance_plan_id != null && r.endurance_plan_id !== plan.id,
+      })),
   };
 }

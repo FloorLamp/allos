@@ -18,6 +18,7 @@ import {
   getEndurancePlanCards,
   getEnduranceArm,
   getEnduranceEvents,
+  getWorkoutActivityDays,
 } from "@/lib/queries";
 import { buildEndurancePlanFindings } from "@/lib/rule-findings";
 import {
@@ -506,12 +507,16 @@ describe("events link their activities (#3285 item 2)", () => {
     expect(linkRaceActivityCore(profileId, raced)).toBe(false);
     expect(linkOf(raced)).toBe(otherId);
 
-    unlinkEventActivityCore(profileId, raced);
+    // A SECOND race-labelled session for the status cases, never touched by hand:
+    // unlinking `raced` would opt it out of the auto-link for good, which is its own
+    // case below.
+    addRun(profileId, RACE_DAY, 10, "race");
+    const fresh = lastRunId(profileId);
     setEndurancePlanStatusCore(profileId, planId, "abandoned", RACE_DAY);
-    expect(linkRaceActivityCore(profileId, raced)).toBe(false);
+    expect(linkRaceActivityCore(profileId, fresh)).toBe(false);
     setEndurancePlanStatusCore(profileId, planId, "completed", RACE_DAY);
-    expect(linkRaceActivityCore(profileId, raced)).toBe(true);
-    expect(linkOf(raced)).toBe(planId);
+    expect(linkRaceActivityCore(profileId, fresh)).toBe(true);
+    expect(linkOf(fresh)).toBe(planId);
   });
 
   it("the integration upsert auto-links on insert and on the re-sync that first labels the race", () => {
@@ -608,6 +613,63 @@ describe("events link their activities (#3285 item 2)", () => {
     expect(linkOf(lastRunId(profileId))).toBeNull();
   });
 
+  // #3056 / #3189–#3191 — the draft census reaches this list too. `getEventDay` is
+  // one tap from making a row the event's RESULT, so a create-at-start husk must not
+  // be offered here any more than it is counted anywhere else. The control is the
+  // established surface: `getWorkoutActivityDays` already hides the same row.
+  it("does not offer a create-at-start draft, and still offers the session that logged something", () => {
+    const profileId = makeProfile("event-draft");
+    const planId = raceDayPlan(profileId);
+    // Exactly as create-at-start writes it: dated, typed, titled, started, nothing else.
+    db.prepare(
+      `INSERT INTO activities (profile_id, date, type, title, start_time)
+       VALUES (?, ?, 'strength', 'Workout', '09:00')`
+    ).run(profileId, RACE_DAY);
+    const husk = lastRunId(profileId);
+
+    expect(getWorkoutActivityDays(profileId, RACE_DAY, RACE_DAY)).toEqual([]);
+    expect(getEventDay(profileId, planId)!.activities).toEqual([]);
+
+    // The positive control: the SAME row, once it has logged a set, is an entry.
+    db.prepare(
+      `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps)
+       VALUES (?, 'Squat', 1, 60, 5)`
+    ).run(husk);
+    expect(
+      getEventDay(profileId, planId)!.activities.map((a) => a.title)
+    ).toEqual(["Workout"]);
+  });
+
+  // The same-day steal (#3285 item 2): two events, one day. The activity model allows
+  // one event per activity, so linking here MOVES the result — the row is offered
+  // LAST, behind the day's genuinely free sessions, and says where it already belongs.
+  it("offers another event's result last, marked, behind the free sessions", () => {
+    const profileId = makeProfile("event-steal");
+    const mine = raceDayPlan(profileId);
+    const theirs = raceDayPlan(profileId, {
+      eventName: "Charity Mile",
+      discipline: null,
+      targetDistanceKm: null,
+    });
+    addRun(profileId, RACE_DAY, 10.1, "race", "ZZZ Other event run");
+    const taken = lastRunId(profileId);
+    addRun(profileId, RACE_DAY, 3, null, "AAA Shakeout");
+    addRun(profileId, RACE_DAY, 2, null, "MMM Cooldown");
+    expect(linkEventActivityCore(profileId, theirs, taken)).toBe(true);
+
+    expect(
+      getEventDay(profileId, mine)!.activities.map((a) => [
+        a.title,
+        a.linked,
+        a.linkedElsewhere,
+      ])
+    ).toEqual([
+      ["AAA Shakeout", false, false],
+      ["MMM Cooldown", false, false],
+      ["ZZZ Other event run", false, true],
+    ]);
+  });
+
   it("the event page reads the day linked-first, plus a linked session the day edit left behind", () => {
     const profileId = makeProfile("event-day");
     const planId = raceDayPlan(profileId);
@@ -633,5 +695,68 @@ describe("events link their activities (#3285 item 2)", () => {
       ["Shakeout", RACE_DAY, false, null],
     ]);
     expect(getEventDay(makeProfile("event-day-other"), planId)).toBeUndefined();
+  });
+
+  // An explicit unlink is a person's decision, and a sync must not undo it. The
+  // auto-link re-runs after EVERY value-changing update, so without the remembered
+  // opt-out a title fix on Strava re-attaches the session the person detached.
+  it("a re-sync never re-links a session the person unlinked, and a hand link takes it back", () => {
+    const profileId = makeProfile("unlink-sticks");
+    const planId = raceDayPlan(profileId);
+    const row = (title: string) => ({
+      external_id: "strava:race-10k",
+      date: RACE_DAY,
+      type: "cardio" as const,
+      title,
+      duration_min: 44,
+      distance_km: toKm(10.1, "km"),
+      start_time: "09:00",
+      end_time: "09:44",
+      workout_type: "race",
+    });
+    upsertActivities(profileId, [row("Harbor 10k")], "strava");
+    const id = lastRunId(profileId);
+    expect(linkOf(id)).toBe(planId);
+
+    expect(unlinkEventActivityCore(profileId, id)).toBe(true);
+    // The row is NOT edit-locked: detaching it from an event must not also stop the
+    // provider correcting its values (that is the #133 lock, and this is not it).
+    expect(
+      db.prepare("SELECT edited FROM activities WHERE id = ?").get(id)
+    ).toMatchObject({ edited: 0 });
+
+    // A value-changing re-sync — the title fix — updates the row and leaves the
+    // decision standing.
+    const counts = upsertActivities(profileId, [row("Harbor 10k ⭐")], "strava");
+    expect(counts.updated).toBe(1);
+    expect(linkOf(id)).toBeNull();
+    // Neither does the core itself, asked directly.
+    expect(linkRaceActivityCore(profileId, id)).toBe(false);
+
+    // Changing their mind clears the opt-out: a hand link sticks, and unlinking
+    // again re-arms it.
+    expect(linkEventActivityCore(profileId, planId, id)).toBe(true);
+    expect(unlinkEventActivityCore(profileId, id)).toBe(true);
+    expect(linkRaceActivityCore(profileId, id)).toBe(false);
+  });
+
+  // The explicit UPDATE in deleteEndurancePlanCore, not the FK. With foreign_keys ON
+  // the ON DELETE SET NULL satisfies the assertion on its own, so the pragma is turned
+  // OFF here — the posture the migration runner's connection actually has.
+  it("unlinks the event's activities with foreign keys OFF, not only via the FK", () => {
+    const profileId = makeProfile("event-delete-nofk");
+    const planId = raceDayPlan(profileId);
+    addRun(profileId, RACE_DAY, 10, "race");
+    const id = lastRunId(profileId);
+    expect(linkRaceActivityCore(profileId, id)).toBe(true);
+
+    db.pragma("foreign_keys = OFF");
+    try {
+      expect(deleteEndurancePlanCore(profileId, planId)).toBe(true);
+    } finally {
+      db.pragma("foreign_keys = ON");
+    }
+    expect(linkOf(id)).toBeNull();
+    expect(db.pragma("foreign_keys", { simple: true })).toBe(1);
   });
 });

@@ -66,6 +66,7 @@ export default async function TrainingEventPage(props: {
       .filter((s): s is string => typeof s === "string" && s.length > 0)
       .join(" · "),
     linked: a.linked,
+    linkedElsewhere: a.linkedElsewhere,
   }));
 
   return (

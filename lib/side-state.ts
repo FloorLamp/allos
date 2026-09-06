@@ -118,6 +118,20 @@ export const SIDE_STATE_FAMILIES: readonly SideStateFamily[] = [
     guard: "lib/__db_tests__/import-edit-lock.test.ts",
   },
   {
+    family: "event-link-optout",
+    concept:
+      "A record that a person detached a session from its event, so the sync's auto-link cannot re-attach it.",
+    store: "`endurance_link_optout` column on activities",
+    registryModule: "lib/endurance-plans.ts",
+    registrySymbol: "isEventLinkOptedOut",
+    keyGrammar:
+      "row-level flag; set by the hand unlink, cleared by a hand link, read only " +
+      "through the predicate. Its own flag rather than the `edited` lock above, " +
+      "which would freeze the whole row against re-ingest (#3285 item 2)",
+    sweep: "none needed — the flag dies with its row",
+    guard: "lib/__db_tests__/endurance-plans.test.ts",
+  },
+  {
     family: "saved-star",
     concept:
       'The ★ answer to "does this matter to me?" — membership drives curated surfaces.',

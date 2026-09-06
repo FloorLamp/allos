@@ -20,6 +20,10 @@ export interface EventActivityView {
   // "10.2 km · 42:10 · race" — whatever the row has, joined.
   meta: string;
   linked: boolean;
+  // Already another event's result, same day. Linking it here MOVES it, because a
+  // session is the result of at most one event — so the row says so and the button
+  // says "Move here" rather than offering it as if it were free.
+  linkedElsewhere: boolean;
 }
 
 // The event page's two lists (#3285 item 2): the RESULT — the activities linked to
@@ -126,9 +130,13 @@ export default function EventActivities({
                     <Button
                       type="submit"
                       pendingLabel="…"
-                      aria-label={`Link ${a.title}`}
+                      aria-label={
+                        a.linkedElsewhere
+                          ? `Move ${a.title} here`
+                          : `Link ${a.title}`
+                      }
                     >
-                      Link
+                      {a.linkedElsewhere ? "Move here" : "Link"}
                     </Button>
                   </form>
                 )}
@@ -169,6 +177,14 @@ function ActivityRow({
       {activity.meta && (
         <span className="text-xs text-slate-500 dark:text-slate-400">
           {activity.meta}
+        </span>
+      )}
+      {activity.linkedElsewhere && (
+        <span
+          className="text-xs text-slate-500 dark:text-slate-400"
+          data-testid="event-activity-elsewhere"
+        >
+          Result of another event that day
         </span>
       )}
       <div className="ml-auto">{children}</div>

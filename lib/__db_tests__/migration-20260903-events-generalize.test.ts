@@ -33,6 +33,7 @@ import { runMigrations } from "@/lib/migrations/runner";
 import { migrationsBefore } from "@/lib/migrations/versions";
 import { migration } from "@/lib/migrations/versions/20260903-events-generalize-endurance-plans";
 import { migration as linkMigration } from "@/lib/migrations/versions/20260906-event-activity-link";
+import { migration as optoutMigration } from "@/lib/migrations/versions/20260906-event-link-optout";
 import { eventTitle, disciplineLabel } from "@/lib/endurance-plan";
 import { getEndurancePlans } from "@/lib/endurance-plans";
 import { enduranceEventItems } from "@/lib/queries/upcoming/plans";
@@ -325,6 +326,32 @@ describe("20260906-event-activity-link leaves every activity as it was (#3285 it
         }[]
       ).find((f) => f.from === "endurance_plan_id")
     ).toMatchObject({ table: "endurance_plans", on_delete: "SET NULL" });
+    mem.close();
+  });
+
+  // The opt-out column rides the same oracle: every existing activity crosses whole,
+  // gaining only the flag, set to 0 — nobody has unlinked anything yet.
+  it("20260906-event-link-optout adds only endurance_link_optout = 0, and replays as a no-op", () => {
+    const mem = new Database(":memory:");
+    runMigrations(mem, migrationsBefore(optoutMigration.name));
+    mem.prepare("INSERT INTO profiles (id, name) VALUES (1, 'Optout')").run();
+    mem
+      .prepare(
+        `INSERT INTO activities
+           (id, profile_id, date, type, title, duration_min, distance_km, workout_type,
+            source, external_id, notes, created_at)
+         VALUES (7, 1, '2019-05-25', 'cardio', 'City Half', 105, 21.3, 'race',
+                 'strava', 'strava:7', 'negative split', '2019-05-25 12:00:00')`
+      )
+      .run();
+    const before = rows(mem);
+    optoutMigration.up(mem);
+    const after = rows(mem);
+    expect(after).toEqual(
+      before.map((r) => ({ ...r, endurance_link_optout: 0 }))
+    );
+    optoutMigration.up(mem);
+    expect(rows(mem)).toEqual(after);
     mem.close();
   });
 
