@@ -44,7 +44,9 @@ export default function EventActivities({
   const unlinked = activities.filter((a) => !a.linked);
 
   async function run(
-    action: (fd: FormData) => Promise<{ ok: true } | { ok: false; error: string }>,
+    action: (
+      fd: FormData
+    ) => Promise<{ ok: true } | { ok: false; error: string }>,
     fd: FormData
   ) {
     setError(null);

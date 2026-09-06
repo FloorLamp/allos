@@ -14,6 +14,8 @@ import {
   updateEndurancePlan,
   setEndurancePlanStatus,
   deleteEndurancePlan,
+  linkEventActivity,
+  unlinkEventActivity,
 } from "@/app/(app)/training/endurance-actions";
 import { getEndurancePlans } from "@/lib/endurance-plans";
 import { seedActor } from "./harness";
@@ -274,5 +276,67 @@ describe("updateEndurancePlan / status / delete (#839)", () => {
     expect(getEndurancePlans(profile.id)[0].status).toBe("abandoned");
     expect((await deleteEndurancePlan(fd({ id: String(id) }))).ok).toBe(true);
     expect(getEndurancePlans(profile.id)).toHaveLength(0);
+  });
+});
+
+// The manual link (#3285 item 2), from the caller's side: the day rule and the
+// profile scope are the core's, and the action answers from what happened.
+describe("linkEventActivity / unlinkEventActivity (#3285 item 2)", () => {
+  it("links a same-day activity, refuses another day's and another profile's, and unlinks", async () => {
+    const { profile } = seedActor();
+    await createEndurancePlan(
+      fd({
+        event_name: "Harbor 10k",
+        discipline: "run",
+        event_date: "2026-10-05",
+        target_distance: "10",
+      })
+    );
+    const id = String(getEndurancePlans(profile.id)[0].id);
+    const insert = db.prepare(
+      `INSERT INTO activities (profile_id, date, type, title)
+       VALUES (?, ?, 'cardio', 'Running')`
+    );
+    const onDay = String(insert.run(profile.id, "2026-10-05").lastInsertRowid);
+    const eve = String(insert.run(profile.id, "2026-10-04").lastInsertRowid);
+    const other = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('Other')").run()
+        .lastInsertRowid
+    );
+    const theirs = String(insert.run(other, "2026-10-05").lastInsertRowid);
+    const linkOf = (activityId: string) =>
+      (
+        db
+          .prepare("SELECT endurance_plan_id AS p FROM activities WHERE id = ?")
+          .get(activityId) as { p: number | null }
+      ).p;
+
+    expect((await linkEventActivity(fd({ id, activity_id: eve }))).ok).toBe(
+      false
+    );
+    expect((await linkEventActivity(fd({ id, activity_id: theirs }))).ok).toBe(
+      false
+    );
+    revalidate.mockClear();
+    expect((await linkEventActivity(fd({ id, activity_id: onDay }))).ok).toBe(
+      true
+    );
+    expect([linkOf(onDay), linkOf(eve), linkOf(theirs)]).toEqual([
+      Number(id),
+      null,
+      null,
+    ]);
+    expect(revalidate.mock.calls.map((c) => c[0])).toContain(
+      "/training/event/[id]"
+    );
+
+    expect((await unlinkEventActivity(fd({ activity_id: onDay }))).ok).toBe(
+      true
+    );
+    expect(linkOf(onDay)).toBeNull();
+    // Nothing to unlink is a refusal, not a confirmation.
+    expect((await unlinkEventActivity(fd({ activity_id: onDay }))).ok).toBe(
+      false
+    );
   });
 });

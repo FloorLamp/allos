@@ -829,8 +829,13 @@ progression, and taper. If the available time is too short, the plan says so
 instead of compressing unsafe growth into the calendar. An event without a
 distance — a lifting meet, a club open — keeps the name, the date, the countdown
 and the complete/abandon lifecycle, and simply has no trajectory to show. You can
-hold one active plan per cardio discipline, and as many other events as you like. Mobility sessions log against body regions, build their own coverage
-strip, and can satisfy weekly mobility habits.
+hold one active plan per cardio discipline, and as many other events as you like.
+Each event has its own page — the plan, the day and the result in one place — and
+the activities logged on the day link to it: a run Strava labels a race links
+itself to that day's event in its discipline, and anything else links with one
+tap. Deleting an event keeps its activities and unlinks them. Mobility sessions
+log against body regions, build their own coverage strip, and can satisfy weekly
+mobility habits.
 
 Exercise how-to guides, muscle vocabulary, routine semantics, recommendation
 rules, and the coaching model are specified in the

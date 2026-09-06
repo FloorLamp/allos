@@ -1225,11 +1225,6 @@ const marathonRunner: SeedPersona = {
     "/data",
   ],
   gaps: [
-    "The Coastal City Marathon event carries no LINKED ACTIVITIES (#3285 " +
-      "item 2): the event day's logged run and the event are two rows with " +
-      "nothing joining them, so the event reads as a plan and a date rather " +
-      "than plan, day and result in one place. Unbuilt — the persona records " +
-      "the absence so the census sees it.",
     "The event carries no MEDIA (#3285 item 3): no bib, podium or venue " +
       "photo attaches to an event, and no photo attaches to an activity at " +
       "all. `activity_videos` is a tenant of the VIDEO core (lib/video/*), " +
@@ -1321,6 +1316,43 @@ const marathonRunner: SeedPersona = {
          VALUES (?, 'race', ?, 'run', ?, 42.2, 13500, 'active')`
       )
       .run(ctx.profileId, "Coastal City Marathon", ctx.daysAgo(-42));
+
+    // The tune-up half three weeks back, COMPLETED, with its race-day run LINKED
+    // (#3285 item 2) — the plan, the day and the result in one place. The run is
+    // labelled the way Strava labels a race, which is what auto-linked it.
+    const tuneUpDay = ctx.daysAgo(22);
+    const tuneUpId = Number(
+      ctx.db
+        .prepare(
+          `INSERT INTO endurance_plans
+             (profile_id, kind, event_name, discipline, event_date, target_distance_km,
+              target_time_sec, status, completed_on)
+           VALUES (?, 'race', ?, 'run', ?, 21.1, 6300, 'completed', ?)`
+        )
+        .run(ctx.profileId, "Harbor Half", tuneUpDay, tuneUpDay).lastInsertRowid
+    );
+    ctx.db
+      .prepare(
+        `INSERT INTO activities
+           (profile_id, date, type, title, duration_min, distance_km, intensity,
+            components, workout_type, equipment_id, endurance_plan_id, logged_via)
+         VALUES (?, ?, 'cardio', 'Harbor Half', 104, 21.2, 'hard', ?, 'race', ?, ?,
+                 ${VIA_SEEDED})`
+      )
+      .run(
+        ctx.profileId,
+        tuneUpDay,
+        JSON.stringify([
+          {
+            name: "Running",
+            type: "cardio",
+            distance_km: 21.2,
+            duration_min: 104,
+          },
+        ]),
+        racers,
+        tuneUpId
+      );
 
     ctx.db
       .prepare(

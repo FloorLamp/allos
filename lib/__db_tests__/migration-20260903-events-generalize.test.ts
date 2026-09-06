@@ -32,6 +32,7 @@ import { db } from "@/lib/db";
 import { runMigrations } from "@/lib/migrations/runner";
 import { migrationsBefore } from "@/lib/migrations/versions";
 import { migration } from "@/lib/migrations/versions/20260903-events-generalize-endurance-plans";
+import { migration as linkMigration } from "@/lib/migrations/versions/20260906-event-activity-link";
 import { eventTitle, disciplineLabel } from "@/lib/endurance-plan";
 import { getEndurancePlans } from "@/lib/endurance-plans";
 import { enduranceEventItems } from "@/lib/queries/upcoming/plans";
@@ -272,5 +273,85 @@ describe("a migrated row renders byte-identically (#3285 acceptance criterion 2)
     expect(row.kind).toBe("race");
     expect(row.event_name).toBe("City Half");
     expect(row.target_distance_km).toBe(21.1);
+  });
+});
+
+// ── 3. Item 2's migration, held to the same oracle ───────────────────────────────
+//
+// 20260906-event-activity-link adds `activities.endurance_plan_id`. An existing
+// activity must cross it whole, gaining only a NULL link — the same whole-row compare
+// as the rebuild above, so a column nobody names here still fails if it moves.
+
+describe("20260906-event-activity-link leaves every activity as it was (#3285 item 2)", () => {
+  function seedBeforeLink(): Database.Database {
+    const mem = new Database(":memory:");
+    runMigrations(mem, migrationsBefore(linkMigration.name));
+    mem
+      .prepare("INSERT INTO profiles (id, name) VALUES (1, 'Link Test')")
+      .run();
+    mem
+      .prepare(
+        `INSERT INTO activities
+           (id, profile_id, date, type, title, duration_min, distance_km, workout_type,
+            source, external_id, notes, created_at)
+         VALUES (7, 1, '2019-05-25', 'cardio', 'City Half', 105, 21.3, 'race',
+                 'strava', 'strava:7', 'negative split', '2019-05-25 12:00:00')`
+      )
+      .run();
+    return mem;
+  }
+  const rows = (mem: Database.Database) =>
+    mem.prepare("SELECT * FROM activities ORDER BY id").all() as Record<
+      string,
+      unknown
+    >[];
+
+  it("adds only a NULL endurance_plan_id, keeps every other value, and replays as a no-op", () => {
+    const mem = seedBeforeLink();
+    const before = rows(mem);
+    linkMigration.up(mem);
+    const after = rows(mem);
+    expect(after).toEqual(
+      before.map((r) => ({ ...r, endurance_plan_id: null }))
+    );
+    linkMigration.up(mem);
+    expect(rows(mem)).toEqual(after);
+    expect(
+      (
+        mem.prepare("PRAGMA foreign_key_list(activities)").all() as {
+          from: string;
+          table: string;
+          on_delete: string;
+        }[]
+      ).find((f) => f.from === "endurance_plan_id")
+    ).toMatchObject({ table: "endurance_plans", on_delete: "SET NULL" });
+    mem.close();
+  });
+
+  it("the activities export row carries every old column, with the link added last", () => {
+    const ds = getDataset("activities")!;
+    expect(ds.columns.at(-1)).toBe("endurance_plan_id");
+    expect(ds.columns.slice(0, -1)).toEqual([
+      "date",
+      "type",
+      "title",
+      "exercises",
+      "duration_min",
+      "distance_km",
+      "intensity",
+      "start_time",
+      "end_time",
+      "avg_hr",
+      "max_hr",
+      "elevation_m",
+      "avg_power_w",
+      "avg_cadence",
+      "kilojoules",
+      "est_calories",
+      "workout_type",
+      "source",
+      "external_id",
+      "notes",
+    ]);
   });
 });

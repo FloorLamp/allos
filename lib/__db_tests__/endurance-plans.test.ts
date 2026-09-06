@@ -26,8 +26,16 @@ import {
   getEndurancePlan,
   setEndurancePlanStatusCore,
   deleteEndurancePlanCore,
+  linkEventActivityCore,
+  linkRaceActivityCore,
+  unlinkEventActivityCore,
 } from "@/lib/endurance-plans";
 import { coachedPlan, enduranceLongSessionKey } from "@/lib/endurance-plan";
+import { getEventDay } from "@/lib/queries/endurance";
+import { upsertActivities } from "@/lib/integrations/normalize";
+import { captureDelete, restoreDeletedRow } from "@/lib/undo-delete-db";
+import { snapshotKeeperFold, writeActivityFold } from "@/lib/merge-activity";
+import { toKm } from "@/lib/units";
 
 function makeProfile(name: string): number {
   return Number(
@@ -343,5 +351,287 @@ describe("events with no cardio pair (#3285)", () => {
       .prepare("SELECT title FROM milestones WHERE profile_id = ? AND key = ?")
       .get(profileId, `endurance-plan:${id}`) as { title: string } | undefined;
     expect(ms?.title).toBe("Event completed: County Meet");
+  });
+});
+
+// ── Events link their activities (#3285 item 2) ─────────────────────────────────
+//
+// `activities.endurance_plan_id` is the result link. Every row-level fact the issue
+// asks for is pinned here: the FK shape, the manual link's day rule and profile
+// scope, the Strava "race" auto-link and its refusals, what a plan delete does to
+// its activities, and that a merge and an undo carry the link the way they carry
+// the gear link.
+
+const RACE_DAY = "2026-06-14";
+
+function linkOf(activityId: number): number | null {
+  return (
+    db
+      .prepare("SELECT endurance_plan_id AS p FROM activities WHERE id = ?")
+      .get(activityId) as { p: number | null }
+  ).p;
+}
+
+function lastRunId(profileId: number): number {
+  return (
+    db
+      .prepare(
+        "SELECT id FROM activities WHERE profile_id = ? ORDER BY id DESC LIMIT 1"
+      )
+      .get(profileId) as { id: number }
+  ).id;
+}
+
+function raceDayPlan(
+  profileId: number,
+  input: Partial<Parameters<typeof createEndurancePlanCore>[1]> = {}
+): number {
+  const out = createEndurancePlanCore(profileId, {
+    eventName: "Harbor 10k",
+    discipline: "run",
+    eventDate: RACE_DAY,
+    targetDistanceKm: 10,
+    ...input,
+  });
+  expect(out.kind).toBe("ok");
+  return (out as { id: number }).id;
+}
+
+describe("events link their activities (#3285 item 2)", () => {
+  it("activities.endurance_plan_id is a SET NULL foreign key onto endurance_plans", () => {
+    const fk = (
+      db.prepare("PRAGMA foreign_key_list(activities)").all() as {
+        table: string;
+        from: string;
+        on_delete: string;
+      }[]
+    ).find((f) => f.from === "endurance_plan_id");
+    expect(fk).toMatchObject({
+      table: "endurance_plans",
+      on_delete: "SET NULL",
+    });
+  });
+
+  it("links a same-day activity by hand, refuses another day's and another profile's, and unlinks", () => {
+    const profileId = makeProfile("event-link");
+    const otherProfile = makeProfile("event-link-other");
+    const planId = raceDayPlan(profileId);
+    addRun(profileId, RACE_DAY, 10.2);
+    const onDay = lastRunId(profileId);
+    addRun(profileId, "2026-06-13", 3);
+    const dayBefore = lastRunId(profileId);
+    addRun(otherProfile, RACE_DAY, 10);
+    const theirs = lastRunId(otherProfile);
+
+    expect(linkEventActivityCore(profileId, planId, onDay)).toBe(true);
+    expect(linkEventActivityCore(profileId, planId, dayBefore)).toBe(false);
+    expect(linkEventActivityCore(profileId, planId, theirs)).toBe(false);
+    expect(linkEventActivityCore(otherProfile, planId, theirs)).toBe(false);
+    expect([linkOf(onDay), linkOf(dayBefore), linkOf(theirs)]).toEqual([
+      planId,
+      null,
+      null,
+    ]);
+
+    // Unlink is profile-scoped too, and says whether it did anything.
+    expect(unlinkEventActivityCore(otherProfile, onDay)).toBe(false);
+    expect(unlinkEventActivityCore(profileId, onDay)).toBe(true);
+    expect(unlinkEventActivityCore(profileId, onDay)).toBe(false);
+    expect(linkOf(onDay)).toBeNull();
+  });
+
+  // The auto-link rule, as a table. Each row seeds ONE activity and asks whether the
+  // profile's race-day 10k run plan claims it; the plan is the same in every case
+  // except where the case names its own.
+  it.each([
+    [
+      "a race-labelled run on the day",
+      "Morning Run",
+      "race",
+      RACE_DAY,
+      {},
+      true,
+    ],
+    ["an unlabelled run on the day", "Morning Run", null, RACE_DAY, {}, false],
+    ["a long-run label", "Morning Run", "long run", RACE_DAY, {}, false],
+    ["a race the day before", "Morning Run", "race", "2026-06-13", {}, false],
+    [
+      "a race in another discipline",
+      "Evening Ride",
+      "race",
+      RACE_DAY,
+      {},
+      false,
+    ],
+    [
+      "a race with no discipline in its name",
+      "Workout",
+      "race",
+      RACE_DAY,
+      {},
+      false,
+    ],
+    [
+      "a race on a meet's day (no discipline)",
+      "Morning Run",
+      "race",
+      RACE_DAY,
+      { kind: "meet", discipline: null, targetDistanceKm: null },
+      false,
+    ],
+  ] as const)(
+    "auto-link: %s → %s",
+    (_label, title, workoutType, date, planInput, expected) => {
+      const profileId = makeProfile(`auto-${title}-${workoutType}-${date}`);
+      const planId = raceDayPlan(profileId, planInput);
+      addRun(profileId, date, 10, workoutType, title);
+      const id = lastRunId(profileId);
+      expect(linkRaceActivityCore(profileId, id)).toBe(expected);
+      expect(linkOf(id)).toBe(expected ? planId : null);
+    }
+  );
+
+  it("auto-link keeps a hand-made link, skips an abandoned event, and still claims a completed one", () => {
+    const profileId = makeProfile("auto-status");
+    const planId = raceDayPlan(profileId);
+    const otherId = raceDayPlan(profileId, {
+      eventName: "Charity Mile",
+      discipline: null,
+      targetDistanceKm: null,
+    });
+    addRun(profileId, RACE_DAY, 10, "race");
+    const raced = lastRunId(profileId);
+    // Already linked by hand to the mile → the race label does not move it.
+    expect(linkEventActivityCore(profileId, otherId, raced)).toBe(true);
+    expect(linkRaceActivityCore(profileId, raced)).toBe(false);
+    expect(linkOf(raced)).toBe(otherId);
+
+    unlinkEventActivityCore(profileId, raced);
+    setEndurancePlanStatusCore(profileId, planId, "abandoned", RACE_DAY);
+    expect(linkRaceActivityCore(profileId, raced)).toBe(false);
+    setEndurancePlanStatusCore(profileId, planId, "completed", RACE_DAY);
+    expect(linkRaceActivityCore(profileId, raced)).toBe(true);
+    expect(linkOf(raced)).toBe(planId);
+  });
+
+  it("the integration upsert auto-links on insert and on the re-sync that first labels the race", () => {
+    const profileId = makeProfile("auto-upsert");
+    const planId = raceDayPlan(profileId);
+    const row = (workoutType: string | null) => ({
+      external_id: "strava:race-10k",
+      date: RACE_DAY,
+      type: "cardio" as const,
+      title: "Harbor 10k",
+      duration_min: 44,
+      distance_km: toKm(10.1, "km"),
+      start_time: "09:00",
+      end_time: "09:44",
+      workout_type: workoutType,
+    });
+    upsertActivities(profileId, [row(null)], "strava");
+    const id = lastRunId(profileId);
+    expect(linkOf(id)).toBeNull();
+    upsertActivities(profileId, [row("race")], "strava");
+    expect(lastRunId(profileId)).toBe(id); // updated in place, not re-inserted
+    expect(linkOf(id)).toBe(planId);
+  });
+
+  it("deleting the event unlinks its activities and keeps them", () => {
+    const profileId = makeProfile("event-delete");
+    const planId = raceDayPlan(profileId);
+    addRun(profileId, RACE_DAY, 10, "race");
+    const id = lastRunId(profileId);
+    expect(linkRaceActivityCore(profileId, id)).toBe(true);
+    expect(deleteEndurancePlanCore(profileId, planId)).toBe(true);
+    expect(linkOf(id)).toBeNull();
+    expect(
+      db.prepare("SELECT COUNT(*) AS n FROM activities WHERE id = ?").get(id)
+    ).toEqual({ n: 1 });
+  });
+
+  it("a merge folds the drop's link onto a keeper with none, and undo takes it back", () => {
+    const profileId = makeProfile("event-merge");
+    const planId = raceDayPlan(profileId);
+    addRun(profileId, RACE_DAY, 10, null, "Harbor 10k (watch)");
+    const keepId = lastRunId(profileId);
+    addRun(profileId, RACE_DAY, 10.1, "race", "Harbor 10k");
+    const dropId = lastRunId(profileId);
+    linkRaceActivityCore(profileId, dropId);
+    const rowOf = (id: number) =>
+      db.prepare("SELECT * FROM activities WHERE id = ?").get(id) as Record<
+        string,
+        unknown
+      >;
+    const keep = rowOf(keepId);
+    const drop = rowOf(dropId);
+
+    writeActivityFold(profileId, keepId, keep, [drop]);
+    expect(linkOf(keepId)).toBe(planId);
+
+    const undoId = captureDelete("activity", profileId, dropId, {
+      keeperId: keepId,
+      mergeId: "merge-1",
+      domain: "activity",
+      signature: `${keepId}|${dropId}`,
+      keeperBefore: snapshotKeeperFold(keep),
+      movedSetIds: [],
+      movedRouteId: null,
+      movedTelemetryIds: [],
+      movedLapIds: [],
+      movedSegmentEffortIds: [],
+    })!;
+    expect(restoreDeletedRow(profileId, undoId)).toBe(true);
+    // The keeper is back to unlinked; the restored drop carries the link.
+    expect(linkOf(keepId)).toBeNull();
+    expect(linkOf(lastRunId(profileId))).toBe(planId);
+  });
+
+  it("a deleted activity restores with its link, or unlinked once the event is gone", () => {
+    const profileId = makeProfile("event-undo");
+    const planId = raceDayPlan(profileId);
+    addRun(profileId, RACE_DAY, 10, "race");
+    const first = lastRunId(profileId);
+    linkRaceActivityCore(profileId, first);
+    const undoFirst = captureDelete("activity", profileId, first)!;
+    expect(restoreDeletedRow(profileId, undoFirst)).toBe(true);
+    expect(linkOf(lastRunId(profileId))).toBe(planId);
+
+    const undoSecond = captureDelete(
+      "activity",
+      profileId,
+      lastRunId(profileId)
+    )!;
+    deleteEndurancePlanCore(profileId, planId);
+    // The captured row still names the plan; restore nulls the dead link rather
+    // than failing the whole undo on the FK.
+    expect(restoreDeletedRow(profileId, undoSecond)).toBe(true);
+    expect(linkOf(lastRunId(profileId))).toBeNull();
+  });
+
+  it("the event page reads the day linked-first, plus a linked session the day edit left behind", () => {
+    const profileId = makeProfile("event-day");
+    const planId = raceDayPlan(profileId);
+    addRun(profileId, RACE_DAY, 3, null, "Shakeout");
+    addRun(profileId, RACE_DAY, 10.1, "race", "Harbor 10k");
+    const raced = lastRunId(profileId);
+    addRun(profileId, "2026-06-13", 2, null, "Strides");
+    const eve = lastRunId(profileId);
+    linkRaceActivityCore(profileId, raced);
+    // Linked on its own day, then the date moved: the link is the fact, the date
+    // is the search key for the rest.
+    db.prepare("UPDATE activities SET endurance_plan_id = ? WHERE id = ?").run(
+      planId,
+      eve
+    );
+    const day = getEventDay(profileId, planId)!;
+    expect(day.plan.id).toBe(planId);
+    expect(
+      day.activities.map((a) => [a.title, a.date, a.linked, a.workoutType])
+    ).toEqual([
+      ["Strides", "2026-06-13", true, null],
+      ["Harbor 10k", RACE_DAY, true, "race"],
+      ["Shakeout", RACE_DAY, false, null],
+    ]);
+    expect(getEventDay(makeProfile("event-day-other"), planId)).toBeUndefined();
   });
 });

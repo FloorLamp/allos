@@ -22,10 +22,7 @@ import {
   type EndurancePlanDiscipline,
   type LoggedSession,
 } from "../endurance-plan";
-import {
-  getActiveEndurancePlans,
-  getEndurancePlan,
-} from "../endurance-plans";
+import { getActiveEndurancePlans, getEndurancePlan } from "../endurance-plans";
 
 // One logged session mapped to a discipline: its week-start, distance, and long-run label.
 interface DisciplineSession {
