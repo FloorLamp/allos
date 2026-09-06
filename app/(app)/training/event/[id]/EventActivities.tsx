@@ -24,6 +24,10 @@ export interface EventActivityView {
   // session is the result of at most one event — so the row says so and the button
   // says "Move here" rather than offering it as if it were free.
   linkedElsewhere: boolean;
+  // Logged on the event's own day. False only for a result kept from before the
+  // event's date was edited: the meta line carries the day it was logged, and the
+  // link buttons stay off it until the two dates agree again.
+  onEventDay: boolean;
 }
 
 // The event page's two lists (#3285 item 2): the RESULT — the activities linked to
@@ -36,6 +40,13 @@ export interface EventActivityView {
 // result. The auto-link and `linkEventActivityCore` refuse the same thing, so this is
 // the offer matching the rule rather than the rule. Unlink stays, so a result attached
 // before the event was abandoned can still be taken off.
+//
+// A result kept from before the event's date was EDITED (`onEventDay` false) is listed
+// with the day it was logged and no Unlink: linking is offered on the event's own day
+// alone, so an Unlink there would be a door that only opens outward — the row would
+// leave the result and drop off this page, with nothing offering to put it back. The
+// core refuses the same move, so a tab rendered before the date changed gets a message
+// rather than a stranded session.
 export default function EventActivities({
   planId,
   status,
@@ -98,7 +109,7 @@ export default function EventActivities({
           <ul className="mt-3 space-y-2" data-testid="event-linked-list">
             {linked.map((a) => (
               <ActivityRow key={a.id} activity={a}>
-                {canWrite && (
+                {canWrite && a.onEventDay && (
                   <form action={(fd) => run(unlinkEventActivity, fd)}>
                     <input type="hidden" name="activity_id" value={a.id} />
                     <Button

@@ -5,6 +5,7 @@
 // mutation runs through writeTx (#468).
 
 import { db, writeTx } from "./db";
+import { setProfileSetting } from "./settings";
 import {
   DEFAULT_EVENT_KIND,
   disciplineForActivityName,
@@ -399,21 +400,77 @@ export function deleteEndurancePlanCore(
 // result of. An event's result is the set of activities pointing at it; an activity
 // is the result of at most one event.
 
+// Where the profile's decision counter is kept: a HIGH-WATER MARK that only ever
+// goes up. It is not the ordering itself — the ordinals on the rows are — it is the
+// one fact a delete must not be able to take away.
+const EVENT_LINK_SEQ_KEY = "event_link_decision_seq";
+
 // The ordinal a decision about an event link is recorded with (#3285 item 2): one
-// past the newest this profile has. Taken inside the caller's IMMEDIATE transaction,
-// so the write lock is what makes it strictly increasing — no clock, no ties. Gaps
-// are fine (a refused link burns one); only the order is read. A merge deletes rows
-// and with them their ordinals, and that is harmless for the same reason: the next
-// decision only has to beat the ones still standing.
+// past the highest this profile has EVER been issued. Taken inside the caller's
+// IMMEDIATE transaction, so the write lock serializes it — no clock, no ties. Gaps
+// are fine (a refused link burns one); only the order is read.
+//
+// WHY A STORED MARK RATHER THAN `MAX(seq) + 1` OVER THE LIVE ROWS. The live rows are
+// not the set an ordinal has to be unique over: a deleted activity is captured whole
+// — ordinal included — and the Trash's Restore button puts it back verbatim, weeks
+// later, at the person's choosing. Deleting the row that carried the newest decision
+// lowered the maximum, the next decision took that same number, and restoring the
+// first one put two live rows on the same rank; the merge fold then had to fall back
+// to keeper-first, which is the coin flip this ordinal exists to end. So the counter
+// lives where nothing that removes a row can lower it, and the allocator's scope is
+// every row that can ever become live again rather than the rows live right now.
+//
+// The mark is the floor, and the live rows are a second floor beneath it, so a
+// profile whose mark is missing (a database upgraded from before it, or one restored
+// without its settings) still cannot re-issue an ordinal a live row holds. The one
+// time the mark is absent, the captured payloads are read too: before the mark
+// existed, ordinals were handed out by live maximum alone, so one can be sitting in
+// the Trash above every live row. `json_tree` walks whatever a capture holds,
+// whichever kind wrote it, so this needs no knowledge of the payload's shape and
+// covers a merge's keeper snapshot as well as a plain delete. Once the mark is set
+// it is the only floor that can matter, so the scan never runs again.
+//
+// NOT a `deleted_rows` scan on every decision (the shape that also closes the hole):
+// that would put a JSON walk of every capture the profile holds on a button press,
+// and it would still only cover the doors that exist today — the mark covers any
+// future one, because it is never lowered by anything.
 function nextEventLinkDecisionSeq(profileId: number): number {
-  return (
+  // Read the mark with SQL rather than getProfileSetting: this runs inside the write
+  // transaction and must see what is committed, never an operation-scoped read cache.
+  const stored = Number(
+    (
+      db
+        .prepare(
+          `SELECT value FROM profile_settings WHERE profile_id = ? AND key = ?`
+        )
+        .get(profileId, EVENT_LINK_SEQ_KEY) as { value: string } | undefined
+    )?.value
+  );
+  const mark = Number.isInteger(stored) && stored > 0 ? stored : 0;
+  const live = (
     db
       .prepare(
-        `SELECT COALESCE(MAX(endurance_link_decided_seq), 0) + 1 AS next
+        `SELECT COALESCE(MAX(endurance_link_decided_seq), 0) AS m
            FROM activities WHERE profile_id = ?`
       )
-      .get(profileId) as { next: number }
-  ).next;
+      .get(profileId) as { m: number }
+  ).m;
+  const captured =
+    mark > 0
+      ? 0
+      : (
+          db
+            .prepare(
+              `SELECT COALESCE(MAX(CAST(v.value AS INTEGER)), 0) AS m
+                 FROM deleted_rows d, json_tree(d.payload) v
+                WHERE d.profile_id = ? AND v.key = ?`
+            )
+            .get(profileId, "endurance_link_decided_seq") as { m: number }
+        ).m;
+  const next = Math.max(mark, live, captured) + 1;
+  // Written through the settings substrate so its read cache cannot go stale.
+  setProfileSetting(profileId, EVENT_LINK_SEQ_KEY, String(next));
+  return next;
 }
 
 // Link an activity to an event, MANUALLY. Both rows must be the profile's, the
@@ -461,13 +518,26 @@ export function linkEventActivityCore(
 }
 
 // Detach an activity from whatever event it is linked to. Profile-scoped; false
-// when the row is not the profile's or was not linked. IMMEDIATE.
+// when the row is not the profile's, was not linked, or was logged on a day that is
+// no longer the event's. IMMEDIATE.
 //
 // The detach is REMEMBERED (`endurance_link_decided_seq`): this is a person saying the
 // session is not that event's result, and without it the auto-link runs again on the
 // next value-changing re-sync. Re-linking by hand does not clear the memory — it
 // records a NEWER decision, and both are the person's; the newer one wins wherever
 // the two ever have to be resolved against each other.
+//
+// THE DAY RULE IS THE SAME ONE `linkEventActivityCore` APPLIES, and it is here so the
+// event page cannot offer a door that only opens outward. A link SURVIVES the event's
+// date being edited — `getEventDay` keeps listing the session, because the link is the
+// fact and the date is only the search key for the rest of the day — but linking is
+// offered on the event's own day alone. Without this rule the page rendered Unlink on
+// a session it could never re-offer: one tap and the row left the result, failed the
+// day filter and vanished from the page, recoverable only by editing the event's date
+// back, linking, and moving it forward again. So the two moves now cover the same
+// set: while the dates disagree the page shows the result it has and changes neither
+// side, and moving the event back onto the session's day brings both back at once.
+// Unaffected by `status`: detaching a result stays available on an abandoned event.
 export function unlinkEventActivityCore(
   profileId: number,
   activityId: number
@@ -478,7 +548,10 @@ export function unlinkEventActivityCore(
         .prepare(
           `UPDATE activities
               SET endurance_plan_id = NULL, endurance_link_decided_seq = ?
-            WHERE id = ? AND profile_id = ? AND endurance_plan_id IS NOT NULL`
+            WHERE id = ? AND profile_id = ? AND endurance_plan_id IS NOT NULL
+              AND date = (SELECT event_date FROM endurance_plans
+                           WHERE id = activities.endurance_plan_id
+                             AND profile_id = activities.profile_id)`
         )
         .run(nextEventLinkDecisionSeq(profileId), activityId, profileId)
         .changes > 0

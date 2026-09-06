@@ -171,6 +171,19 @@ export function disciplineForActivityName(
  * the person touching it. Without that, machinery hands the session back to the
  * auto-link and the next sync re-attaches what they detached.
  *
+ * WHAT THE ORDER IS UNIQUE OVER, exactly. Every ordinal is issued once, from a
+ * per-profile high-water mark that only goes up (`nextEventLinkDecisionSeq`), so no
+ * two DECISIONS ever share one — including a decision made while the row carrying the
+ * previous one sat in the Trash, which is where reading the live rows alone got it
+ * wrong. Two live rows CAN still show the same ordinal, and only one way: a merge
+ * copies the winning decision — its link and its ordinal together — onto the keeper,
+ * so keeper and captured drop hold the same pair until the drop is purged or its
+ * restore un-folds the keeper. That is one decision written twice, not two decisions
+ * tied: whichever of the two the fold picks, it picks the same link. What must never
+ * happen is two DIFFERENT decisions at one ordinal, because then the fold has no
+ * answer and falls back to keeper order, which is richness and token order and knows
+ * nothing about recency.
+ *
  * And it is ONE-WAY: nothing clears it, and nothing offers to hand a session back to
  * the auto-link. Deference, not a trap — the bar exists only on the sessions a person
  * has already decided by hand, the auto-link still runs freely on every other one, and

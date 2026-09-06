@@ -339,4 +339,53 @@ describe("linkEventActivity / unlinkEventActivity (#3285 item 2)", () => {
       false
     );
   });
+
+  // The event page stops offering Unlink once the event's date has moved off the
+  // session's day, because it could not offer Link back. A tab rendered BEFORE the
+  // date changed can still post the old form, and the answer is a message naming
+  // both reasons rather than a session that leaves the page for good.
+  it("refuses to unlink a result the event's date has moved away from, and says why", async () => {
+    const { profile } = seedActor();
+    await createEndurancePlan(
+      fd({
+        event_name: "Harbor 10k",
+        discipline: "run",
+        event_date: "2026-10-05",
+        target_distance: "10",
+      })
+    );
+    const plan = getEndurancePlans(profile.id)[0];
+    const id = String(plan.id);
+    const activityId = String(
+      db
+        .prepare(
+          `INSERT INTO activities (profile_id, date, type, title)
+           VALUES (?, '2026-10-05', 'cardio', 'Harbor 10k')`
+        )
+        .run(profile.id).lastInsertRowid
+    );
+    expect(
+      (await linkEventActivity(fd({ id, activity_id: activityId }))).ok
+    ).toBe(true);
+
+    await updateEndurancePlan(
+      fd({
+        id,
+        event_name: "Harbor 10k",
+        discipline: "run",
+        event_date: "2026-10-12",
+        target_distance: "10",
+      })
+    );
+    const res = await unlinkEventActivity(fd({ activity_id: activityId }));
+    expect(res).toEqual({
+      ok: false,
+      error: "That activity isn’t linked, or it was logged on another day.",
+    });
+    expect(
+      db
+        .prepare("SELECT endurance_plan_id AS p FROM activities WHERE id = ?")
+        .get(activityId)
+    ).toEqual({ p: plan.id });
+  });
 });

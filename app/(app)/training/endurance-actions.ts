@@ -257,7 +257,9 @@ export async function unlinkEventActivity(
   const activityId = Number(formData.get("activity_id"));
   if (!Number.isInteger(activityId)) return formError("Invalid link.");
   if (!unlinkEventActivityCore(profile.id, activityId))
-    return formError("Activity not found.");
+    return formError(
+      "That activity isn’t linked, or it was logged on another day."
+    );
   revalidateEndurance();
   return formOk();
 }
