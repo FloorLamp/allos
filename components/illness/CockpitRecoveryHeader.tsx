@@ -18,22 +18,29 @@ export interface CockpitFactIdentity {
 // headings — Last temperature, Last Meds, Fever status — spread across a monitor,
 // while the fact a caregiver came for (how far into the fever-free clock this child
 // is) sat at footnote weight on the right-hand end. It leads now: the ring, the
-// sentence about the person, the Illness · Day-N tag, ONE prose line folding the same
-// three facts, and "Feeling better" — the action the state ripens toward — beside the
-// countdown instead of at the card's bottom edge.
+// recovery statement, ONE prose line folding the same three facts, and "Feeling
+// better" — the action the state ripens toward — beside the countdown instead of at
+// the card's bottom edge.
+//
+// IT NAMES NOBODY AND DATES NOTHING (#3238, applied one layer in). The accordion row
+// this body expands from is always directly above it and already renders the avatar,
+// the person's name, the situation and "Day N" — and it suppresses its OWN temperature
+// and last-dose clauses while expanded for exactly this reason. The header did not get
+// the same treatment, so an expanded cockpit opened "Dune / Illness ⌄ / Day 1" and then,
+// two lines down, "Dune" beside a rose "Illness · Day 1" badge: the person named twice
+// and the day stated twice, in one card, within about 100px. Both are gone; what is
+// left is what the row above does not say.
 //
 // Every string comes from `lib/illness-episode-format.ts`, over the SAME
 // `EpisodeCollapsedStatus` the collapsed accordion line renders, so an expanded
 // cockpit and its own one-line summary cannot disagree about the last dose.
 export default function CockpitRecoveryHeader({
-  name,
   status,
   recovery,
   action,
   temperatureIdentity,
   medicationIdentity,
 }: {
-  name: string;
   status: EpisodeCollapsedStatus;
   recovery: CockpitRecovery | null;
   /** "Feeling better", when the viewer may end this episode. */
@@ -46,6 +53,11 @@ export default function CockpitRecoveryHeader({
   medicationIdentity?: CockpitFactIdentity | null;
 }) {
   const fraction = cockpitRecoveryFraction(recovery);
+  const headline = cockpitRecoveryHeadline(recovery);
+  // The top line of the header can be empty — no clock to state, nothing worsening —
+  // and an empty flex row still costs its `gap-y-1` above the summary. Render it only
+  // when it has something in it.
+  const hasTopLine = headline != null || status.worsening;
   const identityFor = (key: string) =>
     key === "temperature"
       ? status.temperature
@@ -70,31 +82,33 @@ export default function CockpitRecoveryHeader({
         />
       ) : null}
       <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-          <h3
-            data-testid="cockpit-headline"
-            className="min-w-0 truncate text-base font-semibold text-slate-900 sm:text-lg dark:text-slate-50"
-          >
-            {cockpitRecoveryHeadline(name, recovery)}
-          </h3>
-          <span
-            data-testid="cockpit-day-tag"
-            className="badge bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
-          >
-            {status.dayLabel}
-          </span>
-          {status.worsening ? (
-            <span className="text-xs font-medium text-rose-600 dark:text-rose-400">
-              Worsening ↑
-            </span>
-          ) : null}
-        </div>
+        {hasTopLine ? (
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            {headline != null ? (
+              <h3
+                data-testid="cockpit-headline"
+                className="min-w-0 truncate text-base font-semibold text-slate-900 sm:text-lg dark:text-slate-50"
+              >
+                {headline}
+              </h3>
+            ) : null}
+            {status.worsening ? (
+              <span className="text-xs font-medium text-rose-600 dark:text-rose-400">
+                Worsening ↑
+              </span>
+            ) : null}
+          </div>
+        ) : null}
         <p
           data-testid="cockpit-summary-line"
           // The minute-ages inside come from a render-time clock, exactly as the stat
           // grid's did — server and first client render can straddle a minute.
           suppressHydrationWarning
-          className="mt-1 text-xs text-slate-600 dark:text-slate-300"
+          className={
+            hasTopLine
+              ? "mt-1 text-xs text-slate-600 dark:text-slate-300"
+              : "text-xs text-slate-600 dark:text-slate-300"
+          }
         >
           {cockpitSummaryParts(status, recovery).map((part, index) => {
             const identity = identityFor(part.key);

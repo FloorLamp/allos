@@ -438,6 +438,49 @@ text tone for static copy, and the link tone (`text-link`, #2719) is never
 worn by non-interactive text (#3474, #3487, #3500). A card's tone is not
 repeated as CAPS in its copy (#3497).
 
+## Ruled addition, 2026-09-06 (shipped)
+
+### 13. One fact, one place, one spelling
+
+A fact is stated ONCE per view, by the surface that owns it, in ONE format. The
+nested surface gives way: a body never restates what its own header just said,
+and a notification body never restates its title.
+
+The rule is not new — it is what `#3238` decided for the illness accordion row
+("the DAY only, never `dayLabel`, because the header two lines up already
+renders the situation") — but it was decided per site and so had to be
+rediscovered at each one. Three sweeps applied it:
+
+- **The temperature red-flag nudge.** `[Dune] 🌡️ Fever check: Dune — Temperature
+40.1 °C / 104.2 °F — Very high fever (104°F or higher)` named the person twice
+  (the renderer interpolated a name `dispatch` already prefixes), the threshold
+  three times (the rule's label, its cited line, and a `source` restating the
+  guidance it cited) and the reading twice. See
+  `docs/internals/notifications.md`.
+- **The illness cockpit header.** The expanded body opened with the person's
+  name and an `Illness · Day 1` badge, both rendered by the accordion row about
+  100px above — which suppresses its own temperature and dose clauses while
+  expanded for exactly this reason. `cockpitRecoveryHeadline` takes no name now
+  and returns null rather than falling back to one.
+- **The cockpit summary line.** `No reading since 104.2 °F (4h ago) · last
+reading 104.2 °F at 11:39 AM (5 hrs ago)` is one reading twice — and two ages
+  for one instant, because the school-return clause FLOORS whole hours off the
+  convention's clock while the shared formatter ROUNDS. Duplication is how that
+  disagreement became visible; removing it removed both.
+
+**A duplicated fact is not only noise.** Each of these three shipped with the
+copies already disagreeing, or one edit away from it: two ages for one reading,
+and a name that doubled on a household instance while a single-profile one
+showed the only person there is. The second copy is where the drift lands.
+
+**Durations and clock times are part of the spelling.** A decimal hour is not a
+unit anybody keeps time in: `hoursLabel` (`lib/redose-format.ts`) reads
+`1h 12m`, never `~1.2h`, because "Next dose in ~1.2h" is arithmetic left to a
+caregiver at 4 a.m. Whole hours are unchanged. The two clock spellings that
+`lib/format-date.ts` documents — `11:39 AM` for records, `11:39am` for
+administrations — remain two intentional conventions, and the cockpit is where
+they meet four lines apart; that is a known collision, not a settled rule.
+
 ## Enforcement — the copy-lint scan
 
 `lib/__tests__/copy-lint.test.ts` is a pure source-scan (no DB, no browser) over

@@ -20,11 +20,20 @@ import type { TimeFormat } from "./format-date";
 import { formatMedicationDoseProduct } from "./medication-dose-format";
 import { GLYPH } from "./notifications/glyphs";
 
-// A short "6h" / "6.5h" for an elapsed/remaining hour count, one decimal place at
-// most (whole hours drop the decimal naturally). Pure.
+// A short "6h" / "6h 30m" / "45m" for an elapsed or remaining hour count. Pure.
+//
+// IT STOPPED SAYING "1.2h" (a decimal hour is not a unit anybody keeps time in). The
+// figure this renders most often is the PRN countdown a caregiver reads at 4 a.m. —
+// "Next dose in ~1.2h" is arithmetic they have to finish themselves, and finishing it
+// wrong is a dose given early. Whole hours are unchanged ("2h", "5h"), which is what
+// the configured intervals almost always produce; the fractional case is where the
+// old spelling was doing the damage, and it now reads the way a clock does.
 export function hoursLabel(hours: number): string {
-  const rounded = Math.round(Math.max(0, hours) * 10) / 10;
-  return `${rounded}h`;
+  const totalMinutes = Math.max(0, Math.round(hours * 60));
+  const wholeHours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (wholeHours === 0) return `${minutes}m`;
+  return minutes === 0 ? `${wholeHours}h` : `${wholeHours}h ${minutes}m`;
 }
 
 // The "N of M in 24h" count fragment shared by the notice and the card. A null max

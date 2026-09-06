@@ -144,7 +144,7 @@ describe("display units (#1019 — web pref / Telegram dual, identity untouched)
       expect(e.line).not.toMatch(/[.]$/);
       expect(e.source).not.toMatch(/[.]$/);
     }
-    expect(inlineTempRedFlagNote(104.5, null)).toMatch(/guidance\.$/);
+    expect(inlineTempRedFlagNote(104.5, null)).toMatch(/Pediatrics\.$/);
   });
 
   it("the cited threshold is NOT repeated in the label or the source", () => {

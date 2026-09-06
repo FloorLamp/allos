@@ -147,9 +147,12 @@ describe("the nudge's copy", () => {
 
     const body = sentBody(fetchMock);
     expect(body).toBe(
-      "Contact a clinician now — 104 °F / 40 °C or higher is a reason to call at any age. " +
-        "Source: American Academy of Pediatrics (AAP) fever guidance."
+      "Contact a clinician now — 104 °F / 40 °C or higher at any age. " +
+        "Source: American Academy of Pediatrics."
     );
+    // A lock screen truncates. The whole message is under 150 characters; the old
+    // one spent 219 on four repetitions.
+    expect(title.length + body.length).toBeLessThan(150);
     // The action leads; the provenance trails (copy.md rule 10). The reading is in
     // the title and appears nowhere in the body.
     expect(body.indexOf("Contact a clinician")).toBeLessThan(

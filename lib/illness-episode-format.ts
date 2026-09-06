@@ -932,17 +932,23 @@ export interface CockpitRecovery {
 
 // THE HEADLINE, AND WHAT IT REFUSES TO SAY. It states only what the fever-free clock
 // already establishes; with no clock — no fever this episode, or nothing measured
-// since one — it is the person's NAME and nothing else, because every other sentence
-// available at that point would be a judgement the data has not made.
+// since one — there is NO headline, because every sentence available at that point
+// would be a judgement the data has not made.
+//
+// IT NAMES NOBODY (#3238, one layer in). It used to take the person's name and, in
+// the no-clock arm, return that name alone — a heading whose whole content was a word
+// the accordion row two lines above had already rendered. The name is that row's job;
+// the arms that DO have something to say now say it about the clock rather than about
+// a subject the reader has already been given. Null is the honest empty here: a
+// heading that renders nothing is absent, not blank.
 export function cockpitRecoveryHeadline(
-  name: string,
   recovery: CockpitRecovery | null
-): string {
-  if (!recovery || recovery.clearedForHours == null) return name;
-  if (recovery.met) return `${name} is fever-free`;
+): string | null {
+  if (!recovery || recovery.clearedForHours == null) return null;
+  if (recovery.met) return "Fever-free";
   return recovery.clearedForHours * 2 >= recovery.thresholdHours
-    ? `${name} is nearly there`
-    : `${name} is on the mend`;
+    ? "Nearly there"
+    : "On the mend";
 }
 
 // ONE LINE, THREE CLAUSES. The stat grid it replaces spread the same three facts
@@ -961,18 +967,52 @@ export function cockpitSummaryParts(
   status: EpisodeCollapsedStatus,
   recovery: CockpitRecovery | null
 ): { key: CockpitSummaryPart; text: string }[] {
+  // ONE READING, ONE AGE. `recovery` exists only when this episode has a high reading,
+  // and a null `clearedForHours` is the arm where nothing has been measured SINCE that
+  // reading — so the episode's latest reading IS the fever the school-return clause
+  // names, and the two clauses were one fact twice. Worse, they disagreed: the clause
+  // counts whole hours FLOORED off the convention's own clock (lib/school-return.ts)
+  // while every other age on this line is ROUNDED by the shared formatter, so a reading
+  // 4h35m old read "No reading since 104.2 °F (4h ago) · last reading 104.2 °F at
+  // 11:39 AM (5 hrs ago)" — the same instant, two ages, in adjacent clauses.
+  //
+  // The merged clause keeps the school-return sentence and takes its when-and-age from
+  // the temperature part, so the line has ONE age vocabulary. It stays keyed
+  // "temperature" because that is the clause carrying the dashboard candidate's
+  // identity — the fact has not changed, only how many times the line states it.
+  const noReadingSinceFever =
+    recovery != null && recovery.clearedForHours == null;
+  const readingWhen = status.temperature?.when
+    ? ` ${status.temperature.when}`
+    : "";
+  if (noReadingSinceFever && status.temperature) {
+    return [
+      {
+        key: "temperature" as const,
+        text: `No reading since ${status.temperature.value}${readingWhen}`,
+      },
+      ...medicationPart(status),
+    ];
+  }
   return [
     ...(recovery ? [{ key: "recovery" as const, text: recovery.label }] : []),
     {
       key: "temperature" as const,
       text: status.temperature
-        ? `last reading ${status.temperature.value}${
-            status.temperature.when ? ` ${status.temperature.when}` : ""
-          }`
+        ? `last reading ${status.temperature.value}${readingWhen}`
         : "no temperature logged",
     },
+    ...medicationPart(status),
+  ];
+}
+
+// The last-dose clause, extracted because both arms above end with it.
+function medicationPart(
+  status: EpisodeCollapsedStatus
+): { key: CockpitSummaryPart; text: string }[] {
+  return [
     {
-      key: "medication" as const,
+      key: "medication",
       text: status.lastMeds
         ? `last med ${status.lastMeds.name}${
             status.lastMeds.when ? ` ${status.lastMeds.when}` : ""

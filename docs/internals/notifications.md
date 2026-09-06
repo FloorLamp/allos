@@ -1328,14 +1328,21 @@ logged — "` under a title that had just said X. Every surface showing the
 Terminal punctuation moved out of the data and onto the render boundary
 (`tempRedFlagFullDetail` / `tempRedFlagEvidence` / `inlineTempRedFlagNote`), so
 `source` is a bare name that reads correctly whichever surface terminates it.
-What the reader gets: `[Dune] 🌡️ Very high fever — 40.1 °C / 104.2 °F` over
-`Contact a clinician now — 104 °F / 40 °C or higher is a reason to call at any
-age. Source: American Academy of Pediatrics (AAP) fever guidance.`
+What the reader gets, 149 characters where the old one spent 219:
+`[Dune] 🌡️ Very high fever — 40.1 °C / 104.2 °F` over `Contact a clinician now
+— 104 °F / 40 °C or higher at any age. Source: American Academy of Pediatrics.`
+
+Every word that survives is doing work a lock screen has room for. "is a reason
+to call" restated the imperative it followed; "(AAP) fever guidance" restated
+the citation's own subject, which the dataset envelope already carries with the
+URL. The threshold stays because it is why this reading fired and nothing else
+says so.
 
 The rendered title and body are pinned at the transport seam
 (`lib/__db_tests__/temp-red-flag-dispatch.test.ts`), not in the pure tier: the
 renderer builds the title and `dispatch` composes the prefix, so a doubled name
 is a defect only the two together can produce and only a real send can show.
+That test also holds the whole message under 150 characters.
 
 **Finish-triggered post-workout nudge + stale-session suggest (#921).** Two
 nudges ride derived **workout presence** (`workoutPresence` /

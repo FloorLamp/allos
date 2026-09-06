@@ -900,18 +900,17 @@ describe("the cockpit recovery header (#4752 item 1)", () => {
     label: "Fever-free 22h of 24",
   });
 
+  // The headline names NOBODY (#3238, one layer in): the accordion row this header
+  // sits under already renders the person. With no clock there is no headline at all
+  // — null, not a blank heading and not the bare name it used to fall back to.
   it.each([
-    ["no clock at all is the name and nothing more", null, "Dune"],
-    ["nothing measured is the name and nothing more", recovery(null), "Dune"],
-    ["past halfway is nearly there", recovery(12), "Dune is nearly there"],
-    ["short of halfway is on the mend", recovery(11), "Dune is on the mend"],
-    [
-      "a met convention says so outright",
-      recovery(24, true),
-      "Dune is fever-free",
-    ],
+    ["no clock at all has nothing to say", null, null],
+    ["nothing measured has nothing to say", recovery(null), null],
+    ["past halfway is nearly there", recovery(12), "Nearly there"],
+    ["short of halfway is on the mend", recovery(11), "On the mend"],
+    ["a met convention says so outright", recovery(24, true), "Fever-free"],
   ] as const)("headline: %s", (_name, input, expected) => {
-    expect(cockpitRecoveryHeadline("Dune", input)).toBe(expected);
+    expect(cockpitRecoveryHeadline(input)).toBe(expected);
   });
 
   it.each([
@@ -973,5 +972,74 @@ describe("the cockpit recovery header (#4752 item 1)", () => {
     expect(
       cockpitSummaryLine(status({ temperature: null, lastMeds: null }), null)
     ).toBe("no temperature logged · no meds logged");
+  });
+
+  // ── ONE READING, ONE AGE ────────────────────────────────────────────────────
+  //
+  // A null `clearedForHours` is the arm where nothing has been measured since the
+  // fever, so the episode's latest reading IS the reading the school-return clause
+  // names. The line used to state it twice AND date it twice, from two formatters
+  // that round differently — "(4h ago)" beside "(5 hrs ago)" for one instant.
+  it("states the last reading ONCE when nothing has been measured since it", () => {
+    const line = cockpitSummaryLine(
+      status({
+        temperature: {
+          id: 1,
+          value: "104.2 °F",
+          when: "at 11:39 AM (5 hrs ago)",
+          high: true,
+        },
+      }),
+      {
+        clearedForHours: null,
+        thresholdHours: 24,
+        met: false,
+        label: "No reading since 104.2 °F (4h ago)",
+      }
+    );
+    expect(line).toBe(
+      "No reading since 104.2 °F at 11:39 AM (5 hrs ago) · last med Ibuprofen yesterday 11:30 PM"
+    );
+    // The reading, and its age, appear exactly once.
+    expect(line.match(/104\.2 °F/g)).toHaveLength(1);
+    expect(line).not.toContain("(4h ago)");
+    expect(line).not.toContain("last reading");
+  });
+
+  it("keeps both clauses once there IS a fever-free clock — they are two facts", () => {
+    expect(cockpitSummaryLine(status(), recovery(22))).toContain(
+      "Fever-free 22h of 24 · last reading"
+    );
+  });
+
+  it("keeps the merged clause honest when the reading has no clock time", () => {
+    expect(
+      cockpitSummaryLine(
+        status({
+          temperature: { id: 1, value: "104.2 °F", when: null, high: true },
+        }),
+        {
+          clearedForHours: null,
+          thresholdHours: 24,
+          met: false,
+          label: "No reading since 104.2 °F (4h ago)",
+        }
+      )
+    ).toBe("No reading since 104.2 °F · last med Ibuprofen yesterday 11:30 PM");
+  });
+
+  // The merge is gated on there BEING a reading: a recovery object with no
+  // temperature keeps the school-return clause rather than inventing one.
+  it("falls back to the recovery clause when there is no reading at all", () => {
+    expect(
+      cockpitSummaryLine(status({ temperature: null }), {
+        clearedForHours: null,
+        thresholdHours: 24,
+        met: false,
+        label: "No reading since 104.2 °F (4h ago)",
+      })
+    ).toBe(
+      "No reading since 104.2 °F (4h ago) · no temperature logged · last med Ibuprofen yesterday 11:30 PM"
+    );
   });
 });

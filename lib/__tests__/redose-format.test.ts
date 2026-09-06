@@ -161,10 +161,14 @@ describe("redoseCardLabel", () => {
 });
 
 describe("helpers", () => {
-  it("hoursLabel drops the decimal for whole hours", () => {
+  it("hoursLabel reads like a clock, never as a decimal hour", () => {
     expect(hoursLabel(6)).toBe("6h");
-    expect(hoursLabel(6.5)).toBe("6.5h");
-    expect(hoursLabel(-1)).toBe("0h");
+    expect(hoursLabel(6.5)).toBe("6h 30m");
+    // The countdown that prompted this: "~1.2h" was arithmetic left to the reader.
+    expect(hoursLabel(1.2)).toBe("1h 12m");
+    // Under an hour drops the hour part rather than printing "0h 45m".
+    expect(hoursLabel(0.75)).toBe("45m");
+    expect(hoursLabel(-1)).toBe("0m");
   });
   it("countFragment", () => {
     expect(countFragment(2, 4)).toBe("2 of 4 in 24h");

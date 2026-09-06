@@ -19,16 +19,16 @@
       "label": "Fever in a baby under 3 months",
       "minTempF": 100.4,
       "maxAgeMonths": 3,
-      "line": "Contact a clinician now — any fever in the first 3 months (100.4 °F / 38 °C or higher) is a reason to call",
-      "source": "American Academy of Pediatrics (AAP) fever guidance"
+      "line": "Contact a clinician now — any fever in the first 3 months (100.4 °F / 38 °C or higher)",
+      "source": "American Academy of Pediatrics"
     },
     {
       "key": "hyperpyrexia",
       "label": "Very high fever",
       "minTempF": 104,
       "maxAgeMonths": null,
-      "line": "Contact a clinician now — 104 °F / 40 °C or higher is a reason to call at any age",
-      "source": "American Academy of Pediatrics (AAP) fever guidance"
+      "line": "Contact a clinician now — 104 °F / 40 °C or higher at any age",
+      "source": "American Academy of Pediatrics"
     }
   ]
 }

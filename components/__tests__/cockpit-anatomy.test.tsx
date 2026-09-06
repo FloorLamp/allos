@@ -70,10 +70,9 @@ const RECOVERY = {
 };
 
 describe("the recovery header IS the status (#4752 item 1)", () => {
-  it("leads with the ring, the sentence, the day tag, one summary line and the promoted action", () => {
+  it("leads with the ring, the statement, one summary line and the promoted action", () => {
     render(
       <CockpitRecoveryHeader
-        name="Dune"
         status={STATUS}
         recovery={RECOVERY}
         action={<button type="button">Feeling better</button>}
@@ -81,11 +80,15 @@ describe("the recovery header IS the status (#4752 item 1)", () => {
     );
     const header = screen.getByTestId("cockpit-recovery-header");
     expect(screen.getByTestId("cockpit-headline").textContent).toBe(
-      "Dune is nearly there"
+      "Nearly there"
     );
-    expect(screen.getByTestId("cockpit-day-tag").textContent).toBe(
-      "Illness · Day 3"
-    );
+    // THE ROW ABOVE OWNS IDENTITY (#3238, one layer in). The accordion row this body
+    // expands from renders the avatar, the name, the situation and "Day N" about
+    // 100px up, so the header repeats neither: no name inside the headline, and no
+    // "Illness · Day 3" badge beside it.
+    expect(screen.queryByTestId("cockpit-day-tag")).toBeNull();
+    expect(header.textContent).not.toContain("Dune");
+    expect(header.textContent).not.toContain("Illness · Day 3");
     // The ring draws the countdown and speaks the shared compact clause, so a
     // screen reader hears the sentence rather than a number with no unit.
     const ring = screen.getByTestId("cockpit-recovery-ring");
@@ -105,13 +108,14 @@ describe("the recovery header IS the status (#4752 item 1)", () => {
   });
 
   it("draws no ring when nothing has been measured", () => {
-    render(
-      <CockpitRecoveryHeader name="Dune" status={STATUS} recovery={null} />
-    );
+    render(<CockpitRecoveryHeader status={STATUS} recovery={null} />);
     // A ring at zero and a ring that does not apply look identical, and only one
     // of them is true.
     expect(screen.queryByTestId("cockpit-recovery-ring")).toBeNull();
-    expect(screen.getByTestId("cockpit-headline").textContent).toBe("Dune");
+    // …and with no clock there is no headline either. It used to fall back to the
+    // bare name, which is a heading whose whole content the row above had said.
+    expect(screen.queryByTestId("cockpit-headline")).toBeNull();
+    expect(screen.getByTestId("cockpit-summary-line").textContent).toBeTruthy();
   });
 });
 
