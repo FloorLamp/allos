@@ -1,6 +1,60 @@
 {
   "days": [
     {
+      "date": "2026-09-06",
+      "entries": [
+        {
+          "pr": 5290,
+          "kind": "feature",
+          "category": "Nutrition",
+          "title": "Each drink or substance use gets its own row and its own time",
+          "issues": [5026]
+        },
+        {
+          "pr": 5417,
+          "kind": "feature",
+          "category": "History",
+          "title": "The day view's calendar opens a day at every screen width",
+          "issues": [5359]
+        },
+        {
+          "pr": 5422,
+          "kind": "feature",
+          "category": "Training",
+          "title": "State a lift's weight once and every set in the run shares it",
+          "issues": [5371]
+        },
+        {
+          "pr": 5422,
+          "kind": "feature",
+          "category": "Training",
+          "title": "Enter moves through the sets instead of stopping in the reps field",
+          "issues": [5371]
+        },
+        {
+          "pr": 5425,
+          "kind": "feature",
+          "category": "Interface",
+          "title": "A time field opens when you focus it, takes 830, and steps by the minute",
+          "issues": [5360]
+        },
+        {
+          "pr": 5426,
+          "kind": "fix",
+          "category": "Training",
+          "title": "A week with nothing logged yet gets no pace verdict",
+          "issues": [5395]
+        },
+        {
+          "pr": 5426,
+          "kind": "fix",
+          "category": "Training",
+          "title": "A goal with no reading yet shows no percent, on every surface",
+          "issues": [5396]
+        }
+      ]
+    },
+    {
       "date": "2026-09-05",
       "entries": [
         {
