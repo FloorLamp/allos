@@ -24,6 +24,16 @@ thing it protects.
 - **Deleting a dead guard or spec needs no issue of its own.** The PR states
   what it protected, what protects it now, and how the deletion was measured —
   the same bar as adding one.
+- **The verification slice ranks its queue by NET LINES** (owner, 2026-09-06):
+  subtractive work first, neutral next, additive last and only for a named
+  defect or a security gap. A conversion PR states its own `+/-` in the body
+  and is net ≤ 0, or says in one line why not.
+- **A conversion that does not delete has not converted.** Measured the day the
+  rule was set: #5392 moved fifty import scanners onto ESLint and came out
+  **+306** — two scan files deleted, a 302-line test added to guard the ESLint
+  config itself; #5414 made the export guard a type at **+149**, deleting
+  nothing. A guard replaced by a guard about the replacement is the failure
+  mode this section exists to name.
 
 ## Ownership
 
