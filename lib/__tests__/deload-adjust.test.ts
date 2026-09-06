@@ -9,10 +9,12 @@ import {
   DELOAD_LOAD_FACTOR,
   DELOAD_SET_REDUCTION,
   DELOAD_MIN_SETS,
-  type NextSet,
+  type RawNextSet,
 } from "@/lib/coaching";
 
-function ns(overrides: Partial<NextSet> = {}): NextSet {
+// The RAW progression deloadAdjust shaves — the brand is minted downstream, by
+// contextualNextSet (#5394).
+function ns(overrides: Partial<RawNextSet> = {}): RawNextSet {
   return {
     weightKg: 100,
     reps: 5,
