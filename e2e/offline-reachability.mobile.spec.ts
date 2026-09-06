@@ -326,9 +326,12 @@ async function openRow(page: Page, id: QuickLogId): Promise<Locator> {
   return overlay;
 }
 
+// The sheet's own Close control, which calls onClose unguarded (BottomSheet):
+// Escape and the scrim go through the gesture route, which a body holding work
+// may answer with a question rather than a close.
 async function dismiss(page: Page): Promise<void> {
-  await page.keyboard.press("Escape");
   const overlay = page.getByTestId("quick-entry-sheet"); // testid-scope-ok: portals to <body> (BottomSheet), one copy
+  await overlay.getByTestId("quick-entry-sheet-close").click();
   await expect(overlay).toHaveCount(0);
 }
 
@@ -389,20 +392,23 @@ test("every flow the manifest declares offline-capable OPENS with no connection 
     for (const id of DECLARED_ROWS) {
       const driver = DRIVERS[id];
       if (!driver) throw new Error(`no driver for the declared row ${id}`);
-      const overlay = await openRow(page, id);
-      const asOf = overlay.getByTestId("quick-entry-asof");
-      if (driver.copy === "device") {
-        await expect(asOf).toBeVisible();
-      }
-      await driver.open(overlay, page);
-      if (driver.copy !== "device") await expect(asOf).toHaveCount(0);
-      if (driver.queues) {
-        queued += 1;
-        await expect(badge).toHaveText(
-          new RegExp(`^${queued} queued offline$`)
-        );
-      }
-      if ((await overlay.count()) > 0) await dismiss(page);
+      // A step per row, so a red names the row it was on.
+      await test.step(id, async () => {
+        const overlay = await openRow(page, id);
+        const asOf = overlay.getByTestId("quick-entry-asof");
+        if (driver.copy === "device") {
+          await expect(asOf).toBeVisible();
+        }
+        await driver.open(overlay, page);
+        if (driver.copy !== "device") await expect(asOf).toHaveCount(0);
+        if (driver.queues) {
+          queued += 1;
+          await expect(badge).toHaveText(
+            new RegExp(`^${queued} queued offline$`)
+          );
+        }
+        if (await overlay.isVisible()) await dismiss(page);
+      });
     }
 
     // THE DURABLE HALF: the intents are in IndexedDB, one per declared queueing

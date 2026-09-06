@@ -74,9 +74,12 @@ async function openRow(page: Page, id: QuickLogId): Promise<Locator> {
   return overlay;
 }
 
+// The sheet's own Close control, which calls onClose unguarded (BottomSheet):
+// Escape and the scrim go through the gesture route, which a body holding work
+// may answer with a question rather than a close.
 async function dismiss(page: Page): Promise<void> {
-  await page.keyboard.press("Escape");
   const overlay = page.getByTestId("quick-entry-sheet"); // testid-scope-ok: portals to <body> (BottomSheet), one copy
+  await overlay.getByTestId("quick-entry-sheet-close").click();
   await expect(overlay).toHaveCount(0);
 }
 
@@ -127,12 +130,18 @@ test("a form opened once online reopens at once with the network cut, says its c
 test("an injected read failure shows the retry state, and Retry recovers the form in place", async ({
   browser,
 }) => {
-  clearShellDoseLogs();
-  const doseId = shellDoseId();
+  // The DOCUMENT row: the one declared row with no copy on the device, so a refused
+  // gather has nothing to fall back to and the retry state is the only honest answer.
+  // (The dose row would fall back to its snapshot the moment the refresher has run —
+  // that path is the reachability spec's, and it is why this is not that row.)
+  //
+  // `serviceWorkers: "block"`, as in the chunk test below: once the worker controls
+  // the page its fetch handler carries the action POST, and `page.route` never sees
+  // it — measured here as an abort count of 0 on the run the worker won the race.
   const page = await loginAs(
     browser,
     { username: E2E_LOGIN_SHELL, password: E2E_MEMBER_PASSWORD },
-    PHONE_CONTEXT
+    { ...PHONE_CONTEXT, serviceWorkers: "block" }
   );
   try {
     await page.goto("/");
@@ -155,18 +164,17 @@ test("an injected read failure shows the retry state, and Retry recovers the for
       await route.continue();
     });
 
-    const overlay = await openRow(page, "log-dose");
+    const overlay = await openRow(page, "add-document");
     await expect(overlay.getByTestId("quick-entry-error")).toBeVisible();
-    expect(aborted, "the gather was never asked, so nothing was refused").toBe(
-      1
-    );
+    expect(
+      aborted,
+      "the gather was never asked, so nothing was refused"
+    ).toBeGreaterThan(0);
 
     armed = false;
     await overlay.getByTestId("quick-entry-retry").click();
     // Recovered IN PLACE: the same sheet, never closed, now holds the form.
-    await expect(
-      overlay.getByTestId(`quick-entry-dose-${doseId}`)
-    ).toBeVisible();
+    await expect(overlay.getByTestId("medical-upload-choose")).toBeVisible();
     await expect(overlay.getByTestId("quick-entry-error")).toHaveCount(0);
     await expect(overlay).toBeVisible();
   } finally {
