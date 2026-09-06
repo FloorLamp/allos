@@ -33,7 +33,10 @@ describe("the CI no-runtime-surface skip set", () => {
       "utf8"
     );
     const match = /grep -qvE '\^\((.+?)\)'/.exec(src);
-    expect(match, "ci.yml declares no `grep -qvE '^(…)'` skip set").not.toBeNull();
+    expect(
+      match,
+      "ci.yml declares no `grep -qvE '^(…)'` skip set"
+    ).not.toBeNull();
     expect(match![1].split("|").length).toBeLessThanOrEqual(13);
   });
 });
