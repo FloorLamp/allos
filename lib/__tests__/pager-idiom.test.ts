@@ -31,13 +31,27 @@ const PAGER_HOME = "components/PaginationControls.tsx";
 
 // The two sentences a pager writes, as this repo actually spelled them: the page
 // sentence, and the extent as a range (note the en dash).
-const PAGER_SENTENCES = [/Page\s*\{[^}]+\}\s*of\s*\{/, /Showing\s*\{[^}]+\}–\{/];
+const PAGER_SENTENCES = [
+  /Page\s*\{[^}]+\}\s*of\s*\{/,
+  /Showing\s*\{[^}]+\}–\{/,
+];
 
 describe("one pager idiom (#3378)", () => {
   it("has not grown a hand-rolled copy", () => {
     const offenders = execFileSync(
       "git",
-      ["ls-files", "-z", "--", "app", "components"],
+      // Tracked plus non-ignored untracked: the same boundary that decides what
+      // can ship, so a pager added but not yet committed is still counted.
+      [
+        "ls-files",
+        "--cached",
+        "--others",
+        "--exclude-standard",
+        "-z",
+        "--",
+        "app",
+        "components",
+      ],
       { cwd: REPO, encoding: "utf8" }
     )
       .split("\0")
