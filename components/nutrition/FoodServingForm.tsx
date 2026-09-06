@@ -73,13 +73,9 @@ export interface FoodServingRow {
   eatenAt: string | null;
   /** Profile-local "HH:MM" of the tap instant. Never edited; it names the alternative. */
   loggedAt: string | null;
-  /**
-   * What the person wrote about this use (#5304), or null when they wrote nothing.
-   * OPTIONAL only because the record's own row list does not seed it yet; an unseeded
-   * mount opens the field empty, and the form's touched-only post is what keeps that
-   * from clearing a stored note. Seed it wherever you have it.
-   */
-  notes?: string | null;
+  /** What the person wrote about this serving (#5304), or null. Seeds the field so a
+   *  save restates or clears it rather than opening blank over stored text. */
+  notes: string | null;
 }
 
 export default function FoodServingForm({
@@ -169,10 +165,6 @@ export default function FoodServingForm({
   );
   const [mealTouched, setMealTouched] = useState(false);
   const [notes, setNotes] = useState(row?.notes ?? "");
-  // A note is only POSTED once somebody has been in the field. An untouched correction
-  // therefore says nothing about the note and leaves it exactly as it was — which is
-  // what makes it safe for a mount to open this form without seeding one.
-  const [notesTouched, setNotesTouched] = useState(false);
   const [when, setWhen] = useState<WhenValue>(() => ({
     date: row?.date ?? date,
     statedAt: openingStatedAt,
@@ -197,9 +189,8 @@ export default function FoodServingForm({
     if (subjectProfileId != null)
       fd.set("profile_id", String(subjectProfileId));
     const hhmm = statedHhmm(when.statedAt, tz) || null;
-    // An ADD always states its note (empty included — a new row has nothing to keep);
-    // a CORRECTION states it only when touched.
-    if (!row || notesTouched) fd.set("notes", notes);
+    // ALWAYS POSTED (#5304): absent would mean "leave it", and empty means "clear it".
+    fd.set("notes", notes);
     if (row) {
       fd.set("event_id", String(row.eventId));
       // Three wire values (#2227): absent = unchanged, "none" = clear, "HH:MM" = state
@@ -315,18 +306,14 @@ export default function FoodServingForm({
         />
       </div>
       <label className="text-xs text-slate-500 sm:col-span-2 dark:text-slate-400">
-        Note
+        Notes
         <textarea
           name="notes"
           data-testid={`${testId}-notes`}
           className="input mt-1 w-full"
           rows={2}
-          placeholder="Optional"
           value={notes}
-          onChange={(event) => {
-            setNotes(event.target.value);
-            setNotesTouched(true);
-          }}
+          onChange={(event) => setNotes(event.target.value)}
         />
       </label>
       <InlineError>{error}</InlineError>

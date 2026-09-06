@@ -368,6 +368,7 @@ export interface FoodLedgerRow {
   recorded_at: string;
   meal_slot: FoodSlot | null;
   occurred_at: string | null;
+  notes: string | null;
 }
 
 /**
@@ -449,7 +450,7 @@ export function getFoodLedgerPage(
   const boundedPage = Math.min(requestedPage, pageCount(total, boundedSize));
   const rows = db
     .prepare(
-      `SELECT id, group_key, date, recorded_at, meal_slot, occurred_at
+      `SELECT id, group_key, date, recorded_at, meal_slot, occurred_at, notes
          FROM food_log_events
         WHERE profile_id = ? AND ${where.join(" AND ")}
         ORDER BY date DESC, COALESCE(occurred_at, recorded_at) DESC, id DESC
