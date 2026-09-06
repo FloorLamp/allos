@@ -389,7 +389,8 @@ function SetRow({
   // confirms the set — correcting IS confirming, so a failed set is two taps on
   // reps `−` and never a separate confirm afterwards.
   const planned = !set.done;
-  const confirm = (patch: Partial<SetEntry>) => onChange({ ...patch, done: true });
+  const confirm = (patch: Partial<SetEntry>) =>
+    onChange({ ...patch, done: true });
   const flags = flagsFor(set[f.weight], set[f.reps], set[f.duration]);
   const reps = useRef<HTMLInputElement | null>(null);
   const effortRef = (el: HTMLInputElement | null) => {

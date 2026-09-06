@@ -731,7 +731,10 @@ describe("nextSetText", () => {
     const shown = (seed: Parameters<typeof suggestNextSet>[0]) =>
       contextualNextSet(suggestNextSet(seed), seed.exercise, {})!;
     expect(
-      nextSetText(shown(ex({ lastSessionBest: { weightKg: 80, reps: 6 } })), "kg")
+      nextSetText(
+        shown(ex({ lastSessionBest: { weightKg: 80, reps: 6 } })),
+        "kg"
+      )
     ).toBe("80 kg × 7");
     expect(
       nextSetText(

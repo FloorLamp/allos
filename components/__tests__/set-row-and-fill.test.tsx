@@ -17,10 +17,24 @@ import {
 import {
   blankPart,
   blankSet,
+  doneSets,
+  partTotal,
   type PartEntry,
   type RepeatSourceSet,
   type SetEntry,
 } from "@/lib/activity-form-model";
+import {
+  buildActivityPayload,
+  makeNameClassifier,
+} from "@/lib/activity-form-validate";
+import { recapSessionFromPayload, sessionRecap } from "@/lib/session-recap";
+import { exerciseHistoryKey } from "@/lib/lifts";
+import type { ExerciseHistoryMap } from "@/lib/queries";
+
+// The picker vocabulary the payload builder resolves a part's type through.
+const classifier = makeNameClassifier(
+  new Map([["barbell bench press", "strength" as const]])
+);
 
 // THE TWO SEAMS #5377 BUILT, and the shared load #5371 stated over them, at the tier
 // where they are cheap to ask about.
@@ -40,7 +54,7 @@ const units = {
   temperatureUnit: "F",
 } as const;
 
-const setUp = () =>
+const setUp = (onSetCheckedOff: () => void = () => {}) =>
   renderHook(() =>
     useActivityParts({
       seed: null,
@@ -51,7 +65,7 @@ const setUp = () =>
       isKnown: () => true,
       customFlags: () => ({}),
       defaultCustomType: null,
-      onSetCheckedOff: () => {},
+      onSetCheckedOff,
     })
   );
 
@@ -176,17 +190,83 @@ describe("fillSets (#5377)", () => {
   });
 });
 
+// CHECKING A SET OFF IS CONFIRMING IT (#340/#5373). The parent starts the live rest
+// timer and its haptic off this one callback, and it must fire once per set however
+// the person confirmed — so the count is what these cases assert, not the flag.
+describe("the check-off gesture (#5373)", () => {
+  const planned = { ...blankSet(), weight: "60", reps: "8" };
+  const run = (drive: (h: ReturnType<typeof setUp>) => void) => {
+    const checkedOff = vi.fn();
+    const h = setUp(checkedOff);
+    act(() => h.result.current.setParts([part({ sets: [planned, planned] })]));
+    drive(h);
+    return checkedOff.mock.calls.length;
+  };
+
+  it.each([
+    [
+      "a confirm",
+      (h: ReturnType<typeof setUp>) =>
+        h.result.current.updateSet(0, 0, { done: true }),
+    ],
+    [
+      "a correction",
+      (h: ReturnType<typeof setUp>) =>
+        h.result.current.updateSet(0, 0, { reps: "6", done: true }),
+    ],
+  ])(
+    "%s checks the set off exactly once, and only the first time",
+    (_how, drive) => {
+      expect(
+        run((h) => {
+          act(() => drive(h));
+          act(() => drive(h));
+        })
+      ).toBe(1);
+    }
+  );
+
+  it.each([
+    [
+      "the exercise-level load",
+      (h: ReturnType<typeof setUp>) =>
+        h.result.current.updateSet(0, "all", { weight: "65" }),
+    ],
+    [
+      "a warmup toggle",
+      (h: ReturnType<typeof setUp>) =>
+        h.result.current.updateSet(0, 0, { warmup: true }),
+    ],
+    // Adding a row used to BE the check-off, which fired whether or not the previous
+    // set had happened; confirming is the explicit gesture now.
+    [
+      "adding a set",
+      (h: ReturnType<typeof setUp>) => h.result.current.addSet(0),
+    ],
+  ])("%s does not", (_how, drive) => {
+    expect(run((h) => act(() => drive(h)))).toBe(0);
+  });
+});
+
 // The real hook wired to the real card, so a tap on the grid is asked about in
 // `parts` — the state `buildActivityPayload` composes the save from — rather than in
 // a mocked callback's arguments.
 let latest: PartEntry[] = [];
 let latestFill: (fill: SetFill) => void = () => {};
 let live: ReturnType<typeof useActivityParts>;
-function Harness({ initial }: { initial: PartEntry[] }) {
+function Harness({
+  initial,
+  history = {},
+}: {
+  initial: PartEntry[];
+  // The shipped per-exercise history the coached suggestion — and, with it, the plan
+  // the grid opens as (#5373) — is built from. Empty means an exercise with no past.
+  history?: ExerciseHistoryMap;
+}) {
   const h = useActivityParts({
     seed: null,
     units,
-    history: {},
+    history,
     isEdit: false,
     equipmentList: [],
     isKnown: () => true,
@@ -213,7 +293,7 @@ function Harness({ initial }: { initial: PartEntry[] }) {
         units={units}
         isEdit={false}
         live={false}
-        history={{}}
+        history={history}
         deloadContext={{ isDeloadWeek: false, routineKeys: [] }}
         recoveringContext={{ temperedRegions: [], constraints: [] }}
         plateauHints={[]}
@@ -239,8 +319,11 @@ function Harness({ initial }: { initial: PartEntry[] }) {
 }
 const mountLive = (...initial: PartEntry[]) =>
   render(<Harness initial={initial} />);
+// Sets the person RECORDED — `done`, so the rows show their values rather than the
+// ghost placeholders a plan renders (#5373). The plan's own cases build their rows
+// without it.
 const sets = (...loads: [string, string][]): SetEntry[] =>
-  loads.map(([weight, reps]) => ({ ...blankSet(), weight, reps }));
+  loads.map(([weight, reps]) => ({ ...blankSet(), weight, reps, done: true }));
 const weights = () => latest[0].sets.map((s) => s.weight);
 const byId = (id: string) => screen.getByTestId(id);
 const rowOf = (label: string) =>
@@ -275,6 +358,8 @@ describe("SetRow's per-side field mapping (#5377)", () => {
       expect(latest[0].sets[0]).toMatchObject({
         [weightKey]: "20",
         [repsKey]: "1",
+        // Correcting a row's reps IS confirming it (#5373).
+        done: true,
       });
     }
   );
@@ -357,11 +442,15 @@ describe("the shared weight stepper (#5371)", () => {
       });
     });
     expect(screen.queryByTestId("exercise-weight")).toBeNull();
-    expect(byId("set1-weight")).toHaveProperty("value", "125");
-    expect(byId("set2-weight")).toHaveProperty("value", "120");
+    // A repeat states this session's PLAN, so the loads arrive as ghosts (#5373):
+    // painted in the placeholder, with nothing written into the field.
+    expect(byId("set1-weight")).toHaveProperty("value", "");
+    expect(byId("set1-weight")).toHaveProperty("placeholder", "125");
+    expect(byId("set2-weight")).toHaveProperty("placeholder", "120");
     // Editing set 2 to match set 1 is a choice about set 2, not a request to fold.
     fireEvent.change(byId("set2-weight"), { target: { value: "125" } });
     expect(weights()).toEqual(["125", "125"]);
+    expect(latest[0].sets.map((s) => s.done)).toEqual([false, true]);
     expect(screen.queryByTestId("exercise-weight")).toBeNull();
   });
 
@@ -440,8 +529,8 @@ describe("the shared weight stepper (#5371)", () => {
     mountLive(part());
     drive();
     expect(latest[0].sets).toStrictEqual([
-      { ...blankSet(), weight: "60", reps: "8" },
-      { ...blankSet(), weight: "65", reps: "8" },
+      { ...blankSet(), weight: "60", reps: "8", done: true },
+      { ...blankSet(), weight: "65", reps: "8", done: true },
     ]);
   });
 
@@ -462,5 +551,243 @@ describe("the shared weight stepper (#5371)", () => {
       "100",
       "80",
     ]);
+  });
+});
+
+// EVERY SET ARRIVES AS A PLAN, AND ONLY A CONFIRMED SET IS A RECORD (#5373).
+//
+// The owner's constraint is that they intend the whole prescription and in practice
+// fulfil one or two of its three rows, so a prefill that writes the plan as the record
+// lies on exactly those days. These cases ask the two questions that follow from it —
+// what the grid SHOWS before anything is lifted, and what the payload CARRIES after —
+// at the tier where a wrong answer is one assertion.
+describe("sets arrive as a plan (#5373)", () => {
+  const bench = "Barbell Bench Press";
+  // A prior session of three straight sets: the plan's source, and its LENGTH. The
+  // suggestion progresses the load; the row count is this session's own working rows.
+  const history = (
+    over: Partial<ExerciseHistoryMap[string]["sessions"][number]> = {},
+    bodyweight = false
+  ): ExerciseHistoryMap => ({
+    [exerciseHistoryKey(bench)]: {
+      bodyweight,
+      sessions: [
+        {
+          date: "2026-09-01",
+          exercise: bench,
+          activityId: 41,
+          equipment: null,
+          equipmentId: null,
+          baseKg: 0,
+          status: null,
+          sets: [1, 2, 3].map((n) => ({
+            set_number: n,
+            weight_kg: 60,
+            reps: 8,
+            weight_kg_right: null,
+            reps_right: null,
+            duration_sec: null,
+            duration_sec_right: null,
+            target_reps: null,
+            to_failure: null,
+            warmup: null,
+            rpe: null,
+          })),
+          ...over,
+        },
+      ],
+    },
+  });
+
+  const mountPlanned = (hist = history(), over: Partial<PartEntry> = {}) =>
+    render(
+      <Harness initial={[part({ name: bench, ...over })]} history={hist} />
+    );
+  const rows = () => latest[0].sets;
+  const shown = (id: string) => {
+    const el = byId(id) as HTMLInputElement;
+    return { value: el.value, ghost: el.placeholder };
+  };
+  // What the save would carry, through the ONE builder the form composes it with.
+  const payload = () =>
+    buildActivityPayload(
+      classifier,
+      latest.filter((p) => p.name.trim())
+    ).flat;
+
+  it("opens a pristine part as one ghost row per planned set, and saves none of them", () => {
+    mountPlanned();
+    expect(rows()).toHaveLength(3);
+    expect(rows().every((s) => !s.done)).toBe(true);
+    // The load is stated once, above reps-only rows (#5371) — and it is a ghost too,
+    // because no set of this exercise is a record yet.
+    expect(shown("set1-weight")).toEqual({ value: "", ghost: "62.5" });
+    // The load progresses and the reps come back to the scheme's floor — the SAME
+    // coached suggestion the one-set ghost showed, now stated for every planned row.
+    expect(shown("set2-reps")).toEqual({ value: "", ghost: "5" });
+    expect(payload()).toEqual([]);
+    // Nothing to add to, and no sentence to state: both read the record.
+    expect(screen.getByText("+ Add set")).toHaveProperty("disabled", true);
+    expect(screen.queryByTestId("set-summary")).toBeNull();
+  });
+
+  // The two gestures that turn a plan into a record, and they are ONE gesture: the
+  // control says "this happened as planned", a correction says "this happened, but".
+  it.each([
+    [
+      "confirming row 1",
+      () => fireEvent.click(byId("set-confirm-1")),
+      0,
+      { weight: "62.5", reps: "5" },
+    ],
+    [
+      "stepping row 2's reps down twice",
+      () => {
+        const dec = within(byId("set-row-2")).getByLabelText("Decrease reps");
+        fireEvent.click(dec);
+        fireEvent.click(dec);
+      },
+      1,
+      { weight: "62.5", reps: "3" },
+    ],
+    [
+      "typing row 3's reps",
+      () => fireEvent.change(byId("set3-reps"), { target: { value: "5" } }),
+      2,
+      { weight: "62.5", reps: "5" },
+    ],
+  ])(
+    "%s writes the ghost's values and marks that set done",
+    (_how, drive, si, expected) => {
+      mountPlanned();
+      drive();
+      expect(rows()[si]).toMatchObject({ ...expected, done: true });
+      // The other two rows are still the plan, and the payload is the one done set.
+      expect(rows().filter((s) => s.done)).toHaveLength(1);
+      expect(payload()).toHaveLength(1);
+      expect(payload()[0]).toMatchObject({
+        exercise: bench,
+        weight: Number(expected.weight),
+        reps: Number(expected.reps),
+      });
+      // A confirmed row has nothing left to confirm.
+      expect(screen.queryByTestId(`set-confirm-${si + 1}`)).toBeNull();
+    }
+  );
+
+  it("finishes a three-set plan as two sets, and states the plan it was worked against", () => {
+    mountPlanned();
+    fireEvent.click(byId("set-confirm-1"));
+    fireEvent.click(within(byId("set-row-2")).getByLabelText("Decrease reps"));
+    expect(payload().map((s) => s.reps)).toEqual([5, 4]);
+    // The recap the finish step renders reads the same two numbers: what was done,
+    // against what was planned. Computed at finish; never stored.
+    const recap = sessionRecap(
+      recapSessionFromPayload(
+        payload(),
+        { title: "", durationMin: null, intensity: null, bodyweightKg: 0 },
+        "kg",
+        { [bench]: latest[0].sets.length }
+      ),
+      {}
+    );
+    expect(recap.exercises[0]).toMatchObject({
+      workingSets: 2,
+      plannedSets: 3,
+    });
+  });
+
+  it("a part with no history keeps its one empty row, and typing confirms it", () => {
+    mountPlanned({});
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0].done).toBe(false);
+    fireEvent.change(byId("set1-weight"), { target: { value: "40" } });
+    fireEvent.change(byId("set1-reps"), { target: { value: "10" } });
+    expect(rows()[0]).toMatchObject({ weight: "40", reps: "10", done: true });
+    // Now there IS a record to add to, and a further set is a ghost copied from it.
+    fireEvent.click(screen.getByText("+ Add set"));
+    expect(rows()[1]).toMatchObject({ weight: "40", reps: "10", done: false });
+    expect(payload()).toHaveLength(1);
+  });
+
+  it("a per-side part ghosts both sides per row, and a confirm writes both", () => {
+    mountPlanned(
+      history({
+        sets: [1, 2].map((n) => ({
+          set_number: n,
+          weight_kg: 20,
+          reps: 10,
+          weight_kg_right: 18,
+          reps_right: 10,
+          duration_sec: null,
+          duration_sec_right: null,
+          target_reps: null,
+          to_failure: null,
+          warmup: null,
+          rpe: null,
+        })),
+      }),
+      { perSide: true }
+    );
+    expect(rows()).toHaveLength(2);
+    expect(rows()[0]).toMatchObject({
+      weight: "22.5",
+      weightRight: "20.5",
+      reps: "5",
+      repsRight: "5",
+      done: false,
+    });
+    fireEvent.click(byId("set-confirm-1"));
+    expect(rows()[0].done).toBe(true);
+    // ONE flag for the row, so both sides became a record together.
+    expect(payload()[0]).toMatchObject({ weight: 22.5, weightRight: 20.5 });
+  });
+
+  it("an edit opens every stored set done, and offers no ghost", () => {
+    render(
+      <Harness
+        initial={[part({ name: bench, sets: sets(["60", "8"], ["60", "7"]) })]}
+        history={history()}
+      />
+    );
+    expect(rows().every((s) => s.done)).toBe(true);
+    expect(screen.queryByTestId("set-confirm-1")).toBeNull();
+    expect(shown("set1-weight").value).toBe("60");
+    expect(payload()).toHaveLength(2);
+  });
+});
+
+// THE PAYLOAD RULE, ASKED OF THE BUILDER ITSELF: a ghost that was never confirmed
+// must not reach the save, however complete its fields look. The fixture REACHES the
+// forbidden state — a planned row carries the whole prescription, weight and reps —
+// so deleting the `done` filter in buildActivityPayload turns this red rather than
+// leaving it green on an empty row it could never have caught.
+describe("only a confirmed set reaches the payload (#5373)", () => {
+  const named = (over: Partial<PartEntry>) =>
+    buildActivityPayload(classifier, [
+      { ...blankPart(), name: "Barbell Bench Press", ...over },
+    ]).flat;
+  const planned = { ...blankSet(), weight: "60", reps: "8", done: false };
+
+  it.each([
+    ["every row planned", [planned, planned, planned], 0],
+    ["one confirmed", [{ ...planned, done: true }, planned, planned], 1],
+    ["all confirmed", [1, 2, 3].map(() => ({ ...planned, done: true })), 3],
+  ])("%s ⇒ %i saved sets", (_case, rows, saved) => {
+    expect(named({ sets: rows })).toHaveLength(saved);
+  });
+
+  // The judgement reads the same filter: a plan cannot miss a target it was never
+  // measured against, and the volume total counts what was lifted.
+  it("judges and totals the record, not the plan", () => {
+    const p = {
+      ...blankPart(),
+      name: "Barbell Bench Press",
+      targetReps: "8",
+      sets: [{ ...planned, done: true, reps: "6" }, planned, planned],
+    };
+    expect(doneSets(p)).toHaveLength(1);
+    expect(partTotal(p)).toBe(360);
+    expect(partTotal({ ...p, sets: [planned, planned, planned] })).toBe(0);
   });
 });

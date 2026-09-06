@@ -7,11 +7,7 @@ import {
   generateActivityTitle,
   resolveFormSessionDuration,
 } from "@/lib/activity-form-validate";
-import {
-  blankPart,
-  blankSet,
-  type PartEntry,
-} from "@/lib/activity-form-model";
+import { blankPart, blankSet, type PartEntry } from "@/lib/activity-form-model";
 import type { ActivityType } from "@/lib/types";
 
 // The picker vocabulary the classifier reads: lowercased name → type. Variant
