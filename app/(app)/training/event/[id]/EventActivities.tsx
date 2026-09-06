@@ -30,6 +30,12 @@ export interface EventActivityView {
 // the event — and the rest of the day, each one a tap from linking. The event
 // completes against its result: Complete sits beside the linked list, not in the
 // header, because the result is what a person checks before marking the day done.
+//
+// An ABANDONED event takes no result: the person said it did not happen for them, so
+// the day still lists what they logged but nothing offers to make one of those its
+// result. The auto-link and `linkEventActivityCore` refuse the same thing, so this is
+// the offer matching the rule rather than the rule. Unlink stays, so a result attached
+// before the event was abandoned can still be taken off.
 export default function EventActivities({
   planId,
   status,
@@ -109,9 +115,11 @@ export default function EventActivities({
           </ul>
         ) : (
           <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
-            {unlinked.length > 0
-              ? "No activity linked yet. Link one from the day below."
-              : "No activity linked yet."}
+            {status === "abandoned"
+              ? "No result — this event was abandoned."
+              : unlinked.length > 0
+                ? "No activity linked yet. Link one from the day below."
+                : "No activity linked yet."}
           </p>
         )}
       </section>
@@ -124,7 +132,7 @@ export default function EventActivities({
           <ul className="mt-3 space-y-2" data-testid="event-day-list">
             {unlinked.map((a) => (
               <ActivityRow key={a.id} activity={a}>
-                {canWrite && (
+                {canWrite && status !== "abandoned" && (
                   <form action={(fd) => run(linkEventActivity, fd)}>
                     <input type="hidden" name="id" value={planId} />
                     <input type="hidden" name="activity_id" value={a.id} />

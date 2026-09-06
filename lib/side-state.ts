@@ -118,20 +118,23 @@ export const SIDE_STATE_FAMILIES: readonly SideStateFamily[] = [
     guard: "lib/__db_tests__/import-edit-lock.test.ts",
   },
   {
-    family: "event-link-optout",
+    family: "event-link-decision",
     concept:
-      "A record that a person set this session's event link by hand — attached or detached — so the sync's auto-link never chooses for it again.",
-    store: "`endurance_link_optout` column on activities",
+      "A record that a person set this session's event link by hand — attached or detached — so the sync's auto-link never chooses for it again, and WHEN in the order of their decisions they said it.",
+    store: "`endurance_link_decided_seq` column on activities",
     registryModule: "lib/endurance-plan.ts",
-    registrySymbol: "isEventLinkOptedOut",
+    registrySymbol: "isEventLinkDecided",
     keyGrammar:
-      "row-level flag; set by BOTH hand moves (link and unlink), never cleared, " +
-      "read only through the predicate — `endurance_plan_id` beside it says which " +
-      "decision it was. It only ever goes up, including across a merge fold " +
-      "(lib/merge-activity.ts writes it with max()), because the merge deletes the " +
-      "row that carries it. Its own flag rather than the `edited` lock above, " +
+      "row-level ordinal, 0 = undecided; written by BOTH hand moves (link and " +
+      "unlink) as one past the profile's newest, never cleared, read only through " +
+      "`isEventLinkDecided` / `eventLinkDecisionSeq` — `endurance_plan_id` beside " +
+      "it says which decision it was, the ordinal says which came last. A merge " +
+      "keeps the NEWEST decision in the cluster and carries its link and its " +
+      "ordinal onto the keeper (lib/import-review/conflicts.ts), because the merge " +
+      "deletes the row that carries it; keepership is richness order and cannot " +
+      "stand in for recency. Its own column rather than the `edited` lock above, " +
       "which would freeze the whole row against re-ingest (#3285 item 2)",
-    sweep: "none needed — the flag dies with its row",
+    sweep: "none needed — the ordinal dies with its row",
     guard: "lib/__db_tests__/endurance-plans.test.ts",
   },
   {

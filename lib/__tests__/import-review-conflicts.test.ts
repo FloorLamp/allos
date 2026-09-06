@@ -397,6 +397,69 @@ describe("keeperFoldState — the invertible fold (#1884)", () => {
     expect(keeperFoldState(before, []).equipmentId).toBeNull();
   });
 
+  // ── The event link (#3285 item 2) ───────────────────────────────────────────
+  // A merge keeps ONE row, so when two copies of one session each carry a hand
+  // decision about the event link, the fold has to pick one — and the only answer a
+  // person can predict is their own LATEST word. Keepership cannot stand in for it:
+  // it comes from source and richness (autoMergeKeeperId), which say nothing about
+  // when anybody decided. `endurance_link_decided_seq` is that order; 0 is "nobody
+  // decided". Every case below is one decision beating another, read in BOTH
+  // positions, so no answer here can be explained by which row is the keeper.
+  const linked = (id: number, plan: number | null, seq: number) => ({
+    id,
+    endurance_plan_id: plan,
+    endurance_link_decided_seq: seq,
+  });
+  const link = (
+    keeper: Record<string, unknown>,
+    drops: Record<string, unknown>[]
+  ) => {
+    const state = keeperFoldState({ ...before, ...keeper }, drops);
+    return [state.endurancePlanId, state.enduranceLinkDecidedSeq];
+  };
+
+  it("takes the newest decision's link, whether it is the keeper's or a drop's", () => {
+    // Detached first, linked to 7 second → the link stands, from either side.
+    expect(link(linked(1, null, 3), [linked(2, 7, 4)])).toEqual([7, 4]);
+    expect(link(linked(1, 7, 4), [linked(2, null, 3)])).toEqual([7, 4]);
+  });
+
+  it("takes a newest decision that is a DETACH, over an older row that has a link", () => {
+    // The mirror, and the one a "prefer whichever decided row still has a link"
+    // rule gets wrong: the person linked it, then changed their mind.
+    expect(link(linked(1, 7, 4), [linked(2, null, 5)])).toEqual([null, 5]);
+    expect(link(linked(1, null, 5), [linked(2, 7, 4)])).toEqual([null, 5]);
+  });
+
+  it("moves the link to the event decided last when both decisions carry one", () => {
+    // "Move here": the result was on event 7, the person moved it to 9. Nothing in
+    // this cluster is undecided, so a link-preferring tie-break cannot answer it.
+    expect(link(linked(1, 7, 4), [linked(2, 9, 5)])).toEqual([9, 5]);
+    expect(link(linked(1, 9, 5), [linked(2, 7, 4)])).toEqual([9, 5]);
+  });
+
+  it("answers the same however the drops are ordered, with two decided drops", () => {
+    // Two decided drops used to flip on orderDropsForFold's richness ordering,
+    // which is unrelated to either decision.
+    const older = linked(2, 7, 4);
+    const newer = linked(3, null, 6);
+    expect(link(linked(1, null, 0), [older, newer])).toEqual([null, 6]);
+    expect(link(linked(1, null, 0), [newer, older])).toEqual([null, 6]);
+  });
+
+  it("gap-fills keeper-first when nobody has decided, and reports no decision", () => {
+    expect(link(linked(1, null, 0), [linked(2, 7, 0)])).toEqual([7, 0]);
+    expect(link(linked(1, 9, 0), [linked(2, 7, 0)])).toEqual([9, 0]);
+    expect(link(linked(1, null, 0), [])).toEqual([null, 0]);
+  });
+
+  it("falls back to keeper-first only on EQUAL ordinals, which is the pre-ordinal past", () => {
+    // Rows migrated from the 0/1 flag all carry ordinal 1: the flag knew only THAT a
+    // decision existed, so they tie, and the tie resolves deterministically.
+    expect(link(linked(1, null, 1), [linked(2, 7, 1)])).toEqual([null, 1]);
+    expect(link(linked(1, 7, 1), [linked(2, null, 1)])).toEqual([7, 1]);
+  });
+
   it("drops an override naming a member that has left, keeps one naming a stayer", () => {
     const overrides = { duration_min: 3 } as const;
     // b (id 3) is still folded in → its chosen value wins over the keeper's own.

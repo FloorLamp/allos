@@ -10,7 +10,7 @@ import {
   disciplineForActivityName,
   eventTitle,
   isEnduranceDiscipline,
-  isEventLinkOptedOut,
+  isEventLinkDecided,
   type EndurancePlan,
   type EndurancePlanDiscipline,
   type EndurancePlanStatus,
@@ -367,10 +367,10 @@ export function setEndurancePlanStatusCore(
 // `ON DELETE SET NULL` and agrees; the explicit UPDATE keeps this transaction
 // correct on a connection where the pragma is off (the migration runner's).
 //
-// The auto-link opt-out is left exactly as it is, on both paths. A session whose link
-// a person set by hand keeps its flag when the event goes away, so the next sync
-// cannot quietly re-attach it to some other event that day; a session the sync linked
-// on its own has no flag and stays a candidate. IMMEDIATE.
+// The person's decision is left exactly as it is, on both paths. A session whose link
+// a person set by hand keeps its decision ordinal when the event goes away, so the
+// next sync cannot quietly re-attach it to some other event that day; a session the
+// sync linked on its own carries no decision and stays a candidate. IMMEDIATE.
 export function deleteEndurancePlanCore(
   profileId: number,
   id: number
@@ -399,13 +399,38 @@ export function deleteEndurancePlanCore(
 // result of. An event's result is the set of activities pointing at it; an activity
 // is the result of at most one event.
 
-// Link an activity to an event, MANUALLY. Both rows must be the profile's, and the
-// activity must be logged on the event's day — the one statement carries every rule,
-// so a cross-profile id or an off-day session simply changes nothing. IMMEDIATE.
+// The ordinal a decision about an event link is recorded with (#3285 item 2): one
+// past the newest this profile has. Taken inside the caller's IMMEDIATE transaction,
+// so the write lock is what makes it strictly increasing — no clock, no ties. Gaps
+// are fine (a refused link burns one); only the order is read. A merge deletes rows
+// and with them their ordinals, and that is harmless for the same reason: the next
+// decision only has to beat the ones still standing.
+function nextEventLinkDecisionSeq(profileId: number): number {
+  return (
+    db
+      .prepare(
+        `SELECT COALESCE(MAX(endurance_link_decided_seq), 0) + 1 AS next
+           FROM activities WHERE profile_id = ?`
+      )
+      .get(profileId) as { next: number }
+  ).next;
+}
+
+// Link an activity to an event, MANUALLY. Both rows must be the profile's, the
+// activity must be logged on the event's day, and the event must not be ABANDONED —
+// the one statement carries every rule, so a cross-profile id, an off-day session or
+// an abandoned event simply changes nothing. IMMEDIATE.
 //
-// A hand link SETS the opt-out (`isEventLinkOptedOut`), it does not clear it: the
-// person has decided this session's link, and the link column already records which
-// event they chose. Clearing it instead would leave the session free the moment
+// An abandoned event never attracts a result, by hand or by sync: the person said the
+// event did not happen for them, and a result would contradict it on the event's own
+// page ("Abandoned · Result: Harbor 10k"). The auto-link says the same thing in its
+// own WHERE clause (`linkRaceActivityCore`); the page stops offering the button.
+// Detaching stays available, so a result attached before the event was abandoned can
+// still be taken off.
+//
+// A hand link RECORDS the decision (`endurance_link_decided_seq`), it does not clear
+// it: the person has decided this session's link, and the link column already records
+// which event they chose. Clearing it instead would leave the session free the moment
 // anything removed that link without them — deleting the event, a merge, an undo —
 // and the next sync would attach it to the very event they detached it from.
 export function linkEventActivityCore(
@@ -417,22 +442,32 @@ export function linkEventActivityCore(
     () =>
       db
         .prepare(
-          `UPDATE activities SET endurance_plan_id = ?, endurance_link_optout = 1
+          `UPDATE activities
+              SET endurance_plan_id = ?, endurance_link_decided_seq = ?
             WHERE id = ? AND profile_id = ?
               AND date = (SELECT event_date FROM endurance_plans
-                           WHERE id = ? AND profile_id = ?)`
+                           WHERE id = ? AND profile_id = ?
+                             AND status IN ('active', 'completed'))`
         )
-        .run(planId, activityId, profileId, planId, profileId).changes > 0
+        .run(
+          planId,
+          nextEventLinkDecisionSeq(profileId),
+          activityId,
+          profileId,
+          planId,
+          profileId
+        ).changes > 0
   );
 }
 
 // Detach an activity from whatever event it is linked to. Profile-scoped; false
 // when the row is not the profile's or was not linked. IMMEDIATE.
 //
-// The detach is REMEMBERED (`endurance_link_optout`): this is a person saying the
-// session is not that event's result, and the auto-link runs again on the next
-// value-changing re-sync. Re-linking by hand does not clear the memory — it replaces
-// one decision with another, and both are the person's.
+// The detach is REMEMBERED (`endurance_link_decided_seq`): this is a person saying the
+// session is not that event's result, and without it the auto-link runs again on the
+// next value-changing re-sync. Re-linking by hand does not clear the memory — it
+// records a NEWER decision, and both are the person's; the newer one wins wherever
+// the two ever have to be resolved against each other.
 export function unlinkEventActivityCore(
   profileId: number,
   activityId: number
@@ -442,10 +477,11 @@ export function unlinkEventActivityCore(
       db
         .prepare(
           `UPDATE activities
-              SET endurance_plan_id = NULL, endurance_link_optout = 1
+              SET endurance_plan_id = NULL, endurance_link_decided_seq = ?
             WHERE id = ? AND profile_id = ? AND endurance_plan_id IS NOT NULL`
         )
-        .run(activityId, profileId).changes > 0
+        .run(nextEventLinkDecisionSeq(profileId), activityId, profileId)
+        .changes > 0
   );
 }
 
@@ -458,7 +494,7 @@ export function unlinkEventActivityCore(
 // was marked done still belongs to it. An abandoned event never attracts a result.
 // A session whose link a person has SET by hand — attached or detached — is never
 // claimed again, whatever the source later says about it and whatever later happens
-// to the link itself (`isEventLinkOptedOut`).
+// to the link itself (`isEventLinkDecided`).
 // Called by the integration upsert after every insert or value-changing update;
 // returns whether a link was written. IMMEDIATE (a SAVEPOINT under the sync's lock).
 export function linkRaceActivityCore(
@@ -469,7 +505,7 @@ export function linkRaceActivityCore(
     const a = db
       .prepare(
         `SELECT date, type, title, workout_type, endurance_plan_id,
-                endurance_link_optout
+                endurance_link_decided_seq
            FROM activities WHERE id = ? AND profile_id = ?`
       )
       .get(activityId, profileId) as
@@ -479,13 +515,13 @@ export function linkRaceActivityCore(
           title: string;
           workout_type: string | null;
           endurance_plan_id: number | null;
-          endurance_link_optout: number | null;
+          endurance_link_decided_seq: number | null;
         }
       | undefined;
     if (
       !a ||
       a.endurance_plan_id != null ||
-      isEventLinkOptedOut(a.endurance_link_optout) ||
+      isEventLinkDecided(a.endurance_link_decided_seq) ||
       a.type !== "cardio" ||
       a.workout_type !== "race"
     )

@@ -145,34 +145,56 @@ export function disciplineForActivityName(
 }
 
 /**
- * The auto-link OPT-OUT (`activities.endurance_link_optout`, #3285 item 2): a PERSON
- * decided this session's event link by hand, so the sync's auto-link never chooses
- * for this session again.
+ * The event link's DECISION ORDINAL (`activities.endurance_link_decided_seq`,
+ * #3285 item 2): 0 when nobody has decided this session's event link, and N > 0 when
+ * a PERSON set it by hand as the profile's Nth such decision.
  *
- * It is set by BOTH hand moves — attaching a session to an event and detaching one —
- * because they are the same fact from the row's point of view: the link is the
- * person's, not the sync's. Reading the flag together with `endurance_plan_id` says
- * which decision it was: a plan id means "linked by hand", null means "detached".
- * That is why one flag is enough; a second column would only re-state what the link
- * column already says.
+ * It is written by BOTH hand moves — attaching a session to an event and detaching
+ * one — because they are the same fact from the row's point of view: the link is the
+ * person's, not the sync's. Reading it together with `endurance_plan_id` says which
+ * decision it was: a plan id means "linked by hand", null means "detached". That is
+ * why one column is enough; a second would only re-state what the link column says.
+ *
+ * WHY AN ORDINAL rather than a bare flag. A decision has to survive a merge, and a
+ * merge keeps ONE row: when two copies of one session each carry a decision, the
+ * cluster has to keep the person's LATEST word. A flag can only say THAT they
+ * decided, so the fold fell back to whichever copy won keepership — which comes from
+ * richness and token order and has nothing to do with recency, so a hand link, or a
+ * "Move here", was reverted by machinery with the person doing nothing. The ordinal
+ * is a total order over one profile's decisions, so the fold can just take the
+ * newest. Not a timestamp: nothing shows a person when they decided, a clock stores
+ * more than the rule needs, and two decisions inside one millisecond would tie —
+ * which is the guessing this exists to end.
  *
  * A decision is STICKY. It survives the event being deleted, a merge that replaces
- * the row, and a delete-and-undo — anything that can move or destroy the link
- * without the person touching it. Without that, machinery hands the session back to
- * the auto-link and the next sync re-attaches what they detached.
+ * the row, and a delete-and-undo — anything that can move or destroy the link without
+ * the person touching it. Without that, machinery hands the session back to the
+ * auto-link and the next sync re-attaches what they detached.
+ *
+ * And it is ONE-WAY: nothing clears it, and nothing offers to hand a session back to
+ * the auto-link. Deference, not a trap — the bar exists only on the sessions a person
+ * has already decided by hand, the auto-link still runs freely on every other one, and
+ * the most it can cost is the one tap the auto-link would have saved them (Link, on
+ * the event's own page). Nobody is stranded: a session whose event was deleted and
+ * recreated is listed on the new event with a Link button like any other.
  *
  * Deliberately NOT the #133 `edited` lock: `edited` holds the WHOLE row out of
  * re-ingest and badges it "<source> · edited", so taking it here would stop the
  * provider correcting the session's distance because someone detached it from an
- * event. One flag, one consequence.
+ * event. One column, one consequence.
  *
  * Pure, and here rather than in lib/endurance-plans.ts, so the pure merge fold
- * (lib/import-review/conflicts.ts) can read the column through it too. Its census
- * row is the `event-link-optout` family in lib/side-state.ts; read the column only
- * through this predicate.
+ * (lib/import-review/conflicts.ts) can read the column through it too. Its census row
+ * is the `event-link-decision` family in lib/side-state.ts; read the column only
+ * through these two.
  */
-export function isEventLinkOptedOut(flag: number | null | undefined): boolean {
-  return flag === 1;
+export function eventLinkDecisionSeq(seq: number | null | undefined): number {
+  return typeof seq === "number" && seq > 0 ? seq : 0;
+}
+
+/** Whether a person has decided this row's event link at all. */
+export function isEventLinkDecided(seq: number | null | undefined): boolean {
+  return eventLinkDecisionSeq(seq) > 0;
 }
 
 // ---- Cited constants ----

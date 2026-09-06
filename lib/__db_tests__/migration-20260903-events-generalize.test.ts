@@ -34,6 +34,7 @@ import { migrationsBefore } from "@/lib/migrations/versions";
 import { migration } from "@/lib/migrations/versions/20260903-events-generalize-endurance-plans";
 import { migration as linkMigration } from "@/lib/migrations/versions/20260906-event-activity-link";
 import { migration as optoutMigration } from "@/lib/migrations/versions/20260906-event-link-optout";
+import { migration as decisionMigration } from "@/lib/migrations/versions/20260906-event-link-decision";
 import { eventTitle, disciplineLabel } from "@/lib/endurance-plan";
 import { getEndurancePlans } from "@/lib/endurance-plans";
 import { enduranceEventItems } from "@/lib/queries/upcoming/plans";
@@ -330,7 +331,9 @@ describe("20260906-event-activity-link leaves every activity as it was (#3285 it
   });
 
   // The opt-out column rides the same oracle: every existing activity crosses whole,
-  // gaining only the flag, set to 0 — nobody has unlinked anything yet.
+  // gaining only the flag, set to 0 — nobody has unlinked anything yet. That flag is
+  // superseded by the decision ordinal below, which replaces it; this case still
+  // holds it to the oracle where it lands in the sequence.
   it("20260906-event-link-optout adds only endurance_link_optout = 0, and replays as a no-op", () => {
     const mem = new Database(":memory:");
     runMigrations(mem, migrationsBefore(optoutMigration.name));
@@ -352,6 +355,48 @@ describe("20260906-event-activity-link leaves every activity as it was (#3285 it
     );
     optoutMigration.up(mem);
     expect(rows(mem)).toEqual(after);
+    mem.close();
+  });
+
+  // The ordinal REPLACES the flag: a row that carried a decision crosses as ordinal 1
+  // — the most a 0/1 flag ever knew — a row that carried none as 0, the old column is
+  // gone, and every other value is untouched.
+  it("20260906-event-link-decision carries a set flag across as ordinal 1 and drops the flag", () => {
+    const mem = new Database(":memory:");
+    runMigrations(mem, migrationsBefore(decisionMigration.name));
+    mem.prepare("INSERT INTO profiles (id, name) VALUES (1, 'Decide')").run();
+    for (const [id, optout] of [
+      [7, 1],
+      [8, 0],
+    ]) {
+      mem
+        .prepare(
+          `INSERT INTO activities
+             (id, profile_id, date, type, title, duration_min, distance_km,
+              workout_type, source, external_id, notes, created_at,
+              endurance_link_optout)
+           VALUES (?, 1, '2019-05-25', 'cardio', 'City Half', 105, 21.3, 'race',
+                   'strava', 'strava:' || ?, 'negative split',
+                   '2019-05-25 12:00:00', ?)`
+        )
+        .run(id, id, optout);
+    }
+    const before = rows(mem);
+    decisionMigration.up(mem);
+    const after = rows(mem);
+    expect(after).toEqual(
+      before.map(({ endurance_link_optout: flag, ...rest }) => ({
+        ...rest,
+        endurance_link_decided_seq: flag === 1 ? 1 : 0,
+      }))
+    );
+    decisionMigration.up(mem);
+    expect(rows(mem)).toEqual(after);
+    expect(
+      (
+        mem.prepare("PRAGMA table_info(activities)").all() as { name: string }[]
+      ).map((c) => c.name)
+    ).not.toContain("endurance_link_optout");
     mem.close();
   });
 

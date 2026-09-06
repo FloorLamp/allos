@@ -635,10 +635,10 @@ const COLUMN_EXPORT_ALLOWLIST: ColumnExclusion[] = [
       "equipment_id",
       "elapsed_min",
       "logged_via",
-      "endurance_link_optout",
+      "endurance_link_decided_seq",
     ],
     kind: "inherited",
-    why: "#466 widened this dataset from the display projection to the device telemetry it was dropping, and stopped where it stopped; every telemetry column added since is here, alongside the write stamps, the equipment link and the edited/logged_via provenance pair. `endurance_link_optout` is argued rather than inherited (#3285 item 2): it is not a fact about the person but the app's memory that they set this session's event link by hand, so the sync's auto-link leaves it alone — sync machinery in the same class as `edited` above, and meaningless once re-imported somewhere with no sync history. The event link itself (`endurance_plan_id`) IS exported",
+    why: "#466 widened this dataset from the display projection to the device telemetry it was dropping, and stopped where it stopped; every telemetry column added since is here, alongside the write stamps, the equipment link and the edited/logged_via provenance pair. `endurance_link_decided_seq` is argued rather than inherited (#3285 item 2): it is not a fact about the person but the app's memory that they set this session's event link by hand, and in what order, so the sync's auto-link leaves it alone and a merge can keep their latest word — sync machinery in the same class as `edited` above, and meaningless once re-imported somewhere with no sync history. The event link itself (`endurance_plan_id`) IS exported",
   },
   {
     table: "activity_telemetry",

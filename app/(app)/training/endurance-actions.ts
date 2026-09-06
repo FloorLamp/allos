@@ -243,7 +243,9 @@ export async function linkEventActivity(
   if (!Number.isInteger(planId) || !Number.isInteger(activityId))
     return formError("Invalid link.");
   if (!linkEventActivityCore(profile.id, planId, activityId))
-    return formError("That activity isn’t on the event’s day.");
+    return formError(
+      "That activity isn’t on the event’s day, or the event was abandoned."
+    );
   revalidateEndurance();
   return formOk();
 }

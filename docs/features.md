@@ -835,8 +835,9 @@ the activities logged on the day link to it: a run Strava labels a race links
 itself to that day's event in its discipline, and anything else links with one
 tap. Once you link or unlink a session yourself, the sync stops choosing for it —
 a later sync, a merge with the same session from another app, or deleting the
-event will not attach it again. Deleting an event keeps its activities and
-unlinks them. Mobility sessions
+event will not attach it again, and where two copies of one session disagree the
+one you decided last wins. An abandoned event takes no result. Deleting an event
+keeps its activities and unlinks them. Mobility sessions
 log against body regions, build their own coverage strip, and can satisfy weekly
 mobility habits.
 
