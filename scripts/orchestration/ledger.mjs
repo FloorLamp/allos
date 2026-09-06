@@ -37,13 +37,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { helpGuard, isMain } from "./usage.mjs";
-import { resolveStateDir } from "./host.mjs";
+import { LEDGER_FILE, resolveStateDir } from "./host.mjs";
 helpGuard(process.argv, import.meta.url);
 
 /** Where the ledger lives — the roster is derived from this directory. */
 export const ledgerPath = () =>
   process.env.ALLOS_DISPATCH_LEDGER ??
-  path.join(resolveStateDir(), "allos-dispatch-ledger.jsonl");
+  path.join(resolveStateDir(), LEDGER_FILE);
 
 /** Rows oldest-first. A torn append is skipped, never thrown on. */
 export function readLedger(file = ledgerPath()) {

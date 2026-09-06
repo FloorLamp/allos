@@ -320,6 +320,7 @@ describe("shell helper invocations", () => {
       "scripts/dev.sh",
       "scripts/orchestration/agent-gates.sh",
       "scripts/orchestration/pm-digest.sh",
+      "scripts/orchestration/run-gates-recorded.sh",
       "scripts/orchestrator-checkin.sh",
     ]);
   });

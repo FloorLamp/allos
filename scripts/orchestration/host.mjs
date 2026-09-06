@@ -16,11 +16,17 @@
 // tools import the function — one resolver, not N copies of its order:
 //
 //   1. $SCRATCH — the explicit override, exactly as before.
-//   2. /home/user/scratch when it exists — the measured live-container layout;
-//      existing state keeps resolving to where it already is.
-//   3. $XDG_STATE_HOME/allos-work, else ~/.local/state/allos-work
+//   2. Whichever candidate below ALREADY HOLDS THE LEDGER (allos-dispatch-ledger.jsonl)
+//      — before any layout preference. Measured 2026-09-06 (#5385): a session
+//      wrote its ledger, roster and four dispatches under ~/.local/state, a lane
+//      then created /home/user/scratch, and the next `new` resolved THERE — a
+//      fresh ledger, a port base re-allocated over a live lane, `list` reading
+//      one lane of five. State stays where it started; a new directory cannot
+//      move it.
+//   3. /home/user/scratch when it exists — the measured live-container layout.
+//   4. $XDG_STATE_HOME/allos-work, else ~/.local/state/allos-work
 //      — the durable cross-platform default (macOS included; no per-OS branch).
-//   4. os.tmpdir()/allos-work-state — LAST, and explicitly
+//   5. os.tmpdir()/allos-work-state — LAST, and explicitly
 //      non-durable: only when no home directory is resolvable at all.
 
 import fs from "node:fs";
@@ -41,6 +47,9 @@ const defaultIo = {
   tmpdir: () => os.tmpdir(),
 };
 
+/** The dispatch ledger's file name — ledger.mjs joins it onto the resolved dir. */
+export const LEDGER_FILE = "allos-dispatch-ledger.jsonl";
+
 /**
  * The one durable state directory the ledger and roster live in.
  * @param {Record<string, string | undefined>} [env]
@@ -48,19 +57,21 @@ const defaultIo = {
  */
 export function resolveStateDir(env = process.env, io = defaultIo) {
   if (env.SCRATCH) return env.SCRATCH;
-  if (io.exists("/home/user/scratch")) return "/home/user/scratch";
   const home = env.XDG_STATE_HOME
     ? env.XDG_STATE_HOME
     : io.homedir()
       ? path.join(io.homedir(), ".local", "state")
       : null;
-  if (home) {
-    // The directory was named allos-orchestration until the 2026-09 rename;
-    // a machine that already holds state there keeps resolving to it.
-    const legacy = path.join(home, "allos-orchestration");
-    const current = path.join(home, "allos-work");
-    return !io.exists(current) && io.exists(legacy) ? legacy : current;
-  }
+  // The directory was named allos-orchestration until the 2026-09 rename;
+  // a machine that already holds state there keeps resolving to it.
+  const legacy = home && path.join(home, "allos-orchestration");
+  const current = home && path.join(home, "allos-work");
+  const holdsLedger = ["/home/user/scratch", current, legacy].find(
+    (dir) => dir && io.exists(path.join(dir, LEDGER_FILE))
+  );
+  if (holdsLedger) return holdsLedger;
+  if (io.exists("/home/user/scratch")) return "/home/user/scratch";
+  if (home) return !io.exists(current) && io.exists(legacy) ? legacy : current;
   return path.join(io.tmpdir(), "allos-work-state");
 }
 
