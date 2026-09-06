@@ -246,10 +246,13 @@ test.describe("endurance event plans (#839)", () => {
         .toBuffer(),
     });
     // capturePhotoFile STAGES the file; the shared surface waits for a confirm, which
-    // is what makes a batch a list of named things (#3286).
-    await expect(page.getByTestId("media-input-preview-0")).toBeVisible();
-    await settledClick(page, page.getByTestId("media-input-submit"));
-    await expect(page.getByTestId("media-input-preview-0")).toBeHidden();
+    // is what makes a batch a list of named things (#3286). The three markers below
+    // are the DIALOG's, mounted by a click after hydration, so they can never sit
+    // inside a streamed Suspense boundary and have no staged copy to be confused with.
+    const preview = page.getByTestId("media-input-preview-0"); // testid-scope-ok: MediaInput's dialog, mounted client-side on click
+    await expect(preview).toBeVisible();
+    await settledClick(page, page.getByTestId("media-input-submit")); // testid-scope-ok: MediaInput's dialog, mounted client-side on click
+    await expect(preview).toBeHidden();
 
     const thumbs = strip.locator("img");
     await expect(thumbs).toHaveCount(1);
