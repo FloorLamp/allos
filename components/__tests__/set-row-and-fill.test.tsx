@@ -327,11 +327,11 @@ describe("the shared weight stepper (#5371)", () => {
   // A per-side lift shares its load only while BOTH sides match across every set;
   // one side drifting on one set is enough to keep every set's weights on the row.
   it.each([
-    ["matching", { weightRight: "18" }, 2],
-    ["mismatched", { weightRight: "16" }, 4],
+    ["matching", 2, { weightRight: "18" }],
+    ["mismatched", 4, { weightRight: "16" }],
   ])(
     "per-side sets with %s sides render %i weight steppers",
-    (_case, set2Right, steppers) => {
+    (_case, steppers, set2Right) => {
       const two = sets(["20", "10"], ["20", "10"]).map((s) => ({
         ...s,
         weightRight: "18",
