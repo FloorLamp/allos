@@ -400,10 +400,13 @@ describe("20260906-event-activity-link leaves every activity as it was (#3285 it
     mem.close();
   });
 
-  it("the activities export row carries every old column, with the link added last", () => {
+  it("the activities export row carries every old column, with the event named last", () => {
     const ds = getDataset("activities")!;
-    expect(ds.columns.at(-1)).toBe("endurance_plan_id");
-    expect(ds.columns.slice(0, -1)).toEqual([
+    // The link exports as the event's own identity, not as its row id: the pair the
+    // Events dataset publishes, so the two files join (`export-data-quality`).
+    expect(ds.columns.slice(-2)).toEqual(["event_name", "event_date"]);
+    expect(ds.columns).not.toContain("endurance_plan_id");
+    expect(ds.columns.slice(0, -2)).toEqual([
       "date",
       "type",
       "title",
