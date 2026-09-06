@@ -128,11 +128,18 @@ export function fieldHoldsUnsavedInput(field: TrackedField): boolean {
  * over all of the above, and it is the only thing that lets such a field release; the
  * only alternative is to keep the field out of the autosaving `<form>`.
  *
- * AND THAT IS ENFORCED RATHER THAN HOPED FOR. `lib/__tests__/autosave-registry-census.test.ts`
- * fails the day an autosaving surface renders a `<form>` around a control the registry
- * would track, and its failure message names the same two remedies. Nothing in the tree
- * is shaped that way today — the census is what keeps that true, because a sentence
- * here would be accurate when written and unchecked ever after.
+ * Nothing in the tree is shaped that way today: no `useSaveStatus` consumer renders a
+ * `<form>` around a control this registry tracks. A source census re-asserted that on
+ * every run (#3352) and was deleted in #5351 — it never fired, and its own comment
+ * bounded it to one render site of ancestry, so a surface nested deeper was always
+ * invisible to it.
+ *
+ * SO READ THE SENTENCE ABOVE AS UNCHECKED, because it is, and that is the trade the
+ * deletion made with its eyes open — the census's own header argued that a sentence
+ * here would be true the day it was written and unverified after. If you are adding an
+ * autosaving surface, the question to ask yourself is the one the census asked: is any
+ * `name=` on a control `isTrackable` accepts, inside a `<form>` this file or its render
+ * site supplies?
  */
 export function resolveServerValue(field: {
   /** The DOM `defaultValue` right now. */
