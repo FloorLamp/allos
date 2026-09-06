@@ -284,9 +284,7 @@ export function keeperFoldState(
   for (const row of linkRows)
     if (
       eventLinkDecisionSeq(row.endurance_link_decided_seq as number | null) >
-      eventLinkDecisionSeq(
-        decided?.endurance_link_decided_seq as number | null
-      )
+      eventLinkDecisionSeq(decided?.endurance_link_decided_seq as number | null)
     )
       decided = row;
   let endurancePlanId: number | null = null;
