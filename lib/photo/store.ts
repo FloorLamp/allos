@@ -15,7 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ProcessedPhoto } from "./ingest";
 
-export type PhotoDomain = "progress" | "lesion" | "symptom";
+export type PhotoDomain = "progress" | "lesion" | "symptom" | "training";
 
 const DOMAIN_DIRS: Record<PhotoDomain, string> = {
   progress: "progress-photos",
@@ -24,6 +24,11 @@ const DOMAIN_DIRS: Record<PhotoDomain, string> = {
   // stays valid and every containment root keeps resolving to the same place.
   lesion: "lesion-photos",
   symptom: "symptom-photos",
+  // Training media (#3285 item 3): photos of a logged SESSION and of an EVENT
+  // (bib, podium, venue) share one dir because they share one subject — what you
+  // did that day. The OWNER is a column on the row, not a second domain: see
+  // lib/training-photo-write.ts for why.
+  training: "training-photos",
 };
 
 // The thumbnail that belongs to a stored photo, derived from its path: drop the

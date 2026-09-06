@@ -5,6 +5,7 @@
 // mutation runs through writeTx (#468).
 
 import { db, writeTx } from "./db";
+import { deleteEventPhotosForPlan } from "./training-photo-write";
 import {
   DEFAULT_EVENT_KIND,
   disciplineForActivityName,
@@ -380,6 +381,14 @@ export function deleteEndurancePlanCore(
       `UPDATE activities SET endurance_plan_id = NULL
         WHERE endurance_plan_id = ? AND profile_id = ?`
     ).run(id, profileId);
+    // The event's OWN photos (#3285 item 3) have no other home — their owner FK is
+    // half of an exactly-one CHECK, so they cannot be unlinked the way the activities
+    // above are. A plan delete carries no undo capture, so the rows and their files go
+    // now, explicitly rather than through the cascade, so this transaction does not
+    // depend on the foreign_keys pragma. Photos owned by the linked ACTIVITIES stay
+    // with those activities — a session outlives the plan it was entered for, and so
+    // do its pictures.
+    deleteEventPhotosForPlan(profileId, id);
     const res = db
       .prepare("DELETE FROM endurance_plans WHERE id = ? AND profile_id = ?")
       .run(id, profileId);

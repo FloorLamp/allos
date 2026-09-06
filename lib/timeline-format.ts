@@ -65,6 +65,11 @@ export interface TimelineEvent {
     unit?: string | null;
     flag?: string | null;
   }[];
+  // HOW MANY MEDIA FILES THIS EVENT CARRIES (#3285 item 3 / #3283). The record's
+  // Photos filter is a predicate on the ROW, and a feed row's count can only come
+  // from the gather that read the event — so it rides the event rather than being
+  // re-queried per row downstream. Absent where the category has no media store.
+  media?: number;
   iconType?: string | null;
   iconTitle?: string | null;
   // Structured component/sport names (e.g. Strava's canonical "Cycling"),

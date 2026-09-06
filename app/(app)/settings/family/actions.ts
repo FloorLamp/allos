@@ -75,6 +75,7 @@ const MEDICAL_UPLOAD_ROOT = path.resolve(
 const SYMPTOM_PHOTO_UPLOAD_ROOT = path.resolve(photoDomainRoot("symptom"));
 const LESION_PHOTO_UPLOAD_ROOT = path.resolve(photoDomainRoot("lesion"));
 const PROGRESS_PHOTO_UPLOAD_ROOT = path.resolve(photoDomainRoot("progress"));
+const TRAINING_PHOTO_UPLOAD_ROOT = path.resolve(photoDomainRoot("training"));
 
 // Symptom / episode video clips and training form-check clips (#1224) live under
 // their own per-profile roots; deleting a profile unlinks its clip files AND
@@ -262,6 +263,20 @@ export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
     r.thumb_path ? [r.stored_path, r.thumb_path] : [r.stored_path]
   );
 
+  // Training-photo file paths (#3285 item 3) — stored photo AND thumbnail — for both
+  // owner kinds at once, since one table holds them. Collected before the
+  // OWNED_TABLES sweep deletes their rows.
+  const trainingPhotoPaths = (
+    db
+      .prepare(
+        `SELECT stored_path, thumb_path FROM training_photos
+          WHERE profile_id = ? AND stored_path IS NOT NULL AND stored_path != ''`
+      )
+      .all(id) as { stored_path: string; thumb_path: string | null }[]
+  ).flatMap((r) =>
+    r.thumb_path ? [r.stored_path, r.thumb_path] : [r.stored_path]
+  );
+
   // Symptom / activity video clip + poster file paths (#1224), collected before
   // the OWNED_TABLES sweep deletes their rows.
   const collectVideoPaths = (table: string): string[] =>
@@ -335,6 +350,7 @@ export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
   deleteFilesUnderRoot(SYMPTOM_PHOTO_UPLOAD_ROOT, photoPaths);
   deleteFilesUnderRoot(LESION_PHOTO_UPLOAD_ROOT, lesionPhotoPaths);
   deleteFilesUnderRoot(PROGRESS_PHOTO_UPLOAD_ROOT, progressPhotoPaths);
+  deleteFilesUnderRoot(TRAINING_PHOTO_UPLOAD_ROOT, trainingPhotoPaths);
   deleteFilesUnderRoot(SYMPTOM_VIDEO_UPLOAD_ROOT, symptomVideoPaths);
   deleteFilesUnderRoot(ACTIVITY_VIDEO_UPLOAD_ROOT, activityVideoPaths);
   if (prof.photo_path) deleteFilesUnderRoot(PHOTO_ROOT, [prof.photo_path]);

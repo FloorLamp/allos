@@ -399,6 +399,7 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `symptom_photos` | `created_at` | record | instant | bare |  |
 | `symptom_videos` | `date` | day | day | n/a |  |
 | `symptom_videos` | `created_at` | record | instant | bare |  |
+| `training_photos` | `created_at` | record | instant | bare |  |
 | `upcoming_dismissals` | `snooze_until` | planned | day | n/a |  |
 | `upcoming_dismissals` | `dismissed_at` | lifecycle | instant | bare |  |
 | `upcoming_dismissals` | `created_at` | bookkeeping | instant | bare |  |

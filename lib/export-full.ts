@@ -141,6 +141,7 @@ export const MEDIA_DOMAINS = [
   "symptom-photos",
   "symptom-videos",
   "activity-videos",
+  "training-photos",
 ] as const;
 export type MediaDomain = (typeof MEDIA_DOMAINS)[number];
 
@@ -163,7 +164,7 @@ interface MediaRow {
 // profile_id and the join adds only display context. Ordered stably so the bundle
 // and the index come out deterministic.
 //
-// Those two joins ALSO match the parent's profile_id, not just its id. The parent
+// Every join here ALSO matches the parent's profile_id, not just its id. The parent
 // columns (a lesion's label/region, an activity's date/title) travel into
 // media/index.json, so a child row whose FK pointed at another profile's parent
 // would carry that profile's words into this export. Application writes never
@@ -188,6 +189,21 @@ export const MEDIA_ROW_SELECTS: Record<MediaDomain, string> = {
        FROM symptom_photos WHERE profile_id = ? ORDER BY date, id`,
   "symptom-videos": `SELECT id, stored_path, date, symptom, caption, kind, duration_sec
        FROM symptom_videos WHERE profile_id = ? ORDER BY date, id`,
+  // ONE domain, two owners (#3285 item 3): the row carries activity_id XOR
+  // endurance_plan_id, so the index gets whichever side is set plus the owner's own
+  // date and name — the photo's date is never stored, it is the owner's. Both joins
+  // match the parent's profile_id as well as its id, the same tampered-FK posture the
+  // two joins above take.
+  "training-photos": `SELECT tp.id, tp.stored_path, tp.caption,
+              tp.activity_id, tp.endurance_plan_id,
+              COALESCE(a.date, ep.event_date) AS date,
+              COALESCE(a.title, ep.event_name, ep.kind) AS owner_label
+       FROM training_photos tp
+            LEFT JOIN activities a
+              ON a.id = tp.activity_id AND a.profile_id = tp.profile_id
+            LEFT JOIN endurance_plans ep
+              ON ep.id = tp.endurance_plan_id AND ep.profile_id = tp.profile_id
+       WHERE tp.profile_id = ? ORDER BY date, tp.id`,
   "activity-videos": `SELECT av.id, av.stored_path, av.exercise, av.caption, av.kind,
               av.duration_sec, a.date AS activity_date, a.title AS activity_title
        FROM activity_videos av
@@ -211,13 +227,15 @@ function mediaDomainRootFor(domain: MediaDomain): string {
       return videoDomainRoot("symptom");
     case "activity-videos":
       return videoDomainRoot("activity");
+    case "training-photos":
+      return photoDomainRoot("training");
   }
 }
 
 // The profile's media files for the opt-in bundle.
 //
 // Containment is one notch TIGHTER than listProfileMedicalFiles: every one of these
-// five stores has written `<domainRoot>/<profileId>/<contentHash>.<ext>` since the
+// stores has written `<domainRoot>/<profileId>/<contentHash>.<ext>` since the
 // domain existed (there is no legacy flat layout to accommodate), so a stored_path
 // must resolve inside THIS profile's subdirectory — not merely inside the domain
 // root. The SQL profile filter is the scoping guarantee; this is the second lock on
