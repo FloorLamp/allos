@@ -20,15 +20,15 @@ test("Weekly habits shows the seeded fatty-fish target with progress (#580)", as
   await expect(page.getByTestId("habit-fatty_fish")).toBeVisible();
   // "N" on the row, "of 2" on the habit's own span — the rollup count and the target
   // read as one sentence in ONE list (#3987) — and a pace badge (#748 item 3) only where
-  // there is a verdict to print (#5395). The seed logs fish on two fixed weekdays, so on
-  // the week's first day nothing is logged yet and the row is quiet: count, no badge.
+  // there is a verdict to print (#5395). Profile 1 is pinned to a rolling week
+  // (e2e/seed/dashboard.ts) and scripts/seed.ts logs fish 1 and 4 days ago, so the
+  // trailing window holds both on every run day: the habit is met, and the verdict here
+  // is "On track". A quiet week (nothing logged, no badge) is not reachable on this
+  // fixture; frequency-pace.test.ts pins that state.
   await expect(page.getByTestId("habit-fatty_fish")).toContainText("of 2");
-  const servings = Number(
-    (await card.getByTestId("rollup-fatty_fish").innerText()).match(/^\d+/)![0]
-  );
   const pace = card.getByTestId("habit-pace-fatty_fish");
-  if (servings === 0) await expect(pace).toHaveCount(0);
-  else await expect(pace).toHaveText(/On track|On pace|Behind/);
+  await expect(pace).toHaveAttribute("data-pace", "met");
+  await expect(pace).toHaveText("On track");
 });
 
 test("tracking a new food habit adds it, and removing it leaves the fixture as found (#580)", async ({
