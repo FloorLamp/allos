@@ -3,9 +3,9 @@
 // non-author reviewed, with zero unresolved findings. Until now that gate was
 // a paragraph the orchestrator remembered; this makes it a script it runs.
 //
-// READ-ONLY by construction: no write verb leaves this script (pinned in
-// lib/__tests__/merge-gate-script.test.ts). It answers one question — "may
-// this PR merge RIGHT NOW?" — by checking, on the CURRENT head SHA:
+// READ-ONLY by construction: no write verb leaves this script. It answers one
+// question — "may this PR merge RIGHT NOW?" — by checking, on the CURRENT head
+// SHA:
 //   1. the PR is open and READY (never draft — environment.md §GitHub access),
 //      and its TITLE holds the rule the squash subject inherits (#4983):
 //      72 characters, one clause, no colon or dash tail;

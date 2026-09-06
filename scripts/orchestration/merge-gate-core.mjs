@@ -798,8 +798,7 @@ export function ownershipVerdict(pr, self, adopted = false) {
 // a base that predated it. No textual conflict, both merged clean, and `main`
 // was red on `check`, `seed` and `build` for two merges until #5148 cleared it.
 // Each tree typechecks clean ON ITS OWN BASE; only the merged tree is invalid,
-// which is why no per-branch check of any kind could have seen it —
-// lib/__tests__/type-verdict.test.ts pins that as the combined-tree case.
+// which is why no per-branch check of any kind could have seen it.
 //
 // CI checks `head` merged with `main` as main stood at the head's CI base. When
 // main has moved since, the tree that will land is one nothing has checked, and
