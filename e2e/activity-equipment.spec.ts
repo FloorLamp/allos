@@ -776,7 +776,10 @@ test("a strength part states its implement, and the registry door is one per for
       .filter({ hasText: "Barbell Bench Press" })
       .first() // first-ok: transient combobox list this spec just opened by typing the name
       .click();
-    await expect(secondName).toHaveValue("Barbell Bench Press");
+    // The pick settles it into its heading (#5370).
+    await expect(
+      form.getByTestId("part-name-heading").nth(1) // nth-ok: the part this spec just added
+    ).toContainText("Barbell Bench Press");
 
     // TWO PARTS, TWO CONCLUSIONS, AND STILL NO DOOR. The second part's implement comes
     // from the lift's own name rather than from a pick, and it is stated the same way.
