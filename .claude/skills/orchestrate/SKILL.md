@@ -181,8 +181,8 @@ node scripts/orchestration/dispatch-brief.mjs done <branch>
 ```
 
 Verify linked issues actually closed (a merge that "closes" nothing is a
-tracker leak), remove the worktree and branch, and update release notes for
-user-visible changes (`lib/release-notes.json`, one batch/day, title-only).
+tracker leak) and remove the worktree and branch. Release notes are NOT yours:
+the PM writes the day's batch off `main` (`multi-orchestrator.md` §Bookkeeping).
 
 Then REFILL: dispatch continuously while viable work exists, without asking
 permission to resume. An empty or one-lane roster — after merges or after a
