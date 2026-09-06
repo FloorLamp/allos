@@ -27,10 +27,13 @@ import {
 import { OUTCOME_GOAL_STATUSES } from "@/lib/types";
 import type { OutcomeGoal } from "@/lib/types";
 import type { GoalProgress } from "@/lib/goal-progress";
+import { goalProgressStatement } from "@/lib/goal-facts";
 
 // Minimal outcome-goal factory: freeform by default; override the linked fields per test.
+// `kind` follows the linked columns the way the stored row's does (outcomeGoalKind), so
+// a fixture cannot carry an exercise in its columns and "freeform" in its kind.
 function makeGoal(overrides: Partial<OutcomeGoal> = {}): OutcomeGoal {
-  return {
+  const goal: OutcomeGoal = {
     id: 1,
     title: "Goal",
     description: null,
@@ -57,6 +60,7 @@ function makeGoal(overrides: Partial<OutcomeGoal> = {}): OutcomeGoal {
     archived: 0,
     ...overrides,
   };
+  return { ...goal, kind: overrides.kind ?? outcomeGoalKind(goal) };
 }
 
 describe("outcomeGoalKind", () => {
@@ -430,16 +434,36 @@ describe("goalPct", () => {
     done: pct >= 100,
   });
 
-  it("uses derived progress for exercise-linked goals (0 when uncomputed)", () => {
-    const g = makeGoal({ exercise: "Bench", metric: "weight" });
-    expect(goalPct(g, prog(80))).toBe(80);
-    expect(goalPct(g, undefined)).toBe(0);
+  it("uses derived progress for exercise-linked and body-metric goals", () => {
+    expect(
+      goalPct(makeGoal({ exercise: "Bench", metric: "weight" }), prog(80))
+    ).toBe(80);
+    expect(goalPct(makeGoal({ body_metric: "weight" }), prog(42))).toBe(42);
   });
 
-  it("uses derived progress for body-metric goals", () => {
-    const g = makeGoal({ body_metric: "weight" });
-    expect(goalPct(g, prog(42))).toBe(42);
-    expect(goalPct(g, undefined)).toBe(0);
+  // NOTHING MEASURED IS NOT 0% (#5396). A measured goal with no gather, no readings,
+  // or a unit its target was not captured in has no percent — the answer the
+  // dashboard's goalProgressStatement already gave, so /training and the household
+  // card can no longer print "0%" over a row the dashboard prints "—" on.
+  it.each<[string, Partial<OutcomeGoal>, GoalProgress | undefined]>([
+    ["exercise, no gather", { exercise: "Bench", metric: "weight" }, undefined],
+    [
+      "exercise, no sets ever",
+      { exercise: "Bench", metric: "weight" },
+      { ...prog(0), unavailable: "no-readings" },
+    ],
+    [
+      "body, no readings",
+      { body_metric: "weight" },
+      { ...prog(0), unavailable: "no-readings" },
+    ],
+    [
+      "biomarker, unit mismatch",
+      { biomarker_name: "LDL", target_direction: "below" },
+      { ...prog(0), unavailable: "unit-mismatch" },
+    ],
+  ])("%s → null, never 0", (_name, goal, progress) => {
+    expect(goalPct(makeGoal(goal), progress)).toBeNull();
   });
 
   it("uses current/target for manual numeric goals, capped at 100", () => {
@@ -509,6 +533,17 @@ describe("goalPct cross-surface parity", () => {
       name: "no numeric basis (null)",
       goal: makeGoal({ id: 5 }),
     },
+    {
+      name: "body-metric with no readings (#5396)",
+      goal: makeGoal({ id: 6, body_metric: "weight" }),
+      prog: {
+        current: 0,
+        target: 100,
+        pct: 0,
+        done: false,
+        unavailable: "no-readings",
+      },
+    },
   ];
 
   for (const f of fixtures) {
@@ -532,6 +567,12 @@ describe("goalPct cross-surface parity", () => {
       );
 
       expect(goalsPage).toBe(household);
+
+      // The dashboard row states its percent through goalProgressStatement, which
+      // is goalPct underneath (#5396) — so the three surfaces agree by construction.
+      expect(
+        goalProgressStatement(f.goal, progressMap.get(f.goal.id), "kg").percent
+      ).toBe(household == null ? null : `${household}%`);
     });
   }
 });
