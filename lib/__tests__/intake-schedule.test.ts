@@ -4,6 +4,7 @@ import {
   CONDITIONS,
   contributesToDailyLimit,
   defaultFoodTiming,
+  doseDueOn,
   isDueOn,
   isOfferedOn,
   isPostWorkoutReady,
@@ -611,4 +612,75 @@ describe("stackSchedule", () => {
       ).toEqual({ scheduled, label });
     }
   );
+});
+
+// NO DUENESS UNTIL A DOSE IS SCHEDULED (#5285). The owner's report: an as-needed
+// painkiller added as `must` with one empty dose row read "Dose not set" on one tab and
+// "0/1 due days followed · Missed 1" on the other. `doseDueOn` is the ONE dueness
+// question every read surface asks, so the gate goes here and they all move together.
+describe("doseDueOn requires a stated time", () => {
+  const ctx = (date: string) => ({
+    date,
+    isWorkoutDay: false,
+    activeSituations: new Set<string>(),
+  });
+  const MON = "2026-03-02";
+
+  it.each([
+    // obligation, time_of_day -> due
+    ["must", "morning", true],
+    ["should", "dinner", true],
+    // A stated time that maps to no bucket still reads as any time OF ITS OWN accord.
+    ["must", "whenever", true],
+    // Not stated: the row schedules nothing, so nothing is owed and nothing can be
+    // missed. Whitespace is not a statement either.
+    ["must", null, false],
+    ["should", "   ", false],
+    // `may` is untouched in both directions — isDueOn short-circuits above this gate.
+    ["may", "morning", false],
+    ["may", null, false],
+  ] as const)("%s / %s -> %s", (obligation, timeOfDay, due) => {
+    expect(
+      doseDueOn(
+        { condition: "daily", situation: null, obligation },
+        { time_of_day: timeOfDay },
+        ctx(MON)
+      )
+    ).toBe(due);
+  });
+
+  // Not due on ANY day, including today after the last bucket has passed: "Anytime"
+  // opens at 00:00, which is how an untimed dose became a miss every evening.
+  it("is not due on any day of the window", () => {
+    const dose = { time_of_day: null };
+    const item = {
+      condition: "daily" as const,
+      situation: null,
+      obligation: "must" as const,
+    };
+    for (let i = 0; i < 14; i++) {
+      const date = `2026-03-${String(i + 1).padStart(2, "0")}`;
+      expect(doseDueOn(item, dose, ctx(date))).toBe(false);
+    }
+  });
+
+  // Setting a time starts the count THERE. Adherence history is a person\'s record of
+  // themselves, so the days the dose stated nothing stay outside it (#1973 versions).
+  it("becomes due from the day a time is stated, back-filling nothing", () => {
+    const item = {
+      condition: "daily" as const,
+      situation: null,
+      obligation: "must" as const,
+    };
+    const dose = {
+      time_of_day: "morning",
+      versions: [
+        { effective_from: "2026-03-01", time_of_day: null },
+        { effective_from: "2026-03-10", time_of_day: "morning" },
+      ],
+    };
+    expect(doseDueOn(item, dose, ctx("2026-03-09"))).toBe(false);
+    expect(doseDueOn(item, dose, ctx("2026-03-10"))).toBe(true);
+    expect(doseDueOn(item, dose, ctx("2026-03-11"))).toBe(true);
+  });
 });

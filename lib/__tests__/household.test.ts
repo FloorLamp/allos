@@ -89,6 +89,13 @@ function supp(overrides: Partial<IntakeItem> = {}): IntakeItem {
 }
 
 describe("intakeAdherenceToday", () => {
+  // Every fixture dose states a time: these cases are about obligation, condition and
+  // the active map, and an untimed dose is not due at all (#5285).
+  const dose = (id: number, item_id: number) => ({
+    id,
+    item_id,
+    time_of_day: "Morning",
+  });
   const ctx = {
     date: "2026-03-04",
     isWorkoutDay: false,
@@ -96,11 +103,7 @@ describe("intakeAdherenceToday", () => {
   };
 
   it("counts due doses and how many are taken", () => {
-    const doses = [
-      { id: 10, item_id: 1 },
-      { id: 11, item_id: 1 },
-      { id: 12, item_id: 2 },
-    ];
+    const doses = [dose(10, 1), dose(11, 1), dose(12, 2)];
     const byId = new Map([
       [1, supp({ id: 1, condition: "daily" })],
       [2, supp({ id: 2, condition: "daily" })],
@@ -111,8 +114,8 @@ describe("intakeAdherenceToday", () => {
 
   it("skips doses whose supplement isn't in the active map", () => {
     const doses = [
-      { id: 10, item_id: 1 },
-      { id: 20, item_id: 99 }, // inactive/deleted supplement
+      dose(10, 1),
+      dose(20, 99), // inactive/deleted supplement
     ];
     const byId = new Map([[1, supp({ id: 1 })]]);
     const adh = intakeAdherenceToday(doses, byId, ctx, new Set([10, 20]));
@@ -120,10 +123,7 @@ describe("intakeAdherenceToday", () => {
   });
 
   it("excludes doses not due today via isDueOn (rest-day supplement on a workout day)", () => {
-    const doses = [
-      { id: 10, item_id: 1 },
-      { id: 11, item_id: 2 },
-    ];
+    const doses = [dose(10, 1), dose(11, 2)];
     const byId = new Map([
       [1, supp({ id: 1, condition: "daily" })],
       [2, supp({ id: 2, condition: "rest_day" })],
@@ -145,7 +145,7 @@ describe("intakeAdherenceToday", () => {
   });
 
   it("counts a situational dose only when its situation is active", () => {
-    const doses = [{ id: 10, item_id: 1 }];
+    const doses = [dose(10, 1)];
     const byId = new Map([
       [1, supp({ id: 1, condition: "situational", situation: "Travel" })],
     ]);

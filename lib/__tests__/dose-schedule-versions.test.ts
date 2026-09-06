@@ -199,9 +199,10 @@ describe("a cadence change is judged forward, never backward", () => {
   // Mondays on 15 July was due every day in June; a dose widened from Mondays was not.
   const narrowed = {
     weekdays: "1",
+    time_of_day: "Morning",
     versions: [
-      { effective_from: "2026-06-01", weekdays: null },
-      { effective_from: "2026-07-15", weekdays: "1" },
+      { effective_from: "2026-06-01", weekdays: null, time_of_day: "Morning" },
+      { effective_from: "2026-07-15", weekdays: "1", time_of_day: "Morning" },
     ],
   };
 

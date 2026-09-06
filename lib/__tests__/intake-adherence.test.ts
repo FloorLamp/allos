@@ -313,12 +313,31 @@ describe("intakeAdherenceStrip", () => {
   }
 
   // Doses with no stored created_at: no known lifetime bound, so the whole window
-  // is in scope. The lifetime clamp gets its own describe block below.
-  const doses = (...ids: number[]) => ids.map((id) => ({ id }));
+  // is in scope. The lifetime clamp gets its own describe block below. Each one STATES
+  // A TIME, because a dose that states none is not due on any day (#5285) and these
+  // cases are about aggregation and context, not about the schedule.
+  const doses = (...ids: number[]) =>
+    ids.map((id) => ({ id, time_of_day: "Morning" }));
   const TZ = "UTC";
 
   it("exposes STRIP_DAYS = 14", () => {
     expect(STRIP_DAYS).toBe(14);
+  });
+
+  // #5285: a dose that states no time is not a live dose, so it leaves the DENOMINATOR
+  // rather than turning every day into a partial or a miss. Two rows here and only the
+  // timed one counts — a day is "taken", not "partial".
+  it("scores no day against a dose that states no time", () => {
+    const strip = intakeAdherenceStrip(
+      supp({ obligation: "must" }),
+      [{ id: 1 }, { id: 2, time_of_day: "Morning" }],
+      ["d0", "d1"],
+      new Set(),
+      () => new Set(),
+      indexTakenByDose([{ dose_id: 2, date: "d0", status: "taken" }]),
+      TZ
+    );
+    expect(strip.map((d) => d.state)).toEqual(["taken", "missed"]);
   });
 
   it("marks each date taken/partial/missed by aggregating the doses", () => {
@@ -478,7 +497,9 @@ describe("dose-lifetime clamp / the no-history boundary (#1442)", () => {
   ) =>
     intakeAdherenceStrip(
       supp,
-      doses,
+      // Timed, for the reason above: these fixtures pin the LIFETIME bound, and an
+      // untimed dose would score the whole window "na" for a different reason (#5285).
+      doses.map((d) => ({ ...d, time_of_day: "Morning" })),
       DATES,
       new Set(),
       () => new Set(),

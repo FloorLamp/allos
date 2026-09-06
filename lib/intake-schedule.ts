@@ -17,6 +17,7 @@ import {
   doseScheduleAsOf,
   unrecordedScheduleChangeOn,
   type DoseCadence,
+  type DoseSchedule,
   type ItemCadence,
 } from "./intake-cadence";
 import type { ProfileDayZone } from "./travel-timezone";
@@ -248,7 +249,27 @@ export function doseDueOn(
   ctx: IntakeDayContext
 ): boolean {
   if (!isDueOn(item, ctx)) return false;
+  // NO DUENESS UNTIL A DOSE IS SCHEDULED (#5285). A row that states no time schedules
+  // nothing, so it cannot be due, missed, reminded or counted — and the item reads
+  // "Not scheduled" (stackSchedule) until someone states one. A `may` item never
+  // reaches this line (isDueOn short-circuits), so PRN's "Anytime" is untouched; what
+  // stops is Anytime being the bucket a MISSING time silently falls into.
+  if (!doseScheduledOn(dose, ctx.date)) return false;
   return doseOnDay(dose, ctx.date);
+}
+
+// Whether the dose STATES A TIME on `dateISO` — the effective-dated form of the flag
+// stackSchedule already reads, so dueness and the Manage row answer from one rule.
+//
+// Effective-dated on purpose: a dose that gains a time today becomes due FROM today and
+// back-fills nothing, because every earlier day resolves to the untimed version in force
+// then (#1973). Adherence history is a person's record of themselves.
+export function doseScheduledOn(dose: DoseCadence, dateISO: string): boolean {
+  return statesTime(doseScheduleAsOf(dose, dateISO));
+}
+
+function statesTime(schedule: DoseSchedule): boolean {
+  return (schedule.time_of_day ?? "").trim() !== "";
 }
 
 // The TIME BUCKET a dose occupied on a given day (#1973) — `timeBucket` over the
@@ -644,7 +665,7 @@ export function stackSchedule(
   );
   const say = (lead: string) => [lead, ...rule].join(" · ");
   if (isOnDemand(item)) return { scheduled: true, label: say("Anytime") };
-  if (!(dose.time_of_day ?? "").trim())
+  if (!statesTime(dose))
     return { scheduled: false, label: say("Not scheduled") };
   return {
     scheduled: true,
