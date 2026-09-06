@@ -111,14 +111,14 @@ test("the clinical results catalog filters by a clinical panel slug (#1502)", as
 
   const table = page.getByTestId("clinical-results-table");
   await expect(
-    table.getByText("LDL Cholesterol").first() // first-ok: presence check; the shared seed holds several LDL readings
+    table.getByText("LDL Cholesterol").first() // eslint-disable-line no-restricted-properties -- first-ok: presence check; the shared seed holds several LDL readings
   ).toBeVisible();
   // A marker from a DIFFERENT panel is filtered out — proof the facet is
   // clinical, not "everything drawn at this vendor" (the seed puts lipids and
   // thyroid on the SAME vendor draws).
   await expect(table.getByText("Free T4")).toHaveCount(0);
   // The Panel cells read the clinical label, and no vendor string survives.
-  const panelCell = table.getByRole("link", { name: "Lipids" }).first(); // first-ok: under this filter every row's Panel cell reads "Lipids" — which one is irrelevant
+  const panelCell = table.getByRole("link", { name: "Lipids" }).first(); // eslint-disable-line no-restricted-properties -- first-ok: under this filter every row's Panel cell reads "Lipids" — which one is irrelevant
   await expect(panelCell).toBeVisible();
   await expect(
     table.getByText(/Quest Diagnostics|LabCorp|BioReference/)
@@ -137,10 +137,11 @@ test("an unknown ?panel= slug is ignored rather than emptying the table (#1502)"
     "/results/clinical-results?panel=Quest%20Diagnostics&q=Cholesterol"
   );
   await expect(
+    // eslint-disable-next-line no-restricted-properties -- first-ok: presence check on the shared seed
     page
       .getByTestId("clinical-results-table")
       .getByText("LDL Cholesterol")
-      .first() // first-ok: presence check on the shared seed
+      .first()
   ).toBeVisible();
   await expect(page.getByTestId("panel-filter")).toHaveValue("");
 });

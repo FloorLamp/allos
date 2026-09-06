@@ -364,10 +364,11 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
 
     // ── The Day ledger's own serving rows (#3987 absorbed the "Logged <day>" list)
     await page.goto(`/nutrition?date=${DAY}`);
+    // eslint-disable-next-line no-restricted-properties -- first-ok: the anatomy claim is about any row of the list, not a chosen one
     const logRow = page
       .getByTestId("day-ledger")
       .locator("li[data-group]")
-      .first(); // first-ok: the anatomy claim is about any row of the list, not a chosen one
+      .first();
     await expect(logRow).toBeVisible();
     await expect(logRow.locator("[data-logged-event-row]")).toHaveCount(1);
 
@@ -555,7 +556,7 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
     // and #3671 deliberately left them alone — same `.table-cards` card mode as
     // before, meta cells on screen with no disclosure to open first.
     await page.goto("/trends/metric/weight");
-    const readings = page.locator("table.table-cards").first(); // first-ok: the readings list is this route's only card-mode table
+    const readings = page.locator("table.table-cards").first(); // eslint-disable-line no-restricted-properties -- first-ok: the readings list is this route's only card-mode table
     await expect(readings).toBeVisible();
     await expect(readings).not.toHaveClass(/logged-event-rows/);
     expect(
@@ -771,10 +772,11 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
     // of the FIRST STACK ROW at 430x932, reported in the PR body. Scoped to
     // `supplement-stack` and not to the page, so a Held or Paused row — which fold
     // BELOW and are allowed to be far down — can never satisfy it.
+    // eslint-disable-next-line no-restricted-properties -- first-ok: the topmost stack row IS the measurement — order is the point
     const firstStackRow = page
       .getByTestId("supplement-stack")
       .getByTestId("supplement-row")
-      .first(); // first-ok: the topmost stack row IS the measurement — order is the point
+      .first();
     const stackBox = await firstStackRow.boundingBox();
     expect(stackBox).not.toBeNull();
     // eslint-disable-next-line no-console

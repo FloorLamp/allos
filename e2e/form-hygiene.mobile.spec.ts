@@ -44,10 +44,8 @@ import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 // Type an exercise name into the combobox and take the matching option.
 async function pickActivity(page: Page, name: string): Promise<void> {
   await page.getByPlaceholder(/What did you do/).fill(name);
-  await comboboxRows(page)
-    .filter({ hasText: name })
-    .first() // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
-    .click();
+  // eslint-disable-next-line no-restricted-properties -- first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
+  await comboboxRows(page).filter({ hasText: name }).first().click();
 }
 
 // Does this element render its full content, or is it clipping it? A clipped
@@ -385,16 +383,14 @@ const PHONE_CONTEXT = {
 // match by substring).
 async function pickPlannedLift(page: Page, name: string) {
   await page.getByPlaceholder(/What did you do/).fill(name);
-  await comboboxRows(page)
-    .filter({ hasText: name })
-    .first() // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
-    .click();
+  // eslint-disable-next-line no-restricted-properties -- first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
+  await comboboxRows(page).filter({ hasText: name }).first().click();
 }
 
 test("a three-set plan finishes as the two sets that happened (#5373)", async ({
   browser,
 }) => {
-  const marker = `Planned sets probe ${Date.now()}`; // clock-ok: unique-name suffix for this spec's own session title, never a stored timestamp
+  const marker = `Planned sets probe ${Date.now()}`; // eslint-disable-line no-restricted-properties -- clock-ok: unique-name suffix for this spec's own session title, never a stored timestamp
   const storedSets = () => {
     const db = new Database(workerDbPath());
     try {

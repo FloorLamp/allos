@@ -338,7 +338,7 @@ test("logout wipes even with a snapshot refresh in flight (#2908)", async ({
       await new Promise((r) => setTimeout(r, SNAPSHOT_GET_LATENCY_MS));
       // Real elapsed time in the RUNNER, ordering two events in this test's own
       // lifetime: nothing is stored, and nothing reaches the app's frozen clock.
-      snapshotGetReleasedAt = Date.now(); // clock-ok: runner-side ordering, never stored
+      snapshotGetReleasedAt = Date.now(); // eslint-disable-line no-restricted-properties -- clock-ok: runner-side ordering, never stored
     } else if (request.method() === "POST") {
       // The only POST from here on is the logout Server Action.
       await new Promise((r) => setTimeout(r, LOGOUT_POST_LATENCY_MS));
@@ -355,7 +355,7 @@ test("logout wipes even with a snapshot refresh in flight (#2908)", async ({
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
 
   // …and log out while that GET is still in the air.
-  const logoutClickedAt = Date.now(); // clock-ok: runner-side ordering, never stored
+  const logoutClickedAt = Date.now(); // eslint-disable-line no-restricted-properties -- clock-ok: runner-side ordering, never stored
   await page.getByRole("button", { name: "Log out" }).click();
   await page.waitForURL(/\/login/, { timeout: 30_000 });
 

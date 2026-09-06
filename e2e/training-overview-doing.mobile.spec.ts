@@ -122,7 +122,7 @@ test("the Training tabs fill the strip at 640px instead of clustering left", asy
 
   const [stripBox, firstBox, lastBox] = await settledBoxes([
     tabs,
-    items.first(), // first-ok: the strip's first edge is the assertion
+    items.first(), // eslint-disable-line no-restricted-properties -- first-ok: the strip's first edge is the assertion
     items.last(),
   ]);
   expect(Math.abs(firstBox.x - stripBox.x)).toBeLessThan(2);
@@ -146,7 +146,7 @@ test("the desktop Training tabs remain a compact left-aligned strip", async ({
 
   const [stripBox, firstBox, lastBox] = await settledBoxes([
     tabs,
-    items.first(), // first-ok: the strip's first edge is the assertion
+    items.first(), // eslint-disable-line no-restricted-properties -- first-ok: the strip's first edge is the assertion
     items.last(),
   ]);
   expect(Math.abs(firstBox.x - stripBox.x)).toBeLessThan(2);

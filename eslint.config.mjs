@@ -235,11 +235,10 @@ const APP_SURFACE_SYNTAX = [
       "Do not install a Playwright dialog handler: native browser dialogs are prohibited, and accepting one would hide a regression.",
   },
 ];
-const SYNTAX_PRODUCTION = [
-  ...SYNTAX_ALL,
-  ...APP_SURFACE_SYNTAX,
-  RPE_BRAND_CAST,
-];
+// The level `app/`, `components/`, `lib/`, `scripts/` and `e2e/` already sit on —
+// named so the e2e blocks below can spread it rather than re-listing its members.
+const SYNTAX_APP_SURFACE = [...SYNTAX_ALL, ...APP_SURFACE_SYNTAX];
+const SYNTAX_PRODUCTION = [...SYNTAX_APP_SURFACE, RPE_BRAND_CAST];
 const SYNTAX_PRODUCTION_KEYED = [...SYNTAX_PRODUCTION, ...RPE_KEY_LITERAL];
 const SYNTAX_LIB_APP = [
   ...SYNTAX_PRODUCTION_KEYED,
@@ -254,6 +253,294 @@ const IMPORT_PATTERNS_LIB_APP = [
 ];
 const restrictImports = (paths, patterns) => ["error", { paths, patterns }];
 
+// ── e2e/**: the hygiene scan's zero-allowlist bans (#5350) ───────────────────
+//
+// Each ban below was a per-file COUNT frozen at zero with an EMPTY allowlist in
+// lib/__tests__/e2e-hygiene.test.ts — a straight prohibition wearing a ratchet's
+// clothes. Every one is a syntax shape with no type surface, so it moves onto the
+// parse ESLint already runs, exactly as #5392 moved the nine production walkers.
+//
+// THE ESCAPE MARKERS MOVE WITH THEM. A scan line carrying `first-ok: <why>` (or
+// `topass-ok`, `waitfortimeout-ok`, `clock-ok`, `ci-ok`, `confirm-delete-ok`) was
+// dropped before counting; the same line now reads
+// `// eslint-disable-line no-restricted-syntax -- first-ok: <why>`, which keeps the
+// reason on the line it excuses and costs no extra line.
+//
+// AND THAT IS A REACH CHANGE, STATED RATHER THAN HIDDEN: the marker was per-PATTERN
+// and a disable directive is per-RULE. A line excused for `.first()` is now also
+// excused for every other `no-restricted-syntax` ban that could appear on it. The
+// bans that most plausibly co-occur with a marked line are split onto
+// `no-restricted-properties` and `no-restricted-imports` where the shape allows, so
+// the collision surface is smaller than one rule holding all of them — but it is not
+// zero, and `reportUnusedDisableDirectives` is still off (#5363), so a directive that
+// stops excusing anything is silent until that lands.
+//
+// ONE SCAN RULE DID NOT COME: the offline-navigation guard (#3002) asks whether a
+// `.goto()` sits BETWEEN a `setOffline(true)` and a `setOffline(false)` with no
+// `readyForOffline()` before it. That is a state machine over sibling statements,
+// which esquery cannot express, so it stays in lib/__tests__/e2e-hygiene.test.ts.
+
+// The blessed interaction module OWNS the settle patterns it exists to centralize
+// (`followLink`'s internal waits, plus the decision-tree header that spells both
+// out), so the scan never read it — SCAN_EXCLUDE, one entry. An `ignores` here
+// leaves it on the level above, which is what that exclusion meant.
+const E2E_HELPERS = "e2e/helpers.ts";
+// The DB-per-worker harness IS the thing the harness rules point at: it imports
+// `test` from Playwright to extend it, reads ALLOS_DB_PATH to hand out
+// `workerDbPath()`, and takes the wall-clock reading `frozenNow()` is derived from.
+const E2E_WORKER_HARNESS = [
+  "e2e/fixtures.ts",
+  "e2e/worker-env.ts",
+  "e2e/global-setup.ts",
+  "e2e/global-teardown.ts",
+];
+const E2E_FAMILY_HOME = "e2e/family-helpers.ts";
+const E2E_FIXTURE_PROFILE = "e2e/fixture-profile.ts";
+
+const HYGIENE_DOC = "see docs/internals/e2e-hygiene.md.";
+
+const WALL_CLOCK_MESSAGE = `A spec's "now" is the harness's frozen now, never the wall clock (#1538) — use frozenNow() from ./worker-env, or carry a \`clock-ok: <why>\` disable line for a use that is NOT a stored timestamp (a unique-name suffix, a TOTP probe); ${HYGIENE_DOC}`;
+
+// THE FOUR BANS THAT CARRY LIVE ESCAPE TRAFFIC sit on `no-restricted-properties`
+// rather than on `no-restricted-syntax`, and that placement is the point: 748 of the
+// 750 reviewed escapes in e2e/ today are one of these four, and a disable directive
+// is per-RULE where the retired scan's same-line marker was per-PATTERN. Splitting
+// them off means a line excused for `.first()` still cannot smuggle in a temporal
+// brand cast, a wall-clock CONSTRUCTOR or any other no-restricted-syntax ban. The
+// four remaining collisions are between these four themselves, which is what the
+// scan's own per-file counts could not distinguish either.
+const E2E_PROPERTY_BANS = [
+  {
+    // #868 (ii) — a fixed sleep asserts nothing and is either too short (flakes
+    // under contention) or too long. The ONE sanctioned use is an irreducible
+    // bounded absence-of-effect proof, which carries its reason on a disable line.
+    property: "waitForTimeout",
+    message: `waitForTimeout(...) asserts nothing — await the actual signal (settledClick / followLink / a retrying expect on one locator), or carry a \`waitfortimeout-ok: <why>\` disable line ONLY for an irreducible bounded absence-of-effect proof; ${HYGIENE_DOC}`,
+  },
+  {
+    // #868 (iii) — on a shared seeded surface "the first row" is whatever a
+    // neighbour spec or a retry left on top.
+    property: "first",
+    message: `.first() on a shared surface takes whatever a neighbour spec left on top — target a spec-owned fixture by exact locator, or carry a \`first-ok: <why>\` disable line for a reviewed owned-fixture use; ${HYGIENE_DOC}`,
+  },
+  {
+    // #868 (iv) — a retrying block proves "passes within N attempts", not "works",
+    // and hides WHICH step raced.
+    property: "toPass",
+    message: `.toPass( proves "passes within N attempts", not "works", and hides which step raced — await the actual signal, or carry a \`topass-ok: <why>\` disable line for a reviewed last resort; ${HYGIENE_DOC}`,
+  },
+  { object: "Date", property: "now", message: WALL_CLOCK_MESSAGE },
+];
+// The harness reads the wall clock ONCE, to derive the frozen now every spec then
+// asks for — so it is the one surface that drops `Date.now`, exactly as it drops the
+// `new Date()` twin among the syntax bans.
+const E2E_PROPERTY_BANS_WORKER_HARNESS = E2E_PROPERTY_BANS.filter(
+  (ban) => ban.property !== "now"
+);
+
+// Applies to every e2e source but the blessed interaction module.
+const E2E_SETTLE_BANS = [
+  {
+    // #868 (i) — a readiness gate that settles on a quiet page but not a streaming
+    // one, and waits for the wrong thing: network silence, not "my interaction
+    // landed".
+    selector:
+      "CallExpression[callee.property.name='waitForLoadState'][arguments.0.value='networkidle']",
+    message: `waitForLoadState("networkidle") settles on network silence, not on your interaction landing — use settledClick / followLink from e2e/helpers.ts; ${HYGIENE_DOC}`,
+  },
+  {
+    // A committed skip is missing coverage disguised as a test; a runtime skip makes
+    // a green run ambiguous about which contract ran.
+    selector:
+      "CallExpression[callee.object.name='test'][callee.property.name='skip']",
+    message: `A committed test.skip makes a green run ambiguous about which contracts ran — delete obsolete coverage, or make the boundary deterministic in the fixture; ${HYGIENE_DOC}`,
+  },
+  {
+    // #2645/#2648 — the harness serves ONE build shape (every worker's `next start`
+    // runs NODE_ENV=production), so the runner is not a proxy for "is this a
+    // production build" and the non-CI arm of such a branch is unreachable.
+    selector:
+      "MemberExpression[object.object.name='process'][object.property.name='env'][property.name='CI']",
+    message: `The harness serves ONE build shape — every worker runs NODE_ENV=production — so process.env.CI is not a proxy for "is this a production build" (#2645/#2648). Assert what the harness can serve, or name the runner-only fact on a \`ci-ok: <why>\` disable line; ${HYGIENE_DOC}`,
+  },
+  {
+    // #2437/#2559 — two boundingBox()es inside one Promise.all are two CDP
+    // round-trips with a layout pass between them, so a RELATIVE assertion built
+    // from them can describe a layout that never existed. The sibling combinator
+    // fires on the second and later box in the array, so a third element between
+    // them (which the retired regex's lazy gap could walk past into the NEXT
+    // Promise.all) is caught and cross-statement pairing is impossible.
+    selector:
+      "CallExpression[callee.object.name='Promise'][callee.property.name='all'] > ArrayExpression > CallExpression[callee.property.name='boundingBox'] ~ CallExpression[callee.property.name='boundingBox']",
+    message: `Two boundingBox() reads through one Promise.all are not atomic — each is its own round-trip and the page lays out between them. Use settledBoxes([...]) from e2e/helpers.ts, which repeats the group until two consecutive reads agree; ${HYGIENE_DOC}`,
+  },
+  {
+    // #2714 — a measured point is a fact about the PAST from the instant it is
+    // returned, and a surface that relays out after settling moves the target out
+    // from under the gesture, whereupon the recognizer rejects the landing and the
+    // swipe does nothing at all. A document-anchored gesture names its coordinates
+    // inline; that is the only honest spelling.
+    selector:
+      "CallExpression[callee.name='touchSwipe'][arguments.0.type='Identifier']:not([arguments.1.type='ObjectExpression'])",
+    message: `A swipe's starting point may only be an inline { x, y } literal — a MEASURED point is stale from the instant it is returned (#2714). Use touchSwipeFrom(page, locator, { dx, dy }) from e2e/helpers.ts, which re-aims and proves where the finger landed; ${HYGIENE_DOC}`,
+  },
+  {
+    // #3454 — the confirm dialog's Delete is a client toggle with no POST to settle
+    // on, so a tap dispatched before React attaches is discarded in silence.
+    selector:
+      "CallExpression[callee.property.name='click']:has(CallExpression[callee.property.name='getByTestId'][arguments.0.value='confirm-dialog']):has(Property[key.name='name'][value.value='Delete'])",
+    message: `A bare .click() on a confirm dialog's Delete can be swallowed before React attaches — use deleteActivityFromForm, or carry a \`confirm-delete-ok: <why>\` disable line; ${HYGIENE_DOC}`,
+  },
+  {
+    // #1543 — the app shell clips horizontal overflow, so a document-width vs
+    // viewport-width comparison is unconditionally true on every (app) page.
+    selector:
+      "MemberExpression[property.name='scrollWidth'][object.property.name='documentElement']",
+    message: `The app shell clips horizontal overflow, so a document-level width comparison asserts nothing on an (app) page (#1543) — use expectNoClippedContent(page) from e2e/helpers.ts, which measures element-level containment; ${HYGIENE_DOC}`,
+  },
+  {
+    selector:
+      "MemberExpression[property.name='scrollWidth'][object.object.name='document'][object.property.name='body']",
+    message: `The app shell clips horizontal overflow, so a document-level width comparison asserts nothing on an (app) page (#1543) — use expectNoClippedContent(page) from e2e/helpers.ts, which measures element-level containment; ${HYGIENE_DOC}`,
+  },
+  ...[
+    // #4369 — a bare fixed year is a date fuse with no date attached: a relative
+    // fixture eventually leaves it, and the negated form then passes vacuously.
+    // The string arm is the whole literal (`"2024"`, not `"Jan 2024"`); the regex
+    // arm matches a year anywhere in the pattern, which is what the retired scan's
+    // `/…\b20\d{2}\b…/` alternative did.
+    "CallExpression[callee.property.name='toContainText'][arguments.0.value=/^20[0-9]{2}$/]",
+    "CallExpression[callee.property.name='toContainText'][arguments.0.regex.pattern=/20[0-9]{2}/]",
+    "CallExpression[callee.property.name='toContainText'] > TemplateLiteral > TemplateElement[value.raw=/^20[0-9]{2}$/]",
+  ].map((selector) => ({
+    selector,
+    message: `A bare fixed year is not a date contract: a relative fixture eventually leaves it and a negated assertion then passes vacuously (#4369). Assert the fixture-derived display date, or use a year-SHAPE regex when proving no date renders; ${HYGIENE_DOC}`,
+  })),
+];
+
+// The Settings → Family create/grant controls are onClick Server-Action handlers,
+// not form submits, so an inline goto→fill→click flakes on the hydration swallow /
+// toaster false-settle (#830/#1111). Nine near-identical copies had accreted before
+// e2e/family-helpers.ts became their one home — which is why that file is the one
+// exemption: it OWNS these three markers by design.
+const E2E_FAMILY_BANS = [
+  [
+    "CallExpression[callee.property.name='getByPlaceholder'][arguments.0.value='Username']",
+    "createLoginViaFamily",
+    "create-login",
+  ],
+  [
+    ":matches(Literal[value='Add a profile'], TemplateElement[value.raw='Add a profile'])",
+    "createProfileViaFamily",
+    "create-profile",
+  ],
+  [
+    ":matches(Literal[value='Save access'], TemplateElement[value.raw='Save access'])",
+    "setGrantsViaFamily",
+    "set-grants",
+  ],
+].map(([selector, helper, what]) => ({
+  selector,
+  message: `An inline Settings → Family ${what} sequence flakes on the onClick+refresh hydration swallow / toaster false-settle (#830/#1111) — use ${helper} from e2e/family-helpers.ts; ${HYGIENE_DOC}`,
+}));
+
+// #1487 — a fixture profile built with a bare INSERT starts with no `saved_items`
+// rows, so it renders an empty Trends Overview no real profile can be in; a bare
+// DELETE leaves the rows the constructor seeded and fails on their foreign key.
+// e2e/fixture-profile.ts is the constructor pair's home and is the one exemption.
+const E2E_PROFILE_SQL_BANS = [
+  [
+    String.raw`INSERT\s+(?:OR\s+\w+\s+)?INTO\s+profiles\b`,
+    "A raw INSERT INTO profiles skips the standard Overview metric seeds every production-created profile gets (#1487) — use createFixtureProfile from e2e/fixture-profile.ts",
+  ],
+  [
+    String.raw`DELETE\s+FROM\s+profiles\b`,
+    "A raw DELETE FROM profiles leaves the rows the fixture CONSTRUCTOR seeded and fails on their foreign key (#1487) — use destroyFixtureProfile from e2e/fixture-profile.ts, the constructor's pair",
+  ],
+].map(([pattern, message]) => ({
+  selector: `:matches(Literal[value=/${pattern}/i], TemplateElement[value.raw=/${pattern}/i])`,
+  message: `${message}; ${HYGIENE_DOC}`,
+}));
+
+// #1538 — the DB-per-worker harness. A spec importing `test` from "@playwright/test"
+// opts out of it entirely (no per-worker baseURL, no per-worker session), and
+// ALLOS_DB_PATH is the APP SERVER's environment, not the spec process's, so reading
+// it opens the wrong worker's database. TYPE imports (Page, Locator, Browser) are
+// not restricted — only the `test` binding is.
+const E2E_HARNESS_IMPORT_BAN = {
+  name: "@playwright/test",
+  importNames: ["test"],
+  message: `Importing \`test\` from "@playwright/test" opts out of the DB-per-worker harness (#1538) — import { test, expect } from "./fixtures"; type imports may stay; ${HYGIENE_DOC}`,
+};
+const E2E_HARNESS_BANS = [
+  {
+    selector:
+      "MemberExpression[object.object.name='process'][object.property.name='env'][property.name='ALLOS_DB_PATH']",
+    message: `ALLOS_DB_PATH is the APP SERVER's environment, not the spec process's — reading it opens the wrong worker's database (#1538). Use workerDbPath() from ./worker-env; ${HYGIENE_DOC}`,
+  },
+  {
+    // #1538 — the app serves a frozen `now()` and a long lane drifts ~90 minutes
+    // from real time, so a wall-clock timestamp lands in the app's future. The
+    // `Date.now()` half of this ban is a PROPERTY and sits with the other three
+    // high-traffic escapes below; only the constructor form needs a selector.
+    selector: "NewExpression[callee.name='Date'][arguments.length=0]",
+    message: WALL_CLOCK_MESSAGE,
+  },
+];
+
+// #3946 — `deleteActivitiesTitled` in e2e/shared-profile-guard.ts is the one
+// definition, and it existed verbatim in three specs before that.
+//
+// THE PATTERN COMES FROM HOW THE SPECS SPELL IT, not from how the issue described
+// it: a census found five spellings, so a rule written for `WHERE title = ?` alone
+// would have shipped green and blind to four of them. It stops short of
+// `profile_id = ?` on purpose — a selector cannot resolve a constant, and that
+// binding may be a spec-OWNED fixture profile, which the shared helper must never
+// touch. `LIKE` is out of scope too: a prefix sweep is a different contract.
+//
+// SPECS ONLY. A seed and a fixture module delete-then-insert to stay idempotent
+// over an existing database, which is their job and not a spec's cleanup.
+const E2E_SHARED_ACTIVITY_DELETE = (() => {
+  const pattern = String.raw`DELETE\s+FROM\s+activities\s+WHERE\s+(?:profile_id\s*=\s*1\s+AND\s+)?title\s*(?:=|IN\s*\()`;
+  return {
+    selector: `:matches(Literal[value=/${pattern}/i], TemplateElement[value.raw=/${pattern}/i])`,
+    message: `An inline shared-profile activity cleanup is spelled once — use deleteActivitiesTitled from e2e/shared-profile-guard.ts (#3946); ${HYGIENE_DOC}`,
+  };
+})();
+
+// FOUR FILES EACH OWN ONE GROUP, and each keeps every OTHER group — which is why
+// these are composed sets and not an accumulating ladder. An `ignores` entry drops a
+// file to the level ABOVE, so a ladder would have handed family-helpers.ts an
+// exemption from the profile-SQL and harness bans it never had under the scan. The
+// shape here is the one the two vendor allowlists above already use: state each
+// surface's list, and the converse.
+//
+// e2e/ already sits on APP_SURFACE_SYNTAX (the revalidate block lists it), so that
+// is what these build on rather than SYNTAX_ALL.
+const SYNTAX_E2E_BASE = [...SYNTAX_APP_SURFACE, ...E2E_SETTLE_BANS];
+const SYNTAX_E2E_ALL = [
+  ...SYNTAX_E2E_BASE,
+  ...E2E_FAMILY_BANS,
+  ...E2E_PROFILE_SQL_BANS,
+  ...E2E_HARNESS_BANS,
+];
+const SYNTAX_E2E_SPEC = [...SYNTAX_E2E_ALL, E2E_SHARED_ACTIVITY_DELETE];
+// …and the three converses, each dropping exactly the group its file owns.
+const SYNTAX_E2E_FAMILY_HOME = [
+  ...SYNTAX_E2E_BASE,
+  ...E2E_PROFILE_SQL_BANS,
+  ...E2E_HARNESS_BANS,
+];
+const SYNTAX_E2E_FIXTURE_PROFILE = [
+  ...SYNTAX_E2E_BASE,
+  ...E2E_FAMILY_BANS,
+  ...E2E_HARNESS_BANS,
+];
+const SYNTAX_E2E_WORKER_HARNESS = [
+  ...SYNTAX_E2E_BASE,
+  ...E2E_FAMILY_BANS,
+  ...E2E_PROFILE_SQL_BANS,
+];
 // ── #5338 — THE CLOCK SEAM ───────────────────────────────────────────────────
 //
 // `Date.parse` on a zoneless date-TIME string answers in the SERVER's zone, by
@@ -412,21 +699,11 @@ const config = [
     ],
     ignores: ["lib/revalidate.ts", "lib/__action_tests__/**"],
     rules: {
-      "no-restricted-imports": [
-        "error",
-        {
-          patterns: [TYPESCRIPT_API_PATTERN],
-          paths: [
-            {
-              name: "next/cache",
-              importNames: ["revalidatePath"],
-              message:
-                "Use revalidateRoute from lib/revalidate.ts so the target remains compile-checked (#1636/#2149).",
-            },
-          ],
-        },
-      ],
-      "no-restricted-syntax": ["error", ...SYNTAX_ALL, ...APP_SURFACE_SYNTAX],
+      "no-restricted-imports": restrictImports(
+        [REVALIDATE_PATH_BAN],
+        IMPORT_PATTERNS_PRODUCTION
+      ),
+      "no-restricted-syntax": ["error", ...SYNTAX_APP_SURFACE],
     },
   },
   // Native alert/confirm/prompt calls bypass the app's accessible dialog primitives.
@@ -656,6 +933,65 @@ const config = [
             'Filter with getFrequencyTargetProgressForHome(profileId, "training") — a private scope_kind list is the subtraction #2888 removed.',
         },
       ],
+    },
+  },
+  // ── e2e/**: the retired hygiene scan's zero-allowlist bans (#5350) ──────────
+  // The scan read `e2e/**/*.ts` — specs AND the driver/helper modules, because a
+  // settle anti-pattern can hide in a helper the specs import (#868 phase 2). Only
+  // e2e/helpers.ts was never read: it OWNS the settle patterns it exists to
+  // centralize, so an `ignores` here leaves it on the level above, which is what
+  // that one exclusion meant.
+  {
+    files: ["e2e/**/*.ts"],
+    ignores: [E2E_HELPERS],
+    rules: {
+      "no-restricted-imports": restrictImports(
+        [REVALIDATE_PATH_BAN, E2E_HARNESS_IMPORT_BAN],
+        IMPORT_PATTERNS_PRODUCTION
+      ),
+      "no-restricted-syntax": ["error", ...SYNTAX_E2E_ALL],
+      "no-restricted-properties": ["error", ...E2E_PROPERTY_BANS],
+    },
+  },
+  // The Settings → Family driver owns the three inline markers by design…
+  {
+    files: [E2E_FAMILY_HOME],
+    rules: {
+      "no-restricted-syntax": ["error", ...SYNTAX_E2E_FAMILY_HOME],
+    },
+  },
+  // …the fixture-profile constructor pair owns the two profile writes…
+  {
+    files: [E2E_FIXTURE_PROFILE],
+    rules: {
+      "no-restricted-syntax": ["error", ...SYNTAX_E2E_FIXTURE_PROFILE],
+    },
+  },
+  // …and the DB-per-worker harness IS what the harness bans point at: it extends
+  // Playwright's `test`, reads ALLOS_DB_PATH to hand out workerDbPath(), and takes
+  // the one wall-clock reading frozenNow() is derived from.
+  {
+    files: E2E_WORKER_HARNESS,
+    rules: {
+      "no-restricted-imports": restrictImports(
+        [REVALIDATE_PATH_BAN],
+        IMPORT_PATTERNS_PRODUCTION
+      ),
+      "no-restricted-syntax": ["error", ...SYNTAX_E2E_WORKER_HARNESS],
+      "no-restricted-properties": [
+        "error",
+        ...E2E_PROPERTY_BANS_WORKER_HARNESS,
+      ],
+    },
+  },
+  // A seed and a fixture module delete-then-insert to stay idempotent over an
+  // existing database, which is their job and not a spec's cleanup — so the shared
+  // activity cleanup is the one ban scoped to specs alone. None of the three files
+  // above is a spec, so this block adds to the full list rather than to a converse.
+  {
+    files: ["e2e/**/*.spec.ts"],
+    rules: {
+      "no-restricted-syntax": ["error", ...SYNTAX_E2E_SPEC],
     },
   },
 ];

@@ -49,10 +49,8 @@ test("med form is medication-shaped and selection-prefills on pick (#846)", asyn
   // The listbox is PORTALED to <body> (#3271), so it is not inside the card in the
   // DOM any more — resolve it from the page. Only one combobox list is open at a
   // time, so this is not ambiguous.
-  await comboboxRows(page)
-    .filter({ hasText: "Naproxen" })
-    .first() // first-ok: transient combobox list this spec just opened (Naproxen suggestion); first match is intended
-    .click();
+  // eslint-disable-next-line no-restricted-properties -- first-ok: transient combobox list this spec just opened (Naproxen suggestion); first match is intended
+  await comboboxRows(page).filter({ hasText: "Naproxen" }).first().click();
 
   // The medication door owns the required kind, and the form states that shape.
   await expect(addCard.getByTestId("intake-item-form")).toHaveAttribute(
@@ -70,7 +68,7 @@ test("med form is medication-shaped and selection-prefills on pick (#846)", asyn
   await expect(addCard.getByTestId("intake-fact-timing")).toContainText("8");
   await expect(addCard.getByTestId("intake-fact-timing")).toContainText("3");
   await expect(addCard.getByTestId("intake-fact-dose")).toContainText("220 mg");
-  await expect(addCard.getByTestId("prefill-badge").first()).toBeVisible(); // first-ok: asserts a prefill badge renders on the add card — order-agnostic presence
+  await expect(addCard.getByTestId("prefill-badge").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: asserts a prefill badge renders on the add card — order-agnostic presence
 
   // And the same values really are the fields behind those chips.
   const timing = await openFact(page, "timing", addCard);
@@ -85,7 +83,7 @@ test("med form is medication-shaped and selection-prefills on pick (#846)", asyn
   // clinical-record detail page (the standard medication row shape).
   // This test adds a "Naproxen" med with no cleanup, so a --repeat-each run accumulates
   // same-named rows on the shared profile — narrow to the leading match.
-  const row = medicationRow(page, "Naproxen").first(); // first-ok: accumulating fixture row
+  const row = medicationRow(page, "Naproxen").first(); // eslint-disable-line no-restricted-properties -- first-ok: accumulating fixture row
   await expect(row).toBeVisible();
   await expect(medicationRowLink(row)).toBeVisible();
   await expect(row.getByText("As needed", { exact: true })).toBeVisible();
@@ -106,21 +104,22 @@ test("a newly catalogued med (#881) is pickable and prefills with zero code chan
   // The listbox is PORTALED to <body> (#3271), so it is not inside the card in the
   // DOM any more — resolve it from the page. Only one combobox list is open at a
   // time, so this is not ambiguous.
+  // eslint-disable-next-line no-restricted-properties -- first-ok: transient combobox list this spec just opened (Dextromethorphan suggestion); first match is intended
   await comboboxRows(page)
     .filter({ hasText: "Dextromethorphan" })
-    .first() // first-ok: transient combobox list this spec just opened (Dextromethorphan suggestion); first match is intended
+    .first()
     .click();
 
   // The curated `typical` PRN convention prefills the obligation as `may` (marked).
   await expect(addCard.getByTestId("intake-fact-importance")).toContainText(
     "As needed"
   );
-  await expect(addCard.getByTestId("prefill-badge").first()).toBeVisible(); // first-ok: asserts a prefill badge renders on the add card — order-agnostic presence
+  await expect(addCard.getByTestId("prefill-badge").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: asserts a prefill badge renders on the add card — order-agnostic presence
 
   await addCard.getByRole("button", { name: "Add", exact: true }).click();
 
   // Added with no cleanup, so --repeat-each accumulates same-named rows.
-  const row = medicationRow(page, "Dextromethorphan").first(); // first-ok: accumulating fixture row
+  const row = medicationRow(page, "Dextromethorphan").first(); // eslint-disable-line no-restricted-properties -- first-ok: accumulating fixture row
   await expect(row).toBeVisible();
 });
 
@@ -138,10 +137,8 @@ test("a user edit is never clobbered by a later pick (#846)", async ({
   // The listbox is PORTALED to <body> (#3271), so it is not inside the card in the
   // DOM any more — resolve it from the page. Only one combobox list is open at a
   // time, so this is not ambiguous.
-  await comboboxRows(page)
-    .filter({ hasText: "Naproxen" })
-    .first() // first-ok: transient combobox list this spec just opened (Naproxen suggestion); first match is intended
-    .click();
+  // eslint-disable-next-line no-restricted-properties -- first-ok: transient combobox list this spec just opened (Naproxen suggestion); first match is intended
+  await comboboxRows(page).filter({ hasText: "Naproxen" }).first().click();
 
   // Still as-needed (the user's own choice), and the importance chip is NOT marked
   // "from label defaults" — the resolver skipped the touched field.
@@ -177,9 +174,10 @@ test("a pediatric formulation persists from quick add to the medication list", a
 
     await quickAdd.getByLabel("Name").fill("Acetaminophen");
     // Portaled listbox (#3271) — resolved from the page, not the panel.
+    // eslint-disable-next-line no-restricted-properties -- first-ok: transient combobox list this spec just opened (Acetaminophen suggestion); first match is intended
     await comboboxRows(page)
       .filter({ hasText: "Acetaminophen" })
-      .first() // first-ok: transient combobox list this spec just opened (Acetaminophen suggestion); first match is intended
+      .first()
       .click();
 
     // The pediatric label block is the dose fact's editor now; the caregiver opens the
@@ -224,10 +222,10 @@ test("a pediatric formulation persists from quick add to the medication list", a
     await expect(
       belowBandPicker.getByRole("radio", { checked: true })
     ).toHaveCount(0);
-    await expect(quickAdd.getByLabel("Amount").first()).toHaveValue(""); // first-ok: the single dose row of this add form
-    await belowBandPicker.getByRole("radio").first().check(); // first-ok: the first option in this spec's own below-band picker
-    await expect(belowBandPicker.getByRole("radio").first()).toBeChecked(); // first-ok: the same first below-band-picker option, asserted checked
-    await expect(quickAdd.getByLabel("Amount").first()).toHaveValue("160 mg"); // first-ok: the single dose row of this add form
+    await expect(quickAdd.getByLabel("Amount").first()).toHaveValue(""); // eslint-disable-line no-restricted-properties -- first-ok: the single dose row of this add form
+    await belowBandPicker.getByRole("radio").first().check(); // eslint-disable-line no-restricted-properties -- first-ok: the first option in this spec's own below-band picker
+    await expect(belowBandPicker.getByRole("radio").first()).toBeChecked(); // eslint-disable-line no-restricted-properties -- first-ok: the same first below-band-picker option, asserted checked
+    await expect(quickAdd.getByLabel("Amount").first()).toHaveValue("160 mg"); // eslint-disable-line no-restricted-properties -- first-ok: the single dose row of this add form
 
     // Move to an in-chart weight so the remainder of the band/formulation flow can
     // exercise the resolved state as before.
@@ -263,18 +261,18 @@ test("a pediatric formulation persists from quick add to the medication list", a
       /Recorded weight · 37 lb · .+ \(.+\)/
     );
     await bands.filter({ hasText: "36–47 lb" }).click();
-    await expect(quickAdd.getByLabel("Amount").first()).toHaveValue("240 mg"); // first-ok: the single dose row of this add form
+    await expect(quickAdd.getByLabel("Amount").first()).toHaveValue("240 mg"); // eslint-disable-line no-restricted-properties -- first-ok: the single dose row of this add form
     await expect(bands.filter({ hasText: "36–47 lb" })).toContainText("7.5 mL");
     await closeEditor(page, panel);
     await quickAdd.getByRole("button", { name: "Add", exact: true }).click();
 
     // The child fixture profile accumulates "Acetaminophen" rows across a --repeat-each
     // run (no cleanup), so narrow to the leading match on both surfaces.
-    const row = medicationRow(page, "Acetaminophen").first(); // first-ok: accumulating fixture row
+    const row = medicationRow(page, "Acetaminophen").first(); // eslint-disable-line no-restricted-properties -- first-ok: accumulating fixture row
     // The shared compact formatter must show the SELECTED band's dose, not replace
     // every band with the product's fixed 160 mg / 5 mL concentration.
     await expect(
-      prnTodayItem(page, "Acetaminophen").first() // first-ok: see the row narrowing above
+      prnTodayItem(page, "Acetaminophen").first() // eslint-disable-line no-restricted-properties -- first-ok: see the row narrowing above
     ).toContainText("240 mg / 7.5 mL");
     await expect(row).toContainText("240 mg / 7.5 mL");
   } finally {

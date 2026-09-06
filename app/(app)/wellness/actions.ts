@@ -133,7 +133,12 @@ export async function startPracticeLive(
     practice,
     parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page")
   );
-  if (outcome.kind === "started") revalidatePracticeSurfaces();
+  // `already-live` REVALIDATES TOO (#5431). The typed refusal means the server's row
+  // disagrees with what the tapping surface was showing, and since the surfaces read
+  // that row rather than keeping a copy of it, the correction has to reach them — a
+  // Start tapped on a stale row otherwise leaves the row still offering Start.
+  if (outcome.kind === "started" || outcome.kind === "already-live")
+    revalidatePracticeSurfaces();
   return outcome;
 }
 

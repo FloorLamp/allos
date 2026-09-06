@@ -241,7 +241,7 @@ test.describe("menstrual cycle (#714)", () => {
     // Cleanup: close it again, then delete the just-created (newest, first) row —
     // restoring the starting count AND the seeded state line / start CTA.
     await settledClick(page, page.getByTestId("period-ended-button"));
-    await deleteCycle(page, rows.first()); // first-ok: deletes this spec's newest fixture row
+    await deleteCycle(page, rows.first()); // eslint-disable-line no-restricted-properties -- first-ok: deletes this spec's newest fixture row
     await expect(rows).toHaveCount(before);
     await expect(page.getByTestId("period-started-button")).toBeVisible({
       timeout: 20_000,
@@ -270,7 +270,7 @@ test.describe("menstrual cycle (#714)", () => {
 
       // Cleanup: close and delete the period this test created.
       await settledClick(other, other.getByTestId("period-ended-button"));
-      await deleteCycle(other, other.getByTestId("cycle-history-row").first()); // first-ok: this spec's newest fixture row
+      await deleteCycle(other, other.getByTestId("cycle-history-row").first()); // eslint-disable-line no-restricted-properties -- first-ok: this spec's newest fixture row
       await expect(other.getByTestId("period-started-button")).toBeVisible({
         timeout: 20_000,
       });
@@ -290,7 +290,7 @@ test.describe("menstrual cycle (#714)", () => {
     // A dated period far in the past — clear of the seeded recent history, so the
     // plausibility gate can't refuse it — marked with a unique note so this test
     // only ever targets its own fixture row.
-    const note = `e2e undo period ${Date.now()}`; // clock-ok: unique-note suffix, never a stored timestamp
+    const note = `e2e undo period ${Date.now()}`; // eslint-disable-line no-restricted-properties -- clock-ok: unique-note suffix, never a stored timestamp
     const form = await openAddPeriodPanel(page);
     await fillPeriodDate(page, "start", "2024-01-01");
     await fillPeriodDate(page, "end", "2024-01-05");
@@ -361,7 +361,7 @@ test.describe("menstrual cycle (#714)", () => {
     // Far enough in the past to clear the seeded recent history (so the #1682
     // plausibility gate can't refuse it) and this file's other dated fixture row,
     // with a unique note so the test only ever targets its own row.
-    const note = `e2e folded add ${Date.now()}`; // clock-ok: unique-note suffix, never a stored timestamp
+    const note = `e2e folded add ${Date.now()}`; // eslint-disable-line no-restricted-properties -- clock-ok: unique-note suffix, never a stored timestamp
     const form = await openAddPeriodPanel(page);
     await fillPeriodDate(page, "start", "2023-03-01");
     await fillPeriodDate(page, "end", "2023-03-05");

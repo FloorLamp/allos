@@ -28,7 +28,7 @@ test("a workout note naming a sore knee offers a one-tap niggle confirm (#2948)"
 }) => {
   test.slow(); // local next dev compiles /training on first hit
 
-  const stamp = `${Date.now()}`; // clock-ok: unique-name suffix for this run's probe activity, never a stored timestamp
+  const stamp = `${Date.now()}`; // eslint-disable-line no-restricted-properties -- clock-ok: unique-name suffix for this run's probe activity, never a stored timestamp
   const title = `${PROBE_PREFIX} session ${stamp}`;
 
   await page.goto("/training?tab=log");
@@ -47,10 +47,8 @@ test("a workout note naming a sore knee offers a one-tap niggle confirm (#2948)"
     page.getByPlaceholder(/What did you do/),
     "Back Squat"
   );
-  await comboboxRows(page)
-    .filter({ hasText: "Back Squat" })
-    .first() // first-ok: transient combobox list this spec just opened by typing the name
-    .click();
+  // eslint-disable-next-line no-restricted-properties -- first-ok: transient combobox list this spec just opened by typing the name
+  await comboboxRows(page).filter({ hasText: "Back Squat" }).first().click();
 
   await settledFill(page, page.getByTestId("set1-weight"), "100");
   await settledFill(
@@ -85,10 +83,11 @@ test("a workout note naming a sore knee offers a one-tap niggle confirm (#2948)"
 
   // Open the saved session's own page, where the record — and the offer — live.
   await page.goto("/training?tab=log");
+  // eslint-disable-next-line no-restricted-properties -- first-ok: the probe session is uniquely titled for this run
   const row = page
     .getByTestId("history-row")
     .filter({ hasText: title })
-    .first(); // first-ok: the probe session is uniquely titled for this run
+    .first();
   await followLink(
     page,
     row.getByRole("link", { name: title, exact: true }),

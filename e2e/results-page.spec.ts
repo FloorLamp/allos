@@ -24,7 +24,7 @@ test("bare /results redirects to Clinical results and renders it (#1079)", async
   // to carry was retired in #1581, so the tab's proof of life is a group header.
   const catalog = page.getByTestId("results-clinical-results");
   await expect(
-    catalog.getByTestId("clinical-result-panel-header").first() // first-ok: presence-only proof the index rendered — order-agnostic, no count asserted
+    catalog.getByTestId("clinical-result-panel-header").first() // eslint-disable-line no-restricted-properties -- first-ok: presence-only proof the index rendered — order-agnostic, no count asserted
   ).toBeVisible();
 });
 
@@ -136,10 +136,11 @@ test("the tab strip navigates route-per-tab to Imaging and Genomics (#1079)", as
   const imaging = page.getByTestId("results-imaging");
   await expect(imaging).toHaveClass(/\bmax-w-4xl\b/);
   await expect(
+    // eslint-disable-next-line no-restricted-properties -- first-ok: asserts the seeded Left Knee imaging study renders in the scoped list — order-agnostic
     imaging
       .getByTestId("imaging-study-list")
       .getByText(/Left Knee/)
-      .first() // first-ok: asserts the seeded Left Knee imaging study renders in the scoped list — order-agnostic
+      .first()
   ).toBeVisible();
 
   // Genomics tab → its own route + the seeded pharmacogenomic variant.
@@ -149,11 +150,12 @@ test("the tab strip navigates route-per-tab to Imaging and Genomics (#1079)", as
     /\/results\/genomics$/
   );
   await expect(
+    // eslint-disable-next-line no-restricted-properties -- first-ok: asserts the seeded CYP2C19 variant renders in the scoped list — order-agnostic
     page
       .getByTestId("results-genomics")
       .getByTestId("genomic-variant-list")
       .getByText("CYP2C19")
-      .first() // first-ok: asserts the seeded CYP2C19 variant renders in the scoped list — order-agnostic
+      .first()
   ).toBeVisible();
   await expect(page.getByTestId("results-genomics")).toHaveClass(
     /\bmax-w-4xl\b/

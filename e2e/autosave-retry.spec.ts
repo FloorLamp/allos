@@ -104,6 +104,6 @@ test("a save that dies in the swap window retries itself to success — zero tap
   // The entry exists server-side: the feed's newest card carries the title.
   await page.reload();
   await expect(
-    page.getByRole("main").getByText(title, { exact: true }).first() // first-ok: asserts the saved row exists — order-agnostic
+    page.getByRole("main").getByText(title, { exact: true }).first() // eslint-disable-line no-restricted-properties -- first-ok: asserts the saved row exists — order-agnostic
   ).toBeVisible();
 });

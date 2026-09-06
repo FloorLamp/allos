@@ -15,9 +15,10 @@ async function openFixtureDay(
   page: Awaited<ReturnType<typeof loginAs>>
 ): Promise<string> {
   await page.goto("/history");
+  // eslint-disable-next-line no-restricted-properties -- first-ok: spec-owned profile, newest day is the fixture's today
   const date = (await page
     .locator("[id^='timeline-day-']")
-    .first() // first-ok: spec-owned profile, newest day is the fixture's today
+    .first()
     .getAttribute("id"))!.replace("timeline-day-", "");
   await page.goto(`/history?day=${date}`);
   return date;
@@ -47,9 +48,10 @@ test.describe("the day chart at phone width (#1512 F / #1518)", () => {
     });
     try {
       await member.goto("/history");
+      // eslint-disable-next-line no-restricted-properties -- first-ok: spec-owned profile, newest day is the fixture's today
       const date = (await member
         .locator("[id^='timeline-day-']")
-        .first() // first-ok: spec-owned profile, newest day is the fixture's today
+        .first()
         .getAttribute("id"))!.replace("timeline-day-", "");
       await member.goto(`/history?day=${date}`);
 
@@ -113,9 +115,10 @@ test.describe("the day chart at phone width (#1512 F / #1518)", () => {
     });
     try {
       await member.goto("/history");
+      // eslint-disable-next-line no-restricted-properties -- first-ok: spec-owned profile, newest day is the fixture's today
       const date = (await member
         .locator("[id^='timeline-day-']")
-        .first() // first-ok: spec-owned profile, newest day is the fixture's today
+        .first()
         .getAttribute("id"))!.replace("timeline-day-", "");
       await member.goto(`/history?day=${date}`);
 
@@ -182,14 +185,15 @@ test.describe("the day chart at phone width (#1512 F / #1518)", () => {
     });
     try {
       await member.goto("/history");
+      // eslint-disable-next-line no-restricted-properties -- first-ok: spec-owned profile, newest day is the fixture's today
       const date = (await member
         .locator("[id^='timeline-day-']")
-        .first() // first-ok: spec-owned profile, newest day is the fixture's today
+        .first()
         .getAttribute("id"))!.replace("timeline-day-", "");
       await member.goto(`/history?day=${date}`);
 
       // The insight IS on this day, in the list below.
-      await expect(member.getByText("AI insight").first()).toBeVisible(); // first-ok: spec-owned profile, one insight seeded on this day
+      await expect(member.getByText("AI insight").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: spec-owned profile, one insight seeded on this day
 
       // And the rail still carries only the two clock-timed document uploads —
       // the machine event is not plotted beside the physiological ones.

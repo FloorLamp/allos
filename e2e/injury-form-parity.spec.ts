@@ -18,10 +18,8 @@ import { E2E_LOGIN_FORM_INJURY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 // Pick an activity in the editor's exercise combobox (match by substring).
 async function pickActivity(page: Page, name: string) {
   await page.getByPlaceholder(/What did you do/).fill(name);
-  await comboboxRows(page)
-    .filter({ hasText: name })
-    .first() // first-ok: the exercise combobox dropdown on this spec's own FORM_INJURY session (mirrors form-fill-paths' pickActivity)
-    .click();
+  // eslint-disable-next-line no-restricted-properties -- first-ok: the exercise combobox dropdown on this spec's own FORM_INJURY session (mirrors form-fill-paths' pickActivity)
+  await comboboxRows(page).filter({ hasText: name }).first().click();
 }
 
 async function openNewActivity(page: Page) {

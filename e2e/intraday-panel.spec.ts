@@ -40,9 +40,10 @@ const WIDE_VIEWBOX = /^0 0 720 /;
  *  rather than by recomputing the run's frozen clock here. */
 async function openFixtureDay(page: Awaited<ReturnType<typeof loginAs>>) {
   await page.goto("/history");
+  // eslint-disable-next-line no-restricted-properties -- first-ok: spec-owned profile, newest day is the fixture's today
   const date = (await page
     .locator("[id^='timeline-day-']")
-    .first() // first-ok: spec-owned profile, newest day is the fixture's today
+    .first()
     .getAttribute("id"))!.replace("timeline-day-", "");
   await page.goto(`/history?day=${date}`);
   return date;
@@ -122,7 +123,7 @@ test.describe("the day view's intraday panel (#1068)", () => {
 
       // Chart as map, list as detail: the tick's fragment target IS the feed entry
       // rendered below, so tapping it scrolls the list to that entry.
-      const morningTick = ticks.first(); // first-ok: ticks are time-ordered and spec-owned; 07:15 is the earliest
+      const morningTick = ticks.first(); // eslint-disable-line no-restricted-properties -- first-ok: ticks are time-ordered and spec-owned; 07:15 is the earliest
       const href = await morningTick.getAttribute("href");
       // `feed:` is the record's namespace for a re-housed timeline event (a timeline
       // event id and a Logs row id both spell `body:12`), and the tick is built from
@@ -293,7 +294,7 @@ test.describe("the day view's intraday panel (#1068)", () => {
       // ZOOM IN ABOUT THE POINTER: aimed at the 07:15 tick, the window narrows
       // AROUND that minute rather than around the middle of the day — and the page
       // does NOT move, which is the preventDefault half of the ruling.
-      const morningTick = chart.getByTestId("intraday-tick").first(); // first-ok: ticks are time-ordered and spec-owned; 07:15 is the earliest
+      const morningTick = chart.getByTestId("intraday-tick").first(); // eslint-disable-line no-restricted-properties -- first-ok: ticks are time-ordered and spec-owned; 07:15 is the earliest
       const tickBox = (await morningTick.boundingBox())!;
       const anchorX = tickBox.x + tickBox.width / 2;
       const settled = await member.evaluate(() => window.scrollY);

@@ -4,7 +4,7 @@
 
 import { db, today as profileToday } from "../db";
 import { now as clockNow } from "../clock";
-import { shiftDateStr, utcSqlString } from "../date";
+import { parseUtcSql, shiftDateStr, utcSqlString } from "../date";
 import { eventInstant, recordInstant } from "../row-instants";
 import { getTimezone } from "../settings";
 import {
@@ -26,12 +26,17 @@ import {
 import type { ProtocolHeatmap } from "../protocol-heatmap";
 import {
   groupPracticeSpellings,
+  liveSessionExpectedEnd,
   practiceDisplayName,
   practiceIdentity,
   practiceSpellingsFor,
   samePractice,
 } from "../practice";
-import type { FrequencyTarget, PracticeLog } from "../types";
+import type {
+  FrequencyTarget,
+  LivePracticeSession,
+  PracticeLog,
+} from "../types";
 import type { FrequencyPace } from "../frequency-targets";
 import { pageCount, pageOffset } from "../pagination";
 import {
@@ -67,7 +72,7 @@ export interface WellnessPractice {
   sessionCount: number;
   lastUsed: string | null;
   previousDurationMin: number | null;
-  liveSession: { id: number; date: string; startTime: string } | null;
+  liveSession: LivePracticeSession | null;
   // Whether `asOf` is one of this practice's inferred rhythm days (#2188). False
   // whenever the inference has no pattern (#558: unknown renders NOTHING — the
   // card's rhythm note simply doesn't exist). Predicted ≠ due (#1505): this
@@ -468,11 +473,15 @@ export function getWellnessPractices(
             .filter(
               (session) => session.live === 1 && session.start_time != null
             )
-            .map((session) => ({
-              id: session.id,
-              date: session.date,
-              startTime: session.start_time!,
-            }))[0] ?? null,
+            .map((session) =>
+              liveSessionOf(profileId, {
+                id: session.id,
+                date: session.date,
+                start_time: session.start_time!,
+                duration_min: session.duration_min,
+                derived_window: session.derived_window,
+              })
+            )[0] ?? null,
         // The rhythm over the identity's own sessions — already gathered above, so
         // the aggregate infers in memory over the SAME rows the per-practice query
         // wrapper (inferPracticeSchedule) scans; the pure core is the one
@@ -498,6 +507,44 @@ export function getWellnessPractices(
     );
 }
 
+// A live `practice_logs` row as a CLIENT sees it — the one place the shape is built, so
+// the sheet's row and the page aggregates cannot hold different opinions about when a
+// running session ends (#5431).
+//
+// IT TAKES THE PROFILE AND NOT THE ZONE, so a gather with nothing live reads no
+// timezone at all: `getTimezone` is two settings rows, and hoisting it to the caller
+// spent them on every profile whether or not one had a session running
+// (lib/__db_tests__/tick-gather-budget.test.ts caught exactly that). It is
+// request-cached, so several live rows in one request still cost one read.
+export function liveSessionOf(
+  profileId: number,
+  row: {
+    id: number;
+    date: string;
+    start_time: string;
+    duration_min: number | null;
+    derived_window: number;
+  }
+): LivePracticeSession {
+  const tz = getTimezone(profileId);
+  const started = eventInstant("practice_logs", row, tz);
+  return {
+    id: row.id,
+    date: row.date,
+    startTime: row.start_time,
+    expectedEnd: liveSessionExpectedEnd(
+      // `RowInstant.at` is the canonical UTC serialization the reader normalizes to
+      // (lib/row-instants.ts), which no brand names yet — #5338's stated route.
+      started.known ? (parseUtcSql(started.at)?.getTime() ?? null) : null,
+      {
+        durationMin: row.duration_min,
+        derivedWindow: row.derived_window === 1,
+      },
+      tz
+    ),
+  };
+}
+
 // One TRACKED practice as the quick surfaces need it (#1633): the practices the user
 // has declared a weekly cadence for, with this week's standing and today's running
 // count. Deliberately narrower than WellnessPractice — no heatmap, no session list —
@@ -519,7 +566,7 @@ export interface TrackedPractice {
   // identity-wide usual-duration vote the Wellness card and protocol row also use.
   // Null means blank: the sheet does not invent a duration without history.
   previousDurationMin: number | null;
-  liveSession: { id: number; date: string; startTime: string } | null;
+  liveSession: LivePracticeSession | null;
 }
 
 // The quick surfaces' practice list: one row per practice-scope frequency target.
@@ -566,7 +613,7 @@ export function getTrackedPractices(
   // local midnight is still running, and the sweep is what closes an abandoned one.
   const liveRows = db
     .prepare(
-      `SELECT id, practice, date, start_time
+      `SELECT id, practice, date, start_time, duration_min, derived_window
          FROM practice_logs
         WHERE profile_id = ? AND live = 1
         ORDER BY id DESC`
@@ -576,17 +623,14 @@ export function getTrackedPractices(
     practice: string;
     date: string;
     start_time: string;
+    duration_min: number | null;
+    derived_window: number;
   }[];
   const liveByIdentity = new Map(
     liveRows.flatMap((row) => {
       const identity = practiceIdentity(row.practice);
       return identity
-        ? [
-            [
-              identity,
-              { id: row.id, date: row.date, startTime: row.start_time },
-            ] as const,
-          ]
+        ? [[identity, liveSessionOf(profileId, row)] as const]
         : [];
     })
   );

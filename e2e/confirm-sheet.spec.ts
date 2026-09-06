@@ -28,12 +28,12 @@ test("the same confirm uses its desktop presentation and cancels cleanly", async
   const rowActions = page.getByRole("button", {
     name: "Entry actions for",
   });
-  await expect(rowActions.first()).toBeVisible(); // first-ok: any seeded history row opens the same shared ConfirmDialog; this spec only CANCELS it
+  await expect(rowActions.first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: any seeded history row opens the same shared ConfirmDialog; this spec only CANCELS it
 
   // hydratedClick replaces the old re-tap loop: it waits for React to attach to THIS
   // node and then taps once, which is what a menu needs — a re-tap loop on a toggle
   // would close the menu it just opened.
-  await hydratedClick(page, rowActions.first()); // first-ok: same row as above
+  await hydratedClick(page, rowActions.first()); // eslint-disable-line no-restricted-properties -- first-ok: same row as above
 
   const dialog = page.getByTestId("confirm-dialog");
   await page.getByRole("menuitem", { name: "Delete entry" }).click();
@@ -53,5 +53,5 @@ test("the same confirm uses its desktop presentation and cancels cleanly", async
   // The menu closed itself before the confirm opened (a cancelled confirm must not
   // leave the click-away backdrop shielding the table), so what proves the cancel
   // wrote nothing is the row still offering its actions.
-  await expect(rowActions.first()).toBeVisible(); // first-ok: the same seeded row, proving the cancel wrote nothing
+  await expect(rowActions.first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: the same seeded row, proving the cancel wrote nothing
 });

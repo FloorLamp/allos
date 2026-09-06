@@ -177,7 +177,7 @@ test("a live workout started on a slow connection is ONE activity, not two (#344
   await settledFill(page, page.getByPlaceholder(/What did you do/), EXERCISE);
   await hydratedClick(
     page,
-    comboboxRows(page).filter({ hasText: EXERCISE }).first() // first-ok: transient combobox list this test just opened by typing EXERCISE
+    comboboxRows(page).filter({ hasText: EXERCISE }).first() // eslint-disable-line no-restricted-properties -- first-ok: transient combobox list this test just opened by typing EXERCISE
   );
   await page
     .getByTestId("next-set-card")
@@ -276,7 +276,7 @@ test("a live workout whose start is refused still logs, on one row (#451)", asyn
   await settledFill(page, page.getByPlaceholder(/What did you do/), EXERCISE);
   await hydratedClick(
     page,
-    comboboxRows(page).filter({ hasText: EXERCISE }).first() // first-ok: transient combobox list this test just opened by typing EXERCISE
+    comboboxRows(page).filter({ hasText: EXERCISE }).first() // eslint-disable-line no-restricted-properties -- first-ok: transient combobox list this test just opened by typing EXERCISE
   );
   await page
     .getByTestId("next-set-card")

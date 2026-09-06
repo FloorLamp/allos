@@ -246,7 +246,7 @@ test("the CDC schedule grid scrolls in-container on a phone (#1449)", async ({
   // The same detail panel that follows a desktop mouse can be pinned by tap on a
   // phone, and Escape returns focus to the trigger instead of leaving a hover-only
   // dead end.
-  const trigger = grid.getByTestId("schedule-grid-vaccine-trigger").first(); // first-ok: the first CDC vaccine row is deterministic registry content; every row owns the same tap contract
+  const trigger = grid.getByTestId("schedule-grid-vaccine-trigger").first(); // eslint-disable-line no-restricted-properties -- first-ok: the first CDC vaccine row is deterministic registry content; every row owns the same tap contract
   await trigger.click();
   const pinnedTip = page.getByTestId("schedule-grid-tip");
   await expect(pinnedTip).toBeVisible();
@@ -258,7 +258,7 @@ test("the CDC schedule grid scrolls in-container on a phone (#1449)", async ({
 
   // The per-DOSE branch has the same complete contract, including native
   // keyboard activation and an ARIA relationship to the panel it opened.
-  const doseTrigger = grid.getByTestId("schedule-grid-dose-trigger").first(); // first-ok: the first recommended CDC dose is deterministic registry content; every populated dose cell owns this contract
+  const doseTrigger = grid.getByTestId("schedule-grid-dose-trigger").first(); // eslint-disable-line no-restricted-properties -- first-ok: the first recommended CDC dose is deterministic registry content; every populated dose cell owns this contract
   await doseTrigger.focus();
   await page.keyboard.press("Enter");
   await expect(pinnedTip).toBeVisible();
@@ -304,7 +304,7 @@ test("the CDC schedule grid keeps its desktop mouse detail path (#3375)", async 
     .locator("summary", { hasText: "CDC recommended schedule" })
     .click();
 
-  await page.getByTestId("schedule-grid-vaccine-cell").first().hover(); // first-ok: the first CDC vaccine row is deterministic registry content; every vaccine cell owns the same hover contract
+  await page.getByTestId("schedule-grid-vaccine-cell").first().hover(); // eslint-disable-line no-restricted-properties -- first-ok: the first CDC vaccine row is deterministic registry content; every vaccine cell owns the same hover contract
   const tip = page.getByTestId("schedule-grid-tip");
   await expect(tip).toBeVisible();
   await expect(tip).not.toHaveAttribute("data-pinned", "true");
@@ -457,7 +457,7 @@ test("detail routes survive and their back-links point at the owning panes (#107
 
   await page.goto("/immunizations/tdap");
   await expect(
-    page.getByRole("link", { name: /Back to immunizations/ }).first() // first-ok: the single "Back to immunizations" link on the tdap detail page; href asserted
+    page.getByRole("link", { name: /Back to immunizations/ }).first() // eslint-disable-line no-restricted-properties -- first-ok: the single "Back to immunizations" link on the tdap detail page; href asserted
   ).toHaveAttribute("href", "/records/history/immunizations");
 });
 

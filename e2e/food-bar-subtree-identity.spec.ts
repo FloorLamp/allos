@@ -137,9 +137,10 @@ test("the food log bar updates its overflow fold instead of replacing it (#4815)
 
   // 3. A SERVING TAP. A Server Action whose response revalidates `/nutrition`, so the
   //    server's re-ranked catalog arrives as new props for every row.
+  // eslint-disable-next-line no-restricted-properties -- first-ok: any quick row proves the revalidated render landed — order-agnostic
   const firstRow = page
     .locator('[data-testid="food-quick-rows"] li[data-testid^="food-group-"]')
-    .first(); // first-ok: any quick row proves the revalidated render landed — order-agnostic
+    .first();
   const slug = (await firstRow.getAttribute("data-testid"))!.replace(
     "food-group-",
     ""

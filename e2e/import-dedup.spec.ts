@@ -42,7 +42,7 @@ test.describe("Data → Review duplicate resolver", () => {
     // don't assert the exact 3 — we capture the baseline and assert the merge below
     // decrements it by exactly one. At workers=1 no sibling runs mid-test, so the
     // baseline is stable across this test.
-    const badge = page.getByTestId("review-badge").first(); // first-ok: the review badge (also in the mobile drawer); either mirror carries the same count
+    const badge = page.getByTestId("review-badge").first(); // eslint-disable-line no-restricted-properties -- first-ok: the review badge (also in the mobile drawer); either mirror carries the same count
     await expect(badge).toBeVisible();
     const badgeBefore = Number((await badge.textContent())?.trim());
     expect(badgeBefore).toBeGreaterThanOrEqual(3); // ≥ the 2 constant failing integrations + this spec's pair
@@ -91,17 +91,18 @@ test.describe("Data → Review duplicate resolver", () => {
     // hidden title and fails toBeVisible (the consolidation-class selector break).
     // The per-entry anchors the panel introduced are the stable feed-row hook.
     await expect(
+      // eslint-disable-next-line no-restricted-properties -- first-ok: the kept activity's feed row after the merge THIS test performed on the day it owns — deterministic
       page
         .locator('[id^="timeline-entry-"]')
         .filter({ hasText: "Afternoon Run" })
-        .first() // first-ok: the kept activity's feed row after the merge THIS test performed on the day it owns — deterministic
+        .first()
     ).toBeVisible();
     await expect(page.getByText("Morning run")).toHaveCount(0);
 
     // The badge drops by exactly one — the merged pair is gone, everything else (the two
     // failing integrations plus whatever a sibling may have added) is untouched.
     await page.goto("/");
-    const badgeAfter = page.getByTestId("review-badge").first(); // first-ok: the review badge (also in the mobile drawer); either mirror carries the same count
+    const badgeAfter = page.getByTestId("review-badge").first(); // eslint-disable-line no-restricted-properties -- first-ok: the review badge (also in the mobile drawer); either mirror carries the same count
     await expect(badgeAfter).toHaveText(String(badgeBefore - 1));
   });
 });

@@ -79,7 +79,7 @@ function trashProfileId(which: "TRASH_EAST" | "TRASH_WEST"): number {
 async function openEditorFromRow(page: Page, row: Locator): Promise<void> {
   await hydratedClick(
     page,
-    row.getByRole("link").first() // first-ok: the canonical title link precedes any exercise links in the row
+    row.getByRole("link").first() // eslint-disable-line no-restricted-properties -- first-ok: the canonical title link precedes any exercise links in the row
   );
   await page
     .getByTestId("training-activity-page")
@@ -102,7 +102,7 @@ async function confirmDelete(page: Page): Promise<void> {
 // delete is driven from the FEED. Cardio + a duration auto-saves without the per-set
 // equipment pick a bare strength variant needs (#342).
 async function createProbe(page: Page): Promise<string> {
-  const title = `${PROBE_PREFIX} ${Date.now()}-${++probeSeq}`; // clock-ok: unique probe-name suffix, never a stored timestamp
+  const title = `${PROBE_PREFIX} ${Date.now()}-${++probeSeq}`; // eslint-disable-line no-restricted-properties -- clock-ok: unique probe-name suffix, never a stored timestamp
   await page.goto("/training?tab=log");
   await page
     .getByRole("main")

@@ -157,7 +157,7 @@ test.describe("Care-trail surface (#1373 Part 2)", () => {
       /kind=visits/
     );
     await expect(
-      page.locator('[data-testid="care-trail-row"][data-kind="visit"]').first() // first-ok: asserts an unlinked standalone visit row now renders — order-agnostic presence
+      page.locator('[data-testid="care-trail-row"][data-kind="visit"]').first() // eslint-disable-line no-restricted-properties -- first-ok: asserts an unlinked standalone visit row now renders — order-agnostic presence
     ).toBeVisible();
     // The linked urgent-care visit STAYS nested (never a standalone row) in both modes.
     await expect(coldRow.getByTestId("care-trail-linked-visit")).toContainText(
