@@ -1189,7 +1189,7 @@ test("weight is stated once per exercise until a set varies it (#5371)", async (
 test("a per-side lift saves each side's weight and reps from the shared band (#5371)", async ({
   page,
 }) => {
-  const marker = `Per-side probe ${Date.now()}`; // clock-ok: unique-name suffix for this spec's own session title, never a stored timestamp
+  const marker = `Per-side probe ${Date.now()}`; // eslint-disable-line no-restricted-properties -- clock-ok: unique-name suffix for this spec's own session title, never a stored timestamp
   const storedSets = () => {
     const db = new Database(workerDbPath());
     try {
