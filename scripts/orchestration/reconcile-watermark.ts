@@ -82,8 +82,22 @@ interface GhIssue {
   pull_request?: unknown;
 }
 
+/** Pages of open issues searched for the carrier. */
+const PAGE_CAP = 10;
+
+/**
+ * The carrier, or `null` — and `null` may mean ONE thing only: the sweep reached
+ * the end of the open issues and the carrier is not among them. It used to mean
+ * that OR "the search gave up at its page cap", because `batch.length < 100` (the
+ * exhaustion signal) was spent on a bare `break`, and the two answers are read as
+ * "first run". Both callers then act on that: the reader prints `first run` over a
+ * live watermark, and stamp CREATES A SECOND CARRIER on the tracker — with
+ * `current` null, the rewind guard cannot fire either, so a stale evidence file
+ * lands unchallenged. So the cap exits here instead, which is what leaves the
+ * remaining `null` with a single meaning for both of them.
+ */
 function findCarrier(token: string): TrackerIssue | null {
-  for (let page = 1; page <= 10; page++) {
+  for (let page = 1; page <= PAGE_CAP; page++) {
     const batch = get(
       token,
       `${API}/issues?state=open&per_page=100&page=${page}`
@@ -99,9 +113,14 @@ function findCarrier(token: string): TrackerIssue | null {
         };
       }
     }
-    if (batch.length < 100) break;
+    if (batch.length < 100) return null;
   }
-  return null;
+  console.error(
+    `reconcile-watermark: searched ${PAGE_CAP} pages of open issues without ` +
+      `finding "${WATERMARK_ISSUE_TITLE}", and the last page was full — the ` +
+      "carrier may be behind the cap. Refusing rather than reporting a first run."
+  );
+  process.exit(2);
 }
 
 function carrierBody(iso: string): string {

@@ -1,8 +1,7 @@
 // STRIP COMMENTS FROM TYPESCRIPT SOURCE, without being fooled by the code around
 // them. Shared by the repository censuses that read real source files as text and
-// must not count a sentence of prose as a call, a literal or a JSX mounting:
-// lib/__tests__/logged-via-surface-wiring.test.ts (#3087) and
-// lib/__tests__/chat-origin.test.ts (#3087).
+// must not count a sentence of prose as a call, a literal or a JSX mounting —
+// lib/__tests__/chat-origin.test.ts (#3087) among them.
 //
 // WHY IT IS A SCANNER AND NOT TWO REGEXES. Both censuses previously carried their
 // own copy of

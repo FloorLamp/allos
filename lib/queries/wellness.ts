@@ -391,7 +391,7 @@ export function findPracticeTarget(
 
 export function getWellnessPractices(
   profileId: number,
-  asOf = profileToday(profileId),
+  asOf: string = profileToday(profileId),
   weekStart = 0
 ): WellnessPractice[] {
   const targets = getPracticeTargets(profileId);
@@ -539,7 +539,7 @@ export interface TrackedPractice {
 // rows are a bounded set.
 export function getTrackedPractices(
   profileId: number,
-  asOf = profileToday(profileId)
+  asOf: string = profileToday(profileId)
 ): TrackedPractice[] {
   const targets = getPracticeTargets(profileId);
   if (targets.length === 0) return [];
@@ -647,7 +647,7 @@ export function getTrackedPractices(
 // in its history. Handing it eight weeks would quietly change which hour it settles on.
 export function getPracticeRhythms(
   profileId: number,
-  asOf = profileToday(profileId)
+  asOf: string = profileToday(profileId)
 ): Map<string, WeeklyRhythm> {
   const rows = db
     .prepare(
@@ -873,9 +873,9 @@ export function isPredictedPracticeDay(
 // predicate rather than bypassing it, because a behind target with no learned
 // rhythm has no moment a card could be answering. The standing fact is still told —
 // the weekly-target reading states "Behind" and ranks into Standing's attention
-// tier (#3543 / #3548) — the `weekly-target-transition` promotion still celebrates
-// the change, and the log action still sits one tap away in Show everything's Act
-// group. It is un-promoted, not removed.
+// tier (#3543 / #3548) — and the log action still sits one tap away in Show
+// everything's Act group. It is un-promoted, not removed. Nothing in this family
+// promotes any more: the met-transition promotion retired with #4756/#5064.
 export function frequencyTargetLogWindowOpen(
   profileId: number,
   target: Pick<FrequencyTarget, "scope_kind" | "scope_value">,
@@ -952,7 +952,7 @@ export interface PracticeTrend {
 export function getPracticeTrends(
   profileId: number,
   weeks: number,
-  asOf = profileToday(profileId)
+  asOf: string = profileToday(profileId)
 ): PracticeTrend[] {
   const history = getFrequencyTargetWeeklyHistory(
     profileId,

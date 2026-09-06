@@ -97,7 +97,7 @@ describe("partFactSummary", () => {
       part({ name: "Curl" }),
       null,
       false,
-      [["equipment", "pick equipment", "missing"]],
+      [["equipment", "Pick equipment", "missing"]],
       ["intent", "effort"],
     ],
     [
@@ -105,7 +105,7 @@ describe("partFactSummary", () => {
       part({ name: "Back Squat" }),
       null,
       false,
-      [["equipment", "equipment", "add"]],
+      [["equipment", "Equipment", "add"]],
       ["intent", "effort"],
     ],
     [
@@ -115,7 +115,7 @@ describe("partFactSummary", () => {
       false,
       [
         ["equipment", "Barbell", "stated"],
-        ["intent", "target 5 reps", "stated"],
+        ["intent", "Target 5 reps", "stated"],
       ],
       ["effort"],
     ],
@@ -126,7 +126,7 @@ describe("partFactSummary", () => {
       false,
       [
         ["equipment", "Barbell", "stated"],
-        ["intent", "target 1 rep", "stated"],
+        ["intent", "Target 1 rep", "stated"],
       ],
       ["effort"],
     ],
@@ -137,7 +137,7 @@ describe("partFactSummary", () => {
       false,
       [
         ["equipment", "Barbell", "stated"],
-        ["intent", "to failure", "stated"],
+        ["intent", "To failure", "stated"],
       ],
       ["effort"],
     ],
@@ -148,8 +148,8 @@ describe("partFactSummary", () => {
       true,
       [
         ["equipment", "Dumbbell", "stated"],
-        ["sides", "sides tracked separately", "stated"],
-        ["effort", "rating effort", "stated"],
+        ["sides", "Sides tracked separately", "stated"],
+        ["effort", "Rating effort", "stated"],
       ],
       [],
     ],
@@ -158,7 +158,7 @@ describe("partFactSummary", () => {
       part({ name: "Plank" }),
       null,
       true,
-      [["equipment", "equipment", "add"]],
+      [["equipment", "Equipment", "add"]],
       [],
     ],
     [

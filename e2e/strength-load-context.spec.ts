@@ -151,7 +151,7 @@ test.describe("strength load contexts render as labeled lanes (#1610)", () => {
       "1"
     );
     await expect(form.getByTestId("goal-fact-startingFrom")).toHaveText(
-      /^from [\d.]+ kg$/
+      /^From [\d.]+ kg$/
     );
     await expect(form.getByTestId("goal-fact-startingFrom")).toHaveAttribute(
       "data-suggested",

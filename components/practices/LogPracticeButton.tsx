@@ -24,6 +24,7 @@ import {
   PRACTICE_DURATION_STEP_MIN,
   PRACTICE_USUAL_DAY_TEXT,
   practiceIdentity,
+  practiceLiveEndText,
   practiceLogOutcomeText,
   stepPracticeDuration,
 } from "@/lib/practice";
@@ -314,8 +315,7 @@ export default function LogPracticeButton({
     const stated = statement.at;
     await ledger.tap({
       write: () => {
-        const fd = subject(new FormData());
-        stampLoggedVia(fd);
+        const fd = stampLoggedVia(subject(new FormData()));
         fd.set("practice", practice);
         fd.set("intent", "finished");
         // Only where the stepper is rendered, and only when it holds a value: the tap
@@ -361,8 +361,7 @@ export default function LogPracticeButton({
   async function onStart() {
     if (pending || currentLive) return;
     setPending(true);
-    const fd = subject(new FormData());
-    stampLoggedVia(fd);
+    const fd = stampLoggedVia(subject(new FormData()));
     fd.set("practice", practice);
     try {
       const outcome = await startPracticeLive(fd);
@@ -399,15 +398,12 @@ export default function LogPracticeButton({
     const fd = subject(new FormData());
     fd.set("id", String(session.id));
     const outcome = await endPracticeLive(fd);
+    setCurrentLive(null);
     if (outcome.kind === "ended") {
-      setCurrentLive(null);
       setCount(outcome.count);
       setLastTime(null);
-      toast("Session finished");
-    } else {
-      setCurrentLive(null);
-      toast("That session is no longer running.");
     }
+    toast(practiceLiveEndText(outcome));
   }
 
   async function onEnd() {

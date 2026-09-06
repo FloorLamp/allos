@@ -1,40 +1,15 @@
 import { describe, it, expect } from "vitest";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   mobilityRegionDays,
   mobilityCoverageStrip,
   regionsForMove,
   type MobilitySessionInput,
 } from "@/lib/mobility-coverage";
-import { stripComments } from "./strip-comments";
 
 // Mobility coverage is DELIBERATELY APART from strength trained-coverage (#482: trained ≠
-// mobilized). This test pins BOTH the separation (a source-scan reflection guard that the
-// module never reads strength sets nor imports the strength coverage engine) AND the pure
-// rollup behavior over mobility move slugs.
-
-const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const RAW = fs.readFileSync(
-  path.join(REPO, "lib/mobility-coverage.ts"),
-  "utf8"
-);
-// Strip comments so the scan checks actual CODE, not the header prose that explains the
-// separation (which necessarily names the very tokens we forbid in code). The shared
-// scanner (#3621) blanks in place, so a reported offset still points at the real line.
-const CODE = stripComments(RAW);
-
-describe("mobility coverage stays apart from strength coverage (#482)", () => {
-  it("never reads strength sets or imports the strength coverage engine", () => {
-    // The whole point: mobility coverage must NOT be sourced from strength set rows or the
-    // lift-catalog coverage engine, or it would answer "trained?" instead of "mobilized?".
-    expect(CODE).not.toMatch(/exercise_sets/);
-    expect(CODE).not.toMatch(/muscle-coverage/);
-    expect(CODE).not.toMatch(/coverageFromSets/);
-    expect(CODE).not.toMatch(/liftInfo/);
-  });
-});
+// mobilized). The separation itself is now an eslint.config.mjs override on
+// lib/mobility-coverage.ts; what is left here is the pure rollup behavior over mobility
+// move slugs, which no rule can compute.
 
 describe("mobility coverage rollup", () => {
   const today = "2026-07-18";

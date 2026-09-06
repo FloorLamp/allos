@@ -40,6 +40,11 @@ import {
   parsePrClaims,
   parseSymbolCitations,
   renderReport,
+  renderRunSummaryLine,
+  boringVerdict,
+  summarizeRun,
+  RUN_SUMMARY_ISSUE,
+  RUN_SUMMARY_MARKER,
   resolvePath,
   isRootedCitation,
   movedHint,
@@ -61,8 +66,11 @@ import {
 const ROOT = process.cwd();
 
 /** A fixture repository: file path → contents. */
+const FIXTURE_COMMIT = "0123456789abcdef0123456789abcdef01234567";
+
 function repo(files: Record<string, string>): RepoIndex {
   return {
+    commit: FIXTURE_COMMIT,
     files: Object.keys(files),
     read: (f) => files[f] ?? null,
   };
@@ -1197,6 +1205,7 @@ describe("docs contract", () => {
       .map((f) => `docs/${f}`);
     expect(files.length).toBeGreaterThan(0);
     const index: RepoIndex = {
+      commit: FIXTURE_COMMIT,
       files,
       read: (f) => fs.readFileSync(path.join(ROOT, f), "utf8"),
     };
@@ -1647,10 +1656,14 @@ describe("a patch batch", () => {
   });
 });
 
-describe("the toolchain granted to a reconciliation run cannot close an issue", () => {
-  // STRUCTURAL, not instructed. The routine's first guardrail is "never closes
-  // issues"; a run holding a close-capable tool and a prompt asking it not to
-  // is the same theatre as a UI-only gate over a Server Action (#1279/#2107).
+describe("the toolchain granted to a reconciliation run closes only through the one MCP writer", () => {
+  // STRUCTURAL, not instructed. Until 2026-09-05 the routine's first guardrail
+  // was "never closes issues" and no close-capable tool was granted, so the
+  // bound held by construction (#1279/#2107's lesson). The owner then ruled
+  // that reconciliation CLOSES, SEQUENCES and GROUPS issues to reduce work, so
+  // the close now rides exactly one grant, `mcp__github__issue_write`, in the
+  // skill's own tool list — never a shell escape, never a script. The scripts
+  // below still hold no close capability at all.
   const MODULES = [
     "scripts/orchestration/reconcile-tracker.ts",
     "scripts/orchestration/reconcile-tracker-core.ts",
@@ -1660,6 +1673,7 @@ describe("the toolchain granted to a reconciliation run cannot close an issue", 
     "scripts/orchestration/reconcile-labels.ts",
     "scripts/orchestration/delete-unknown-labels.ts",
     "scripts/orchestration/reconcile-watermark.ts",
+    "scripts/orchestration/reconcile-run-summary.ts",
     "scripts/orchestration/usage.mjs",
     "scripts/orchestration/host.mjs",
   ];
@@ -1693,14 +1707,15 @@ describe("the toolchain granted to a reconciliation run cannot close an issue", 
     }
   });
 
-  it("the skill grants no close-capable tool", () => {
+  it("the skill's only close capability is the MCP issue writer", () => {
     const text = source(SKILL);
     const allowed = /^allowed-tools:\s*(.+)$/m.exec(text);
     expect(allowed).not.toBeNull();
     for (const [name, re] of CLOSE_CAPABILITIES) {
+      const permitted = name === "the close-capable MCP issue writer";
       expect({ name, found: re.test(allowed![1]) }).toEqual({
         name,
-        found: false,
+        found: permitted,
       });
     }
     // A general Bash grant would re-open every hole the list above closes.
@@ -1713,17 +1728,19 @@ describe("the toolchain granted to a reconciliation run cannot close an issue", 
     }
   });
 
-  // FOUR writers now, each confined to a different endpoint, and the point of
+  // FIVE writers now, each confined to a different endpoint, and the point of
   // this block is that no confinement rests on intent. The body applier can
   // name only `body`; the label writer sends no body at all; the label deleter
   // holds one verb against the repo's own label collection and no issue URL
   // whatsoever; the watermark writer can PATCH one body and CREATE one
-  // fixed-title carrier. Everything else in the toolchain holds no write verb.
+  // fixed-title carrier; the run-summary writer can POST one comment to one
+  // pinned issue. Everything else in the toolchain holds no write verb.
   const WRITERS = [
     "scripts/orchestration/reconcile-apply.ts",
     "scripts/orchestration/reconcile-labels.ts",
     "scripts/orchestration/delete-unknown-labels.ts",
     "scripts/orchestration/reconcile-watermark.ts",
+    "scripts/orchestration/reconcile-run-summary.ts",
   ];
 
   it("the body applier holds two confined writes: body PATCH and comment POST", () => {
@@ -1784,7 +1801,28 @@ describe("the toolchain granted to a reconciliation run cannot close an issue", 
     expect(wm).toContain("title: WATERMARK_ISSUE_TITLE");
   });
 
-  it("nothing outside the four writers holds a write verb at all", () => {
+  it("the run-summary writer POSTs one comment to one pinned issue", () => {
+    // One POST, one payload field, and the URL it can reach is built from
+    // `RUN_SUMMARY_ISSUE` — so the only thing this writer can ever do is append
+    // a comment to #865. A summary line is a fact about a run, and the comments
+    // endpoint has no field a verdict on the issue could ride in.
+    const rs = source("scripts/orchestration/reconcile-run-summary.ts");
+    expect(rs.match(/"POST"/g)).toHaveLength(1);
+    expect(rs).not.toMatch(/"(?:PATCH|PUT|DELETE)"/);
+    expect(rs).toContain(
+      "JSON.stringify({ body: runSummaryComment(summary) })"
+    );
+    expect(rs).toContain("issues/${RUN_SUMMARY_ISSUE}/comments");
+    // Exactly one issue URL in the file, and the issue number is the constant.
+    const urls = [...rs.matchAll(/https:\/\/api\.github\.com[^`"]*/g)].map(
+      (m) => m[0]
+    );
+    expect(urls).toEqual([
+      "https://api.github.com/repos/${repo}/issues/${RUN_SUMMARY_ISSUE}/comments",
+    ]);
+  });
+
+  it("nothing outside the five writers holds a write verb at all", () => {
     for (const rel of MODULES.filter((m) => !WRITERS.includes(m))) {
       expect({
         rel,
@@ -1793,9 +1831,158 @@ describe("the toolchain granted to a reconciliation run cannot close an issue", 
     }
   });
 
-  it("the skill states the guardrails it is bound by", () => {
+  it("the skill states the bounds a close is held to", () => {
     const text = source(SKILL);
-    expect(text).toContain("never closes issues");
-    expect(text).toContain("judgment calls get FLAGGED, not made");
+    expect(text).toContain(
+      "closes, sequences and groups issues to reduce work"
+    );
+    expect(text).toContain("A closure names the absorbing issue");
+    expect(text).toContain("An owner-filed issue");
+    expect(text).toContain("is never closed under it");
+    expect(text).toContain("`mcp__github__issue_write`");
+  });
+});
+
+describe("the run summary line (#865)", () => {
+  // The condition that unblocks the cron is "the report has been boring three
+  // runs running", and until this line existed NOTHING recorded that a run had
+  // happened — no committed report, and with no watermark no history either.
+  // These cases pin the two things a counter reads: the arithmetic behind
+  // `flagged`, and the fact that a clipped sweep can never render `boring: yes`.
+  const index = repo({
+    "lib/real.ts": "export const real = 1;\n",
+  });
+
+  function run(
+    over: {
+      issues?: TrackerIssue[];
+      prsTruncated?: boolean;
+      previous?: string | null;
+    } = {}
+  ) {
+    return gatherEvidence(
+      {
+        issues: over.issues ?? [],
+        mergedPrs: [],
+        issueStates: new Map(),
+        prsTruncated: over.prsTruncated ?? false,
+      },
+      index,
+      {
+        previous: over.previous ?? null,
+        current: "2026-09-08T09:00:00Z",
+      }
+    );
+  }
+
+  it("carries the run's date and the main SHA it swept", () => {
+    const line = renderRunSummaryLine(summarizeRun(run(), 0));
+    expect(line.startsWith(`${RUN_SUMMARY_MARKER} 2026-09-08T09:00:00Z`)).toBe(
+      true
+    );
+    expect(line).toContain(`main \`${FIXTURE_COMMIT.slice(0, 12)}\``);
+    // ONE line. It is counted, and a counter reads line by line.
+    expect(line).not.toContain("\n");
+  });
+
+  it("a run that left nothing for a reader is boring", () => {
+    const summary = summarizeRun(run(), 0);
+    expect(summary.flagged).toBe(0);
+    expect(boringVerdict(summary)).toBe("yes");
+    expect(renderRunSummaryLine(summary)).toContain("boring: yes");
+  });
+
+  it("counts an unapplied patch candidate as flagged, not as nothing", () => {
+    // THE HOLE THE OBVIOUS READING LEAVES. Reading `flagged` as only the
+    // report's `Couldn't verify` bucket would let a run gather 474 patch
+    // candidates, apply none of them and print `flagged 0`. Drift nobody wrote
+    // back is still drift and still a reader's job.
+    const evidence = run({
+      // Labelled to the two-axis contract, so `flagged` here is the candidate
+      // and nothing else — label hygiene has its own case below.
+      issues: [
+        issue({
+          number: 7,
+          body: "see `real.ts` for the shape",
+          labels: ["P2", "training"],
+        }),
+      ],
+    });
+    expect(evidence.findings.map((f) => f.bucket)).toEqual(["changed"]);
+    const untouched = summarizeRun(evidence, 0);
+    expect(untouched.candidates).toBe(1);
+    expect(untouched.candidatesUnapplied).toBe(1);
+    expect(untouched.flagged).toBe(1);
+    expect(boringVerdict(untouched)).toBe("no");
+    // Applied, the same run is boring — the drift is gone from the tracker.
+    const applied = summarizeRun(evidence, 1);
+    expect(applied.patched).toBe(1);
+    expect(applied.flagged).toBe(0);
+    expect(boringVerdict(applied)).toBe("yes");
+  });
+
+  it("counts every bucket a human has to read, and names them in the line", () => {
+    const evidence = run({
+      issues: [
+        issue({
+          number: 7,
+          body: "see `real.ts` for the shape",
+          labels: ["P2", "training"],
+        }),
+        // Unlabelled on purpose: label hygiene is one of the four buckets the
+        // line's `flagged` sums, and a case that never exercises it would let
+        // the sum silently drop a term.
+        issue({ number: 8, body: "and `lib/gone.ts`", labels: [] }),
+      ],
+    });
+    const summary = summarizeRun(evidence, 0);
+    expect(summary.flagged).toBe(
+      summary.candidatesUnapplied +
+        summary.couldntVerify +
+        summary.docs +
+        summary.labels
+    );
+    expect(renderRunSummaryLine(summary)).toContain(
+      `flagged ${summary.flagged} (unapplied candidates ${summary.candidatesUnapplied} · couldn't-verify ${summary.couldntVerify} · docs ${summary.docs} · labels ${summary.labels})`
+    );
+  });
+
+  it("a truncated sweep never renders a bare `boring: yes`", () => {
+    // The flag has to be IN the boring token, not only beside it. Until the
+    // watermark carrier exists every run is unbounded and the PR fetch stops at
+    // its page cap (#5311); three "boring" runs assembled from three clipped
+    // sweeps would satisfy the unblock condition without anyone noticing.
+    const summary = summarizeRun(run({ prsTruncated: true }), 0);
+    expect(summary.flagged).toBe(0);
+    expect(boringVerdict(summary)).toBe("not-established");
+    const line = renderRunSummaryLine(summary);
+    expect(line).toContain("boring: not established");
+    expect(line).not.toContain("boring: yes");
+    // And the clipped denominator is spelled out on the same line.
+    expect(line).toContain("merged PRs examined ≥0");
+    expect(line).toContain("TRUNCATED");
+  });
+
+  it("prints the window's missing lower bound rather than calling it a first run", () => {
+    expect(renderRunSummaryLine(summarizeRun(run(), 0))).toContain(
+      "window (unstamped — no lower bound) → 2026-09-08T09:00:00Z"
+    );
+    expect(
+      renderRunSummaryLine(
+        summarizeRun(run({ previous: "2026-09-05T12:40:00Z" }), 0)
+      )
+    ).toContain("window 2026-09-05T12:40:00Z → 2026-09-08T09:00:00Z");
+  });
+
+  it("refuses an apply outcome that cannot belong to this evidence", () => {
+    // More patches landed than this gather ever proposed ⇒ the evidence and the
+    // outcome are from different runs. Clamping would render a tidy line about
+    // a run that never happened.
+    expect(() => summarizeRun(run(), 3)).toThrow(/different runs/);
+    expect(() => summarizeRun(run(), -1)).toThrow(/non-negative/);
+  });
+
+  it("names the one issue the durable record lives on", () => {
+    expect(RUN_SUMMARY_ISSUE).toBe(865);
   });
 });

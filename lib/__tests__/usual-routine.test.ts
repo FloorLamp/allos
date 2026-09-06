@@ -8,7 +8,7 @@
 
 import { describe, it, expect } from "vitest";
 import {
-  bulkTakeLabel,
+  bulkLabel,
   namesPhrase,
   proteinMemberName,
   usualRoutineAnswerText,
@@ -84,18 +84,31 @@ describe("namesPhrase", () => {
   });
 });
 
-describe("bulkTakeLabel — the bulk verb reads by count (#4477)", () => {
-  // The ladder the owner ruled, at each rung and at both boundaries. One NAMES its
-  // member — the number would be the control counting instead of promising — two says
-  // the set whole, and a count appears only where it is the thing that has to be said.
+describe("bulkLabel — the bulk verb reads by count (#4477, #5320)", () => {
+  // The ladder the owner ruled, at each rung and at both boundaries, in both verbs.
+  // One NAMES its member — the number would be the control counting instead of
+  // promising — two says the set whole, and a count appears only where it is the thing
+  // that has to be said. The verb rides the same rungs: a composed bundle writes
+  // servings too, so it logs rather than takes, and it may not count differently.
   it.each([
-    [["Glycine"], "Take Glycine"],
-    [["Glycine", "Creatine"], "Take both"],
-    [["Glycine", "Creatine", "Collagen"], "Take all 3"],
-    [["Glycine", "Creatine", "Collagen", "B complex"], "Take all 4"],
-  ] as [string[], string][])("%s reads %s", (names, label) => {
-    expect(bulkTakeLabel(names.map((name) => ({ name })))).toBe(label);
-  });
+    ["Take", ["Glycine"], "Take Glycine"],
+    ["Take", ["Glycine", "Creatine"], "Take both"],
+    ["Take", ["Glycine", "Creatine", "Collagen"], "Take all 3"],
+    ["Take", ["Glycine", "Creatine", "Collagen", "B complex"], "Take all 4"],
+    ["Log", ["Berries"], "Log Berries"],
+    ["Log", ["Berries", "Creatine"], "Log both"],
+    ["Log", ["Berries", "Fermented foods", "Creatine"], "Log all 3"],
+  ] as ["Take" | "Log", string[], string][])(
+    "%s over %s reads %s",
+    (verb, names, label) => {
+      expect(
+        bulkLabel(
+          verb,
+          names.map((name) => ({ name }))
+        )
+      ).toBe(label);
+    }
+  );
 });
 
 describe("usualRoutinePhrase — the label names EVERY write", () => {

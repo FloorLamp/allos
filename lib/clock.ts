@@ -30,6 +30,7 @@
 // misconfigured production instance loudly visible.
 
 import { utcInstant, utcSqlString } from "./date";
+import type { BareInstant, CanonicalInstant } from "./temporal-types";
 
 // The raw override string, or undefined when unset/blank. Read fresh each call so a
 // test can set/unset it per process without a stale cache.
@@ -69,7 +70,7 @@ export function now(): Date {
 //
 // In production the override is unset, so this is byte-identical to what SQLite
 // would have written — the rewrite is inert outside the e2e suite.
-export function sqlNow(): string {
+export function sqlNow(): BareInstant {
   return utcSqlString(now());
 }
 
@@ -79,6 +80,6 @@ export function sqlNow(): string {
 // convention, never by the site's taste; the choice between the seam and real time is
 // the #1534 rule (day-semantic ⇒ seam, duration ⇒ real time), with the persisted
 // cross-process claim lease exception documented in the header above.
-export function instantNow(): string {
+export function instantNow(): CanonicalInstant {
   return utcInstant(now());
 }

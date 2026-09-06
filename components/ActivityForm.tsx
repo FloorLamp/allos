@@ -1,5 +1,6 @@
 "use client";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
+import type { StampedFormData } from "@/lib/logged-via";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -834,7 +835,7 @@ export default function ActivityForm({
   // on `canSave` first. `savedId` is the live row id (existing or auto-created),
   // supplied by the auto-save machine so saves update in place rather than
   // inserting duplicates.
-  function buildFormData(savedId: number | null): FormData {
+  function buildFormData(savedId: number | null): StampedFormData {
     // The surface the session was entered on (#3087). The editor overlay opens from
     // the Training page, from the dashboard and from the quick-log sheet, so the
     // mounting answers and this form does not assume.

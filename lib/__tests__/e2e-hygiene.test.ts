@@ -748,9 +748,15 @@ const BARE_TESTID_ALLOW: Record<string, number> = JSON.parse(
 // every read in this app is synchronous better-sqlite3, so an `async` Server
 // Component resolves in microtasks and a bare `<Suspense>` around it never
 // flushes early. It is therefore the one thing that produces the staged
-// `<div hidden>` copy, and its two call sites are the whole hazard surface:
-// `/training` (the tab panel) and `/trends` (the Body census). The other two
-// boundaries below do not stage server content — app/layout.tsx wraps a client
+// `<div hidden>` copy, and its call sites are the whole hazard surface:
+// `/training` (the tab panel), `/trends` (the Body census), and — since #2641
+// phase 2 — `/upcoming` and `/medical/episodes/[id]`, which stream the
+// BELOW-THE-FOLD tail of their page rather than its body, so the staged copy on
+// those two holds only the tail's markers (`available-*`, `suppressed-*`,
+// `episode-care*`, `episode-household-context*`, `stale-episode-*`,
+// `episode-comparison`, `episode-summary-footer`). Those markers' bare
+// `page.getByTestId` call sites were re-read and scoped in the same change. The
+// other two boundaries below do not stage server content — app/layout.tsx wraps a client
 // component reading useSearchParams behind a null fallback, and the chart-empty
 // harness suspends a client chart — but they are frozen with the rest so the
 // list reads as "every Suspense in app/", which is the thing to re-check.
@@ -759,8 +765,10 @@ const BARE_TESTID_ALLOW: Record<string, number> = JSON.parse(
 // in prose (#530). Frozen at zero below so the refusal has teeth.
 const SUSPENSE_BOUNDARY_FILES = [
   "app/(app)/e2e-fixtures/chart-empty/ChartEmptyHarness.tsx",
+  "app/(app)/medical/episodes/[id]/page.tsx",
   "app/(app)/training/page.tsx",
   "app/(app)/trends/page.tsx",
+  "app/(app)/upcoming/page.tsx",
   "app/layout.tsx",
   // The three chart wrappers suspend a `dynamic(..., { ssr: false })` import from
   // inside a "use client" component — client-only, so nothing is ever staged.
@@ -771,8 +779,10 @@ const SUSPENSE_BOUNDARY_FILES = [
   "components/TimeSeriesChart.tsx",
 ];
 const STREAMED_SECTION_FILES = [
+  "app/(app)/medical/episodes/[id]/page.tsx",
   "app/(app)/training/page.tsx",
   "app/(app)/trends/page.tsx",
+  "app/(app)/upcoming/page.tsx",
 ];
 
 // ── (vi) The fixture-LOGIN budget (issue #1392) ──────────────────────────────

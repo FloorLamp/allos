@@ -44,7 +44,10 @@ The dashboard places atomic facts once across four zones. **Now** is a bounded
 act-now lane. Safety is uncapped; newly changed facts are protected from
 capped-family tail exclusion but still compete for the ordinary Now seats.
 **Standing** holds ongoing context. **Ahead** is read-only: later-today work and
-the same week/later items gathered for Upcoming, with compact inline expansion.
+the same week/later items gathered for Upcoming, with compact inline expansion —
+except your weekly targets, whose progress is a Standing reading and is stated
+there instead, so one screen never says "1 of 2 this week" and "1/2 this week"
+about the same target. The Upcoming page still lists every unmet weekly target.
 **Show everything** is a remembered disclosure for the active profile's remaining
 Act, Read, Understand, Setup, and Active states facts. Ordinary facts from other
 profiles stay off the dashboard; explicit household illness context remains
@@ -1276,7 +1279,12 @@ automatically.
 
 ## Goals
 
-Set targets, track progress bars, mark achieved/archived. An exercise goal can be
+Set targets, track progress bars, mark achieved/archived. On the dashboard a goal
+row states where you are and where you are going in the goal's own units —
+"Resting HR · 63 → 58 bpm · 27%" — with the percent as the trailing note, because
+a percent on its own does not say 27% of the way from what to what. A goal nothing
+has measured yet keeps its target and shows the current value as unknown rather
+than as a zero. An exercise goal can be
 scoped to one piece of equipment; a weight target on a lift you've logged on more
 than one machine asks which one rather than quietly taking the best across them,
 and a goal that names no machine measures the movement however it was performed.
@@ -2905,12 +2913,18 @@ attached to that day.
 
 The same contract holds at the bulk surface (#2125): selecting rows of an
 undoable kind on **Data → Manage** — activities, body metrics, biomarker
-records, supplements/medications, practice sessions, substance history,
-allergies, conditions, immunizations, visits, device/manual measurements, mood
-check-ins and symptom days — captures each row and offers one
-"Deleted N · Undo" toast, so the row menu and the bulk checkbox never disagree
-about whether a delete is reversible. ("Delete all" on a dataset stays
-deliberately permanent, and says so.)
+records, supplements/medications, practice sessions, allergies, conditions,
+immunizations, visits, device/manual measurements, mood check-ins and symptom
+days — captures each row and offers one "Deleted N · Undo" toast, so the row
+menu and the bulk checkbox never disagree about whether a delete is reversible.
+("Delete all" on a dataset stays deliberately permanent, and says so.)
+
+Substance history is not on that list any more. A use is a count on the day AND
+a row in the record, written together, and a bulk delete there could only remove
+one of the two — leaving uses the count no longer knows about, or a count with
+nothing behind it. So the substance tables browse and export on Data → Manage
+and are deleted where both halves move together: the ⋯ on a day, or the ⋯ on a
+single use in the record. Both offer Undo.
 
 The toast is no longer the only way back. **Data → Trash** (issue #2013) lists
 every capture that is still restorable — what it was, when you deleted it, how

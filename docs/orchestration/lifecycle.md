@@ -9,25 +9,29 @@
   silent one. Everything else the recorder prints is recoverable.
 - The wake prompt carries only DURABLE facts — holds, owner-gated items,
   standing constraints — and points at the tooling for current state. A wake
-  that enumerates PR numbers and their status is stale before it fires: three
-  in a row named work already merged (2026-08-16).
+  that enumerates PR numbers and their status is stale before it fires.
 - The check-in script and `dispatch-brief.mjs list` are ground truth on wake.
   Read them before acting on anything the prompt asserts, including your own.
 - Sweep open issues about every four hours for filings, labels, and comment
   rulings.
 - Run one adversarial audit over the previous day of merges per session-day.
   File findings against the introducing PR.
+- **An issue of its own** (owner, 2026-09-05) is user-reachable, breaks main
+  or a merge, a measured reproduction no open issue scopes, or removes a
+  parallel concept (CLAUDE.md). A scan gap is a line on its #5346 adopter, a
+  harness nit a line on the harness issue, a flake joins its mechanism.
 - After each UI-affecting merge, while its PR context is fresh, run
   `UX_SEED=1 node scripts/orchestration/post-merge-census.mjs HEAD^ HEAD --run`.
-  It scopes app territories, expands shared UI to a full census, and stops when
-  the mapping needs a manual plan.
+  It scopes territories, expands shared UI to a census, stops on a manual plan.
 - Dispatch continuously until every remaining issue is blocked, owner-gated, or
   dependency-bound; state that explicitly.
 - Keep `parked` labels and status reports consistent.
 - Merge Dependabot minors on green current main. Send majors through
   `dependabot-eval-brief.mjs` within a day.
-- Give infrastructure issues priorities; active bottlenecks are P1 and isolated
-  latent flakes are P3.
+- Give infrastructure issues priorities; active bottlenecks (a red main, a
+  blocked queue) are P1 and isolated latent flakes are P3. Only the owner or a
+  red main makes a P1: an agent that raises a priority names the rule it
+  applies, and the PM audits every open P1 each watch (#4741 cost three days).
 - Never edit a live agent's worktree without messaging it and receiving an
   acknowledgement.
 - Rerun failed Actions jobs only after all jobs in the run have completed.
@@ -63,10 +67,8 @@
 - `merged=false` is not evidence nothing landed — work re-lands under a new PR
   from a renamed successor branch (#5220), and a squash can leave the record
   unmerged (`recovery.md` §A merge that half-landed).
-- Nor is a non-empty `git diff $(git merge-base main <branch>) <branch>`
-  evidence of unlanded work: one of #5220's 48 branches was byte-identical to
-  `main`, a sibling PR having carried the same hunk. A merge-base diff cannot
-  see that; only `git diff main <branch> -- <file>` can.
+- Nor is a non-empty merge-base diff evidence of unlanded work: a sibling PR
+  can carry the same hunk (#5220); only `git diff main <branch> -- <file>` sees it.
 
 ## Out of scope
 

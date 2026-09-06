@@ -150,9 +150,9 @@ export const INTAKE_FACT_NOUNS: Record<IntakeFactKey, string> = {
 };
 
 const OBLIGATION_SENTENCE: Record<IntakeObligation, string> = {
-  must: "must take",
-  should: "should take",
-  may: "as needed",
+  must: "Must take",
+  should: "Should take",
+  may: "As needed",
 };
 
 function slotLabel(timeOfDay: string): string {
@@ -196,7 +196,7 @@ function timingLabel(f: IntakeFactInput): string {
         : null,
     ]);
   }
-  return join([f.cadenceSentence ?? "daily", slotLabel(f.firstDoseTimeOfDay)]);
+  return join([f.cadenceSentence ?? "Daily", slotLabel(f.firstDoseTimeOfDay)]);
 }
 
 export function intakeRuleLabel(
@@ -205,19 +205,19 @@ export function intakeRuleLabel(
 ): string {
   switch (rule.type) {
     case "only-when":
-      return `only when ${rule.situation.trim() || "…"}`;
+      return `Only when ${rule.situation.trim() || "…"}`;
     case "pause-while":
-      return `paused while ${rule.situation.trim() || "…"}`;
+      return `Paused while ${rule.situation.trim() || "…"}`;
     case "food":
-      return FOOD_TIMING_LABELS[rule.timing].toLowerCase();
+      return FOOD_TIMING_LABELS[rule.timing];
     case "keep-apart": {
       const other = itemNames.get(rule.otherId) ?? "another item";
       return rule.hours != null
-        ? `keep ${rule.hours} h apart from ${other}`
-        : `keep apart from ${other}`;
+        ? `Keep ${rule.hours} h apart from ${other}`
+        : `Keep apart from ${other}`;
     }
     case "take-together":
-      return `take together with ${itemNames.get(rule.otherId) ?? "another item"}`;
+      return `Take together with ${itemNames.get(rule.otherId) ?? "another item"}`;
   }
 }
 
@@ -235,7 +235,7 @@ export function intakeFactSummary(f: IntakeFactInput): IntakeFactSummary {
           state: "stated",
           suggested: suggested.has("dose"),
         }
-      : { key: "dose", label: "add a dose", state: "missing" }
+      : { key: "dose", label: "Add a dose", state: "missing" }
   );
 
   // A scheduled item always has a schedule to state; an as-needed one with no
@@ -267,7 +267,7 @@ export function intakeFactSummary(f: IntakeFactInput): IntakeFactSummary {
   if (f.kind === "medication") {
     chips.push({
       key: "prescription",
-      label: f.rx ? join(["prescription", f.prescriber.trim() || null]) : "OTC",
+      label: f.rx ? join(["Prescription", f.prescriber.trim() || null]) : "OTC",
       state: "stated",
       // Stated by the person, never borrowed: no prefill field resolves to this fact
       // (see PrefillField), so it is tracked-and-false rather than untracked.
@@ -277,7 +277,7 @@ export function intakeFactSummary(f: IntakeFactInput): IntakeFactSummary {
       chips,
       more,
       "indication",
-      f.indication.trim() && `for ${f.indication.trim()}`
+      f.indication.trim() && `For ${f.indication.trim()}`
     );
   }
 
@@ -298,7 +298,7 @@ export function intakeFactSummary(f: IntakeFactInput): IntakeFactSummary {
     chips,
     more,
     "stopDate",
-    f.stopDate.trim() && `stops ${f.stopDate.trim()}`
+    f.stopDate.trim() && `Stops ${f.stopDate.trim()}`
   );
   pushOptional(
     chips,
@@ -311,9 +311,9 @@ export function intakeFactSummary(f: IntakeFactInput): IntakeFactSummary {
     chips,
     more,
     "purpose",
-    f.purposeSummary.trim() && `for ${f.purposeSummary.trim()}`
+    f.purposeSummary.trim() && `For ${f.purposeSummary.trim()}`
   );
-  pushOptional(chips, more, "notes", f.notes.trim() && "notes");
+  pushOptional(chips, more, "notes", f.notes.trim() && "Notes");
 
   return {
     chips,

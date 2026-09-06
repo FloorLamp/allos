@@ -3,6 +3,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
+import { GATE_STATUS_CONTEXT } from "../../scripts/orchestration/merge-gate-core.mjs";
+
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const WORKFLOW = path.join(REPO, ".github/workflows/merge-gate.yml");
 
@@ -25,7 +27,12 @@ describe("the merge-gate workflow trigger contract", () => {
 
     expect(jobNames).toEqual(["merge-gate-job"]);
     expect(source).toContain("--ignore-check merge-gate-job");
-    expect(source.match(/context: "merge-gate"/g)).toHaveLength(1);
+    // The published context and the one the gate excludes from its own
+    // verdict are the SAME STRING or the #5022 self-block exclusion silently
+    // stops matching, and the gate starts reading its own last answer back.
+    expect(
+      source.match(new RegExp(`context: "${GATE_STATUS_CONTEXT}"`, "g"))
+    ).toHaveLength(1);
   });
 
   it("uses only the supported events that can recompute its verdict", () => {

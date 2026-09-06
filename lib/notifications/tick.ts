@@ -62,10 +62,8 @@ import {
 } from "../notifications/telegram-callbacks";
 import { runEscalations } from "../notifications/escalate";
 import { runRedoseNotices } from "../notifications/redose";
-import {
-  runPostWorkoutFinish,
-  runStaleWorkoutSuggest,
-} from "../notifications/workout-presence";
+import { runPostWorkoutFinish } from "../notifications/workout-presence";
+import { runStillGoingSuggest } from "./still-going";
 import { flushPostWorkoutDispatches } from "../notifications/post-workout-queue";
 import { runPracticeRecaps } from "../notifications/practice-recap-dispatch";
 import { expireWorkoutDrafts } from "../workout-finish";
@@ -1015,10 +1013,11 @@ export async function tickProfile(
     }
   }
 
-  // Stale-session suggest (#921/#560): an `active` workout draft that's gone quiet
-  // past the workout kind's stale bound (#5142) gets ONE gentle "Still working out? Finish or discard" nudge —
-  // suggest-only, deep-links back to the session, NEVER auto-ends. One-shot per
-  // activity id; waking-gated (a soft coaching suggest, not a safety signal).
+  // "Still going?" suggest (#921/#560, one family at #5142): any open episode gone
+  // quiet past its own kind's stale bound — a workout draft, a live practice — gets
+  // ONE gentle "Finish or discard" nudge. Suggest-only, deep-links back to the
+  // surface, NEVER auto-ends. One-shot per row id; waking-gated (a soft coaching
+  // suggest, not a safety signal).
   // Draft expiry (#2870 step 3): abandoned zero-content session husks age out
   // after DRAFT_EXPIRE_HOURS. Housekeeping, not a notification — every tick,
   // not waking-gated; the core skips anything with content.
@@ -1033,10 +1032,10 @@ export async function tickProfile(
 
   if (waking) {
     try {
-      const sw = await runStaleWorkoutSuggest(profileId, profileName, now);
+      const sw = await runStillGoingSuggest(profileId, profileName, now);
       if (sw.failed) anyFailed = true;
     } catch (e) {
-      log.error("stale-workout suggest failed", {
+      log.error("still-going suggest failed", {
         profile: profileId,
         err: e instanceof Error ? e : String(e),
       });

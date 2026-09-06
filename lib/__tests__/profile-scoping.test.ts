@@ -8,6 +8,7 @@ import {
 } from "@/lib/cross-profile";
 import {
   REPO,
+  type SqlArg,
   execArgs,
   norm,
   prepareArgs,
@@ -83,6 +84,30 @@ function isVersionedMigration(rel: string): boolean {
 // Statements that legitimately touch an owned table without profile_id, keyed by
 // the file they live in (so an unrelated file can't ride the exemption). Each is
 // matched as a normalized-SQL substring. Keep this list SHORT and justified.
+//
+// KEY AN ENTRY ON THE PREDICATE, NOT ON THE SELECT LIST (#5315) — the rule for all three
+// lists in this file, stated once here. An exemption is a claim about WHICH ROWS come
+// back, so the WHERE is the part it must name; a select list changes for reasons the
+// exemption does not care about, and every such change silently unmatches the entry.
+// `resolvePortalIdentity` is the proof: its entry keyed on the pre-#3011 projection, so
+// it matched NO live statement — above a statement that was passing the scan anyway on a
+// hollow `profile_id IS NOT NULL`. A dead waiver over a hollow pass reads exactly like a
+// live one from outside. Every entry is now asserted to bind at least one live statement
+// (staleReason, below), so an unbound one REDS instead of ageing.
+//
+// BUT KEEP ENOUGH TEXT TO NAME ONE STATEMENT — do NOT read the rule as "delete the select
+// list", which is the reading that trades this defect for a worse one. A key is also a
+// claim about WHICH statement is exempt, and here the WHERE is rarely the distinctive
+// part. Measured for #5315 over these 48 entries, every one of which binds exactly one
+// live statement today: re-key each on its own statement's WHERE-onwards text and 22 still
+// name one, 23 widen to between 2 and 17 statements in the SAME file, and 3 have no WHERE
+// at all — `WHERE id = ?` alone reaches 17 of lib/portals.ts's statements and 12 of
+// lib/undo-delete-db.ts's. An unbound entry now REDS
+// (staleReason, below); an over-bound one silently exempts statements nobody justified,
+// and nothing in this file can see that. So key on the predicate PLUS the least extra text
+// that still names ONE statement — usually the FROM and its joins, and, where the `why`
+// itself rests on the projection being narrow ("reads the id→profile_id mapping and
+// nothing else"), the columns that hold that claim.
 const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
   {
     file: "lib/migrations/boot-tasks.ts",
@@ -117,13 +142,7 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     file: "lib/queries/intake/supply-pool.ts",
     includes:
       "FROM intake_items i LEFT JOIN intake_item_doses d ON d.item_id = i.id AND d.retired = 0 WHERE i.supply_id = ?",
-    why: "poolMembers (#1374): a shared bottle's takers are DIFFERENT PEOPLE by construction, so membership and its child dose labels are cross-profile on purpose. It is an ACCOUNTING read (who draws from this bottle → the pooled decrement/projection/alert), with dose amounts carried only to disambiguate actionable member labels; the id is a household-shared shared_supplies row, and every surface that NAMES members filters this through the caller's ProfileScope before rendering",
-  },
-  {
-    file: "lib/queries/intake/supply-pool.ts",
-    includes:
-      "UPDATE intake_items SET supply_id = NULL, quantity_on_hand = ? WHERE id = ? AND profile_id = ?",
-    why: "deleteSharedSupply (#1374): unlinks each member row it just read from poolMembers — the statement itself IS profile-scoped (id AND profile_id); listed only because the surrounding function's membership read is the cross-profile one above",
+    why: "poolMembers (#1374): a shared bottle's takers are DIFFERENT PEOPLE by construction, so membership and its child dose labels are cross-profile on purpose. It is an ACCOUNTING read (who draws from this bottle → the pooled decrement/projection/alert), with dose amounts carried only to disambiguate actionable member labels; the id is a household-shared shared_supplies row, and every surface that NAMES members filters this through the caller's ProfileScope before rendering. deleteSharedSupply, which unlinks the member rows this read returns, carried an entry until #5315: its UPDATE names id AND profile_id and passes the scan unaided, and an entry that exempts nothing reads exactly like one whose statement quietly stopped needing it",
   },
   {
     file: "lib/queries/intake/supply-pool.ts",
@@ -131,18 +150,44 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
       "SELECT s.id AS supply_id, i.profile_id AS profile_id FROM shared_supplies s LEFT JOIN intake_items i ON i.supply_id = s.id",
     why: "countVisiblePools (#2116): the SAME cross-by-construction membership question poolMembers above answers, asked once for the whole cabinet instead of once per bottle. It reads nothing but (supply_id, profile_id) — no name, no dose, no health data — and hands it straight to the pure isPoolVisibleTo rule against the caller's already-resolved accessible set, which is the filter. A LEFT JOIN because an ORPHANED bottle names nobody and must still be countable",
   },
+  // THE FOUR PORTAL-IDENTITY READS BELOW ARE SCOPED BY A GATE, NOT BY A PREDICATE
+  // (#5243/#5239). Each one carries `profile_id IS NOT NULL`, which the scan used to
+  // read as scoping — so three of them needed no entry at all, and the fourth's entry
+  // could go dead unnoticed. Now that `IS NULL`/`IS NOT NULL` are refused, each states
+  // its own justification here, which is where it belonged. `portal_identities` is
+  // INSTANCE-WIDE by design: a portal login's bindings span the household, so a read
+  // that answers "who is bound here" cannot filter by the profile it is about to name.
+  // The entry replaced here is where the predicate-keying rule at the top of this list
+  // came from, and the whole list has now been audited against it (#5315).
   {
     file: "lib/portals.ts",
     includes:
-      "SELECT pi.profile_id AS profileId, pi.portal_id AS portalId, pi.account_id AS accountId FROM portal_identities pi WHERE pi.account_id = ? AND pi.patient_label = ? AND pi.ignored = 0 AND pi.profile_id IS NOT NULL",
-    why: "resolvePortalIdentity (#1739): the ONE lookup that RESOLVES which profile to gate on; the gate is the protection, the resolved id is immediately intersected with the token's write set. Filtering by profile_id here would presuppose the answer the acquirer is asking for. An identity that resolves to a profile the pushing token cannot write is refused exactly as loudly as an unbound one",
+      "FROM portal_identities pi WHERE pi.account_id = ? AND pi.patient_label = ? AND pi.ignored = 0 AND pi.profile_id IS NOT NULL",
+    why: "resolvePortalIdentity (#1739): the ONE lookup that RESOLVES which profile to gate on; the gate is the protection, the resolved id is immediately intersected with the token's write set. Filtering by profile_id here would presuppose the answer the acquirer is asking for. An identity that resolves to a profile the pushing token cannot write is refused exactly as loudly as an unbound one — every route that calls it (app/api/documents/route.ts, /held, /sync-report) puts the resolved id through accessibleProfilesForLogin reachability AND accessForProfile(...) !== 'write' before any row is read or written. The `ignored = 0 AND profile_id IS NOT NULL` pair is belt-and-braces against the migration-131 CHECK, never a scope filter (#5243)",
   },
   {
-    file: "lib/portals.ts",
+    file: "lib/portal-requests.ts",
     includes:
-      "FROM portal_identities pi JOIN portals p ON p.id = pi.portal_id JOIN portal_accounts a ON a.id = pi.account_id",
-    why: "listPortalIdentities (#1739): the administrative 'which patient goes where' view is cross-profile BY NATURE — its whole job is to show bindings across the household so a misfiled one is visible. It carries identifiers and labels only (no health data), and the rendering surface filters to the viewer's accessible set before display. IGNORED rows carry no profile_id at all (the migration-131 CHECK), so there is nothing to filter them by",
+      "SELECT COUNT(*) AS n FROM portal_identities WHERE account_id = ? AND ignored = 0 AND profile_id IS NOT NULL",
+    why: "mappedPatientCount (#1888/#1889): asks whether ONE portal login reaches anybody at all, so a sync request that could land nowhere is never raised. Counting the bindings under an account is a question ABOUT the account, and per-profile filtering would answer a different one. It returns an integer and nothing else — no profile id, no label, no health data — so there is no row for a caller to be shown; every surface that goes on to NAME profiles reaches them through mappedProfilesForAccount below, which is intersected against the caller's already-authorized set (#5243)",
   },
+  {
+    file: "lib/portal-requests.ts",
+    includes:
+      "SELECT DISTINCT profile_id AS profileId FROM portal_identities WHERE account_id = ? AND ignored = 0 AND profile_id IS NOT NULL",
+    why: "mappedProfilesForAccount (#1889): profile_id is SELECTED, not filtered — this read RESOLVES which profiles a portal login covers, and filtering by one would presuppose the answer. The CROSS-PROFILE READER CONVENTION documented above it is the protection: openSyncRequestsForProfiles takes the token login's write set — resolved at the auth boundary, since this module never imports lib/auth — and keeps a request only when its account covers a profile in that set, and syncRequestCarrierProfiles intersects the same list against the recipients' managed profiles. It carries ids only, never a row of a profile's data (#5243)",
+  },
+  {
+    file: "lib/portal-requests.ts",
+    includes:
+      "(SELECT COUNT(*) FROM portal_identities i WHERE i.account_id = a.id AND i.ignored = 0 AND i.declined = 0 AND i.profile_id IS NOT NULL) AS mapped",
+    why: "staleness candidates (#1888/#1889): the same collectable-patient COUNT as mappedPatientCount, asked once per portal login instead of once per call, so the unprompted creator can enumerate accounts in one statement. Deliberately profile-agnostic — the enumeration is over portal_accounts, and the correlated subquery contributes a per-account integer to it. No profile id and no profile data leave this statement; the profiles a resulting request appears on are chosen afterwards by syncRequestCarrierProfiles against the recipients' managed set (#5243)",
+  },
+  // listPortalIdentities (#1739) exempted the deliberately cross-profile "which patient
+  // goes where" admin view. Unbound by #1753, which hoisted its columns and FROM into
+  // IDENTITY_COLS/IDENTITY_FROM and keyed the entry on text that only ever lives in the
+  // const: the literal names no owned table, so the statement is not scanned at all and
+  // there is nothing left to re-key on (#5315).
   {
     file: "lib/portals.ts",
     includes:
@@ -274,12 +319,6 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "schema introspection (#684): checks whether the migration-034 loinc column exists so the version-agnostic boot reconcile can run against an earlier schema — not a data query, reads no rows",
   },
   {
-    file: "lib/saved-clinical-result-kind.ts",
-    includes:
-      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'saved_items'",
-    why: "schema introspection for frozen migrations 174/177/178: selects only saved_items DDL to choose that migration era's saved-result kind; it reads no profile rows, and runtime always resolves the current schema",
-  },
-  {
     file: "lib/integrations/normalize.ts",
     includes: "UPDATE medical_records SET date = ?",
     why: "upsertVitals: the id comes from a profile-scoped find() just above",
@@ -289,6 +328,11 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     includes: "UPDATE activities SET date = ?",
     why: "upsertActivities: the id comes from a profile-scoped find() just above",
   },
+  // Two more entries left this list (#5315): `lib/saved-clinical-result-kind.ts`'s
+  // sqlite_master read exempted a frozen-migration DDL probe and went with its MODULE in
+  // #2882; `lib/queries/clinical.ts`'s getConditions exempted a `${where.join(…)}` that
+  // #2681 split into two literals each opening `WHERE profile_id = ?`.
+  //
   // queries.ts statements whose profile_id lives inside an interpolated fragment
   // (`${clause}` / `${where.join(...)}` always start with `profile_id = ?`; the
   // getClinicalObservations query also carries an explicit `WHERE profile_id = ?` in its
@@ -307,11 +351,6 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     file: "lib/queries/medical.ts",
     includes: "FROM medical_records WHERE ${where.join(",
     why: "getObservationsForDocument: where[] always begins with 'profile_id = ?'",
-  },
-  {
-    file: "lib/queries/clinical.ts",
-    includes: "FROM conditions WHERE ${where.join(",
-    why: "getConditions: where[] always begins with 'profile_id = ?'",
   },
   {
     file: "lib/undo-delete-db.ts",
@@ -396,6 +435,23 @@ const ALLOW_EXEC: { file: string; includes: string; why: string }[] = [
 // `.prepare(sql)` sites whose argument is a runtime expression (not a string
 // literal), so the SQL can't be inspected here. Each is verified by hand to be
 // profile-scoped and listed with a justification.
+//
+// THE BAR FOR AN ENTRY, written once so the next one MEETS it rather than imitating
+// its neighbours (#5296). This scan cannot read these statements, so an entry is
+// always a claim that something else checks them. Two shapes qualify:
+//
+//   - it NAMES a db-tier test that goes RED when that statement's scoping is mutated.
+//     The test is the proof and the `why` points at it instead of re-arguing the SQL.
+//     Admission means running that mutation, not reading the test and believing it.
+//   - it shows no exemption is being granted at all: the statement's own text is
+//     scanned where it is written (lib/db.ts's preparedFor, behind hoistedStatement),
+//     or the read is deliberately profile-AGNOSTIC and says so (lib/providers-db.ts's
+//     cross-profile count).
+//
+// A `why` that only restates the SQL's shape is neither. That is how a statement stops
+// being checked while still looking checked — two entries here cited a walk over
+// PROVIDER_LINK_SELECTS that nothing ran, and loosening one of its arms put a named
+// oncology centre into an unrelated profile's export with both tiers green.
 const ALLOW_NON_LITERAL: { file: string; expr: string; why: string }[] = [
   {
     file: "lib/db.ts",
@@ -415,7 +471,17 @@ const ALLOW_NON_LITERAL: { file: string; expr: string; why: string }[] = [
   {
     file: "lib/export.ts",
     expr: "sql",
-    why: "q(sql) helper: every DATASETS query string filters the acting profile — directly (WHERE profile_id = ?) or, for the intake dose/log child tables, through the parent JOIN (WHERE ii.profile_id = ?)",
+    why: "q(sql) helper: every DATASETS query string filters the acting profile — directly (WHERE profile_id = ?) or, for the intake dose/log child tables, through the parent JOIN (WHERE ii.profile_id = ?). Not left to that sentence: lib/__db_tests__/export.test.ts seeds two profiles and asserts, per dataset, that rows(), page() and count() carry none of the OTHER profile's rows — compared by row CONTENT, so a dataset emitting no `id`, or aliasing the one it has, is judged like any other. The one dataset that comparison cannot judge (the GLOBAL providers table) is named there and asserted exhaustive against OWNED_TABLES + ownedChildTables(db), which is schema-derived and not editable from lib/export.ts.",
+  },
+  ...(["ACTIVITIES_SELECT", "ITEMS_SELECT"] as const).map((expr) => ({
+    file: "lib/export.ts",
+    expr,
+    why: `the ${expr === "ACTIVITIES_SELECT" ? "activities" : "intake_items"} dataset's full read. Both datasets fold a child table in JS after the read, so they hand-write rows()/page() instead of taking them from tableDataset — and the statement is one module const rather than three copies, because ExportDataset.select must be the SAME string the readers run for the column census to attribute its columns. Passed by name, so this scan sees an identifier. The const itself opens its WHERE with the acting profile's own \`profile_id = ?\`, and that is CHECKED rather than asserted here: lib/__db_tests__/export.test.ts seeds two profiles and proves per dataset that rows(), page() and count() carry none of the other profile's rows, compared by row content. Rewriting this const's WHERE reds that dataset's case.`,
+  })),
+  {
+    file: "lib/export.ts",
+    expr: "providersSelect(ph)",
+    why: "the providers dataset's read: `providers` is a GLOBAL table with no profile_id of its own, so there is no profile filter in this statement to check. It is read by an explicit `IN (…)` id list, and that list comes from referencedProviderIds(profileId) — the walk over PROVIDER_LINK_SELECTS, whose arms are the entire profile filter. That walk is EXERCISED rather than cited: lib/__db_tests__/export.test.ts builds one case per arm out of the same exported array the walk iterates, seeding that arm's own table with a link to a uniquely named provider, asserting it reaches its own profile's export and reaches no other. Loosening any arm's `profile_id = ?` reds that arm's case. The function exists so the placeholder count can vary; its SQL text is one hand-authored literal.",
   },
   {
     file: "lib/export-full.ts",
@@ -458,6 +524,18 @@ const ALLOW_NON_LITERAL: { file: string; expr: string; why: string }[] = [
 //       located AFTER the statement's first WHERE/ON/USING keyword (so a SET-clause
 //       `profile_id = ?` before the WHERE, or a select-list/GROUP BY mention, does not
 //       count).
+// `IS` is admitted only when it compares against a VALUE (`profile_id IS ?`,
+// `profile_id IS NOT ?` — the null-safe spelling of `=`). The refusal is written as a
+// NEGATIVE LOOKAHEAD on `IS` rather than as `IS\s+(?!…)`, because the latter backtracks:
+// `\s+` gives back a space, the lookahead then reads " NOT NULL" as not-NULL, and
+// `profile_id IS  NOT  NULL` passes. The live scan normalizes whitespace first and would
+// never have shown it — a guard must not depend on a caller having tidied its input.
+// `IS NULL` / `IS NOT NULL` are
+// refused: an existence check on the column constrains nothing about WHOSE rows come
+// back, and on a profile-owned table every row satisfies `profile_id IS NOT NULL`
+// (#5243/#5239). Accepting it made four live portal reads pass hollowly — a pass that
+// looks identical from outside to a real one, which is how the `resolvePortalIdentity`
+// exemption documenting one of them came to read as dead.
 // A statement that names an owned table but fails this must be allowlisted with a
 // justification, exactly like a statement that omits profile_id entirely.
 function scopedByProfileId(sql: string): boolean {
@@ -470,13 +548,66 @@ function scopedByProfileId(sql: string): boolean {
   if (predIdx >= 0) {
     const tail = sql.slice(predIdx);
     if (
-      /(?:^|[\s.(])profile_id\s*(?:=|<|>|!=|<>|IN\b|IS\b|BETWEEN\b|LIKE\b|GLOB\b)/i.test(
+      /(?:^|[\s.(])profile_id\s*(?:=|<|>|!=|<>|IN\b|IS(?!\s+(?:NOT\s+)?NULL\b)\s|BETWEEN\b|LIKE\b|GLOB\b)/i.test(
         tail
       )
     )
       return true;
   }
   return false;
+}
+
+// STALENESS for EVERY allowlist above (#5239 for ALLOW_EXEC, generalised to all three
+// by #5315). An allowlist entry is a claim about the tree, and a claim nothing re-checks
+// stops being true quietly. Not hypothetical: the ALLOW_SQL entry for
+// resolvePortalIdentity had matched NO live statement since #3011 added a column to its
+// select list, and nothing went red — because the statement it named was passing the
+// scan anyway, on a `profile_id IS NOT NULL` that does not scope. Two silent failures
+// pointing the same way, so the entry read as live from outside. The census that added
+// this check found 3 more of the same shape in a population of 71 entries (52 ALLOW_SQL,
+// 3 ALLOW_EXEC, 16 ALLOW_NON_LITERAL), each recorded above where it used to sit; after
+// them the population is 67 and every entry binds a live statement.
+//
+// LOAD-BEARING, not merely present: some live statement in the entry's OWN file must
+// both match it and NEED it. An entry whose statement was deleted fails this; so does
+// one whose statement was rewritten to scope itself, which is a permission left behind
+// for code that changed.
+//
+// THE MATCHER IS A PARAMETER because the three scans match an entry differently —
+// ALLOW_SQL and ALLOW_EXEC by normalized-SQL substring, ALLOW_NON_LITERAL by EXACT
+// expression text. A staleness check that matched its own way would be reporting on a
+// different list than the one the scan actually exempts, which is the shape of failure
+// this whole check exists to end.
+//
+// PURE in its inputs, because the live tree cannot exercise it. Every owned-table exec
+// literal here is unscoped and every waiver below binds something, so neither verdict
+// has a live fixture and both would ship as unread branches; the cases at the bottom
+// drive them with synthetic statements instead of waiting for the tree to grow one.
+type LiveStatement = { rel: string; sql: string };
+
+// The two ways this file's scans match an entry, defined ONCE so the census rows and the
+// unit cases below run through the SAME predicate. A control that writes its own matcher
+// proves something about A matcher, never about THE one the census uses.
+const bySubstring = (key: string) => (sql: string) => sql.includes(key);
+const byExactExpr = (key: string) => (text: string) => text === key;
+
+function staleReason(
+  entry: { file: string },
+  statements: LiveStatement[],
+  matches: (text: string) => boolean,
+  site: string
+): string | null {
+  const matched = statements.filter(
+    (p) => p.rel.endsWith(entry.file) && matches(p.sql)
+  );
+  if (matched.length === 0)
+    return `no live ${site} statement matches this entry; it was deleted, or edited past the text this entry keys on. FIND THE STATEMENT FIRST — if it is still there and still needs the waiver, RE-KEY IT ON THE PREDICATE that makes it exempt plus the least extra text that still names ONE statement. Not on the select list, which changes for reasons the exemption does not care about; and not on the bare WHERE either, which in this repo usually names several statements at once (see the rule above ALLOW_SQL)`;
+  // Deliberately NOT an unqualified "delete it". An entry can look unnecessary because
+  // the scan started accepting something that does not actually scope — which is exactly
+  // how a live waiver gets deleted on a hollow pass (#5243). Say what to check first.
+  if (matched.every((p) => scopedByProfileId(p.sql)))
+    return "the statement it matches passes the scan on its own, so this entry exempts nothing. Before deleting, read WHAT makes it pass: confirm a real predicate binds the profile, not a bare existence check on the column (#5243). If it is the existence check, the read is unscoped and this entry is its only documentation — keep it";
+  return null;
 }
 
 describe("profile scoping: every owned-table query filters by profile_id", () => {
@@ -561,6 +692,66 @@ describe("profile scoping: every owned-table query filters by profile_id", () =>
 
     expect(violations, `\n${violations.join("\n")}\n`).toEqual([]);
   });
+
+  // Every entry of every allowlist must bind at least one live statement (#5315). The
+  // three lists differ only in which statements their scan reads and how it matches an
+  // entry, so they are ONE table here rather than three near-copies — and each row hands
+  // staleReason the SAME pool and the SAME predicate its own scan uses above.
+  const scanned = (
+    args: (src: string) => SqlArg[],
+    kind: SqlArg["kind"]
+  ): LiveStatement[] =>
+    files.flatMap((file) => {
+      const rel = relPath(file);
+      if (isVersionedMigration(rel)) return [];
+      return args(readSource(file))
+        .filter((a) => a.kind === kind)
+        .map((a) => ({ rel, sql: kind === "sql" ? norm(a.text) : a.text }));
+    });
+
+  it.each([
+    [
+      "ALLOW_SQL",
+      ".prepare()",
+      ALLOW_SQL.map((e) => ({ ...e, key: e.includes })),
+      () => scanned(prepareArgs, "sql").filter((p) => OWNED_RE.test(p.sql)),
+      bySubstring,
+    ],
+    [
+      "ALLOW_EXEC",
+      ".exec()",
+      ALLOW_EXEC.map((e) => ({ ...e, key: e.includes })),
+      () => scanned(execArgs, "sql").filter((p) => OWNED_RE.test(p.sql)),
+      bySubstring,
+    ],
+    [
+      // Matched by EXACT expression text, exactly as the .prepare scan matches it — a
+      // substring here would let the `sql` entry ride `sql.upsert` and read as bound.
+      "ALLOW_NON_LITERAL",
+      "non-literal .prepare()",
+      ALLOW_NON_LITERAL.map((e) => ({ ...e, key: e.expr })),
+      () => scanned(prepareArgs, "expr"),
+      byExactExpr,
+    ],
+  ] as const)(
+    "every %s entry is justified and is the reason a live statement passes",
+    (name, site, entries, pool, matcher) => {
+      const live = pool();
+      // Guards against the assertion passing because it found nothing to look at.
+      expect(live.length).toBeGreaterThanOrEqual(entries.length);
+
+      const dead: string[] = [];
+      for (const entry of entries) {
+        expect(entry.why.trim().length).toBeGreaterThan(0);
+        const stale = staleReason(entry, live, matcher(entry.key), site);
+        if (stale) dead.push(`${entry.file}: "${entry.key}" — ${stale}`);
+      }
+      expect(
+        dead,
+        `\n${name} entries that exempt nothing. Each line says which fix it needs:\n${dead.join("\n")}\n`
+      ).toEqual([]);
+    }
+  );
 });
 
 // UNIT cases for the two #1208 rules, pinned on inline source (no files) so the
@@ -611,6 +802,135 @@ describe("profile-scoping scanner rules (issue #1208)", () => {
         "UPDATE medical_records SET profile_id = ? WHERE profile_id = ? AND id = ?"
       )
     ).toBe(true);
+  });
+
+  // `IS` scopes only when it compares against a VALUE (#5243/#5239). Both directions are
+  // pinned: the REFUSE half is the defect — an existence check on the column that every
+  // row of a profile-owned table satisfies — and the ACCEPT half is what keeps the fix
+  // from being a deletion of the operator, which would red four portal reads for the
+  // wrong reason and make the waivers below unfalsifiable.
+  it.each([
+    // Refused: constrains nothing about WHOSE rows come back.
+    ["SELECT 1 FROM t WHERE profile_id IS NOT NULL", false],
+    ["SELECT 1 FROM t WHERE profile_id IS NULL", false],
+    // Qualified, lower-cased, and loosely spaced spellings of the same thing — this is
+    // how the four live portal statements actually write it.
+    [
+      "SELECT 1 FROM portal_identities pi WHERE pi.profile_id IS NOT NULL",
+      false,
+    ],
+    ["SELECT 1 FROM t WHERE profile_id is not null", false],
+    ["SELECT 1 FROM t WHERE profile_id IS  NOT  NULL", false],
+    // The existence check does not poison a statement that ALSO filters properly.
+    ["SELECT 1 FROM t WHERE profile_id = ? AND profile_id IS NOT NULL", true],
+    // Accepted: `IS ?` / `IS NOT ?` are the null-safe spellings of `=` / `!=` and bind a
+    // value, so they scope exactly as `=` does. This is what `IS` was admitted for.
+    ["SELECT 1 FROM t WHERE profile_id IS ?", true],
+    ["SELECT 1 FROM t WHERE profile_id IS NOT ?", true],
+    ["SELECT 1 FROM portal_identities pi WHERE pi.profile_id IS ?", true],
+  ])("IS as a scoping operator: %s -> %s", (sql, scoped) => {
+    expect(scopedByProfileId(sql)).toBe(scoped);
+  });
+
+  // Both staleness verdicts, on synthetic statements — every owned-table exec literal in
+  // the tree is unscoped and every waiver above binds something, so neither the "gone"
+  // nor the "unnecessary" branch is reachable from the live tree. A verdict nothing can
+  // execute is a verdict nobody has read. These run through bySubstring/byExactExpr, the
+  // same two matchers the census rows above pass to staleReason.
+  it("staleness says WHICH fix a stale entry needs: gone, or unnecessary", () => {
+    const rel = "lib/fake-boot-tasks.ts";
+    const entry = {
+      file: rel,
+      includes: "UPDATE import_jobs SET status = 'failed'",
+    };
+    const stale = (statements: LiveStatement[], e = entry) =>
+      staleReason(e, statements, bySubstring(e.includes), ".exec()");
+    const unscoped = {
+      rel,
+      sql: "UPDATE import_jobs SET status = 'failed' WHERE status = 'processing'",
+    };
+    // Load-bearing: the statement matches and the scan refuses it without this entry.
+    expect(stale([unscoped])).toBeNull();
+    // An entry in ANOTHER file does not ride this one's statement.
+    expect(stale([unscoped], { ...entry, file: "lib/elsewhere.ts" })).toMatch(
+      /no live \.exec\(\) statement matches/
+    );
+    // Gone: the statement was deleted or rewritten past the entry's text — and the
+    // verdict names the re-keying, because "gone" is also what a SELECT-LIST-keyed entry
+    // reports when its statement is still there and still needs the waiver (#5315).
+    expect(stale([])).toMatch(/no live \.exec\(\) statement matches/);
+    expect(stale([])).toMatch(/RE-KEY IT ON THE PREDICATE/);
+    // …and the instruction carries its own bound. "Key on the predicate", taken alone,
+    // widens 26 of this file's 49 single-binding entries onto other statements (measured,
+    // #5315) — so the verdict must not stop at the word the reader will act on.
+    expect(stale([])).toMatch(/names ONE statement/);
+    // Unnecessary: the statement now scopes itself, so the entry exempts nothing — and
+    // the verdict must send the reader to check WHAT makes it pass before deleting,
+    // because a bare existence check reads as a pass (#5243) and the entry would then be
+    // the only record that the read is deliberately unscoped.
+    const unnecessary = stale([
+      {
+        rel,
+        sql: "UPDATE import_jobs SET status = 'failed' WHERE profile_id = ?",
+      },
+    ])!;
+    expect(unnecessary).toMatch(/passes the scan on its own/);
+    expect(unnecessary).toMatch(/read WHAT makes it pass/);
+    expect(unnecessary).toContain("#5243");
+    expect(unnecessary).toMatch(/keep it$/);
+    // …and an existence check is NOT what makes a statement pass, so an entry covering
+    // one stays load-bearing rather than being reported as unnecessary.
+    expect(
+      stale([
+        {
+          rel,
+          sql: "UPDATE import_jobs SET status = 'failed' WHERE profile_id IS NOT NULL",
+        },
+      ])
+    ).toBeNull();
+  });
+
+  // The defect the census exists for (#5315), both directions on the SAME statement:
+  // adding one column to a projection unbinds an entry keyed on the select list, and
+  // leaves an entry keyed on the WHERE bound. This is resolvePortalIdentity's history —
+  // #3011 added `pi.id AS identityId` — reduced to its two statements.
+  it("a select-list-keyed entry unbinds when a column is added; a predicate-keyed one does not", () => {
+    const rel = "lib/fake-portals.ts";
+    const before = {
+      rel,
+      sql: "SELECT pi.profile_id AS profileId FROM portal_identities pi WHERE pi.account_id = ? AND pi.ignored = 0",
+    };
+    const after = {
+      rel,
+      sql: "SELECT pi.id AS identityId, pi.profile_id AS profileId FROM portal_identities pi WHERE pi.account_id = ? AND pi.ignored = 0",
+    };
+    const keyed = (includes: string, on: LiveStatement) =>
+      staleReason({ file: rel }, [on], bySubstring(includes), ".prepare()");
+    const projection =
+      "SELECT pi.profile_id AS profileId FROM portal_identities pi";
+    const predicate =
+      "FROM portal_identities pi WHERE pi.account_id = ? AND pi.ignored = 0";
+    expect(keyed(projection, before)).toBeNull();
+    expect(keyed(projection, after)).toMatch(
+      /no live \.prepare\(\) statement matches/
+    );
+    expect(keyed(predicate, before)).toBeNull();
+    expect(keyed(predicate, after)).toBeNull();
+  });
+
+  // ALLOW_NON_LITERAL is matched by EXACT expression text, so its staleness must be too:
+  // a substring matcher would let the `sql` entry ride a live `sql.upsert` and report a
+  // dead entry as bound — the census answering a question the scan never asked.
+  it("non-literal entries bind by exact expression text, not by substring", () => {
+    const rel = "lib/fake-ledger.ts";
+    const live = [{ rel, sql: "sql.upsert" }];
+    const site = "non-literal .prepare()";
+    expect(
+      staleReason({ file: rel }, live, byExactExpr("sql.upsert"), site)
+    ).toBeNull();
+    expect(staleReason({ file: rel }, live, byExactExpr("sql"), site)).toMatch(
+      /no live non-literal \.prepare\(\) statement matches/
+    );
   });
 
   it("db.exec scan: an owned-table exec without an allowlist entry is flagged", () => {

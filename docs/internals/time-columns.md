@@ -93,11 +93,15 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 
 ## The entries worth reading before writing SQL
 
-- **`metric_samples.started_at`** holds vendor ISO-with-milliseconds for an imported
-  sample AND `${date}T00:00:00` — a profile-local day midnight, not an instant — for a
-  reading whose author stated only a day. It is also the natural key that makes a
-  re-entry a correction rather than a duplicate, so neither shape can be normalized
-  without changing dedupe.
+- **`metric_samples.started_at`** holds whatever each writer put there, and no list of
+  the shapes is claimed complete: the device's own value verbatim from an integration
+  (ISO with or without milliseconds, `Z` or an offset), `${date}T00:00:00` — a
+  profile-local day midnight, not an instant — for a reading whose author stated only
+  a day, `${date}THH:MM:SS` for a hydration tap or a stated time, a bare `YYYY-MM-DD`
+  for a document-import point sample, and `<ISO>#<stage>` for a Fitbit Takeout sleep
+  stage. It is also the natural key that makes a re-entry a correction rather than a
+  duplicate, so no shape can be normalized without changing dedupe, and no brand types
+  it (#2899).
 - **`illness_episodes.started_at` / `ended_at`** are DAYS, and `ended_at` is
   **exclusive** — the first inactive day. Reading it as an instant, or as an inclusive
   end, is wrong twice.
@@ -304,8 +308,8 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `medication_courses` | `stopped_on` | window-end | day | n/a |  |
 | `medication_courses` | `created_at` | record | instant | bare |  |
 | `metric_samples` | `date` | day | day | n/a |  |
-| `metric_samples` | `started_at` | window-start | instant | mixed | THE column that most rewards reading this table before writing SQL. It holds vendor ISO-with-milliseconds for an imported sample AND `${date}T00:00:00` — a profile-local DAY midnight, not an instant — for a reading whose author stated only a day. It is also the natural key (profile, metric, source, origin, started_at) that makes a re-entry a correction, so neither shape can be normalized without changing dedupe. |
-| `metric_samples` | `ended_at` | window-end | instant | mixed | The same two shapes as started_at, and equal to it for an instantaneous reading. |
+| `metric_samples` | `started_at` | window-start | instant | mixed | THE column that most rewards reading this table before writing SQL. It holds whatever each writer put there, and NO inventory of the shapes is claimed complete — two falsifying passes on #2899 (2026-09-05) each found shapes the previous note omitted. Known so far: the device's own value VERBATIM from an integration — ISO with or without milliseconds, `Z` or an offset (lib/integrations/health-connect.ts and oura.ts pass the payload's time through; normalize.ts upsertMetricSamples inserts it unchanged); `${date}T00:00:00`, a profile-local DAY midnight, for a reading whose author stated only a day (lib/reading-writes.ts); `${date}THH:MM:SS`, a profile-local ZONELESS datetime, for a hydration tap or a stated time (lib/offline/writes.ts sampleTime); a bare `YYYY-MM-DD` for a document-import point sample (lib/import-persist.ts); and `<ISO>#<stage>` for a Fitbit Takeout sleep-stage row (lib/integrations/fitbit-takeout.ts). It is also the natural key (profile, metric, source, origin, started_at) that makes a re-entry a correction, so no shape can be normalized without changing dedupe — and no brand types it (#2899). |
+| `metric_samples` | `ended_at` | window-end | instant | mixed | The same shapes as started_at, and equal to it for an instantaneous reading. |
 | `metric_samples` | `pushed_at` | bookkeeping | instant | canonical | WHEN THE PUSH THAT WROTE THIS ROW HAPPENED, as the payload itself states it (#3424) — never when the reading was taken, which is started_at. Health Connect only; NULL on every other source and on every row written before 20260821-hc-overlap-supersede. It holds the exporter's own `payload.timestamp` and NOTHING derived from the rows themselves — a byte-identical replay therefore carries the same value as the push it replays and cannot out-rank it. An earlier cut fell back to the furthest-forward `ended_at` in the push and was measured LOSING a reading: an end belongs to the reading, not to the push, and a re-anchored completed day ends earlier than the still-filling row it corrects. NULL when the push stated nothing readable, or when the stated instant was further ahead of the server clock than MAX_PUSH_CLOCK_SKEW_MS, and a NULL stamp supersedes nothing. CANONICAL rather than mixed, unlike its started_at/ended_at neighbours: the writer parses whichever of those two it picked and re-serializes through utcInstant, so a new column is not born holding two shapes. It also refuses an offset-less spelling outright, because a delete decision must not move with the server's zone. The supersede compares it as an instant; nothing else reads it. |
 | `milestones` | `achieved_on` | event | day | n/a |  |
 | `milestones` | `created_at` | record | instant | bare |  |
@@ -385,6 +389,10 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `substance_daily_totals` | `date` | day | day | n/a |  |
 | `substance_daily_totals` | `recorded_at` | record | instant | canonical |  |
 | `substance_daily_totals` | `created_at` | bookkeeping | instant | bare |  |
+| `substance_log_events` | `date` | day | day | n/a |  |
+| `substance_log_events` | `recorded_at` | record | instant | canonical | The tap instant, born canonical by DEFAULT and by writer (#5026 phase 2). A row DERIVED from a pre-ledger day count carries that day row's own `substance_daily_totals.recorded_at` — the LAST tap's stamp, shared by every event the migration derived from that day — because the counter remembers exactly one and it is the only filing instant there is. |
+| `substance_log_events` | `created_at` | bookkeeping | instant | bare |  |
+| `substance_log_events` | `occurred_at` | event | instant | canonical | When the use happened. NULL means nobody stated one and that is a real answer, never filled in from the tap — the food_log_events.occurred_at rule, re-instantiated for nicotine, cannabis and every custom key (#5026 phase 2). `time_source` records whether a present value was a tap contract or a stated one. Every row the backfill derived from a day count has NULL here: a day total declares no instant, and the migration refuses to invent one. |
 | `symptom_logs` | `date` | day | day | n/a |  |
 | `symptom_logs` | `created_at` | record | instant | bare |  |
 | `symptom_photos` | `date` | day | day | n/a |  |

@@ -230,6 +230,7 @@ import { migration as mDoseWriteBundle } from "./20260902-dose-write-bundle";
 import { migration as mNotifyLifecycleOwner } from "./20260902-notify-lifecycle-owner";
 import { migration as mBodyMetricMeasureInstants } from "./20260902-body-metric-measure-instants";
 import { migration as mEventsGeneralizeEndurancePlans } from "./20260903-events-generalize-endurance-plans";
+import { migration as mSubstanceEventRows } from "./20260905-substance-event-rows";
 import { migration as mActBundleColumns } from "./20260904-act-bundle-columns";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
@@ -471,6 +472,7 @@ export const MIGRATIONS: Migration[] = [
   mBodyMetricMeasureInstants,
   mEventsGeneralizeEndurancePlans,
   mActBundleColumns,
+  mSubstanceEventRows,
 ];
 
 // The CLOSED numbered era (001–185): ids frozen, each === its array position + 1

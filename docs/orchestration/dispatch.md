@@ -19,9 +19,9 @@ closed taxonomy, and `needs-human` handling.
   lane on every path (new/resume/adopt) and warns past the machine cap.
   Ordinary concurrency is min(harness slots, machine cap) — five on the
   4-core container (#2964); a harness exposing fewer slots caps there (#3710).
-- Revert the cap on a DISCRIMINATING signal only: a misread red shipped, or
-  the ledger's median dispatch duration degrades. "Agents hit the tool cap"
-  fired at four and at five alike, so it is not one.
+- A per-session rate-limit rejection kills every agent at once and is a
+  pause, not a wind-down: banked branches survive. After one, run FOUR agents
+  per session, passes included, until a five-hour window passes clean.
 - The cap counts agents RUNNING. The queue that jams first is PRs awaiting
   REVIEW, which is serial: hold dispatch at about three unreviewed PRs.
 - With ready P1s, reserve two user/data lanes and select the highest-risk ready
@@ -34,8 +34,9 @@ closed taxonomy, and `needs-human` handling.
   decides what becomes an issue — a filed observation displaces real work.
 - An urgent P0/P1 displaces the candidate via `promote`; run only its matrix.
 - STAGGER starts: durations cluster (85±5 min), so simultaneous starts are
-  simultaneous gates — five at once hit load 17.7. `new` warns within 25
-  minutes; it never refuses, a P0 preempts.
+  simultaneous gates. `new` warns within 25 minutes; a P0 preempts.
+- No lane or session touches prod: no replay, backfill, snapshot read or
+  migration run. A lane states what the owner would run; the owner runs it.
 - A red in code the diff did not touch is contention until proven otherwise —
   an ASSERTION failure included, not only a timeout (#3436).
 - Every brief uses the generated template and the gate order from
@@ -46,10 +47,9 @@ closed taxonomy, and `needs-human` handling.
 - Claim the issue, naming the branch, BEFORE briefing — [claims.md](claims.md).
 - Parallelize banked implementation/local pre-review; serialize the sole
   candidate's remote review, CI, and merge.
-- A census meant to be EXHAUSTIVE passes ripgrep's `--binary` (`-a`). Several
-  source files carry a deliberate NUL separator, so rg calls them binary and
-  skips them — a plain `rg` reports a clean sweep it never took.
-  `lib/__tests__/nul-byte-census.test.ts` names them.
+- A census meant to be EXHAUSTIVE passes ripgrep `-a`: files carrying a
+  deliberate NUL separator (`nul-byte-census.test.ts` names them) read as
+  binary, and a plain `rg` reports a clean sweep it never took.
 
 ## Per-unit pipeline
 
@@ -76,8 +76,9 @@ closed taxonomy, and `needs-human` handling.
 - `agent-gates.sh`: lint, typecheck, unit, DB, E2E hygiene, PHI scan, format.
   DB and E2E-hygiene run only when the diff touches them; a format rewrite
   re-verifies the directive-reading gates. 60 s per-test ceiling here; CI 15 s.
-- `ci-watch.mjs`: wait for settled CI; exit 0 green, 1 red, 2 unsettled (a
-  `cancelled` run is no verdict — re-run it, not red), 3 conflict-blocked.
+- `ci-watch.mjs`: settled CI over BOTH endpoints, source per row; a closed
+  `merge-gate` STATUS reads NOT MERGEABLE YET, not red (#5022). Exit 0 green,
+  1 red (`cancelled` is no verdict), 2 unsettled and says on what, 3 blocked.
 - `pm-digest.sh`: the owner's catch-up (shipped for people, incidents and the
   workflow changes they caused, progress). The PM runs it, not an orchestrator.
 - `dependabot-eval-brief.mjs`: evaluate major dependency updates.

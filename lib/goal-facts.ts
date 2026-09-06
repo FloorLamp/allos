@@ -43,6 +43,8 @@ import type {
 } from "./types";
 import { formatSeconds } from "./duration";
 import { displayUnit } from "./display-unit";
+import { kgTo, round } from "./units";
+import type { WeightUnit } from "./settings";
 import {
   DEFAULT_FORMAT_PREFS,
   formatDateWithYear,
@@ -144,8 +146,8 @@ export type GoalTargetInput =
   | { kind: "freeform"; value: string; unit: string };
 
 const DIRECTION_WORD: Record<OutcomeGoalDirection, string> = {
-  below: "under",
-  above: "over",
+  below: "Under",
+  above: "Over",
 };
 
 /** The unit a body-metric target is entered in. Weight follows the profile's pref. */
@@ -213,7 +215,7 @@ export function deadlineFactLabel(
 ): string | null {
   const value = targetDate.trim();
   if (!value) return null;
-  return `by ${formatDateWithYear(value, prefs)}`;
+  return `By ${formatDateWithYear(value, prefs)}`;
 }
 
 /**
@@ -229,10 +231,155 @@ export function startingFromFactLabel(input: {
   asDuration?: boolean;
 }): string | null {
   if (input.value == null) return null;
-  if (input.asDuration) return `from ${formatSeconds(input.value)}`;
+  if (input.asDuration) return `From ${formatSeconds(input.value)}`;
   const unit = input.unit?.trim();
-  if (unit === "%") return `from ${input.value}%`;
-  return unit ? `from ${input.value} ${unit}` : `from ${input.value}`;
+  if (unit === "%") return `From ${input.value}%`;
+  return unit ? `From ${input.value} ${unit}` : `From ${input.value}`;
+}
+
+// ── What a goal's PROGRESS reads (#5198, absorbing #4759) ────────────────────
+//
+// "Resting HR goal · 27%" answers nothing a person actually asks — 27% of the way
+// from what to what? The endpoints exist on the goal and its progress; the row used
+// to drop them and print the bar's own arithmetic. So the row states
+// `current → target` in the goal's own display units and keeps the percent as a
+// TRAILING annotation: "Resting HR · 63 → 58 bpm · 27%".
+//
+// One formatter for every goal kind, here beside the other goal-fact formatters, so
+// no surface invents a second way to say the same sentence.
+
+/** The endpoints a goal states, and the annotation that rides behind them. */
+export interface GoalProgressStatement {
+  /** "63 → 58 bpm", with an em dash for a current value nothing has measured. */
+  value: string;
+  /** "27%", or null wherever the endpoints are not both real numbers. */
+  percent: string | null;
+}
+
+/**
+ * The GOAL COLUMNS this reads, which is every kind's target plus the freeform kind's
+ * manually-kept pair. `OutcomeGoal` satisfies it; the narrow shape keeps this module
+ * free of the stored row.
+ */
+export interface GoalProgressGoal {
+  kind: OutcomeGoalKind;
+  metric: OutcomeGoalMetric | null;
+  body_metric: BodyMetricKind | null;
+  target_weight_kg: number | null;
+  target_reps: number | null;
+  target_sets: number | null;
+  target_duration_sec: number | null;
+  target_value: number | null;
+  current_value: number | null;
+  unit: string | null;
+}
+
+/** The measured progress this reads. `GoalProgress` satisfies it. */
+export interface GoalProgressReading {
+  current: number;
+  target: number;
+  pct: number;
+  unit?: string | null;
+  unavailable?: "no-readings" | "unit-mismatch" | null;
+}
+
+/** The unknown current value. Not "0": nothing has been measured (#5198). */
+const UNMEASURED = "—";
+
+// Both endpoints in ONE unit, stated once on the target — "176 → 187 lb", never
+// "176 lb → 187 lb". Weight converts at this display boundary (canonical kg in,
+// the viewer's unit out); a hold is seconds and reads m:ss, because "120 s" is not
+// how anyone says a two-minute plank.
+function endpointPair(
+  current: number | null,
+  target: number,
+  format: (value: number) => string,
+  unit: string | null
+): string {
+  const suffix = unit == null ? "" : unit === "%" ? "%" : ` ${unit}`;
+  const from = current == null ? UNMEASURED : format(current);
+  return `${from} → ${format(target)}${suffix}`;
+}
+
+/**
+ * What a goal's progress row states.
+ *
+ * A MEASURED GOAL WITH NOTHING MEASURED KEEPS ITS TARGET AND LOSES ITS PERCENT.
+ * `GoalProgress` reports `current: 0` for both "no readings" and "the units moved
+ * under this target", and neither is zero progress — so the current endpoint reads
+ * as unknown and the annotation is dropped rather than printing a confident 0%.
+ *
+ * A goal with no numeric target has no endpoints to state at all, which is the
+ * freeform kind before anyone gives it a number: it keeps the plain "In progress"
+ * the row has always shown there.
+ */
+export function goalProgressStatement(
+  goal: GoalProgressGoal,
+  progress: GoalProgressReading | undefined,
+  weightUnit: WeightUnit
+): GoalProgressStatement {
+  const measured = goal.kind !== "freeform";
+  const target = measured ? (progress?.target ?? 0) : (goal.target_value ?? 0);
+  if (!(target > 0)) return { value: "In progress", percent: null };
+
+  const known = measured
+    ? progress != null && progress.unavailable == null
+    : goal.current_value != null;
+  const current = known
+    ? measured
+      ? progress!.current
+      : goal.current_value!
+    : null;
+  const pct = known ? (measured ? progress!.pct : null) : null;
+
+  const value = (() => {
+    if (goal.kind === "exercise") {
+      if (goal.metric === "hold")
+        return endpointPair(current, target, formatSeconds, null);
+      if (goal.metric === "weight")
+        return endpointPair(
+          current,
+          target,
+          (v) => String(round(kgTo(v, weightUnit), 1)),
+          weightUnit
+        );
+      return endpointPair(
+        current,
+        target,
+        (v) => String(round(v, 0)),
+        goal.metric === "sets" ? "sets" : "reps"
+      );
+    }
+    if (goal.kind === "body")
+      return goal.body_metric === "weight"
+        ? endpointPair(
+            current,
+            target,
+            (v) => String(round(kgTo(v, weightUnit), 1)),
+            weightUnit
+          )
+        : endpointPair(
+            current,
+            target,
+            (v) => String(round(v, goal.body_metric === "body_fat" ? 1 : 0)),
+            goal.body_metric === "body_fat" ? "%" : "bpm"
+          );
+    return endpointPair(
+      current,
+      target,
+      (v) => String(round(v, 1)),
+      displayUnit(goal.kind === "biomarker" ? progress?.unit : goal.unit)
+    );
+  })();
+
+  // The freeform kind keeps its own capped current/target arithmetic (goalPct's
+  // second basis) rather than borrowing a measured goal's bar.
+  const shown =
+    pct ??
+    (known && !measured
+      ? Math.min(100, Math.round((goal.current_value! / target) * 100))
+      : null);
+  return { value, percent: shown == null ? null : `${shown}%` };
 }
 
 /** The single trailing affordance's own sentence: the optional facts it holds, named. */
@@ -314,21 +461,21 @@ export function goalFactSummary(
   const target = targetFactLabel(f.target);
   chips.push(
     target == null
-      ? { key: "target", label: "add a target", state: "missing" }
+      ? { key: "target", label: "Add a target", state: "missing" }
       : { key: "target", label: target, state: "stated" }
   );
 
   if (f.equipment)
     chips.push(
       f.equipment.label == null
-        ? { key: "equipment", label: "pick a machine", state: "missing" }
+        ? { key: "equipment", label: "Pick a machine", state: "missing" }
         : { key: "equipment", label: f.equipment.label, state: "stated" }
     );
 
   const deadline = deadlineFactLabel(f.targetDate, prefs);
   chips.push(
     deadline == null
-      ? { key: "deadline", label: "add a deadline", state: "missing" }
+      ? { key: "deadline", label: "Add a deadline", state: "missing" }
       : { key: "deadline", label: deadline, state: "stated" }
   );
 
@@ -349,7 +496,7 @@ export function goalFactSummary(
     if (f.title.trim())
       chips.push({
         key: "title",
-        label: `titled “${f.title.trim()}”`,
+        label: `Titled “${f.title.trim()}”`,
         state: "stated",
       });
     else more.push("title");
@@ -368,7 +515,7 @@ export function goalFactSummary(
     // A description is a paragraph; the fact the row can honestly state is THAT
     // there is one.
     if (f.notes.trim())
-      chips.push({ key: "notes", label: "description", state: "stated" });
+      chips.push({ key: "notes", label: "Description", state: "stated" });
     else more.push("notes");
   }
 

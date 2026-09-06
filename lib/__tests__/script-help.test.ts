@@ -42,6 +42,7 @@ const ENTRY_SCRIPTS = [
   "scripts/orchestration/queue-snapshot.mjs",
   "scripts/orchestration/reconcile-apply.ts",
   "scripts/orchestration/reconcile-labels.ts",
+  "scripts/orchestration/reconcile-run-summary.ts",
   "scripts/orchestration/reconcile-tracker.ts",
   "scripts/orchestration/reconcile-watermark.ts",
   "scripts/orchestration/release-notes-gather.mjs",

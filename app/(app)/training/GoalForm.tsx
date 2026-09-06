@@ -1155,14 +1155,15 @@ export default function GoalForm({
             optional facts with nothing to state and hands off to one of them, so
             opening it still leaves exactly one editor on screen. */}
         <div hidden={openEditor !== "more"}>
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-1.5 pointer-coarse:gap-3.5">
             {summary.more.map((key) => (
               <button
                 key={key}
                 type="button"
                 data-testid={`goal-more-${key}`}
                 onClick={() => openPanel(key)}
-                className="min-h-11 rounded-full border border-(--border) px-3 py-1.5 text-sm transition hover:bg-(--ghost-hover)"
+                data-fact-chip="solo"
+                className="rounded-full border border-(--border) px-3 text-sm transition hover:bg-(--ghost-hover)"
               >
                 {GOAL_FACT_NOUNS[key]}
               </button>

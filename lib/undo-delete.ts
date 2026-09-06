@@ -742,11 +742,27 @@ const KIND_SPECS = {
     ],
   },
 
-  // Nicotine/cannabis history is already one profile-owned day row.
+  // One nicotine/cannabis/custom history row is the substance_daily_totals day counter
+  // plus every use event on that day — the alcohol kind above, on the ledger #5026
+  // phase 2 gave this side. It used to be the root row alone, because there was no
+  // event ledger under it; leaving it that way would delete a day's counter and strand
+  // its uses, which is the one shape this registry exists to prevent. The event ledger
+  // has no FK, so capture/delete it explicitly and restore it alongside the counter.
   "substance-history": {
     kind: "substance-history",
     ownedTable: "substance_daily_totals",
-    entities: [{ entity: "entry", table: "substance_daily_totals", fks: [] }],
+    entities: [
+      { entity: "entry", table: "substance_daily_totals", fks: [] },
+      {
+        entity: "events",
+        table: "substance_log_events",
+        fks: [],
+        childWhere:
+          "profile_id = (SELECT profile_id FROM substance_daily_totals WHERE id = ?) AND substance = (SELECT substance FROM substance_daily_totals WHERE id = ?) AND date = (SELECT date FROM substance_daily_totals WHERE id = ?)",
+        childBinds: 3,
+        deleteExplicitly: true,
+      },
+    ],
   },
 
   // ONE recorded period (#2127). Byte-for-byte the substance-history shape: a single
@@ -1066,6 +1082,28 @@ const KIND_SPECS = {
         counter: { column: "servings", key: ["date", "group_key"] },
         childWhere:
           "profile_id = (SELECT profile_id FROM food_log_events WHERE id = ?) AND date = (SELECT date FROM food_log_events WHERE id = ?) AND group_key = (SELECT group_key FROM food_log_events WHERE id = ?)",
+        childBinds: 3,
+      },
+    ],
+  },
+
+  // ONE logged substance use (#5026 phase 2) — `food-serving` re-instantiated on the
+  // substance ledger, and rooted on the EVENT for the same reason: the day row IS the
+  // whole day, this is one use inside it, so deleting one cigarette of three must not
+  // take the other two. `substance_daily_totals` is its day counter, which the delete
+  // decremented and the undo has to give back — see CounterSpec.
+  "substance-use": {
+    kind: "substance-use",
+    ownedTable: "substance_log_events",
+    entities: [
+      { entity: "event", table: "substance_log_events", fks: [] },
+      {
+        entity: "counter",
+        table: "substance_daily_totals",
+        fks: [],
+        counter: { column: "units", key: ["date", "substance"] },
+        childWhere:
+          "profile_id = (SELECT profile_id FROM substance_log_events WHERE id = ?) AND date = (SELECT date FROM substance_log_events WHERE id = ?) AND substance = (SELECT substance FROM substance_log_events WHERE id = ?)",
         childBinds: 3,
       },
     ],

@@ -107,8 +107,10 @@ route handler instead of an action (see below).
 
 A background actor calls `useChromeRefresh()`; everything else keeps calling
 `router.refresh()`. The split is not a judgement the registry makes — it is a
-declaration each call site makes, and `lib/__tests__/chrome-refresh-scan.test.ts`
-fails on any `router.refresh()` that has not been classified.
+declaration each call site makes. `no-restricted-properties` in `eslint.config.mjs`
+fails on any `router.refresh()` under `app/` or `components/` that has not been
+classified; a user-initiated site keeps the direct call and states why it is the
+user's on its own `eslint-disable` line.
 
 | bucket | sites                                                                                         | behaviour                    |
 | ------ | --------------------------------------------------------------------------------------------- | ---------------------------- |
