@@ -144,6 +144,37 @@ export function disciplineForActivityName(
   return null;
 }
 
+/**
+ * The auto-link OPT-OUT (`activities.endurance_link_optout`, #3285 item 2): a PERSON
+ * decided this session's event link by hand, so the sync's auto-link never chooses
+ * for this session again.
+ *
+ * It is set by BOTH hand moves — attaching a session to an event and detaching one —
+ * because they are the same fact from the row's point of view: the link is the
+ * person's, not the sync's. Reading the flag together with `endurance_plan_id` says
+ * which decision it was: a plan id means "linked by hand", null means "detached".
+ * That is why one flag is enough; a second column would only re-state what the link
+ * column already says.
+ *
+ * A decision is STICKY. It survives the event being deleted, a merge that replaces
+ * the row, and a delete-and-undo — anything that can move or destroy the link
+ * without the person touching it. Without that, machinery hands the session back to
+ * the auto-link and the next sync re-attaches what they detached.
+ *
+ * Deliberately NOT the #133 `edited` lock: `edited` holds the WHOLE row out of
+ * re-ingest and badges it "<source> · edited", so taking it here would stop the
+ * provider correcting the session's distance because someone detached it from an
+ * event. One flag, one consequence.
+ *
+ * Pure, and here rather than in lib/endurance-plans.ts, so the pure merge fold
+ * (lib/import-review/conflicts.ts) can read the column through it too. Its census
+ * row is the `event-link-optout` family in lib/side-state.ts; read the column only
+ * through this predicate.
+ */
+export function isEventLinkOptedOut(flag: number | null | undefined): boolean {
+  return flag === 1;
+}
+
 // ---- Cited constants ----
 
 // The ten-percent rule: max safe week-over-week volume increase.

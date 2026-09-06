@@ -18,6 +18,7 @@
 // say, the Health Connect distance on a Strava keeper. The pairwise merge is the
 // two-member case of the same computation.
 
+import { isEventLinkOptedOut } from "../endurance-plan";
 import {
   ACTIVITY_FOLD_FIELDS,
   ZERO_IS_MISSING_FIELDS,
@@ -225,8 +226,9 @@ export function foldActivityFieldsWithOverrides(
 export interface KeeperFoldState {
   fields: Record<ActivityFoldField, unknown>;
   equipmentId: number | null;
-  // The event link (#3285 item 2), folded exactly like the gear link below.
+  // The event link and the auto-link opt-out that goes with it (#3285 item 2).
   endurancePlanId: number | null;
+  enduranceLinkOptout: number;
   edited: number;
 }
 
@@ -242,7 +244,8 @@ export interface KeeperFoldState {
 //
 // `keeper` is either the live pre-fold row (writeActivityFold) or the captured
 // keeperBefore snapshot (revertActivityMerge); both carry the fold fields,
-// equipment_id and edited, which is all this reads. Pure.
+// equipment_id, the event link with its opt-out, and edited, which is all this
+// reads. Pure.
 export function keeperFoldState(
   keeper: Record<string, unknown>,
   drops: Record<string, unknown>[],
@@ -257,16 +260,31 @@ export function keeperFoldState(
   // explicitly (not via ACTIVITY_FOLD_FIELDS) so the link stays out of the fold's
   // richness scoring and conflict-preview UI, which are for measurement gap-fill.
   let equipmentId = (keeper.equipment_id as number | null | undefined) ?? null;
-  let endurancePlanId =
-    (keeper.endurance_plan_id as number | null | undefined) ?? null;
-  for (const drop of ordered) {
+  for (const drop of ordered)
     equipmentId =
       equipmentId ?? (drop.equipment_id as number | null | undefined) ?? null;
+  // The EVENT link (#3285 item 2) folds the same keeper-first way, with one
+  // difference: a merge destroys rows, and one of the columns it destroys is the
+  // record that a PERSON set this session's link (`isEventLinkOptedOut`). Gap-fill
+  // alone would let the unattended auto-merge delete the row carrying a detach and
+  // hand the sync back a fresh candidate — the detach undone by machinery, with the
+  // person doing nothing.
+  //
+  // So the opt-out folds by OR (a decision anywhere in the cluster is a decision
+  // about this session), and the FIRST DECIDED row — keeper first, then the drops in
+  // fold order — sets the link outright, its null included. A detach therefore blocks
+  // the gap-fill, and a hand link survives being folded in. With no decided row
+  // anywhere it is plain keeper-wins gap-fill, exactly as the gear link above.
+  const linkRows = [keeper, ...ordered];
+  const decided = linkRows.find((r) =>
+    isEventLinkOptedOut(r.endurance_link_optout as number | null | undefined)
+  );
+  let endurancePlanId: number | null = null;
+  for (const row of decided ? [decided] : linkRows)
     endurancePlanId =
       endurancePlanId ??
-      (drop.endurance_plan_id as number | null | undefined) ??
+      (row.endurance_plan_id as number | null | undefined) ??
       null;
-  }
   // A keeper carrying ANY folded drop is a merged result, so it stays edit-locked
   // (#133) — a re-ingest of the rolling window must not clobber it. Only when the last
   // drop is un-folded does the keeper get its own pre-merge lock state back.
@@ -274,6 +292,7 @@ export function keeperFoldState(
     fields,
     equipmentId,
     endurancePlanId,
+    enduranceLinkOptout: decided ? 1 : 0,
     edited: ordered.length > 0 ? 1 : Number(keeper.edited ?? 0),
   };
 }

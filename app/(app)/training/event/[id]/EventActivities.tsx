@@ -109,8 +109,9 @@ export default function EventActivities({
           </ul>
         ) : (
           <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
-            No activity linked yet. A race synced from Strava links itself; link
-            anything else from the day below.
+            {unlinked.length > 0
+              ? "No activity linked yet. Link one from the day below."
+              : "No activity linked yet."}
           </p>
         )}
       </section>

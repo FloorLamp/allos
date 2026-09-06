@@ -11,6 +11,7 @@
 // mis-merge can be undone from a toast (issue #64 / #30).
 
 import { db } from "./db";
+import { isEventLinkOptedOut } from "./endurance-plan";
 import {
   keeperFoldState,
   type KeeperFoldState,
@@ -272,6 +273,12 @@ export function writeActivityFold(
 // Write a computed KeeperFoldState onto the keeper row. The ONE statement that moves
 // the keeper's fold columns, shared by the fold and its undo (#1884) so the two can
 // never drift apart on which columns a merge owns. Profile-scoped.
+//
+// `endurance_link_optout` is the one column here that only ever goes UP (#3285 item
+// 2): a merge may move the event link, but it must never lose the record that a
+// PERSON set that link, in either direction. `max()` says that in the statement
+// itself, so no caller — and no future fold rule — can drop a decision by computing
+// a zero.
 function writeKeeperFoldState(
   profileId: number,
   keeperId: number,
@@ -287,6 +294,7 @@ function writeKeeperFoldState(
             max_power_w = ?, weighted_avg_power_w = ?, avg_cadence = ?,
             avg_temp_c = ?, kilojoules = ?, workout_type = ?,
             equipment_id = ?, endurance_plan_id = ?,
+            endurance_link_optout = max(endurance_link_optout, ?),
             edited = ?
       WHERE id = ? AND profile_id = ?`
   ).run(
@@ -312,6 +320,7 @@ function writeKeeperFoldState(
     f.workout_type ?? null,
     state.equipmentId,
     state.endurancePlanId,
+    state.enduranceLinkOptout,
     state.edited,
     keeperId,
     profileId
@@ -333,8 +342,10 @@ export function snapshotKeeperFold(
   // Session-level equipment link (#342): captured alongside the fold fields so undo
   // restores the keeper's pre-fold gear, undoing any gap-fill the merge applied.
   snap.equipment_id = keep.equipment_id ?? null;
-  // The event link (#3285 item 2): same reason, same shape.
+  // The event link (#3285 item 2): same reason, same shape. Its opt-out rides along
+  // so the re-fold sees the keeper's own pre-merge decision.
   snap.endurance_plan_id = keep.endurance_plan_id ?? null;
+  snap.endurance_link_optout = keep.endurance_link_optout ?? 0;
   return snap;
 }
 
@@ -504,6 +515,24 @@ export function revertActivityMerge(
     !db
       .prepare("SELECT 1 FROM endurance_plans WHERE id = ? AND profile_id = ?")
       .get(state.endurancePlanId, profileId)
+  )
+    state.endurancePlanId = null;
+  // A detach made AFTER the merge is the person's latest word on this session and it
+  // outlives the undo: putting the keeper's pre-merge fields back must not hand back
+  // a link they have since removed. The flag itself cannot be lost in either
+  // direction — writeKeeperFoldState only ever raises it.
+  const liveKeeper = db
+    .prepare(
+      `SELECT endurance_plan_id, endurance_link_optout FROM activities
+        WHERE id = ? AND profile_id = ?`
+    )
+    .get(merge.keeperId, profileId) as
+    | { endurance_plan_id: number | null; endurance_link_optout: number | null }
+    | undefined;
+  if (
+    liveKeeper &&
+    liveKeeper.endurance_plan_id == null &&
+    isEventLinkOptedOut(liveKeeper.endurance_link_optout)
   )
     state.endurancePlanId = null;
   writeKeeperFoldState(profileId, merge.keeperId, state);

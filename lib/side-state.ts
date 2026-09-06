@@ -120,13 +120,16 @@ export const SIDE_STATE_FAMILIES: readonly SideStateFamily[] = [
   {
     family: "event-link-optout",
     concept:
-      "A record that a person detached a session from its event, so the sync's auto-link cannot re-attach it.",
+      "A record that a person set this session's event link by hand — attached or detached — so the sync's auto-link never chooses for it again.",
     store: "`endurance_link_optout` column on activities",
-    registryModule: "lib/endurance-plans.ts",
+    registryModule: "lib/endurance-plan.ts",
     registrySymbol: "isEventLinkOptedOut",
     keyGrammar:
-      "row-level flag; set by the hand unlink, cleared by a hand link, read only " +
-      "through the predicate. Its own flag rather than the `edited` lock above, " +
+      "row-level flag; set by BOTH hand moves (link and unlink), never cleared, " +
+      "read only through the predicate — `endurance_plan_id` beside it says which " +
+      "decision it was. It only ever goes up, including across a merge fold " +
+      "(lib/merge-activity.ts writes it with max()), because the merge deletes the " +
+      "row that carries it. Its own flag rather than the `edited` lock above, " +
       "which would freeze the whole row against re-ingest (#3285 item 2)",
     sweep: "none needed — the flag dies with its row",
     guard: "lib/__db_tests__/endurance-plans.test.ts",

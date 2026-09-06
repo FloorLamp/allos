@@ -228,7 +228,9 @@ type ActivityRow = {
   external_id: string | null;
   notes: string | null;
   // The event this session was the result of (#3285 item 2) — the row id in the
-  // Events dataset, so a re-import can rejoin plan and result.
+  // Events dataset, so the archive says which race a result belongs to and anything
+  // reading it can join the two. Nothing re-imports activities into the app, so this
+  // is for reading the export, not for restoring one.
   endurance_plan_id: number | null;
 };
 type ActivitySet = SetRow & { activity_id: number; exercise: string };
