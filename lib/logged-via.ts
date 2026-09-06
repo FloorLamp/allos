@@ -298,6 +298,7 @@ export const LEDGERS_WITH_LOGGED_VIA = [
   "symptom_logs",
   "medical_records",
   "substance_daily_totals",
+  "substance_log_events",
 ] as const;
 
 export type LedgerWithLoggedVia = (typeof LEDGERS_WITH_LOGGED_VIA)[number];

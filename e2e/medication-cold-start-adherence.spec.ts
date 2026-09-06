@@ -67,7 +67,7 @@ test("a just-added medication shows no adherence percentage, not 0% (#1442)", as
   // Scheduled, not as-needed — a PRN med is never due, which would hide the adherence
   // line for an unrelated reason and make this test prove nothing.
   await expect(addCard.getByTestId("intake-fact-importance")).not.toContainText(
-    "as needed"
+    "As needed"
   );
 
   await settledClick(

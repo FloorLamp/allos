@@ -170,6 +170,11 @@ export const OWNED_TABLES = [
   // Directly owned; nothing FKs into it, so a delete is a plain row delete and
   // deleteProfile clears it by profile_id.
   "substance_daily_totals",
+  // Its EVENT ledger (#5026 phase 2): one append-only row per use, carrying the tap
+  // instant and the stated `occurred_at`, beside the day counter above — the
+  // food_daily_totals / food_log_events pairing re-instantiated. Directly owned;
+  // nothing FKs into it, so deleteProfile clears it by profile_id.
+  "substance_log_events",
   // The fasting log (#2756): one row per claimed fast — an interval the user STARTS and
   // ENDS explicitly (never inferred), plus an optional note. Directly owned; nothing FKs
   // into it, so a delete is a plain row delete and deleteProfile clears it by profile_id.

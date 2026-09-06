@@ -130,19 +130,39 @@ Tuesday's rail at a minute that describes the typing and nothing else, which is 
 whole argument `EXCLUDED_TICK_CATEGORIES` makes about an insight's `created_at`. A
 drink with no event instant draws nothing.
 
-**Nicotine, cannabis and custom substances are still day rows**, date-only, sinking
-below the day's timed rows, corrected through the day-count form. Their ledger is
-`substance_daily_totals` — UNIQUE per (profile, date, substance) and declaring no event
-column — so there is nowhere to put an instant. That is the trap to know:
-`bestKnownInstant` on that table answers with `recorded_at`, the FILING stamp, which
-would hand them a minute they never claimed. **#3295 phase 2** gives them per-event
-rows on this same model and that branch goes with it.
+**Nicotine, cannabis and custom substances are event rows too, since #3295 phase 2
+(#5026 items 2 and 3).** They were day rows — date-only, sinking below the day's timed
+rows, corrected through the day-count form — because `substance_daily_totals` is UNIQUE
+per (profile, date, substance) and declares no event column. `substance_log_events` is
+that column, so the branch that emitted a `sortTime: null` day row is gone and this
+loop is the drinks loop with its own ledger and its own correction door. The trap it
+closes is worth keeping in mind: `bestKnownInstant` on the COUNTER answers with
+`recorded_at`, the filing stamp, which would hand a day a minute it never claimed.
 
-**A drink can state its minute (#3295 phase 1).** The substance add door offers alcohol
-the shared `WhenControl` (`grain="minute"`), gated by `judgeStatedAt` at the action —
-not future, and on the entry's own day — and the statement rides every unit of the
-entry as `occurred_at` with `time_source = 'stated'`. Nothing invents one: a drink
-nobody timed keeps a NULL instant.
+**Every substance can state its minute (#3295 phase 1; every key since phase 2).** The
+substance add door offers the shared `WhenControl` (`grain="minute"`), gated by
+`judgeStatedAt` at the action — not future, and on the entry's own day — and the
+statement rides every unit of the entry as `occurred_at` with `time_source = 'stated'`.
+Nothing invents one: a use nobody timed keeps a NULL instant, so its row says "logged"
+and it draws no tick.
+
+**And every substance corrects on its own row.** `edit.kind: "substance"` addresses an
+EVENT and moves the two things a use has — its day and its stated minute. Neither the
+day's amount nor the day's note is on that door: one event is one unit, and a note
+describes the sitting rather than any use in it (#5077 owns where a day note lives now).
+A drink's row carries the FOOD payload instead and corrects through the serving's form,
+which is the same shape through a door that already existed.
+
+**Everything logged before phase 2 became rows rather than disappearing.** The record
+reads events, so a counter row with none behind it would count on the substance card
+and against the weekly cap while showing nothing here. Migration
+`20260905-substance-event-rows` derives the missing events on both ledgers — the whole
+uses each substance day is SHORT, and the alcohol day's shortfall (item 3, the state
+#5085 measures from the other side) — with `occurred_at` NULL, because a day total
+declares no instant and inventing one would be worse than the gap. A shortfall, not a
+count: a day that already carries real taps is topped up rather than doubled, and the
+subtraction is floored so a fraction can never round a use up into the record. So a legacy day shows one row
+per use, each reading "logged HH:MM" off the day's own filing stamp, and draws nothing.
 
 **The drink does not disappear, and the totals do not move.** The food door writes
 the `food_daily_totals` counter as well as the event, and both the cap and the
@@ -154,7 +174,7 @@ Food _totals_ and the nutrition arithmetic are untouched: this is the record's r
 
 `lib/history.ts` composes the readers each ledger already used
 (`getIntakeDoseLedgerPage`, `getFoodLedgerPage`, `getPracticeLedgerPage`,
-`getAllSubstanceDailyTotals`, plus the `body_metrics` rows the metric detail
+`getSubstanceLedgerPage`, plus the `body_metrics` rows the metric detail
 pages render). Every read takes `profileId` first and is scoped by it in SQL; the
 module imports no auth.
 
@@ -404,7 +424,8 @@ practice form takes both clocks; a dose, a serving, a body sitting and a movemen
 the start (one stated instant, built once by the door, so they cannot disagree about
 what `19:10` on this day means — and a serving's meal follows that hour as it does
 anywhere else). A check-in and a symptom have a day and no event instant, so there is
-nothing for a window to open and they ignore it; a substance use waits on #3295. The
+nothing for a window to open and they ignore it; a substance use takes the start too,
+since #3295 phase 2 gave it an instant to state. The
 practice picker also opens on the practice whose weekly rhythm predicts the window's
 weekday and hour, tie-broken by the usual duration nearest its length — habit matching
 and never physiology, and a practice with no rhythm can never fit. Every one of these is

@@ -166,7 +166,7 @@ describe("the per-part fact row states what the exercise records (#3349)", () =>
     renderList([part({ name: "Sit Up" })]);
 
     const prompt = screen.getByTestId("strength-equipment-chip");
-    expect(prompt.textContent).toBe("equipment");
+    expect(prompt.textContent).toBe("Equipment");
 
     fireEvent.click(prompt);
     expect(screen.getByTestId("strength-equipment-editor")).toBeTruthy();

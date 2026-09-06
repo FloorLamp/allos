@@ -46,6 +46,13 @@ type DeletableUndoRoot = Extract<UndoRootTable, DeletableDatasetTable>;
 //     a DECREMENT of the food_daily_totals day counter. The dataset's documented contract
 //     (lib/export.ts) is "clear the timing layer, counters untouched"; mapping it
 //     would silently turn that into a servings decrement across a second dataset.
+//
+// `substance_daily_totals` and `substance_log_events` need no entry here, and that is
+// the point: #5026 phase 2 made them BROWSE-ONLY datasets (lib/export.ts), so they are
+// not `DeletableDatasetTable`s any more and `Extract` drops them from the set this file
+// decides about. An exclusion would have been the wrong answer to that pair — it routes
+// the bulk delete to the plain `DELETE … WHERE id IN (…)`, which moves the counter or
+// the events but never both, and their disagreement is the state phase 2 repairs.
 type ExcludedUndoRoot = Extract<
   DeletableUndoRoot,
   "frequency_targets" | "food_daily_totals" | "food_log_events"
@@ -66,7 +73,6 @@ export const DATASET_UNDO_KIND = {
   // practice_logs deliberately takes "practice-session" (one row), never
   // "wellness-practice-history" (which drags every same-practice sibling along).
   practice_logs: "practice-session",
-  substance_daily_totals: "substance-history",
   // #2127: one period row, no children — the row-menu delete and the dataset's bulk
   // delete now speak the same restorable kind (the very hole the type guard exists
   // to keep closed: an undoable root that is a deletable dataset must be decided).

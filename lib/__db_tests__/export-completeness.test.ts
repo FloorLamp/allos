@@ -702,6 +702,19 @@ const COLUMN_EXPORT_ALLOWLIST: ColumnExclusion[] = [
     why: "the eating instant a person may have stated, and where that time came from, behind the exported `recorded_at` tap instant; plus the Telegram message pointer and logged_via",
   },
   {
+    // ARGUED, not inherited: this table is new in #5026 phase 2, so nothing about it
+    // predates the ruling. The dataset carries the two instants that answer a person's
+    // question — `recorded_at`, the tap, and `occurred_at` + `time_source`, the minute
+    // they stated — which is one column more than its `food_log_events` twin exports.
+    // What is left out is the SQLite write stamp behind the exported tap instant, and
+    // the surface a use was logged from, which is provenance about the app rather than
+    // about the use and which no sibling ledger exports either.
+    table: "substance_log_events",
+    columns: ["created_at", "logged_via"],
+    kind: "argued",
+    why: "the bare write stamp behind the exported canonical `recorded_at`, and the logged_via surface provenance — the same pair every other ledger keeps out of the portable record",
+  },
+  {
     table: "frequency_targets",
     columns: ["per_week_max", "created_at", "scope_identity"],
     kind: "inherited",
