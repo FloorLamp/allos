@@ -61,10 +61,16 @@
 // bot — and under the channel-level reading the other chat held a live Finish button
 // for a minute nothing had recorded (#5194, tenth pass). One hole is left and no caller
 // can close it: a send abandoned at the 120-second dispatch deadline (#3057) may still
-// land, and nothing in the process can observe that it did. It counts as undelivered,
-// so the record follows the next tick's message; if the episode is over by then, that
-// abandoned message's button falls back to the tap's own instant, which is what this
-// core did before any of this and is never worse than `main`.
+// land, and `dispatch` has already returned by the time it does. The late settlement is
+// not unobservable — `settleWithinDeadline` hands it to `onLateSettle`, which logs it,
+// including its `delivered` (lib/notifications/dispatch-deadline.ts, and the pure
+// fixture pins it) — but nothing carries it back to a caller, so no caller can act on
+// it. That is a plumbing choice rather than an impossibility, and it is worth stating as
+// one (#5194, eleventh pass corrected the absolute this comment used to make). The
+// behaviour is unchanged either way: an abandoned send counts as undelivered, the record
+// follows the next tick's message, and if the episode is over by then that abandoned
+// message's button falls back to the tap's own instant — what this core did before any
+// of this, and never worse than `main`.
 //
 // IT IS THIS CORE'S CALLERS AND NOT EVERY FINISH IN THE APP. The in-app Finish is the
 // activity form's own (`ActivityForm.tsx`, end field := now, persisted by the autosave);

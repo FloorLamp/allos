@@ -35,6 +35,12 @@ import {
   sendTestPushToLogin,
 } from "@/lib/notifications/push";
 import { sendTestEmailToLogin } from "@/lib/notifications/email";
+import { telegramChannel } from "@/lib/notifications/telegram";
+import { PartialDeliveryError } from "@/lib/notifications/types";
+import {
+  classifyTelegramFailure,
+  TelegramApiError,
+} from "@/lib/notifications/telegram-error";
 import {
   LEGACY_DELIVERY_HEALTH_KEY,
   readDeliveryOutcome,
@@ -190,6 +196,52 @@ describe("Telegram owners", () => {
     expect(getNotifyError()).not.toBeNull();
   });
 
+  // THE WRAPPER KEEPS THE ERROR IT WRAPS (#5194, eleventh pass). `delivered` rides out
+  // past the throw inside a PartialDeliveryError, and the thing being wrapped is the
+  // transport's TelegramApiError — typed by #1885 precisely so classification reads a
+  // status and a description rather than a sentence. A wrapper that kept only the
+  // sentence would flip an unrecognised 403 from permanent to transient, and the
+  // reconcile sweep would go on retrying a pointer into a chat that has blocked the bot.
+  // Nothing on the dispatch path reads this yet; that is why it is pinned here rather
+  // than left to be discovered.
+  it("the partial-delivery wrapper keeps the typed error, so classification is unchanged", async () => {
+    const p = newProfile("Wrapped throw");
+    seedLoginTelegram(p, "chat-good");
+    seedLoginTelegram(p, "chat-blocked");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) =>
+        String(init?.body ?? "").includes("chat-blocked")
+          ? new Response(
+              JSON.stringify({
+                ok: false,
+                description: "Forbidden: CHAT_RESTRICTED",
+              }),
+              { status: 403, headers: { "content-type": "application/json" } }
+            )
+          : new Response(
+              JSON.stringify({ ok: true, result: { message_id: 7 } }),
+              {
+                status: 200,
+                headers: { "content-type": "application/json" },
+              }
+            )
+      )
+    );
+
+    const thrown = await telegramChannel
+      .send(p, DOSE)
+      .then(() => null)
+      .catch((e: unknown) => e);
+
+    expect(thrown).toBeInstanceOf(PartialDeliveryError);
+    expect((thrown as Error).cause).toBeInstanceOf(TelegramApiError);
+    expect(((thrown as Error).cause as TelegramApiError).status).toBe(403);
+    // The description Telegram gave is one the permanent list does NOT match, so the
+    // verdict rests entirely on the status surviving the wrap.
+    expect(classifyTelegramFailure(thrown)).toBe("permanent");
+  });
+
   it("a failure moves the addressed logins to Erroring, and one login's success does not clear another's", async () => {
     const p = newProfile("Two chats");
     const a = seedLoginTelegram(p, "chat-a");
@@ -286,6 +338,49 @@ describe("Web Push owners", () => {
           .get(login) as { n: number }
       ).n
     ).toBe(left);
+  });
+
+  // HEALTHY, AND NOBODY WAS REACHED — the shape that has no throw to announce it
+  // (#5194, eleventh falsifying pass). Every browser has unsubscribed: the push service
+  // answers 410 Gone, `sendToSubscriptions` prunes each endpoint and returns WITHOUT
+  // counting either a success or an error, so `ok === 0 && errors.length === 0` and the
+  // channel finishes cleanly. `ok: true` is right — nothing failed, the slot must not
+  // retry, and no delivery-health marker may be set — and `delivered: false` is the fact
+  // a caller whose correctness depends on a person having SEEN the message needs.
+  //
+  // This is the reachable divergence for `kind: "other"`, which is what the "Still
+  // working out?" nudge is: `other` is NON_CONFIGURABLE, so `parseDisabledKinds` strips
+  // it and no per-kind gate can filter that family. Recording the minute that nudge
+  // promised on `ok` would have recorded a promise no browser was still receiving.
+  it("every subscription pruned as Gone is a healthy channel that DELIVERED to nobody", async () => {
+    ensureVapidKeys();
+    const p = newProfile("All browsers gone");
+    const login = newLogin();
+    db.prepare(
+      "INSERT INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, 'write')"
+    ).run(login, p);
+    for (const i of [0, 1])
+      savePushSubscription(login, {
+        endpoint: `https://push.example/${login}-${i}/gone`,
+        p256dh: "p256dh-0001",
+        auth: "auth-0001",
+      });
+
+    const results = await dispatch(p, { ...DOSE, kind: "other" });
+
+    expect(results).toEqual([{ id: "push", ok: true, delivered: false }]);
+    // The control on "nobody was reached": the endpoints are gone, not merely quiet.
+    expect(
+      (
+        db
+          .prepare(
+            "SELECT COUNT(*) AS n FROM push_subscriptions WHERE login_id = ?"
+          )
+          .get(login) as { n: number }
+      ).n
+    ).toBe(0);
+    expect(getNotifyError()).toBeNull();
+    expect(stateOf("push", login)).toBeNull();
   });
 
   it("subscribing or unsubscribing a browser returns the login to Ready", () => {

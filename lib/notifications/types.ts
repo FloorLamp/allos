@@ -170,9 +170,16 @@ export interface SendOutcome {
 // where one chat has blocked the bot, the healthy chat holds a delivered message with a
 // live button while the channel reports nothing but failure. This carries that one bit
 // out past the throw, so `ok` keeps its exact meaning and `delivered` is still answerable.
+//
+// IT KEEPS THE ERROR IT WRAPS as its `cause`. The thing being wrapped is normally a
+// `TelegramApiError`, which #1885 typed precisely so classification reads STRUCTURE (a
+// status, a description) rather than a formatted sentence — and a wrapper that kept only
+// the sentence quietly undid that: an unrecognised 403 classified permanent before the
+// wrap and transient after it. `classifyTelegramFailure` follows the cause
+// (./telegram-error), so wrapping costs nothing (#5194, eleventh pass).
 export class PartialDeliveryError extends Error {
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
     this.name = "PartialDeliveryError";
   }
 }

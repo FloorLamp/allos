@@ -146,12 +146,16 @@ export async function settleWithinDeadline(
     return {
       id: a.id,
       ok: false,
-      // ABANDONED, NOT ANSWERED. The send keeps running and may still land, and
-      // nothing in this process can observe whether it did — so delivery is
-      // UNKNOWN here and is reported as the safe half of unknown: not delivered.
-      // A caller that records what a message promised therefore records nothing
-      // for a timed-out channel and lets the next tick send a message it can
-      // account for, rather than storing a promise it cannot tie to anything.
+      // ABANDONED, NOT ANSWERED. The send keeps running and may still land; the
+      // late answer IS observed in-process — `onLateSettle` just above receives
+      // the whole DispatchResult, `delivered` included — but nothing returns it
+      // to the caller, who was answered at the deadline. So delivery is unknown
+      // TO THE CALLER, and it is reported as the safe half of unknown: not
+      // delivered. A caller that records what a message promised therefore
+      // records nothing for a timed-out channel and lets the next tick send a
+      // message it can account for, rather than storing a promise it cannot tie
+      // to anything. Carrying the late answer back is a plumbing question nobody
+      // has needed answered, not an impossibility (#5194, eleventh pass).
       delivered: false,
       error: new DispatchTimeoutError(a.id, deadlineMs).message,
       timedOut: true,

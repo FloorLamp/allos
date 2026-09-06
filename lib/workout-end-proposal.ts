@@ -94,11 +94,16 @@ export interface WorkoutEndProposal {
  * received the message — rather than on the channel's `ok`. Gating on `ok` failed both
  * ways at once: Telegram fans one message out to every managing login's chat and fails
  * whole when one of them has blocked the bot, so a household chat held a live Finish
- * button for a minute nothing had recorded; and a channel whose whole audience was
- * filtered by a per-kind gate reports success having reached nobody. The only unwritten
- * window left is a crash between the record and the marker, which re-sends and
- * re-records, plus a send abandoned at the dispatch deadline (#3057) that lands
- * afterwards — unobservable by anything in this process, and counted as undelivered.
+ * button for a minute nothing had recorded; and Web Push reports success having reached
+ * nobody when every subscription answers 404/410 Gone, since each one is pruned without
+ * counting a success or an error and the channel never throws (#5194, eleventh pass —
+ * an earlier version of this sentence named the per-kind audience gate instead, which
+ * cannot filter this family at all: the nudge is `kind: "other"`, `other` is in
+ * `NON_CONFIGURABLE_KINDS`, and `parseDisabledKinds` strips it from every stored blob).
+ * The only unwritten window left is a crash between the record and the marker, which
+ * re-sends and re-records, plus a send abandoned at the dispatch deadline (#3057) that
+ * lands afterwards — `dispatch` discards that late answer rather than being unable to
+ * see it (`onLateSettle` logs it), so it is counted as undelivered.
  *
  * RETENTION. One row per nudged workout, spent inside the finish or discard transaction
  * that resolves that row (`lib/workout-finish.ts`). THREE paths leave one behind: a

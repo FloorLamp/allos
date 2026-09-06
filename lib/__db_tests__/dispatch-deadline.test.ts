@@ -121,8 +121,10 @@ describe("dispatch() under the shared deadline (#3057)", () => {
     expect(ha).toEqual({ id: "home-assistant", ok: true, delivered: true });
     expect(telegram.ok).toBe(false);
     expect(telegram.timedOut).toBe(true);
-    // Abandoned, so delivery is UNKNOWN and reported as the safe half of unknown:
-    // the send may still land, and nothing here can see whether it did.
+    // Abandoned, so delivery is UNKNOWN TO THE CALLER and reported as the safe half
+    // of unknown: the send may still land, and `dispatch` has already answered. The
+    // late settlement itself is observed — onLateSettle logs it, pinned in
+    // lib/__tests__/dispatch-deadline.test.ts — it just never comes back here.
     expect(telegram.delivered).toBe(false);
     expect(telegram.error).toBe(
       new DispatchTimeoutError("telegram", NOTIFICATION_DISPATCH_TIMEOUT_MS)

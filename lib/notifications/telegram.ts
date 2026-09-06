@@ -228,10 +228,14 @@ export const telegramChannel: NotificationChannel = {
 // `ok` is untouched — but dispatch() can now tell "nobody got this" from "the household
 // got this and one chat is blocked", which is the difference between a nudge whose
 // promise is on record and one whose promise is lost.
+// The wrapped error is kept as the `cause` so nothing downstream is worse off for
+// having been wrapped: `classifyTelegramFailure` reads the TelegramApiError's status and
+// description through it, which is what tells a blocked chat (permanent, forget the
+// pointer) from a rate limit (transient, keep it).
 function deliveryFailure(e: unknown, delivered: boolean): Error {
   const message = e instanceof Error ? e.message : String(e);
   if (!delivered) return e instanceof Error ? e : new Error(message);
-  return new PartialDeliveryError(message);
+  return new PartialDeliveryError(message, { cause: e });
 }
 
 // The bookkeeping every delivered message gets, whichever send path delivered it:

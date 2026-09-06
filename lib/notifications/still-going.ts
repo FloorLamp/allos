@@ -218,10 +218,19 @@ export async function runStillGoingSuggest(
     // the tap then re-reads the trace and stamps something the message never said.
     //
     // `delivered` is the recipient-level answer each channel now gives
-    // (lib/notifications/types.ts, SendOutcome). It is also strictly more honest in the
-    // other direction: a channel whose whole audience was filtered by a per-kind gate
-    // is `ok` and reached nobody, and a proposal recorded for THAT would be a minute
-    // nobody was shown.
+    // (lib/notifications/types.ts, SendOutcome). It is also stricter than `ok` in the
+    // other direction, and the reachable shape is Web Push: when every subscription
+    // answers 404/410 Gone, `sendToSubscriptions` prunes each one and returns without
+    // counting either a success or an error — no throw, `ok: true`, and nobody reached.
+    // A minute recorded for THAT is a promise no browser is still receiving (#5194,
+    // eleventh pass).
+    //
+    // NOT the per-kind audience gate, which two earlier versions of this comment named:
+    // this family is `kind: "other"`, `other` is in `NON_CONFIGURABLE_KINDS`, and
+    // `parseDisabledKinds` drops it from every stored blob — so no channel can ever
+    // filter this nudge by kind. The gate makes `ok`/`delivered` diverge for
+    // toggleable kinds (pinned in notification-matrix-gate.test.ts); it cannot do it
+    // here.
     if (results.some((r) => r.delivered)) {
       // WHAT THIS MESSAGE PROMISED, ON RECORD BECAUSE SOMEBODY RECEIVED IT (#5194,
       // eighth, ninth and tenth falsifying passes). The body quotes
