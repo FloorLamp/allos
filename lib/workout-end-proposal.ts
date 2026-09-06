@@ -22,9 +22,9 @@
 // from the other side.
 //
 // ── THE FIX IS TO REMEMBER, NOT TO RE-MEASURE ────────────────────────────────
-// The minute a delivered message names is recorded HERE before it is sent, and the
-// finish core stamps the recorded value. A trace that moves afterwards cannot change
-// what lands, because nothing reads the trace again. The token could not carry it —
+// The minute a delivered message names is recorded HERE and the finish core stamps the
+// recorded value. A trace that moves afterwards cannot change what lands, because
+// nothing reads the trace again. The token could not carry it —
 // `sgfinish:workout:<profile>:<row>` is already in people's chats and must stay
 // byte-identical — so the tap looks the proposal up by the row id the token does carry.
 //
@@ -32,6 +32,14 @@
 // bookkeeping tidiness: "Your session has been quiet for a while. Finish it or discard"
 // promises the tap's own instant, so a detector that starts answering between the send
 // and the tap must not silently back-date the row either. One record, both directions.
+//
+// ── REMEMBERING IS NOT THE SAME AS BEING RIGHT FOREVER ───────────────────────
+// The record is authoritative about what was SHOWN, and nothing more. It does not
+// survive the person contradicting it: `finishWorkoutSession` re-applies the detector's
+// own cancel to the recorded minute at tap time, so a save past that minute — someone
+// who went back to the rack after the nudge and lifted for another hour — refuses the
+// promise and the tap stamps its own instant (#5194, ninth falsifying pass). The value
+// is only ever taken from here; the cancel only ever says no.
 //
 // ── WHY PROFILE SETTINGS AND NOT A TABLE ─────────────────────────────────────
 // This is the second per-row fact the same nudge already keeps about the same row: the
@@ -70,13 +78,27 @@ export interface WorkoutEndProposal {
 }
 
 /**
- * Record what THIS message proposes, immediately before it is dispatched.
+ * Record what a message proposed, once that message has actually been delivered.
  *
- * Before, rather than after a successful send: the invariant that matters is "every
- * delivered message's minute is on record", and recording after leaves a window in
- * which a delivered message has none. The opposite cost is a record for a send that
- * failed, which nothing can consume except a later finish of the same row — and the
- * next tick, still holding no one-shot marker, overwrites it with what it quotes.
+ * ON DELIVERY, not before it. Writing before the dispatch was the first shape and it
+ * recorded proposals for messages that were never sent — a profile with no channel at
+ * all reaches the nudge loop on every eligible tick — which `finishWorkout` would then
+ * honour on a tap for a message nobody received. The header argued that cost was
+ * bounded by the next tick overwriting the record; arithmetic says otherwise, because
+ * `EPISODE_BOUNDS.workout` is 45–90 minutes wide and the tick is hourly, so the tick
+ * after the one that recorded is already past the window and there is no retry. The
+ * caller now writes this inside the same `results.some(ok)` branch as the one-shot
+ * marker and before it, so the only unwritten window is a crash between the two, which
+ * re-sends and re-records.
+ *
+ * RETENTION. One row per nudged workout, spent inside the finish or discard transaction
+ * that resolves that row (`lib/workout-finish.ts`). Two paths leave one behind: a draft
+ * nobody ever resolves, and a row ended by the activity form's own save, which persists
+ * through `lib/activity-write.ts` and never reaches that core. Both are inert and stay
+ * forever — ids never recycle (#203), so a stranded record can only ever be read about
+ * the row it names, and that row has an end, which `finishWorkoutSession` refuses before
+ * it looks anything up. It is a dead setting on exactly the terms of the one-shot marker
+ * it is written beside, and it is swept the same way that one is: not at all.
  */
 export function recordWorkoutEndProposal(
   profileId: number,
@@ -103,7 +125,10 @@ export function readWorkoutEndProposal(
   return { minute: stored === NO_MINUTE ? null : stored };
 }
 
-/** Spend the proposal: the row it was about has been finished or discarded. */
+/**
+ * Spend the proposal: the row it was about has been finished or discarded through the
+ * shared core. See `recordWorkoutEndProposal` for what is NOT spent this way.
+ */
 export function clearWorkoutEndProposal(
   profileId: number,
   activityId: number

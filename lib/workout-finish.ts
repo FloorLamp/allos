@@ -22,19 +22,39 @@
 // the correction rides the finish path that already exists rather than a second writer,
 // and it is #5142 AC 3's want for the same tap.
 //
-// WHAT THE PERSON WAS SHOWN WINS OVER ANY LATER READING, and that ordering is the whole
-// of #5194's eighth falsifying pass. The "Still working out?" nudge quotes the minute
-// when it is SENT; this core used to ask the detector again when the button was TAPPED,
-// and between the two the trace moves — one measured minute six bpm above the resting
-// ceiling is enough for the detector to refuse, so a message naming 16:35 wrote 18:30
-// and a hundred and fifty minutes, and said nothing about it. A proposal that changes
+// WHAT THE PERSON WAS SHOWN WINS OVER A LATER RE-MEASUREMENT, NEVER OVER THEIR OWN
+// LATER WORK. Both halves of that sentence were bought by a falsifying pass, and the
+// order they landed in matters:
+//
+// The "Still working out?" nudge quotes the minute when it is SENT; this core used to
+// ask the detector again when the button was TAPPED, and between the two the trace
+// moves — one measured minute six bpm above the resting ceiling is enough for the
+// detector to refuse, so a message naming 16:35 wrote 18:30 and a hundred and fifty
+// minutes, and said nothing about it (#5194, eighth pass). A proposal that changes
 // between being shown and being accepted is not a proposal. So a delivered message
 // records its minute against the row (lib/workout-end-proposal.ts) and the tap stamps
 // THAT — including its "no minute", which promises the tap's own instant.
 //
+// Recording it unconditionally then made it PERMANENT, and a person who resumes their
+// workout after the nudge is the one case where that is worse than the defect it fixed
+// (#5194, ninth pass): the notification is one-shot per row, so a session picked back up
+// at 17:45 and lifted until 18:50 still has only the 17:20 message and its 16:35 button
+// — and the tap stamped 16:35, thirty-five minutes, with two later sets sitting outside
+// the recorded window. That walks past this issue's own non-negotiable rule, *a set
+// logged after the candidate minute cancels it*, which the detector still enforces.
+//
+// So the RECORD SUPPLIES THE VALUE AND THE CANCEL CAN ONLY REFUSE IT
+// (`proposalStillHolds` below). Re-deriving the minute is what was wrong; asking whether
+// the recorded minute is still admissible is not the same act — nothing re-measures, the
+// answer is either the promised minute or the tap's own instant, and the person's own
+// save is the only thing that can take the promise away.
+//
 // A tap with nothing on record is a finish nobody was shown a minute for — the request
-// path below, and any future programmatic finish. There is no promise to keep there, so
-// the trace is read once, at the tap, exactly as this core has done since it landed.
+// path below, and any future programmatic finish. The record is written only once a
+// send actually succeeded (lib/notifications/still-going.ts), so "nothing on record"
+// really does mean "no message reached this person about this row". There is no promise
+// to keep there, so the trace is read once, at the tap, exactly as this core has done
+// since it landed.
 //
 // IT IS THIS CORE'S CALLERS AND NOT EVERY FINISH IN THE APP. The in-app Finish is the
 // activity form's own (`ActivityForm.tsx`, end field := now, persisted by the autosave);
@@ -43,7 +63,13 @@
 import { db, writeTx } from "./db";
 import type { LoggedVia } from "./logged-via";
 import { now as clockNow, sqlNow } from "./clock";
-import { utcSqlString, zonedDateParts } from "./date";
+import {
+  parseUtcSql,
+  shiftDateStr,
+  utcSqlString,
+  zonedDateParts,
+  zonedWallTimeToUtc,
+} from "./date";
 import { minutesBetween } from "./activity-meta";
 import { getTimezone } from "./settings/display";
 import { parseComponents } from "./types/training";
@@ -104,6 +130,8 @@ export type DiscardEmptyOutcome = DiscardWorkoutOutcome | { kind: "kept" };
 
 interface DraftRow {
   id: number;
+  // The row's own profile-local day — the day a stamped `HH:MM` is read back against.
+  date: string;
   start_time: string | null;
   end_time: string | null;
   duration_min: number | null;
@@ -111,13 +139,17 @@ interface DraftRow {
   notes: string | null;
   distance_km: number | null;
   source: string | null;
+  // The #451 auto-save stamp, and the cancel `proposalStillHolds` reads. Null until
+  // the row's first update, hence created_at beside it.
+  updated_at: string | null;
+  created_at: string | null;
 }
 
 function loadDraft(profileId: number, activityId: number): DraftRow | null {
   const row = db
     .prepare(
-      `SELECT id, start_time, end_time, duration_min, components, notes,
-              distance_km, source
+      `SELECT id, date, start_time, end_time, duration_min, components, notes,
+              distance_km, source, updated_at, created_at
          FROM activities WHERE id = ? AND profile_id = ?`
     )
     .get(activityId, profileId) as DraftRow | undefined;
@@ -144,6 +176,44 @@ function hasLoggedContent(row: DraftRow): boolean {
   );
 }
 
+/**
+ * IS THE MINUTE THE MESSAGE PROMISED STILL ADMISSIBLE — the detector's own cancel,
+ * re-applied at tap time to the value it already answered with (#5194, ninth pass).
+ *
+ * `detectedWorkoutEnd`'s one non-negotiable rule is that a set logged after the
+ * candidate minute cancels it: a long rest between sets does not reach the resting
+ * range for most people, and when it does, the next set reopens the session. The
+ * database has no set instant (see lib/workout-detected-end.ts's header), so the cancel
+ * reads `updated_at` — every set write bumps the auto-save stamp, which makes it
+ * stricter and never looser.
+ *
+ * The nudge is one-shot per row, so a person who RESUMES gets no corrected message and
+ * the stale button is the only Finish that row will ever have. Honouring the record
+ * there stamps an end inside the session and drops the later sets out of the recorded
+ * window — an undershoot, which deletes part of the measurement where an overshoot only
+ * dilutes it. So the record supplies the value and this refuses it; there is no second
+ * reading of the trace either way, and a refusal falls back to the tap's own instant,
+ * which is what the person's continued work says happened.
+ */
+function proposalStillHolds(
+  tz: string,
+  row: DraftRow,
+  minute: string
+): boolean {
+  const savedAt = parseUtcSql(row.updated_at ?? row.created_at);
+  if (!savedAt) return true;
+  // The promised minute belongs to the row's own day unless it precedes the start, which
+  // is `activityWindow`'s crossing rule (lib/training-zones.ts) and therefore the day the
+  // stamped end will be read back on.
+  const day =
+    row.start_time && minute < row.start_time
+      ? shiftDateStr(row.date, 1)
+      : row.date;
+  const candidate = zonedWallTimeToUtc(tz, day, minute);
+  if (!candidate) return true;
+  return savedAt.getTime() < candidate.getTime();
+}
+
 // Stamp the end on a live draft. See the file header for the contract.
 export function finishWorkoutSession(
   profileId: number,
@@ -163,11 +233,18 @@ export function finishWorkoutSession(
   // it answers on its own, `null` minute included; asking the detector on top of it is
   // the second reading that made the two disagree.
   const shown = readWorkoutEndProposal(profileId, activityId);
+  // …and the person's own later work still cancels it. Never a re-measurement: this
+  // refuses the promised minute or keeps it, and refusing lands on `now` below.
+  const promised =
+    shown?.minute != null && proposalStillHolds(tz, row, shown.minute)
+      ? shown.minute
+      : null;
   // Asked AFTER the refusals, so a husk or a foreign id costs no heart-rate read — and
   // not at all when a message already proposed this row's end.
   const detected = shown ? null : detectedWorkoutEndAt(profileId, activityId);
   const hhmm =
-    (shown ? shown.minute : detected && zonedDateParts(tz, detected).hhmm) ??
+    promised ??
+    (detected && zonedDateParts(tz, detected).hhmm) ??
     zonedDateParts(tz, now).hhmm;
   // Active minutes: fill from the start→end span only when none is stored yet
   // (a strength session's session-total). Never overwrite a value the logger set.
@@ -235,8 +312,8 @@ export function expireWorkoutDrafts(
   );
   const rows = db
     .prepare(
-      `SELECT id, start_time, end_time, duration_min, components, notes,
-              distance_km, source
+      `SELECT id, date, start_time, end_time, duration_min, components, notes,
+              distance_km, source, updated_at, created_at
          FROM activities
         WHERE profile_id = ? AND source IS NULL AND end_time IS NULL
           AND start_time IS NOT NULL AND duration_min IS NULL

@@ -18,6 +18,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { detectedWorkoutEndAt } from "@/lib/workout-detected-end";
 import { finishWorkoutSession } from "@/lib/workout-finish";
+import { readWorkoutEndProposal } from "@/lib/workout-end-proposal";
 import { getWorkoutPresence } from "@/lib/queries/presence";
 import {
   renderStillGoingMessage,
@@ -769,6 +770,11 @@ describe("the nudge carries the minute, and the tap stamps it", () => {
 // Telegram primitives — because the promise only exists once a message carries it, and
 // the recording happens on that path. Time then passes before the tap, which is the one
 // thing no fixture on the shipped head did.
+//
+// SURVIVES A RE-MEASUREMENT, NOT THE PERSON'S OWN LATER WORK (#5194, ninth pass). The
+// first three cases are the trace moving under the promise, and the promise wins. The
+// two after them are the person moving: a save past the minute the message named cancels
+// it exactly as it cancels the detector, and the tap stamps its own instant instead.
 describe("what the nudge promised survives to the tap (#5194 F1)", () => {
   const SENT = new Date("2026-07-17T17:20:00Z");
   const TAP = new Date("2026-07-17T18:30:00Z");
@@ -822,22 +828,111 @@ describe("what the nudge promised survives to the tap (#5194 F1)", () => {
     expect(rowOf(id)).toEqual({ end_time: "16:35", duration_min: 35 });
   });
 
-  it("stamps it after a save moves the cancel past the candidate", async () => {
+  // THE PROPOSAL LOSES TO THE PERSON'S OWN LATER WORK (#5194, ninth falsifying pass).
+  //
+  // This case used to assert the opposite — that a save after the candidate minute was
+  // overridden by the record — and that is the behaviour the ninth pass falsified. A
+  // save past the minute the message named is the person CONTRADICTING the proposal:
+  // #5194's own non-negotiable rule is that a set logged after the candidate cancels it,
+  // the detector still enforces it, and a record that walks past it stamps an end inside
+  // a session that was still running. The record supplies the value; the cancel is
+  // re-applied at the tap and can only refuse. So the tap falls back to its own instant,
+  // which is what the later save says actually happened.
+  //
+  // The code cannot tell "the set I forgot" from "another hour of lifting", so it treats
+  // both as the person speaking last. Undershooting is the worse direction of the two:
+  // an overshoot dilutes the measurement, an undershoot drops logged work out of it.
+  it("loses the promise to a save past the minute it named", async () => {
     const { p, id, body } = await nudged("DetEndPromiseSave");
     expect(body).toContain("ended at 16:35");
 
-    // The second door, and it needs no heart rate at all: the person opens the app and
-    // adds the set they forgot, so `updated_at` moves past the candidate minute and the
-    // "a rest is not an end" cancel refuses.
+    // The person opens the app and saves at 17:35, so `updated_at` moves past the
+    // candidate minute and the "a rest is not an end" cancel refuses.
     db.prepare("UPDATE activities SET updated_at = ? WHERE id = ?").run(
       utcSqlString(new Date("2026-07-17T17:35:00Z")),
       id
     );
     vi.setSystemTime(TAP);
     expect(detectedWorkoutEndAt(p, id)).toBeNull();
+    // THE CONTROL INSIDE THE CASE: the record is still there and still names 16:35, so
+    // the tap's own instant below can only be the cancel refusing it. Without this line
+    // the case would also pass if the message had never recorded anything.
+    expect(readWorkoutEndProposal(p, id)).toEqual({ minute: "16:35" });
 
     expect(finishWorkoutSession(p, id).kind).toBe("finished");
-    expect(rowOf(id)).toEqual({ end_time: "16:35", duration_min: 35 });
+    expect(rowOf(id)).toEqual({ end_time: "18:30", duration_min: 150 });
+  });
+
+  // THE CASE THAT MADE THE RULE, end to end: they go back to the rack. The nudge is
+  // one-shot per row, so there is no corrected message — the stale 17:20 button is the
+  // only Finish this row will ever have, and honouring its 16:35 recorded a three-hour
+  // session as thirty-five minutes with two of its three sets outside the window.
+  it("stamps the resumed session's own end, not the minute quoted before it", async () => {
+    const RESUMED_TAP = new Date("2026-07-17T18:55:00Z");
+    const { p, id, body } = await nudged("DetEndPromiseResume");
+    expect(body).toContain("ended at 16:35");
+
+    // 17:45-18:50 at 135 bpm, two more sets, last autosave 18:50.
+    seedRange(p, "17:45", "18:50", 135);
+    db.prepare(
+      `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps)
+       VALUES (?, 'Back Squat', 2, 60, 5), (?, 'Back Squat', 3, 60, 5)`
+    ).run(id, id);
+    db.prepare("UPDATE activities SET updated_at = ? WHERE id = ?").run(
+      utcSqlString(new Date("2026-07-17T18:50:00Z")),
+      id
+    );
+
+    vi.setSystemTime(RESUMED_TAP);
+    // The row is LIVE at the tap — not stale, not abandoned — and the detector itself
+    // refuses, because a second effort means the trace no longer says which one this was.
+    expect(getWorkoutPresence(p, RESUMED_TAP)).toMatchObject({
+      state: "active",
+      stale: false,
+    });
+    expect(detectedWorkoutEndAt(p, id)).toBeNull();
+    // The same control: the promise is on record and unchanged, so what lands below is
+    // the cancel and not a missing record.
+    expect(readWorkoutEndProposal(p, id)).toEqual({ minute: "16:35" });
+
+    expect(finishWorkoutSession(p, id, RESUMED_TAP).kind).toBe("finished");
+    expect(rowOf(id)).toEqual({ end_time: "18:55", duration_min: 175 });
+  });
+
+  // NOTHING IS RECORDED FOR A MESSAGE THAT NEVER WENT ANYWHERE (#5194, ninth pass, F2).
+  //
+  // The record used to be written immediately before the dispatch, so a profile with no
+  // channel at all wrote one on every eligible tick and received nothing — and the
+  // request-path Finish would then stamp a minute nobody was shown. The shipped comments
+  // claimed the next tick overwrote such a record; it cannot, because the nudge window is
+  // 45-90 minutes wide and the tick is hourly, so the tick after the one that recorded is
+  // already past the window. The write now sits in the same delivered branch as the
+  // one-shot marker.
+  it("records nothing when the nudge reached no channel", async () => {
+    const p = newProfile("DetEndPromiseUnsent");
+    seedRestingHr(p, 60);
+    seedRange(p, "16:00", "16:35", 140);
+    seedRange(p, "16:35", "17:00", 55);
+    const id = seedOpenWorkout(p, "16:00", new Date("2026-07-17T16:30:00Z"));
+    sendMessageRaw.mockClear();
+
+    vi.setSystemTime(SENT);
+    // The episode is real and the detector answers — this profile simply has nowhere to
+    // send it, which is the whole point: what is missing is the delivery, not the minute.
+    expect(
+      stillGoingEpisodes(p, SENT).find((e) => e.rowId === id)?.detectedEnd
+    ).toBe("16:35");
+    await runStillGoingSuggest(p, "Ada", SENT);
+    expect(sendMessageRaw).not.toHaveBeenCalled();
+    expect(readWorkoutEndProposal(p, id)).toBeNull();
+
+    // And the tap is on its own: an evening walk voids the reading, so the request path
+    // reads the trace once and falls back to its own instant. A phantom record would
+    // have stamped 16:35 and thirty-five minutes here.
+    seedRange(p, "17:45", "18:00", 100);
+    vi.setSystemTime(TAP);
+    expect(finishWorkoutSession(p, id).kind).toBe("finished");
+    expect(rowOf(id)).toEqual({ end_time: "18:30", duration_min: 150 });
   });
 
   // THE REVERSE, which is the same mechanism from the other side. A message that names

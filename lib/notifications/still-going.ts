@@ -72,11 +72,13 @@ export interface StillGoingEpisode {
   // time for a practice. It is a PROPOSAL: the message quotes it so the person can see
   // what Finish will record. Nothing writes it unattended (owner ruling, 2026-09-06).
   //
-  // The minute a SENT message names is RECORDED against the row (`runStillGoingSuggest`
-  // below, lib/workout-end-proposal.ts), and the tap stamps that recorded value. So this
-  // field is read exactly once per message: asking the detector a second time at tap
-  // time is what made the sentence and the write disagree — silently, for any tap that
-  // was not immediate (#5194, eighth falsifying pass).
+  // The minute a DELIVERED message names is RECORDED against the row
+  // (`runStillGoingSuggest` below, lib/workout-end-proposal.ts), and the tap stamps that
+  // recorded value. So this field is read exactly once per message: asking the detector a
+  // second time at tap time is what made the sentence and the write disagree — silently,
+  // for any tap that was not immediate (#5194, eighth falsifying pass). The one thing
+  // that still takes the promise away is the person's own save past the minute it names,
+  // which is the detector's own cancel and is re-applied at the tap (#5194, ninth pass).
   detectedEnd: string | null;
 }
 
@@ -200,15 +202,6 @@ export async function runStillGoingSuggest(
     // moment it means, and reading the clock instead would key the marker to a
     // different day than the one the episode was judged against.
     const date = dateStrInTz(getTimezone(profileId), now);
-    // WHAT THIS MESSAGE PROMISES, ON RECORD BEFORE IT LEAVES (#5194, eighth falsifying
-    // pass). The body below quotes `episode.detectedEnd`; the Finish button on it runs
-    // `finishWorkoutSession`, which stamps what is recorded here rather than asking the
-    // detector again hours later. Both halves read the same field, so the minute in the
-    // sentence and the minute in the row are the same characters by construction. A
-    // message that names no minute records that too — it promises the tap's own instant,
-    // and a trace that starts answering afterwards must not back-date the row either.
-    if (episode.kind === "workout")
-      recordWorkoutEndProposal(profileId, episode.rowId, episode.detectedEnd);
     const results = await dispatch(
       profileId,
       renderStillGoingMessage(episode, profileId, profileName, getPublicUrl())
@@ -216,6 +209,24 @@ export async function runStillGoingSuggest(
     if (results.length === 0) continue;
     if (results.some((r) => !r.ok)) failed = true;
     if (results.some((r) => r.ok)) {
+      // WHAT THIS MESSAGE PROMISED, ON RECORD BECAUSE IT WAS DELIVERED (#5194, eighth
+      // and ninth falsifying passes). The body quotes `episode.detectedEnd`; the Finish
+      // button on it runs `finishWorkoutSession`, which stamps what is recorded here
+      // rather than asking the detector again hours later. Both halves read the same
+      // field, so the sentence and the row hold the same characters by construction. A
+      // message that names no minute records that too — it promises the tap's own
+      // instant, and a trace that starts answering afterwards must not back-date the row.
+      //
+      // BESIDE THE ONE-SHOT MARKER AND UNDER ITS CONDITION, which is the ninth pass's
+      // correction. Recording before the dispatch was meant to close a window where a
+      // delivered message had no record; what it actually did was record for messages
+      // that never went anywhere — a profile with no channel at all reaches this loop
+      // every eligible tick — and `finishWorkout` would then stamp a minute nobody was
+      // shown. The record is written first of the two so a crash between them re-sends
+      // and re-records rather than leaving a live button with no record; nothing here
+      // needs an overwrite to be correct, because nothing undelivered is ever written.
+      if (episode.kind === "workout")
+        recordWorkoutEndProposal(profileId, episode.rowId, episode.detectedEnd);
       setProfileSetting(profileId, markerKey, date);
       log.info("still-going suggest sent", {
         profile: profileId,
