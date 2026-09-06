@@ -2742,7 +2742,7 @@ call that could not be made and a call that genuinely matched nothing both retur
 Open-Meteo hosts, all unreachable here — but **not the defect**, and the difference
 is the whole point of this entry. It already announces its own failures
 (`log.error` at `:482`, `:497`, `:700`, `:713`, under the rule stated at `:644`:
-*"IT GOES TO `log.error`, NEVER TO A SURFACE (#3639)"*), so a lane running a
+_"IT GOES TO `log.error`, NEVER TO A SURFACE (#3639)"_), so a lane running a
 weather spec locally gets a line and can tell which branch it took. It was the
 model for the fix below rather than a second instance of the problem. Do not read
 the shared "unreachable" property as a shared defect: what makes a degrade
