@@ -284,6 +284,18 @@ function discoverNode24() {
 // two-merge chain, and the brief told it that was impossible in a container
 // where it works. So it is discovered, like the node bin dir and the port range,
 // and neither branch bakes a date.
+//
+// AND THE SHALLOW BRANCH NAMES THE REMEDY RATHER THAN A REFUSAL. It used to end
+// "anything older is UNREACHABLE and no command here can measure a span across
+// it" — the boundary honest, the conclusion drawn from it false: a census of
+// whether 283 guards had ever caught a defect is worth reading only because
+// that lane disbelieved the sentence and unshallowed on its own (#5469). The
+// cost is a MEASUREMENT, not a discovered fact like the depth, and it is stated
+// as a range because the two measurements are of different operations: three
+// runs on 2026-09-06 against a fresh depth-76 clone of the same remote through
+// the same proxy took 9-10s each (76 commits to 3001), while ~4 min was reported
+// incidentally for deepening this container's shared store under load. A number
+// carrying its method survives being wrong; re-measure and disagree.
 
 /**
  * What a lane may conclude from how much history it can reach.
@@ -297,7 +309,13 @@ export function historyDepthLine(shallow, firstCommit) {
     : "the oldest reachable commit could not be read";
   return shallow
     ? `THIS CLONE IS SHALLOW — \`git rev-parse --is-shallow-repository\` is true and ` +
-        `${begins}, so anything older is UNREACHABLE and no command here can measure a span across it`
+        `${begins}, so anything older is ABSENT, NOT UNREACHABLE: ` +
+        `\`git fetch --unshallow origin main\` brings the whole history back — ` +
+        `seconds on a fresh clone, up to a few minutes when this container's ` +
+        `store is cold or loaded, 76 commits to ~3000. One \`.git\` serves every ` +
+        `worktree here, so that deepening is permanent and global: paid once per ` +
+        `container, not once per lane. A claim about an older tree IS checkable ` +
+        `here: deepen, then check, rather than assuming you cannot`
     : `This clone has FULL history — \`git rev-parse --is-shallow-repository\` is false and ` +
         `${begins}, so a claim about an older tree IS checkable here: check it rather than assuming you cannot`;
 }
