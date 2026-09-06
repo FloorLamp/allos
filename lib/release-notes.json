@@ -74,18 +74,6 @@
           "issues": [5371]
         },
         {
-          "pr": 5290,
-          "category": "Medical",
-          "title": "A note on a substance day can no longer be corrected or cleared",
-          "issues": [5026]
-        },
-        {
-          "pr": 5290,
-          "category": "Medical",
-          "title": "Re-dating the last use of a day that carries a note is refused",
-          "issues": [5026]
-        },
-        {
           "pr": 5450,
           "kind": "feature",
           "category": "Training",
@@ -104,6 +92,13 @@
           "category": "Documents",
           "title": "Substance rows can no longer be selected and deleted on Data → Manage",
           "issues": [5026]
+        },
+        {
+          "pr": 5423,
+          "kind": "feature",
+          "category": "Medical",
+          "title": "Correct a drink or substance note on the use itself, not the whole day",
+          "issues": [5304]
         }
       ]
     },
