@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { logMood } from "@/app/(app)/mood-actions";
 import Chip from "@/components/Chip";
 import Disclosure from "@/components/Disclosure";
@@ -93,6 +93,7 @@ export default function MoodForm({
   dateReach = "tap",
   mode = "quick",
   repeatAfterSave = false,
+  onStagedChange,
   onSaved,
   onDone,
   onCancel,
@@ -114,6 +115,13 @@ export default function MoodForm({
   // moving the prop, so the sight the form was composed under is the sight it writes
   // under.
   dayUnseen?: boolean;
+  // WHETHER THIS MOUNT IS HOLDING INPUT A REPLACEMENT WOULD DISCARD (#3416), reported
+  // while it is mounted and false when it goes. One host replaces this form under the
+  // person — the quick sheet, when the day it could not see arrives — and it makes
+  // its announcement only when this says there is something to announce. In quick
+  // mode the valence tap IS the write, so what is staged is the Details block; in
+  // edit mode nothing is written until Save, so the rating is staged too.
+  onStagedChange?: (staged: boolean) => void;
   subjectProfileId?: number;
   dateReach?: "tap" | "dated";
   mode?: "quick" | "edit";
@@ -142,6 +150,22 @@ export default function MoodForm({
   const writing = useRef(false);
 
   const day = days[selected];
+
+  // WHAT WOULD BE LOST, against the day on screen — the person's own input, not the
+  // day's stored answer. A note typed and then deleted back to what was there leaves
+  // nothing to lose, and says so.
+  const shown = day?.mood ?? null;
+  const staged =
+    energy !== (shown?.energy ?? null) ||
+    anxiety !== (shown?.anxiety ?? null) ||
+    (note.trim() || null) !== (shown?.notes ?? null) ||
+    factors.length !== (shown?.factors.length ?? 0) ||
+    factors.some((slug) => !shown?.factors.includes(slug)) ||
+    (mode === "edit" && valence !== (shown?.valence ?? null));
+  useEffect(() => {
+    onStagedChange?.(staged);
+    return () => onStagedChange?.(false);
+  }, [staged, onStagedChange]);
 
   function pickDay(index: number): void {
     if (index === selected) return;

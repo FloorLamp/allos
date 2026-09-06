@@ -279,6 +279,36 @@ describe("the mood domain's two pieces", () => {
     expect(queued[0].payload).not.toHaveProperty("dayUnseen");
   });
 
+  // THE OTHER HALF OF THE ANNOUNCEMENT (#3416). The quick sheet remounts this form
+  // when the day it could not see arrives, and says so only when the mount was
+  // holding something. This form is what answers that question, so it has to answer
+  // honestly: something typed is staged, the same field put back is not, and a mount
+  // that goes leaves nothing to lose.
+  it("says whether it is holding input a replacement would discard", async () => {
+    const staged: boolean[] = [];
+    const { unmount } = render(
+      <MoodForm
+        days={[LOGGED]}
+        showCalm={false}
+        onStagedChange={(value) => staged.push(value)}
+      />
+    );
+    expect(staged.at(-1)).toBe(false);
+
+    const note = screen.getByLabelText("Note");
+    fireEvent.change(note, { target: { value: "long day, and a headache" } });
+    expect(staged.at(-1)).toBe(true);
+
+    // Typed back to what the day already said: nothing to discard, nothing to say.
+    fireEvent.change(note, { target: { value: "long day" } });
+    expect(staged.at(-1)).toBe(false);
+
+    fireEvent.change(note, { target: { value: "long day, and a headache" } });
+    expect(staged.at(-1)).toBe(true);
+    unmount();
+    expect(staged.at(-1)).toBe(false);
+  });
+
   it("names a single past-day quick tap from its actual date context", async () => {
     render(
       <MoodForm

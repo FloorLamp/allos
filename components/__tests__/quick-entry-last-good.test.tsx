@@ -6,7 +6,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { ToastProvider } from "@/components/Toast";
 import QuickEntryProvider, {
@@ -46,18 +46,42 @@ vi.mock("@/components/stool/StoolTypeControl", () => ({
     </div>
   ),
 }));
-vi.mock("@/components/quick-entry/QuickDoseList", () => ({
-  default: ({ doses }: { doses: { doseId: number }[] }) => (
-    <div data-testid="stub-dose">{doses.map((d) => d.doseId).join(",")}</div>
-  ),
-}));
+vi.mock("@/components/quick-entry/QuickDoseList", () => {
+  function StubDose({ doses }: { doses: { doseId: number }[] }) {
+    // The list's `resolved` set, in miniature: a dose confirmed during this overlay
+    // session is struck off in LOCAL state and the rows are filtered by it, so a
+    // remount would put the row back — which is the thing this file now asserts does
+    // not happen. The confirm button carries no text, so the rows stay the whole
+    // textContent for every other test here.
+    const [resolved, setResolved] = useState<number[]>([]);
+    return (
+      <div data-testid="stub-dose" data-resolved={resolved.join(",")}>
+        {doses
+          .filter((d) => !resolved.includes(d.doseId))
+          .map((d) => d.doseId)
+          .join(",")}
+        <button
+          data-testid="stub-dose-confirm"
+          onClick={() =>
+            setResolved((current) =>
+              doses[0] ? [...current, doses[0].doseId] : current
+            )
+          }
+        />
+      </div>
+    );
+  }
+  return { default: StubDose };
+});
 vi.mock("@/components/mood/MoodForm", () => {
   function StubMood({
     days,
     dayUnseen,
+    onStagedChange,
   }: {
     days: { date: string }[];
     dayUnseen?: boolean;
+    onStagedChange?: (staged: boolean) => void;
   }) {
     // SEEDED ONCE, as the real form seeds its fields — so this stub can tell a
     // remount from a prop swap. `composed-*` is what the mount was built from;
@@ -67,6 +91,14 @@ vi.mock("@/components/mood/MoodForm", () => {
       days: days.map((d) => d.date).join(","),
       dayUnseen: dayUnseen ?? false,
     }));
+    // The real form's half of the announcement contract (pinned on the real form in
+    // mood-two-pieces): it reports staged input while it is mounted and false when it
+    // goes. The button carries no text, so the days stay the whole textContent.
+    const [staged, setStaged] = useState(false);
+    useEffect(() => {
+      onStagedChange?.(staged);
+      return () => onStagedChange?.(false);
+    }, [staged, onStagedChange]);
     return (
       <div
         data-testid="stub-mood"
@@ -75,6 +107,7 @@ vi.mock("@/components/mood/MoodForm", () => {
         data-composed-days={composed.days}
       >
         {days.map((d) => d.date).join(",")}
+        <button data-testid="stub-mood-stage" onClick={() => setStaged(true)} />
       </div>
     );
   }
@@ -508,10 +541,101 @@ describe("the stall bound and Retry (#3416 proposals 3 and 4)", () => {
     expect(seeing.getAttribute("data-composed-unseen")).toBe("false");
     // …and the sheet stops saying it is showing the device's copy, because it is not.
     expect(screen.queryByTestId("quick-entry-asof")).toBeNull();
-    // The remount discards anything staged on the offline copy, so it is announced.
+    // NOTHING WAS TYPED ON THAT COPY, so nothing was discarded and nothing is said.
+    // The announcement is about a loss; a person who opened the sheet, read the
+    // offline line and touched nothing has lost nothing to be told about.
     expect(
-      screen.getByText(/Anything typed on the offline copy was discarded/)
+      screen.queryByText(/typed on the offline copy was discarded/)
+    ).toBeNull();
+  });
+
+  // …AND THE SAME REMOUNT, WITH SOMETHING ON THE FORM, IS ANNOUNCED. The half-typed
+  // check-in composed during the stall is the remount's stated cost, so it is said
+  // out loud — but only here, where it actually happened.
+  it("the remount announces the discard when the blind form was holding something", async () => {
+    let resolveLate: (v: unknown) => void;
+    loadQuickEntry.mockImplementationOnce(
+      () => new Promise((resolve) => (resolveLate = resolve))
+    );
+    renderSheet();
+    open("mood");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    fireEvent.click(screen.getByTestId("stub-mood-stage"));
+
+    resolveLate!({
+      form: "mood" as const,
+      days: [{ date: today(), label: "Today", mood: null }],
+      showCalm: true,
+    });
+    await act(async () => {});
+
+    expect(
+      screen.getByTestId("stub-mood").getAttribute("data-composed-unseen")
+    ).toBe("false");
+    expect(
+      screen.getByText(
+        "Connected — this form now shows what's saved. What you typed on the offline copy was discarded."
+      )
     ).not.toBeNull();
+  });
+
+  // A BODY WITH NO FENCE TO LOSE KEEPS ITS MOUNT (#3416). The dose list's write is
+  // per (dose, day) and idempotent, so nothing about it depends on the sight — while
+  // the confirm the person just made offline lives in that mount, and the late answer
+  // was gathered BEFORE the tap and knows nothing about it (the queue has not
+  // drained). Remounting here would re-offer a dose they already took and then
+  // announce a discard that never happened.
+  it("a late answer under a dose list keeps the confirm the person made offline, and says nothing", async () => {
+    allSnapshots.mockResolvedValue([doseSnapshot(today())]);
+    let resolveLate: (v: unknown) => void;
+    loadQuickEntry.mockImplementationOnce(
+      () => new Promise((resolve) => (resolveLate = resolve))
+    );
+    renderSheet();
+    open("dose");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(
+      screen.getByTestId("quick-entry-body").getAttribute("data-body-sight")
+    ).toBe("device");
+    expect(screen.getByTestId("stub-dose").textContent).toBe("41");
+
+    // Confirmed offline: the row is struck off in the mount's own state.
+    fireEvent.click(screen.getByTestId("stub-dose-confirm"));
+    expect(screen.getByTestId("stub-dose").textContent).toBe("");
+
+    // The answer the server was still working on lands, still offering the dose.
+    resolveLate!({
+      form: "dose" as const,
+      today: today(),
+      doses: [
+        {
+          doseId: 41,
+          title: "Sertraline",
+          detail: "50 mg",
+          dueText: "Morning",
+        },
+      ],
+      prn: [],
+      pastDays: [],
+    });
+    await act(async () => {});
+
+    const list = screen.getByTestId("stub-dose");
+    expect(
+      screen.getByTestId("quick-entry-body").getAttribute("data-body-sight")
+    ).toBe("read");
+    // The mount survived the change of sight, so the confirm survived with it: the
+    // dose is not offered again…
+    expect(list.getAttribute("data-resolved")).toBe("41");
+    expect(list.textContent).toBe("");
+    // …and nothing was discarded, so nothing is announced over it.
+    expect(
+      screen.queryByText(/typed on the offline copy was discarded/)
+    ).toBeNull();
   });
 
   it("Retry re-runs the SAME gather and a success replaces the error state", async () => {

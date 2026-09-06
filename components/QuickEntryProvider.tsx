@@ -240,6 +240,31 @@ type BodySight =
   // Built here from what the device holds: a #2908 snapshot, or its own queue.
   | "device";
 
+// WHOSE IDENTITY THE SIGHT IS PART OF — exactly the bodies whose WRITE depends on it.
+// A late answer under a device copy changes the sight, and remounting the body on it
+// throws away whatever the person has already done in that mount. That is worth doing
+// only where keeping the mount could produce a WRONG WRITE, and one body qualifies:
+//
+// - MOOD remounts. Its check-in is the day's WHOLE answer and its fields are seeded
+//   from `days` once, so a blind composition left beside a payload that saw the day
+//   writes the replacing statement over what it never saw (`dayUnseen` →
+//   `MoodWriteSight`, lib/offline/writes.ts). The new mount carries the day and needs
+//   no fence at all.
+// - DOSE, PRACTICE and STOOL do not. Their writes name a (day, item) and are
+//   idempotent or additive, so no fence rides on the payload, and their in-progress
+//   state is keyed the same way the newer payload is: `QuickDoseList`'s `resolved`
+//   set is per (day, doseId) and filters whatever `doses` it is handed, and the other
+//   two already follow a newer payload in place by design. Remounting them would
+//   strike the person's own confirms off — a dose taken offline coming back offering
+//   Take, because the answer was gathered before the tap and the queue has not
+//   drained — for a fence none of them has to lose.
+//
+// Nothing else reaches this transition: `quickEntryOffline` answers null for every
+// other form, so a stalled cold open there reaches the retry state, already "read".
+function sightIsIdentity(form: QuickEntryBody["form"]): boolean {
+  return form === "mood";
+}
+
 type LoadState =
   | { status: "loading" }
   // `asOf` is the #2908 as-of line, set exactly when what is shown did not just come
@@ -283,8 +308,8 @@ interface Request {
   readonly form: QuickEntryForm;
   settled: boolean;
   // A device copy is on screen for this request (`recover` painted one). The late
-  // answer that lands behind it is a CHANGE OF SIGHT, not a refresh, so it remounts
-  // the body and says so — see the body's `key`.
+  // answer that lands behind it is a CHANGE OF SIGHT, not a refresh — see the body's
+  // `key` for which bodies that remounts, and `stagedRef` for when it is announced.
   copied: boolean;
 }
 
@@ -343,9 +368,22 @@ export default function QuickEntryProvider({
   // The dynamic bodies, re-minted by Retry (see `loadBodies`).
   const [bodies, setBodies] = useState(() => loadBodies(0));
 
+  // WHAT THE BODY ON SCREEN WOULD LOSE IF IT WERE REPLACED. A body that both remounts
+  // on a change of sight and stages input reports this while it is mounted (today
+  // that is the mood form alone, `onStagedChange`), and the announcement below is made
+  // only when it says there is something to announce — a sheet nobody typed on says
+  // nothing. False again the moment the body goes: the sheet closing, a new request,
+  // or the body's own unmount, so a check-in that has already closed the sheet cannot
+  // be announced into the empty screen behind it.
+  const stagedRef = useRef(false);
+  const reportStaged = useCallback((staged: boolean) => {
+    stagedRef.current = staged;
+  }, []);
+
   const close = useCallback(() => {
     setOpen(false);
     setPickerOpen(false);
+    stagedRef.current = false;
   }, []);
 
   // LAST-GOOD (#3416/#4454) lives in lib/offline/quick-entry-read.ts, keyed by the
@@ -389,6 +427,10 @@ export default function QuickEntryProvider({
         copied: false,
       };
       requestRef.current = request;
+      // A new request is a new body: whatever the last one was holding is gone with
+      // it, and its own discard has already been announced where it had one (the
+      // subject switch) or asked for (a reopen).
+      stagedRef.current = false;
       const current = () => requestRef.current === request;
       // Captured HERE, beside the parts, and spent when the answer lands: a wipe or an
       // identity change while this gather is in flight moves the store's generation,
@@ -486,17 +528,24 @@ export default function QuickEntryProvider({
           if (!current()) return;
           request.settled = true;
           rememberLastGood(token, parts, next, data);
-          // A LATE ANSWER UNDER A DEVICE COPY CHANGES THE SIGHT, and the body is
-          // remounted on it (see the body's `key`) rather than swapped underneath the
-          // person: the form's fields were seeded from the device's day and its write
-          // is fenced by that day's blindness, so leaving the mount up while the props
-          // moved would strand blind state beside a payload that saw the day — which
-          // is how a fenced check-in loses its fence. The remount discards anything
-          // staged on the offline copy, so it is announced, in the same words the
-          // subject switch uses for the same loss.
-          if (request.copied)
+          // A LATE ANSWER UNDER A DEVICE COPY CHANGES THE SIGHT. For a body whose
+          // write depends on that sight the answer mounts a NEW body (see the body's
+          // `key`) rather than being swapped underneath the person: the mood form's
+          // fields were seeded from the device's day and its write is fenced by that
+          // day's blindness, so leaving the mount up while the props moved would
+          // strand blind state beside a payload that saw the day — which is how a
+          // fenced check-in loses its fence.
+          //
+          // SAID ONLY WHEN IT IS TRUE, which is what `stagedRef` answers. The remount
+          // is the only thing here that discards anything, and only if that body was
+          // holding something — and only a body the sight remounts is handed the
+          // reporter (see `QuickEntryBody`), so a dose confirmed offline, which keeps
+          // its mount and its confirm, has nothing to report and nothing said over it.
+          // A form nobody typed on has nothing to lose either. So the sentence is
+          // spoken where a remount meets staged input, and otherwise not at all.
+          if (request.copied && stagedRef.current)
             toast(
-              "Connected — this form now shows what's saved. Anything typed on the offline copy was discarded."
+              "Connected — this form now shows what's saved. What you typed on the offline copy was discarded."
             );
           setState({ status: "ready", data, asOf: null, sight: "read" });
         },
@@ -683,18 +732,26 @@ export default function QuickEntryProvider({
             {/* Keyed on the subject (#4932): switching who this is for remounts the
                 body fresh, which is what actually discards a staged, half-typed
                 entry rather than leaving it to paint under the new subject's name.
-                AND ON THE SIGHT (#3416): a form composed from the device's own copy
-                is composed blind, and its check-in writes fenced by that blindness.
-                A gather that stalled past the bound is not cancelled, so its answer
-                can arrive while that blind form is still up — carrying the very day
-                the form could not see. Making the sight part of the body's identity
-                is what stops the two from meeting: the answer mounts a NEW form,
-                seeded from the day, writing the ordinary replacing write. Without it
-                the mounted form keeps its blind state while the fence flips off
-                underneath it, and the next tap nulls the day the answer just
-                delivered. A form's sight is the sight it was composed under. */}
+                AND ON THE SIGHT (#3416) FOR THE BODIES WHOSE WRITE DEPENDS ON IT —
+                the mood form, and see `sightIsIdentity` for why it alone. A form
+                composed from the device's own copy is composed blind, and its check-in
+                writes fenced by that blindness. A gather that stalled past the bound
+                is not cancelled, so its answer can arrive while that blind form is
+                still up — carrying the very day the form could not see. Making the
+                sight part of THAT body's identity is what stops the two from meeting:
+                the answer mounts a NEW form, seeded from the day, writing the ordinary
+                replacing write. Without it the mounted form keeps its blind state
+                while the fence flips off underneath it, and the next tap nulls the day
+                the answer just delivered. A form's sight is the sight it was composed
+                under. Every other body keeps its mount and takes the newer payload in
+                place, which is what a person who just confirmed a dose offline needs
+                it to do. */}
             <div
-              key={`${subject}:${state.status === "ready" ? state.sight : "read"}`}
+              key={`${subject}:${
+                state.status === "ready" && sightIsIdentity(state.data.form)
+                  ? state.sight
+                  : "read"
+              }`}
               data-testid="quick-entry-body"
               data-form={form}
               data-body-sight={state.status === "ready" ? state.sight : null}
@@ -715,6 +772,7 @@ export default function QuickEntryProvider({
                   prefill={prefill}
                   onDone={close}
                   onRetry={retry}
+                  onStaged={reportStaged}
                   subjectProfileId={subjectId}
                 />
               </BodyBoundary>
@@ -790,6 +848,7 @@ function QuickEntryBody({
   prefill,
   onDone,
   onRetry,
+  onStaged,
   subjectProfileId,
 }: {
   state: LoadState;
@@ -800,6 +859,11 @@ function QuickEntryBody({
   // button. Never called from any other branch; a ready form has nothing to retry
   // and a loading one is already trying.
   onRetry: () => void;
+  // Handed to the one body the host remounts on a change of sight, so the host can
+  // ask — at the moment it is about to replace it — whether there is anything to
+  // announce (see `stagedRef`). No other body is given it: nothing that keeps its
+  // mount loses what it is holding.
+  onStaged: (staged: boolean) => void;
   // The chosen subject (#4932), already narrowed to "explicit and non-acting" by
   // the caller — every form below carries it through to its own write(s), gated
   // server-side by `gateItemProfile` (or, for the two forms whose write cannot yet
@@ -909,6 +973,10 @@ function QuickEntryBody({
           // device queued itself and nothing the server holds, so the check-in the
           // form writes must not erase what it could not show.
           dayUnseen={data.dayUnseen}
+          // The host remounts this body when the day arrives (its `key`), so it is
+          // the one body that can lose staged input to a late answer — and the only
+          // one that says whether there is any.
+          onStagedChange={onStaged}
           onDone={onDone}
           subjectProfileId={subjectProfileId}
         />
