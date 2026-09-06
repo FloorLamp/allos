@@ -1405,6 +1405,34 @@ test.describe("the toast's action and dismiss wear the box (#4505)", () => {
   });
 });
 
+// ONE CONTROL, TWO STATES, ONE HEIGHT (#4505 family 5). The weekly-target toggle
+// rendered `btn-ghost` closed and a hand-rolled `min-h-11` open; both states are
+// the box now. ProtocolLogButton's two tones share the dose-action pill, whose box
+// e2e/dose-history.spec.ts pins, and the lightbox delete is behind a photo — a
+// fixture this table does not build — so the state pair is the case measured here.
+test.describe("the weekly-target toggle is one height open and closed (#4505)", () => {
+  test.use({ viewport: PHONE });
+
+  test("renders the box in both states at 390", async ({ page }) => {
+    await page.goto("/training?tab=plan");
+    const toggle = page
+      .getByRole("main")
+      .getByTestId("frequency-target-toggle");
+    await expect(toggle).toBeVisible();
+    const [closed] = await settledBoxes([toggle]);
+    await hydratedClick(page, toggle);
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    const [open] = await settledBoxes([toggle]);
+    expect(
+      [Math.round(closed.height), Math.round(open.height)],
+      "the toggle renders two heights across its states"
+    ).toEqual([CONTROL_BOX_PX, CONTROL_BOX_PX]);
+    await expectPhoneTapTargets(page, "the open weekly-target toggle", [
+      toggle,
+    ]);
+  });
+});
+
 // THE BADGE THAT WAS A BUTTON (#4505 family 4). The mood form's day and factor chips
 // were `.badge`-styled buttons at 22px with no reach at all; they render through
 // `Chip` now — `chip-base`, an already-bound kind — in a `gap-1.5
