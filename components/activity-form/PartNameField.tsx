@@ -62,9 +62,7 @@ export default function PartNameField({
           onClick={onOpen}
           className="flex min-h-(--control-box) w-full min-w-0 items-center gap-2 rounded-sm text-left transition hover:text-brand-700 focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:outline-hidden dark:hover:text-brand-300"
         >
-          <span className="section-heading truncate">
-            {name}
-          </span>
+          <span className="section-heading truncate">{name}</span>
           {badge}
         </button>
       ) : (

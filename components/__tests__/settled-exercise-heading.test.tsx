@@ -321,16 +321,19 @@ describe("the type and colour ladder (#5376)", () => {
   /** The stated recent line — the fill BUTTON while the part is pristine, the
       read-only row once anything is typed. Both carry the row's tone. */
   const statedLine = () =>
-    within(screen.getAllByTestId("recent-sessions")[0])
-      .getAllByRole("listitem")[0]
-      .firstElementChild!.firstElementChild!;
+    within(screen.getAllByTestId("recent-sessions")[0]).getAllByRole(
+      "listitem"
+    )[0].firstElementChild!.firstElementChild!;
 
   // RUNG 4. Only the DATE of a recent row was muted; the numbers beside it inherited
   // body colour, so a reference line read as loud as the sets being typed under it.
   // Both shapes of the row are asked, because the fill path and the read-only path
   // are two renderings of the same reference.
   it.each([
-    ["a pristine part, where the line is a fill", () => renderList([part()], { history: HISTORY, plateauHints: PLATEAU })],
+    [
+      "a pristine part, where the line is a fill",
+      () => renderList([part()], { history: HISTORY, plateauHints: PLATEAU }),
+    ],
     ["a worked part, where it is read-only", ladder],
   ])("reads a recent session at one muted brightness — %s", (_what, mount) => {
     mount();
