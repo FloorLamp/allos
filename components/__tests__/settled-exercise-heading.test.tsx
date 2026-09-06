@@ -58,7 +58,7 @@ const session = (activityId: number, date: string, kg: number) => ({
   equipment: null,
   equipmentId: null,
   baseKg: 0,
-  status: "hit" as const,
+  status: "met" as const,
   sets: [set(1, kg, 8), set(2, kg, 8)],
 });
 const HISTORY: ExerciseHistoryMap = {
@@ -76,6 +76,7 @@ const PLATEAU: PlateauFormHint[] = [
     exerciseKey: "bench press",
     equipmentId: null,
     dedupeKey: "plateau-bench-42",
+    supersedes: "plateau-bench-41",
     hintText: "Flat for about 6 weeks.",
   },
 ];
