@@ -4,7 +4,6 @@ import {
   TAP_FLOOR_FLOAT_EPSILON_PX,
   TAP_FLOOR_PX,
   TAP_TARGET_INSET_PX,
-  TAP_TARGET_MIN_RENDERED_PX,
 } from "@/lib/tap-floor-tokens";
 import { roundControlBoxExtraLines } from "./control-box-lines";
 import {
@@ -1130,10 +1129,20 @@ test.describe("the fact chip wears the box (#4035)", () => {
 test.describe("the hit-area mechanism reaches the floor it claims (#3486)", () => {
   test.use({ viewport: PHONE });
 
-  // `.tap-target`'s extension, and the smallest rendered box it can lift to the
-  // floor. Derived, not spelled — the same derivation `lib/tap-floor-tokens.ts`
-  // makes, so the two cannot disagree about what 32 means.
-  test("the food-log steppers are 44px effective, by box plus overlay", async ({
+  // WHAT ONLY THIS CASE CAN SAY (#3486, narrowed on #4505): the MINUS is not
+  // drawn at zero (#3987) — a permanently disabled control on the row people tap
+  // most is chrome that says nothing — so it exists only after a serving is
+  // logged, and the `goto` sweep below can no more see it than it can see a
+  // toast's buttons. The row is put at a non-zero count to bring it on screen and
+  // restored afterwards.
+  //
+  // Everything else this test used to assert by hand is now the sweep's, and
+  // strictly stronger: it read `>= TAP_TARGET_MIN_RENDERED_PX` (the 32 a 6px reach
+  // per side can lift to 44) where the sweep asserts the EXACT box, and it read
+  // the `::after` back to prove the overlay arrived where the shared helper counts
+  // a missing overlay as zero reach and reds on the 34 that leaves. The derived
+  // token went with it — this was its only reader.
+  test("the food-log steppers reach the floor, minus included", async ({
     page,
   }) => {
     await page.goto("/nutrition");
@@ -1148,49 +1157,15 @@ test.describe("the hit-area mechanism reaches the floor it claims (#3486)", () =
       await expect(row).toBeVisible();
     }
 
-    // THE MINUS IS NOT DRAWN AT ZERO (#3987) — a permanently disabled control on the
-    // row people tap most is chrome that says nothing. It is still a stepper and still
-    // owes the floor, so the row is put at a non-zero count to bring it on screen, and
-    // restored below. Measuring only the "+" would quietly halve what this test covers.
     await settledClick(page, page.getByTestId("log-nuts_seeds"));
     await expect(page.getByTestId("undo-nuts_seeds")).toBeVisible();
 
-    for (const testId of ["undo-nuts_seeds", "log-nuts_seeds"]) {
-      const stepper = page.getByTestId(testId);
-      await expect(stepper).toBeVisible();
-      const box = await stepper.boundingBox();
-      expect(box).not.toBeNull();
-
-      // Half one: the rendered box clears the mechanism's minimum.
-      expect(
-        box!.height,
-        `${testId} renders ${box!.height}px. \`.tap-target\` adds a fixed ` +
-          `2x${TAP_TARGET_INSET_PX}px, so a control below ${TAP_TARGET_MIN_RENDERED_PX}px cannot reach the ` +
-          `${TAP_FLOOR_PX}px floor no matter how the overlay is spelled.`
-      ).toBeGreaterThanOrEqual(TAP_TARGET_MIN_RENDERED_PX);
-      expect(box!.width).toBeGreaterThanOrEqual(TAP_TARGET_MIN_RENDERED_PX);
-
-      // Half two: the overlay actually ARRIVED at this element in this viewport.
-      // Read back out of the browser, not out of the stylesheet — the whole
-      // reason the family's floor needed a rendered guard.
-      const overlayInset = await stepper.evaluate((el) => {
-        const style = getComputedStyle(el, "::after");
-        return { content: style.content, top: style.top };
-      });
-      expect(
-        overlayInset.content,
-        `${testId} has no \`::after\` in a coarse-pointer viewport, so the ` +
-          "`.tap-target` class in its class list is decoration. The rule lives in " +
-          "app/globals.css under `@media (pointer: coarse)`."
-      ).not.toBe("none");
-      const inset = Math.abs(Number.parseFloat(overlayInset.top));
-      expect(Number.isFinite(inset)).toBe(true);
-      expect(
-        box!.height + 2 * inset,
-        `${testId} is ${box!.height}px rendered + 2x${inset}px overlay = ` +
-          `${box!.height + 2 * inset}px effective, under the ${TAP_FLOOR_PX}px floor #3514 ruled.`
-      ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
-    }
+    await expectPhoneTapTargets(
+      page,
+      "the food-log steppers",
+      [page.getByTestId("undo-nuts_seeds"), page.getByTestId("log-nuts_seeds")],
+      { disjoint: true }
+    );
 
     // Leave the shared profile's day as it was found.
     await settledClick(page, page.getByTestId("undo-nuts_seeds"));
