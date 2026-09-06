@@ -27,10 +27,13 @@ import {
 import { OUTCOME_GOAL_STATUSES } from "@/lib/types";
 import type { OutcomeGoal } from "@/lib/types";
 import type { GoalProgress } from "@/lib/goal-progress";
+import { goalProgressStatement } from "@/lib/goal-facts";
 
 // Minimal outcome-goal factory: freeform by default; override the linked fields per test.
+// `kind` follows the linked columns the way the stored row's does (outcomeGoalKind), so
+// a fixture cannot carry an exercise in its columns and "freeform" in its kind.
 function makeGoal(overrides: Partial<OutcomeGoal> = {}): OutcomeGoal {
-  return {
+  const goal: OutcomeGoal = {
     id: 1,
     title: "Goal",
     description: null,
@@ -57,6 +60,7 @@ function makeGoal(overrides: Partial<OutcomeGoal> = {}): OutcomeGoal {
     archived: 0,
     ...overrides,
   };
+  return { ...goal, kind: overrides.kind ?? outcomeGoalKind(goal) };
 }
 
 describe("outcomeGoalKind", () => {
@@ -240,35 +244,34 @@ describe("shared pace tone→class map", () => {
       targetDate: "2026-01-11", // 10-day window
       today: "2026-01-05", // 4/10 elapsed → owes 40%; 40% done → on-pace
     });
-    const habitPace = frequencyPace(2, 5, 3); // 3/7 elapsed, floor(5*3/7)=2, 2≥2 → on-pace
     expect(goalTone).toBe("on-pace");
-    expect(habitPace).toBe("on-pace");
+    expect(frequencyPace(2, 5, 3)).toBe("on-pace"); // 3/7 elapsed, floor(5*3/7)=2, 2≥2
     // The chip's tone is its FrequencyPace; both index the same map.
-    expect(PACE_FILL_CLASS[goalTone]).toBe(PACE_FILL_CLASS[habitPace]);
+    expect(PACE_FILL_CLASS[goalTone]).toBe(PACE_FILL_CLASS["on-pace"]);
     expect(PACE_FILL_CLASS[goalTone]).toBe("bg-brand-600");
   });
 });
 
-// #780 regression: a fresh week's habit chip must never colour rose. frequencyPace is
-// 3-state (met/on-pace/behind) so it CAN'T return a failed/rose tone at all.
+// #780 regression: a fresh week's habit chip must never colour rose. FrequencyPace has
+// no failed state, so the type already forbids the rose tone; what is left to pin is
+// that an untouched week is never MET and never ON PACE either (#5395) — only quiet,
+// or behind once the week cannot fit the target.
 describe("frequencyPace never fails a week (Monday-morning regression)", () => {
-  it("a not-started habit early in the week is on-pace or behind, never failed", () => {
+  it("a not-started habit is quiet or behind, never met and never on pace", () => {
     for (let perWeek = 1; perWeek <= 7; perWeek++) {
       for (let elapsedDays = 1; elapsedDays <= 7; elapsedDays++) {
-        const p = frequencyPace(0, perWeek, elapsedDays);
-        expect(["on-pace", "behind"]).toContain(p);
-        expect(p).not.toBe("met");
-        // Whatever the tone, it maps into the shared map without a rose.
-        expect(PACE_FILL_CLASS[p]).not.toContain("rose");
+        expect(["quiet", "behind"]).toContain(
+          frequencyPace(0, perWeek, elapsedDays)
+        );
       }
     }
   });
 
-  it("Monday morning (day 1) of a fresh week is on-pace, not behind", () => {
+  it("Monday morning (day 1) of a fresh week is quiet, not behind", () => {
     // Day 1 leaves all seven days, so every cadence up to daily still fits (#4758).
     // Before that ruling a 7×/week habit already owed one on day 1 and read behind.
     for (let perWeek = 1; perWeek <= 7; perWeek++) {
-      expect(frequencyPace(0, perWeek, 1)).toBe("on-pace");
+      expect(frequencyPace(0, perWeek, 1)).toBe("quiet");
     }
   });
 });
@@ -431,16 +434,36 @@ describe("goalPct", () => {
     done: pct >= 100,
   });
 
-  it("uses derived progress for exercise-linked goals (0 when uncomputed)", () => {
-    const g = makeGoal({ exercise: "Bench", metric: "weight" });
-    expect(goalPct(g, prog(80))).toBe(80);
-    expect(goalPct(g, undefined)).toBe(0);
+  it("uses derived progress for exercise-linked and body-metric goals", () => {
+    expect(
+      goalPct(makeGoal({ exercise: "Bench", metric: "weight" }), prog(80))
+    ).toBe(80);
+    expect(goalPct(makeGoal({ body_metric: "weight" }), prog(42))).toBe(42);
   });
 
-  it("uses derived progress for body-metric goals", () => {
-    const g = makeGoal({ body_metric: "weight" });
-    expect(goalPct(g, prog(42))).toBe(42);
-    expect(goalPct(g, undefined)).toBe(0);
+  // NOTHING MEASURED IS NOT 0% (#5396). A measured goal with no gather, no readings,
+  // or a unit its target was not captured in has no percent — the answer the
+  // dashboard's goalProgressStatement already gave, so /training and the household
+  // card can no longer print "0%" over a row the dashboard prints "—" on.
+  it.each<[string, Partial<OutcomeGoal>, GoalProgress | undefined]>([
+    ["exercise, no gather", { exercise: "Bench", metric: "weight" }, undefined],
+    [
+      "exercise, no sets ever",
+      { exercise: "Bench", metric: "weight" },
+      { ...prog(0), unavailable: "no-readings" },
+    ],
+    [
+      "body, no readings",
+      { body_metric: "weight" },
+      { ...prog(0), unavailable: "no-readings" },
+    ],
+    [
+      "biomarker, unit mismatch",
+      { biomarker_name: "LDL", target_direction: "below" },
+      { ...prog(0), unavailable: "unit-mismatch" },
+    ],
+  ])("%s → null, never 0", (_name, goal, progress) => {
+    expect(goalPct(makeGoal(goal), progress)).toBeNull();
   });
 
   it("uses current/target for manual numeric goals, capped at 100", () => {
@@ -510,6 +533,17 @@ describe("goalPct cross-surface parity", () => {
       name: "no numeric basis (null)",
       goal: makeGoal({ id: 5 }),
     },
+    {
+      name: "body-metric with no readings (#5396)",
+      goal: makeGoal({ id: 6, body_metric: "weight" }),
+      prog: {
+        current: 0,
+        target: 100,
+        pct: 0,
+        done: false,
+        unavailable: "no-readings",
+      },
+    },
   ];
 
   for (const f of fixtures) {
@@ -533,6 +567,12 @@ describe("goalPct cross-surface parity", () => {
       );
 
       expect(goalsPage).toBe(household);
+
+      // The dashboard row states its percent through goalProgressStatement, which
+      // is goalPct underneath (#5396) — so the three surfaces agree by construction.
+      expect(
+        goalProgressStatement(f.goal, progressMap.get(f.goal.id), "kg").percent
+      ).toBe(household == null ? null : `${household}%`);
     });
   }
 });
