@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import SubstanceForm from "@/components/substances/SubstanceForm";
 import SubstanceUnitControl from "@/components/substances/SubstanceUnitControl";
 import QuickSubstanceList from "@/components/quick-entry/QuickSubstanceList";
-import { substanceDef } from "@/lib/substance-use";
+import { MAX_SUBSTANCE_ENTRY_AMOUNT, substanceDef } from "@/lib/substance-use";
 
 // THE SUBSTANCE DOMAIN'S TWO PIECES (#4424, `LOG_MANIFEST.substance.pieces`).
 //
@@ -41,6 +41,11 @@ let logResult: { ok: boolean; weekCount?: number; error?: string } = {
   ok: true,
   weekCount: 3,
 };
+let updateResult: { kind: string; eventId?: number; date?: string } = {
+  kind: "updated",
+  eventId: 4,
+  date: "2026-08-18",
+};
 
 vi.mock("@/app/(app)/medical/substance-use/actions", () => ({
   addSubstanceDailyTotalAction: async (fd: FormData) => {
@@ -49,7 +54,7 @@ vi.mock("@/app/(app)/medical/substance-use/actions", () => ({
   },
   correctSubstanceUseAction: async (fd: FormData) => {
     record("update")(fd);
-    return { kind: "updated", eventId: 4, date: "2026-08-18" };
+    return updateResult;
   },
   logSubstanceUnitAction: async (fd: FormData) => {
     record("log")(fd);
@@ -80,6 +85,7 @@ beforeEach(() => {
   for (const key of Object.keys(posted)) delete posted[key];
   toasts.length = 0;
   addResult = { kind: "added", id: 1, capProgress: null };
+  updateResult = { kind: "updated", eventId: 4, date: "2026-08-18" };
   logResult = { ok: true, weekCount: 3 };
   cleanup();
 });
@@ -246,6 +252,64 @@ describe("SubstanceForm is ONE form for add and for edit", () => {
     await save("Add");
     expect(toasts).toEqual([]);
     expect(screen.getByRole("alert").textContent).toMatch(/Enter an amount/i);
+  });
+});
+
+// EVERY REFUSAL THESE TWO DOORS CAN HAND BACK HAS ITS OWN SENTENCE (#5380).
+//
+// `REFUSALS` was a `Record<string, string>` read through a
+// `?? "Couldn't save that entry."` fallback, so an unlisted kind reached the person as
+// the generic line with every test green — and `not-found` and `unknown-substance`
+// were both already taking that exit. The map is keyed on the two actions' outcome
+// unions now, so a renamed kind is a compile error; this is the other half, and the
+// half a person can see. Seven paths across the two doors, five sentences: run against
+// the pre-#5380 form, the three rows naming a sentence the map did not carry fail.
+//
+// EXACT text, not a substring: `not-found`'s sentence and the generic fallback differ
+// by one word, so a `toContain` would pass on the very regression this exists for.
+describe("the substance doors say which rule refused the save", () => {
+  const NOT_FOUND = "Couldn't find that entry.";
+  it.each([
+    {
+      door: "Add",
+      row: undefined,
+      kind: "invalid-date",
+      says: "Enter a valid date.",
+    },
+    {
+      door: "Add",
+      row: undefined,
+      kind: "invalid-amount",
+      says: `Enter an amount between 1 and ${MAX_SUBSTANCE_ENTRY_AMOUNT}.`,
+    },
+    { door: "Add", row: undefined, kind: "not-found", says: NOT_FOUND },
+    {
+      door: "Add",
+      row: undefined,
+      kind: "unknown-substance",
+      says: "Pick a substance from the list.",
+    },
+    {
+      door: "Save",
+      row: ROW,
+      kind: "invalid-date",
+      says: "Enter a valid date.",
+    },
+    {
+      door: "Save",
+      row: ROW,
+      kind: "invalid-stated-at",
+      says: "Enter a time on that day, not in the future.",
+    },
+    { door: "Save", row: ROW, kind: "not-found", says: NOT_FOUND },
+  ])("the $door door names $kind", async ({ door, row, kind, says }) => {
+    if (row) updateResult = { kind };
+    else addResult = { kind };
+    openForm(row);
+    await save(door);
+    expect(screen.getByRole("alert").textContent).toBe(says);
+    // …and nothing announces a save that did not happen.
+    expect(toasts).toEqual([]);
   });
 });
 

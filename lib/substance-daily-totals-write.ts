@@ -40,6 +40,17 @@ export type SubstanceHistoryMutationOutcome =
   | { kind: "invalid-amount" }
   | { kind: "unknown-substance" };
 
+/**
+ * What an ADD can answer: the shared union minus the arm only a delete mints. The two
+ * cores share a vocabulary, not a range, and the difference is load-bearing at the form
+ * — its refusal copy is keyed on this union (#5380), so an arm no writer can produce
+ * would have to be given a sentence nobody could ever read.
+ */
+export type SubstanceHistoryAddOutcome = Exclude<
+  SubstanceHistoryMutationOutcome,
+  { kind: "deleted" }
+>;
+
 function validAmount(amount: number): boolean {
   return (
     Number.isInteger(amount) &&
@@ -121,7 +132,7 @@ export function addSubstanceDailyTotalCore(
   // Which surface filed this entry (#3087). Every substance's per-unit rows carry
   // provenance exactly as a serving tap does.
   loggedVia: LoggedVia
-): SubstanceHistoryMutationOutcome {
+): SubstanceHistoryAddOutcome {
   const substance = resolveSubstanceKey(substanceInput);
   if (substance === null) return { kind: "unknown-substance" };
   if (!isPastWriteAccepted(today(profileId), input.date))

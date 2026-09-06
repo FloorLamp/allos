@@ -915,7 +915,7 @@ export default function NotificationPrefs({
                     >
                       {e.label}
                     </span>
-                    {e.safety && (
+                    {isSafetyKind(e.kind) && (
                       <span className="badge bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
                         Safety
                       </span>
