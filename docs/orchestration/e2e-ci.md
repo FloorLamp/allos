@@ -34,6 +34,26 @@ thing it protects.
   in `#5346`, and the cost is accepted with open eyes: a wrong CI skip-set or
   gate-trigger entry will fail silently rather than red, which is the trade the
   owner made when the guards outgrew the thing they guard.
+- **Two RATCHETS are the only survivors** (owner, 2026-09-06, on the census
+  below): `ci-skip-set` and `db-gate-trigger-set` keep a count and nothing
+  else, because a silently growing skip set stops CI running for whole diffs.
+  A ratchet is `expect(entries.length).toBeLessThanOrEqual(N)` — one number, no
+  allowlist, no per-file registry, no import graph, about 20 lines. **N may only
+  be LOWERED**, and lowering it belongs to the PR that removes the entry. An
+  allowlist of names is how a ratchet becomes the second copy of the config this
+  section forbids. What the ratchet no longer catches, stated: a WRONG entry,
+  as opposed to a new one.
+- **What was kept, and what died, on 2026-09-06.** All fourteen files below were
+  written on 4-5 September, ~6,700 lines in 48 hours, none old enough to have
+  caught anything. Kept: `strip-comments` (767, a unit test of the function every
+  census reads source through — a stripper that deletes too much makes findings
+  disappear while the guards stay green), the five-PR regression core of
+  `adversarial-consult-tier` (~250 of 1,353), `pager-idiom` as a ratchet (~30 of
+  205), and the two ratchets above (~40 of 923). Deleted: `merge-gate-script`
+  1622, `script-env-bootstrap` 493, `next-build-seed` 374,
+  `eslint-config-composition` 338, `base-moved-gate` 178, `vitest-timeouts` 133,
+  `type-verdict` 117, `merge-gate-workflow` 63, `node-heap-scripts` 47, and the
+  1,100 lines of vocabulary-pinning around the regression core.
 - **The verification slice ranks its queue by NET LINES** (owner, 2026-09-06):
   subtractive work first, neutral next, additive last and only for a named
   defect or a security gap. A conversion PR states its own `+/-` in the body
