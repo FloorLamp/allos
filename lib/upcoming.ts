@@ -12,6 +12,7 @@ import type { BiomarkerRetestFacts } from "./biomarker-retest-copy";
 import type { LifecycleSuppressionPolicy } from "./lifecycle";
 import type { WriteTarget } from "./multi-view";
 import type { IntakeObligation } from "./types/intake";
+import type { LivePracticeSession } from "./types/training";
 import { daysBetweenDateStr, shiftDateStr } from "./date";
 import {
   DEFAULT_FORMAT_PREFS,
@@ -438,7 +439,7 @@ export interface UpcomingItem {
     /** The practice's usual duration, so the row's stepper opens holding it. */
     defaultDurationMin: number | null;
     /** A session already running, so this row says End rather than Start. */
-    liveSession: { id: number; date: string; startTime: string } | null;
+    liveSession: LivePracticeSession | null;
   };
   // When set, the row renders inline preventive controls — "Mark done" (records a
   // satisfaction) plus a declined / not-applicable override — for this stable
