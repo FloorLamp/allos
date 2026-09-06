@@ -29,11 +29,21 @@
 // scan, and `localDayOf` names the day a point belongs to. A day containing a DST
 // transition is 23 or 25 hours long and comes out right because both edges are
 // settled against the offset in force at that edge.
+//
+// AND THE ZONE IS THE ONE THE DAY WAS LIVED IN, not the one the profile is standing in
+// now (`profileDayZone`, #3428 item 5). Both directions of the translation take it, and
+// they have to take the SAME one: this module's single invariant is that the raw trace
+// and the derived samples never disagree, and a recompute that names a day under one
+// zone and then reads that day's window under another would summarise hours the day
+// does not contain. Before this, a travel switch re-spanned every past day under the
+// new zone — moving each one's `started_at`, which is in the natural key, so the
+// recompute landed a SECOND row for days it should have updated. That skew is gone for
+// a recorded move; a move that was never recorded still leaves no evidence to read.
 
 import { db, writeTx } from "./db";
 import { utcMinute, parseUtcSql } from "./date";
 import { localDayOf, localDayRange } from "./local-day-window";
-import { getTimezone } from "./settings";
+import { profileDayZone } from "./travel-excusal";
 import {
   upsertMetricSamples,
   type NormMetricSample,
@@ -85,7 +95,7 @@ export function getGlucoseTraceDay(
   day: string,
   source: string
 ): GlucoseTracePoint[] {
-  const { startUtc, endUtc } = localDayRange(getTimezone(profileId), day);
+  const { startUtc, endUtc } = localDayRange(profileDayZone(profileId), day);
   return db
     .prepare(
       `SELECT ts, mgdl FROM glucose_trace
@@ -106,13 +116,13 @@ function recomputeDay(
 ): UpsertCounts {
   const derived = deriveGlucoseDay(getGlucoseTraceDay(profileId, day, source));
   if (!derived) return emptyCounts();
-  const { startUtc, endUtc } = localDayRange(getTimezone(profileId), day);
+  const { startUtc, endUtc } = localDayRange(profileDayZone(profileId), day);
   // The natural key `upsertMetricSamples` merges on is
   // (profile, metric, source, origin, started_at), so the day's own local-midnight
-  // instant is what makes a recompute an UPDATE instead of a second row. A profile
-  // timezone change moves that boundary and so lands a new row for the affected
-  // days — the same #94 skew every other derived-day metric carries, stated rather
-  // than silently patched.
+  // instant is what makes a recompute an UPDATE instead of a second row. That boundary
+  // is now resolved through the zone the day was lived in, so a RECORDED zone move no
+  // longer walks it — the #94 skew this comment used to state remains only for a move
+  // nothing recorded.
   const rows: NormMetricSample[] = [
     { metric: GLUCOSE_MEAN_METRIC, value: derived.meanMgdl },
     { metric: GLUCOSE_TIME_IN_RANGE_METRIC, value: derived.timeInRangePct },
@@ -163,7 +173,10 @@ export function recordGlucoseTrace(
   source: string,
   options: GlucoseTraceOptions = {}
 ): GlucoseTraceWrite {
-  const tz = getTimezone(profileId);
+  // The SAME day zone the read side uses. A CGM push is a rolling window carrying the
+  // tail of earlier days, so the day a point belongs to is a question about the past —
+  // not `today`, which is what #3263 reserves the current zone for.
+  const zone = profileDayZone(profileId);
   const out: GlucoseTraceWrite = {
     trace: emptyCounts(),
     derived: emptyCounts(),
@@ -183,7 +196,7 @@ export function recordGlucoseTrace(
       continue;
     }
     const ts = utcMinute(at);
-    const day = localDayOf(tz, ts);
+    const day = localDayOf(zone, ts);
     if (!day) {
       out.skipped++;
       continue;
@@ -211,7 +224,7 @@ export function recordGlucoseTrace(
           "SELECT ts FROM glucose_trace WHERE profile_id = ? AND source = ?"
         )
         .all(profileId, absorb) as { ts: string }[]) {
-        const day = localDayOf(tz, r.ts);
+        const day = localDayOf(zone, r.ts);
         if (day) days.add(day);
       }
       // `OR REPLACE`: an instant this sensor already holds under BOTH names is one
