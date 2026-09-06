@@ -181,8 +181,9 @@ function suspectSleepSessionsUncached(
   // for every step. `sliceByTs` does that with two binary searches on the sorted `ts`,
   // so each night is handed exactly the minutes it can reach.
   const context = HR_CONTEXT_HOURS * 60 * 60 * 1000;
-  // parseUtcSql throughout: `metric_samples.started_at`/`ended_at` carry no brand, and a
-  // synced night's own absolute instant (`Z` or offset) is the shape expected (#5338).
+  // parseUtcSql throughout, not the typed seam: `metric_samples.started_at`/`ended_at`
+  // carry no brand. The shape expected is a synced night's own instant — `Z`, an offset
+  // (Health Connect, Oura), or no suffix read as UTC — and a stated offset is kept (#5338).
   const spans = nights.map((row) => ({
     start: parseUtcSql(row.started_at)?.getTime() ?? NaN,
     end: parseUtcSql(row.ended_at)?.getTime() ?? NaN,

@@ -165,6 +165,19 @@ describe("detectSleepClockSkew", () => {
     expect(detectSleepClockSkew(session, hr)).toBeNull();
   });
 
+  it("reads a session the device stamped in its own offset (Health Connect, Oura)", () => {
+    // 18:39+09:00 IS 09:39Z: the same sighting, the same evidence. A reader that
+    // overwrote the offset with a Z would drop the night through the finite guard.
+    const found = detectSleepClockSkew(
+      { start: "2026-08-30T18:39:00+09:00", end: "2026-08-30T23:37:00+09:00" },
+      trace(DAY_FROM, DAY_TO, {
+        from: "2026-08-30T03:39:00Z",
+        to: "2026-08-30T08:37:00Z",
+      })
+    );
+    expect(found).toMatchObject({ claimedBpm: AWAKE, troughBpm: ASLEEP });
+  });
+
   it("ignores a trough further from the claim than the surrounding day", () => {
     // A quiet window 20 hours away is not evidence about THIS night. The claim's own
     // day is awake-level throughout, so nothing inside the search radius contradicts it.

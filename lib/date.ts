@@ -368,12 +368,16 @@ export function utcSqlString(d: Date = new Date()): BareInstant {
   return d.toISOString().slice(0, 19).replace("T", " ") as BareInstant;
 }
 
-// Parse a stored UTC datetime ("YYYY-MM-DD HH:MM:SS" or ISO with a T) back to a
-// Date. SQLite datetimes carry no zone, so the value is UTC by construction; append
-// "Z" so JS doesn't reinterpret it in the process-local zone. Null on garbage. Pure.
+// Parse a stored datetime back to a Date: "YYYY-MM-DD HH:MM:SS", ISO with a T, with
+// or without millis, ending in "Z", in an offset ("+09:00", "-0400"), or in nothing.
+// A value that STATES no zone is UTC by construction (SQLite datetimes carry none),
+// so "Z" is appended to exactly those; one that states a zone keeps it, which is what
+// `metric_samples.started_at`/`ended_at` need — Health Connect and Oura pass the
+// device's offset-bearing instant through verbatim (#5338). Null on garbage. Pure.
 export function parseUtcSql(s: string | null | undefined): Date | null {
   if (!s) return null;
-  const d = new Date(s.replace(" ", "T") + (/[zZ]$/.test(s) ? "" : "Z"));
+  const stated = /(?:[zZ]|[+-]\d\d:?\d\d)$/.test(s);
+  const d = new Date(s.replace(" ", "T") + (stated ? "" : "Z"));
   return Number.isNaN(d.getTime()) ? null : d;
 }
 

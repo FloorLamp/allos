@@ -381,8 +381,9 @@ export function detectSleepClockSkew(
   session: SkewCandidateSession,
   hr: readonly HrMinuteSample[]
 ): SleepClockSkew | null {
-  // parseUtcSql: `metric_samples.started_at`/`ended_at` carry no brand — a synced
-  // session's own absolute instant, `Z` or offset, is the shape expected here (#5338).
+  // parseUtcSql, not the typed seam: `metric_samples.started_at`/`ended_at` carry no
+  // brand. The shape expected is a synced session's own instant — `Z`, an offset, or
+  // no suffix read as UTC — and parseUtcSql keeps a stated offset (#5338).
   const start = parseUtcSql(session.start)?.getTime() ?? NaN;
   const end = parseUtcSql(session.end)?.getTime() ?? NaN;
   if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {

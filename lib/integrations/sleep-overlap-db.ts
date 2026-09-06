@@ -221,8 +221,9 @@ function awakeReference(
         shiftDateStr(new Date(spanEndMs).toISOString().slice(0, 10), 1)
       ) as { started_at: string; ended_at: string }[]
   )
-    // parseUtcSql: `metric_samples.started_at`/`ended_at` carry no brand; a synced
-    // session's own absolute instant is the shape expected here (#5338).
+    // parseUtcSql, not the typed seam: `metric_samples.started_at`/`ended_at` carry no
+    // brand. The shape expected is a synced session's own instant — `Z`, an offset, or
+    // no suffix read as UTC — and a stated offset is kept (#5338).
     .map((r) => ({
       s: parseUtcSql(r.started_at)?.getTime() ?? NaN,
       e: parseUtcSql(r.ended_at)?.getTime() ?? NaN,
