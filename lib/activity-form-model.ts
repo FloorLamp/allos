@@ -308,11 +308,16 @@ export interface PartEntry {
   // signal compares actual reps against this instead of rep variance.
   targetReps: string;
   toFailure: boolean;
+  // Client-only (#5371): the set grid states this exercise's weight per set — a
+  // "Vary" tap, or the loads differing — and stays that way. Never saved: the
+  // entry carries it only so it travels with the exercise through a reorder or a
+  // removal above it, where an editor keyed by slot would hand it to the next one.
+  varied: boolean;
 }
 
 // What the editor can reconstruct of a stored exercise: everything in
-// PartEntry except the cardio-only fields.
-export type EditedPart = Omit<PartEntry, "distance" | "durationMin">;
+// PartEntry except the cardio-only fields and its own client-only state.
+export type EditedPart = Omit<PartEntry, "distance" | "durationMin" | "varied">;
 
 export const todayStr = (tz: string) => dateStrInTz(tz);
 // Runs on every render (the "now" shortcut's visibility check), so use the
@@ -346,7 +351,22 @@ export const blankPart = (): PartEntry => ({
   durationMin: "",
   targetReps: "",
   toFailure: false,
+  varied: false,
 });
+
+// One load across every set — both sides of it, for a per-side lift — which the set
+// grid states once, above the rows (#5371).
+export const sharesLoad = (p: Pick<PartEntry, "sets" | "perSide">) =>
+  p.sets.every(
+    (s) =>
+      s.weight === p.sets[0].weight &&
+      (!p.perSide || s.weightRight === p.sets[0].weightRight)
+  );
+// Sets that arrive or are filled at differing loads keep their own weights from then
+// on; every writer that puts values into a part's sets says so here, so the grid's
+// render never has to write state to remember what it showed.
+export const latchVaried = (p: PartEntry): PartEntry =>
+  p.varied || sharesLoad(p) ? p : { ...p, varied: true };
 
 // Text a person actually entered into a draft, as opposed to what the form
 // derived for them or what they merely tapped (#5111). The close guard asks
@@ -474,7 +494,7 @@ export function initialPartsFromSeed(
         // Spread the reconstructed part wholesale (keeping the component's
         // casing for the name) so new EditedPart fields can't be missed.
         return g
-          ? { ...blankPart(), ...g, name: c.name }
+          ? latchVaried({ ...blankPart(), ...g, name: c.name })
           : { ...blankPart(), name: c.name };
       }
       // Any non-curated cardio/sport name is a custom activity: load it
@@ -496,10 +516,9 @@ export function initialPartsFromSeed(
   }
   if (seed.type === "strength") {
     const g = groupEditSets(seed.sets, units.weightUnit);
-    return (g.length ? g : [blankPart()]).map((e) => ({
-      ...blankPart(),
-      ...e,
-    }));
+    return (g.length ? g : [blankPart()]).map((e) =>
+      latchVaried({ ...blankPart(), ...e })
+    );
   }
   // Legacy cardio/sport rows (no components): the part name is derived
   // from the freeform title (see legacyActivityName); a non-curated one

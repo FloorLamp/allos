@@ -322,19 +322,22 @@ export default function GoalsManager({
                   </p>
                 )}
 
-                {pct != null && (
+                {/* The current value and the check-in are facts whenever there is a
+                    gather; the percent and its bar need something measured (#5396),
+                    because a 0% bar over no readings reads as a real zero. */}
+                {(prog || pct != null) && (
                   <div className="mt-3">
                     <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400">
                       <span>
                         {isExercise && prog
-                          ? `${goalValueText(g, prog.current, wu)} in last 4 wks`
+                          ? `${prog.unavailable ? "—" : goalValueText(g, prog.current, wu)} in last 4 wks`
                           : isBody && prog
-                            ? `${prog.current > 0 ? fmtBodyMetric(g.body_metric!, prog.current, wu) : "—"} now`
+                            ? `${prog.unavailable ? "—" : fmtBodyMetric(g.body_metric!, prog.current, wu)} now`
                             : isBio
                               ? biomarkerGoalCurrentText(prog)
                               : `${g.current_value} / ${g.target_value} ${g.unit ?? ""}`}
                       </span>
-                      <span>{pct}%</span>
+                      {pct != null && <span>{pct}%</span>}
                     </div>
                     {/* Lifetime PR, shown only when it beats the recent-window
                         best — so a detrained goal still surfaces the record. */}
@@ -345,17 +348,19 @@ export default function GoalsManager({
                           PR {goalValueText(g, prog.lifetimeBest!, wu)}
                         </div>
                       )}
-                    <div className="mt-1 h-2 w-full rounded-full bg-slate-100 dark:bg-ink-800">
-                      <div
-                        data-testid="goal-bar"
-                        data-tone={goalPaceTone(pct, paceOpts)}
-                        className={`h-2 rounded-full transition-colors ${goalBarClass(
-                          pct,
-                          paceOpts
-                        )}`}
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
+                    {pct != null && (
+                      <div className="mt-1 h-2 w-full rounded-full bg-slate-100 dark:bg-ink-800">
+                        <div
+                          data-testid="goal-bar"
+                          data-tone={goalPaceTone(pct, paceOpts)}
+                          className={`h-2 rounded-full transition-colors ${goalBarClass(
+                            pct,
+                            paceOpts
+                          )}`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    )}
                     {/* The check-in rhythm (#1853): a lab goal's natural cadence is
                         the analyte's own retest interval, so between draws the honest
                         thing to say is when the next result is expected — not a

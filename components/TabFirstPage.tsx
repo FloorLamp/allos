@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import TabFirstTabs from "@/components/TabFirstTabs";
 import CreateAction, {
   type CreateActionDeclaration,
+  type HousedKind,
 } from "@/components/CreateAction";
 import type { TabFirstPageConfig } from "@/components/tab-first-pages";
 import { PageHeader } from "@/components/ui";
@@ -19,7 +20,7 @@ export default function TabFirstPage({
   config: TabFirstPageConfig;
   children: ReactNode;
   /** The page's one registered create. Unrelated doors stay in `action`. */
-  createAction?: CreateActionDeclaration;
+  createAction?: CreateActionDeclaration<HousedKind<"page">>;
   action?: ReactNode;
   className?: string;
   testId?: string;

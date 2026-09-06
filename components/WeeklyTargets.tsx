@@ -28,7 +28,9 @@ function chipTone(
   count: number,
   pace?: FrequencyPace
 ): ProgressPaceTone {
-  if (pace) return pace;
+  // A quiet week (#5395) has no word to print and the chip prints none, so it keeps
+  // the in-progress brand tint rather than inventing a fourth colour.
+  if (pace) return pace === "quiet" ? "on-pace" : pace;
   return met ? "met" : count > 0 ? "behind" : "failed";
 }
 

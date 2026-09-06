@@ -662,6 +662,28 @@ describe("initialPartsFromSeed", () => {
     sets: [],
   };
 
+  // Sets that arrive at differing loads keep their own weights in the grid (#5371).
+  it.each([
+    ["one load", 80, false],
+    ["differing loads", 70, true],
+  ])(
+    "a stored strength session at %s loads varied=%s",
+    (_case, kg2, varied) => {
+      const parts = initialPartsFromSeed(
+        {
+          ...base,
+          sets: [
+            storedSet({ set_number: 1, weight_kg: 80, reps: 5 }),
+            storedSet({ set_number: 2, weight_kg: kg2, reps: 5 }),
+          ],
+        },
+        UNITS,
+        isKnown
+      );
+      expect(parts.map((p) => p.varied)).toEqual([varied]);
+    }
+  );
+
   it("returns a single blank part with no seed (fresh create)", () => {
     const parts = initialPartsFromSeed(null, UNITS, isKnown);
     expect(parts).toHaveLength(1);
