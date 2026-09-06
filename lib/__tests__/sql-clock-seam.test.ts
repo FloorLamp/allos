@@ -150,8 +150,8 @@ const ALLOW: Record<string, { count: number; why: string }> = {
     why: "push_subscriptions created_at/last_used_at — audit stamps.",
   },
   "lib/offline/writes.ts": {
-    count: 7,
-    why: "the mood store's updated_at audit stamps + the replayed_keys retention DELETE. The check-in upsert, the three per-column past-day corrections and the two optional-rating clears (#1488, extended per rating column by #1408) each stamp updated_at; the column can't be interpolated without making the SQL unreadable to the profile-scoping scanner, so one literal statement per column means one stamp per statement. An audit stamp records when the write happened; nothing compares its calendar DAY to a today()-derived value.",
+    count: 8,
+    why: "the mood store's updated_at audit stamps + the replayed_keys retention DELETE. The check-in upsert (TWO statements since #3416: one replaces the day's row, one merges for a check-in composed without the day in view — see MoodWriteSight), the three per-column past-day corrections and the two optional-rating clears (#1488, extended per rating column by #1408) each stamp updated_at; the column can't be interpolated without making the SQL unreadable to the profile-scoping scanner, so one literal statement per column means one stamp per statement. An audit stamp records when the write happened; nothing compares its calendar DAY to a today()-derived value.",
   },
   // lib/queries/attention.ts held one until #2112: the hero's flagged-biomarker
   // window start. It was never really a duration — the value meets a day-grained
