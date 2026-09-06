@@ -327,3 +327,124 @@ describe("localMinuteProjector — equivalence with the per-row Intl projection"
     expect(project("not-an-instant")).toBeNull();
   });
 });
+
+// ── a profile whose ZONE MOVED, not just whose offset did (#3428 item 5) ──────
+//
+// The prod sighting: profile 1 moved New York → Los Angeles at 2026-08-21T02:11:41Z,
+// after which every past day was re-spanned as a Los Angeles day. These pin the rule
+// that removes that — each day is bucketed under the offset in force while it was
+// being lived — and, first, that the pure DST behaviour above is untouched by taking
+// a resolver instead of a name.
+describe("a day zone that MOVES", () => {
+  const LA = "America/Los_Angeles";
+  const TOKYO = "Asia/Tokyo";
+  // The stored switch instant, read the way `zoneAtInstant` reads it: `to` from the
+  // switch onwards, `from` strictly before.
+  const SWITCH = "2026-08-21T02:11:41Z";
+  const at = (iso: string) => new Date(iso).getTime();
+  const westward = (when: Date) => (when.getTime() < at(SWITCH) ? NY : LA);
+  // The mirror: Los Angeles → New York at 04:30Z, which puts the clock across local
+  // midnight of the 21st without ever reading it.
+  const EASTWARD_SWITCH = "2026-08-21T04:30:00Z";
+  const eastward = (when: Date) =>
+    when.getTime() < at(EASTWARD_SWITCH) ? LA : NY;
+
+  // The widening itself: a resolver that never moves must answer exactly as the name
+  // it keeps answering. Every profile that has never travelled is this case.
+  it("answers identically for a name and for a resolver that never moves", () => {
+    const window = ["2026-01-01T00:00:00Z", "2027-01-01T00:00:00Z"] as const;
+    expect(offsetSegments(() => NY, ...window)).toEqual(
+      offsetSegments(NY, ...window)
+    );
+    expect(localDaySpan(() => NY, "2026-03-07", "2026-03-09")).toEqual(
+      localDaySpan(NY, "2026-03-07", "2026-03-09")
+    );
+    expect(localDayOf(() => NY, "2026-01-16T03:30:00Z")).toBe(
+      localDayOf(NY, "2026-01-16T03:30:00Z")
+    );
+  });
+
+  it("splits a window at the switch instant, to the second", () => {
+    const segs = offsetSegments(
+      westward,
+      "2026-08-20T00:00:00Z",
+      "2026-08-22T00:00:00Z"
+    );
+    expect(segs).toHaveLength(2);
+    expect(segs.map((s) => s.modifier)).toEqual(["-04:00", "-07:00"]);
+    expect(segs[0].endUtc).toBe(SWITCH);
+    expect(segs[0].endUtc).toBe(segs[1].startUtc);
+  });
+
+  it("splits at a DST transition and at a move in the same window", () => {
+    // New York falls back at 2026-11-01T06:00Z; the move to Tokyo is a day later.
+    const moved = (when: Date) =>
+      when.getTime() < at("2026-11-02T05:00:00Z") ? NY : TOKYO;
+    const segs = offsetSegments(
+      moved,
+      "2026-10-31T00:00:00Z",
+      "2026-11-03T00:00:00Z"
+    );
+    expect(segs.map((s) => s.modifier)).toEqual([
+      "-04:00",
+      "-05:00",
+      "+09:00",
+    ]);
+    expect(segs[0].endUtc).toBe("2026-11-01T06:00:00Z");
+    expect(segs[1].endUtc).toBe("2026-11-02T05:00:00Z");
+  });
+
+  // The day windows either side of a move. Each row is one local day and the
+  // half-open UTC range it should span; together they must also PARTITION time, which
+  // is asserted below rather than read off the table.
+  it.each([
+    // Wholly before the move: an ordinary New York day.
+    ["westward, the day before", westward, "2026-08-19", "2026-08-19T04:00:00Z", "2026-08-20T04:00:00Z"],
+    // The switch day is 27 hours: it opens on New York's midnight and closes on Los
+    // Angeles' next one, which is #3263's stated consequence, not a defect.
+    ["westward, the switch day", westward, "2026-08-20", "2026-08-20T04:00:00Z", "2026-08-21T07:00:00Z"],
+    // Wholly after: an ordinary Los Angeles day.
+    ["westward, the day after", westward, "2026-08-21", "2026-08-21T07:00:00Z", "2026-08-22T07:00:00Z"],
+    // Eastward, the clock jumps from 21:30 to 00:30 — local midnight of the 21st is
+    // never read, so the 21st begins at the seam and the 20th is cut short there.
+    ["eastward, the day it jumped out of", eastward, "2026-08-20", "2026-08-20T07:00:00Z", "2026-08-21T04:30:00Z"],
+    ["eastward, the day it jumped into", eastward, "2026-08-21", "2026-08-21T04:30:00Z", "2026-08-22T04:00:00Z"],
+  ])("%s", (_label, zone, day, startUtc, endUtc) => {
+    expect(localDayRange(zone, day)).toEqual({ startUtc, endUtc });
+  });
+
+  it.each([
+    ["westward", westward, "2026-08-19"],
+    ["eastward", eastward, "2026-08-19"],
+  ])(
+    "leaves no minute in two days and none in no day (%s)",
+    (_label, zone, first) => {
+      let cursor = localDayRange(zone, first).startUtc;
+      for (const day of ["2026-08-19", "2026-08-20", "2026-08-21"]) {
+        const range = localDayRange(zone, day);
+        expect(range.startUtc).toBe(cursor);
+        cursor = range.endUtc;
+      }
+    }
+  );
+
+  // The two readers over one stored minute — the day and the clock — must not only be
+  // right, they must be right TOGETHER: the day the projected minute carries is the
+  // day `localDayOf` names, which is what keeps a chart's rows and its axis on one
+  // calendar. The pair either side of the seam is the case that can break it, because
+  // a westward move sends the local clock BACKWARDS inside one ascending minute run.
+  it.each([
+    ["an hour before the move", "2026-08-21T01:00:00Z", "2026-08-20T21:00"],
+    ["the last stored minute before it", "2026-08-21T02:11:00Z", "2026-08-20T22:11"],
+    ["the first stored minute after it", "2026-08-21T02:12:00Z", "2026-08-20T19:12"],
+    ["hours after the move", "2026-08-21T15:00:00Z", "2026-08-21T08:00"],
+  ])("dates %s in the zone it was lived in", (_l, ts, minute) => {
+    const project = localMinuteProjector(
+      westward,
+      "2026-08-20T00:00:00Z",
+      "2026-08-22T00:00:00Z"
+    );
+    expect(project(ts)).toBe(minute);
+    expect(localDayOf(westward, ts)).toBe(minute.slice(0, 10));
+  });
+});
