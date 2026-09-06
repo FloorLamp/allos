@@ -49,6 +49,11 @@ vi.mock("@/components/quick-entry/QuickDoseList", () => ({
     <div data-testid="stub-dose">{doses.map((d) => d.doseId).join(",")}</div>
   ),
 }));
+vi.mock("@/components/mood/MoodForm", () => ({
+  default: ({ days }: { days: { date: string }[] }) => (
+    <div data-testid="stub-mood">{days.map((d) => d.date).join(",")}</div>
+  ),
+}));
 const upload = vi.hoisted(() => ({ failing: false }));
 vi.mock("@/components/UploadForm", () => ({
   default: () => {
@@ -81,7 +86,7 @@ function Sheet() {
   const { open, close } = useQuickEntry();
   return (
     <>
-      {(["stool", "document", "dose"] as const).map((form) => (
+      {(["stool", "document", "dose", "mood"] as const).map((form) => (
         <button key={form} onClick={() => open(form)}>
           open {form}
         </button>
@@ -430,5 +435,92 @@ describe("the stall bound and Retry (#3416 proposals 3 and 4)", () => {
     } finally {
       quiet.mockRestore();
     }
+  });
+});
+
+// THE WIPE PERIMETER (#3053/#2908's boundary, this store's half). The last-good map
+// is module state — it has to be, so the device wipe can reach it — which means the
+// wipe alone is not the fence: the document stays mounted and interactive for the
+// whole sign-out round trip, nothing cancels a Server Action, and a sign-out is a
+// client navigation, so the next sign-in mounts a new host in the SAME document.
+// `clearLastGood()` below is exactly what `wipeDeviceForSignOut` calls, synchronously,
+// at the top of that round trip (components/device-wipe.ts).
+describe("the wipe holds against a late writer and against the next mount", () => {
+  const doseData = (doseId: number) => ({
+    form: "dose" as const,
+    today: today(),
+    doses: [
+      {
+        doseId,
+        title: "Sertraline",
+        detail: "50 mg",
+        dueText: "Morning",
+      },
+    ],
+    pastDays: [],
+  });
+
+  it("a gather answered AFTER the wipe is not remembered — a reopen finds a miss", async () => {
+    let resolveHeld: (v: ReturnType<typeof doseData>) => void;
+    loadQuickEntry.mockImplementationOnce(
+      () => new Promise((resolve) => (resolveHeld = resolve))
+    );
+    renderSheet();
+    open("dose");
+
+    // Log out: the wipe empties the store while the gather is still in flight.
+    act(() => clearLastGood());
+    await act(async () => resolveHeld!(doseData(41)));
+
+    // Nothing was written back into the cleared store, so a reopen is a MISS and
+    // asks the server again rather than repainting the wiped copy instantly.
+    fireEvent.click(screen.getByText("close"));
+    loadQuickEntry.mockImplementationOnce(() => new Promise(() => {}));
+    open("dose");
+    expect(screen.getByTestId("quick-entry-loading")).not.toBeNull();
+    expect(screen.queryByTestId("stub-dose")).toBeNull();
+  });
+
+  it("a copy gathered after the wipe does not paint into the next sign-in's first open", async () => {
+    // The other half: a gather STARTED after the wipe, answered 200 by a session
+    // that has not ended yet. It is this session's own data and it renders here —
+    // but the host that mounts for the next sign-in must not inherit it.
+    loadQuickEntry.mockResolvedValueOnce(doseData(42));
+    const { unmount } = renderSheet();
+    act(() => clearLastGood());
+    open("dose");
+    expect((await screen.findByTestId("stub-dose")).textContent).toBe("42");
+
+    unmount();
+    loadQuickEntry.mockImplementationOnce(() => new Promise(() => {}));
+    renderSheet();
+    open("dose");
+    expect(screen.getByTestId("quick-entry-loading")).not.toBeNull();
+    expect(screen.queryByTestId("stub-dose")).toBeNull();
+  });
+});
+
+// The device-known layer is bounded by the ACTING profile because the queue captures
+// under it and refuses a cross-profile write — `MoodForm` refuses to queue whenever
+// its subject is set, so a mood form built for anyone else is a door onto a refusal.
+// Nothing mints a new request when the acting profile moves, so the bound has to be
+// asked of the profile acting when the answer LANDS.
+describe("the acting bound under an in-flight recovery", () => {
+  it("a switch while the device read is in flight reaches the retry state, not the previous profile's mood form", async () => {
+    loadQuickEntry.mockRejectedValueOnce(new Error("offline"));
+    let releaseIntents: (v: unknown[]) => void;
+    allIntents.mockImplementationOnce(
+      () => new Promise((resolve) => (releaseIntents = resolve))
+    );
+    const { rerenderWithActing } = renderSheet();
+    open("mood");
+    await waitFor(() => expect(allIntents).toHaveBeenCalledTimes(1));
+
+    // The acting profile moves while the recovery is waiting on the device.
+    rerenderWithActing(99);
+    await act(async () => releaseIntents!([]));
+
+    expect(screen.getByTestId("quick-entry-error")).not.toBeNull();
+    expect(screen.queryByTestId("stub-mood")).toBeNull();
   });
 });

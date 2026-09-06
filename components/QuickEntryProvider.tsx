@@ -40,6 +40,7 @@ import {
 } from "@/lib/day-context-key";
 import { formatRelativeTime } from "@/lib/format-date";
 import {
+  captureLastGoodToken,
   clearLastGood,
   quickEntryOffline,
   recallLastGood,
@@ -328,15 +329,23 @@ export default function QuickEntryProvider({
   // LAST-GOOD (#3416/#4454) lives in lib/offline/quick-entry-read.ts, keyed by the
   // #5211 day-context key (subject, day, reach) plus the form — so a cached read for
   // Mia can never paint as Alex's, and a today copy can never fill a yesterday form.
-  // Dropped whenever the ACTING profile changes (here) and by the device wipe
+  // Dropped whenever the ACTING profile changes and by the device wipe
   // (components/device-wipe.ts) — the same boundary ProfileSwitchWatcher and logout
   // enforce for the offline read snapshots, extended to this in-memory one.
-  const priorActingProfileId = useRef(actingProfileId);
+  //
+  // AND ON EVERY MOUNT, which is the half the wipe cannot do. The store is module
+  // state (it has to be: the wipe must reach it, and a per-mount ref could not be
+  // reached), and a sign-out is a CLIENT navigation — `logoutAction`'s redirect
+  // through the RedirectBoundary, not a document load — so the next sign-in mounts a
+  // new host in the SAME document. A copy gathered by the session being torn down
+  // (a Retry tapped while the logout round trip is in flight, answered 200 by a
+  // session that has not ended yet) is a copy the wipe has already run past; this
+  // makes a mount the store's beginning, so nothing from before it can paint after
+  // it. The write-side half is the generation below.
+  const actingNow = useRef(actingProfileId);
   useLayoutEffect(() => {
-    if (priorActingProfileId.current !== actingProfileId) {
-      priorActingProfileId.current = actingProfileId;
-      clearLastGood();
-    }
+    actingNow.current = actingProfileId;
+    clearLastGood();
   }, [actingProfileId]);
 
   // ONE GATHER, taking the subject (#4932's own wording: "loadQuickEntry has one
@@ -358,6 +367,10 @@ export default function QuickEntryProvider({
       };
       requestRef.current = request;
       const current = () => requestRef.current === request;
+      // Captured HERE, beside the parts, and spent when the answer lands: a wipe or an
+      // identity change while this gather is in flight moves the store's generation,
+      // and the answer is then remembered nowhere (lib/offline/quick-entry-read.ts).
+      const token = captureLastGoodToken();
       // NO ROUND TRIP for measurements — the props are already here (#4091), and
       // that gather is resolved for the ACTING profile only (no subject-keyed
       // version exists). #4932 invariant 2: a form that cannot follow the subject
@@ -402,10 +415,16 @@ export default function QuickEntryProvider({
           allIntents(),
         ]);
         if (!current() || request.settled) return;
+        // THE ACTING PROFILE AS OF NOW, not as of when this request was minted.
+        // The bound exists because the queue captures under the acting profile and
+        // refuses a cross-profile write, so a mood or stool form built for anyone
+        // else is a door onto a refusal — and nothing mints a new request when the
+        // acting profile moves under an open sheet, so a captured id would be
+        // compared against itself and could never catch the move.
         const copy = quickEntryOffline(
           next,
           parts,
-          actingProfileId,
+          actingNow.current,
           snapshots,
           intents
         );
@@ -435,7 +454,7 @@ export default function QuickEntryProvider({
           // never remembered under the key it was not issued for.
           if (!current()) return;
           request.settled = true;
-          rememberLastGood(parts, next, data);
+          rememberLastGood(token, parts, next, data);
           setState({ status: "ready", data, asOf: null });
         },
         () => {

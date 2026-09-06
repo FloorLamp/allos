@@ -56,12 +56,53 @@ export interface LastGoodEntry {
 // profile switch all drop it — the same boundary the read snapshots have.
 const lastGood = new Map<DayContextKey, Map<QuickEntryForm, LastGoodEntry>>();
 
+// THE STORE'S GENERATION, and why clearing it is not enough on its own.
+//
+// Module state outlives the host, which is the point of putting it here — and it is
+// also what makes the wipe a race. The wipe fires at the BEGINNING of a sign-out and
+// the document stays mounted and interactive for the whole round trip, so a gather
+// that started before Log out and answers after it would walk straight past
+// `clearLastGood` and write the previous identity's payload back into the cleared
+// store. First writer wipes, second writer restores — components/ProfileSwitchWatcher
+// names that shape, lib/offline/write-gate.ts is the durable answer to it, and this is
+// the same answer one layer in: a write CARRIES the generation it was issued under
+// (`captureLastGoodToken`, taken before the work) and lands only while that is still
+// the generation the store is on.
+//
+// The scope is right for what it guards: this map is one document's memory, so a
+// generation in the same memory covers exactly it. What a generation alone cannot see
+// is a gather that STARTS after the wipe (the session is still alive for the rest of
+// the round trip and answers it), so the host also empties the store on every mount —
+// sign-out is a client navigation, not a document load, and the next sign-in mounts a
+// new host in the SAME document. Neither half is the whole fence.
+let generation = 0;
+
+/** The generation a write must still be at to land. Opaque; mint it here. */
+export type LastGoodToken = number & { readonly __lastGood: unique symbol };
+
+/** Captured BEFORE the work, and spent by `rememberLastGood` when it comes back. */
+export function captureLastGoodToken(): LastGoodToken {
+  return generation as LastGoodToken;
+}
+
+/**
+ * Hold `data` as the last good answer for this context — if the store is still on the
+ * generation `token` was cut at. A stale token means a wipe or an identity change
+ * happened while this answer was in flight, and the answer belongs to the store that
+ * was cleared, not to this one.
+ *
+ * The token is REQUIRED and comes first: a caller that cannot say which generation its
+ * payload was gathered under is exactly the caller that must not write (the rule
+ * `putSnapshots` states for the durable half).
+ */
 export function rememberLastGood(
+  token: LastGoodToken,
   parts: DayContextParts,
   form: QuickEntryForm,
   data: QuickEntryData,
   fetchedAt: Date = new Date()
 ): void {
+  if (token !== generation) return;
   const key = dayContextKey(parts);
   const byForm = lastGood.get(key) ?? new Map<QuickEntryForm, LastGoodEntry>();
   byForm.set(form, { parts, form, data, fetchedAt });
@@ -75,8 +116,10 @@ export function recallLastGood(
   return lastGood.get(dayContextKey(parts))?.get(form);
 }
 
+/** Empty the store AND move the generation, so nothing in flight can refill it. */
 export function clearLastGood(): void {
   lastGood.clear();
+  generation += 1;
 }
 
 // ── Layer 2: the device's own copy ───────────────────────────────────────────
@@ -159,6 +202,15 @@ export function quickEntryOffline(
                 })),
                 // No PRN row: `prn-dose` is an argued exclusion of the offline queue
                 // (lib/offline/queue.ts) — its redose advisory is server state.
+                //
+                // AND NO RECENT-PAST DAYS, argued the same way rather than left bare.
+                // The switcher's other days are resolved server-side from `doseLogDays`
+                // against the same gate the write cores use, and a `dose-schedule`
+                // snapshot holds exactly ONE day: this one. A pill for yesterday over a
+                // day this device has no rows for would open onto an empty list, which
+                // reads as "nothing was due then" — the misreading the online payload's
+                // own comment refuses. The as-of line above says what this is: the
+                // device's copy of today.
                 pastDays: [],
               },
       };
@@ -219,7 +271,27 @@ export function quickEntryOffline(
           };
         }
       );
-      return { fetchedAt: null, data: { form: "mood", days, showCalm: false } };
+      // THE CALM SCALE IS ASKED OF WHAT THE DEVICE KNOWS, not hard-coded off.
+      // `isAnxietyScaleRelevant` (#1313) resolves six server signals and this layer
+      // has none of them — but its FIRST signal is continuity ("a profile that has
+      // ever used the scale keeps it forever"), and the device holds one piece of that
+      // evidence: a check-in it queued itself carrying a Calm rating. So a queued
+      // rating keeps the row; with nothing queued the sheet cannot tell, and shows the
+      // form a profile that never used the scale sees.
+      //
+      // WHAT A CHECK-IN QUEUED FROM A COLD OFFLINE OPEN OMITS, said plainly because it
+      // lands on a WRITE. This copy knows only this device's own queued taps, so any
+      // rating the SERVER holds for one of these days is unknown here and the form
+      // opens empty for it. A null in the queued payload therefore means "not asked on
+      // this device", not "the person answered nothing" — and `upsertMoodLog` is
+      // last-write-wins per day, so a replayed check-in lands as that day's answer.
+      // The days this can reach are the #2128 backfill window and the exposure is
+      // recorded on #3416 with its reproduction; nothing here may treat a null as an
+      // answer.
+      const showCalm = mine.some(
+        (i) => i.flow === "mood" && (i.payload as MoodPayload).anxiety != null
+      );
+      return { fetchedAt: null, data: { form: "mood", days, showCalm } };
     }
     case "stool": {
       if (parts.profileId !== actingProfileId) return null;

@@ -22,6 +22,7 @@ vi.mock("@/lib/offline/write-gate", () => ({
 
 import { clearQueue } from "@/lib/offline/queue-db";
 import {
+  captureLastGoodToken,
   recallLastGood,
   rememberLastGood,
 } from "@/lib/offline/quick-entry-read";
@@ -71,9 +72,16 @@ describe("wipeIfRevoked (#3053)", () => {
       day: "2026-09-05",
       reach: { kind: "today" } as const,
     };
-    rememberLastGood(held, "dose", { form: "unavailable", message: "held" });
+    const copy = { form: "unavailable", message: "held" } as const;
+    // The token a gather already in flight would be carrying.
+    const inFlight = captureLastGoodToken();
+    rememberLastGood(inFlight, held, "dose", copy);
     expect(await wipeIfRevoked(answer(status, body))).toBe(wiped);
     expect(wipes).toHaveBeenCalledTimes(wiped ? 1 : 0);
+    // THE PROPERTY, NOT THE CALL. The document stays mounted for the whole sign-out
+    // round trip and nothing cancels a Server Action, so the wipe only holds if the
+    // gather that answers AFTER it cannot write the copy back.
+    rememberLastGood(inFlight, held, "dose", copy);
     expect(recallLastGood(held, "dose") === undefined).toBe(wiped);
   });
 });

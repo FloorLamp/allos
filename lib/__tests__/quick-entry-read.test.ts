@@ -6,6 +6,7 @@ import { describe, expect, it, beforeEach } from "vitest";
 import type { DayContextParts, TapReach } from "@/lib/day-context-key";
 import { buildIntent, type QueuedIntent } from "@/lib/offline/queue";
 import {
+  captureLastGoodToken,
   clearLastGood,
   quickEntryOffline,
   recallLastGood,
@@ -104,6 +105,7 @@ describe("last-good, keyed by the day-context key plus the form", () => {
 
   it("is found by an equal context and missed by a moved one", () => {
     rememberLastGood(
+      captureLastGoodToken(),
       parts,
       "dose",
       unavailable,
@@ -121,10 +123,26 @@ describe("last-good, keyed by the day-context key plus the form", () => {
   });
 
   it("stores the parts beside the key, and the wipe empties it", () => {
-    rememberLastGood(parts, "dose", unavailable);
+    rememberLastGood(captureLastGoodToken(), parts, "dose", unavailable);
     expect(recallLastGood(parts, "dose")?.parts).toEqual(parts);
     clearLastGood();
     expect(recallLastGood(parts, "dose")).toBeUndefined();
+  });
+
+  // THE PROPERTY THE WIPE IS CALLED FOR, not the call. Clearing the map is half a
+  // wipe while the document stays mounted: a gather that started before it and
+  // answers after it would put the copy straight back. The token it captured at
+  // request time is what refuses that write.
+  it("a write in flight when the wipe fires cannot put the copy back", () => {
+    const token = captureLastGoodToken();
+    clearLastGood();
+    rememberLastGood(token, parts, "dose", unavailable);
+    expect(recallLastGood(parts, "dose")).toBeUndefined();
+
+    // And the store still works for whatever comes after the wipe: a request minted
+    // now carries the new generation and lands.
+    rememberLastGood(captureLastGoodToken(), parts, "dose", unavailable);
+    expect(recallLastGood(parts, "dose")?.data).toBe(unavailable);
   });
 });
 
@@ -246,6 +264,49 @@ describe("the device's own copy of a form", () => {
         ],
       },
     });
+  });
+
+  // The Calm row is the #1313 continuity rule asked of what the device holds: a
+  // check-in this device queued WITH a Calm rating is prior use, so the row stays;
+  // with nothing queued the device cannot tell and does not claim to.
+  it.each([
+    ["a queued Calm rating keeps the row", 2, true],
+    ["a queued check-in without one does not", null, false],
+  ])("mood: %s", (_name, anxiety, showCalm) => {
+    const copy = quickEntryOffline(
+      "mood",
+      parts,
+      ACTING,
+      [],
+      [
+        intent("mood", TODAY, {
+          valence: 4,
+          energy: null,
+          anxiety,
+          factors: [],
+          note: null,
+        }),
+      ]
+    );
+    expect(copy?.data).toMatchObject({ form: "mood", showCalm });
+  });
+
+  it("mood: another profile's queued Calm rating never turns the row on", () => {
+    const copy = quickEntryOffline(
+      "mood",
+      parts,
+      ACTING,
+      [],
+      [
+        intent(
+          "mood",
+          TODAY,
+          { valence: 4, energy: null, anxiety: 2, factors: [], note: null },
+          OTHER
+        ),
+      ]
+    );
+    expect(copy?.data).toMatchObject({ form: "mood", showCalm: false });
   });
 
   it("stool: the sheet's day and only this device's queued taps for it", () => {
