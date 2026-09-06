@@ -266,8 +266,10 @@ jobs:
       # TWENTY, from two measurements that agree. Both are re-derivable, which is
       # the point of writing them down rather than the number alone:
       #   • The widest diff any real authoring PR produced is TEN spec files. Over
-      #     the 63 squash merges reachable on main (2026-09-04..06), 47 changed no
-      #     spec at all and every one of the other 16 changed between 1 and 10:
+      #     the 63 squash merges reachable on main (2026-09-04..06) the large
+      #     majority changed no spec at all, and every one that changed any
+      #     changed between 1 and 10 — re-derive rather than trust the tally,
+      #     which slides by one merge each time this window moves:
       #       for s in $(git log --format=%H origin/main | head -63); do
       #         git diff --name-only --diff-filter=ACMR $s^ $s |
       #           grep -cE '^e2e/.*\.spec\.ts$'; done | sort -n | uniq -c
