@@ -31,11 +31,10 @@
 - CONTENTION CAN PRODUCE A WRONG VALUE, not just a timeout: a test timing out
   mid-write leaves state its neighbour reads (load 21.6, 92 lost, one of them a
   `document-sync-provenance` assertion). Re-run alone on any untouched-file red.
-- `pgrep -f <pattern>` matches its OWN command line, and the bracket workaround
-  `grep '[p]attern'` is matched by the OTHER waiters, so `until ! …; do sleep`
-  never exits — and a script NAME is every lane's, so it waits on siblings too
-  (#5366). Wait on a captured PID or a file the run wrote
-  (`run-gates-recorded.sh`); check-in `waiters:` counts.
+- `pgrep -f <pattern>` matches its OWN command line, the bracket workaround
+  `grep '[p]attern'` is matched by the OTHER waiters, and a script NAME is every
+  lane's (#5366): `until ! …; do sleep` never exits. Wait on a captured PID or a
+  file the run wrote (`run-gates-recorded.sh`); check-in `waiters:` counts.
 - Use `E2E_PORT`, not `PORT`. The brief generator allocates non-overlapping port
   ranges.
 
