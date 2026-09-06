@@ -30,10 +30,13 @@ function familyFrom(formData: FormData): OfferFamilyId | null {
   return offerFamilyForKey(String(formData.get("dedupe_key") ?? "").trim());
 }
 
-async function answer(formData: FormData, yes: boolean): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+function answer(
+  profileId: number,
+  formData: FormData,
+  yes: boolean
+): FormResult {
   const id = familyFrom(formData);
-  if (!id || answerOffer(profile.id, id, yes) === "stale")
+  if (!id || answerOffer(profileId, id, yes) === "stale")
     return formError(STALE);
   // The setting's own row on Settings → Notifications, and Upcoming's dismissal list.
   revalidateRoute("/settings/notifications");
@@ -43,12 +46,14 @@ async function answer(formData: FormData, yes: boolean): Promise<FormResult> {
 
 /** The Yes tap: the family's `writes`, then the asked key. */
 export async function acceptOffer(formData: FormData): Promise<FormResult> {
-  return answer(formData, true);
+  const { profile } = await requireWriteAccess();
+  return answer(profile.id, formData, true);
 }
 
 /** The No tap: the asked key and nothing else. */
 export async function declineOffer(formData: FormData): Promise<FormResult> {
-  return answer(formData, false);
+  const { profile } = await requireWriteAccess();
+  return answer(profile.id, formData, false);
 }
 
 /**
