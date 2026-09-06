@@ -527,6 +527,10 @@ export const NON_MARKER_NOTIFY_KEYS: readonly {
     key: "notify_wear_reminder_claim",
     what: "what the delivered bedtime wear reminder CLAIMED (#3027): `profile-local date|ISO frontier instant`, written on delivery by scripts/notify.ts and read by the prose reconciler to ask whether a later push has falsified the sentence. It gates a silent EDIT and never a send — the night's single send is deduped by notify_last_wear_reminder above, and this key is written after that one, so it cannot affect whether anything is sent. It exists because the claimed instant is UNRECOVERABLE afterwards: the falsifying event is data arriving with timestamps EARLIER than now, so re-reading the stream gives the frontier as it is and never as it was",
   },
+  {
+    key: "notify_end_proposal_workout_",
+    what: "what the delivered \"Still working out?\" nudge PROPOSED for one open workout row (#5194): `notify_end_proposal_workout_<activityId>` holds the profile-local `HH:MM` the message quoted, or `-` when it quoted none, written by lib/workout-end-proposal.ts immediately before the send and read by finishWorkoutSession when the person taps Finish. It gates NO send — the nudge's one message per row is deduped by notify_stale_workout_ above, and this key is written beside it — it decides what that person's own tap WRITES. It exists because the quoted minute is unrecoverable afterwards: re-asking the detector at tap time answers about the trace as it is and never as it was, so a message naming 16:35 stamped 18:30 the moment a single later minute rose above the resting ceiling. Id-keyed and spent by the finish or discard it belongs to (#203)",
+  },
   // Per-profile SCHEDULE and content preferences (profile_settings), not markers.
   {
     key: "notify_digest_hour",

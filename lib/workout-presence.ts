@@ -157,11 +157,33 @@ function lastTouchMs(row: PresenceActivityRow): number | null {
 // ordering exists to prevent, arriving by a different door. Asking `activityWindow`
 // rather than restating half of it is the fix: it already covers the start-plus-
 // duration case this function's second branch was, so the second branch goes too.
+//
+// A SPAN OF ZERO IS STILL AN END (#5194, eighth falsifying pass, F3). `activityWindow`
+// answers a WINDOW and refuses `end <= start`, because a window containing no minute
+// cannot scope one — which is right for the zone split and every other reader that fills
+// it with measurements. Presence asks a different question: WHEN did this session end.
+// A session finished inside its own start minute (`end == start`, and `minutesBetween`
+// leaves `duration_min` null for a non-positive span) has an end, and reading it as
+// unfinished is how the tick's safety-tier `runPostWorkoutFinish` and the #924 recap
+// stop seeing a row they used to see. That shape is reachable from this app's own
+// Finish, so the equal case is answered here rather than left to the window's refusal.
+//
+// `end < start` deliberately stays the window's crossing and is not rescued: a typo is
+// indistinguishable from a session that ran through local midnight, and reading it as a
+// crossing is the fix above.
 function endInstantMs(row: PresenceActivityRow, tz: string): number | null {
   const window = activityWindow(row);
-  if (!window) return null;
-  const [day, clock] = window.end.split("T");
-  return zonedWallTimeToUtc(tz, day, clock)?.getTime() ?? null;
+  if (window) {
+    const [day, clock] = window.end.split("T");
+    return zonedWallTimeToUtc(tz, day, clock)?.getTime() ?? null;
+  }
+  if (
+    row.start_time &&
+    row.end_time &&
+    row.end_time.slice(0, 5) === row.start_time.slice(0, 5)
+  )
+    return zonedWallTimeToUtc(tz, row.date, row.end_time)?.getTime() ?? null;
+  return null;
 }
 
 export function computeWorkoutPresence(

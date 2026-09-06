@@ -625,6 +625,10 @@ export const NON_DISMISSAL_PREFIXES: readonly {
     what: "profile_settings one-shot send marker (lib/notifications/still-going)",
   },
   {
+    prefix: "notify_end_proposal_workout_",
+    what: "profile_settings record of what the delivered still-going nudge PROPOSED for one workout row (#5194, lib/workout-end-proposal) — the minute the tap will stamp, not a send gate; it suppresses nothing",
+  },
+  {
     prefix: "notify_last_practice_recap_",
     what: "profile_settings one-shot send marker (lib/notifications/practice-recap)",
   },

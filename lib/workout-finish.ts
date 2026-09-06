@@ -17,17 +17,28 @@
 // THE MINUTE STAMPED IS THE ONE THE HEART RATE SAYS, and `now` is the fallback (#5194,
 // owner ruling 2026-09-06). A tap an hour after the fact used to record the tap: a
 // session that ended at 11:35 was finished at 12:30, and the recovery, the zone split
-// and the recap were all measured over an hour of sitting down. `detectedWorkoutEndAt`
-// answers with that minute when this profile's own trace says it unambiguously, and
-// null otherwise — so the correction rides the finish path that already exists rather
-// than a second writer, and it is #5142 AC 3's want for the same tap. Nothing here runs
-// unattended: the detector PROPOSES and this core runs only from a person's Finish.
+// and the recap were all measured over an hour of sitting down. Nothing here runs
+// unattended: the detector PROPOSES and this core runs only from a person's Finish, so
+// the correction rides the finish path that already exists rather than a second writer,
+// and it is #5142 AC 3's want for the same tap.
+//
+// WHAT THE PERSON WAS SHOWN WINS OVER ANY LATER READING, and that ordering is the whole
+// of #5194's eighth falsifying pass. The "Still working out?" nudge quotes the minute
+// when it is SENT; this core used to ask the detector again when the button was TAPPED,
+// and between the two the trace moves — one measured minute six bpm above the resting
+// ceiling is enough for the detector to refuse, so a message naming 16:35 wrote 18:30
+// and a hundred and fifty minutes, and said nothing about it. A proposal that changes
+// between being shown and being accepted is not a proposal. So a delivered message
+// records its minute against the row (lib/workout-end-proposal.ts) and the tap stamps
+// THAT — including its "no minute", which promises the tap's own instant.
+//
+// A tap with nothing on record is a finish nobody was shown a minute for — the request
+// path below, and any future programmatic finish. There is no promise to keep there, so
+// the trace is read once, at the tap, exactly as this core has done since it landed.
 //
 // IT IS THIS CORE'S CALLERS AND NOT EVERY FINISH IN THE APP. The in-app Finish is the
 // activity form's own (`ActivityForm.tsx`, end field := now, persisted by the autosave);
-// it does not come through here and is unchanged. The live caller of this core is the
-// "Still working out?" nudge's Finish button, which is also the surface that quotes the
-// detected minute — so what a person confirms and what lands are the same reading.
+// it does not come through here and is unchanged.
 
 import { db, writeTx } from "./db";
 import type { LoggedVia } from "./logged-via";
@@ -37,6 +48,10 @@ import { minutesBetween } from "./activity-meta";
 import { getTimezone } from "./settings/display";
 import { parseComponents } from "./types/training";
 import { detectedWorkoutEndAt } from "./workout-detected-end";
+import {
+  clearWorkoutEndProposal,
+  readWorkoutEndProposal,
+} from "./workout-end-proposal";
 
 export type FinishWorkoutOutcome =
   | { kind: "finished"; activityId: number }
@@ -143,11 +158,17 @@ export function finishWorkoutSession(
   if (!hasLoggedContent(row)) return { kind: "empty-draft", activityId };
 
   const tz = getTimezone(profileId);
-  // Asked AFTER the refusals, so a husk or a foreign id costs no heart-rate read.
-  const { hhmm } = zonedDateParts(
-    tz,
-    detectedWorkoutEndAt(profileId, activityId) ?? now
-  );
+  // THE PROPOSAL FIRST, AND A FRESH READING ONLY WHEN THERE WAS NONE — see the header.
+  // A recorded proposal is what a delivered message told this person Finish would do, so
+  // it answers on its own, `null` minute included; asking the detector on top of it is
+  // the second reading that made the two disagree.
+  const shown = readWorkoutEndProposal(profileId, activityId);
+  // Asked AFTER the refusals, so a husk or a foreign id costs no heart-rate read — and
+  // not at all when a message already proposed this row's end.
+  const detected = shown ? null : detectedWorkoutEndAt(profileId, activityId);
+  const hhmm =
+    (shown ? shown.minute : detected && zonedDateParts(tz, detected).hhmm) ??
+    zonedDateParts(tz, now).hhmm;
   // Active minutes: fill from the start→end span only when none is stored yet
   // (a strength session's session-total). Never overwrite a value the logger set.
   const duration =
@@ -164,6 +185,10 @@ export function finishWorkoutSession(
          SET end_time = ?, duration_min = ?, updated_at = ?
        WHERE id = ? AND profile_id = ?`
     ).run(hhmm, duration, sqlNow(), activityId, profileId);
+    // The proposal is SPENT in the same transaction that honours it: this row has an
+    // end now, so nothing can be proposed about it again (the refusal above), and a
+    // record that outlives its row is only litter.
+    clearWorkoutEndProposal(profileId, activityId);
   });
   return { kind: "finished", activityId };
 }
@@ -185,6 +210,9 @@ export function discardWorkoutSession(
       activityId,
       profileId
     );
+    // The other half of the nudge's two buttons resolves the row too, so its proposal
+    // goes with it. Ids never recycle (#203), so this is tidiness rather than safety.
+    clearWorkoutEndProposal(profileId, activityId);
   });
   return { kind: "discarded", activityId };
 }

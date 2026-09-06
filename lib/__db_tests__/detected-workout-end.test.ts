@@ -21,6 +21,7 @@ import { finishWorkoutSession } from "@/lib/workout-finish";
 import { getWorkoutPresence } from "@/lib/queries/presence";
 import {
   renderStillGoingMessage,
+  runStillGoingSuggest,
   stillGoingEpisodes,
 } from "@/lib/notifications/still-going";
 import {
@@ -28,7 +29,10 @@ import {
   usualRecoveryMin,
 } from "@/lib/queries/event-physiology";
 import { utcSqlString } from "@/lib/date";
-import { setTimezone } from "@/lib/settings";
+import { setSetting, setTimezone } from "@/lib/settings";
+import { plainBody } from "@/lib/notifications/rich-text";
+import { seedLoginTelegram } from "./fixtures";
+import { sendMessageRaw, stubTelegramSends } from "./telegram-spies";
 
 const NOW = new Date("2026-07-17T18:00:00Z");
 
@@ -726,7 +730,10 @@ describe("the nudge carries the minute, and the tap stamps it", () => {
     expect(renderStillGoingMessage(episode!, p, "Ada", "").body).toContain(
       "ended at 16:35"
     );
-    // The button the body is talking about, through the same core the tap runs.
+    // The button the body is talking about, through the same core the tap runs. Sent
+    // and tapped at the SAME instant, which is the only case in which a second reading
+    // of the trace cannot disagree with the first. What happens once time passes
+    // between the two is the describe below — and it is why the minute is recorded.
     expect(finishWorkoutSession(p, id).kind).toBe("finished");
     expect(rowOf(id)).toEqual({ end_time: "16:35", duration_min: 35 });
   });
@@ -743,5 +750,139 @@ describe("the nudge carries the minute, and the tap stamps it", () => {
     );
     expect(finishWorkoutSession(p, id).kind).toBe("finished");
     expect(rowOf(id).end_time).toBe("18:00");
+  });
+});
+
+// THE MINUTE THE MESSAGE PROMISED IS THE MINUTE THE TAP STAMPS (#5194, eighth
+// falsifying pass, F1).
+//
+// The nudge quoted the detected minute when it was SENT and the finish core asked the
+// detector again when the button was TAPPED, with nothing carrying the first answer
+// forward. Those are two readings of a moving trace, and they disagree in the ORDINARY
+// case: a message naming 16:35 wrote 18:30 and a hundred and fifty minutes, and the
+// person was told nothing — the answer text and the replacement title are both "Workout
+// finished ✓". One measured minute six bpm above the resting ceiling anywhere later in
+// the day is enough, so divergence was the expected outcome for any tap that was not
+// immediate.
+//
+// Every case here drives the REAL send — `runStillGoingSuggest` through the stubbed
+// Telegram primitives — because the promise only exists once a message carries it, and
+// the recording happens on that path. Time then passes before the tap, which is the one
+// thing no fixture on the shipped head did.
+describe("what the nudge promised survives to the tap (#5194 F1)", () => {
+  const SENT = new Date("2026-07-17T17:20:00Z");
+  const TAP = new Date("2026-07-17T18:30:00Z");
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    stubTelegramSends();
+    setSetting("telegram_bot_token", "test-bot-token");
+  });
+  afterEach(() => vi.useRealTimers());
+
+  /**
+   * The pass's own fixture: 16:00–16:35 at 140 bpm, quiet after, last saved 16:30, and
+   * a chat to send to. Returns the row and the body that was actually delivered.
+   */
+  async function nudged(name: string): Promise<{
+    p: number;
+    id: number;
+    body: string;
+  }> {
+    const p = newProfile(name);
+    seedLoginTelegram(p, `chat-${name}`);
+    seedRestingHr(p, 60);
+    seedRange(p, "16:00", "16:35", 140);
+    seedRange(p, "16:35", "17:00", 55);
+    const id = seedOpenWorkout(p, "16:00", new Date("2026-07-17T16:30:00Z"));
+    sendMessageRaw.mockClear();
+
+    vi.setSystemTime(SENT);
+    await runStillGoingSuggest(p, "Ada", SENT);
+    expect(sendMessageRaw).toHaveBeenCalledTimes(1);
+    const [, sent] = sendMessageRaw.mock.calls[0];
+    return { p, id, body: plainBody(sent.body) };
+  }
+
+  it("stamps the promised minute after an evening walk voids the reading", async () => {
+    const { p, id, body } = await nudged("DetEndPromiseWalk");
+    expect(body).toContain("ended at 16:35");
+
+    // The notification sits in the chat. An ordinary evening: a fifteen-minute dog walk
+    // at 17:45, then quiet again, then the thumb at 18:30.
+    seedRange(p, "17:45", "18:00", 100);
+    vi.setSystemTime(TAP);
+    // THE CONTROL INSIDE THE CASE: the detector genuinely refuses now — a second effort
+    // means the trace no longer says — so a tap that re-read would stamp 18:30 and 150
+    // minutes. This line is what stops the assertion below from passing by coincidence.
+    expect(detectedWorkoutEndAt(p, id)).toBeNull();
+
+    expect(finishWorkoutSession(p, id).kind).toBe("finished");
+    expect(rowOf(id)).toEqual({ end_time: "16:35", duration_min: 35 });
+  });
+
+  it("stamps it after a save moves the cancel past the candidate", async () => {
+    const { p, id, body } = await nudged("DetEndPromiseSave");
+    expect(body).toContain("ended at 16:35");
+
+    // The second door, and it needs no heart rate at all: the person opens the app and
+    // adds the set they forgot, so `updated_at` moves past the candidate minute and the
+    // "a rest is not an end" cancel refuses.
+    db.prepare("UPDATE activities SET updated_at = ? WHERE id = ?").run(
+      utcSqlString(new Date("2026-07-17T17:35:00Z")),
+      id
+    );
+    vi.setSystemTime(TAP);
+    expect(detectedWorkoutEndAt(p, id)).toBeNull();
+
+    expect(finishWorkoutSession(p, id).kind).toBe("finished");
+    expect(rowOf(id)).toEqual({ end_time: "16:35", duration_min: 35 });
+  });
+
+  // THE REVERSE, which is the same mechanism from the other side. A message that names
+  // no minute says "Finish it or discard the draft" — it promises the tap's own instant
+  // — so a watch that syncs the whole session AFTER the send must not silently back-date
+  // the row to a minute nobody was shown.
+  it("keeps the tap's own minute when the message named none", async () => {
+    const p = newProfile("DetEndPromiseBare");
+    seedLoginTelegram(p, "chat-bare");
+    seedRestingHr(p, 60);
+    const id = seedOpenWorkout(p, "16:00", new Date("2026-07-17T16:30:00Z"));
+    sendMessageRaw.mockClear();
+
+    vi.setSystemTime(SENT);
+    await runStillGoingSuggest(p, "Ada", SENT);
+    expect(sendMessageRaw).toHaveBeenCalledTimes(1);
+    expect(plainBody(sendMessageRaw.mock.calls[0][1].body)).toContain(
+      "quiet for a while"
+    );
+
+    // The wrist syncs its backlog at 18:00: the whole session is suddenly on record.
+    seedRange(p, "16:00", "16:35", 140);
+    seedRange(p, "16:35", "17:00", 55);
+    vi.setSystemTime(TAP);
+    expect(detectedWorkoutEndAt(p, id)).toEqual(
+      new Date("2026-07-17T16:35:00Z")
+    );
+
+    expect(finishWorkoutSession(p, id).kind).toBe("finished");
+    expect(rowOf(id)).toEqual({ end_time: "18:30", duration_min: 150 });
+  });
+
+  // A FINISH NOBODY WAS SENT A MESSAGE ABOUT still reads the trace at the tap, which is
+  // the request path (`finishWorkout`) and any future programmatic finish. There is no
+  // promise to keep there, so the correction still rides it — this is the ordering the
+  // core states, pinned from the side that has no record.
+  it("still reads the trace for a finish no message proposed", async () => {
+    const p = newProfile("DetEndNoPromise");
+    seedRestingHr(p, 60);
+    seedRange(p, "16:00", "16:35", 140);
+    seedRange(p, "16:35", "17:00", 55);
+    const id = seedOpenWorkout(p, "16:00", new Date("2026-07-17T16:30:00Z"));
+
+    vi.setSystemTime(TAP);
+    expect(finishWorkoutSession(p, id).kind).toBe("finished");
+    expect(rowOf(id)).toEqual({ end_time: "16:35", duration_min: 35 });
   });
 });

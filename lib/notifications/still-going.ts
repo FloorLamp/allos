@@ -18,6 +18,7 @@
 
 import { dateStrInTz, zonedDateParts } from "../date";
 import { detectedWorkoutEndAt } from "../workout-detected-end";
+import { recordWorkoutEndProposal } from "../workout-end-proposal";
 import { now as clockNow } from "../clock";
 import { getWorkoutPresence } from "../queries/presence";
 import { stalePracticeSessions } from "../practice-log";
@@ -69,8 +70,13 @@ export interface StillGoingEpisode {
   // THE MINUTE THIS PROFILE'S OWN HEART RATE SAYS THE EFFORT ENDED (#5194), local
   // `HH:MM`, or null when the trace does not say — which is most of the time and every
   // time for a practice. It is a PROPOSAL: the message quotes it so the person can see
-  // what Finish will record, and `finishWorkoutSession` stamps the same minute when
-  // they tap. Nothing writes it unattended (owner ruling, 2026-09-06).
+  // what Finish will record. Nothing writes it unattended (owner ruling, 2026-09-06).
+  //
+  // The minute a SENT message names is RECORDED against the row (`runStillGoingSuggest`
+  // below, lib/workout-end-proposal.ts), and the tap stamps that recorded value. So this
+  // field is read exactly once per message: asking the detector a second time at tap
+  // time is what made the sentence and the write disagree — silently, for any tap that
+  // was not immediate (#5194, eighth falsifying pass).
   detectedEnd: string | null;
 }
 
@@ -194,6 +200,15 @@ export async function runStillGoingSuggest(
     // moment it means, and reading the clock instead would key the marker to a
     // different day than the one the episode was judged against.
     const date = dateStrInTz(getTimezone(profileId), now);
+    // WHAT THIS MESSAGE PROMISES, ON RECORD BEFORE IT LEAVES (#5194, eighth falsifying
+    // pass). The body below quotes `episode.detectedEnd`; the Finish button on it runs
+    // `finishWorkoutSession`, which stamps what is recorded here rather than asking the
+    // detector again hours later. Both halves read the same field, so the minute in the
+    // sentence and the minute in the row are the same characters by construction. A
+    // message that names no minute records that too — it promises the tap's own instant,
+    // and a trace that starts answering afterwards must not back-date the row either.
+    if (episode.kind === "workout")
+      recordWorkoutEndProposal(profileId, episode.rowId, episode.detectedEnd);
     const results = await dispatch(
       profileId,
       renderStillGoingMessage(episode, profileId, profileName, getPublicUrl())
