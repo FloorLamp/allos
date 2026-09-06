@@ -992,7 +992,7 @@ export default function StrengthSets({
         data-testid="plateau-hint"
         className="mt-2 flex items-start justify-between gap-2 rounded-md border border-black/10 bg-slate-50/70 px-2.5 py-1.5 text-xs dark:border-white/10 dark:bg-ink-850/40"
       >
-        <span className="flex items-start gap-1.5 text-slate-600 dark:text-slate-300">
+        <span className="flex items-start gap-1.5 text-slate-500 dark:text-slate-400">
           <IconTrendingDown className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
           {/* The SHARED plateau-break advice (#1203): the ~10% deload magnitude
               + named variations, phrased identically to the finding/next-set
@@ -1274,7 +1274,7 @@ export default function StrengthSets({
           band of headings. */}
           <div
             data-testid="set-column-headings"
-            className="sticky top-edge-safe [--top-edge-offset:var(--set-schema-top)] z-9 -mx-1 mt-2 flex items-center gap-2 bg-surface/95 px-1 py-1 section-label backdrop-blur-sm md:static md:mx-0 md:bg-transparent md:px-0 md:backdrop-blur-none dark:md:bg-transparent"
+            className="sticky top-edge-safe [--top-edge-offset:var(--set-schema-top)] z-9 -mx-1 mt-2 flex items-center gap-2 bg-surface/95 px-1 py-1 label mb-0 backdrop-blur-sm md:static md:mx-0 md:bg-transparent md:px-0 md:backdrop-blur-none dark:md:bg-transparent"
           >
             <span className="hidden w-12 shrink-0 sm:block">Set</span>
             {stepsLoad ? (
@@ -1496,7 +1496,7 @@ export default function StrengthSets({
                             type="button"
                             onClick={() => onRemoveSet(si)}
                             data-testid={`set-remove-${si + 1}`}
-                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-rose-400 hover:bg-rose-50 hover:text-rose-600 sm:mt-1 sm:h-8 sm:w-8 dark:text-rose-500/80 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 focus-visible:bg-rose-50 focus-visible:text-rose-600 sm:mt-1 sm:h-8 sm:w-8 dark:text-slate-400 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 dark:focus-visible:bg-rose-950/40 dark:focus-visible:text-rose-400"
                           >
                             <IconX className="h-4 w-4" />
                           </button>

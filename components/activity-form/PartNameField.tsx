@@ -2,8 +2,9 @@
 
 // THE EXERCISE'S NAME, SETTLED OR BEING SEARCHED (#5370).
 //
-// A part that has a name states it as a HEADING — #5376's rung 2: normal case,
-// semibold, body size — rather than sitting inside a mounted search field. The picker
+// A part that has a name states it as a HEADING — #5376's rung 2, `.section-heading`:
+// normal case, semibold, body size — rather than sitting inside a mounted search
+// field, and the same node the Session heading uses. The picker
 // is one tap behind it, and the search glyph and the field's own Clear come back WITH
 // the picker, because they belong to searching. That is what leaves one X on the row,
 // at its end, removing the exercise.
@@ -61,7 +62,7 @@ export default function PartNameField({
           onClick={onOpen}
           className="flex min-h-(--control-box) w-full min-w-0 items-center gap-2 rounded-sm text-left transition hover:text-brand-700 focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:outline-hidden dark:hover:text-brand-300"
         >
-          <span className="truncate text-base font-semibold text-slate-900 dark:text-slate-50">
+          <span className="section-heading truncate">
             {name}
           </span>
           {badge}

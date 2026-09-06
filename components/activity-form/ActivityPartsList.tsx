@@ -662,7 +662,7 @@ export default function ActivityPartsList({
           const muscle = t === "strength" ? muscleFor(p.name) : null;
           // One badge, whether it sits in the heading or inside the open field.
           const muscleBadge = muscle ? (
-            <span className="badge bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300">
+            <span className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300">
               {muscle}
             </span>
           ) : undefined;
@@ -782,7 +782,7 @@ export default function ActivityPartsList({
                     badgeFor={(opt) => {
                       const m = muscleFor(opt);
                       return m ? (
-                        <span className="badge shrink-0 bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300">
+                        <span className="badge shrink-0 bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300">
                           {m}
                         </span>
                       ) : null;
@@ -846,7 +846,7 @@ export default function ActivityPartsList({
                               {...anchor}
                               type="button"
                               onClick={() => removePart(pi)}
-                              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-rose-400 hover:bg-rose-50 hover:text-rose-600 sm:h-8 sm:w-8 dark:text-rose-500/80 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+                              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 focus-visible:bg-rose-50 focus-visible:text-rose-600 sm:h-8 sm:w-8 dark:text-slate-400 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 dark:focus-visible:bg-rose-950/40 dark:focus-visible:text-rose-400"
                             >
                               <IconX className="h-4 w-4" />
                             </button>

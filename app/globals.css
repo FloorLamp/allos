@@ -806,6 +806,15 @@
   @apply mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400;
 }
 
+@utility section-heading {
+  /* THE RUNG ABOVE THE EYEBROW (#5376). A heading that names what a block IS — an
+     exercise, a session — is normal case, semibold, body size. Not uppercase: that
+     is exactly what tells it apart from `.section-label`/`.label` at a glance,
+     without borrowing the page title's size. Typography only, like its neighbour
+     below, so call sites keep their own element and spacing. */
+  @apply text-base font-semibold text-slate-900 dark:text-slate-50;
+}
+
 @utility section-label {
   /* Uppercase micro-heading / section label. Typography only (no margin or
      layout) so call sites keep their own element + spacing; a brand/rose/tone

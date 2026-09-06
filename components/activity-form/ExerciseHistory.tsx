@@ -53,9 +53,7 @@ export default function ExerciseHistory({
   // different control from the row above it.
   const row = (sess: PriorSession) => {
     const dateEl = (
-      <span className="shrink-0 text-slate-500 dark:text-slate-400">
-        {formatLongDate(sess.date, formatPrefs)}
-      </span>
+      <span className="shrink-0">{formatLongDate(sess.date, formatPrefs)}</span>
     );
     const metrics = (
       <span className="flex items-center gap-1 tabular-nums">
@@ -81,7 +79,7 @@ export default function ExerciseHistory({
         type="button"
         data-testid="recent-session-fill"
         onClick={() => onFill(sess.sets)}
-        className="-mx-1 flex w-full items-center justify-between gap-3 rounded-sm px-1 py-0.5 text-left text-slate-600 transition hover:bg-brand-50 hover:text-brand-700 dark:text-slate-300 dark:hover:bg-brand-950/40 dark:hover:text-brand-300"
+        className="-mx-1 flex w-full items-center justify-between gap-3 rounded-sm px-1 py-0.5 text-left text-slate-500 transition hover:bg-brand-50 hover:text-brand-700 dark:text-slate-400 dark:hover:bg-brand-950/40 dark:hover:text-brand-300"
       >
         {dateEl}
         <span className="flex items-center gap-2">
@@ -92,7 +90,7 @@ export default function ExerciseHistory({
         </span>
       </button>
     ) : (
-      <div className="flex items-center justify-between gap-3 text-slate-600 dark:text-slate-300">
+      <div className="flex items-center justify-between gap-3 text-slate-500 dark:text-slate-400">
         {dateEl}
         {metrics}
       </div>

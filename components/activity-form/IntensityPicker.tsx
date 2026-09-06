@@ -31,13 +31,18 @@ export default function IntensityPicker({
               type="button"
               aria-pressed={active}
               onClick={() => onChange(active ? "" : opt.value)}
+              // ONE NEUTRAL REST, ONE BRAND SELECTION (#5376). The row states effort
+              // by position and by what is pressed, not by hue — so all three rest
+              // paints are the same, and brand means here what it means everywhere
+              // else on this form: the thing you chose.
+              //
+              // bg-field + the field border, matching .input: these buttons sit
+              // among the form's fields and must read as the SAME control surface
+              // (entry-ergonomics.spec.ts measures the equality for real).
               className={`tap-target min-h-(--control-box) rounded-lg border px-2 py-1.5 text-sm font-medium transition ${
                 active
-                  ? opt.active
-                  : // bg-field, matching .input: these buttons sit among the
-                    // form's fields and must read as the SAME control surface
-                    // (entry-ergonomics.spec.ts pins the equality).
-                    `bg-field ${opt.cls} hover:bg-slate-50 dark:hover:bg-ink-800`
+                  ? "border-brand-600 bg-brand-600 text-white dark:border-brand-500 dark:bg-brand-500"
+                  : "border-(--field-bd) bg-field text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-ink-800"
               }`}
             >
               {opt.label}
