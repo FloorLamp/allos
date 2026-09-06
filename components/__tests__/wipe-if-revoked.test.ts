@@ -21,6 +21,10 @@ vi.mock("@/lib/offline/write-gate", () => ({
 }));
 
 import { clearQueue } from "@/lib/offline/queue-db";
+import {
+  recallLastGood,
+  rememberLastGood,
+} from "@/lib/offline/quick-entry-read";
 import { wipeIfRevoked } from "../device-wipe";
 
 // `clearQueue` is the wipe's own single transaction — it clears every store AND closes
@@ -60,7 +64,16 @@ describe("wipeIfRevoked (#3053)", () => {
     ["a 500 mid-deploy", 500, { error: "revoked" }, false],
     ["a 200 that happens to carry the word", 200, { error: "revoked" }, false],
   ])("%s → wipes: %j", async (_name, status, body, wiped) => {
+    // The quick logger's in-memory last-good copy (#3416) is part of the perimeter:
+    // it goes with the wipe, and only with the wipe.
+    const held = {
+      profileId: 1,
+      day: "2026-09-05",
+      reach: { kind: "today" } as const,
+    };
+    rememberLastGood(held, "dose", { form: "unavailable", message: "held" });
     expect(await wipeIfRevoked(answer(status, body))).toBe(wiped);
     expect(wipes).toHaveBeenCalledTimes(wiped ? 1 : 0);
+    expect(recallLastGood(held, "dose") === undefined).toBe(wiped);
   });
 });

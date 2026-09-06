@@ -12,6 +12,7 @@
 // server's own word rather than by a timer or by a bare status code.
 
 import { clearEmergencyPayload } from "@/components/emergency-offline";
+import { clearLastGood } from "@/lib/offline/quick-entry-read";
 import { clearQueue } from "@/lib/offline/queue-db";
 import { reopenForFailedLogout } from "@/lib/offline/write-gate";
 
@@ -43,7 +44,8 @@ const PROBE_TIMEOUT_MS = 5_000;
  * that race never showed before), any queued offline writes plus their dead-letter entries
  * and form drafts (#28/#475/#1699), and the offline read snapshots (#2908). `clearQueue`'s
  * own transaction covers the snapshot store too, so the wipe holds even if a call site
- * drifts.
+ * drifts. The quick logger's in-memory last-good copies (#3416) go with them — the one
+ * device-local read that is not in IndexedDB, and synchronous like the card.
  *
  * The gate closing IN THE SAME TRANSACTION is the half that a wipe alone cannot do. The
  * document stays mounted, authenticated and interactive while the sign-out is in flight,
@@ -55,6 +57,7 @@ const PROBE_TIMEOUT_MS = 5_000;
  */
 export async function wipeDeviceForSignOut(): Promise<void> {
   clearEmergencyPayload();
+  clearLastGood();
   try {
     await Promise.race([
       clearQueue(),

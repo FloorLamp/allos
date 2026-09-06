@@ -1,0 +1,251 @@
+// OPENING THE QUICK LOGGER WITH NO SERVER (#3416). Pure, CLIENT-SAFE and DB-FREE.
+//
+// The sheet's forms take their props from `loadQuickEntry`, a Server Action, which a
+// dead connection rejects. This module is what the sheet can answer FROM INSTEAD, in
+// two layers the host (components/QuickEntryProvider.tsx) tries in order:
+//
+//   1. LAST-GOOD — the result of an earlier successful open in this page's life, held
+//      in memory and keyed by the #5211 day-context key plus the form. A reopen renders
+//      it at once and revalidates behind it.
+//   2. THE DEVICE'S OWN COPY — the #2908 read snapshots (dose schedule, practice week)
+//      mapped onto the form's payload with the queue's pending intents folded in, and
+//      for the two declared flows with no snapshot kind (mood, stool) what the device
+//      itself knows: the day, and its own queued taps. Everything else is a miss, and
+//      the host renders the retry state.
+//
+// THE KEY IS A CACHE KEY, NEVER A RECORD KEY (#5211 clause 5). Every entry stores its
+// parts beside the key; a key that no longer matches — a new day, a new reach shape —
+// is a miss the next open refetches, not a loss. Nothing durable is identified by it.
+//
+// NO SECOND STORE. Layer 1 is memory (the host is mounted for the page's life) and
+// layer 2 reads the snapshot and intent stores that already exist — nothing here
+// writes a byte to the device.
+
+import type { QuickEntryData } from "@/app/(app)/quick-entry-actions";
+import {
+  dayContextKey,
+  type DayContextKey,
+  type DayContextParts,
+} from "@/lib/day-context-key";
+import { shiftDateStr } from "@/lib/date";
+import { isWithinReach } from "@/lib/log-manifest";
+import { MOOD_LOG_DATE_WINDOW_DAYS, moodBackfillLabel } from "@/lib/mood";
+import type { MoodPayload, QueuedIntent } from "@/lib/offline/queue";
+import {
+  intentBelongsToProfile,
+  overlayDoseSchedule,
+  overlayPracticeWeek,
+  type AnySnapshot,
+  type SnapshotEnvelope,
+  type SnapshotKind,
+} from "@/lib/offline/snapshots";
+import type { TrackedPractice } from "@/lib/queries/wellness";
+import type { QuickEntryForm } from "@/lib/quick-log";
+
+// ── Layer 1: last-good ───────────────────────────────────────────────────────
+
+export interface LastGoodEntry {
+  readonly parts: DayContextParts;
+  readonly form: QuickEntryForm;
+  readonly data: QuickEntryData;
+  readonly fetchedAt: Date;
+}
+
+// Module state rather than a ref inside the host, for one reason: the device wipe
+// (components/device-wipe.ts) has to reach it. Logout, a revoked session and a
+// profile switch all drop it — the same boundary the read snapshots have.
+const lastGood = new Map<DayContextKey, Map<QuickEntryForm, LastGoodEntry>>();
+
+export function rememberLastGood(
+  parts: DayContextParts,
+  form: QuickEntryForm,
+  data: QuickEntryData,
+  fetchedAt: Date = new Date()
+): void {
+  const key = dayContextKey(parts);
+  const byForm = lastGood.get(key) ?? new Map<QuickEntryForm, LastGoodEntry>();
+  byForm.set(form, { parts, form, data, fetchedAt });
+  lastGood.set(key, byForm);
+}
+
+export function recallLastGood(
+  parts: DayContextParts,
+  form: QuickEntryForm
+): LastGoodEntry | undefined {
+  return lastGood.get(dayContextKey(parts))?.get(form);
+}
+
+export function clearLastGood(): void {
+  lastGood.clear();
+}
+
+// ── Layer 2: the device's own copy ───────────────────────────────────────────
+
+export interface OfflineQuickEntry {
+  readonly data: QuickEntryData;
+  // When the snapshot this was read from was captured, or null when the payload is
+  // built from the device's own knowledge (its day and its queue) rather than from a
+  // stored server read.
+  readonly fetchedAt: string | null;
+}
+
+// The stored snapshot of `kind` that may stand in for the sheet's context, or null.
+// Two questions, asked separately because they are different questions even where
+// today's `SHEET_REACH` makes them coincide: may the sheet OFFER the snapshot's day at
+// all (`isWithinReach`, the #5211 clause-4 door — never re-derived here), and is that
+// day the one on screen (the clause-3 rule: a today payload never fills a yesterday
+// form). A snapshot for another profile is a miss before either is asked.
+function servingSnapshot<
+  K extends SnapshotKind & ("dose-schedule" | "practice-week"),
+>(
+  snapshots: readonly AnySnapshot[],
+  kind: K,
+  parts: DayContextParts
+): SnapshotEnvelope<K> | null {
+  for (const env of snapshots) {
+    if (env.kind !== kind || env.profileId !== parts.profileId) continue;
+    const day = env.data.date;
+    if (!isWithinReach(parts.reach, parts.day, day) || day !== parts.day)
+      continue;
+    return env as SnapshotEnvelope<K>;
+  }
+  return null;
+}
+
+/**
+ * What the sheet can render for `form` with no server, or null when the honest
+ * answer is the retry state.
+ *
+ * `actingProfileId` bounds the device-known layer: the queue captures under the acting
+ * profile and refuses a cross-profile write, so a mood or stool form built for anyone
+ * else would be a door onto a refusal. The snapshot layer needs no such bound — every
+ * envelope is stamped with its profile and `servingSnapshot` matches on it.
+ */
+export function quickEntryOffline(
+  form: QuickEntryForm,
+  parts: DayContextParts,
+  actingProfileId: number,
+  snapshots: readonly AnySnapshot[],
+  intents: readonly QueuedIntent[]
+): OfflineQuickEntry | null {
+  const mine = intents.filter((i) =>
+    intentBelongsToProfile(i, parts.profileId)
+  );
+  switch (form) {
+    case "dose": {
+      const env = servingSnapshot(snapshots, "dose-schedule", parts);
+      if (!env) return null;
+      const pending = overlayDoseSchedule(
+        env.data,
+        mine,
+        parts.profileId
+      ).entries.filter((e) => e.status === "pending");
+      return {
+        fetchedAt: env.fetchedAt,
+        data:
+          pending.length === 0
+            ? { form: "unavailable", message: "No doses are due right now." }
+            : {
+                form: "dose",
+                today: parts.day,
+                // The whole day's unresolved set, not the online arrived-slot slice:
+                // the copy carries each dose's slot and no clock, and /offline shows
+                // the same whole-day view. The as-of line above says what this is.
+                doses: pending.map((e) => ({
+                  doseId: e.doseId,
+                  title: e.name,
+                  detail: e.detail,
+                  dueText: e.slot ?? "Today",
+                })),
+                // No PRN row: `prn-dose` is an argued exclusion of the offline queue
+                // (lib/offline/queue.ts) — its redose advisory is server state.
+                pastDays: [],
+              },
+      };
+    }
+    case "practice": {
+      const env = servingSnapshot(snapshots, "practice-week", parts);
+      if (!env) return null;
+      const week = overlayPracticeWeek(env.data, mine, parts.profileId);
+      const practices: TrackedPractice[] = week.practices.map((p) => ({
+        // Nothing in the sheet addresses the target row; the copy carries no id.
+        targetId: 0,
+        identity: p.identity,
+        name: p.name,
+        perWeek: p.perWeek,
+        perWeekMax: null,
+        countThisWeek: p.countThisWeek,
+        atCeiling: false,
+        // FACTS, NEVER VERDICTS (#2908 decision 5): the snapshot drops `pace` on
+        // purpose, and "behind" needs the week's calendar, which it does not carry.
+        // "met" is the one reading that is a fact (count against target); otherwise
+        // the quiet default the badge shows whenever the lag is not informative.
+        pace: p.countThisWeek >= p.perWeek ? "met" : "on-pace",
+        todayCount: p.todayCount,
+        previousDurationMin: null,
+        liveSession: null,
+      }));
+      return {
+        fetchedAt: env.fetchedAt,
+        data: { form: "practice", today: parts.day, practices },
+      };
+    }
+    case "mood": {
+      if (parts.profileId !== actingProfileId) return null;
+      // The #2128 chips, the same window the gather offers; a check-in this device
+      // queued for one of those days shows on it (read-your-writes), the server's are
+      // unknown until it can be asked.
+      const days = Array.from(
+        { length: MOOD_LOG_DATE_WINDOW_DAYS + 1 },
+        (_, offset) => {
+          const date =
+            offset === 0 ? parts.day : shiftDateStr(parts.day, -offset);
+          const queued = mine.findLast(
+            (i) => i.flow === "mood" && i.date === date
+          );
+          const mood = queued ? (queued.payload as MoodPayload) : null;
+          return {
+            date,
+            label: moodBackfillLabel(offset),
+            mood: mood
+              ? {
+                  valence: mood.valence,
+                  energy: mood.energy,
+                  anxiety: mood.anxiety,
+                  factors: mood.factors,
+                  notes: mood.note,
+                }
+              : null,
+          };
+        }
+      );
+      return { fetchedAt: null, data: { form: "mood", days, showCalm: false } };
+    }
+    case "stool": {
+      if (parts.profileId !== actingProfileId) return null;
+      return {
+        fetchedAt: null,
+        data: {
+          form: "stool",
+          today: parts.day,
+          // Only what this device queued for the day — the as-of line says so.
+          todayCount: mine.filter(
+            (i) => i.flow === "stool" && i.date === parts.day
+          ).length,
+        },
+      };
+    }
+    // Food's snapshot (`food-tallies`) answers "have I logged that serving", not
+    // "what may I log": the bar's ranked catalog, exclusions and meal windows are all
+    // server-resolved per profile, and a bar over an invented order would be a
+    // different surface, not this one offline. The rest have no offline story at all
+    // (LOG_MANIFEST's `offline` column) or gather nothing worth standing in for.
+    case "food":
+    case "cycle":
+    case "substance":
+    case "symptom":
+    case "document":
+    case "measurements":
+      return null;
+  }
+}

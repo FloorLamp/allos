@@ -181,7 +181,10 @@ export type QuickEntryData =
       // TODAY's offer, unchanged: the arrived-slot due-now slice. An evening dose is
       // still not "due right now" in the morning.
       doses: QuickEntryDose[];
-      prn: QuickEntryPrn;
+      // Absent only on the device's own offline copy (lib/offline/quick-entry-read.ts):
+      // the PRN row is an argued exclusion of the offline queue, and its redose
+      // advisory is server state. The gather always sets it.
+      prn?: QuickEntryPrn;
       // The recent-past days the sheet may switch to (#3936), newest first — exactly
       // `doseLogDays(today)` minus today, so the switcher offers precisely the window
       // the write cores accept. A day with nothing left to log is still LISTED (with

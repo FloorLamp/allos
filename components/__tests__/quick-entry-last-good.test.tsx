@@ -10,16 +10,52 @@ import { ToastProvider } from "@/components/Toast";
 import QuickEntryProvider, {
   useQuickEntry,
 } from "@/components/QuickEntryProvider";
+import { clearLastGood } from "@/lib/offline/quick-entry-read";
+import { SNAPSHOT_VERSION, type AnySnapshot } from "@/lib/offline/snapshots";
+import type { QuickEntryForm } from "@/lib/quick-log";
 import type { SessionProfile } from "@/lib/auth";
 
-// COMPONENT TIER — #3416/#4454, the sheet's offline OPEN path: last-good render
-// with a revalidate behind it, a failed revalidate keeping what is already shown, a
-// stalled gather timing out to the error state, Retry re-running the SAME gather,
-// and the acting-profile change dropping the cache (the same device-local wipe
-// boundary ProfileSwitchWatcher enforces for the offline read snapshots).
+// COMPONENT TIER — #3416/#4454/#5211, the sheet's offline OPEN path: last-good render
+// with a revalidate behind it, keyed by the day-context key (a response is applied
+// only if the context it was issued for is still on screen; a copy held for one day
+// never fills the next day's form), a failed revalidate keeping what is shown under
+// the as-of line, a cold failure falling back to the device's own copy, a stalled
+// gather doing the same, Retry re-running the SAME gather, a failed body chunk
+// reaching the same retry state, and the acting-profile change dropping the cache.
 
 const loadQuickEntry = vi.hoisted(() => vi.fn());
 vi.mock("@/app/(app)/quick-entry-actions", () => ({ loadQuickEntry }));
+
+const allSnapshots = vi.hoisted(() =>
+  vi.fn(async (): Promise<unknown[]> => [])
+);
+vi.mock("@/lib/offline/snapshot-db", () => ({ allSnapshots }));
+const allIntents = vi.hoisted(() => vi.fn(async (): Promise<unknown[]> => []));
+vi.mock("@/lib/offline/queue-db", () => ({ allIntents }));
+
+// The bodies are stubs: what they render is their own tests' business, and what this
+// file asserts is WHICH props reached them. `UploadForm` also throws on demand — the
+// chunk-failure stand-in (a lazy import that rejects and a body that throws land on the
+// same boundary).
+vi.mock("@/components/stool/StoolTypeControl", () => ({
+  default: ({ todayCount, today }: { todayCount: number; today: string }) => (
+    <div data-testid="stub-stool">
+      {today}:{todayCount}
+    </div>
+  ),
+}));
+vi.mock("@/components/quick-entry/QuickDoseList", () => ({
+  default: ({ doses }: { doses: { doseId: number }[] }) => (
+    <div data-testid="stub-dose">{doses.map((d) => d.doseId).join(",")}</div>
+  ),
+}));
+const upload = vi.hoisted(() => ({ failing: false }));
+vi.mock("@/components/UploadForm", () => ({
+  default: () => {
+    if (upload.failing) throw new Error("chunk failed to load");
+    return <div data-testid="stub-upload" />;
+  },
+}));
 
 const ACTING: SessionProfile = {
   id: 1,
@@ -41,42 +77,36 @@ const MEASUREMENTS = {
   showHeadCirc: false,
 };
 
-function Sheet({ actingProfileId = ACTING.id }: { actingProfileId?: number }) {
+function Sheet() {
   const { open, close } = useQuickEntry();
   return (
     <>
-      <button onClick={() => open("stool")}>open</button>
+      {(["stool", "document", "dose"] as const).map((form) => (
+        <button key={form} onClick={() => open(form)}>
+          open {form}
+        </button>
+      ))}
       <button onClick={close}>close</button>
     </>
   );
 }
 
 function renderSheet(actingProfileId = ACTING.id) {
-  const utils = render(
+  const tree = (id: number) => (
     <ToastProvider>
       <QuickEntryProvider
         measurements={MEASUREMENTS}
         writableProfiles={[ACTING]}
-        actingProfileId={actingProfileId}
+        actingProfileId={id}
       >
-        <Sheet actingProfileId={actingProfileId} />
+        <Sheet />
       </QuickEntryProvider>
     </ToastProvider>
   );
+  const utils = render(tree(actingProfileId));
   return {
     ...utils,
-    rerenderWithActing: (id: number) =>
-      utils.rerender(
-        <ToastProvider>
-          <QuickEntryProvider
-            measurements={MEASUREMENTS}
-            writableProfiles={[ACTING]}
-            actingProfileId={id}
-          >
-            <Sheet actingProfileId={id} />
-          </QuickEntryProvider>
-        </ToastProvider>
-      ),
+    rerenderWithActing: (id: number) => utils.rerender(tree(id)),
   };
 }
 
@@ -84,12 +114,44 @@ function unavailable(message: string) {
   return { form: "unavailable" as const, message };
 }
 
+const open = (form: QuickEntryForm) =>
+  fireEvent.click(screen.getByText(`open ${form}`));
+
+const today = () => new Date().toISOString().slice(0, 10);
+
+function doseSnapshot(date: string, profileId = ACTING.id): AnySnapshot {
+  return {
+    version: SNAPSHOT_VERSION,
+    kind: "dose-schedule",
+    profileId,
+    timeZone: "UTC",
+    capturedOn: date,
+    fetchedAt: `${date}T06:00:00Z`,
+    data: {
+      date,
+      entries: [
+        {
+          doseId: 41,
+          name: "Sertraline",
+          detail: "50 mg",
+          slot: "Morning",
+          status: "pending",
+        },
+      ],
+    },
+  };
+}
+
 beforeEach(() => {
   loadQuickEntry.mockReset();
+  allSnapshots.mockReset().mockResolvedValue([]);
+  allIntents.mockReset().mockResolvedValue([]);
+  upload.failing = false;
+  clearLastGood();
 });
 
 describe("last-good render, revalidate behind it (#3416 proposal 1)", () => {
-  it("a reopen after a successful open renders instantly from last-good, then updates", async () => {
+  it("a reopen after a successful open renders instantly from last-good, then updates — one gather per open either way", async () => {
     let resolveSecond: (v: ReturnType<typeof unavailable>) => void;
     loadQuickEntry
       .mockResolvedValueOnce(unavailable("v1"))
@@ -98,20 +160,28 @@ describe("last-good render, revalidate behind it (#3416 proposal 1)", () => {
       );
 
     renderSheet();
-    fireEvent.click(screen.getByText("open"));
+    open("stool");
     expect(
       (await screen.findByTestId("quick-entry-unavailable")).textContent
     ).toContain("v1");
+    expect(loadQuickEntry).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByText("close"));
-    fireEvent.click(screen.getByText("open"));
+    open("stool");
 
     // INSTANT: no loading state, v1 is already on screen from the cache — before
-    // the second (background) gather has even resolved.
+    // the second (background) gather has even resolved — and no as-of line, since
+    // the revalidate is the request that is about to answer.
     expect(screen.queryByTestId("quick-entry-loading")).toBeNull();
+    expect(screen.queryByTestId("quick-entry-asof")).toBeNull();
     expect(screen.getByTestId("quick-entry-unavailable").textContent).toContain(
       "v1"
     );
+    // The SAME one gather an open always made (#3369): the cache adds none.
+    expect(loadQuickEntry).toHaveBeenCalledTimes(2);
+    // Never touched on a warm open: the device copy is read only on the way to a
+    // failure.
+    expect(allSnapshots).not.toHaveBeenCalled();
 
     resolveSecond!(unavailable("v2"));
     await waitFor(() =>
@@ -121,38 +191,35 @@ describe("last-good render, revalidate behind it (#3416 proposal 1)", () => {
     );
   });
 
-  it("a failed revalidate behind a last-good render keeps the rendered form (no error state)", async () => {
+  it("a failed revalidate behind a last-good render keeps the rendered form and says what it is", async () => {
     loadQuickEntry
       .mockResolvedValueOnce(unavailable("v1"))
       .mockRejectedValueOnce(new Error("offline"));
 
     renderSheet();
-    fireEvent.click(screen.getByText("open"));
+    open("stool");
     await screen.findByTestId("quick-entry-unavailable");
 
     fireEvent.click(screen.getByText("close"));
-    fireEvent.click(screen.getByText("open"));
+    open("stool");
 
     await waitFor(() => expect(loadQuickEntry).toHaveBeenCalledTimes(2));
     // The failed background revalidate must not blank the sheet into the error
-    // state — the last-good copy is still a correct, if slightly stale, answer.
+    // state — the last-good copy is still a correct, if slightly stale, answer —
+    // and from here what is shown did not just come from the server (#2908).
     expect(screen.queryByTestId("quick-entry-error")).toBeNull();
     expect(screen.getByTestId("quick-entry-unavailable").textContent).toContain(
       "v1"
     );
-  });
-
-  it("a COLD failure (nothing cached) reaches the error state", async () => {
-    loadQuickEntry.mockRejectedValueOnce(new Error("offline"));
-    renderSheet();
-    fireEvent.click(screen.getByText("open"));
-    expect(await screen.findByTestId("quick-entry-error")).not.toBeNull();
+    expect((await screen.findByTestId("quick-entry-asof")).textContent).toMatch(
+      /^As of .* — couldn't refresh\.$/
+    );
   });
 
   it("the acting profile changing drops the cache — a same-form reopen loads again rather than flashing the last-good copy", async () => {
     loadQuickEntry.mockResolvedValue(unavailable("v1"));
     const { rerenderWithActing } = renderSheet();
-    fireEvent.click(screen.getByText("open"));
+    open("stool");
     await screen.findByTestId("quick-entry-unavailable");
     fireEvent.click(screen.getByText("close"));
 
@@ -162,7 +229,7 @@ describe("last-good render, revalidate behind it (#3416 proposal 1)", () => {
     loadQuickEntry.mockImplementationOnce(
       () => new Promise((resolve) => (resolveNext = resolve))
     );
-    fireEvent.click(screen.getByText("open"));
+    open("stool");
 
     // No stale last-good survives the identity change — the sheet goes back to a
     // genuine loading state rather than instantly repainting the OLD profile's
@@ -177,27 +244,158 @@ describe("last-good render, revalidate behind it (#3416 proposal 1)", () => {
   });
 });
 
-describe("the stall bound and Retry (#3416 proposal 3)", () => {
+describe("the #5211 day-context key", () => {
+  beforeEach(() => vi.useFakeTimers({ toFake: ["Date"] }));
+  afterEach(() => vi.useRealTimers());
+
+  it("a copy held for one day never fills the next day's form (clauses 3 and 5)", async () => {
+    vi.setSystemTime(new Date("2026-09-05T23:59:00Z"));
+    loadQuickEntry.mockResolvedValueOnce(unavailable("the 5th"));
+    renderSheet();
+    open("stool");
+    await screen.findByTestId("quick-entry-unavailable");
+    fireEvent.click(screen.getByText("close"));
+
+    // Midnight in the sheet's zone (the test tree's TimezoneProvider default, UTC).
+    vi.setSystemTime(new Date("2026-09-06T00:01:00Z"));
+    loadQuickEntry.mockImplementationOnce(() => new Promise(() => {}));
+    open("stool");
+    // A MISS, not yesterday's copy: the key moved with the day.
+    expect(screen.getByTestId("quick-entry-loading")).not.toBeNull();
+    expect(screen.queryByTestId("quick-entry-unavailable")).toBeNull();
+  });
+
+  it("a response issued for a context no longer on screen is discarded whole", async () => {
+    vi.setSystemTime(new Date("2026-09-05T23:59:00Z"));
+    let resolveLate: (v: ReturnType<typeof unavailable>) => void;
+    loadQuickEntry
+      .mockImplementationOnce(
+        () => new Promise((resolve) => (resolveLate = resolve))
+      )
+      .mockResolvedValueOnce(unavailable("the 6th"));
+    renderSheet();
+    open("stool");
+    vi.setSystemTime(new Date("2026-09-06T00:01:00Z"));
+    open("stool");
+    expect(
+      (await screen.findByTestId("quick-entry-unavailable")).textContent
+    ).toContain("the 6th");
+
+    resolveLate!(unavailable("the 5th, late"));
+    await act(async () => {});
+    expect(screen.getByTestId("quick-entry-unavailable").textContent).toContain(
+      "the 6th"
+    );
+    // And it was not remembered under the key it was not issued for: a reopen on
+    // the 6th finds the 6th's copy.
+    fireEvent.click(screen.getByText("close"));
+    loadQuickEntry.mockImplementationOnce(() => new Promise(() => {}));
+    open("stool");
+    expect(screen.getByTestId("quick-entry-unavailable").textContent).toContain(
+      "the 6th"
+    );
+  });
+});
+
+describe("a cold failure falls back to the device's own copy (#3416 proposal 2)", () => {
+  it("a form with no copy on the device reaches the error state", async () => {
+    loadQuickEntry.mockRejectedValueOnce(new Error("offline"));
+    renderSheet();
+    open("document");
+    expect(await screen.findByTestId("quick-entry-error")).not.toBeNull();
+    expect(allSnapshots).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["today's", 0, "renders"],
+    ["yesterday's", -1, "is a miss for"],
+  ])(
+    "%s dose-schedule snapshot %s today's sheet",
+    async (_which, shift, verdict) => {
+      const day = new Date(Date.now() + shift * 86_400_000)
+        .toISOString()
+        .slice(0, 10);
+      allSnapshots.mockResolvedValue([doseSnapshot(day)]);
+      loadQuickEntry.mockRejectedValueOnce(new Error("offline"));
+      renderSheet();
+      open("dose");
+      if (verdict === "renders") {
+        expect((await screen.findByTestId("stub-dose")).textContent).toBe("41");
+        expect(screen.getByTestId("quick-entry-asof").textContent).toMatch(
+          /^As of .* — this device's offline copy\.$/
+        );
+      } else {
+        // Not a stale form: the copy is for a day the sheet is not standing on.
+        expect(await screen.findByTestId("quick-entry-error")).not.toBeNull();
+      }
+    }
+  );
+
+  it("stool opens from what the device knows — its day and its own queued taps — and says so", async () => {
+    allIntents.mockResolvedValue([
+      {
+        key: "k1",
+        flow: "stool",
+        date: today(),
+        capturedAt: new Date().toISOString(),
+        payload: { type: 4, at: null },
+        profileId: ACTING.id,
+      },
+    ]);
+    loadQuickEntry.mockRejectedValueOnce(new Error("offline"));
+    renderSheet();
+    open("stool");
+    expect((await screen.findByTestId("stub-stool")).textContent).toBe(
+      `${today()}:1`
+    );
+    expect(screen.getByTestId("quick-entry-asof").textContent).toBe(
+      "Offline — showing only what's queued on this device."
+    );
+  });
+});
+
+describe("the stall bound and Retry (#3416 proposals 3 and 4)", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it("a gather stalled past the timeout reaches the error state, not perpetual Loading", async () => {
-    loadQuickEntry.mockImplementationOnce(() => new Promise(() => {}));
+  it("a gather stalled past the timeout reaches the error state, not perpetual Loading — and a late answer still lands", async () => {
+    let resolveLate: (v: ReturnType<typeof unavailable>) => void;
+    loadQuickEntry.mockImplementationOnce(
+      () => new Promise((resolve) => (resolveLate = resolve))
+    );
     renderSheet();
-    fireEvent.click(screen.getByText("open"));
+    open("document");
     expect(screen.getByTestId("quick-entry-loading")).not.toBeNull();
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(10_000);
     });
-
     expect(screen.getByTestId("quick-entry-error")).not.toBeNull();
+
+    // The timeout invalidated nothing but the WAIT: the action was still running,
+    // and its answer for the context still on screen is applied (fresh wins).
+    resolveLate!(unavailable("late but real"));
+    await act(async () => {});
+    expect(screen.getByTestId("quick-entry-unavailable").textContent).toContain(
+      "late but real"
+    );
+  });
+
+  it("a stall with a copy on the device shows the copy", async () => {
+    allSnapshots.mockResolvedValue([doseSnapshot(today())]);
+    loadQuickEntry.mockImplementationOnce(() => new Promise(() => {}));
+    renderSheet();
+    open("dose");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(screen.getByTestId("stub-dose").textContent).toBe("41");
   });
 
   it("Retry re-runs the SAME gather and a success replaces the error state", async () => {
     loadQuickEntry.mockRejectedValueOnce(new Error("offline"));
     renderSheet();
-    fireEvent.click(screen.getByText("open"));
+    open("document");
     await vi.waitFor(() =>
       expect(screen.getByTestId("quick-entry-error")).not.toBeNull()
     );
@@ -211,5 +409,26 @@ describe("the stall bound and Retry (#3416 proposal 3)", () => {
       ).toContain("recovered")
     );
     expect(loadQuickEntry).toHaveBeenCalledTimes(2);
+  });
+
+  it("a body that fails to load reaches the same retry state, and Retry recovers it in place", async () => {
+    vi.useRealTimers();
+    upload.failing = true;
+    loadQuickEntry.mockResolvedValue({ form: "document", demo: false });
+    // React reports the caught throw on the console; that is the boundary working.
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      renderSheet();
+      open("document");
+      expect(await screen.findByTestId("quick-entry-error")).not.toBeNull();
+
+      // The chunk is fetchable again; Retry re-mints the bodies and asks again.
+      upload.failing = false;
+      fireEvent.click(screen.getByTestId("quick-entry-retry"));
+      expect(await screen.findByTestId("stub-upload")).not.toBeNull();
+      expect(screen.queryByTestId("quick-entry-error")).toBeNull();
+    } finally {
+      quiet.mockRestore();
+    }
   });
 });
