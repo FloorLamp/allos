@@ -15,21 +15,21 @@
 
 ## The first round in a new worktree
 
-- A fresh worktree has no `.next`, and compiling one costs ~200 s before a single
+- A fresh worktree has no `.next`; compiling one costs ~200 s before a single
   browser assertion (#2605). `ensureBuild` now takes an identical build from a
-  sibling worktree instead: measured 199 s → 1.7 s, first round 242 s → 55 s.
+  sibling worktree instead: 199 s → 1.7 s, first round 242 s → 55 s (measured).
 - It is automatic, with no dispatch step to add: at worktree-creation time no
   sibling has built either, so the first cluster of a wave builds and the rest
   inherit it.
 - The licence is a content fingerprint over the build inputs
-  (`e2e/build-inputs.mjs`), never a commit and never an mtime. Commit equality is
-  neither necessary nor sufficient — see `docs/internals/e2e-hygiene.md`.
+  (`e2e/build-inputs.mjs`), never a commit and never an mtime. Commit equality
+  is neither necessary nor sufficient — see `docs/internals/e2e-hygiene.md`.
 - A refusal is normal and always NAMED, one line per candidate. Refusals are the
-  measure of this working; rounds-per-hour is the measure that cannot see it going
-  wrong. `E2E_NO_SEED=1` opts out.
-- `node scripts/orchestration/seed-next-build.mjs` does the same by hand (exit 3 =
-  refused), and its `record` subcommand tags a `.next` that `npm run build` made
-  outside the harness so other worktrees can take it.
+  measure of this working; rounds-per-hour is the measure that cannot see it
+  going wrong. `E2E_NO_SEED=1` opts out.
+- `node scripts/orchestration/seed-next-build.mjs` does the same by hand (exit
+  3 = refused), and its `record` subcommand tags a `.next` that `npm run build`
+  made outside the harness so other worktrees can take it.
 
 ## Merge bar
 
@@ -54,29 +54,12 @@
 
 - Reproduce locally before pushing a fix. Preserve and inspect Playwright's
   `error-context.md`.
-- **A spec that drives an RxNorm lookup cannot be reproduced locally** (#5468), and
-  the line above is unsound for it in the direction that looks like success.
-  `rxnav.nlm.nih.gov` is unreachable from every agent container and reachable from
-  CI, and `lib/rxnorm.ts` sends no credential — so locally the lookup returns `[]`
-  and the confirm path that only exists on a match never runs. The spec passes on
-  the branch the bug is not in; `medication-prefill` reached main four times that
-  way. `api.open-meteo.com` and its two siblings are the same shape. Withings,
-  Strava and Oura are NOT: they hold no local token either way, so they degrade
-  identically in both places.
-  - The trigger is a PICK, not a fill. `IntakeItemForm`'s `onPickName` auto-confirms
-    every catalog MEDICATION pick, so a spec that clicks a row in the intake Name
-    combobox is in this class while naming no rxcui marker — a marker grep will not
-    find it. A supplement-catalog pick returns before the lookup and is unaffected.
-    List them rather than trusting a stale one:
-    `git grep -ln comboboxRows -- e2e/ | xargs git grep -ln '"Name"'`, then read
-    each hit for a row click on the intake form.
-  - Since #5468 the degrade says so out loud: grep the server log for the `rxnorm`
-    scope. A genuine no-match writes nothing, so a line there means the local run
-    took the degraded branch and its green proves nothing about the live one.
-  - CI runs all of these — there is no per-spec skip set, only the runtime-surface
-    gate that drops the whole browser suite for a docs-only diff.
-- Run failures in failing order and use one orchestrator when investigating shared
-  state or cross-spec poisoning.
+- **A spec that drives an RxNorm lookup cannot be reproduced locally** (#5468):
+  the call carries no credential and `rxnav.nlm.nih.gov` is reachable only from
+  CI, so the local run takes the degraded branch and goes GREEN on a branch the
+  bug is not in. The failure class, and how to spot one, is in e2e-hygiene.md.
+- Run failures in failing order and use one orchestrator when investigating
+  shared state or cross-spec poisoning.
 - Check the actual command exit code; pipelines can hide it.
 - For mass failures, check memory pressure, then run failures individually.
   Passing alone suggests starvation; failing alone suggests a defect.

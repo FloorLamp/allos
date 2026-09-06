@@ -1,20 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-// The logger is mocked so the DISTINCTION below is observable: #5468's whole point
-// is that a failed credential-free call and a genuine no-match used to be the same
-// event, and the only thing that now separates them is whether a line was written.
-// `vi.hoisted` because vi.mock is hoisted above the const it would otherwise close
-// over — the factory runs first and reads an uninitialised binding.
-const { logError } = vi.hoisted(() => ({ logError: vi.fn() }));
-vi.mock("@/lib/log", () => ({
-  createLogger: () => ({
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: logError,
-  }),
-}));
-
 import {
   lookupRxNormCandidates,
   lookupRxNormIngredients,
@@ -196,61 +180,69 @@ describe("rxcui_ingredients codec", () => {
 // there is no missing-token state to explain a failure away. Every row here returns
 // the SAME [] — that contract is unchanged and deliberately re-asserted — and the
 // rows differ only in whether a line was written. The 200-with-no-match rows are the
-// control: they are the state the assertion forbids a log in, and they prove the
+// control: they are the state the assertion forbids a line in, and they prove the
 // signal can be silent rather than merely that it can fire.
+//
+// Observed through the REAL logger's console sink rather than a `vi.mock` of it: the
+// mock would route this whole file into the isolated project (vitest.isolation.ts),
+// and it would prove that a stub was called rather than that a line is emitted.
 describe("a failed lookup logs; a genuine no-match does not", () => {
   const okJson = (json: unknown) =>
     ({ ok: true, json: async () => json }) as unknown as Response;
+  let errs: string[];
 
-  beforeEach(() => logError.mockClear());
-  afterEach(() => vi.unstubAllGlobals());
+  beforeEach(() => {
+    errs = [];
+    vi.spyOn(console, "error").mockImplementation((...a: unknown[]) => {
+      errs.push(a.join(" "));
+    });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  const REJECTED = () => ({ ok: false, status: 503 }) as Response;
+  const THREW = () => {
+    throw new Error("connect ECONNREFUSED");
+  };
 
   it.each([
-    ["non-OK response", () => ({ ok: false, status: 503 }) as Response, 1],
-    [
-      "network throw",
-      () => {
-        throw new Error("connect ECONNREFUSED");
-      },
-      1,
-    ],
+    ["non-OK response", REJECTED, 1],
+    ["network throw", THREW, 1],
     ["200 with no candidates", () => okJson({ approximateGroup: {} }), 0],
-  ])("candidates — %s", async (_label, respond, logs) => {
+  ])("candidates — %s", async (_label, respond, lines) => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => respond())
     );
     await expect(lookupRxNormCandidates("ibuprofen")).resolves.toEqual([]);
-    expect(logError).toHaveBeenCalledTimes(logs);
+    expect(errs).toHaveLength(lines);
   });
 
   it.each([
-    ["non-OK response", () => ({ ok: false, status: 503 }) as Response, 1],
-    [
-      "network throw",
-      () => {
-        throw new Error("connect ECONNREFUSED");
-      },
-      1,
-    ],
+    ["non-OK response", REJECTED, 1],
+    ["network throw", THREW, 1],
     ["200 with no ingredients", () => okJson({ relatedGroup: {} }), 0],
-  ])("ingredients — %s", async (_label, respond, logs) => {
+  ])("ingredients — %s", async (_label, respond, lines) => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => respond())
     );
     await expect(lookupRxNormIngredients("5640")).resolves.toEqual([]);
-    expect(logError).toHaveBeenCalledTimes(logs);
+    expect(errs).toHaveLength(lines);
   });
 
   // The name a person is taking must not reach the log. The status is what an
   // operator can act on; the term is the one thing this feature sends off-box.
-  it("never puts the searched term in the log line", async () => {
+  it("names the scope but never the searched term", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => ({ ok: false, status: 500 }) as Response)
+      vi.fn(async () => REJECTED())
     );
     await lookupRxNormCandidates("Sertraline");
-    expect(JSON.stringify(logError.mock.calls)).not.toContain("Sertraline");
+    expect(errs).toHaveLength(1);
+    expect(errs[0]).toContain("rxnorm");
+    expect(errs[0]).not.toContain("Sertraline");
   });
 });

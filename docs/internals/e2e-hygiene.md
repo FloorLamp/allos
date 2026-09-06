@@ -2718,6 +2718,91 @@ route holding the action POST's response past the budget produces the
 issued-but-unanswered message with the control `aria-busy`, and a client
 control that never posts produces never-issued with the control idle.
 
+## A credential-free lookup runs in CI and returns empty here (2026-09-06, #5468)
+
+`rxnav.nlm.nih.gov` is unreachable from every agent container and reachable from
+CI. Measured, from a lane container:
+
+```
+for h in rxnav.nlm.nih.gov api.open-meteo.com wbsapi.withings.net \
+         www.strava.com cloud.ouraring.com api.anthropic.com; do
+  curl -s -o /dev/null -w "$h %{http_code}\n" --max-time 12 "https://$h/"
+done
+# every host 000 except api.anthropic.com, which answers 404 — the tunnel opens
+```
+
+**Withings, Strava and Oura are not this failure class**, and keeping them out of
+it is the point. They are OAuth integrations with no local tokens, so they
+degrade locally with or without a proxy; `AGENTS.md` asks for exactly that.
+
+`lib/rxnorm.ts` takes **no credential** (`grep -n "process.env\|API_KEY\|token"`
+returns nothing). So there is no missing-token state to explain a failure away: a
+call that could not be made and a call that genuinely matched nothing both return
+`[]`. `lib/integrations/open-meteo.ts` is the same shape — three credential-free
+Open-Meteo hosts — and it was already the model for the fix.
+
+### Why a local green means nothing here
+
+A lookup that fails returns `[]`, and the confirm path that only exists on a
+match never runs. So a spec touching it **passes locally, on the branch the bug
+is not in** — the direction that looks like success. `medication-prefill:157`
+reached main four times before anyone explained it; its defect lived in the
+confirm path, and the harness was never the cause (fixed in #5462).
+
+### The trigger is a PICK, not a fill, and it names no marker
+
+`IntakeItemForm`'s `onPickName` auto-confirms every catalog **medication** pick
+(`rx.autoConfirm`, #851 item 7). A supplement-catalog name returns before the
+lookup, and a bare `.fill()` never picks at all — only clicking a row does. So a
+spec in this class can mention neither `rxcui` nor `rxnorm`, and a marker sweep
+for either comes back clean and wrong. Three of the four found on 2026-09-06
+were invisible to that sweep for exactly this reason.
+
+Rebuild the list rather than trusting a stale one — over-match, then read:
+
+```
+git grep -ln comboboxRows -- e2e/ | xargs git grep -ln '"Name"'
+```
+
+On 2026-09-06 that returned 7 files, of which 4 drive a live lookup:
+`medication-prefill`, `one-intake-form` (the "Advil" pick only),
+`medications-followups`, `dashboard-illness-phase5`. The other three pick a
+supplement, an activity, or nothing. Going the other way,
+`git grep -li -e rxcui -e rxnorm -- e2e/` returned 8 spec files, and 7 of them
+are NOT in this class: they read codes seeded straight into the DB by
+`e2e/seed/*` and touch no network. Mentioning `rxcui` and driving a lookup are
+close to disjoint.
+
+CI runs all of them; there is no per-spec skip set, only the runtime-surface gate
+that drops the whole browser suite for a diff with no runtime surface.
+
+### Telling the two apart at run time
+
+Since #5468 the unexpected half writes a line and a genuine no-match does not, so
+the server log answers the question directly:
+
+```
+grep rxnorm <the run's server log>   # a line here = the degraded branch
+```
+
+### Why there is no RxNav fixture, and no guard
+
+Both were priced. A **stub the specs drive** would make a local run exercise the
+live branch, but the call is server-side — `page.route` intercepts the browser,
+not a Server Action's `fetch` — so it needs a base-URL override in production
+code that exists only for tests, plus a fixture to run the stub, plus a canned
+response that can drift from the real one. It also either replaces CI's live
+coverage (losing the only check that RxNav's response shape still parses) or
+leaves the split in place under a new name.
+
+The **documented limit plus a loud degrade** costs a handful of production lines,
+leaves the specs honest-but-partial, and buys something the stub does not: a real
+RxNav outage now leaves a trace in production. That is the trade taken.
+
+A test asserting on reachability is **forbidden** — it is a guard on the
+environment, the family `docs/orchestration/what-earns-a-guard.md` rules out, for
+its reason: a second copy of a fact that can disagree with the fact.
+
 ## Fix (f) — DB-per-worker isolation (#1538)
 
 Until this landed, the suite booted ONE app server against ONE seeded SQLite

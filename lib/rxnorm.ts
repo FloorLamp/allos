@@ -210,7 +210,10 @@ export async function lookupRxNormIngredients(
       headers: { Accept: "application/json" },
     });
     if (!res.ok) {
-      log.error("ingredient lookup rejected", { rxcui: code, status: res.status });
+      log.error("ingredient lookup rejected", {
+        rxcui: code,
+        status: res.status,
+      });
       return [];
     }
     const json = await res.json();
