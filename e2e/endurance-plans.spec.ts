@@ -245,6 +245,12 @@ test.describe("endurance event plans (#839)", () => {
         .jpeg()
         .toBuffer(),
     });
+    // capturePhotoFile STAGES the file; the shared surface waits for a confirm, which
+    // is what makes a batch a list of named things (#3286).
+    await expect(page.getByTestId("media-input-preview-0")).toBeVisible();
+    await settledClick(page, page.getByTestId("media-input-submit"));
+    await expect(page.getByTestId("media-input-preview-0")).toBeHidden();
+
     const thumbs = strip.locator("img");
     await expect(thumbs).toHaveCount(1);
     // The grid reads the THUMBNAIL asset, not the original (#1119).
