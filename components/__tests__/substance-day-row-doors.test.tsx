@@ -52,7 +52,7 @@ vi.mock("@/components/overlay/AnchoredPanel", () => ({
 }));
 
 const TODAY = "2026-08-20";
-const ENTRY = { date: "2026-08-18", amount: 2, notes: "with dinner" };
+const ENTRY = { date: "2026-08-18", amount: 2 };
 
 afterEach(cleanup);
 

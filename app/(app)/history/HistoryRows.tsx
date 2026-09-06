@@ -605,6 +605,7 @@ export default function HistoryRows({
               mealSlot: edit.mealSlot,
               eatenAt: edit.clockKind === "stated" ? edit.clock : null,
               loggedAt: edit.clockKind === "logged" ? edit.clock : null,
+              notes: edit.notes,
             }}
             subjectProfileId={row.profileId}
             tz={row.tz}
@@ -660,6 +661,7 @@ export default function HistoryRows({
               substance: edit.substance,
               date: row.date,
               statedAt: edit.statedAt,
+              notes: edit.notes,
             }}
             subjectProfileId={row.profileId}
             onSaved={done}

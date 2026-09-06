@@ -232,6 +232,7 @@ import { migration as mBodyMetricMeasureInstants } from "./20260902-body-metric-
 import { migration as mEventsGeneralizeEndurancePlans } from "./20260903-events-generalize-endurance-plans";
 import { migration as mSubstanceEventRows } from "./20260905-substance-event-rows";
 import { migration as mActBundleColumns } from "./20260904-act-bundle-columns";
+import { migration as mEventNotes } from "./20260905-event-notes";
 import { migration as mEventActivityLink } from "./20260906-event-activity-link";
 import { migration as mEventLinkOptout } from "./20260906-event-link-optout";
 
@@ -475,6 +476,7 @@ export const MIGRATIONS: Migration[] = [
   mEventsGeneralizeEndurancePlans,
   mActBundleColumns,
   mSubstanceEventRows,
+  mEventNotes,
   mEventActivityLink,
   mEventLinkOptout,
 ];

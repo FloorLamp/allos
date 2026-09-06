@@ -3962,3 +3962,40 @@ This is the OPERATOR record and does not replace #2173, which owns making "this
 profile's reminders reach no one" visible to someone who can fix it, derived at
 read time from DB state. Nor is it a per-tick audit table: `audit_events` is for
 user-attributable writes.
+
+## Settings become offers at the moment you act (#4840)
+
+Seven settings were already offered at their moment — the wear reminder
+(#2162), the digest time (#2217), the food buttons (#682), the travel timezone
+(#3263) — and each kept its own "did we ask" somewhere different. `lib/offers.ts`
+is the one declaration: `Record<OfferFamilyId, OfferFamily>`, the sibling of the
+per-kind registries in `lib/notifications` (`kinds.ts`, `reconcile-registry.ts`,
+`cadence-registry.ts`), keyed by family and naming the `NotificationKind` whose
+setting it writes. A family declares `trigger` (pure eligibility over stored
+rows), `writes` (the setting flip — reached from the Yes tap and from nowhere
+else), `surfaces`, `asked` and `copy`; a family missing any part fails typecheck.
+
+- **"Did we ask" is a suppression-bus key**, `offer-asked:<familyId>`, registered
+  `catalog`-class in `lib/dismissal-classes.ts` (a consent asked once, forever; a
+  per-episode family mints its own `anchored` prefix). It is consulted BEFORE the
+  trigger runs, and ignoring is an answer: the in-place surface marks itself
+  asked once it is visible, so the next visit does not repeat it. Restore on
+  Upcoming re-arms the offer.
+- **No new `*_prompted` settings key.** `SettingKey<K>` in `lib/settings/kv.ts`
+  types the six get/set primitives so a literal key ending `_prompted` is a
+  compile error wherever it is written; `food_telegram_prompted` stays legal by
+  name until the connect prompt migrates (on touch).
+- **Two surfaces, never a third.** In place: `components/OfferInPlace.tsx` over
+  the shared `components/OfferControls.tsx`, which the stream lifecycle offers
+  now wear too. Riding an existing send: `offerRideAlongRows` builds the keyboard
+  rows; the token family, its dispatch arm and its reconcile declaration belong
+  to the message that carries them.
+- **The two connect families.** `digest-on-connect` and `recap-on-connect` trigger
+  when Telegram becomes reachable (`telegramChannel.isConfigured`) for a profile
+  with no digest hour / no recap day; Yes writes `notify_digest_hour=07:00` +
+  `digest_mode=static` (`setDigestMinute`, `setDigestMode`) or
+  `notify_recap_day=0`, `notify_recap_hour=09:00`, `notify_recap_scale=week`
+  (`setRecapSlot`). In place on the Telegram card of Settings → Notifications;
+  the connect prompt's rows wait on the dispatch arm.
+- The `notification-channel` marker #5287's data-quality gap shares with this
+  registry is `NOTIFICATION_CHANNEL_ASKED_KEY` (`lib/dismissal-keys.ts`).

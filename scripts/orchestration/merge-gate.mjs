@@ -122,6 +122,17 @@ const selfSession = normaliseSession(
 );
 const adoptPr = args.includes("--adopt-pr");
 
+// The ceiling every read here answers under. Node's execFileSync default is
+// 1 MiB and EXCEEDING IT THROWS, so an oversized response kills the gate
+// instead of failing a check — including the `soft` compare read at the
+// base-moved verdict, whose whole contract is to go dark rather than exit
+// (#5403: PR #5423's head sat nine merges behind and that compare measured
+// 1,063,297 bytes, `curl -sS … /compare/477cd8a1…...main | wc -c`). 64 MiB is
+// what the other orchestration scripts that read this API settled on
+// (issue-read, queue-snapshot, session-metrics, closing-keywords), and it is
+// ~63x the largest payload anything here has been measured returning.
+const MAX_BUFFER = 64 * 1024 * 1024;
+
 // curl, not fetch: node's fetch ignores HTTP(S)_PROXY and the managed
 // environments route GitHub through an agent proxy (ci-watch.mjs says why).
 function curl(curlArgs) {
@@ -131,6 +142,7 @@ function curl(curlArgs) {
     {
       encoding: "utf8",
       timeout: 30_000,
+      maxBuffer: MAX_BUFFER,
     }
   );
   const cut = out.lastIndexOf("\n");
