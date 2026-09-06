@@ -385,11 +385,7 @@ describe("a day zone that MOVES", () => {
       "2026-10-31T00:00:00Z",
       "2026-11-03T00:00:00Z"
     );
-    expect(segs.map((s) => s.modifier)).toEqual([
-      "-04:00",
-      "-05:00",
-      "+09:00",
-    ]);
+    expect(segs.map((s) => s.modifier)).toEqual(["-04:00", "-05:00", "+09:00"]);
     expect(segs[0].endUtc).toBe("2026-11-01T06:00:00Z");
     expect(segs[1].endUtc).toBe("2026-11-02T05:00:00Z");
   });
@@ -399,16 +395,46 @@ describe("a day zone that MOVES", () => {
   // is asserted below rather than read off the table.
   it.each([
     // Wholly before the move: an ordinary New York day.
-    ["westward, the day before", westward, "2026-08-19", "2026-08-19T04:00:00Z", "2026-08-20T04:00:00Z"],
+    [
+      "westward, the day before",
+      westward,
+      "2026-08-19",
+      "2026-08-19T04:00:00Z",
+      "2026-08-20T04:00:00Z",
+    ],
     // The switch day is 27 hours: it opens on New York's midnight and closes on Los
     // Angeles' next one, which is #3263's stated consequence, not a defect.
-    ["westward, the switch day", westward, "2026-08-20", "2026-08-20T04:00:00Z", "2026-08-21T07:00:00Z"],
+    [
+      "westward, the switch day",
+      westward,
+      "2026-08-20",
+      "2026-08-20T04:00:00Z",
+      "2026-08-21T07:00:00Z",
+    ],
     // Wholly after: an ordinary Los Angeles day.
-    ["westward, the day after", westward, "2026-08-21", "2026-08-21T07:00:00Z", "2026-08-22T07:00:00Z"],
+    [
+      "westward, the day after",
+      westward,
+      "2026-08-21",
+      "2026-08-21T07:00:00Z",
+      "2026-08-22T07:00:00Z",
+    ],
     // Eastward, the clock jumps from 21:30 to 00:30 — local midnight of the 21st is
     // never read, so the 21st begins at the seam and the 20th is cut short there.
-    ["eastward, the day it jumped out of", eastward, "2026-08-20", "2026-08-20T07:00:00Z", "2026-08-21T04:30:00Z"],
-    ["eastward, the day it jumped into", eastward, "2026-08-21", "2026-08-21T04:30:00Z", "2026-08-22T04:00:00Z"],
+    [
+      "eastward, the day it jumped out of",
+      eastward,
+      "2026-08-20",
+      "2026-08-20T07:00:00Z",
+      "2026-08-21T04:30:00Z",
+    ],
+    [
+      "eastward, the day it jumped into",
+      eastward,
+      "2026-08-21",
+      "2026-08-21T04:30:00Z",
+      "2026-08-22T04:00:00Z",
+    ],
   ])("%s", (_label, zone, day, startUtc, endUtc) => {
     expect(localDayRange(zone, day)).toEqual({ startUtc, endUtc });
   });
@@ -435,8 +461,16 @@ describe("a day zone that MOVES", () => {
   // a westward move sends the local clock BACKWARDS inside one ascending minute run.
   it.each([
     ["an hour before the move", "2026-08-21T01:00:00Z", "2026-08-20T21:00"],
-    ["the last stored minute before it", "2026-08-21T02:11:00Z", "2026-08-20T22:11"],
-    ["the first stored minute after it", "2026-08-21T02:12:00Z", "2026-08-20T19:12"],
+    [
+      "the last stored minute before it",
+      "2026-08-21T02:11:00Z",
+      "2026-08-20T22:11",
+    ],
+    [
+      "the first stored minute after it",
+      "2026-08-21T02:12:00Z",
+      "2026-08-20T19:12",
+    ],
     ["hours after the move", "2026-08-21T15:00:00Z", "2026-08-21T08:00"],
   ])("dates %s in the zone it was lived in", (_l, ts, minute) => {
     const project = localMinuteProjector(
