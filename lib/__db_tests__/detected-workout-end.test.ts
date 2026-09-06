@@ -544,6 +544,52 @@ describe("the sweep refuses what the third pass drove (#5212 R1, R2)", () => {
   });
 });
 
+describe("one unmeasured minute is not a shorter rest (#5212 fifth pass)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  // THE SAME PAIR OF EFFORTS, differing only in whether the HR minute 16:20 exists. The
+  // rest between them is exactly this profile's recovery, so the trace holds two
+  // efforts and the sweep must refuse. Measured from the first quiet SAMPLE, the missing
+  // minute read as a nine-minute rest, the efforts merged, and the sweep wrote
+  // `end_time 16:40, duration_min 40` — a forty-minute session that never happened —
+  // flipping presence to `finished`, which is what the post-workout dispatch reads and
+  // what takes the stale suggest's Finish away. The save stamp cannot cancel it: the
+  // person stopped saving when the real first effort ended, so it precedes the candidate.
+  function seedTwoEffortsRestingTheRecovery(
+    name: string,
+    dropTransition: boolean
+  ): { p: number; id: number } {
+    const p = newProfile(name);
+    seedRestingHr(p, 60);
+    seedRange(p, "16:00", "16:20", 140);
+    seedRange(p, dropTransition ? "16:21" : "16:20", "16:30", 55);
+    seedRange(p, "16:30", "16:40", 140);
+    seedRange(p, "16:40", "17:00", 55);
+    const id = seedOpenWorkout(p, "16:00", new Date("2026-07-17T16:30:00Z"));
+    return { p, id };
+  }
+
+  it.each([
+    ["contiguous", false],
+    ["with 16:20 unmeasured", true],
+  ])("refuses the pair %s, and the row stays live", (_, drop) => {
+    const { p, id } = seedTwoEffortsRestingTheRecovery(
+      `DetEndDrop${drop}`,
+      drop
+    );
+    // Read a few minutes past the closing quiet, where a written 16:40 end would read
+    // `finished` to the dispatch and an untouched row still reads `active`.
+    const sweepAt = new Date("2026-07-17T17:05:00Z");
+    expect(finishDetectedWorkouts(p)).toBe(0);
+    expect(rowOf(id).end_time).toBeNull();
+    expect(getWorkoutPresence(p, sweepAt).state).toBe("active");
+  });
+});
+
 describe("a cross-midnight finish is visible too (#5212 falsifying pass)", () => {
   beforeEach(() => {
     vi.useFakeTimers();

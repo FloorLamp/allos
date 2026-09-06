@@ -490,4 +490,52 @@ describe("detectedWorkoutEnd", () => {
       })
     ).toBeNull();
   });
+
+  // A DROPPED TRANSITION MINUTE IS NOT A SHORTER REST (#5212 fifth pass). The rest
+  // between two efforts begins when the elevation stops; measured from the first quiet
+  // SAMPLE instead, one unmeasured minute — the ordinary case the gap bound forgives —
+  // shortened a rest equal to this person's own recovery into one that was not, the two
+  // efforts read as one, and the answer walked onto the SECOND effort's end (+40 here).
+  // Every fixture above is contiguous by construction, which is why none could reach it.
+  /** Two efforts resting EXACTLY the no-history recovery apart: 0–19, 30–39. */
+  function twoEffortsRestingTheRecovery(
+    dropTransition: boolean
+  ): ExertionSample[] {
+    const out: ExertionSample[] = [];
+    minutes(out, 0, 20, 120);
+    minutes(out, dropTransition ? 21 : 20, 30, 55);
+    minutes(out, 30, 40, 120);
+    minutes(out, 40, 56, 55);
+    return out;
+  }
+  /** `count` one-minute efforts, each followed by an unmeasured minute and nine quiet. */
+  function manyEffortsEachDroppingAMinute(count: number): ExertionSample[] {
+    const out: ExertionSample[] = [];
+    for (let i = 0; i < count; i++) {
+      minutes(out, i * 11, i * 11 + 1, 120);
+      minutes(out, i * 11 + 2, i * 11 + 11, 55);
+    }
+    return minutes(out, count * 11, count * 11 + 10, 55);
+  }
+  it.each([
+    ["contiguous", twoEffortsRestingTheRecovery(false)],
+    [
+      "with the transition minute unmeasured",
+      twoEffortsRestingTheRecovery(true),
+    ],
+    [
+      "fifty-one times over, each dropping its transition minute",
+      manyEffortsEachDroppingAMinute(51),
+    ],
+  ])("refuses two efforts resting the recovery apart, %s", (_, samples) => {
+    expect(
+      detectedWorkoutEnd({
+        ...BASE,
+        usualRecoveryMin: null,
+        samples,
+        startedAt: at(0),
+        lastSetAt: null,
+      })
+    ).toBeNull();
+  });
 });

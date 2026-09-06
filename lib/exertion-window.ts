@@ -252,7 +252,11 @@ export function detectedWorkoutEnd(input: {
   //    trace with two of them does not say which one this row was. Refusing is the whole
   //    of the simplification: every attempt to pick one was a mechanism with a
   //    neighbouring case that picked wrong.
+  //    The rest is measured from the minute the elevation STOPPED, not from the first
+  //    quiet minute somebody measured after it: an unmeasured transition minute — the
+  //    ordinary case the gap bound forgives — must not read as a shorter rest.
   let previous = samples[0].at;
+  let lastElevatedEnd = samples[0].at + MINUTE_MS;
   let quietFrom: number | null = null;
   for (const sample of samples) {
     const separated =
@@ -261,7 +265,8 @@ export function detectedWorkoutEnd(input: {
     if (sample.bpm > input.ceilingBpm) {
       if (separated) return null;
       quietFrom = null;
-    } else if (quietFrom == null) quietFrom = sample.at;
+      lastElevatedEnd = sample.at + MINUTE_MS;
+    } else if (quietFrom == null) quietFrom = lastElevatedEnd;
     previous = sample.at;
   }
 

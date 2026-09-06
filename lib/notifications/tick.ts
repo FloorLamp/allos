@@ -741,6 +741,7 @@ export async function tickProfile(
       profile: profileId,
       err: e instanceof Error ? e : String(e),
     });
+    anyFailed = true;
   }
 
   // Finish-triggered post-workout dose reminder (#921): the moment a session

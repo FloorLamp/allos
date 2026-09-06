@@ -53,4 +53,16 @@ describe("the notify tick's retention sweeps (#1843)", () => {
     expect(block).toMatch(/session sweep failed/);
     expect(block).not.toMatch(/anyFailed/);
   });
+
+  it("does not extend that exception to the detected-workout sweep, which writes user data", () => {
+    // The exception above is pinned WITH its reason, so an omitted `anyFailed` anywhere
+    // else is an oversight rather than a choice. `finishDetectedWorkouts` stamps workout
+    // ends; swallowing its failure left the tick exiting 0 forever on a sweep that had
+    // stopped writing (#5212 fifth pass).
+    const start = TICK.indexOf("  try {\n    finishDetectedWorkouts(");
+    expect(start).toBeGreaterThan(-1);
+    const block = TICK.slice(start, TICK.indexOf("\n\n", start));
+    expect(block).toMatch(/catch \(e\)/);
+    expect(block).toMatch(/anyFailed = true/);
+  });
 });
