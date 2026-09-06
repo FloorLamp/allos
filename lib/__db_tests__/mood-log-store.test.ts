@@ -243,6 +243,106 @@ describe("offline replay — the mood flow (#28/#992)", () => {
     expect(getMoodLogs(p)).toHaveLength(1);
   });
 
+  // THE COLD OFFLINE OPEN (#3416) — the regression, at the tier where the loss would
+  // actually happen. The sheet opened with no connection builds the mood form from
+  // the device's own day and queue, so a day the person filled in this morning on
+  // another device opens EMPTY here; a one-tap face over it replays a payload of
+  // nulls onto a real check-in. The write core takes the form's own statement of
+  // what it could see and merges instead of replacing.
+  it("a check-in queued from a cold offline open cannot erase the day it never saw", () => {
+    const p = newProfile("mood-replay-blind");
+    // The morning, on another device: the whole statement, note and all.
+    upsertMoodLog(p, "2026-07-11", {
+      valence: 2,
+      energy: 1,
+      anxiety: 5,
+      factors: ["work", "social"],
+      note: "Rough night, back pain all day.",
+    });
+
+    // The evening, offline: the sheet shows nothing for that day and the person taps
+    // a better face. Only `valence` is an answer; every other field is unknown.
+    const intent = buildIntent(
+      "mood",
+      "2026-07-11",
+      {
+        valence: 4,
+        energy: null,
+        anxiety: null,
+        factors: [],
+        note: null,
+        dayUnseen: true,
+      },
+      p
+    );
+    expect(applyIntent(p, intent)).toEqual({ status: "done" });
+
+    expect(getMoodOnDate(p, "2026-07-11")).toMatchObject({
+      // The tap landed…
+      valence: 4,
+      // …and nothing the person set and the device never saw is gone.
+      energy: 1,
+      anxiety: 5,
+      factors: ["work", "social"],
+      notes: "Rough night, back pain all day.",
+    });
+    expect(getMoodLogs(p)).toHaveLength(1);
+  });
+
+  // THE CONTROL for the test above: the same payload from a form that DID see the day
+  // still replaces it. Merging is what the cold open buys, not a new rule for every
+  // check-in — a person who clears the note on a form showing them the note has
+  // cleared it.
+  it("the same payload from a form that saw the day still replaces it", () => {
+    const p = newProfile("mood-replay-sighted");
+    upsertMoodLog(p, "2026-07-11", {
+      valence: 2,
+      energy: 1,
+      anxiety: 5,
+      factors: ["work", "social"],
+      note: "Rough night, back pain all day.",
+    });
+    const intent = buildIntent(
+      "mood",
+      "2026-07-11",
+      { valence: 4, energy: null, anxiety: null, factors: [], note: null },
+      p
+    );
+    expect(applyIntent(p, intent)).toEqual({ status: "done" });
+    expect(getMoodOnDate(p, "2026-07-11")).toMatchObject({
+      valence: 4,
+      energy: null,
+      anxiety: null,
+      factors: [],
+      notes: null,
+    });
+  });
+
+  // A blind check-in on a day with NO row is an ordinary insert: there is nothing to
+  // merge with, and the merge must not turn an absent day into a refusal.
+  it("a blind check-in on an untouched day inserts normally", () => {
+    const p = newProfile("mood-replay-blind-new");
+    const intent = buildIntent(
+      "mood",
+      "2026-07-12",
+      {
+        valence: 3,
+        energy: null,
+        anxiety: null,
+        factors: [],
+        note: null,
+        dayUnseen: true,
+      },
+      p
+    );
+    expect(applyIntent(p, intent)).toEqual({ status: "done" });
+    expect(getMoodOnDate(p, "2026-07-12")).toMatchObject({
+      valence: 3,
+      energy: null,
+      notes: null,
+    });
+  });
+
   it("rejects a permanently-invalid mood payload (no key recorded)", () => {
     const p = newProfile("mood-replay-bad");
     const intent = buildIntent(

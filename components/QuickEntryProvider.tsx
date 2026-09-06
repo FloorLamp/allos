@@ -433,10 +433,15 @@ export default function QuickEntryProvider({
             ? {
                 status: "ready",
                 data: copy.data,
+                // WHAT THE COPY SAYS ABOUT ITSELF comes WITH the copy
+                // (lib/offline/quick-entry-read.ts), where each form's omissions are
+                // argued: the dose copy holds one day and says so, and a copy built
+                // from the device's own knowledge has no capture instant to date, so
+                // its sentence is the whole line rather than the `why` half.
                 asOf:
                   copy.fetchedAt == null
-                    ? "Offline — showing only what's queued on this device."
-                    : asOfCopy(copy.fetchedAt, "this device's offline copy."),
+                    ? copy.says
+                    : asOfCopy(copy.fetchedAt, copy.says),
               }
             : { status: "error" }
         );
@@ -850,6 +855,10 @@ function QuickEntryBody({
         <MoodForm
           days={data.days}
           showCalm={data.showCalm}
+          // Set only by the cold offline open (#3416): those days carry what this
+          // device queued itself and nothing the server holds, so the check-in the
+          // form writes must not erase what it could not show.
+          dayUnseen={data.dayUnseen}
           onDone={onDone}
           subjectProfileId={subjectProfileId}
         />

@@ -1,5 +1,6 @@
 import {
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -50,8 +51,16 @@ vi.mock("@/components/quick-entry/QuickDoseList", () => ({
   ),
 }));
 vi.mock("@/components/mood/MoodForm", () => ({
-  default: ({ days }: { days: { date: string }[] }) => (
-    <div data-testid="stub-mood">{days.map((d) => d.date).join(",")}</div>
+  default: ({
+    days,
+    dayUnseen,
+  }: {
+    days: { date: string }[];
+    dayUnseen?: boolean;
+  }) => (
+    <div data-testid="stub-mood" data-day-unseen={String(dayUnseen ?? false)}>
+      {days.map((d) => d.date).join(",")}
+    </div>
   ),
 }));
 const upload = vi.hoisted(() => ({ failing: false }));
@@ -326,8 +335,10 @@ describe("a cold failure falls back to the device's own copy (#3416 proposal 2)"
       open("dose");
       if (verdict === "renders") {
         expect((await screen.findByTestId("stub-dose")).textContent).toBe("41");
+        // The line names the ONE day the copy holds and why there is no way back to
+        // the others — the switcher is not offered, so the absence is said out loud.
         expect(screen.getByTestId("quick-entry-asof").textContent).toMatch(
-          /^As of .* — this device's offline copy\.$/
+          /^As of .* — this device's copy of today\. Earlier days need a connection\.$/
         );
       } else {
         // Not a stale form: the copy is for a day the sheet is not standing on.
@@ -335,6 +346,30 @@ describe("a cold failure falls back to the device's own copy (#3416 proposal 2)"
       }
     }
   );
+
+  // THE FENCE REACHES THE FORM (#3416). A cold open's mood days carry only what this
+  // device queued itself, so the form must know it may not treat what it cannot show
+  // as an answer; a gathered one saw the day and carries no such claim.
+  it("the mood form built from the device is told its days were not read", async () => {
+    loadQuickEntry.mockRejectedValueOnce(new Error("offline"));
+    renderSheet();
+    open("mood");
+    expect(
+      (await screen.findByTestId("stub-mood")).getAttribute("data-day-unseen")
+    ).toBe("true");
+
+    cleanup();
+    loadQuickEntry.mockResolvedValueOnce({
+      form: "mood" as const,
+      days: [{ date: today(), label: "Today", mood: null }],
+      showCalm: false,
+    });
+    renderSheet();
+    open("mood");
+    expect(
+      (await screen.findByTestId("stub-mood")).getAttribute("data-day-unseen")
+    ).toBe("false");
+  });
 
   it("stool opens from what the device knows — its day and its own queued taps — and says so", async () => {
     allIntents.mockResolvedValue([

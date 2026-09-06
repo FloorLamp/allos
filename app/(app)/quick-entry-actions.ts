@@ -230,6 +230,12 @@ export type QuickEntryData =
         } | null;
       }[];
       showCalm: boolean;
+      // THE DAYS ABOVE COULD NOT BE READ (#3416). Never set by this gather — it reads
+      // the stored check-ins — and always set by the cold offline open, which builds
+      // the same shape from the device's own day and queue and so shows nothing for a
+      // day the person filled in elsewhere. It rides to `upsertMoodLog` so a one-tap
+      // check-in composed blind merges rather than replacing that day's row.
+      dayUnseen?: true;
     }
   | {
       // The well-day symptom bar (#4064) — the SAME props the dashboard's own mount

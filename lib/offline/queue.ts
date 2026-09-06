@@ -305,6 +305,16 @@ export interface MoodPayload {
   anxiety: number | null;
   factors: string[];
   note: string | null;
+  // WHAT THE FORM COULD SEE (#3416). Set only by the quick logger's COLD OFFLINE
+  // OPEN, where the sheet builds the mood form from the device's own day and queue
+  // and therefore cannot show a check-in the server already holds for that day. A
+  // null in this payload then means "not asked on this device", not "the person
+  // answered nothing" — so the replay merges it instead of replacing the row
+  // (`MoodWriteSight` in lib/offline/writes.ts). OPTIONAL for the same
+  // backward-compatibility reason the measurement markers above are: an intent
+  // queued before this shipped came from a form that DID see the day, and absent
+  // must keep meaning "this is the day's whole answer".
+  dayUnseen?: true;
 }
 
 // Workout session logged entirely offline (#1596, landing #28's "add set"). The

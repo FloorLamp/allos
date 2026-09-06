@@ -130,6 +130,12 @@ export interface OfflineQuickEntry {
   // built from the device's own knowledge (its day and its queue) rather than from a
   // stored server read.
   readonly fetchedAt: string | null;
+  // WHAT THE SHEET SAYS ABOUT THIS COPY, written here beside the payload it describes
+  // — where each omission is argued — rather than as one sentence at the host for all
+  // four forms. With a `fetchedAt` it is the `why` half of the #2908 as-of line
+  // ("As of 5 minutes ago — …"); without one it is the whole line, because a copy
+  // built from the device's own knowledge has no capture instant to date.
+  readonly says: string;
 }
 
 // The stored snapshot of `kind` that may stand in for the sheet's context, or null.
@@ -154,6 +160,11 @@ function servingSnapshot<
   }
   return null;
 }
+
+// The whole as-of line for the two forms built from the device's OWN knowledge rather
+// than a stored server read (mood, stool): there is no capture instant to date, and
+// what bounds them is not age but reach — this device's day and its own queued taps.
+const DEVICE_ONLY_LINE = "Offline — showing only what's queued on this device.";
 
 /**
  * What the sheet can render for `form` with no server, or null when the honest
@@ -184,6 +195,7 @@ export function quickEntryOffline(
         parts.profileId
       ).entries.filter((e) => e.status === "pending");
       return {
+        says: "this device's copy of today. Earlier days need a connection.",
         fetchedAt: env.fetchedAt,
         data:
           pending.length === 0
@@ -209,8 +221,10 @@ export function quickEntryOffline(
                 // snapshot holds exactly ONE day: this one. A pill for yesterday over a
                 // day this device has no rows for would open onto an empty list, which
                 // reads as "nothing was due then" — the misreading the online payload's
-                // own comment refuses. The as-of line above says what this is: the
-                // device's copy of today.
+                // own comment refuses. So the day switcher is not offered AND the
+                // absence is said out loud on the as-of line below, because someone
+                // who opened the sheet to log yesterday's forgotten dose otherwise
+                // finds no way back and no reason why.
                 pastDays: [],
               },
       };
@@ -238,6 +252,7 @@ export function quickEntryOffline(
         liveSession: null,
       }));
       return {
+        says: "this device's offline copy.",
         fetchedAt: env.fetchedAt,
         data: { form: "practice", today: parts.day, practices },
       };
@@ -279,23 +294,30 @@ export function quickEntryOffline(
       // rating keeps the row; with nothing queued the sheet cannot tell, and shows the
       // form a profile that never used the scale sees.
       //
-      // WHAT A CHECK-IN QUEUED FROM A COLD OFFLINE OPEN OMITS, said plainly because it
-      // lands on a WRITE. This copy knows only this device's own queued taps, so any
-      // rating the SERVER holds for one of these days is unknown here and the form
-      // opens empty for it. A null in the queued payload therefore means "not asked on
-      // this device", not "the person answered nothing" — and `upsertMoodLog` is
-      // last-write-wins per day, so a replayed check-in lands as that day's answer.
-      // The days this can reach are the #2128 backfill window and the exposure is
-      // recorded on #3416 with its reproduction; nothing here may treat a null as an
-      // answer.
       const showCalm = mine.some(
         (i) => i.flow === "mood" && (i.payload as MoodPayload).anxiety != null
       );
-      return { fetchedAt: null, data: { form: "mood", days, showCalm } };
+      // `dayUnseen` IS THE FENCE ON THE WRITE, and it is the same sentence as the Calm
+      // row above one step further on. This copy knows only this device's own queued
+      // taps, so a rating the SERVER holds for one of these days is unknown here and
+      // the form opens empty for it — which would be harmless if a check-in only ever
+      // added. It does not: `upsertMoodLog` replaces the day's row, so a one-tap face
+      // over a day someone wrote a paragraph about this morning would replay a null
+      // energy, a null Calm, no factors and no note over it. A null here means "not
+      // asked on this device", never a person's answer, and the flag is how the form
+      // says that to both write paths: carried on the queued payload and posted with
+      // the online one, it makes the write MERGE — landing what it carries and
+      // touching nothing it does not (`MoodWriteSight`, lib/offline/writes.ts).
+      return {
+        says: DEVICE_ONLY_LINE,
+        fetchedAt: null,
+        data: { form: "mood", days, showCalm, dayUnseen: true },
+      };
     }
     case "stool": {
       if (parts.profileId !== actingProfileId) return null;
       return {
+        says: DEVICE_ONLY_LINE,
         fetchedAt: null,
         data: {
           form: "stool",

@@ -88,6 +88,7 @@ function ScaleRow({
 export default function MoodForm({
   days,
   showCalm,
+  dayUnseen = false,
   subjectProfileId,
   dateReach = "tap",
   mode = "quick",
@@ -98,6 +99,13 @@ export default function MoodForm({
 }: {
   days: readonly MoodFormDay[];
   showCalm: boolean;
+  // `days` COULD NOT BE READ from the server (#3416) — the quick logger's cold
+  // offline open, whose days carry only what this device queued itself. A day the
+  // person filled in elsewhere opens empty here, so what this form does not carry is
+  // UNKNOWN rather than cleared, and both write paths say so: the write core merges
+  // instead of replacing the day's row. Every other mount pre-fills from the stored
+  // check-in and leaves this false.
+  dayUnseen?: boolean;
   subjectProfileId?: number;
   dateReach?: "tap" | "dated";
   mode?: "quick" | "edit";
@@ -188,6 +196,7 @@ export default function MoodForm({
     if (next.anxiety != null) fd.set("anxiety", String(next.anxiety));
     for (const factor of next.factors) fd.append("factors", factor);
     if (next.notes) fd.set("note", next.notes);
+    if (dayUnseen) fd.set("day_unseen", "1");
     if (subjectProfileId != null)
       fd.set("profile_id", String(subjectProfileId));
     fd.set("date_reach", dateReach);
@@ -219,6 +228,7 @@ export default function MoodForm({
         anxiety: next.anxiety,
         factors: next.factors,
         note: next.notes,
+        ...(dayUnseen ? { dayUnseen: true as const } : {}),
       });
     } catch {
       outcome = "failed";

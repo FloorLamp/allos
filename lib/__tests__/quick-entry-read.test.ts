@@ -161,6 +161,9 @@ describe("the device's own copy of a form", () => {
       ]
     );
     expect(copy).toEqual({
+      // The copy holds one day, offers no day switcher, AND says so — the omission is
+      // on the surface, not only in a comment.
+      says: "this device's copy of today. Earlier days need a connection.",
       fetchedAt: `${TODAY}T14:00:00Z`,
       data: {
         form: "dose",
@@ -243,10 +246,14 @@ describe("the device's own copy of a form", () => {
       ]
     );
     expect(copy).toEqual({
+      says: "Offline — showing only what's queued on this device.",
       fetchedAt: null,
       data: {
         form: "mood",
         showCalm: false,
+        // The days carry only this device's own taps, so the check-in this form
+        // writes may not erase what it could not show.
+        dayUnseen: true,
         days: [
           { date: TODAY, label: "Today", mood: null },
           {
@@ -291,6 +298,29 @@ describe("the device's own copy of a form", () => {
     expect(copy?.data).toMatchObject({ form: "mood", showCalm });
   });
 
+  // THE FENCE ON THE WRITE (#3416): the mood copy always declares that its days were
+  // not read from the server, so the check-in it composes merges instead of replacing
+  // the day's row. It holds with a queued check-in on the day and without one —
+  // neither says anything about what the SERVER holds for that day.
+  it.each([
+    ["with nothing queued", [] as QueuedIntent[]],
+    [
+      "with a check-in this device queued itself",
+      [
+        intent("mood", TODAY, {
+          valence: 4,
+          energy: 2,
+          anxiety: null,
+          factors: [],
+          note: "queued here",
+        }),
+      ],
+    ],
+  ])("mood: the copy declares its days unseen %s", (_name, intents) => {
+    const copy = quickEntryOffline("mood", parts, ACTING, [], intents);
+    expect(copy?.data).toMatchObject({ form: "mood", dayUnseen: true });
+  });
+
   it("mood: another profile's queued Calm rating never turns the row on", () => {
     const copy = quickEntryOffline(
       "mood",
@@ -323,6 +353,7 @@ describe("the device's own copy of a form", () => {
       ]
     );
     expect(copy).toEqual({
+      says: "Offline — showing only what's queued on this device.",
       fetchedAt: null,
       data: { form: "stool", today: TODAY, todayCount: 2 },
     });

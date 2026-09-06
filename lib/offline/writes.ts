@@ -881,6 +881,61 @@ export const logBristolStoolDeclares = STOOL_MOVEMENT_LOG;
 
 // ── mood check-in (issue #992) ──────────────────────────────────────────────────
 
+// WHAT A CHECK-IN'S AUTHOR COULD SEE (#3416), and why one write core has two upserts.
+//
+// A check-in replaces the day's row, and that is right for every form that composes
+// one WITH THE DAY'S CURRENT ANSWER ALREADY IN IT: the dashboard card, the history
+// editor and the quick sheet all pre-fill from the stored row, so a null they send is
+// a field the person looked at and left empty. Last-write-wins is safe there because
+// the last writer saw what it was replacing.
+//
+// The quick logger's COLD OFFLINE OPEN is the first form in the app that cannot see
+// it. With no connection the sheet builds the mood form from what the device itself
+// holds — the day and its own queued taps — so a day the person filled in this
+// morning on another device opens EMPTY, and a one-tap face over it would replay a
+// null energy, a null Calm, no factors and no note onto a paragraph nobody meant to
+// delete. A null there means "not asked on this device", which is not an answer.
+//
+// So the caller states which of the two it is, and a payload composed blind MERGES:
+// it lands what it carries and leaves untouched every field it does not. It cannot
+// clear a field — clearing needs a form that showed you what you were clearing.
+export type MoodWriteSight =
+  // The payload is the day's whole answer; every field it carries, including its
+  // nulls, replaces what is there. The default, and what every path but one passes.
+  | "saw-the-day"
+  // The payload was composed without the day's stored row in view. Absent is UNKNOWN,
+  // never an erasure.
+  | "day-unseen";
+
+// TWO LITERAL STATEMENTS rather than one built from a flag — the same rule
+// `moodRatingUpdate` states below: the profile-scoping scanner reads the literal
+// prepare() text, and SQL assembled around a condition is unreadable to it.
+function moodUpsert(sight: MoodWriteSight) {
+  return sight === "day-unseen"
+    ? db.prepare(
+        `INSERT INTO mood_logs (profile_id, date, valence, energy, anxiety, factors, notes)
+         VALUES (?,?,?,?,?,?,?)
+         ON CONFLICT(profile_id, date) DO UPDATE SET
+           valence = excluded.valence,
+           energy = COALESCE(excluded.energy, mood_logs.energy),
+           anxiety = COALESCE(excluded.anxiety, mood_logs.anxiety),
+           factors = COALESCE(excluded.factors, mood_logs.factors),
+           notes = COALESCE(excluded.notes, mood_logs.notes),
+           updated_at = datetime('now')`
+      )
+    : db.prepare(
+        `INSERT INTO mood_logs (profile_id, date, valence, energy, anxiety, factors, notes)
+         VALUES (?,?,?,?,?,?,?)
+         ON CONFLICT(profile_id, date) DO UPDATE SET
+           valence = excluded.valence,
+           energy = excluded.energy,
+           anxiety = excluded.anxiety,
+           factors = excluded.factors,
+           notes = excluded.notes,
+           updated_at = datetime('now')`
+      );
+}
+
 // Persist one daily wellbeing check-in — the SINGLE write core shared by the
 // dashboard card's server action, the offline replay, and the Telegram check-in
 // button, all running the same pure normalizeMoodInput guard. IDEMPOTENT PER DAY:
@@ -908,7 +963,11 @@ export function upsertMoodLog(
     anxiety?: unknown;
     factors?: unknown;
     note?: unknown;
-  }
+  },
+  // WHAT THE FORM COULD SEE WHEN IT COMPOSED `raw` — the caller's own answer, never
+  // inferred here. The default is what every path but the cold offline open passes,
+  // and it is the write this core has always made. See `MoodWriteSight`.
+  sight: MoodWriteSight = "saw-the-day"
 ): boolean {
   // The shared date invariant (#4425). The CHIP tap's ±2 reach lives in `TAP_REACH`
   // where the offer is; the core takes any real past day, which is also what lets the
@@ -917,17 +976,7 @@ export function upsertMoodLog(
   if (!isPastWriteAccepted(today(profileId), date)) return false;
   const normalized = normalizeMoodInput(raw);
   if ("error" in normalized) return false;
-  db.prepare(
-    `INSERT INTO mood_logs (profile_id, date, valence, energy, anxiety, factors, notes)
-     VALUES (?,?,?,?,?,?,?)
-     ON CONFLICT(profile_id, date) DO UPDATE SET
-       valence = excluded.valence,
-       energy = excluded.energy,
-       anxiety = excluded.anxiety,
-       factors = excluded.factors,
-       notes = excluded.notes,
-       updated_at = datetime('now')`
-  ).run(
+  moodUpsert(sight).run(
     profileId,
     date,
     normalized.valence,
@@ -1371,13 +1420,23 @@ export function applyIntent(
       if (applied.wrote) timeNotice = applied.statedTimeRefused;
     } else if (intent.flow === "mood") {
       const p = intent.payload as MoodPayload;
-      ok = upsertMoodLog(profileId, intent.date, {
-        valence: p.valence,
-        energy: p.energy,
-        anxiety: p.anxiety,
-        factors: p.factors,
-        note: p.note,
-      });
+      ok = upsertMoodLog(
+        profileId,
+        intent.date,
+        {
+          valence: p.valence,
+          energy: p.energy,
+          anxiety: p.anxiety,
+          factors: p.factors,
+          note: p.note,
+        },
+        // The capture says what its form could see (#3416). A check-in composed on a
+        // cold offline open never saw the day's stored row, so its nulls are unknowns
+        // and this replay merges rather than replacing. An intent queued before the
+        // flag existed carries a form that DID see the day — absent keeps its old
+        // meaning, exactly as it does for the measurement markers above.
+        p.dayUnseen ? "day-unseen" : "saw-the-day"
+      );
     } else if (intent.flow === "stool") {
       const p = intent.payload as StoolPayload;
       const applied = logBristolStool(
