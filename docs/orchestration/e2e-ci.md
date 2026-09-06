@@ -18,21 +18,14 @@
 
 ## The first round in a new worktree
 
-- A fresh worktree has no `.next`, and compiling one costs ~200 s before a single
-  browser assertion (#2605). `ensureBuild` now takes an identical build from a
-  sibling worktree instead: measured 199 s → 1.7 s, first round 242 s → 55 s.
-- It is automatic, with no dispatch step to add: at worktree-creation time no
-  sibling has built either, so the first cluster of a wave builds and the rest
-  inherit it.
-- The licence is a content fingerprint over the build inputs
-  (`e2e/build-inputs.mjs`), never a commit and never an mtime. Commit equality is
-  neither necessary nor sufficient — see `docs/internals/e2e-hygiene.md`.
-- A refusal is normal and always NAMED, one line per candidate. Refusals are the
-  measure of this working; rounds-per-hour is the measure that cannot see it going
-  wrong. `E2E_NO_SEED=1` opts out.
-- `node scripts/orchestration/seed-next-build.mjs` does the same by hand (exit 3 =
-  refused), and its `record` subcommand tags a `.next` that `npm run build` made
-  outside the harness so other worktrees can take it.
+- The first run automatically reuses an identical production build from a
+  sibling worktree, or builds locally if none matches (#2605).
+- Reuse requires a content fingerprint of `e2e/build-inputs.mjs` inputs;
+  matching commits or mtimes are insufficient. See `e2e-hygiene.md`.
+- Refusals name each candidate and reason. `E2E_NO_SEED=1` disables reuse.
+- `node scripts/orchestration/seed-next-build.mjs` attempts reuse manually
+  (exit 3 = refused). Its `record` subcommand tags a build made by
+  `npm run build` so other worktrees can reuse it.
 
 ## Merge bar
 
