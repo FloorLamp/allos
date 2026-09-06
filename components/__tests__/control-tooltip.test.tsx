@@ -272,10 +272,7 @@ function renderForm() {
       onAddSet={vi.fn()}
       onRemoveSet={vi.fn()}
       onUpdatePartName={vi.fn()}
-      onApplySuggestion={vi.fn()}
-      onApplyPerSideSuggestion={vi.fn()}
-      onFillFromSession={vi.fn()}
-      onPlateFromSuggestion={vi.fn()}
+      onFill={vi.fn()}
       onPlateTarget={vi.fn()}
     />
   );

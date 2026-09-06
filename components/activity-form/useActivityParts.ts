@@ -3,7 +3,6 @@ import type { Dispatch, SetStateAction } from "react";
 import type { Equipment } from "@/lib/types";
 import type { UnitPrefs } from "@/lib/settings";
 import type { ExerciseHistoryMap } from "@/lib/queries";
-import { type NextSet } from "@/lib/coaching";
 import {
   isUnilateral,
   variantOf,
@@ -11,7 +10,6 @@ import {
   exerciseHistoryKey,
 } from "@/lib/lifts";
 import { inferFreeTextType, titleCase } from "@/lib/activity-meta";
-import { dispWeight } from "@/lib/units";
 import {
   type ActivityEditData,
   type PartEntry,
@@ -35,6 +33,22 @@ export interface PlateTarget {
   field: "weight" | "weightRight";
   seed?: number;
 }
+
+// What a fill puts into a part's sets, and the only two shapes that exist (#5377).
+// Both arms hand over the SAME stored set shape `repeatSessionFill` maps — canonical
+// kilograms in, display units out — so no fill path can round differently from
+// another. The tag is what the source IS, and it answers the questions each writer
+// used to answer for itself: where the values land, and what a fill may change
+// besides the numbers.
+export type SetFill =
+  // A whole prior workout (#923). It IS the (pristine) part's sets, and the part's
+  // side-tracking follows the source exactly as that session was logged.
+  | { source: "session"; sets: RepeatSourceSet[] }
+  // One coached set (#335), bilateral or per-side. It lands on the last row while
+  // that row is still untouched, else as a new set; it never changes side-tracking
+  // (a side with no history must not un-track the other); and it carries the
+  // declared rep target the scheme states, or null for a heuristic suggestion.
+  | { source: "coached"; set: RepeatSourceSet; targetReps: number | null };
 
 // The ActivityForm parts/sets state machine (#1207 extraction). Owns the `parts`
 // list and the plate-builder target, plus every mutation the form performs on them:
@@ -82,14 +96,7 @@ export function useActivityParts({
   removeSet: (pi: number, si: number) => void;
   removePart: (i: number) => void;
   addPart: () => void;
-  applySuggestion: (pi: number, ns: NextSet) => void;
-  fillFromSession: (pi: number, sessionSets: RepeatSourceSet[]) => void;
-  applyPerSideSuggestion: (
-    pi: number,
-    left: NextSet | null,
-    right: NextSet | null
-  ) => void;
-  plateFromSuggestion: (pi: number, weightKg: number) => void;
+  fillSets: (pi: number, fill: SetFill) => void;
   applyPlateBuild: (total: number, barId: number | null) => void;
 } {
   const [parts, setParts] = useState<PartEntry[]>(() =>
@@ -286,109 +293,66 @@ export function useActivityParts({
   function addPart() {
     setParts((prev) => [...prev, blankPart()]);
   }
-  // Fill in the suggested next set: into the last set row if it's still
-  // untouched, else as a new set. The canonical-kg suggestion is entered in the
-  // user's unit (for lb users it's already snapped to a loadable multiple of
-  // 5 lb, so this round-trips exactly). When the suggestion progresses a
-  // declared rep target, adopt it as the exercise's intent — unless the user
-  // already set one — so the scheme carries into the next session too.
-  // Bilateral parts only: the single suggested value seeds from the STRONGER
-  // side of a per-side lift, so filling both sides would over-load the weaker
-  // one (the card hides its Use button for per-side parts).
-  function applySuggestion(pi: number, ns: NextSet) {
-    const p = parts[pi];
-    const weight = ns.bodyweight
-      ? ""
-      : String(dispWeight(ns.weightKg, units.weightUnit, 1));
-    const reps = String(ns.reps);
-    const patch: Partial<SetEntry> = { weight, reps };
-    const li = p.sets.length - 1;
-    const last = p.sets[li];
-    const untouched =
-      !!last &&
-      !setComplete(p.name, last, p.perSide) &&
-      !setPartial(p.name, last, p.perSide);
-    if (untouched) updateSet(pi, li, patch);
-    else
-      setParts((prev) =>
-        prev.map((part, idx) =>
-          idx === pi
-            ? { ...part, sets: [...part.sets, { ...blankSet(), ...patch }] }
-            : part
-        )
-      );
-    if (
-      ns.targetReps != null &&
-      partIntent(p).applies &&
-      !p.targetReps.trim() &&
-      !p.toFailure
-    )
-      updatePart(pi, { targetReps: String(ns.targetReps) });
-  }
-  // "Repeat last session" fill (#923): replace the (pristine) part's sets with a literal
-  // repeat of a prior session — weights/reps/holds, warmup flags (#338) and per-side
-  // values (#335) mapped through the pure repeatSessionFill. Explicit user action fills a
-  // form the user then edits/saves (never an auto-write), gated on partUntouched in the
-  // set editor so it can't clobber in-progress entry. `perSide` follows the source
-  // session so a per-side repeat tracks sides exactly as it was logged.
-  function fillFromSession(pi: number, sessionSets: RepeatSourceSet[]) {
-    const { sets, perSide } = repeatSessionFill(sessionSets, units.weightUnit);
-    if (sets.length === 0) return;
-    setParts((prev) =>
-      prev.map((part, idx) => (idx === pi ? { ...part, sets, perSide } : part))
+  // THE ONE WRITER for every path that puts values into a part's sets (#5377): the
+  // coached next set, its per-side pair, and the "repeat last session" repeat. What
+  // the values ARE is the caller's (a `SetFill`, above); WHERE they land and what
+  // else may move is this function's, once, instead of restated per path.
+  //
+  // A session repeat replaces the part's sets outright and adopts the source's
+  // side-tracking — the explicit gesture is gated on a pristine part in the set
+  // editor, so it can never clobber entry in progress (#923).
+  //
+  // A coached set fills the last row while that row is still UNTOUCHED (nothing
+  // counted, nothing half-entered), else arrives as a new set. It leaves the landing
+  // row's warmup flag and RPE alone: those are what the person said about the row,
+  // not what the suggestion says about the load. When the suggestion progresses a
+  // declared rep target, adopt it as the exercise's intent — unless the user already
+  // set one — so the scheme carries into the next session too.
+  function fillSets(pi: number, fill: SetFill) {
+    const { sets, perSide } = repeatSessionFill(
+      fill.source === "session" ? fill.sets : [fill.set],
+      units.weightUnit
     );
-  }
-  // Fill the suggested next set for a per-side lift (#335): each side is seeded
-  // from its OWN progression (left off left history, right off right), so the
-  // weaker side is never loaded off the stronger one. Into the untouched last
-  // row if still blank, else as a new set — mirroring applySuggestion.
-  function applyPerSideSuggestion(
-    pi: number,
-    left: NextSet | null,
-    right: NextSet | null
-  ) {
-    const p = parts[pi];
-    const patch: Partial<SetEntry> = {};
-    if (left) {
-      patch.weight = left.bodyweight
-        ? ""
-        : String(dispWeight(left.weightKg, units.weightUnit, 1));
-      patch.reps = String(left.reps);
-    }
-    if (right) {
-      patch.weightRight = right.bodyweight
-        ? ""
-        : String(dispWeight(right.weightKg, units.weightUnit, 1));
-      patch.repsRight = String(right.reps);
-    }
-    const li = p.sets.length - 1;
-    const last = p.sets[li];
-    const untouched =
-      !!last &&
-      !setComplete(p.name, last, p.perSide) &&
-      !setPartial(p.name, last, p.perSide);
-    if (untouched) updateSet(pi, li, patch);
-    else
+    const [values] = sets;
+    if (!values) return;
+    if (fill.source === "session") {
       setParts((prev) =>
         prev.map((part, idx) =>
-          idx === pi
-            ? { ...part, sets: [...part.sets, { ...blankSet(), ...patch }] }
-            : part
+          idx === pi ? { ...part, sets, perSide } : part
         )
       );
-  }
-  // Suggestion → plate-builder deep link (#335): open the builder seeded with the
-  // suggested load (converted to the display unit) targeting set 1's weight, so a
-  // barbell lifter goes straight from "add 2.5 kg" to a loaded bar.
-  function plateFromSuggestion(pi: number, weightKg: number) {
-    const p = parts[pi];
-    const si = Math.max(0, p.sets.length - 1);
-    setPlateTarget({
-      pi,
-      si,
-      field: "weight",
-      seed: dispWeight(weightKg, units.weightUnit, 1),
-    });
+      return;
+    }
+    const { targetReps } = fill;
+    setParts((prev) =>
+      prev.map((part, idx) => {
+        if (idx !== pi) return part;
+        const li = part.sets.length - 1;
+        const last = part.sets[li];
+        const untouched =
+          !!last &&
+          !setComplete(part.name, last, part.perSide) &&
+          !setPartial(part.name, last, part.perSide);
+        const land = (row: SetEntry): SetEntry => ({
+          ...values,
+          warmup: row.warmup,
+          rpe: row.rpe,
+        });
+        return {
+          ...part,
+          sets: untouched
+            ? part.sets.map((s, j) => (j === li ? land(s) : s))
+            : [...part.sets, land(blankSet())],
+          targetReps:
+            targetReps != null &&
+            partIntent(part).applies &&
+            !part.targetReps.trim() &&
+            !part.toFailure
+              ? String(targetReps)
+              : part.targetReps,
+        };
+      })
+    );
   }
   // Apply a plate-builder result to the targeted set weight. Auto-tag the
   // exercise with the bar only when no implement is chosen yet — never silently
@@ -417,10 +381,7 @@ export function useActivityParts({
     removeSet,
     removePart,
     addPart,
-    applySuggestion,
-    fillFromSession,
-    applyPerSideSuggestion,
-    plateFromSuggestion,
+    fillSets,
     applyPlateBuild,
   };
 }
