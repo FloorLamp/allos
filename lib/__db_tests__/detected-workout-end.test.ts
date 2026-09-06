@@ -1,19 +1,28 @@
-// DB TIER — the open workout finishes itself at the minute its heart rate says it
-// ended (#5194, reader 1 of #5113).
+// DB TIER — the detector PROPOSES the minute the heart rate says an open workout
+// ended, and the person's Finish stamps it (#5194, reader 1 of #5113).
 //
 // The judgment is `detectedWorkoutEnd`'s and is pinned pure in
 // lib/__tests__/exertion-window.test.ts. What these cases pin is everything the
 // database adds around it: which row is asked about, that the trace is resolved to
-// instants rather than read as local minutes, that the END WRITTEN is the detected
-// minute and not the sweep's own clock, and the two refusals that keep the stale
-// suggest as the fallback.
+// instants rather than read as local minutes, that a CONFIRMED finish stamps the
+// detected minute and not the tap's own clock, and the refusals that leave the tap
+// stamping its own instant as it always did.
+//
+// A refusal is asserted on `detectedWorkoutEndAt` rather than on the row, because
+// nothing writes without a tap any more: there is no unattended pass whose absence a
+// null `end_time` could be evidence of.
 //
 // Every value is synthetic.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
-import { finishDetectedWorkouts } from "@/lib/workout-detected-end";
+import { detectedWorkoutEndAt } from "@/lib/workout-detected-end";
+import { finishWorkoutSession } from "@/lib/workout-finish";
 import { getWorkoutPresence } from "@/lib/queries/presence";
+import {
+  renderStillGoingMessage,
+  stillGoingEpisodes,
+} from "@/lib/notifications/still-going";
 import {
   priorEventWindows,
   usualRecoveryMin,
@@ -127,17 +136,18 @@ function rowOf(id: number): {
     .get(id) as { end_time: string | null; duration_min: number | null };
 }
 
-describe("the open workout finishes itself", () => {
+describe("the confirmed finish stamps the minute the trace says", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
   });
   afterEach(() => vi.useRealTimers());
 
-  it("stamps the END THE TRACE SAYS, not the minute the sweep ran", async () => {
-    // THE DEFECT THIS PINS. The stale suggest's Finish stamps the tap instant, so a
+  it("stamps the END THE TRACE SAYS, not the minute the person tapped", async () => {
+    // THE DEFECT THIS PINS. The stale suggest's Finish stamped the tap instant, so a
     // session that ended at 16:35 finished at 18:00 and every derived reading was
-    // measured over 85 minutes of sitting down.
+    // measured over 85 minutes of sitting down. The clock is 18:00 here and the end is
+    // 16:35, so the two are told apart rather than agreeing by accident.
     const p = newProfile("DetEnd");
     seedRestingHr(p, 60);
     // Elevated 16:00→16:35, then quiet through 17:00 — well past any usual recovery.
@@ -146,29 +156,24 @@ describe("the open workout finishes itself", () => {
     const id = seedOpenWorkout(p, "16:00", new Date("2026-07-17T16:30:00Z"));
     expect(getWorkoutPresence(p, NOW).state).toBe("active");
 
-    expect(finishDetectedWorkouts(p)).toBe(1);
+    expect(finishWorkoutSession(p, id).kind).toBe("finished");
     expect(rowOf(id)).toEqual({ end_time: "16:35", duration_min: 35 });
-  });
-
-  it("is idempotent — a second pass has nothing left to find", async () => {
-    const p = newProfile("DetEndTwice");
-    seedRestingHr(p, 60);
-    seedRange(p, "16:00", "16:35", 140);
-    seedRange(p, "16:35", "17:00", 55);
-    seedOpenWorkout(p, "16:00", new Date("2026-07-17T16:30:00Z"));
-    expect(finishDetectedWorkouts(p)).toBe(1);
-    expect(finishDetectedWorkouts(p)).toBe(0);
   });
 
   it("leaves a bare wrist to the stale suggest", async () => {
     // The trace decides and never the clock: no HR minutes past the start means no
-    // answer, and the row stays open for the nudge that already exists.
+    // proposal, the nudge says what it always said, and a tap stamps its own instant.
+    //
+    // THE CONVERSE IS ASSERTED HERE, and it is the only place it can be: every other
+    // refusal below reads a null, which a module that had simply stopped answering
+    // would also produce. The clock is 18:00, so "no proposal" and "the tap's own
+    // minute" are two different visible values rather than one absence.
     const p = newProfile("DetEndNoTrace");
     seedRestingHr(p, 60);
     const id = seedOpenWorkout(p, "16:00", new Date("2026-07-17T16:30:00Z"));
-    expect(finishDetectedWorkouts(p)).toBe(0);
-    expect(rowOf(id).end_time).toBeNull();
-    expect(getWorkoutPresence(p, NOW).state).toBe("active");
+    expect(detectedWorkoutEndAt(p, id)).toBeNull();
+    expect(finishWorkoutSession(p, id).kind).toBe("finished");
+    expect(rowOf(id)).toEqual({ end_time: "18:00", duration_min: 120 });
   });
 
   it("refuses a profile with no resting range of its own", async () => {
@@ -178,13 +183,12 @@ describe("the open workout finishes itself", () => {
     seedRange(p, "16:00", "16:35", 140);
     seedRange(p, "16:35", "17:00", 55);
     const id = seedOpenWorkout(p, "16:00", new Date("2026-07-17T16:30:00Z"));
-    expect(finishDetectedWorkouts(p)).toBe(0);
-    expect(rowOf(id).end_time).toBeNull();
+    expect(detectedWorkoutEndAt(p, id)).toBeNull();
   });
 
   it("leaves an empty husk to the draft expiry rather than finishing it", async () => {
     // A zero-content draft is not a session that ended; it is a Start nobody used.
-    // `finishWorkoutSession` refuses it, and this sweep must not paper over that.
+    // `finishWorkoutSession` refuses it before it ever asks for a trace.
     const p = newProfile("DetEndHusk");
     seedRestingHr(p, 60);
     seedRange(p, "16:00", "16:35", 140);
@@ -195,7 +199,7 @@ describe("the open workout finishes itself", () => {
       new Date("2026-07-17T16:30:00Z"),
       false
     );
-    expect(finishDetectedWorkouts(p)).toBe(0);
+    expect(finishWorkoutSession(p, id).kind).toBe("empty-draft");
     expect(rowOf(id).end_time).toBeNull();
   });
 
@@ -208,8 +212,7 @@ describe("the open workout finishes itself", () => {
     seedRange(p, "16:00", "16:35", 140);
     seedRange(p, "16:35", "17:00", 55);
     const id = seedOpenWorkout(p, "16:00", new Date("2026-07-17T16:50:00Z"));
-    expect(finishDetectedWorkouts(p)).toBe(0);
-    expect(rowOf(id).end_time).toBeNull();
+    expect(detectedWorkoutEndAt(p, id)).toBeNull();
   });
 });
 
@@ -221,8 +224,8 @@ describe("the open workout finishes itself", () => {
 // presence gate carries the workout kind's own bounds, and a local minute is not a
 // lossless spelling of an instant.
 //
-// They seed their own dates rather than the profile's today, because the sweep takes
-// no clock at all now — the trace is the only thing that decides.
+// They seed their own dates rather than the profile's today, because the reader takes
+// no clock at all — the trace is the only thing that decides.
 
 /** A resting range on a stated day rather than on the profile's today. */
 function seedRestingHrBefore(
@@ -301,7 +304,7 @@ describe("the row's shape decides, not the editor's mode (#5212 F1, F2)", () => 
     const id = seedOpenWorkout(p, "16:00", new Date("2026-07-17T16:20:00Z"));
     expect(getWorkoutPresence(p, NOW).state).toBe("idle");
 
-    expect(finishDetectedWorkouts(p)).toBe(1);
+    expect(finishWorkoutSession(p, id).kind).toBe("finished");
     expect(rowOf(id)).toEqual({ end_time: "16:35", duration_min: 35 });
   });
 
@@ -321,7 +324,7 @@ describe("the row's shape decides, not the editor's mode (#5212 F1, F2)", () => 
       "2026-05-10T23:55:00Z"
     );
 
-    expect(finishDetectedWorkouts(p)).toBe(1);
+    expect(finishWorkoutSession(p, id).kind).toBe("finished");
     // The end is on the following clock day and the row keeps the day it started on —
     // `activityWindow` already reads an end earlier than its start as the crossing.
     //
@@ -391,8 +394,7 @@ describe("the trace is read as instants, not rebuilt from local minutes (#5212 F
   // a fixture that could not tell them apart would not notice either one going.
   it("refuses a fall-back day that holds two efforts, still going", async () => {
     const { p, id } = seedTwoEfforts("DetEndFallBack", "2026-11-01", false);
-    expect(finishDetectedWorkouts(p)).toBe(0);
-    expect(rowOf(id).end_time).toBeNull();
+    expect(detectedWorkoutEndAt(p, id)).toBeNull();
   });
 
   it("refuses it once they stop, too", async () => {
@@ -401,8 +403,7 @@ describe("the trace is read as instants, not rebuilt from local minutes (#5212 F
       "2026-11-01",
       true
     );
-    expect(finishDetectedWorkouts(p)).toBe(0);
-    expect(rowOf(id).end_time).toBeNull();
+    expect(detectedWorkoutEndAt(p, id)).toBeNull();
   });
 
   // THE CONTROL THE PAIR ABOVE NEEDS, because two refusals are also what a module that
@@ -419,7 +420,7 @@ describe("the trace is read as instants, not rebuilt from local minutes (#5212 F
       "00:40",
       "2026-11-01T04:45:00Z"
     );
-    expect(finishDetectedWorkouts(p)).toBe(1);
+    expect(finishWorkoutSession(p, id).kind).toBe("finished");
     expect(rowOf(id)).toEqual({ end_time: "01:20", duration_min: 40 });
   });
 
@@ -428,12 +429,10 @@ describe("the trace is read as instants, not rebuilt from local minutes (#5212 F
   // hour that moved an answer, shows up as these disagreeing with their pair above.
   it("reads the same timeline the same way on an ordinary day", async () => {
     const going = seedTwoEfforts("DetEndControlGoing", "2026-10-25", false);
-    expect(finishDetectedWorkouts(going.p)).toBe(0);
-    expect(rowOf(going.id).end_time).toBeNull();
+    expect(detectedWorkoutEndAt(going.p, going.id)).toBeNull();
 
     const rested = seedTwoEfforts("DetEndControlRested", "2026-10-25", true);
-    expect(finishDetectedWorkouts(rested.p)).toBe(0);
-    expect(rowOf(rested.id).end_time).toBeNull();
+    expect(detectedWorkoutEndAt(rested.p, rested.id)).toBeNull();
 
     const single = newProfile("DetEndControlSingle", "America/New_York");
     seedRestingHrBefore(single, "2026-10-25", 60);
@@ -445,15 +444,15 @@ describe("the trace is read as instants, not rebuilt from local minutes (#5212 F
       "00:40",
       "2026-10-25T04:45:00Z"
     );
-    expect(finishDetectedWorkouts(single)).toBe(1);
+    expect(finishWorkoutSession(single, id).kind).toBe("finished");
     expect(rowOf(id)).toEqual({ end_time: "01:20", duration_min: 40 });
   });
 });
 
 // THE TWO SHAPES THE THIRD PASS DROVE, pinned end to end rather than only at the pure
-// tier, because what they cost is a WRITE and a send. Both were answers before; both are
-// refusals now, and a refusal here leaves the stale suggest as the path.
-describe("the sweep refuses what the third pass drove (#5212 R1, R2)", () => {
+// tier, because both were answers before. A refusal here means the nudge quotes no
+// minute and a tap stamps its own instant, as it always did.
+describe("the reader refuses what the third pass drove (#5212 R1, R2)", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
@@ -461,10 +460,9 @@ describe("the sweep refuses what the third pass drove (#5212 R1, R2)", () => {
   afterEach(() => vi.useRealTimers());
 
   // R1. The row was started at 08:00 and the wrist went on at 17:00. Taking the first
-  // effort at or after the start wrote `end_time 19:00`, `duration_min 660` — eleven
-  // hours of "strength training", unattended, and worse than the hour-late tap this
-  // module exists to replace.
-  it("writes nothing when the start's own stretch has no elevated minute", () => {
+  // effort at or after the start answered `19:00` — eleven hours of "strength
+  // training", worse than the hour-late tap this module exists to replace.
+  it("says nothing when the start's own stretch has no elevated minute", () => {
     const p = newProfile("DetEndNoEffortAtStart");
     seedRestingHr(p, 60);
     // Measured the whole way, so the refusal is the start-containment bound and not the
@@ -474,35 +472,34 @@ describe("the sweep refuses what the third pass drove (#5212 R1, R2)", () => {
     seedRange(p, "19:00", "19:40", 55);
     const id = seedOpenWorkout(p, "08:00", new Date("2026-07-17T08:20:00Z"));
 
-    expect(finishDetectedWorkouts(p)).toBe(0);
-    expect(rowOf(id).end_time).toBeNull();
+    expect(detectedWorkoutEndAt(p, id)).toBeNull();
   });
 
   // R1's other half: the wrist goes on MID-RUN, so the trace begins elevated but hours
   // after the row did. It reads as one clean effort on its own terms, which is exactly
   // why the start has to be asked about separately.
-  it("writes nothing when the trace does not begin until hours after the start", () => {
+  it("says nothing when the trace does not begin until hours after the start", () => {
     const p = newProfile("DetEndWristOnLate");
     seedRestingHr(p, 60);
     seedRange(p, "17:00", "17:40", 150);
     seedRange(p, "17:40", "18:20", 55);
     const id = seedOpenWorkout(p, "08:00", new Date("2026-07-17T08:20:00Z"));
 
-    expect(finishDetectedWorkouts(p)).toBe(0);
-    expect(rowOf(id).end_time).toBeNull();
+    expect(detectedWorkoutEndAt(p, id)).toBeNull();
   });
 
-  // R2, and it is the one with the send behind it. A rest longer than this profile's
+  // R2, and it is the one that used to reach a send. A rest longer than this profile's
   // recovery closed the first effort, so the segmented trace hid a frontier that was
-  // still ELEVATED: the row flipped `active → finished` mid-workout, which reaches the
-  // safety-tier post-workout dispatch (ungated by the waking window) and takes the stale
-  // suggest's Finish button away in the same move. The `updated_at` cancel cannot catch
-  // it, because a set logged while still elevated stamps BEFORE the candidate.
-  it("leaves a session alone while its trace is still elevated", () => {
+  // still ELEVATED and the row flipped `active → finished` mid-workout. Under
+  // confirmation the same wrong answer would be a wrong sentence in the nudge and a
+  // wrong minute if the person tapped it — smaller, and still worth refusing. The
+  // `updated_at` cancel cannot catch it, because a set logged while still elevated
+  // stamps BEFORE the candidate.
+  it("proposes nothing while the trace is still elevated", () => {
     // The clock sits five minutes past the newest measured minute, because that is what
     // "still going" means and because presence has its own bounds: an hour later this
-    // row reads `idle` whatever the sweep does, and the assertion below would be about
-    // the wrong thing.
+    // row reads `idle`, and the presence assertions below would be about the wrong
+    // thing.
     vi.setSystemTime(new Date("2026-07-17T17:10:00Z"));
     const p = newProfile("DetEndStillGoing");
     seedRestingHr(p, 60);
@@ -512,8 +509,7 @@ describe("the sweep refuses what the third pass drove (#5212 R1, R2)", () => {
     const id = seedOpenWorkout(p, "16:00", new Date("2026-07-17T17:00:00Z"));
 
     expect(getWorkoutPresence(p).state).toBe("active");
-    expect(finishDetectedWorkouts(p)).toBe(0);
-    expect(rowOf(id).end_time).toBeNull();
+    expect(detectedWorkoutEndAt(p, id)).toBeNull();
     // Still the dock's live session, so the Finish they could argue with is still there.
     expect(getWorkoutPresence(p).state).toBe("active");
   });
@@ -530,8 +526,7 @@ describe("the sweep refuses what the third pass drove (#5212 R1, R2)", () => {
     seedRange(p, "17:05", "17:45", 55);
     const id = seedOpenWorkout(p, "16:00", new Date("2026-07-17T16:20:00Z"));
 
-    expect(finishDetectedWorkouts(p)).toBe(0);
-    expect(rowOf(id).end_time).toBeNull();
+    expect(detectedWorkoutEndAt(p, id)).toBeNull();
   });
 
   // THE CONTROL FOR ALL THREE, so a run of refusals cannot be a module that stopped
@@ -543,7 +538,7 @@ describe("the sweep refuses what the third pass drove (#5212 R1, R2)", () => {
     seedRange(p, "16:35", "17:45", 55);
     const id = seedOpenWorkout(p, "16:00", new Date("2026-07-17T16:20:00Z"));
 
-    expect(finishDetectedWorkouts(p)).toBe(1);
+    expect(finishWorkoutSession(p, id).kind).toBe("finished");
     expect(rowOf(id)).toEqual({ end_time: "16:35", duration_min: 35 });
   });
 });
@@ -557,12 +552,11 @@ describe("one unmeasured minute is not a shorter rest (#5212 fifth pass)", () =>
 
   // THE SAME PAIR OF EFFORTS, differing only in whether the HR minute 16:20 exists. The
   // rest between them is exactly this profile's recovery, so the trace holds two
-  // efforts and the sweep must refuse. Measured from the first quiet SAMPLE, the missing
-  // minute read as a nine-minute rest, the efforts merged, and the sweep wrote
-  // `end_time 16:40, duration_min 40` — a forty-minute session that never happened —
-  // flipping presence to `finished`, which is what the post-workout dispatch reads and
-  // what takes the stale suggest's Finish away. The save stamp cannot cancel it: the
-  // person stopped saving when the real first effort ended, so it precedes the candidate.
+  // efforts and the reader must refuse. Measured from the first quiet SAMPLE, the
+  // missing minute read as a nine-minute rest, the efforts merged, and the answer was
+  // `16:40` — a forty-minute session that never happened. The save stamp cannot cancel
+  // it: the person stopped saving when the real first effort ended, so it precedes the
+  // candidate.
   function seedTwoEffortsRestingTheRecovery(
     name: string,
     dropTransition: boolean
@@ -580,17 +574,12 @@ describe("one unmeasured minute is not a shorter rest (#5212 fifth pass)", () =>
   it.each([
     ["contiguous", false],
     ["with 16:20 unmeasured", true],
-  ])("refuses the pair %s, and the row stays live", (_, drop) => {
+  ])("refuses the pair %s", (_, drop) => {
     const { p, id } = seedTwoEffortsRestingTheRecovery(
       `DetEndDrop${drop}`,
       drop
     );
-    // Read a few minutes past the closing quiet, where a written 16:40 end would read
-    // `finished` to the dispatch and an untouched row still reads `active`.
-    const sweepAt = new Date("2026-07-17T17:05:00Z");
-    expect(finishDetectedWorkouts(p)).toBe(0);
-    expect(rowOf(id).end_time).toBeNull();
-    expect(getWorkoutPresence(p, sweepAt).state).toBe("active");
+    expect(detectedWorkoutEndAt(p, id)).toBeNull();
   });
 });
 
@@ -604,9 +593,9 @@ describe("a usual recovery that rounds to 0 is absent (#5212 sixth pass)", () =>
   // THE R2 CLASS THROUGH THE PRIORS. A session finished by the stale suggest's TAP has
   // its end stamped after the heart rate came down, so `recoveryMin` measures 0 for it,
   // and three of those are a usual of 0 with no zero guard between them and the
-  // detector. Rounded to 0, the recovery emptied the frontier test and the sweep wrote
-  // `end_time 16:52` on somebody lifting at 140 — presence `finished`, the dispatch
-  // reached, the Finish button gone. The save stamp (16:30) cannot cancel a 16:52.
+  // detector. Rounded to 0, the recovery emptied the frontier test and the answer was
+  // `16:52` for somebody lifting at 140 — which the nudge would then have quoted at
+  // them mid-session. The save stamp (16:30) cannot cancel a 16:52.
   /** A finished session on `day` in the shape the tap writes: resting well before the end. */
   function seedTapStampedPrior(profileId: number, day: string): void {
     db.prepare(
@@ -636,13 +625,11 @@ describe("a usual recovery that rounds to 0 is absent (#5212 sixth pass)", () =>
     return { p, id };
   }
 
-  it("leaves a session alone while its trace is still elevated", () => {
+  it("proposes nothing while the trace is still elevated", () => {
     vi.setSystemTime(new Date("2026-07-17T16:52:00Z"));
     const { p, id } = seedLifterWithTapStampedPriors("DetEndZeroUsual");
     expect(getWorkoutPresence(p).state).toBe("active");
-    expect(finishDetectedWorkouts(p)).toBe(0);
-    expect(rowOf(id).end_time).toBeNull();
-    expect(getWorkoutPresence(p).state).toBe("active");
+    expect(detectedWorkoutEndAt(p, id)).toBeNull();
   });
 
   // THE CONTROL: the 0 reads as the default, not as a profile the sweep refuses.
@@ -650,32 +637,33 @@ describe("a usual recovery that rounds to 0 is absent (#5212 sixth pass)", () =>
     vi.setSystemTime(new Date("2026-07-17T17:06:00Z"));
     const { p, id } = seedLifterWithTapStampedPriors("DetEndZeroUsualRested");
     seedRange(p, "16:52", "17:05", 55);
-    expect(finishDetectedWorkouts(p)).toBe(1);
+    expect(finishWorkoutSession(p, id).kind).toBe("finished");
     expect(rowOf(id)).toEqual({ end_time: "16:52", duration_min: 52 });
   });
 });
 
-describe("a cross-midnight finish is visible too (#5212 falsifying pass)", () => {
+describe("a cross-midnight finish is visible to the safety tier (#5212 pass)", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
   });
   afterEach(() => vi.useRealTimers());
 
-  // THE SAME SILENCING AS F4, THROUGH A DIFFERENT DOOR. `finishWorkoutSession` stores
-  // an `HH:MM` against the row's own date, so a session that started at 23:50 and ended
-  // at 00:20 has an end_time EARLIER than its start. Every other reader of a session's
-  // span treats that as a crossing (`activityWindow`); workout presence resolved it
-  // against the row's date and read an end twenty-three and a half hours BEFORE the
-  // start — so the row was never `finished` at any instant, and the safety-tier
-  // post-workout dose delivery and the #924 recap were unreachable for it.
+  // ONE ROLLOVER RULE, NOT TWO. `finishWorkoutSession` stores an `HH:MM` against the
+  // row's own date, so a session that started at 23:50 and ended at 00:20 has an
+  // `end_time` EARLIER than its start. Every other reader of a session's span treats
+  // that as a crossing (`activityWindow`); workout presence resolved it against the
+  // row's date and read an end twenty-three and a half hours BEFORE the start — so the
+  // row was never `finished` at any instant, and the safety-tier post-workout dose
+  // delivery and the #924 recap were unreachable for it.
   //
-  // The tick ordering fix is worth nothing on a row presence cannot see as finished, so
-  // this is the same assertion F4 makes, on the shape that could not pass it.
-  it("reads as finished at the sweep instant on a session that crossed midnight", async () => {
+  // It reaches an ordinary tapped finish too, but a back-dated end is how you MEET it:
+  // a tap at 00:35 used to stamp 00:35 on the row's own day, and only the detected
+  // minute puts the end on the far side of the start.
+  it("reads as finished right after the tap, on a session that crossed midnight", async () => {
     // The clock sits just after the crossing, because `getWorkoutPresence` bounds its
-    // read to `date >= today - 1` — a swept draft older than that is never `finished`
-    // to presence, which is right rather than a gap: a post-workout dose reminder for a
+    // read to `date >= today - 1` — a finish older than that is never `finished` to
+    // presence, which is right rather than a gap: a post-workout dose reminder for a
     // session from weeks ago is not a reminder.
     vi.setSystemTime(new Date("2026-05-11T00:35:00Z"));
     const p = newProfile("DetEndMidnightSafety", "UTC");
@@ -689,7 +677,7 @@ describe("a cross-midnight finish is visible too (#5212 falsifying pass)", () =>
       "2026-05-10T23:55:00Z"
     );
 
-    expect(finishDetectedWorkouts(p)).toBe(1);
+    expect(finishWorkoutSession(p, id).kind).toBe("finished");
     expect(rowOf(id).end_time).toBe("00:20");
 
     // A quarter of an hour after the end it crossed midnight at — inside the window
@@ -698,85 +686,59 @@ describe("a cross-midnight finish is visible too (#5212 falsifying pass)", () =>
   });
 });
 
-describe("what a later write does to a detected end (#5212 falsifying pass)", () => {
+// THE PROPOSAL IS ONLY WORTH ANYTHING IF THE PERSON SEES IT (#5194, owner ruling
+// 2026-09-06). The nudge that already asks "Still working out?" is where it goes: it is
+// the one message carrying Finish and Discard, so the minute is quoted beside the button
+// that will stamp it. No new notification, no new token, no new surface.
+describe("the nudge carries the minute, and the tap stamps it", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
   });
   afterEach(() => vi.useRealTimers());
 
-  // AC 4 OF #5194 IS NOT MET, and this fixture states what actually happens rather than
-  // implying it does. An activity form loaded BEFORE the sweep holds no end in its own
-  // state, and this form's contract is that an omitted field CLEARS the stored value —
-  // the same rule its `est_calories` comment spells out. So its next autosave nulls the
-  // end the sweep wrote. Fixing that means either a compare-and-set on the activity save
-  // or an explicit-clear contract between the form and the action, both of which change
-  // every activity edit; it is #5292's, not this sweep's to bolt on.
-  //
-  // WHAT THIS PIN IS FOR is the second half, which the pass found and which the effort
-  // bound closes: after such a clobber the row must not be finished AGAIN at some later
-  // instant. The clobber's own `updated_at` is newer than the candidate, so the save
-  // stamp cancels it. (A later effort on the same day cannot offer a candidate beyond it
-  // either — the trace would hold two efforts and the detector refuses outright, which is
-  // the case above.) The row stays open for the stale suggest, which is the degraded
-  // outcome and the safe one.
-  it("is not finished a second time after a later write clears the end", () => {
-    const p = newProfile("DetEndClobber");
+  /** The headline row: elevated 16:00–16:35, quiet after, last saved 16:30, clock 18:00. */
+  function seedNudgeableSession(name: string, withTrace: boolean): {
+    p: number;
+    id: number;
+  } {
+    const p = newProfile(name);
     seedRestingHr(p, 60);
-    seedRange(p, "16:00", "16:35", 140);
-    seedRange(p, "16:35", "17:00", 55);
-    const id = seedOpenWorkout(p, "16:00", new Date("2026-07-17T16:20:00Z"));
+    if (withTrace) {
+      seedRange(p, "16:00", "16:35", 140);
+      seedRange(p, "16:35", "17:00", 55);
+    }
+    const id = seedOpenWorkout(p, "16:00", new Date("2026-07-17T16:30:00Z"));
+    // The surface's own gate: the nudge only reaches a row that is live AND stale.
+    const presence = getWorkoutPresence(p, NOW);
+    expect(presence.state).toBe("active");
+    expect(presence.stale).toBe(true);
+    return { p, id };
+  }
 
-    expect(finishDetectedWorkouts(p)).toBe(1);
+  it("quotes the detected minute in the body, and Finish stamps that minute", () => {
+    const { p, id } = seedNudgeableSession("DetEndNudge", true);
+    const episode = stillGoingEpisodes(p, NOW).find((e) => e.rowId === id);
+    expect(episode?.detectedEnd).toBe("16:35");
+    expect(renderStillGoingMessage(episode!, p, "Ada", "").body).toContain(
+      "ended at 16:35"
+    );
+    // The button the body is talking about, through the same core the tap runs.
+    expect(finishWorkoutSession(p, id).kind).toBe("finished");
     expect(rowOf(id)).toEqual({ end_time: "16:35", duration_min: 35 });
-
-    // The form's next autosave, with no end in its state: the stored end is cleared and
-    // the row is touched now.
-    db.prepare(
-      `UPDATE activities SET end_time = NULL, duration_min = NULL, updated_at = ?
-        WHERE id = ?`
-    ).run(utcSqlString(new Date("2026-07-17T20:30:00Z")), id);
-
-    expect(finishDetectedWorkouts(p)).toBe(0);
-    expect(rowOf(id)).toEqual({ end_time: null, duration_min: null });
   });
-});
 
-describe("a detected finish is visible to the safety tier (#5212 F4)", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-    vi.setSystemTime(NOW);
-  });
-  afterEach(() => vi.useRealTimers());
-
-  // THE PROPERTY THE TICK ORDER EXISTS FOR. `runPostWorkoutFinish` — safety tier,
-  // ungated by the waking window — delivers due post_workout doses the moment presence
-  // reads `finished`, and that rests on `FINISHED_WINDOW_MIN`: a guarantee written when
-  // every `finishWorkoutSession` caller stamped the tap's own instant. This sweep is
-  // the first writer that stamps an end in the PAST.
-  //
-  // Swept AFTER the dispatch, the row was `idle` at the sweep instant and older than
-  // the window by the next hourly tick, so the dose delivery and the #924 recap were
-  // silenced for every session this feature ever finished. Swept BEFORE it, the end is
-  // only the usual recovery old when the dispatch looks, and the window sees it exactly
-  // as it sees a tapped finish. That is what this asserts: immediately after the sweep,
-  // at the sweep's own instant, presence reads `finished`.
-  it("reads as finished at the sweep instant, inside the window the dispatch uses", async () => {
-    const p = newProfile("DetEndSafety");
-    seedRestingHr(p, 60);
-    seedRange(p, "16:00", "16:35", 140);
-    seedRange(p, "16:35", "17:00", 55);
-    seedOpenWorkout(p, "16:00", new Date("2026-07-17T16:30:00Z"));
-
-    // The tick's own instant, a few minutes after the trace's closing quiet.
-    const sweepAt = new Date("2026-07-17T17:00:00Z");
-    expect(finishDetectedWorkouts(p)).toBe(1);
-    expect(getWorkoutPresence(p, sweepAt).state).toBe("finished");
-
-    // And an hour later it is outside the window, which is why the order matters
-    // rather than being a preference: the next tick is already too late.
-    expect(
-      getWorkoutPresence(p, new Date("2026-07-17T18:00:00Z")).state
-    ).not.toBe("finished");
+  // THE CONTROL, and it is the one that says the quoting is not unconditional: the same
+  // row with no trace gets the copy this nudge has always had, and its Finish stamps the
+  // tap's own instant exactly as before.
+  it("says what it always said when the trace does not answer", () => {
+    const { p, id } = seedNudgeableSession("DetEndNudgeBare", false);
+    const episode = stillGoingEpisodes(p, NOW).find((e) => e.rowId === id);
+    expect(episode?.detectedEnd).toBeNull();
+    expect(renderStillGoingMessage(episode!, p, "Ada", "").body).toContain(
+      "quiet for a while"
+    );
+    expect(finishWorkoutSession(p, id).kind).toBe("finished");
+    expect(rowOf(id).end_time).toBe("18:00");
   });
 });

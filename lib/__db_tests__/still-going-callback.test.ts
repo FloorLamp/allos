@@ -251,12 +251,14 @@ describe("renderStillGoingMessage (#1205, one family at #5142)", () => {
     rowId: 99,
     label: null,
     quietMin: null,
+    detectedEnd: null,
   };
   const practice = {
     kind: "practice" as const,
     rowId: 99,
     label: "Sauna",
     quietMin: 95,
+    detectedEnd: null,
   };
 
   it("carries a Finish callback with the row id + the deep-link fallback", () => {
@@ -310,10 +312,29 @@ describe("renderStillGoingMessage (#1205, one family at #5142)", () => {
     ).toBeTruthy();
   });
 
+  // THE PERSON SEES WHAT THEY ARE CONFIRMING (#5194). With a detected end the body
+  // quotes the minute, because `finishWorkoutSession` will stamp that minute rather
+  // than the tap's own — a person tapping Finish at 18:00 on a session the trace ends
+  // at 16:35 must not be surprised by what lands. Without one the copy is unchanged,
+  // and the buttons never differ.
+  it.each([
+    [null, "quiet for a while", "16:35"],
+    ["16:35", "ended at 16:35", "quiet for a while"],
+  ])("with detectedEnd %s the body says %s", (detectedEnd, says, doesNot) => {
+    const body = renderStillGoingMessage(
+      { ...workout, detectedEnd },
+      7,
+      "Ada",
+      ""
+    ).body;
+    expect(body).toContain(says);
+    expect(body).not.toContain(doesNot);
+  });
+
   // NEITHER KIND EVER SAYS SOMETHING WAS ENDED (#560). The nudge suggests; the tap
   // writes.
   it("promises no automatic end, whatever the kind", () => {
-    for (const episode of [workout, practice])
+    for (const episode of [workout, { ...workout, detectedEnd: "16:35" }, practice])
       expect(renderStillGoingMessage(episode, 7, "Ada", "").body).toContain(
         "nothing was ended automatically"
       );

@@ -16,7 +16,8 @@
 // bounded arrival rather than a quiet timer (#5001); neither is a button a person
 // can press to say "yes, still going", which is what this family is.
 
-import { dateStrInTz } from "../date";
+import { dateStrInTz, zonedDateParts } from "../date";
+import { detectedWorkoutEndAt } from "../workout-detected-end";
 import { now as clockNow } from "../clock";
 import { getWorkoutPresence } from "../queries/presence";
 import { stalePracticeSessions } from "../practice-log";
@@ -65,6 +66,12 @@ export interface StillGoingEpisode {
   // Quiet in minutes, where the domain measures it. Null when the domain does not
   // report one and the copy therefore does not quote one.
   quietMin: number | null;
+  // THE MINUTE THIS PROFILE'S OWN HEART RATE SAYS THE EFFORT ENDED (#5194), local
+  // `HH:MM`, or null when the trace does not say — which is most of the time and every
+  // time for a practice. It is a PROPOSAL: the message quotes it so the person can see
+  // what Finish will record, and `finishWorkoutSession` stamps the same minute when
+  // they tap. Nothing writes it unattended (owner ruling, 2026-09-06).
+  detectedEnd: string | null;
 }
 
 // The message. Two buttons that RESOLVE the episode in place (the two-way principle —
@@ -117,7 +124,9 @@ export function renderStillGoingMessage(
       : `${GLYPH.inProgress} Still working out?${who}`,
     body: practice
       ? `${quiet ? `Running for ${quiet}` : "Still running"} and nothing since. Finish it or discard — nothing was ended automatically.`
-      : "Your session has been quiet for a while. Finish it or discard the draft — nothing was ended automatically.",
+      : episode.detectedEnd
+        ? `Your heart rate says it ended at ${episode.detectedEnd}. Finish it at that minute or discard the draft — nothing was ended automatically.`
+        : "Your session has been quiet for a while. Finish it or discard the draft — nothing was ended automatically.",
     actions,
     kind: "other",
   };
@@ -136,7 +145,11 @@ export function stillGoingEpisodes(
     presence.state === "active" &&
     presence.stale &&
     presence.activityId != null
-  )
+  ) {
+    // The proposal, resolved to the wall clock the message prints and the finish core
+    // stamps. Costs one query on a profile with no trace, and only a stale open draft
+    // ever asks — see `detectedWorkoutEndAt` for what it refuses and why.
+    const detected = detectedWorkoutEndAt(profileId, presence.activityId);
     out.push({
       kind: "workout",
       rowId: presence.activityId,
@@ -145,13 +158,20 @@ export function stillGoingEpisodes(
       // different quantities on a draft that saved a set an hour in. The copy says
       // "quiet for a while" rather than inventing a number from the wrong one.
       quietMin: null,
+      detectedEnd: detected
+        ? zonedDateParts(getTimezone(profileId), detected).hhmm
+        : null,
     });
+  }
   for (const session of stalePracticeSessions(profileId, now))
     out.push({
       kind: "practice",
       rowId: session.id,
       label: session.practice,
       quietMin: session.quietMin,
+      // A practice ends by its own core and has no heart-rate reader; the nudge for it
+      // is unchanged.
+      detectedEnd: null,
     });
   return out;
 }

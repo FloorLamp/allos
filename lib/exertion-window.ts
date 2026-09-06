@@ -200,12 +200,17 @@ export function exertionWindows(input: ExertionWindowInput): ExertionSpan[] {
 }
 
 /**
- * The END an open row should adopt, or null when the trace does not say.
+ * The END an open row should be OFFERED, or null when the trace does not say.
  *
  * Reader 1 of the detector (#5113). "Open" is the ROW's shape rather than the editor's
  * mode: a row with a start and no end, live or left open in the plain form while sets
  * are added. The end is the last elevated minute of the effort that contains the
  * start, and it is only offered once the quiet after it has actually been measured.
+ *
+ * The answer is a PROPOSAL and never a write (#5194, owner ruling 2026-09-06): it is
+ * quoted in the "Still working out?" nudge and stamped by the Finish the person taps.
+ * That is what the guards below are for — a wrong minute is a wrong SENTENCE now, and
+ * refusing is always available, so each one buys a refusal rather than a safety net.
  *
  * A SET LOGGED AFTER THE CANDIDATE MINUTE CANCELS IT. A long rest between sets does
  * not reach the resting range for most people, and when it does, the next set reopens
@@ -284,10 +289,18 @@ export function detectedWorkoutEnd(input: {
   let candidate = samples[0].at + MINUTE_MS;
   for (const sample of samples)
     if (sample.bpm > input.ceilingBpm) candidate = sample.at + MINUTE_MS;
-  // 4. AND THEY HAVE COME BACK DOWN. A trace still elevated at its frontier is a session
-  //    in progress, measured rather than assumed: a candidate at or past the newest
-  //    measured minute refuses, whatever the recovery, because `exertionRecoveryMin`
-  //    never hands back less than a minute and the frontier is inside it.
+  // 4. AND THEY HAVE COME BACK DOWN (#5139's own rule, not this reader's). A trace
+  //    still elevated at its frontier is a session in progress, measured rather than
+  //    assumed, so the recovery has to fit between the candidate and the newest minute
+  //    anybody measured.
+  //    THE RESIDUE, STATED RATHER THAN CLAIMED AWAY: how much quiet that is comes from
+  //    `usualRecoveryMin`, whose own population is polluted by the defect this feature
+  //    exists to fix — a prior finished by a late tap measures a 0-minute recovery, and
+  //    nine of those plus one honest ten average to exactly 1. At a recovery of one
+  //    minute, one measured quiet minute is enough (#5212, seventh pass). That is now a
+  //    minute-late sentence in a message the person confirms, not an unattended write,
+  //    and the fix is upstream: this feature's own corrected ends stop feeding a 0 back
+  //    into the mean. A floor invented here would be the fifth constant in a row.
   if (candidate + recovery > last) return null;
   if (!quiet(samples, input.ceilingBpm, candidate, candidate + recovery))
     return null;
