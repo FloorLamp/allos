@@ -24,6 +24,7 @@ import {
   trackSubstanceUseAction,
 } from "@/app/(app)/medical/substance-use/actions";
 import { undoDelete } from "@/app/(app)/undo-actions";
+import { updateFoodLogEvent } from "@/app/(app)/nutrition/actions";
 import { actAs, createLogin, createProfile, fd } from "./harness";
 import { setProfileSetting } from "@/lib/settings";
 import { shiftDateStr } from "@/lib/date";
@@ -71,6 +72,28 @@ async function statementsDuring<T>(
  *  read, the capture insert, and the deletes. Absent means the core refused first. */
 const capturePath = (sql: string[]) =>
   sql.filter((text) => /SELECT \*|deleted_rows|^\s*DELETE /i.test(text));
+
+/** Each use's note on a day, in creation order (#5304), off whichever ledger the
+ *  substance rides. */
+function notesOn(profileId: number, substance: string, date: string) {
+  return (
+    db
+      .prepare(
+        substance === "alcohol"
+          ? `SELECT notes FROM food_log_events
+              WHERE profile_id = ? AND group_key = 'alcohol' AND date = ? ORDER BY id`
+          : `SELECT notes FROM substance_log_events
+              WHERE profile_id = ? AND substance = ? AND date = ? ORDER BY id`
+      )
+      .all(
+        ...(substance === "alcohol"
+          ? [profileId, date]
+          : [profileId, substance, date])
+      ) as {
+      notes: string | null;
+    }[]
+  ).map((row) => row.notes);
+}
 
 function targetRow(profileId: number) {
   return db
@@ -609,13 +632,12 @@ describe("substance consumption history actions (#2009)", () => {
     expect(added.kind).toBe("added");
     if (added.kind !== "added") throw new Error("entry was not added");
     expect(getSubstanceDailyTotals(profile.id, "alcohol")).toEqual([
-      {
-        id: added.id,
-        substance: "alcohol",
-        date: past,
-        amount: 2,
-        notes: "Dinner with friends",
-      },
+      { id: added.id, substance: "alcohol", date: past, amount: 2 },
+    ]);
+    // The note rides the entry's first drink, not the day (#5304).
+    expect(notesOn(profile.id, "alcohol", past)).toEqual([
+      "Dinner with friends",
+      null,
     ]);
     // A third drink, filed from another surface onto the same day — ADDITIVE, and the
     // event it creates carries its own provenance.
@@ -643,13 +665,7 @@ describe("substance consumption history actions (#2009)", () => {
     // There is no day-count correction to reach for at all since #5026 phase 2 — the
     // day is a rollup on every ledger — so what the day still holds is what was filed.
     expect(getSubstanceDailyTotals(profile.id, "alcohol")).toEqual([
-      {
-        id: added.id,
-        substance: "alcohol",
-        date: past,
-        amount: 3,
-        notes: "Dinner with friends",
-      },
+      { id: added.id, substance: "alcohol", date: past, amount: 3 },
     ]);
 
     // THE DAY'S DELETE IS NOT THE DAY'S CORRECTION and is unchanged: it removes the
@@ -664,8 +680,10 @@ describe("substance consumption history actions (#2009)", () => {
     expect(getSubstanceDailyTotals(profile.id, "alcohol")[0]).toMatchObject({
       date: past,
       amount: 3,
-      notes: "Dinner with friends",
     });
+    expect(notesOn(profile.id, "alcohol", past)).toContain(
+      "Dinner with friends"
+    );
   });
 
   // THE CAP VERDICT RIDES THE WRITE (#4424's substance leg, #998/#3279). The tap
@@ -739,11 +757,13 @@ describe("substance consumption history actions (#2009)", () => {
       "nicotine",
       "alcohol",
     ]);
-    expect(history[0]).toMatchObject({
-      date: td,
-      amount: 4,
-      notes: "Pouches",
-    });
+    expect(history[0]).toMatchObject({ date: td, amount: 4 });
+    expect(notesOn(profile.id, "nicotine", td)).toEqual([
+      "Pouches",
+      null,
+      null,
+      null,
+    ]);
     for (const entry of history) {
       expect(entry).not.toHaveProperty("store");
       expect(entry).not.toHaveProperty("ledger");
@@ -845,18 +865,74 @@ describe("substance consumption history actions (#2009)", () => {
       });
       expect(await undoDelete(deleted.undoId)).toEqual({ ok: true });
       expect(getSubstanceDailyTotals(profile.id, substance)).toEqual([
-        expect.objectContaining({
-          substance,
-          date: td,
-          amount: 3,
-          notes: `${substance} restored note`,
-        }),
+        expect.objectContaining({ substance, date: td, amount: 3 }),
       ]);
       // And the restore put them back beside the tap logged meanwhile, so the counter
-      // and the record agree on three.
+      // and the record agree on three — the note included, since it is a column of
+      // the captured use (#5304).
       expect(eventsOn(substance)).toBe(3);
+      expect(notesOn(profile.id, substance, td)).toContain(
+        `${substance} restored note`
+      );
     }
   });
+});
+
+// #5077's THIRD ACCEPTANCE CRITERION, at the action tier: a note must never again be
+// collected and shown yet uncorrectable. The note is a USE's own now (#5304), so on
+// either ledger it is corrected, left alone and cleared through the row's own door —
+// the substance correction for nicotine, the serving correction for a drink. Three
+// wire states, in the order that proves each one: a posted string restates it, an
+// ABSENT field leaves it (a time-only save cannot wipe it), and a posted EMPTY string
+// clears it. The day counter shows none of it.
+describe("a use's note is correctable and clearable on its own row (#5077, #5304)", () => {
+  const correctNote = {
+    nicotine: (eventId: number, date: string, notes?: string) =>
+      correctSubstanceUseAction(fd({ event_id: String(eventId), date, notes })),
+    alcohol: (eventId: number, _date: string, notes?: string) =>
+      updateFoodLogEvent(fd({ event_id: String(eventId), notes })),
+  } as const;
+
+  it.each(["nicotine", "alcohol"] as const)(
+    "%s: restate, leave alone, then clear",
+    async (substance) => {
+      const login = createLogin();
+      const profile = createProfile(`su-note-${substance}`, login.id);
+      actAs(login, profile);
+      const date = shiftDateStr(today(profile.id), -2);
+      const added = await addSubstanceDailyTotalAction(
+        fd({ substance, date, amount: "2", notes: "wedding" })
+      );
+      expect(added.kind).toBe("added");
+      expect(notesOn(profile.id, substance, date)).toEqual(["wedding", null]);
+      const [eventId] = (
+        db
+          .prepare(
+            substance === "alcohol"
+              ? `SELECT id FROM food_log_events WHERE profile_id = ? ORDER BY id`
+              : `SELECT id FROM substance_log_events WHERE profile_id = ? ORDER BY id`
+          )
+          .all(profile.id) as { id: number }[]
+      ).map((row) => row.id);
+
+      await correctNote[substance](eventId, date, "wedding, second glass");
+      expect(notesOn(profile.id, substance, date)).toEqual([
+        "wedding, second glass",
+        null,
+      ]);
+      await correctNote[substance](eventId, date);
+      expect(notesOn(profile.id, substance, date)).toEqual([
+        "wedding, second glass",
+        null,
+      ]);
+      await correctNote[substance](eventId, date, "");
+      expect(notesOn(profile.id, substance, date)).toEqual([null, null]);
+      // The day row never held it and still does not.
+      expect(
+        getSubstanceDailyTotals(profile.id, substance)[0]
+      ).not.toHaveProperty("notes");
+    }
+  );
 });
 
 // #2072 — the edit/delete pair takes a ROW ID from the client, so "this id belongs
@@ -898,13 +974,7 @@ describe("substance history actions refuse another profile's row (#2072)", () =>
     // The owner's day is untouched: same amount, same notes, same per-tap events
     // (a reconcile that ran on the wrong profile would have rewritten them).
     expect(getSubstanceDailyTotals(ownerProfile.id, "alcohol")).toEqual([
-      {
-        id: added.id,
-        substance: "alcohol",
-        date: td,
-        amount: 2,
-        notes: "Owner note",
-      },
+      { id: added.id, substance: "alcohol", date: td, amount: 2 },
     ]);
     const ownerEvents = db
       .prepare(
@@ -957,13 +1027,7 @@ describe("substance history actions refuse another profile's row (#2072)", () =>
     ).toMatchObject({ kind: "not-found", undoId: null });
 
     expect(getSubstanceDailyTotals(ownerProfile.id, "nicotine")).toEqual([
-      {
-        id: added.id,
-        substance: "nicotine",
-        date: td,
-        amount: 3,
-        notes: "Owner note",
-      },
+      { id: added.id, substance: "nicotine", date: td, amount: 3 },
     ]);
     expect(getSubstanceDailyTotals(intruderProfile.id, "nicotine")).toEqual([]);
     expect(getSubstanceWeekState(intruderProfile.id, "nicotine").count).toBe(0);

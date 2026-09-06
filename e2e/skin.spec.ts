@@ -112,13 +112,14 @@ test.describe("Skin lesions — add → view → track recheck → photo → fil
 
     // Track a recheck follow-up on it — the row's control turns into a tracked state.
     const trackForm = card.getByTestId(/^track-skin-followup-/);
+    // eslint-disable-next-line no-restricted-properties -- first-ok: the recheck-interval select in the scoped skin-followup form this spec drives
     await trackForm
       .locator("select")
-      .first() // first-ok: the recheck-interval select in the scoped skin-followup form this spec drives
+      .first()
       .selectOption({ label: "3 months" });
     await settledClick(
       page,
-      trackForm.getByRole("button", { name: "Track recheck" }).first() // first-ok: the Track-recheck button in the scoped skin-followup form this spec drives
+      trackForm.getByRole("button", { name: "Track recheck" }).first() // eslint-disable-line no-restricted-properties -- first-ok: the Track-recheck button in the scoped skin-followup form this spec drives
     );
     await expect(card.getByTestId(/^skin-followup-state-/)).toContainText(
       "Recheck:",

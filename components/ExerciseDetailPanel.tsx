@@ -339,7 +339,7 @@ export default function ExerciseDetailPanel({
           <ExerciseGuideSection name={stat.exercise} />
         ) : (
           <Disclosure className="mt-5" data-testid="exercise-guide-disclosure">
-            <summary className="cursor-pointer text-sm font-semibold text-slate-700 select-none dark:text-slate-200">
+            <summary className="fold-control text-sm font-semibold text-slate-700 select-none dark:text-slate-200">
               How to
             </summary>
             <ExerciseGuideSection name={stat.exercise} heading={false} />

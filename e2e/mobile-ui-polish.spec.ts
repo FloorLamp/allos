@@ -67,10 +67,11 @@ test.describe("family login-row actions stay in the viewport (#641)", () => {
     await page.goto("/settings/family");
 
     // A seeded member login row (never the admin's, whose Delete is disabled).
+    // eslint-disable-next-line no-restricted-properties -- first-ok: filtered to the e2e_child login row (this spec's fixture) — one match
     const row = page
       .getByTestId("login-row")
       .filter({ hasText: "e2e_child" })
-      .first(); // first-ok: filtered to the e2e_child login row (this spec's fixture) — one match
+      .first();
     await expect(row).toBeVisible();
 
     const del = row.getByRole("button", { name: "Delete" });
@@ -101,7 +102,7 @@ test.describe("touch targets clear the 40px minimum (#644)", () => {
 
     // The overflow kebab is the sole per-row action affordance; every supplement
     // row renders one.
-    const kebab = page.getByTestId("overflow-menu-trigger").first(); // first-ok: every supplement row renders one kebab (see comment) — order-agnostic
+    const kebab = page.getByTestId("overflow-menu-trigger").first(); // eslint-disable-line no-restricted-properties -- first-ok: every supplement row renders one kebab (see comment) — order-agnostic
     await expectPhoneTapTargets(page, "supplement row kebab", [kebab]);
 
     // THE TWO DOSE VERBS MOVED, AND THE MIS-TAP COST DID NOT (#3987). The circle
@@ -110,15 +111,16 @@ test.describe("touch targets clear the 40px minimum (#644)", () => {
     // surface that has them. A mis-tap between taken and skipped is a real
     // correctness cost, so the two hit regions must clear the floor AND be disjoint.
     await page.goto("/nutrition");
-    const dueRow = page.locator('[data-testid^="ledger-due-group-"]').first(); // first-ok: the pair is read from ONE row (see comment) — order-agnostic
+    const dueRow = page.locator('[data-testid^="ledger-due-group-"]').first(); // eslint-disable-line no-restricted-properties -- first-ok: the pair is read from ONE row (see comment) — order-agnostic
     if ((await dueRow.count()) > 0) {
       await dueRow.click();
       // Scope BOTH circles to the SAME control: a page-wide first-match on each
       // testid can pair circles from two different rows, whose boxes bear no spatial
       // relation (the CI failure mode this scoping replaces).
+      // eslint-disable-next-line no-restricted-properties -- first-ok: one control; both its circles are read from it
       const control = page
         .locator('[data-testid="dose-status"][data-variant="circle"]')
-        .first(); // first-ok: one control; both its circles are read from it
+        .first();
       await expectPhoneTapTargets(
         page,
         "ledger dose verbs",
@@ -448,7 +450,7 @@ test.describe("nutrition food-log controls stay in the viewport on mobile", () =
 
     // The first row's add (+) button is the affordance that was clipped off-screen;
     // its right edge must stay within the viewport.
-    const addBtn = page.locator('[data-testid^="log-"]').first(); // first-ok: the first log row's add button — the clip test is layout-general (see comment), order-agnostic
+    const addBtn = page.locator('[data-testid^="log-"]').first(); // eslint-disable-line no-restricted-properties -- first-ok: the first log row's add button — the clip test is layout-general (see comment), order-agnostic
     await expect(addBtn).toBeVisible();
     // settledBoxes, not a raw read: something re-renders the food log bar and
     // REPLACES this subtree rather than updating it (#4815), so the handle
@@ -492,8 +494,8 @@ test.describe("long unbreakable names wrap instead of clipping (#646)", () => {
     const addDialog = page.getByRole("dialog", { name: "Add supplement" });
     await addDialog.getByLabel("Name").fill(NAME);
     const doseEditor1 = await openFact(page, "dose", addDialog);
-    await doseEditor1.getByLabel("Amount").first().fill("1 tab"); // first-ok: the first dose's Amount field in the scoped add modal
-    await doseEditor1.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the first dose's Time-of-day field in the scoped add modal
+    await doseEditor1.getByLabel("Amount").first().fill("1 tab"); // eslint-disable-line no-restricted-properties -- first-ok: the first dose's Amount field in the scoped add modal
+    await doseEditor1.getByLabel("Time of day").first().selectOption("Morning"); // eslint-disable-line no-restricted-properties -- first-ok: the first dose's Time-of-day field in the scoped add modal
     await closeEditor(page, addDialog);
     // Submit by keyboard as well as exercising the modal's focusable controls. The
     // dev-only Next overlay portal can cover the bottom edge of a 390px viewport;
@@ -501,10 +503,11 @@ test.describe("long unbreakable names wrap instead of clipping (#646)", () => {
     await addDialog.getByRole("button", { name: "Add", exact: true }).focus();
     await page.keyboard.press("Enter");
 
+    // eslint-disable-next-line no-restricted-properties -- first-ok: filtered to the Hydrochlorothiazide med this spec added — one match
     const name = page
       .getByTestId("intake-item-name")
       .filter({ hasText: "Hydrochlorothiazide" })
-      .first(); // first-ok: filtered to the Hydrochlorothiazide med this spec added — one match
+      .first();
     await expect(name).toBeVisible();
 
     // The name box right edge stays within the viewport — it wraps (break-words)

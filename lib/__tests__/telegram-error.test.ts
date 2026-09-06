@@ -11,6 +11,7 @@ import {
   classifyTelegramFailure,
   TelegramApiError,
 } from "@/lib/notifications/telegram-error";
+import { PartialDeliveryError } from "@/lib/notifications/types";
 
 // A typed throw as ./telegram-api builds it: the message always carries the description
 // (or the HTTP status when Telegram gave none), which is what the mocked/legacy shapes
@@ -166,5 +167,54 @@ describe("the typed error carries what classification reads", () => {
     expect(e.message).toBe(
       "Telegram editMessageReplyMarkup failed: Too Many Requests: retry after 5"
     );
+  });
+});
+
+// A FAN-OUT WRAPS THE THROW, AND CLASSIFICATION MUST NOT NOTICE (#5194, eleventh pass).
+// The Telegram channel wraps a recipient's failure in a PartialDeliveryError when an
+// earlier chat in the same household already received the message, so `delivered` can be
+// answered past the throw. If that wrapper kept only the sentence, the structure #1885
+// added would be gone exactly where it matters least visibly: an unrecognised 403 —
+// Telegram's answer for a chat the bot can no longer write to at all — would read
+// transient, and the reconcile sweep would keep retrying a pointer into a chat that has
+// blocked the bot.
+describe("a wrapped throw classifies as the error it wraps", () => {
+  it("reads the typed 403 through a wrapper that kept only the message", () => {
+    const inner = apiError(403, "Forbidden: CHAT_RESTRICTED");
+    expect(classifyTelegramFailure(inner)).toBe("permanent");
+    expect(
+      classifyTelegramFailure(new PartialDeliveryError(inner.message))
+    ).toBe("transient"); // what a cause-less wrapper would have said
+    expect(
+      classifyTelegramFailure(
+        new PartialDeliveryError(inner.message, { cause: inner })
+      )
+    ).toBe("permanent");
+  });
+
+  it("keeps reading the description through the wrapper", () => {
+    // The description deliberately does NOT appear in the message text, so the regex
+    // path cannot answer this one — only the structured `description` can.
+    const inner = new TelegramApiError({
+      method: "sendMessage",
+      status: 400,
+      description: "Bad Request: chat not found",
+      message: "Telegram sendMessage failed",
+    });
+    expect(
+      classifyTelegramFailure(
+        new PartialDeliveryError(inner.message, { cause: inner })
+      )
+    ).toBe("permanent");
+    expect(
+      classifyTelegramFailure(new PartialDeliveryError(inner.message))
+    ).toBe("transient");
+  });
+
+  it("leaves an untyped wrapper on the regex path, unchanged", () => {
+    const wrapped = new PartialDeliveryError("some transport blew up", {
+      cause: new Error("some transport blew up"),
+    });
+    expect(classifyTelegramFailure(wrapped)).toBe("transient");
   });
 });

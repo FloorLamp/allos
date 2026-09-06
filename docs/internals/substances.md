@@ -74,18 +74,17 @@ The trap the counter still holds: `substance_daily_totals.recorded_at` is a FILI
 stamp, so `bestKnownInstant` on the COUNTER would hand a day a minute it never claimed.
 Ask the EVENT store.
 
-**What phase 2 did NOT settle: where a day-level NOTE lives.** The note is still the
-day's, written on the add door and rendered in the card's History table, and it is not
-correctable anywhere now that the day form is gone. That is #5077, ruled as #5304 — the
-note moves onto the use — and sequenced after this phase because the question it asks is
-what a day note means once every use has its own row. Until it lands, the note is
-write-once, and the one thing phase 2 owes it is that no other operation may DESTROY it.
-Re-dating a use drops the vacated day's counter row when that use was its last, so
-`correctSubstanceEventCore` REFUSES that move (`day-note-stranded`) when the row carries
-a note, and writes nothing — `main`'s own posture, whose day form answers
-`date-conflict` there. Carrying the note to the arriving day was tried and rejected: it
-destroyed the note whenever the arriving day already had one of its own. The way to move
-that use is to delete it (undoable) and add it on the day it belongs to.
+**A note belongs on the use (#5304, ruling on #5077).** Both event ledgers carry
+`notes`; the day rows do not collect or show one any more (their `notes` columns stand,
+copied from and never read). The add door's note lands on the entry's FIRST tap — one
+sentence for the sitting, not one per cigarette — and every use corrects or clears its
+own on its record row, through `correctSubstanceEventCore` and, for a drink and any
+other serving, `updateFoodLogEventCore`/`FoodServingForm`. The migration
+`20260905-event-notes` moved each stored day note onto that day's first derived event
+(`logged_via IS NULL` first, else the earliest row), once, and minted one timeless event
+for a noted day with no event at all. With the note on the row, re-dating a noted day's
+last use moves the note with it; the `day-note-stranded` refusal that guarded the day
+column is gone.
 
 The cross-domain Timeline browses alcohol, nicotine, cannabis, and custom
 substances as one per-day `substance` rollup, and that is browse-only. Substance rows

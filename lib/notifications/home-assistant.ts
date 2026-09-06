@@ -125,6 +125,9 @@ export const homeAssistantChannel: NotificationChannel = {
         kind: msg.kind ?? "other",
       });
     }
+    // One webhook, so the two questions coincide here: healthy either way, delivered
+    // only when the POST actually carried it (SendOutcome, ./types).
+    return { delivered: sent };
   },
 };
 

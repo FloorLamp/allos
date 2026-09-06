@@ -1091,7 +1091,14 @@ test("the sheet starts and ends a live practice, then draws its exact tap window
     const tapMinute = zonedDateParts(PINNED_TZ, frozenNow()).hhmm;
     await settledClick(page, row.getByTestId("practice-start-button"));
     await expect(page.getByTestId("toast")).toContainText("Session started");
+    // #5431: the row re-reads the SERVER's session, so both columns turn over
+    // together — the facts state the running session and the only control left is the
+    // exit. It used to print "No sessions yet" beside a brand-filled End.
     await expect(row.getByTestId("practice-end-button")).toBeVisible();
+    await expect(row.getByTestId("practice-row-facts")).toContainText(
+      `Running since ${tapMinute}`
+    );
+    await expect(row.getByTestId("practice-start-button")).toHaveCount(0);
     expect(readShellPracticeLog()).toMatchObject({
       start_time: tapMinute,
       end_time: null,
@@ -1209,16 +1216,25 @@ test("a practice logs in one tap from the sheet and the week count moves", async
       .getByRole("listitem")
       .filter({ hasText: SHELL_PRACTICE });
     await expect(row).toBeVisible();
-    // The week standing the Wellness card shows, from the same computation.
-    await expect(row).toContainText("No days this week");
-    await expect(row).toContainText("Target 3×/week");
-    await expect(row.getByTestId("practice-today-count")).toContainText(
-      "No sessions yet"
+    // #5431's facts column: the week standing as a QUANTITY, from the same computation
+    // the Wellness card reads, and no verdict badge over it. Today's count is a fact
+    // only when it is not zero, so nothing here says "no sessions" at all.
+    await expect(row.getByTestId("practice-row-facts")).toHaveText(
+      "0 of 3 this week"
     );
+    await expect(row.getByTestId("practice-today-count")).toHaveCount(0);
 
     // #2204: the row carries an INLINE duration control. The standing objection was
     // to stacking the expanded date/time/duration MODAL over a one-tap sheet, and it
     // still holds — nothing here opens one, and there is no trigger to open one with.
+    // Since #5431 it opens from the chip's LABEL, which is where the value it holds is
+    // shown; the label names its unit while the value is blank.
+    const label = row.getByTestId("practice-duration-toggle");
+    await expect(label).toHaveText("min");
+    await expect(label).toHaveAttribute("aria-expanded", "false");
+    await expect(row.getByTestId("practice-inline-duration")).toHaveCount(0);
+    await hydratedClick(page, label);
+    await expect(label).toHaveAttribute("aria-expanded", "true");
     const duration = row.getByTestId("practice-duration-input");
     await expect(row.getByTestId("practice-inline-duration")).toBeVisible();
     await expect(page.getByTestId("practice-log-details")).toHaveCount(0);
@@ -1247,6 +1263,9 @@ test("a practice logs in one tap from the sheet and the week count moves", async
     for (let i = 0; i < 4; i++)
       await hydratedClick(page, row.getByTestId("practice-duration-up"));
     await expect(duration).toHaveValue("20");
+    // The chip's label FOLLOWS the editor, which is what makes the nub's tap a value
+    // the person saw (#2204 constraint 2) whether or not the editor is still open.
+    await expect(label).toHaveText("20 min");
 
     await settledClick(page, row.getByTestId("practice-log-button"));
 
@@ -1256,8 +1275,9 @@ test("a practice logs in one tap from the sheet and the week count moves", async
     await expect(page.getByTestId("toast")).toContainText(
       "Logged today's session"
     );
-    await expect(row.getByTestId("practice-today-count")).toContainText(
-      "1 session logged"
+    await expect(row.getByTestId("practice-today-count")).toHaveText("1 today");
+    await expect(row.getByTestId("practice-row-facts")).toHaveText(
+      "1 today · 1 of 3 this week"
     );
     expect(page.url()).toBe(dashboardUrl);
 
@@ -1281,7 +1301,8 @@ test("a practice logs in one tap from the sheet and the week count moves", async
     await expect(card).toContainText("1 day this week");
 
     // And the NEXT prefill is the value that was LOGGED, so accepting it a second
-    // time costs zero taps.
+    // time costs zero taps — read off the chip's LABEL, which is where the collapsed
+    // row now states it.
     await page.goto("/");
     const again = await openQuickEntry(page, "log-practice");
     await expect(
@@ -1289,8 +1310,8 @@ test("a practice logs in one tap from the sheet and the week count moves", async
         .getByTestId("quick-entry-practice-list")
         .getByRole("listitem")
         .filter({ hasText: SHELL_PRACTICE })
-        .getByTestId("practice-duration-input")
-    ).toHaveValue("20");
+        .getByTestId("practice-duration-toggle")
+    ).toHaveText("20 min");
   } finally {
     clearShellPracticeLogs();
     await page.context().close();
@@ -1685,11 +1706,12 @@ test("the sheet's Care segment takes a household member's fever, with no profile
     // THE READING LANDED ON THE CHILD, from the store rather than from the toast —
     // and none landed on the caregiver, which is the failure this path used to take
     // when a bar posted no subject.
+    // eslint-disable-next-line no-restricted-properties -- topass-ok: the write is a Server Action the click does not resolve for us; the row is the settle signal
     await expect(async () => {
       expect(profileTemperatures(sharedId)).toEqual([
         { value_num: Number(FEVER_READING_F), logged_via: "quick-log" },
       ]);
-    }).toPass({ timeout: 15_000 }); // topass-ok: the write is a Server Action the click does not resolve for us; the row is the settle signal
+    }).toPass({ timeout: 15_000 });
     expect(profileTemperatures(ownerId)).toEqual([]);
 
     // THE FEVER OFFER HAS A PRE-EPISODE SURFACE AT LAST (#4712 judgement 1, which

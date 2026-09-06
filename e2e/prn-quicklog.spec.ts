@@ -49,7 +49,7 @@ test("Today panel shows the PRN med's administrations, detail shows the ledger (
   // newest row (it carries a relative-time label) — true of ANY recent administration,
   // not an exact-row identity — so "first" here is just "newest", not "whichever row
   // a neighbor left on a shared list".
-  const newestAdmin = prnAdministrationRows(admin).first(); // first-ok: newest row on a newest-first ledger; the assertion is a property of "most recent", not a row identity
+  const newestAdmin = prnAdministrationRows(admin).first(); // eslint-disable-line no-restricted-properties -- first-ok: newest row on a newest-first ledger; the assertion is a property of "most recent", not a row identity
   await expect(newestAdmin).toContainText(
     /\d{1,2}:\d{2}(?:am|pm)? \((?:just now|\d+ (?:mins?|hrs?) ago)\)/
   );

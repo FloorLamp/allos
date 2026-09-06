@@ -4,10 +4,11 @@ import { requireWriteAccess } from "@/lib/auth";
 import { revalidateRoute } from "@/lib/revalidate";
 import { db } from "@/lib/db";
 import {
-  getDataset,
   DELETE_POLICY,
   type DatasetDeletePolicy,
+  type DeletableDatasetKey,
 } from "@/lib/export";
+import type { OwnedTable } from "@/lib/owned-tables";
 import {
   cleanupOrphanBiomarkerKeyedState,
   cleanupOrphanPrDismissals,
@@ -33,11 +34,11 @@ import { TOMBSTONE_TABLES } from "@/lib/integrations/tombstone-keys";
 // every undoable root). The row pre-images are captured BEFORE the delete so their
 // natural keys survive it.
 function tombstonePreImages(
-  table: string,
+  table: OwnedTable,
   ids: number[],
   profileId: number
 ): Record<string, unknown>[] {
-  if (!(TOMBSTONE_TABLES as readonly string[]).includes(table)) return [];
+  if (!(TOMBSTONE_TABLES as readonly OwnedTable[]).includes(table)) return [];
   const placeholders = ids.map(() => "?").join(",");
   return db
     .prepare(
@@ -47,10 +48,10 @@ function tombstonePreImages(
 }
 
 function tombstoneAllPreImages(
-  table: string,
+  table: OwnedTable,
   profileId: number
 ): Record<string, unknown>[] {
-  if (!(TOMBSTONE_TABLES as readonly string[]).includes(table)) return [];
+  if (!(TOMBSTONE_TABLES as readonly OwnedTable[]).includes(table)) return [];
   return db
     .prepare(`SELECT * FROM ${table} WHERE profile_id = ?`)
     .all(profileId) as Record<string, unknown>[];
@@ -64,14 +65,19 @@ function tombstoneAllPreImages(
 // supplement doses/logs/pairs). A path containing "[" is revalidated as a dynamic
 // page (the revalidateRoute scope argument).
 
-// Resolve a dataset key to its table + policy, guarding against unknown keys.
-function resolve(key: string) {
-  const ds = getDataset(key);
-  const policy = (
-    DELETE_POLICY as Record<string, DatasetDeletePolicy | undefined>
-  )[key];
-  if (!ds || !policy) return null;
-  return { table: ds.table, policy };
+// Resolve a posted dataset key to its table + policy. The key IS the table — every
+// DELETE_POLICY key equals its dataset's physical table, pinned at runtime by
+// lib/__db_tests__/dataset-undo.test.ts — and every one is profile-owned, said by the
+// `satisfies` rather than by a test: the `${resolved.table}` statements below can only
+// ever name a table that carries profile_id (#5274).
+const isDeletable = (key: string): key is DeletableDatasetKey =>
+  Object.hasOwn(DELETE_POLICY, key);
+
+function resolve(
+  key: string
+): { table: DeletableDatasetKey; policy: DatasetDeletePolicy } | null {
+  if (!isDeletable(key)) return null;
+  return { table: key satisfies OwnedTable, policy: DELETE_POLICY[key] };
 }
 
 function afterDelete(

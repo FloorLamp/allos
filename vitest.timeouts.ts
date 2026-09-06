@@ -88,8 +88,9 @@ const DEFAULT_TEST_TIMEOUT_MS = 15_000;
 // manufacturing reds, and CI DETECTS at the strict number. If the variable ever
 // reached a CI runner, the detector would silently become the permitter — every
 // tier still green, nothing anywhere to notice, and the strict half of the design
-// gone. So CI does not get to be overridden, and `vitest-timeouts.test.ts` holds
-// that shut rather than a comment asking nicely. (CI is not the QUIET environment
+// gone. So CI does not get to be overridden: `resolveTestTimeoutMs` returns the
+// strict default on `env.CI` before it ever reads the variable, which is the rule
+// rather than a comment asking nicely. (CI is not the QUIET environment
 // this used to claim — see the dispersion measurement above — it is the one whose
 // verdict counts, which is a different reason for the same rule.)
 const OVERRIDE_ENV = "ALLOS_VITEST_TIMEOUT_MS";
@@ -179,8 +180,8 @@ const IDLE_UTILIZATION = 0.25;
 
 /**
  * One paragraph naming what a timeout WAS, or `null` when the test did not time
- * out. Pure, so `vitest-timeouts.test.ts` can drive it without forging a timeout —
- * which also means the real signal is never buried under its own fixture's copies.
+ * out. Pure, so a caller can drive it without forging a timeout — which also means
+ * the real signal is never buried under a fixture's copies of itself.
  *
  * THE DISCRIMINATOR IS EVENT-LOOP UTILIZATION, and it is the question a reader of a
  * red tier actually has. A test that awaited something that never settled — an

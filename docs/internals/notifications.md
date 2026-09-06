@@ -1930,8 +1930,8 @@ it wrong.
 
 `lib/notifications/cadence-registry.ts` closes that: `KIND_CADENCE` declares,
 for **every** `NotificationKind`, what owns its cadence — either
-`nudge-cadence` (naming the adapter module) or one of the exemption owners, each
-with a written reason:
+`nudge-cadence` or one of the exemption owners, each with a written reason that
+names the adapter module or the mechanism:
 
 | Owner               | What decides the send                                                                                             | Families                                                  |
 | ------------------- | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
@@ -1953,15 +1953,21 @@ midnight whatever the subject does, and nothing is ever spaced off a first send
 or swept. Mood's auto-pause is a contact-consent mechanism (#992/#1668), not an
 episode lifecycle.
 
-**The teeth** (`lib/__tests__/cadence-registry.test.ts`): membership is total
-over `ALL_NOTIFICATION_KINDS` and no entry is stale; every reason is real in
-both directions; a member's declared `planner` must be a module that genuinely
-calls `planNudgeCadence`, and the set of such modules must be **exactly** the
-declared set — so a fifth domain adopting the engine cannot ship without joining
-the declaration, and a declaration cannot claim an adapter that does not exist.
-A safety kind may never be declared a member: the planner's freeze rule is a
+**The teeth** (#5351): `KIND_CADENCE` is keyed on `NotificationKind`, so
+membership is total, no entry is stale and no kind is declared twice — each of
+those is a compile error rather than a test run. A safety kind may never be
+declared a member, and that is the row's type: the planner's freeze rule is a
 suppression-bus lookup, and putting that between a person and their medication
-is the one policy that must not move.
+is the one policy that must not move. `lib/__tests__/cadence-registry.test.ts`
+keeps only what a type cannot hold — that every reason is real in both
+directions, and which four families the engine may decide for.
+
+A member's `why` names its adapter module. The separate `planner` path field and
+the source scan that read it back against the import graph are gone: the field
+restated a sentence the `why` already carried, and the scan's live half — that a
+module calling `planNudgeCadence` has joined this declaration — never caught
+anything, which is not what earns a scan
+(`docs/orchestration/what-earns-a-guard.md`).
 
 ## The review has a cadence (#2178)
 
@@ -3962,3 +3968,40 @@ This is the OPERATOR record and does not replace #2173, which owns making "this
 profile's reminders reach no one" visible to someone who can fix it, derived at
 read time from DB state. Nor is it a per-tick audit table: `audit_events` is for
 user-attributable writes.
+
+## Settings become offers at the moment you act (#4840)
+
+Seven settings were already offered at their moment — the wear reminder
+(#2162), the digest time (#2217), the food buttons (#682), the travel timezone
+(#3263) — and each kept its own "did we ask" somewhere different. `lib/offers.ts`
+is the one declaration: `Record<OfferFamilyId, OfferFamily>`, the sibling of the
+per-kind registries in `lib/notifications` (`kinds.ts`, `reconcile-registry.ts`,
+`cadence-registry.ts`), keyed by family and naming the `NotificationKind` whose
+setting it writes. A family declares `trigger` (pure eligibility over stored
+rows), `writes` (the setting flip — reached from the Yes tap and from nowhere
+else), `surfaces`, `asked` and `copy`; a family missing any part fails typecheck.
+
+- **"Did we ask" is a suppression-bus key**, `offer-asked:<familyId>`, registered
+  `catalog`-class in `lib/dismissal-classes.ts` (a consent asked once, forever; a
+  per-episode family mints its own `anchored` prefix). It is consulted BEFORE the
+  trigger runs, and ignoring is an answer: the in-place surface marks itself
+  asked once it is visible, so the next visit does not repeat it. Restore on
+  Upcoming re-arms the offer.
+- **No new `*_prompted` settings key.** `SettingKey<K>` in `lib/settings/kv.ts`
+  types the six get/set primitives so a literal key ending `_prompted` is a
+  compile error wherever it is written; `food_telegram_prompted` stays legal by
+  name until the connect prompt migrates (on touch).
+- **Two surfaces, never a third.** In place: `components/OfferInPlace.tsx` over
+  the shared `components/OfferControls.tsx`, which the stream lifecycle offers
+  now wear too. Riding an existing send: `offerRideAlongRows` builds the keyboard
+  rows; the token family, its dispatch arm and its reconcile declaration belong
+  to the message that carries them.
+- **The two connect families.** `digest-on-connect` and `recap-on-connect` trigger
+  when Telegram becomes reachable (`telegramChannel.isConfigured`) for a profile
+  with no digest hour / no recap day; Yes writes `notify_digest_hour=07:00` +
+  `digest_mode=static` (`setDigestMinute`, `setDigestMode`) or
+  `notify_recap_day=0`, `notify_recap_hour=09:00`, `notify_recap_scale=week`
+  (`setRecapSlot`). In place on the Telegram card of Settings → Notifications;
+  the connect prompt's rows wait on the dispatch arm.
+- The `notification-channel` marker #5287's data-quality gap shares with this
+  registry is `NOTIFICATION_CHANNEL_ASKED_KEY` (`lib/dismissal-keys.ts`).

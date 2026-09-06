@@ -107,7 +107,10 @@ export default function SessionRecapView({
                 )}
               </span>
               <span className="shrink-0 whitespace-nowrap tabular-nums text-slate-500 dark:text-slate-400">
-                {ex.workingSets} × ·{" "}
+                {ex.plannedSets != null
+                  ? `${ex.workingSets} of ${ex.plannedSets} sets`
+                  : `${ex.workingSets} ×`}{" "}
+                ·{" "}
                 {ex.volumeKg > 0
                   ? fmtRecapVolume(ex.volumeKg, unit)
                   : "bodyweight"}

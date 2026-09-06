@@ -27,6 +27,7 @@ import { db, today, writeTx } from "./db";
 import { SUBSTANCE_USE_WRITE, isPastWriteAccepted } from "./log-manifest";
 import { instantNow, now as clockNow } from "./clock";
 import { isRealIsoDate, utcInstant } from "./date";
+import { normalizedNote } from "./food-log-write";
 import { getTimezone } from "./settings";
 import { judgeStatedAt, type StatedTimeRefusal } from "./stated-time";
 import type { LoggedVia } from "./logged-via";
@@ -70,17 +71,7 @@ export type SubstanceEventEditOutcome =
   | { kind: "updated"; eventId: number; date: string }
   | { kind: "not-found" }
   | { kind: "invalid-date" }
-  | { kind: "invalid-stated-at"; reason: StatedTimeRefusal }
-  // THE MOVE WOULD EMPTY A DAY WHOSE ROW CARRIES A NOTE, so it is refused and nothing
-  // is written. The day counter is dropped at zero and the note lives only on it, so
-  // moving a noted day's LAST use would delete a sentence somebody typed, through a
-  // door that captures no undo and says nothing about notes. THIS IS A CAPABILITY
-  // REGRESSION, not a preserved posture, and saying otherwise was wrong: `main`'s day
-  // form PERFORMS this move onto a free date and carries the note with it — its
-  // `date-conflict` covers an OCCUPIED destination only. What is traded is that move,
-  // for the note surviving, until #5304 puts the note on the use and the situation
-  // stops existing.
-  | { kind: "day-note-stranded" };
+  | { kind: "invalid-stated-at"; reason: StatedTimeRefusal };
 
 // Log one use of a substance on a day. Upserts the day's row, incrementing its
 // units, appends the event, and returns the resulting daily total. Single IMMEDIATE
@@ -107,7 +98,11 @@ export function logSubstanceUnitCore(
   // pair: the only value this ledger can be handed is a STATED one, and the type says
   // so, which is what keeps `time_source = 'tap'` unreachable from the app while the
   // column keeps the same closed vocabulary as `food_log_events.time_source`.
-  statedAt: string | null = null
+  statedAt: string | null = null,
+  // WHAT THE PERSON WROTE ABOUT THIS USE (#5304): text on the event from the moment it
+  // is created, never on the day that rolls uses up. `normalizedNote` folds blank to
+  // NULL so "  ", "" and undefined cannot mean three things.
+  notes?: string | null
 ): SubstanceLogOutcome {
   if (!isSubstanceLogged(substance)) return { kind: "unknown-substance" };
   // THE SHARED DATE INVARIANT (#4425). This core re-checked NOTHING about its day: it
@@ -127,8 +122,8 @@ export function logSubstanceUnitCore(
       .prepare(
         `INSERT INTO substance_log_events
            (profile_id, substance, date, recorded_at, occurred_at, time_source,
-            logged_via)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
+            logged_via, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         profileId,
@@ -137,7 +132,8 @@ export function logSubstanceUnitCore(
         loggedAt,
         statedAt,
         statedAt === null ? null : "stated",
-        loggedVia
+        loggedVia,
+        normalizedNote(notes)
       );
     // CREATION, NOT MUTATION (#3087, #4435). A day total is upserted, so this is the
     // `symptom_logs` case: `recorded_at` moves to the LATEST tap because the day's
@@ -198,6 +194,10 @@ export const undoSubstanceUnitCoreDeclares = SUBSTANCE_USE_WRITE;
 //   • `statedAt: null` clears the instant back to "nobody said";
 //   • a Date states it, and lands as `occurred_at` + `time_source = 'stated'`.
 //
+// The NOTE takes the same three states (#5304): absent leaves it, a string restates
+// it, and null — or a blank string, which `normalizedNote` folds to null — CLEARS it.
+// Clearing is the half #5077 was filed for.
+//
 // The stated instant is judged against the FINAL date, so a correction that moves the
 // day and names an hour is checked against the day the row will actually sit on. A
 // refusal writes NOTHING and carries its reason: this is the correction posture, where
@@ -206,12 +206,12 @@ export const undoSubstanceUnitCoreDeclares = SUBSTANCE_USE_WRITE;
 export function correctSubstanceEventCore(
   profileId: number,
   eventId: number,
-  patch: { date?: string; statedAt?: Date | null }
+  patch: { date?: string; statedAt?: Date | null; notes?: string | null }
 ): SubstanceEventEditOutcome {
   return writeTx(() => {
     const row = db
       .prepare(
-        `SELECT substance, date, recorded_at, occurred_at, time_source
+        `SELECT substance, date, recorded_at, occurred_at, time_source, notes
            FROM substance_log_events
           WHERE id = ? AND profile_id = ?`
       )
@@ -222,6 +222,7 @@ export function correctSubstanceEventCore(
           recorded_at: string;
           occurred_at: string | null;
           time_source: string | null;
+          notes: string | null;
         }
       | undefined;
     if (!row) return { kind: "not-found" as const };
@@ -266,26 +267,8 @@ export function correctSubstanceEventCore(
       // rules every other use obeys. A time-only correction moves neither coordinate
       // and therefore performs neither. The bump carries the event's OWN tap instant as
       // the arriving day's `recorded_at` touch: that column is the day's last-tap stamp
-      // and this use is the tap that just arrived there.
-      //
-      // A MOVE THAT WOULD STRAND THE DAY'S NOTE IS REFUSED (review of #5290, round 2).
-      // One read, before anything is written: the vacated day's own row. If this use is
-      // its last (`units <= 1`) and it carries a note, the `unbump` below would drop the
-      // row and take the note with it. An earlier round tried to CARRY the note to the
-      // arriving day; that destroyed it whenever the arriving day already had one, and
-      // patching the carry a second time is what this refusal replaces. It costs a move
-      // `main` allows — its day form re-dates a noted day onto a free date and the note
-      // travels — so this is a regression taken deliberately and named, not a posture
-      // inherited.
-      const vacated = db
-        .prepare(
-          `SELECT units, notes FROM substance_daily_totals
-            WHERE profile_id = ? AND date = ? AND substance = ?`
-        )
-        .get(profileId, row.date, row.substance) as
-        { units: number; notes: string | null } | undefined;
-      if (vacated != null && vacated.notes != null && vacated.units <= 1)
-        return { kind: "day-note-stranded" as const };
+      // and this use is the tap that just arrived there. The note travels with the
+      // row, so emptying the vacated day strands nothing (#5304).
       substanceDayCounter.unbump(profileId, row.date, [row.substance], 1);
       substanceDayCounter.bump(profileId, nextDate, [row.substance], 1, [
         row.recorded_at,
@@ -293,9 +276,16 @@ export function correctSubstanceEventCore(
     }
     db.prepare(
       `UPDATE substance_log_events
-          SET date = ?, occurred_at = ?, time_source = ?
+          SET date = ?, occurred_at = ?, time_source = ?, notes = ?
         WHERE id = ? AND profile_id = ?`
-    ).run(nextDate, nextStatedAt, nextTimeSource, eventId, profileId);
+    ).run(
+      nextDate,
+      nextStatedAt,
+      nextTimeSource,
+      patch.notes === undefined ? row.notes : normalizedNote(patch.notes),
+      eventId,
+      profileId
+    );
     return { kind: "updated" as const, eventId, date: nextDate };
   });
 }

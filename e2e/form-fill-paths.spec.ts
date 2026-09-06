@@ -22,8 +22,9 @@ import { workerDbPath } from "./worker-env";
 //      in its deload week + Bench history), the coached load is run through the shared
 //      deloadAdjust — the Next-set card shows the deload rationale, and the ghost + Use
 //      carry the shaved load. No drift from the Training-overview card (pinned pure).
-//   2. Repeat last session: each Recent row fills the set editor with that session's
-//      literal sets (FORM_PLATEAU's flat Skullcrusher, 30 kg × 8).
+//   2. Repeat last session: each Recent row states that session's literal sets as this
+//      session's PLAN (FORM_PLATEAU's flat Skullcrusher, 30 kg × 8), which a confirm
+//      turns into the record (#5373).
 //   3. Inline plateau hint: the plateaued Skullcrusher shows a calm hint at load
 //      selection; dismissing it through the shared bus silences the Training-watch
 //      surface too.
@@ -32,10 +33,8 @@ import { workerDbPath } from "./worker-env";
 // to a single 'Use "…"' button, a partial filter lists name+badge — match by substring).
 async function pickActivity(page: Page, name: string) {
   await page.getByPlaceholder(/What did you do/).fill(name);
-  await comboboxRows(page)
-    .filter({ hasText: name })
-    .first() // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
-    .click();
+  // eslint-disable-next-line no-restricted-properties -- first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
+  await comboboxRows(page).filter({ hasText: name }).first().click();
 }
 
 // Clear the FORM_PLATEAU profile's plateau dismissals so the hint is guaranteed present
@@ -178,15 +177,26 @@ test("each Recent row repeats that session into the set editor (#923)", async ({
 
     const recent = page.getByTestId("recent-sessions");
     await expect(recent).toBeVisible();
-    // Tap the newest row's Fill — the primary "repeat last session" gesture.
-    await recent.getByTestId("recent-session-fill").first().click(); // first-ok: prefills from the most-recent session (this spec's own logged session) — order-agnostic
+    // Tap the STATED line's Fill — the primary "repeat last session" gesture, and
+    // since #5370 the only history row on the default view (the rest are behind the
+    // chevron, still a tap away and still fills).
+    await recent.getByTestId("recent-session-fill").first().click(); // eslint-disable-line no-restricted-properties -- first-ok: prefills from the most-recent session (this spec's own logged session) — order-agnostic
 
-    // The set editor is filled with the session's LITERAL work (30 kg × 8), distinct
-    // from the coached suggestion (which would build a rep to 9).
-    await expect(page.getByTestId("set1-weight")).toHaveValue("30");
-    await expect(
-      page.getByTestId("set1-reps-stepper").getByRole("spinbutton")
-    ).toHaveValue("8");
+    // The set editor now states that session's LITERAL work (30 kg × 8) as this
+    // session's PLAN (#5373): a repeat replaces the ghosts, not the record, so the
+    // numbers are painted in the placeholder and nothing is written until a row is
+    // confirmed. Distinct from the coached suggestion, which would build a rep to 9.
+    const load = page.getByTestId("set1-weight");
+    await expect(load).toHaveValue("");
+    await expect(load).toHaveAttribute("placeholder", "30");
+    const reps = page.getByTestId("set1-reps-stepper").getByRole("spinbutton");
+    await expect(reps).toHaveValue("");
+    await expect(reps).toHaveAttribute("placeholder", "8");
+    // Confirming row 1 turns the plan it states into the record.
+    const row1 = page.getByTestId("set-row-1"); // testid-scope-ok: the set grid is inside the held editor overlay, one copy
+    await row1.getByTestId("set-confirm-1").click();
+    await expect(load).toHaveValue("30");
+    await expect(reps).toHaveValue("8");
 
     await cleanUpDraft(page);
   } finally {
@@ -206,6 +216,9 @@ test("a plateaued lift shows the inline plateau hint (#923)", async ({
     await openNewActivity(page);
     await pickActivity(page, "Skullcrusher");
 
+    // The note rides behind the history line's fold since #5370 — one tap, and the
+    // chevron is what states there is something behind it.
+    await page.getByTestId("recent-more-toggle").click(); // testid-scope-ok: the exercise block's history fold in the open editor, one copy
     const hint = page.getByTestId("plateau-hint");
     await expect(hint).toBeVisible();
     await expect(hint).toContainText(/flat ~6 weeks/i);
@@ -249,6 +262,7 @@ test("dismissing the form's plateau hint silences it on Training → Overview (#
     // Dismiss it from the FORM's inline hint (same dedupeKey → shared suppression bus).
     await openNewActivity(page);
     await pickActivity(page, "Skullcrusher");
+    await page.getByTestId("recent-more-toggle").click(); // testid-scope-ok: the exercise block's history fold in the open editor, one copy
     const hint = page.getByTestId("plateau-hint");
     await expect(hint).toBeVisible();
     await settledClick(page, hint.getByTestId("plateau-hint-dismiss"));

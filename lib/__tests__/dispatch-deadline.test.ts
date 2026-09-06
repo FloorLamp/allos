@@ -48,13 +48,18 @@ describe("settleWithinDeadline (#3057)", () => {
       [
         {
           id: "telegram",
-          promise: Promise.resolve({ id: "telegram", ok: true }),
+          promise: Promise.resolve({
+            id: "telegram",
+            ok: true,
+            delivered: true,
+          }),
         },
         {
           id: "push",
           promise: Promise.resolve({
             id: "push",
             ok: false,
+            delivered: false,
             error: "endpoint gone",
           }),
         },
@@ -64,8 +69,8 @@ describe("settleWithinDeadline (#3057)", () => {
     );
     // No clock advance was needed: the deadline is a ceiling, not a wait.
     expect(results).toEqual([
-      { id: "telegram", ok: true },
-      { id: "push", ok: false, error: "endpoint gone" },
+      { id: "telegram", ok: true, delivered: true },
+      { id: "push", ok: false, delivered: false, error: "endpoint gone" },
     ]);
     expect(onLate).not.toHaveBeenCalled();
   });
@@ -77,7 +82,11 @@ describe("settleWithinDeadline (#3057)", () => {
       [
         {
           id: "telegram",
-          promise: Promise.resolve({ id: "telegram", ok: true }),
+          promise: Promise.resolve({
+            id: "telegram",
+            ok: true,
+            delivered: true,
+          }),
         },
         { id: "push", promise: stuck.promise },
       ],
@@ -94,7 +103,7 @@ describe("settleWithinDeadline (#3057)", () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(results).not.toBeNull();
     // The settled channel keeps the result it earned…
-    expect(results![0]).toEqual({ id: "telegram", ok: true });
+    expect(results![0]).toEqual({ id: "telegram", ok: true, delivered: true });
     // …and the pending one is a TYPED timeout failure: ok:false, never success,
     // never a shrunken result set.
     expect(results![1].id).toBe("push");
@@ -119,11 +128,12 @@ describe("settleWithinDeadline (#3057)", () => {
     expect(onLate).not.toHaveBeenCalled();
 
     // The send finally answers, long after anyone could act on it.
-    stuck.resolve({ id: "push", ok: true });
+    stuck.resolve({ id: "push", ok: true, delivered: true });
     await vi.advanceTimersByTimeAsync(0);
     expect(onLate).toHaveBeenCalledExactlyOnceWith("push", {
       id: "push",
       ok: true,
+      delivered: true,
     });
     // The results the caller already holds are frozen — still the timeout.
     expect(results[0]).toMatchObject({ id: "push", ok: false, timedOut: true });
@@ -153,6 +163,7 @@ describe("settleWithinDeadline (#3057)", () => {
       expect(onLate).toHaveBeenCalledExactlyOnceWith("email", {
         id: "email",
         ok: false,
+        delivered: false,
         error: "relay closed the socket",
       });
       expect(unhandled).not.toHaveBeenCalled();
@@ -179,7 +190,7 @@ describe("settleWithinDeadline (#3057)", () => {
       await vi.advanceTimersByTimeAsync(DEADLINE);
       await pending;
 
-      stuck.resolve({ id: "push", ok: true });
+      stuck.resolve({ id: "push", ok: true, delivered: true });
       await vi.advanceTimersByTimeAsync(0);
       // Node reports unhandled rejections on a macrotask; give it one.
       vi.useRealTimers();
@@ -206,7 +217,12 @@ describe("settleWithinDeadline (#3057)", () => {
       () => {}
     );
     expect(results).toEqual([
-      { id: "home-assistant", ok: false, error: "boom before the deadline" },
+      {
+        id: "home-assistant",
+        ok: false,
+        delivered: false,
+        error: "boom before the deadline",
+      },
     ]);
   });
 

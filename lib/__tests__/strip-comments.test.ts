@@ -408,7 +408,7 @@ describe("the four spans the old stripper deleted", () => {
   // day someone deletes the `*/` later on that line; it is listed with its measured
   // zero so the count is not inflated.
   const SURVIVORS: [string, number, string][] = [
-    ["components/ActivityForm.tsx", 241, "useLoggedViaStamp"],
+    ["components/ActivityForm.tsx", 242, "useLoggedViaStamp"],
     ["lib/notify-log-format.ts", 82, "NOTIFY_DECLINE_MESSAGES"],
     ["lib/migrations/snapshot-policy.ts", 64, "MIGRATION_SNAPSHOT_KEEP"],
     ["lib/card-meta-value-census.ts", 144, "test(container)"],
@@ -609,7 +609,6 @@ describe("the hand-rolled comment strippers still in the tree (#3595)", () => {
    * so it cannot grow. Delete a line when its file starts importing this module.
    */
   const HAND_ROLLED_TODAY = [
-    "lib/__tests__/bio-age-inputs-card-scan.test.ts",
     "lib/__tests__/card-mode-boundary.test.ts",
     "lib/__tests__/chrome-refresh-scan.test.ts",
     "lib/__tests__/date-locale-guard.test.ts",

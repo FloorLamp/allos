@@ -139,9 +139,12 @@ export async function discardWorkout(
   return outcome;
 }
 
-// Headless "Finish workout" (#1124/#1205, #221): stamp end = now on a live draft
-// through the SHARED finishWorkoutSession core — the request-path sibling of the
-// notification-finish (which calls the same core from the notify process). Stamping a
+// Headless "Finish workout" (#1124/#1205, #221): end a live draft through the SHARED
+// finishWorkoutSession core — the request-path sibling of the notification-finish (which
+// calls the same core from the notify process). The MINUTE stamped is that core's to
+// decide and no longer simply `now` (#5194): a minute a "Still working out?" message
+// already proposed to this person, else what their heart rate says, else the tap's own
+// clock — see lib/workout-finish.ts, which states the ordering. Stamping a
 // today-session's end arms the ~60s post-workout dose dispatch, exactly like a form
 // save does, so an at-app finish still delivers due post-workout doses. The auth +
 // cross-profile gate lives HERE (requireWriteAccess); the lib core is auth-blind.

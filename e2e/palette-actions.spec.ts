@@ -154,9 +154,10 @@ test.describe("command palette — per-hit actions (#662)", () => {
     ).toBeVisible({
       timeout: 20_000,
     });
+    // eslint-disable-next-line no-restricted-properties -- first-ok: the add-result action in the scoped command-palette results — order-agnostic
     const addResult = results
       .getByTestId("palette-hit-action-add-result")
-      .first(); // first-ok: the add-result action in the scoped command-palette results — order-agnostic
+      .first();
     await expect(addResult).toBeVisible();
 
     // The chip drives a client navigation (router.push) — retry the URL assertion
@@ -195,10 +196,11 @@ test.describe("command palette — per-hit actions (#662)", () => {
     const results = page
       .getByRole("listbox", { name: "Results" })
       .getByTestId("palette-group-supplement");
+    // eslint-disable-next-line no-restricted-properties -- first-ok: one medication hit for the searched med
     const row = results
       .getByRole("listitem")
       .filter({ hasText: "Sertraline" })
-      .first(); // first-ok: one medication hit for the searched med
+      .first();
     // Same first-search warm-up ceiling as the clinical-result hit above.
     await expect(row).toBeVisible({ timeout: 20_000 });
     await expect(row.getByTestId("palette-hit-action-log-dose")).toBeVisible();
@@ -254,10 +256,11 @@ test.describe("command palette — per-hit actions (#662)", () => {
       const input = await openCommandPalette(page);
       await input.fill(APPT_MARKER);
       const results = page.getByRole("listbox", { name: "Results" });
+      // eslint-disable-next-line no-restricted-properties -- first-ok: filtered to APPT_MARKER, a unique marker THIS spec planted — one match
       const row = results
         .getByRole("listitem")
         .filter({ hasText: APPT_MARKER })
-        .first(); // first-ok: filtered to APPT_MARKER, a unique marker THIS spec planted — one match
+        .first();
       // Same first-search warm-up ceiling as the medication/clinical-result hits above —
       // this test's search is its palette's first, so index warm-up + a loaded
       // shard can outrun the 5 s default (#1556 interaction-latency class,

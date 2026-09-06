@@ -54,8 +54,7 @@ export default function ProviderAffiliations({
   // registry answers "clean" however much has been typed, and the ModalShell discard
   // guard had nothing to read: a flick, a scrim tap or (since #3420) Escape threw the
   // pick away with nothing asking. The right question was never "does this file
-  // contain `name=`?" but "is any name on a control the registry will TRACK?" —
-  // `lib/__tests__/autosave-registry-census.test.ts` resolves it that way too.
+  // contain `name=`?" but "is any name on a control the registry will TRACK?".
   //
   // The combobox's `onChange` reports the bare provider NAME, which is exactly what
   // this dialog would post, so the answer is honest rather than a proxy for it.

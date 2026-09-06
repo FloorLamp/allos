@@ -915,7 +915,7 @@ export default function NotificationPrefs({
                     >
                       {e.label}
                     </span>
-                    {e.safety && (
+                    {isSafetyKind(e.kind) && (
                       <span className="badge bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
                         Safety
                       </span>
@@ -1076,7 +1076,7 @@ export default function NotificationPrefs({
                       instead of a 2–4 line paragraph under the control. */}
                   {e.more && (
                     <Disclosure className="mt-1">
-                      <summary className="cursor-pointer text-xs text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">
+                      <summary className="fold-control text-xs text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">
                         More
                       </summary>
                       <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">

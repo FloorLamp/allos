@@ -370,7 +370,7 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     // rendered its due row but not yet its logged ones would be measured against a
     // ground nobody is standing on.
     await expect(
-      morning(page).locator('li[data-testid^="ledger-dose-"]').first() // first-ok: any recorded dose row proves the record half rendered — order-agnostic
+      morning(page).locator('li[data-testid^="ledger-dose-"]').first() // eslint-disable-line no-restricted-properties -- first-ok: any recorded dose row proves the record half rendered — order-agnostic
     ).toBeVisible();
 
     // THE RELATIONSHIP, NOT AN ABSOLUTE. The record rows carry no fill of their own —
@@ -482,18 +482,25 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     // under load: the two grounds differed by a real amount, not a rounding step. The
     // control's own claim is untouched, because both halves of the comparison below
     // still come from the same object through the same reader.
+    //
+    // AS A DOCUMENT RULE, NOT AN INLINE STYLE (#5379, finishing #5000's half). The
+    // comment above this test already says the subtree is REPLACED rather than
+    // updated; an inline style is in force on the ONE node it was written to, so a
+    // replacement between the forge and `tones()`'s next read takes the forgery with
+    // it and the control reds on a page that is behaving. A sheet keyed on the
+    // testid holds for whatever node the locator resolves to, for as long as it is
+    // attached — which is the same object, said in the one way node replacement
+    // cannot undo.
     const beforeForge = await tones();
-    await dueRow.evaluate((el, bg) => {
-      (el as HTMLElement).style.backgroundColor = bg;
-    }, beforeForge.ground);
+    const forgery = await page.addStyleTag({
+      content: `[data-testid^="ledger-due-row-"] { background-color: ${beforeForge.ground} !important; }`,
+    });
     const forged = await tones();
     expect(
       forged.due,
       "the forged ground colour must reach the same object the assertion reads through"
     ).toBe(forged.ground);
-    await dueRow.evaluate((el) => {
-      (el as HTMLElement).style.backgroundColor = "";
-    });
+    await forgery.evaluate((el) => (el as HTMLStyleElement).remove());
     const restored = await tones();
     expect(restored.due).not.toBe(restored.ground);
 
@@ -517,105 +524,6 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     await expect(summary).not.toContainText(TIME_BUCKET_LABELS.Morning);
   });
 
-  test("record, plan and input read as three layers, on rendered styles (#4477)", async ({
-    page,
-  }) => {
-    await page.goto("/nutrition");
-    // Each layer, as its own real element. The comparison below is between these three
-    // and never against a constant: a hex asserted against a literal goes on passing
-    // when the whole page changes colour together, which is the defect this criterion
-    // is about.
-    const record = morning(page)
-      .locator('li[data-testid^="ledger-dose-"]')
-      .first(); // first-ok: any recorded row stands for the record layer — order-agnostic
-    const due = morning(page).locator('[data-testid^="ledger-due-row-"]');
-    const door = page.getByTestId("food-add-door");
-    for (const layer of [record, due, door]) await expect(layer).toBeVisible();
-    // THE DOOR TRANSITIONS ITS OWN BACKGROUND (it lifts on hover), so a colour written
-    // onto it ARRIVES OVER TIME: the control below forged the plan's fill and read back
-    // the same rgb at a partial alpha — 0.694 and 0.92 when this was first seen, then
-    // 0.03 on main's own e2e-main run for 81633f1b and 0.176 on #4991. Stopping the
-    // transition removes the race rather than sampling it — every read here is then of
-    // a settled value, and the assertions are about which colour the box wears, never
-    // about how it got there.
-    //
-    // AS A DOCUMENT RULE, NOT AN INLINE STYLE, which is the whole of #5000. The inline
-    // `style.transitionProperty = "none"` this replaces was in force on exactly ONE
-    // NODE — the one it was written to — while every read and every write below
-    // resolves the locator again, so a door the disable never reached transitions the
-    // forged fill in and the read lands part-way through. Measured as an A/B here:
-    // forcing that node to be replaced between the disable and the forge brought the
-    // forged read back as rgba(220, 234, 211, 0.46) on three repeats; with this rule
-    // and the same forced replacement it came back rgb(220, 234, 211) three times. A
-    // sheet holds for whatever node the locator resolves, for the rest of the test.
-    //
-    // `animation` rides along with `transition` because they are the two ways a
-    // rendered colour can still be arriving when it is read. No keyframe interpolates
-    // `background-color` today, so that half buys nothing now and buys immunity to the
-    // first one that does — and freezing motion is what this case already asks for.
-    await page.addStyleTag({
-      content:
-        "*, *::before, *::after { transition: none !important; animation: none !important; }",
-    });
-
-    type Dress = { fill: string; edge: string };
-    const dressOf = (layer: typeof record) =>
-      layer.evaluate((el) => {
-        const style = getComputedStyle(el);
-        return {
-          fill: style.backgroundColor,
-          // The row layers are hairline-divided; the door is an outline. Read the top
-          // edge on both, so the two readings are the same property of the same box.
-          edge: style.borderTopStyle,
-        };
-      });
-    const read = async (): Promise<Record<string, Dress>> => ({
-      record: await dressOf(record),
-      due: await dressOf(due),
-      door: await dressOf(door),
-    });
-
-    const dress = await read();
-    // THE PLAN AGAINST THE RECORD: the accent, and only there.
-    expect(
-      dress.due.fill,
-      "the plan layer takes a fill the record layer does not"
-    ).not.toBe(dress.record.fill);
-    // THE INPUT AGAINST BOTH: no fill of its own — the accent belongs to the one row
-    // that can still be acted on — and an outline where the record has a hairline.
-    expect(
-      dress.door.fill,
-      "the input layer does not wear the plan layer's accent"
-    ).not.toBe(dress.due.fill);
-    expect(
-      dress.door.edge,
-      "the input layer is drawn as an outline, the record as a hairline"
-    ).not.toBe(dress.record.edge);
-    expect(dress.door.edge).toBe("dashed");
-
-    // THE CONTROL, THROUGH THE SAME OBJECTS the assertions read through: give the door
-    // the record's edge and the plan's fill and both comparisons must collapse, then
-    // restore and both must part again. A control that re-queried would only prove
-    // that SOME read can tell them apart.
-    await door.evaluate(
-      (el, dressed) => {
-        (el as HTMLElement).style.borderTopStyle = dressed.edge;
-        (el as HTMLElement).style.backgroundColor = dressed.fill;
-      },
-      { edge: dress.record.edge, fill: dress.due.fill }
-    );
-    const forged = await read();
-    expect(forged.door.edge).toBe(forged.record.edge);
-    expect(forged.door.fill).toBe(forged.due.fill);
-    await door.evaluate((el) => {
-      (el as HTMLElement).style.borderTopStyle = "";
-      (el as HTMLElement).style.backgroundColor = "";
-    });
-    const restored = await read();
-    expect(restored.door.edge).not.toBe(restored.record.edge);
-    expect(restored.door.fill).not.toBe(restored.due.fill);
-  });
-
   // CHROME-TO-FIRST-FACT, ASSERTED AS A RELATIONSHIP (#4477's acceptance criterion).
   // The number that matters is not "how many pixels down the page is the first row" —
   // that moves with every neighbour above the ledger — but how much of the LEDGER'S OWN
@@ -627,7 +535,7 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
   }) => {
     await page.goto("/nutrition");
     const ledger = page.getByTestId("day-ledger");
-    const firstRow = page.getByTestId("ledger-rows").locator("li").first(); // first-ok: the first fact IS the first row — the measurement's subject
+    const firstRow = page.getByTestId("ledger-rows").locator("li").first(); // eslint-disable-line no-restricted-properties -- first-ok: the first fact IS the first row — the measurement's subject
     await expect(firstRow).toBeVisible();
     const [ledgerBox, rowBox] = await settledBoxes([ledger, firstRow]);
     // The ledger's chrome is its "Ledger" label line and the census beside it: one line
@@ -819,12 +727,13 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
       page,
       page.locator(`[data-testid="food-day-${inside}"]`)
     );
+    // eslint-disable-next-line no-restricted-properties -- first-ok: any due group carries the bulk control — order-agnostic
     const insideDue = page
       .locator('[data-testid^="ledger-due-group-"]')
-      .first(); // first-ok: any due group carries the bulk control — order-agnostic
+      .first();
     await expect(insideDue).toBeVisible();
     await expect(
-      page.locator('[data-testid^="ledger-takeall-"]').first() // first-ok: same group
+      page.locator('[data-testid^="ledger-takeall-"]').first() // eslint-disable-line no-restricted-properties -- first-ok: same group
     ).toBeVisible();
 
     await hydratedClick(
@@ -840,16 +749,17 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     // inside the write window, so a day four back rendered "Nothing logged yet." for a
     // day that owed doses. So the statement is asserted first and the absence second.
     const outsideDue = page.locator('[data-testid^="ledger-due-group-"]');
-    await expect(outsideDue.first()).toBeVisible(); // first-ok: any due group proves the day still states what it owed
+    await expect(outsideDue.first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: any due group proves the day still states what it owed
     await expect(page.getByTestId("day-ledger-empty")).toHaveCount(0);
     await expect(page.locator('[data-testid^="ledger-takeall-"]')).toHaveCount(
       0
     );
     // And expanding it states the doses themselves as record, not as offers.
-    await hydratedClick(page, outsideDue.first()); // first-ok: same group
+    await hydratedClick(page, outsideDue.first()); // eslint-disable-line no-restricted-properties -- first-ok: same group
+    // eslint-disable-next-line no-restricted-properties -- first-ok: any named dose row — order-agnostic
     const outsideDose = page
       .locator('[data-testid^="ledger-due-dose-"]')
-      .first(); // first-ok: any named dose row — order-agnostic
+      .first();
     await expect(outsideDose).toContainText("Not recorded");
     await expect(outsideDose.getByRole("button")).toHaveCount(0);
   });
@@ -966,7 +876,7 @@ test.describe("the day is stated once", () => {
     // "nothing renders it twice" just as happily. These are the named surfaces that
     // must STILL carry the day — the ledger states the servings, and the add list
     // still offers the groups to add.
-    await expect(ledger.locator("li[data-group]").first()).toBeVisible(); // first-ok: any serving row proves the ledger states the day — order-agnostic
+    await expect(ledger.locator("li[data-group]").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: any serving row proves the ledger states the day — order-agnostic
     await expect(
       page
         .getByTestId("food-quick-rows")

@@ -233,7 +233,8 @@ export async function deleteEndurancePlan(
 // Attach one of the event day's logged activities to the event (#3285 item 2) —
 // the MANUAL link, for everything the source's "race" label does not cover. The
 // core refuses a session logged on another day, so the page only ever offers the
-// day's own.
+// day's own. Detaching (below) carries no day rule: a person can always take a
+// result off an event, whichever side's date has moved since.
 export async function linkEventActivity(
   formData: FormData
 ): Promise<FormResult> {
@@ -243,7 +244,9 @@ export async function linkEventActivity(
   if (!Number.isInteger(planId) || !Number.isInteger(activityId))
     return formError("Invalid link.");
   if (!linkEventActivityCore(profile.id, planId, activityId))
-    return formError("That activity isn’t on the event’s day.");
+    return formError(
+      "That activity isn’t on the event’s day, or the event was abandoned."
+    );
   revalidateEndurance();
   return formOk();
 }
@@ -255,7 +258,7 @@ export async function unlinkEventActivity(
   const activityId = Number(formData.get("activity_id"));
   if (!Number.isInteger(activityId)) return formError("Invalid link.");
   if (!unlinkEventActivityCore(profile.id, activityId))
-    return formError("Activity not found.");
+    return formError("That activity isn’t linked to an event.");
   revalidateEndurance();
   return formOk();
 }

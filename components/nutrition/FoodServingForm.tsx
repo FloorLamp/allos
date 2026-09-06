@@ -73,6 +73,9 @@ export interface FoodServingRow {
   eatenAt: string | null;
   /** Profile-local "HH:MM" of the tap instant. Never edited; it names the alternative. */
   loggedAt: string | null;
+  /** What the person wrote about this serving (#5304), or null. Seeds the field so a
+   *  save restates or clears it rather than opening blank over stored text. */
+  notes: string | null;
 }
 
 export default function FoodServingForm({
@@ -161,6 +164,7 @@ export default function FoodServingForm({
         : (slot ?? FOOD_SLOTS[0]))
   );
   const [mealTouched, setMealTouched] = useState(false);
+  const [notes, setNotes] = useState(row?.notes ?? "");
   const [when, setWhen] = useState<WhenValue>(() => ({
     date: row?.date ?? date,
     statedAt: openingStatedAt,
@@ -185,6 +189,8 @@ export default function FoodServingForm({
     if (subjectProfileId != null)
       fd.set("profile_id", String(subjectProfileId));
     const hhmm = statedHhmm(when.statedAt, tz) || null;
+    // ALWAYS POSTED (#5304): absent would mean "leave it", and empty means "clear it".
+    fd.set("notes", notes);
     if (row) {
       fd.set("event_id", String(row.eventId));
       // Three wire values (#2227): absent = unchanged, "none" = clear, "HH:MM" = state
@@ -299,6 +305,17 @@ export default function FoodServingForm({
           testId={`${testId}-time`}
         />
       </div>
+      <label className="text-xs text-slate-500 sm:col-span-2 dark:text-slate-400">
+        Notes
+        <textarea
+          name="notes"
+          data-testid={`${testId}-notes`}
+          className="input mt-1 w-full"
+          rows={2}
+          value={notes}
+          onChange={(event) => setNotes(event.target.value)}
+        />
+      </label>
       <InlineError>{error}</InlineError>
       <div className="flex items-end gap-2 sm:col-span-2">
         <SubmitButton

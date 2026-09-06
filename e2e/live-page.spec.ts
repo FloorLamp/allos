@@ -12,10 +12,8 @@ import { comboboxRows, deleteActivityFromForm, settledBoxes } from "./helpers";
 // Same shape-tolerant combobox pick the live-workout spec documents.
 async function pickActivity(page: Page, name: string) {
   await page.getByPlaceholder(/What did you do/).fill(name);
-  await comboboxRows(page)
-    .filter({ hasText: name })
-    .first() // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
-    .click();
+  // eslint-disable-next-line no-restricted-properties -- first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
+  await comboboxRows(page).filter({ hasText: name }).first().click();
 }
 
 test("live start → set → finish: the record settles at the session's own URL", async ({
@@ -102,7 +100,7 @@ test("live start → set → finish: the record settles at the session's own URL
   expect(page.url()).toBe(sessionUrl);
   const record = page.getByTestId("training-activity-page");
   await expect(record).toBeVisible();
-  await expect(record.getByText("Barbell Bench Press").first()).toBeVisible(); // first-ok: the logged exercise renders on the record
+  await expect(record.getByText("Barbell Bench Press").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: the logged exercise renders on the record
 
   // Clean up the row this test created (shared seed DB): edit on the page and
   // delete through the form — the same machinery the log card uses.

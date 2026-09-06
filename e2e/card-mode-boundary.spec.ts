@@ -230,7 +230,7 @@ async function expectPresentation(
 ): Promise<BoundaryProbe> {
   await page.setViewportSize({ width: opts.width, height: VIEWPORT_HEIGHT });
   await expect(
-    page.getByTestId(TABLE).locator('tbody a[href^="/immunizations/"]').first() // first-ok: any rendered vaccine row proves the list is past its empty state, which is all this wait is for
+    page.getByTestId(TABLE).locator('tbody a[href^="/immunizations/"]').first() // eslint-disable-line no-restricted-properties -- first-ok: any rendered vaccine row proves the list is past its empty state, which is all this wait is for
   ).toBeVisible();
 
   const seen = await probe(page);
@@ -315,7 +315,7 @@ test("moving card mode to the `md` breakpoint would silence the sm column tier â
   // one of the lists that ladder their columns.
   await page.setViewportSize({ width: BAND_WIDTH, height: VIEWPORT_HEIGHT });
   await expect(
-    page.getByTestId(TABLE).locator('tbody a[href^="/immunizations/"]').first() // first-ok: any rendered vaccine row proves the list is past its empty state
+    page.getByTestId(TABLE).locator('tbody a[href^="/immunizations/"]').first() // eslint-disable-line no-restricted-properties -- first-ok: any rendered vaccine row proves the list is past its empty state
   ).toBeVisible();
 
   const before = await probe(page);

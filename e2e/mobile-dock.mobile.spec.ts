@@ -41,10 +41,11 @@ async function tapUntilOpen(
   trigger: Locator,
   surface: Locator
 ): Promise<Locator> {
+  // eslint-disable-next-line no-restricted-properties -- topass-ok: re-tap past the pre-hydration swallow — a pure client toggle with no POST/navigation to settle on; set-true-only, so a late tap can't re-close it
   await expect(async () => {
     if (!(await surface.isVisible())) await trigger.click();
     await expect(surface).toBeVisible({ timeout: 1000 });
-  }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-tap past the pre-hydration swallow — a pure client toggle with no POST/navigation to settle on; set-true-only, so a late tap can't re-close it
+  }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] });
   return surface;
 }
 

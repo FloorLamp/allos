@@ -135,6 +135,12 @@ export interface NotifyTickProfile {
 // channel succeeded (used to dedupe a slot for the day, so a successful channel
 // isn't re-sent next hour just because another channel failed); `failed` = any
 // configured channel failed.
+//
+// CHANNEL-level, deliberately, and NOT the same question as DispatchResult.delivered
+// (#5194, tenth pass): that one asks whether any RECIPIENT received the message, and
+// reading it here would stop a partly-failed household fan-out from retrying next hour
+// — a change to every reminder's retry band, including the safety tier. The slot dedup
+// keeps the reading it has always had.
 async function send(
   profileId: number,
   msg: NotificationMessage

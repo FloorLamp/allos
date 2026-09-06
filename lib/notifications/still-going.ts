@@ -16,7 +16,9 @@
 // bounded arrival rather than a quiet timer (#5001); neither is a button a person
 // can press to say "yes, still going", which is what this family is.
 
-import { dateStrInTz } from "../date";
+import { dateStrInTz, zonedDateParts } from "../date";
+import { detectedWorkoutEndAt } from "../workout-detected-end";
+import { recordWorkoutEndProposal } from "../workout-end-proposal";
 import { now as clockNow } from "../clock";
 import { getWorkoutPresence } from "../queries/presence";
 import { stalePracticeSessions } from "../practice-log";
@@ -65,6 +67,19 @@ export interface StillGoingEpisode {
   // Quiet in minutes, where the domain measures it. Null when the domain does not
   // report one and the copy therefore does not quote one.
   quietMin: number | null;
+  // THE MINUTE THIS PROFILE'S OWN HEART RATE SAYS THE EFFORT ENDED (#5194), local
+  // `HH:MM`, or null when the trace does not say — which is most of the time and every
+  // time for a practice. It is a PROPOSAL: the message quotes it so the person can see
+  // what Finish will record. Nothing writes it unattended (owner ruling, 2026-09-06).
+  //
+  // The minute a DELIVERED message names is RECORDED against the row
+  // (`runStillGoingSuggest` below, lib/workout-end-proposal.ts), and the tap stamps that
+  // recorded value. So this field is read exactly once per message: asking the detector a
+  // second time at tap time is what made the sentence and the write disagree — silently,
+  // for any tap that was not immediate (#5194, eighth falsifying pass). The one thing
+  // that still takes the promise away is the person's own save past the minute it names,
+  // which is the detector's own cancel and is re-applied at the tap (#5194, ninth pass).
+  detectedEnd: string | null;
 }
 
 // The message. Two buttons that RESOLVE the episode in place (the two-way principle —
@@ -117,7 +132,9 @@ export function renderStillGoingMessage(
       : `${GLYPH.inProgress} Still working out?${who}`,
     body: practice
       ? `${quiet ? `Running for ${quiet}` : "Still running"} and nothing since. Finish it or discard — nothing was ended automatically.`
-      : "Your session has been quiet for a while. Finish it or discard the draft — nothing was ended automatically.",
+      : episode.detectedEnd
+        ? `Your heart rate says it ended at ${episode.detectedEnd}. Finish it at that minute or discard the draft — nothing was ended automatically.`
+        : "Your session has been quiet for a while. Finish it or discard the draft — nothing was ended automatically.",
     actions,
     kind: "other",
   };
@@ -136,7 +153,11 @@ export function stillGoingEpisodes(
     presence.state === "active" &&
     presence.stale &&
     presence.activityId != null
-  )
+  ) {
+    // The proposal, resolved to the wall clock the message prints and the finish core
+    // stamps. Costs one query on a profile with no trace, and only a stale open draft
+    // ever asks — see `detectedWorkoutEndAt` for what it refuses and why.
+    const detected = detectedWorkoutEndAt(profileId, presence.activityId);
     out.push({
       kind: "workout",
       rowId: presence.activityId,
@@ -145,13 +166,20 @@ export function stillGoingEpisodes(
       // different quantities on a draft that saved a set an hour in. The copy says
       // "quiet for a while" rather than inventing a number from the wrong one.
       quietMin: null,
+      detectedEnd: detected
+        ? zonedDateParts(getTimezone(profileId), detected).hhmm
+        : null,
     });
+  }
   for (const session of stalePracticeSessions(profileId, now))
     out.push({
       kind: "practice",
       rowId: session.id,
       label: session.practice,
       quietMin: session.quietMin,
+      // A practice ends by its own core and has no heart-rate reader; the nudge for it
+      // is unchanged.
+      detectedEnd: null,
     });
   return out;
 }
@@ -180,7 +208,55 @@ export async function runStillGoingSuggest(
     );
     if (results.length === 0) continue;
     if (results.some((r) => !r.ok)) failed = true;
-    if (results.some((r) => r.ok)) {
+    // REACHED SOMEBODY, which is not the same question as "did the channel succeed"
+    // (#5194, tenth falsifying pass). `ok` is a CHANNEL-level fact and Telegram is not
+    // one channel per person: it fans one message out to every managing login's chat and
+    // lets a single chat's throw fail the whole channel. So in a household where one
+    // chat has blocked the bot, the other chat receives this message — with its live
+    // Finish button quoting a minute — while `some(ok)` reads false. Recording nothing
+    // there is exactly the defect this record exists to prevent, from the other end:
+    // the tap then re-reads the trace and stamps something the message never said.
+    //
+    // `delivered` is the recipient-level answer each channel now gives
+    // (lib/notifications/types.ts, SendOutcome). It is also stricter than `ok` in the
+    // other direction, and the reachable shape is Web Push: when every subscription
+    // answers 404/410 Gone, `sendToSubscriptions` prunes each one and returns without
+    // counting either a success or an error — no throw, `ok: true`, and nobody reached.
+    // A minute recorded for THAT is a promise no browser is still receiving (#5194,
+    // eleventh pass).
+    //
+    // NOT the per-kind audience gate, which two earlier versions of this comment named:
+    // this family is `kind: "other"`, `other` is in `NON_CONFIGURABLE_KINDS`, and
+    // `parseDisabledKinds` drops it from every stored blob — so no channel can ever
+    // filter this nudge by kind. The gate makes `ok`/`delivered` diverge for
+    // toggleable kinds (pinned in notification-matrix-gate.test.ts); it cannot do it
+    // here.
+    if (results.some((r) => r.delivered)) {
+      // WHAT THIS MESSAGE PROMISED, ON RECORD BECAUSE SOMEBODY RECEIVED IT (#5194,
+      // eighth, ninth and tenth falsifying passes). The body quotes
+      // `episode.detectedEnd`; the Finish button on it runs `finishWorkoutSession`,
+      // which stamps what is recorded here rather than asking the detector again hours
+      // later. Both halves read the same field, so the sentence and the row hold the
+      // same characters by construction. A message that names no minute records that
+      // too — it promises the tap's own instant, and a trace that starts answering
+      // afterwards must not back-date the row.
+      //
+      // BESIDE THE ONE-SHOT MARKER AND UNDER THE SAME CONDITION, which is the ninth
+      // pass's correction kept on the tenth's gate. Recording before the dispatch was
+      // meant to close a window where a delivered message had no record; what it
+      // actually did was record for messages that never went anywhere — a profile with
+      // no channel at all reaches this loop every eligible tick — and `finishWorkout`
+      // would then stamp a minute nobody was shown. The record is written first of the
+      // two so a crash between them re-sends and re-records rather than leaving a live
+      // button with no record.
+      //
+      // THE MARKER RIDES THE SAME ANSWER, and that is load-bearing rather than
+      // symmetry: a nudge that reached one chat and is not marked would be re-sent on
+      // the next tick, and the second message can quote a DIFFERENT minute — leaving
+      // the first chat holding a live button for a minute no longer on record. One
+      // question, one answer, for the record and the "asked once" both.
+      if (episode.kind === "workout")
+        recordWorkoutEndProposal(profileId, episode.rowId, episode.detectedEnd);
       setProfileSetting(profileId, markerKey, date);
       log.info("still-going suggest sent", {
         profile: profileId,

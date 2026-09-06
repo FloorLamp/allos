@@ -833,7 +833,14 @@ hold one active plan per cardio discipline, and as many other events as you like
 Each event has its own page — the plan, the day and the result in one place — and
 the activities logged on the day link to it: a run Strava labels a race links
 itself to that day's event in its discipline, and anything else links with one
-tap. Deleting an event keeps its activities and unlinks them. Mobility sessions
+tap. Once you link or unlink a session yourself, the sync stops choosing for it —
+a later sync, a merge with the same session from another app, or deleting the
+event will not attach it again, and where two copies of one session disagree the
+one you decided last wins. An abandoned event takes no result. Move an event's
+date, or the session's, and what you already linked stays its result, shown with
+the day it was logged — you can take a result off an event at any time, and
+linking one on is offered on the event's own day. Deleting an
+event keeps its activities and unlinks them. Mobility sessions
 log against body regions, build their own coverage strip, and can satisfy weekly
 mobility habits.
 

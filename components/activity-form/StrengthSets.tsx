@@ -3,6 +3,7 @@
 import FactChipRow, { FactChip } from "@/components/facts/FactChipRow";
 import ControlTooltip from "@/components/ControlTooltip";
 import IconButton from "@/components/IconButton";
+import ExerciseHistory from "./ExerciseHistory";
 import { useEffect, useRef, useState } from "react";
 import type { Equipment } from "@/lib/types";
 import { isBarbell } from "@/lib/types";
@@ -20,9 +21,7 @@ import {
   RECOVERING_LOAD_FACTOR,
 } from "@/lib/injury-model";
 import { isValidDuration } from "@/lib/duration";
-import { formatLongDate } from "@/lib/format-date";
-import { useFormatPrefs } from "@/components/FormatPrefsProvider";
-import { judgeTargets, summarizeExercise } from "@/lib/training-log-format";
+import { judgeTargets } from "@/lib/training-log-format";
 import {
   suggestNextSet,
   contextualNextSet,
@@ -55,17 +54,22 @@ import {
   IconTrendingDown,
 } from "@tabler/icons-react";
 import {
+  asPlan,
+  confirmSet,
+  doneSets,
+  setDone,
   partIntent,
   partTotal,
   recentSessionsForForm,
+  repeatSessionFill,
   setComplete,
-  setPartial,
   sidePartial,
   blockedField,
   partSetsSummary,
   sharesLoad,
   type PartEntry,
   type SetEntry,
+  type SetPlan,
   type RepeatSourceSet,
   type PartFault,
 } from "./model";
@@ -221,7 +225,7 @@ function LoadField({
   weightStep,
   showPlate,
   ids = null,
-  ghost = null,
+  plan = null,
   blocked,
   inputRef,
   onChange,
@@ -235,7 +239,13 @@ function LoadField({
   weightStep: number;
   showPlate: boolean;
   ids?: SetRowIds | null;
-  ghost?: NextSet | null;
+  // What this load is OFFERED as while nobody has stated it (#5373), or null. The plan
+  // is painted as a PLACEHOLDER over an empty field, never written into it: focus is
+  // arrival, not intent, so typing "60" over a ghost must give 60 and not 77.560
+  // (#1971). The exercise-level band takes set 1's plan, which is how #5371's band is
+  // itself a ghost until a set is done — and why a load typed INTO the band shows at
+  // once, plan or no plan.
+  plan?: SetPlan | null;
   blocked: boolean;
   // Hands the input up on mount, so a "Vary" tap can put the caret in the weight it
   // just revealed.
@@ -253,11 +263,11 @@ function LoadField({
   // Increment steppers (issue #337). The weight step is lift-appropriate and
   // plate-loadable — the SAME weightIncrementKg/Lb the next-set suggestion adds
   // (5 kg squat vs 2.5 kg accessory), in the user's display unit.
+  // Steps from the PLAN while the field is a ghost: the offer is what a person nudges
+  // up or down, not a zero.
   const stepWeight = (direction: -1 | 1) => {
-    const next = Math.max(
-      0,
-      round((Number(set[f.weight]) || 0) + direction * weightStep, 2)
-    );
+    const from = Number(set[f.weight] || plan?.[f.weight]) || 0;
+    const next = Math.max(0, round(from + direction * weightStep, 2));
     onChange({ [f.weight]: next > 0 ? String(next) : "" });
   };
   const input = (
@@ -276,11 +286,7 @@ function LoadField({
           onEnter();
         }
       }}
-      placeholder={
-        ghost && !ghost.bodyweight
-          ? String(dispWeight(ghost.weightKg, unit, 1))
-          : unit
-      }
+      placeholder={plan?.[f.weight] || unit}
       className={
         stepped
           ? "number-no-spinner min-w-0 w-full border-x border-y-0 border-black/10 bg-transparent px-2 py-2 text-sm outline-hidden focus:ring-0 dark:border-white/10 dark:text-slate-100 dark:placeholder:text-slate-500"
@@ -341,7 +347,6 @@ function SetRow({
   weightStep,
   showPlate,
   ids = null,
-  ghost = null,
   className,
   testId,
   flagsFor,
@@ -360,9 +365,6 @@ function SetRow({
   weightStep: number;
   showPlate: boolean;
   ids?: SetRowIds | null;
-  // The coached offer this row ghosts its placeholders with, or null (#335). Set 1 of
-  // a fresh bilateral part only — a ghost is an offer, never a write.
-  ghost?: NextSet | null;
   className: string;
   testId?: string;
   // Which of this side's inputs to flag while a change is stuck.
@@ -386,15 +388,24 @@ function SetRow({
 }) {
   const f = SIDE[side];
   const timed = isTimed(exercise);
+  // This row is the PLAN until it is confirmed (#5373). Its numbers show as ghost
+  // placeholders, and the first step or keystroke into them writes the value AND
+  // confirms the set — correcting IS confirming, so a failed set is two taps on
+  // reps `−` and never a separate confirm afterwards.
+  const confirm = (patch: Partial<SetEntry>) =>
+    onChange({ ...confirmSet(set), ...patch });
   const flags = flagsFor(set[f.weight], set[f.reps], set[f.duration]);
   const reps = useRef<HTMLInputElement | null>(null);
   const effortRef = (el: HTMLInputElement | null) => {
     reps.current = el;
     repsRef?.(el);
   };
+  // Steps from the PLAN's reps while the row is a ghost — "stepping row 2's reps
+  // down twice" is `reps − 2` at the planned load, not a count started from zero.
   const stepReps = (direction: -1 | 1) => {
-    const next = Math.max(0, (Number(set[f.reps]) || 0) + direction);
-    onChange({ [f.reps]: next > 0 ? String(next) : "" });
+    const from = Number(set[f.reps] || set.plan?.[f.reps]) || 0;
+    const next = Math.max(0, from + direction);
+    confirm({ [f.reps]: next > 0 ? String(next) : "" });
   };
   // The "effort" input is reps for normal lifts, a m:ss hold time for timed.
   const holdInvalid =
@@ -405,8 +416,8 @@ function SetRow({
       type="text"
       inputMode="numeric"
       value={set[f.duration]}
-      onChange={(e) => onChange({ [f.duration]: e.target.value })}
-      placeholder="m:ss"
+      onChange={(e) => confirm({ [f.duration]: e.target.value })}
+      placeholder={set.plan?.[f.duration] || "m:ss"}
       aria-invalid={holdInvalid || undefined}
       className={`input ${
         holdInvalid
@@ -424,7 +435,7 @@ function SetRow({
       inputMode="numeric"
       data-testid={ids?.reps}
       value={set[f.reps]}
-      onChange={(e) => onChange({ [f.reps]: stripNonPositive(e.target.value) })}
+      onChange={(e) => confirm({ [f.reps]: stripNonPositive(e.target.value) })}
       onKeyDown={
         onEnter
           ? (e) => {
@@ -437,7 +448,7 @@ function SetRow({
             }
           : undefined
       }
-      placeholder={ghost != null ? String(ghost.reps) : "reps"}
+      placeholder={set.plan?.[f.reps] || "reps"}
       // Divider on BOTH sides now that the reps stepper is symmetric
       // (#1524: − input +), exactly like the weight stepper's input.
       className="number-no-spinner min-w-0 w-full border-x border-y-0 border-black/10 bg-transparent px-2 py-2 text-sm outline-hidden focus:ring-0 dark:border-white/10 dark:text-slate-100 dark:placeholder:text-slate-500"
@@ -456,10 +467,10 @@ function SetRow({
             weightStep={weightStep}
             showPlate={showPlate}
             ids={ids}
-            ghost={ghost}
+            plan={set.plan}
             blocked={flags.weight}
             inputRef={loadRef}
-            onChange={onChange}
+            onChange={confirm}
             onPlateTarget={onPlateTarget}
             onEnter={() => reps.current?.focus()}
           />
@@ -580,7 +591,6 @@ export default function StrengthSets({
     seed?: number
   ) => void;
 }) {
-  const formatPrefs = useFormatPrefs();
   const p = part;
   // Plateau hints dismissed in this session (#923) — an optimistic local hide so the
   // inline hint vanishes on tap while the shared-bus write persists it everywhere else.
@@ -735,6 +745,14 @@ export default function StrengthSets({
       temperRationale: trainingTemper?.rationale,
     });
   };
+  // HOW MANY SETS THE PLAN STATES (#5373). The suggestion says what one set is; the
+  // seed session says how many — its own working rows, which is what "I intend to do
+  // those exact reps" means in practice. Warmups are not part of the prescription
+  // (#338), and a row that logged no reps on either side was never a set. A lift with
+  // no history plans nothing and keeps its one empty row.
+  const plannedSetCount = seedSets.filter(
+    (s) => !s.warmup && (s.reps != null || s.reps_right != null)
+  ).length;
   // Bilateral parts get one suggestion; per-side parts get an independent
   // suggestion per side (#335) — sessionBestSet already treats each side as its
   // own candidate, so seeding both from the stronger side would over-load the
@@ -791,8 +809,10 @@ export default function StrengthSets({
       effort: needsSet || (partial && (timed ? !d.trim() : !r.trim())),
     };
   };
-  const last = p.sets[p.sets.length - 1];
-  const canAddSet = !!last && setComplete(p.name, last, p.perSide);
+  // A further set copies the last one the person CONFIRMED (#5373) — until one
+  // exists the rows already state the plan, and there is nothing to add to.
+  const lastDone = [...p.sets].reverse().find(setDone) ?? null;
+  const canAddSet = !!lastDone && setComplete(p.name, lastDone, p.perSide);
   const total = partTotal(p);
   // The sentence this part's sets read as, or null when they are not a uniform run and
   // must stay a grid (lib/activity-form-model). Null is the rule, not a hint: with no
@@ -804,9 +824,10 @@ export default function StrengthSets({
   // identical sets that differed only in effort still says so once compressed.
   const setsRpe = rpeTracking ? rpeSummaryText(p.sets) : null;
   const showGrid = !(collapsed && setsSentence);
-  // A pristine part (no set started): its set 1 shows the suggestion as ghost
-  // PLACEHOLDERS (#335). Once anything is typed it's no longer pristine, so the
-  // ghosts vanish and never fight real input.
+  // A pristine part: no set of it has been confirmed, so every row it holds is still
+  // the PLAN (#5373 widens #335's set-1 offer to the whole prescription). Confirming
+  // or correcting any row ends it, and the untouched-part gates that protect entry in
+  // progress from fills read this.
   //
   // The ghost is an OFFER, never a write. #335 originally also applied the
   // suggestion from the fields' `onFocus` — "no Use tap needed" — and #1971
@@ -817,19 +838,12 @@ export default function StrengthSets({
   // typing speed and at 6x CPU throttle — not a race. Focus is ARRIVAL, not
   // intent, and this repo's rule is that context gates an offer but the user's
   // tap is the write. The tap is the Next-set card's "Use" button below.
-  const partUntouched = p.sets.every(
-    (s) =>
-      !setComplete(p.name, s, p.perSide) && !setPartial(p.name, s, p.perSide)
-  );
-  // The bilateral suggestion to ghost set 1 with. Only for a fresh bilateral
-  // part with a weighted suggestion — per-side offers via its own Use button,
-  // and a bodyweight suggestion has no weight ghost.
-  const ghost = !p.perSide && partUntouched ? suggestion : null;
+  const partUntouched = !p.sets.some(setDone);
   // Live version of the training log card's missed-target marker, judged by the
   // same shared rule the saved data will be (completed sets only).
   const intent = partIntent(p);
   const targetStatus = judgeTargets(
-    p.sets
+    doneSets(p)
       .filter((s) => setComplete(p.name, s, false))
       .map((s) => ({
         reps: Number(s.reps),
@@ -838,25 +852,66 @@ export default function StrengthSets({
         warmup: s.warmup ? 1 : 0,
       }))
   );
-  // Inherit the rep target from last session (#335): when the coached suggestion
-  // carries a declared target (the user's scheme) and this fresh part has none,
-  // adopt it so a fixed-scheme lifter (5×5) doesn't retype the target each time.
-  // Guarded by the last-seeded name so clearing the field doesn't re-seed it, and
-  // gated on `partUntouched` so it never overrides a session already in progress.
+  // A coached next set stated as a STORED set, so the fill runs it through the same
+  // kg → display-unit mapping the "repeat last session" path uses and the two can
+  // never round apart (#5377). Sides are independent (#335): a side with no
+  // suggestion contributes nothing, which is what its blank fields mean.
+  const coachedSet = (
+    left: NextSet | null,
+    right: NextSet | null
+  ): RepeatSourceSet => ({
+    set_number: 1,
+    weight_kg: left && !left.bodyweight ? left.weightKg : null,
+    reps: left ? left.reps : null,
+    weight_kg_right: right && !right.bodyweight ? right.weightKg : null,
+    reps_right: right ? right.reps : null,
+    duration_sec: null,
+    duration_sec_right: null,
+    warmup: null,
+  });
+  // THE PRESCRIPTION, AS ROWS (#5373). One planned row per set the plan states,
+  // carrying the SAME coached numbers the one-set ghost used to paint and `done:
+  // false` — so the grid shows the whole prescription as the offer it is, the payload
+  // passes over every row of it, and confirming one is a flag flip rather than a
+  // second write path. Minted through `repeatSessionFill`, the one kg → display-unit
+  // mapping every fill shares (#5377), so a ghost can never round differently from
+  // the Use tap that writes the same set.
+  const plannedRows = (): SetEntry[] | null => {
+    const left = p.perSide ? suggestionLeft : suggestion;
+    const right = p.perSide ? suggestionRight : null;
+    if ((!left && !right) || plannedSetCount < 1) return null;
+    const row = coachedSet(left, right);
+    return repeatSessionFill(
+      Array.from({ length: plannedSetCount }, (_, i) => ({
+        ...row,
+        set_number: i + 1,
+      })),
+      units.weightUnit
+    ).sets.map(asPlan);
+  };
+  // What a fresh part inherits from the plan, seeded ONCE per exercise: the rows
+  // above, and the rep target the scheme declares (#335) so a fixed-scheme lifter
+  // (5×5) doesn't retype it. Guarded by the last-seeded name so clearing either
+  // doesn't re-seed it, and gated on `partUntouched` so it never overrides a session
+  // already in progress — a person who has confirmed a set owns their grid.
   const seededTargetFor = useRef<string | null>(null);
   useEffect(() => {
     const name = p.name.trim();
     if (seededTargetFor.current === name) return;
     seededTargetFor.current = name;
+    if (!partUntouched) return;
+    const patch: Partial<PartEntry> = {};
     if (
       suggestion?.targetReps != null &&
       !isTimed(p.name) &&
       !p.perSide &&
-      partUntouched &&
       !p.targetReps.trim() &&
       !p.toFailure
     )
-      onUpdatePart({ targetReps: String(suggestion.targetReps) });
+      patch.targetReps = String(suggestion.targetReps);
+    const rows = plannedRows();
+    if (rows) patch.sets = rows;
+    if (Object.keys(patch).length) onUpdatePart(patch);
     // Re-run only when the exercise changes; the ref prevents mid-session re-seeds.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.name]);
@@ -914,23 +969,6 @@ export default function StrengthSets({
     left: null,
     right: null,
   });
-  // A coached next set stated as a STORED set, so the fill runs it through the same
-  // kg → display-unit mapping the "repeat last session" path uses and the two can
-  // never round apart (#5377). Sides are independent (#335): a side with no
-  // suggestion contributes nothing, which is what its blank fields mean.
-  const coachedSet = (
-    left: NextSet | null,
-    right: NextSet | null
-  ): RepeatSourceSet => ({
-    set_number: 1,
-    weight_kg: left && !left.bodyweight ? left.weightKg : null,
-    reps: left ? left.reps : null,
-    weight_kg_right: right && !right.bodyweight ? right.weightKg : null,
-    reps_right: right ? right.reps : null,
-    duration_sec: null,
-    duration_sec_right: null,
-    warmup: null,
-  });
   const badDuration =
     timed &&
     p.sets.some(
@@ -940,6 +978,37 @@ export default function StrengthSets({
           !!s.durationRight.trim() &&
           !isValidDuration(s.durationRight))
     );
+  // Inline plateau hint (#923): a calm one-liner when this lift has an active
+  // (undismissed) plateau finding, at the point of load selection. Reuses the SAME
+  // plateau computation/dedupeKey as the Training-watch card — dismissing it here
+  // silences that surface too (and vice versa). Never blocks the fill paths; yields
+  // to the deload rationale on a deload week.
+  // ONE DEFINITION, TWO MOUNTS, and they are mutually exclusive: #5370 folds the note
+  // in behind the history line, and a lift with no recent session has no fold for it
+  // to go behind.
+  const plateauNote =
+    showPlateauHint && plateauHint ? (
+      <div
+        data-testid="plateau-hint"
+        className="mt-2 flex items-start justify-between gap-2 rounded-md border border-black/10 bg-slate-50/70 px-2.5 py-1.5 text-xs dark:border-white/10 dark:bg-ink-850/40"
+      >
+        <span className="flex items-start gap-1.5 text-slate-500 dark:text-slate-400">
+          <IconTrendingDown className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+          {/* The SHARED plateau-break advice (#1203): the ~10% deload magnitude
+              + named variations, phrased identically to the finding/next-set
+              surfaces, pre-rendered by the one-computation helper. */}
+          <span>{plateauHint.hintText}</span>
+        </span>
+        <IconButton
+          type="button"
+          onClick={() => dismissPlateau(plateauHint.dedupeKey)}
+          data-testid="plateau-hint-dismiss"
+          label="Dismiss plateau hint"
+        >
+          <IconX className="h-3.5 w-3.5" stroke={2} />
+        </IconButton>
+      </div>
+    ) : null;
   return (
     <>
       {/* The "How to" affordance for this lift (#734) now rides in the part
@@ -974,75 +1043,13 @@ export default function StrengthSets({
           </div>
         </div>
       )}
-      {recent.length > 0 && (
-        <div
-          data-testid="recent-sessions"
-          className="mt-2 rounded-md border border-black/10 bg-surface px-2.5 py-1.5 text-xs dark:border-white/10"
-        >
-          <div className="section-label">Recent</div>
-          {/* Each row is a "repeat this session" fill path (#923) while the part is
-              pristine (same partUntouched gate as the ghosts, so a tap can never clobber
-              in-progress entry) — the newest row is the primary "repeat last session"
-              gesture, but every recent session is a tap away (a light/off last day makes
-              the one before it useful). Once anything is typed the rows revert to plain
-              read-only reference. */}
-          <ul className="mt-0.5 space-y-0.5">
-            {recent.map((sess, i) => {
-              const dateEl = (
-                <span className="shrink-0 text-slate-500 dark:text-slate-400">
-                  {formatLongDate(sess.date, formatPrefs)}
-                </span>
-              );
-              const metrics = (
-                <span className="flex items-center gap-1 tabular-nums">
-                  {summarizeExercise(sess.sets, units.weightUnit).text}
-                  {/* Logged RPE for the session, shown when present (#743). */}
-                  {rpeSummaryText(sess.sets) && (
-                    <span className="rounded-sm bg-slate-100 px-1 text-xs font-medium text-slate-500 dark:bg-ink-800 dark:text-slate-400">
-                      {rpeSummaryText(sess.sets)}
-                    </span>
-                  )}
-                  {/* Same missed-target marker as the training log card; the
-                      session status is judged server-side. */}
-                  {sess.status === "missed" && (
-                    <span className="inline-flex items-center gap-0.5 text-xs text-amber-500 dark:text-amber-400">
-                      <IconAlertTriangle className="h-3.5 w-3.5" stroke={2} />
-                      Missed target
-                    </span>
-                  )}
-                </span>
-              );
-              return (
-                <li key={i}>
-                  {partUntouched ? (
-                    <button
-                      type="button"
-                      data-testid="recent-session-fill"
-                      onClick={() =>
-                        onFill({ source: "session", sets: sess.sets })
-                      }
-                      className="-mx-1 flex w-full items-center justify-between gap-3 rounded-sm px-1 py-0.5 text-left text-slate-600 transition hover:bg-brand-50 hover:text-brand-700 dark:text-slate-300 dark:hover:bg-brand-950/40 dark:hover:text-brand-300"
-                    >
-                      {dateEl}
-                      <span className="flex items-center gap-2">
-                        {metrics}
-                        <span className="shrink-0 rounded-sm border border-brand-300 px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-brand-600 dark:border-brand-800 dark:text-brand-400">
-                          Fill
-                        </span>
-                      </span>
-                    </button>
-                  ) : (
-                    <div className="flex items-center justify-between gap-3 text-slate-600 dark:text-slate-300">
-                      {dateEl}
-                      {metrics}
-                    </div>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
+      <ExerciseHistory
+        sessions={recent}
+        fillable={partUntouched}
+        onFill={(sets) => onFill({ source: "session", sets })}
+        unit={units.weightUnit}
+        note={plateauNote}
+      />
       {/* The coached next set (same progression as the exercise detail
           panel's card) with a one-tap fill, so the suggestion can be acted
           on right where sets are logged. For a fresh bilateral part it's also
@@ -1141,33 +1148,9 @@ export default function StrengthSets({
           </p>
         </div>
       )}
-      {/* Inline plateau hint (#923): a calm one-liner when this lift has an active
-          (undismissed) plateau finding, at the point of load selection. Reuses the SAME
-          plateau computation/dedupeKey as the Training-watch card — dismissing it here
-          silences that surface too (and vice versa). Never blocks the fill paths; yields
-          to the deload rationale on a deload week. */}
-      {showPlateauHint && plateauHint && (
-        <div
-          data-testid="plateau-hint"
-          className="mt-2 flex items-start justify-between gap-2 rounded-md border border-black/10 bg-slate-50/70 px-2.5 py-1.5 text-xs dark:border-white/10 dark:bg-ink-850/40"
-        >
-          <span className="flex items-start gap-1.5 text-slate-600 dark:text-slate-300">
-            <IconTrendingDown className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
-            {/* The SHARED plateau-break advice (#1203): the ~10% deload magnitude
-                + named variations, phrased identically to the finding/next-set
-                surfaces, pre-rendered by the one-computation helper. */}
-            <span>{plateauHint.hintText}</span>
-          </span>
-          <IconButton
-            type="button"
-            onClick={() => dismissPlateau(plateauHint.dedupeKey)}
-            data-testid="plateau-hint-dismiss"
-            label="Dismiss plateau hint"
-          >
-            <IconX className="h-3.5 w-3.5" stroke={2} />
-          </IconButton>
-        </div>
-      )}
+      {/* With no history to fold it into, the note is the block's only reference and
+          stays where it always was. */}
+      {recent.length === 0 && plateauNote}
       {/* THE COMPACT SET NOTATION (#3336). A uniform run of completed sets reads as the
           statement it already is on every other surface — the Recent panel, the training
           log card, the timeline — instead of as N identical rows of four controls each.
@@ -1250,7 +1233,7 @@ export default function StrengthSets({
                       weightStep={weightStep}
                       showPlate={showPlate}
                       ids={p.perSide ? null : rowIds(0)}
-                      ghost={ghost}
+                      plan={p.sets[0].plan}
                       blocked={p.sets.some(
                         (s) =>
                           sideFlags(
@@ -1291,7 +1274,7 @@ export default function StrengthSets({
           band of headings. */}
           <div
             data-testid="set-column-headings"
-            className="sticky top-edge-safe [--top-edge-offset:var(--set-schema-top)] z-9 -mx-1 mt-2 flex items-center gap-2 bg-surface/95 px-1 py-1 section-label backdrop-blur-sm md:static md:mx-0 md:bg-transparent md:px-0 md:backdrop-blur-none dark:md:bg-transparent"
+            className="sticky top-edge-safe [--top-edge-offset:var(--set-schema-top)] z-9 -mx-1 mt-2 flex items-center gap-2 bg-surface/95 px-1 py-1 label mb-0 backdrop-blur-sm md:static md:mx-0 md:bg-transparent md:px-0 md:backdrop-blur-none dark:md:bg-transparent"
           >
             <span className="hidden w-12 shrink-0 sm:block">Set</span>
             {stepsLoad ? (
@@ -1394,7 +1377,6 @@ export default function StrengthSets({
                     testId={`set-values-${si + 1}`}
                     className="order-last flex min-w-0 flex-1 basis-full items-center gap-2 sm:order-0 sm:basis-0"
                     ids={rowIds(si)}
-                    ghost={si === 0 ? ghost : null}
                     set={s}
                     exercise={p.name}
                     unit={units.weightUnit}
@@ -1444,6 +1426,36 @@ export default function StrengthSets({
                       testId={si === 0 ? "set1-rpe" : undefined}
                     />
                   )}
+                  {/* CONFIRM THIS SET (#5373). The row is the plan until this is
+                tapped: it turns the ghost's numbers into the record and, in live
+                mode, starts the rest timer exactly as checking a set off always did
+                (#340). It is the same gesture as correcting the reps, so it goes
+                away the moment either happens — a confirmed row has nothing left to
+                confirm.
+
+                MOUNTS IconButton, whose own box is the 34px `--control-box` the
+                options column's controls share (#3938); the geometry is the
+                primitive's, not restated here.
+
+                A LINE OF THE OPTIONS COLUMN, NOT A THIRD CONTROL ON THE W/✕ ONE.
+                That line is already full: `sm:w-7` + `sm:w-8` + the gap is the
+                column's whole 64px, which is pinned because widening it shrinks the
+                weight/reps inputs below their #337 tap-target width. A 34px button
+                added beside W overflowed LEFT over the row's own "Vary" control and
+                swallowed its taps — measured: the entry-ergonomics Vary click could
+                not land. Stacked here it is beside W on a phone, where the column
+                unrolls into one horizontal toolbar band (#1612), and above it on
+                desktop, where the column is a column. */}
+                  {!setDone(s) && (
+                    <IconButton
+                      tone="brand"
+                      onClick={() => onUpdateSet(si, confirmSet(s))}
+                      label={`Confirm set ${si + 1}`}
+                      data-testid={`set-confirm-${si + 1}`}
+                    >
+                      <IconCheck className="h-4 w-4" stroke={2.5} />
+                    </IconButton>
+                  )}
                   <div className="flex items-center justify-end gap-1 sm:items-start">
                     {/* Warmup toggle (#338): a light per-set "W" — a warmup is excluded
                 from the part's volume total and target markers. One toggle per
@@ -1484,7 +1496,7 @@ export default function StrengthSets({
                             type="button"
                             onClick={() => onRemoveSet(si)}
                             data-testid={`set-remove-${si + 1}`}
-                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-rose-400 hover:bg-rose-50 hover:text-rose-600 sm:mt-1 sm:h-8 sm:w-8 dark:text-rose-500/80 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 focus-visible:bg-rose-50 focus-visible:text-rose-600 sm:mt-1 sm:h-8 sm:w-8 dark:text-slate-400 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 dark:focus-visible:bg-rose-950/40 dark:focus-visible:text-rose-400"
                           >
                             <IconX className="h-4 w-4" />
                           </button>

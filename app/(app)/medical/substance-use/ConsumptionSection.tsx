@@ -3,7 +3,6 @@ import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
 import { useState, type FormEvent } from "react";
 import ModalShell from "@/components/ModalShell";
-import NotesText from "@/components/NotesText";
 import OverflowMenu, {
   MENU_ITEM,
   MENU_ITEM_DANGER,
@@ -117,19 +116,12 @@ export default function ConsumptionSection({
     },
     {
       // A substance day IS its amount, so that is what stays on the phone's head
-      // line beside the date (#3671); the note is the detail behind the tap.
+      // line beside the date (#3671). A note is a USE's fact and reads on its record
+      // row (#5304), so the day carries none here.
       header: "Amount",
       slot: "trailing",
       cell: (entry) =>
         `${entry.amount} ${entry.amount === 1 ? def.unitSingular : def.unitPlural}`,
-    },
-    {
-      header: "Notes",
-      slot: "meta",
-      label: "Notes",
-      empty: (entry) => !entry.notes,
-      cellClassName: "max-w-sm text-slate-500 dark:text-slate-400",
-      cell: (entry) => (entry.notes ? <NotesText notes={entry.notes} /> : "—"),
     },
   ];
 
@@ -283,7 +275,7 @@ export default function ConsumptionSection({
       </div>
 
       <Disclosure className="text-sm">
-        <summary className="cursor-pointer text-slate-500 dark:text-slate-400">
+        <summary className="fold-control text-slate-500 dark:text-slate-400">
           8-week trend
         </summary>
         <div

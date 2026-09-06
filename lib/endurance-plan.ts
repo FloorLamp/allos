@@ -144,6 +144,72 @@ export function disciplineForActivityName(
   return null;
 }
 
+/**
+ * The event link's DECISION ORDINAL (`activities.endurance_link_decided_seq`,
+ * #3285 item 2): 0 when nobody has decided this session's event link, and N > 0 when
+ * a PERSON set it by hand as the profile's Nth such decision.
+ *
+ * It is written by BOTH hand moves — attaching a session to an event and detaching
+ * one — because they are the same fact from the row's point of view: the link is the
+ * person's, not the sync's. Reading it together with `endurance_plan_id` says which
+ * decision it was: a plan id means "linked by hand", null means "detached". That is
+ * why one column is enough; a second would only re-state what the link column says.
+ *
+ * WHY AN ORDINAL rather than a bare flag. A decision has to survive a merge, and a
+ * merge keeps ONE row: when two copies of one session each carry a decision, the
+ * cluster has to keep the person's LATEST word. A flag can only say THAT they
+ * decided, so the fold fell back to whichever copy won keepership — which comes from
+ * richness and token order and has nothing to do with recency, so a hand link, or a
+ * "Move here", was reverted by machinery with the person doing nothing. The ordinal
+ * is a total order over one profile's decisions, so the fold can just take the
+ * newest. Not a timestamp: nothing shows a person when they decided, a clock stores
+ * more than the rule needs, and two decisions inside one millisecond would tie —
+ * which is the guessing this exists to end.
+ *
+ * A decision is STICKY. It survives the event being deleted, a merge that replaces
+ * the row, and a delete-and-undo — anything that can move or destroy the link without
+ * the person touching it. Without that, machinery hands the session back to the
+ * auto-link and the next sync re-attaches what they detached.
+ *
+ * WHAT THE ORDER IS UNIQUE OVER, exactly. Every ordinal is issued once, from a
+ * per-profile high-water mark that only goes up (`nextEventLinkDecisionSeq`), so no
+ * two DECISIONS ever share one — including a decision made while the row carrying the
+ * previous one sat in the Trash, which is where reading the live rows alone got it
+ * wrong. Two live rows CAN still show the same ordinal, and only one way: a merge
+ * copies the winning decision — its link and its ordinal together — onto the keeper,
+ * so keeper and captured drop hold the same pair until the drop is purged or its
+ * restore un-folds the keeper. That is one decision written twice, not two decisions
+ * tied: whichever of the two the fold picks, it picks the same link. What must never
+ * happen is two DIFFERENT decisions at one ordinal, because then the fold has no
+ * answer and falls back to keeper order, which is richness and token order and knows
+ * nothing about recency.
+ *
+ * And it is ONE-WAY: nothing clears it, and nothing offers to hand a session back to
+ * the auto-link. Deference, not a trap — the bar exists only on the sessions a person
+ * has already decided by hand, the auto-link still runs freely on every other one, and
+ * the most it can cost is the one tap the auto-link would have saved them (Link, on
+ * the event's own page). Nobody is stranded: a session whose event was deleted and
+ * recreated is listed on the new event with a Link button like any other.
+ *
+ * Deliberately NOT the #133 `edited` lock: `edited` holds the WHOLE row out of
+ * re-ingest and badges it "<source> · edited", so taking it here would stop the
+ * provider correcting the session's distance because someone detached it from an
+ * event. One column, one consequence.
+ *
+ * Pure, and here rather than in lib/endurance-plans.ts, so the pure merge fold
+ * (lib/import-review/conflicts.ts) can read the column through it too. Its census row
+ * is the `event-link-decision` family in lib/side-state.ts; read the column only
+ * through these two.
+ */
+export function eventLinkDecisionSeq(seq: number | null | undefined): number {
+  return typeof seq === "number" && seq > 0 ? seq : 0;
+}
+
+/** Whether a person has decided this row's event link at all. */
+export function isEventLinkDecided(seq: number | null | undefined): boolean {
+  return eventLinkDecisionSeq(seq) > 0;
+}
+
 // ---- Cited constants ----
 
 // The ten-percent rule: max safe week-over-week volume increase.

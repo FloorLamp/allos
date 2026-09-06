@@ -140,7 +140,7 @@ test.describe("shared supply pools", () => {
       // Asserted HERE, on the page setDoseTaken already left us on, rather than after
       // a second /medications load — the chip is a static rendering fact and owes
       // nothing to the confirm's ordering.
-      const ownChip = page.getByTestId("shared-supply-chip").first(); // first-ok: spec-owned profile whose only tracked meds are this fixture's linked set
+      const ownChip = page.getByTestId("shared-supply-chip").first(); // eslint-disable-line no-restricted-properties -- first-ok: spec-owned profile whose only tracked meds are this fixture's linked set
       await expect(ownChip).toContainText("Shared");
 
       await page.goto(CABINET);
@@ -350,7 +350,7 @@ test.describe("shared supply pools", () => {
     try {
       // A linked medication's shared chip deep-links to the cabinet.
       await page.goto("/medications");
-      const chip = page.getByTestId("shared-supply-chip").first(); // first-ok: spec-owned profile; every tracked med here is this fixture's and every chip targets the cabinet
+      const chip = page.getByTestId("shared-supply-chip").first(); // eslint-disable-line no-restricted-properties -- first-ok: spec-owned profile; every tracked med here is this fixture's and every chip targets the cabinet
       await followLink(page, chip, new RegExp(`${CABINET}$`));
 
       // Edit THIS case's own bottle through the cabinet form (explicit submit, and it
@@ -381,9 +381,10 @@ test.describe("shared supply pools", () => {
       await expect(save).toHaveAttribute("data-button-control", "");
       await expect(save).toHaveClass(/\bbutton-control-primary\b/);
       await settledClick(page, save);
+      // eslint-disable-next-line no-restricted-properties -- topass-ok: awaits the revalidated cabinet after the explicit save
       await expect(async () => {
         expect(await onHand(page, SUPPLY_EDIT_BOTTLE)).toBe(123);
-      }).toPass(); // topass-ok: awaits the revalidated cabinet after the explicit save
+      }).toPass();
 
       // Both actions live in the card's standard overflow. Delete opens the
       // app-wide confirmation sheet rather than expanding bespoke controls into

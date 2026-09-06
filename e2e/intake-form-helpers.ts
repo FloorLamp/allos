@@ -91,7 +91,7 @@ export async function setAmount(
   scope: Page | Locator = page
 ): Promise<void> {
   const editor = await openFact(page, "dose", scope);
-  await editor.getByLabel("Amount").first().fill(amount); // first-ok: dose row one of the form this helper just opened
+  await editor.getByLabel("Amount").first().fill(amount); // eslint-disable-line no-restricted-properties -- first-ok: dose row one of the form this helper just opened
   await closeEditor(page, scope);
 }
 

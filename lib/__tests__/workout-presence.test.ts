@@ -321,6 +321,42 @@ describe("computeWorkoutPresence", () => {
     expect(p.state).toBe("active");
     expect(p.activityId).toBe(3);
   });
+
+  // A SPAN OF ZERO IS STILL AN END (#5194, eighth falsifying pass, F3). Finishing
+  // inside the start minute leaves `end == start` with no duration — `minutesBetween`
+  // answers null for a non-positive span — and `activityWindow`, which presence now
+  // shares, refuses a window that contains no minute. Presence is asking WHEN it ended,
+  // not what to measure inside it, so it answers here: without this the row is `idle`
+  // at every instant, and the tick's safety-tier `runPostWorkoutFinish` and the #924
+  // recap stop seeing a session they used to see.
+  it("reads a session finished inside its own start minute as finished", () => {
+    const p = presence([
+      row({ start_time: "09:30", end_time: "09:30", updated_at: sql("09:30") }),
+    ]);
+    expect(p.state).toBe("finished");
+    expect(p.sinceMin).toBe(30);
+  });
+
+  // THE OTHER HALF OF THE SAME SHARED RULE, AND IT IS DELIBERATE. An end EARLIER than
+  // its start is read as a crossing of local midnight, because that is what the shape
+  // is for every other reader of a session's span and a mistyped end is
+  // indistinguishable from one. So a row typed 18:30 → 17:30 is not "finished an hour
+  // ago"; it is a session ending at 17:30 tomorrow, and it reads as finished then.
+  it("reads an end before its start as a crossing, not as an hour ago", () => {
+    const typo = row({ start_time: "18:30", end_time: "17:30" });
+    expect(
+      computeWorkoutPresence([typo], new Date(`${DAY}T19:00:00Z`), TZ, DAY)
+        .state
+    ).toBe("idle");
+    expect(
+      computeWorkoutPresence(
+        [typo],
+        new Date("2026-07-18T17:45:00Z"),
+        TZ,
+        "2026-07-18"
+      ).state
+    ).toBe("finished");
+  });
 });
 
 describe("isCompletedSessionRow", () => {

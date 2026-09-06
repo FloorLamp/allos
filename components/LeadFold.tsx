@@ -68,7 +68,7 @@ export default function LeadFold({
         <Disclosure data-testid={`${testId}-fold`}>
           <summary
             data-testid={`${testId}-fold-summary`}
-            className="flex w-fit cursor-pointer list-none items-center gap-1 text-sm font-medium text-link"
+            className="fold-control flex w-fit list-none items-center gap-1 text-sm font-medium text-link"
           >
             <IconChevronRight
               className="h-4 w-4 shrink-0 transition-transform group-open:rotate-90"

@@ -94,7 +94,7 @@ test("a picker in a phone sheet is contained, and its last row reachable (#3271)
   // touched. The list scrolls itself once it is taller than the room it was
   // given, which is the design; the claim is that scrolling it GETS you there.
   expect(
-    await reachable(page, options.first()), // first-ok: the list's LEADING row is the assertion — it is the one the clip spared, so it is the control for the last
+    await reachable(page, options.first()), // eslint-disable-line no-restricted-properties -- first-ok: the list's LEADING row is the assertion — it is the one the clip spared, so it is the control for the last
     "the first row"
   ).toBe(true);
   const last = options.nth(count - 1);

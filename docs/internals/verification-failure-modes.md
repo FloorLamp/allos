@@ -90,6 +90,20 @@ not at all five by rote.
   the cases from a `Record<T, …>`. Then add a member locally and watch it fail,
   because the annotation is exactly the thing that reads as proof and is not.
 
+  #5351 is the worked example over `NotificationKind`. Two registries — the
+  settings rows (`lib/notifications/kinds.ts`) and the cadence declaration
+  (`lib/notifications/cadence-registry.ts`) — were ARRAYS, with a partial
+  exclusion map and a hand-written copy of the union beside them, and two guard
+  files reconciled the four on every run, and 366 of their lines are gone.
+  Keyed as `Record<NotificationKind, Row | Inert>` and
+  `Record<NotificationKind, CadenceOwner>`, all three facts are compile errors and
+  the copy of the union is `Object.keys`. Two POLICY rules went into the same
+  types — a safety kind's row may only be `control: { type: "always" }`, and a
+  safety kind may not declare `cadence: "nudge-cadence"` — via a mapped type over
+  the union's safety half, so the rule the guards restated is now unspellable.
+  What stayed is what no type holds: a copy rule over blurb prose, uniqueness
+  across row VALUES, and which four families the shared engine may decide for.
+
 - **A guard that reconstructs a connection from source is blind to every path it
   does not know, and it fails toward silence.** `logged-via-surface-wiring` walked
   the import graph from every action calling `parseWebOrigin` back to the clients
@@ -364,9 +378,6 @@ member. `npm run typecheck` is the only command here that gives a type verdict.
 It is a gate — `scripts/orchestration/agent-gates.sh` runs it before every push,
 CI's `check` job runs it on every PR — and not a tier.
 
-`lib/__tests__/type-verdict.test.ts` pins that, and the two shapes below, over
-synthetic programs.
-
 **Moving it into the tiers was measured and declined (#5150).** Two reasons, and
 the first is the one that settles it.
 
@@ -375,8 +386,8 @@ the first is the one that settles it.
   has no `kind`; `git show 780f93703:lib/__db_tests__/sleep-retime-action.test.ts`
   has no `kind` either). Each tree typechecks clean alone. Only their merge is
   invalid, so no per-branch check — tier-side or gate-side — sees it. Only a
-  check of the MERGED tree can, which is #5235's ground and not the tier's. The
-  combined-tree case below asserts that property; nothing yet prevents it.
+  check of the MERGED tree can, which is #5235's ground and not the tier's.
+  Nothing yet prevents it.
 - **The cost lands exactly on the case the guard exists for.** TypeScript's
   incremental build is cheap for a leaf edit and full-price the moment an exported
   type moves, because every dependent has to be rechecked — which is the whole

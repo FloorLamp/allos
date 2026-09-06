@@ -20,12 +20,31 @@ export interface EventActivityView {
   // "10.2 km · 42:10 · race" — whatever the row has, joined.
   meta: string;
   linked: boolean;
+  // Already another event's result, same day. Linking it here MOVES it, because a
+  // session is the result of at most one event — so the row says so and the button
+  // says "Move here" rather than offering it as if it were free.
+  linkedElsewhere: boolean;
 }
 
 // The event page's two lists (#3285 item 2): the RESULT — the activities linked to
 // the event — and the rest of the day, each one a tap from linking. The event
 // completes against its result: Complete sits beside the linked list, not in the
 // header, because the result is what a person checks before marking the day done.
+//
+// An ABANDONED event takes no result: the person said it did not happen for them, so
+// the day still lists what they logged but nothing offers to make one of those its
+// result. The auto-link and `linkEventActivityCore` refuse the same thing, so this is
+// the offer matching the rule rather than the rule. Unlink stays, so a result attached
+// before the event was abandoned can still be taken off.
+//
+// UNLINK IS OFFERED ON EVERY RESULT, including one logged on a day that is no longer
+// the event's — the meta line carries that day. Either date can move after the link is
+// made (the organiser postpones; the provider re-sends the session with a corrected
+// start time), and the person must always be able to take a result off an event, so
+// this control is never conditional on the dates agreeing. LINK is: attaching claims a
+// session was this event's result, and the day is what makes that claim checkable.
+// After the tap an off-day session leaves the page with the link — that is the move
+// they asked for, and the core allows exactly what this offers.
 export default function EventActivities({
   planId,
   status,
@@ -105,8 +124,11 @@ export default function EventActivities({
           </ul>
         ) : (
           <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
-            No activity linked yet. A race synced from Strava links itself; link
-            anything else from the day below.
+            {status === "abandoned"
+              ? "No result — this event was abandoned."
+              : unlinked.length > 0
+                ? "No activity linked yet. Link one from the day below."
+                : "No activity linked yet."}
           </p>
         )}
       </section>
@@ -119,16 +141,20 @@ export default function EventActivities({
           <ul className="mt-3 space-y-2" data-testid="event-day-list">
             {unlinked.map((a) => (
               <ActivityRow key={a.id} activity={a}>
-                {canWrite && (
+                {canWrite && status !== "abandoned" && (
                   <form action={(fd) => run(linkEventActivity, fd)}>
                     <input type="hidden" name="id" value={planId} />
                     <input type="hidden" name="activity_id" value={a.id} />
                     <Button
                       type="submit"
                       pendingLabel="…"
-                      aria-label={`Link ${a.title}`}
+                      aria-label={
+                        a.linkedElsewhere
+                          ? `Move ${a.title} here`
+                          : `Link ${a.title}`
+                      }
                     >
-                      Link
+                      {a.linkedElsewhere ? "Move here" : "Link"}
                     </Button>
                   </form>
                 )}
@@ -169,6 +195,14 @@ function ActivityRow({
       {activity.meta && (
         <span className="text-xs text-slate-500 dark:text-slate-400">
           {activity.meta}
+        </span>
+      )}
+      {activity.linkedElsewhere && (
+        <span
+          className="text-xs text-slate-500 dark:text-slate-400"
+          data-testid="event-activity-elsewhere"
+        >
+          Result of another event that day
         </span>
       )}
       <div className="ml-auto">{children}</div>

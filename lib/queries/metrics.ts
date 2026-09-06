@@ -28,6 +28,8 @@ import {
   localMinuteProjector,
   offsetSegments,
 } from "../local-day-window";
+import { profileDayZone } from "../travel-excusal";
+import type { ProfileDayZone } from "../travel-timezone";
 import {
   hhmmToMinutes,
   isDstTransitionDay,
@@ -1176,7 +1178,7 @@ function mergeHrDayRows(rows: HrDayRow[]): HrDayRow[] {
 // segment. Returns [] for an empty window.
 function hrDayAggregates(
   profileId: number,
-  tz: string,
+  zone: ProfileDayZone,
   startUtc: string,
   endUtc: string
 ): HrDayRow[] {
@@ -1189,7 +1191,11 @@ function hrDayAggregates(
       GROUP BY date(ts, ?), source`
   );
   const out: HrDayRow[] = [];
-  for (const seg of offsetSegments(tz, startUtc, endUtc)) {
+  // A DST transition and a recorded travel switch are the same kind of boundary to
+  // this loop (#3428): each piece carries the offset the profile's day was actually
+  // running on, so a pre-move day still buckets midnight-to-midnight in the zone it
+  // was lived in instead of being re-spanned under the zone it is standing in now.
+  for (const seg of offsetSegments(zone, startUtc, endUtc)) {
     out.push(
       ...(stmt.all(
         seg.modifier,
@@ -1263,10 +1269,10 @@ function hrInstantBounds(
 function recentHrCutoff(profileId: number, limitDays: number): string | null {
   const bounds = hrInstantBounds(profileId);
   if (!bounds) return null;
-  const tz = getTimezone(profileId);
-  let day = localDayOf(tz, bounds.last);
+  const zone = profileDayZone(profileId);
+  let day = localDayOf(zone, bounds.last);
   if (!day) return null;
-  if (limitDays < 0) return localDayOf(tz, bounds.first);
+  if (limitDays < 0) return localDayOf(zone, bounds.first);
   // Walk back one day-with-data at a time: from the current day's UTC start, the
   // newest row STRICTLY BEFORE it is the newest row of the previous day-with-data.
   // Each step is one indexed seek on (profile_id, ts), so the whole walk is
@@ -1279,10 +1285,10 @@ function recentHrCutoff(profileId: number, limitDays: number): string | null {
       ORDER BY ts DESC LIMIT 1`
   );
   for (let seen = 1; seen < limitDays; seen++) {
-    const row = prev.get(profileId, localDayRange(tz, day).startUtc) as
+    const row = prev.get(profileId, localDayRange(zone, day).startUtc) as
       { ts: string } | undefined;
     if (!row) break;
-    const earlier = localDayOf(tz, row.ts);
+    const earlier = localDayOf(zone, row.ts);
     if (!earlier) break;
     day = earlier;
   }
@@ -1302,13 +1308,13 @@ export function getHrDailySummary(
   // The JS slice below still picks one source per day over exactly this window.
   const cutoff = recentHrCutoff(profileId, limitDays);
   if (cutoff === null) return [];
-  const tz = getTimezone(profileId);
+  const zone = profileDayZone(profileId);
   const bounds = hrInstantBounds(profileId);
   if (!bounds) return [];
-  const lastDay = localDayOf(tz, bounds.last);
+  const lastDay = localDayOf(zone, bounds.last);
   if (!lastDay) return [];
-  const { startUtc, endUtc } = localDaySpan(tz, cutoff, lastDay);
-  const rows = hrDayAggregates(profileId, tz, startUtc, endUtc);
+  const { startUtc, endUtc } = localDaySpan(zone, cutoff, lastDay);
+  const rows = hrDayAggregates(profileId, zone, startUtc, endUtc);
   const picked = pickRowsOneSourcePerDay(
     rows,
     resolutionFor(profileId, "heart_rate"),
@@ -1341,14 +1347,14 @@ export function getHrDailySummaryInRange(
   // One window whichever end is open: an absent bound is resolved to the profile's
   // own first/last day-with-data, so the UTC range is always concrete and the
   // aggregate is always the same shape.
-  const tz = getTimezone(profileId);
+  const zone = profileDayZone(profileId);
   const bounds = hrInstantBounds(profileId);
   if (!bounds) return [];
-  const fromDay = from ?? localDayOf(tz, bounds.first);
-  const toDay = to ?? localDayOf(tz, bounds.last);
+  const fromDay = from ?? localDayOf(zone, bounds.first);
+  const toDay = to ?? localDayOf(zone, bounds.last);
   if (!fromDay || !toDay || fromDay > toDay) return [];
-  const { startUtc, endUtc } = localDaySpan(tz, fromDay, toDay);
-  const rows = hrDayAggregates(profileId, tz, startUtc, endUtc);
+  const { startUtc, endUtc } = localDaySpan(zone, fromDay, toDay);
+  const rows = hrDayAggregates(profileId, zone, startUtc, endUtc);
 
   return markPartialToday(
     profileId,
@@ -1460,6 +1466,63 @@ export const getHrMinutesInRange = cache(function getHrMinutesInRange(
     (r) => r.ts.slice(0, 10),
     (r) => r.source
   ).map(({ ts, bpm }) => ({ ts, bpm }));
+});
+
+// THE SAME WINDOW AND THE SAME ONE-SOURCE-PER-DAY PICK, ANSWERED IN INSTANTS (#5212
+// falsifying pass, F3). The projection above is the right answer for everything that
+// groups or renders BY DAY — but it is lossy, and exactly once a year it loses the
+// thing a duration reader needs. In a fall-back hour two stored instants project to
+// the SAME local minute, so a caller that resolves the local string back through the
+// zone gets the first of the two for both: an hour of a person's readings collapses
+// onto the hour before it, the newest measured minute moves an hour into the past, and
+// a quiet stretch appears where there was effort.
+//
+// A caller measuring real elapsed spans therefore reads the stored instant, which
+// `hr_minutes.ts` has been since #2205. The local day is still what decides which
+// source wins a day (#14), so the projection is still computed — it is used for
+// GROUPING and thrown away, rather than returned as if it were the fact.
+export const getHrInstantsInRange = cache(function getHrInstantsInRange(
+  profileId: number,
+  since: string,
+  until: string
+): { at: number; bpm: number }[] {
+  const tz = getTimezone(profileId);
+  if (!hrInstantBounds(profileId)) return [];
+  if (until < since) return [];
+  const { startUtc, endUtc } = localDaySpan(tz, since, until);
+  const rows = db
+    .prepare(
+      `SELECT ts, bpm, source FROM hr_minutes
+        WHERE profile_id = ? AND ts >= ? AND ts < ?
+        ORDER BY ts ASC`
+    )
+    .all(profileId, startUtc, endUtc) as {
+    ts: string;
+    bpm: number;
+    source: string | null;
+  }[];
+  const toLocalMinute = localMinuteProjector(tz, startUtc, endUtc);
+  return (
+    pickRowsOneSourcePerDay(
+      rows,
+      resolutionFor(profileId, "heart_rate"),
+      (r) => (toLocalMinute(r.ts) ?? r.ts).slice(0, 10),
+      (r) => r.source
+    )
+      // `parseUtcSql`, NEVER `Date.parse` (#5338, found by the fourth falsifying pass on
+      // #5212). `hr_minutes.ts` is a stored stamp and a zoneless date-TIME string is
+      // SERVER-LOCAL by specification, so `Date.parse` reads it through whatever `TZ` the
+      // host has — every db fixture in the repo, migration 164's unconverted rows and any
+      // `seedTimezoneFromEnv` self-host emit one without a `Z`. Under
+      // `TZ=America/New_York` that moved a whole trace by the offset and stamped a
+      // completed workout onto a window with no heart rate in it, which is a WRITE and
+      // reaches the safety-tier post-workout dispatch. The projection above is thrown away
+      // precisely so this line reads the stored instant; parsing it in the host's zone
+      // gives back the loss that seam exists to prevent.
+      .map(({ ts, bpm }) => ({ at: parseUtcSql(ts)?.getTime() ?? NaN, bpm }))
+      .filter((r) => Number.isFinite(r.at))
+      .sort((left, right) => left.at - right.at)
+  );
 });
 
 function bodyMetricColumn(metric: BodyMetricKind): string {

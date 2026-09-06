@@ -553,10 +553,7 @@
      /sleep. The extension is SHIFTED, never shrunk: the whole 12px goes to the
      leading side, where the row has space, so the hit area keeps the exact size
      #3514 ruled and the cell keeps the exact width its flex line packed with. */
-  .table-cards td[data-card="actions"] .tap-target::after,
-  .table-cards
-    td[data-card="actions"]
-    [data-testid="overflow-menu-trigger"]::after {
+  .table-cards td[data-card="actions"] .tap-target::after {
     inset-inline: -12px 0;
   }
 }
@@ -807,6 +804,13 @@
 
 @utility label {
   @apply mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400;
+}
+
+@utility section-heading {
+  /* THE RUNG ABOVE THE EYEBROW (#5376): a heading that names what a block IS. NOT
+     uppercase — that is what tells it apart from the two below at a glance, with no
+     help from the page title's size. Typography only, as they are. */
+  @apply text-base font-semibold text-slate-900 dark:text-slate-50;
 }
 
 @utility section-label {
@@ -1389,21 +1393,12 @@
   & td[data-card="meta"] {
     @apply max-sm:basis-full!;
   }
-  /* Keep the readings row compact without shrinking the menu's effective touch
-     target: the visible control occupies 32px in layout while its pseudo-element
-     extends the clickable button box to 44px — 32 + 2×6, the same arithmetic
-     `.tap-target` uses, which is the floor #3514 ruled. It was `-4px`, i.e. 40px
-     effective, back when the registry still said the floor was 40. */
-  & td[data-card="actions"] [data-testid="overflow-menu-trigger"] {
-    @apply max-sm:relative max-sm:h-8 max-sm:w-8;
-  }
-  @media (max-width: 639.98px) {
-    & td[data-card="actions"] [data-testid="overflow-menu-trigger"]::after {
-      content: "";
-      position: absolute;
-      inset: -6px;
-    }
-  }
+  /* THE 32px ICON BUTTON IS GONE (#4505). This rule used to shrink the readings
+     row's ⋯ to `h-8 w-8` below `sm` and grow it its own `::after`, sanctioning one
+     more height beside the box; "one height, no exceptions" (#4362 ruling 5,
+     re-ratified 2026-08-31) outranks it. The trigger renders `--control-box`
+     everywhere and takes `.tap-target`'s reach, shifted leading by `.table-cards`'
+     own rule. */
 }
 
 @utility logged-event-rows {
@@ -2662,6 +2657,15 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
    MISSING chip is the fact row's whole grammar for "the form is waiting for this",
    so the box could not carry the kind while that declaration stood.
 
+   THE FOLD IS A KIND TOO (#4505). A `<summary>` that IS the control — one line of
+   text, an icon, a count — rendered whatever its font gave it (16 to 20px bare, and
+   three hand-rolled 44s, two 36s and a 28 beside them) because no selector here
+   reached the element. `fold-control` is that kind's name: the padding, the
+   reserved border and the reach are this rule's, and the fold keeps its own paint.
+   A `<summary>` that is a ROW — a card header stacking a title over a description —
+   is not a control and does not wear it (#3979's rule that rows are not controls;
+   `e2e/button-height-floor.mobile.spec.ts` cites each one it sweeps past).
+
    Guards, on RENDERED boxes at 390/639/640/1280 and never a class string:
    `e2e/button-height-floor.mobile.spec.ts` (named for the floor it used to hold)
    for the one height and the disjoint reach, and
@@ -2673,6 +2677,7 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
 .btn-danger,
 .button-control,
 .input,
+.fold-control,
 [data-segmented-option],
 [data-fact-chip="solo"] {
   border-width: var(--control-border);
@@ -2694,6 +2699,7 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
   .btn-danger,
   .button-control,
   .input,
+  .fold-control,
   [data-segmented-option],
   [data-fact-chip="solo"],
   [data-fact-chip="pill"] {
@@ -2702,7 +2708,8 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
 }
 
 /* The reach. `.tap-target` is the same mechanism under its own name, kept for the
-   hand-rolled controls outside the box (a 32px icon button, the dose pills).
+   hand-rolled controls that spell the box themselves (`h-(--control-box)`: the dose
+   pills, the icon buttons — none renders 32 since #4505).
 
    THE CONTAINING BLOCK IS IN `@layer components`, AND THAT IS NOT A DETAIL. The
    overlay needs SOME positioned ancestor, and `relative` is the right default —
@@ -2721,6 +2728,7 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
     .button-control,
     .checkbox-control,
     .tap-target,
+    .fold-control,
     [data-segmented-option],
     [data-calendar-day],
     [data-fact-chip] {
@@ -2737,6 +2745,7 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
   .button-control::after,
   .checkbox-control::after,
   .tap-target::after,
+  .fold-control::after,
   [data-fact-chip="solo"]::after {
     content: "";
     position: absolute;
@@ -2762,6 +2771,19 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
     position: absolute;
     inset-block: calc(-1 * var(--control-reach));
     inset-inline: 0;
+  }
+}
+
+/* THE FOLD'S RESERVED BORDER PAINTS NOTHING UNLESS THE FOLD ASKS. Preflight's
+   `border: 0 solid` leaves currentColor behind the 1px the box reserves, so a bare
+   fold would draw a hairline. `@layer components`, NOT an `@utility`: utilities sort
+   alphabetically within their layer, so a `fold-control` utility would land after
+   `border-(--border)` and take the dashed door's colour away (measured on the
+   compiled sheet before this was moved). A layered default loses to any colour a
+   call site spells, which is the precedence a default is supposed to have. */
+@layer components {
+  .fold-control {
+    border-color: transparent;
   }
 }
 

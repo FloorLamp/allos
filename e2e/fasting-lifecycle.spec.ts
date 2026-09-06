@@ -2,11 +2,13 @@ import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
 import {
   dismissToast,
+  expectPhoneTapTargets,
   hydratedClick,
   openFoodAdd,
   settledBoxes,
   settledClick,
 } from "./helpers";
+import { CONTROL_BOX_PX } from "@/lib/tap-floor-tokens";
 import Database from "better-sqlite3";
 import { frozenNow, workerDbPath } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
@@ -227,10 +229,13 @@ test.describe("the fasting lifecycle (#2756)", () => {
     // fold still has a box and still fails on the number below; a genuinely
     // zero-height one is not visible, so the line above catches that.
     const [foldBox] = await settledBoxes([fold]);
-    expect(
-      foldBox.height,
-      "the idle fold must stay a thumb-sized target"
-    ).toBeGreaterThanOrEqual(44);
+    // The fold is a CONTROL and wears the control box (#4505): 34 rendered, and the
+    // thumb-sized target is the effective one a coarse pointer gets around it. A
+    // rendered 44 here would be the hand-rolled floor this fold used to carry.
+    expect(foldBox.height, "the idle fold wears the control box").toBe(
+      CONTROL_BOX_PX
+    );
+    await expectPhoneTapTargets(page, "the idle fold", [fold]);
     await expect(page.getByTestId("fasting-control")).not.toBeVisible();
     await expect(page.getByTestId("fasting-backdate-toggle")).not.toBeVisible();
     await expect(page.getByTestId("fasting-history")).not.toBeVisible();

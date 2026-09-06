@@ -279,8 +279,8 @@ describe("updateEndurancePlan / status / delete (#839)", () => {
   });
 });
 
-// The manual link (#3285 item 2), from the caller's side: the day rule and the
-// profile scope are the core's, and the action answers from what happened.
+// The manual link (#3285 item 2), from the caller's side: the day rule (attach only)
+// and the profile scope are the core's, and the action answers from what happened.
 describe("linkEventActivity / unlinkEventActivity (#3285 item 2)", () => {
   it("links a same-day activity, refuses another day's and another profile's, and unlinks", async () => {
     const { profile } = seedActor();
@@ -338,5 +338,62 @@ describe("linkEventActivity / unlinkEventActivity (#3285 item 2)", () => {
     expect((await unlinkEventActivity(fd({ activity_id: onDay }))).ok).toBe(
       false
     );
+  });
+
+  // Detaching carries no day rule (the attach does). Whichever side's date moved
+  // since the link was made — the organiser postponing, a provider re-sending the
+  // session with a corrected start time, the person fixing the day they logged it —
+  // the person can still take the result off the event.
+  it("unlinks a result the event's date has moved away from", async () => {
+    const { profile } = seedActor();
+    await createEndurancePlan(
+      fd({
+        event_name: "Harbor 10k",
+        discipline: "run",
+        event_date: "2026-10-05",
+        target_distance: "10",
+      })
+    );
+    const plan = getEndurancePlans(profile.id)[0];
+    const id = String(plan.id);
+    const activityId = String(
+      db
+        .prepare(
+          `INSERT INTO activities (profile_id, date, type, title)
+           VALUES (?, '2026-10-05', 'cardio', 'Harbor 10k')`
+        )
+        .run(profile.id).lastInsertRowid
+    );
+    expect(
+      (await linkEventActivity(fd({ id, activity_id: activityId }))).ok
+    ).toBe(true);
+
+    await updateEndurancePlan(
+      fd({
+        id,
+        event_name: "Harbor 10k",
+        discipline: "run",
+        event_date: "2026-10-12",
+        target_distance: "10",
+      })
+    );
+    revalidate.mockClear();
+    expect(
+      (await unlinkEventActivity(fd({ activity_id: activityId }))).ok
+    ).toBe(true);
+    expect(
+      db
+        .prepare("SELECT endurance_plan_id AS p FROM activities WHERE id = ?")
+        .get(activityId)
+    ).toEqual({ p: null });
+    expect(revalidate.mock.calls.map((c) => c[0])).toContain(
+      "/training/event/[id]"
+    );
+
+    // Nothing left to unlink, and the message says only that.
+    expect(await unlinkEventActivity(fd({ activity_id: activityId }))).toEqual({
+      ok: false,
+      error: "That activity isn’t linked to an event.",
+    });
   });
 });

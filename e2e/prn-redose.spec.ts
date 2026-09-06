@@ -82,7 +82,7 @@ test("med form: confirm flow pre-fills OTC label defaults and opts in (#798)", a
   // Name an ingredient the curated dataset knows so the pre-fill affordance appears.
   // Unique per run (#868) so a --repeat-each run doesn't collide on the row below;
   // afterAll DB-cleans every "Ibuprofen e2e redose*" this spec minted.
-  const nameStamp = Date.now(); // clock-ok: unique medication-name suffix, never a stored timestamp
+  const nameStamp = Date.now(); // eslint-disable-line no-restricted-properties -- clock-ok: unique medication-name suffix, never a stored timestamp
   const name = `${ADDED_MED_PREFIX} ${nameStamp}-${Math.floor(Math.random() * 1e6)}`;
   await addCard.getByLabel("Name").fill(name);
 

@@ -19,8 +19,8 @@ name: CI
 # landing. Only the three cheap tiers run here (the browser jobs are gated to
 # pull_request below): the documented two-green-PRs breakage class is type/unit
 # (#1560/#1562, #2245), and 12 e2e shards per queue group at this merge rate
-# would dwarf the rest of CI. Flip the two `if:` gates below to extend the queue
-# bar to the browser tier. Inert until the main ruleset requires a merge queue —
+# would dwarf the rest of CI. Update the browser job condition below to extend
+# the queue bar to the browser tier. Inert until the main ruleset requires a merge queue —
 # see docs/orchestration.md "The merge queue".
 on:
   pull_request:
@@ -191,96 +191,6 @@ jobs:
       - uses: ./.github/actions/node-setup
       - name: Test (DB) + coverage
         run: npm run test:db:coverage
-
-  # Changed-spec scrutiny lane (#868, fix c; #889), as its OWN job so its
-  # zero-retry verdict lands fast and short-circuits before the sharded full
-  # suite below finishes. This lane's `--repeat-each=3 --retries=0` fails a spec
-  # that isn't reliably green (three-in-a-row at zero retries catches a ≤50%-flaky
-  # spec), so retry-masking can't land a flaky/changed spec. The sharded full
-  # suite now runs at zero retries too (playwright.config.ts, #1159), so a flake
-  # fails loudly everywhere rather than being retried into green.
-  #   • base ref: under pull_request the checkout is the MERGE commit, so HEAD^1
-  #     is the PR base parent (fetch-depth:2 guarantees it's present). We prefer
-  #     the event's base.sha when it happens to be in history, else fall back to
-  #     HEAD^1 — robust for both PR and push (HEAD^1 is the prior commit).
-  #   • no setup project to pass along any more (#1538): each Playwright worker
-  #     boots its own server against its own copy of the seeded template DB,
-  #     which carries a seeded admin session, so there is no shared login step to
-  #     schedule and no per-worker one either.
-  #
-  #   • the `mobile` project (#1420) needs NO extra wiring here: this lane runs
-  #     `npx playwright test <specs>` with no `--project` filter, so a changed
-  #     `*.mobile.spec.ts` is matched by the same `^e2e/.*\.spec\.ts$` glob and
-  #     lands in the mobile project by its NAME (playwright.config.ts testMatch).
-  #     Other changed specs, including `smoke.spec.ts`, stay in chromium.
-  #
-  # This lane's ONLY additive job is that repeat-each=3 scrutiny on the CHANGED
-  # SPECS — the sharded `e2e` matrix below already runs the WHOLE suite at
-  # retries=0 on every non-docs PR, so total coverage is never this lane's to
-  # provide. It therefore gates on changed `*.spec.ts` and does nothing else.
-  #
-  # SHARED INFRA (was #889, removed): a PR editing ONLY a shared e2e module —
-  # seed-events.ts, fixture-logins.ts, helpers.ts, nav.ts, symptom-helpers.ts,
-  # fixtures.ts, worker-env.ts — changes no spec, so this lane correctly skips. That is NOT a
-  # coverage gap: shared infra is the highest blast radius, but the sharded
-  # matrix runs the whole suite against the changed infra at retries=0 already,
-  # so it IS scrutinized. The old fallback re-ran the whole suite here too, in a
-  # single long-lived process — which added no repeat-each scrutiny, no faster
-  # verdict (~28 min, slower than the ~8 min matrix), and no coverage the matrix
-  # lacked, while reintroducing the exact single-worker cumulative degradation
-  # the matrix was SHARDED to avoid (the #1306 flake class: a spec fine when
-  # sharded, timing out deep into the single-worker crush). Dropped: the matrix
-  # owns infra coverage; this lane owns changed-spec repeat-each.
-  e2e-changed:
-    # pull_request only — see the merge_group note in the `on:` comment: the
-    # queue's bar is deliberately the three cheap tiers.
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      # fetch-depth 2: the pull_request checkout is the MERGE commit, so depth 2
-      # brings both parents — enough for the diffs below (HEAD^1 is the PR base).
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 2
-
-      # Cheap gate BEFORE the expensive setup/build: this job has work ONLY when
-      # the PR changed an e2e *spec* — an infra-only or docs-only PR skips it
-      # (the sharded matrix covers infra blast radius at retries=0).
-      - name: Detect changed e2e specs
-        id: e2e-diff
-        run: |
-          BASE="${{ github.event.pull_request.base.sha }}"
-          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
-            BASE="HEAD^1"
-          fi
-          echo "base=$BASE" >> "$GITHUB_OUTPUT"
-          if git diff --name-only --diff-filter=ACMR "$BASE" HEAD | grep -qE '^e2e/.*\.spec\.ts$'; then
-            echo "any=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "any=false" >> "$GITHUB_OUTPUT"
-            echo "No changed e2e specs - skipping the repeat-each scrutiny lane."
-          fi
-
-      - uses: ./.github/actions/e2e-setup
-        if: steps.e2e-diff.outputs.any == 'true'
-
-      - name: E2E changed specs (--repeat-each=3 --retries=0)
-        if: steps.e2e-diff.outputs.any == 'true'
-        run: |
-          DIFF=$(git diff --name-only --diff-filter=ACMR "${{ steps.e2e-diff.outputs.base }}" HEAD)
-          CHANGED_SPECS=$(echo "$DIFF" | grep -E '^e2e/.*\.spec\.ts$' || true)
-
-          echo "Changed e2e specs (running at --repeat-each=3 --retries=0):"
-          echo "$CHANGED_SPECS"
-          npx playwright test $CHANGED_SPECS --repeat-each=3 --retries=0
-
-      - name: Upload Playwright report
-        if: ${{ !cancelled() && steps.e2e-diff.outputs.any == 'true' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: playwright-report-changed
-          path: playwright-report/
-          retention-days: 7
 
   # Browser end-to-end tier: boots the real Next app against an isolated seeded
   # SQLite DB and drives it in Chromium (Playwright). Separate job so it runs in

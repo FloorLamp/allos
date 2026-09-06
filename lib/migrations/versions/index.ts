@@ -232,7 +232,10 @@ import { migration as mBodyMetricMeasureInstants } from "./20260902-body-metric-
 import { migration as mEventsGeneralizeEndurancePlans } from "./20260903-events-generalize-endurance-plans";
 import { migration as mSubstanceEventRows } from "./20260905-substance-event-rows";
 import { migration as mActBundleColumns } from "./20260904-act-bundle-columns";
+import { migration as mEventNotes } from "./20260905-event-notes";
 import { migration as mEventActivityLink } from "./20260906-event-activity-link";
+import { migration as mEventLinkOptout } from "./20260906-event-link-optout";
+import { migration as mEventLinkDecision } from "./20260906-event-link-decision";
 import { migration as mTrainingPhotos } from "./20260906-training-photos";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
@@ -475,7 +478,10 @@ export const MIGRATIONS: Migration[] = [
   mEventsGeneralizeEndurancePlans,
   mActBundleColumns,
   mSubstanceEventRows,
+  mEventNotes,
   mEventActivityLink,
+  mEventLinkOptout,
+  mEventLinkDecision,
   mTrainingPhotos,
 ];
 

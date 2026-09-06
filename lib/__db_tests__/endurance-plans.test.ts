@@ -18,6 +18,7 @@ import {
   getEndurancePlanCards,
   getEnduranceArm,
   getEnduranceEvents,
+  getWorkoutActivityDays,
 } from "@/lib/queries";
 import { buildEndurancePlanFindings } from "@/lib/rule-findings";
 import {
@@ -29,13 +30,20 @@ import {
   linkEventActivityCore,
   linkRaceActivityCore,
   unlinkEventActivityCore,
+  updateEndurancePlanCore,
 } from "@/lib/endurance-plans";
 import { coachedPlan, enduranceLongSessionKey } from "@/lib/endurance-plan";
 import { getEventDay } from "@/lib/queries/endurance";
 import { upsertActivities } from "@/lib/integrations/normalize";
-import { captureDelete, restoreDeletedRow } from "@/lib/undo-delete-db";
+import { autoMergeActivityDuplicates } from "@/lib/import-review/auto-merge";
+import {
+  captureDelete,
+  purgeDeletedRow,
+  restoreDeletedRow,
+} from "@/lib/undo-delete-db";
 import { snapshotKeeperFold, writeActivityFold } from "@/lib/merge-activity";
 import { toKm } from "@/lib/units";
+import { saveActivityCore } from "@/lib/activity-write";
 
 function makeProfile(name: string): number {
   return Number(
@@ -358,9 +366,11 @@ describe("events with no cardio pair (#3285)", () => {
 //
 // `activities.endurance_plan_id` is the result link. Every row-level fact the issue
 // asks for is pinned here: the FK shape, the manual link's day rule and profile
-// scope, the Strava "race" auto-link and its refusals, what a plan delete does to
-// its activities, and that a merge and an undo carry the link the way they carry
-// the gear link.
+// scope, that DETACHING carries neither the day rule nor the status gate (a person
+// can always take a result off an event, whichever side's date moved since), the
+// Strava "race" auto-link and its refusals, what a plan delete does to its
+// activities, and that a merge and an undo carry the link the way they carry the
+// gear link.
 
 const RACE_DAY = "2026-06-14";
 
@@ -370,6 +380,53 @@ function linkOf(activityId: number): number | null {
       .prepare("SELECT endurance_plan_id AS p FROM activities WHERE id = ?")
       .get(activityId) as { p: number | null }
   ).p;
+}
+
+// The row's whole event decision: which event it is the result of, and whether a
+// PERSON put it there (or took it away). The two columns are read together because
+// only together do they say which decision it was. The ordinal itself is an
+// implementation detail of WHICH decision came last, so it reads as a boolean here
+// except where a case is about the ordering.
+function decisionOf(activityId: number): {
+  plan: number | null;
+  decided: boolean;
+} {
+  const row = db
+    .prepare(
+      `SELECT endurance_plan_id AS plan, endurance_link_decided_seq AS seq
+         FROM activities WHERE id = ?`
+    )
+    .get(activityId) as { plan: number | null; seq: number };
+  return { plan: row.plan, decided: row.seq > 0 };
+}
+
+// The ordinal itself, for the cases that ARE about the numbering rather than about
+// which decision won.
+function seqOf(activityId: number): number {
+  return (
+    db
+      .prepare(
+        "SELECT endurance_link_decided_seq AS seq FROM activities WHERE id = ?"
+      )
+      .get(activityId) as { seq: number }
+  ).seq;
+}
+
+// The allocator's stored high-water mark, read the way anything else would.
+function decisionMark(profileId: number): number | null {
+  const row = db
+    .prepare(
+      `SELECT value FROM profile_settings
+        WHERE profile_id = ? AND key = 'event_link_decision_seq'`
+    )
+    .get(profileId) as { value: string } | undefined;
+  return row ? Number(row.value) : null;
+}
+
+function rowOf(activityId: number): Record<string, unknown> {
+  return db
+    .prepare("SELECT * FROM activities WHERE id = ?")
+    .get(activityId) as Record<string, unknown>;
 }
 
 function lastRunId(profileId: number): number {
@@ -506,12 +563,16 @@ describe("events link their activities (#3285 item 2)", () => {
     expect(linkRaceActivityCore(profileId, raced)).toBe(false);
     expect(linkOf(raced)).toBe(otherId);
 
-    unlinkEventActivityCore(profileId, raced);
+    // A SECOND race-labelled session for the status cases, never touched by hand:
+    // unlinking `raced` would opt it out of the auto-link for good, which is its own
+    // case below.
+    addRun(profileId, RACE_DAY, 10, "race");
+    const fresh = lastRunId(profileId);
     setEndurancePlanStatusCore(profileId, planId, "abandoned", RACE_DAY);
-    expect(linkRaceActivityCore(profileId, raced)).toBe(false);
+    expect(linkRaceActivityCore(profileId, fresh)).toBe(false);
     setEndurancePlanStatusCore(profileId, planId, "completed", RACE_DAY);
-    expect(linkRaceActivityCore(profileId, raced)).toBe(true);
-    expect(linkOf(raced)).toBe(planId);
+    expect(linkRaceActivityCore(profileId, fresh)).toBe(true);
+    expect(linkOf(fresh)).toBe(planId);
   });
 
   it("the integration upsert auto-links on insert and on the re-sync that first labels the race", () => {
@@ -608,6 +669,63 @@ describe("events link their activities (#3285 item 2)", () => {
     expect(linkOf(lastRunId(profileId))).toBeNull();
   });
 
+  // #3056 / #3189–#3191 — the draft census reaches this list too. `getEventDay` is
+  // one tap from making a row the event's RESULT, so a create-at-start husk must not
+  // be offered here any more than it is counted anywhere else. The control is the
+  // established surface: `getWorkoutActivityDays` already hides the same row.
+  it("does not offer a create-at-start draft, and still offers the session that logged something", () => {
+    const profileId = makeProfile("event-draft");
+    const planId = raceDayPlan(profileId);
+    // Exactly as create-at-start writes it: dated, typed, titled, started, nothing else.
+    db.prepare(
+      `INSERT INTO activities (profile_id, date, type, title, start_time)
+       VALUES (?, ?, 'strength', 'Workout', '09:00')`
+    ).run(profileId, RACE_DAY);
+    const husk = lastRunId(profileId);
+
+    expect(getWorkoutActivityDays(profileId, RACE_DAY, RACE_DAY)).toEqual([]);
+    expect(getEventDay(profileId, planId)!.activities).toEqual([]);
+
+    // The positive control: the SAME row, once it has logged a set, is an entry.
+    db.prepare(
+      `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps)
+       VALUES (?, 'Squat', 1, 60, 5)`
+    ).run(husk);
+    expect(
+      getEventDay(profileId, planId)!.activities.map((a) => a.title)
+    ).toEqual(["Workout"]);
+  });
+
+  // The same-day steal (#3285 item 2): two events, one day. The activity model allows
+  // one event per activity, so linking here MOVES the result — the row is offered
+  // LAST, behind the day's genuinely free sessions, and says where it already belongs.
+  it("offers another event's result last, marked, behind the free sessions", () => {
+    const profileId = makeProfile("event-steal");
+    const mine = raceDayPlan(profileId);
+    const theirs = raceDayPlan(profileId, {
+      eventName: "Charity Mile",
+      discipline: null,
+      targetDistanceKm: null,
+    });
+    addRun(profileId, RACE_DAY, 10.1, "race", "ZZZ Other event run");
+    const taken = lastRunId(profileId);
+    addRun(profileId, RACE_DAY, 3, null, "AAA Shakeout");
+    addRun(profileId, RACE_DAY, 2, null, "MMM Cooldown");
+    expect(linkEventActivityCore(profileId, theirs, taken)).toBe(true);
+
+    expect(
+      getEventDay(profileId, mine)!.activities.map((a) => [
+        a.title,
+        a.linked,
+        a.linkedElsewhere,
+      ])
+    ).toEqual([
+      ["AAA Shakeout", false, false],
+      ["MMM Cooldown", false, false],
+      ["ZZZ Other event run", false, true],
+    ]);
+  });
+
   it("the event page reads the day linked-first, plus a linked session the day edit left behind", () => {
     const profileId = makeProfile("event-day");
     const planId = raceDayPlan(profileId);
@@ -633,5 +751,814 @@ describe("events link their activities (#3285 item 2)", () => {
       ["Shakeout", RACE_DAY, false, null],
     ]);
     expect(getEventDay(makeProfile("event-day-other"), planId)).toBeUndefined();
+  });
+
+  // An explicit unlink is a person's decision, and a sync must not undo it. The
+  // auto-link re-runs after EVERY value-changing update, so without the remembered
+  // opt-out a title fix on Strava re-attaches the session the person detached.
+  it("a re-sync never re-links a session the person unlinked, and a hand link takes it back", () => {
+    const profileId = makeProfile("unlink-sticks");
+    const planId = raceDayPlan(profileId);
+    const row = (title: string) => ({
+      external_id: "strava:race-10k",
+      date: RACE_DAY,
+      type: "cardio" as const,
+      title,
+      duration_min: 44,
+      distance_km: toKm(10.1, "km"),
+      start_time: "09:00",
+      end_time: "09:44",
+      workout_type: "race",
+    });
+    upsertActivities(profileId, [row("Harbor 10k")], "strava");
+    const id = lastRunId(profileId);
+    expect(linkOf(id)).toBe(planId);
+
+    expect(unlinkEventActivityCore(profileId, id)).toBe(true);
+    // The row is NOT edit-locked: detaching it from an event must not also stop the
+    // provider correcting its values (that is the #133 lock, and this is not it).
+    expect(
+      db.prepare("SELECT edited FROM activities WHERE id = ?").get(id)
+    ).toMatchObject({ edited: 0 });
+
+    // A value-changing re-sync — the title fix — updates the row and leaves the
+    // decision standing.
+    const counts = upsertActivities(
+      profileId,
+      [row("Harbor 10k ⭐")],
+      "strava"
+    );
+    expect(counts.updated).toBe(1);
+    expect(linkOf(id)).toBeNull();
+    // Neither does the core itself, asked directly.
+    expect(linkRaceActivityCore(profileId, id)).toBe(false);
+
+    // Changing their mind REPLACES one decision with another — it does not hand the
+    // session back to the sync. A hand link sticks, and unlinking again still refuses.
+    expect(linkEventActivityCore(profileId, planId, id)).toBe(true);
+    expect(unlinkEventActivityCore(profileId, id)).toBe(true);
+    expect(linkRaceActivityCore(profileId, id)).toBe(false);
+  });
+
+  // The explicit UPDATE in deleteEndurancePlanCore, not the FK. With foreign_keys ON
+  // the ON DELETE SET NULL satisfies the assertion on its own, so the pragma is turned
+  // OFF here — the posture the migration runner's connection actually has.
+  it("unlinks the event's activities with foreign keys OFF, not only via the FK", () => {
+    const profileId = makeProfile("event-delete-nofk");
+    const planId = raceDayPlan(profileId);
+    addRun(profileId, RACE_DAY, 10, "race");
+    const id = lastRunId(profileId);
+    expect(linkRaceActivityCore(profileId, id)).toBe(true);
+
+    db.pragma("foreign_keys = OFF");
+    try {
+      expect(deleteEndurancePlanCore(profileId, planId)).toBe(true);
+    } finally {
+      db.pragma("foreign_keys = ON");
+    }
+    expect(linkOf(id)).toBeNull();
+    expect(db.pragma("foreign_keys", { simple: true })).toBe(1);
+  });
+
+  // ── A decision has to survive the paths that MOVE the row, not just the one that
+  //    records it (#3285 item 2). `endurance_link_decided_seq` is the person's
+  //    decision about this session and its place in the order they made them; a merge
+  //    deletes rows, an event delete drops links, and an undo puts old columns back.
+  //    None of them may hand the session back to the sync, and none may replace the
+  //    person's latest word with an earlier one.
+
+  // The unattended reproduction, through real entry points only: two connected
+  // sources, one detach, and NOTHING else the person does. autoMergeActivityDuplicates
+  // runs from strava-sync and health-connect-ingest after every ingest that inserted a
+  // row, and it DELETES the row that carries the decision.
+  it("the sync's own auto-merge cannot re-attach a session the person detached", () => {
+    const profileId = makeProfile("merge-reattach");
+    const planId = raceDayPlan(profileId);
+    const row = (externalId: string) => ({
+      external_id: externalId,
+      date: RACE_DAY,
+      type: "cardio" as const,
+      title: "Harbor 10k",
+      duration_min: 44,
+      distance_km: toKm(10.1, "km"),
+      start_time: "09:00",
+      end_time: "09:44",
+      workout_type: "race",
+    });
+
+    upsertActivities(profileId, [row("strava:race")], "strava");
+    const stravaId = lastRunId(profileId);
+    expect(linkOf(stravaId)).toBe(planId);
+    expect(unlinkEventActivityCore(profileId, stravaId)).toBe(true);
+
+    // A second source ingests the same race the next morning and auto-links its own
+    // copy — that row carries no decision, so the auto-link is right to take it.
+    upsertActivities(profileId, [row("hc:race")], "health-connect");
+    const hcId = lastRunId(profileId);
+    expect(linkOf(hcId)).toBe(planId);
+
+    // The sync collapses the pair with nobody watching.
+    expect(autoMergeActivityDuplicates(profileId)).toBe(1);
+    const survivors = db
+      .prepare("SELECT id FROM activities WHERE profile_id = ?")
+      .all(profileId) as { id: number }[];
+    expect(survivors).toHaveLength(1);
+    // One session, one decision: detached, and remembered.
+    expect(decisionOf(survivors[0].id)).toEqual({ plan: null, decided: true });
+    expect(
+      getEventDay(profileId, planId)?.activities.filter((a) => a.linked)
+    ).toEqual([]);
+  });
+
+  // Direction 1 of the fold: the keeper carries the decision. The drop's link must not
+  // gap-fill onto it, and the flag must not be zeroed by the fold's UPDATE.
+  it("a merge folds no link onto a keeper the person detached, and keeps the memory", () => {
+    const profileId = makeProfile("merge-keeper-detached");
+    const planId = raceDayPlan(profileId);
+    addRun(profileId, RACE_DAY, 10, "race", "Harbor 10k (watch)");
+    const keepId = lastRunId(profileId);
+    expect(linkRaceActivityCore(profileId, keepId)).toBe(true);
+    expect(unlinkEventActivityCore(profileId, keepId)).toBe(true);
+
+    addRun(profileId, RACE_DAY, 10.1, "race", "Harbor 10k");
+    const dropId = lastRunId(profileId);
+    expect(linkRaceActivityCore(profileId, dropId)).toBe(true);
+    expect(linkOf(dropId)).toBe(planId);
+
+    writeActivityFold(profileId, keepId, rowOf(keepId), [rowOf(dropId)]);
+    expect(decisionOf(keepId)).toEqual({ plan: null, decided: true });
+  });
+
+  // Direction 2: the decision is on the row being DESTROYED. The keeper is the
+  // second source's auto-linked copy — richer, so it wins — and folding the detached
+  // row into it must move the detach across, link and all.
+  it("a merge carries a dropped row's detach onto the keeper, link and all", () => {
+    const profileId = makeProfile("merge-drop-detached");
+    const planId = raceDayPlan(profileId);
+    addRun(profileId, RACE_DAY, 10, "race", "Harbor 10k");
+    const dropId = lastRunId(profileId);
+    expect(linkRaceActivityCore(profileId, dropId)).toBe(true);
+    expect(unlinkEventActivityCore(profileId, dropId)).toBe(true);
+
+    addRun(profileId, RACE_DAY, 10.1, "race", "Harbor 10k (phone)");
+    const keepId = lastRunId(profileId);
+    expect(linkRaceActivityCore(profileId, keepId)).toBe(true);
+    expect(decisionOf(keepId)).toEqual({ plan: planId, decided: false });
+
+    writeActivityFold(profileId, keepId, rowOf(keepId), [rowOf(dropId)]);
+    expect(decisionOf(keepId)).toEqual({ plan: null, decided: true });
+  });
+
+  // The same rule read the other way: a HAND link on the dropped row is a decision
+  // too, so it survives the fold rather than being lost with the row.
+  it("a merge carries a dropped row's hand-made link onto an undecided keeper", () => {
+    const profileId = makeProfile("merge-drop-linked");
+    const planId = raceDayPlan(profileId);
+    addRun(profileId, RACE_DAY, 10, null, "Harbor 10k (watch)");
+    const keepId = lastRunId(profileId);
+    addRun(profileId, RACE_DAY, 10.1, null, "Harbor 10k");
+    const dropId = lastRunId(profileId);
+    expect(linkEventActivityCore(profileId, planId, dropId)).toBe(true);
+
+    writeActivityFold(profileId, keepId, rowOf(keepId), [rowOf(dropId)]);
+    expect(decisionOf(keepId)).toEqual({ plan: planId, decided: true });
+  });
+
+  // Undoing a merge puts the keeper's pre-merge columns back. A detach made AFTER the
+  // merge is newer than any of them and must outlive the undo.
+  it("undoing a merge does not hand back a link the person removed after it", () => {
+    const profileId = makeProfile("merge-undo-detach");
+    const planId = raceDayPlan(profileId);
+    addRun(profileId, RACE_DAY, 10, "race", "Harbor 10k");
+    const keepId = lastRunId(profileId);
+    expect(linkRaceActivityCore(profileId, keepId)).toBe(true);
+    expect(linkOf(keepId)).toBe(planId);
+    addRun(profileId, RACE_DAY, 10.1, null, "Harbor 10k (phone)");
+    const dropId = lastRunId(profileId);
+
+    const keep = rowOf(keepId);
+    writeActivityFold(profileId, keepId, keep, [rowOf(dropId)]);
+    const undoId = captureDelete("activity", profileId, dropId, {
+      keeperId: keepId,
+      mergeId: "merge-undo-detach",
+      domain: "activity",
+      signature: `${keepId}|${dropId}`,
+      keeperBefore: snapshotKeeperFold(keep),
+      movedSetIds: [],
+      movedRouteId: null,
+      movedTelemetryIds: [],
+      movedLapIds: [],
+      movedSegmentEffortIds: [],
+    })!;
+
+    expect(unlinkEventActivityCore(profileId, keepId)).toBe(true);
+    expect(restoreDeletedRow(profileId, undoId)).toBe(true);
+    expect(decisionOf(keepId)).toEqual({ plan: null, decided: true });
+    expect(linkRaceActivityCore(profileId, keepId)).toBe(false);
+  });
+
+  // Aim point 1: the sequence that made a cleared flag dangerous. Detach from A, take
+  // the session to B by hand, then delete B — the row is free again, and the next sync
+  // would re-attach it to the very event it was detached from. A hand link SETS the
+  // flag, so there is nothing left to launder.
+  it("moving a session to another event and then deleting that event leaves it alone", () => {
+    const profileId = makeProfile("link-launder");
+    const planA = raceDayPlan(profileId);
+    const planB = raceDayPlan(profileId, {
+      eventName: "Harbor Fun Run",
+      discipline: null,
+      targetDistanceKm: null,
+    });
+    addRun(profileId, RACE_DAY, 10, "race", "Harbor 10k");
+    const id = lastRunId(profileId);
+    expect(linkRaceActivityCore(profileId, id)).toBe(true);
+    expect(linkOf(id)).toBe(planA);
+
+    expect(unlinkEventActivityCore(profileId, id)).toBe(true);
+    expect(linkEventActivityCore(profileId, planB, id)).toBe(true);
+    expect(deleteEndurancePlanCore(profileId, planB)).toBe(true);
+
+    expect(decisionOf(id)).toEqual({ plan: null, decided: true });
+    expect(linkRaceActivityCore(profileId, id)).toBe(false);
+  });
+
+  // ── The person's LATEST word (#3285 item 2) ─────────────────────────────────
+  //
+  // The cases above each have ONE decision in the cluster. When two copies of one
+  // session each carry one, a merge has to choose, and the answer has to be the newer
+  // decision: keepership comes from source and richness, so it is a coin flip the
+  // person cannot see. `endurance_link_decided_seq` is the order they made them in.
+
+  // The unattended reproduction of the OTHER direction: the person detaches the copy
+  // the sync linked, then links the copy that arrived later — and does nothing else.
+  // The sync's own auto-merge collapses the pair; the copy that wins keepership is
+  // the one carrying the OLDER decision, which is exactly why keepership cannot
+  // decide this.
+  it("the sync's own auto-merge keeps the link the person made after detaching the other copy", () => {
+    const profileId = makeProfile("merge-newest-link");
+    const planId = raceDayPlan(profileId);
+    const row = (externalId: string, workoutType: string | null) => ({
+      external_id: externalId,
+      date: RACE_DAY,
+      type: "cardio" as const,
+      title: "Harbor 10k",
+      duration_min: 44,
+      distance_km: toKm(10.1, "km"),
+      start_time: "09:00",
+      end_time: "09:44",
+      workout_type: workoutType,
+    });
+
+    upsertActivities(profileId, [row("strava:race", "race")], "strava");
+    const stravaId = lastRunId(profileId);
+    expect(linkOf(stravaId)).toBe(planId);
+    expect(unlinkEventActivityCore(profileId, stravaId)).toBe(true);
+
+    // The phone's copy of the same race arrives unlabelled, so nothing auto-links it,
+    // and the person taps Link on the event page.
+    upsertActivities(profileId, [row("hc:race", null)], "health-connect");
+    const hcId = lastRunId(profileId);
+    expect(linkOf(hcId)).toBeNull();
+    expect(linkEventActivityCore(profileId, planId, hcId)).toBe(true);
+
+    expect(autoMergeActivityDuplicates(profileId)).toBe(1);
+    const survivors = db
+      .prepare("SELECT id, source FROM activities WHERE profile_id = ?")
+      .all(profileId) as { id: number; source: string }[];
+    expect(survivors).toHaveLength(1);
+    // The keeper is the row whose decision was the OLDER one, and it still ends up
+    // carrying the newer one: the link the person made.
+    expect(survivors[0].source).toBe("strava");
+    expect(decisionOf(survivors[0].id)).toEqual({
+      plan: planId,
+      decided: true,
+    });
+    expect(
+      getEventDay(profileId, planId)?.activities.filter((a) => a.linked)
+    ).toEqual([expect.objectContaining({ id: survivors[0].id })]);
+  });
+
+  // Both directions with the newer decision on the DROP — the row the merge destroys.
+  // The second half is the one a "prefer the decided row that still has a link"
+  // tie-break gets wrong: the newest word is the detach.
+  it("a merge takes a drop's decision over an older one on the keeper, either way round", () => {
+    const profileId = makeProfile("merge-newer-drop");
+    const planId = raceDayPlan(profileId);
+
+    // Keeper detached first, drop hand-linked after → the link stands.
+    addRun(profileId, RACE_DAY, 10, "race", "Harbor 10k (watch)");
+    const keepA = lastRunId(profileId);
+    expect(linkEventActivityCore(profileId, planId, keepA)).toBe(true);
+    expect(unlinkEventActivityCore(profileId, keepA)).toBe(true);
+    addRun(profileId, RACE_DAY, 10.1, "race", "Harbor 10k");
+    const dropA = lastRunId(profileId);
+    expect(linkEventActivityCore(profileId, planId, dropA)).toBe(true);
+    writeActivityFold(profileId, keepA, rowOf(keepA), [rowOf(dropA)]);
+    expect(decisionOf(keepA)).toEqual({ plan: planId, decided: true });
+
+    // Keeper hand-linked first, drop detached after → the detach stands.
+    addRun(profileId, RACE_DAY, 10, "race", "Harbor 10k (watch 2)");
+    const keepB = lastRunId(profileId);
+    expect(linkEventActivityCore(profileId, planId, keepB)).toBe(true);
+    addRun(profileId, RACE_DAY, 10.1, "race", "Harbor 10k (2)");
+    const dropB = lastRunId(profileId);
+    expect(linkEventActivityCore(profileId, planId, dropB)).toBe(true);
+    expect(unlinkEventActivityCore(profileId, dropB)).toBe(true);
+    writeActivityFold(profileId, keepB, rowOf(keepB), [rowOf(dropB)]);
+    expect(decisionOf(keepB)).toEqual({ plan: null, decided: true });
+  });
+
+  // The control on the rule: it is RECENCY, not "the drop always wins". Same two
+  // shapes with the newest decision on the KEEPER instead.
+  it("a merge keeps the keeper's decision when the keeper's is the newer one", () => {
+    const profileId = makeProfile("merge-newer-keeper");
+    const planId = raceDayPlan(profileId);
+
+    // Drop hand-linked first, keeper detached after → the detach stands.
+    addRun(profileId, RACE_DAY, 10.1, "race", "Harbor 10k");
+    const dropA = lastRunId(profileId);
+    expect(linkEventActivityCore(profileId, planId, dropA)).toBe(true);
+    addRun(profileId, RACE_DAY, 10, "race", "Harbor 10k (watch)");
+    const keepA = lastRunId(profileId);
+    expect(linkEventActivityCore(profileId, planId, keepA)).toBe(true);
+    expect(unlinkEventActivityCore(profileId, keepA)).toBe(true);
+    writeActivityFold(profileId, keepA, rowOf(keepA), [rowOf(dropA)]);
+    expect(decisionOf(keepA)).toEqual({ plan: null, decided: true });
+
+    // Drop detached first, keeper hand-linked after → the link stands.
+    addRun(profileId, RACE_DAY, 10.1, "race", "Harbor 10k (2)");
+    const dropB = lastRunId(profileId);
+    expect(linkEventActivityCore(profileId, planId, dropB)).toBe(true);
+    expect(unlinkEventActivityCore(profileId, dropB)).toBe(true);
+    addRun(profileId, RACE_DAY, 10, "race", "Harbor 10k (watch 2)");
+    const keepB = lastRunId(profileId);
+    expect(linkEventActivityCore(profileId, planId, keepB)).toBe(true);
+    writeActivityFold(profileId, keepB, rowOf(keepB), [rowOf(dropB)]);
+    expect(decisionOf(keepB)).toEqual({ plan: planId, decided: true });
+  });
+
+  // "Move here" — both rows carry a hand link, to DIFFERENT events on the same day,
+  // so no tie-break on "which row still has a link" can answer it. The event the
+  // person moved the result to last keeps it, from either side of the merge.
+  it("a merge keeps the event the result was moved to last, from either side", () => {
+    const profileId = makeProfile("merge-move-here");
+    const planA = raceDayPlan(profileId);
+    const planB = raceDayPlan(profileId, {
+      eventName: "Harbor Fun Run",
+      discipline: null,
+      targetDistanceKm: null,
+    });
+
+    // Keeper on A, then the drop moved to B → B.
+    addRun(profileId, RACE_DAY, 10, "race", "Harbor 10k (watch)");
+    const keep1 = lastRunId(profileId);
+    expect(linkEventActivityCore(profileId, planA, keep1)).toBe(true);
+    addRun(profileId, RACE_DAY, 10.1, "race", "Harbor 10k");
+    const drop1 = lastRunId(profileId);
+    expect(linkEventActivityCore(profileId, planB, drop1)).toBe(true);
+    writeActivityFold(profileId, keep1, rowOf(keep1), [rowOf(drop1)]);
+    expect(decisionOf(keep1)).toEqual({ plan: planB, decided: true });
+
+    // Drop on A, then the keeper moved to B → B again. The answer follows the person,
+    // not the row.
+    addRun(profileId, RACE_DAY, 10.1, "race", "Harbor 10k (2)");
+    const drop2 = lastRunId(profileId);
+    expect(linkEventActivityCore(profileId, planA, drop2)).toBe(true);
+    addRun(profileId, RACE_DAY, 10, "race", "Harbor 10k (watch 2)");
+    const keep2 = lastRunId(profileId);
+    expect(linkEventActivityCore(profileId, planB, keep2)).toBe(true);
+    writeActivityFold(profileId, keep2, rowOf(keep2), [rowOf(drop2)]);
+    expect(decisionOf(keep2)).toEqual({ plan: planB, decided: true });
+  });
+
+  // Two decided drops used to flip on the fold's richness ordering, which is unrelated
+  // to either decision. The newest wins however they are passed in.
+  it("a merge with two decided drops takes the newest, in either fold order", () => {
+    const profileId = makeProfile("merge-two-drops");
+    const planId = raceDayPlan(profileId);
+    const cluster = (suffix: string, reversed: boolean) => {
+      addRun(profileId, RACE_DAY, 10, null, `Harbor 10k (watch ${suffix})`);
+      const keepId = lastRunId(profileId);
+      addRun(profileId, RACE_DAY, 10.1, null, `Harbor 10k (${suffix})`);
+      const older = lastRunId(profileId);
+      expect(linkEventActivityCore(profileId, planId, older)).toBe(true);
+      addRun(profileId, RACE_DAY, 10.2, null, `Harbor 10k (phone ${suffix})`);
+      const newer = lastRunId(profileId);
+      expect(linkEventActivityCore(profileId, planId, newer)).toBe(true);
+      expect(unlinkEventActivityCore(profileId, newer)).toBe(true);
+      const drops = [rowOf(older), rowOf(newer)];
+      writeActivityFold(
+        profileId,
+        keepId,
+        rowOf(keepId),
+        reversed ? drops.reverse() : drops
+      );
+      return decisionOf(keepId);
+    };
+    // The newest decision is the detach, so the keeper ends unlinked either way.
+    expect(cluster("a", false)).toEqual({ plan: null, decided: true });
+    expect(cluster("b", true)).toEqual({ plan: null, decided: true });
+  });
+
+  // The undo's mirror of the case above it: a hand LINK made after the merge is the
+  // person's latest word exactly as a detach is, and putting the keeper's pre-merge
+  // columns back must not take it away.
+  it("undoing a merge does not take away a link the person made after it", () => {
+    const profileId = makeProfile("merge-undo-link");
+    const planId = raceDayPlan(profileId);
+    addRun(profileId, RACE_DAY, 10, null, "Harbor 10k");
+    const keepId = lastRunId(profileId);
+    addRun(profileId, RACE_DAY, 10.1, null, "Harbor 10k (phone)");
+    const dropId = lastRunId(profileId);
+
+    const keep = rowOf(keepId);
+    writeActivityFold(profileId, keepId, keep, [rowOf(dropId)]);
+    const undoId = captureDelete("activity", profileId, dropId, {
+      keeperId: keepId,
+      mergeId: "merge-undo-link",
+      domain: "activity",
+      signature: `${keepId}|${dropId}`,
+      keeperBefore: snapshotKeeperFold(keep),
+      movedSetIds: [],
+      movedRouteId: null,
+      movedTelemetryIds: [],
+      movedLapIds: [],
+      movedSegmentEffortIds: [],
+    })!;
+
+    expect(linkEventActivityCore(profileId, planId, keepId)).toBe(true);
+    expect(restoreDeletedRow(profileId, undoId)).toBe(true);
+    expect(decisionOf(keepId)).toEqual({ plan: planId, decided: true });
+    expect(
+      getEventDay(profileId, planId)?.activities.filter((a) => a.linked)
+    ).toEqual([expect.objectContaining({ id: keepId })]);
+  });
+
+  // The control on that guard: it keeps a decision made AFTER the merge, not every
+  // decision the keeper happens to be holding. One that came IN with the merge belongs
+  // to the row that made it and goes back with it, or the undo would leave two rows
+  // claiming the same event.
+  it("undoing a merge hands a folded-in decision back to the row that made it", () => {
+    const profileId = makeProfile("merge-undo-folded");
+    const planId = raceDayPlan(profileId);
+    addRun(profileId, RACE_DAY, 10, null, "Harbor 10k");
+    const keepId = lastRunId(profileId);
+    addRun(profileId, RACE_DAY, 10.1, null, "Harbor 10k (phone)");
+    const dropId = lastRunId(profileId);
+    expect(linkEventActivityCore(profileId, planId, dropId)).toBe(true);
+
+    const keep = rowOf(keepId);
+    writeActivityFold(profileId, keepId, keep, [rowOf(dropId)]);
+    expect(decisionOf(keepId)).toEqual({ plan: planId, decided: true });
+    const undoId = captureDelete("activity", profileId, dropId, {
+      keeperId: keepId,
+      mergeId: "merge-undo-folded",
+      domain: "activity",
+      signature: `${keepId}|${dropId}`,
+      keeperBefore: snapshotKeeperFold(keep),
+      movedSetIds: [],
+      movedRouteId: null,
+      movedTelemetryIds: [],
+      movedLapIds: [],
+      movedSegmentEffortIds: [],
+    })!;
+
+    expect(restoreDeletedRow(profileId, undoId)).toBe(true);
+    const restoredId = lastRunId(profileId);
+    expect(decisionOf(keepId)).toEqual({ plan: null, decided: false });
+    expect(decisionOf(restoredId)).toEqual({ plan: planId, decided: true });
+  });
+
+  // An ABANDONED event never attracts a result, on the hand path as well as the
+  // auto-link's: the person said the event did not happen for them, and the page
+  // would otherwise read "Abandoned · Result: Harbor 10k".
+  it("refuses a hand link to an abandoned event, and still lets one be taken off", () => {
+    const profileId = makeProfile("link-abandoned");
+    const planId = raceDayPlan(profileId);
+    addRun(profileId, RACE_DAY, 10, "race", "Harbor 10k");
+    const id = lastRunId(profileId);
+    expect(linkEventActivityCore(profileId, planId, id)).toBe(true);
+
+    setEndurancePlanStatusCore(profileId, planId, "abandoned", RACE_DAY);
+    // A result attached before the event was abandoned can still be detached.
+    expect(unlinkEventActivityCore(profileId, id)).toBe(true);
+    expect(linkEventActivityCore(profileId, planId, id)).toBe(false);
+    expect(linkOf(id)).toBeNull();
+
+    // The refusal is about the status, not the row: an active or completed event on
+    // the same day takes it.
+    setEndurancePlanStatusCore(profileId, planId, "completed", RACE_DAY);
+    expect(linkEventActivityCore(profileId, planId, id)).toBe(true);
+  });
+
+  // The same laundering through the raw FK — `ON DELETE SET NULL` fires without
+  // deleteEndurancePlanCore ever running, so the flag has to be what holds.
+  it("the FK's own SET NULL leaves the decision standing", () => {
+    const profileId = makeProfile("link-fk-launder");
+    const planId = raceDayPlan(profileId);
+    addRun(profileId, RACE_DAY, 10, "race", "Harbor 10k");
+    const id = lastRunId(profileId);
+    expect(linkEventActivityCore(profileId, planId, id)).toBe(true);
+
+    db.prepare("DELETE FROM endurance_plans WHERE id = ?").run(planId);
+    expect(decisionOf(id)).toEqual({ plan: null, decided: true });
+    expect(linkRaceActivityCore(profileId, id)).toBe(false);
+  });
+
+  // ── An ordinal is unique over every row that can become LIVE again, not only over
+  //    the rows live now (#3285 item 2). `MAX(seq) + 1` over the live rows asked the
+  //    wrong set: a deleted activity is captured whole, ordinal included, and Restore
+  //    is a button a person presses.
+
+  // The unattended reproduction, through real entry points only. The watch's copy
+  // syncs and auto-links; the person detaches it, deletes it as a duplicate, links
+  // the phone's copy by hand, and weeks later restores the deleted one from the Trash
+  // because it had the route. Then they do NOTHING: the next sync's auto-merge
+  // collapses the pair. Under a live-rows-only allocator both decisions carried
+  // ordinal 1, the fold fell back to keeper-first, the older decision won and the
+  // event's Result went empty.
+  it("a decision made while an earlier one sits in the Trash cannot tie with it when it comes back", () => {
+    const profileId = makeProfile("trash-restore-tie");
+    const planId = raceDayPlan(profileId);
+    const row = (externalId: string, workoutType: string | null) => ({
+      external_id: externalId,
+      date: RACE_DAY,
+      type: "cardio" as const,
+      title: "Harbor 10k",
+      duration_min: 44,
+      distance_km: toKm(10.1, "km"),
+      start_time: "09:00",
+      end_time: "09:44",
+      workout_type: workoutType,
+    });
+
+    upsertActivities(profileId, [row("strava:race", "race")], "strava");
+    const stravaId = lastRunId(profileId);
+    expect(linkOf(stravaId)).toBe(planId);
+    expect(unlinkEventActivityCore(profileId, stravaId)).toBe(true);
+    // The row carrying the profile's NEWEST decision goes to the Trash.
+    const undoId = captureDelete("activity", profileId, stravaId)!;
+
+    upsertActivities(profileId, [row("hc:race", null)], "health-connect");
+    const hcId = lastRunId(profileId);
+    expect(linkEventActivityCore(profileId, planId, hcId)).toBe(true);
+
+    expect(restoreDeletedRow(profileId, undoId)).toBe(true);
+    const restoredId = lastRunId(profileId);
+    // Two live decisions, and the hand link is the later one — by the ordinals, which
+    // is the only thing the fold can read.
+    expect(seqOf(hcId)).toBeGreaterThan(seqOf(restoredId));
+
+    expect(autoMergeActivityDuplicates(profileId)).toBe(1);
+    const survivors = db
+      .prepare("SELECT id FROM activities WHERE profile_id = ?")
+      .all(profileId) as { id: number }[];
+    expect(survivors).toHaveLength(1);
+    expect(decisionOf(survivors[0].id)).toEqual({
+      plan: planId,
+      decided: true,
+    });
+    expect(
+      getEventDay(profileId, planId)?.activities.filter((a) => a.linked)
+    ).toEqual([expect.objectContaining({ id: survivors[0].id })]);
+  });
+
+  // The other half of what the Trash can do to a decision, and the half no case in
+  // this file reached: the ordinal has to come BACK with the row. A detached session
+  // deleted as a duplicate and later restored still carries the person's word, so the
+  // auto-link leaves it alone — otherwise the next value-changing re-sync silently
+  // re-attaches exactly what they detached, which is the defect the column exists for.
+  it("a detach survives the row being deleted and restored from the Trash", () => {
+    const profileId = makeProfile("detach-survives-trash");
+    const planId = raceDayPlan(profileId);
+    const row = (title: string) => ({
+      external_id: "strava:race-10k",
+      date: RACE_DAY,
+      type: "cardio" as const,
+      title,
+      duration_min: 44,
+      distance_km: toKm(10.1, "km"),
+      start_time: "09:00",
+      end_time: "09:44",
+      workout_type: "race",
+    });
+    upsertActivities(profileId, [row("Harbor 10k")], "strava");
+    const id = lastRunId(profileId);
+    expect(linkOf(id)).toBe(planId);
+    expect(unlinkEventActivityCore(profileId, id)).toBe(true);
+
+    const undoId = captureDelete("activity", profileId, id)!;
+    expect(restoreDeletedRow(profileId, undoId)).toBe(true);
+    const restoredId = lastRunId(profileId);
+    expect(decisionOf(restoredId)).toEqual({ plan: null, decided: true });
+    // Asked directly, and through the sync that asks after every changed value.
+    expect(linkRaceActivityCore(profileId, restoredId)).toBe(false);
+    expect(
+      upsertActivities(profileId, [row("Harbor 10k ⭐")], "strava").updated
+    ).toBe(1);
+    expect(linkOf(restoredId)).toBeNull();
+  });
+
+  // The rule under that story, stated on its own: what the next decision beats is the
+  // mark, not the rows. Deleting every decided row the profile has must not reset the
+  // numbering — a purge cannot, either, which is why the mark is not swept.
+  it("deleting the newest decision does not hand its ordinal to the next one", () => {
+    const profileId = makeProfile("decision-mark");
+    const planId = raceDayPlan(profileId);
+    addRun(profileId, RACE_DAY, 10, null, "Harbor 10k");
+    const first = lastRunId(profileId);
+    addRun(profileId, RACE_DAY, 3, null, "Shakeout");
+    const second = lastRunId(profileId);
+
+    expect(linkEventActivityCore(profileId, planId, first)).toBe(true);
+    expect(linkEventActivityCore(profileId, planId, second)).toBe(true);
+    const highest = seqOf(second);
+    expect(decisionMark(profileId)).toBe(highest);
+
+    // Both decided rows leave — one to the Trash, one purged outright.
+    const undoId = captureDelete("activity", profileId, second)!;
+    db.prepare("DELETE FROM activities WHERE id = ?").run(first);
+    expect(purgeDeletedRow(profileId, undoId)).toEqual({ kind: "purged" });
+    expect(
+      db
+        .prepare("SELECT COUNT(*) AS n FROM activities WHERE profile_id = ?")
+        .get(profileId)
+    ).toEqual({ n: 0 });
+
+    addRun(profileId, RACE_DAY, 10.2, null, "Harbor 10k (phone)");
+    const third = lastRunId(profileId);
+    expect(linkEventActivityCore(profileId, planId, third)).toBe(true);
+    expect(seqOf(third)).toBeGreaterThan(highest);
+  });
+
+  // The mark is the floor, and the rows the profile already has are a second floor
+  // beneath it, for the database that has ordinals but no mark: one upgraded from
+  // before the mark existed, or restored without its settings.
+  it("a profile with no mark yet takes its floor from the rows it already has", () => {
+    const profileId = makeProfile("decision-mark-rows");
+    const planId = raceDayPlan(profileId);
+    addRun(profileId, RACE_DAY, 10, null, "Harbor 10k");
+    const decided = lastRunId(profileId);
+    // Exactly what the pre-mark allocator left: an ordinal on a row, no mark.
+    db.prepare(
+      `UPDATE activities SET endurance_plan_id = ?, endurance_link_decided_seq = 4
+        WHERE id = ?`
+    ).run(planId, decided);
+    expect(decisionMark(profileId)).toBeNull();
+
+    addRun(profileId, RACE_DAY, 3, null, "Shakeout");
+    const fresh = lastRunId(profileId);
+    expect(linkEventActivityCore(profileId, planId, fresh)).toBe(true);
+    expect(seqOf(fresh)).toBeGreaterThan(4);
+  });
+
+  // The third floor, and the one only the first allocation ever pays for: before the
+  // mark existed ordinals were handed out by live maximum alone, so one can be sitting
+  // in the Trash ABOVE every live row — the exact state the old allocator left behind.
+  // `json_tree` reads it out of whatever the capture holds, whichever kind wrote it.
+  it("a profile with no mark yet takes its floor from the ordinals in the Trash", () => {
+    const profileId = makeProfile("decision-mark-trash");
+    const planId = raceDayPlan(profileId);
+    addRun(profileId, RACE_DAY, 10.1, null, "Harbor 10k (phone)");
+    const newest = lastRunId(profileId);
+    db.prepare(
+      `UPDATE activities SET endurance_plan_id = ?, endurance_link_decided_seq = 9
+        WHERE id = ?`
+    ).run(planId, newest);
+    const undoId = captureDelete("activity", profileId, newest)!;
+    expect(decisionMark(profileId)).toBeNull();
+
+    addRun(profileId, RACE_DAY, 3, null, "Shakeout");
+    const fresh = lastRunId(profileId);
+    expect(linkEventActivityCore(profileId, planId, fresh)).toBe(true);
+    expect(seqOf(fresh)).toBeGreaterThan(9);
+
+    // And the restore lands beside it rather than on top of it.
+    expect(restoreDeletedRow(profileId, undoId)).toBe(true);
+    const restoredId = lastRunId(profileId);
+    const live = (
+      db
+        .prepare(
+          `SELECT endurance_link_decided_seq AS seq FROM activities
+            WHERE profile_id = ? AND endurance_link_decided_seq > 0`
+        )
+        .all(profileId) as { seq: number }[]
+    ).map((r) => r.seq);
+    expect(new Set(live).size).toBe(live.length);
+    expect(seqOf(fresh)).toBeGreaterThan(seqOf(restoredId));
+  });
+
+  // THE TWO MOVES ARE NOT SYMMETRIC (#3285 item 2). A link SURVIVES the event's date
+  // being edited — the link is the fact, the date is the search key for the rest of the
+  // day — and the person can take that result off at any time. Linking waits for the
+  // days to agree, because attaching is a claim about the world and the day is what
+  // makes it checkable.
+  it("a result kept across a date edit is listed and can still be taken off; linking it back waits for the days to agree", () => {
+    const profileId = makeProfile("event-date-moved");
+    const planId = raceDayPlan(profileId);
+    addRun(profileId, RACE_DAY, 10.1, "race", "Harbor 10k");
+    const raced = lastRunId(profileId);
+    expect(linkEventActivityCore(profileId, planId, raced)).toBe(true);
+
+    // The organiser postpones; the person edits the event's date.
+    expect(
+      updateEndurancePlanCore(profileId, planId, { eventDate: "2026-06-21" })
+        .kind
+    ).toBe("ok");
+    expect(
+      getEventDay(profileId, planId)!.activities.map((a) => [
+        a.title,
+        a.date,
+        a.linked,
+      ])
+    ).toEqual([["Harbor 10k", RACE_DAY, true]]);
+
+    // Re-attaching waits for the days to agree; detaching does not.
+    expect(linkEventActivityCore(profileId, planId, raced)).toBe(false);
+    expect(unlinkEventActivityCore(profileId, raced)).toBe(true);
+    expect(decisionOf(raced)).toEqual({ plan: null, decided: true });
+    // And the session leaves the page with the link — which is the move that was made.
+    expect(getEventDay(profileId, planId)!.activities).toEqual([]);
+
+    // Move the event back onto the session's day and it can be linked again.
+    expect(
+      updateEndurancePlanCore(profileId, planId, { eventDate: RACE_DAY }).kind
+    ).toBe("ok");
+    expect(linkEventActivityCore(profileId, planId, raced)).toBe(true);
+  });
+
+  // THE SESSION'S day can move too, and the SYNC moves it: `resendLocalField` keeps
+  // the stored date only for Health Connect, so a Strava row re-sent with a corrected
+  // start time lands on a different day. Everything here is machinery — the sync
+  // attached the result (`decided: false`, nobody chose it) and the sync moved it off
+  // the event's day — so if detaching asked the days to agree, nothing anywhere could
+  // take this session off the event: the three writers that clear the link are a plan
+  // delete, a merge, and this core. The person must always be able to withdraw it.
+  it("a result the sync linked and then moved to another day can still be taken off", () => {
+    const profileId = makeProfile("event-sync-moved-day");
+    const planId = raceDayPlan(profileId);
+    const raceRow = {
+      external_id: "strava:evt-1",
+      date: RACE_DAY,
+      type: "cardio" as const,
+      title: "Morning Run",
+      duration_min: 42,
+      distance_km: toKm(10.1, "km"),
+      start_time: "09:00",
+      end_time: "09:42",
+      workout_type: "race",
+    };
+    upsertActivities(profileId, [raceRow], "strava");
+    const raced = lastRunId(profileId);
+    expect(decisionOf(raced)).toEqual({ plan: planId, decided: false });
+
+    // The provider re-sends the same session with the timezone fixed: a value change,
+    // so the upsert writes the new date onto the row it already has.
+    upsertActivities(
+      profileId,
+      [{ ...raceRow, date: "2026-06-15", duration_min: 43 }],
+      "strava"
+    );
+    expect(rowOf(raced).date).toBe("2026-06-15");
+
+    // The event page still lists it as the result, and Unlink is the way out.
+    expect(
+      getEventDay(profileId, planId)!.activities.map((a) => [a.date, a.linked])
+    ).toEqual([["2026-06-15", true]]);
+    expect(unlinkEventActivityCore(profileId, raced)).toBe(true);
+    expect(decisionOf(raced)).toEqual({ plan: null, decided: true });
+  });
+
+  // The same state with no sync at all: a person correcting the day they logged a
+  // session on, through the ordinary activity edit, which never touches the link.
+  it("a result whose own date the person edits can still be taken off", () => {
+    const profileId = makeProfile("event-edit-moved-day");
+    const planId = raceDayPlan(profileId);
+    addRun(profileId, RACE_DAY, 10.1, "race", "Harbor 10k");
+    const raced = lastRunId(profileId);
+    expect(linkEventActivityCore(profileId, planId, raced)).toBe(true);
+
+    const form = new FormData();
+    form.set("id", String(raced));
+    form.set("type", "cardio");
+    form.set("title", "Harbor 10k");
+    form.set("date", "2026-06-13");
+    form.set("distance", "10.1");
+    expect(
+      saveActivityCore(
+        profileId,
+        form,
+        {
+          weightUnit: "kg",
+          distanceUnit: "km",
+        },
+        "page"
+      ).ok
+    ).toBe(true);
+    expect(rowOf(raced).date).toBe("2026-06-13");
+    expect(linkOf(raced)).toBe(planId);
+
+    expect(unlinkEventActivityCore(profileId, raced)).toBe(true);
+    expect(linkOf(raced)).toBeNull();
   });
 });

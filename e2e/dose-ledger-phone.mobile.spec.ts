@@ -93,11 +93,12 @@ test.describe("the dose record at phone width (#3478)", () => {
 
     // The active medication's own page, opened straight into the editor.
     await page.goto("/medications");
+    // eslint-disable-next-line no-restricted-properties -- first-ok: the dedicated fixture profile owns exactly two medications, and this locator is already filtered to the active one's name
     const href = await page
       .locator(`a[href^="/medications/"]`, {
         hasText: DOSE_LEDGER_PHONE_ACTIVE_MED,
       })
-      .first() // first-ok: the dedicated fixture profile owns exactly two medications, and this locator is already filtered to the active one's name
+      .first()
       .getAttribute("href");
     expect(
       href,

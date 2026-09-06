@@ -15,10 +15,8 @@ import { comboboxRows, deleteActivityFromForm, followLink } from "./helpers";
 
 async function pickActivity(page: Page, name: string) {
   await page.getByPlaceholder(/What did you do/).fill(name);
-  await comboboxRows(page)
-    .filter({ hasText: name })
-    .first() // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
-    .click();
+  // eslint-disable-next-line no-restricted-properties -- first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
+  await comboboxRows(page).filter({ hasText: name }).first().click();
 }
 
 // Start a live session, log one complete working set, and give it a unique title
@@ -109,10 +107,11 @@ test("plain-form Finish stamps end and opens the shared Session complete step; e
   // On edit the effort round-tripped to activities.intensity, proving the finish
   // persisted the just-finished session.
   await page.goto("/training?tab=log");
+  // eslint-disable-next-line no-restricted-properties -- first-ok: the activity row THIS spec created (filtered by its unique title)
   const row = page
     .getByTestId("history-row")
     .filter({ hasText: title })
-    .first(); // first-ok: the activity row THIS spec created (filtered by its unique title)
+    .first();
   await expect(row).toBeVisible();
   await openRowForEdit(page, row);
   await expect(
@@ -181,10 +180,11 @@ test("the recap-step effort rating round-trips into activities.intensity (#924)"
   // proof the recap-step rating round-tripped through activities.intensity to
   // the DB.
   await page.goto("/training?tab=log");
+  // eslint-disable-next-line no-restricted-properties -- first-ok: the activity row THIS spec created (filtered by its unique title)
   const row = page
     .getByTestId("history-row")
     .filter({ hasText: title })
-    .first(); // first-ok: the activity row THIS spec created (filtered by its unique title)
+    .first();
   await expect(row).toBeVisible();
   await openRowForEdit(page, row);
   await expect(
@@ -204,9 +204,10 @@ test("editing an existing activity never shows the recap step (live-only, #924)"
     // SCOPED TO AN ACTIVITY ROW. The Log renders the whole Training family through
     // the shared substrate now, so an unscoped `.first()` can be a milestone or an
     // endurance event — rows another surface owns, whose title correctly goes there.
+    // eslint-disable-next-line no-restricted-properties -- first-ok: any seeded activity row (opening a retro/edit surface) — order-agnostic
     page
       .locator('[data-testid="history-row"][data-history-kind="activity"]')
-      .first() // first-ok: any seeded activity row (opening a retro/edit surface) — order-agnostic
+      .first()
   );
   await expect(page.getByTestId("activity-form")).toBeVisible();
   // No live control strip, no finish button, no recap step on an edit.

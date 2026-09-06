@@ -40,12 +40,16 @@ import {
 } from "@/lib/session-detail";
 import type { DistanceUnit, UnitPrefs } from "@/lib/settings";
 import { ZONE_COLORS } from "@/lib/training-zones";
-import { fmtDistance, fmtKmh, kmTo, round } from "@/lib/units";
+import { fmtDistance, fmtKmh, kmTo } from "@/lib/units";
 import { SessionChartLinkProvider } from "./SessionChartLink";
 import SessionHeartRateChart from "./SessionHeartRateChart";
-import RideComparisonChart, {
-  type RideComparisonChartMetric,
-} from "./RideComparisonChart";
+import SessionComparisonChart from "@/components/SessionComparisonChart";
+import { sessionComparisonChartMetrics } from "@/lib/session-comparison-view";
+import {
+  comparisonDifference,
+  comparisonTone,
+  formatComparisonValue,
+} from "@/lib/session-comparison-format";
 import SessionTelemetryChart from "./SessionTelemetryChart";
 import SessionRouteMap from "./SessionRouteMap";
 import SessionCourseTables from "./SessionCourseTables";
@@ -62,102 +66,6 @@ function statTestId(stat: ImportedActivityStat): string {
   return `ride-stat-${stat.key.replace("_", "-")}`;
 }
 
-const COMPARISON_LABELS: Record<SessionComparisonMetricKey, string> = {
-  speed: "Average speed",
-  heart_rate: "Average heart rate",
-  power: "Average power",
-  weighted_power: "Weighted power",
-  cadence: "Average cadence",
-  elevation: "Elevation gain",
-  relative_effort: "Relative effort",
-};
-
-const COMPARISON_SHORT_LABELS: Record<SessionComparisonMetricKey, string> = {
-  speed: "Speed",
-  heart_rate: "Heart rate",
-  power: "Power",
-  weighted_power: "Weighted power",
-  cadence: "Cadence",
-  elevation: "Elevation",
-  relative_effort: "Effort",
-};
-
-function comparisonChartUnit(
-  key: SessionComparisonMetricKey,
-  distanceUnit: DistanceUnit
-): string {
-  if (key === "speed") return ` ${distanceUnit}/h`;
-  if (key === "heart_rate") return " bpm";
-  if (key === "power" || key === "weighted_power") return " W";
-  if (key === "cadence") return " rpm";
-  if (key === "elevation") return distanceUnit === "mi" ? " ft" : " m";
-  return "";
-}
-
-function comparisonChartValue(
-  key: SessionComparisonMetricKey,
-  value: number,
-  distanceUnit: DistanceUnit
-): number {
-  if (key === "speed") return kmTo(value, distanceUnit);
-  if (key === "elevation" && distanceUnit === "mi") return value * 3.28084;
-  return value;
-}
-
-function formatComparisonValue(
-  metric: SessionComparisonMetric,
-  value: number,
-  distanceUnit: DistanceUnit
-): string {
-  if (metric.key === "speed") return fmtKmh(value, distanceUnit);
-  if (metric.key === "heart_rate") return `${Math.round(value)} bpm`;
-  if (metric.key === "power" || metric.key === "weighted_power") {
-    return `${Math.round(value)} W`;
-  }
-  if (metric.key === "cadence") return `${Math.round(value)} rpm`;
-  if (metric.key === "elevation") {
-    return distanceUnit === "mi"
-      ? `${Math.round(value * 3.28084)} ft`
-      : `${Math.round(value)} m`;
-  }
-  return String(round(value, 1));
-}
-
-function comparisonDifferencePresentation(
-  metric: SessionComparisonMetric,
-  distanceUnit: DistanceUnit
-): { value: string | null; relation: "above" | "below" | "same as" } {
-  const difference =
-    metric.key === "speed"
-      ? kmTo(metric.difference, distanceUnit)
-      : metric.key === "elevation" && distanceUnit === "mi"
-        ? metric.difference * 3.28084
-        : metric.difference;
-  const rounded =
-    metric.key === "speed" || metric.key === "relative_effort"
-      ? round(difference, 1)
-      : Math.round(difference);
-  const suffix =
-    metric.key === "speed"
-      ? ` ${distanceUnit}/h`
-      : metric.key === "heart_rate"
-        ? " bpm"
-        : metric.key === "power" || metric.key === "weighted_power"
-          ? " W"
-          : metric.key === "cadence"
-            ? " rpm"
-            : metric.key === "elevation"
-              ? distanceUnit === "mi"
-                ? " ft"
-                : " m"
-              : "";
-  if (rounded === 0) return { value: null, relation: "same as" };
-  return {
-    value: `${Math.abs(rounded)}${suffix}`,
-    relation: rounded > 0 ? "above" : "below",
-  };
-}
-
 function RideSummaryComparisonDelta({
   metric,
   distanceUnit,
@@ -167,33 +75,17 @@ function RideSummaryComparisonDelta({
   distanceUnit: DistanceUnit;
   prefix?: string;
 }) {
-  const difference = comparisonDifferencePresentation(metric, distanceUnit);
+  const difference = comparisonDifference(metric, distanceUnit);
   const medianValue = formatComparisonValue(
-    metric,
+    metric.key,
     metric.median,
     distanceUnit
   );
-  // Only speed has a clear performance direction among these like-for-like ride
-  // deltas. More HR, power, elevation, cadence, or effort is context, not
-  // automatically “better”, so those comparisons render WITHOUT a verdict.
-  //
-  // THE NEUTRAL TONE IS SLATE, NOT SKY (#3500 item 1). The reasoning above is
-  // unchanged; the colour was fighting it. Sky at `font-medium` is this app's
-  // most link-like non-link — the same affordance collision #3487 item 2 filed
-  // against the household setup's links — and five or six of these stack inside
-  // one card, so a page of static text read as a column of tappable rows. Slate
-  // states “no verdict” at least as well and cannot be mistaken for a link; it
-  // is also already the tone this function gives a ZERO delta, so “no verdict”
-  // now has one spelling instead of two. Speed's emerald/amber direction tones
-  // are untouched.
-  const tone =
-    metric.key !== "speed"
-      ? "text-slate-600 dark:text-slate-300"
-      : difference.relation === "above"
-        ? "text-emerald-700 dark:text-emerald-300"
-        : difference.relation === "below"
-          ? "text-amber-700 dark:text-amber-300"
-          : "text-slate-600 dark:text-slate-300";
+  const tone = {
+    neutral: "text-slate-600 dark:text-slate-300",
+    good: "text-emerald-700 dark:text-emerald-300",
+    watch: "text-amber-700 dark:text-amber-300",
+  }[comparisonTone(metric, difference.relation)];
 
   return (
     <span
@@ -370,30 +262,18 @@ export default async function CyclingActivityDetail(props: {
     data.heartRateWindow,
     data.heartRateMinutes
   );
-  const comparisonMetrics: RideComparisonChartMetric[] =
-    data.comparison?.metrics
-      .filter((metric) => !data.indoorOnly || metric.key !== "elevation")
-      .map((metric) => ({
-        key: metric.key,
-        label: COMPARISON_LABELS[metric.key],
-        shortLabel: COMPARISON_SHORT_LABELS[metric.key],
-        unit: comparisonChartUnit(metric.key, units.distanceUnit),
-        decimals:
-          metric.key === "speed" || metric.key === "relative_effort" ? 1 : 0,
-        median: comparisonChartValue(
-          metric.key,
-          metric.median,
-          units.distanceUnit
-        ),
-        points: metric.points.map((point) => ({
-          ...point,
-          value: comparisonChartValue(
-            metric.key,
-            point.value,
-            units.distanceUnit
-          ),
-        })),
-      })) ?? [];
+  const comparisonMetrics = sessionComparisonChartMetrics(
+    data.comparison,
+    units.distanceUnit
+  )
+    .filter((metric) => !data.indoorOnly || metric.key !== "elevation")
+    .map((metric) => ({
+      ...metric,
+      points: metric.points.map((point) => ({
+        ...point,
+        href: rideLens ? cyclingRideHref(point.id, rideLens) : point.href,
+      })),
+    }));
   const telemetryTraces = data.traces.map((trace) => {
     if (trace.key === "velocity_smooth") {
       return {
@@ -649,10 +529,16 @@ export default async function CyclingActivityDetail(props: {
               noun={`${activityNoun}s`}
               singularNoun={activityNoun}
             >
-              <RideComparisonChart
+              <SessionComparisonChart
                 metrics={comparisonMetrics}
-                lens={rideLens}
-                noun={activityNoun}
+                initialMetric={
+                  comparisonMetrics.find(
+                    (metric) => metric.key === rideLens?.metric
+                  )?.key
+                }
+                noun={`${activityNoun}s`}
+                singularNoun={activityNoun}
+                testIdPrefix="ride-comparison"
               />
             </SessionComparisonCard>
           ) : null}

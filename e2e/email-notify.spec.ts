@@ -137,10 +137,11 @@ test.describe("email notification channel (#1855)", () => {
       // re-click until the flip proves onChange fired, then wait for re-enable;
       // the settings-ia #830 pattern).
       const toggleCell = async (to: boolean) => {
+        // eslint-disable-next-line no-restricted-properties -- topass-ok: re-click the routing cell until the optimistic flip proves onChange fired — 'my click landed' is non-atomic with no navigation to follow (#830)
         await expect(async () => {
           await refill.click();
           await expect(refill).toBeChecked({ checked: to });
-        }).toPass(); // topass-ok: re-click the routing cell until the optimistic flip proves onChange fired — 'my click landed' is non-atomic with no navigation to follow (#830)
+        }).toPass();
         await expect(refill).toBeEnabled();
       };
       await toggleCell(false);
@@ -157,9 +158,10 @@ test.describe("email notification channel (#1855)", () => {
       await expect(member.getByTestId("login-email-test-result")).toContainText(
         "Sent"
       );
+      // eslint-disable-next-line no-restricted-properties -- topass-ok: the capture file is appended by the server process after the action returns; polling the file is the only observable
       await expect(() => {
         expect(mailsToAddress().length).toBeGreaterThan(before);
-      }).toPass(); // topass-ok: the capture file is appended by the server process after the action returns; polling the file is the only observable
+      }).toPass();
       const freeMail = mailsToAddress().at(-1)!;
       expect(freeMail).toContain("something needs your attention");
       expect(freeMail).not.toContain("Email notifications are working");
@@ -175,9 +177,10 @@ test.describe("email notification channel (#1855)", () => {
       await expect(member.getByTestId("login-email-test-result")).toContainText(
         "Sent"
       );
+      // eslint-disable-next-line no-restricted-properties -- topass-ok: same file-append observable as above
       await expect(() => {
         expect(mailsToAddress().length).toBeGreaterThan(beforeFull);
-      }).toPass(); // topass-ok: same file-append observable as above
+      }).toPass();
       expect(mailsToAddress().at(-1)!).toContain(
         "Email notifications are working"
       );

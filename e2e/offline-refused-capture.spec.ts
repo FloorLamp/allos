@@ -588,7 +588,7 @@ test("a refused workout capture at close says so and claims no sync", async ({
   page,
   context,
 }) => {
-  const marker = `Refused session ${Date.now()}`; // clock-ok: unique-name suffix for this spec's own session title, never a stored timestamp
+  const marker = `Refused session ${Date.now()}`; // eslint-disable-line no-restricted-properties -- clock-ok: unique-name suffix for this spec's own session title, never a stored timestamp
   // THE SENTENCE HAS TO SURVIVE THE RECONNECT (#3170), which is the half this test
   // used to leave open. It asserted "no row landed" WHILE OFFLINE — true, and true
   // of the broken tree too: the close path fires ~20 attempts in ~80ms and the
@@ -639,9 +639,10 @@ test("a refused workout capture at close says so and claims no sync", async ({
     // queue — and be refused.
     await context.setOffline(true);
     await page.getByPlaceholder(/What did you do/).fill("Barbell Bench Press");
+    // eslint-disable-next-line no-restricted-properties -- first-ok: transient combobox list this spec just opened by typing; the first filtered match is the intended option
     await comboboxRows(page)
       .filter({ hasText: "Barbell Bench Press" })
-      .first() // first-ok: transient combobox list this spec just opened by typing; the first filtered match is the intended option
+      .first()
       .click();
     await page
       .getByTestId("next-set-card")
@@ -669,7 +670,7 @@ test("a refused workout capture at close says so and claims no sync", async ({
     // IMMEDIATELY is what makes this able to fail (see REFUSED_FLUSH_SETTLE_MS):
     // it is the timing under which the broken tree lands the row.
     await context.setOffline(false);
-    await page.waitForTimeout(REFUSED_FLUSH_SETTLE_MS); // waitfortimeout-ok: the assertion IS an absence — no attempt from a close that was already refused may write in the window one would have written in
+    await page.waitForTimeout(REFUSED_FLUSH_SETTLE_MS); // eslint-disable-line no-restricted-properties -- waitfortimeout-ok: the assertion IS an absence — no attempt from a close that was already refused may write in the window one would have written in
     expect(
       activitiesCreatedAfter(activityWatermark),
       "a refused close wrote a session after the reconnect, contradicting the sentence the person was shown"
@@ -705,15 +706,15 @@ test("a refused dose tap settles READY AGAIN — the retry it asks for is not ab
   // Fixture-owned supplement (#868, the offline-dose-confirm pattern): a
   // uniquely-named Morning dose this test creates and deletes, so it never
   // touches the seeded intake rows other specs count on.
-  const name = `Refused Dose Zinc ${Date.now()}`; // clock-ok: unique fixture-name suffix, never a stored timestamp
+  const name = `Refused Dose Zinc ${Date.now()}`; // eslint-disable-line no-restricted-properties -- clock-ok: unique fixture-name suffix, never a stored timestamp
   await breakIndexedDB(page);
   await page.goto("/nutrition?tab=supplements");
   await page.getByTestId("supplement-add-toggle").click();
   const addCard = page.getByRole("dialog", { name: "Add supplement" });
   await addCard.getByLabel("Name").fill(name);
   const doseEditor1 = await openFact(page, "dose", addCard);
-  await doseEditor1.getByLabel("Amount").first().fill("10 mg"); // first-ok: the add-supplement form's own first dose-row field (deterministic within one form render, not a seeded list)
-  await doseEditor1.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the add-supplement form's own first dose-row field (deterministic within one form render, not a seeded list)
+  await doseEditor1.getByLabel("Amount").first().fill("10 mg"); // eslint-disable-line no-restricted-properties -- first-ok: the add-supplement form's own first dose-row field (deterministic within one form render, not a seeded list)
+  await doseEditor1.getByLabel("Time of day").first().selectOption("Morning"); // eslint-disable-line no-restricted-properties -- first-ok: the add-supplement form's own first dose-row field (deterministic within one form render, not a seeded list)
   await closeEditor(page, addCard);
   await addCard.getByRole("button", { name: "Add", exact: true }).click();
   await expect(addCard).toHaveCount(0);

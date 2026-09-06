@@ -66,13 +66,13 @@ test.describe("Providers registry", () => {
     // active profile has affiliation edges. Assert the seeded providers appear at
     // the PAGE level (mode-agnostic), then SEARCH — which always renders the flat
     // `provider-list` — before following the detail link.
-    const patel = page.getByText("Dr. Anita Patel", { exact: true }).first(); // first-ok: shared #275 seed, mode-agnostic presence check only
+    const patel = page.getByText("Dr. Anita Patel", { exact: true }).first(); // eslint-disable-line no-restricted-properties -- first-ok: shared #275 seed, mode-agnostic presence check only
     await expect(patel).toBeVisible();
     const otherDirectory = page.getByTestId("provider-other-disclosure");
     if (await otherDirectory.count()) {
       await otherDirectory.locator("summary").click();
     }
-    const quest = page.getByText("Quest Diagnostics").first(); // first-ok: shared #275 seed, presence check only
+    const quest = page.getByText("Quest Diagnostics").first(); // eslint-disable-line no-restricted-properties -- first-ok: shared #275 seed, presence check only
     await expect(quest).toBeVisible();
 
     // Search narrows to a single provider (flat list) and its detail link works.

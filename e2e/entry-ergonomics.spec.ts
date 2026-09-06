@@ -32,10 +32,8 @@ import { frozenNow, workerDbPath } from "./worker-env";
 // live component; see PR #547 review thread.)
 async function pickActivity(page: Page, name: string) {
   await page.getByPlaceholder(/What did you do/).fill(name);
-  await comboboxRows(page)
-    .filter({ hasText: name })
-    .first() // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
-    .click();
+  // eslint-disable-next-line no-restricted-properties -- first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
+  await comboboxRows(page).filter({ hasText: name }).first().click();
 }
 
 // Issue #29: data-entry ergonomics — the three affordances end-to-end against the
@@ -77,7 +75,7 @@ test("command palette 'weight 84.3' logs a body metric (#29)", async ({
   // so today's just-logged entry is the first one — rather than free text, which
   // also matches the (visually hidden) chart axis/point labels.
   await page.goto("/trends");
-  const weightCell = page.getByTestId("body-weight-cell").first(); // first-ok: the most-recent body-weight cell (newest-first) — order-agnostic
+  const weightCell = page.getByTestId("body-weight-cell").first(); // eslint-disable-line no-restricted-properties -- first-ok: the most-recent body-weight cell (newest-first) — order-agnostic
   await expect(weightCell).toContainText("84.3");
 });
 
@@ -90,18 +88,17 @@ test("'Duplicate activity' pre-fills a create form that saves a new activity (#2
   const titleRows = page
     .getByTestId("history-row")
     .filter({ hasText: "Training Log merge keeper" });
-  await expect(titleRows.first()).toBeVisible(); // first-ok: the "Training Log merge keeper" row (filtered) — one match
+  await expect(titleRows.first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: the "Training Log merge keeper" row (filtered) — one match
   const before = await titleRows.count();
 
   // Open the canonical record, then use its overflow (⋯) menu → "Duplicate activity".
   await followLink(
     page,
-    titleRows
-      .first() // first-ok: the "Training Log merge keeper" row (filtered) — one match
-      .getByRole("link", {
-        name: "Training Log merge keeper",
-        exact: true,
-      }),
+    // eslint-disable-next-line no-restricted-properties -- first-ok: the "Training Log merge keeper" row (filtered) — one match
+    titleRows.first().getByRole("link", {
+      name: "Training Log merge keeper",
+      exact: true,
+    }),
     /\/training\/activity\/\d+$/
   );
   await page
@@ -133,12 +130,11 @@ test("'Duplicate activity' pre-fills a create form that saves a new activity (#2
   // here keeps those specs order-independent.
   await followLink(
     page,
-    titleRows
-      .first() // first-ok: the just-created duplicate is today's newest matching row
-      .getByRole("link", {
-        name: "Training Log merge keeper",
-        exact: true,
-      }),
+    // eslint-disable-next-line no-restricted-properties -- first-ok: the just-created duplicate is today's newest matching row
+    titleRows.first().getByRole("link", {
+      name: "Training Log merge keeper",
+      exact: true,
+    }),
     /\/training\/activity\/\d+$/
   );
   await hydratedClick(
@@ -311,10 +307,11 @@ test("edit mode surfaces the exercise's previous sessions (#188)", async ({
   // one for edit — by clicking its title — must show the "Recent" reference
   // panel of prior sessions (issue #188: edit mode used to omit it entirely).
   const main = page.getByRole("main");
+  // eslint-disable-next-line no-restricted-properties -- first-ok: the seeded Push day session row (filtered by its title) — order-agnostic
   const pushRow = main
     .getByTestId("history-row")
     .filter({ hasText: "Push day" })
-    .first(); // first-ok: the seeded Push day session row (filtered by its title) — order-agnostic
+    .first();
   await expect(pushRow).toBeVisible();
 
   // Follow the row to its canonical page, then open the editor in EDIT mode.
@@ -338,11 +335,11 @@ test("edit mode surfaces the exercise's previous sessions (#188)", async ({
   // falls back to the overlay (a timing the spec must not depend on). The
   // testid cannot double-render — there is exactly one editor instance — so
   // the #206 main-scoping rule doesn't apply here.
-  const panel = page.getByTestId("recent-sessions").first(); // first-ok: the recent-sessions panel (see comment on scoping) — order-agnostic
+  const panel = page.getByTestId("recent-sessions").first(); // eslint-disable-line no-restricted-properties -- first-ok: the recent-sessions panel (see comment on scoping) — order-agnostic
   await expect(panel).toBeVisible();
   // …and it lists at least one prior session row (self-excluded: the session
   // being edited never appears in its own Recent list).
-  await expect(panel.getByRole("listitem").first()).toBeVisible(); // first-ok: asserts a session renders in the scoped Recent panel — order-agnostic presence
+  await expect(panel.getByRole("listitem").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: asserts a session renders in the scoped Recent panel — order-agnostic presence
 
   // Seeded strength rows store a 60-minute duration without start/end times.
   // It remains an editable top-level session field and feeds the same estimate
@@ -392,10 +389,11 @@ test("editing cardio duration updates the parent session total", async ({
   // This seeded manual cardio row has no clock range and stores 28 minutes on
   // both its parent and visible Running component. Editing the visible field
   // must not resubmit the parent's hidden 28-minute seed.
+  // eslint-disable-next-line no-restricted-properties -- first-ok: the "Intervals" activity row (filtered by its title) — order-agnostic
   const row = page
     .getByTestId("history-row")
     .filter({ hasText: "Intervals" })
-    .first(); // first-ok: the "Intervals" activity row (filtered by its title) — order-agnostic
+    .first();
   await expect(row).toBeVisible();
   // Open the canonical record and edit it there. Closing the workspace returns
   // to the same record, so the restore can use its Edit button again.
@@ -412,14 +410,14 @@ test("editing cardio duration updates the parent session total", async ({
   const duration = page.getByTestId("cardio-duration");
   await expect(duration).toHaveValue("28");
   await duration.fill("35");
-  await expect(page.getByLabel("Saved").first()).toBeVisible(); // first-ok: asserts a Saved autosave indicator appears — order-agnostic
+  await expect(page.getByLabel("Saved").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: asserts a Saved autosave indicator appears — order-agnostic
   await page.getByRole("button", { name: "Done" }).click();
   await expect(page.getByTestId("activity-summary")).toContainText("35 min");
 
   // Restore the shared seed row so other specs remain order-independent.
   await paneEdit.click();
   await page.getByTestId("cardio-duration").fill("28");
-  await expect(page.getByLabel("Saved").first()).toBeVisible(); // first-ok: asserts a Saved autosave indicator appears — order-agnostic
+  await expect(page.getByLabel("Saved").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: asserts a Saved autosave indicator appears — order-agnostic
   await page.getByRole("button", { name: "Done" }).click();
   await expect(page.getByTestId("activity-summary")).toContainText("28 min");
 });
@@ -539,11 +537,12 @@ test("the activity form keeps workout entry primary and context visible across b
 }) => {
   await page.goto("/training?tab=log");
 
+  // eslint-disable-next-line no-restricted-properties -- first-ok: the seeded Push day session row (filtered by its title) — order-agnostic
   const pushRow = page
     .getByRole("main")
     .getByTestId("history-row")
     .filter({ hasText: "Push day" })
-    .first(); // first-ok: the seeded Push day session row (filtered by its title) — order-agnostic
+    .first();
 
   // The row opens its canonical page; Edit always uses the shared activity
   // workspace rather than re-parenting the form into the Training Log.
@@ -598,7 +597,7 @@ test("the activity form keeps workout entry primary and context visible across b
   await expect(
     page.getByRole("heading", { name: "Workout", exact: true })
   ).toHaveClass("sr-only");
-  const part = page.getByTestId("activity-part").first(); // first-ok: asserts an activity-part renders — order-agnostic presence
+  const part = page.getByTestId("activity-part").first(); // eslint-disable-line no-restricted-properties -- first-ok: asserts an activity-part renders — order-agnostic presence
   await expect(part).not.toHaveClass(/rounded/);
   await page.evaluate(() => window.scrollTo(0, 0));
   const formBox = await page.getByTestId("activity-form").boundingBox();
@@ -635,8 +634,13 @@ test("the activity form keeps workout entry primary and context visible across b
   await editorScroll.evaluate((node) => {
     node.scrollTop = 0;
   });
+  // The exercise picker is one tap behind its heading since #5370, so open it before
+  // comparing field surfaces — the point of this sweep is that every FIELD on the form
+  // renders the same box, and the Activity combobox is still one of them.
+  // eslint-disable-next-line no-restricted-properties -- first-ok: the leading part of the session being edited — order-agnostic
+  await drawer.getByTestId("part-name-heading").first().click();
   const standardInputs = [
-    page.getByRole("combobox", { name: "Activity" }).first(), // first-ok: the Activity combobox on the log form — order-agnostic
+    page.getByRole("combobox", { name: "Activity" }).first(), // eslint-disable-line no-restricted-properties -- first-ok: the Activity combobox on the log form — order-agnostic
     page.locator("#activity-date"),
     page.locator("#activity-start-time"),
     page.locator("#activity-end-time"),
@@ -672,7 +676,7 @@ test("the activity form keeps workout entry primary and context visible across b
   // what belongs in this breakpoint sweep is that the ROW rendered — the behaviour of
   // the controls inside it is pinned by the two dedicated tests below and by the
   // `lib/__tests__/activity-part-facts.test.ts` table.
-  await expect(page.getByTestId("part-fact-row").first()).toBeVisible(); // first-ok: asserts a part fact row renders — order-agnostic presence
+  await expect(page.getByTestId("part-fact-row").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: asserts a part fact row renders — order-agnostic presence
   const sessionDetails = page.getByTestId("session-details");
   await expect(sessionDetails).toBeVisible();
   await expect(sessionDetails).toHaveCSS("border-top-width", "0px");
@@ -727,13 +731,13 @@ test("the activity form keeps workout entry primary and context visible across b
   // the assertions
   // would pass either way, and would have quietly stopped describing the card the rest
   // of this test measures.
-  await hydratedClick(page, page.getByTestId("set-summary").first()); // first-ok: the first part's set summary — this test measures the first card
-  const headings = page.getByTestId("set-column-headings").first(); // first-ok: the set-column headings of the card just opened — order-agnostic
+  await hydratedClick(page, page.getByTestId("set-summary").first()); // eslint-disable-line no-restricted-properties -- first-ok: the first part's set summary — this test measures the first card
+  const headings = page.getByTestId("set-column-headings").first(); // eslint-disable-line no-restricted-properties -- first-ok: the set-column headings of the card just opened — order-agnostic
   await expect(headings).toBeVisible();
   expect(
     await headings.evaluate((node) => getComputedStyle(node).position)
   ).toBe("sticky");
-  const set1Weight = page.getByTestId("set1-weight").first(); // first-ok: the first set's weight input of the opened card — order-agnostic
+  const set1Weight = page.getByTestId("set1-weight").first(); // eslint-disable-line no-restricted-properties -- first-ok: the first set's weight input of the opened card — order-agnostic
   await expect(set1Weight).toHaveAttribute("inputmode", "decimal");
   await expect(page.getByTestId("activity-form-footer")).toHaveCSS(
     "position",
@@ -865,21 +869,22 @@ test("a lone sport logged with Start/End auto-fills its Duration and shows real 
   // THIS log, not the fixture.
   await page.goto("/training?tab=analyze&kind=sport&item=Tennis");
   await expect(
-    page.getByRole("cell", { name: "55 min", exact: true }).first() // first-ok: the 55-min cardio cell THIS spec logged — order-agnostic
+    page.getByRole("cell", { name: "55 min", exact: true }).first() // eslint-disable-line no-restricted-properties -- first-ok: the 55-min cardio cell THIS spec logged — order-agnostic
   ).toBeVisible();
 
   // Clean up the row this test created so the shared seed DB is left untouched:
   // follow its generated-title link to the canonical page, edit, and delete.
   await page.goto("/training?tab=log");
+  // eslint-disable-next-line no-restricted-properties -- first-ok: the Tennis/55-min row THIS spec just logged (filtered) — one match
   const newRow = page
     .getByTestId("history-row")
     .filter({ hasText: "Tennis" })
     .filter({ hasText: "55 min" })
-    .first(); // first-ok: the Tennis/55-min row THIS spec just logged (filtered) — one match
+    .first();
   await expect(newRow).toBeVisible();
   await followLink(
     page,
-    newRow.getByRole("link").first(), // first-ok: the canonical generated-title link precedes any component links in this uniquely filtered row
+    newRow.getByRole("link").first(), // eslint-disable-line no-restricted-properties -- first-ok: the canonical generated-title link precedes any component links in this uniquely filtered row
     /\/training\/activity\/\d+$/
   );
   await page
@@ -985,17 +990,21 @@ test("strength set controls step, clamp, and toggle without losing their phone g
   const weightBox = await weightInput.boundingBox();
   expect(weightBox).not.toBeNull();
   expect(weightBox!.width).toBeGreaterThanOrEqual(64);
-  // The + stepper bumps the (empty) exercise weight by one increment → 2.5. Only
-  // weight is set, so the set stays half-filled and nothing auto-saves.
+  // The + stepper bumps the exercise weight by one increment — from the PLAN the band
+  // is offering (#5373), not from zero, because a nudge is what a person does to an
+  // offer. Only weight is set, so no row is a record yet and nothing auto-saves.
+  const planned = Number(await weightInput.getAttribute("placeholder"));
+  expect(planned).toBeGreaterThan(0);
+  const stepped = String(planned + 2.5);
   await hydratedClick(page, band.getByLabel("Increase weight"));
-  await expect(weightInput).toHaveValue("2.5");
+  await expect(weightInput).toHaveValue(stepped);
   // "Vary" gives the set its own weight field, carrying the load, with the caret in
   // it; the band is gone and the row is the `weight × reps` pair the rest of this
   // test measures.
   await form.getByTestId("set-vary-1").click();
   await expect(
     form.getByTestId("set-values-1").getByTestId("set1-weight")
-  ).toHaveValue("2.5");
+  ).toHaveValue(stepped);
   await expect(weightInput).toBeFocused();
   await expect(band).toHaveCount(0);
 
@@ -1052,19 +1061,38 @@ test("strength set controls step, clamp, and toggle without losing their phone g
     disjoint: true,
   });
 
+  // THE CONFIRM CONTROL (#5373), in the options column at the row's trailing edge:
+  // no set is a record yet, so every row offers one. It is the shared IconButton,
+  // whose own box is the column's 34px control (#3938) around a 44px phone target —
+  // asserted through the same sweep the column's other controls take, not with a
+  // number of its own.
+  const row1 = page.getByTestId("set-row-1"); // testid-scope-ok: the set grid is inside the held editor overlay, one copy
+  const confirm = row1.getByTestId("set-confirm-1");
+  await expect(confirm).toHaveAttribute("data-icon-button", "");
+  await expectPhoneTapTargets(page, "strength-set confirm", [confirm]);
+
   // Weight and RPE were symmetric (− and +) from the start; reps shipped with only
   // a +, so a mis-tapped rep count could only be fixed by editing the field by hand.
+  // The count starts from the PLANNED reps this row is offering (#5373) — stepping is
+  // how a person says "I got two fewer than that" — so the arithmetic is stated
+  // against the ghost rather than against a zero the row never showed.
+  const plannedReps = Number(await repsInput.getAttribute("placeholder"));
+  expect(plannedReps).toBeGreaterThan(0);
   await hydratedClick(page, stepTargets[3]);
   await hydratedClick(page, stepTargets[3]);
-  await expect(repsInput).toHaveValue("2");
+  await expect(repsInput).toHaveValue(String(plannedReps + 2));
   await hydratedClick(page, stepTargets[2]);
-  await expect(repsInput).toHaveValue("1");
+  await expect(repsInput).toHaveValue(String(plannedReps + 1));
   // Clamped at 0: the field empties rather than going negative, and staying at the
   // floor is a no-op.
-  await hydratedClick(page, stepTargets[2]);
+  for (let i = 0; i <= plannedReps; i++)
+    await hydratedClick(page, stepTargets[2]);
   await expect(repsInput).toHaveValue("");
   await hydratedClick(page, stepTargets[2]);
   await expect(repsInput).toHaveValue("");
+  // …and CORRECTING IS CONFIRMING (#5373): the first of those steps recorded the set,
+  // so there is nothing left to confirm and the control is gone.
+  await expect(row1.getByTestId("set-confirm-1")).toHaveCount(0);
 
   // Each set carries a light "W" warmup toggle (default off). Toggling flips its
   // aria-pressed state — the flag excludes the set from volume/target/records.
@@ -1073,7 +1101,9 @@ test("strength set controls step, clamp, and toggle without losing their phone g
   await hydratedClick(page, warmup);
   await expect(warmup).toHaveAttribute("aria-pressed", "true");
 
-  // Reps returned to empty, so the set stays half-filled and nothing auto-saves.
+  // Reps returned to empty, so the set stays half-filled and nothing auto-saves — a
+  // confirmed row with a missing half is still a half-filled set, so confirming it
+  // did not make it savable.
   // Escape is still the leave gesture, but the draft it leaves has a name typed
   // into it and no row behind it, so it is asked about now rather than dropped in
   // silence (#5111) — the answer is part of the close, not scenery after it.
@@ -1107,10 +1137,10 @@ test("the bilateral (per-side) reps stepper steps down too (#1524)", async ({
   const ups = page.getByLabel("Add a rep");
   await expect(ups).toHaveCount(2);
 
-  const left = page.getByTestId("reps-stepper").first(); // first-ok: the per-side row this test just revealed on its own new-activity card — the left input of the pair
-  await ups.first().click(); // first-ok: same per-side pair — the left side's control
+  const left = page.getByTestId("reps-stepper").first(); // eslint-disable-line no-restricted-properties -- first-ok: the per-side row this test just revealed on its own new-activity card — the left input of the pair
+  await ups.first().click(); // eslint-disable-line no-restricted-properties -- first-ok: same per-side pair — the left side's control
   await expect(left.locator("input")).toHaveValue("1");
-  await downs.first().click(); // first-ok: same per-side pair — the left side's control
+  await downs.first().click(); // eslint-disable-line no-restricted-properties -- first-ok: same per-side pair — the left side's control
   await expect(left.locator("input")).toHaveValue("");
 
   // Same close as the test above: a picked lift with no completed set is a typed,
@@ -1148,7 +1178,13 @@ test("weight is stated once per exercise until a set varies it (#5371)", async (
   await expect(form.getByTestId("set1-reps")).toBeFocused();
   await page.keyboard.type("8");
   await page.keyboard.press("Enter");
-  await expect(form.getByTestId("set2-reps")).toHaveValue("8");
+  // The new set arrives as a GHOST of the one just recorded (#5373): its numbers are
+  // the offer, painted in the placeholder, and it is not a record until confirmed.
+  await expect(form.getByTestId("set2-reps")).toHaveValue("");
+  await expect(form.getByTestId("set2-reps")).toHaveAttribute(
+    "placeholder",
+    "8"
+  );
   await expect(form.getByTestId("set2-weight")).toHaveCount(0);
   await expect(form.getByLabel("Increase weight")).toHaveCount(1);
 
@@ -1189,7 +1225,7 @@ test("weight is stated once per exercise until a set varies it (#5371)", async (
 test("a per-side lift saves each side's weight and reps from the shared band (#5371)", async ({
   page,
 }) => {
-  const marker = `Per-side probe ${Date.now()}`; // clock-ok: unique-name suffix for this spec's own session title, never a stored timestamp
+  const marker = `Per-side probe ${Date.now()}`; // eslint-disable-line no-restricted-properties -- clock-ok: unique-name suffix for this spec's own session title, never a stored timestamp
   const storedSets = () => {
     const db = new Database(workerDbPath());
     try {
@@ -1477,7 +1513,7 @@ test("bulk-delete rows in Data → Manage, then Undo restores them (#29)", async
   await expect(card).toBeVisible();
   // Remember the "(N)" count in the heading to prove a full restore later.
   const countText = async () =>
-    (await card.locator("h2 span").first().textContent())?.trim(); // first-ok: the count span in the scoped card's heading — order-agnostic
+    (await card.locator("h2 span").first().textContent())?.trim(); // eslint-disable-line no-restricted-properties -- first-ok: the count span in the scoped card's heading — order-agnostic
   const original = await countText();
   expect(original).toBeTruthy();
 
@@ -1498,7 +1534,7 @@ test("bulk-delete rows in Data → Manage, then Undo restores them (#29)", async
   // and after a fresh render the dataset count matches where it started.
   await expect(page.getByText(/Restored \d+ rows?\./)).toBeVisible();
   await page.goto("/data?section=manage");
-  await expect(card.locator("h2 span").first()).toHaveText(original!); // first-ok: the same count span in the scoped card's heading — order-agnostic
+  await expect(card.locator("h2 span").first()).toHaveText(original!); // eslint-disable-line no-restricted-properties -- first-ok: the same count span in the scoped card's heading — order-agnostic
 });
 
 // #2384. The exercise picker's option list is carefully ordered — recency-decayed
@@ -1526,7 +1562,7 @@ test("typing keeps the lifts you log ahead of a sport you never have (#2384)", a
 
   // A squat leads. Option rows carry a muscle badge beside the name, so the row is
   // matched by substring rather than by an exact accessible name.
-  const leadOption = listbox.getByTestId("combobox-option").first(); // first-ok: the LEADING option is the assertion
+  const leadOption = listbox.getByTestId("combobox-option").first(); // eslint-disable-line no-restricted-properties -- first-ok: the LEADING option is the assertion
   await expect(leadOption).toHaveText(/Squat/);
   // De-rank, not hide (#345): the sport is still offered, so a first squash session
   // is exactly as reachable as it was.

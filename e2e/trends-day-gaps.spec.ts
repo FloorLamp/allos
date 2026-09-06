@@ -244,9 +244,10 @@ test("a multi-night sleep outage BREAKS the duration stroke and says so on hover
     // THE ASSERTION THIS ISSUE EXISTS FOR: the path is drawn in SEGMENTS. One `M`
     // per segment, so a broken stroke has two — a bridged one has exactly one, which
     // is what a compressed axis produced no matter how many nights were missed.
+    // eslint-disable-next-line no-restricted-properties -- first-ok: the card owns exactly one line; the average is a ReferenceLine, not a curve
     const d = await card
       .locator(".recharts-line-curve")
-      .first() // first-ok: the card owns exactly one line; the average is a ReferenceLine, not a curve
+      .first()
       .getAttribute("d");
     expect(d).toBeTruthy();
     expect((d!.match(/M/g) ?? []).length).toBe(2);
@@ -257,6 +258,7 @@ test("a multi-night sleep outage BREAKS the duration stroke and says so on hover
     const gapX = (xs[2] + xs[3]) / 2;
     const box = (await card.locator(".recharts-wrapper").boundingBox())!;
     const tip = card.locator(".recharts-tooltip-wrapper");
+    // eslint-disable-next-line no-restricted-properties -- topass-ok: recharts opens the tooltip only after a hover mousemove — re-hover per attempt, no single awaitable render event; 30s is the suite's declared budget for a loaded CI shard, not a retry
     await expect(async () => {
       await page.mouse.move(5, 5); // leave the chart so the next move re-enters
       await page.mouse.move(gapX, box.y + box.height / 2);
@@ -264,7 +266,7 @@ test("a multi-night sleep outage BREAKS the duration stroke and says so on hover
       // mousemove, and a move that lands where the pointer already sat emits none.
       await page.mouse.move(gapX + 1, box.y + box.height / 2 + 1);
       expect((await tip.innerText()).trim()).toContain("No data");
-    }).toPass({ timeout: 30_000 }); // topass-ok: recharts opens the tooltip only after a hover mousemove — re-hover per attempt, no single awaitable render event; 30s is the suite's declared budget for a loaded CI shard, not a retry
+    }).toPass({ timeout: 30_000 });
   } finally {
     await page.context().close();
     destroyGapFixture(fixture);

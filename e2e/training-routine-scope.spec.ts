@@ -48,7 +48,7 @@ const OWNED = "Shoulders";
 // The chips of one card, as their label text (the chip's first line).
 async function chipLabels(card: Locator): Promise<string[]> {
   const chips = card.getByTestId("weekly-target-chip");
-  await expect(chips.first()).toBeVisible(); // first-ok: asserts the card has chips at all — the full set is read below, order-agnostic
+  await expect(chips.first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: asserts the card has chips at all — the full set is read below, order-agnostic
   return (await chips.allInnerTexts()).map((t) => t.split("\n")[0].trim());
 }
 
@@ -211,11 +211,11 @@ test("the add-target form is folded on arrival at every width, and a chip opens 
   await page.setViewportSize({ width: 1280, height: 900 });
 
   // The TARGETS themselves keep standing — only the entry form folds.
-  await expect(card.getByTestId("weekly-target-chip").first()).toBeVisible(); // first-ok: presence of the standing chip row, order-agnostic
+  await expect(card.getByTestId("weekly-target-chip").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: presence of the standing chip row, order-agnostic
 
   // Selecting a chip opens the fold with that target loaded, which is the editing
   // affordance the fold had to preserve. Pure client state, so hydratedClick.
-  await hydratedClick(page, card.getByTestId("weekly-target-chip").first()); // first-ok: any chip proves the open-on-select path
+  await hydratedClick(page, card.getByTestId("weekly-target-chip").first()); // eslint-disable-line no-restricted-properties -- first-ok: any chip proves the open-on-select path
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
   await expect(toggle).toHaveText("Update target");
   await expect(card.locator('select[name="scope_kind"]')).toBeVisible();

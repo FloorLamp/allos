@@ -18,7 +18,7 @@ test.describe("Illness-episode view (#801)", () => {
     await page.goto("/history?kind=illness");
 
     // The episode card's title is a link — an "Illness" story headline with "day N".
-    const link = page.getByRole("link", { name: /Illness · day \d+/ }).first(); // first-ok: the acting profile's Illness episode headline link — order-agnostic
+    const link = page.getByRole("link", { name: /Illness · day \d+/ }).first(); // eslint-disable-line no-restricted-properties -- first-ok: the acting profile's Illness episode headline link — order-agnostic
     await expect(link).toBeVisible();
     await followLink(page, link, /\/medical\/episodes\//);
 
@@ -46,7 +46,7 @@ test.describe("Illness-episode view (#801)", () => {
     test.slow();
     await page.goto("/household");
     // Profile 1 is sick (seed), so at least one card carries the sick chip.
-    const sickChip = page.getByTestId("household-sick-chip").first(); // first-ok: at least one card carries the sick chip (profile 1 is sick, see comment) — order-agnostic
+    const sickChip = page.getByTestId("household-sick-chip").first(); // eslint-disable-line no-restricted-properties -- first-ok: at least one card carries the sick chip (profile 1 is sick, see comment) — order-agnostic
     await expect(sickChip).toBeVisible();
     await expect(sickChip).toContainText(/sick/i);
   });

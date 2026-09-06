@@ -43,6 +43,7 @@ import {
   STREAM_OFFBOARD_PREFIX,
   STREAM_ONBOARD_PREFIX,
 } from "./integrations/stream-lifecycle";
+import { OFFER_ASKED_PREFIX } from "./dismissal-keys";
 
 /**
  * How a dismissal key is protected from re-attaching to a subject the user never
@@ -349,6 +350,15 @@ export const DISMISSAL_KEY_REGISTRY: readonly DismissalKeyEntry[] = [
     // its own offer rather than inheriting this silence.
   },
   {
+    prefix: OFFER_ASKED_PREFIX,
+    keyClass: "catalog",
+    shape: "`<offerFamilyId>` (lib/offers.ts registry vocabulary)",
+    // An offer family's "did we ask" (#4840). Each family is a consent asked once,
+    // forever — "stop offering me a morning digest" is a statement about the topic —
+    // and the tail is a registry id, so nothing recycles. A family that is one-shot
+    // per EPISODE mints its own anchored prefix instead of sharing this one.
+  },
+  {
     prefix: "immunization:",
     keyClass: "name-keyed-swept",
     shape: "`<catalogComponentCode>`",
@@ -623,6 +633,10 @@ export const NON_DISMISSAL_PREFIXES: readonly {
   {
     prefix: "notify_stale_practice_",
     what: "profile_settings one-shot send marker (lib/notifications/still-going)",
+  },
+  {
+    prefix: "notify_end_proposal_workout_",
+    what: "profile_settings record of what the delivered still-going nudge PROPOSED for one workout row (#5194, lib/workout-end-proposal) — the minute the tap will stamp, not a send gate; it suppresses nothing",
   },
   {
     prefix: "notify_last_practice_recap_",

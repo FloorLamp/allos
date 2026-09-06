@@ -248,7 +248,6 @@
   "e2e/merge-sets.spec.ts": 1.894,
   "e2e/metric-judgment.spec.ts": 1.675,
   "e2e/mobile-clipping.mobile.spec.ts": 41.469,
-  "e2e/mobile-density-sweep.mobile.spec.ts": 25.368,
   "e2e/mobile-dock.mobile.spec.ts": 8.972,
   "e2e/mobile-ui-polish.spec.ts": 18.33,
   "e2e/mobility.spec.ts": 7.208,
