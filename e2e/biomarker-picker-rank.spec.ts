@@ -78,7 +78,7 @@ test.describe("relevance-ranked biomarker pickers (#1675)", () => {
       // "Glycated Hemoglobin" also carries the subsequence l…d…l and trails far
       // behind at 2.81 to LDL Cholesterol's 11.85.
       await settledFill(page, field, "steps");
-      const stepsLead = options(listbox).first(); // first-ok: the LEADING fuzzy match is the assertion
+      const stepsLead = options(listbox).first(); // eslint-disable-line no-restricted-properties -- first-ok: the LEADING fuzzy match is the assertion
       await expect(stepsLead).toHaveText("Daily Steps");
       await expect(groups(listbox)).toHaveCount(0);
 
@@ -128,8 +128,8 @@ test.describe("relevance-ranked biomarker pickers (#1675)", () => {
 
       // "— none —" is a real choice, so it heads the list ungrouped; the ranked
       // biomarker groups start immediately after it, ahead of the standard metrics.
-      await expect(options(listbox).first()).toHaveText("— none —"); // first-ok: the clear row is pinned to the top by construction
-      await expect(groups(listbox).first()).toHaveText(RELEVANT_GROUP); // first-ok: the LEADING header is the assertion
+      await expect(options(listbox).first()).toHaveText("— none —"); // eslint-disable-line no-restricted-properties -- first-ok: the clear row is pinned to the top by construction
+      await expect(groups(listbox).first()).toHaveText(RELEVANT_GROUP); // eslint-disable-line no-restricted-properties -- first-ok: the LEADING header is the assertion
       await expect(options(listbox).nth(1)).toHaveText(
         BIOMARKER_PICKER_OVERDUE
       );
@@ -183,8 +183,8 @@ test.describe("relevance-ranked biomarker pickers (#1675)", () => {
 
       // Same rank, same headers — and this field offers the WHOLE canonical
       // vocabulary, which is where being buried hurt most.
-      const leadOption = options(listbox).first(); // first-ok: the LEADING option is the assertion
-      const leadGroup = groups(listbox).first(); // first-ok: the LEADING header is the assertion
+      const leadOption = options(listbox).first(); // eslint-disable-line no-restricted-properties -- first-ok: the LEADING option is the assertion
+      const leadGroup = groups(listbox).first(); // eslint-disable-line no-restricted-properties -- first-ok: the LEADING header is the assertion
       await expect(leadGroup).toHaveText(RELEVANT_GROUP);
       await expect(leadOption).toHaveText(BIOMARKER_PICKER_OVERDUE);
       await expect(groups(listbox).nth(1)).toHaveText(YOUR_GROUP);

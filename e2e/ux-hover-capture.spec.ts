@@ -350,7 +350,7 @@ test.describe("the census hover pass can see what only hover shows (#3489)", () 
       // The probe hovers `document.querySelector(target)` — the first match in
       // document order — so the first match is precisely the element this wait is
       // about; waiting on any other one would prove the wrong thing.
-      const hoverTarget = page.locator(entry.target).first(); // first-ok: the exact element the probe will hover
+      const hoverTarget = page.locator(entry.target).first(); // eslint-disable-line no-restricted-properties -- first-ok: the exact element the probe will hover
       await expect(hoverTarget).toBeVisible();
 
       await expectHoverProbeSees(page, surface, entry);

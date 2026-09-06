@@ -134,7 +134,7 @@ export function refillRunOut(scope: Locator | Page): Locator {
 // A per-item food–drug guidance line (`food-guidance`, #154) on the detail page, narrowed
 // to the distinctive food/advice text (a med may carry several guidance rows).
 export function foodGuidance(scope: Locator | Page, text: string): Locator {
-  return scope.getByTestId("food-guidance").filter({ hasText: text }).first(); // first-ok: narrowed to the distinctive guidance text
+  return scope.getByTestId("food-guidance").filter({ hasText: text }).first(); // eslint-disable-line no-restricted-properties -- first-ok: narrowed to the distinctive guidance text
 }
 
 // Open a med's detail from its list row via the blessed followLink — the pre-hydration-safe
@@ -143,8 +143,9 @@ export async function openMedDetailViaLink(
   page: Page,
   name: string
 ): Promise<Locator> {
+  // eslint-disable-next-line no-restricted-properties -- first-ok: filtered to a unique seeded medication name
   const link = medicationRow(page, name)
-    .first() // first-ok: filtered to a unique seeded medication name
+    .first()
     .getByTestId("medication-row-link");
   await followLink(page, link, MED_DETAIL_HREF);
   return medicationDetail(page);

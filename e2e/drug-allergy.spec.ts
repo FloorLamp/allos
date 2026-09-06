@@ -63,9 +63,10 @@ test("shows the recorded-allergy warnings on /medications (same-class + cross-re
 
   // Same-class hit: amoxicillin × the recorded penicillin allergy, with the
   // recorded reaction and the informational, cited framing.
+  // eslint-disable-next-line no-restricted-properties -- first-ok: filtered to the Amoxicillin warning — one match for the drug this test set up
   const classCard = allergyWarningRows(warnings)
     .filter({ hasText: "Amoxicillin" })
-    .first(); // first-ok: filtered to the Amoxicillin warning — one match for the drug this test set up
+    .first();
   await expect(classCard).toBeVisible();
   await expect(classCard).toContainText("Penicillin");
   await expect(classCard).toContainText("recorded reaction: hives");
@@ -73,9 +74,10 @@ test("shows the recorded-allergy warnings on /medications (same-class + cross-re
   await expect(classCard).toContainText("Source:");
 
   // Cross-class hit: cephalexin carries the possible-cross-reactivity framing.
+  // eslint-disable-next-line no-restricted-properties -- first-ok: filtered to the Cephalexin cross-reactivity warning — one match for the drug this test set up
   const crossCard = allergyWarningRows(warnings)
     .filter({ hasText: "Cephalexin" })
-    .first(); // first-ok: filtered to the Cephalexin cross-reactivity warning — one match for the drug this test set up
+    .first();
   await expect(crossCard).toBeVisible();
   await expect(crossCard).toContainText("cross-reactivity", {
     ignoreCase: true,

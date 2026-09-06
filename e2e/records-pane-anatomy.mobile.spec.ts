@@ -384,7 +384,7 @@ test.describe("Records panes — phone anatomy (#3408)", () => {
     // And the columns the desktop grid hides responsively come BACK as labeled
     // meta lines — which is what makes the card a card rather than a lossy table.
     await expect(
-      table.locator('td[data-card="meta"]').first() // first-ok: any surviving meta cell proves the card slots are placed
+      table.locator('td[data-card="meta"]').first() // eslint-disable-line no-restricted-properties -- first-ok: any surviving meta cell proves the card slots are placed
     ).toBeVisible();
 
     // SORTING MOVED OFF THE HEADER CELLS, because they are gone. One control
@@ -427,7 +427,7 @@ test.describe("Records panes — phone anatomy (#3408)", () => {
     // component exists — so the row shape asserted here is the row shape there.
     await page.goto("/records/specialty/substance-use");
 
-    const row = page.getByTestId(/^substance-reading-\d+$/).first(); // first-ok: any reading row — the claim is about the row SHAPE, identical on every one
+    const row = page.getByTestId(/^substance-reading-\d+$/).first(); // eslint-disable-line no-restricted-properties -- first-ok: any reading row — the claim is about the row SHAPE, identical on every one
     await expect(row).toBeVisible();
 
     // NO STANDING DESTRUCTIVE BUTTON. A permanently rendered red "Remove" beside
@@ -494,7 +494,7 @@ test.describe("Records panes — phone anatomy (#3408)", () => {
       // Without this the test would pass on a profile with no visits at all,
       // which is not the case the criterion is about.
       await expect(
-        page.getByTestId("visits-past").getByText("Annual physical").first() // first-ok: this fixture's single seeded encounter
+        page.getByTestId("visits-past").getByText("Annual physical").first() // eslint-disable-line no-restricted-properties -- first-ok: this fixture's single seeded encounter
       ).toBeVisible();
 
       // COMPACT, NOT A BILLBOARD — and "one-line" in the criterion means the

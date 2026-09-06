@@ -134,6 +134,7 @@ test.describe("Mobility (#840)", () => {
     // AND persisted" is non-atomic, there's no navigation for followLink, and a
     // dropped tap must be re-tapped — the loop can't false-pass because only the
     // POST-RELOAD state satisfies it.
+    // eslint-disable-next-line no-restricted-properties -- topass-ok: reload-until-persisted: confirm the async move-toggle write survives a reload; no single event marks 'persisted AND reflected'
     await expect(async () => {
       const c = page.getByTestId("mobility-move-pigeon_pose");
       if ((await c.getAttribute("aria-pressed")) !== "true") {
@@ -146,11 +147,11 @@ test.describe("Mobility (#840)", () => {
       await expect(
         page.getByTestId("mobility-move-pigeon_pose")
       ).toHaveAttribute("aria-pressed", "true", { timeout: 3000 });
-    }).toPass({ timeout: 45_000 }); // topass-ok: reload-until-persisted: confirm the async move-toggle write survives a reload; no single event marks 'persisted AND reflected'
+    }).toPass({ timeout: 45_000 });
 
     // The mobility session rides the shared training log feed (Training → Log) like any activity.
     await page.goto("/training?tab=log");
-    await expect(page.getByText("Mobility").first()).toBeVisible(); // first-ok: asserts the Mobility heading renders — order-agnostic presence
+    await expect(page.getByText("Mobility").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: asserts the Mobility heading renders — order-agnostic presence
 
     // Cleanup: untap so the fixture is clean for the next repeat.
     await page.goto("/training?tab=overview");

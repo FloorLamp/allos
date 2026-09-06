@@ -74,13 +74,14 @@ async function setSettingAndConfirm(
   saveButton: () => import("@playwright/test").Locator,
   confirm: () => Promise<void>
 ) {
+  // eslint-disable-next-line no-restricted-properties -- topass-ok: retry the controlled-input fill+save until it durably persists (pre-hydration fill-revert); reload confirms
   await expect(async () => {
     await page.goto("/settings/server");
     await fill();
     await settledClick(page, saveButton());
     await page.goto("/settings/server"); // fresh render reads the persisted setting
     await confirm();
-  }).toPass({ timeout: 30_000 }); // topass-ok: retry the controlled-input fill+save until it durably persists (pre-hydration fill-revert); reload confirms
+  }).toPass({ timeout: 30_000 });
 }
 
 async function setSmtp(page: import("@playwright/test").Page, host: string) {

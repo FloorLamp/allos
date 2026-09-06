@@ -350,7 +350,7 @@ test.describe("the record day view's phone chrome (#1517, inherited)", () => {
         );
         await forge(inset);
         await scrollTo(page, 0);
-        const [dayAtRest] = await settledBoxes([day.first()]); // first-ok: the feed's topmost day group is the one scrolled past
+        const [dayAtRest] = await settledBoxes([day.first()]); // eslint-disable-line no-restricted-properties -- first-ok: the feed's topmost day group is the one scrolled past
         const maxScroll = await bottom();
         const dayFrom = Math.round(dayAtRest.y + 40);
         expect(
@@ -358,7 +358,7 @@ test.describe("the record day view's phone chrome (#1517, inherited)", () => {
           "the feed has a sticky window"
         ).toBeGreaterThan(100);
         await scrollTo(page, dayFrom);
-        const dayY = await parkedY(day.first(), dayFrom, dayFrom + 48); // first-ok: same group as above
+        const dayY = await parkedY(day.first(), dayFrom, dayFrom + 48); // eslint-disable-line no-restricted-properties -- first-ok: same group as above
         return { dayY, navY };
       };
 
@@ -696,7 +696,7 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
       // anything — so the chart and the first row are awaited before anything is
       // read.
       await expect(panel).toBeVisible();
-      const firstRow = feed.getByTestId("history-row").first(); // first-ok: any row will do; the claim is about the column that holds them
+      const firstRow = feed.getByTestId("history-row").first(); // eslint-disable-line no-restricted-properties -- first-ok: any row will do; the claim is about the column that holds them
       await expect(firstRow).toBeVisible();
 
       const [railBox, feedBox] = await settledBoxes([rail, feed]);
@@ -815,10 +815,11 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
       // is holding.
       const chart = panel.locator(RAIL_DRAWING);
       await expect(chart).toBeVisible();
+      // eslint-disable-next-line no-restricted-properties -- first-ok: spec-owned fixture, and the claim is the column rather than a particular row
       const firstRow = app
         .getByTestId("history-feed")
         .getByTestId("history-row")
-        .first(); // first-ok: spec-owned fixture, and the claim is the column rather than a particular row
+        .first();
       await expect(firstRow).toBeVisible();
 
       // THE TICK WHOSE ENTRY SITS FURTHEST DOWN. A tick whose row is already on
@@ -853,7 +854,7 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
         Number.parseFloat(getComputedStyle(el).top)
       );
       const sel = `[data-testid="intraday-tick"][href="${deepest.href}"]`;
-      const tick = chart.locator(sel).first(); // first-ok: one anchor per tick, and the href was read off this same chart
+      const tick = chart.locator(sel).first(); // eslint-disable-line no-restricted-properties -- first-ok: one anchor per tick, and the href was read off this same chart
       await followLink(page, tick, new RegExp(`${deepest.href.slice(1)}$`));
 
       const scrolled = await page.evaluate(() => window.scrollY);
@@ -1043,7 +1044,7 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
         const add = rail.getByTestId("history-add");
         await expect(panel).toBeVisible();
         await expect(
-          feed.getByTestId("history-row").first() // first-ok: the claim is the column, not a particular row
+          feed.getByTestId("history-row").first() // eslint-disable-line no-restricted-properties -- first-ok: the claim is the column, not a particular row
         ).toBeVisible();
 
         const [railBox, feedBox, panelBox, addBox] = await settledBoxes([
@@ -1131,7 +1132,7 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
       // defect was a cell far wider than the disc inside it. In the door's `w-72`
       // panel the cell is the disc plus a little; in the retired rail card it was
       // nearly four times it.
-      const cell = days.first(); // first-ok: every cell is one column of the same grid, so any one answers this
+      const cell = days.first(); // eslint-disable-line no-restricted-properties -- first-ok: every cell is one column of the same grid, so any one answers this
       const [cellBox, glyphBox] = await settledBoxes([
         cell,
         cell.locator("span"),

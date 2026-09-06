@@ -72,11 +72,12 @@ test("the interaction surfaces on Upcoming and stays hidden once dismissed", asy
   // The finding is keyed on the item-id pair (`interaction:<lo>-<hi>`); the seed
   // yields several interacting pairs, so select the warfarin+ibuprofen one by text
   // rather than a positional first-match (severity ordering puts other pairs first).
+  // eslint-disable-next-line no-restricted-properties -- first-ok: filtered to the Warfarin+Ibuprofen pair — one match
   const finding = main
     .locator('[data-testid^="upcoming-item-interaction:"]')
     .filter({ hasText: "Warfarin" })
     .filter({ hasText: "Ibuprofen" })
-    .first(); // first-ok: filtered to the Warfarin+Ibuprofen pair — one match
+    .first();
   await expect(finding).toBeVisible();
   const findingTestId = await finding.getAttribute("data-testid");
   expect(findingTestId).toMatch(/^upcoming-item-interaction:/);
@@ -112,10 +113,11 @@ test("flags the seeded combination-medication pair (Hyzaar + Klor-Con) on /medic
 
   const warnings = interactionWarnings(main);
   await expect(warnings).toBeVisible();
+  // eslint-disable-next-line no-restricted-properties -- first-ok: filtered to the Hyzaar+Klor-Con pair — one match
   const row = interactionWarningRows(warnings)
     .filter({ hasText: "Hyzaar" })
     .filter({ hasText: "Klor-Con" })
-    .first(); // first-ok: filtered to the Hyzaar+Klor-Con pair — one match
+    .first();
   await expect(row).toBeVisible();
   await expect(row).toContainText("MODERATE", { ignoreCase: true });
   await expect(row).toContainText("potassium", { ignoreCase: true });
@@ -132,10 +134,11 @@ test("scopes intake warnings to the items represented on each surface", async ({
     interactionWarnings(notices).filter({ hasText: "Calcium + Iron" })
   ).toHaveCount(0);
   await expect(
+    // eslint-disable-next-line no-restricted-properties -- first-ok: filtered to the Sertraline+Ibuprofen pair — one match
     interactionWarningRows(notices)
       .filter({ hasText: "Sertraline" })
       .filter({ hasText: "Ibuprofen" })
-      .first() // first-ok: filtered to the Sertraline+Ibuprofen pair — one match
+      .first()
   ).toBeVisible();
 
   await page.goto("/nutrition?tab=supplements");

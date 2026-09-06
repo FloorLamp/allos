@@ -176,7 +176,7 @@ test("a mapped panel's reported heading lives on the reading, not on every row (
   // analyte's name.
   await followLink(
     page,
-    lipids.getByRole("link", { name: "LDL Cholesterol", exact: true }).first(), // first-ok: the run-heading link; all three LDL rows lead to the one detail page
+    lipids.getByRole("link", { name: "LDL Cholesterol", exact: true }).first(), // eslint-disable-line no-restricted-properties -- first-ok: the run-heading link; all three LDL rows lead to the one detail page
     /\/results\/clinical-results\/view/
   );
   const reported = page.getByTestId("reading-reported-panel");
@@ -579,7 +579,7 @@ test("the panel facet offers only panels this browser can return (#1581 section 
   // ruling 3), stated once as a sentence rather than once per row.
   const derivedBadges = bioAge.getByTestId("derived-badge");
   await expect(derivedBadges).toHaveCount(3);
-  await expect(derivedBadges.first()).toBeVisible(); // first-ok: spec-owned e2e_panelindex; the group holds only PhenoAge rows
+  await expect(derivedBadges.first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: spec-owned e2e_panelindex; the group holds only PhenoAge rows
   await expect(bioAge.getByRole("button", { name: /^Derived/ })).toHaveCount(0);
 
   await page.context().close();

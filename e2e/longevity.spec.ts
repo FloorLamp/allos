@@ -45,7 +45,7 @@ test("every section renders for the seeded profile (#1042 phase 4)", async ({
   await expect(inputs.filter({ hasText: "Chronological age" })).toHaveCount(1);
   // Every row states an effect; the first one is the largest by construction.
   await expect(hero.getByTestId("bio-age-effect")).toHaveCount(10);
-  await expect(inputs.first()).toContainText(/[+−±]\d+\.\d yr/); // first-ok: the ranked list's leading row IS the assertion
+  await expect(inputs.first()).toContainText(/[+−±]\d+\.\d yr/); // eslint-disable-line no-restricted-properties -- first-ok: the ranked list's leading row IS the assertion
   // The copy frames it as a property of the MODEL, never as advice.
   await expect(hero).toContainText("re-runs the whole model");
   await expect(hero).toContainText("not predictions about you");
@@ -93,7 +93,7 @@ test("every section renders for the seeded profile (#1042 phase 4)", async ({
     biomarkers.getByTestId("longevity-pillar-optimal-biomarkers")
   ).toBeVisible();
   await expect(
-    biomarkers.getByTestId("longevity-biomarker-row").first() // first-ok: asserts a biomarker row renders in the scoped longevity section — order-agnostic presence
+    biomarkers.getByTestId("longevity-biomarker-row").first() // eslint-disable-line no-restricted-properties -- first-ok: asserts a biomarker row renders in the scoped longevity section — order-agnostic presence
   ).toBeVisible();
 
   // §5 Protocols — the absorbed hub: rare-cadence creation stays collapsed.
@@ -155,7 +155,7 @@ test("the Standing strength fact lands on the panel for the lift it names", asyn
   await expect(
     main.getByText("Deadlift estimated 1RM progression", { exact: false })
   ).toBeVisible();
-  await expect(main.getByText("Intermediate").first()).toBeVisible(); // first-ok: the level appears on the ladder and in its header — either proves the standing arrived
+  await expect(main.getByText("Intermediate").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: the level appears on the ladder and in its header — either proves the standing arrived
 });
 
 test("absent pillars drop their sections; the interventions section always renders", async ({

@@ -14,9 +14,10 @@ import { settledFill } from "./helpers";
 // count — so every chip assertion below opens that day first.
 async function newestDay(page: Page): Promise<string> {
   await page.goto("/history");
+  // eslint-disable-next-line no-restricted-properties -- first-ok: the newest day group; the assertion is about position
   const id = await page
     .locator("[id^='timeline-day-']")
-    .first() // first-ok: the newest day group; the assertion is about position
+    .first()
     .getAttribute("id");
   expect(id, "the record rendered no day group to open").not.toBeNull();
   return id!.replace("timeline-day-", "");
@@ -30,7 +31,7 @@ test("the day view shows sunrise/sunset daylight chips", async ({ page }) => {
   // page-wide match.
   const panel = page.getByTestId("intraday-panel");
   await expect(panel).toBeVisible();
-  const chip = panel.getByTestId("daylight-chip").first(); // first-ok: asserts a daylight chip renders — order-agnostic presence
+  const chip = panel.getByTestId("daylight-chip").first(); // eslint-disable-line no-restricted-properties -- first-ok: asserts a daylight chip renders — order-agnostic presence
   await expect(chip).toBeVisible();
   // Sunrise/sunset are rendered as HH:MM times.
   await expect(chip).toContainText(/\d{1,2}:\d{2}/);
@@ -72,7 +73,7 @@ test("Settings → Health profile shows the coarse home location and can update 
   // Wait for the autosave to COMMIT before reloading — a reload aborts the
   // in-flight server-action POST and silently loses the save (the ai-settings
   // race class, PR #586). SaveStatus renders aria-label="Saved" on success.
-  await expect(page.getByLabel("Saved").first()).toBeVisible(); // first-ok: asserts a Saved autosave indicator appears — order-agnostic
+  await expect(page.getByLabel("Saved").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: asserts a Saved autosave indicator appears — order-agnostic
   // Reload and confirm the coarse value persisted (the fold is stateless, so it
   // starts closed again).
   await page.reload();
@@ -84,7 +85,7 @@ test("Settings → Health profile shows the coarse home location and can update 
   await settledFill(page, page.getByTestId("home-lat"), "40.7");
   await settledFill(page, page.getByTestId("home-lng"), "-74");
   await page.getByTestId("home-lng").blur();
-  await expect(page.getByLabel("Saved").first()).toBeVisible(); // first-ok: asserts a Saved autosave indicator appears — order-agnostic
+  await expect(page.getByLabel("Saved").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: asserts a Saved autosave indicator appears — order-agnostic
   await page.reload();
   await expect(page.getByTestId("home-lat")).toHaveValue("40.7");
 });

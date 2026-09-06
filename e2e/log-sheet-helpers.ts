@@ -35,12 +35,13 @@ import type { QuickLogId } from "@/lib/quick-log";
  */
 export async function openLogSheet(page: Page): Promise<Locator> {
   const sheet = page.getByTestId("quick-log-sheet");
+  // eslint-disable-next-line no-restricted-properties -- topass-ok: re-tap the puck past the pre-hydration swallow — a client toggle with no POST, visibility-guarded so a late tap can't re-close it
   await expect(async () => {
     if (!(await sheet.isVisible())) {
       await page.getByTestId("dock-log-puck").click();
     }
     await expect(sheet).toBeVisible({ timeout: 1000 });
-  }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-tap the puck past the pre-hydration swallow — a client toggle with no POST, visibility-guarded so a late tap can't re-close it
+  }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] });
   return sheet;
 }
 

@@ -115,7 +115,7 @@ function cookie(
     // ONE storageState is valid on every worker's port.
     domain: "localhost",
     path: opts.path,
-    expires: Math.floor(Date.now() / 1000) + maxAgeSec, // clock-ok: a cookie expiry is judged by the BROWSER's clock, which no e2e freeze reaches — frozenNow() here would expire the session against real time
+    expires: Math.floor(Date.now() / 1000) + maxAgeSec, // eslint-disable-line no-restricted-properties -- clock-ok: a cookie expiry is judged by the BROWSER's clock, which no e2e freeze reaches — frozenNow() here would expire the session against real time
     httpOnly: opts.httpOnly,
     // NOT `opts.secure` — see SERVER_COOKIES_ARE_SECURE. `__Host-` is only
     // honoured on a Secure cookie, so the name and this flag must move together.

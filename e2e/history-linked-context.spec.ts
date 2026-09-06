@@ -108,10 +108,11 @@ test.describe("the record's linked context — visit → document lineage (#662)
     // of how much other history exists.
     await page.goto("/history?kind=visit");
 
+    // eslint-disable-next-line no-restricted-properties -- first-ok: the record row for VISIT_TYPE, a visit THIS spec created (unique type)
     const row = page
       .getByTestId("history-row")
       .filter({ hasText: VISIT_TYPE })
-      .first(); // first-ok: the record row for VISIT_TYPE, a visit THIS spec created (unique type)
+      .first();
     await expect(row).toBeVisible();
 
     // Nothing is disclosed until the row is asked. Asserted before the click so a

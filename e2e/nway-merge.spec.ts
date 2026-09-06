@@ -95,7 +95,7 @@ test.describe("N-way activity merge (#1081)", () => {
       // Only the chosen keeper survives on the feed; the other two are actually gone
       // (rollups count the session once).
       await page.goto("/training?tab=log");
-      await expect(page.getByText("NW review manual").first()).toBeVisible(); // first-ok: the chosen keeper after the merge THIS test performed on its own fixture profile — deterministic
+      await expect(page.getByText("NW review manual").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: the chosen keeper after the merge THIS test performed on its own fixture profile — deterministic
       await expect(page.getByText("NW review strava")).toHaveCount(0);
       await expect(page.getByText("NW review hc")).toHaveCount(0);
     } finally {
@@ -204,7 +204,7 @@ test.describe("N-way activity merge (#1081)", () => {
 
       // Open the originating canonical record and its overflow menu.
       // The row is one line with a title LINK (#4079).
-      await hydratedClick(page, rowEl.getByRole("link").first()); // first-ok: the title link precedes any other link in the row
+      await hydratedClick(page, rowEl.getByRole("link").first()); // eslint-disable-line no-restricted-properties -- first-ok: the title link precedes any other link in the row
       const cardEl = page.getByTestId("training-activity-page");
       await expect(cardEl).toBeVisible();
       // Open the originating card's overflow menu → "Merge with…" → switch to the

@@ -55,17 +55,18 @@ test.describe("Weekly recap + milestones (#32)", () => {
     page,
   }) => {
     await page.goto("/history?kind=milestone");
-    await expect(page.getByText("50 workouts logged").first()).toBeVisible(); // first-ok: asserts the milestone line renders — order-agnostic presence
+    await expect(page.getByText("50 workouts logged").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: asserts the milestone line renders — order-agnostic presence
     // THE CATEGORY IS ON THE ROW, NOT IN A BADGE. `/timeline` printed a "Milestone"
     // label on every card; the record's rows are one line at every viewport (#3958),
     // so the kind is the leading glyph and the machine-readable attribute — which is
     // the stable thing to assert anyway. Asserted on the row that carries the recap's
     // own milestone, so this cannot pass on some other kind's row.
     await expect(
+      // eslint-disable-next-line no-restricted-properties -- first-ok: the recap fixture's own milestone line — deterministic
       page
         .getByTestId("history-row")
         .filter({ hasText: "50 workouts logged" })
-        .first() // first-ok: the recap fixture's own milestone line — deterministic
+        .first()
     ).toHaveAttribute("data-history-kind", "milestone");
   });
 });

@@ -164,9 +164,10 @@ test("the day view names the wait too, and draws the expected sleep band — gon
     // today−1, nothing on today's own wake-day yet) — today itself is read off the
     // page rather than recomputed from the run's frozen clock.
     await page.goto("/history");
+    // eslint-disable-next-line no-restricted-properties -- first-ok: newest day group, the fixture's own yesterday
     const newest = (await page
       .locator("[id^='timeline-day-']")
-      .first() // first-ok: newest day group, the fixture's own yesterday
+      .first()
       .getAttribute("id"))!.replace("timeline-day-", "");
     const todayStr = shiftDateStr(newest, 1);
 

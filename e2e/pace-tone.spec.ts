@@ -33,7 +33,7 @@ test("Training weekly target chips are pace-coloured, rose-free, and sky-free (#
   // Overview is the chips' one render home (#2892); the seed plants 4 weekly
   // frequency targets, so the Weekly targets card renders every one (met + partial).
   const chips = main.getByTestId("weekly-target-chip");
-  await expect(chips.first()).toBeVisible(); // first-ok: asserts the weekly-target chips render at all (count asserted next) — order-agnostic
+  await expect(chips.first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: asserts the weekly-target chips render at all (count asserted next) — order-agnostic
   const n = await chips.count();
   expect(n).toBeGreaterThan(0);
 

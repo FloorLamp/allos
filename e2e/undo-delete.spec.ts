@@ -34,7 +34,7 @@ function cardsByTitle(page: Page, text: string | RegExp) {
 async function openEditorFromRow(page: Page, row: Locator): Promise<void> {
   await hydratedClick(
     page,
-    row.getByRole("link").first() // first-ok: the canonical title link precedes any exercise links in the row
+    row.getByRole("link").first() // eslint-disable-line no-restricted-properties -- first-ok: the canonical title link precedes any exercise links in the row
   );
   await page
     .getByTestId("training-activity-page")
@@ -56,7 +56,7 @@ async function confirmDelete(page: Page): Promise<void> {
 async function deleteFromRecordMenu(page: Page, row: Locator): Promise<void> {
   await hydratedClick(
     page,
-    row.getByRole("link").first() // first-ok: the canonical title link precedes any exercise links in the row
+    row.getByRole("link").first() // eslint-disable-line no-restricted-properties -- first-ok: the canonical title link precedes any exercise links in the row
   );
   await hydratedClick(
     page,
@@ -83,7 +83,7 @@ async function sweepProbes(page: Page): Promise<void> {
   for (let guard = 0; guard < 12; guard++) {
     const n = await probes.count();
     if (n === 0) break;
-    const row = probes.first(); // first-ok: every PROBE_PREFIX row is this spec's own leftover; cleanup is order-agnostic
+    const row = probes.first(); // eslint-disable-line no-restricted-properties -- first-ok: every PROBE_PREFIX row is this spec's own leftover; cleanup is order-agnostic
     await openEditorFromRow(page, row);
     await confirmDelete(page);
     await page.goto("/training?tab=log");
@@ -96,7 +96,7 @@ async function sweepProbes(page: Page): Promise<void> {
 // without the per-set equipment pick a bare strength variant needs (#342). Returns
 // the unique title.
 async function createProbe(page: Page): Promise<string> {
-  const title = `${PROBE_PREFIX} ${Date.now()}-${++probeSeq}`; // clock-ok: unique probe-name suffix, never a stored timestamp
+  const title = `${PROBE_PREFIX} ${Date.now()}-${++probeSeq}`; // eslint-disable-line no-restricted-properties -- clock-ok: unique probe-name suffix, never a stored timestamp
   await page.goto("/training?tab=log");
   await page
     .getByRole("main")

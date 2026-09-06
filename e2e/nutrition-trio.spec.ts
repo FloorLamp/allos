@@ -97,6 +97,7 @@ test.describe("Nutrition trio", () => {
       // (last resort): the value we depend on is a data-attribute NUMBER that must
       // INCREASE, which a single toHaveAttribute can't express — settledClick already
       // guaranteed the action committed; this only re-reads the re-rendered attribute.
+      // eslint-disable-next-line no-restricted-properties -- topass-ok: re-read the gauge's data-grams NUMBER until it exceeds the baseline — 'increased' can't be one toHaveAttribute; settledClick already committed the write
       await expect(async () => {
         const after = Number(
           await page
@@ -104,7 +105,7 @@ test.describe("Nutrition trio", () => {
             .getAttribute("data-grams")
         );
         expect(after).toBeGreaterThan(before);
-      }).toPass({ timeout: WAIT }); // topass-ok: re-read the gauge's data-grams NUMBER until it exceeds the baseline — 'increased' can't be one toHaveAttribute; settledClick already committed the write
+      }).toPass({ timeout: WAIT });
     } finally {
       await page.close();
     }
