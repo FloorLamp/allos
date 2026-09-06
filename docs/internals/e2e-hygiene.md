@@ -2738,8 +2738,15 @@ degrade locally with or without a proxy; `AGENTS.md` asks for exactly that.
 `lib/rxnorm.ts` takes **no credential** (`grep -n "process.env\|API_KEY\|token"`
 returns nothing). So there is no missing-token state to explain a failure away: a
 call that could not be made and a call that genuinely matched nothing both return
-`[]`. `lib/integrations/open-meteo.ts` is the same shape — three credential-free
-Open-Meteo hosts — and it was already the model for the fix.
+`[]`. `lib/integrations/open-meteo.ts` shares the property — three credential-free
+Open-Meteo hosts, all unreachable here — but **not the defect**, and the difference
+is the whole point of this entry. It already announces its own failures
+(`log.error` at `:482`, `:497`, `:700`, `:713`, under the rule stated at `:644`:
+*"IT GOES TO `log.error`, NEVER TO A SURFACE (#3639)"*), so a lane running a
+weather spec locally gets a line and can tell which branch it took. It was the
+model for the fix below rather than a second instance of the problem. Do not read
+the shared "unreachable" property as a shared defect: what makes a degrade
+dangerous is silence, not distance.
 
 ### Why a local green means nothing here
 
