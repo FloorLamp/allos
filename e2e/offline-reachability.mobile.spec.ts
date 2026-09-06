@@ -104,7 +104,7 @@ test("the quick logger's measurements row OPENS with no connection, and the weig
     // honestly on the broken tree at any budget. (An absence check on the refusal
     // sentence used to follow it; #4980 found the sentence was one no production
     // path emits, so it could never fail and is gone. The refusal path that DOES
-    // exist is driven, positively, in quick-entry-offline-read.mobile.spec.ts.)
+    // exist is driven, positively, below: "an injected read failure".)
     const form = overlay.getByTestId("measurements-quick-add");
     await expect(form).toBeVisible();
 
@@ -387,7 +387,7 @@ test("every flow the manifest declares offline-capable OPENS with no connection 
 
     // WARM THE CODE, NOT THE DATA. Three of the bodies are on-demand chunks
     // (#1525/#1892), and a chunk never fetched is the OTHER offline failure — the
-    // one quick-entry-offline-read.mobile.spec.ts drives through an aborted request.
+    // "a body whose chunk fails to load" below drives through an aborted request.
     // This test is about the DATA: so each such body is opened once online (nothing
     // is tapped), and the page is then RELOADED, which discards the in-memory
     // last-good copies along with the document. What is left on the device is the
@@ -444,5 +444,175 @@ test("every flow the manifest declares offline-capable OPENS with no connection 
     expect(new Set(intents.map((i) => i.profileId)).size).toBe(1);
   } finally {
     await context.close();
+  }
+});
+
+// ── THE READ PATH AFTER THE DOOR (#3416) — three legs the walk above cannot ask ──
+//
+//   1. AFTER a successful open, the network dies: the same form reopens at once from
+//      its last-good copy, the revalidate behind it fails, and the sheet says so
+//      (the #2908 as-of line) rather than blanking into an error.
+//   2. An INJECTED read failure — the gather's own request aborted — exercises the
+//      real error and retry path: the retry state renders, and Retry recovers the
+//      form in place once the request can land, without the sheet closing (#4980's
+//      positive counterpart: the refusal the app actually renders, driven).
+//   3. A DYNAMIC CHUNK failure on a body's first open reaches the same retry state,
+//      and Retry re-imports and recovers.
+//
+// Leg 1's queued tap dies with its context; legs 2 and 3 write nothing.
+
+test("a form opened once online reopens at once with the network cut, says its copy could not refresh, and its tap queues", async ({
+  browser,
+}) => {
+  clearShellLogs();
+  const doseId = shellDoseId();
+  const page = await loginAs(
+    browser,
+    { username: E2E_LOGIN_SHELL, password: E2E_MEMBER_PASSWORD },
+    PHONE_CONTEXT
+  );
+  const context = page.context();
+  try {
+    await page.goto("/");
+    const first = await openRow(page, "log-dose");
+    await expect(first.getByTestId(`quick-entry-dose-${doseId}`)).toBeVisible();
+    // Fresh from the server: no as-of line.
+    await expect(first.getByTestId("quick-entry-asof")).toHaveCount(0);
+    await dismiss(page);
+
+    await context.setOffline(true);
+
+    // offline-nav-ok: nothing below navigates; the reopen is memory, the tap is the
+    // queue, and this test never reconnects.
+    const overlay = await openRow(page, "log-dose");
+    const row = overlay.getByTestId(`quick-entry-dose-${doseId}`);
+    await expect(row).toBeVisible();
+    // The revalidate behind the last-good render fails at once offline, and from
+    // then on the sheet says what it is showing rather than pretending it is fresh.
+    await expect(overlay.getByTestId("quick-entry-asof")).toHaveText(
+      /^As of .* — couldn't refresh\.$/
+    );
+    await expect(overlay.getByTestId("quick-entry-error")).toHaveCount(0);
+
+    await row.getByTestId("dose-take").click();
+    await expect(
+      page.getByText("Dose saved offline — will sync when you reconnect.")
+    ).toBeVisible();
+    const badge = page.getByTestId("offline-queue-badge"); // testid-scope-ok: layout chrome, outside every streamed boundary
+    await expect(badge).toHaveText(/^1 queued offline$/);
+  } finally {
+    await context.close();
+  }
+});
+
+test("an injected read failure shows the retry state, and Retry recovers the form in place", async ({
+  browser,
+}) => {
+  // The DOCUMENT row: the one declared row with no copy on the device, so a refused
+  // gather has nothing to fall back to and the retry state is the only honest answer.
+  // (The dose row would fall back to its snapshot the moment the refresher has run —
+  // that path is the reachability spec's, and it is why this is not that row.)
+  //
+  // `serviceWorkers: "block"`, as in the chunk test below: once the worker controls
+  // the page its fetch handler carries the action POST, and `page.route` never sees
+  // it — measured here as an abort count of 0 on the run the worker won the race.
+  const page = await loginAs(
+    browser,
+    { username: E2E_LOGIN_SHELL, password: E2E_MEMBER_PASSWORD },
+    { ...PHONE_CONTEXT, serviceWorkers: "block" }
+  );
+  try {
+    await page.goto("/");
+    const puck = page.getByTestId("dock-log-puck"); // testid-scope-ok: layout chrome, outside every streamed boundary
+    await awaitHydrated(puck);
+
+    // The gather is a Server Action: a POST carrying the `next-action` header, which
+    // is how every other request on the page is told apart from it. Aborted only
+    // while armed, and COUNTED, so a green here is a green over a request that was
+    // really refused and not over a gather that happened to succeed.
+    let armed = true;
+    let aborted = 0;
+    await page.route("**/*", async (route) => {
+      const req = route.request();
+      if (armed && req.method() === "POST" && req.headers()["next-action"]) {
+        aborted += 1;
+        await route.abort("failed");
+        return;
+      }
+      await route.continue();
+    });
+
+    const overlay = await openRow(page, "add-document");
+    await expect(overlay.getByTestId("quick-entry-error")).toBeVisible();
+    expect(
+      aborted,
+      "the gather was never asked, so nothing was refused"
+    ).toBeGreaterThan(0);
+
+    armed = false;
+    await overlay.getByTestId("quick-entry-retry").click();
+    // Recovered IN PLACE: the same sheet, never closed, now holds the form.
+    await expect(overlay.getByTestId("medical-upload-choose")).toBeVisible();
+    await expect(overlay.getByTestId("quick-entry-error")).toHaveCount(0);
+    await expect(overlay).toBeVisible();
+  } finally {
+    await page.context().close();
+  }
+});
+
+test("a body whose chunk fails to load on first open shows the same retry state, and Retry re-imports it", async ({
+  browser,
+}) => {
+  // `serviceWorkers: "block"`: public/sw.js serves `/_next/static/*` cacheFirst and
+  // Playwright cannot intercept a service-worker-mediated fetch, so with the worker
+  // live the abort below would never fire (logout-pre-hydration.spec.ts records the
+  // same obstacle). The chunk request has to be the PAGE's for the route to see it.
+  const page = await loginAs(
+    browser,
+    { username: E2E_LOGIN_SHELL, password: E2E_MEMBER_PASSWORD },
+    { ...PHONE_CONTEXT, serviceWorkers: "block" }
+  );
+  try {
+    await page.goto("/");
+    const puck = page.getByTestId("dock-log-puck"); // testid-scope-ok: layout chrome, outside every streamed boundary
+    await awaitHydrated(puck);
+    // The sheet's own chunks arrive here, online; only the BODY's is refused.
+    const sheet = await openLogSheet(page);
+    const row = await showLogRow(sheet, "add-document");
+
+    // `.js` ONLY: in this Turbopack build the stylesheets live under the same path,
+    // and a held stylesheet stops React revealing anything at all
+    // (logout-pre-hydration.spec.ts measured it).
+    let armed = true;
+    let aborted = 0;
+    await page.route("**/_next/static/chunks/**", async (route) => {
+      const url = new URL(route.request().url()).pathname;
+      if (armed && url.endsWith(".js")) {
+        aborted += 1;
+        await route.abort("failed");
+        return;
+      }
+      await route.continue();
+    });
+
+    await row.click();
+    await expect(sheet).toHaveCount(0);
+    const overlay = page.getByTestId("quick-entry-sheet"); // testid-scope-ok: portals to <body> (BottomSheet), one copy
+    await expect(overlay).toBeVisible();
+    // The gather succeeded; the body's import did not — and the failure lands on the
+    // sheet's own boundary as the same retry state, not on the route's.
+    await expect(overlay.getByTestId("quick-entry-error")).toBeVisible();
+    expect(
+      aborted,
+      "no chunk was requested, so no import could have failed"
+    ).toBeGreaterThan(0);
+    await expect(puck).toBeVisible();
+
+    armed = false;
+    await overlay.getByTestId("quick-entry-retry").click();
+    await expect(overlay.getByTestId("medical-upload-choose")).toBeVisible();
+    await expect(overlay.getByTestId("quick-entry-error")).toHaveCount(0);
+  } finally {
+    await page.context().close();
   }
 });
