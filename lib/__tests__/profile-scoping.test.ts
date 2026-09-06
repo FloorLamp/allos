@@ -406,6 +406,101 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
       "SELECT profile_id FROM integration_connections WHERE source_id = 'health-connect' AND status != 'disconnected'",
     why: "recordUnmatchedHealthConnectPush: attributes a rotated/expired-token push to a profile ONLY when exactly one non-disconnected HC connection exists (else it skips). A cross-profile enumeration by design — the token didn't match, so there is no caller profile; profile_id is selected, not filtered.",
   },
+  // ── Table-position interpolations (#5274) ────────────────────────────────────
+  // Statements whose TABLE is inside a `${…}` and whose WHERE carries no profile_id
+  // predicate. The scan used to drop these in silence; they are the ones a literal
+  // `profile_id = ?` does not clear, so each says what does. Keyed on THE TEXT THE SCAN
+  // SEES, which for a statement written as two literals joined by `+` is the FIRST piece
+  // alone — firstStringArgs stops at that literal's closing backtick — so cascade-delete's
+  // SET NULL and orphan DELETE keys end mid-statement, and their `why` carries the half
+  // the key cannot.
+  {
+    file: "lib/undo-delete-db.ts",
+    includes: "SELECT 1 FROM ${ref.table} WHERE id = ?",
+    why: "targetExists, the `ref.global` arm: an external-FK existence probe on a GLOBAL target (providers, shared_supplies — the two tables ExternalRefSpec admits under `global: true`), which carries no profile_id to scope by. Its twin one line down adds `AND profile_id = ?` for an owned target and passes on its own; the substring key names both, and only this one needs it",
+  },
+  {
+    file: "lib/undo-delete-db.ts",
+    includes: "SELECT * FROM ${child.table} WHERE ${child.childWhere}",
+    why: "captureDelete's child capture: the predicate is the kind's declared `childWhere`, bound to the ROOT id that the statement just above fetched by `id = ? AND profile_id = ?`. A child row is reached only through that owned root, so the profile scope is the root's; whether every childWhere should ALSO name profile_id at the restore loop is #5384's question, not a waiver this scan can grant",
+  },
+  {
+    file: "lib/undo-delete-db.ts",
+    includes: 'INSERT INTO ${entity.table} (${cols.join(", ")}) VALUES (',
+    why: "restoreDeletedRow's two re-inserts (the counter-emptied-day branch and the general one): the column list is the CAPTURED row's own keys, so profile_id is re-inserted verbatim from the capture, not chosen here. The capture was scoped (above), and the restore is gated on deletedRowProfile → requireProfileWriteAccess before either statement runs. The single-site assertion #5384 asks for would make this entry redundant",
+  },
+  {
+    file: "lib/undo-delete-db.ts",
+    includes: "SELECT 1 FROM ${table} WHERE stored_path = ?",
+    why: "unlinkPurgedVideoFiles / unlinkPurgedPhotoFiles (#1290, #1847): the liveness probe before a purge unlinks a clip or photo file, guarding the case the source states at unlinkPurgedVideoFiles — a SAME-PROFILE re-upload of identical bytes after the delete re-created a live row at the same content-named path, and unlinking it would break that live clip. THE PATH ALREADY CARRIES THE PROFILE, which is why the missing predicate costs nothing here: storeProcessedPhoto / storeVideoFiles write data/uploads/<domain>/<profileId>/<hash16>.<ext>, those five *-write.ts modules are the only INSERTers, nothing SETs profile_id on the five tables, and none of them is in IMPORT_FOOTPRINT_TABLES — so no two live rows in different profiles can share a stored_path and the row this finds is necessarily the acting profile's. Reads a bare `1`, never row data; `table` is an OwnedTable literal by type",
+  },
+  {
+    file: "lib/migrations/cascade-delete.ts",
+    includes: "UPDATE ${q(link.table)} AS ${alias} SET ${sets}",
+    why: "deleteRowsWithCascade's SET NULL arm: a migration-time reproduction of what the runtime FK action would do, over a table set read from PRAGMA foreign_key_list at apply time (#2680). The rows it touches are exactly the doomed root's descendants (the correlated EXISTS predicate lives in the second literal, which this scan does not see). Migrations run across every profile by design, and an OwnedTable key would be the wrong type here: the walk starts wherever its caller points it, and lib/__db_tests__/migration-child-links.test.ts drives it from `portal_accounts` (global) and from synthetic tables that are in no registry",
+  },
+  {
+    file: "lib/migrations/cascade-delete.ts",
+    includes:
+      "DELETE FROM ${q(link.table)} AS ${alias} WHERE ${childPredicate.sql}",
+    why: "deleteRowsWithCascade's CASCADE arm — the same schema-derived, migration-time, every-profile delete as the SET NULL arm above, one depth deeper per recursion",
+  },
+  {
+    file: "lib/migrations/cascade-delete.ts",
+    includes: "DELETE FROM ${q(table)} AS t0 WHERE ${root.sql}",
+    why: "deleteRowsWithCascade's final parent delete: `root.sql` is `t0.<pk> IN (?…)` over the ids the calling migration chose, after the walk above cleared their cascading descendants. Which rows to delete is the migration's decision, not this helper's",
+  },
+  {
+    file: "lib/migrations/cascade-delete.ts",
+    includes: "DELETE FROM ${q(table)} WHERE ${notNull} AND NOT EXISTS",
+    why: "sweepOrphanedCascadeRows: removes rows whose CASCADE parent no longer exists — rows the schema says cannot exist, left behind by a foreign_keys=OFF migration (#2703). Global by construction; the NOT EXISTS against the parent (in the second literal) is the whole predicate",
+  },
+  {
+    file: "lib/import-persist.ts",
+    includes:
+      "DELETE FROM ${t.table} WHERE ${t.key} = ? AND ${footprintScope(t)}",
+    why: "clearImportedDocumentRows: `footprintScope(t)` RETURNS `profile_id = ?` (plus the entry's `extra`), so the statement is scoped in fact and not in text. No static read of THIS file resolves it: the predicate is returned by a helper at call time, which is a step past the module-scope constants #5362 describes — whether the scan should follow a helper-returned fragment is #5384's question. Every IMPORT_FOOTPRINT_TABLES entry names an owned table",
+  },
+  {
+    file: "lib/import-persist.ts",
+    includes:
+      "UPDATE ${t.table} SET profile_id = ? WHERE ${t.key} = ? AND ${footprintScope(t)}",
+    why: "reassignImportedDocumentRows: the cross-profile REASSIGN of a document's rows, whose WHERE is `footprintScope(t)` = `profile_id = ?` bound to the SOURCE profile; the SET names the target. Same assembled-predicate shape as the delete above",
+  },
+  {
+    file: "lib/import-persist.ts",
+    includes:
+      "SELECT COUNT(*) AS n FROM ${t.table} WHERE ${t.key} = ? AND ${footprintScope(t)}",
+    why: "countImportedDocumentRows and documentFootprintByKind: two identical COUNTs over the same registry, both scoped by `footprintScope(t)` = `profile_id = ?`, which the text does not show. Integers only, and the two are kept identical on purpose so the per-kind split cannot disagree with the total",
+  },
+  {
+    file: "lib/providers-db.ts",
+    includes: "SELECT COUNT(*) AS n FROM ${table} WHERE ${pred}",
+    why: "getProviderMergeImpact (#275): the admin-only merge's 'N links across M profiles' count is a GLOBAL aggregate over every PROVIDER_LINK_COLUMNS table by design — providers are instance-shared, so the impact of merging two is a question about every profile. Returns an integer per table, never a row",
+  },
+  {
+    file: "lib/providers-db.ts",
+    includes: "UPDATE ${table} SET ${column} = ? WHERE ${column} = ?",
+    why: "mergeProviders: re-points every link column from the duplicate provider to the survivor across every profile — the operation itself is instance-wide, like deletePortal's provenance nulls above. Writes only the provider link column, never profile_id or content",
+  },
+  {
+    file: "lib/assessment-reclass-db.ts",
+    includes:
+      "DELETE FROM ${definitionTable} WHERE name = ? COLLATE NOCASE AND source = 'ai'",
+    why: "`definitionTable` is the GLOBAL vocabulary table under either schema-era name (canonical_result_definitions / canonical_biomarkers, chosen by canonicalResultDefinitionTableForSchema); it carries no profile_id at all. Only the interpolation hides that from the scan",
+  },
+  {
+    file: "lib/canonical-alias-merge-db.ts",
+    includes:
+      "SELECT name, source FROM ${definitionTable} ORDER BY (source = 'ai'), name COLLATE NOCASE",
+    why: "the same GLOBAL vocabulary table as above, read whole to plan an alias merge — no profile_id column exists to filter on",
+  },
+  {
+    file: "lib/legacy-category-reclass-db.ts",
+    includes:
+      "SELECT name, category FROM ${definitionTable} WHERE TRIM(COALESCE(category, '')) != ''",
+    why: "the same GLOBAL vocabulary table, read for the legacy-category reclass — no profile_id column exists to filter on",
+  },
 ];
 
 // db.exec() statements that legitimately touch an owned table without a profile_id
@@ -557,6 +652,39 @@ function scopedByProfileId(sql: string): boolean {
   return false;
 }
 
+// THE PER-STATEMENT DECISION, in the order the ruling fixed (#5274, absorbing #5217).
+// The WHERE is the claim (#5315): a statement carrying a scoping predicate passes
+// whichever table it names — including a `FROM ${table}` this scan cannot resolve. That
+// is what lets the table-walkers (undo-delete-db, cascade-delete, manage-actions,
+// visit-links) hand their table in from the typed OWNED_TABLES registry instead of
+// signing one waiver per statement. What is left is enforced when it names an owned
+// table OR interpolates its TABLE POSITION; a statement doing neither touches only
+// global tables and has nothing to enforce.
+//
+// The second arm is the drop this closes. `if (!OWNED_RE.test(sql)) continue` skipped a
+// `SELECT 1 FROM ${ref.table} WHERE id = ?` as if it named no owned table, and a skipped
+// statement is neither a violation nor a pass — 56 of them at the base of #5274, 19 with
+// no scoping predicate, and nothing said they went unread. Now such a statement is
+// refused until someone signs it in ALLOW_SQL, and the staleness census polices the
+// signature like every other entry. The keywords are the corpus's spellings of a table
+// position (`FROM ${…}` 44, `UPDATE ${…}` 14, `INTO ${…}` 2 at that base) plus JOIN, the
+// one a join-walker would reach for; `PRAGMA table_info(${…})` reads no rows and stays out.
+//
+// ITS BOUNDARY IS `\s+\${`, NOT THE KEYWORD SET, and that is where the next hole will be.
+// Anything between the keyword and the interpolation hides the table again: `FROM "${t}"`,
+// `FROM [${t}]`, `FROM main.${t}`, `FROM a, ${t}`, `UPDATE OR REPLACE ${t}`, and a
+// statement written as `"SELECT * FROM " + t`, where firstStringArgs stops at the first
+// literal's closing quote. No statement in this tree uses any of them, so this is a stated
+// limit rather than a gap being tolerated — but the FIRST one is one refactor away:
+// cascade-delete quotes its identifiers with `q()` INSIDE the interpolation
+// (`FROM ${q(table)}`, seen), and moving the quotes out to `FROM "${table}"` would make a
+// live cascade statement invisible again.
+const TABLE_INTERPOLATED_RE = /\b(?:FROM|INTO|UPDATE|JOIN)\s+\$\{/i;
+const enforcedTable = (sql: string) =>
+  OWNED_RE.test(sql) || TABLE_INTERPOLATED_RE.test(sql);
+const needsWaiver = (sql: string) =>
+  enforcedTable(sql) && !scopedByProfileId(sql);
+
 // STALENESS for EVERY allowlist above (#5239 for ALLOW_EXEC, generalised to all three
 // by #5315). An allowlist entry is a claim about the tree, and a claim nothing re-checks
 // stops being true quietly. Not hypothetical: the ALLOW_SQL entry for
@@ -647,8 +775,7 @@ describe("profile scoping: every owned-table query filters by profile_id", () =>
           continue;
         }
         const sql = norm(arg.text);
-        if (!OWNED_RE.test(sql)) continue; // no owned table → nothing to enforce
-        if (scopedByProfileId(sql)) continue; // profile_id in a scoping position
+        if (!needsWaiver(sql)) continue;
         const allowed = ALLOW_SQL.some(
           (a) => rel.endsWith(a.file) && sql.includes(a.includes)
         );
@@ -685,8 +812,7 @@ describe("profile scoping: every owned-table query filters by profile_id", () =>
       for (const arg of execArgs(src)) {
         if (arg.kind !== "sql") continue; // a computed exec arg can't be inspected
         const sql = norm(arg.text);
-        if (!OWNED_RE.test(sql)) continue; // no owned table → nothing to enforce
-        if (scopedByProfileId(sql)) continue; // profile_id in a scoping position
+        if (!needsWaiver(sql)) continue;
         const allowed = ALLOW_EXEC.some(
           (a) => rel.endsWith(a.file) && sql.includes(a.includes)
         );
@@ -720,14 +846,14 @@ describe("profile scoping: every owned-table query filters by profile_id", () =>
       "ALLOW_SQL",
       ".prepare()",
       ALLOW_SQL.map((e) => ({ ...e, key: e.includes })),
-      () => scanned(prepareArgs, "sql").filter((p) => OWNED_RE.test(p.sql)),
+      () => scanned(prepareArgs, "sql").filter((p) => enforcedTable(p.sql)),
       bySubstring,
     ],
     [
       "ALLOW_EXEC",
       ".exec()",
       ALLOW_EXEC.map((e) => ({ ...e, key: e.includes })),
-      () => scanned(execArgs, "sql").filter((p) => OWNED_RE.test(p.sql)),
+      () => scanned(execArgs, "sql").filter((p) => enforcedTable(p.sql)),
       bySubstring,
     ],
     [
@@ -968,21 +1094,34 @@ describe("profile-scoping scanner rules (issue #1208)", () => {
     }
   );
 
-  it("db.exec scan: an owned-table exec without an allowlist entry is flagged", () => {
-    // Simulate the scan's per-statement decision the way the file loop applies it.
-    const flag = (sql: string) =>
-      OWNED_RE.test(norm(sql)) && !scopedByProfileId(norm(sql));
-    // An owned-table exec DML lacking a profile_id predicate is flagged (would need
-    // an ALLOW_EXEC entry or a profile_id WHERE to pass).
-    expect(
-      flag(
-        "UPDATE medical_documents SET extraction_status = 'failed' WHERE id = ?"
-      )
-    ).toBe(true);
-    // A scoped exec passes without any allowlist entry.
-    expect(
-      flag("DELETE FROM metric_samples WHERE profile_id = ? AND date = ?")
-    ).toBe(false);
+  // The per-statement decision both loops apply (#5274), driven over statements written
+  // to reach each arm rather than over the tree. `true` means the statement is refused
+  // until an ALLOW_SQL / ALLOW_EXEC entry signs it.
+  it.each([
+    // The WHERE is the claim: a scoping predicate passes whichever table it names,
+    // including one the scan cannot resolve — the shape the four table-walkers use.
+    ["SELECT * FROM ${table} WHERE id IN (${ids}) AND profile_id = ?", false],
+    [
+      "UPDATE ${table} SET encounter_id = ? WHERE id = ? AND profile_id = ?",
+      false,
+    ],
+    ["DELETE FROM metric_samples WHERE profile_id = ? AND date = ?", false],
+    // The drop, closed: a table-position interpolation with no predicate used to be
+    // skipped as if it named no owned table. Each spelling the corpus uses, and JOIN.
+    ["SELECT 1 FROM ${ref.table} WHERE id = ?", true],
+    ["INSERT INTO ${entity.table} (${cols}) VALUES (?)", true],
+    ["UPDATE ${q(link.table)} AS t1 SET x = NULL", true],
+    ["SELECT 1 FROM t JOIN ${child} c ON c.parent_id = t.id", true],
+    // Unchanged: an owned table with no predicate, and a global table whose only
+    // interpolation is a placeholder list, which has nothing to enforce.
+    [
+      "UPDATE medical_documents SET extraction_status = 'failed' WHERE id = ?",
+      true,
+    ],
+    ["SELECT id FROM portals WHERE id IN (${ids})", false],
+    ["PRAGMA table_info(${q(table)})", false],
+  ])("needsWaiver(%s) = %s", (sql, refused) => {
+    expect(needsWaiver(norm(sql))).toBe(refused);
   });
 });
 

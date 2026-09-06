@@ -84,10 +84,33 @@ export function preloadLoginSettings(loginId: number): void {
 // render, and preparing it inline pays SQL COMPILATION on each one. NOT
 // globally cached. Callers may opt into the operation-scoped read cache below;
 // writes update that scope so write-then-read remains current.
+
+// ---- The settings-key type (issue #4840) ---------------------------------------
+//
+// A key ending in `_prompted` is a bespoke "did we ask" marker, and every offer's
+// "did we ask" now lives on the suppression bus under one key class
+// (lib/offers.ts, `offer-asked:`), so no new one may be minted. This is enforced as
+// a TYPE on the six primitives below rather than as a source scan: a literal
+// `"steps_prompted"` fails typecheck at the call, whatever file it is written in.
+// A non-literal `string` key passes — the guard is about what a person types, and
+// a computed key that happens to end in `_prompted` is not a thing this app does.
+//
+// The one marker that predates the registry stays readable and writable by name
+// until its family migrates (`food_telegram_prompted`, #682 — it moves on touch,
+// with the rest of the connect prompt). It is a carve-out on a type, not an
+// allowlist that can grow: adding a second name here is the exact act the type
+// exists to refuse.
+export type SettingKey<K extends string> = K extends `${string}_prompted`
+  ? K extends "food_telegram_prompted"
+    ? K
+    : never
+  : K;
 const SETTING_GET_STMT = hoistedStatement(
   "SELECT value FROM settings WHERE key = ?"
 );
-export function getSetting(key: string): string | undefined {
+export function getSetting<K extends string>(
+  key: K & SettingKey<K>
+): string | undefined {
   const scope = settingReadCache.getStore();
   const cache = scope?.global;
   if (cache?.has(key)) return cache.get(key);
@@ -98,7 +121,10 @@ export function getSetting(key: string): string | undefined {
   return value;
 }
 
-export function setSetting(key: string, value: string): void {
+export function setSetting<K extends string>(
+  key: K & SettingKey<K>,
+  value: string
+): void {
   db.prepare(
     `INSERT INTO settings (key, value) VALUES (?, ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value`
@@ -135,9 +161,9 @@ export function getSettingKeysWithPrefix(prefix: string): string[] {
 const PROFILE_SETTING_GET_STMT = hoistedStatement(
   "SELECT value FROM profile_settings WHERE profile_id = ? AND key = ?"
 );
-export function getProfileSetting(
+export function getProfileSetting<K extends string>(
   profileId: number,
-  key: string
+  key: K & SettingKey<K>
 ): string | undefined {
   const scope = settingReadCache.getStore();
   const cache = scope?.profile;
@@ -151,9 +177,9 @@ export function getProfileSetting(
   return value;
 }
 
-export function setProfileSetting(
+export function setProfileSetting<K extends string>(
   profileId: number,
-  key: string,
+  key: K & SettingKey<K>,
   value: string
 ): void {
   db.prepare(
@@ -200,9 +226,9 @@ export function getProfileSettingKeysWithPrefix(
 const LOGIN_SETTING_GET_STMT = hoistedStatement(
   "SELECT value FROM login_settings WHERE login_id = ? AND key = ?"
 );
-export function getLoginSetting(
+export function getLoginSetting<K extends string>(
   loginId: number,
-  key: string
+  key: K & SettingKey<K>
 ): string | undefined {
   const scope = settingReadCache.getStore();
   const cache = scope?.login;
@@ -216,9 +242,9 @@ export function getLoginSetting(
   return value;
 }
 
-export function setLoginSetting(
+export function setLoginSetting<K extends string>(
   loginId: number,
-  key: string,
+  key: K & SettingKey<K>,
   value: string
 ): void {
   db.prepare(

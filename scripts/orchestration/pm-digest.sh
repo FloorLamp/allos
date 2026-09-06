@@ -101,13 +101,12 @@ git -C "$REPO_DIR" fetch -q origin main 2>/dev/null || echo "  (git fetch failed
 
 echo "=== PM DIGEST  window ${SINCE} .. ${NOW} ==="
 
-# Squash commits on main in the window, with their paths and line counts. The
-# process/product split reads paths (free) rather than /pulls/N/files (60 calls
-# an hour unauthenticated). Production size excludes tests, docs and tooling so
-# "largest" means largest for a person using the app.
+# The process/product split reads paths (free) rather than /pulls/N/files (60
+# calls an hour unauthenticated). The merge enumeration and the user-visible
+# verdict are merge-window.mjs, shared with release-notes-gather.mjs so the two
+# surfaces cannot answer the same question differently.
 PROC_PATHS='^(docs/orchestration|scripts/orchestration/|scripts/orchestrator-checkin\.sh|\.claude/|AGENTS\.md|CLAUDE\.md|docs/internals/e2e|\.github/workflows/)'
-git -C "$REPO_DIR" log --since="$SINCE" --format=$'\x01%H\t%ci\t%s\t%b\x02' --numstat origin/main \
-  > "$TMP/commits" 2>/dev/null || : > "$TMP/commits"
+WINDOW="$REPO_DIR/scripts/orchestration/merge-window.mjs"
 fetch "$API/issues?state=closed&since=$SINCE&per_page=100" > "$TMP/closed.json"
 fetch "$API/issues?state=all&since=$SINCE&per_page=100&sort=created&direction=desc" > "$TMP/recent.json"
 for pg in 1 2 3; do fetch "$API/issues?state=open&per_page=100&page=$pg" > "$TMP/open.$pg"; done
@@ -116,28 +115,20 @@ fetch "$API/actions/runs?branch=main&per_page=50" > "$TMP/runs.json"
 fetch "$API/issues/comments?since=$SINCE&per_page=100" > "$TMP/comments.json"
 git -C "$REPO_DIR" show origin/main:lib/release-notes.json > "$TMP/notes.json" 2>/dev/null || echo '{"days":[]}' > "$TMP/notes.json"
 git -C "$REPO_DIR" ls-remote --heads origin 2>/dev/null > "$TMP/heads" || : > "$TMP/heads"
+# The uncovered lag, over the NOTES window rather than this digest window.
+LAG=$(node "$HELPERS/release-notes-gather.mjs" --check 2>/dev/null)
+[ -n "$LAG" ] || LAG="release notes: lag unreadable (release-notes-gather.mjs --check said nothing)"
 
-TMP="$TMP" SINCE="$SINCE" SINCE_DAY="$SINCE_DAY" NOW="$NOW" PROC_PATHS="$PROC_PATHS" node -e '
-  const fs=require("fs"), T=process.env.TMP, SINCE=process.env.SINCE, DAY=process.env.SINCE_DAY;
+TMP="$TMP" SINCE="$SINCE" SINCE_DAY="$SINCE_DAY" NOW="$NOW" PROC_PATHS="$PROC_PATHS" REPO_DIR="$REPO_DIR" WINDOW="$WINDOW" LAG="$LAG" node --input-type=module -e '
+  import fs from "node:fs";
+  const { mergeWindow } = await import(process.env.WINDOW);
+  const T=process.env.TMP, SINCE=process.env.SINCE, DAY=process.env.SINCE_DAY;
   const J=f=>{try{const v=JSON.parse(fs.readFileSync(`${T}/${f}`,"utf8"));return v;}catch{return [];}};
   const proc=new RegExp(process.env.PROC_PATHS);
-  const nonProd=/^(e2e\/|.*__tests__\/|.*\.(test|spec)\.[cm]?[jt]sx?$|docs\/|scripts\/|\.claude\/|\.github\/|lib\/release-notes\.json$|.*\.md$)/;
-  // ---- commits → merges with size, closed issues, process flag
-  const merges=[];
-  for(const rec of fs.readFileSync(`${T}/commits`,"utf8").split("\x01").slice(1)){
-    const [head,rest]=rec.split("\x02");
-    const [sha,date,subject,...bodyParts]=head.split("\t");
-    const body=bodyParts.join("\t");
-    const files=[], stat={prod:0,all:0};
-    for(const l of (rest||"").split("\n")){
-      const m=l.match(/^(\d+|-)\t(\d+|-)\t(.+)$/); if(!m) continue;
-      const n=(m[1]==="-"?0:+m[1])+(m[2]==="-"?0:+m[2]);
-      files.push(m[3]); stat.all+=n; if(!nonProd.test(m[3])) stat.prod+=n;
-    }
-    const pr=(subject.match(/\(#(\d+)\)\s*$/)||[])[1];
-    const issues=[...(subject+"\n"+body).matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/gi)].map(m=>+m[1]);
-    merges.push({sha:sha.slice(0,9),date:date.slice(0,16),subject:subject.replace(/\s*\(#\d+\)\s*$/,""),pr,issues,files,stat,process:files.some(f=>proc.test(f))});
-  }
+  // ---- one enumeration, one user-visible verdict; the process flag is the
+  // separate question of whether a merge changed how we work.
+  const { merges, floor } = mergeWindow(process.env.REPO_DIR, SINCE);
+  for(const m of merges) m.process=m.files.some(f=>proc.test(f));
   const product=merges.filter(m=>!m.process), process_=merges.filter(m=>m.process);
   const closed=J("closed.json").filter(i=>!i.pull_request&&i.closed_at>=SINCE);
   const byNum=new Map(closed.map(i=>[i.number,i]));
@@ -151,17 +142,18 @@ TMP="$TMP" SINCE="$SINCE" SINCE_DAY="$SINCE_DAY" NOW="$NOW" PROC_PATHS="$PROC_PA
   const notes=(J("notes.json").days||[]).filter(d=>d.date>=DAY);
   const entries=notes.flatMap(d=>d.entries.map(e=>({...e,date:d.date})));
   console.log(`\n  Release notes in window (${entries.length} entr${entries.length===1?"y":"ies"}, curated):`);
-  if(!entries.length) console.log("  (none written yet — the day batch may be owed; see release-notes-gather.mjs --check)");
+  if(!entries.length) console.log("  (none written yet — the day batch may be owed)");
+  console.log(`  ${process.env.LAG}`);
   const cats=new Map(); for(const e of entries){ if(!cats.has(e.category)) cats.set(e.category,[]); cats.get(e.category).push(e); }
   for(const [c,es] of [...cats.entries()].sort((a,b)=>b[1].length-a[1].length)){
     console.log(`  ${c} (${es.length})`); for(const e of es) console.log(`    ${e.kind.padEnd(7)} ${e.title}  (#${e.pr})`);
   }
-  console.log(`\n  Largest product merges by production lines (${product.length} product / ${process_.length} process in window):`);
-  const top=[...product].sort((a,b)=>b.stat.prod-a.stat.prod).slice(0,10);
+  console.log(`\n  Largest product merges by production lines (${product.length} product / ${process_.length} process in window)${floor?` — FLOOR: history in this checkout begins at ${floor}, so earlier merges in the window were not read`:""}:`);
+  const top=[...product].sort((a,b)=>b.prod-a.prod).slice(0,10);
   if(!top.length) console.log("  (none)");
   for(const m of top){
     const iss=m.issues.map(n=>{const i=byNum.get(n);return i?`#${n} ${prio(i)}`:`#${n}`;}).join(", ");
-    console.log(`  ${String(m.stat.prod).padStart(5)} lines  ${m.date}  ${m.subject}${m.pr?`  (#${m.pr})`:""}${iss?`\n            closes ${iss}`:""}`);
+    console.log(`  ${String(m.prod).padStart(5)} lines  ${m.date}  ${m.subject}${m.pr?`  (#${m.pr})`:""}${iss?`\n            closes ${iss}`:""}`);
   }
   console.log(`\n  Epics — issues closed in window, by domain (${closed.length} closed):`);
   const groups=new Map(); for(const i of closed){const d=domainOf(i); if(!groups.has(d)) groups.set(d,[]); groups.get(d).push(i);}

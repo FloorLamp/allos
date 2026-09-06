@@ -364,9 +364,6 @@ member. `npm run typecheck` is the only command here that gives a type verdict.
 It is a gate — `scripts/orchestration/agent-gates.sh` runs it before every push,
 CI's `check` job runs it on every PR — and not a tier.
 
-`lib/__tests__/type-verdict.test.ts` pins that, and the two shapes below, over
-synthetic programs.
-
 **Moving it into the tiers was measured and declined (#5150).** Two reasons, and
 the first is the one that settles it.
 
@@ -375,8 +372,8 @@ the first is the one that settles it.
   has no `kind`; `git show 780f93703:lib/__db_tests__/sleep-retime-action.test.ts`
   has no `kind` either). Each tree typechecks clean alone. Only their merge is
   invalid, so no per-branch check — tier-side or gate-side — sees it. Only a
-  check of the MERGED tree can, which is #5235's ground and not the tier's. The
-  combined-tree case below asserts that property; nothing yet prevents it.
+  check of the MERGED tree can, which is #5235's ground and not the tier's.
+  Nothing yet prevents it.
 - **The cost lands exactly on the case the guard exists for.** TypeScript's
   incremental build is cheap for a leaf edit and full-price the moment an exported
   type moves, because every dependent has to be rechecked — which is the whole

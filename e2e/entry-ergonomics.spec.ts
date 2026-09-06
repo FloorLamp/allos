@@ -985,17 +985,21 @@ test("strength set controls step, clamp, and toggle without losing their phone g
   const weightBox = await weightInput.boundingBox();
   expect(weightBox).not.toBeNull();
   expect(weightBox!.width).toBeGreaterThanOrEqual(64);
-  // The + stepper bumps the (empty) exercise weight by one increment → 2.5. Only
-  // weight is set, so the set stays half-filled and nothing auto-saves.
+  // The + stepper bumps the exercise weight by one increment — from the PLAN the band
+  // is offering (#5373), not from zero, because a nudge is what a person does to an
+  // offer. Only weight is set, so no row is a record yet and nothing auto-saves.
+  const planned = Number(await weightInput.getAttribute("placeholder"));
+  expect(planned).toBeGreaterThan(0);
+  const stepped = String(planned + 2.5);
   await hydratedClick(page, band.getByLabel("Increase weight"));
-  await expect(weightInput).toHaveValue("2.5");
+  await expect(weightInput).toHaveValue(stepped);
   // "Vary" gives the set its own weight field, carrying the load, with the caret in
   // it; the band is gone and the row is the `weight × reps` pair the rest of this
   // test measures.
   await form.getByTestId("set-vary-1").click();
   await expect(
     form.getByTestId("set-values-1").getByTestId("set1-weight")
-  ).toHaveValue("2.5");
+  ).toHaveValue(stepped);
   await expect(weightInput).toBeFocused();
   await expect(band).toHaveCount(0);
 
@@ -1052,19 +1056,38 @@ test("strength set controls step, clamp, and toggle without losing their phone g
     disjoint: true,
   });
 
+  // THE CONFIRM CONTROL (#5373), in the options column at the row's trailing edge:
+  // no set is a record yet, so every row offers one. It is the shared IconButton,
+  // whose own box is the column's 34px control (#3938) around a 44px phone target —
+  // asserted through the same sweep the column's other controls take, not with a
+  // number of its own.
+  const row1 = page.getByTestId("set-row-1"); // testid-scope-ok: the set grid is inside the held editor overlay, one copy
+  const confirm = row1.getByTestId("set-confirm-1");
+  await expect(confirm).toHaveAttribute("data-icon-button", "");
+  await expectPhoneTapTargets(page, "strength-set confirm", [confirm]);
+
   // Weight and RPE were symmetric (− and +) from the start; reps shipped with only
   // a +, so a mis-tapped rep count could only be fixed by editing the field by hand.
+  // The count starts from the PLANNED reps this row is offering (#5373) — stepping is
+  // how a person says "I got two fewer than that" — so the arithmetic is stated
+  // against the ghost rather than against a zero the row never showed.
+  const plannedReps = Number(await repsInput.getAttribute("placeholder"));
+  expect(plannedReps).toBeGreaterThan(0);
   await hydratedClick(page, stepTargets[3]);
   await hydratedClick(page, stepTargets[3]);
-  await expect(repsInput).toHaveValue("2");
+  await expect(repsInput).toHaveValue(String(plannedReps + 2));
   await hydratedClick(page, stepTargets[2]);
-  await expect(repsInput).toHaveValue("1");
+  await expect(repsInput).toHaveValue(String(plannedReps + 1));
   // Clamped at 0: the field empties rather than going negative, and staying at the
   // floor is a no-op.
-  await hydratedClick(page, stepTargets[2]);
+  for (let i = 0; i <= plannedReps; i++)
+    await hydratedClick(page, stepTargets[2]);
   await expect(repsInput).toHaveValue("");
   await hydratedClick(page, stepTargets[2]);
   await expect(repsInput).toHaveValue("");
+  // …and CORRECTING IS CONFIRMING (#5373): the first of those steps recorded the set,
+  // so there is nothing left to confirm and the control is gone.
+  await expect(row1.getByTestId("set-confirm-1")).toHaveCount(0);
 
   // Each set carries a light "W" warmup toggle (default off). Toggling flips its
   // aria-pressed state — the flag excludes the set from volume/target/records.
@@ -1073,7 +1096,9 @@ test("strength set controls step, clamp, and toggle without losing their phone g
   await hydratedClick(page, warmup);
   await expect(warmup).toHaveAttribute("aria-pressed", "true");
 
-  // Reps returned to empty, so the set stays half-filled and nothing auto-saves.
+  // Reps returned to empty, so the set stays half-filled and nothing auto-saves — a
+  // confirmed row with a missing half is still a half-filled set, so confirming it
+  // did not make it savable.
   // Escape is still the leave gesture, but the draft it leaves has a name typed
   // into it and no row behind it, so it is asked about now rather than dropped in
   // silence (#5111) — the answer is part of the close, not scenery after it.
@@ -1148,7 +1173,13 @@ test("weight is stated once per exercise until a set varies it (#5371)", async (
   await expect(form.getByTestId("set1-reps")).toBeFocused();
   await page.keyboard.type("8");
   await page.keyboard.press("Enter");
-  await expect(form.getByTestId("set2-reps")).toHaveValue("8");
+  // The new set arrives as a GHOST of the one just recorded (#5373): its numbers are
+  // the offer, painted in the placeholder, and it is not a record until confirmed.
+  await expect(form.getByTestId("set2-reps")).toHaveValue("");
+  await expect(form.getByTestId("set2-reps")).toHaveAttribute(
+    "placeholder",
+    "8"
+  );
   await expect(form.getByTestId("set2-weight")).toHaveCount(0);
   await expect(form.getByLabel("Increase weight")).toHaveCount(1);
 

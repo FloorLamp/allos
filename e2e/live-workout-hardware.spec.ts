@@ -164,9 +164,13 @@ test("checking off a set fires the short haptic tick (#1422)", async ({
 
   expect(await vibrations(page)).toEqual([]);
 
-  // The check-off gesture: adding the next set. It starts the rest countdown AND
-  // ticks — the pattern comes from lib/haptics, pinned in the pure tier.
-  await page.getByRole("button", { name: "+ Add set" }).click();
+  // THE CHECK-OFF IS THE CONFIRM (#5373). Adding a row used to stand in for it, and it
+  // fired whether or not the previous set had happened; the grid now opens as the whole
+  // plan and each row's ✓ is the gesture. It starts the rest countdown AND ticks —
+  // the pattern comes from lib/haptics, pinned in the pure tier. Set 1 is the record the Use tap landed, so
+  // row 2 is the next set still on offer.
+  const row2 = page.getByTestId("set-row-2"); // testid-scope-ok: the set grid is inside the held editor overlay, one copy
+  await row2.getByTestId("set-confirm-2").click();
   await expect(page.getByTestId("rest-toggle")).toHaveAttribute(
     "aria-label",
     "Pause rest timer"
@@ -189,7 +193,9 @@ test("prefers-reduced-motion suppresses the check-off tick, but the set still la
     await startLiveWorkout(page);
     await completeFirstSet(page);
 
-    await page.getByRole("button", { name: "+ Add set" }).click();
+    // The check-off gesture, which is the confirm now (#5373).
+    const row2 = page.getByTestId("set-row-2"); // testid-scope-ok: the set grid is inside the held editor overlay, one copy
+    await row2.getByTestId("set-confirm-2").click();
     // The visual cue is untouched — vibration is additive only, so suppressing it
     // costs the flow nothing.
     await expect(page.getByTestId("rest-toggle")).toHaveAttribute(

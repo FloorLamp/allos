@@ -162,7 +162,7 @@ export default function EpisodeCareLine({
 
           {canWrite && manualOptions.length > 0 ? (
             <Disclosure className="text-sm">
-              <summary className="cursor-pointer text-xs font-medium text-slate-500 hover:text-brand-600 dark:text-slate-400 dark:hover:text-brand-400">
+              <summary className="fold-control text-xs font-medium text-slate-500 hover:text-brand-600 dark:text-slate-400 dark:hover:text-brand-400">
                 Link a visit…
               </summary>
               <ul className="mt-2 space-y-1" data-testid="episode-care-manual">

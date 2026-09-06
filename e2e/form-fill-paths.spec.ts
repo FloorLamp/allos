@@ -22,8 +22,9 @@ import { workerDbPath } from "./worker-env";
 //      in its deload week + Bench history), the coached load is run through the shared
 //      deloadAdjust — the Next-set card shows the deload rationale, and the ghost + Use
 //      carry the shaved load. No drift from the Training-overview card (pinned pure).
-//   2. Repeat last session: each Recent row fills the set editor with that session's
-//      literal sets (FORM_PLATEAU's flat Skullcrusher, 30 kg × 8).
+//   2. Repeat last session: each Recent row states that session's literal sets as this
+//      session's PLAN (FORM_PLATEAU's flat Skullcrusher, 30 kg × 8), which a confirm
+//      turns into the record (#5373).
 //   3. Inline plateau hint: the plateaued Skullcrusher shows a calm hint at load
 //      selection; dismissing it through the shared bus silences the Training-watch
 //      surface too.
@@ -179,12 +180,21 @@ test("each Recent row repeats that session into the set editor (#923)", async ({
     // Tap the newest row's Fill — the primary "repeat last session" gesture.
     await recent.getByTestId("recent-session-fill").first().click(); // eslint-disable-line no-restricted-properties -- first-ok: prefills from the most-recent session (this spec's own logged session) — order-agnostic
 
-    // The set editor is filled with the session's LITERAL work (30 kg × 8), distinct
-    // from the coached suggestion (which would build a rep to 9).
-    await expect(page.getByTestId("set1-weight")).toHaveValue("30");
-    await expect(
-      page.getByTestId("set1-reps-stepper").getByRole("spinbutton")
-    ).toHaveValue("8");
+    // The set editor now states that session's LITERAL work (30 kg × 8) as this
+    // session's PLAN (#5373): a repeat replaces the ghosts, not the record, so the
+    // numbers are painted in the placeholder and nothing is written until a row is
+    // confirmed. Distinct from the coached suggestion, which would build a rep to 9.
+    const load = page.getByTestId("set1-weight");
+    await expect(load).toHaveValue("");
+    await expect(load).toHaveAttribute("placeholder", "30");
+    const reps = page.getByTestId("set1-reps-stepper").getByRole("spinbutton");
+    await expect(reps).toHaveValue("");
+    await expect(reps).toHaveAttribute("placeholder", "8");
+    // Confirming row 1 turns the plan it states into the record.
+    const row1 = page.getByTestId("set-row-1"); // testid-scope-ok: the set grid is inside the held editor overlay, one copy
+    await row1.getByTestId("set-confirm-1").click();
+    await expect(load).toHaveValue("30");
+    await expect(reps).toHaveValue("8");
 
     await cleanUpDraft(page);
   } finally {

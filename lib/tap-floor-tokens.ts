@@ -12,7 +12,3 @@ export const TAP_FLOOR_FLOAT_EPSILON_PX = 0.01;
 
 /** Per-side extension a coarse pointer gets around a control (`--control-reach`). */
 export const TAP_TARGET_INSET_PX = 6;
-
-/** Smallest rendered box that the reach can extend to the floor. */
-export const TAP_TARGET_MIN_RENDERED_PX =
-  TAP_FLOOR_PX - 2 * TAP_TARGET_INSET_PX;

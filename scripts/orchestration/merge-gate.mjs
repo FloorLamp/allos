@@ -3,9 +3,9 @@
 // non-author reviewed, with zero unresolved findings. Until now that gate was
 // a paragraph the orchestrator remembered; this makes it a script it runs.
 //
-// READ-ONLY by construction: no write verb leaves this script (pinned in
-// lib/__tests__/merge-gate-script.test.ts). It answers one question — "may
-// this PR merge RIGHT NOW?" — by checking, on the CURRENT head SHA:
+// READ-ONLY by construction: no write verb leaves this script. It answers one
+// question — "may this PR merge RIGHT NOW?" — by checking, on the CURRENT head
+// SHA:
 //   1. the PR is open and READY (never draft — environment.md §GitHub access),
 //      and its TITLE holds the rule the squash subject inherits (#4983):
 //      72 characters, one clause, no colon or dash tail;
@@ -122,6 +122,17 @@ const selfSession = normaliseSession(
 );
 const adoptPr = args.includes("--adopt-pr");
 
+// The ceiling every read here answers under. Node's execFileSync default is
+// 1 MiB and EXCEEDING IT THROWS, so an oversized response kills the gate
+// instead of failing a check — including the `soft` compare read at the
+// base-moved verdict, whose whole contract is to go dark rather than exit
+// (#5403: PR #5423's head sat nine merges behind and that compare measured
+// 1,063,297 bytes, `curl -sS … /compare/477cd8a1…...main | wc -c`). 64 MiB is
+// what the other orchestration scripts that read this API settled on
+// (issue-read, queue-snapshot, session-metrics, closing-keywords), and it is
+// ~63x the largest payload anything here has been measured returning.
+const MAX_BUFFER = 64 * 1024 * 1024;
+
 // curl, not fetch: node's fetch ignores HTTP(S)_PROXY and the managed
 // environments route GitHub through an agent proxy (ci-watch.mjs says why).
 function curl(curlArgs) {
@@ -131,6 +142,7 @@ function curl(curlArgs) {
     {
       encoding: "utf8",
       timeout: 30_000,
+      maxBuffer: MAX_BUFFER,
     }
   );
   const cut = out.lastIndexOf("\n");
@@ -161,8 +173,8 @@ function gh(pathname, soft = false) {
 }
 
 // The one POST in this script, and it is a READ: a GraphQL query (never a
-// mutation — pinned by test) for review-thread resolution, which REST does
-// not expose.
+// mutation) for review-thread resolution, which REST does not expose. Keep it
+// that way by reading it — the test that pinned it is deleted.
 //
 // GraphQL is REFUSED OUTRIGHT (403, not scoped to any query) in the Claude
 // Code remote container the orchestrator actually runs in — measured on

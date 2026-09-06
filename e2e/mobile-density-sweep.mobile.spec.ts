@@ -523,48 +523,13 @@ for (const [what, route, marker] of SWEPT) {
   });
 }
 
-// #3899: the three surfaces above, each read at BOTH widths. Every assertion in
-// this file so far asks for ABSENCE, and absence is exactly what a `band` that
-// never compiled would also produce — a class eaten by a specificity or layer rule
-// leaves the sweep green and the phone unchanged. So these ask the converse of the
-// SAME element: the frame that is gone at 390 must come back at `sm`, which no
-// dead class can fake. Measured against the pre-`band` tree, where all three read
-// border 1px / radius 12px / x 16 / width 358 at 390 too.
-const BANDED = [
-  ["/results/reports", "reports-list"],
-  ["/records/care/providers", "provider-org-card"],
-  ["/nutrition", "nutrition-sidebar-surface"],
-] as const;
-
-test("#3899 a band's frame is gone at 390, back at 640, and a control keeps its own", async ({
-  page,
-}) => {
-  test.slow();
-  for (const [route, marker] of BANDED) {
-    await page.setViewportSize({ width: VIEWPORT_PX, height: 844 });
-    await page.goto(route);
-    const surface = appContent(page).getByTestId(marker).first(); // eslint-disable-line no-restricted-properties -- first-ok: the marker repeats where the surface repeats, and every copy is the same element with the same class list
-    await expect(surface).toBeVisible();
-    expect(await bandFrame(surface)).toEqual([0, 0]);
-
-    await page.setViewportSize({ width: 640, height: 844 });
-    await page.waitForFunction(() => window.innerWidth === 640);
-    const [border, radius] = await bandFrame(surface);
-    expect(border).toBeGreaterThan(0);
-    expect(radius).toBeGreaterThan(0);
-  }
-
-  // AN AFFORDANCE KEEPS ITS FRAME AT EVERY WIDTH, which is the ruling and not an
-  // exception to it — and it is the reading that says the zeros above are a fact
-  // about the band rather than about this viewport. Two real elements, one page.
-  await page.setViewportSize({ width: VIEWPORT_PX, height: 844 });
-  await page.goto("/records/care/providers");
-  const control = appContent(page).getByTestId("provider-search");
-  await expect(control).toBeVisible();
-  const [controlBorder, controlRadius] = await bandFrame(control);
-  expect(controlBorder).toBeGreaterThan(0);
-  expect(controlRadius).toBeGreaterThan(0);
-});
+// THE CONVERSE OF THIS FILE'S ABSENCE ASSERTIONS IS NOT HERE — it is in
+// lib/__tests__/phone-only-compiled-css.test.ts, which reads `.band`'s
+// margin-inline and border-radius off a real Tailwind compile and proves they
+// emit below `sm` and nowhere else. A class eaten by a specificity or layer rule
+// fails there, where no route can be forgotten; the browser reading of the same
+// three surfaces was three pixel reads that could not survive a node replacement
+// mid-read (#5379), and it is deleted rather than re-run.
 
 // #3899, the owner's ruling of 2026-09-04: `band` normalises the horizontal gutter
 // the way `.card` does, which is what let the two page-level containers this branch

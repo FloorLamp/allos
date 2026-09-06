@@ -5,6 +5,7 @@ import {
   weightIncrementKg,
   weightIncrementLb,
   suggestNextSet,
+  contextualNextSet,
   sessionBestSet,
   nextSetText,
   lastSessionPR,
@@ -725,18 +726,28 @@ describe("sessionBestSet", () => {
 
 describe("nextSetText", () => {
   it("formats weighted suggestions in the user's unit and bodyweight as BW", () => {
-    const ns = suggestNextSet(
-      ex({ lastSessionBest: { weightKg: 80, reps: 6 } })
-    )!;
-    expect(nextSetText(ns, "kg")).toBe("80 kg × 7");
-    const bw = suggestNextSet(
-      ex({
-        exercise: "Pull Up",
-        bodyweight: true,
-        lastSessionBest: { weightKg: 75, reps: 12 },
-      })
-    )!;
-    expect(nextSetText(bw, "kg")).toBe("BW × 13");
+    // Through the composition, as every rendering surface reaches it — a raw
+    // progression is not a renderable NextSet (#5394).
+    const shown = (seed: Parameters<typeof suggestNextSet>[0]) =>
+      contextualNextSet(suggestNextSet(seed), seed.exercise, {})!;
+    expect(
+      nextSetText(
+        shown(ex({ lastSessionBest: { weightKg: 80, reps: 6 } })),
+        "kg"
+      )
+    ).toBe("80 kg × 7");
+    expect(
+      nextSetText(
+        shown(
+          ex({
+            exercise: "Pull Up",
+            bodyweight: true,
+            lastSessionBest: { weightKg: 75, reps: 12 },
+          })
+        ),
+        "kg"
+      )
+    ).toBe("BW × 13");
   });
 });
 
