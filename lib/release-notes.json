@@ -6,8 +6,8 @@
         {
           "pr": 5290,
           "kind": "feature",
-          "category": "Nutrition",
-          "title": "Each drink or substance use gets its own row and its own time",
+          "category": "Medical",
+          "title": "Each substance use gets its own row and its own time, like drinks",
           "issues": [5026]
         },
         {
@@ -51,6 +51,48 @@
           "category": "Training",
           "title": "A goal with no reading yet shows no percent, on every surface",
           "issues": [5396]
+        },
+        {
+          "pr": 5391,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Editing a medication to as-needed saves instead of sitting on Saving…",
+          "issues": [5336]
+        },
+        {
+          "pr": 5306,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "The offline schedule offers the doses that were actually due that day",
+          "issues": [5167]
+        },
+        {
+          "pr": 5378,
+          "kind": "fix",
+          "category": "Training",
+          "title": "A practice logged from the palette records the practice, not the page",
+          "issues": []
+        },
+        {
+          "pr": 5399,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Fact chips match the height of every other control",
+          "issues": [4035]
+        },
+        {
+          "pr": 5365,
+          "kind": "perf",
+          "category": "Interface",
+          "title": "Upcoming and the episode page show their first rows while the rest loads",
+          "issues": [2641]
+        },
+        {
+          "pr": 5422,
+          "kind": "feature",
+          "category": "Training",
+          "title": "Vary one set's weight when it differs from the rest of the exercise",
+          "issues": [5371]
         }
       ]
     },
