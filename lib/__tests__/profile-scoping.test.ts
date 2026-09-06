@@ -432,7 +432,7 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
   {
     file: "lib/undo-delete-db.ts",
     includes: "SELECT 1 FROM ${table} WHERE stored_path = ?",
-    why: "unlinkPurgedVideoFiles / unlinkPurgedPhotoFiles (#1290, #1847): the liveness probe before a purge unlinks a clip or photo file. Content-hash dedup means a LIVE row of ANY profile may reference the same on-disk path, so the probe is deliberately profile-agnostic — an unlink scoped to one profile would break another profile's live media. Reads a bare `1`, never row data; `table` is an OwnedTable literal by type",
+    why: "unlinkPurgedVideoFiles / unlinkPurgedPhotoFiles (#1290, #1847): the liveness probe before a purge unlinks a clip or photo file, guarding the case the source states at unlinkPurgedVideoFiles — a SAME-PROFILE re-upload of identical bytes after the delete re-created a live row at the same content-named path, and unlinking it would break that live clip. THE PATH ALREADY CARRIES THE PROFILE, which is why the missing predicate costs nothing here: storeProcessedPhoto / storeVideoFiles write data/uploads/<domain>/<profileId>/<hash16>.<ext>, those five *-write.ts modules are the only INSERTers, nothing SETs profile_id on the five tables, and none of them is in IMPORT_FOOTPRINT_TABLES — so no two live rows in different profiles can share a stored_path and the row this finds is necessarily the acting profile's. Reads a bare `1`, never row data; `table` is an OwnedTable literal by type",
   },
   {
     file: "lib/migrations/cascade-delete.ts",
@@ -669,6 +669,16 @@ function scopedByProfileId(sql: string): boolean {
 // signature like every other entry. The keywords are the corpus's spellings of a table
 // position (`FROM ${…}` 44, `UPDATE ${…}` 14, `INTO ${…}` 2 at that base) plus JOIN, the
 // one a join-walker would reach for; `PRAGMA table_info(${…})` reads no rows and stays out.
+//
+// ITS BOUNDARY IS `\s+\${`, NOT THE KEYWORD SET, and that is where the next hole will be.
+// Anything between the keyword and the interpolation hides the table again: `FROM "${t}"`,
+// `FROM [${t}]`, `FROM main.${t}`, `FROM a, ${t}`, `UPDATE OR REPLACE ${t}`, and a
+// statement written as `"SELECT * FROM " + t`, where firstStringArgs stops at the first
+// literal's closing quote. No statement in this tree uses any of them, so this is a stated
+// limit rather than a gap being tolerated — but the FIRST one is one refactor away:
+// cascade-delete quotes its identifiers with `q()` INSIDE the interpolation
+// (`FROM ${q(table)}`, seen), and moving the quotes out to `FROM "${table}"` would make a
+// live cascade statement invisible again.
 const TABLE_INTERPOLATED_RE = /\b(?:FROM|INTO|UPDATE|JOIN)\s+\$\{/i;
 const enforcedTable = (sql: string) =>
   OWNED_RE.test(sql) || TABLE_INTERPOLATED_RE.test(sql);
