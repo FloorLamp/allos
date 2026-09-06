@@ -54,6 +54,27 @@
 
 - Reproduce locally before pushing a fix. Preserve and inspect Playwright's
   `error-context.md`.
+- **A spec that drives an RxNorm lookup cannot be reproduced locally** (#5468), and
+  the line above is unsound for it in the direction that looks like success.
+  `rxnav.nlm.nih.gov` is unreachable from every agent container and reachable from
+  CI, and `lib/rxnorm.ts` sends no credential — so locally the lookup returns `[]`
+  and the confirm path that only exists on a match never runs. The spec passes on
+  the branch the bug is not in; `medication-prefill` reached main four times that
+  way. `api.open-meteo.com` and its two siblings are the same shape. Withings,
+  Strava and Oura are NOT: they hold no local token either way, so they degrade
+  identically in both places.
+  - The trigger is a PICK, not a fill. `IntakeItemForm`'s `onPickName` auto-confirms
+    every catalog MEDICATION pick, so a spec that clicks a row in the intake Name
+    combobox is in this class while naming no rxcui marker — a marker grep will not
+    find it. A supplement-catalog pick returns before the lookup and is unaffected.
+    List them rather than trusting a stale one:
+    `git grep -ln comboboxRows -- e2e/ | xargs git grep -ln '"Name"'`, then read
+    each hit for a row click on the intake form.
+  - Since #5468 the degrade says so out loud: grep the server log for the `rxnorm`
+    scope. A genuine no-match writes nothing, so a line there means the local run
+    took the degraded branch and its green proves nothing about the live one.
+  - CI runs all of these — there is no per-spec skip set, only the runtime-surface
+    gate that drops the whole browser suite for a docs-only diff.
 - Run failures in failing order and use one orchestrator when investigating shared
   state or cross-spec poisoning.
 - Check the actual command exit code; pipelines can hide it.

@@ -25,6 +25,20 @@
 // parsing is split into the pure parseApproximateTerm() /
 // parseRelatedIngredients() below (covered by lib/__tests__).
 
+// AN EMPTY RESULT HAS TWO CAUSES AND ONLY ONE OF THEM IS NEWS (#5468). RxNav takes
+// no credential, so unlike the OAuth integrations there is no missing-token state to
+// explain a failure away: a call that could not be made and a call that genuinely
+// matched nothing both return [], and no caller can tell them apart. The return
+// stays [] — the degrade is correct and callers are unchanged — but the UNEXPECTED
+// half now writes a line, as the other credential-free integration already does
+// (lib/integrations/open-meteo.ts). A real no-match logs nothing, so the presence
+// of a line IS the distinction, and grepping for one is how a local run tells which
+// branch it took: rxnav.nlm.nih.gov is unreachable from an agent container and
+// reachable from CI. See docs/orchestration/e2e-ci.md, "Diagnosing a red".
+import { createLogger } from "@/lib/log";
+
+const log = createLogger("rxnorm");
+
 // NLM RxNav approximateTerm endpoint. Public, key-free, no auth. Documented at
 // https://lhncbc.nlm.nih.gov/RxNav/APIs/api-RxNorm.approximateTerm.html
 const RXNAV_BASE = "https://rxnav.nlm.nih.gov/REST/approximateTerm.json";
@@ -195,10 +209,17 @@ export async function lookupRxNormIngredients(
       signal: controller.signal,
       headers: { Accept: "application/json" },
     });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      log.error("ingredient lookup rejected", { rxcui: code, status: res.status });
+      return [];
+    }
     const json = await res.json();
     return parseRelatedIngredients(json);
-  } catch {
+  } catch (err) {
+    log.error("ingredient lookup failed", {
+      rxcui: code,
+      err: err instanceof Error ? err.message : String(err),
+    });
     return [];
   } finally {
     clearTimeout(timer);
@@ -222,10 +243,18 @@ export async function lookupRxNormCandidates(
       signal: controller.signal,
       headers: { Accept: "application/json" },
     });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      // No `term`: it is a medication a person is taking. The status is what an
+      // operator can act on, and the reachability question needs nothing more.
+      log.error("candidate lookup rejected", { status: res.status });
+      return [];
+    }
     const json = await res.json();
     return parseApproximateTerm(json, limit);
-  } catch {
+  } catch (err) {
+    log.error("candidate lookup failed", {
+      err: err instanceof Error ? err.message : String(err),
+    });
     return [];
   } finally {
     clearTimeout(timer);
