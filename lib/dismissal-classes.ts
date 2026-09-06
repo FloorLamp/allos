@@ -43,6 +43,7 @@ import {
   STREAM_OFFBOARD_PREFIX,
   STREAM_ONBOARD_PREFIX,
 } from "./integrations/stream-lifecycle";
+import { OFFER_ASKED_PREFIX } from "./dismissal-keys";
 
 /**
  * How a dismissal key is protected from re-attaching to a subject the user never
@@ -347,6 +348,15 @@ export const DISMISSAL_KEY_REGISTRY: readonly DismissalKeyEntry[] = [
     // statement about the topic that should outlive any particular hr_minutes row. A
     // NEW provider or a NEW stream mints a different key, so a second wearable gets
     // its own offer rather than inheriting this silence.
+  },
+  {
+    prefix: OFFER_ASKED_PREFIX,
+    keyClass: "catalog",
+    shape: "`<offerFamilyId>` (lib/offers.ts registry vocabulary)",
+    // An offer family's "did we ask" (#4840). Each family is a consent asked once,
+    // forever — "stop offering me a morning digest" is a statement about the topic —
+    // and the tail is a registry id, so nothing recycles. A family that is one-shot
+    // per EPISODE mints its own anchored prefix instead of sharing this one.
   },
   {
     prefix: "immunization:",
