@@ -147,6 +147,10 @@ const FILE_BUDGETS = {
   "docs/orchestration/multi-orchestrator.md": { lines: 60, genre: "runbook" },
   "docs/orchestration/recovery.md": { lines: 50, genre: "runbook" },
   "docs/orchestration/review-merge.md": { lines: 100, genre: "runbook" },
+  // The bar a new guard, scan or spec has to clear (owner, 2026-09-06). Its own
+  // file because e2e-ci.md and lifecycle.md were both AT their budgets the day
+  // the rules were written, and this gate's answer to that is to move detail out.
+  "docs/orchestration/what-earns-a-guard.md": { lines: 55, genre: "runbook" },
 } as const satisfies Record<string, { lines: number; genre: Genre }>;
 
 /**

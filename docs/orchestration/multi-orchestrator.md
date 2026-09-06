@@ -2,9 +2,6 @@
 
 Each orchestrator runs in its own container: its own roster, ledger, machine
 cap and E2E cap. What they share is GitHub — issues, branches, PRs, `main`.
-The PM spawns each on **Opus**, named explicitly because `create_session`
-inherits the PM's own model (owner, 2026-09-06); it is fixed at creation, so a
-fleet moves one REPLACEMENT at a time (`recovery.md` §Replacing a session).
 
 ## The slice
 

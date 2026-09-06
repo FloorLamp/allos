@@ -20,9 +20,7 @@
   or a merge, a measured reproduction no open issue scopes, or removes a
   parallel concept (CLAUDE.md). A scan gap is a line on its #5346 adopter, a
   harness nit a line on the harness issue, a flake joins its mechanism.
-- **A new guard, scan or e2e spec is not free work**: what earns one, and what
-  a deletion needs instead, is `e2e-ci.md` §What earns a guard, a scan, or a spec
-  (owner, 2026-09-06).
+- A new guard, scan or e2e spec is not free work: `what-earns-a-guard.md`.
 - After each UI-affecting merge, while its PR context is fresh, run
   `UX_SEED=1 node scripts/orchestration/post-merge-census.mjs HEAD^ HEAD --run`.
   It scopes territories, expands shared UI to a census, stops on a manual plan.
@@ -67,11 +65,10 @@
 - Before deleting a branch or dirty work, settle it on CONTENT: compare its
   files against `main` and say which comparison answered. The PR record and
   the surviving ref are hints; `main` is the verdict.
-- `merged=false` is not evidence nothing landed — work re-lands under a new PR
-  from a renamed successor branch (#5220), and a squash can leave the record
-  unmerged (`recovery.md` §A merge that half-landed).
-- Nor is a non-empty merge-base diff evidence of unlanded work: a sibling PR
-  can carry the same hunk (#5220); only `git diff main <branch> -- <file>` sees it.
+- `merged=false` is not evidence nothing landed — work re-lands from a renamed
+  successor branch (#5220), and a squash can leave the record unmerged
+  (`recovery.md` §A merge that half-landed). Nor is a non-empty merge-base
+  diff: only `git diff main <branch> -- <file>` sees a sibling PR's hunk.
 
 ## Out of scope
 
