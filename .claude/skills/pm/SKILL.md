@@ -38,7 +38,8 @@ The cross-account truth is GitHub alone: `main`, remote branches, open PRs,
 1. `list_sessions`, title `allos-orchestrator` (a second one adds a letter);
    keep the ones that are live. Refresh the ids in the Ladder.
 2. **No live orchestrator → create exactly one** with `create_session` in the
-   repo's environment, titled `allos-orchestrator`. Its prompt: invoke the
+   repo's environment, titled `allos-orchestrator`, on Opus
+   (`multi-orchestrator.md` §Spawning one — the model is never inherited). Its prompt: invoke the
    `orchestrate` skill, check in, adopt every live remote branch through
    `dispatch-brief.mjs adopt` (`recovery.md`), read the Ladder, refill.
 3. Record its id in the Ladder, arm your watch, and only then look at the
@@ -152,7 +153,8 @@ every question by VISIBLE impact and rules the low half itself.
 - Partition by DOMAIN, written into the Ladder: disjoint issue sets and a
   list of paths the new slice never edits. Give the UI-consolidation chain
   to one session whole; give the other everything disjoint from it.
-- Create it with `create_session` in the same environment. The prompt names
+- Create it with `create_session` in the same environment, on Opus
+  (`multi-orchestrator.md` §Spawning one). The prompt names
   the sibling's session id and the PM's, the slice, and the three rules of
   `docs/orchestration/multi-orchestrator.md`: claim before dispatch, file
   fence via the other's branches, serial merges with parallel PRs.
