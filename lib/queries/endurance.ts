@@ -230,12 +230,6 @@ export interface EventDayActivity {
   // events. An activity is the result of at most one event, so linking it here
   // MOVES it; the row says so rather than letting the tap take it silently.
   linkedElsewhere: boolean;
-  // Whether this session was logged on the event's own day. False only for a
-  // result the event kept when its date was edited afterwards — the one row the
-  // link moves cannot touch, in either direction, until the dates agree again
-  // (`linkEventActivityCore` / `unlinkEventActivityCore`). The page reads it to
-  // offer Unlink exactly where it could offer Link back.
-  onEventDay: boolean;
 }
 
 export interface EventDay {
@@ -304,7 +298,6 @@ export function getEventDay(
         linked: r.endurance_plan_id === plan.id,
         linkedElsewhere:
           r.endurance_plan_id != null && r.endurance_plan_id !== plan.id,
-        onEventDay: r.date === plan.eventDate,
       })),
   };
 }

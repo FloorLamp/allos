@@ -43,6 +43,7 @@ import {
 } from "@/lib/undo-delete-db";
 import { snapshotKeeperFold, writeActivityFold } from "@/lib/merge-activity";
 import { toKm } from "@/lib/units";
+import { saveActivityCore } from "@/lib/activity-write";
 
 function makeProfile(name: string): number {
   return Number(
@@ -365,9 +366,11 @@ describe("events with no cardio pair (#3285)", () => {
 //
 // `activities.endurance_plan_id` is the result link. Every row-level fact the issue
 // asks for is pinned here: the FK shape, the manual link's day rule and profile
-// scope, the Strava "race" auto-link and its refusals, what a plan delete does to
-// its activities, and that a merge and an undo carry the link the way they carry
-// the gear link.
+// scope, that DETACHING carries neither the day rule nor the status gate (a person
+// can always take a result off an event, whichever side's date moved since), the
+// Strava "race" auto-link and its refusals, what a plan delete does to its
+// activities, and that a merge and an undo carry the link the way they carry the
+// gear link.
 
 const RACE_DAY = "2026-06-14";
 
@@ -1445,12 +1448,12 @@ describe("events link their activities (#3285 item 2)", () => {
     expect(seqOf(fresh)).toBeGreaterThan(seqOf(restoredId));
   });
 
-  // The event page must not offer a door that only opens outward (#3285 item 2). A
-  // link SURVIVES the event's date being edited — the link is the fact, the date is
-  // the search key for the rest of the day — but linking is offered on the event's own
-  // day alone. So while the dates disagree neither move touches that row, and moving
-  // the event back onto the session's day brings both back at once.
-  it("a result kept across a date edit is listed, and neither link move touches it until the dates agree", () => {
+  // THE TWO MOVES ARE NOT SYMMETRIC (#3285 item 2). A link SURVIVES the event's date
+  // being edited — the link is the fact, the date is the search key for the rest of the
+  // day — and the person can take that result off at any time. Linking waits for the
+  // days to agree, because attaching is a claim about the world and the day is what
+  // makes it checkable.
+  it("a result kept across a date edit is listed and can still be taken off; linking it back waits for the days to agree", () => {
     const profileId = makeProfile("event-date-moved");
     const planId = raceDayPlan(profileId);
     addRun(profileId, RACE_DAY, 10.1, "race", "Harbor 10k");
@@ -1467,21 +1470,90 @@ describe("events link their activities (#3285 item 2)", () => {
         a.title,
         a.date,
         a.linked,
-        a.onEventDay,
       ])
-    ).toEqual([["Harbor 10k", RACE_DAY, true, false]]);
+    ).toEqual([["Harbor 10k", RACE_DAY, true]]);
 
-    // Neither move takes it, and the link stands.
-    expect(unlinkEventActivityCore(profileId, raced)).toBe(false);
+    // Re-attaching waits for the days to agree; detaching does not.
     expect(linkEventActivityCore(profileId, planId, raced)).toBe(false);
-    expect(linkOf(raced)).toBe(planId);
+    expect(unlinkEventActivityCore(profileId, raced)).toBe(true);
+    expect(decisionOf(raced)).toEqual({ plan: null, decided: true });
+    // And the session leaves the page with the link — which is the move that was made.
+    expect(getEventDay(profileId, planId)!.activities).toEqual([]);
 
-    // Move the event back onto the session's day and both work again.
+    // Move the event back onto the session's day and it can be linked again.
     expect(
       updateEndurancePlanCore(profileId, planId, { eventDate: RACE_DAY }).kind
     ).toBe("ok");
-    expect(getEventDay(profileId, planId)!.activities[0].onEventDay).toBe(true);
-    expect(unlinkEventActivityCore(profileId, raced)).toBe(true);
     expect(linkEventActivityCore(profileId, planId, raced)).toBe(true);
+  });
+
+  // THE SESSION'S day can move too, and the SYNC moves it: `resendLocalField` keeps
+  // the stored date only for Health Connect, so a Strava row re-sent with a corrected
+  // start time lands on a different day. Everything here is machinery — the sync
+  // attached the result (`decided: false`, nobody chose it) and the sync moved it off
+  // the event's day — so if detaching asked the days to agree, nothing anywhere could
+  // take this session off the event: the three writers that clear the link are a plan
+  // delete, a merge, and this core. The person must always be able to withdraw it.
+  it("a result the sync linked and then moved to another day can still be taken off", () => {
+    const profileId = makeProfile("event-sync-moved-day");
+    const planId = raceDayPlan(profileId);
+    const raceRow = {
+      external_id: "strava:evt-1",
+      date: RACE_DAY,
+      type: "cardio" as const,
+      title: "Morning Run",
+      duration_min: 42,
+      distance_km: toKm(10.1, "km"),
+      start_time: "09:00",
+      end_time: "09:42",
+      workout_type: "race",
+    };
+    upsertActivities(profileId, [raceRow], "strava");
+    const raced = lastRunId(profileId);
+    expect(decisionOf(raced)).toEqual({ plan: planId, decided: false });
+
+    // The provider re-sends the same session with the timezone fixed: a value change,
+    // so the upsert writes the new date onto the row it already has.
+    upsertActivities(
+      profileId,
+      [{ ...raceRow, date: "2026-06-15", duration_min: 43 }],
+      "strava"
+    );
+    expect(rowOf(raced).date).toBe("2026-06-15");
+
+    // The event page still lists it as the result, and Unlink is the way out.
+    expect(
+      getEventDay(profileId, planId)!.activities.map((a) => [a.date, a.linked])
+    ).toEqual([["2026-06-15", true]]);
+    expect(unlinkEventActivityCore(profileId, raced)).toBe(true);
+    expect(decisionOf(raced)).toEqual({ plan: null, decided: true });
+  });
+
+  // The same state with no sync at all: a person correcting the day they logged a
+  // session on, through the ordinary activity edit, which never touches the link.
+  it("a result whose own date the person edits can still be taken off", () => {
+    const profileId = makeProfile("event-edit-moved-day");
+    const planId = raceDayPlan(profileId);
+    addRun(profileId, RACE_DAY, 10.1, "race", "Harbor 10k");
+    const raced = lastRunId(profileId);
+    expect(linkEventActivityCore(profileId, planId, raced)).toBe(true);
+
+    const form = new FormData();
+    form.set("id", String(raced));
+    form.set("type", "cardio");
+    form.set("title", "Harbor 10k");
+    form.set("date", "2026-06-13");
+    form.set("distance", "10.1");
+    expect(
+      saveActivityCore(profileId, form, {
+        weightUnit: "kg",
+        distanceUnit: "km",
+      }, "page").ok
+    ).toBe(true);
+    expect(rowOf(raced).date).toBe("2026-06-13");
+    expect(linkOf(raced)).toBe(planId);
+
+    expect(unlinkEventActivityCore(profileId, raced)).toBe(true);
+    expect(linkOf(raced)).toBeNull();
   });
 });

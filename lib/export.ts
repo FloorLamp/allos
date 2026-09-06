@@ -227,22 +227,30 @@ type ActivityRow = {
   source: string | null;
   external_id: string | null;
   notes: string | null;
-  // The event this session was the result of (#3285 item 2) — the row id in the
-  // Events dataset, so the archive says which race a result belongs to and anything
-  // reading it can join the two. Nothing re-imports activities into the app, so this
-  // is for reading the export, not for restoring one.
-  endurance_plan_id: number | null;
+  // The event this session was the result of (#3285 item 2), named the way every
+  // other cross-dataset link in this file names its parent: by the identity the
+  // OTHER dataset publishes, never by the row id. The Events dataset's columns are
+  // `kind, event_name, discipline, event_date, …` with no id in them, so an
+  // `endurance_plan_id` cell would be an internal number against a CSV that prints
+  // no such number — unreadable and unjoinable in the same breath. These two are the
+  // Events columns themselves, so a reader matches a result to its event on the pair
+  // (`exercise_sets` carries `a.title AS activity` for the same reason).
+  event_name: string | null;
+  event_date: string | null;
 };
 type ActivitySet = SetRow & { activity_id: number; exercise: string };
 
 // The activities read, carrying the full device/Strava telemetry rather than the
 // display projection (#466). One statement, run by q()/qPage() through
 // tableDataset like every other dataset's.
-const ACTIVITIES_SELECT = `SELECT id, date, type, title, duration_min, distance_km, intensity,
-          start_time, end_time, avg_hr, max_hr, elevation_m, avg_power_w, avg_cadence,
-          kilojoules, est_calories, workout_type, source, external_id, notes,
-          endurance_plan_id
-     FROM activities WHERE profile_id = ? ORDER BY date DESC, id DESC`;
+const ACTIVITIES_SELECT = `SELECT a.id, a.date, a.type, a.title, a.duration_min, a.distance_km,
+          a.intensity, a.start_time, a.end_time, a.avg_hr, a.max_hr, a.elevation_m,
+          a.avg_power_w, a.avg_cadence, a.kilojoules, a.est_calories, a.workout_type,
+          a.source, a.external_id, a.notes, p.event_name, p.event_date
+     FROM activities a
+     LEFT JOIN endurance_plans p
+            ON p.id = a.endurance_plan_id AND p.profile_id = a.profile_id
+    WHERE a.profile_id = ? ORDER BY a.date DESC, a.id DESC`;
 
 // The exercise sets of the given activities, scoped to the profile through the
 // activities JOIN. ONE statement for both readers — the full export passes every
@@ -320,7 +328,8 @@ function shapeActivities(
       source: a.source,
       external_id: a.external_id,
       notes: a.notes,
-      endurance_plan_id: a.endurance_plan_id,
+      event_name: a.event_name,
+      event_date: a.event_date,
     };
   });
 }
@@ -509,7 +518,8 @@ export const DATASETS: ExportDataset[] = [
       "source",
       "external_id",
       "notes",
-      "endurance_plan_id",
+      "event_name",
+      "event_date",
     ],
   }),
   tableDataset({

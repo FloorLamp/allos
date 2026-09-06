@@ -67,7 +67,6 @@ export default async function TrainingEventPage(props: {
       .join(" · "),
     linked: a.linked,
     linkedElsewhere: a.linkedElsewhere,
-    onEventDay: a.onEventDay,
   }));
 
   return (

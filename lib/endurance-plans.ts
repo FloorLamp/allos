@@ -485,6 +485,10 @@ function nextEventLinkDecisionSeq(profileId: number): number {
 // Detaching stays available, so a result attached before the event was abandoned can
 // still be taken off.
 //
+// The DAY RULE IS ON THIS DIRECTION ONLY. Detaching carries no day rule at all
+// (`unlinkEventActivityCore`) — a claim is checked before it is believed, a withdrawal
+// is not.
+//
 // A hand link RECORDS the decision (`endurance_link_decided_seq`), it does not clear
 // it: the person has decided this session's link, and the link column already records
 // which event they chose. Clearing it instead would leave the session free the moment
@@ -517,9 +521,8 @@ export function linkEventActivityCore(
   );
 }
 
-// Detach an activity from whatever event it is linked to. Profile-scoped; false
-// when the row is not the profile's, was not linked, or was logged on a day that is
-// no longer the event's. IMMEDIATE.
+// Detach an activity from whatever event it is linked to. Profile-scoped; false only
+// when the row is not the profile's or was not linked at all. IMMEDIATE.
 //
 // The detach is REMEMBERED (`endurance_link_decided_seq`): this is a person saying the
 // session is not that event's result, and without it the auto-link runs again on the
@@ -527,17 +530,27 @@ export function linkEventActivityCore(
 // records a NEWER decision, and both are the person's; the newer one wins wherever
 // the two ever have to be resolved against each other.
 //
-// THE DAY RULE IS THE SAME ONE `linkEventActivityCore` APPLIES, and it is here so the
-// event page cannot offer a door that only opens outward. A link SURVIVES the event's
-// date being edited — `getEventDay` keeps listing the session, because the link is the
-// fact and the date is only the search key for the rest of the day — but linking is
-// offered on the event's own day alone. Without this rule the page rendered Unlink on
-// a session it could never re-offer: one tap and the row left the result, failed the
-// day filter and vanished from the page, recoverable only by editing the event's date
-// back, linking, and moving it forward again. So the two moves now cover the same
-// set: while the dates disagree the page shows the result it has and changes neither
-// side, and moving the event back onto the session's day brings both back at once.
-// Unaffected by `status`: detaching a result stays available on an abandoned event.
+// THERE IS NO DAY RULE HERE, AND IT IS NOT AN OVERSIGHT — the two moves are deliberately
+// NOT symmetric. Attaching says "this session is that event's result", a claim about the
+// world that can be wrong, so `linkEventActivityCore` asks the days to agree before
+// believing it. Detaching is a person WITHDRAWING that claim, and withdrawing is never
+// the unsafe direction: whatever state the row is in, taking it off the event is a state
+// the app can always represent.
+//
+// A day rule here strands results, because either side's date can move afterwards. The
+// EVENT's moves when the organiser postpones. The SESSION's moves when the provider
+// re-sends it with a corrected start time (`upsertActivities` writes `date`) or when the
+// person edits it. Either way the days disagree on a link the person may never have made
+// — the sync's own auto-link (`linkRaceActivityCore`) writes one unattended — and a day
+// rule would then refuse the only move that clears `endurance_plan_id` from a page a
+// person can reach: the event's own. Delete the event, delete the session, or restate a
+// date that was right: every other way out is destructive or false.
+//
+// The result of the tap is that the session leaves this event and, if it was not logged
+// on the event's day, leaves the page with it. That is what was asked for. Linking it
+// back is offered on the event's own day alone, so an off-day session cannot be re-offered
+// here until the dates agree again — the day rule is on the direction that makes a claim.
+// Unaffected by `status`: detaching stays available on an abandoned event.
 export function unlinkEventActivityCore(
   profileId: number,
   activityId: number
@@ -548,10 +561,7 @@ export function unlinkEventActivityCore(
         .prepare(
           `UPDATE activities
               SET endurance_plan_id = NULL, endurance_link_decided_seq = ?
-            WHERE id = ? AND profile_id = ? AND endurance_plan_id IS NOT NULL
-              AND date = (SELECT event_date FROM endurance_plans
-                           WHERE id = activities.endurance_plan_id
-                             AND profile_id = activities.profile_id)`
+            WHERE id = ? AND profile_id = ? AND endurance_plan_id IS NOT NULL`
         )
         .run(nextEventLinkDecisionSeq(profileId), activityId, profileId)
         .changes > 0
