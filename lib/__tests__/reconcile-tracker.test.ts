@@ -1656,10 +1656,14 @@ describe("a patch batch", () => {
   });
 });
 
-describe("the toolchain granted to a reconciliation run cannot close an issue", () => {
-  // STRUCTURAL, not instructed. The routine's first guardrail is "never closes
-  // issues"; a run holding a close-capable tool and a prompt asking it not to
-  // is the same theatre as a UI-only gate over a Server Action (#1279/#2107).
+describe("the toolchain granted to a reconciliation run closes only through the one MCP writer", () => {
+  // STRUCTURAL, not instructed. Until 2026-09-05 the routine's first guardrail
+  // was "never closes issues" and no close-capable tool was granted, so the
+  // bound held by construction (#1279/#2107's lesson). The owner then ruled
+  // that reconciliation CLOSES, SEQUENCES and GROUPS issues to reduce work, so
+  // the close now rides exactly one grant, `mcp__github__issue_write`, in the
+  // skill's own tool list — never a shell escape, never a script. The scripts
+  // below still hold no close capability at all.
   const MODULES = [
     "scripts/orchestration/reconcile-tracker.ts",
     "scripts/orchestration/reconcile-tracker-core.ts",
@@ -1703,14 +1707,15 @@ describe("the toolchain granted to a reconciliation run cannot close an issue", 
     }
   });
 
-  it("the skill grants no close-capable tool", () => {
+  it("the skill's only close capability is the MCP issue writer", () => {
     const text = source(SKILL);
     const allowed = /^allowed-tools:\s*(.+)$/m.exec(text);
     expect(allowed).not.toBeNull();
     for (const [name, re] of CLOSE_CAPABILITIES) {
+      const permitted = name === "the close-capable MCP issue writer";
       expect({ name, found: re.test(allowed![1]) }).toEqual({
         name,
-        found: false,
+        found: permitted,
       });
     }
     // A general Bash grant would re-open every hole the list above closes.
@@ -1826,10 +1831,15 @@ describe("the toolchain granted to a reconciliation run cannot close an issue", 
     }
   });
 
-  it("the skill states the guardrails it is bound by", () => {
+  it("the skill states the bounds a close is held to", () => {
     const text = source(SKILL);
-    expect(text).toContain("never closes issues");
-    expect(text).toContain("judgment calls get FLAGGED, not made");
+    expect(text).toContain(
+      "closes, sequences and groups issues to reduce work"
+    );
+    expect(text).toContain("A closure names the absorbing issue");
+    expect(text).toContain("An owner-filed issue");
+    expect(text).toContain("is never closed under it");
+    expect(text).toContain("`mcp__github__issue_write`");
   });
 });
 

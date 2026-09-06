@@ -137,7 +137,7 @@ export function sleepFactSummary(f: SleepFactInput): SleepFactSummary {
       key: "duration",
       label:
         f.importedMinutes == null
-          ? "duration is read-only"
+          ? "Duration is read-only"
           : `${sleepDurationLabel(f.importedMinutes)} · synced`,
       state: "stated",
     });
@@ -151,14 +151,14 @@ export function sleepFactSummary(f: SleepFactInput): SleepFactSummary {
   else
     // The prompt, NEVER an invented number: a profile with no manual nights to borrow
     // from is asked, not answered on its own behalf.
-    chips.push({ key: "duration", label: "add a duration", state: "missing" });
+    chips.push({ key: "duration", label: "Add a duration", state: "missing" });
 
   chips.push(
     f.valence == null
-      ? { key: "mood", label: "add a mood", state: "missing" }
+      ? { key: "mood", label: "Add a mood", state: "missing" }
       : {
           key: "mood",
-          label: `mood ${moodLabel(f.valence).toLowerCase()}`,
+          label: `Mood ${moodLabel(f.valence).toLowerCase()}`,
           state: "stated",
         }
   );

@@ -19,7 +19,7 @@ import {
   sendMessageRaw,
 } from "@/lib/notifications/telegram-api";
 import { seedProfile, type SeededProfile, seedLoginTelegram } from "./fixtures";
-import { tempReplyMarker } from "@/lib/notifications/callback-data";
+import { tempReplyMarker } from "@/lib/notifications/reply-markers";
 
 // This spec exercises the logic ABOVE the wire, so the four Telegram
 // primitives are stubbed for it (lib/__db_tests__/telegram-spies.ts). They

@@ -10,13 +10,9 @@ import { today } from "@/lib/db";
 import {
   getActivities,
   getActivitiesSince,
-  getActivitiesByDate,
   getLatestBodyMetricDated,
   getOutcomeGoals,
   getOutcomeGoalProgressMap,
-  getIntakeItems,
-  getIntakeDoses,
-  getTakenDoseIds,
   getLatestBodyMetricDailyPoints,
   getWorkoutPresence,
   getOptimalHitRate,
@@ -32,11 +28,11 @@ import {
 } from "@/lib/data-quality";
 import { activeByKey } from "@/lib/findings";
 import {
-  getActiveSituations,
   getDisplayFormatPrefs,
   getProfileAge,
   getUnitPrefs,
 } from "@/lib/settings";
+import { intakeAdherenceOn } from "@/lib/queries/household";
 import {
   isStrengthTrainingRelevant,
   isTrainingRelevant,
@@ -46,11 +42,7 @@ import { currentEpisodeForProfile } from "@/lib/illness-episode";
 import { householdSickLine } from "@/lib/illness-episode-format";
 import { schoolReturnStatusFor } from "@/lib/school-return-data";
 import { schoolReturnCompactClause } from "@/lib/school-return";
-import {
-  goalHighlights,
-  intakeAdherenceToday,
-  weightTrend,
-} from "@/lib/household";
+import { goalHighlights, weightTrend } from "@/lib/household";
 import { fmtWeight } from "@/lib/units";
 import { householdPresenceChip } from "@/lib/workout-presence";
 import { formatRelativeDate } from "@/lib/format-date";
@@ -94,22 +86,9 @@ export default async function HouseholdPage() {
     const trainingRelevant = isTrainingRelevant(age);
     const strengthTrainingRelevant = isStrengthTrainingRelevant(age);
 
-    // Today's intake adherence (x/y): due doses honored via isDueOn.
-    const activeItemById = new Map(
-      getIntakeItems(pid)
-        .filter((s) => s.active)
-        .map((s) => [s.id, s])
-    );
-    const adherence = intakeAdherenceToday(
-      getIntakeDoses(pid),
-      activeItemById,
-      {
-        date: day,
-        isWorkoutDay: getActivitiesByDate(pid, day).length > 0,
-        activeSituations: new Set(getActiveSituations(pid)),
-      },
-      getTakenDoseIds(pid, day)
-    );
+    // Today's intake adherence (x/y): due doses honored via isDueOn, and the SAME
+    // effective situations the member's own page uses (#5167).
+    const adherence = intakeAdherenceOn(pid, day);
 
     const relevantRecent = trainingRelevant
       ? getActivities(pid, 10).find(

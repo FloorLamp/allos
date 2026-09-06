@@ -1243,6 +1243,12 @@ describe("actual atomic dashboard manifests", () => {
   // would cost the same 57 as this thirty-day one. The five personas with no
   // `hr_minutes` are unmoved, which is what makes that legible.
   const QUERY_BASELINE: Record<string, number> = {
+    // −4 on `biohacker` and 0 on the other five (#5026 phase 2). Both substance reads
+    // on this path issued ONE SELECT PER KEY in the profile's vocabulary plus the
+    // DISTINCT scan that built it — `getAllSubstanceDailyTotals`, called once by the
+    // record's substance rows and once by the chip probe. Each is now a bounded pair of
+    // statements: the record reads one page of the use ledger (count + rows) and the
+    // probe asks each event store once. The five personas at 0 never reach the branch.
     // +1 on four personas and +3 on two (#4956): the attention read now also asks
     // whether a live source is DROPPING a record type. That is one scan of this
     // profile's CONNECTED sources, plus one bounded window of recent runs per
@@ -1364,7 +1370,7 @@ describe("actual atomic dashboard manifests", () => {
     // one grouped today-tally and one live sweep however many practices there are,
     // plus the usual-duration vote per practice. Assembling the same four fields
     // per-target instead measured +13.
-    biohacker: 312,
+    biohacker: 308,
     // −1 each (#5061): `getDayLoadInputs` and `getIntensitySignal` ask the same
     // question of the same 42 days — the shared HR read, kept to the activity windows
     // that bound it — and only the READ was request-cached (#5010), so each one still
@@ -1617,7 +1623,9 @@ describe("actual atomic dashboard manifests", () => {
     household: 177,
     pregnant: 119,
     "diabetic-cgm": 128,
-    biohacker: 190,
+    // The cold table's −4, carried through: the warm render re-issues the same two
+    // substance reads and they are the same two bounded pairs now.
+    biohacker: 186,
   };
 
   it("dashboard query budget: a second load with no write in between matches its warm baseline (#5073)", () => {
