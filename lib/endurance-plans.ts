@@ -5,10 +5,13 @@
 // mutation runs through writeTx (#468).
 
 import { db, writeTx } from "./db";
+import { setProfileSetting } from "./settings";
 import {
   DEFAULT_EVENT_KIND,
+  disciplineForActivityName,
   eventTitle,
   isEnduranceDiscipline,
+  isEventLinkDecided,
   type EndurancePlan,
   type EndurancePlanDiscipline,
   type EndurancePlanStatus,
@@ -358,9 +361,17 @@ export function setEndurancePlanStatusCore(
   });
 }
 
-// Delete a plan. Nothing is keyed to a plan id (the trajectory is derived, the timeline
-// event/completion milestone are date-derived), so this is a plain profile-scoped delete.
-// IMMEDIATE.
+// Delete a plan. The trajectory is derived and the timeline event is date-derived;
+// the two things keyed to a plan id are cleared here: its completion milestone, and
+// the activities linked to it (#3285 item 2), which are UNLINKED and kept — a logged
+// session is training history and outlives the event it was entered for. The FK is
+// `ON DELETE SET NULL` and agrees; the explicit UPDATE keeps this transaction
+// correct on a connection where the pragma is off (the migration runner's).
+//
+// The person's decision is left exactly as it is, on both paths. A session whose link
+// a person set by hand keeps its decision ordinal when the event goes away, so the
+// next sync cannot quietly re-attach it to some other event that day; a session the
+// sync linked on its own carries no decision and stays a candidate. IMMEDIATE.
 export function deleteEndurancePlanCore(
   profileId: number,
   id: number
@@ -372,9 +383,246 @@ export function deleteEndurancePlanCore(
       profileId,
       planMilestoneKey(id)
     );
+    db.prepare(
+      `UPDATE activities SET endurance_plan_id = NULL
+        WHERE endurance_plan_id = ? AND profile_id = ?`
+    ).run(id, profileId);
     const res = db
       .prepare("DELETE FROM endurance_plans WHERE id = ? AND profile_id = ?")
       .run(id, profileId);
     return res.changes > 0;
+  });
+}
+
+// ── Linked activities (#3285 item 2) ──────────────────────────────────────────────
+//
+// `activities.endurance_plan_id` attaches a logged session to the event it was the
+// result of. An event's result is the set of activities pointing at it; an activity
+// is the result of at most one event.
+
+// Where the profile's decision counter is kept: a HIGH-WATER MARK that only ever
+// goes up. It is not the ordering itself — the ordinals on the rows are — it is the
+// one fact a delete must not be able to take away.
+const EVENT_LINK_SEQ_KEY = "event_link_decision_seq";
+
+// The ordinal a decision about an event link is recorded with (#3285 item 2): one
+// past the highest this profile has EVER been issued. Taken inside the caller's
+// IMMEDIATE transaction, so the write lock serializes it — no clock, no ties. Gaps
+// are fine (a refused link burns one); only the order is read.
+//
+// WHY A STORED MARK RATHER THAN `MAX(seq) + 1` OVER THE LIVE ROWS. The live rows are
+// not the set an ordinal has to be unique over: a deleted activity is captured whole
+// — ordinal included — and the Trash's Restore button puts it back verbatim, weeks
+// later, at the person's choosing. Deleting the row that carried the newest decision
+// lowered the maximum, the next decision took that same number, and restoring the
+// first one put two live rows on the same rank; the merge fold then had to fall back
+// to keeper-first, which is the coin flip this ordinal exists to end. So the counter
+// lives where nothing that removes a row can lower it, and the allocator's scope is
+// every row that can ever become live again rather than the rows live right now.
+//
+// The mark is the floor, and the live rows are a second floor beneath it, so a
+// profile whose mark is missing (a database upgraded from before it, or one restored
+// without its settings) still cannot re-issue an ordinal a live row holds. The one
+// time the mark is absent, the captured payloads are read too: before the mark
+// existed, ordinals were handed out by live maximum alone, so one can be sitting in
+// the Trash above every live row. `json_tree` walks whatever a capture holds,
+// whichever kind wrote it, so this needs no knowledge of the payload's shape and
+// covers a merge's keeper snapshot as well as a plain delete. Once the mark is set
+// it is the only floor that can matter, so the scan never runs again.
+//
+// NOT a `deleted_rows` scan on every decision (the shape that also closes the hole):
+// that would put a JSON walk of every capture the profile holds on a button press,
+// and it would still only cover the doors that exist today — the mark covers any
+// future one, because it is never lowered by anything.
+function nextEventLinkDecisionSeq(profileId: number): number {
+  // Read the mark with SQL rather than getProfileSetting: this runs inside the write
+  // transaction and must see what is committed, never an operation-scoped read cache.
+  const stored = Number(
+    (
+      db
+        .prepare(
+          `SELECT value FROM profile_settings WHERE profile_id = ? AND key = ?`
+        )
+        .get(profileId, EVENT_LINK_SEQ_KEY) as { value: string } | undefined
+    )?.value
+  );
+  const mark = Number.isInteger(stored) && stored > 0 ? stored : 0;
+  const live = (
+    db
+      .prepare(
+        `SELECT COALESCE(MAX(endurance_link_decided_seq), 0) AS m
+           FROM activities WHERE profile_id = ?`
+      )
+      .get(profileId) as { m: number }
+  ).m;
+  const captured =
+    mark > 0
+      ? 0
+      : (
+          db
+            .prepare(
+              `SELECT COALESCE(MAX(CAST(v.value AS INTEGER)), 0) AS m
+                 FROM deleted_rows d, json_tree(d.payload) v
+                WHERE d.profile_id = ? AND v.key = ?`
+            )
+            .get(profileId, "endurance_link_decided_seq") as { m: number }
+        ).m;
+  const next = Math.max(mark, live, captured) + 1;
+  // Written through the settings substrate so its read cache cannot go stale.
+  setProfileSetting(profileId, EVENT_LINK_SEQ_KEY, String(next));
+  return next;
+}
+
+// Link an activity to an event, MANUALLY. Both rows must be the profile's, the
+// activity must be logged on the event's day, and the event must not be ABANDONED —
+// the one statement carries every rule, so a cross-profile id, an off-day session or
+// an abandoned event simply changes nothing. IMMEDIATE.
+//
+// An abandoned event never attracts a result, by hand or by sync: the person said the
+// event did not happen for them, and a result would contradict it on the event's own
+// page ("Abandoned · Result: Harbor 10k"). The auto-link says the same thing in its
+// own WHERE clause (`linkRaceActivityCore`); the page stops offering the button.
+// Detaching stays available, so a result attached before the event was abandoned can
+// still be taken off.
+//
+// The DAY RULE IS ON THIS DIRECTION ONLY. Detaching carries no day rule at all
+// (`unlinkEventActivityCore`) — a claim is checked before it is believed, a withdrawal
+// is not.
+//
+// A hand link RECORDS the decision (`endurance_link_decided_seq`), it does not clear
+// it: the person has decided this session's link, and the link column already records
+// which event they chose. Clearing it instead would leave the session free the moment
+// anything removed that link without them — deleting the event, a merge, an undo —
+// and the next sync would attach it to the very event they detached it from.
+export function linkEventActivityCore(
+  profileId: number,
+  planId: number,
+  activityId: number
+): boolean {
+  return writeTx(
+    () =>
+      db
+        .prepare(
+          `UPDATE activities
+              SET endurance_plan_id = ?, endurance_link_decided_seq = ?
+            WHERE id = ? AND profile_id = ?
+              AND date = (SELECT event_date FROM endurance_plans
+                           WHERE id = ? AND profile_id = ?
+                             AND status IN ('active', 'completed'))`
+        )
+        .run(
+          planId,
+          nextEventLinkDecisionSeq(profileId),
+          activityId,
+          profileId,
+          planId,
+          profileId
+        ).changes > 0
+  );
+}
+
+// Detach an activity from whatever event it is linked to. Profile-scoped; false only
+// when the row is not the profile's or was not linked at all. IMMEDIATE.
+//
+// The detach is REMEMBERED (`endurance_link_decided_seq`): this is a person saying the
+// session is not that event's result, and without it the auto-link runs again on the
+// next value-changing re-sync. Re-linking by hand does not clear the memory — it
+// records a NEWER decision, and both are the person's; the newer one wins wherever
+// the two ever have to be resolved against each other.
+//
+// THERE IS NO DAY RULE HERE, AND IT IS NOT AN OVERSIGHT — the two moves are deliberately
+// NOT symmetric. Attaching says "this session is that event's result", a claim about the
+// world that can be wrong, so `linkEventActivityCore` asks the days to agree before
+// believing it. Detaching is a person WITHDRAWING that claim, and withdrawing is never
+// the unsafe direction: whatever state the row is in, taking it off the event is a state
+// the app can always represent.
+//
+// A day rule here strands results, because either side's date can move afterwards. The
+// EVENT's moves when the organiser postpones. The SESSION's moves when the provider
+// re-sends it with a corrected start time (`upsertActivities` writes `date`) or when the
+// person edits it. Either way the days disagree on a link the person may never have made
+// — the sync's own auto-link (`linkRaceActivityCore`) writes one unattended — and a day
+// rule would then refuse the only move that clears `endurance_plan_id` from a page a
+// person can reach: the event's own. Delete the event, delete the session, or restate a
+// date that was right: every other way out is destructive or false.
+//
+// The result of the tap is that the session leaves this event and, if it was not logged
+// on the event's day, leaves the page with it. That is what was asked for. Linking it
+// back is offered on the event's own day alone, so an off-day session cannot be re-offered
+// here until the dates agree again — the day rule is on the direction that makes a claim.
+// Unaffected by `status`: detaching stays available on an abandoned event.
+export function unlinkEventActivityCore(
+  profileId: number,
+  activityId: number
+): boolean {
+  return writeTx(
+    () =>
+      db
+        .prepare(
+          `UPDATE activities
+              SET endurance_plan_id = NULL, endurance_link_decided_seq = ?
+            WHERE id = ? AND profile_id = ? AND endurance_plan_id IS NOT NULL`
+        )
+        .run(nextEventLinkDecisionSeq(profileId), activityId, profileId)
+        .changes > 0
+  );
+}
+
+// The AUTO-link, from the one hint a source supplies: Strava labels an activity's
+// `workout_type` "race". A race-labelled cardio session whose title maps onto a
+// discipline links to the profile's event on that day IN that discipline — an event
+// with no discipline (a meet, a tournament) is not a race and is never a candidate,
+// and a session already linked, by hand or by an earlier sync, is left exactly where
+// it is. Active or completed events both count: a race synced the evening after it
+// was marked done still belongs to it. An abandoned event never attracts a result.
+// A session whose link a person has SET by hand — attached or detached — is never
+// claimed again, whatever the source later says about it and whatever later happens
+// to the link itself (`isEventLinkDecided`).
+// Called by the integration upsert after every insert or value-changing update;
+// returns whether a link was written. IMMEDIATE (a SAVEPOINT under the sync's lock).
+export function linkRaceActivityCore(
+  profileId: number,
+  activityId: number
+): boolean {
+  return writeTx(() => {
+    const a = db
+      .prepare(
+        `SELECT date, type, title, workout_type, endurance_plan_id,
+                endurance_link_decided_seq
+           FROM activities WHERE id = ? AND profile_id = ?`
+      )
+      .get(activityId, profileId) as
+      | {
+          date: string;
+          type: string;
+          title: string;
+          workout_type: string | null;
+          endurance_plan_id: number | null;
+          endurance_link_decided_seq: number | null;
+        }
+      | undefined;
+    if (
+      !a ||
+      a.endurance_plan_id != null ||
+      isEventLinkDecided(a.endurance_link_decided_seq) ||
+      a.type !== "cardio" ||
+      a.workout_type !== "race"
+    )
+      return false;
+    const discipline = disciplineForActivityName(a.title);
+    if (!discipline) return false;
+    const plan = db
+      .prepare(
+        `SELECT id FROM endurance_plans
+          WHERE profile_id = ? AND event_date = ? AND discipline = ?
+            AND status IN ('active', 'completed')
+          ORDER BY (status = 'active') DESC, id DESC LIMIT 1`
+      )
+      .get(profileId, a.date, discipline) as { id: number } | undefined;
+    if (!plan) return false;
+    db.prepare(
+      `UPDATE activities SET endurance_plan_id = ? WHERE id = ? AND profile_id = ?`
+    ).run(plan.id, activityId, profileId);
+    return true;
   });
 }

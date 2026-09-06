@@ -4,7 +4,7 @@ import {
   eventTitle,
   type EndurancePlanDiscipline,
 } from "./endurance-plan";
-import { trainingActivityPageHref } from "./hrefs";
+import { trainingActivityPageHref, trainingEventPageHref } from "./hrefs";
 import { isDraftActivityRow } from "./activity-draft";
 import { shiftDateStr } from "./date";
 import { db, today } from "./db";
@@ -1272,7 +1272,7 @@ function collectEvents(
           category: "endurance",
           title: `Event: ${name}`,
           subtitle: eventDetail(event),
-          href: "/training",
+          href: trainingEventPageHref(p.id),
           sortTime: timeFromCreatedAt(p.created_at, tz),
           tone: p.status === "completed" ? "good" : "default",
         },
