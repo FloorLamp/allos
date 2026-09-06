@@ -1,13 +1,10 @@
 // Flake telemetry for the e2e suite (plain Node, no deps — CI runs it even when
 // the run failed and before any build tooling is guaranteed warm).
 //
-// The CI full suite runs with `retries: 1`, which means a pass-on-retry ships a
-// GREEN run — every such pass is a confirmed flake detection that used to be
-// thrown away. Playwright's json reporter records those tests with status
-// "flaky"; this script extracts them and prints a Markdown fragment for
-// $GITHUB_STEP_SUMMARY, so each CI run shows its flake catch and the backlog is
-// measured instead of masked (the precondition for ever dropping full-suite
-// retries — see docs/internals/e2e-hygiene.md).
+// Routine CI uses zero retries. An on-demand e2e-full.yml run can opt into
+// retries to measure pass-on-retry tests. Playwright records those as "flaky";
+// this script lists them in $GITHUB_STEP_SUMMARY. An empty report from a run
+// with zero retries is expected and does not establish that the suite is flake-free.
 //
 // Usage: node scripts/e2e-flake-report.mjs [path/to/e2e-results.json]
 // Always exits 0 — this is telemetry, not a gate; the suite result gates.
