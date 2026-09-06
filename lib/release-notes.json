@@ -28,7 +28,7 @@
           "pr": 5425,
           "kind": "feature",
           "category": "Interface",
-          "title": "A time field opens when you focus it, takes 830, and steps by the minute",
+          "title": "A time field takes 830, and opens on focus on a wide screen",
           "issues": [5360]
         },
         {
@@ -49,7 +49,7 @@
           "pr": 5391,
           "kind": "fix",
           "category": "Interface",
-          "title": "A change that asks you to confirm opens its sheet instead of hanging",
+          "title": "Saving a change that asks you to confirm no longer sticks on Saving…",
           "issues": [5336]
         },
         {
@@ -58,13 +58,6 @@
           "category": "Medications",
           "title": "The offline schedule offers the doses that were actually due that day",
           "issues": [5167]
-        },
-        {
-          "pr": 5399,
-          "kind": "fix",
-          "category": "Interface",
-          "title": "Fact chips match the height of every other control",
-          "issues": [4035]
         },
         {
           "pr": 5365,
@@ -77,7 +70,7 @@
           "pr": 5422,
           "kind": "feature",
           "category": "Training",
-          "title": "Vary one set's weight when it differs from the rest of the exercise",
+          "title": "Give one set its own weight without changing the others",
           "issues": [5371]
         },
         {
@@ -105,6 +98,12 @@
           "category": "Interface",
           "title": "Buttons, chips and folds share one height across the app",
           "issues": [4505]
+        },
+        {
+          "pr": 5290,
+          "category": "Documents",
+          "title": "Substance rows can no longer be selected and deleted on Data → Manage",
+          "issues": [5026]
         }
       ]
     },
