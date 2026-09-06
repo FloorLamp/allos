@@ -21,7 +21,6 @@ import {
   RECOVERING_LOAD_FACTOR,
 } from "@/lib/injury-model";
 import { isValidDuration } from "@/lib/duration";
-import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { judgeTargets } from "@/lib/training-log-format";
 import {
   suggestNextSet,
@@ -592,7 +591,6 @@ export default function StrengthSets({
     seed?: number
   ) => void;
 }) {
-  const formatPrefs = useFormatPrefs();
   const p = part;
   // Plateau hints dismissed in this session (#923) — an optimistic local hide so the
   // inline hint vanishes on tap while the shared-bus write persists it everywhere else.
