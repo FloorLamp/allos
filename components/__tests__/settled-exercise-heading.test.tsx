@@ -75,8 +75,8 @@ const PLATEAU: PlateauFormHint[] = [
   {
     exerciseKey: "bench press",
     equipmentId: null,
-    dedupeKey: "plateau-bench-42",
-    supersedes: "plateau-bench-41",
+    dedupeKey: "bench plateau 1",
+    supersedes: "bench plateau 0",
     hintText: "Flat for about 6 weeks.",
   },
 ];
@@ -247,7 +247,7 @@ describe("history is one line, the rest one tap behind (#5370)", () => {
 
     expect(dismissTrainingObservation).toHaveBeenCalledTimes(1);
     expect(dismissTrainingObservation.mock.calls[0][0].get("dedupe_key")).toBe(
-      "plateau-bench-42"
+      "bench plateau 1"
     );
     expect(screen.queryByTestId("plateau-hint")).toBeNull();
   });
