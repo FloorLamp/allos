@@ -248,7 +248,7 @@ test.describe("endurance event plans (#839)", () => {
     const thumbs = strip.locator("img");
     await expect(thumbs).toHaveCount(1);
     // The grid reads the THUMBNAIL asset, not the original (#1119).
-    await expect(thumbs.first()).toHaveAttribute(
+    await expect(thumbs).toHaveAttribute(
       "src",
       /\/api\/training-photo\/\d+\?thumb=1$/
     );
