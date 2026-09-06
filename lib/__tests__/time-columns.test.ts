@@ -318,6 +318,10 @@ const PAIRING_ALLOW: Record<string, { count: number; why: string }> = {
     count: 3,
     why: "three database-side food-ledger operations must pair stated eating time with immutable capture before rows reach JS: the server-paged history's stable within-day order, plus the recent-food check's bounded MAX and WHERE. JS projections use bestKnownInstant and are not allowlisted.",
   },
+  "lib/queries/substance.ts": {
+    count: 1,
+    why: "the substance use-ledger's server-paged history needs its stable within-day order (stated use instant, immutable capture as the fallback) computed database-side, before rows reach JS — the food ledger's own reader beside it, on the ledger #5026 phase 2 gave nicotine, cannabis and the custom keys. The record's row and tick both ask the question through bestKnownInstant/eventInstant instead.",
+  },
   "lib/queries/search.ts": {
     count: 1,
     why: "`ORDER BY COALESCE(onset_date, created_at)` over allergies, which pairs a DAY with an INSTANT — the two sort against each other lexically and a same-day pair therefore orders arbitrarily. Search ordering is cosmetic, so this is logged rather than urgent, but it is a genuine grain confusion and belongs in phase 2's sweep.",

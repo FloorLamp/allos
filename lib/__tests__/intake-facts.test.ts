@@ -104,8 +104,8 @@ describe("intake fact summary (#3216)", () => {
     // duplication the prototyping caught; the timing chip carries the ceiling only.
     expect(timing?.label).toContain("6");
     expect(timing?.label).toContain("4");
-    expect(timing?.label).not.toContain("as needed");
-    expect(importance?.label).toContain("as needed");
+    expect(timing?.label).not.toContain("As needed");
+    expect(importance?.label).toContain("As needed");
   });
 
   it("an as-needed item with no confirmed ceiling states no timing at all", () => {

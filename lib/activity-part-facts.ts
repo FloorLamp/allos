@@ -60,10 +60,10 @@ export interface PartFactSummary {
 
 /** The noun each fact is called in the trailing affordance and in its editor. */
 export const PART_FACT_NOUNS: Record<PartFactKey, string> = {
-  equipment: "equipment",
-  sides: "sides",
-  intent: "a target",
-  effort: "effort",
+  equipment: "Equipment",
+  sides: "Sides",
+  intent: "A target",
+  effort: "Effort",
 };
 
 /**
@@ -115,7 +115,7 @@ export function partFactSummary(f: PartFactInput): PartFactSummary {
     f.gearName != null
       ? { key: "equipment", label: f.gearName, state: "stated" }
       : needsEquipment(p.name)
-        ? { key: "equipment", label: "pick equipment", state: "missing" }
+        ? { key: "equipment", label: "Pick equipment", state: "missing" }
         : {
             key: "equipment",
             label: PART_FACT_NOUNS.equipment,
@@ -127,7 +127,7 @@ export function partFactSummary(f: PartFactInput): PartFactSummary {
     if (p.perSide)
       chips.push({
         key: "sides",
-        label: "sides tracked separately",
+        label: "Sides tracked separately",
         state: "stated",
       });
     else absent.push("sides");
@@ -137,11 +137,11 @@ export function partFactSummary(f: PartFactInput): PartFactSummary {
     // AMRAP first: "to failure" and a rep target are the same fact answered two ways,
     // and `partIntent` already refuses to report a target while `toFailure` is set.
     if (intent.toFailure)
-      chips.push({ key: "intent", label: "to failure", state: "stated" });
+      chips.push({ key: "intent", label: "To failure", state: "stated" });
     else if (intent.target != null)
       chips.push({
         key: "intent",
-        label: `target ${intent.target} ${intent.target === 1 ? "rep" : "reps"}`,
+        label: `Target ${intent.target} ${intent.target === 1 ? "rep" : "reps"}`,
         state: "stated",
       });
     else absent.push("intent");
@@ -149,7 +149,7 @@ export function partFactSummary(f: PartFactInput): PartFactSummary {
 
   if (offered.effort) {
     if (f.effortOn)
-      chips.push({ key: "effort", label: "rating effort", state: "stated" });
+      chips.push({ key: "effort", label: "Rating effort", state: "stated" });
     else absent.push("effort");
   }
 
@@ -163,7 +163,9 @@ export function partFactSummary(f: PartFactInput): PartFactSummary {
  */
 export function moreFactsLabel(absent: readonly PartFactKey[]): string | null {
   if (absent.length === 0) return null;
-  const nouns = absent.map((k) => PART_FACT_NOUNS[k]);
+  // Lowercased because these sit MID-SENTENCE here — the noun is a chip label of its
+  // own elsewhere, where it leads and is sentence-cased.
+  const nouns = absent.map((k) => PART_FACT_NOUNS[k].toLowerCase());
   if (nouns.length === 1) return `Add ${nouns[0]}`;
   const last = nouns[nouns.length - 1];
   return `Add ${nouns.slice(0, -1).join(", ")} or ${last}`;

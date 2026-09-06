@@ -39,8 +39,11 @@ import {
 import { validateProfileSubstanceName } from "@/lib/vocabulary-store";
 import { logFoodServingCore, undoFoodServingCore } from "@/lib/food-log-write";
 import {
+  correctSubstanceEventCore,
+  deleteSubstanceEventCore,
   logSubstanceUnitCore,
   undoSubstanceUnitCore,
+  type SubstanceEventEditOutcome,
 } from "@/lib/substance-log-write";
 import { getSubstanceWeekState } from "@/lib/queries";
 import { deleteFrequencyTargetRow } from "@/lib/frequency-target-delete";
@@ -49,7 +52,6 @@ import { getProfileAge } from "@/lib/settings";
 import { formError, formOk, type FormResult } from "@/lib/types";
 import {
   addSubstanceDailyTotalCore,
-  updateSubstanceDailyTotalCore,
   deleteSubstanceDailyTotalCore,
   type SubstanceHistoryMutationOutcome,
 } from "@/lib/substance-daily-totals-write";
@@ -375,27 +377,26 @@ function historyInput(
   };
 }
 
-// THE MINUTE A DRINK STATES (#3295 phase 1), read off the post and gated here.
+// THE MINUTE A USE STATES (#3295 phase 1; every substance since #5026 phase 2), read
+// off the post and gated here.
 //
-// ALCOHOL ONLY, and the predicate is the ledger rather than the key: alcohol's units
-// are `food_log_events` rows, which carry `occurred_at` + `time_source`, while every
-// other substance — curated or a profile's own — rides `substance_daily_totals`, which
-// is UNIQUE per (profile, date, substance) and has nowhere to put an instant. The form
-// offers no time control there; this refuses a posted one, because a Server Action is
-// independently POST-callable and a field the store cannot hold must not be half-kept.
+// NO LEDGER PREDICATE ANY MORE. Until phase 2 this refused a stated instant for
+// anything but alcohol, because `substance_daily_totals` is UNIQUE per (profile, date,
+// substance) and had nowhere to put one — a field the store could not hold must not be
+// half-kept. Both ledgers carry `occurred_at` + `time_source` now, so the refusal has
+// no subject left and the door offers a time for nicotine, cannabis and every custom
+// key on the same terms it offers one for a drink.
 //
 // THE GATE IS `judgeStatedAt` — the same two rules every stated instant in the app
 // passes (not meaningfully in the future, and the instant's profile-local date IS the
 // row's `date`), asked of the SUBJECT's zone and the server's clock. A refusal DROPS
 // THE STATEMENT AND KEEPS THE WRITE, which is the log path's side of that function's
-// documented split: losing the stated minute is cosmetic, losing the drink is not.
-function statedDrinkInstant(
+// documented split: losing the stated minute is cosmetic, losing the use is not.
+function statedUseInstant(
   profileId: number,
-  substance: SubstanceKey,
   date: string,
   formData: FormData
 ): string | null {
-  if (substanceDef(substance).ledger !== "food-log") return null;
   const raw = String(formData.get("stated_at") ?? "").trim();
   if (!raw) return null;
   const verdict = judgeStatedAt(
@@ -425,12 +426,7 @@ export async function addSubstanceDailyTotalAction(
     parsed.substance,
     {
       ...parsed,
-      statedAt: statedDrinkInstant(
-        profile.id,
-        parsed.substance,
-        parsed.date,
-        formData
-      ),
+      statedAt: statedUseInstant(profile.id, parsed.date, formData),
     },
     webOrigin(formData)
   );
@@ -443,44 +439,71 @@ export async function addSubstanceDailyTotalAction(
   };
 }
 
-export async function updateSubstanceDailyTotalAction(
+// THE SUBJECT AND ITS GATES, in one place, because five actions on this surface ask
+// the identical three questions of the identical profile (#4009 item 1 / #2106,
+// #1174/#1279): `/history`'s `?view=everyone` posts the ROW's own `profile_id`, and
+// `gateItemProfile` gates it through requireProfileWriteAccess — reachable AND write,
+// redirect otherwise — falling back to the acting-profile gate when no subject is
+// posted. The AGE gate and the DAY bound move with that subject: a caregiver acting as
+// an adult must not correct a MINOR member's substance row, and `today()` in the
+// caregiver's zone could refuse (or admit) a date the subject's own calendar reads
+// differently. The read these corrections face is gated on the SUBJECT's age in
+// lib/history.ts; the write asks the same question of the same profile or the two
+// disagree.
+
+// CORRECT ONE RECORDED USE (#5026 phase 2), replacing the day-count correction that
+// stood here. A consumable is an EVENT, so what a correction addresses is the event:
+// its DAY and the minute somebody stated for it. Amount is gone from the contract
+// because one event is one unit, and so is the day's NOTE, which belongs to the day and
+// not to any use under it (#5077 owns where it lives now).
+export async function correctSubstanceUseAction(
   formData: FormData
-): Promise<SubstanceHistoryWriteResult> {
-  // THE ROW'S PROFILE, NOT THE ACTING ONE (#4009 item 1 / #2106): `/history`'s
-  // `?view=everyone` posts the row's own `profile_id`, and `gateItemProfile` gates it
-  // through requireProfileWriteAccess — reachable AND write, redirect otherwise —
-  // falling back to the acting-profile gate when no subject is posted. The ⋯ menu is
-  // the affordance; this is the gate.
-  //
-  // THE AGE GATE AND THE DAY BOUND MOVE WITH THE SUBJECT (#1174/#1279). Both were
-  // asked of the acting profile, which is the wrong question the moment the row is
-  // somebody else's: a caregiver acting as an adult could otherwise correct a MINOR
-  // member's substance row, and `today()` in the caregiver's zone could refuse (or
-  // admit) a date the subject's own calendar reads differently. The read this
-  // corrects is gated on the SUBJECT's age in lib/history.ts; the write must ask the
-  // same question of the same profile or the two disagree.
+): Promise<SubstanceEventEditOutcome> {
   const profileId = await gateItemProfile(formData);
   if (isMinor(getProfileAge(profileId))) return { kind: "not-found" };
-  const parsed = historyInput(formData, today(profileId));
-  if (!parsed.ok) return parsed.outcome;
-  const id = Number(formData.get("id"));
-  if (!Number.isInteger(id) || id <= 0) return { kind: "not-found" };
-  // NO SURFACE STAMP: the correction no longer creates a row (a drink's units are
-  // events and are corrected on the event, #5026 item 1), so there is no provenance
-  // for it to claim — a day counter's correction only restates what is already there.
-  const outcome = updateSubstanceDailyTotalCore(
-    profileId,
-    parsed.substance,
-    id,
-    parsed
-  );
+  const eventId = Number(formData.get("event_id"));
+  if (!Number.isInteger(eventId) || eventId <= 0) return { kind: "not-found" };
+  const date = String(formData.get("date") ?? "").trim();
+  if (!isRealIsoDate(date)) return { kind: "invalid-date" };
+  // THREE STATES ON THE WIRE, matching the core's patch convention: a `stated_at` that
+  // is absent leaves the row's instant alone, an EMPTY one clears it back to "nobody
+  // said", and a value states it. The form always posts the field, so clearing a time
+  // is reachable — which is the half a nullable-or-missing wire shape loses.
+  const raw = formData.get("stated_at");
+  const statedAt =
+    raw === null
+      ? undefined
+      : String(raw).trim() === ""
+        ? null
+        : new Date(String(raw));
+  const outcome = correctSubstanceEventCore(profileId, eventId, {
+    date,
+    statedAt,
+  });
   if (outcome.kind !== "updated") return outcome;
   revalidateSubstanceUse();
-  return {
-    kind: "updated",
-    id: outcome.id,
-    capProgress: capProgressAfterWrite(profileId, parsed.substance),
-  };
+  return outcome;
+}
+
+// DELETE ONE RECORDED USE (#5026 phase 2) — the record row's ⋯, addressing the event
+// the way the drink beside it addresses its serving. The day-level delete below is the
+// other operation and takes the whole day.
+export async function deleteSubstanceUseAction(
+  formData: FormData
+): Promise<SubstanceHistoryDeleteResult> {
+  const profileId = await gateItemProfile(formData);
+  const notFound = {
+    kind: "not-found",
+    undoId: null,
+    error: "Couldn't find that entry.",
+  } as const;
+  if (isMinor(getProfileAge(profileId))) return notFound;
+  const eventId = Number(formData.get("event_id"));
+  if (!Number.isInteger(eventId) || eventId <= 0) return notFound;
+  const outcome = deleteSubstanceEventCore(profileId, eventId);
+  if (outcome.kind !== "deleted") return notFound;
+  revalidateSubstanceUse();
+  return { kind: "deleted", undoId: outcome.undoId };
 }
 
 export async function deleteSubstanceDailyTotalAction(

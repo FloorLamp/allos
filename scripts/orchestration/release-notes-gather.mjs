@@ -94,9 +94,21 @@ function gh(pathname) {
   );
 }
 
+// `batch.length < 100` is the exhaustion signal, and a bare `break` threw it
+// away — so a clipped sweep and a complete one printed the same counts. This one
+// takes the FLOOR shape rather than the refusal: the list is WINDOWED (`since`),
+// a shortened list is still readable, and `--check` is a pm-digest line that must
+// keep exiting 0. What it could not survive is silence, because the API returns
+// commits NEWEST FIRST: the merges a clipped fetch drops are the OLDEST ones,
+// which are exactly the ones most overdue for notes. `coverageSince` is the
+// oldest commit day actually read — the true lower edge of the window, printed
+// beside every count derived from it.
+const COMMIT_PAGE_CAP = 10;
 const merged = [];
 const seen = new Set();
-for (let page = 1; page <= 10; page++) {
+let truncated = true;
+let coverageSince = null;
+for (let page = 1; page <= COMMIT_PAGE_CAP; page++) {
   const commits = gh(
     `commits?sha=main&since=${since}T00:00:00Z&per_page=100&page=${page}`
   );
@@ -118,9 +130,19 @@ for (let page = 1; page <= 10; page++) {
       internal: INTERNAL_GUESS.some((re) => re.test(m[1])),
     });
   }
-  if (commits.length < 100) break;
+  if (commits.length) coverageSince = commits.at(-1).commit.committer.date;
+  if (commits.length < 100) {
+    truncated = false;
+    break;
+  }
 }
 merged.sort((a, b) => a.date.localeCompare(b.date) || a.n - b.n);
+
+/** The sentence every count above is a floor of. Empty when the fetch finished. */
+const boundary = truncated
+  ? ` — FLOOR, not a total: the commit fetch stopped at its ${COMMIT_PAGE_CAP}-page cap` +
+    ` at ${coverageSince}, so nothing merged between ${since} and that instant was read`
+  : "";
 
 const candidates = merged.filter((p) => !p.internal);
 
@@ -136,15 +158,18 @@ if (check) {
       ? `release notes: ${uncovered.length} user-visible-looking merge(s) ` +
           `uncovered since ${since} (#${uncovered.map((p) => p.n).join(", #")}) ` +
           "— batch them (dispatch.md §Release notes); the [internal?] guess " +
-          "may excuse some"
-      : `release notes: current through ${since}`
+          `may excuse some${boundary}`
+      : // "current through" is the one claim a clipped fetch must never make: it
+        // is read as the lag being closed, and the unread part of the window is
+        // where the lag lives.
+        `release notes: ${truncated ? `nothing uncovered in what was read${boundary}` : `current through ${since}`}`
   );
   process.exit(0);
 }
 
 console.log(
   `${merged.length} PRs merged to main since ${since} (inclusive) — ` +
-    `${candidates.length} release-note candidates, ${merged.length - candidates.length} guessed internal.\n`
+    `${candidates.length} release-note candidates, ${merged.length - candidates.length} guessed internal.${boundary}\n`
 );
 let day = "";
 for (const p of merged) {

@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable no-restricted-properties -- USER-initiated repaint (#1878): follows the user's own confirmed re-import */
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";

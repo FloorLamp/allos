@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable no-restricted-properties -- USER-initiated repaint (#1878): follows the user's own 'Use this name' tap (#3480) — the tap IS the rename, and the row must repaint into the name they just chose rather than keep offering it */
 
 import { useState } from "react";
 import { lookupRxcui } from "@/app/(app)/nutrition/intake-actions";

@@ -10,11 +10,13 @@ import {
 } from "@/lib/disclaimers";
 
 // Canonical disclaimer copy lives in lib/disclaimers.ts and renders on /disclaimer.
-// This file checks that import boundary and the dataset, generator, and runtime paths.
+// The IMPORT boundary — no surface under app/ or components/ imports the copy — is an
+// eslint.config.mjs override now (#5347). What stays here is the dataset, generator and
+// runtime copy, which is prose: no type and no selector can tell a disclaimer sentence
+// from any other sentence, so it is the tier a source scan is the right answer for.
 // Rendered page behavior is covered in e2e/disclaimer.spec.ts.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const SCAN_DIRS = ["app", "components"];
 
 // Dataset and generator checks share the runtime module's phrasing list.
 const BANNED: readonly RegExp[] = DISCLAIMER_PHRASINGS;
@@ -91,34 +93,6 @@ function datasetCopy(file: string): { where: string; text: string }[] {
   return out;
 }
 
-function walk(dir: string, exts: string[]): string[] {
-  const out: string[] = [];
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      if (entry.name === "node_modules" || entry.name === ".next") continue;
-      out.push(...walk(full, exts));
-    } else if (exts.some((e) => entry.name.endsWith(e))) {
-      out.push(full);
-    }
-  }
-  return out;
-}
-
-function sourceFiles(): { rel: string; text: string }[] {
-  const files: { rel: string; text: string }[] = [];
-  for (const d of SCAN_DIRS) {
-    const abs = path.join(REPO, d);
-    if (!fs.existsSync(abs)) continue;
-    for (const full of walk(abs, [".ts", ".tsx"])) {
-      const rel = path.relative(REPO, full).split(path.sep).join("/");
-      if (rel.includes("__tests__") || rel.endsWith(".test.tsx")) continue;
-      files.push({ rel, text: fs.readFileSync(full, "utf8") });
-    }
-  }
-  return files;
-}
-
 // Comments in curated-copy modules do not render.
 function stripComments(text: string): string {
   return text
@@ -127,20 +101,6 @@ function stripComments(text: string): string {
 }
 
 describe("canonical disclaimer boundary (issue #1049)", () => {
-  it("no surface under app/ or components/ imports a disclaimer constant except the /disclaimer page", () => {
-    const importers: string[] = [];
-    for (const { rel, text } of sourceFiles()) {
-      if (rel === "app/(app)/disclaimer/page.tsx") continue;
-      if (/from\s*["']@\/lib\/disclaimers["']/.test(text)) importers.push(rel);
-    }
-    expect(
-      importers,
-      `The disclaimer copy is consolidated onto /disclaimer; a domain surface should ` +
-        `not import from @/lib/disclaimers (delete the inline disclaimer instead):\n` +
-        importers.join("\n")
-    ).toEqual([]);
-  });
-
   it("keeps the shared suggestions and reference-range caveat on the canonical surface", () => {
     const section = DISCLAIMER_SECTIONS.find(
       (candidate) => candidate.id === "suggestions-and-reference-ranges"
