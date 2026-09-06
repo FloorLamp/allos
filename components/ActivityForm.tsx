@@ -1531,9 +1531,8 @@ export default function ActivityForm({
             // back to the chip that opened it.
             onKeyDown={onFactKeyDown}
           >
-            {/* Rung 2 (#5376), the same node the exercise names use: a heading that
-                names what a block IS reads as normal-case semibold body text, which is
-                what separates it from the uppercase field labels inside it. */}
+            {/* Rung 2 (#5376), the same node the exercise names use — so the two
+                headings on this form cannot drift apart. */}
             <div className="mb-3 flex items-center gap-3">
               <h3
                 id="session-details-title"

@@ -745,13 +745,10 @@ export function partTotal(p: PartEntry): number {
   }, 0);
 }
 
-// EFFORT IS NOT A HUE (#5376). Each level used to carry its own paint — green,
-// amber, rose — which is the form's OTHER vocabulary for those three colours:
-// primary action, missed target, destructive. So the row said "Easy" in the colour
-// of Finish workout and "Hard" in the colour of Remove. The paint is gone from the
-// model rather than corrected in it: with no `cls`/`active` field to fill, a level
-// CANNOT state a colour, and the picker owns one neutral rest and one brand
-// selection for all three.
+// EFFORT IS NOT A HUE (#5376). Each level carried its own paint — green, amber,
+// rose — the form's OTHER vocabulary for those three: primary action, missed target,
+// destructive. The fields are GONE rather than corrected, so a level cannot state a
+// colour at all; the picker owns one neutral rest and one brand selection.
 export const INTENSITIES: {
   value: string;
   label: string;

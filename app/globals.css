@@ -807,11 +807,9 @@
 }
 
 @utility section-heading {
-  /* THE RUNG ABOVE THE EYEBROW (#5376). A heading that names what a block IS — an
-     exercise, a session — is normal case, semibold, body size. Not uppercase: that
-     is exactly what tells it apart from `.section-label`/`.label` at a glance,
-     without borrowing the page title's size. Typography only, like its neighbour
-     below, so call sites keep their own element and spacing. */
+  /* THE RUNG ABOVE THE EYEBROW (#5376): a heading that names what a block IS. NOT
+     uppercase — that is what tells it apart from the two below at a glance, with no
+     help from the page title's size. Typography only, as they are. */
   @apply text-base font-semibold text-slate-900 dark:text-slate-50;
 }
 
