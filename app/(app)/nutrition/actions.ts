@@ -430,8 +430,12 @@ export async function updateFoodLogEvent(
   // it is not the `occurred_at` sentinel dance one field up: an empty string is a
   // perfectly good "no note", whereas an empty time is a time nobody stated.
   //
-  // The form only posts this field when the person has TOUCHED it, so a mount that
-  // does not yet seed the row's note cannot silently clear one by saving a time.
+  // `FoodServingForm` — the only production door onto this action — posts the field on
+  // EVERY submit, seeded from `row.notes`, so a save that only meant to fix the hour
+  // re-posts the note the row already had rather than clearing it. ABSENT is therefore
+  // not "the person left it alone": it is the wire value for a caller that mounts no
+  // note field at all, which is why the test below is `!== null` and not a comparison
+  // against the stored note.
   const rawNotes = formData.get("notes");
   if (rawNotes !== null) patch.notes = String(rawNotes);
   const rawGroup = String(formData.get("group_key") ?? "").trim();
