@@ -55,11 +55,12 @@ import {
   IconTrendingDown,
 } from "@tabler/icons-react";
 import {
+  doneSets,
   partIntent,
   partTotal,
   recentSessionsForForm,
+  repeatSessionFill,
   setComplete,
-  setPartial,
   sidePartial,
   blockedField,
   partSetsSummary,
@@ -241,6 +242,7 @@ function LoadField({
   // give 60 and not 77.560 (#1971). The band's plan is the grid's: it is a ghost
   // until some set of the exercise is done (#5371).
   planned: boolean;
+  blocked: boolean;
   // Hands the input up on mount, so a "Vary" tap can put the caret in the weight it
   // just revealed.
   inputRef?: (el: HTMLInputElement | null) => void;
@@ -739,6 +741,14 @@ export default function StrengthSets({
       temperRationale: trainingTemper?.rationale,
     });
   };
+  // HOW MANY SETS THE PLAN STATES (#5373). The suggestion says what one set is; the
+  // seed session says how many — its own working rows, which is what "I intend to do
+  // those exact reps" means in practice. Warmups are not part of the prescription
+  // (#338), and a row that logged no reps on either side was never a set. A lift with
+  // no history plans nothing and keeps its one empty row.
+  const plannedSetCount = seedSets.filter(
+    (s) => !s.warmup && (s.reps != null || s.reps_right != null)
+  ).length;
   // Bilateral parts get one suggestion; per-side parts get an independent
   // suggestion per side (#335) — sessionBestSet already treats each side as its
   // own candidate, so seeding both from the stronger side would over-load the
@@ -838,25 +848,66 @@ export default function StrengthSets({
         warmup: s.warmup ? 1 : 0,
       }))
   );
-  // Inherit the rep target from last session (#335): when the coached suggestion
-  // carries a declared target (the user's scheme) and this fresh part has none,
-  // adopt it so a fixed-scheme lifter (5×5) doesn't retype the target each time.
-  // Guarded by the last-seeded name so clearing the field doesn't re-seed it, and
-  // gated on `partUntouched` so it never overrides a session already in progress.
+  // A coached next set stated as a STORED set, so the fill runs it through the same
+  // kg → display-unit mapping the "repeat last session" path uses and the two can
+  // never round apart (#5377). Sides are independent (#335): a side with no
+  // suggestion contributes nothing, which is what its blank fields mean.
+  const coachedSet = (
+    left: NextSet | null,
+    right: NextSet | null
+  ): RepeatSourceSet => ({
+    set_number: 1,
+    weight_kg: left && !left.bodyweight ? left.weightKg : null,
+    reps: left ? left.reps : null,
+    weight_kg_right: right && !right.bodyweight ? right.weightKg : null,
+    reps_right: right ? right.reps : null,
+    duration_sec: null,
+    duration_sec_right: null,
+    warmup: null,
+  });
+  // THE PRESCRIPTION, AS ROWS (#5373). One planned row per set the plan states,
+  // carrying the SAME coached numbers the one-set ghost used to paint and `done:
+  // false` — so the grid shows the whole prescription as the offer it is, the payload
+  // passes over every row of it, and confirming one is a flag flip rather than a
+  // second write path. Minted through `repeatSessionFill`, the one kg → display-unit
+  // mapping every fill shares (#5377), so a ghost can never round differently from
+  // the Use tap that writes the same set.
+  const plannedRows = (): SetEntry[] | null => {
+    const left = p.perSide ? suggestionLeft : suggestion;
+    const right = p.perSide ? suggestionRight : null;
+    if ((!left && !right) || plannedSetCount < 1) return null;
+    const row = coachedSet(left, right);
+    return repeatSessionFill(
+      Array.from({ length: plannedSetCount }, (_, i) => ({
+        ...row,
+        set_number: i + 1,
+      })),
+      units.weightUnit
+    ).sets;
+  };
+  // What a fresh part inherits from the plan, seeded ONCE per exercise: the rows
+  // above, and the rep target the scheme declares (#335) so a fixed-scheme lifter
+  // (5×5) doesn't retype it. Guarded by the last-seeded name so clearing either
+  // doesn't re-seed it, and gated on `partUntouched` so it never overrides a session
+  // already in progress — a person who has confirmed a set owns their grid.
   const seededTargetFor = useRef<string | null>(null);
   useEffect(() => {
     const name = p.name.trim();
     if (seededTargetFor.current === name) return;
     seededTargetFor.current = name;
+    if (!partUntouched) return;
+    const patch: Partial<PartEntry> = {};
     if (
       suggestion?.targetReps != null &&
       !isTimed(p.name) &&
       !p.perSide &&
-      partUntouched &&
       !p.targetReps.trim() &&
       !p.toFailure
     )
-      onUpdatePart({ targetReps: String(suggestion.targetReps) });
+      patch.targetReps = String(suggestion.targetReps);
+    const rows = plannedRows();
+    if (rows) patch.sets = rows;
+    if (Object.keys(patch).length) onUpdatePart(patch);
     // Re-run only when the exercise changes; the ref prevents mid-session re-seeds.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.name]);
@@ -913,23 +964,6 @@ export default function StrengthSets({
     both: null,
     left: null,
     right: null,
-  });
-  // A coached next set stated as a STORED set, so the fill runs it through the same
-  // kg → display-unit mapping the "repeat last session" path uses and the two can
-  // never round apart (#5377). Sides are independent (#335): a side with no
-  // suggestion contributes nothing, which is what its blank fields mean.
-  const coachedSet = (
-    left: NextSet | null,
-    right: NextSet | null
-  ): RepeatSourceSet => ({
-    set_number: 1,
-    weight_kg: left && !left.bodyweight ? left.weightKg : null,
-    reps: left ? left.reps : null,
-    weight_kg_right: right && !right.bodyweight ? right.weightKg : null,
-    reps_right: right ? right.reps : null,
-    duration_sec: null,
-    duration_sec_right: null,
-    warmup: null,
   });
   const badDuration =
     timed &&
@@ -1250,7 +1284,7 @@ export default function StrengthSets({
                       weightStep={weightStep}
                       showPlate={showPlate}
                       ids={p.perSide ? null : rowIds(0)}
-                      ghost={ghost}
+                      planned={partUntouched}
                       blocked={p.sets.some(
                         (s) =>
                           sideFlags(
@@ -1394,7 +1428,6 @@ export default function StrengthSets({
                     testId={`set-values-${si + 1}`}
                     className="order-last flex min-w-0 flex-1 basis-full items-center gap-2 sm:order-0 sm:basis-0"
                     ids={rowIds(si)}
-                    ghost={si === 0 ? ghost : null}
                     set={s}
                     exercise={p.name}
                     unit={units.weightUnit}
@@ -1445,6 +1478,27 @@ export default function StrengthSets({
                     />
                   )}
                   <div className="flex items-center justify-end gap-1 sm:items-start">
+                    {/* CONFIRM THIS SET (#5373). The row is the plan until this is
+                tapped: it turns the ghost's numbers into the record and, in live
+                mode, starts the rest timer exactly as checking a set off always did
+                (#340). It is the same gesture as correcting the reps, so it
+                disappears the moment either happens — a confirmed row has nothing
+                left to confirm.
+
+                MOUNTS IconButton, whose own box is the 34px `--control-box` the
+                options column's controls share (#3938); the geometry is the
+                primitive's, not restated here. It sits at the row's trailing edge
+                beside W, so the eye runs load → reps → done. */}
+                    {!s.done && (
+                      <IconButton
+                        tone="brand"
+                        onClick={() => onUpdateSet(si, { done: true })}
+                        label={`Confirm set ${si + 1}`}
+                        data-testid={`set-confirm-${si + 1}`}
+                      >
+                        <IconCheck className="h-4 w-4" stroke={2.5} />
+                      </IconButton>
+                    )}
                     {/* Warmup toggle (#338): a light per-set "W" — a warmup is excluded
                 from the part's volume total and target markers. One toggle per
                 set (both sides of a per-side set share it).
