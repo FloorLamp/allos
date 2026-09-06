@@ -638,7 +638,7 @@ test("the activity form keeps workout entry primary and context visible across b
   // The exercise picker is one tap behind its heading since #5370, so open it before
   // comparing field surfaces — the point of this sweep is that every FIELD on the form
   // renders the same box, and the Activity combobox is still one of them.
-  await page
+  await drawer
     .getByTestId("part-name-heading")
     .first() // first-ok: the leading part of the session being edited — order-agnostic
     .click();

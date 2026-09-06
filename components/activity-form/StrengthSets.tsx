@@ -3,7 +3,7 @@
 import FactChipRow, { FactChip } from "@/components/facts/FactChipRow";
 import ControlTooltip from "@/components/ControlTooltip";
 import IconButton from "@/components/IconButton";
-import Collapse from "@/components/Collapse";
+import ExerciseHistory from "./ExerciseHistory";
 import { useEffect, useRef, useState } from "react";
 import type { Equipment } from "@/lib/types";
 import { isBarbell } from "@/lib/types";
@@ -21,9 +21,8 @@ import {
   RECOVERING_LOAD_FACTOR,
 } from "@/lib/injury-model";
 import { isValidDuration } from "@/lib/duration";
-import { formatLongDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
-import { judgeTargets, summarizeExercise } from "@/lib/training-log-format";
+import { judgeTargets } from "@/lib/training-log-format";
 import {
   suggestNextSet,
   contextualNextSet,
@@ -53,7 +52,6 @@ import {
   IconBarbell,
   IconAlertTriangle,
   IconCheck,
-  IconChevronDown,
   IconTrendingDown,
 } from "@tabler/icons-react";
 import {
@@ -626,10 +624,6 @@ export default function StrengthSets({
     () => !live && partSetsSummary(part, units.weightUnit) != null
   );
   const [collapsed, setCollapsed] = useState(arrivedCompact);
-  // The older sessions and the plateau/deload note, one tap behind the history line
-  // (#5370). Closed on arrival on every part: the point of the fold is that a
-  // six-exercise session opens with six one-line references rather than six cards.
-  const [historyOpen, setHistoryOpen] = useState(false);
   // Recent attempts as a reference — shown when logging fresh AND while editing
   // (issue #188). The current session is always excluded (`currentActivityId`),
   // so a session never appears in its own "Recent": in create that's the
@@ -1017,63 +1011,6 @@ export default function StrengthSets({
         </IconButton>
       </div>
     ) : null;
-  // Is there anything behind the line? Two older sessions, a plateau note, or both.
-  // Nothing to fold means no chevron and no empty panel.
-  const foldedHistory = recent.length > 1 || plateauNote !== null;
-  // ONE HISTORY ROW, and the SAME markup wherever it renders (#5370) — which is what
-  // keeps the promise that folding costs none of the fill gesture: a row below the
-  // fold cannot drift into a different control from the row above it.
-  const historyRow = (sess: (typeof recent)[number]) => {
-    const dateEl = (
-      <span className="shrink-0 text-slate-500 dark:text-slate-400">
-        {formatLongDate(sess.date, formatPrefs)}
-      </span>
-    );
-    const metrics = (
-      <span className="flex items-center gap-1 tabular-nums">
-        {summarizeExercise(sess.sets, units.weightUnit).text}
-        {/* Logged RPE for the session, shown when present (#743). */}
-        {rpeSummaryText(sess.sets) && (
-          <span className="rounded-sm bg-slate-100 px-1 text-xs font-medium text-slate-500 dark:bg-ink-800 dark:text-slate-400">
-            {rpeSummaryText(sess.sets)}
-          </span>
-        )}
-        {/* Same missed-target marker as the training log card; the
-            session status is judged server-side. */}
-        {sess.status === "missed" && (
-          <span className="inline-flex items-center gap-0.5 text-xs text-amber-500 dark:text-amber-400">
-            <IconAlertTriangle className="h-3.5 w-3.5" stroke={2} />
-            Missed target
-          </span>
-        )}
-      </span>
-    );
-    return (
-      <>
-        {partUntouched ? (
-          <button
-            type="button"
-            data-testid="recent-session-fill"
-            onClick={() => onFill({ source: "session", sets: sess.sets })}
-            className="-mx-1 flex w-full items-center justify-between gap-3 rounded-sm px-1 py-0.5 text-left text-slate-600 transition hover:bg-brand-50 hover:text-brand-700 dark:text-slate-300 dark:hover:bg-brand-950/40 dark:hover:text-brand-300"
-          >
-            {dateEl}
-            <span className="flex items-center gap-2">
-              {metrics}
-              <span className="shrink-0 rounded-sm border border-brand-300 px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-brand-600 dark:border-brand-800 dark:text-brand-400">
-                Fill
-              </span>
-            </span>
-          </button>
-        ) : (
-          <div className="flex items-center justify-between gap-3 text-slate-600 dark:text-slate-300">
-            {dateEl}
-            {metrics}
-          </div>
-        )}
-      </>
-    );
-  };
   return (
     <>
       {/* The "How to" affordance for this lift (#734) now rides in the part
@@ -1108,58 +1045,13 @@ export default function StrengthSets({
           </div>
         </div>
       )}
-      {recent.length > 0 && (
-        <div
-          data-testid="recent-sessions"
-          className="mt-2 rounded-md border border-black/10 bg-surface px-2.5 py-1.5 text-xs dark:border-white/10"
-        >
-          {/* HISTORY IS ONE LINE (#5370). The last session states itself; the two
-              older ones and the plateau/deload note are one tap behind. Nothing the
-              card showed is gone — a six-exercise session stops spending six screens
-              on reference above the numbers being typed. The "RECENT" caption goes
-              with them: a single dated line does not need one.
-
-              THE FILL GESTURE IS UNTOUCHED, which is the whole risk here. Each row is
-              a "repeat this session" fill path (#923) while the part is pristine (the
-              same partUntouched gate as the ghosts, so a tap can never clobber entry
-              in progress) — and every older session is still a tap away behind the
-              fold, because a light/off last day makes the one before it useful. Once
-              anything is typed the rows revert to read-only reference. */}
-          <ul className="space-y-0.5">
-            <li className="flex items-center gap-1">
-              <span className="min-w-0 flex-1">{historyRow(recent[0])}</span>
-              {foldedHistory && (
-                <button
-                  type="button"
-                  data-testid="recent-more-toggle"
-                  aria-expanded={historyOpen}
-                  aria-label={
-                    historyOpen ? "Hide earlier sessions" : "Earlier sessions"
-                  }
-                  onClick={() => setHistoryOpen((v) => !v)}
-                  className="tap-target flex shrink-0 items-center justify-center rounded-sm text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-200"
-                >
-                  <IconChevronDown
-                    className={`h-4 w-4 transition-transform ${historyOpen ? "rotate-180" : ""}`}
-                    stroke={2}
-                    aria-hidden="true"
-                  />
-                </button>
-              )}
-            </li>
-          </ul>
-          {foldedHistory && (
-            <Collapse open={historyOpen} testId="recent-more">
-              <ul className="space-y-0.5 pt-0.5">
-                {recent.slice(1).map((sess, i) => (
-                  <li key={i}>{historyRow(sess)}</li>
-                ))}
-              </ul>
-              {plateauNote}
-            </Collapse>
-          )}
-        </div>
-      )}
+      <ExerciseHistory
+        sessions={recent}
+        fillable={partUntouched}
+        onFill={(sets) => onFill({ source: "session", sets })}
+        unit={units.weightUnit}
+        note={plateauNote}
+      />
       {/* The coached next set (same progression as the exercise detail
           panel's card) with a one-tap fill, so the suggestion can be acted
           on right where sets are logged. For a fresh bilateral part it's also

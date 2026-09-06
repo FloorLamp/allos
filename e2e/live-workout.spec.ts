@@ -34,10 +34,8 @@ async function pickActivity(page: Page, name: string) {
   await hydratedClick(page, option);
   // The pick settles the exercise into its heading (#5370), which is the observable
   // proof the pick landed.
-  await expect(page.getByTestId("part-name-heading").first()).toContainText(
-    // first-ok: the part this helper just named
-    name
-  );
+  const heading = page.getByTestId("part-name-heading").first(); // first-ok: the part this helper just named; testid-scope-ok: the editor's own exercise heading, never inside a streamed boundary
+  await expect(heading).toContainText(name);
 }
 
 // Starting is one interaction with two completion boundaries: the imperative

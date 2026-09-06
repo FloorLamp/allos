@@ -220,7 +220,7 @@ test("a plateaued lift shows the inline plateau hint (#923)", async ({
 
     // The note rides behind the history line's fold since #5370 — one tap, and the
     // chevron is what states there is something behind it.
-    await page.getByTestId("recent-more-toggle").click();
+    await page.getByTestId("recent-more-toggle").click(); // testid-scope-ok: the exercise block's history fold in the open editor, one copy
     const hint = page.getByTestId("plateau-hint");
     await expect(hint).toBeVisible();
     await expect(hint).toContainText(/flat ~6 weeks/i);
@@ -264,7 +264,7 @@ test("dismissing the form's plateau hint silences it on Training → Overview (#
     // Dismiss it from the FORM's inline hint (same dedupeKey → shared suppression bus).
     await openNewActivity(page);
     await pickActivity(page, "Skullcrusher");
-    await page.getByTestId("recent-more-toggle").click();
+    await page.getByTestId("recent-more-toggle").click(); // testid-scope-ok: the exercise block's history fold in the open editor, one copy
     const hint = page.getByTestId("plateau-hint");
     await expect(hint).toBeVisible();
     await settledClick(page, hint.getByTestId("plateau-hint-dismiss"));

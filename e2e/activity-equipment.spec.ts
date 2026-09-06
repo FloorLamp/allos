@@ -726,7 +726,7 @@ test("a strength part states its implement, and the registry door is one per for
     // Escape settles the typed name back to its heading (#5370) without committing
     // a pick, which is exactly what this state needs.
     await firstName.press("Escape");
-    const firstHeading = page.getByTestId("part-name-heading").first(); // first-ok: the only part on this form
+    const firstHeading = form.getByTestId("part-name-heading");
     await expect(firstHeading).toContainText("Curl");
     await expect(chips).toHaveCount(1);
     await expect(chips).toHaveText("Pick equipment");
