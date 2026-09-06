@@ -9,8 +9,6 @@ allowed-tools: Read, Grep, Glob, AskUserQuestion, Bash(curl:*), Bash(jq:*), Bash
 The orchestrator dispatches, reviews and merges; the PM decides what it works
 on next, notices when it stalls, and carries the owner's rulings to it.
 
-The PM never writes feature code, never dispatches, never merges.
-
 `docs/orchestration/environment.md` §GitHub access governs every GitHub
 read and write: REST, reads unauthenticated, writes on the token, nothing
 believed until re-read. Never search the filesystem or env for credentials.
@@ -37,10 +35,10 @@ The cross-account truth is GitHub alone: `main`, remote branches, open PRs,
 
 1. `list_sessions`, title `allos-orchestrator` (a second one adds a letter);
    keep the ones that are live. Refresh the ids in the Ladder.
-2. **No live orchestrator → create exactly one** with `create_session` in the
-   repo's environment, titled `allos-orchestrator`. Its prompt: invoke the
-   `orchestrate` skill, check in, adopt every live remote branch through
-   `dispatch-brief.mjs adopt` (`recovery.md`), read the Ladder, refill.
+2. **No live orchestrator → create exactly one**: `create_session` in the
+   repo's environment, titled `allos-orchestrator`, ON OPUS — inherited from
+   you unless named, and fixed at creation. Prompt: invoke `orchestrate`,
+   check in, adopt live branches (`recovery.md`), read the Ladder, refill.
 3. Record its id in the Ladder, arm your watch, and only then look at the
    queue. One orchestrator is the default; a second is the owner's call.
 4. The old account's triggers never fire here: re-arm the watch and every
@@ -93,6 +91,10 @@ things", "catch me up" or the like, and at each day's end. The report is yours:
    and owner rulings are the candidates). A red that changed nothing is a line.
 3. **Progress** — counts, in flight, blocked and on whom, the next rung.
 
+The day's RELEASE-NOTES batch is yours off the same pass (owner, 2026-09-06):
+the digest's window already splits product from process by PATH. Write
+`lib/release-notes.json`; orchestrators send no bullets.
+
 ## Relays and correctives
 
 - Deliver a message to an orchestrator with `create_trigger` bound to its
@@ -102,9 +104,8 @@ things", "catch me up" or the like, and at each day's end. The report is yours:
 - A corrective states the measured fact, the rule it breaks, and the one
   action to take: "PR #N is green on its exact head and unmerged since
   HH:MM; merge it, then open the banked branch." Not a plan, not a survey.
-- Verify "already built" claims with `git log -S` before relaying a status;
-  the tracker's failure mode is stale premises. Never restate a status you
-  have not checked against `main`.
+- Never relay a status you have not checked against `main` (`git log -S`):
+  the tracker's failure mode is a stale premise, not a wrong number.
 - Ask each orchestrator for the census line; if it does not come, read the
   branch timestamps and PR list instead of asking again.
 
@@ -132,9 +133,9 @@ grep` on `origin/main`). Two of one sweep's items were already shipped.
 
 ### Low impact is the PM's to rule
 
-Owner ruling 2026-09-02: of 48 decisions, the low-impact recommendation was
-taken 25 times of 28, and the overrules went toward less. So the PM splits
-every question by VISIBLE impact and rules the low half itself.
+Owner ruling 2026-09-02, after the low-impact recommendation was taken 25
+times of 28: the PM splits every question by VISIBLE impact, and rules the
+low half itself.
 
 - LOW impact — wording, criteria, closures, ratify-as-built, CI shape,
   internal tails and formats, tracker routing: rule on the recommendation,
@@ -147,12 +148,10 @@ every question by VISIBLE impact and rules the low half itself.
 
 ## Adding an orchestrator
 
-- Each orchestrator gets its own cloud container (`create_session` spawns
-  one): no contention; only the landing path stays serial.
 - Partition by DOMAIN, written into the Ladder: disjoint issue sets and a
   list of paths the new slice never edits. Give the UI-consolidation chain
   to one session whole; give the other everything disjoint from it.
-- Create it with `create_session` in the same environment. The prompt names
+- Create it as in §Bootstrap, same environment, ON OPUS. Its prompt also names
   the sibling's session id and the PM's, the slice, and the three rules of
   `docs/orchestration/multi-orchestrator.md`: claim before dispatch, file
   fence via the other's branches, serial merges with parallel PRs.
