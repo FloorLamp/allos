@@ -12,6 +12,38 @@ useDefault = true
 # or "auth" sitting next to a 64-hex digest matches gitleaks' generic-api-key
 # rule (this bit a login-email migration whose manifest line read
 # `"...-auth-tokens.ts": "<sha256>"`).
-[allowlist]
+[[allowlists]]
 description = "migration hash manifest — filename->SHA-256 of checked-in files, no secrets"
 paths = ['''lib/migrations/manifest\.json$''']
+
+# ONE STRANDED COMMIT ON A BRANCH NOBODY CAN DELETE (#5463).
+#
+# `aeb489b938…` on `settled-exercise-heading-5370` added a test fixture line
+# `dedupeKey: "plateau-bench-42"`. The name ends in "key" and the value scores
+# 3.625 entropy, so generic-api-key reads it as a secret. It is a fixture
+# string for a plateau-note dedupe key and nothing else; the tip of that branch
+# had already replaced it with `"bench plateau 1"` before the branch was
+# superseded, and the work landed on `main` via #5466 with the literal gone
+# from every commit.
+#
+# The commit cannot be removed. `gitleaks-explain.mjs` names the two remedies —
+# rewrite that ref's history, or delete the branch — and this environment
+# refuses both: a force-push is blocked by its guard, and both `git push
+# --delete` and `DELETE /git/refs/heads/...` answer "Write access to this
+# GitHub API path is not permitted through this proxy."
+#
+# So it sits there and it is not inert. The `push` scan of a NEWLY CREATED
+# branch has no `before` commit to bound its range and falls back to every
+# ref, finds this one, and fails — attaching a red `gitleaks` to whatever SHA
+# the branch was cut from, which is usually `main`'s tip. That makes `main`
+# read as red to anyone checking it. Observed on 2026-09-06 at `9a530225` and
+# `8f6d8b6d`; the failure names this ref and this commit in as many words.
+#
+# Scoped to the one commit rather than to the file or the rule, so nothing
+# else is exempted and nothing shipped is affected.
+#
+# DELETE THIS ENTRY WHEN THAT BRANCH IS DELETED. Deleting the branch is the
+# better fix and this is a stand-in for it, not a replacement.
+[[allowlists]]
+description = "#5463 — stranded fixture literal on a branch this environment cannot delete"
+commits = ["aeb489b938a19bb71d12f255c2550ac04c5b4365"]

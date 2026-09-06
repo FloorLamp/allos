@@ -50,8 +50,12 @@
 
 - Reproduce locally before pushing a fix. Preserve and inspect Playwright's
   `error-context.md`.
-- Run failures in failing order and use one orchestrator when investigating shared
-  state or cross-spec poisoning.
+- **A spec that drives an RxNorm lookup cannot be reproduced locally** (#5468):
+  the call carries no credential and `rxnav.nlm.nih.gov` is reachable only from
+  CI, so the local run takes the degraded branch and goes GREEN on a branch the
+  bug is not in. The failure class, and how to spot one, is in e2e-hygiene.md.
+- Run failures in failing order and use one orchestrator when investigating
+  shared state or cross-spec poisoning.
 - Check the actual command exit code; pipelines can hide it.
 - For mass failures, check memory pressure, then run failures individually.
   Passing alone suggests starvation; failing alone suggests a defect.
