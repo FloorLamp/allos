@@ -121,6 +121,24 @@ const READ_VERIFIED = new Map([
     ],
   ],
   [
+    "lib/__tests__/ai-log-redaction.test.ts",
+    [
+      false,
+      "L23 reads AI_LOG_PATH = process.cwd()/data/logs/ai.jsonl (lib/ai-log.ts:26) — an untracked runtime log",
+    ],
+  ],
+  [
+    "lib/__action_tests__/notify-log-clear.actions.test.ts",
+    [
+      false,
+      "L51 reads NOTIFY_LOG_PATH (lib/notify-log.ts:50) — an untracked runtime log",
+    ],
+  ],
+  [
+    "lib/__tests__/notify-log-sink.test.ts",
+    [false, "L47/65 logPath = sink.NOTIFY_LOG_PATH — an untracked runtime log"],
+  ],
+  [
     "lib/__tests__/vitest-isolation-budget.test.ts",
     [
       true,
@@ -306,6 +324,26 @@ for (const file of files) {
     }
     n.forEachChild(w);
   })(sf);
+
+  // concrete path-shaped literals in an expression, joined as they would be
+  function concretePaths(t) {
+    const lits = [];
+    for (const m of t.matchAll(
+      /"([^"]{1,120})"|'([^']{1,120})'|`([^`$]{1,120})`/g
+    ))
+      lits.push(m[1] ?? m[2] ?? m[3]);
+    const out = [];
+    for (let i = 0; i < lits.length; i++)
+      for (let j = i + 1; j <= Math.min(lits.length, i + 6); j++) {
+        const p = lits
+          .slice(i, j)
+          .join("/")
+          .replace(/\/+/g, "/")
+          .replace(/^\.?\//, "");
+        if (/\//.test(p) || /\.\w{2,4}$/.test(p)) out.push(p);
+      }
+    return out;
+  }
 
   function literalsHitTracked(t) {
     const lits = [];
