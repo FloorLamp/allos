@@ -1385,10 +1385,7 @@ export function capturedVideoFiles(payload: Payload): CapturedVideoFile[] {
 // declared so a future kind capturing them inherits the purge instead of re-opening
 // the leak.
 export type CapturedPhotoDomain =
-  | "progress"
-  | "lesion"
-  | "symptom"
-  | "training";
+  "progress" | "lesion" | "symptom" | "training";
 export const PHOTO_FILE_TABLES: Record<string, CapturedPhotoDomain> = {
   progress_photos: "progress",
   lesion_photos: "lesion",
