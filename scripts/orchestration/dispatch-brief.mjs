@@ -290,7 +290,12 @@ function discoverNode24() {
 // it" — the boundary honest, the conclusion drawn from it false: a census of
 // whether 283 guards had ever caught a defect is worth reading only because
 // that lane disbelieved the sentence and unshallowed on its own (#5469). The
-// timing is a MEASUREMENT of the fetch, not a discovered fact like the depth.
+// cost is a MEASUREMENT, not a discovered fact like the depth, and it is stated
+// as a range because the two measurements are of different operations: three
+// runs on 2026-09-06 against a fresh depth-76 clone of the same remote through
+// the same proxy took 9-10s each (76 commits to 3001), while ~4 min was reported
+// incidentally for deepening this container's shared store under load. A number
+// carrying its method survives being wrong; re-measure and disagree.
 
 /**
  * What a lane may conclude from how much history it can reach.
@@ -305,10 +310,12 @@ export function historyDepthLine(shallow, firstCommit) {
   return shallow
     ? `THIS CLONE IS SHALLOW — \`git rev-parse --is-shallow-repository\` is true and ` +
         `${begins}, so anything older is ABSENT, NOT UNREACHABLE: ` +
-        `\`git fetch --unshallow origin main\` brings the whole history back ` +
-        `(measured 2026-09-06, three runs: 9-10s, 76 commits to ~3000). A claim ` +
-        `about an older tree IS checkable here: deepen, then check, rather than ` +
-        `assuming you cannot`
+        `\`git fetch --unshallow origin main\` brings the whole history back — ` +
+        `seconds on a fresh clone, up to a few minutes when this container's ` +
+        `store is cold or loaded, 76 commits to ~3000. One \`.git\` serves every ` +
+        `worktree here, so that deepening is permanent and global: paid once per ` +
+        `container, not once per lane. A claim about an older tree IS checkable ` +
+        `here: deepen, then check, rather than assuming you cannot`
     : `This clone has FULL history — \`git rev-parse --is-shallow-repository\` is false and ` +
         `${begins}, so a claim about an older tree IS checkable here: check it rather than assuming you cannot`;
 }
