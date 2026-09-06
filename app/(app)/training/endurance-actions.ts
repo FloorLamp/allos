@@ -8,6 +8,8 @@ import {
   updateEndurancePlanCore,
   setEndurancePlanStatusCore,
   deleteEndurancePlanCore,
+  linkEventActivityCore,
+  unlinkEventActivityCore,
   type EndurancePlanPatch,
 } from "@/lib/endurance-plans";
 import {
@@ -43,6 +45,8 @@ function trainingUnavailable(profileId: number): FormResult | null {
 
 function revalidateEndurance(): void {
   revalidateRoute("/training");
+  // The event page (#3285 item 2) reads the plan, its day and its linked result.
+  revalidateRoute("/training/event/[id]", "page");
   revalidateRoute("/history");
   // The plan-aware cardio arm rides the dashboard coaching atom + Upcoming too.
   revalidateRoute("/upcoming");
@@ -222,6 +226,36 @@ export async function deleteEndurancePlan(
   if (!Number.isInteger(id)) return formError("Invalid plan.");
   if (!deleteEndurancePlanCore(profile.id, id))
     return formError("Plan not found.");
+  revalidateEndurance();
+  return formOk();
+}
+
+// Attach one of the event day's logged activities to the event (#3285 item 2) —
+// the MANUAL link, for everything the source's "race" label does not cover. The
+// core refuses a session logged on another day, so the page only ever offers the
+// day's own.
+export async function linkEventActivity(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const planId = Number(formData.get("id"));
+  const activityId = Number(formData.get("activity_id"));
+  if (!Number.isInteger(planId) || !Number.isInteger(activityId))
+    return formError("Invalid link.");
+  if (!linkEventActivityCore(profile.id, planId, activityId))
+    return formError("That activity isn’t on the event’s day.");
+  revalidateEndurance();
+  return formOk();
+}
+
+export async function unlinkEventActivity(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const activityId = Number(formData.get("activity_id"));
+  if (!Number.isInteger(activityId)) return formError("Invalid link.");
+  if (!unlinkEventActivityCore(profile.id, activityId))
+    return formError("Activity not found.");
   revalidateEndurance();
   return formOk();
 }

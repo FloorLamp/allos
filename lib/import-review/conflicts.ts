@@ -225,6 +225,8 @@ export function foldActivityFieldsWithOverrides(
 export interface KeeperFoldState {
   fields: Record<ActivityFoldField, unknown>;
   equipmentId: number | null;
+  // The event link (#3285 item 2), folded exactly like the gear link below.
+  endurancePlanId: number | null;
   edited: number;
 }
 
@@ -255,15 +257,23 @@ export function keeperFoldState(
   // explicitly (not via ACTIVITY_FOLD_FIELDS) so the link stays out of the fold's
   // richness scoring and conflict-preview UI, which are for measurement gap-fill.
   let equipmentId = (keeper.equipment_id as number | null | undefined) ?? null;
-  for (const drop of ordered)
+  let endurancePlanId =
+    (keeper.endurance_plan_id as number | null | undefined) ?? null;
+  for (const drop of ordered) {
     equipmentId =
       equipmentId ?? (drop.equipment_id as number | null | undefined) ?? null;
+    endurancePlanId =
+      endurancePlanId ??
+      (drop.endurance_plan_id as number | null | undefined) ??
+      null;
+  }
   // A keeper carrying ANY folded drop is a merged result, so it stays edit-locked
   // (#133) — a re-ingest of the rolling window must not clobber it. Only when the last
   // drop is un-folded does the keeper get its own pre-merge lock state back.
   return {
     fields,
     equipmentId,
+    endurancePlanId,
     edited: ordered.length > 0 ? 1 : Number(keeper.edited ?? 0),
   };
 }

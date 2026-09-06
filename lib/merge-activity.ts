@@ -286,7 +286,7 @@ function writeKeeperFoldState(
             max_speed_kmh = ?, relative_effort = ?, avg_power_w = ?,
             max_power_w = ?, weighted_avg_power_w = ?, avg_cadence = ?,
             avg_temp_c = ?, kilojoules = ?, workout_type = ?,
-            equipment_id = ?,
+            equipment_id = ?, endurance_plan_id = ?,
             edited = ?
       WHERE id = ? AND profile_id = ?`
   ).run(
@@ -311,6 +311,7 @@ function writeKeeperFoldState(
     f.kilojoules ?? null,
     f.workout_type ?? null,
     state.equipmentId,
+    state.endurancePlanId,
     state.edited,
     keeperId,
     profileId
@@ -332,6 +333,8 @@ export function snapshotKeeperFold(
   // Session-level equipment link (#342): captured alongside the fold fields so undo
   // restores the keeper's pre-fold gear, undoing any gap-fill the merge applied.
   snap.equipment_id = keep.equipment_id ?? null;
+  // The event link (#3285 item 2): same reason, same shape.
+  snap.endurance_plan_id = keep.endurance_plan_id ?? null;
   return snap;
 }
 
@@ -494,6 +497,15 @@ export function revertActivityMerge(
       .get(state.equipmentId, profileId)
   )
     state.equipmentId = null;
+  // The event link is the same class: deleteEndurancePlanCore unlinks only LIVE
+  // activities, so a captured snapshot can still name a deleted event.
+  if (
+    state.endurancePlanId != null &&
+    !db
+      .prepare("SELECT 1 FROM endurance_plans WHERE id = ? AND profile_id = ?")
+      .get(state.endurancePlanId, profileId)
+  )
+    state.endurancePlanId = null;
   writeKeeperFoldState(profileId, merge.keeperId, state);
 
   // 3. Clear the recorded 'merged' decision so the un-merged pair re-detects (#200).

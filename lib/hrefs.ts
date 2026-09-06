@@ -314,6 +314,12 @@ export function medicationsFilterHref(filter: MedicationFilter): AppRoute {
   return `/medications?filter=${filter}`;
 }
 
+// One event's page (#3285 item 2): the plan, its day and its linked result.
+export function trainingEventPageHref(planId: number): AppRoute {
+  const href: Route<`/training/event/${number}`> = `/training/event/${planId}`;
+  return href as AppRoute;
+}
+
 // One activity's canonical page (#2870): every activity type uses this route;
 // callers preserve optional browsing context with typed query helpers below.
 export function trainingActivityPageHref(

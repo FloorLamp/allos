@@ -181,6 +181,9 @@ type ActivityRow = {
   source: string | null;
   external_id: string | null;
   notes: string | null;
+  // The event this session was the result of (#3285 item 2) — the row id in the
+  // Events dataset, so a re-import can rejoin plan and result.
+  endurance_plan_id: number | null;
 };
 type ActivitySet = SetRow & { activity_id: number; exercise: string };
 
@@ -188,7 +191,8 @@ type ActivitySet = SetRow & { activity_id: number; exercise: string };
 // the full device/Strava telemetry, not just the display projection (#466).
 const ACTIVITY_COLUMNS = `id, date, type, title, duration_min, distance_km, intensity,
           start_time, end_time, avg_hr, max_hr, elevation_m, avg_power_w, avg_cadence,
-          kilojoules, est_calories, workout_type, source, external_id, notes`;
+          kilojoules, est_calories, workout_type, source, external_id, notes,
+          endurance_plan_id`;
 // The activities read itself, complete through its WHERE — one const so the full
 // read, the bounded page read and the dataset's `select` are the same statement.
 const ACTIVITIES_SELECT = `SELECT ${ACTIVITY_COLUMNS}
@@ -258,6 +262,7 @@ function shapeActivities(
       source: a.source,
       external_id: a.external_id,
       notes: a.notes,
+      endurance_plan_id: a.endurance_plan_id,
     };
   });
 }
@@ -433,6 +438,7 @@ export const DATASETS: ExportDataset[] = [
       "source",
       "external_id",
       "notes",
+      "endurance_plan_id",
     ],
     count: qCount(`SELECT COUNT(*) AS n FROM activities WHERE profile_id = ?`),
     rows: (profileId: number) => {

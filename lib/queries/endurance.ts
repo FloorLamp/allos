@@ -22,7 +22,10 @@ import {
   type EndurancePlanDiscipline,
   type LoggedSession,
 } from "../endurance-plan";
-import { getActiveEndurancePlans } from "../endurance-plans";
+import {
+  getActiveEndurancePlans,
+  getEndurancePlan,
+} from "../endurance-plans";
 
 // One logged session mapped to a discipline: its week-start, distance, and long-run label.
 interface DisciplineSession {
@@ -209,4 +212,66 @@ export function getEnduranceArm(
   const cards = getEndurancePlanCards(profileId, todayStr);
   if (cards.length === 0) return null;
   return enduranceArmFor(cards[0]);
+}
+
+// ── The event page (#3285 item 2): plan, day and result in one place ─────────────
+
+// One activity as the event page lists it: the day's sessions, each saying whether
+// it is linked, and any linked session (a link made on the event's day survives the
+// day being edited afterwards, so the linked set is read by link and not by date).
+export interface EventDayActivity {
+  id: number;
+  date: string;
+  type: string;
+  title: string;
+  distanceKm: number | null;
+  durationMin: number | null;
+  workoutType: string | null;
+  linked: boolean;
+}
+
+export interface EventDay {
+  plan: EndurancePlan;
+  // Linked first, then the rest of the day in logged order.
+  activities: EventDayActivity[];
+}
+
+// Profile-scoped; undefined when the plan is not the profile's.
+export function getEventDay(
+  profileId: number,
+  planId: number
+): EventDay | undefined {
+  const plan = getEndurancePlan(profileId, planId);
+  if (!plan) return undefined;
+  const rows = db
+    .prepare(
+      `SELECT id, date, type, title, distance_km, duration_min, workout_type,
+              endurance_plan_id
+         FROM activities
+        WHERE profile_id = ? AND (date = ? OR endurance_plan_id = ?)
+        ORDER BY (endurance_plan_id = ?) DESC, date ASC, start_time ASC, id ASC`
+    )
+    .all(profileId, plan.eventDate, plan.id, plan.id) as {
+    id: number;
+    date: string;
+    type: string;
+    title: string;
+    distance_km: number | null;
+    duration_min: number | null;
+    workout_type: string | null;
+    endurance_plan_id: number | null;
+  }[];
+  return {
+    plan,
+    activities: rows.map((r) => ({
+      id: r.id,
+      date: r.date,
+      type: r.type,
+      title: r.title,
+      distanceKm: r.distance_km,
+      durationMin: r.duration_min,
+      workoutType: r.workout_type,
+      linked: r.endurance_plan_id === plan.id,
+    })),
+  };
 }

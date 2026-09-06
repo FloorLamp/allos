@@ -7,6 +7,7 @@
 import { db, writeTx } from "./db";
 import {
   DEFAULT_EVENT_KIND,
+  disciplineForActivityName,
   eventTitle,
   isEnduranceDiscipline,
   type EndurancePlan,
@@ -358,9 +359,12 @@ export function setEndurancePlanStatusCore(
   });
 }
 
-// Delete a plan. Nothing is keyed to a plan id (the trajectory is derived, the timeline
-// event/completion milestone are date-derived), so this is a plain profile-scoped delete.
-// IMMEDIATE.
+// Delete a plan. The trajectory is derived and the timeline event is date-derived;
+// the two things keyed to a plan id are cleared here: its completion milestone, and
+// the activities linked to it (#3285 item 2), which are UNLINKED and kept — a logged
+// session is training history and outlives the event it was entered for. The FK is
+// `ON DELETE SET NULL` and agrees; the explicit UPDATE keeps this transaction
+// correct on a connection where the pragma is off (the migration runner's). IMMEDIATE.
 export function deleteEndurancePlanCore(
   profileId: number,
   id: number
@@ -372,9 +376,110 @@ export function deleteEndurancePlanCore(
       profileId,
       planMilestoneKey(id)
     );
+    db.prepare(
+      `UPDATE activities SET endurance_plan_id = NULL
+        WHERE endurance_plan_id = ? AND profile_id = ?`
+    ).run(id, profileId);
     const res = db
       .prepare("DELETE FROM endurance_plans WHERE id = ? AND profile_id = ?")
       .run(id, profileId);
     return res.changes > 0;
+  });
+}
+
+// ── Linked activities (#3285 item 2) ──────────────────────────────────────────────
+//
+// `activities.endurance_plan_id` attaches a logged session to the event it was the
+// result of. An event's result is the set of activities pointing at it; an activity
+// is the result of at most one event.
+
+// Link an activity to an event, MANUALLY. Both rows must be the profile's, and the
+// activity must be logged on the event's day — the one statement carries every rule,
+// so a cross-profile id or an off-day session simply changes nothing. IMMEDIATE.
+export function linkEventActivityCore(
+  profileId: number,
+  planId: number,
+  activityId: number
+): boolean {
+  return writeTx(
+    () =>
+      db
+        .prepare(
+          `UPDATE activities SET endurance_plan_id = ?
+            WHERE id = ? AND profile_id = ?
+              AND date = (SELECT event_date FROM endurance_plans
+                           WHERE id = ? AND profile_id = ?)`
+        )
+        .run(planId, activityId, profileId, planId, profileId).changes > 0
+  );
+}
+
+// Detach an activity from whatever event it is linked to. Profile-scoped; false
+// when the row is not the profile's or was not linked. IMMEDIATE.
+export function unlinkEventActivityCore(
+  profileId: number,
+  activityId: number
+): boolean {
+  return writeTx(
+    () =>
+      db
+        .prepare(
+          `UPDATE activities SET endurance_plan_id = NULL
+            WHERE id = ? AND profile_id = ? AND endurance_plan_id IS NOT NULL`
+        )
+        .run(activityId, profileId).changes > 0
+  );
+}
+
+// The AUTO-link, from the one hint a source supplies: Strava labels an activity's
+// `workout_type` "race". A race-labelled cardio session whose title maps onto a
+// discipline links to the profile's event on that day IN that discipline — an event
+// with no discipline (a meet, a tournament) is not a race and is never a candidate,
+// and a session already linked, by hand or by an earlier sync, is left exactly where
+// it is. Active or completed events both count: a race synced the evening after it
+// was marked done still belongs to it. An abandoned event never attracts a result.
+// Called by the integration upsert after every insert or value-changing update;
+// returns whether a link was written. IMMEDIATE (a SAVEPOINT under the sync's lock).
+export function linkRaceActivityCore(
+  profileId: number,
+  activityId: number
+): boolean {
+  return writeTx(() => {
+    const a = db
+      .prepare(
+        `SELECT date, type, title, workout_type, endurance_plan_id
+           FROM activities WHERE id = ? AND profile_id = ?`
+      )
+      .get(activityId, profileId) as
+      | {
+          date: string;
+          type: string;
+          title: string;
+          workout_type: string | null;
+          endurance_plan_id: number | null;
+        }
+      | undefined;
+    if (
+      !a ||
+      a.endurance_plan_id != null ||
+      a.type !== "cardio" ||
+      a.workout_type !== "race"
+    )
+      return false;
+    const discipline = disciplineForActivityName(a.title);
+    if (!discipline) return false;
+    const plan = db
+      .prepare(
+        `SELECT id FROM endurance_plans
+          WHERE profile_id = ? AND event_date = ? AND discipline = ?
+            AND status IN ('active', 'completed')
+          ORDER BY (status = 'active') DESC, id DESC LIMIT 1`
+      )
+      .get(profileId, a.date, discipline) as { id: number } | undefined;
+    if (!plan) return false;
+    db.prepare(
+      `UPDATE activities SET endurance_plan_id = ? WHERE id = ? AND profile_id = ?`
+    ).run(plan.id, activityId, profileId);
+    return true;
   });
 }
