@@ -1466,8 +1466,21 @@ export const DATASETS: ExportDataset[] = [
   tableDataset({
     // Non-food substance consumption ledger (#1078): one row per (date, substance)
     // with a per-use units count (nicotine/cannabis; alcohol rides food_daily_totals above).
-    // User-entered health data, so it's in the portable export; id-keyed + owned,
-    // deletable like the other logged datasets.
+    // User-entered health data, so it's in the portable export.
+    //
+    // deletable: false SINCE #5026 PHASE 2, and this is a pair of tables rather than one
+    // table's quirk. A use is now a `substance_log_events` row AND a tick of this
+    // counter, written in one transaction so no reader can see them apart. The manage
+    // delete is a plain `DELETE … WHERE id IN (…) AND profile_id = ?` — the id + profile
+    // model this flag exists to opt out of — and here it can only ever move ONE half:
+    // dropping a day row leaves that day's uses standing in the record for ever, and
+    // dropping an event leaves the card and the weekly cap counting a use nothing shows.
+    // Either way the count and the record contradict each other, which is exactly the
+    // state phase 2's migration exists to repair. The DOORS that CAN move both halves
+    // are still there and are still undoable: the card's ⋯ deletes a whole day through
+    // the `substance-history` kind, and the record's ⋯ deletes one use through
+    // `substance-use`, which gives the counter its tick back.
+    deletable: false,
     key: "substance_daily_totals",
     label: "Substance log",
     table: "substance_daily_totals",
@@ -1475,6 +1488,22 @@ export const DATASETS: ExportDataset[] = [
     select: `SELECT id, date, substance, units, recorded_at, notes
        FROM substance_daily_totals WHERE profile_id = ? ORDER BY date DESC, substance`,
     countSql: `SELECT COUNT(*) AS n FROM substance_daily_totals WHERE profile_id = ?`,
+  }),
+  tableDataset({
+    // The substance EVENT ledger (#5026 phase 2): one append-only row per use, carrying
+    // the tap `recorded_at` and the stated `occurred_at` — what makes a use a thing that
+    // happened rather than a number on a day. The counter above stays the cap's
+    // substrate and the card's count. User-entered health data, so it is in the portable
+    // export; browse-only for the reason stated on that counter — the two are one fact
+    // and a plain id + profile_id delete can only move one of them.
+    deletable: false,
+    key: "substance_log_events",
+    label: "Substance log events",
+    table: "substance_log_events",
+    columns: ["date", "substance", "recorded_at", "occurred_at", "time_source"],
+    select: `SELECT id, date, substance, recorded_at, occurred_at, time_source
+       FROM substance_log_events WHERE profile_id = ? ORDER BY recorded_at DESC`,
+    countSql: `SELECT COUNT(*) AS n FROM substance_log_events WHERE profile_id = ?`,
   }),
   tableDataset({
     // Protein-grams quick-add log (#824): one row per date with a running gram total
@@ -1745,9 +1774,13 @@ export const DELETE_POLICY = {
   frequency_targets: { revalidate: ["/training", "/"] },
   food_daily_totals: { revalidate: ["/nutrition", "/trends", "/"] },
   food_log_events: { revalidate: ["/nutrition", "/"] },
-  substance_daily_totals: {
-    revalidate: ["/records/specialty/substance-use", "/"],
-  },
+  // `substance_daily_totals` and `substance_log_events` HAVE NO ENTRY, which is what
+  // makes the browse-only decision above enforceable rather than remembered: the
+  // manage action resolves a dataset through this map, so a key that is absent here is
+  // answered "Unknown dataset" by BOTH doors — the row-selection delete and delete-all
+  // — and `DeletableDatasetKey` (this map's own keys) drops them, so no later type can
+  // ask `dataset-undo.ts` to decide about a table whose bulk delete no longer exists.
+  // The counter was mapped here until phase 2 gave it an event ledger underneath.
   protein_daily_totals: { revalidate: ["/nutrition", "/"] },
   // The fasting card and its history live on the nutrition tab. A plain id + profile_id
   // delete: nothing FKs into `fasts`, no counter is decremented beside it, and no derived
