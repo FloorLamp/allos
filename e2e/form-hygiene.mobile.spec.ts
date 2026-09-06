@@ -121,9 +121,10 @@ test("the live set row shows a 4-character load at 390px (#1450)", async ({
   // ELEMENT-level check (#1543): a page-level width comparison sees nothing.
   await expectNoClippedContent(page);
 
-  // Reps keep their own room on the same value row. (This check used to inspect
+  // Reps keep their own room on the set's value row (the load sits on the
+  // exercise-level band above it, #5371). This check used to inspect
   // `set1-weight` a second time — a copy/paste that asserted nothing new; the
-  // reps input now carries its own testid so it can be checked for real.)
+  // reps input now carries its own testid so it can be checked for real.
   const reps = page.getByTestId("set1-reps");
   await settledFill(page, reps, "12");
   expect(
@@ -164,12 +165,12 @@ test("each set groups its identity and options above its values at 390px (#1612)
 
   // Three sets, the reported case. Each `+ Add set` needs the previous set
   // complete, so this fills as it goes; the completed sets make the draft
-  // savable, which is why the test deletes its row at the end.
+  // savable, which is why the test deletes its row at the end. The load is stated
+  // once for the exercise (#5371) — a new set copies it — so each row is reps.
   await fillSet1Weight(page, "60");
   await settledFill(page, page.getByTestId("set1-reps"), "5");
   for (const n of [2, 3]) {
     await page.getByRole("button", { name: "+ Add set" }).click();
-    await settledFill(page, page.getByTestId(`set${n}-weight`), "60");
     await settledFill(page, page.getByTestId(`set${n}-reps`), "5");
   }
   await expect(page.getByTestId("set-row-3")).toBeVisible();
@@ -223,9 +224,14 @@ test("each set groups its identity and options above its values at 390px (#1612)
   }
 
   // The sticky schema shows only the VALUE schema on a phone, aligned to the
-  // steppers — no detached "Set / Options" headings.
+  // steppers — no detached "Set / Options" headings. With the load stated once
+  // above the rows (#5371) the value schema is the reps column; the weight names
+  // itself on its own band, unit and all.
   const headings = page.getByTestId("set-column-headings");
-  await expect(headings.getByTestId("weight-column-heading")).toBeVisible();
+  await expect(page.getByTestId("exercise-weight")).toContainText(
+    /^Weight \((kg|lb)\)/
+  );
+  await expect(headings.getByTestId("weight-column-heading")).toHaveCount(0);
   await expect(headings.getByTestId("reps-column-heading")).toBeVisible();
   // The desktop table furniture is not rendered on a phone (the headings stay in
   // the DOM for `sm` and up, so this asserts they are not SHOWN).

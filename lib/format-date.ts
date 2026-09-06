@@ -107,6 +107,45 @@ export function parseClockHhmm(
   return null;
 }
 
+// What somebody TYPES into a clock field, as a canonical "HH:MM" — or null when
+// it is not a time yet. Pure and total; `TimeField`'s onChange, blur and validity
+// message are its only readers (#5360).
+//
+// SEPARATE FROM `parseClockHhmm` ON PURPOSE. That one reads STORED text, where
+// being strict is the whole job: a dose slot is as often a bucket word as a clock
+// and only a real clock may be written back (#3674), and #4550 already has three
+// private forks of it to fold. Loosening it would push every shorthand below into
+// the database's reader. So the shorthand lives here and nowhere else.
+//
+// A BARE TIME IS 24-HOUR IN EVERY PROFILE (owner, 2026-09-05): `630` is 06:30 and
+// `1830` is 18:30. The field never guesses a meridiem from the clock preference or
+// from the value it is replacing — adding `p` is how a 12h profile says evening.
+export function parseTypedClock(
+  value: string | null | undefined
+): string | null {
+  const typed = value?.trim();
+  if (!typed) return null;
+  // Three shapes of a time, then an optional meridiem: a separated `6:30` /
+  // `6.30` / `6h30`; a bare run of 3-4 digits split from the RIGHT, so `630` is
+  // 6:30 and `0630` is 06:30 (5 digits is not a time, it is a typo); or an hour
+  // on its own, which means o'clock. Order matters — the separated form has to be
+  // tried before the runs, and the hour last.
+  const m =
+    /^(?:(\d{1,2})[:.h](\d{2})|(\d{3,4})|(\d{1,2}))\s*(?:([ap])\.?(?:m\.?)?)?$/i.exec(
+      typed
+    );
+  if (!m) return null;
+  const [, sepHour, sepMinute, run, loneHour, meridiem] = m;
+  const hour = Number(sepHour ?? run?.slice(0, -2) ?? loneHour);
+  const minute = Number(sepMinute ?? run?.slice(-2) ?? 0);
+  if (minute > 59) return null;
+  if (!meridiem) return hour <= 23 ? `${pad2(hour)}:${pad2(minute)}` : null;
+  // With a meridiem the hour is a 12-hour one, so `0p` and `13p` are not times.
+  if (hour < 1 || hour > 12) return null;
+  const hour24 = (hour % 12) + (meridiem.toLowerCase() === "p" ? 12 : 0);
+  return `${pad2(hour24)}:${pad2(minute)}`;
+}
+
 // Format stored/read-only clock text through the same login preference seam as
 // `formatClock`. Unknown imported text is preserved rather than silently
 // disappearing.

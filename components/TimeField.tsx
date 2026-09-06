@@ -7,6 +7,7 @@ import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import {
   formatClock,
   parseClockHhmm,
+  parseTypedClock,
   type TimeFormat,
 } from "@/lib/format-date";
 
@@ -22,14 +23,22 @@ import {
 // "HH:MM" or "" for "no time". The pair rules — never default to now, the "Now"
 // offer, re-anchoring, bounds, `timeRequired` — stay `WhenControl`'s (#2236).
 //
-// TYPE OR PICK. The text field accepts either clock ("19:30", "7:30pm") through
-// `parseClockHhmm`, the same reader stored clock text already goes through, and
+// TYPE OR PICK. The text field accepts either clock ("19:30", "7:30pm") and the
+// shorthand around them ("630", "6p", "1124p") through `parseTypedClock`, and
 // renders its value in the profile's own. Typing keeps working at every width,
-// which is the invariant #3376 fixed for the date half.
+// which is the invariant #3376 fixed for the date half. The TYPED reader is a
+// separate function from `parseClockHhmm`, which stays the strict reader for
+// STORED clock text — see its own comment for why the two must not converge.
 //
 // ONE AUTHORED PICKER, hosted by `AnchoredPanel` exactly as the calendar is: an
 // anchored popover from `md` up, a bottom sheet below, never a `hidden md:` twin
-// (#2305). The picker is a SCROLL-SNAP WHEEL — real scroll containers, so flick
+// (#2305). AND ROLE-LESS, exactly as the calendar is: a panel that declares a
+// role is one `AnchoredPanel` moves focus INTO on open (#3905), which is right
+// for a menu a button promised and wrong for a picker that opens when the FIELD
+// takes focus — the caret would leave the input the person just clicked into,
+// and their next keystroke would land in the hour column. The field itself is
+// the keyboard route here (typing, and the arrows step by a minute), so the
+// wheel promises no popup and nothing pulls focus out of the input. The picker is a SCROLL-SNAP WHEEL — real scroll containers, so flick
 // momentum and detent snapping are the platform's own physics rather than a
 // gesture recognizer this file would have to own. Chosen over dropping to native
 // below `md` knowing a web page gets no haptic tick on iOS: the look being the
@@ -137,8 +146,8 @@ export default function TimeField({
   // Constraint Validation API carries it (`required` only covers empty).
   useEffect(() => {
     inputRef.current?.setCustomValidity(
-      shown && !parseClockHhmm(shown)
-        ? "Enter a time, like 19:30 or 7:30 pm."
+      shown && !parseTypedClock(shown)
+        ? "Enter a time, like 19:30, 7:30 pm or 730p."
         : ""
     );
   }, [shown]);
@@ -190,10 +199,45 @@ export default function TimeField({
         // The TYPING seam's dirty-form registration moment (#4976) — see the
         // comment above `registerDirtyBaseline` for why it fires here rather
         // than post-edit, and why the wheel needs its own call at its own seam.
-        onFocus={registerDirtyBaseline}
+        //
+        // FOCUS ALSO OPENS THE WHEEL, WHERE IT IS A POPOVER — `DateField`'s rule
+        // verbatim (components/DateField.tsx, `onFocus`), because the two halves
+        // of `WhenControl` should not answer a tap differently. From `md` up the
+        // panel floats beside the field and focus stays in the input, so opening
+        // costs the typist nothing. Below `md` the wheel is a modal SHEET that
+        // takes focus, and opening it the moment the field is tapped would mean
+        // the field could never be typed into on a phone at all; there the glyph
+        // stays the door. Opening is not PICKING — the baseline registered above
+        // is still only a baseline, so a field merely glanced at stays clean.
+        onFocus={() => {
+          registerDirtyBaseline();
+          if (!compact) setOpen(true);
+        }}
+        // ±1 MINUTE ON THE ARROWS, the segment stepping the native control had.
+        // The field owns no day (that is `WhenControl`'s, #2236), so 23:59 wraps
+        // to 00:00 rather than reaching for tomorrow. An empty or unparseable
+        // field steps NOWHERE: seeding a time from the clock is the one thing
+        // this component never does. `Home`/`End` are left to the wheel's own
+        // columns. Clearing the draft is what makes the step visible — the text
+        // it was typed as has just stopped being what the field holds.
+        onKeyDown={(e) => {
+          const step = e.key === "ArrowUp" ? 1 : e.key === "ArrowDown" ? -1 : 0;
+          if (!step) return;
+          const hhmm = parseTypedClock(shown);
+          if (!hhmm) return;
+          e.preventDefault();
+          const minutes =
+            (Number(hhmm.slice(0, 2)) * 60 +
+              Number(hhmm.slice(3)) +
+              step +
+              1440) %
+            1440;
+          setDraft(null);
+          onChange(`${pad2(Math.floor(minutes / 60))}:${pad2(minutes % 60)}`);
+        }}
         onChange={(e) => {
           const text = e.target.value;
-          const parsed = parseClockHhmm(text);
+          const parsed = parseTypedClock(text);
           const emitted = parsed ?? (text.trim() ? null : "");
           // Pinned to the value this keystroke LEAVES the parent holding, so the
           // draft survives its own emission and expires on anyone else's.
@@ -204,7 +248,9 @@ export default function TimeField({
         // field is left; one that did not stays on screen wearing its validity
         // message, because silently discarding what somebody typed is the defect
         // `DateField` avoids the same way.
-        onBlur={() => setDraft((d) => (d && parseClockHhmm(d.text) ? null : d))}
+        onBlur={() =>
+          setDraft((d) => (d && parseTypedClock(d.text) ? null : d))
+        }
         // `pr-9` matches the picker button's real reach — a 1rem glyph inset
         // 0.5rem — exactly as the date field's calendar button does.
         className={`input pr-9 ${inputClassName}`}
@@ -238,7 +284,6 @@ export default function TimeField({
         }}
         disabled={disabled}
         aria-label="Open time picker"
-        aria-haspopup="dialog"
         className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 transition hover:text-slate-600 disabled:opacity-40 dark:text-slate-400 dark:hover:text-slate-300"
       >
         <svg
@@ -258,7 +303,6 @@ export default function TimeField({
         onClose={() => setOpen(false)}
         anchorRef={ref}
         title="Choose a time"
-        role="dialog"
         testId="time-field-wheel"
         sheetTestId="time-field-sheet"
         panelRef={popRef}
