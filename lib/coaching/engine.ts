@@ -1308,7 +1308,9 @@ function formatWorkoutItem(
             ...injuryTempering(item.exercise.exercise, nw),
             deloadWeek: deload,
           })
-        : rawNext;
+        : // No exercise, so no raw progression either — and a raw one could not be
+          // rendered here anyway (#5394).
+          null;
       const list = nw.exercises.join(", ");
       const prefix = deload ? "Deload week — " : "";
       return {
