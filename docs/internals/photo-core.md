@@ -57,7 +57,7 @@ Returns a typed outcome: `{ kind: "processed", photo: ProcessedPhoto }` or
 `ProcessedPhoto` =
 `{ bytes, thumbBytes, mime: "image/jpeg", width, height, sizeBytes, contentHash, captureDate }`.
 
-The client half (`components/photo/PhotoCapture.tsx` +
+The client half (`components/media/MediaInput.tsx` +
 `lib/photo/client-compress.ts`) makes the common path clean/small at the first
 hop — a canvas re-encode has no EXIF and `fitWithin` (the same pure sizing
 computation the server tests pin) caps the upload at capture time — but the
@@ -134,7 +134,7 @@ judgment anywhere in the core (product-decided, #1119).
 5. Row-ops side-state: `deleteProfile` gathers `stored_path`+`thumb_path` before
    the sweep and unlinks under the domain root; the export-completeness
    allowlist documents the export stance; owned-table registration.
-6. Surface: `PhotoCapture` (pass the series' last photo as `ghostUrl`),
+6. Surface: `MediaInput` (pass the series' last photo as `ghostUrl`),
    `PhotoGallery` (add the domain — the selector lights up on data), and
    `PhotoTimeline` per series. A domain whose table predates the core and has no
    `thumb_path` derives the grid's thumbnail with `thumbSiblingPath` instead
