@@ -40,7 +40,7 @@ import { tierForDedupeKey } from "@/lib/rule-finding-prefixes";
 import { logPracticeSession } from "@/lib/queries";
 import { practiceIdentity } from "@/lib/practice";
 import { buildPracticeReminder } from "@/lib/notifications/practices";
-import { rightSizeLowerCallback } from "@/lib/notifications/callback-data";
+import { rightSizeLowerCallback } from "@/lib/notifications/practice-tokens";
 
 // The frozen clock: a Wednesday, so the rolling week window used throughout is simply
 // the trailing seven days and every offset below reads as "N days ago".

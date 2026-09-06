@@ -3,8 +3,8 @@ import {
   parsePrnLogCallback,
   parseRedoseLogCallback,
   redoseLogCallback,
-  resolveTapProfile,
-} from "@/lib/notifications/callback-data";
+} from "@/lib/notifications/prn-tokens";
+import { resolveTapProfile } from "@/lib/notifications/callback-data";
 
 describe("parsePrnLogCallback (#797 /dose log button)", () => {
   it("parses a well-formed prn token", () => {

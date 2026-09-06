@@ -139,58 +139,7 @@ export function parseAllCallback(data: unknown): AllCallback | null {
   return { profileId, window: window as IntakeSendSlot, date };
 }
 
-// ---- OFFER TOKENS: the button names a STORED bundle, not its contents -------
-//
-// Two buttons write a whole named set in one tap — the composed "your usual <window>"
-// (#2460) and the per-stack one-tap (#3098) — and a token that spells its set out
-// grows with the set, against a hard 64 bytes, and is LARGEST at send time before
-// anything is logged. `usual:` measured 63 of 64; `stacktake:` dropped its own button
-// once a stack outgrew the limit. So neither names its set: the bundle is stored
-// (`notify_offers`, ./offer-store.ts) and the token carries the row id, constant size.
-//
-// NO DATE CROSSES THE WIRE either: the offer ROW carries the day, so a token cannot
-// backfill; how old a row may be is each tenant's own rule (./offer-store.ts).
-// AND THE ID IS THE WHOLE TOKEN, which is why `notify_offers.id` is AUTOINCREMENT
-// (20260827-notify-offers-autoincrement): a reissued row id silently re-points a button
-// still sitting in a chat at a bundle it never named.
-
-// The prefixes that spell an offer token. Not a registry of behaviour — the dispatcher
-// still routes each to its own handler, and each keeps its own reconcile family; only
-// the GRAMMAR is shared, the way `take:` and `skip:` share theirs.
-export type OfferPrefix = "usual" | "stacktake";
-
-export interface OfferCallback {
-  profileId: number;
-  offerId: number;
-}
-
-// The single source of truth for the shape (the mint sites write it, the parsers and
-// the reconcile sweep read it): "<prefix>:<profileId>:<offerId>".
-export function offerCallback(
-  prefix: OfferPrefix,
-  profileId: number,
-  offerId: number
-): string {
-  return `${prefix}:${profileId}:${offerId}`;
-}
-
-// Parse an offer token for one prefix. Malformed (wrong prefix, non-numeric, zero or
-// negative ids, missing or trailing fields) → null. The profile id is a cross-check
-// like every other tap token: the handler re-resolves the acting profile from the chat
-// and the offer row is read scoped by that profile.
-export function parseOfferCallback(
-  data: unknown,
-  prefix: OfferPrefix
-): OfferCallback | null {
-  if (typeof data !== "string" || !data.startsWith(`${prefix}:`)) return null;
-  const parts = data.split(":");
-  if (parts.length !== 3) return null;
-  const profileId = Number(parts[1]);
-  const offerId = Number(parts[2]);
-  if (!Number.isInteger(profileId) || profileId <= 0) return null;
-  if (!Number.isInteger(offerId) || offerId <= 0) return null;
-  return { profileId, offerId };
-}
+// The OFFER tokens — `usual:` / `stacktake:` — live in ./offer-tokens (#2961 step 2).
 
 // Harvest the dose-session footprint out of a (possibly merged, #1154) reminder
 // keyboard: every dose id a surviving take/skip button carries, plus every slot a
@@ -468,38 +417,7 @@ export function removeRowContaining(
   return rows.filter((r) => !r.some((b) => b.callback_data === data));
 }
 
-// ---- Phase 1: preventive-nudge buttons (issue #233) ----
-// ✅ Done → recordPreventiveDone; 🚫 Not applicable → setPreventiveOverride;
-// ⏰ Remind later → findings-bus snooze (#227). The token carries the profile id
-// (cross-checked against the chat like a dose tap) and the catalog RULE KEY — a
-// stable machine key, never a name, and never recycled — so it fits Telegram's
-// 64-byte limit and the handler re-derives the rule's kind from the catalog.
-
-export type PreventiveAction = "done" | "na" | "later";
-
-export interface PreventiveCallback {
-  profileId: number;
-  ruleKey: string;
-  action: PreventiveAction;
-}
-
-// Parse a "pv<done|na|later>:<profileId>:<ruleKey>" token. Rule keys are the
-// catalog's stable snake_case identifiers (no colons), so the greedy tail is the
-// whole key. The handler still validates it against the catalog. Malformed →
-// null.
-export function parsePreventiveCallback(
-  data: unknown
-): PreventiveCallback | null {
-  if (typeof data !== "string") return null;
-  const m = /^pv(done|na|later):(\d+):(.+)$/.exec(data);
-  if (!m) return null;
-  const profileId = Number(m[2]);
-  const ruleKey = m[3];
-  if (!profileId || !ruleKey) return null;
-  const action: PreventiveAction =
-    m[1] === "done" ? "done" : m[1] === "na" ? "na" : "later";
-  return { profileId, ruleKey, action };
-}
+// The PREVENTIVE-NUDGE tokens live in ./preventive-tokens (#2961 step 2).
 
 // The outcome a preventive tap answers from. `unknown-rule` covers a tampered or
 // stale token whose rule isn't in the catalog — nothing is written, so the tap is
@@ -547,26 +465,7 @@ export function preventiveCloseText(outcome: PreventiveTapOutcome): string {
   }
 }
 
-// ---- Phase 3: refill-nudge snooze button (issue #233) ----
-// 📦 Ordered — remind me in 3 days → bus snooze via refillSignalKey (#227). No
-// "mark refilled" button: that needs an amount, which a button handles badly (a
-// deep-link opens the form instead). The token carries the (integer, never-
-// recycled) intake-item id.
-
-export interface RefillCallback {
-  profileId: number;
-  itemId: number;
-}
-
-// Parse a "rfsnooze:<profileId>:<itemId>" token. Malformed → null.
-export function parseRefillCallback(data: unknown): RefillCallback | null {
-  if (typeof data !== "string" || !data.startsWith("rfsnooze:")) return null;
-  const [, profStr, itemStr] = data.split(":");
-  const profileId = Number(profStr);
-  const itemId = Number(itemStr);
-  if (!profileId || !itemId) return null;
-  return { profileId, itemId };
-}
+// The REFILL-SNOOZE token lives in ./refill-tokens (#2961 step 2).
 
 export type RefillTapOutcome = "snoozed" | "stale-item";
 
@@ -576,53 +475,8 @@ export function refillAnswerText(outcome: RefillTapOutcome): string {
     : "Not recorded — this reminder is out of date. Open the app.";
 }
 
-// ---- Phase 2: escalation buttons (issue #233) ----
-// ✅ Confirmed taken → markDoseTaken (its DoseTakenOutcome answers honestly);
-// 👍 I'm on it → an ack that suppresses re-nudge WITHOUT claiming the dose taken.
-// The token mirrors a dose tap's shape (profile/dose/item/date) under distinct
-// "esctake"/"escack" prefixes.
-
-// ⏭️ Skip joins the two original affordances (#1716): a skip is a RECORDED DELIBERATE
-// DECISION, distinct from silence, and skipped doses already end the escalation loop.
-export type EscalationAction = "take" | "ack" | "skip";
-
-export interface EscalationCallback {
-  profileId: number;
-  doseId: number;
-  itemId: number | null;
-  date: string;
-  action: EscalationAction;
-}
-
-// Parse an "esctake:…" / "escskip:…" / "escack:…" token (same field layout as a dose
-// token). Malformed (wrong prefix, bad ids, missing or non-date date — #3120) → null.
-//
-// THE DATE IS NOT ONLY A WRITE KEY HERE. An `escack:` PERSISTS its date as the
-// escalation's acknowledgement marker, and lib/notifications/escalate.ts compares that
-// marker to the dose's day by EQUALITY — so a token carrying a non-date once stored a
-// garbage marker that could never match, silently voiding the acknowledgement while the
-// caregiver was told "we'll hold off" and the escalation kept re-firing.
-export function parseEscalationCallback(
-  data: unknown
-): EscalationCallback | null {
-  if (typeof data !== "string") return null;
-  let action: EscalationAction;
-  if (data.startsWith("esctake:")) action = "take";
-  else if (data.startsWith("escskip:")) action = "skip";
-  else if (data.startsWith("escack:")) action = "ack";
-  else return null;
-  const [, profStr, doseStr, itemStr, date] = data.split(":");
-  const profileId = Number(profStr);
-  const doseId = Number(doseStr);
-  if (!profileId || !doseId || !isRealIsoDate(date)) return null;
-  return {
-    profileId,
-    doseId,
-    itemId: Number(itemStr) || null,
-    date,
-    action,
-  };
-}
+// The ESCALATION token family lives in ./escalation-tokens (#2961 step 2); the
+// authorization rule and the answer texts stay here with the handler until step 3.
 
 // AUTHORIZATION for an escalation tap (issue #233's recorded design decision).
 // Chat-id auth: a tap is authorized when the chat it came from is one of the
@@ -724,179 +578,10 @@ export function escalationAckCloseText(outcome: EscalationAckOutcome): string {
 // The window allowlist is FOOD_NUDGE_WINDOWS, imported from the renderer so the parser
 // and the send path can't drift on which windows are valid.
 
-// ---- PRN administration logging over Telegram (/dose command, #797) ----
-// A "prn:<profileId>:<itemId>:<token>" button logs one PRN (as-needed)
-// administration NOW. Like a dose tap, the profile id is a cross-check (the handler
-// re-resolves the acting profile from the chat and logAdministration re-verifies the
-// item is that profile's), and the handler answers from the typed
-// AdministrationOutcome — never unconditionally, because a PRN log is NOT idempotent
-// (multiple/day is the point). `token` is a per-render nonce (the "dedup token"): a
-// redelivered identical callback carries the same token, and the actual double-log
-// guard is logAdministration's short-window dedup, so a re-tap doesn't invent a
-// phantom dose. The button is NOT consumed on tap (you can log again later).
+// The PRN family — `prn:` / `redose:` — lives in ./prn-tokens (#2961 step 2).
 
-export interface PrnLogCallback {
-  profileId: number;
-  itemId: number;
-  token: string;
-}
-
-// Parse a "prn:<profileId>:<itemId>:<token>" token. The token is the greedy tail (a
-// nonce with no colons). Malformed (wrong prefix, bad ids, missing token) → null.
-export function parsePrnLogCallback(data: unknown): PrnLogCallback | null {
-  if (typeof data !== "string" || !data.startsWith("prn:")) return null;
-  const [, profStr, itemStr, token] = data.split(":");
-  const profileId = Number(profStr);
-  const itemId = Number(itemStr);
-  if (!profileId || !itemId || !token) return null;
-  return { profileId, itemId, token };
-}
-
-// A redose NOTICE is one administration-armed window, unlike the reusable `/dose`
-// list above. Its token carries the administration id that opened this exact window,
-// so a dose logged in the app can supersede it and both the tap handler and the
-// reconciliation sweep can retire the old button.
-export interface RedoseLogCallback {
-  profileId: number;
-  itemId: number;
-  administrationId: number;
-  token: string;
-}
-
-export function redoseLogCallback(
-  profileId: number,
-  itemId: number,
-  administrationId: number,
-  token: string
-): string {
-  return `redose:${profileId}:${itemId}:${administrationId}:${token}`;
-}
-
-// `redose:<profileId>:<itemId>:<armingAdministrationId>:<nonce>`.
-export function parseRedoseLogCallback(
-  data: unknown
-): RedoseLogCallback | null {
-  if (typeof data !== "string" || !data.startsWith("redose:")) return null;
-  const [, profStr, itemStr, administrationStr, token] = data.split(":");
-  const profileId = Number(profStr);
-  const itemId = Number(itemStr);
-  const administrationId = Number(administrationStr);
-  if (!profileId || !itemId || !administrationId || !token) return null;
-  return { profileId, itemId, administrationId, token };
-}
-
-// ---- Wellness-practice "Done ✅" logging over Telegram (#1259 phase 2) ----
-// A "pdone:<profileId>:<targetId>:<token>" button logs one practice session NOW for the
-// target's practice. Like a dose/PRN tap the profile id is a cross-check (the handler
-// re-resolves the acting profile from the chat, and logPracticeByTargetId re-verifies the
-// target is that profile's practice), and the handler answers from the typed
-// PracticeLogOutcome — never unconditionally, because a session log is NOT idempotent
-// (multi-session days are supported). `token` is a per-render nonce keeping a redelivered
-// callback distinguishable; the button IS consumed on tap (the keyboard is edited away),
-// so a stale message can't double-log.
-export interface PracticeDoneCallback {
-  profileId: number;
-  targetId: number;
-  token: string;
-}
-
-// Encode the "pdone:<profileId>:<targetId>:<token>" button token. The single source of
-// truth for the shape (the builder mints it, the parser reads it).
-export function practiceDoneCallback(
-  profileId: number,
-  targetId: number,
-  token: string
-): string {
-  return `pdone:${profileId}:${targetId}:${token}`;
-}
-
-// Parse a "pdone:<profileId>:<targetId>:<token>" token. The token is the greedy tail (a
-// nonce with no colons). Malformed (wrong prefix, bad ids, missing token) → null.
-export function parsePracticeDoneCallback(
-  data: unknown
-): PracticeDoneCallback | null {
-  if (typeof data !== "string" || !data.startsWith("pdone:")) return null;
-  const [, profStr, targStr, token] = data.split(":");
-  const profileId = Number(profStr);
-  const targetId = Number(targStr);
-  if (!profileId || !targetId || !token) return null;
-  return { profileId, targetId, token };
-}
-
-// The SAME button, on the on-demand `/practice` list (#1895) — under its own prefix,
-// because the two messages make different claims and the sweep reads the claim off the
-// prefix. `pdone` rides a nudge that asserts "this practice is behind", so its buttons
-// die the moment that stops being true. A `/practice` button asserts nothing at all: it
-// is an additive access affordance, exactly like `prn` on the `/dose` list — logging
-// another session is valid whenever, the token carries no date, and it can never become
-// a false claim. Declared INERT in ./reconcile-registry for that reason.
-//
-// Identical field shape, so the tap routes to the same handler and the same write core:
-// what differs is what the message SAYS, not what the button does.
-export function practiceLogCallback(
-  profileId: number,
-  targetId: number,
-  token: string
-): string {
-  return `plog:${profileId}:${targetId}:${token}`;
-}
-
-export function parsePracticeLogCallback(
-  data: unknown
-): PracticeDoneCallback | null {
-  if (typeof data !== "string" || !data.startsWith("plog:")) return null;
-  const [, profStr, targStr, token] = data.split(":");
-  const profileId = Number(profStr);
-  const targetId = Number(targStr);
-  if (!profileId || !targetId || !token) return null;
-  return { profileId, targetId, token };
-}
-
-// ---- The right-sizing ride-along on the practice nudge (#1670) ----
-// The pace nudge already fires for a practice that is behind its weekly floor. When
-// that shortfall has been CHRONIC — every one of the last four completed weeks under
-// the floor — the same message carries one extra button offering to lower the floor to
-// the cadence actually kept. It is a ride-along in the strict sense: no message is ever
-// sent because of a right-sizing suggestion, and a target that has stopped generating
-// this nudge has no delivery path, which is correct rather than a gap.
-//
-// The token carries the TARGET id (plus the profile id as a cross-check, resolved
-// against the chat like a dose tap) and DELIBERATELY NOT the new floor. The handler
-// re-derives the live candidate before writing, exactly as the in-app accept does, so
-// a stale button on a recovered practice refuses instead of applying a number nobody
-// is suggesting any more.
-export interface RightSizeLowerCallback {
-  profileId: number;
-  targetId: number;
-}
-
-// Encode the "rslower:<profileId>:<targetId>" button token (minted by the nudge
-// builder, read by the parser below — one source of truth for the shape).
-export function rightSizeLowerCallback(
-  profileId: number,
-  targetId: number
-): string {
-  return `rslower:${profileId}:${targetId}`;
-}
-
-// Parse a "rslower:<profileId>:<targetId>" token. Malformed (wrong prefix, bad ids)
-// -> null.
-export function parseRightSizeLowerCallback(
-  data: unknown
-): RightSizeLowerCallback | null {
-  if (typeof data !== "string" || !data.startsWith("rslower:")) return null;
-  const [, profStr, targStr] = data.split(":");
-  const profileId = Number(profStr);
-  const targetId = Number(targStr);
-  if (!profileId || !targetId) return null;
-  return { profileId, targetId };
-}
-
-// The toast answer for a practice Done tap is `practiceLogOutcomeText` in lib/practice.ts
-// — the SAME sentence the Wellness card's button, the quick-entry overlay row, and the
-// command palette's inline quick log say, because they all answer from one write core's
-// one typed outcome (#1633). It used to live here, which made the chat surface the
-// accidental owner of a domain string three web surfaces also needed.
+// The PRACTICE family — `pdone:` / `plog:` / `rslower:` — lives in ./practice-tokens
+// (#2961 step 2).
 
 // ---- "Still going?" finish/discard over Telegram (#1205, one family at #5142) ----
 // ONE FAMILY FOR EVERY OPEN EPISODE, LABELLED BY KIND. The workout draft's nudge
