@@ -155,6 +155,26 @@ describe("the settled exercise (#5370)", () => {
     expect(screen.getByRole("combobox")).toBeTruthy();
     expect(screen.queryByTestId("part-name-heading")).toBeNull();
   });
+
+  // TYPING IS SEARCHING, and this is the case a name-derived `settled` gets wrong: a
+  // half-typed name is a name, so the heading would arrive on the first keystroke and
+  // take the field out from under the caret.
+  it("keeps the picker mounted through the first keystroke", () => {
+    const typed = part({ name: "" });
+    const onTypePartName = vi.fn();
+    const { rerenderParts } = renderList([typed], { onTypePartName });
+
+    fireEvent.change(screen.getByRole("combobox"), {
+      target: { value: "Ben" },
+    });
+    rerenderParts([part({ name: "Ben" })]);
+
+    expect(onTypePartName).toHaveBeenCalledWith(0, "Ben");
+    expect((screen.getByRole("combobox") as HTMLInputElement).value).toBe(
+      "Ben"
+    );
+    expect(screen.queryByTestId("part-name-heading")).toBeNull();
+  });
 });
 
 describe("history is one line, the rest one tap behind (#5370)", () => {

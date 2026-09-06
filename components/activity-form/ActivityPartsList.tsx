@@ -778,7 +778,15 @@ export default function ActivityPartsList({
                   ) : (
                     <ActivityCombobox
                       value={p.name}
-                      onChange={(v) => onTypePartName(pi, v)}
+                      // TYPING IS SEARCHING. Without this the part would settle on the
+                      // first keystroke — `settled` is derived from the name, and a
+                      // half-typed name is a name — pulling the field out from under
+                      // the caret. The state has to say "this part is being searched",
+                      // not "this part has no name yet".
+                      onChange={(v) => {
+                        setSearchingPart(pi);
+                        onTypePartName(pi, v);
+                      }}
                       onPick={(v) => {
                         onPickPartName(pi, v);
                         settleName(pi, true);

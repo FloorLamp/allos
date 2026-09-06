@@ -92,8 +92,8 @@ test("'Log this session' pre-fills the activity form in live mode (#740)", async
     await page.waitForURL(/\/training\/activity\/\d+$/);
     await expect(page.getByTestId("live-workout-panel")).toBeVisible();
     await expect(
-      page.getByPlaceholder(/What did you do/).first() // first-ok: the routine's first prefilled activity row
-    ).toHaveValue("Barbell Bench Press");
+      page.getByTestId("part-name-heading").first() // first-ok: the routine's first prefilled activity row
+    ).toContainText("Barbell Bench Press");
   } finally {
     await page.context().close();
     clearRoutineActivities();

@@ -179,7 +179,9 @@ test("each Recent row repeats that session into the set editor (#923)", async ({
 
     const recent = page.getByTestId("recent-sessions");
     await expect(recent).toBeVisible();
-    // Tap the newest row's Fill — the primary "repeat last session" gesture.
+    // Tap the STATED line's Fill — the primary "repeat last session" gesture, and
+    // since #5370 the only history row on the default view (the rest are behind the
+    // chevron, still a tap away and still fills).
     await recent.getByTestId("recent-session-fill").first().click(); // first-ok: prefills from the most-recent session (this spec's own logged session) — order-agnostic
 
     // The set editor now states that session's LITERAL work (30 kg × 8) as this
@@ -216,6 +218,9 @@ test("a plateaued lift shows the inline plateau hint (#923)", async ({
     await openNewActivity(page);
     await pickActivity(page, "Skullcrusher");
 
+    // The note rides behind the history line's fold since #5370 — one tap, and the
+    // chevron is what states there is something behind it.
+    await page.getByTestId("recent-more-toggle").click();
     const hint = page.getByTestId("plateau-hint");
     await expect(hint).toBeVisible();
     await expect(hint).toContainText(/flat ~6 weeks/i);
@@ -259,6 +264,7 @@ test("dismissing the form's plateau hint silences it on Training → Overview (#
     // Dismiss it from the FORM's inline hint (same dedupeKey → shared suppression bus).
     await openNewActivity(page);
     await pickActivity(page, "Skullcrusher");
+    await page.getByTestId("recent-more-toggle").click();
     const hint = page.getByTestId("plateau-hint");
     await expect(hint).toBeVisible();
     await settledClick(page, hint.getByTestId("plateau-hint-dismiss"));

@@ -723,8 +723,11 @@ test("a strength part states its implement, and the registry door is one per for
     await firstName.fill("Curl");
     // The dropdown is open over the row below; Escape dismisses it without committing
     // a pick, which is exactly what this state needs.
+    // Escape settles the typed name back to its heading (#5370) without committing
+    // a pick, which is exactly what this state needs.
     await firstName.press("Escape");
-    await expect(firstName).toHaveValue("Curl");
+    const firstHeading = page.getByTestId("part-name-heading").first(); // first-ok: the only part on this form
+    await expect(firstHeading).toContainText("Curl");
     await expect(chips).toHaveCount(1);
     await expect(chips).toHaveText("Pick equipment");
     await expect(chips).toHaveAttribute("data-fact-state", "missing");
@@ -742,7 +745,7 @@ test("a strength part states its implement, and the registry door is one per for
     );
     await expect(doors).toHaveCount(1);
     await page.getByRole("button", { name: "Barbell", exact: true }).click();
-    await expect(firstName).toHaveValue("Barbell Curl");
+    await expect(firstHeading).toContainText("Barbell Curl");
     // The dirty half, asserted FIRST — `dirty` is transient, and reading it after the
     // panel closes would be reading it after the state it names has passed.
     await expect(form).toHaveAttribute("data-unsaved", "true");

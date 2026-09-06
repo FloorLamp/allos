@@ -107,7 +107,9 @@ test("the ✕ asks before discarding a typed draft that never became a row", asy
   await expect(discard).toContainText("Discard unsaved changes?");
   // Cancel keeps the typing AND the workspace it was typed into.
   await discard.getByRole("button", { name: "Cancel" }).click();
-  await expect(panel.getByPlaceholder(/What did you do/)).toHaveValue(
+  // A picked lift states itself as a heading rather than inside a mounted field
+  // (#5370); the claim is the same one — the typing survived Cancel.
+  await expect(panel.getByTestId("part-name-heading")).toContainText(
     "Barbell Bench Press"
   );
 
