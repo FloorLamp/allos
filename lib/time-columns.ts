@@ -103,7 +103,7 @@ export interface TimeColumn {
 // with a reason so the scan's completeness rule can be strict about everything else.
 export const NOT_TEMPORAL: Record<string, string> = {
   time_source:
-    "food_log_events: an enum ('tap' | 'stated'), the provenance of occurred_at.",
+    "food_log_events / substance_log_events: an enum ('tap' | 'stated'), the provenance of occurred_at.",
   weekdays:
     "intake_item_doses / schedule versions: a weekday mask for a schedule, not a moment.",
   cadence_weekdays:
@@ -1145,14 +1145,14 @@ export const TIME_COLUMNS = {
       semantic: "window-start",
       grain: "instant",
       convention: "mixed",
-      note: "THE column that most rewards reading this table before writing SQL. It holds vendor ISO-with-milliseconds for an imported sample AND `${date}T00:00:00` — a profile-local DAY midnight, not an instant — for a reading whose author stated only a day. It is also the natural key (profile, metric, source, origin, started_at) that makes a re-entry a correction, so neither shape can be normalized without changing dedupe.",
+      note: "THE column that most rewards reading this table before writing SQL. It holds whatever each writer put there, and NO inventory of the shapes is claimed complete — two falsifying passes on #2899 (2026-09-05) each found shapes the previous note omitted. Known so far: the device's own value VERBATIM from an integration — ISO with or without milliseconds, `Z` or an offset (lib/integrations/health-connect.ts and oura.ts pass the payload's time through; normalize.ts upsertMetricSamples inserts it unchanged); `${date}T00:00:00`, a profile-local DAY midnight, for a reading whose author stated only a day (lib/reading-writes.ts); `${date}THH:MM:SS`, a profile-local ZONELESS datetime, for a hydration tap or a stated time (lib/offline/writes.ts sampleTime); a bare `YYYY-MM-DD` for a document-import point sample (lib/import-persist.ts); and `<ISO>#<stage>` for a Fitbit Takeout sleep-stage row (lib/integrations/fitbit-takeout.ts). It is also the natural key (profile, metric, source, origin, started_at) that makes a re-entry a correction, so no shape can be normalized without changing dedupe — and no brand types it (#2899).",
     },
     {
       column: "ended_at",
       semantic: "window-end",
       grain: "instant",
       convention: "mixed",
-      note: "The same two shapes as started_at, and equal to it for an instantaneous reading.",
+      note: "The same shapes as started_at, and equal to it for an instantaneous reading.",
     },
     {
       column: "pushed_at",
@@ -1669,6 +1669,29 @@ export const TIME_COLUMNS = {
       semantic: "bookkeeping",
       grain: "instant",
       convention: "bare",
+    },
+  ],
+  substance_log_events: [
+    { column: "date", semantic: "day", grain: "day", convention: "n/a" },
+    {
+      column: "recorded_at",
+      semantic: "record",
+      grain: "instant",
+      convention: "canonical",
+      note: "The tap instant, born canonical by DEFAULT and by writer (#5026 phase 2). A row DERIVED from a pre-ledger day count carries that day row's own `substance_daily_totals.recorded_at` — the LAST tap's stamp, shared by every event the migration derived from that day — because the counter remembers exactly one and it is the only filing instant there is.",
+    },
+    {
+      column: "created_at",
+      semantic: "bookkeeping",
+      grain: "instant",
+      convention: "bare",
+    },
+    {
+      column: "occurred_at",
+      semantic: "event",
+      grain: "instant",
+      convention: "canonical",
+      note: "When the use happened. NULL means nobody stated one and that is a real answer, never filled in from the tap — the food_log_events.occurred_at rule, re-instantiated for nicotine, cannabis and every custom key (#5026 phase 2). `time_source` records whether a present value was a tap contract or a stated one. Every row the backfill derived from a day count has NULL here: a day total declares no instant, and the migration refuses to invent one.",
     },
   ],
   symptom_logs: [

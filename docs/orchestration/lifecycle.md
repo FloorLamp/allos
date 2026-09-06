@@ -16,17 +16,22 @@
   rulings.
 - Run one adversarial audit over the previous day of merges per session-day.
   File findings against the introducing PR.
+- **An issue of its own** (owner, 2026-09-05) is user-reachable, breaks main
+  or a merge, a measured reproduction no open issue scopes, or removes a
+  parallel concept (CLAUDE.md). A scan gap is a line on its #5346 adopter, a
+  harness nit a line on the harness issue, a flake joins its mechanism.
 - After each UI-affecting merge, while its PR context is fresh, run
   `UX_SEED=1 node scripts/orchestration/post-merge-census.mjs HEAD^ HEAD --run`.
-  It scopes app territories, expands shared UI to a full census, and stops when
-  the mapping needs a manual plan.
+  It scopes territories, expands shared UI to a census, stops on a manual plan.
 - Dispatch continuously until every remaining issue is blocked, owner-gated, or
   dependency-bound; state that explicitly.
 - Keep `parked` labels and status reports consistent.
 - Merge Dependabot minors on green current main. Send majors through
   `dependabot-eval-brief.mjs` within a day.
-- Give infrastructure issues priorities; active bottlenecks are P1 and isolated
-  latent flakes are P3.
+- Give infrastructure issues priorities; active bottlenecks (a red main, a
+  blocked queue) are P1 and isolated latent flakes are P3. Only the owner or a
+  red main makes a P1: an agent that raises a priority names the rule it
+  applies, and the PM audits every open P1 each watch (#4741 cost three days).
 - Never edit a live agent's worktree without messaging it and receiving an
   acknowledgement.
 - Rerun failed Actions jobs only after all jobs in the run have completed.

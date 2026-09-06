@@ -108,14 +108,18 @@ const broken = path.join(root, "wt-broken");
 git(repo, ["worktree", "add", "-q", "-b", "half-cleaned-4470", broken]);
 fs.rmSync(path.join(broken, ".git"), { recursive: true, force: true });
 
-const ledger = (branches: string[]): string => {
-  const file = path.join(root, `${branches.join("+")}.jsonl`);
+// AGE IS NOW LOAD-BEARING, so the fixture states it. Every branch here is dated
+// LONG ago unless a case asks otherwise: that keeps each existing dispatch on the
+// far side of the new grace boundary, so the verdicts below still mean what they
+// meant before this constant existed.
+const ledger = (branches: string[], at = "2026-08-31T12:11Z"): string => {
+  const file = path.join(root, `${branches.join("+")}@${at}.jsonl`);
   fs.writeFileSync(
     file,
     branches
       .map((branch) =>
         JSON.stringify({
-          at: "2026-08-31T12:11Z",
+          at,
           status: "active",
           branch,
           worktree: `wt-${branch}`,
@@ -148,6 +152,17 @@ const UNREADABLE: [string, string, string][] = [
   ],
 ];
 const GONE = ledger([...READABLE, "restart-4460"]);
+
+// A LANE DISPATCHED TWO MINUTES AGO. Same shape on disk as `ghost-4400` above —
+// a ledger row and no worktree — and a completely different story: the row is
+// appended AT dispatch and the lane's first action is its `git worktree add`, so
+// this is what EVERY sibling looks like for its first minutes. Reported as
+// unreadable it told every caller to escalate; measured on one path ten minutes
+// apart, CANNOT TELL then CLEAR.
+const JUST_DISPATCHED = ledger(
+  [...READABLE, "fresh-5313"],
+  new Date(Date.now() - 2 * 60_000).toISOString()
+);
 
 /** The two ways a lane holds a path, both invisible to the other one's check. */
 const HELD: [string, string, string][] = [
@@ -205,6 +220,29 @@ describe("dispatch-brief.mjs claims <path>", () => {
     expect(run.status).toBe(1);
   });
 
+  it("says STARTING, not CANNOT TELL, for a lane dispatched two minutes ago", () => {
+    const run = claims(UNTOUCHED, JUST_DISPATCHED);
+    expect(run.stdout).toContain("STARTING");
+    expect(run.stdout).toContain("fresh-5313");
+    expect(run.stdout).toContain("does not exist yet");
+    // The half that makes it worth distinguishing: it is not an escalation.
+    expect(run.stdout).toContain("ASK AGAIN");
+    expect(run.stdout).not.toContain("Ask the orchestrator");
+    // …and still not CLEAR. A lane setting up may be heading for this very file.
+    expect(run.stdout).not.toContain("CLEAR");
+    expect(run.status).toBe(4);
+  });
+
+  it("still names a real claim over a lane that is only starting", () => {
+    // A held path outranks a setting-up sibling, and both are printed: an answer
+    // that showed one would send the lane away believing it had the picture.
+    const run = claims(CONTESTED, JUST_DISPATCHED);
+    expect(run.stdout).toContain("CLAIMED");
+    expect(run.stdout).toContain("write-pipeline-3276");
+    expect(run.stdout).toContain("STARTING");
+    expect(run.status).toBe(1);
+  });
+
   it("does not report a lane's own worktree back to it", () => {
     // Run from the holding lane's tree: its own edit is not a collision, and a
     // command that flagged it would be ignored within a day.
@@ -254,6 +292,21 @@ describe("the brief a lane receives", () => {
       "and the command that answers it, beside the claim",
     ],
     ["RE-ASK IT NARROWLY", "and the same lesson pointed at greps"],
+    // #5313: the brief carried NO waiting idiom, so five lanes invented five and
+    // eight shells were still spinning eleven hours later. A rule that reaches a
+    // lane only if it thinks of it is not a control — same argument as the claims
+    // command above, which is why these are pinned in the same place.
+    [
+      "WAIT ON A FACT, NEVER ON A NAME IN THE PROCESS TABLE",
+      "the rule the poll loops broke",
+    ],
+    ['while kill -0 "$(cat "$L.pid")"', "and the idiom to copy instead"],
+    ["THE ONE EXCEPTION", "with the narrow run_in_background carve-out named"],
+    [
+      'MUT=$SCRATCH/mut-$(basename "$(git rev-parse --show-toplevel)")',
+      "and a mutation-copy name a DETACHED tree can produce",
+    ],
+    ["STARTING, which is neither", "and the third answer claims can now give"],
   ])("says %s (%s)", (fragment, _why) => {
     expect(printed).toContain(fragment);
   });
@@ -265,6 +318,17 @@ describe("the verdict rules", () => {
     [["clear", "claimed"], "claimed", "one lane holds it"],
     [["clear", "unknown"], "unknown", "an unreadable worktree is not clear"],
     [["unknown", "claimed"], "claimed", "a named claim outranks an unknown"],
+    [
+      ["clear", "starting"],
+      "starting",
+      "a lane still setting up is not clear either",
+    ],
+    [
+      ["starting", "unknown"],
+      "unknown",
+      "cannot-tell is louder than not-yet: one needs a human, one needs a minute",
+    ],
+    [["starting", "claimed"], "claimed", "a named claim is louder than both"],
     [[], "clear", "no other active dispatches at all"],
   ])("%s -> %s (%s)", (verdicts, expected, _why) => {
     expect(

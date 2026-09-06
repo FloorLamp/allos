@@ -1,8 +1,9 @@
 // Pure card-assembly logic for the household dashboard (issue #31). No DB
-// or network access — the page fetches each profile's data with the existing
-// per-profile query functions (in a loop over getAccessibleProfiles) and hands
-// the raw results to these helpers, so the cross-profile view is built without
-// any new cross-profile SQL and the logic stays unit-testable.
+// or network access — each profile's data is fetched with the existing
+// per-profile query functions (by the page, and for the adherence half by
+// `lib/queries/household.ts`) and the raw results are handed to these helpers,
+// so the cross-profile view is built without any new cross-profile SQL and the
+// logic stays unit-testable.
 
 import { doseDueOn, type IntakeDayContext } from "./intake-schedule";
 import type { DoseCadence, ItemCadence } from "./intake-cadence";

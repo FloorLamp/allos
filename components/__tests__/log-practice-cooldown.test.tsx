@@ -18,7 +18,10 @@ vi.mock("@/components/OfflineQueueProvider", () => ({
 }));
 vi.mock("@/components/TimezoneProvider", () => ({ useTimezone: () => "UTC" }));
 vi.mock("@/components/LoggedViaSurface", () => ({
-  useLoggedViaStamp: () => vi.fn(),
+  // Hands the FormData back, as the real hook does and as every sibling mock here
+  // spells it — a stamp that returns nothing modelled a control that discards it,
+  // which is the shape #5349 made uncompilable.
+  useLoggedViaStamp: () => (fd: FormData) => fd,
 }));
 vi.mock("@/app/(app)/wellness/actions", () => ({
   logPractice: vi.fn(),

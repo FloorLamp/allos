@@ -18,6 +18,7 @@ import { isRealIsoDate } from "../date";
 import { isDoseDateAccepted } from "../dose-log-window";
 import { foodGroupName } from "../food-groups";
 import { INTAKE_SEND_SLOTS, type IntakeSendSlot } from "./intake-format";
+import { MED_STOP_PREFIX } from "./callback-tokens";
 import { FOOD_NUDGE_WINDOWS, type FoodNudgeWindow } from "./food-format";
 import {
   ORIGIN_MARK_PATTERN,
@@ -153,9 +154,6 @@ export function parseAllCallback(data: unknown): AllCallback | null {
 // (20260827-notify-offers-autoincrement): a reissued row id silently re-points a button
 // still sitting in a chat at a bundle it never named.
 
-// Telegram's hard cap on a button's callback_data, in bytes.
-export const TELEGRAM_CALLBACK_DATA_MAX_BYTES = 64;
-
 // The prefixes that spell an offer token. Not a registry of behaviour — the dispatcher
 // still routes each to its own handler, and each keeps its own reconcile family; only
 // the GRAMMAR is shared, the way `take:` and `skip:` share theirs.
@@ -192,19 +190,6 @@ export function parseOfferCallback(
   if (!Number.isInteger(profileId) || profileId <= 0) return null;
   if (!Number.isInteger(offerId) || offerId <= 0) return null;
   return { profileId, offerId };
-}
-
-// Does a token fit Telegram's callback budget? The EXACT encoded byte length, not a
-// character count and not an estimate — a multi-byte character in a future token shape
-// would pass a `.length` check and be rejected on the wire.
-//
-// Compose-time callers DROP a button whose token does not fit; they never truncate it.
-// An offer may never name less than the tap would write (#2460), and #3098's per-stack
-// one-tap already ships that rule (lib/notifications/intake-format.ts).
-export function callbackDataFits(data: string): boolean {
-  return (
-    new TextEncoder().encode(data).length <= TELEGRAM_CALLBACK_DATA_MAX_BYTES
-  );
 }
 
 // Harvest the dose-session footprint out of a (possibly merged, #1154) reminder
@@ -1471,81 +1456,8 @@ export const SYMPTOM_SEVERITY_LABELS: Record<number, string> = {
   4: "Very severe",
 };
 
-// ---- Temperature reply quick-log (#859 item 5) ----------------------------------
-//
-// `/temp` sends a prompt whose body carries a "(#temp:<profileId>)" marker; the user
-// REPLIES to it with a reading. The reply handler extracts the profile from the marker
-// (in reply_to_message.text) and the value from the reply body. No server-side pending
-// state — the marker rides the prompt message, so the flow is stateless like every
-// other inbound Telegram flow.
-
-// The marker embedded in a `/temp` prompt body so a reply can be attributed.
-export function tempReplyMarker(profileId: number): string {
-  return `(#temp:${profileId})`;
-}
-
-// Extract the profile id a reply targets from the prompted message text, or null.
-export function parseTempReplyMarker(
-  replyToText: string | null | undefined
-): number | null {
-  if (!replyToText) return null;
-  const m = /\(#temp:(\d+)\)/.exec(replyToText);
-  if (!m) return null;
-  const id = Number(m[1]);
-  return id > 0 ? id : null;
-}
-
-// Parse a temperature reply body ("38.5", "101F", "38,5 c") into a value + unit. An
-// explicit C/F suffix wins; a bare number auto-detects (human body temps never overlap
-// across scales below 45° — °C readings sit ~35–42, °F ~95–108), since a Telegram chat
-// carries no #857 login unit preference. Returns null when there's no parseable number.
-export function parseTempReply(
-  body: string | null | undefined
-): { value: number; unit: "C" | "F" } | null {
-  if (!body) return null;
-  const m = /(-?\d+(?:[.,]\d+)?)\s*(°?\s*[cCfF])?/.exec(body.trim());
-  if (!m) return null;
-  const value = Number(m[1].replace(",", "."));
-  if (!Number.isFinite(value)) return null;
-  const suffix = (m[2] ?? "").replace(/[^cCfF]/g, "").toUpperCase();
-  const unit: "C" | "F" =
-    suffix === "C" || suffix === "F"
-      ? (suffix as "C" | "F")
-      : value < 45
-        ? "C"
-        : "F";
-  return { value, unit };
-}
-
-// ---- Weight reply quick-log (#1895) -----------------------------------------
-//
-// The `/temp` prompt-reply pattern, one quantity over: `/weight` sends a prompt whose
-// body carries a "(#weight:<profileId>)" marker and the user REPLIES with a number. The
-// same statelessness argument applies — the marker rides the prompt, so nothing
-// server-side has to remember who was asked — and the same attribution guarantee: a
-// multi-profile chat gets one named prompt each, and a reply resolves to the profile its
-// prompt named rather than to whoever sorts first.
-//
-// The VALUE is parsed by the palette's `parseWeightEntry` (lib/palette-quick-log), which
-// is also the parser behind `weight 82.5` in the command palette — one grammar for the
-// same one-liner, and one range guard. A chat carries no login unit preference, so the
-// unit defaults to canonical kg per the notification unit policy; an explicit "lb"
-// suffix still wins, and the conversion happens server-side at the write like every
-// other boundary.
-
-export function weightReplyMarker(profileId: number): string {
-  return `(#weight:${profileId})`;
-}
-
-export function parseWeightReplyMarker(
-  replyToText: string | null | undefined
-): number | null {
-  if (!replyToText) return null;
-  const m = /\(#weight:(\d+)\)/.exec(replyToText);
-  if (!m) return null;
-  const id = Number(m[1]);
-  return id > 0 ? id : null;
-}
+// The `/temp` and `/weight` REPLY-MARKER family lives in ./reply-markers (#2961 step 2)
+// — one grammar, one statelessness argument, and no imports, so it is a leaf.
 
 // ---- Household dose round (issue #1459) --------------------------------------
 // The caregiver-subscribed cross-profile dose reminder: one message in the RECEIVING
@@ -1701,11 +1613,8 @@ export function parseDemoteCallback(data: unknown): DemoteCallback | null {
 
 // ---- The unconfirmed-medication Stop (issue #2574) --------------------------
 
-// The token prefix for the Stop button riding a dose reminder. Its own namespace, and
-// deliberately not a variant of `demote:` — the two buttons perform different writes
-// through different cores, and one token that could mean either is one mis-parse away
-// from stopping a medication somebody asked to demote.
-export const MED_STOP_PREFIX = "medstop";
+// The prefix is declared in the token leaf (#2961 step 1), beside the byte budget the
+// renderer needs; the PARSER stays here with every other parser.
 
 export interface MedStopCallback {
   profileId: number;

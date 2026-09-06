@@ -1,4 +1,4 @@
-// Auth-blind historical correction core for substance consumption (#2009).
+// Auth-blind historical ADD core for substance consumption (#2009).
 // The public row contract is storage-agnostic; dispatch is decided only from the
 // catalog substance. Alcohol rides food_daily_totals, nicotine/cannabis ride
 // substance_daily_totals — and this file SPELLS NEITHER WRITE ITSELF (#4435). It used
@@ -17,34 +17,28 @@
 // substance-log-ledgered by construction. That is why history correction (#2009) carries
 // a custom substance "like the curated three" with no branch of its own.
 
-import { instantNow } from "./clock";
 import type { LoggedVia } from "./logged-via";
 import { db, today, writeTx } from "./db";
 import { SUBSTANCE_USE_WRITE, isPastWriteAccepted } from "./log-manifest";
-import { isRealIsoDate } from "./date";
 import { captureDelete } from "./undo-delete-db";
-import { substanceDayCounter } from "./day-counter-ledger-db";
 import { logFoodServingCore } from "./food-log-write";
 import type { FoodPlacement } from "./food-log-write";
+import { logSubstanceUnitCore } from "./substance-log-write";
 import {
   ALCOHOL_FOOD_GROUP,
   MAX_SUBSTANCE_ENTRY_AMOUNT,
   resolveSubstanceKey,
   substanceDef,
+  type SubstanceKey,
 } from "./substance-use";
 
 export type SubstanceHistoryMutationOutcome =
   | { kind: "added"; id: number }
-  | { kind: "updated"; id: number }
   | { kind: "deleted"; undoId: number }
   | { kind: "not-found" }
-  | { kind: "date-conflict" }
   | { kind: "invalid-date" }
   | { kind: "invalid-amount" }
-  | { kind: "unknown-substance" }
-  // A CONSUMABLE IS AN EVENT (owner ruling, 2026-09-04), so a substance whose units
-  // ARE events is corrected on the event and never on the day that rolls them up.
-  | { kind: "corrected-per-event" };
+  | { kind: "unknown-substance" };
 
 function validAmount(amount: number): boolean {
   return (
@@ -58,34 +52,51 @@ function normalizedNotes(notes: string | null | undefined): string | null {
   return notes?.trim() || null;
 }
 
-// One tap per unit, through the food ledger's own log core — so a drink filed here is
-// the same row a drink tapped on the bar is: counter bumped, event appended,
-// provenance stamped, and no eating instant invented for a day nobody stated one for.
+// One tap per unit, through each ledger's own log core — so a use filed here is the
+// same row the one-tap button writes: counter bumped, event appended, provenance
+// stamped, and no use instant invented for a day nobody stated one for. The dispatch is
+// the substance's ledger and nothing else; NEITHER arm spells a write of its own
+// (#4435), which is what keeps the four contracts the second spelling used to get wrong
+// out of this file for good.
 //
-// A STATED MINUTE RIDES ON EVERY UNIT OF THE ENTRY (#3295 phase 1). The form collects
-// one time for one submission — "two drinks at nine" — so each tap the submission
-// creates carries that same statement, as `occurred_at` with `time_source = 'stated'`.
-// `statedAt` null is the third answer and the commonest: nobody said, and the placement
-// is omitted so the row keeps a NULL instant rather than inheriting the tap stamp.
-function appendAlcoholTaps(
+// A STATED MINUTE RIDES ON EVERY UNIT OF THE ENTRY (#3295 phase 1, widened to every
+// substance by #5026 phase 2). The form collects one time for one submission — "two
+// cigarettes at nine" — so each tap the submission creates carries that same statement,
+// as `occurred_at` with `time_source = 'stated'`. `statedAt` null is the third answer
+// and the commonest: nobody said, and the row keeps a NULL instant rather than
+// inheriting the tap stamp.
+function appendUnitTaps(
   profileId: number,
+  substance: SubstanceKey,
   date: string,
   count: number,
   loggedVia: LoggedVia,
-  statedAt: string | null = null
+  statedAt: string | null
 ): void {
+  const onFoodLedger = substanceDef(substance).ledger === "food-log";
   const placement: FoodPlacement | undefined = statedAt
     ? { eatenAt: statedAt, source: "stated" }
     : undefined;
-  for (let index = 0; index < count; index += 1)
-    logFoodServingCore(
-      profileId,
-      ALCOHOL_FOOD_GROUP,
-      date,
-      loggedVia,
-      undefined,
-      placement
-    );
+  for (let index = 0; index < count; index += 1) {
+    if (onFoodLedger)
+      logFoodServingCore(
+        profileId,
+        ALCOHOL_FOOD_GROUP,
+        date,
+        loggedVia,
+        undefined,
+        placement
+      );
+    else
+      logSubstanceUnitCore(
+        profileId,
+        substance,
+        date,
+        loggedVia,
+        undefined,
+        statedAt
+      );
+  }
 }
 
 export function addSubstanceDailyTotalCore(
@@ -95,15 +106,14 @@ export function addSubstanceDailyTotalCore(
     date: string;
     amount: number;
     notes?: string | null;
-    // THE STATED DRINKING INSTANT (#3295 phase 1), already gated by the caller (an
-    // instant on `date`, not in the future — `judgeStatedAt`). Read by the food-log
-    // arm only, because it is the only substance ledger with a column to hold one:
-    // `substance_daily_totals` is UNIQUE per (profile, date, substance) and has no
-    // instant to state, so the surface offers no time there and nothing is dropped.
+    // THE STATED USE INSTANT (#3295 phase 1; every substance since #5026 phase 2),
+    // already gated by the caller (an instant on `date`, not in the future —
+    // `judgeStatedAt`). Both ledgers now have a column to hold one, so there is no
+    // longer a substance whose stated minute has to be dropped at this boundary.
     statedAt?: string | null;
   },
-  // Which surface filed this entry (#3087). Alcohol rides `food_log_events`, so its
-  // per-unit rows carry provenance exactly as a serving tap does.
+  // Which surface filed this entry (#3087). Every substance's per-unit rows carry
+  // provenance exactly as a serving tap does.
   loggedVia: LoggedVia
 ): SubstanceHistoryMutationOutcome {
   const substance = resolveSubstanceKey(substanceInput);
@@ -116,111 +126,51 @@ export function addSubstanceDailyTotalCore(
   // ADDITIVE, like every other logged fact (#4435): this used to answer
   // `date-conflict` for a day that already held some, which made "I had a second one"
   // unrecordable through the door that exists to record it. `validAmount` keeps
-  // `amount` at 1 or more, so each branch leaves one day row to read back. A note
-  // ARRIVES WITH the entry rather than replacing the day's — the correction door below
-  // is where a day's note is restated or cleared.
+  // `amount` at 1 or more, so the taps always leave one day row to read back and
+  // attach the note to. A note ARRIVES WITH the entry rather than replacing the day's.
+  //
+  // THE NOTE IS THE DAY'S, AND STAYS THE DAY'S. `substance_log_events` carries none:
+  // one submission's note describes the sitting, not each cigarette in it, and copying
+  // it onto every event would make the record repeat one sentence N times. Where a
+  // day-level note LIVES now that every use is its own row is #5077's question, which
+  // is sequenced after this phase for exactly that reason.
   return writeTx(() => {
-    if (substanceDef(substance).ledger === "food-log") {
-      appendAlcoholTaps(
-        profileId,
-        input.date,
-        input.amount,
-        loggedVia,
-        input.statedAt ?? null
-      );
-      const day = db
-        .prepare(
-          `UPDATE food_daily_totals SET notes = COALESCE(?, notes)
-           WHERE profile_id = ? AND date = ? AND group_key = ?
-           RETURNING id`
-        )
-        .get(notes, profileId, input.date, ALCOHOL_FOOD_GROUP) as {
-        id: number;
-      };
-      return { kind: "added" as const, id: day.id };
-    }
-
-    substanceDayCounter.bump(profileId, input.date, [substance], input.amount, [
-      instantNow(),
-    ]);
-    // `logged_via` takes the same COALESCE for its own reason: provenance names the
-    // surface that OPENED the row and is never rewritten (#3087).
-    const day = db
-      .prepare(
-        `UPDATE substance_daily_totals
-           SET notes = COALESCE(?, notes), edited = 1,
-               logged_via = COALESCE(logged_via, ?)
-         WHERE profile_id = ? AND date = ? AND substance = ?
-         RETURNING id`
-      )
-      .get(notes, loggedVia, profileId, input.date, substance) as {
-      id: number;
-    };
+    const onFoodLedger = substanceDef(substance).ledger === "food-log";
+    appendUnitTaps(
+      profileId,
+      substance,
+      input.date,
+      input.amount,
+      loggedVia,
+      input.statedAt ?? null
+    );
+    // `logged_via` takes a COALESCE on the substance arm for its own reason: provenance
+    // names the surface that OPENED the row and is never rewritten (#3087). The taps
+    // above already stamped it, so this only ever restates the day's note.
+    const day = onFoodLedger
+      ? (db
+          .prepare(
+            `UPDATE food_daily_totals SET notes = COALESCE(?, notes)
+             WHERE profile_id = ? AND date = ? AND group_key = ?
+             RETURNING id`
+          )
+          .get(notes, profileId, input.date, ALCOHOL_FOOD_GROUP) as {
+          id: number;
+        })
+      : (db
+          .prepare(
+            `UPDATE substance_daily_totals
+               SET notes = COALESCE(?, notes), edited = 1
+             WHERE profile_id = ? AND date = ? AND substance = ?
+             RETURNING id`
+          )
+          .get(notes, profileId, input.date, substance) as { id: number });
     return { kind: "added" as const, id: day.id };
   });
 }
 
 // #4614: each core declares its own domain; `LOG_MANIFEST`'s cores column derives.
 export const addSubstanceDailyTotalCoreDeclares = SUBSTANCE_USE_WRITE;
-
-// THE DAY-COUNT CORRECTION, AND IT IS FOR DAY COUNTS ONLY (#5026 item 1).
-//
-// A CONSUMABLE IS AN EVENT (owner ruling, 2026-09-04): a drink, like a serving and
-// like a dose, is a thing that happened at an instant, and the day total is a ROLLUP
-// rather than the editable thing. Alcohol's units already ARE events —
-// `food_log_events` rows carrying `occurred_at` and `time_source` — so this core
-// REFUSES it, and the drink is corrected on its own record row through the food
-// serving's own form (#5025 phase 1). Nicotine, cannabis and every custom key still
-// ride `substance_daily_totals`, which is UNIQUE per (profile, date, substance) and
-// structurally timeless: for them the day count IS the stored fact and this is its
-// correction. Phase 2's event ledger moves them to the same door.
-//
-// WHAT THE REFUSAL BUYS, MEASURED on this core before it was removed: two drinks
-// stated at 21:00 and 23:00, corrected to the next day through this form, came out of
-// it with `occurred_at` and `time_source` NULL on BOTH — one day-count correction
-// silently levelled two clocks that a person had typed, and with them both ticks on
-// the day chart. Shrinking the same day from 2 to 1 deleted the 21:00 drink and kept
-// the 23:00 one, because the reconcile drops the earliest-filed taps: which drink
-// died was decided by filing order rather than by the person. Both are the flattening
-// the ruling names, and neither can happen through a form that corrects one event.
-export function updateSubstanceDailyTotalCore(
-  profileId: number,
-  substanceInput: string,
-  id: number,
-  input: { date: string; amount: number; notes?: string | null }
-): SubstanceHistoryMutationOutcome {
-  const substance = resolveSubstanceKey(substanceInput);
-  if (substance === null) return { kind: "unknown-substance" };
-  if (substanceDef(substance).ledger === "food-log")
-    return { kind: "corrected-per-event" };
-  if (!isRealIsoDate(input.date) || input.date > today(profileId))
-    return { kind: "invalid-date" };
-  if (!validAmount(input.amount)) return { kind: "invalid-amount" };
-  const notes = normalizedNotes(input.notes);
-
-  return writeTx(() => {
-    const row = db
-      .prepare(
-        `SELECT 1 FROM substance_daily_totals
-         WHERE id = ? AND profile_id = ? AND substance = ?`
-      )
-      .get(id, profileId, substance);
-    if (!row) return { kind: "not-found" as const };
-    const conflict = db
-      .prepare(
-        `SELECT 1 FROM substance_daily_totals
-         WHERE profile_id = ? AND substance = ? AND date = ? AND id != ?`
-      )
-      .get(profileId, substance, input.date, id);
-    if (conflict) return { kind: "date-conflict" as const };
-    db.prepare(
-      `UPDATE substance_daily_totals
-       SET date = ?, units = ?, notes = ?, edited = 1
-       WHERE id = ? AND profile_id = ? AND substance = ?`
-    ).run(input.date, input.amount, notes, id, profileId, substance);
-    return { kind: "updated" as const, id };
-  });
-}
 
 export function deleteSubstanceDailyTotalCore(
   profileId: number,

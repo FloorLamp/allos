@@ -53,8 +53,8 @@ import {
   removePracticeSession,
 } from "@/app/(app)/wellness/actions";
 import {
-  deleteSubstanceDailyTotalAction,
-  updateSubstanceDailyTotalAction,
+  deleteSubstanceUseAction,
+  correctSubstanceUseAction,
 } from "@/app/(app)/medical/substance-use/actions";
 import {
   deleteMetricReading,
@@ -70,10 +70,12 @@ import {
   saveCycleAction,
 } from "@/app/(app)/medical/cycles/actions";
 import { setSymptomSeverityCore } from "@/lib/symptom-log-write";
+import { logSubstanceUnitCore } from "@/lib/substance-log-write";
 import { logBristolStool } from "@/lib/offline/writes";
 import { BRISTOL_STOOL_METRIC } from "@/lib/bristol-stool";
 import { createCycleRow } from "@/lib/cycle-store";
 import { createLogin, createProfile, actAs, fd } from "./harness";
+import type { StampedFormData } from "@/lib/logged-via";
 
 // ── Seeds: one correctable row per kind, owned by `profileId` ─────────────────
 // Each returns the id the row's ⋯ would post back, plus a `count` the assertions read.
@@ -165,23 +167,25 @@ const practiceDurationOf = (id: number) =>
       .get(id) as { duration_min: number | null } | undefined
   )?.duration_min ?? null;
 
-function seedSubstanceDay(profileId: number, date: string): number {
-  return Number(
-    db
-      .prepare(
-        `INSERT INTO substance_daily_totals (profile_id, date, substance, units)
-         VALUES (?, ?, 'caffeine', 2)`
-      )
-      .run(profileId, date).lastInsertRowid
-  );
+// ONE RECORDED USE, not a day (#5026 phase 2): a substance's units are event rows now,
+// so the row the record's ⋯ addresses — and the one this file's boundary must protect —
+// is a `substance_log_events` row. The seed goes through the write core so the counter
+// beside it moves too, exactly as a tap does.
+function seedSubstanceUse(profileId: number, date: string): number {
+  const outcome = logSubstanceUnitCore(profileId, "caffeine", date, "page");
+  if (outcome.kind !== "logged") throw new Error("use was not logged");
+  return outcome.eventId;
 }
 
-const substanceAmountOf = (id: number) =>
+const substanceUseStatedAt = (id: number) =>
   (
     db
-      .prepare("SELECT units FROM substance_daily_totals WHERE id = ?")
-      .get(id) as { units: number } | undefined
-  )?.units ?? null;
+      .prepare("SELECT occurred_at FROM substance_log_events WHERE id = ?")
+      .get(id) as { occurred_at: string | null } | undefined
+  )?.occurred_at ?? null;
+
+const substanceUsePresent = (id: number) =>
+  db.prepare("SELECT 1 FROM substance_log_events WHERE id = ?").get(id) != null;
 
 // `body_metrics` is one row per (profile, day) holding up to three measures, and the
 // action addresses a CELL: `body_metrics:<rowId>:<column>` is the wire target
@@ -291,7 +295,7 @@ interface Kind {
   corrected: unknown;
   /** The forged/legitimate correction post, minus `profile_id`. */
   correct: (id: number, date: string) => Record<string, string | number>;
-  correctFn: (form: FormData) => Promise<unknown>;
+  correctFn: (form: StampedFormData) => Promise<unknown>;
   /**
    * The delete post, minus `profile_id`. ONE SUBJECT FIELD FOR ALL SEVEN (#4424
    * ruling 4): `removeSymptom` used to read #858's `profileId` where the other six
@@ -300,10 +304,14 @@ interface Kind {
    * threaded through it and the caller below supplies the one field.
    */
   remove: (id: number) => Record<string, string | number>;
-  removeFn: (form: FormData) => Promise<unknown>;
+  removeFn: (form: StampedFormData) => Promise<unknown>;
   /** Whether the row still exists, for the delete half. */
   present: (id: number, profileId: number, date: string) => boolean;
 }
+
+// The one day every case seeds on. Declared ABOVE the table because a case's expected
+// value can be derived from it (the substance use's stated instant is).
+const DATE = "2026-08-20";
 
 const KINDS: Kind[] = [
   {
@@ -360,14 +368,20 @@ const KINDS: Kind[] = [
   },
   {
     name: "substance",
-    seed: seedSubstanceDay,
-    read: (id) => substanceAmountOf(id),
-    corrected: 5,
-    correct: (id, date) => ({ id, substance: "caffeine", date, amount: 5 }),
-    correctFn: (form) => updateSubstanceDailyTotalAction(form),
-    remove: (id) => ({ id, substance: "caffeine" }),
-    removeFn: (form) => deleteSubstanceDailyTotalAction(form),
-    present: (id) => substanceAmountOf(id) != null,
+    seed: seedSubstanceUse,
+    // The correction states a MINUTE on the use, which is the thing #5026 phase 2 made
+    // correctable at all — the day count it replaced had no clock to move.
+    read: (id) => substanceUseStatedAt(id),
+    corrected: `${DATE}T21:00:00Z`,
+    correct: (id, date) => ({
+      event_id: id,
+      date,
+      stated_at: `${date}T21:00:00Z`,
+    }),
+    correctFn: (form) => correctSubstanceUseAction(form),
+    remove: (id) => ({ event_id: id }),
+    removeFn: (form) => deleteSubstanceUseAction(form),
+    present: (id) => substanceUsePresent(id),
   },
   {
     name: "body",
@@ -441,8 +455,6 @@ const KINDS: Kind[] = [
     present: (id) => cycleExists(id),
   },
 ];
-
-const DATE = "2026-08-20";
 
 describe("the record's corrections gate the ROW's profile (#4009 item 1)", () => {
   // THE REFUSAL — the acceptance criterion in its own words. A forged post naming a
@@ -644,12 +656,11 @@ describe("the record's corrections gate the ROW's profile (#4009 item 1)", () =>
     [
       "correction",
       (id: number, minorId: number) =>
-        updateSubstanceDailyTotalAction(
+        correctSubstanceUseAction(
           fd({
-            id,
-            substance: "caffeine",
+            event_id: id,
             date: DATE,
-            amount: 9,
+            stated_at: `${DATE}T21:00:00Z`,
             profile_id: minorId,
           })
         ),
@@ -658,9 +669,7 @@ describe("the record's corrections gate the ROW's profile (#4009 item 1)", () =>
     [
       "delete",
       (id: number, minorId: number) =>
-        deleteSubstanceDailyTotalAction(
-          fd({ id, substance: "caffeine", profile_id: minorId })
-        ),
+        deleteSubstanceUseAction(fd({ event_id: id, profile_id: minorId })),
       { kind: "not-found", undoId: null, error: "Couldn't find that entry." },
     ],
   ])(
@@ -675,10 +684,13 @@ describe("the record's corrections gate the ROW's profile (#4009 item 1)", () =>
         "INSERT INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, 'write')"
       ).run(login.id, minor.id);
       actAs(login, acting);
-      const id = seedSubstanceDay(minor.id, DATE);
+      const id = seedSubstanceUse(minor.id, DATE);
 
       expect(await run(id, minor.id)).toEqual(refusal);
-      expect(substanceAmountOf(id)).toBe(2);
+      // The row still stands and still states nothing, which is the assertion that can
+      // tell a refusal from a write that landed on the acting profile instead.
+      expect(substanceUsePresent(id)).toBe(true);
+      expect(substanceUseStatedAt(id)).toBeNull();
     }
   );
 });

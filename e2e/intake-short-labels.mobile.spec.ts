@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { expectPhoneTapTargets, settledBoxes } from "./helpers";
+import { appContent, expectPhoneTapTargets, settledBoxes } from "./helpers";
 import { workerDbPath, frozenNow } from "./worker-env";
 import { TAP_FLOOR_FLOAT_EPSILON_PX } from "@/lib/tap-floor-tokens";
 
@@ -87,7 +87,7 @@ function dropItems(db: Database.Database, itemIds: number[]): void {
 
 async function openAvailable(page: Page): Promise<Locator> {
   await page.goto("/upcoming");
-  const available = page.getByTestId("available-section");
+  const available = appContent(page).getByTestId("available-section");
   await expect(available).toBeVisible();
   await available.locator("summary").click();
   return available;

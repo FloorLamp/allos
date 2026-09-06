@@ -7,7 +7,8 @@ import { makeTmpDir } from "./tmp-dir";
 import {
   baseDetectorNotice,
   bodySession,
-  checkRunsVerdict,
+  ciVerdict,
+  GATE_STATUS_CONTEXT,
   independenceClaim,
   closedStatusDescription,
   falsifyingPassVerdict,
@@ -81,6 +82,12 @@ if (method === "POST" && url.endsWith("/graphql")) {
     },
   });
 }
+// The OTHER CI endpoint (#5022): a disjoint set from /check-runs, and where
+// the merge-gate commit status lives. The combined state is served as pending
+// on purpose, because the per-context rows are what the gate reads.
+if (url.endsWith("/status")) {
+  reply({ state: "pending", statuses: state.statuses });
+}
 if (url.includes("/check-runs")) {
   // Head vs BASE-BRANCH check runs: the base read is the one addressed by ref.
   if (url.includes(state.pr.head.sha))
@@ -129,6 +136,7 @@ interface Fixture {
   prComments?: unknown[];
   files?: unknown[];
   checkRuns?: unknown[];
+  statuses?: unknown[];
   baseCheckRuns?: unknown[];
   baseCheckRunsStatus?: number;
   threads?: unknown[];
@@ -177,6 +185,10 @@ function fixture(overrides: Fixture) {
       },
     ],
     checkRuns: overrides.checkRuns ?? [green("lint"), green("test")],
+    // Absent by default — the "no statuses at all" case every fixture here was
+    // written on, and the one #5022's acceptance criteria say must behave
+    // exactly as it did before the second endpoint was read.
+    statuses: overrides.statuses ?? [],
     baseCheckRuns: overrides.baseCheckRuns ?? [],
     baseCheckRunsStatus: overrides.baseCheckRunsStatus,
     threads: overrides.threads ?? [],
@@ -225,6 +237,20 @@ function runGate(
     .map((l) => JSON.parse(l) as { method: string; url: string; data: string });
   return { ...run, calls };
 }
+
+/** The gate's CI verdict over both endpoints; statuses default to none. */
+type Run = {
+  name: string;
+  status?: string;
+  conclusion?: string | null;
+  id?: number;
+};
+type Status = { context: string; state: string; description?: string };
+const verdict = (
+  checkRuns: Run[],
+  ignoreCheck: string | null = null,
+  statuses: Status[] = []
+) => ciVerdict({ checkRuns, statuses, ignoreCheck, head: HEAD });
 
 function receipt(overrides: Fixture) {
   const state = fixture(overrides);
@@ -327,42 +353,35 @@ describe("merge-gate.mjs", () => {
   });
 
   it("keeps the published failure description inside GitHub's 140-character limit", () => {
-    const result = checkRunsVerdict(
-      [
-        green("lint"),
-        {
-          name: `test-${"very-long-check-name-".repeat(10)}`,
-          status: "completed",
-          conclusion: "failure",
-        },
-      ],
-      null,
-      HEAD
-    );
+    const result = verdict([
+      green("lint"),
+      {
+        name: `test-${"very-long-check-name-".repeat(10)}`,
+        status: "completed",
+        conclusion: "failure",
+      },
+    ]);
     const status = closedStatusDescription(result.message);
     expect(status.length).toBeLessThanOrEqual(140);
-    expect(status).toContain("gate CLOSED — red checks on this head");
+    expect(status).toContain("gate CLOSED — red on this head");
   });
 
   it("closes on a red check and names it", () => {
-    const result = checkRunsVerdict(
-      [
-        green("lint"),
-        { name: "test", status: "completed", conclusion: "failure" },
-      ],
-      null,
-      HEAD
-    );
+    const result = verdict([
+      green("lint"),
+      { name: "test", status: "completed", conclusion: "failure" },
+    ]);
     expect(result.kind).toBe("fail");
-    expect(result.message).toContain("red checks on this head: test");
+    // The endpoint is part of the name (#5022): `merge-gate` the status
+    // and `merge-gate-job` the check run differ by one word.
+    expect(result.message).toContain("red on this head: check-run test");
   });
 
   it("exits 2 — NOT a verdict — while a check is still running", () => {
-    const result = checkRunsVerdict(
-      [green("lint"), { name: "test", status: "in_progress" }],
-      null,
-      HEAD
-    );
+    const result = verdict([
+      green("lint"),
+      { name: "test", status: "in_progress" },
+    ]);
     expect(result.kind).toBe("incomplete");
     expect(result.message).toContain("CI INCOMPLETE");
   });
@@ -377,10 +396,8 @@ describe("merge-gate.mjs", () => {
         { name: "merge-gate", status: "in_progress" },
       ],
     };
-    expect(checkRunsVerdict(withSelf.checkRuns, null, HEAD).kind).toBe(
-      "incomplete"
-    );
-    const result = checkRunsVerdict(withSelf.checkRuns, "merge-gate", HEAD);
+    expect(verdict(withSelf.checkRuns).kind).toBe("incomplete");
+    const result = verdict(withSelf.checkRuns, "merge-gate");
     expect(result.kind).toBe("pass");
     expect(result.ignored).toBe(true);
     const cli = runGate(withSelf, {}, ["--ignore-check", "merge-gate"]);
@@ -388,13 +405,110 @@ describe("merge-gate.mjs", () => {
     expect(cli.stdout).toContain('ignoring check "merge-gate"');
     // The exclusion is by NAME, not by status: a pending check that is not
     // the wrapper still blocks.
-    const other = checkRunsVerdict(
+    const other = verdict(
       [green("lint"), { name: "test", status: "in_progress" }],
-      "merge-gate",
-      HEAD
+      "merge-gate"
     );
     expect(other.kind).toBe("incomplete");
   });
+
+  // BOTH ENDPOINTS, ONE VERDICT (#5022). A commit's check runs and its commit
+  // statuses are disjoint sets on separate endpoints, and this gate read only
+  // the first — so anything but Actions could post a red it could not see.
+  //
+  // The last three rows are the pair that has to hold in BOTH directions, and
+  // getting either wrong is the whole risk of the change. `merge-gate` is this
+  // script's OWN published answer (the workflow posts it by running this
+  // script), so counting it deadlocks: a stale failure closes the gate, the
+  // workflow re-runs the gate, the gate reads the failure it just posted, and
+  // no PR can ever merge again. Every other context must still count, or the
+  // blind spot is back.
+  const status = (context: string, state: string) => ({
+    context,
+    state,
+    description: `${context} says ${state}`,
+  });
+  it.each([
+    [
+      "no statuses at all is the shape every other case here runs on",
+      [],
+      "pass",
+    ],
+    [
+      "an all-success status set stays green",
+      [status("deploy", "success")],
+      "pass",
+    ],
+    [
+      "a pending status is not a verdict yet",
+      [status("deploy", "pending")],
+      "incomplete",
+    ],
+    [
+      "a failing status closes a green head",
+      [status("deploy", "failure")],
+      "fail",
+    ],
+    [
+      "`error` is a red too, not an absence",
+      [status("deploy", "error")],
+      "fail",
+    ],
+    [
+      "the gate's own failing status does NOT close the gate it recomputes",
+      [status("merge-gate", "failure")],
+      "pass",
+    ],
+    [
+      "nor does its own pending one hold the gate open forever",
+      [status("merge-gate", "pending")],
+      "pass",
+    ],
+    [
+      "and an independent red still closes it beside the gate's own",
+      [status("merge-gate", "failure"), status("deploy", "failure")],
+      "fail",
+    ],
+  ])("both endpoints: %s", (_case, statuses, kind) => {
+    expect(verdict([green("lint")], null, statuses).kind).toBe(kind);
+  });
+
+  it("names the endpoint and the context on a failing status", () => {
+    const result = verdict([green("lint")], null, [
+      status("deploy", "failure"),
+    ]);
+    expect(result.message).toBe("red on this head: status deploy");
+    expect(closedStatusDescription(result.message)).toContain(
+      "gate CLOSED — red on this head: status deploy"
+    );
+  });
+
+  it("says out loud that it recomputed its own status rather than reading it", () => {
+    const result = verdict([green("lint")], null, [
+      status(GATE_STATUS_CONTEXT, "failure"),
+    ]);
+    expect(result.message).toContain("is THIS script's last answer");
+  });
+
+  // Through the CLI, because the exclusion is only worth anything on the real
+  // fetch path: the gate must actually CALL the status endpoint, and the two
+  // directions must land on opposite sides of the gate.
+  it.each([
+    ["opens over its own closed status", GATE_STATUS_CONTEXT, 0, "GATE OPEN"],
+    ["closes on an independent one", "deploy", 1, "GATE CLOSED"],
+  ])(
+    "the self-block, both directions: %s",
+    (_case, context, code, verdictLine) => {
+      const cli = runGate({
+        statuses: [{ context, state: "failure", description: "it is red" }],
+      });
+      expect(
+        cli.calls.some((c) => c.url.endsWith(`/commits/${HEAD}/status`))
+      ).toBe(true);
+      expect(cli.status).toBe(code);
+      expect(cli.stdout).toContain(verdictLine);
+    }
+  );
 
   // A CANCELLED RUN IS NOT A VERDICT (#4800). GitHub returns the latest run per
   // name PER CHECK SUITE, so a head whose workflow was triggered twice carries
@@ -445,23 +559,19 @@ describe("merge-gate.mjs", () => {
       "pass",
     ],
   ])("cancelled is not a verdict: %s", (_case, runs, kind) => {
-    expect(checkRunsVerdict(runs, null, HEAD).kind).toBe(kind);
+    expect(verdict(runs).kind).toBe(kind);
   });
 
   it("names the check whose every run was cancelled, and does not call it red", () => {
-    const result = checkRunsVerdict(
-      [green("lint"), job("cancelled")],
-      null,
-      HEAD
-    );
+    const result = verdict([green("lint"), job("cancelled")]);
     expect(result.kind).toBe("incomplete");
     expect(result.message).toContain("no verdict for merge-gate-job");
   });
 
   it("counts a discarded cancellation out, and never reads it as an exclusion", () => {
     const runs = [green("lint"), job("cancelled"), job("success")];
-    const result = checkRunsVerdict(runs, null, HEAD);
-    expect(result.message).toContain("all 2 checks green");
+    const result = verdict(runs);
+    expect(result.message).toContain("all 2 check run(s)");
     // `ignored` answers "did --ignore-check drop something", so discarding a
     // cancellation must not make the CLI announce an exclusion nobody asked for.
     expect(result.ignored).toBe(false);

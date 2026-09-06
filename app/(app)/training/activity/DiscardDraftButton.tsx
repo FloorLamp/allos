@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable no-restricted-properties -- USER-initiated repaint (#1878): follows the user's own Discard tap when the server KEPT the row (a save raced the tap) — the page must repaint into its real record state right now */
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";

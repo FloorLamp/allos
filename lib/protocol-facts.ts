@@ -144,18 +144,18 @@ export function windowFactLabel(
   prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
 ): string | null {
   if (!startDate && !endDate) return null;
-  if (!startDate) return `until ${formatLongDate(endDate, prefs)}`;
-  if (!endDate) return `from ${formatLongDate(startDate, prefs)}`;
+  if (!startDate) return `Until ${formatLongDate(endDate, prefs)}`;
+  if (!endDate) return `From ${formatLongDate(startDate, prefs)}`;
 
   const days = daysBetweenDateStr(startDate, endDate);
   if (days == null || days < 0)
-    return `until ${formatLongDate(endDate, prefs)}`;
+    return `Until ${formatLongDate(endDate, prefs)}`;
   if (days < 7) return days === 1 ? "1 day" : `${days} days`;
   if (days % 7 === 0) {
     const weeks = days / 7;
     return weeks === 1 ? "1 week" : `${weeks} weeks`;
   }
-  return `until ${formatLongDate(endDate, prefs)}`;
+  return `Until ${formatLongDate(endDate, prefs)}`;
 }
 
 /** The single trailing affordance's own sentence: the optional facts it holds, named. */
@@ -191,7 +191,7 @@ export function protocolFactSummary(
   if (f.practice)
     chips.push(
       f.perWeek == null
-        ? { key: "cadence", label: "add a cadence", state: "missing" }
+        ? { key: "cadence", label: "Add a cadence", state: "missing" }
         : {
             key: "cadence",
             label: cadenceFactLabel(f.perWeek, f.perWeekMax),
@@ -202,7 +202,7 @@ export function protocolFactSummary(
   const window = windowFactLabel(f.startDate, f.endDate, prefs);
   chips.push(
     window == null
-      ? { key: "window", label: "add a start", state: "missing" }
+      ? { key: "window", label: "Add a start", state: "missing" }
       : { key: "window", label: window, state: "stated" }
   );
 
@@ -212,11 +212,11 @@ export function protocolFactSummary(
   // state one fact twice and leave one of them permanently absent.
   const link =
     f.intakeItemName && f.equipmentName
-      ? `with ${f.intakeItemName} · ${f.equipmentName}`
+      ? `With ${f.intakeItemName} · ${f.equipmentName}`
       : f.intakeItemName
-        ? `with ${f.intakeItemName}`
+        ? `With ${f.intakeItemName}`
         : f.equipmentName
-          ? `using ${f.equipmentName}`
+          ? `Using ${f.equipmentName}`
           : null;
   if (link) chips.push({ key: "link", label: link, state: "stated" });
   else more.push("link");
@@ -225,7 +225,7 @@ export function protocolFactSummary(
   if (situation)
     chips.push({
       key: "situation",
-      label: `when ${situation}`,
+      label: `When ${situation}`,
       state: "stated",
     });
   else more.push("situation");
@@ -234,7 +234,7 @@ export function protocolFactSummary(
   // either truncate a sentence mid-word or blow the row apart on a narrow screen. The
   // fact the row can honestly state is THAT there are notes.
   if (f.notes.trim())
-    chips.push({ key: "notes", label: "notes", state: "stated" });
+    chips.push({ key: "notes", label: "Notes", state: "stated" });
   else more.push("notes");
 
   return { chips, more, practiceAbsent: f.practice == null };

@@ -19,6 +19,7 @@ import {
   mergeActivities,
 } from "@/app/(app)/training/activity-actions";
 import { createLogin, createProfile, actAs, fd } from "./harness";
+import type { StampedFormData } from "@/lib/logged-via";
 import type { TestLogin, TestProfile } from "./harness";
 
 let login: TestLogin;
@@ -41,7 +42,7 @@ beforeEach(() => {
 
 function saveFd(
   over: Record<string, string | number | null | undefined> = {}
-): FormData {
+): StampedFormData {
   return fd({
     type: "cardio",
     title: "Run",

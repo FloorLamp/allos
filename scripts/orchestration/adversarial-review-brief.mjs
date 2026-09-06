@@ -60,6 +60,9 @@ export const EXIT = {
   consult: 3,
 };
 
+/** Pages of `pulls/<n>/files`. Hitting it is a refusal, never a short list. */
+const FILE_PAGE_CAP = 10;
+
 export const HIGH_STAKES = [
   // Corrupts every database if wrong; runs unattended at boot.
   {
@@ -869,7 +872,15 @@ function main(argv) {
   }
   const files = [];
   const patches = {};
-  for (let page = 1; page <= 10; page++) {
+  // `batch.length < 100` IS the exhaustion signal, and it used to be spent on a
+  // bare `break` — so a clipped file list and a complete one produced the same
+  // verdict. The clipped one is the dangerous direction: every declared path in
+  // HIGH_STAKES is matched against this list, so a migration on page eleven
+  // classifies as `ordinary`, which is precisely what a clean sweep prints. That
+  // is the permissive answer this file's header refuses to fail into, so the cap
+  // is a refusal (exit 2) rather than a quiet undercount.
+  let swept = false;
+  for (let page = 1; page <= FILE_PAGE_CAP; page++) {
     const batch = gh(
       token,
       `pulls/${prNumber}/files?per_page=100&page=${page}`
@@ -883,7 +894,17 @@ function main(argv) {
       files.push(f.filename);
       if (f.patch) patches[f.filename] = f.patch;
     }
-    if (batch.length < 100) break;
+    if (batch.length < 100) {
+      swept = true;
+      break;
+    }
+  }
+  if (!swept) {
+    fail(
+      `PR #${prNumber} changed more files than this reader pages ` +
+        `(${FILE_PAGE_CAP} × 100), so a declared high-stakes path could sit ` +
+        "behind the cap and read as `ordinary`"
+    );
   }
 
   // A linked issue carries the claim as often as the PR does — #3004's exemption
@@ -984,6 +1005,21 @@ METHOD
   That is not hypothetical -- on #4312 a lane found its date bound deleted under it
   mid-round, twice, because the dispatch pointed this brief at the lane's live tree.
   If you were handed a path, build your own anyway and say so in your report.
+- NEVER \`pkill -f <pattern>\` — not vitest, not next, not playwright, not your own
+  harness name. Sibling lanes run the same binaries in this container, so a pattern
+  kill takes their runs down with yours and they have no way to tell that from a real
+  failure. Measured 2026-09-05 on #5290: a pass killed vitest by pattern to clean up
+  after itself, and had to spend a round of its own report explaining which of the
+  failures it then saw were its own kill rather than evidence. Kill only an explicit
+  PID you captured yourself. The same applies to your waiters — poll a file you own,
+  and never arm a loop that outlives your report.
+- NEVER \`git stash\`, and never \`git checkout -- <file>\` to undo a mutation. Your
+  attacks mutate production files many times over, so this is a step you take on every
+  round. \`stash\` is one stack for the whole repository and reaches across every lane
+  in this container; \`checkout --\` restores to HEAD, which is not the state you
+  mutated from. Copy the file to \$SCRATCH with a name unique to this pass
+  (\$SCRATCH/mut-refute-${prNumber}-<file>.bak) BEFORE each mutation and restore FROM
+  THAT COPY.
 - For each claim: construct the CONCRETE input, database state, or call sequence
   that would falsify it, and run it (db tier / pure tier / a scratch script
   against an in-memory database). "I read the code and it looks right" is not a

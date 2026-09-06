@@ -35,7 +35,11 @@ import {
 import { leftRefillTrackedSet, refillMarkerKey } from "@/lib/refill-nudge";
 import { formError, formOk, type FormResult } from "@/lib/types";
 import { strOrNull } from "@/lib/parse";
-import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
+import {
+  LOGGED_VIA_FIELD,
+  parseWebOrigin,
+  type StampedFormData,
+} from "@/lib/logged-via";
 
 export type MedicationAdministrationResult =
   { ok: true; outcome: "logged" | "duplicate" } | { ok: false; error: string };
@@ -254,7 +258,7 @@ function resolveGivenAt(
 // fresh or deduplicated so every caller can give honest feedback; the updated
 // count/last-time still surface through revalidation.
 export async function logMedicationAdministration(
-  formData: FormData
+  formData: StampedFormData
 ): Promise<MedicationAdministrationResult> {
   // Cross-profile gating (issue #858): the illness Now-group cockpit logs a PRN dose for a
   // household member without switching — an explicit `profileId` gates on the TARGET via

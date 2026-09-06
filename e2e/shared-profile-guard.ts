@@ -836,26 +836,15 @@ export function repairAddedSharedRows(
   }
 }
 
-/** The failure message a stranded saved row earns, naming the rows it moved. */
-export function sharedRowDriftMessage(
-  drift: SharedRowDrift,
-  now: Date
-): string {
-  if (drift.staleDeclarations.length > 0)
-    return (
-      `This test declares sharedProfileLeftovers it did not leave (#3946):\n` +
-      drift.staleDeclarations.map((row) => `  • "${row}"`).join("\n") +
-      `\n\nA declaration that covers nothing is an exemption nobody can see the ` +
-      `edge of — the cleanup was added, or the fixture moved, and the handle stayed. ` +
-      `Drop it from the \`rows\` list.\n\n` +
-      `IF THIS FILE HAS SEVERAL TESTS and only some leave the row, \`test.use\` at ` +
-      `file scope is too wide: move it into a \`test.describe\` around the tests ` +
-      `that do.\n\n` +
-      `This says nothing about whether a live declaration's \`why\` is still TRUE — ` +
-      `nothing checks that (#3260).`
-    );
-
-  const moved = drift.added.length + drift.missing.length;
+/**
+ * The rows that moved, one section per watched table: what moved, the bound that
+ * admitted it, what it does to a later test, and the cleanup that prevents it.
+ *
+ * Shared by both readers of a drift — the test's own window and the gap before it
+ * (#5266) — because the rows and their consequences are the same facts either way.
+ * Only the sentence naming WHO moved them differs, and that is the caller's.
+ */
+function driftSections(drift: SharedRowDrift, now: Date): string {
   const sections: string[] = [];
   for (const watched of WATCHED_SHARED_TABLES) {
     const added = drift.added.filter((row) => row.table === watched.table);
@@ -881,10 +870,140 @@ export function sharedRowDriftMessage(
         `  Fix: ${watched.cleanup}.`
     );
   }
+  return sections.join("\n\n");
+}
 
+// ─────────────────────────────────────────────────────────────────────────────
+// THE GAP BETWEEN TWO TESTS, AND WHO OWNS IT (#5266).
+//
+// The per-test diff cannot see a write that escapes its own window, and the header
+// of this file measures that window: 61, 106 and 76 ms past `context.close()`. An
+// escaped write lands in the NEXT test's `before` reading and is invisible from
+// then on. Comparing each test's `before` against the previous test's `after` is
+// exactly that window, and it costs no extra query — both readings are already
+// taken.
+//
+// ATTRIBUTION IS THE WHOLE PROBLEM, NOT DETECTION. A guard that reports a real leak
+// against the wrong test is worse than one that misses it: the next person spends an
+// afternoon reading an innocent spec. And one other thing runs in that window — a
+// new file's `beforeAll`, which Playwright runs before any of that file's test
+// fixtures (that is also why the `before` reading is taken in the fixture and not in
+// a `beforeEach`). So a gap that spans a FILE BOUNDARY holds the new file's
+// `beforeAll` as well as the old file's escape, and the two are indistinguishable by
+// content.
+//
+// The rule (ruled 2026-09-05 on #5266): a gap spanning a file boundary is charged to
+// the NEW file's `beforeAll` and NEVER to the previous file's last test. A false
+// accusation across files is worse than a missed leak, and this avoids both — the
+// window really does belong to that `beforeAll`, and the innocent spec in the other
+// file is never named.
+
+/** Where a test sat in the run, as the guard names it in a report. */
+export interface TestPosition {
+  /** The spec file's name, e.g. `manual-vitals.spec.ts`. */
+  file: string;
+  /** The `test.describe` titles enclosing it, outermost first. */
+  describes: readonly string[];
+  /** The test's own title. */
+  title: string;
+}
+
+/**
+ * Who owned the window between two tests. A closed union rather than a boolean, so
+ * the message cannot render a boundary as if a test had been named.
+ */
+export type SharedRowGapCulprit =
+  | { kind: "previous-test"; name: string }
+  | { kind: "before-all"; name: string };
+
+/**
+ * Charge the window between the previous test and the one now starting.
+ *
+ * A `beforeAll` runs in that window whenever the SUITE changes, and the ruling is
+ * about the file case because that is where the false accusation crosses into
+ * somebody else's spec. A `test.describe` with its own `beforeAll` is the same hole
+ * one level down — 18 spec files declare one — so the boundary is the suite, of
+ * which the file is the outermost. Two tests in the same suite have nothing but
+ * each other between them, and only then is the previous test named.
+ */
+export function attributeSharedRowGap(
+  previous: TestPosition,
+  current: TestPosition
+): SharedRowGapCulprit {
+  const sameSuite =
+    previous.file === current.file &&
+    previous.describes.length === current.describes.length &&
+    previous.describes.every((title, at) => title === current.describes[at]);
+  return sameSuite
+    ? { kind: "previous-test", name: `${previous.file} › ${previous.title}` }
+    : {
+        kind: "before-all",
+        name: `${[current.file, ...current.describes].join(" › ")} beforeAll`,
+      };
+}
+
+/** The failure a gap earns, naming the window's owner and never anybody else. */
+export function sharedRowGapMessage(
+  culprit: SharedRowGapCulprit,
+  drift: SharedRowDrift,
+  now: Date
+): string {
+  const moved = drift.added.length + drift.missing.length;
+  return (
+    `${moved} row(s) moved on the SHARED profile ${SHARED_PROFILE_ID} BETWEEN two ` +
+    `tests, in the window ${culprit.name} owns (#5266):\n\n` +
+    `${driftSections(drift, now)}\n\n` +
+    (culprit.kind === "previous-test"
+      ? `Nothing else ran in that window. A Server Action does not stop when its ` +
+        `browser context does — #4788 measured a row landing 61, 106 and 76 ms ` +
+        `after \`context.close()\` returned — so a save nothing awaited escapes ` +
+        `its own test's teardown and arrives here. End that test on its own save: ` +
+        `await the response, or the assertion that reads it back.\n\n`
+      : `That window spans a FILE BOUNDARY, so it is charged to the new file's ` +
+        `\`beforeAll\` and never to the previous file's last test — a spec in ` +
+        `another file cannot be blamed for a window it did not own. Playwright ` +
+        `runs TWO hooks in there: this file's \`beforeAll\`, and the previous ` +
+        `file's \`afterAll\` (which is why a REMOVED row can appear here). Read ` +
+        `both. A hook that touches the shared profile should date its rows ` +
+        `outside the watched bound, the way the other file-owned fixtures do, or ` +
+        `use a profile of its own (#868). Nothing has been repaired: a row a file ` +
+        `owns for its whole run is not this guard's to take.\n\n`) +
+    `This is reported on the test that FOUND it — the window closed before that ` +
+    `test began — so read the name above, not the test that failed.` +
+    (culprit.kind === "previous-test" && drift.added.length > 0
+      ? `\n\nThe ADDED rows above have been removed so the rest of this worker's ` +
+        `run is unaffected. `
+      : ``) +
+    (culprit.kind === "previous-test" && drift.missing.length > 0
+      ? `\n\nThe REMOVED rows have NOT been put back — this guard knows they went, ` +
+        `not what the seed meant them to be.`
+      : ``)
+  );
+}
+
+/** The failure message a stranded saved row earns, naming the rows it moved. */
+export function sharedRowDriftMessage(
+  drift: SharedRowDrift,
+  now: Date
+): string {
+  if (drift.staleDeclarations.length > 0)
+    return (
+      `This test declares sharedProfileLeftovers it did not leave (#3946):\n` +
+      drift.staleDeclarations.map((row) => `  • "${row}"`).join("\n") +
+      `\n\nA declaration that covers nothing is an exemption nobody can see the ` +
+      `edge of — the cleanup was added, or the fixture moved, and the handle stayed. ` +
+      `Drop it from the \`rows\` list.\n\n` +
+      `IF THIS FILE HAS SEVERAL TESTS and only some leave the row, \`test.use\` at ` +
+      `file scope is too wide: move it into a \`test.describe\` around the tests ` +
+      `that do.\n\n` +
+      `This says nothing about whether a live declaration's \`why\` is still TRUE — ` +
+      `nothing checks that (#3260).`
+    );
+
+  const moved = drift.added.length + drift.missing.length;
   return (
     `This test moved ${moved} row(s) on the SHARED profile ${SHARED_PROFILE_ID} ` +
-    `and left them moved (#3946, #5037):\n\n${sections.join("\n\n")}\n\n` +
+    `and left them moved (#3946, #5037):\n\n${driftSections(drift, now)}\n\n` +
     `Or, if the rows genuinely must outlive the test, say so in this spec:\n` +
     `    test.use({ sharedProfileLeftovers: { why: "…", rows: ["…"] } });\n\n` +
     (drift.added.length > 0

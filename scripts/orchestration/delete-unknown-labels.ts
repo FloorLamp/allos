@@ -65,6 +65,15 @@ function curlDeleteStatus(url: string): string {
   ).trim();
 }
 
+/**
+ * This one CANNOT truncate, on two counts (#5343 censused it as one of eight
+ * pagers that discard `batch.length < 100`). Structurally: the loop has no page
+ * cap, a page past the end is `[]` which is short, and `--fail-with-body` makes
+ * `curlJson` throw on any non-2xx rather than return a short page. And by size:
+ * `curl .../labels?per_page=100` counted 39 live labels on 2026-09-05, against a
+ * `KNOWN_LABELS` taxonomy of 39, so the collection is one page with room for 61
+ * strays before a second is even requested.
+ */
 function listLabelNames(): string[] {
   const names: string[] = [];
   for (let page = 1; ; page++) {

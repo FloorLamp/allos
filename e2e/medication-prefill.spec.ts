@@ -65,7 +65,7 @@ test("med form is medication-shaped and selection-prefills on pick (#846)", asyn
   // editable suggestion and not a fact the person stated (#846).
   // #1505: the as-needed checkbox became the obligation, so "as needed" IS `may`.
   await expect(addCard.getByTestId("intake-fact-importance")).toContainText(
-    "as needed"
+    "As needed"
   );
   await expect(addCard.getByTestId("intake-fact-timing")).toContainText("8");
   await expect(addCard.getByTestId("intake-fact-timing")).toContainText("3");
@@ -113,7 +113,7 @@ test("a newly catalogued med (#881) is pickable and prefills with zero code chan
 
   // The curated `typical` PRN convention prefills the obligation as `may` (marked).
   await expect(addCard.getByTestId("intake-fact-importance")).toContainText(
-    "as needed"
+    "As needed"
   );
   await expect(addCard.getByTestId("prefill-badge").first()).toBeVisible(); // first-ok: asserts a prefill badge renders on the add card — order-agnostic presence
 
@@ -146,7 +146,7 @@ test("a user edit is never clobbered by a later pick (#846)", async ({
   // Still as-needed (the user's own choice), and the importance chip is NOT marked
   // "from label defaults" — the resolver skipped the touched field.
   const importance = addCard.getByTestId("intake-fact-importance");
-  await expect(importance).toContainText("as needed");
+  await expect(importance).toContainText("As needed");
   await expect(importance.getByTestId("prefill-badge")).toHaveCount(0);
   // Dose strength (untouched) still prefilled from the label, and marked as such.
   const dose = addCard.getByTestId("intake-fact-dose");

@@ -7,6 +7,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import BottomSheet from "./BottomSheet";
 
@@ -75,43 +76,92 @@ interface Retained {
   nonce: number;
 }
 
+// The provider's whole state, in ONE object because the two halves are written
+// together on every open and read together on every render.
+interface ConfirmState {
+  pending: Pending | null;
+  retained: Retained | null;
+}
+
+// WHY AN EXTERNAL STORE AND NOT `useState` (#5336). A `<form action>` runs as a
+// React transition, and React holds every state update scheduled inside a
+// pending async action until that action settles. A caller that awaits
+// `confirm()` inside its form action therefore waits on a sheet whose open state
+// React is holding until the wait ends — components/IntakeItemForm.tsx sat on
+// "Saving…" forever, with no sheet and no error, for every Must -> Should/May
+// medication edit. An external store is the one kind of state React may not
+// defer: `useSyncExternalStore` has to re-read it synchronously, so the sheet
+// commits whatever context asked for it — an event handler, a transition, a form
+// action. That is why this belongs to the PROVIDER rather than to the 72 call
+// sites: none of them has to know which context it is in.
+//
+// One store PER PROVIDER, not a module singleton: the store is this component's
+// state, and a second mount (a test, a future second shell) must not answer the
+// first one's request.
+function createConfirmStore() {
+  let state: ConfirmState = { pending: null, retained: null };
+  const listeners = new Set<() => void>();
+  return {
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    // Stable identity between writes, so it serves as the server snapshot too.
+    read: () => state,
+    write(next: (prev: ConfirmState) => ConfirmState) {
+      const after = next(state);
+      if (after === state) return;
+      state = after;
+      for (const listener of listeners) listener();
+    },
+  };
+}
+
 export function ConfirmProvider({ children }: { children: React.ReactNode }) {
-  const [pending, setPending] = useState<Pending | null>(null);
-  const [retained, setRetained] = useState<Retained | null>(null);
+  const [store] = useState(createConfirmStore);
+  const { pending, retained } = useSyncExternalStore(
+    store.subscribe,
+    store.read,
+    store.read
+  );
 
-  // Mirror `pending` into a ref so the unmount cleanup below can settle an
-  // outstanding request without capturing a stale value.
-  const pendingRef = useRef<Pending | null>(null);
-  useEffect(() => {
-    pendingRef.current = pending;
-  }, [pending]);
   // If the provider unmounts with a dialog still open, resolve it (cancelled)
-  // so the awaiting caller never hangs.
-  useEffect(() => () => pendingRef.current?.resolve(false), []);
+  // so the awaiting caller never hangs. The store is read at cleanup time, so
+  // there is no mirrored ref to keep in step with the render.
+  useEffect(() => () => store.read().pending?.resolve(false), [store]);
 
-  const confirm = useCallback<ConfirmFn>((options) => {
-    return new Promise<boolean>((resolve) => {
-      // Set synchronously alongside `pending` (React batches both), so the panel
-      // has its content on the very first render of the open state.
-      setRetained((prev) => ({ options, nonce: (prev?.nonce ?? 0) + 1 }));
-      // If a confirm is already open, settle it (cancelled) before replacing it,
-      // so its awaiter never hangs when a second request supersedes it.
-      setPending((prev) => {
-        prev?.resolve(false);
-        return { options, resolve };
+  const confirm = useCallback<ConfirmFn>(
+    (options) => {
+      return new Promise<boolean>((resolve) => {
+        store.write((prev) => {
+          // If a confirm is already open, settle it (cancelled) before replacing
+          // it, so its awaiter never hangs when a second request supersedes it.
+          prev.pending?.resolve(false);
+          // The retained options are written in the SAME update as `pending`, so
+          // the panel has its content on the very first render of the open state.
+          return {
+            pending: { options, resolve },
+            retained: { options, nonce: (prev.retained?.nonce ?? 0) + 1 },
+          };
+        });
       });
-    });
-  }, []);
+    },
+    [store]
+  );
 
   // Settle the outstanding promise and close. Resolving inside the updater keeps
   // the resolve tied to the exact pending request; a double-resolve (e.g. Esc
-  // racing a click) is a harmless no-op.
-  const settle = useCallback((ok: boolean) => {
-    setPending((p) => {
-      p?.resolve(ok);
-      return null;
-    });
-  }, []);
+  // racing a click) returns the state unchanged and notifies nobody.
+  const settle = useCallback(
+    (ok: boolean) => {
+      store.write((prev) => {
+        if (!prev.pending) return prev;
+        prev.pending.resolve(ok);
+        return { ...prev, pending: null };
+      });
+    },
+    [store]
+  );
 
   return (
     <ConfirmContext.Provider value={confirm}>
