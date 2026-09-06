@@ -501,6 +501,7 @@ export function gatherHistoryLog(
             row.meal_slot,
             row.occurred_at
           ),
+          row.notes,
         ]),
         media: 0,
         edit: {
@@ -518,6 +519,7 @@ export function gatherHistoryLog(
           clockKind: stated ? "stated" : "logged",
           slotBoundaries: slotBoundaries(),
           substanceCorrectable: substanceShown,
+          notes: row.notes,
         },
       });
     }
@@ -728,8 +730,9 @@ export function gatherHistoryLog(
           title: def.label,
           href: null,
           // ONE EVENT IS ONE UNIT. The day's arithmetic moved to the rows, so the
-          // detail states the act rather than a total the row no longer owns.
-          detail: detailSegment([`1 ${def.countSingular}`]),
+          // detail states the act rather than a total the row no longer owns — and
+          // the note beside it is this use's own (#5304).
+          detail: detailSegment([`1 ${def.countSingular}`, row.notes]),
           media: 0,
           // CORRECTED WHERE A SERVING IS CORRECTED (the ruling's question 1). This is
           // the food row's own edit payload, so `HistoryRows` mounts `FoodServingForm`
@@ -751,6 +754,7 @@ export function gatherHistoryLog(
             clockKind: stated ? "stated" : "logged",
             slotBoundaries: slotBoundaries(),
             substanceCorrectable: substanceShown,
+            notes: row.notes,
           },
         });
         // THE DRINK, ONTO THE DAY'S CHART. Pushed HERE, beside the row it came from
@@ -828,15 +832,15 @@ export function gatherHistoryLog(
         // ever gains a stable per-item anchor the title may link THERE; the
         // page-level link is not a fallback for a missing one.
         href: null,
-        // ONE EVENT IS ONE UNIT, the drink's own detail. The day's arithmetic moved to
-        // the rows; the day's NOTE stayed on the day, so it is not repeated here once
-        // per use (#5077 owns where a day note lives now).
-        detail: detailSegment([`1 ${def.countSingular}`]),
+        // ONE EVENT IS ONE UNIT, the drink's own detail, and the note is this use's
+        // own (#5304) — a day's note moved onto one of its uses, so it reads once.
+        detail: detailSegment([`1 ${def.countSingular}`, row.notes]),
         media: 0,
         edit: {
           kind: "substance",
           eventId: row.id,
           substance: row.substance,
+          notes: row.notes,
           // The row's OWN stated instant, never `sortTime` — the practice row's rule
           // (#2205's substitution), because the correction rewrites what it reads and
           // posting a filing stamp back would stamp it into the event column.

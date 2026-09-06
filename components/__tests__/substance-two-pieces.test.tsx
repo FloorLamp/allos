@@ -73,6 +73,7 @@ const ROW = {
   substance: "nicotine",
   date: FOUND_DAY,
   statedAt: `${FOUND_DAY}T13:15:00.000Z`,
+  notes: "with dinner",
 };
 
 beforeEach(() => {
@@ -128,13 +129,14 @@ async function save(label: string): Promise<void> {
 }
 
 describe("SubstanceForm is ONE form for add and for edit", () => {
-  // ONE FORM, TWO SUBJECTS (#4424 ruling 1, narrowed by #5026 phase 2). The seam is no
-  // longer "the same field set in both modes": a correction addresses ONE USE, so the
-  // day's amount and the day's note are not on it — restating either would be the day
-  // form coming back through the edit door. What both modes DO share is the layout,
-  // the When control and the day, and that is what this asserts, in both directions:
-  // the fields edit mode drops, and the fields it must keep.
-  it("keeps the When control in both modes and drops the day's own fields from edit", async () => {
+  // ONE FORM, TWO SUBJECTS (#4424 ruling 1, narrowed by #5026 phase 2). A correction
+  // addresses ONE USE, so the day's amount is not on it — restating it would be the
+  // day form coming back through the edit door. The NOTE is the use's own (#5304), so
+  // it is on both doors, seeded from the row in edit mode and posted back untouched.
+  // What both modes share is the layout, the When control and the day, and that is
+  // what this asserts, in both directions: the field edit mode drops, and the fields
+  // it must keep.
+  it("keeps the When control and the note in both modes and drops the amount from edit", async () => {
     openForm();
     const addFields = fieldSignature();
     expect(addFields).toEqual(expect.arrayContaining(["Notes"]));
@@ -145,22 +147,27 @@ describe("SubstanceForm is ONE form for add and for edit", () => {
     cleanup();
     openForm(ROW);
     expect(screen.queryByLabelText(/^Amount/)).toBeNull();
-    expect(screen.queryByLabelText(/^Notes/)).toBeNull();
+    expect((screen.getByLabelText(/^Notes/) as HTMLTextAreaElement).value).toBe(
+      "with dinner"
+    );
     // …and the day is still asked for, through the same control, seeded from the row.
     // The field renders a DISPLAY date, so the pin is on what gets POSTED below.
     expect(document.querySelector("#substance-when-date")).toBeTruthy();
     await save("Save");
     const updated = payload("update");
 
-    // The correction's wire shape: the event's address and the pair it may move.
+    // The correction's wire shape: the event's address, the pair it may move, and
+    // the note — posted as seeded, so an untouched save cannot clear it.
     expect(Object.keys(updated).sort()).toEqual([
       "date",
       "event_id",
       "logged_via",
+      "notes",
       "stated_at",
     ]);
     expect(updated.event_id).toBe(String(ROW.eventId));
     expect(updated.date).toBe(FOUND_DAY);
+    expect(updated.notes).toBe("with dinner");
     expect(added.date).toBe(FOUND_DAY);
   });
 

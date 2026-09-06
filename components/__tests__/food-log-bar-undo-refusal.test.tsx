@@ -576,6 +576,7 @@ describe("FoodLogBar projection publication", () => {
           mealSlot: "Morning",
           eatenAt: null,
           loggedTime: "08:00",
+          notes: null,
         },
       ],
     };
@@ -698,6 +699,7 @@ describe("FoodLogBar projection publication", () => {
           mealSlot: "Morning",
           eatenAt: null,
           loggedTime: "08:00",
+          notes: null,
         },
       ],
     };
@@ -811,6 +813,7 @@ describe("FoodLogBar projection publication", () => {
           mealSlot: "Morning",
           eatenAt: null,
           loggedTime: "08:00",
+          notes: null,
         },
       ],
     };
@@ -925,6 +928,7 @@ describe("FoodLogBar projection publication", () => {
           mealSlot: "Morning",
           eatenAt: null,
           loggedTime: "08:00",
+          notes: null,
         },
       ],
     };
@@ -1438,6 +1442,7 @@ describe("FoodLogBar projection publication", () => {
           mealSlot: "Midday",
           eatenAt: null,
           loggedTime: "12:00",
+          notes: null,
         },
       ],
     };
@@ -1634,6 +1639,7 @@ describe("FoodLogBar projection publication", () => {
           mealSlot: "Morning",
           eatenAt: null,
           loggedTime: "08:00",
+          notes: null,
         },
       ],
     };

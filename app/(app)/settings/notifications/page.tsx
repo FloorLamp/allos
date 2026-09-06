@@ -65,6 +65,8 @@ import PageContainer from "@/components/PageContainer";
 import SettingsGroupLayout from "../SettingsGroupLayout";
 import PushNotificationSettings from "./PushNotificationSettings";
 import LoginTelegramSettings from "./LoginTelegramSettings";
+import OfferInPlace from "@/components/OfferInPlace";
+import { OFFER_FAMILIES, standingOffers } from "@/lib/offers";
 import EmailNotificationSettings from "./EmailNotificationSettings";
 import ProfileMuteToggle from "./ProfileMuteToggle";
 import HouseholdRoundSettings from "./HouseholdRoundSettings";
@@ -172,7 +174,7 @@ function Section({
 // Storage is untouched: every setting stays in its own tier's store, written by its
 // own tier-scoped, uniformly-gated action module (#319).
 export default async function NotificationsSettingsPage() {
-  const { login, profile } = await requireSession();
+  const { login, profile, access } = await requireSession();
   // Demo mode (#181): the read-only demo member can't configure Telegram/HA (no bot
   // is configured anyway) or edit routing — trim those write affordances.
   const demoRestricted = isDemoRestricted(isDemoMode(), login.role);
@@ -301,6 +303,19 @@ export default async function NotificationsSettingsPage() {
               botConfigured={botConfigured}
               reviewNeeded={getNotifyReviewNeeded(login.id)}
             />
+            {/* The two connect-moment offers (#4840): Telegram just became reachable
+                and there is no digest / no recap. In place, on the card the person
+                just saved; a read-only caregiver is shown nothing rather than two
+                buttons the action would refuse. */}
+            {access === "write" &&
+              standingOffers(profile.id).map((id) => (
+                <OfferInPlace
+                  key={id}
+                  familyId={id}
+                  dedupeKey={OFFER_FAMILIES[id].asked.key}
+                  {...OFFER_FAMILIES[id].copy}
+                />
+              ))}
           </ChannelRow>
           <ChannelRow
             channel="push"
