@@ -333,8 +333,19 @@ test.describe("Trends → Overview → body census metric pages (#1067 Phase 2)"
         firstReading.locator('[data-card="value"]'),
         firstReadingMenu,
       ]);
-    expect(readingMenuBox.height).toBe(32);
-    expect(readingDateBox.y - firstReadingBox.y).toBeLessThanOrEqual(6);
+    // THE BOX, NOT THE 32 THIS ROW USED TO SPELL (#4505). `metric-readings-list`
+    // shrank the ⋯ to `h-8 w-8` below `sm` and grew it its own `::after` — one
+    // more height beside the control box, sanctioned in the stylesheet. "One
+    // height, no exceptions" retired that rule; the trigger renders the box here
+    // like everywhere else and still takes the leading-shifted reach.
+    expect(readingMenuBox.height).toBe(CONTROL_BOX_PX);
+    // The date's top offset INSIDE its row: it must sit on the row's first line,
+    // not below it. The ⋯ is the row's tallest cell and the title is centred
+    // against it, so half of any growth in the control lands here. Measured on
+    // this page with the retired override in place (⋯ at 32) the offset was
+    // 5.28px; the box's 2px moves it to 6.28, which is the whole of the change.
+    // The bound is 7 so it keeps roughly the 0.7px of slack it had at 6.
+    expect(readingDateBox.y - firstReadingBox.y).toBeLessThanOrEqual(7);
     expect(Math.abs(readingDateBox.y - readingValueBox.y)).toBeLessThanOrEqual(
       2
     );
