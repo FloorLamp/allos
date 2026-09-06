@@ -90,6 +90,20 @@ not at all five by rote.
   the cases from a `Record<T, …>`. Then add a member locally and watch it fail,
   because the annotation is exactly the thing that reads as proof and is not.
 
+  #5351 is the worked example over `NotificationKind`. Two registries — the
+  settings rows (`lib/notifications/kinds.ts`) and the cadence declaration
+  (`lib/notifications/cadence-registry.ts`) — were ARRAYS, with a partial
+  exclusion map and a hand-written copy of the union beside them, and two guard
+  files reconciled the four on every run, and 366 of their lines are gone.
+  Keyed as `Record<NotificationKind, Row | Inert>` and
+  `Record<NotificationKind, CadenceOwner>`, all three facts are compile errors and
+  the copy of the union is `Object.keys`. Two POLICY rules went into the same
+  types — a safety kind's row may only be `control: { type: "always" }`, and a
+  safety kind may not declare `cadence: "nudge-cadence"` — via a mapped type over
+  the union's safety half, so the rule the guards restated is now unspellable.
+  What stayed is what no type holds: a copy rule over blurb prose, uniqueness
+  across row VALUES, and which four families the shared engine may decide for.
+
 - **A guard that reconstructs a connection from source is blind to every path it
   does not know, and it fails toward silence.** `logged-via-surface-wiring` walked
   the import graph from every action calling `parseWebOrigin` back to the clients
