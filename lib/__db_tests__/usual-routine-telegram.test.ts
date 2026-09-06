@@ -65,11 +65,11 @@ import {
   attachUsualForSlots,
   planUsualRoutine,
 } from "@/lib/notifications/usual-routine-plan";
+import { OUTDATED_MESSAGE_TEXT } from "@/lib/notifications/callback-data";
 import {
   offerCallback,
-  OUTDATED_MESSAGE_TEXT,
   parseOfferCallback,
-} from "@/lib/notifications/callback-data";
+} from "@/lib/notifications/offer-tokens";
 import { mintOffer, readOffer } from "@/lib/notifications/offer-store";
 import { getUsualRoutineOffer } from "@/lib/queries/usual-routine";
 import { markDoseTaken } from "@/lib/queries";

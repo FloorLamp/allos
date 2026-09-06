@@ -222,11 +222,15 @@ describe("partIntent", () => {
 });
 
 describe("partTotal", () => {
+  // A recorded set: the running total is what this session HAS lifted (#5373), and a
+  // planned row's numbers are an offer — its own case is at the end of this block.
+  const done = () => ({ ...blankPart().sets[0], plan: null });
+
   it("sums weight × reps across sets", () => {
     const p = part({
       sets: [
-        { ...blankPart().sets[0], weight: "100", reps: "5" },
-        { ...blankPart().sets[0], weight: "100", reps: "3" },
+        { ...done(), weight: "100", reps: "5" },
+        { ...done(), weight: "100", reps: "3" },
       ],
     });
     expect(partTotal(p)).toBe(800);
@@ -235,7 +239,7 @@ describe("partTotal", () => {
   it("adds the right side only when tracking per-side", () => {
     const sets = [
       {
-        ...blankPart().sets[0],
+        ...done(),
         weight: "20",
         reps: "10",
         weightRight: "25",
@@ -249,8 +253,8 @@ describe("partTotal", () => {
   it("excludes warmup sets from the volume total (#338)", () => {
     const p = part({
       sets: [
-        { ...blankPart().sets[0], weight: "60", reps: "5", warmup: true },
-        { ...blankPart().sets[0], weight: "100", reps: "5" },
+        { ...done(), weight: "60", reps: "5", warmup: true },
+        { ...done(), weight: "100", reps: "5" },
       ],
     });
     expect(partTotal(p)).toBe(500); // only the 100×5 working set
@@ -261,8 +265,11 @@ describe("partSetsSummary — the compact set notation (#3336)", () => {
   // The editor's set values are display-unit STRINGS; the sentence is rendered by the
   // ONE summarizeExercise every other surface uses. These cases are about which parts
   // get a sentence AT ALL, because null is what keeps a non-uniform part on the grid.
+  // A set the person RECORDED. The sentence states what was done, so a planned row
+  // is never in it (#5373) — that case is asked about on its own below.
   const set = (o: Partial<PartEntry["sets"][number]>) => ({
     ...blankPart().sets[0],
+    plan: null,
     ...o,
   });
   const run = (n: number, o: Partial<PartEntry["sets"][number]>) =>
@@ -661,6 +668,28 @@ describe("initialPartsFromSeed", () => {
     route_polyline: null,
     sets: [],
   };
+
+  // Sets that arrive at differing loads keep their own weights in the grid (#5371).
+  it.each([
+    ["one load", 80, false],
+    ["differing loads", 70, true],
+  ])(
+    "a stored strength session at %s loads varied=%s",
+    (_case, kg2, varied) => {
+      const parts = initialPartsFromSeed(
+        {
+          ...base,
+          sets: [
+            storedSet({ set_number: 1, weight_kg: 80, reps: 5 }),
+            storedSet({ set_number: 2, weight_kg: kg2, reps: 5 }),
+          ],
+        },
+        UNITS,
+        isKnown
+      );
+      expect(parts.map((p) => p.varied)).toEqual([varied]);
+    }
+  );
 
   it("returns a single blank part with no seed (fresh create)", () => {
     const parts = initialPartsFromSeed(null, UNITS, isKnown);

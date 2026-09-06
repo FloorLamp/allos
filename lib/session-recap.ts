@@ -61,6 +61,10 @@ export interface RecapSet {
 
 export interface RecapExercise {
   exercise: string; // the logged variant name
+  // How many sets this exercise was PLANNED for, when the caller knows (#5373). Only
+  // the live form does: the plan is client state computed at finish and never stored,
+  // so the server path leaves it absent and the recap line says nothing about it.
+  plannedSets?: number | null;
   // The registry implement the session's sets were performed on (first non-null),
   // or null for the unassigned lane — the LOAD CONTEXT the vs-last delta compares
   // within (#1610). Optional so a caller with no implement data reads as unassigned.
@@ -113,6 +117,10 @@ export type RecapHistory = Record<string, RecapExerciseHistory>;
 export interface RecapExerciseLine {
   exercise: string;
   workingSets: number;
+  // The plan this exercise was worked against, when there was one (#5373) — so a
+  // failed day reads "2 of 3 sets" rather than a bare "2 ×", which is the honest line.
+  // Null wherever the plan is unknown (every stored-row path) or was fully met.
+  plannedSets: number | null;
   volumeKg: number;
   verdict: SetStatus; // met / missed / null (to-failure & untargeted are never a miss)
   bodyweight: boolean;
@@ -326,6 +334,12 @@ export function sessionRecap(
     lines.push({
       exercise: ex.exercise,
       workingSets,
+      // Only when the session fell SHORT of it: a plan that was met is what the count
+      // already says, and "3 of 3" would spend a line saying nothing.
+      plannedSets:
+        ex.plannedSets != null && ex.plannedSets > workingSets
+          ? ex.plannedSets
+          : null,
       volumeKg: summary.totalKg,
       verdict: summary.status,
       bodyweight,
@@ -370,10 +384,15 @@ export function sessionRecap(
 // Group flattened set rows (first-seen order) into RecapExercises. Shared by both
 // mappers so exercise ordering + grouping can't diverge between the paths.
 function groupExercises(
-  rows: { exercise: string; equipmentId: number | null; set: RecapSet }[]
+  rows: {
+    exercise: string;
+    equipmentId: number | null;
+    set: RecapSet;
+    plannedSets?: number | null;
+  }[]
 ): RecapExercise[] {
   const out: RecapExercise[] = [];
-  for (const { exercise, equipmentId, set } of rows) {
+  for (const { exercise, equipmentId, set, plannedSets } of rows) {
     let e = out.find((x) => x.exercise === exercise);
     if (!e) {
       e = { exercise, equipmentId: null, sets: [] };
@@ -383,6 +402,8 @@ function groupExercises(
     // session's equipment — so the recap's load context matches the history's.
     if (e.equipmentId == null && equipmentId != null)
       e.equipmentId = equipmentId;
+    if (e.plannedSets == null && plannedSets != null)
+      e.plannedSets = plannedSets;
     e.sets.push(set);
   }
   return out;
@@ -402,11 +423,16 @@ export interface RecapSessionMeta {
 export function recapSessionFromPayload(
   flat: readonly ActivitySetPayload[],
   meta: RecapSessionMeta,
-  unit: WeightUnit
+  unit: WeightUnit,
+  // How many sets each exercise was PLANNED for, keyed by the payload's exercise name
+  // (#5373). The plan is the form's client state — never saved — so only this path can
+  // supply it, and omitting it leaves the recap exactly as it was.
+  plannedSets: Readonly<Record<string, number>> = {}
 ): RecapInputSession {
   const rows = flat.map((s) => ({
     exercise: s.exercise,
     equipmentId: s.equipmentId,
+    plannedSets: plannedSets[s.exercise] ?? null,
     set: {
       weightKg: s.weight != null ? toKg(s.weight, unit) : null,
       reps: s.reps,

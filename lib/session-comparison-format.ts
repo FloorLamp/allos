@@ -1,18 +1,6 @@
-// How a like-for-like comparison metric READS: its unit, its display value, and
-// the sentence its difference makes ("2.1 km/h above 9.6 km/h median").
-//
-// These lived privately in the ride page. They move here because #2566's
-// convergence gives the comparison ONE presentation across every session type
-// (owner ruling, 2026-08-16), and because the rule they carry is a judgement
-// worth testing rather than four ternaries buried in a 1,400-line page:
-//
-//   ONLY SPEED HAS A DIRECTION. More heart rate, power, elevation, cadence or
-//   relative effort is CONTEXT, not an achievement — a session run at a higher
-//   heart rate for the same pace is not a better session, and colouring it as
-//   one tells a reader something untrue about their own body. The ride page knew
-//   this; the plain rows that shipped first for walks did not, and toned every
-//   metric by direction (#3023). This is the fix, made shared so it cannot be
-//   lost again.
+// Units, precision, and differences shared by session charts and cycling summaries.
+// Only speed has a performance direction; higher heart rate, power, elevation,
+// cadence, or relative effort is context rather than an achievement (#3023).
 
 import { kmTo, round } from "./units";
 import type { DistanceUnit } from "./settings";

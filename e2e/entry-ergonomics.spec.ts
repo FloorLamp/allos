@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { CONTROL_BOX_PX } from "@/lib/tap-floor-tokens";
-import { type Page } from "@playwright/test";
+import { type Locator, type Page } from "@playwright/test";
+import Database from "better-sqlite3";
 import { openCommandPalette } from "./nav";
 import {
   closePartOptions,
@@ -15,10 +16,11 @@ import {
   settledFill,
 } from "./helpers";
 import {
+  deleteActivitiesTitled,
   diffRecentActivities,
   snapshotRecentActivities,
 } from "./shared-profile-guard";
-import { frozenNow } from "./worker-env";
+import { frozenNow, workerDbPath } from "./worker-env";
 
 // Pick an activity in the editor's exercise combobox. The option button's text
 // varies with the input state: a partial filter lists options as the name plus a
@@ -957,8 +959,16 @@ test("strength set controls step, clamp, and toggle without losing their phone g
     /^Target \d+ reps$/
   );
 
+  // A fresh part states its load ONCE, above the rows (#5371): set 1's weight
+  // stepper is the exercise-level band's, and the row under it is reps only. The
+  // band mounts the same Stepper the row does, so the border and input contracts
+  // below are asserted on it first, and again on the row once "Vary" moves the
+  // weight back onto the set.
+  const form = page.getByTestId("activity-form"); // testid-scope-ok: ActivityOverlay portals the workspace to <body>, one copy
+  const band = form.getByTestId("exercise-weight");
   const weightStepper = page.getByTestId("set1-weight-stepper");
   const weightInput = page.getByTestId("set1-weight");
+  await expect(band.getByTestId("set1-weight-stepper")).toBeVisible();
   await expect(weightInput).toHaveClass(/number-no-spinner/);
   await expect(weightStepper).toHaveCSS("border-top-style", "solid");
   expect(
@@ -975,6 +985,23 @@ test("strength set controls step, clamp, and toggle without losing their phone g
   const weightBox = await weightInput.boundingBox();
   expect(weightBox).not.toBeNull();
   expect(weightBox!.width).toBeGreaterThanOrEqual(64);
+  // The + stepper bumps the exercise weight by one increment — from the PLAN the band
+  // is offering (#5373), not from zero, because a nudge is what a person does to an
+  // offer. Only weight is set, so no row is a record yet and nothing auto-saves.
+  const planned = Number(await weightInput.getAttribute("placeholder"));
+  expect(planned).toBeGreaterThan(0);
+  const stepped = String(planned + 2.5);
+  await hydratedClick(page, band.getByLabel("Increase weight"));
+  await expect(weightInput).toHaveValue(stepped);
+  // "Vary" gives the set its own weight field, carrying the load, with the caret in
+  // it; the band is gone and the row is the `weight × reps` pair the rest of this
+  // test measures.
+  await form.getByTestId("set-vary-1").click();
+  await expect(
+    form.getByTestId("set-values-1").getByTestId("set1-weight")
+  ).toHaveValue(stepped);
+  await expect(weightInput).toBeFocused();
+  await expect(band).toHaveCount(0);
 
   const repsStepper = page.getByTestId("set1-reps-stepper");
   const repsInput = repsStepper.locator("input");
@@ -1029,24 +1056,38 @@ test("strength set controls step, clamp, and toggle without losing their phone g
     disjoint: true,
   });
 
-  // The + stepper bumps the (empty) weight by one increment → 2.5. Only weight is
-  // set, so the set stays half-filled and nothing auto-saves — no cleanup needed.
-  await hydratedClick(page, stepTargets[1]);
-  await expect(page.getByTestId("set1-weight")).toHaveValue("2.5");
+  // THE CONFIRM CONTROL (#5373), in the options column at the row's trailing edge:
+  // no set is a record yet, so every row offers one. It is the shared IconButton,
+  // whose own box is the column's 34px control (#3938) around a 44px phone target —
+  // asserted through the same sweep the column's other controls take, not with a
+  // number of its own.
+  const row1 = page.getByTestId("set-row-1"); // testid-scope-ok: the set grid is inside the held editor overlay, one copy
+  const confirm = row1.getByTestId("set-confirm-1");
+  await expect(confirm).toHaveAttribute("data-icon-button", "");
+  await expectPhoneTapTargets(page, "strength-set confirm", [confirm]);
 
   // Weight and RPE were symmetric (− and +) from the start; reps shipped with only
   // a +, so a mis-tapped rep count could only be fixed by editing the field by hand.
+  // The count starts from the PLANNED reps this row is offering (#5373) — stepping is
+  // how a person says "I got two fewer than that" — so the arithmetic is stated
+  // against the ghost rather than against a zero the row never showed.
+  const plannedReps = Number(await repsInput.getAttribute("placeholder"));
+  expect(plannedReps).toBeGreaterThan(0);
   await hydratedClick(page, stepTargets[3]);
   await hydratedClick(page, stepTargets[3]);
-  await expect(repsInput).toHaveValue("2");
+  await expect(repsInput).toHaveValue(String(plannedReps + 2));
   await hydratedClick(page, stepTargets[2]);
-  await expect(repsInput).toHaveValue("1");
+  await expect(repsInput).toHaveValue(String(plannedReps + 1));
   // Clamped at 0: the field empties rather than going negative, and staying at the
   // floor is a no-op.
-  await hydratedClick(page, stepTargets[2]);
+  for (let i = 0; i <= plannedReps; i++)
+    await hydratedClick(page, stepTargets[2]);
   await expect(repsInput).toHaveValue("");
   await hydratedClick(page, stepTargets[2]);
   await expect(repsInput).toHaveValue("");
+  // …and CORRECTING IS CONFIRMING (#5373): the first of those steps recorded the set,
+  // so there is nothing left to confirm and the control is gone.
+  await expect(row1.getByTestId("set-confirm-1")).toHaveCount(0);
 
   // Each set carries a light "W" warmup toggle (default off). Toggling flips its
   // aria-pressed state — the flag excludes the set from volume/target/records.
@@ -1055,7 +1096,9 @@ test("strength set controls step, clamp, and toggle without losing their phone g
   await hydratedClick(page, warmup);
   await expect(warmup).toHaveAttribute("aria-pressed", "true");
 
-  // Reps returned to empty, so the set stays half-filled and nothing auto-saves.
+  // Reps returned to empty, so the set stays half-filled and nothing auto-saves — a
+  // confirmed row with a missing half is still a half-filled set, so confirming it
+  // did not make it savable.
   // Escape is still the leave gesture, but the draft it leaves has a name typed
   // into it and no row behind it, so it is asked about now rather than dropped in
   // silence (#5111) — the answer is part of the close, not scenery after it.
@@ -1102,6 +1145,144 @@ test("the bilateral (per-side) reps stepper steps down too (#1524)", async ({
   await expect(discard).toContainText("Discard unsaved changes?");
   await discard.getByRole("button", { name: "Close anyway" }).click();
   await expect(page.getByTestId("activity-form")).toHaveCount(0); // testid-scope-ok: ActivityOverlay portals the workspace to <body>, one copy
+});
+
+// Straight sets decide the weight once and vary the reps (#5371). While every set
+// carries the same load the grid says so once, above the rows; the rows are reps
+// only, Enter walks weight → reps → next set, and "Vary" is the way back to a
+// weight per set — which then STAYS per set, even stepped back to a match.
+test("weight is stated once per exercise until a set varies it (#5371)", async ({
+  page,
+}) => {
+  await page.goto("/training?tab=log");
+  await page
+    .getByRole("main")
+    .getByRole("button", { name: "Add activity" })
+    .click();
+  await pickActivity(page, "Barbell Bench Press");
+
+  const form = page.getByTestId("activity-form"); // testid-scope-ok: ActivityOverlay portals the workspace to <body>, one copy
+  const band = form.getByTestId("exercise-weight");
+  const weight = band.getByTestId("set1-weight");
+  // The coached ghost rides on the band now — it is where set 1's weight goes.
+  await expect(weight).toHaveAttribute("placeholder", /^\d/);
+  await settledFill(page, weight, "60");
+  // Enter in the exercise-level weight lands in set 1's reps; Enter in a complete
+  // reps field adds the next set (#336), which copies the load and stays shared.
+  await weight.press("Enter");
+  await expect(form.getByTestId("set1-reps")).toBeFocused();
+  await page.keyboard.type("8");
+  await page.keyboard.press("Enter");
+  // The new set arrives as a GHOST of the one just recorded (#5373): its numbers are
+  // the offer, painted in the placeholder, and it is not a record until confirmed.
+  await expect(form.getByTestId("set2-reps")).toHaveValue("");
+  await expect(form.getByTestId("set2-reps")).toHaveAttribute(
+    "placeholder",
+    "8"
+  );
+  await expect(form.getByTestId("set2-weight")).toHaveCount(0);
+  await expect(form.getByLabel("Increase weight")).toHaveCount(1);
+
+  // Stepping the exercise weight moves every set — visible once set 2 varies: its
+  // own field arrives already at the stepped load, with the caret in it.
+  await hydratedClick(page, band.getByLabel("Increase weight"));
+  await expect(weight).toHaveValue("62.5");
+  await form.getByTestId("set-vary-2").click();
+  const set2Weight = form.getByTestId("set2-weight");
+  await expect(set2Weight).toHaveValue("62.5");
+  await expect(set2Weight).toBeFocused();
+  await expect(form.getByTestId("set1-weight")).toHaveValue("62.5");
+  await expect(band).toHaveCount(0);
+  // Enter in a set's weight lands in THAT set's reps.
+  await set2Weight.press("Enter");
+  await expect(form.getByTestId("set2-reps")).toBeFocused();
+  // Stepped back to match, the grid does not fold under the person's hands.
+  await hydratedClick(
+    page,
+    form.getByTestId("set-row-2").getByLabel("Decrease weight")
+  );
+  await expect(set2Weight).toHaveValue("60");
+  await expect(band).toHaveCount(0);
+
+  // Two complete sets auto-saved the draft; delete it so the shared seed is left
+  // as found (#3454: wait for the row to be gone, not for the form to close).
+  await expect(
+    page.getByRole("button", { name: "Delete", exact: true })
+  ).toBeVisible();
+  await deleteActivityFromForm(page);
+});
+
+// The per-side payload, end-to-end. Nothing in the tree drove an R value through a
+// save before this (found by #5377's mutation control: mapping R onto L's fields
+// left every spec green), so the shared-stepper rule for per-side lifts — one band
+// per side while both sides match across the sets — is asserted here against what
+// was STORED, not against what was rendered.
+test("a per-side lift saves each side's weight and reps from the shared band (#5371)", async ({
+  page,
+}) => {
+  const marker = `Per-side probe ${Date.now()}`; // clock-ok: unique-name suffix for this spec's own session title, never a stored timestamp
+  const storedSets = () => {
+    const db = new Database(workerDbPath());
+    try {
+      db.pragma("busy_timeout = 5000");
+      return db
+        .prepare(
+          `SELECT s.weight_kg, s.reps, s.weight_kg_right, s.reps_right
+             FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
+            WHERE a.title = ? ORDER BY s.set_number`
+        )
+        .all(marker);
+    } finally {
+      db.close();
+    }
+  };
+  try {
+    await page.goto("/training?tab=log");
+    await page
+      .getByRole("main")
+      .getByRole("button", { name: "Add activity" })
+      .click();
+    await pickActivity(page, "Hammer Curl");
+    const form = page.getByTestId("activity-form"); // testid-scope-ok: ActivityOverlay portals the workspace to <body>, one copy
+    await openPartOptions(page, 0); // the sides control is behind the part's fact chips (#3349)
+    await page.getByText("Track sides separately", { exact: true }).click();
+    await expect(form.getByTestId("per-side-checkbox")).toBeChecked();
+    await closePartOptions(page);
+    await form.getByLabel("Activity name").fill(marker);
+
+    // One band per side above the rows, one reps stepper per side on the row. Each
+    // side is reached through its L/R label: the label's line in the band holds
+    // that side's weight, its line in the row holds that side's reps.
+    const band = form.getByTestId("exercise-weight");
+    const row = form.getByTestId("set-row-1");
+    const line = (scope: Locator, side: "L" | "R") =>
+      scope.getByText(side, { exact: true }).locator("..");
+    await expect(band.getByLabel("Increase weight")).toHaveCount(2);
+    await expect(row.getByLabel("Add a rep")).toHaveCount(2);
+    await expect(row.getByLabel("Increase weight")).toHaveCount(0);
+    await settledFill(page, line(band, "L").getByPlaceholder("kg"), "20");
+    await settledFill(page, line(band, "R").getByPlaceholder("kg"), "18");
+    await settledFill(page, line(row, "L").getByRole("spinbutton"), "10");
+    await settledFill(page, line(row, "R").getByRole("spinbutton"), "8");
+
+    // The complete set auto-saves; the Delete button is the row existing. The R
+    // values may still be an UPDATE in flight behind it, so the read polls for the
+    // stored shape — a presence, where a ceiling is honest.
+    await expect(
+      page.getByRole("button", { name: "Delete", exact: true })
+    ).toBeVisible();
+    await expect
+      .poll(storedSets, { timeout: 15_000 })
+      .toEqual([
+        { weight_kg: 20, reps: 10, weight_kg_right: 18, reps_right: 8 },
+      ]);
+
+    await deleteActivityFromForm(page);
+  } finally {
+    // A today-dated strength session on the shared profile displaces the seeded
+    // lift in Analyze's quick links for every later spec on this worker (#3930).
+    deleteActivitiesTitled(marker);
+  }
 });
 
 test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)", async ({
@@ -1420,7 +1601,9 @@ test("the plate builder opens on the converged dialog host (#3405)", async ({
     name: "Open plate builder",
   });
   const plateSlot = plateButton.locator("..");
-  const setRow = page.getByTestId("set-values-1");
+  // On a fresh part the load is stated once, above the rows (#5371), so the plate
+  // door's owning row is the exercise-level band rather than set 1's values.
+  const setRow = page.getByTestId("exercise-weight");
   const weightStepper = page.getByTestId("set1-weight-stepper");
   await expect(plateButton).toHaveAttribute("data-icon-button", "");
   await expectPhoneTapTargets(page, "strength-set plate builder", [
@@ -1435,7 +1618,7 @@ test("the plate builder opens on the converged dialog host (#3405)", async ({
   // browser sub-pixel rounding without admitting a real one-pixel layout shift.
   const geometry = await plateButton.evaluate((button) => {
     const slot = button.parentElement;
-    const row = button.closest('[data-testid="set-values-1"]');
+    const row = button.closest('[data-testid="exercise-weight"]');
     const stepper = row?.querySelector('[data-testid="set1-weight-stepper"]');
     if (!slot || !row || !stepper)
       throw new Error("Plate target is detached from its owning set row");

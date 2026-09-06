@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { IconChevronDown } from "@tabler/icons-react";
 import Chip from "@/components/Chip";
+import CreateAction, { useCreateActionLabel } from "@/components/CreateAction";
 import IntakeItemForm from "@/components/IntakeItemForm";
 import QuickLogPrnControl from "@/components/medications/QuickLogPrnControl";
 import { addIntakeItem } from "@/app/(app)/nutrition/intake-actions";
@@ -17,6 +18,31 @@ import { useDoseOfferLive } from "@/components/illness/DoseOfferContext";
 // How many chips stand before the tail folds. Three is what the compact quick-log
 // content already showed, so the fold's threshold is unchanged by this rebuild.
 const COLLAPSED_CHIPS = 3;
+
+function IllnessAddMedicationControl({
+  open,
+  onToggle,
+}: {
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const label = useCreateActionLabel();
+  return (
+    <button
+      type="button"
+      className="btn-ghost btn-sm"
+      data-testid="illness-add-medication"
+      aria-expanded={open}
+      aria-controls="illness-medication-quick-add"
+      onClick={onToggle}
+    >
+      <IconChevronDown
+        className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`}
+      />
+      {label}
+    </button>
+  );
+}
 
 // ── MEDS AS CHIPS, DETAIL ONLY WHEN ACTING (#4752 item 4) ───────────────────
 //
@@ -124,21 +150,19 @@ export default function IllnessMedicationLogger({
             {showTail ? "Fewer" : `${tail.length} more`}
           </Chip>
         )}
-        {canAdd ? (
-          <button
-            type="button"
-            className="btn-ghost btn-sm"
-            data-testid="illness-add-medication"
-            aria-expanded={adding}
-            aria-controls="illness-medication-quick-add"
-            onClick={() => setAdding((open) => !open)}
-          >
-            <IconChevronDown
-              className={`h-3.5 w-3.5 transition-transform ${adding ? "rotate-180" : ""}`}
-            />
-            Add medication
-          </button>
-        ) : null}
+        <CreateAction
+          declaration={{
+            kind: "medication",
+            available: canAdd,
+            control: (
+              <IllnessAddMedicationControl
+                open={adding}
+                onToggle={() => setAdding((open) => !open)}
+              />
+            ),
+          }}
+          housing="section"
+        />
       </div>
 
       {meds.length === 0 ? (

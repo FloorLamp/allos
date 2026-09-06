@@ -182,7 +182,7 @@ function AddDoor({
     <Disclosure data-testid="food-add">
       <summary
         data-testid="food-add-door"
-        className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-xl border border-dashed border-(--border) px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-(--ghost-hover) [&::-webkit-details-marker]:hidden dark:text-slate-300"
+        className="fold-control flex list-none items-center gap-2 rounded-xl border-dashed border-(--border) px-3 text-sm font-medium text-slate-600 transition hover:bg-(--ghost-hover) [&::-webkit-details-marker]:hidden dark:text-slate-300"
       >
         <IconPlus className="h-4 w-4 shrink-0 transition-transform group-open:rotate-45" />
         <span>{label}</span>
@@ -2232,7 +2232,7 @@ export default function FoodLogBar({
             >
               <summary
                 data-testid="food-when-summary"
-                className="flex min-h-11 cursor-pointer list-none items-center gap-1.5 text-xs font-medium text-slate-500 [&::-webkit-details-marker]:hidden dark:text-slate-400"
+                className="fold-control flex list-none items-center gap-1.5 text-xs font-medium text-slate-500 [&::-webkit-details-marker]:hidden dark:text-slate-400"
               >
                 <IconChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
                 <span>{statingTime ? "Happened earlier?" : "Set time?"}</span>
