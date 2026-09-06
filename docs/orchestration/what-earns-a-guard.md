@@ -34,15 +34,20 @@ flaky e2e specs. Every rule below serves that.
 - The cost is accepted with open eyes: a wrong CI skip-set or gate-trigger
   entry now fails silently rather than red.
 
-## The two ratchets
+## Ratchets
 
-- `ci-skip-set` and `db-gate-trigger-set` survive (owner, 2026-09-06): a
-  silently growing skip set stops CI running for whole diffs.
 - A ratchet is `expect(entries.length).toBeLessThanOrEqual(N)` — one number, no
   allowlist, no per-file registry, no import graph, about 20 lines. A list of
   names is how a ratchet becomes the second copy of a config.
 - **N may only be LOWERED**, in the PR that removes the entry. What a ratchet
-  no longer catches, stated: a WRONG entry, as opposed to a new one.
+  no longer catches, stated: a WRONG entry, as opposed to a new one. At N=0 the
+  clause is inert and the ratchet is a plain floor.
+- Exactly TWO ratchets stand on dev config (owner, 2026-09-06), as the only
+  exception to the section above: `ci-skip-set` and `db-gate-trigger-set`. A
+  silently growing skip set stops CI running for whole diffs.
+- A ratchet over PRODUCT code is not that exception and needs no part of it —
+  `pager-idiom` scans `app/` and `components/` at N=0 (#5454). Count the
+  dev-config two, not the ratchets.
 
 ## Ranking the queue
 

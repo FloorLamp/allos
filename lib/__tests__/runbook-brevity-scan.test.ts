@@ -150,7 +150,13 @@ const FILE_BUDGETS = {
   // The bar a new guard, scan or spec has to clear (owner, 2026-09-06). Its own
   // file because e2e-ci.md and lifecycle.md were both AT their budgets the day
   // the rules were written, and this gate's answer to that is to move detail out.
-  "docs/orchestration/what-earns-a-guard.md": { lines: 55, genre: "runbook" },
+  //
+  // 62 for a 60-line file, the same 2-5% every sibling here carries, and NOT the
+  // measured size: a first budget is a calibration, and calibrating it to zero
+  // headroom would make the next added rule a surprise red whose cheapest fix is
+  // a budget bump — the move this file exists to argue against. The slack is one
+  // rule's worth. Spending it means the rule after that subtracts one first.
+  "docs/orchestration/what-earns-a-guard.md": { lines: 62, genre: "runbook" },
 } as const satisfies Record<string, { lines: number; genre: Genre }>;
 
 /**
