@@ -6,6 +6,8 @@ import { PageHeader } from "@/components/ui";
 import ActivityProvenance from "@/components/ActivityProvenance";
 import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import ActivityMediaStrip from "@/components/activity/ActivityMediaStrip";
+import TrainingPhotoStrip from "@/components/training/TrainingPhotoStrip";
+import { getActivityPhotos } from "@/lib/training-photo-write";
 import NotesText from "@/components/NotesText";
 import { IconAlertTriangle } from "@tabler/icons-react";
 import {
@@ -734,6 +736,26 @@ export default async function TrainingActivityPage(props: {
               ) : null}
             </section>
           ) : null}
+
+          {/* Photos of the session (#3285 item 3), the photo core's training tenant.
+              Its own block rather than a row inside the conditional Media card: the
+              clips render only when some exist, and a capture door that appears only
+              once you already have one is no door. */}
+          <div className="mt-6">
+            <TrainingPhotoStrip
+              owner={{ kind: "activity", activityId: card.activity.id }}
+              photos={getActivityPhotos(subjectProfileId, card.activity.id).map(
+                (p) => ({
+                  id: p.id,
+                  date: p.date,
+                  caption: p.caption,
+                  ownerLabel: p.ownerLabel,
+                })
+              )}
+              canWrite={canWrite}
+              subjectProfileId={crossProfile ? subjectProfileId : undefined}
+            />
+          </div>
 
           <ActivityProvenance
             label={card.provenance.label}

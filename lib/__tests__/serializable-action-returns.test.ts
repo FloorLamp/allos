@@ -479,6 +479,7 @@ const CENSUSED_MODULES = [
   "app/(app)/training/injury-actions.ts",
   "app/(app)/training/mobility-actions.ts",
   "app/(app)/training/niggle-actions.ts",
+  "app/(app)/training/photo-actions.ts",
   "app/(app)/training/video-actions.ts",
   "app/(app)/travel-actions.ts",
   "app/(app)/trends/actions.ts",

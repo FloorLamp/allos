@@ -95,6 +95,8 @@ const NOT_A_USER_WRITE_LEDGER: Record<string, string> = {
   medical_record_revisions: "revision history OF a medical_records row",
   symptom_photos: "attachment on a symptom day, not a log of its own",
   symptom_videos: "attachment on a symptom day, not a log of its own",
+  training_photos:
+    "attachment on an activities or endurance_plans row, not an occurrence of its own",
   fitness_assessment_entries:
     "per-test entries of one battery; the battery's activities row carries the tap",
   fitness_assessments:
