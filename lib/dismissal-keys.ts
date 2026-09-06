@@ -262,3 +262,24 @@ export function offerAskedKey(familyId: string): string {
 export const NOTIFICATION_CHANNEL_ASKED_KEY = offerAskedKey(
   "notification-channel"
 );
+
+// ---- The detected effort nobody has claimed (issue #5113) --------------------
+//
+// One heart-rate span, offered by the form prefill (#5195), the day chart (#5196) and
+// the Telegram ask (#5197). Readers 2 to 4 offer it ONCE: a decline is recorded here,
+// on the same suppression bus as everything else, and every reader filters on this key
+// through `unclaimedExertionSpans`. There is no second store — the whole point of the
+// key living beside the others is that "stop offering me this effort" is the same kind
+// of promise as every other row in `upcoming_dismissals`.
+//
+// The tail is the span's own local start minute (`YYYY-MM-DDTHH:MM`), which makes the
+// namespace `anchored`: an effort is a moment, so a later effort can only ever mint a
+// later key and a stored row can never re-attach to something the person did not
+// silence. The START rather than the whole window on purpose — a trace whose frontier
+// advances lengthens a span's END, and keying on that would re-offer, at a slightly
+// different length, the very effort somebody just declined.
+export const EXERTION_SPAN_PREFIX = "exertion-span:";
+
+export function exertionSpanDismissalKey(localStartMinute: string): string {
+  return `${EXERTION_SPAN_PREFIX}${localStartMinute}`;
+}

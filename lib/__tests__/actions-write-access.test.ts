@@ -71,6 +71,11 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     why: "read-only (#2651): gathers the log sheet's due-and-usual context row — the composed usual-routine offer (getUsualRoutineOffer) and the arrived-slot due-dose offer (collectDueDosesNow) — and writes nothing; every tap still goes through the control's own gated action (logUsualRoutine / markTaken), so login-scoped requireSession() is the right gate, same posture as loadQuickEntry",
   },
   {
+    file: "app/(app)/training/activity-actions.ts",
+    fn: "exertionPrefillOffer",
+    why: "read-only (#5195): answers what the day's heart rate says an unclaimed effort was (latestExertionOffer) so a blank activity form can default its clocks — writes nothing, and the row is still created by the form's own gated saveActivity, so login-scoped requireSession() is the right gate, same posture as loadQuickEntry",
+  },
+  {
     file: "app/(app)/search-actions.ts",
     fn: "runGlobalSearch",
     why: "read-only: cross-domain search of the active profile",

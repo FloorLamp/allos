@@ -39,6 +39,7 @@ import { STEPS_PACE_PREFIX } from "./steps-target";
 import { pairedObservationEntry } from "./paired-observations";
 import { biomarkerKeyLabel, titleizeKeyTail } from "./biomarker-key-label";
 import {
+  EXERTION_SPAN_PREFIX,
   OFFER_ASKED_PREFIX,
   PR_CARDIO_PREFIX,
   PR_STRENGTH_PREFIX,
@@ -461,6 +462,17 @@ const EXTRA_ENTRIES: ResolverEntry[] = [
     label: (t) => {
       const n = titleize(part(t, 0));
       return n ? `Personal record — ${n}` : "Personal record";
+    },
+  },
+  {
+    // A detected effort the person declined to log (#5113). The tail is the local
+    // minute it began, which is the only thing the app knows about it — nobody has
+    // said what it was, so the label says when rather than what.
+    prefix: EXERTION_SPAN_PREFIX,
+    domain: "Coaching",
+    label: (t) => {
+      const at = t.slice(11, 16);
+      return at ? `Detected effort — ${at}` : "Detected effort";
     },
   },
   // ---- Suggestions (suggest-only per-surface rows) -------------------------

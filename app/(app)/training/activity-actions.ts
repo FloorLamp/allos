@@ -1,5 +1,10 @@
 "use server";
 import { requireSession, requireWriteAccess } from "@/lib/auth";
+import { isRealIsoDate } from "@/lib/date";
+import {
+  latestExertionOffer,
+  type ExertionOffer,
+} from "@/lib/exertion-offer";
 import {
   LOGGED_VIA_FIELD,
   parseWebOrigin,
@@ -417,4 +422,23 @@ export async function deleteActivity(
   cleanupOrphanPrDismissals(profile.id);
   revalidateActivitySurfaces();
   return { undoId };
+}
+
+/**
+ * The unclaimed effort a day's heart rate holds, as clocks a blank form can carry
+ * (#5195, reader 2 of #5113).
+ *
+ * READ-ONLY, and asked LAZILY rather than propped from the layout. The gather behind it
+ * reads the day's trace and, only when there is one, ten prior windows for the usual —
+ * a cost no page load should pay for an editor nobody has opened. Nothing is written:
+ * the answer arrives as a DEFAULT in two fields, and the row is still created by the
+ * save the person taps.
+ */
+export async function exertionPrefillOffer(
+  date: string
+): Promise<ExertionOffer | null> {
+  const { profile } = await requireSession();
+  if (!isRealIsoDate(date)) return null;
+  if (!isTrainingRelevant(getProfileAge(profile.id))) return null;
+  return latestExertionOffer(profile.id, date);
 }
