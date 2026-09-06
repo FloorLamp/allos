@@ -30,7 +30,8 @@
 //
 // Pure — no DB, no clock. The gather is lib/queries/sleep-clock-skew.ts.
 
-import { utcInstant } from "./date";
+import { parseInstant, parseUtcSql, utcInstant } from "./date";
+import type { CanonicalInstant } from "./temporal-types";
 import { FRAGMENT_MERGE_GAP_MAX_MIN } from "./sleep-regularity";
 
 // The dedupeKey namespace this evidence rides on when it becomes a coaching-tier
@@ -72,7 +73,7 @@ export function sleepSkewSettledLine(clock: string): string {
 // has been an absolute instant since migration 164 — docs/internals/time-columns.md),
 // `bpm` the count-weighted average.
 export interface HrMinuteSample {
-  ts: string;
+  ts: CanonicalInstant;
   bpm: number;
 }
 
@@ -380,14 +381,17 @@ export function detectSleepClockSkew(
   session: SkewCandidateSession,
   hr: readonly HrMinuteSample[]
 ): SleepClockSkew | null {
-  const start = Date.parse(session.start);
-  const end = Date.parse(session.end);
+  // parseUtcSql, not the typed seam: `metric_samples.started_at`/`ended_at` carry no
+  // brand. The shape expected is a synced session's own instant — `Z`, an offset, or
+  // no suffix read as UTC — and parseUtcSql keeps a stated offset (#5338).
+  const start = parseUtcSql(session.start)?.getTime() ?? NaN;
+  const end = parseUtcSql(session.end)?.getTime() ?? NaN;
   if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
     return null;
   }
   const samples: { at: number; bpm: number }[] = [];
   for (const s of hr) {
-    const at = Date.parse(s.ts);
+    const at = parseInstant(s.ts);
     if (Number.isFinite(at) && Number.isFinite(s.bpm))
       samples.push({ at, bpm: s.bpm });
   }
