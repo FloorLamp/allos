@@ -232,3 +232,33 @@ export function prDismissalKeysLosingBacking(
   }
   return lost;
 }
+
+// ---- Offer-family "did we ask" keys (issue #4840) ----------------------------
+//
+// Every declared offer family (lib/offers.ts) keeps its one-shot "asked" state on the
+// suppression bus under this prefix, never on a bespoke `*_prompted` settings key
+// (the key type in lib/settings/kv.ts is what refuses a new one). The tail is the
+// family id — registry vocabulary, never a user-typed name — so the namespace is
+// `catalog`-class in lib/dismissal-classes.ts: "stop offering me this" is a statement
+// about the topic and is meant to outlive any row. A family that is one-shot PER
+// EPISODE mints an anchored tail under its own prefix, the way `stream-offboard:`
+// does, rather than re-using this one with a second key class.
+//
+// Declared here rather than in lib/offers.ts because the registry reads stored rows
+// (a DB module) while the two consumers of the prefix — the classification registry
+// and the display resolver — are pure and must stay importable from any tier.
+export const OFFER_ASKED_PREFIX = "offer-asked:";
+
+export function offerAskedKey(familyId: string): string {
+  return `${OFFER_ASKED_PREFIX}${familyId}`;
+}
+
+// The marker #4840's `notification-channel` offer and #5287's data-quality gap of the
+// same name SHARE (owner ruling on #4840, 2026-09-05): a profile with reminders enabled
+// and no linked chat is offered a channel at the moment of enabling a reminder, and the
+// gap covers a profile that declined or never saw it. One key, so a declined offer is
+// never nagged twice. Minted here because this side landed first; #5287's gap reads
+// this constant rather than spelling a second one.
+export const NOTIFICATION_CHANNEL_ASKED_KEY = offerAskedKey(
+  "notification-channel"
+);

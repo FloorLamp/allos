@@ -940,7 +940,7 @@ const SUPP_HOUR_KEYS = {
 } as const;
 
 // The default recap send time when a weekday is chosen (09:00).
-const DEFAULT_RECAP_MINUTE = 9 * 60;
+export const DEFAULT_RECAP_MINUTE = 9 * 60;
 
 // Where the recap's SCALE lives (#2178) — its own key beside the weekday and the time,
 // never multiplexed onto either. The two questions ("when does the slot fire" and "what
@@ -1153,4 +1153,20 @@ export function setDigestMinute(profileId: number, minute: number): void {
 /** Set the digest's mode and nothing else — not the time, not the schedule. */
 export function setDigestMode(profileId: number, mode: DigestMode): void {
   setProfileSetting(profileId, DIGEST_MODE_KEY, mode);
+}
+
+/**
+ * Set the recap slot — weekday, minute and scale — and nothing else (#4840). The
+ * three keys `setNotifySchedule` writes for the recap, as one write, for the
+ * one-tap accept that must be provably unable to touch the rest of the schedule.
+ */
+export function setRecapSlot(
+  profileId: number,
+  weekday: number,
+  minute: number,
+  scale: ReviewCadence
+): void {
+  setProfileSetting(profileId, "notify_recap_day", String(weekday));
+  setProfileSetting(profileId, "notify_recap_hour", formatNotifyTime(minute));
+  setRecapScale(profileId, scale);
 }
