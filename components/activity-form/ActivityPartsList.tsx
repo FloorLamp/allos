@@ -232,17 +232,13 @@ export default function ActivityPartsList({
   // toolbar without duplicating either. Holds the index of the part whose guide
   // is open, so at most one overlay exists no matter how many parts are entered.
   const [guideFor, setGuideFor] = useState<number | null>(null);
-  // WHICH PART IS BEING SEARCHED (#5370). A part that has a name is a HEADING, not a
-  // mounted search field: the picker is one tap behind it, and the field's own search
-  // glyph and Clear come back with the picker because they belong to searching. Holds
-  // an index for the same reason `guideFor` does — at most one picker is open — and
-  // `null` while every named part is settled. A part with no name yet has nothing to
-  // state, so it renders the picker whatever this says.
+  // WHICH PART IS BEING SEARCHED (#5370). A named part is a HEADING, not a mounted
+  // search field; the picker — with its search glyph and its own Clear — is one tap
+  // behind it. Holds an index for the same reason `guideFor` does.
   const [searchingPart, setSearchingPart] = useState<number | null>(null);
   // Settling unmounts the field the caret was in, so the heading has to take the focus
-  // back or a keyboard pick drops it on <body> and the next Tab restarts at the top of
-  // the document. The element does not exist yet when the settle is decided, hence a
-  // request the effect below fulfils rather than a `.focus()` call here.
+  // back or a keyboard pick drops it on <body>. The heading does not exist yet when
+  // the settle is decided, hence a request the effect fulfils rather than a `.focus()`.
   const [refocusHeading, setRefocusHeading] = useState<number | null>(null);
   const headingRefs = useRef<Record<number, HTMLButtonElement | null>>({});
   useEffect(() => {
@@ -250,8 +246,6 @@ export default function ActivityPartsList({
     headingRefs.current[refocusHeading]?.focus();
     setRefocusHeading(null);
   }, [refocusHeading]);
-  // Back to the heading, with focus. Called on a pick, on Escape, and when the field
-  // loses focus with a name in it.
   const settleName = (pi: number, focus: boolean) => {
     setSearchingPart((cur) => (cur === pi ? null : cur));
     if (focus) setRefocusHeading(pi);
@@ -735,13 +729,11 @@ export default function ActivityPartsList({
               >
                 <div
                   className="min-w-0 sm:flex-1"
-                  // Escape settles the heading, and it is taken in CAPTURE so ONE press
-                  // does it: the field's own handler runs first otherwise, closes its
-                  // listbox and stops the event (ActivityCombobox pins
-                  // `closeStopsPropagation` so a picker inside a modal is the first
-                  // layer Escape reaches). Unmounting the field closes that listbox
-                  // anyway, so the press still costs the picker exactly one Escape —
-                  // and stopping it here keeps it from also closing the editor behind.
+                  // Escape settles, in CAPTURE so ONE press does it: the field's own
+                  // handler would otherwise swallow it (ActivityCombobox pins
+                  // `closeStopsPropagation`). Unmounting the field closes its listbox
+                  // anyway, and stopping the event here keeps the press from also
+                  // closing the editor behind.
                   onKeyDownCapture={(e) => {
                     if (searching && e.key === "Escape") {
                       e.stopPropagation();
@@ -751,16 +743,13 @@ export default function ActivityPartsList({
                 >
                   {settled ? (
                     /* THE SETTLED EXERCISE IS A HEADING (#5370), on #5376's rung 2 —
-                       normal case, semibold, body size — so the thing a block is about
-                       stops reading like one of its numbers, and stops reading like a
-                       search that is still open. It keeps the field's 34px box (#3938)
-                       because `--set-schema-top` above is derived from that box and the
-                       sticky set-schema row parks against it.
+                       normal case, semibold, body size. It keeps the field's 34px box
+                       (#3938): `--set-schema-top` above is derived from that box, and
+                       the sticky set-schema row parks against it.
                        ACTIVATION IS THE TAP, NOT THE FOCUS. #5370 asks for both; focus
                        cannot have it, because settling returns focus HERE, so an
-                       onFocus that reopened the picker would make Escape reopen what it
-                       just closed. Enter, Space and a tap all reach `onClick`, which is
-                       every gesture a person actually uses to open it. */
+                       onFocus that reopened the picker would reopen what Escape had
+                       just closed. Enter, Space and a tap all reach `onClick`. */
                     <button
                       type="button"
                       ref={(node) => {

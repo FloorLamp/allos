@@ -1020,10 +1020,9 @@ export default function StrengthSets({
   // Is there anything behind the line? Two older sessions, a plateau note, or both.
   // Nothing to fold means no chevron and no empty panel.
   const foldedHistory = recent.length > 1 || plateauNote !== null;
-  // ONE HISTORY ROW, and the SAME markup wherever it renders (#5370). The newest one
-  // is the line the block states; the older ones sit behind the fold. Sharing the
-  // renderer is what keeps the promise that folding costs none of the fill gesture: a
-  // row below the fold cannot drift into a different control from the row above it.
+  // ONE HISTORY ROW, and the SAME markup wherever it renders (#5370) — which is what
+  // keeps the promise that folding costs none of the fill gesture: a row below the
+  // fold cannot drift into a different control from the row above it.
   const historyRow = (sess: (typeof recent)[number]) => {
     const dateEl = (
       <span className="shrink-0 text-slate-500 dark:text-slate-400">
@@ -1114,20 +1113,18 @@ export default function StrengthSets({
           data-testid="recent-sessions"
           className="mt-2 rounded-md border border-black/10 bg-surface px-2.5 py-1.5 text-xs dark:border-white/10"
         >
-          {/* HISTORY IS ONE LINE (#5370). The last session states itself under the
-              exercise heading; the two older ones and the plateau/deload note are one
-              tap behind. Nothing the card used to show is gone — a six-exercise session
-              simply stops spending six screens on reference above the numbers being
-              typed. The "RECENT" label goes with the fold: a single dated line does not
-              need a caption saying it is history.
+          {/* HISTORY IS ONE LINE (#5370). The last session states itself; the two
+              older ones and the plateau/deload note are one tap behind. Nothing the
+              card showed is gone — a six-exercise session stops spending six screens
+              on reference above the numbers being typed. The "RECENT" caption goes
+              with them: a single dated line does not need one.
 
-              THE FILL GESTURE IS UNTOUCHED, which is the whole risk here. Each row is a
-              "repeat this session" fill path (#923) while the part is pristine (same
-              partUntouched gate as the ghosts, so a tap can never clobber in-progress
-              entry) — the newest row is the primary "repeat last session" gesture, and
-              every older session is still a tap away behind the fold (a light/off last
-              day makes the one before it useful). Once anything is typed the rows
-              revert to plain read-only reference. */}
+              THE FILL GESTURE IS UNTOUCHED, which is the whole risk here. Each row is
+              a "repeat this session" fill path (#923) while the part is pristine (the
+              same partUntouched gate as the ghosts, so a tap can never clobber entry
+              in progress) — and every older session is still a tap away behind the
+              fold, because a light/off last day makes the one before it useful. Once
+              anything is typed the rows revert to read-only reference. */}
           <ul className="space-y-0.5">
             <li className="flex items-center gap-1">
               <span className="min-w-0 flex-1">{historyRow(recent[0])}</span>
