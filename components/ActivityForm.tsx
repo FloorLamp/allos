@@ -1132,7 +1132,16 @@ export default function ActivityForm({
         intensity: intensity || null,
         bodyweightKg: bodyweightKg ?? 0,
       },
-      units.weightUnit
+      units.weightUnit,
+      // What each exercise was PLANNED for (#5373): every row the grid holds, done or
+      // still a ghost. The payload carries only the confirmed ones, so this is what
+      // lets the recap say "2 of 3 sets" on the day two of three got done. Computed at
+      // finish from live state and never persisted.
+      Object.fromEntries(
+        namedParts
+          .filter((p) => p.sets.length > 0)
+          .map((p) => [p.name.trim(), p.sets.length])
+      )
     );
     return sessionRecap(session, history, {
       currentActivityId: editData?.id ?? createdId,
