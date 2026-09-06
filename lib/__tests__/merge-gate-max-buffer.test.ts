@@ -91,7 +91,11 @@ it("reaches a verdict when the base comparison outgrows the exec default", () =>
     [SCRIPT, "12", "--repo", "owner/name", "--session", "session_0test12"],
     {
       encoding: "utf8",
-      env: { ...process.env, GH_TOKEN: "test", PATH: `${bin}:${process.env.PATH}` },
+      env: {
+        ...process.env,
+        GH_TOKEN: "test",
+        PATH: `${bin}:${process.env.PATH}`,
+      },
     }
   );
 
