@@ -212,6 +212,38 @@ describe("a re-timed Health Connect night collapses to the corroborated window",
     ]);
   });
 
+  it("still refuses a thin awake reference when the device stamped both windows in its own offset", () => {
+    // The mirror of the thin-reference refusal below, with the sessions stored the way
+    // Health Connect stores them — the payload's instant VERBATIM, offset and all. The
+    // awake reference subtracts every recorded session before it averages; a reader that
+    // overwrote the offset with a Z would drop both sessions from that subtraction, rest
+    // the reference on the night's own 754 minutes instead of the hour of daytime, and
+    // delete a night on the strength of its own sleeping heart rate (#5338). Honolulu is
+    // UTC−10 all year, so 23:58Z on day0 is 13:58−10:00 the same day.
+    const off = (iso: string) =>
+      new Date(msOf(iso) - 10 * 3_600_000).toISOString().slice(0, 19) +
+      "-10:00";
+    const w1 = phantom();
+    const w2 = real();
+    push({
+      timestamp: at(day1, "13:40"),
+      sleep: [session(off(w1.start), off(w1.end), 4)],
+      heart_rate: [
+        ...hrRun(at(day0, "12:00"), at(day0, "13:00"), 68),
+        ...hrRun(w1.start, w1.end, 78),
+      ],
+    });
+    push({
+      timestamp: at(day1, "14:42"),
+      sleep: [session(off(w2.start), off(w2.end), 4)],
+      heart_rate: hrRun(w2.start, w2.end, 58),
+    });
+    expect(sessionsInStore().map((r) => r.started_at)).toEqual(
+      [off(w1.start), off(w2.start)].sort()
+    );
+    expect(tombstones().size).toBe(0);
+  });
+
   it("re-collapses a re-send the tombstone cannot recognise", () => {
     // THE TOMBSTONE IS STRING-KEYED, and the exporter states a session in more than one
     // spelling. Re-stated as `end_time` + `duration_seconds` with no `start_time`, the
