@@ -1554,9 +1554,9 @@ Two corollaries, both #1718:
 - **A kind that dispatch can emit must be routable.** A message carrying
   `kind: "other"` cannot be muted or routed per channel and is indistinguishable to
   an HA automation, so it silently opts out of the matrix the settings page
-  advertises. Every dispatched kind has a registry row or an explicit
-  `NON_CONFIGURABLE_KINDS` reason (`lib/notifications/kinds.ts`), and
-  `notification-kinds.test.ts` pins the partition.
+  advertises. Every dispatched kind has a registry row or an explicit inert reason
+  — `NOTIFICATION_KINDS` (`lib/notifications/kinds.ts`) is keyed on the
+  `NotificationKind` union, so the partition is total or it does not compile.
 - **The send-test is never gated.** Its whole job is proving the wiring works, so it
   carries `kind: "test"` on every channel — a user who muted a kind must not read
   their own mute as a broken subscription.

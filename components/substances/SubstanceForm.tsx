@@ -132,7 +132,7 @@ export default function SubstanceForm({
     }
     setPending(false);
     if (result.kind !== "added" && result.kind !== "updated") {
-      setError(refusal(result.kind));
+      setError(REFUSALS[result.kind]);
       return;
     }
     setError(null);
@@ -230,9 +230,22 @@ export default function SubstanceForm({
 // door's own: the statement IS its submission there, so a refused instant costs the
 // save and is said rather than silently dropped (#2296) — the log door's opposite
 // posture keeps the use and loses only the minute, so it never reaches this map.
-const REFUSALS: Record<string, string> = {
+//
+// KEYED ON THE TWO ACTIONS' OWN OUTCOME UNIONS (#5380), not on `string`. This was a
+// `Record<string, string>` read through a `?? "Couldn't save that entry."` fallback,
+// so an unlisted or renamed kind reached the person as the generic sentence with every
+// test green — and `not-found` and `unknown-substance` were both already taking that
+// exit. The map is now total over what the actions can return: rename a kind and this
+// file fails `tsc`; add one and it fails until someone writes the sentence.
+type SubstanceRefusal = Exclude<
+  | Awaited<ReturnType<typeof addSubstanceDailyTotalAction>>["kind"]
+  | Awaited<ReturnType<typeof correctSubstanceUseAction>>["kind"],
+  "added" | "updated"
+>;
+const REFUSALS: Record<SubstanceRefusal, string> = {
   "invalid-date": "Enter a valid date.",
   "invalid-amount": `Enter an amount between 1 and ${MAX_SUBSTANCE_ENTRY_AMOUNT}.`,
   "invalid-stated-at": "Enter a time on that day, not in the future.",
+  "not-found": "Couldn't find that entry.",
+  "unknown-substance": "Pick a substance from the list.",
 };
-const refusal = (kind: string) => REFUSALS[kind] ?? "Couldn't save that entry.";
