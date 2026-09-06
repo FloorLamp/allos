@@ -1073,7 +1073,20 @@ test("strength set controls step, clamp, and toggle without losing their phone g
   await hydratedClick(page, warmup);
   await expect(warmup).toHaveAttribute("aria-pressed", "true");
 
-  // Reps returned to empty, so the set stays half-filled and nothing auto-saves.
+  // THE CONFIRM CONTROL (#5373), beside W at the row's trailing edge: this row is
+  // still the plan, so it is offered. It is the shared IconButton, whose own box is
+  // the options column's 34px control (#3938) around a 44px phone target — asserted
+  // through the same sweep the column's other controls take, not with a number of its
+  // own. Confirming is the last thing a row needs, so it goes away once tapped.
+  const confirm = page.getByTestId("set-confirm-1");
+  await expect(confirm).toHaveAttribute("data-icon-button", "");
+  await expectPhoneTapTargets(page, "strength-set confirm", [confirm]);
+  await hydratedClick(page, confirm);
+  await expect(page.getByTestId("set-confirm-1")).toHaveCount(0);
+
+  // Reps returned to empty, so the set stays half-filled and nothing auto-saves — a
+  // confirmed row with a missing half is still a half-filled set, so confirming it
+  // did not make it savable.
   // Escape is still the leave gesture, but the draft it leaves has a name typed
   // into it and no row behind it, so it is asked about now rather than dropped in
   // silence (#5111) — the answer is part of the close, not scenery after it.
