@@ -24,8 +24,14 @@ export interface TempRedFlagEntry {
   // The band's exclusive upper age bound in months — the rule fires only when the
   // profile's age is KNOWN and strictly below this. null = any age (no age gate).
   maxAgeMonths: number | null;
-  // The source's own instruction line, rendered verbatim (never generated).
+  // The source's own instruction line, rendered verbatim (never generated). It
+  // carries no terminal punctuation — the render boundary terminates it, so one
+  // line can end a sentence on one surface and be followed by the citation on
+  // another without the data guessing which.
   line: string;
+  // WHO says it, as a bare name ("American Academy of Pediatrics (AAP) fever
+  // guidance") — not a restatement of the threshold, which `line` already carries,
+  // and not a sentence. The full citation (URL, scope note) lives in the envelope.
   source: string;
 }
 

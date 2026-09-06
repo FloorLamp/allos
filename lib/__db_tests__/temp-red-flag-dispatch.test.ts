@@ -108,6 +108,57 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+// The COPY the nudge actually goes out with. The rendered title/body is only
+// observable at the transport seam, which is why it is pinned here rather than in the
+// pure tier: `renderTempRedFlagMessage` builds the title, but the "[Name] " attribution
+// prefix is composed one layer up, inside `dispatch`. A doubled name is a defect only
+// the two together can produce, and only a real send can show.
+function sentTitle(mock: ReturnType<typeof vi.fn>, call = 0): string {
+  const body = mock.mock.calls[call]?.[1]?.body;
+  return JSON.parse(String(body)).title as string;
+}
+function sentBody(mock: ReturnType<typeof vi.fn>, call = 0): string {
+  const body = mock.mock.calls[call]?.[1]?.body;
+  return JSON.parse(String(body)).body as string;
+}
+
+describe("the nudge's copy", () => {
+  it("names the profile ONCE on a household instance, and says the reading once", async () => {
+    // Two profiles ⇒ the attribution prefix applies. Before, the title read
+    // "[Dune] 🌡️ Fever check: Dune — Temperature 40.3 °C / 104.5 °F — Very high
+    // fever (104°F or higher)": the name twice, "fever" three times, the threshold
+    // three times, the reading twice.
+    newProfile("Ferrus");
+    const p = newProfile("Dune");
+    makeSick(p, 1);
+    configureHA(p);
+    const fetchMock = stubFetch();
+
+    logTemperatureCore(p, 104.5, "F", today(p), "page", "14:00");
+    await dispatchTempRedFlagForReading(p, 104.5);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const title = sentTitle(fetchMock);
+    expect(title).toBe("[Dune] 🌡️ Very high fever — 40.3 °C / 104.5 °F");
+    expect(title.match(/Dune/g)).toHaveLength(1);
+    // The category label is gone: the title already opens with what crossed, and
+    // "check" is the wrong verb for a message whose body says to call someone now.
+    expect(title).not.toMatch(/Fever check/);
+
+    const body = sentBody(fetchMock);
+    expect(body).toBe(
+      "Contact a clinician now — 104 °F / 40 °C or higher is a reason to call at any age. " +
+        "Source: American Academy of Pediatrics (AAP) fever guidance."
+    );
+    // The action leads; the provenance trails (copy.md rule 10). The reading is in
+    // the title and appears nowhere in the body.
+    expect(body.indexOf("Contact a clinician")).toBeLessThan(
+      body.indexOf("Source:")
+    );
+    expect(body).not.toMatch(/40\.3|104\.5/);
+  });
+});
+
 describe("dispatchTempRedFlagForReading (#1025)", () => {
   it("a qualifying reading through the real write core fires ONCE; a same-rule repeat holds", async () => {
     const p = newProfile("TrfDispatch");

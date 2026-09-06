@@ -102,9 +102,6 @@ describe("display units (#1019 — web pref / Telegram dual, identity untouched)
     expect(tempRedFlagTitle(entry, 104.5)).toContain("104.5 °F");
     expect(tempRedFlagTitle(entry, 104.5, "C")).toContain("40.3 °C");
     expect(tempRedFlagTitle(entry, 104.5, "C")).not.toContain("104.5 °F");
-    expect(tempRedFlagDetail(entry, 104.5, "C")).toContain(
-      "A temperature of 40.3 °C was logged"
-    );
   });
 
   it("the Telegram 'dual' display carries BOTH scales", () => {
@@ -112,19 +109,50 @@ describe("display units (#1019 — web pref / Telegram dual, identity untouched)
     expect(tempRedFlagTitle(entry, 104.5, "dual")).toContain(
       "40.3 °C / 104.5 °F"
     );
-    expect(tempRedFlagDetail(entry, 104.5, "dual")).toContain(
-      "40.3 °C / 104.5 °F"
+  });
+
+  it("the reading is stated ONCE, in the title — never again in the detail", () => {
+    // A message used to open "Temperature 40.3 °C — Very high fever" and then
+    // continue "A temperature of 40.3 °C was logged — …". The detail is the cited
+    // instruction alone, so one message cannot say the same number twice.
+    expect(tempRedFlagDetail(entry)).toBe(`${entry.line}.`);
+    expect(tempRedFlagDetail(entry)).not.toMatch(/104\.5|40\.3/);
+  });
+
+  it("the title leads with WHAT crossed, then the reading", () => {
+    expect(tempRedFlagTitle(entry, 104.5, "dual")).toBe(
+      "Very high fever — 40.3 °C / 104.5 °F"
     );
   });
 
   it("cited source lines pass through VERBATIM whatever the display unit", () => {
-    // The dataset's own words quote the threshold ("104°F (40°C)") — a °C viewer
-    // still reads the source's exact line, never a converted rewrite.
+    // The dataset's own words quote the threshold ("104 °F / 40 °C") — a °C viewer
+    // still reads the source's exact line, never a converted rewrite. The label is
+    // display-independent too.
     for (const display of ["F", "C", "dual"] as const) {
-      expect(tempRedFlagDetail(entry, 104.5, display)).toContain(entry.line);
       expect(tempRedFlagTitle(entry, 104.5, display)).toContain(entry.label);
     }
-    expect(entry.label).toContain("104°F");
+    expect(tempRedFlagDetail(entry)).toContain(entry.line);
+    expect(entry.line).toContain("104 °F");
+  });
+
+  it("punctuation lives at the render boundary, not in the data", () => {
+    // The dataset holds a bare line and a bare name; the surfaces terminate them.
+    // Otherwise a source string ending in "." renders "guidance.." wherever a
+    // caller adds its own, and bare wherever one forgets.
+    for (const e of [entry, detectTempRedFlag(100.6, 2)!]) {
+      expect(e.line).not.toMatch(/[.]$/);
+      expect(e.source).not.toMatch(/[.]$/);
+    }
+    expect(inlineTempRedFlagNote(104.5, null)).toMatch(/guidance\.$/);
+  });
+
+  it("the cited threshold is NOT repeated in the label or the source", () => {
+    // Before: label "Very high fever (104°F or higher)" + line "104°F (40°C) or
+    // higher…" + source "…very high fever guidance (104°F / 40°C or higher)." said
+    // one threshold three times in one notification.
+    expect(entry.label).not.toMatch(/104|40°|40 °/);
+    expect(entry.source).not.toMatch(/104|40°|40 °/);
   });
 
   it("dedupeKey is identical across display units (dismiss once, silence everywhere)", () => {

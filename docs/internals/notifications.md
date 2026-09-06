@@ -1302,6 +1302,41 @@ correctly either way. Web surfaces always follow the viewer's login pref
 instead. Full policy (including the identity/cited-text rules):
 `docs/internals/findings.md` § "Display units on finding surfaces".
 
+**Fever red-flag copy — one fact, one place.** The nudge went out reading
+`[Dune] 🌡️ Fever check: Dune — Temperature 40.1 °C / 104.2 °F — Very high fever
+(104°F or higher)`, then a body that logged the reading a second time and the
+threshold twice more. Four repetitions, none of them the thing a caregiver
+needs at 11:39 PM. Each had its own cause, and each is fixed where it was made:
+
+- **The name, twice.** `dispatch` composes the `[Name] ` attribution prefix over
+  every title (#4538), and the renderer interpolated the name as well. On a
+  single-profile instance the prefix is empty by design and the hand-rolled copy
+  named the only person there is. Neither renderer names a profile now — the
+  temperature red-flag one or its `illness-care` twin. The prefix owns it.
+- **The threshold, three times.** It lived in the entry's `label`, in its cited
+  `line`, and again in a `source` that restated the guidance it was citing. The
+  dataset now says it once, in `line`; `label` names the rule
+  (`"Very high fever"`) and `source` names who says it.
+- **The reading, twice.** `tempRedFlagDetail` opened `"A temperature of X was
+logged — "` under a title that had just said X. Every surface showing the
+  detail shows the title above it, so the detail is the cited instruction alone
+  and takes no display unit.
+- **The instruction, last.** `"…is a reason to contact a clinician now"` ended a
+  60-word sentence. The cited lines lead with the action; the citation trails
+  (copy.md rule 10).
+
+Terminal punctuation moved out of the data and onto the render boundary
+(`tempRedFlagFullDetail` / `tempRedFlagEvidence` / `inlineTempRedFlagNote`), so
+`source` is a bare name that reads correctly whichever surface terminates it.
+What the reader gets: `[Dune] 🌡️ Very high fever — 40.1 °C / 104.2 °F` over
+`Contact a clinician now — 104 °F / 40 °C or higher is a reason to call at any
+age. Source: American Academy of Pediatrics (AAP) fever guidance.`
+
+The rendered title and body are pinned at the transport seam
+(`lib/__db_tests__/temp-red-flag-dispatch.test.ts`), not in the pure tier: the
+renderer builds the title and `dispatch` composes the prefix, so a doubled name
+is a defect only the two together can produce and only a real send can show.
+
 **Finish-triggered post-workout nudge + stale-session suggest (#921).** Two
 nudges ride derived **workout presence** (`workoutPresence` /
 `getWorkoutPresence`, `lib/workout-presence.ts` + `lib/queries/presence.ts`) —

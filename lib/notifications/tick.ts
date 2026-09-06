@@ -812,7 +812,7 @@ export async function tickProfile(
     getProfileSetting(profileId, "notify_illnesscare_assessed") !== date
   ) {
     try {
-      const ic = await runIllnessCare(profileId, profileName, date);
+      const ic = await runIllnessCare(profileId, date);
       if (ic.failed) anyFailed = true;
       else setProfileSetting(profileId, "notify_illnesscare_assessed", date);
     } catch (e) {
@@ -868,7 +868,7 @@ export async function tickProfile(
   // exempt like redose — the overnight logging caregiver is awake by definition).
   if (waking) {
     try {
-      const trf = await runTempRedFlag(profileId, profileName, date);
+      const trf = await runTempRedFlag(profileId, date);
       if (trf.failed) anyFailed = true;
     } catch (e) {
       log.error("temp-red-flag check failed", {

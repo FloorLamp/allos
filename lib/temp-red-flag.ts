@@ -30,7 +30,8 @@ export const TEMP_RED_FLAG_PREFIX = "temp-red-flag:";
 
 // One neutral single-reading red-flag finding — the ONE computation every surface
 // formats over (the care-tier Finding, the Upcoming item, the Telegram nudge, the
-// inline toast). `detail` is the fact + the cited line; `source` is quoted separately.
+// inline toast). `title` carries the reading; `detail` is the cited line; `source` is
+// quoted separately.
 export interface TempRedFlagFinding {
   ruleKey: string; // dataset key ("infant_fever" | "hyperpyrexia")
   label: string;
@@ -38,7 +39,7 @@ export interface TempRedFlagFinding {
   date: string; // the reading's day
   dedupeKey: string;
   title: string;
-  detail: string; // logged fact + the cited line (no source)
+  detail: string; // the cited line alone (no reading, no source)
   source: string;
 }
 
@@ -55,66 +56,70 @@ export function tempRedFlagDedupeKey(
   return `${TEMP_RED_FLAG_PREFIX}${anchor}:${date}:${ruleKey}`;
 }
 
-// How a finding's APP-AUTHORED temperature clause renders (#1019): the viewer's
-// login unit on web surfaces (the display-unit policy — web always follows the
-// viewer's pref), or "dual" for the Telegram nudge (both scales — a mixed-pref
-// household reads a safety message correctly either way). Cited threshold lines
-// quoted from the source dataset (`entry.line`/`entry.label`) are NEVER converted
-// — they are the source's own words; only the app-authored fact clause converts.
-// The dedupeKey is independent of display (pinned in lib/__tests__).
+// How a finding's APP-AUTHORED reading renders (#1019): the viewer's login unit on
+// web surfaces (the display-unit policy — web always follows the viewer's pref), or
+// "dual" for the Telegram nudge (both scales — a mixed-pref household reads a safety
+// message correctly either way). The cited threshold line quoted from the source
+// dataset (`entry.line`) is NEVER converted — those are the source's own words; only
+// the app-authored reading in the title converts. The dedupeKey is independent of
+// display (pinned in lib/__tests__).
 export type TempRedFlagDisplay = TemperatureUnit | "dual";
 
 function fmtRedFlagTemp(degF: number, display: TempRedFlagDisplay): string {
   return display === "dual" ? fmtTempDual(degF) : fmtTemp(degF, display);
 }
 
-// Phrasing (quote, never generate). The reading is a fact; the entry's `line` is the
-// source's own instruction.
+// Phrasing (quote, never generate). The title names WHAT crossed and the reading that
+// crossed it; the detail is the source's own instruction and nothing else.
 export function tempRedFlagTitle(
   entry: TempRedFlagEntry,
   degF: number,
   display: TempRedFlagDisplay = "F"
 ): string {
-  return `Temperature ${fmtRedFlagTemp(degF, display)} — ${entry.label}`;
-}
-export function tempRedFlagDetail(
-  entry: TempRedFlagEntry,
-  degF: number,
-  display: TempRedFlagDisplay = "F"
-): string {
-  return `A temperature of ${fmtRedFlagTemp(degF, display)} was logged — ${entry.line}.`;
+  return `${entry.label} — ${fmtRedFlagTemp(degF, display)}`;
 }
 
-// The self-contained secondary line every non-Finding surface shows.
+// The detail carries NO reading, deliberately: every surface that renders it renders
+// the title above it (the care-tier Finding, the Upcoming item, the push body under
+// its own title), so restating the temperature here said the same number twice in one
+// message. What the reader needs second is the instruction, not the fact again — which
+// is why this takes no display unit.
+export function tempRedFlagDetail(entry: TempRedFlagEntry): string {
+  return `${entry.line}.`;
+}
+
+// The self-contained secondary line every non-Finding surface shows. The citation
+// TRAILS the instruction (copy.md rule 10 — provenance findable, never leading).
 export function tempRedFlagFullDetail(f: TempRedFlagFinding): string {
-  return `${f.detail} Source: ${f.source}`;
+  return `${f.detail} Source: ${f.source}.`;
 }
 
 // The Finding.evidence line.
 export function tempRedFlagEvidence(f: TempRedFlagFinding): string {
-  return `Source: ${f.source}`;
+  return `Source: ${f.source}.`;
 }
 
 // The inline note shown at the MOMENT of logging (the temperature toast/card), or
 // null when the just-logged reading crosses no red flag. Same source-quoting posture
-// as the finding surfaces — the fact, the source's own line, and the source. One
-// helper so the toast and the finding never phrase the same reading differently.
+// as the finding surfaces — the source's own line, then the source. The reading is
+// already on the card this note sits under. One helper so the toast and the finding
+// never phrase the same crossing differently.
 export function inlineTempRedFlagNote(
   degF: number,
   ageMonths: number | null
 ): string | null {
   const entry = detectTempRedFlag(degF, ageMonths);
   if (!entry) return null;
-  return `${entry.line}. Source: ${entry.source}`;
+  return `${entry.line}. Source: ${entry.source}.`;
 }
 
 export interface DetectTempRedFlagOptions {
   // Profile age in whole months, or null when unknown. Only the source-published
   // infant band consults it; unknown age never triggers a band (#805 non-goal).
   ageMonths: number | null;
-  // How the finding's app-authored temperature clause renders (#1019): the
-  // viewer's login unit on web surfaces, "dual" for the Telegram nudge. Defaults
-  // to canonical °F. Display only — degF/dedupeKey are unaffected.
+  // How the finding's app-authored reading renders (#1019): the viewer's login
+  // unit on web surfaces, "dual" for the Telegram nudge. Defaults to canonical
+  // °F. Display only — degF/dedupeKey are unaffected.
   display?: TempRedFlagDisplay;
   // Detection lookup — injectable for tests; defaults to the committed dataset.
   detect?: (degF: number, ageMonths: number | null) => TempRedFlagEntry | null;
@@ -147,7 +152,7 @@ export function detectEpisodeTempRedFlag(
       entry.key
     ),
     title: tempRedFlagTitle(entry, latest.degF, display),
-    detail: tempRedFlagDetail(entry, latest.degF, display),
+    detail: tempRedFlagDetail(entry),
     source: entry.source,
   };
 }

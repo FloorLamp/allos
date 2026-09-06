@@ -37,23 +37,33 @@ const MARKER_PREFIX = "notify_last_tempredflag_";
 const markerKey = (dedupeKey: string) => `${MARKER_PREFIX}${dedupeKey}`;
 const dedupeKeyFromMarker = (key: string) => key.slice(MARKER_PREFIX.length);
 
-// Render the nudge from the fact, cited line, and source. A "View episode" deep-link is the
-// only affordance (nothing idempotent to toggle), following the two-way principle.
+// Render the nudge from the finding's title, cited line, and source. A "View episode"
+// deep-link is the only affordance (nothing idempotent to toggle), following the two-way
+// principle.
+//
+// THE PROFILE IS NAMED ONCE, BY THE ONE THING THAT OWNS NAMING IT (#377/#429). This used
+// to interpolate the name itself, so every send through `dispatch` — which composes the
+// "[Name] " attribution prefix over the title — read "[Dune] 🌡️ Fever check: Dune — …".
+// On a single-profile instance the prefix is empty by design and the hand-rolled copy
+// still named the only person there is. Neither case wanted a name here.
+//
+// THERE IS NO CATEGORY LABEL EITHER. "Fever check:" preceded a title that already opens
+// with what crossed ("Very high fever — 40.1 °C / 104.2 °F"), so the word "fever"
+// appeared twice before the reading did, and "check" is the wrong verb for a message
+// whose body says to call someone now.
 export function renderTempRedFlagMessage(
-  profileName: string,
   title: string,
   body: string,
   episodeId: number | null,
   deepLinkBase = ""
 ): NotificationMessage {
-  const who = profileName ? `${profileName} — ` : "";
   const base = deepLinkBase.replace(/\/$/, "");
   const actions: NotificationAction[] =
     base && episodeId != null
       ? [{ label: "View episode", url: `${base}${episodeHref(episodeId)}` }]
       : [];
   return {
-    title: `${GLYPH.temperature} Fever check: ${who}${title}`,
+    title: `${GLYPH.temperature} ${title}`,
     body,
     actions,
     kind: "illness-care",
@@ -64,7 +74,6 @@ export function renderTempRedFlagMessage(
 // Returns whether a send failed. `date` is the profile-local date (the dedup value).
 export async function runTempRedFlag(
   profileId: number,
-  profileName: string,
   date: string
 ): Promise<{ failed: boolean }> {
   // "dual" display (#1019): the nudge has no login-unit context (prefs are
@@ -107,7 +116,6 @@ export async function runTempRedFlag(
   const results = await dispatch(
     profileId,
     renderTempRedFlagMessage(
-      profileName,
       finding.title,
       tempRedFlagFullDetail(finding),
       episodeId,
@@ -185,16 +193,16 @@ export async function dispatchTempRedFlagForEpisodeOpen(
   return assessTempRedFlagNow(profileId);
 }
 
-// The shared tail of both event-driven doors: resolve the profile's name and day, then
+// The shared tail of both event-driven doors: confirm the profile still exists, then
 // hand the question to the ONE orchestrator the hourly tick also runs.
 async function assessTempRedFlagNow(
   profileId: number
 ): Promise<{ failed: boolean }> {
   const profile = db
-    .prepare("SELECT name FROM profiles WHERE id = ?")
-    .get(profileId) as { name: string } | undefined;
+    .prepare("SELECT id FROM profiles WHERE id = ?")
+    .get(profileId) as { id: number } | undefined;
   if (!profile) return { failed: false };
-  return runTempRedFlag(profileId, profile.name, today(profileId));
+  return runTempRedFlag(profileId, today(profileId));
 }
 
 // Fire-and-forget wrapper for request-path callers (the temperature Server Action,

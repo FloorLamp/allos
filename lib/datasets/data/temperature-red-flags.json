@@ -16,19 +16,19 @@
   "entries": [
     {
       "key": "infant_fever",
-      "label": "Fever in an infant under 3 months",
+      "label": "Fever in a baby under 3 months",
       "minTempF": 100.4,
       "maxAgeMonths": 3,
-      "line": "any fever in an infant younger than 3 months (100.4°F / 38°C or higher) is a reason to contact a clinician now",
-      "source": "American Academy of Pediatrics (AAP) — fever in infants younger than 3 months (rectal temperature 100.4°F / 38°C or higher)."
+      "line": "Contact a clinician now — any fever in the first 3 months (100.4 °F / 38 °C or higher) is a reason to call",
+      "source": "American Academy of Pediatrics (AAP) fever guidance"
     },
     {
       "key": "hyperpyrexia",
-      "label": "Very high fever (104°F or higher)",
+      "label": "Very high fever",
       "minTempF": 104,
       "maxAgeMonths": null,
-      "line": "a temperature of 104°F (40°C) or higher at any age is a reason to contact a clinician now",
-      "source": "American Academy of Pediatrics (AAP) — very high fever guidance (104°F / 40°C or higher)."
+      "line": "Contact a clinician now — 104 °F / 40 °C or higher is a reason to call at any age",
+      "source": "American Academy of Pediatrics (AAP) fever guidance"
     }
   ]
 }

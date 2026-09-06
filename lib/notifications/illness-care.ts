@@ -60,20 +60,22 @@ const dedupeKeyFromMarker = (key: string) => key.slice(MARKER_PREFIX.length);
 // owner-decided: fix the comment, not the copy). A deep-link "View episode"
 // button (when a public URL is configured) is the only affordance — no state-change
 // buttons (there is nothing idempotent to toggle), following the two-way principle.
+//
+// THE PROFILE IS NAMED ONCE (#377/#429), by the attribution prefix `dispatch` composes
+// over every title — not here as well, which read "[Dune] 🌡️ Illness check: Dune — …"
+// on a household instance and named the only person there is on a single-profile one.
 export function renderIllnessCareMessage(
-  profileName: string,
   finding: IllnessCareFinding,
   episodeId: number | null,
   deepLinkBase = ""
 ): NotificationMessage {
-  const who = profileName ? `${profileName} — ` : "";
   const base = deepLinkBase.replace(/\/$/, "");
   const actions: NotificationAction[] =
     base && episodeId != null
       ? [{ label: "View episode", url: `${base}${episodeHref(episodeId)}` }]
       : [];
   return {
-    title: `${GLYPH.temperature} Illness check: ${who}${finding.title}`,
+    title: `${GLYPH.temperature} Illness check: ${finding.title}`,
     body: illnessCareFullDetail(finding),
     actions,
     kind: "illness-care",
@@ -85,7 +87,6 @@ export function renderIllnessCareMessage(
 // send failure. `date` is the profile-local date, used as the dedup marker value.
 export async function runIllnessCare(
   profileId: number,
-  profileName: string,
   date: string
 ): Promise<{ failed: boolean }> {
   // The SAME computation the Upcoming page and dashboard render — one question, one answer.
@@ -140,7 +141,7 @@ export async function runIllnessCare(
     if (!finding) continue;
     const results = await dispatch(
       profileId,
-      renderIllnessCareMessage(profileName, finding, episodeId, base)
+      renderIllnessCareMessage(finding, episodeId, base)
     );
     if (results.length === 0) {
       // No channel configured — leave markers unset so it can send once configured.
