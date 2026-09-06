@@ -53,6 +53,31 @@ async function expectEffectiveFloor(name: string, locator: Locator) {
     box!.height + 2 * reach.block + TAP_FLOOR_FLOAT_EPSILON_PX,
     `${name} effective height (${box!.height} rendered + 2x${reach.block} reach)`
   ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+  // THE INLINE AXIS TOO (#4505, C's finding on #5399). This read height alone, so
+  // the cadence weekday tiles — marked as a tiled track, 42px wide with no inline
+  // reach, in a row with gaps to spend — passed it. A control owes the floor on
+  // both axes unless it TILES: flush against a sibling target, where the tiling is
+  // the inline target and the reach is block-only by rule (app/globals.css).
+  // "Flush" is measured, not declared, so a tiled marker on a gapped row is red.
+  const flush = await locator.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    return Array.from(el.parentElement?.children ?? []).some((sibling) => {
+      if (sibling === el) return false;
+      const s = sibling.getBoundingClientRect();
+      const sameLine =
+        Math.min(r.bottom, s.bottom) - Math.max(r.top, s.top) > 0;
+      return (
+        sameLine &&
+        (Math.abs(s.right - r.left) < 0.5 || Math.abs(s.left - r.right) < 0.5)
+      );
+    });
+  });
+  expect(
+    flush ||
+      box!.width + 2 * reach.inline + TAP_FLOOR_FLOAT_EPSILON_PX >=
+        TAP_FLOOR_PX,
+    `${name} effective inline width (${box!.width} rendered + 2x${reach.inline} reach) is under the floor and it is not tiled against a sibling`
+  ).toBe(true);
 }
 
 async function expectOverlayFloor(
