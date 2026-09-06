@@ -118,6 +118,34 @@ export const SIDE_STATE_FAMILIES: readonly SideStateFamily[] = [
     guard: "lib/__db_tests__/import-edit-lock.test.ts",
   },
   {
+    family: "event-link-decision",
+    concept:
+      "A record that a person set this session's event link by hand — attached or detached — so the sync's auto-link never chooses for it again, and WHEN in the order of their decisions they said it.",
+    store:
+      "`endurance_link_decided_seq` column on activities, with the allocator's " +
+      "high-water mark in profile_settings `event_link_decision_seq`",
+    registryModule: "lib/endurance-plan.ts",
+    registrySymbol: "isEventLinkDecided",
+    keyGrammar:
+      "row-level ordinal, 0 = undecided; written by BOTH hand moves (link and " +
+      "unlink) as one past the profile's high-water mark — never past the live " +
+      "rows alone, because a captured row comes back from the Trash carrying the " +
+      "ordinal it had — never cleared, read only through " +
+      "`isEventLinkDecided` / `eventLinkDecisionSeq` — `endurance_plan_id` beside " +
+      "it says which decision it was, the ordinal says which came last. A merge " +
+      "keeps the NEWEST decision in the cluster and carries its link and its " +
+      "ordinal onto the keeper (lib/import-review/conflicts.ts), because the merge " +
+      "deletes the row that carries it; keepership is richness order and cannot " +
+      "stand in for recency. Its own column rather than the `edited` lock above, " +
+      "which would freeze the whole row against re-ingest (#3285 item 2)",
+    sweep:
+      "none needed — the ordinal dies with its row, and the mark dies with the " +
+      "profile (FK cascade). The mark is deliberately NOT swept down when rows " +
+      "leave: lowering it is the defect it exists to prevent, and a mark above " +
+      "every live row costs a gap in the numbering, which nothing reads",
+    guard: "lib/__db_tests__/endurance-plans.test.ts",
+  },
+  {
     family: "saved-star",
     concept:
       'The ★ answer to "does this matter to me?" — membership drives curated surfaces.',

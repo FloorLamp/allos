@@ -160,3 +160,119 @@ describe("body_metrics / medical_records carry provenance (#466)", () => {
     expect(mr).toContain("document_id");
   });
 });
+
+// An activity that was an event's result (#3285 item 2). The link is stored as the
+// Events row's id, and an id is the one thing this export never publishes — no
+// dataset emits one, the Events dataset included — so a raw `endurance_plan_id` cell
+// would be an internal number pointing at a CSV that prints no such number. The
+// activities row carries the pair the Events dataset DOES publish instead, and this
+// asserts the join by doing it: the pair off the activities CSV finds the event's own
+// row in the events CSV. All the seeded values are comma-free, so a plain split reads
+// both files back.
+describe("an activity's event link exports as the event's identity (#3285 item 2)", () => {
+  function parse(csv: string): Record<string, string>[] {
+    const [header, ...lines] = csv.trim().split("\n");
+    const cols = header.split(",");
+    return lines.map((l) =>
+      Object.fromEntries(l.split(",").map((v, i) => [cols[i], v]))
+    );
+  }
+
+  it("names the event by the pair the Events dataset publishes, not by its row id", () => {
+    const p = newProfile("EXPORT-EVENT-LINK");
+    const planId = Number(
+      db
+        .prepare(
+          `INSERT INTO endurance_plans
+             (profile_id, kind, event_name, discipline, event_date, target_distance_km, status)
+           VALUES (?, 'race', 'Harbor 10k', 'run', '2026-06-14', 10, 'active')`
+        )
+        .run(p).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO activities (profile_id, date, type, title, distance_km, endurance_plan_id)
+       VALUES (?, '2026-06-14', 'cardio', 'Race morning', 10.1, ?)`
+    ).run(p, planId);
+    db.prepare(
+      `INSERT INTO activities (profile_id, date, type, title, distance_km)
+       VALUES (?, '2026-06-13', 'cardio', 'Shakeout', 3)`
+    ).run(p);
+    // A result the event kept when one of the two dates moved afterwards: the cell
+    // names the EVENT's day, which is the day the events CSV prints, not the day the
+    // session was logged on.
+    const movedPlan = Number(
+      db
+        .prepare(
+          `INSERT INTO endurance_plans
+             (profile_id, kind, event_name, discipline, event_date, target_distance_km, status)
+           VALUES (?, 'race', 'Lakeside Gran Fondo', 'ride', '2026-09-20', 100, 'active')`
+        )
+        .run(p).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO activities (profile_id, date, type, title, distance_km, endurance_plan_id)
+       VALUES (?, '2026-09-19', 'cardio', 'Fondo morning', 101, ?)`
+    ).run(p, movedPlan);
+
+    const acts = getDataset("activities")!;
+    const events = getDataset("endurance_plans")!;
+    // The id is not in either file, in either direction.
+    expect(acts.columns).not.toContain("endurance_plan_id");
+    expect(events.columns).not.toContain("id");
+    expect(acts.columns).toContain("event_name");
+    expect(acts.columns).toContain("event_date");
+
+    const activityRows = parse(toCsv(acts.columns, acts.rows(p)));
+    const eventRows = parse(toCsv(events.columns, events.rows(p)));
+    const result = activityRows.find((r) => r.title === "Race morning")!;
+    expect([result.event_name, result.event_date]).toEqual([
+      "Harbor 10k",
+      "2026-06-14",
+    ]);
+    // A session that was nobody's result says so with two empty cells.
+    const free = activityRows.find((r) => r.title === "Shakeout")!;
+    expect([free.event_name, free.event_date]).toEqual(["", ""]);
+
+    const moved = activityRows.find((r) => r.title === "Fondo morning")!;
+    expect([moved.date, moved.event_name, moved.event_date]).toEqual([
+      "2026-09-19",
+      "Lakeside Gran Fondo",
+      "2026-09-20",
+    ]);
+
+    // The join, done: the pair off the activities CSV finds the event's row.
+    const matched = eventRows.filter(
+      (e) =>
+        e.event_name === result.event_name && e.event_date === result.event_date
+    );
+    expect(matched).toHaveLength(1);
+    expect(matched[0]).toMatchObject({ kind: "race", discipline: "run" });
+  });
+
+  // The join is profile-scoped, which no writer in the app can exercise: both link
+  // cores refuse a cross-profile pair, a merge stays inside one profile, and a
+  // restore nulls a link whose event is gone. So the state is PLANTED here by hand —
+  // an unpinned scoping clause is how the next refactor drops one (#5430 review).
+  it("never names another profile's event, even on a link no writer could make", () => {
+    const mine = newProfile("EXPORT-EVENT-LINK-MINE");
+    const theirs = newProfile("EXPORT-EVENT-LINK-THEIRS");
+    const theirPlan = Number(
+      db
+        .prepare(
+          `INSERT INTO endurance_plans
+             (profile_id, kind, event_name, discipline, event_date, target_distance_km, status)
+           VALUES (?, 'race', 'Their Marathon', 'run', '2026-07-04', 42.2, 'active')`
+        )
+        .run(theirs).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO activities (profile_id, date, type, title, endurance_plan_id)
+       VALUES (?, '2026-07-04', 'cardio', 'Long run', ?)`
+    ).run(mine, theirPlan);
+
+    const row = getDataset("activities")!
+      .rows(mine)
+      .find((r) => r.title === "Long run")!;
+    expect([row.event_name, row.event_date]).toEqual([null, null]);
+  });
+});

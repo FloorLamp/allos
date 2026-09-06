@@ -83,6 +83,15 @@ export const DYNAMIC_ROUTES = [
     match: /^\/training\/activity\/\d+$/,
   },
   {
+    // One event's page (#3285 item 2): plan, day and result. The Overview's
+    // Event-plans card titles link every upcoming event; the persona seeds carry
+    // an active one, so an instance resolves there.
+    pattern: "/training/event/[id]",
+    strategy: "follow",
+    from: ["/training?tab=overview", "/training"],
+    match: /^\/training\/event\/\d+$/,
+  },
+  {
     // The providers registry index lives under Records → Care, not /providers.
     pattern: "/providers/[id]",
     strategy: "follow",

@@ -23,6 +23,13 @@ function futureEventDate(): string {
   return d.toISOString().slice(0, 10);
 }
 
+// Race day, for the event-page test: the seed logs a race-labelled run on the
+// fixture's TODAY (e2e/seed/training.ts), and the pinned timezone keeps the
+// profile-local day equal to the frozen clock's UTC day.
+function todayEventDate(): string {
+  return frozenNow().toISOString().slice(0, 10);
+}
+
 // Delete every endurance plan card, asserting the count drops each time so a re-render
 // never lets a detaching button get re-clicked (the #868 settled-interaction rule).
 async function clearPlans(page: Page): Promise<void> {
@@ -165,6 +172,57 @@ test.describe("endurance event plans (#839)", () => {
       page.getByTestId("endurance-set-completed").first() // eslint-disable-line no-restricted-properties -- first-ok: the meet card THIS test created
     );
     await expect(card).toHaveCount(1);
+
+    await clearPlans(page);
+  });
+
+  // #3285 item 2: the event page reads the plan, the day and the result in one
+  // place. An event dated today lists the seeded race-day run under the day; one
+  // tap links it as the result, and one tap unlinks it. Every lookup is scoped to
+  // the app content root (the #4890 rule), which is why the test names no bare
+  // page.getByTestId.
+  test("an event's page lists the day's run and links it as the result", async () => {
+    test.slow();
+    await clearPlans(page);
+    const content = page.getByTestId("app-content-container");
+
+    await content.getByTestId("endurance-add-toggle").click();
+    await content.getByTestId("endurance-event-name").fill("E2E Race Day");
+    await content.getByTestId("endurance-event-date").fill(todayEventDate());
+    await content.getByTestId("endurance-distance").fill("10");
+    await settledClick(page, content.getByTestId("endurance-submit"));
+    const card = content.getByTestId("endurance-plan-card");
+    await expect(card).toHaveCount(1);
+
+    // The card's title opens the event page.
+    await card.getByTestId("endurance-plan-title").click();
+    await expect(page).toHaveURL(/\/training\/event\/\d+$/);
+    await expect(content.getByTestId("event-summary")).toContainText("Race");
+
+    // Nothing linked yet; the day offers the seeded race-labelled run.
+    const linked = content
+      .getByTestId("event-linked-list")
+      .getByTestId("event-activity");
+    const dayRows = content
+      .getByTestId("event-day-list")
+      .getByTestId("event-activity");
+    await expect(linked).toHaveCount(0);
+    await expect(dayRows).toHaveCount(1);
+    await expect(dayRows).toContainText("race");
+
+    await settledClick(
+      page,
+      page.getByRole("button", { name: "Link Running" })
+    );
+    await expect(linked).toHaveCount(1);
+    await expect(dayRows).toHaveCount(0);
+
+    await settledClick(
+      page,
+      page.getByRole("button", { name: "Unlink Running" })
+    );
+    await expect(linked).toHaveCount(0);
+    await expect(dayRows).toHaveCount(1);
 
     await clearPlans(page);
   });

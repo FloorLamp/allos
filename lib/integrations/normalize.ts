@@ -25,6 +25,7 @@ import {
 } from "./sync-log";
 import type { UpsertCounts, SyncRowSink } from "./sync-log";
 import { loadImportTombstones } from "./tombstones";
+import { linkRaceActivityCore } from "@/lib/endurance-plans";
 import {
   bodyMetricTombstoneKey,
   metricSampleTombstoneKey,
@@ -1718,6 +1719,8 @@ export function upsertActivities(
           target_id: found.id,
           disposition,
         });
+        // A re-sync can be what first labels the session a race (#3285 item 2).
+        linkRaceActivityCore(profileId, found.id);
       }
     } else if (tombstoned.has(r.external_id)) {
       // No live row AND a tombstone for this external_id: the user merged/deleted it —
@@ -1747,6 +1750,9 @@ export function upsertActivities(
         target_id: Number(info.lastInsertRowid),
         disposition: "inserted",
       });
+      // The source's "race" label is the one auto-link hint an event gets (#3285
+      // item 2): a race-day session attaches to that day's event in its discipline.
+      linkRaceActivityCore(profileId, Number(info.lastInsertRowid));
     }
   }
   return counts;
