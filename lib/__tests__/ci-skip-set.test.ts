@@ -13,6 +13,12 @@
 // the browser matrix is skipped for a change that needed it — and the count
 // below is unmoved. That cost is accepted; the count is the part worth keeping.
 //
+// IT COUNTS ONE OF TWO IDENTICAL COPIES. The same 13-entry alternation sits
+// verbatim in `.github/workflows/e2e-main.yml`, which skips main's post-merge
+// browser run, and this reads only `ci.yml`. So the count covers one file of the
+// two: widen e2e-main.yml alone and nothing here moves. That is the same loss as
+// the agreement check above, in the direction the count cannot see.
+//
 // N MAY ONLY EVER BE LOWERED, and lowering it belongs to the PR that removes the
 // entry. Raising it is how a ratchet becomes a rubber stamp. No allowlist of
 // names, no per-file registry, no import graph.

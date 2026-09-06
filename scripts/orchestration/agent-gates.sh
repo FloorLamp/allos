@@ -64,8 +64,9 @@ paths_changed() {
 # import", because nothing downstream will ask that question for you.
 #
 # `scripts/` is in because ~30 `lib/datasets/` modules import their generator's
-# types from it; `scripts/orchestration/` is the one subtree the walk proves the
-# tier never reaches, and it is what the work agents edit. Entries are
+# types from it; `scripts/orchestration/` is the one subtree the walk MEASURED the
+# tier never to reach, and it is what the work agents edit. Past tense on purpose:
+# that walk is gone, so this exclusion is now an unverified claim like the rest. Entries are
 # directories rather than files where the reach is broad, so the set over-runs
 # the gate in places (a `scripts/*.sh` edit runs it) — that is the safe
 # direction and the deliberate one.

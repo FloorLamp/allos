@@ -14,6 +14,14 @@
 // expensive gate fire for everyone — neither moves the count below. That cost is
 // accepted; the count is the part worth keeping.
 //
+// IT COUNTS LINES, NOT ARRAY ELEMENTS, and that is a real hole: bash splits on
+// whitespace, so appending a second entry to an existing line
+// (`  middleware.ts e2e/fixture-probe.ts`) leaves the count at 19 while the gate
+// reads 20 — measured. Prettier does not format `.sh`, so nothing normalises it
+// back. Counting elements properly means parsing the array the way bash does,
+// which is the second copy of the config the rule forbids, so the hole is
+// recorded instead of closed.
+//
 // N MAY ONLY EVER BE LOWERED, and lowering it belongs to the PR that removes the
 // entry. Raising it is how a ratchet becomes a rubber stamp. No allowlist of
 // names, no per-file registry, no import graph.
