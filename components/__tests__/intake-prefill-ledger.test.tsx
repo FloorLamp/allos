@@ -8,6 +8,7 @@ import {
   within,
 } from "@testing-library/react";
 import { PREFILL_FIELDS, type PrefillField } from "@/lib/intake-prefill";
+import type { PediatricFormContext } from "@/lib/prn-dosing";
 import MedicationAddWorkspace from "@/app/(app)/medications/MedicationAddWorkspace";
 import AddSupplementModal from "@/components/nutrition/AddSupplementModal";
 import CreateAction from "@/components/CreateAction";
@@ -72,6 +73,9 @@ vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
   lookupRxcui: actions.lookupRxcui,
   lookupRxcuiIngredients: actions.lookupRxcuiIngredients,
 }));
+vi.mock("@/app/(app)/trends/measurement-actions", () => ({
+  addMeasurements: vi.fn(async () => ({ wrote: true })),
+}));
 vi.mock("@/app/(app)/supplies/actions", () => ({
   listSharedSupplyOptions: vi.fn(async () => []),
   createPoolAction: vi.fn(async () => ({ ok: true })),
@@ -107,7 +111,10 @@ const ACETAMINOPHEN = "Acetaminophen (Tylenol)";
  * directly: the form's kind is locked at its five shipped call sites and a test that
  * mounted it itself would be a sixth (lib/__tests__/intake-form-kind-boundary.test.ts).
  */
-function mount(kind: "medication" | "supplement") {
+function mount(
+  kind: "medication" | "supplement",
+  pediatric?: PediatricFormContext
+) {
   render(
     <ToastProvider>
       <ConfirmProvider>
@@ -119,6 +126,7 @@ function mount(kind: "medication" | "supplement") {
             stackItems={[]}
             pgxVariants={[]}
             conditions={[]}
+            pediatric={pediatric}
             todayStr={TODAY}
           />
         ) : (
@@ -311,6 +319,77 @@ describe("one PRN computation per name resolution (#4665)", () => {
     expect(screen.getByTestId("redose-prefill").textContent).toContain(
       "4 hours"
     );
+  });
+});
+
+// A LATE SEED DOSES AGAINST THE WEIGHT THAT STANDS, NOT THE ONE IT STARTED WITH
+// (#5443).
+//
+// The pick awaits its RxNorm confirm before it seeds, and a caregiver can update the
+// dosing weight inside that wait — the weight block sits in the same open dose editor.
+// The new weight re-derives the label's offer as it lands, but there is no offer yet
+// to withdraw, so the pick then wrote the OLD weight's band amount into a form the
+// caregiver had already corrected: a milligram figure attributed to a measurement that
+// no longer supports it, with the band picker showing it selected. It reached e2e as
+// `medication-prefill.spec.ts:157` failing on `main` whenever the confirm ran long.
+//
+// The table is the two answers the NEW weight can give — no band at all, and a
+// different band — because a fix that simply stopped seeding would pass the first row
+// and fail the second. Both are asserted after the confirm lands, which is the moment
+// the stale figure used to appear.
+const CHILD_ON_PICK: PediatricFormContext = {
+  ageMonths: 72,
+  weightKg: 21, // 46 lb — the 36 lb band, 240 mg
+  weightDate: TODAY,
+  weightUnit: "kg",
+  today: TODAY,
+};
+
+/** Record a new dosing weight through the pediatric block's own control. */
+async function updateDosingWeight(kg: string) {
+  fireEvent.click(screen.getByTestId("pediatric-weight-update-open"));
+  fireEvent.change(screen.getByTestId("pediatric-weight-input"), {
+    target: { value: kg },
+  });
+  await act(async () => {
+    fireEvent.click(
+      within(screen.getByTestId("pediatric-weight-update")).getByRole("button", {
+        name: "Save",
+      })
+    );
+  });
+}
+
+/** What the dose editor states: the figure, and the label band shown as its source. */
+const dosedAt = () => ({
+  amount: (screen.getByRole("combobox", { name: "Amount" }) as HTMLInputElement)
+    .value,
+  bands: within(screen.getByTestId("pediatric-band-picker"))
+    .getAllByRole("radio")
+    .filter((radio) => (radio as HTMLInputElement).checked)
+    .map((radio) => (radio as HTMLInputElement).value),
+});
+
+describe("a pick that lands after a weight update doses against the new weight (#5443)", () => {
+  it.each([
+    // new weight, kg | amount after the confirm lands | band selected
+    ["10", "", []], // 22 lb — below the 24 lb chart: no band, so no figure
+    ["22", "320 mg", ["48"]], // 48 lb — the 48 lb band, never the 36 lb one it started on
+  ])("weight %s kg leaves %s", async (kg, amount, bands) => {
+    const confirmed = deferLookup();
+    mount("medication", CHILD_ON_PICK);
+    await pickName(ACETAMINOPHEN);
+    openFact("dose");
+    await updateDosingWeight(kg);
+    // What the new weight decided, with the pick's confirm still in flight.
+    expect(dosedAt()).toEqual({ amount, bands });
+
+    confirmed.resolve();
+    await act(async () => {});
+
+    // And the confirm landing changes none of it. Without this the seed wrote the
+    // 36 lb band's 240 mg — the weight the pick STARTED on — over both rows.
+    expect(dosedAt()).toEqual({ amount, bands });
   });
 });
 
