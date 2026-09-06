@@ -727,7 +727,11 @@ describe("events link their activities (#3285 item 2)", () => {
 
     // A value-changing re-sync — the title fix — updates the row and leaves the
     // decision standing.
-    const counts = upsertActivities(profileId, [row("Harbor 10k ⭐")], "strava");
+    const counts = upsertActivities(
+      profileId,
+      [row("Harbor 10k ⭐")],
+      "strava"
+    );
     expect(counts.updated).toBe(1);
     expect(linkOf(id)).toBeNull();
     // Neither does the core itself, asked directly.
