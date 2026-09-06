@@ -88,7 +88,16 @@ export default function BottomSheetGestureHarness({
             className="btn"
             onClick={() => {
               setNotices((n) => n + 1);
-              toast("Fixture notice.", { key: "bottom-sheet-fixture" });
+              // WITH AN ACTION, so the bar renders both of its controls for the
+              // guard that measures them (e2e/button-height-floor.mobile.spec.ts,
+              // #4505): a plain notice has only the dismiss.
+              toast("Fixture notice.", {
+                key: "bottom-sheet-fixture",
+                action: {
+                  label: "Undo",
+                  onClick: () => setNotices((n) => n - 1),
+                },
+              });
             }}
           >
             Raise a notice
