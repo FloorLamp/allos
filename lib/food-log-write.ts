@@ -92,6 +92,17 @@ export function placementColumns(placement?: FoodPlacement): {
       };
 }
 
+// THE ONE READING OF "did they write anything" (#5304). A note is text a person typed,
+// and blank is not text: an untouched textarea posts "", a cleared one posts "", and
+// both mean the same thing as never having offered the field. Trimmed and folded to
+// NULL here so no caller has to decide, and so a note can be CLEARED by submitting an
+// empty one rather than only ever grown.
+export function normalizedNote(
+  notes: string | null | undefined
+): string | null {
+  return notes?.trim() || null;
+}
+
 // WHERE A SERVING WRITE CAME FROM — the two facts about the ACT rather than about the
 // food, so a new one lands here instead of growing the parameter list of both cores.
 //
@@ -229,7 +240,12 @@ export function logFoodServingCore(
   // override path), never this log path's.
   placement?: FoodPlacement,
   // Which message's tap this is (#2264) — Telegram handler only; see FoodWriteOrigin.
-  origin?: FoodWriteOrigin
+  origin?: FoodWriteOrigin,
+  // WHAT THE PERSON WROTE ABOUT THIS USE (#5304). Text, on the event, from the moment
+  // it is created — never on the day that rolls the uses up. Absent or blank is the
+  // commonest answer and stores NULL; `normalizedNote` is the one place that decision
+  // is made, so "  " and "" and undefined cannot mean three things.
+  notes?: string | null
 ): FoodLogOutcome {
   // Persist the canonical slug, not the raw input (#883): the matcher accepts
   // case/punctuation variants, but downstream readers compare group_key exactly.
@@ -263,8 +279,8 @@ export function logFoodServingCore(
       .prepare(
         `INSERT INTO food_log_events
          (profile_id, group_key, date, recorded_at, meal_slot, occurred_at, time_source,
-          notify_message_id, logged_via, bundle_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          notify_message_id, logged_via, bundle_id, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         profileId,
@@ -276,7 +292,8 @@ export function logFoodServingCore(
         columns.timeSource,
         origin?.notifyMessageId ?? null,
         loggedVia,
-        origin?.bundleId ?? null
+        origin?.bundleId ?? null,
+        normalizedNote(notes)
       );
     return {
       kind: "logged",
@@ -528,12 +545,18 @@ export function updateFoodLogEventCore(
     // it (`time_source` = 'stated'). Validated against the FINAL date of the patch —
     // an instant off the row's own day answers `invalid-eaten-at` and writes nothing.
     eatenAt?: Date | null;
+    // THE NOTE (#5304), the same three states as every other patch field: ABSENT leaves
+    // the row's alone, a string restates it, and NULL — or a blank string, which
+    // `normalizedNote` folds to NULL — CLEARS it. Clearing is the half #5077 was filed
+    // for: on the day row the note could only ever be added, because the add door's
+    // `COALESCE(?, notes)` cannot say "nothing".
+    notes?: string | null;
   }
 ): FoodEventEditOutcome {
   return writeTx(() => {
     const row = db
       .prepare(
-        `SELECT group_key, date, recorded_at, meal_slot, occurred_at, time_source
+        `SELECT group_key, date, recorded_at, meal_slot, occurred_at, time_source, notes
            FROM food_log_events
           WHERE id = ? AND profile_id = ?`
       )
@@ -545,6 +568,7 @@ export function updateFoodLogEventCore(
           meal_slot: FoodSlot | null;
           occurred_at: string | null;
           time_source: FoodTimeSource | null;
+          notes: string | null;
         }
       | undefined;
     if (!row) return { kind: "not-found" as const };
@@ -641,9 +665,12 @@ export function updateFoodLogEventCore(
       foodDayCounter.unbump(profileId, row.date, [row.group_key], 1);
       foodDayCounter.bump(profileId, nextDate, [nextGroup], 1);
     }
+    const nextNotes =
+      patch.notes === undefined ? row.notes : normalizedNote(patch.notes);
     db.prepare(
       `UPDATE food_log_events
-          SET group_key = ?, date = ?, meal_slot = ?, occurred_at = ?, time_source = ?
+          SET group_key = ?, date = ?, meal_slot = ?, occurred_at = ?, time_source = ?,
+              notes = ?
         WHERE id = ? AND profile_id = ?`
     ).run(
       nextGroup,
@@ -651,6 +678,7 @@ export function updateFoodLogEventCore(
       nextSlot,
       nextEatenAt,
       nextTimeSource,
+      nextNotes,
       eventId,
       profileId
     );

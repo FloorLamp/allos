@@ -220,6 +220,8 @@ test.describe("substance use (#998/#1078/#1085)", () => {
       .slice(0, 10);
     const marker = "E2E earlier cannabis entry";
 
+    const dayRows = card.locator("tbody tr");
+    const daysBefore = await dayRows.count();
     await hydratedClick(
       page,
       page.getByTestId("substance-history-add-cannabis")
@@ -236,7 +238,10 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     // record's add door all draw this one button, so the label is the domain form's
     // and not this card's.
     await settledClick(page, addForm.getByRole("button", { name: "Add" }));
-    await expect(card.getByText(marker)).toBeVisible();
+    // The day lands on the card as a count; the note is the USE's and reads on the
+    // record (#5304), so the card never shows it.
+    await expect(dayRows).toHaveCount(daysBefore + 1);
+    await expect(card.getByText(marker)).toHaveCount(0);
 
     // Today remains the one-tap fast path. Reloading clears only the two-second
     // accidental-double-tap cooldown; a deliberate second same-day tap is still
@@ -253,7 +258,7 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     const rows = card.locator("tbody tr");
     await expect(rows).toHaveCount(2);
     await expect(rows.nth(0)).toContainText("2 uses");
-    await expect(rows.nth(1)).toContainText(marker);
+    await expect(rows.nth(1)).toContainText("2 uses");
 
     // THE DAY'S ⋯ OFFERS DELETE ALONE (#5026). A use is an event, so the day is a
     // rollup and not the editable thing on any ledger — the card says where one use
@@ -282,6 +287,11 @@ test.describe("substance use (#998/#1078/#1085)", () => {
       '[data-testid="history-row"][data-history-kind="substance"]'
     );
     await expect(useRows).toHaveCount(2);
+    // THE NOTE RIDES ONE USE OF THE SUBMISSION, not both (#5304). Addressed by its
+    // text rather than its position: the two share a stated minute, so their order
+    // is the id tie-break, which is nothing this claim is about.
+    const noted = useRows.filter({ hasText: marker });
+    await expect(noted).toHaveCount(1);
     const firstUse = useRows.nth(0);
     await hydratedClick(page, firstUse.getByTestId("overflow-menu-trigger"));
     await page.getByRole("menuitem", { name: "Edit" }).click();
@@ -292,6 +302,19 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     await settledClick(page, editor.getByRole("button", { name: "Save" }));
     await expect(useRows.nth(0)).toContainText("21:30");
     await expect(useRows.nth(1)).toContainText("20:15");
+
+    // …AND THE NOTE CORRECTS ON ITS ROW (#5077's ask): the noted use's editor opens
+    // seeded with the note, and a save with a changed note restates it — on that
+    // row and no other.
+    const corrected = "E2E corrected cannabis note";
+    await hydratedClick(page, noted.getByTestId("overflow-menu-trigger"));
+    await page.getByRole("menuitem", { name: "Edit" }).click();
+    const noteEditor = appContent(page).getByTestId("history-row-editing");
+    await expect(noteEditor.getByTestId("substance-notes")).toHaveValue(marker);
+    await noteEditor.getByTestId("substance-notes").fill(corrected);
+    await settledClick(page, noteEditor.getByRole("button", { name: "Save" }));
+    await expect(useRows.filter({ hasText: corrected })).toHaveCount(1);
+    await expect(useRows.filter({ hasText: marker })).toHaveCount(0);
 
     // Back to the card, where the DAY delete takes them both.
     await page.goto("/records/specialty/substance-use");
@@ -305,7 +328,7 @@ test.describe("substance use (#998/#1078/#1085)", () => {
       page,
       page.getByRole("button", { name: "Delete entry" })
     );
-    await expect(card.getByText(marker)).toHaveCount(0);
+    await expect(card.locator("tbody tr")).toHaveCount(1);
 
     await settledClick(page, page.getByTestId("substance-undo-cannabis"));
     await page.reload();

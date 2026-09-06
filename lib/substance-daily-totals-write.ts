@@ -7,8 +7,8 @@
 // instant on the day the row had left, surplus taps were hard-deleted with no undo
 // capture, and a per-tap row was born without provenance. Alcohol taps now move
 // through the food ledger's own cores and the non-food counter through the shared
-// day-counter ledger; what is left here is the catalog dispatch, the day's NOTE and
-// the typed outcomes.
+// day-counter ledger; what is left here is the catalog dispatch and the typed
+// outcomes. The entry's NOTE rides its first tap (#5304): a note is an event's fact.
 //
 // #3279: `substance` is a SubstanceKey — curated OR a profile's own name — and this core
 // normalizes it once, at its own boundary, through resolveSubstanceKey(). A custom
@@ -21,7 +21,7 @@ import type { LoggedVia } from "./logged-via";
 import { db, today, writeTx } from "./db";
 import { SUBSTANCE_USE_WRITE, isPastWriteAccepted } from "./log-manifest";
 import { captureDelete } from "./undo-delete-db";
-import { logFoodServingCore } from "./food-log-write";
+import { logFoodServingCore, normalizedNote } from "./food-log-write";
 import type { FoodPlacement } from "./food-log-write";
 import { logSubstanceUnitCore } from "./substance-log-write";
 import {
@@ -48,10 +48,6 @@ function validAmount(amount: number): boolean {
   );
 }
 
-function normalizedNotes(notes: string | null | undefined): string | null {
-  return notes?.trim() || null;
-}
-
 // One tap per unit, through each ledger's own log core — so a use filed here is the
 // same row the one-tap button writes: counter bumped, event appended, provenance
 // stamped, and no use instant invented for a day nobody stated one for. The dispatch is
@@ -65,19 +61,26 @@ function normalizedNotes(notes: string | null | undefined): string | null {
 // as `occurred_at` with `time_source = 'stated'`. `statedAt` null is the third answer
 // and the commonest: nobody said, and the row keeps a NULL instant rather than
 // inheriting the tap stamp.
+//
+// THE NOTE RIDES THE FIRST TAP ONLY (#5304). One submission's note describes the
+// sitting, not each cigarette in it, so copying it onto every event would make the
+// record repeat one sentence N times — the migration's "once, never duplicated across
+// the day's uses" clause, applied at the door that creates the uses.
 function appendUnitTaps(
   profileId: number,
   substance: SubstanceKey,
   date: string,
   count: number,
   loggedVia: LoggedVia,
-  statedAt: string | null
+  statedAt: string | null,
+  notes: string | null
 ): void {
   const onFoodLedger = substanceDef(substance).ledger === "food-log";
   const placement: FoodPlacement | undefined = statedAt
     ? { eatenAt: statedAt, source: "stated" }
     : undefined;
   for (let index = 0; index < count; index += 1) {
+    const note = index === 0 ? notes : null;
     if (onFoodLedger)
       logFoodServingCore(
         profileId,
@@ -85,7 +88,9 @@ function appendUnitTaps(
         date,
         loggedVia,
         undefined,
-        placement
+        placement,
+        undefined,
+        note
       );
     else
       logSubstanceUnitCore(
@@ -94,7 +99,8 @@ function appendUnitTaps(
         date,
         loggedVia,
         undefined,
-        statedAt
+        statedAt,
+        note
       );
   }
 }
@@ -121,50 +127,36 @@ export function addSubstanceDailyTotalCore(
   if (!isPastWriteAccepted(today(profileId), input.date))
     return { kind: "invalid-date" };
   if (!validAmount(input.amount)) return { kind: "invalid-amount" };
-  const notes = normalizedNotes(input.notes);
 
   // ADDITIVE, like every other logged fact (#4435): this used to answer
   // `date-conflict` for a day that already held some, which made "I had a second one"
   // unrecordable through the door that exists to record it. `validAmount` keeps
-  // `amount` at 1 or more, so the taps always leave one day row to read back and
-  // attach the note to. A note ARRIVES WITH the entry rather than replacing the day's.
-  //
-  // THE NOTE IS THE DAY'S, AND STAYS THE DAY'S. `substance_log_events` carries none:
-  // one submission's note describes the sitting, not each cigarette in it, and copying
-  // it onto every event would make the record repeat one sentence N times. Where a
-  // day-level note LIVES now that every use is its own row is #5077's question, which
-  // is sequenced after this phase for exactly that reason.
+  // `amount` at 1 or more, so the taps always leave one day row to read back.
   return writeTx(() => {
-    const onFoodLedger = substanceDef(substance).ledger === "food-log";
     appendUnitTaps(
       profileId,
       substance,
       input.date,
       input.amount,
       loggedVia,
-      input.statedAt ?? null
+      input.statedAt ?? null,
+      normalizedNote(input.notes)
     );
-    // `logged_via` takes a COALESCE on the substance arm for its own reason: provenance
-    // names the surface that OPENED the row and is never rewritten (#3087). The taps
-    // above already stamped it, so this only ever restates the day's note.
-    const day = onFoodLedger
-      ? (db
-          .prepare(
-            `UPDATE food_daily_totals SET notes = COALESCE(?, notes)
-             WHERE profile_id = ? AND date = ? AND group_key = ?
-             RETURNING id`
-          )
-          .get(notes, profileId, input.date, ALCOHOL_FOOD_GROUP) as {
-          id: number;
-        })
-      : (db
-          .prepare(
-            `UPDATE substance_daily_totals
-               SET notes = COALESCE(?, notes), edited = 1
-             WHERE profile_id = ? AND date = ? AND substance = ?
-             RETURNING id`
-          )
-          .get(notes, profileId, input.date, substance) as { id: number });
+    const day = (
+      substanceDef(substance).ledger === "food-log"
+        ? db
+            .prepare(
+              `SELECT id FROM food_daily_totals
+                WHERE profile_id = ? AND date = ? AND group_key = ?`
+            )
+            .get(profileId, input.date, ALCOHOL_FOOD_GROUP)
+        : db
+            .prepare(
+              `SELECT id FROM substance_daily_totals
+                WHERE profile_id = ? AND date = ? AND substance = ?`
+            )
+            .get(profileId, input.date, substance)
+    ) as { id: number };
     return { kind: "added" as const, id: day.id };
   });
 }

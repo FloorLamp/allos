@@ -610,14 +610,21 @@ describe("one use, one row, one clock (#5026 phase 2)", () => {
   function dayRows(profileId: number, substance: string) {
     return db
       .prepare(
-        `SELECT date, units, notes FROM substance_daily_totals
+        `SELECT date, units FROM substance_daily_totals
          WHERE profile_id = ? AND substance = ? ORDER BY date`
       )
-      .all(profileId, substance) as {
-      date: string;
-      units: number;
-      notes: string | null;
-    }[];
+      .all(profileId, substance) as { date: string; units: number }[];
+  }
+  /** Each use's note, in creation order (#5304). */
+  function notesOn(profileId: number, substance: string) {
+    return (
+      db
+        .prepare(
+          `SELECT notes FROM substance_log_events
+            WHERE profile_id = ? AND substance = ? ORDER BY id`
+        )
+        .all(profileId, substance) as { notes: string | null }[]
+    ).map((row) => row.notes);
   }
 
   it.each(["nicotine", "cannabis", "Energy drinks"])(
@@ -648,11 +655,10 @@ describe("one use, one row, one clock (#5026 phase 2)", () => {
           time_source: "stated",
         },
       ]);
-      // The counter is still the day's rollup beside them, and the note is still the
-      // day's — one sentence, not one per use.
-      expect(dayRows(p, substance)).toEqual([
-        { date, units: 2, notes: "as filed" },
-      ]);
+      // The counter is still the day's rollup beside them, and the note rides the
+      // FIRST use only (#5304) — one sentence for the sitting, not one per use.
+      expect(dayRows(p, substance)).toEqual([{ date, units: 2 }]);
+      expect(notesOn(p, substance)).toEqual(["as filed", null]);
     }
   );
 
@@ -721,8 +727,8 @@ describe("one use, one row, one clock (#5026 phase 2)", () => {
     // The counter followed the move — one unbump, one bump — so the card and the cap
     // count the use on the day it now sits on.
     expect(dayRows(p, "nicotine")).toEqual([
-      { date, units: 1, notes: null },
-      { date: moved, units: 1, notes: null },
+      { date, units: 1 },
+      { date: moved, units: 1 },
     ]);
   });
 
@@ -742,7 +748,7 @@ describe("one use, one row, one clock (#5026 phase 2)", () => {
     expect(uses(p, "cannabis")).toEqual([
       { id: only.id, date, occurred_at: null, time_source: null },
     ]);
-    expect(dayRows(p, "cannabis")).toEqual([{ date, units: 1, notes: null }]);
+    expect(dayRows(p, "cannabis")).toEqual([{ date, units: 1 }]);
   });
 
   // THE REFUSALS, and each one writes NOTHING. A correction's statement IS its
@@ -781,90 +787,13 @@ describe("one use, one row, one clock (#5026 phase 2)", () => {
     ]);
   });
 
-  // A MOVE THAT WOULD STRAND A DAY'S NOTE IS REFUSED, AND WRITES NOTHING. The ledger
-  // drops a counter row at zero and the day's note lives only on it, so re-dating the
-  // LAST use of a noted day would delete a sentence somebody typed — through a door
-  // that captures no undo. It costs a move `main` allows — its day form re-dates a
-  // noted day onto a free date and the note travels, and case one below is exactly that
-  // free destination — so this is a named regression, not an inherited posture. #5304
-  // removes the situation by moving the note onto the use.
-  //
-  // THE FIXTURE IS TWO PROFILES AND TWO SUBSTANCES ON PURPOSE. The refusal reads ONE
-  // row — the vacated day's own — and every predicate of that read is a way to refuse
-  // somebody else's move or to miss this one. Row 1 is the refusal; rows 2-4 are the
-  // NEAR MISSES that must still move, each of which is a different predicate dropped:
-  // a neighbour profile's noted day at the same coordinate, this profile's noted day
-  // for another substance, and this profile's noted day on another date. Row 5 is the
-  // boundary: a noted day the move does not empty keeps its note and moves the use.
-  it.each([
-    ["its own noted day", "own", "day-note-stranded"],
-    ["a neighbour profile's noted day on the same day", "neighbour", "updated"],
-    ["this profile's noted day for another substance", "substance", "updated"],
-    ["this profile's noted day on another date", "date", "updated"],
-    ["a noted day the move does not empty", "not-last", "updated"],
-  ] as const)("refuses the move only for %s", (_label, decoy, kind) => {
-    // The NEIGHBOUR is created first in every case, so a read that has lost its
-    // profile predicate meets the same row whichever case it is in — which is what
-    // makes one of these two rows red rather than leaving it to scan order.
-    const other = newProfile(`SU strand neighbour ${decoy}`);
-    const p = newProfile(`SU strand ${decoy}`);
-    const date = shiftDateStr(today(p), -3);
-    const moved = shiftDateStr(date, 1);
-    const noteOn = (
-      profileId: number,
-      substance: string,
-      day: string,
-      amount: number
-    ) =>
-      addSubstanceDailyTotalCore(
-        profileId,
-        substance,
-        { date: day, amount, notes: "quitting attempt, day 4" },
-        "page"
-      );
-
-    if (decoy === "neighbour") noteOn(other, "nicotine", date, 1);
-    if (decoy === "substance") noteOn(p, "cannabis", date, 1);
-    // ON BOTH SIDES OF THE DAY, and the second one is not redundant. A read that has
-    // lost its date predicate meets whichever noted row its scan reaches FIRST, and
-    // that order is the index's, not the fixture's: `idx_substance_daily_totals_profile`
-    // is `(profile_id, date DESC)`, so an EARLIER-only decoy is reached LAST and the
-    // mutant lands on the correct row by luck — MEASURED, that mutant was green until
-    // the later day was added. With one on each side the refusal reds whichever way the
-    // scan runs, so this survives a planner or index change rather than pinning today's.
-    if (decoy === "date") {
-      noteOn(p, "nicotine", shiftDateStr(date, -1), 1);
-      noteOn(p, "nicotine", shiftDateStr(date, 2), 1);
-    }
-    // The day under correction: noted only in the case that must refuse, and carrying
-    // a second use in the boundary case so the move does not empty it.
-    if (decoy === "own") noteOn(p, "nicotine", date, 1);
-    else if (decoy === "not-last") noteOn(p, "nicotine", date, 2);
-    else addSubstanceDailyTotalCore(p, "nicotine", { date, amount: 1 }, "page");
-
-    const mine = uses(p, "nicotine").filter((u) => u.date === date);
-    const before = dayRows(p, "nicotine");
-    expect(correctSubstanceEventCore(p, mine[0].id, { date: moved }).kind).toBe(
-      kind
-    );
-
-    if (kind === "day-note-stranded") {
-      // NOTHING WAS WRITTEN: the event still sits on its day and the counter is
-      // untouched, so the refusal costs the save rather than half-performing it.
-      expect(uses(p, "nicotine").map((u) => u.date)).toEqual([date]);
-      expect(dayRows(p, "nicotine")).toEqual(before);
-    } else {
-      expect(uses(p, "nicotine").find((u) => u.id === mine[0].id)?.date).toBe(
-        moved
-      );
-    }
-  });
-
-  // AND THE NOTE THE DESTINATION ALREADY HAS IS NEVER TOUCHED — the shape that broke
-  // the carry this refusal replaced: two typed notes, one of them was overwritten and
-  // the other deleted. Both survive, and both days keep their own.
-  it("refuses rather than merging two days' notes into one", () => {
-    const p = newProfile("SU strand two notes");
+  // THE NOTE TRAVELS WITH THE USE (#5304). It used to live on the day counter, which is
+  // dropped at zero, so re-dating a noted day's last use was REFUSED (`day-note-
+  // stranded`) rather than deleting a sentence somebody typed. On the event, the move
+  // that emptied the day carries the note to the arriving day, and a neighbour's note
+  // on the destination is neither read nor touched.
+  it("re-dating a noted day's last use carries its note and empties the day", () => {
+    const p = newProfile("SU note travels");
     const date = shiftDateStr(today(p), -3);
     const moved = shiftDateStr(date, 1);
     addSubstanceDailyTotalCore(
@@ -880,12 +809,15 @@ describe("one use, one row, one clock (#5026 phase 2)", () => {
       "page"
     );
     const [first] = uses(p, "nicotine");
-    expect(correctSubstanceEventCore(p, first.id, { date: moved }).kind).toBe(
-      "day-note-stranded"
-    );
-    expect(dayRows(p, "nicotine")).toEqual([
-      { date, units: 1, notes: "quitting attempt, day 4" },
-      { date: moved, units: 1, notes: "birthday" },
+    expect(correctSubstanceEventCore(p, first.id, { date: moved })).toEqual({
+      kind: "updated",
+      eventId: first.id,
+      date: moved,
+    });
+    expect(dayRows(p, "nicotine")).toEqual([{ date: moved, units: 2 }]);
+    expect(notesOn(p, "nicotine")).toEqual([
+      "quitting attempt, day 4",
+      "birthday",
     ]);
   });
 
@@ -907,12 +839,8 @@ describe("one use, one row, one clock (#5026 phase 2)", () => {
     expect(deleteSubstanceEventCore(mine, first.id).kind).toBe("deleted");
 
     // Two units minus the one deleted, not minus two — and the neighbour is untouched.
-    expect(dayRows(mine, "nicotine")).toEqual([
-      { date: d, units: 1, notes: null },
-    ]);
-    expect(dayRows(theirs, "nicotine")).toEqual([
-      { date: d, units: 1, notes: null },
-    ]);
+    expect(dayRows(mine, "nicotine")).toEqual([{ date: d, units: 1 }]);
+    expect(dayRows(theirs, "nicotine")).toEqual([{ date: d, units: 1 }]);
   });
 
   // AND ONE PROFILE'S UNDO MAY NOT WRITE INTO ANOTHER'S RECORD, which is the same
@@ -959,13 +887,9 @@ describe("one use, one row, one clock (#5026 phase 2)", () => {
 
     // Both halves on both sides: their day is whole again and mine never moved.
     expect(uses(mine, "nicotine")).toHaveLength(2);
-    expect(dayRows(mine, "nicotine")).toEqual([
-      { date: d, units: 2, notes: null },
-    ]);
+    expect(dayRows(mine, "nicotine")).toEqual([{ date: d, units: 2 }]);
     expect(uses(theirs, "nicotine")).toHaveLength(3);
-    expect(dayRows(theirs, "nicotine")).toEqual([
-      { date: d, units: 3, notes: null },
-    ]);
+    expect(dayRows(theirs, "nicotine")).toEqual([{ date: d, units: 3 }]);
   });
 
   // AND THE OTHER TWO PREDICATES OF THAT CAPTURE ARE THE SAME QUESTION INSIDE ONE
@@ -994,15 +918,11 @@ describe("one use, one row, one clock (#5026 phase 2)", () => {
     );
 
     // The day it named is gone on both halves…
-    expect(dayRows(p, "nicotine")).toEqual([
-      { date: before, units: 1, notes: null },
-    ]);
+    expect(dayRows(p, "nicotine")).toEqual([{ date: before, units: 1 }]);
     // …and the two uses it did not name are still there, each behind its own counter.
     expect(uses(p, "nicotine").map((u) => u.date)).toEqual([before]);
     expect(uses(p, "cannabis")).toHaveLength(1);
-    expect(dayRows(p, "cannabis")).toEqual([
-      { date: d, units: 1, notes: null },
-    ]);
+    expect(dayRows(p, "cannabis")).toEqual([{ date: d, units: 1 }]);
   });
 
   // A DAY DELETED BEFORE THIS DEPLOY IS STILL IN THE TRASH ON THE DAY OF IT. The
@@ -1047,9 +967,7 @@ describe("one use, one row, one clock (#5026 phase 2)", () => {
     backfill(db);
 
     expect(restoreDeletedRow(p, deleted.undoId)).toBe(true);
-    expect(dayRows(p, "nicotine")).toEqual([
-      { date: d, units: 3, notes: null },
-    ]);
+    expect(dayRows(p, "nicotine")).toEqual([{ date: d, units: 3 }]);
     // Three uses behind the three the counter reads — and no instant invented for
     // any of them, exactly as the migration's derived rows carry none.
     expect(uses(p, "nicotine")).toEqual([
@@ -1204,13 +1122,7 @@ describe("custom substances (#3279)", () => {
       (r) => r.substance === "Energy drinks"
     );
     expect(rows).toEqual([
-      {
-        id: added.id,
-        substance: "Energy drinks",
-        date,
-        amount: 2,
-        notes: "two cans",
-      },
+      { id: added.id, substance: "Energy drinks", date, amount: 2 },
     ]);
 
     // The entry flows through the shared cadence ledger, so the trend sees it — the
@@ -1313,7 +1225,7 @@ describe("the substance write core keeps the shared food contracts (#4435)", () 
         addSubstanceDailyTotalCore(p, substance, { date, amount: 2 }, "page")
       ).toEqual({ kind: "added", id: first.id });
       expect(historyOn(p, date)).toEqual([
-        { id: first.id, substance, date, amount: 3, notes: "the first one" },
+        { id: first.id, substance, date, amount: 3 },
       ]);
     }
   );

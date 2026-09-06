@@ -257,6 +257,8 @@ export type HistoryRowEdit =
        * asks of the same profile before it writes.
        */
       substanceCorrectable: boolean;
+      /** The serving's own note (#5304), seeded so a save restates or clears it. */
+      notes: string | null;
     }
   | {
       kind: "practice";
@@ -284,13 +286,13 @@ export type HistoryRowEdit =
        * ONE RECORDED USE (#5026 phase 2), addressed by its EVENT id. It was a DAY row
        * — `rowId` on `substance_daily_totals`, with the day's amount and note — until
        * every substance's units became events; a day count has nothing left to correct,
-       * so what the door opens onto is this use's day and the minute stated for it.
-       * Amount is gone because one event is one unit, and the day's note stayed on the
-       * day (#5077).
+       * so what the door opens onto is this use's day, the minute stated for it, and
+       * its own note (#5304). Amount is gone because one event is one unit.
        */
       kind: "substance";
       eventId: number;
       substance: string;
+      notes: string | null;
       /**
        * The row's OWN `occurred_at`, and never `sortTime` — the practice row's rule
        * next door, for the same reason: `sortTime` falls back to the record chain, and
