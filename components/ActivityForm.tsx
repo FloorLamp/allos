@@ -74,7 +74,6 @@ import type { PartEntry } from "@/lib/activity-form-model";
 import ActivityFormHeader from "./activity-form/ActivityFormHeader";
 import DateTimeFields from "./activity-form/DateTimeFields";
 import { useExertionPrefill } from "./activity-form/useExertionPrefill";
-import type { ExertionOffer } from "@/lib/exertion-offer";
 import IntensityPicker from "./activity-form/IntensityPicker";
 import ActivityMoreDetails from "./activity-form/ActivityMoreDetails";
 import ActivityFormFooter from "./activity-form/ActivityFormFooter";
@@ -408,19 +407,17 @@ export default function ActivityForm({
   // AN OFFER IS THREE FIELDS AND ONE DAY. Both clocks, the duration between them, and
   // the mark — applied together, and withdrawn together when the answer for a NEW date
   // is that its trace says nothing. The date is mutable (`onDate` below), so an answer
-  // that only ever wrote could leave yesterday's form showing today's minutes under a
+  // that only ever wrote would leave yesterday's form showing today's minutes under a
   // label saying the heart rate found them.
-  function applyExertionOffer(offer: ExertionOffer | null) {
-    preOfferDurationRef.current ??= sessionDuration;
+  useEffect(() => {
+    if (!exertionAnswer || timesTouchedRef.current) return;
+    const { offer } = exertionAnswer;
+    const priorDuration = (preOfferDurationRef.current ??= sessionDuration);
     setStartTime(offer?.start ?? "");
     setEndTime(offer?.end ?? "");
     if (offer) rememberClockDuration(offer.start, offer.end);
-    else setSessionDuration(preOfferDurationRef.current);
+    else setSessionDuration(priorDuration);
     setTimesFromHeartRate(offer != null);
-  }
-  useEffect(() => {
-    if (!exertionAnswer || timesTouchedRef.current) return;
-    applyExertionOffer(exertionAnswer.offer);
     // Keyed on the ANSWER, which is a new value per question asked — including the
     // answer "nothing", which is what makes a date change take the last offer back.
     // Re-running on the clocks it just set would be the re-apply the guard refuses.
