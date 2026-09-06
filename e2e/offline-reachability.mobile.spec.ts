@@ -174,9 +174,13 @@ const DECLARED_ROWS = Object.values(LOG_MANIFEST)
 //           `none` — ARGUED: no honest copy exists, so the row shows the retry state
 //           rather than a form over invented data.
 //   queues: the queue flow one tap leaves, or null where the driver only opens.
+//   closes: the tap ENDS the sheet (a transaction with an end closes itself), so the
+//           walk waits for it to go rather than reaching for a Close control that is
+//           already playing its exit — measured here as a 15s click timeout.
 type Driver = {
   copy: "device" | "shell" | "none";
   queues: string | null;
+  closes: boolean;
   open: (overlay: Locator, page: Page) => Promise<void>;
 };
 
@@ -184,6 +188,9 @@ const DRIVERS: Partial<Record<QuickLogId, Driver>> = {
   "log-dose": {
     copy: "device",
     queues: "dose",
+    // The fixture's one dose is the day's last: taking it leaves nothing in the
+    // window, and QuickDoseList closes the sheet on exactly that.
+    closes: true,
     open: async (overlay, page) => {
       const row = overlay.getByTestId(`quick-entry-dose-${shellDoseId()}`);
       await expect(row).toBeVisible();
@@ -196,6 +203,7 @@ const DRIVERS: Partial<Record<QuickLogId, Driver>> = {
   "log-practice": {
     copy: "device",
     queues: "practice",
+    closes: false,
     open: async (overlay, page) => {
       const row = overlay.getByTestId(
         `quick-entry-practice-${practiceIdentity(SHELL_PRACTICE)}`
@@ -210,17 +218,17 @@ const DRIVERS: Partial<Record<QuickLogId, Driver>> = {
   "log-mood": {
     copy: "device",
     queues: "mood",
+    closes: true,
     open: async (overlay) => {
       const form = overlay.getByTestId("mood-form");
       await expect(form).toBeVisible();
       await form.getByTestId("quick-mood-tap-4").click();
-      // A check-in is a transaction with an end: the sheet closes itself.
-      await expect(overlay).toHaveCount(0);
     },
   },
   "log-stool": {
     copy: "device",
     queues: "stool",
+    closes: false,
     open: async (overlay) => {
       await expect(overlay.getByTestId("quick-entry-stool")).toBeVisible();
       await overlay.getByTestId("stool-type-4").click();
@@ -229,6 +237,7 @@ const DRIVERS: Partial<Record<QuickLogId, Driver>> = {
   "log-measurements": {
     copy: "shell",
     queues: null,
+    closes: false,
     open: async (overlay) => {
       await expect(overlay.getByTestId("measurements-quick-add")).toBeVisible();
     },
@@ -240,6 +249,7 @@ const DRIVERS: Partial<Record<QuickLogId, Driver>> = {
   "log-food": {
     copy: "none",
     queues: null,
+    closes: false,
     open: async (overlay) => {
       await expect(overlay.getByTestId("quick-entry-error")).toBeVisible();
       await expect(overlay.getByTestId("quick-entry-retry")).toBeVisible();
@@ -407,7 +417,8 @@ test("every flow the manifest declares offline-capable OPENS with no connection 
             new RegExp(`^${queued} queued offline$`)
           );
         }
-        if (await overlay.isVisible()) await dismiss(page);
+        if (driver.closes) await expect(overlay).toHaveCount(0);
+        else await dismiss(page);
       });
     }
 

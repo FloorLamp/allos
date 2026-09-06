@@ -958,11 +958,14 @@ rejects.
 
 **The rule, which was implicit and load-bearing until now: a surface is
 offline-reachable exactly when OPENING it needs no Server Action** — server-rendered
-inline, or client state the app shell already holds. Anything gathered on open is
-online-only by construction. So `loadQuickEntry` may not be on the critical path of
-a surface people are expected to reach with no connection, and the measurements
-form's props are resolved in the shell instead
-(`lib/quick-entry-measurements.ts`).
+inline, client state the app shell already holds, or (#3416) the device's own copy:
+a #2908 snapshot for the sheet's day, or the device's own day and queue
+(`lib/offline/quick-entry-read.ts`). Anything gathered on open with none of those
+behind it is online-only by construction. So `loadQuickEntry` may not be the ONLY
+door to a surface people are expected to reach with no connection: the measurements
+form's props are resolved in the shell (`lib/quick-entry-measurements.ts`), and the
+sheet's other declared offline flows fall back to the device's copy when the gather
+fails, under the as-of line.
 
 `e2e/offline-reachability.mobile.spec.ts` is where that claim is tested: the
 connection dies **first, after full hydration**, and only then does the test reach
@@ -972,11 +975,16 @@ reachability failure.
 
 It is a **hand-written list, one test per surface**, not a scan: the census that
 finds the candidates is "what does a person reach while offline", which no grep can
-answer. Two surfaces qualify today, because both have a real opening step — the
+answer. Two surfaces have their own test because each has a real opening step — the
 quick logger's measurements row, and the activity editor (propped from the shell,
-so `openCreate` is client state). The inline controls — the food bar, the dose
-rows, the mobility chips — have no opening step at all: you are standing on their
-page or you are not, and navigating offline is the `/offline` shell's subject.
+so `openCreate` is client state). One more test walks every flow `LOG_MANIFEST`
+declares `offline: covered` with a sheet row (#3416, absorbing #4434): the rows come
+from the manifest, a driver per row is hand-written, and a declared flow with no
+driver — or a driver for an undeclared row — fails the test, so a flow cannot be
+declared offline-capable and shipped with its open path on a Server Action. The
+inline controls — the food bar, the dose rows, the mobility chips — have no opening
+step at all: you are standing on their page or you are not, and navigating offline
+is the `/offline` shell's subject.
 
 ## A retry cannot converge on a control that covers itself (2026-08-13, #2662)
 
