@@ -54,7 +54,8 @@ fleet moves one REPLACEMENT at a time (`recovery.md` §Replacing a session).
 
 ## Bookkeeping
 
-- One orchestrator, named in the Ladder, writes the day's release-notes
-  batch; the others send their user-visible bullets to the PM.
+- The PM writes the day's release-notes batch, from the same gather as its
+  digest (owner, 2026-09-06). Orchestrators send nothing: the gather reads
+  `main`, so no merge is lost to a handoff that did not happen.
 - Report the census line (`lifecycle.md` §Status pulse) to the PM on request
   by SendMessage. The PM arbitrates fence disputes and slot starvation.

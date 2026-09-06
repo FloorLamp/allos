@@ -94,6 +94,13 @@ things", "catch me up" or the like, and at each day's end. The report is yours:
    and owner rulings are the candidates). A red that changed nothing is a line.
 3. **Progress** — counts, in flight, blocked and on whom, the next rung.
 
+The day's RELEASE-NOTES batch is the PM's too (owner, 2026-09-06), off the
+same gather: the digest already enumerates the window's merges and splits
+product from process by PATH — the same question `release-notes-gather.mjs`
+answers by title. One pass, two renderings: the owner's three paragraphs, and
+the user-visible entries in `lib/release-notes.json`. Orchestrators send no
+bullets; the gather reads main.
+
 ## Relays and correctives
 
 - Deliver a message to an orchestrator with `create_trigger` bound to its
