@@ -60,6 +60,8 @@
 
 import { db, writeTx } from "../db";
 import { instantNow, now as clockNow } from "../clock";
+import { parseInstant } from "../date";
+import type { CanonicalInstant } from "../temporal-types";
 import { POST_WORKOUT_DISPATCH_TIMEOUT_MS } from "./post-workout-queue";
 
 // See the lease section above. Strictly greater than the queue's whole-task
@@ -77,7 +79,7 @@ export type PostWorkoutClaimResult = "won" | "already-claimed" | "already-sent";
 
 interface ClaimRow {
   state: "pending" | "sent";
-  claimed_at: string;
+  claimed_at: CanonicalInstant;
 }
 
 // Elect a dispatcher for one activity's post-workout contact.
@@ -108,7 +110,7 @@ export function claimPostWorkoutDispatch(
       )
       .get(profileId, activityId) as ClaimRow;
     if (row.state === "sent") return "already-sent";
-    const ageMs = clockNow().getTime() - Date.parse(row.claimed_at);
+    const ageMs = clockNow().getTime() - parseInstant(row.claimed_at);
     if (ageMs < POST_WORKOUT_CLAIM_LEASE_MS) return "already-claimed";
     // A crashed winner's lease has expired: take the claim over. Plain UPDATE,
     // not a compare-and-swap — we are inside the immediate transaction, so no

@@ -99,12 +99,19 @@ import { specsNeedingIsolation } from "@/vitest.isolation";
 // ESM only vi.mock can do. The tier cannot install these shared: wrapping the whole
 // @/lib/queries barrel for every db spec is a far wider blast radius than one spec's
 // own registry, which is the trade the message below asks callers to weigh.
-const DB_ISOLATED = 39;
+// 40 since #5338: fitbit-sleep-timezone ASSIGNS process.env.TZ, and the scan now routes
+// a zone assignment to forks because on a worker thread it is inert — the variable
+// reads back as the new zone while Date.parse and getTimezoneOffset() stay in the zone
+// the process started in, so its three-zone agreement was one pass three times (#5387).
+const DB_ISOLATED = 40;
 // 7 since #3065: Longevity's server-component FitnessSection is tested directly with
 // controlled session, age, and assembler boundaries. It must prove that minor and unknown
 // profiles return null before assembling adult population data; sharing those module stubs
 // would change the real dependencies exercised by every other pure spec.
-const PURE_ISOLATED = 7;
+// 11 since #5338: date-wall-time, fitbit-takeout and stated-time assign process.env.TZ
+// (the same reason as DB entry 40 — on threads their server-zone claims were vacuous),
+// and clock-seam is the seam's own two-zone proof, which needs the flip to be real.
+const PURE_ISOLATED = 11;
 
 const ADVICE =
   "\n\nAn isolated spec re-pays the whole module graph — ~259ms against ~26ms " +
