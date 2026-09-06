@@ -1,5 +1,6 @@
 import { db, hoistedStatement, today, writeTx } from "../db";
 import { ENCOUNTER_REPRESENTATIVE_IDS } from "./medical";
+import type { OwnedTable } from "../owned-tables";
 import {
   type LinkableEncounter,
   type LinkableRecord,
@@ -38,7 +39,9 @@ import {
 // deterministic tier-1 link when the FHIR source carried the encounter reference,
 // they're just not heuristically suggested.
 interface DomainConfig {
-  table: string;
+  // A registry key, not a string: every `FROM ${c.table}` below names a table that
+  // carries profile_id, by type (#5274).
+  table: OwnedTable;
   dateExpr: string;
   providerExpr: string;
   labelExpr: string;
@@ -184,7 +187,7 @@ const EPISODES_FOR_ENCOUNTERS_STMT = hoistedStatement(
     ORDER BY le.encounter_id, ie.start_date, ie.id`
 );
 
-function domainTable(domain: VisitLinkDomain): string {
+function domainTable(domain: VisitLinkDomain): OwnedTable {
   if (domain === "episode") return "illness_episodes";
   return RECORD_DOMAINS[domain].table;
 }
@@ -290,7 +293,7 @@ function upsertDecision(
 // for this profile, or null if it no longer exists (a dead decision row).
 function resolveToken(
   profileId: number,
-  table: string,
+  table: OwnedTable,
   token: string
 ): number | null {
   if (token.startsWith("id:")) {
