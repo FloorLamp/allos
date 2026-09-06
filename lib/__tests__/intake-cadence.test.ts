@@ -270,8 +270,10 @@ describe("cadence composes into the dueness gate", () => {
   });
 
   it("doseDueOn ANDs the item cadence with the row's own calendar", () => {
-    const row = { weekdays: "1" };
-    const otherRow = { weekdays: "4" };
+    // Both rows state a time: this case is about the two CALENDARS composing, and an
+    // untimed dose is not due on any day at all (#5285).
+    const row = { weekdays: "1", time_of_day: "morning" };
+    const otherRow = { weekdays: "4", time_of_day: "morning" };
     expect(doseDueOn(weeklyMust, row, ctx(MON))).toBe(true);
     // The row wants Thursday, the item only does Mondays: neither day is due.
     expect(doseDueOn(weeklyMust, otherRow, ctx(MON))).toBe(false);
