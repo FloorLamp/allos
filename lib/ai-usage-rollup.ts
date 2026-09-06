@@ -8,7 +8,6 @@
 
 import type { AiEvent, AiFeature } from "./ai-log";
 
-import { parseDay } from "./date";
 export interface UsageStat {
   calls: number; // dispatched calls (ok + failed; skipped never hit the API)
   tokensIn: number;
@@ -28,7 +27,7 @@ function emptyStat(): UsageStat {
 
 // The date (YYYY-MM-DD) N days before an ISO date string, by UTC calendar math.
 function dateMinusDays(dateStr: string, n: number): string {
-  const ms = parseDay(dateStr);
+  const ms = Date.parse(`${dateStr}T00:00:00.000Z`);
   return new Date(ms - n * 86_400_000).toISOString().slice(0, 10);
 }
 

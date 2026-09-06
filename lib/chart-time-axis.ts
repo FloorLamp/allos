@@ -1,4 +1,3 @@
-import { parseDay } from "./date";
 // Numeric time-axis helpers (issue #402). recharts treats a string `dataKey` as a
 // CATEGORY axis — x-position is the array INDEX, not the date — so a sparse,
 // irregular series (one point per lab draw / per reading day) renders evenly
@@ -23,7 +22,7 @@ const MS_PER_DAY = 86_400_000;
 // Epoch ms for a YYYY-MM-DD at UTC midnight, or NaN when unparseable. UTC-anchored
 // so it never drifts with the runner's timezone (the dates are calendar days).
 export function dateToEpoch(iso: string): number {
-  const t = parseDay(iso);
+  const t = Date.parse(`${iso}T00:00:00Z`);
   return Number.isNaN(t) ? NaN : t;
 }
 

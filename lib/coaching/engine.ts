@@ -5,7 +5,7 @@ import {
   isStrengthProgrammingScope,
 } from "../frequency-targets";
 import { formatRelativeDate } from "../format-date";
-import { shiftDateStr, parseDay} from "../date";
+import { shiftDateStr } from "../date";
 // eslint-disable-next-line no-restricted-imports -- the overtraining nudge's "trained N days in a row" — strict, over hard-session dates, telling the user to rest
 import { currentStreak } from "../streak";
 import { classifyPolarization, type PolarizedSplit } from "../training-zones";
@@ -468,8 +468,8 @@ function pluralSessions(n: number): string {
 // Whole days from an ISO date to `today`, or Infinity if unparseable. (Local copy
 // of the strength-section helper's semantics, exported-scope-free.)
 function daysSince(dateISO: string, today: string): number {
-  const a = parseDay(dateISO);
-  const b = parseDay(today);
+  const a = Date.parse(`${dateISO}T00:00:00Z`);
+  const b = Date.parse(`${today}T00:00:00Z`);
   if (Number.isNaN(a) || Number.isNaN(b)) return Infinity;
   return Math.round((b - a) / 86_400_000);
 }

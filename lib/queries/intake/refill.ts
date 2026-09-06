@@ -5,7 +5,7 @@
 // Refill tracking: effective consumption-rate math and the on-hand supply
 // increment/decrement kept in lock-step with the dose logs.
 import { db, today, writeTx } from "../../db";
-import { shiftDateStr, parseDay} from "../../date";
+import { shiftDateStr } from "../../date";
 import {
   consumptionRate,
   resolveRefillWrite,
@@ -32,7 +32,7 @@ export function getRefillRates(
   const todayStr = today(profileId);
   // Inclusive trailing window of `windowDays` calendar days ending today.
   const windowStart = shiftDateStr(todayStr, -(windowDays - 1));
-  const todayMs = parseDay(todayStr);
+  const todayMs = Date.parse(`${todayStr}T00:00:00Z`);
 
   // Per-item: confirmations inside the window + the first-ever log date. Only a
   // TAKEN log row is consumption — a skipped dose (issue #232) burned no supply,
@@ -79,7 +79,7 @@ export function getRefillRates(
     const daysSinceFirstLog =
       h?.first_date != null
         ? Math.round(
-            (todayMs - parseDay(h.first_date)) / 86_400_000
+            (todayMs - Date.parse(`${h.first_date}T00:00:00Z`)) / 86_400_000
           )
         : null;
     out.set(

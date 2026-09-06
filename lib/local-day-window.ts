@@ -34,7 +34,6 @@ import {
   shiftDateStr,
   tzOffsetMs,
   zonedWallTimeToUtc,
-  parseDay,
 } from "./date";
 
 // One stretch of a window over which the zone's UTC offset does not change.
@@ -277,7 +276,7 @@ export function localMinuteProjector(
   const dayOf = (date: string): UtcDay | null => {
     const known = days.get(date);
     if (known !== undefined) return known;
-    const midnightMs = parseDay(date);
+    const midnightMs = Date.parse(`${date}T00:00:00Z`);
     // THE DAY LABEL IS THE PARSED DATE, NEVER THE INPUT SUBSTRING. `Date` rolls an
     // impossible calendar date over — `2026-02-30` is 2026-03-02 — so a loop that
     // labelled the row with the characters it read would answer differently from the

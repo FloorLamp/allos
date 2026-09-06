@@ -17,7 +17,7 @@
 // "Alcohol logged today while taking Flagyl" and the label's sentence — never "you
 // shouldn't have", never a diagnosis, never a number we invented.
 
-import { shiftDateStr, parseDay} from "./date";
+import { shiftDateStr } from "./date";
 import type { FoodInteractionHit } from "./food-drug-interactions";
 import { foodGroupBySlug } from "./food-groups";
 
@@ -163,7 +163,7 @@ export function detectFoodDrugEvents(
 function daysBetween(courseEnd: string | null, date: string): number {
   if (courseEnd == null || date <= courseEnd) return 0;
   const ms =
-    parseDay(date) - parseDay(courseEnd);
+    Date.parse(`${date}T00:00:00Z`) - Date.parse(`${courseEnd}T00:00:00Z`);
   return Math.max(0, Math.round(ms / 86_400_000));
 }
 

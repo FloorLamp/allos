@@ -18,7 +18,6 @@
 import { projectGoal, type ProjectionPoint } from "./trend-projection";
 import { theilSenSlopePerDay, median, type DatedPoint } from "./robust-stats";
 
-import { parseDay } from "./date";
 // ---- 1. Off-pace goal -----------------------------------------------------
 
 // A projected arrival later than the deadline by MORE than this many days reads as
@@ -155,8 +154,8 @@ export interface WeightLossCaution {
 
 // Whole days from an ISO date to `today`, or Infinity if unparseable.
 function daysSince(dateISO: string, today: string): number {
-  const a = parseDay(dateISO);
-  const b = parseDay(today);
+  const a = Date.parse(`${dateISO}T00:00:00Z`);
+  const b = Date.parse(`${today}T00:00:00Z`);
   if (Number.isNaN(a) || Number.isNaN(b)) return Infinity;
   return Math.round((b - a) / 86_400_000);
 }

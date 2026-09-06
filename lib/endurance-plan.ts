@@ -1,4 +1,3 @@
-import { parseDay } from "./date";
 // Endurance event plans — the PURE trajectory engine (issue #839).
 //
 // A profile's `endurance_plans` row stores only the GOAL: an event date, a
@@ -233,15 +232,15 @@ export interface EnduranceTrajectoryInput {
 
 // Whole weeks between two YYYY-MM-DD week-starts (b - a), or 0 if unparseable.
 function weeksBetween(aWeekStart: string, bWeekStart: string): number {
-  const a = parseDay(aWeekStart);
-  const b = parseDay(bWeekStart);
+  const a = Date.parse(`${aWeekStart}T00:00:00Z`);
+  const b = Date.parse(`${bWeekStart}T00:00:00Z`);
   if (Number.isNaN(a) || Number.isNaN(b)) return 0;
   return Math.round((b - a) / (7 * 86_400_000));
 }
 
 // Start-of-week for a date (self-contained so the engine stays pure/importable).
 function startOfWeek(dateStr: string, weekStart: number): string {
-  const t = parseDay(dateStr);
+  const t = Date.parse(`${dateStr}T00:00:00Z`);
   if (Number.isNaN(t)) return dateStr;
   const d = new Date(t);
   const dow = d.getUTCDay();

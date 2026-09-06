@@ -12,7 +12,6 @@
 
 import type { OpticalKind } from "./types/medical";
 
-import { parseDay } from "./date";
 export const OPTICAL_KINDS: readonly OpticalKind[] = ["glasses", "contacts"];
 
 // Normalize a stated kind onto the enum. Unknown / absent → 'glasses' (the safe
@@ -218,8 +217,8 @@ export function rxExpiryState(
   soonWithinDays = 60
 ): RxExpiryState | null {
   if (!expiry) return null;
-  const exp = parseDay(expiry);
-  const now = parseDay(today);
+  const exp = Date.parse(`${expiry}T00:00:00Z`);
+  const now = Date.parse(`${today}T00:00:00Z`);
   if (Number.isNaN(exp) || Number.isNaN(now)) return null;
   if (exp < now) return "expired";
   const days = (exp - now) / 86_400_000;

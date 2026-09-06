@@ -1,11 +1,10 @@
-import { parseDay } from "../date";
 // Shared date helpers for the coaching submodules (strength + cardio PR
 // windows). Pure — no DB/network.
 
 // Whole days from dateISO to today (both YYYY-MM-DD), or Infinity if unparseable.
 export function daysAgo(dateISO: string, today: string): number {
-  const a = parseDay(dateISO);
-  const b = parseDay(today);
+  const a = Date.parse(`${dateISO}T00:00:00Z`);
+  const b = Date.parse(`${today}T00:00:00Z`);
   if (Number.isNaN(a) || Number.isNaN(b)) return Infinity;
   return Math.round((b - a) / 86_400_000);
 }
