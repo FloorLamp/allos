@@ -177,10 +177,11 @@ test.describe("tap-target rendered census (#3562)", () => {
       page.getByRole("button", { name: "Add visit", exact: true })
     );
     const dialog = page.getByRole("dialog", { name: "Add visit" });
+    // The box, not the 32 these inline links used to spell (#4505 family 3).
     await expectOverlayFloor(
       "past-visit tense switch",
       dialog.getByTestId("visit-tense-past"),
-      32
+      CONTROL_BOX_PX
     );
     await expectEffectiveFloor(
       "visit fact chip",
@@ -203,7 +204,7 @@ test.describe("tap-target rendered census (#3562)", () => {
     await expectOverlayFloor(
       "upcoming-visit tense switch",
       dialog.getByTestId("visit-tense-upcoming"),
-      32
+      CONTROL_BOX_PX
     );
   });
 
