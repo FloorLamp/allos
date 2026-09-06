@@ -3,6 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   discoverNodeBin,
+  LEDGER_FILE,
   resolveReadToken,
   resolveStateDir,
 } from "../../scripts/orchestration/host.mjs";
@@ -68,6 +69,46 @@ describe("resolveStateDir", () => {
     expect(resolveStateDir({}, io({ homedir: () => null }))).toBe(
       "/tmp/allos-work-state"
     );
+  });
+
+  // THE LEDGER'S DIRECTORY STICKS (#5385). Measured 2026-09-06: a session's
+  // ledger and roster lived under ~/.local/state, a lane then created
+  // /home/user/scratch, and the layout preference flipped every later call to
+  // an empty directory — a fresh ledger, a port base re-allocated over a live
+  // lane, `list` reading one lane of five. So when BOTH directories exist, the
+  // one already holding the ledger wins whatever the layout order says; with
+  // no ledger anywhere the documented order is unchanged.
+  const container = "/home/user/scratch";
+  const durable = "/Users/wang/.local/state/allos-work";
+  const legacy = "/Users/wang/.local/state/allos-orchestration";
+  it.each([
+    [[durable + "/" + LEDGER_FILE], durable, "the ledger under the durable dir"],
+    [
+      [container + "/" + LEDGER_FILE],
+      container,
+      "the ledger under the container dir",
+    ],
+    [[], container, "no ledger anywhere — the layout order stands"],
+    [
+      [legacy + "/" + LEDGER_FILE],
+      legacy,
+      "the ledger under the pre-rename dir, even with both newer dirs present",
+    ],
+  ])(
+    "with both directories present resolves to %s → %s (%s)",
+    (ledgers, expected) => {
+      const present = new Set([container, durable, legacy, ...ledgers]);
+      expect(resolveStateDir({}, io({ exists: (p) => present.has(p) }))).toBe(
+        expected
+      );
+    }
+  );
+
+  it("SCRATCH still outranks a ledger that lives elsewhere", () => {
+    const present = new Set([container, container + "/" + LEDGER_FILE]);
+    expect(
+      resolveStateDir({ SCRATCH: "/elsewhere" }, io({ exists: (p) => present.has(p) }))
+    ).toBe("/elsewhere");
   });
 });
 

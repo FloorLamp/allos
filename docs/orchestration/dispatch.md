@@ -76,6 +76,9 @@ closed taxonomy, and `needs-human` handling.
 - `agent-gates.sh`: lint, typecheck, unit, DB, E2E hygiene, PHI scan, format.
   DB and E2E-hygiene run only when the diff touches them; a format rewrite
   re-verifies the directive-reading gates. 60 s per-test ceiling here; CI 15 s.
+- `run-gates-recorded.sh <branch>`: `agent-gates.sh` with its PID and exit code
+  recorded under the state dir; `--wait` resumes a run the harness detached.
+  The brief's waiting idiom — a lane runs this, never a paste of its innards.
 - `ci-watch.mjs`: settled CI over BOTH endpoints, source per row; a closed
   `merge-gate` STATUS reads NOT MERGEABLE YET, not red (#5022). Exit 0 green,
   1 red (`cancelled` is no verdict), 2 unsettled and says on what, 3 blocked.
