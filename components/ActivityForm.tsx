@@ -398,9 +398,10 @@ export default function ActivityForm({
     setEndTime(exertionOffer.end);
     rememberClockDuration(exertionOffer.start, exertionOffer.end);
     setTimesFromHeartRate(true);
-    // The offer is a value that arrives once; re-running on the clocks it just set
-    // would be the re-apply this whole guard exists to refuse.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // The offer is a value that ARRIVES ONCE, and this effect is keyed on it alone.
+    // Re-running on the clocks it just set would be exactly the re-apply the guard
+    // above exists to refuse.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the offer alone: re-running on the clocks it sets is the re-apply this refuses
   }, [exertionOffer]);
   const [sessionDuration, setSessionDuration] = useState(() =>
     seed?.duration_min != null ? String(Math.round(seed.duration_min)) : ""
