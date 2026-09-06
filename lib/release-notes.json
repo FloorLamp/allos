@@ -21,14 +21,7 @@
           "pr": 5422,
           "kind": "feature",
           "category": "Training",
-          "title": "State a lift's weight once and every set in the run shares it",
-          "issues": [5371]
-        },
-        {
-          "pr": 5422,
-          "kind": "feature",
-          "category": "Training",
-          "title": "Enter moves through the sets instead of stopping in the reps field",
+          "title": "State a lift's weight once and every set in the exercise shares it",
           "issues": [5371]
         },
         {
@@ -55,8 +48,8 @@
         {
           "pr": 5391,
           "kind": "fix",
-          "category": "Medications",
-          "title": "Editing a medication to as-needed saves instead of sitting on Saving…",
+          "category": "Interface",
+          "title": "A change that asks you to confirm opens its sheet instead of hanging",
           "issues": [5336]
         },
         {
@@ -65,13 +58,6 @@
           "category": "Medications",
           "title": "The offline schedule offers the doses that were actually due that day",
           "issues": [5167]
-        },
-        {
-          "pr": 5378,
-          "kind": "fix",
-          "category": "Training",
-          "title": "A practice logged from the palette records the practice, not the page",
-          "issues": []
         },
         {
           "pr": 5399,
@@ -93,6 +79,32 @@
           "category": "Training",
           "title": "Vary one set's weight when it differs from the rest of the exercise",
           "issues": [5371]
+        },
+        {
+          "pr": 5290,
+          "category": "Medical",
+          "title": "A note on a substance day can no longer be corrected or cleared",
+          "issues": [5026]
+        },
+        {
+          "pr": 5290,
+          "category": "Medical",
+          "title": "Re-dating the last use of a day that carries a note is refused",
+          "issues": [5026]
+        },
+        {
+          "pr": 5450,
+          "kind": "feature",
+          "category": "Training",
+          "title": "Sets arrive as a plan — only the ones you confirm are saved",
+          "issues": [5373]
+        },
+        {
+          "pr": 5444,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Buttons, chips and folds share one height across the app",
+          "issues": [4505]
         }
       ]
     },
