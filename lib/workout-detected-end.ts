@@ -8,26 +8,22 @@
 //
 // `detectedWorkoutEnd` (#5139, pure and mutation-tested) already holds the whole
 // judgment about when an effort ended. This is its database tier and NOTHING MORE: it
-// gathers what that function takes, asks it, and hands back the instant. It writes
-// nothing, and no caller of it writes without a person's tap — the owner's 2026-09-06
-// ruling, after seven falsifying passes on the unattended version. Each one was harmful
-// only because a sweep WROTE: a wrong finish flips presence to `finished`, fires the
-// safety-tier post-workout dose reminder mid-workout, and removes the stale suggest's
-// Finish/Discard — the one message the person could have argued with. With no
-// unattended write the whole class is a wrong sentence in a message instead.
-//
-// The two readers are the two halves of that sentence:
-//   - `stillGoingEpisodes` puts the minute IN the nudge, so the person sees what they
-//     are confirming before they tap;
-//   - `finishWorkoutSession` stamps it when they do, instead of the tap's own instant.
-// What it costs, accepted knowingly in the ruling: the automaticity. A forgotten
-// workout stays wrong until the person acts on the suggestion.
+// gathers what that function takes, asks it, and hands back the instant. It WRITES
+// NOTHING, and neither reader writes without a person's tap — the owner's 2026-09-06
+// ruling, after seven falsifying passes on the unattended version. Every one of those
+// was harmful only because a sweep wrote: a wrong finish flipped presence to
+// `finished`, fired the safety-tier post-workout dose reminder mid-workout, and removed
+// the stale suggest's Finish/Discard, the one message the person could have argued
+// with. Removing the write retires the class rather than moving it to the next input,
+// and a wrong answer is now a wrong sentence in a message. What that costs, accepted
+// knowingly in the ruling: the automaticity — a forgotten workout stays wrong until the
+// person acts on the suggestion.
 //
 // ── THE TRACE DECIDES, NEVER THE CLOCK ───────────────────────────────────────
 // With no HR minutes past the start there is no proposal, the nudge says what it always
 // said, and a tap stamps its own instant as it always did. A wrist that comes off
 // mid-session reads as absence rather than as recovery, which the detector's own
-// coverage gate already refuses.
+// coverage gate already refuses. Nothing here takes a clock at all.
 //
 // ── A REST IS NOT AN END, AND THE DATABASE CANNOT SAY IT EXACTLY ─────────────
 // The detector takes `lastSetAt` — "the newest set's instant on this row" — because a
@@ -105,20 +101,19 @@ interface OpenWorkoutRow {
 /**
  * THE ROW'S SHAPE, NOT THE EDITOR'S MODE (#5212 falsifying pass, F1 and F2).
  *
- * The first draft asked `getWorkoutPresence` whether a session was `active`, which is
- * the dock's question: is there a live editor to render? That carries the workout
- * kind's own bounds with it, so a draft quiet past `EPISODE_BOUNDS.workout.abandonMin`
- * read `idle` — and `updated_at` only moves forward, so past ninety minutes the row was
- * unreachable FOREVER. The forgotten workout this module opens with ("the person
- * leaves, the draft goes quiet for two hours") was the single case it could never
- * serve. `active` also requires `row.date === today`, so a session started at 23:50
- * could not be answered at any instant.
+ * The first draft asked `getWorkoutPresence` whether a session was `active` — the
+ * dock's question, which carries the workout kind's own bounds with it. Past
+ * `EPISODE_BOUNDS.workout.abandonMin` a draft reads `idle`, and `updated_at` only moves
+ * forward, so at ninety-one minutes of quiet the row was unreachable FOREVER: the
+ * forgotten workout this module opens with was the single case it could never serve.
+ * `active` also requires `row.date === today`, which no session started at 23:50 can
+ * satisfy while its closing quiet is being measured.
  *
- * Both dissolve into the same gate, and it is the one `detectedWorkoutEnd`'s own doc
- * already stated: "'Open' is the ROW's shape rather than the editor's mode". A start,
- * no end, no stored duration, and not imported — `isCompletedSessionRow`'s three
+ * Both dissolve into the gate `detectedWorkoutEnd`'s own doc already stated: "'Open' is
+ * the ROW's shape rather than the editor's mode" — `isCompletedSessionRow`'s three
  * questions plus the source. Nothing here touches `EPISODE_BOUNDS`, which the dock and
- * every other reader still share.
+ * every other reader still share. (The NUDGE that quotes this answer has the dock's
+ * bounds of its own; a row past them is reached by opening the workout instead.)
  */
 function openWorkoutRow(
   profileId: number,

@@ -698,7 +698,10 @@ describe("the nudge carries the minute, and the tap stamps it", () => {
   afterEach(() => vi.useRealTimers());
 
   /** The headline row: elevated 16:00–16:35, quiet after, last saved 16:30, clock 18:00. */
-  function seedNudgeableSession(name: string, withTrace: boolean): {
+  function seedNudgeableSession(
+    name: string,
+    withTrace: boolean
+  ): {
     p: number;
     id: number;
   } {

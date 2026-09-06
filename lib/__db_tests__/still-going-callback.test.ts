@@ -334,7 +334,11 @@ describe("renderStillGoingMessage (#1205, one family at #5142)", () => {
   // NEITHER KIND EVER SAYS SOMETHING WAS ENDED (#560). The nudge suggests; the tap
   // writes.
   it("promises no automatic end, whatever the kind", () => {
-    for (const episode of [workout, { ...workout, detectedEnd: "16:35" }, practice])
+    for (const episode of [
+      workout,
+      { ...workout, detectedEnd: "16:35" },
+      practice,
+    ])
       expect(renderStillGoingMessage(episode, 7, "Ada", "").body).toContain(
         "nothing was ended automatically"
       );
