@@ -14,10 +14,11 @@ const ACTIVITY_ROW =
 
 test("activity rows open the canonical activity page", async ({ page }) => {
   await page.goto("/training?tab=log");
+  // eslint-disable-next-line no-restricted-properties -- first-ok: newest seeded Push day; its set summaries prove the compact index reuses the record's own numbers
   const row = page
     .locator(ACTIVITY_ROW)
     .filter({ hasText: "Push day" })
-    .first(); // first-ok: newest seeded Push day; its set summaries prove the compact index reuses the record's own numbers
+    .first();
   await expect(row).toBeVisible();
 
   // THE SETS ARE THE SUBSTRATE'S OWN DISCLOSURE (#4079), not a training layer laid
@@ -72,7 +73,7 @@ test("a #day-YYYY-MM-DD anchor still addresses the day it names", async ({
   page,
 }) => {
   await page.goto("/training?tab=log");
-  const firstDay = page.getByTestId("training-log-day").first(); // first-ok: the newest rendered day; any rendered day proves the anchor grammar
+  const firstDay = page.getByTestId("training-log-day").first(); // eslint-disable-line no-restricted-properties -- first-ok: the newest rendered day; any rendered day proves the anchor grammar
   await expect(firstDay).toBeVisible();
   const anchor = (await firstDay.getAttribute("id"))!;
   expect(anchor, "the day section keeps the `day-` anchor grammar").toMatch(
@@ -104,7 +105,7 @@ test("phone rows use the same canonical destination", async ({ page }) => {
   // endurance events, whose rows are owned by other surfaces and correctly go
   // somewhere else — an unscoped `.first()` asserts the activity destination against
   // whichever kind happened to be newest.
-  const row = page.locator(ACTIVITY_ROW).first(); // first-ok: any activity row proves the shared destination
+  const row = page.locator(ACTIVITY_ROW).first(); // eslint-disable-line no-restricted-properties -- first-ok: any activity row proves the shared destination
   await expect(row).toBeVisible();
   const id = (await row.getAttribute("data-history-row-id"))!.replace(
     "feed:activity:",
@@ -145,12 +146,12 @@ test("Back returns to the widened log with the row you opened still on screen", 
 }) => {
   await page.goto("/training?tab=log");
   const rows = page.locator(ACTIVITY_ROW);
-  await expect(rows.first()).toBeVisible(); // first-ok: presence gate before counting
+  await expect(rows.first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: presence gate before counting
   const openingWindow = await rows.count();
 
   // Open older history. Without this the whole question is trivial — every row would
   // be in the DOM on a plain reload and Back could not tell us anything.
-  const fold = page.locator('[data-testid^="training-log-fold-"]').first(); // first-ok: the newest fold, whichever period it is — order-agnostic
+  const fold = page.locator('[data-testid^="training-log-fold-"]').first(); // eslint-disable-line no-restricted-properties -- first-ok: the newest fold, whichever period it is — order-agnostic
   await expect(fold).toBeVisible();
   await fold.locator('[data-testid$="-toggle"]').click();
   await page.waitForURL(/[?&]open=/);
@@ -175,7 +176,7 @@ test("Back returns to the widened log with the row you opened still on screen", 
 
   await page.goBack();
   await expect(page).toHaveURL(widenedUrl);
-  await expect(rows.first()).toBeVisible(); // first-ok: presence gate before measuring
+  await expect(rows.first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: presence gate before measuring
   expect(await rows.count()).toBe(widened);
 
   // POSITION, not `toBeVisible()`: Playwright's visibility check is "non-empty

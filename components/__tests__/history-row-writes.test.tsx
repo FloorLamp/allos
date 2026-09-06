@@ -526,6 +526,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
           clockKind: "stated",
           slotBoundaries: { midday: 660, evening: 1020 },
           substanceCorrectable: true,
+          notes: null,
         },
       }),
     ]);
@@ -562,6 +563,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
           clockKind: "stated",
           slotBoundaries: { midday: 660, evening: 1020 },
           substanceCorrectable: true,
+          notes: null,
         },
       }),
     ]);
@@ -587,6 +589,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
           clockKind: "logged",
           slotBoundaries: { midday: 660, evening: 1020 },
           substanceCorrectable: true,
+          notes: null,
         },
       }),
     ]);
@@ -612,6 +615,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
           eventId: 4,
           substance: "nicotine",
           statedAt: "2026-08-18T13:15:00.000Z",
+          notes: "after lunch",
         },
       }),
     ]);
@@ -623,12 +627,13 @@ describe("the record's ⋯ posts to the domain's own action", () => {
     expect(fd.event_id).toBe("4");
     expect(fd.date).toBe("2026-08-18");
     // ALWAYS POSTED, so a time somebody wants gone can actually go: an absent field
-    // means "leave it alone" to the action, an empty one means "clear it".
+    // means "leave it alone" to the action, an empty one means "clear it". The NOTE
+    // rides on the same terms, seeded from the row (#5304).
     expect(fd.stated_at).toBeDefined();
-    // A USE IS NOT A DAY (#5026 phase 2): neither the day's amount nor its note is on
-    // this door, so the correction cannot restate either through the back way.
+    expect(fd.notes).toBe("after lunch");
+    // A USE IS NOT A DAY (#5026 phase 2): the day's amount is not on this door, so the
+    // correction cannot restate it through the back way.
     expect(fd.amount).toBeUndefined();
-    expect(fd.notes).toBeUndefined();
   });
 
   it("dose amends through the domain's own form, seeded from the STATED instant", async () => {
@@ -754,6 +759,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
           eventId: 4,
           substance: "nicotine",
           statedAt: null,
+          notes: "after lunch",
         },
       }),
       "correctSubstanceUseAction",
@@ -763,6 +769,9 @@ describe("the record's ⋯ posts to the domain's own action", () => {
         // Empty rather than absent: nobody stated a minute for this use, and the
         // correction's three wire states make that different from "leave it alone".
         stated_at: "",
+        // The use's own note, posted back as seeded (#5304): a dropped prefill here
+        // would clear it on a time-only save.
+        notes: "after lunch",
         // The shared form declares its surface (#3087) as the symptom form beside it
         // already did; the hand-rolled substance form it replaced posted nothing, so
         // every correction made here was stamped by the action's fallback instead.
@@ -786,6 +795,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
           clockKind: "stated",
           slotBoundaries: { midday: 660, evening: 1020 },
           substanceCorrectable: true,
+          notes: "with dressing",
         },
       }),
       "updateFoodLogEvent",
@@ -794,6 +804,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
         date: "2026-08-18",
         group_key: "leafy_greens",
         meal_slot: "Midday",
+        notes: "with dressing",
         // Same note as substance two entries up (#3087): the shared form declares its
         // surface, and the hand-rolled food form it replaced posted nothing.
         logged_via: "page",
@@ -951,6 +962,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
           clockKind: "logged",
           slotBoundaries: { midday: 660, evening: 1020 },
           substanceCorrectable: true,
+          notes: null,
         },
       }),
       "deleteFoodLogEvent",
@@ -985,6 +997,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
           eventId: 4,
           substance: "nicotine",
           statedAt: null,
+          notes: null,
         },
       }),
       "deleteSubstanceUseAction",
@@ -1157,6 +1170,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
               clockKind: "logged",
               slotBoundaries: { midday: 660, evening: 1020 },
               substanceCorrectable: true,
+              notes: null,
             },
           }),
           row({
@@ -1173,6 +1187,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
               clockKind: "logged",
               slotBoundaries: { midday: 660, evening: 1020 },
               substanceCorrectable: true,
+              notes: null,
             },
           }),
         ]}

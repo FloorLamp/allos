@@ -69,11 +69,12 @@ test.describe("Upcoming row actions (#1446)", () => {
     // both an override menu and a snooze menu to offer. Located by key prefix,
     // never by a specific rule, so a catalog edit or a neighbour's "mark done"
     // can't break the spec.
+    // eslint-disable-next-line no-restricted-properties -- first-ok: any preventive row proves the shape — order-agnostic
     const preventiveRow = main
       .locator(
         '[data-testid^="upcoming-item-visit:"], [data-testid^="upcoming-item-screening:"]'
       )
-      .first(); // first-ok: any preventive row proves the shape — order-agnostic
+      .first();
     await expect(preventiveRow).toBeVisible();
     await expect(
       preventiveRow.getByTestId("overflow-menu-trigger")

@@ -36,10 +36,8 @@ function workspace(page: Page) {
 // Same shape-tolerant combobox pick the live-workout and live-page specs use.
 async function pickActivity(page: Page, name: string) {
   await page.getByPlaceholder(/What did you do/).fill(name);
-  await comboboxRows(page)
-    .filter({ hasText: name })
-    .first() // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
-    .click();
+  // eslint-disable-next-line no-restricted-properties -- first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
+  await comboboxRows(page).filter({ hasText: name }).first().click();
 }
 
 test("a new activity closes from the header ✕, and there is no backdrop behind it", async ({
@@ -107,7 +105,9 @@ test("the ✕ asks before discarding a typed draft that never became a row", asy
   await expect(discard).toContainText("Discard unsaved changes?");
   // Cancel keeps the typing AND the workspace it was typed into.
   await discard.getByRole("button", { name: "Cancel" }).click();
-  await expect(panel.getByPlaceholder(/What did you do/)).toHaveValue(
+  // A picked lift states itself as a heading rather than inside a mounted field
+  // (#5370); the claim is the same one — the typing survived Cancel.
+  await expect(panel.getByTestId("part-name-heading")).toContainText(
     "Barbell Bench Press"
   );
 
@@ -122,7 +122,7 @@ test("the ✕ asks before discarding an edit the form cannot save", async ({
   await page.goto("/training?tab=analyze&kind=strength&item=Back%20Squat");
   await followLink(
     page,
-    appContent(page).getByTestId("analyze-sessions").getByRole("link").first(), // first-ok: any stored session reaches the editor under test
+    appContent(page).getByTestId("analyze-sessions").getByRole("link").first(), // eslint-disable-line no-restricted-properties -- first-ok: any stored session reaches the editor under test
     /\/training\/activity\/\d+$/
   );
   await hydratedClick(page, appContent(page).getByTestId("activity-page-edit"));
@@ -132,8 +132,8 @@ test("the ✕ asks before discarding an edit the form cannot save", async ({
   // Blank a stored set's weight: a real row, edited, that auto-save cannot
   // persist — the one state #3420's guard exists for. The grid sits one tap
   // behind the compact summary chip on a seeded uniform session (#3336).
-  await hydratedClick(page, panel.getByTestId("set-summary").first()); // first-ok: any part's sets can be made incomplete; the first is always present
-  await panel.getByTestId("set1-weight").first().fill(""); // first-ok: any incomplete stored set blocks this edit; set 1 is always present
+  await hydratedClick(page, panel.getByTestId("set-summary").first()); // eslint-disable-line no-restricted-properties -- first-ok: any part's sets can be made incomplete; the first is always present
+  await panel.getByTestId("set1-weight").first().fill(""); // eslint-disable-line no-restricted-properties -- first-ok: any incomplete stored set blocks this edit; set 1 is always present
 
   // The ✕ is the SAME guarded route as Done and the backdrop, so it asks — and
   // Cancel leaves the work on screen rather than half-closing the workspace.
@@ -219,10 +219,11 @@ test("a live workout finishes from the sticky footer, and Save closes the worksp
   // a reopen through the server is a stronger reading of the end stamp than the
   // collapsed editor's own field was.
   await page.goto("/training?tab=log");
+  // eslint-disable-next-line no-restricted-properties -- first-ok: the activity row THIS spec created, filtered by its own title
   const row = appContent(page)
     .getByTestId("history-row")
     .filter({ hasText: title })
-    .first(); // first-ok: the activity row THIS spec created, filtered by its own title
+    .first();
   await expect(row).toBeVisible();
   await hydratedClick(page, row.getByTestId("history-row-title"));
   await page.waitForURL(/\/training\/activity\/\d+$/);

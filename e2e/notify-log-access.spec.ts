@@ -38,10 +38,11 @@ test.describe("Notify tick log (#2209)", () => {
     await expect(page.getByTestId("notify-log")).toBeVisible();
 
     // The BUSY profile's newest run carries its declines…
+    // eslint-disable-next-line no-restricted-properties -- first-ok: newest run first, and this spec owns this profile's rows
     const busyRun = page
       .getByTestId("notify-log-run")
       .filter({ hasText: NOTIFY_LOG_BUSY_PROFILE })
-      .first(); // first-ok: newest run first, and this spec owns this profile's rows
+      .first();
     await expect(busyRun).toBeVisible();
     await expect(busyRun.getByTestId("notify-log-decline-count")).toContainText(
       "declined"
@@ -64,10 +65,11 @@ test.describe("Notify tick log (#2209)", () => {
     test.slow();
 
     await page.goto("/settings/notify-log");
+    // eslint-disable-next-line no-restricted-properties -- first-ok: newest run first, and this spec owns this profile's rows
     const busyRun = page
       .getByTestId("notify-log-run")
       .filter({ hasText: NOTIFY_LOG_BUSY_PROFILE })
-      .first(); // first-ok: newest run first, and this spec owns this profile's rows
+      .first();
 
     // Collapsed by default — the run row is the unit, its lines are the detail.
     // A <details> keeps its content in the DOM when shut, so the honest assertion
@@ -132,7 +134,7 @@ test.describe("Notify tick log (#2209)", () => {
         u.searchParams.get("declines") === "1"
     );
     await expect(page.getByTestId("notify-log-declines-only")).toBeChecked();
-    await expect(page.getByTestId("notify-log-run").first()).toBeVisible(); // first-ok: any row proves the page rendered under the filter
+    await expect(page.getByTestId("notify-log-run").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: any row proves the page rendered under the filter
   });
 
   test("a member hitting the URL is redirected out", async ({ browser }) => {

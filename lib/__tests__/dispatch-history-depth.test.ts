@@ -18,13 +18,19 @@ const source = fs.readFileSync(
   "utf8"
 );
 
+// AND THE CONSEQUENCE PINNED FOR THE SHALLOW BRANCH IS THE REMEDY, NOT THE WORD
+// IT NEGATES. This row asked for "UNREACHABLE", which the fixed sentence still
+// contains — "anything older is ABSENT, NOT UNREACHABLE" — so the old token
+// passed on both the defect and its correction and could tell them apart in
+// neither direction (#5469).
+
 describe("the brief states the history it can actually reach", () => {
   it.each([
     [
       true,
       "abc1234 (2026-07-09) Initial public release",
       "SHALLOW",
-      "UNREACHABLE",
+      "deepen, then check",
     ],
     [
       false,

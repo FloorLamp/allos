@@ -69,10 +69,11 @@ test("the pillar card shows the canonical name and the value, not the raw name a
   const section = page.getByRole("main").getByTestId("longevity-biomarkers");
   await expect(section).toBeVisible();
 
+  // eslint-disable-next-line no-restricted-properties -- first-ok: filtered to the analyte THIS spec planted — the only reading of it
   const row = section
     .getByTestId("longevity-biomarker-row")
     .filter({ hasText: CANONICAL_NAME })
-    .first(); // first-ok: filtered to the analyte THIS spec planted — the only reading of it
+    .first();
   await expect(row).toBeVisible();
 
   // The clean vocabulary casing, never the lab's shouting case.

@@ -109,10 +109,11 @@ test("a weigh-in logged from the quick logger persists into the trend (#1042/#33
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto("/trends");
     await expect(
+      // eslint-disable-next-line no-restricted-properties -- first-ok: the 71.4 kg weight THIS test just logged (own fresh context); assert it surfaces on the scoped Trends chart stack
       page
         .getByTestId("body-charts-all")
         .getByText("71.4", { exact: false })
-        .first() // first-ok: the 71.4 kg weight THIS test just logged (own fresh context); assert it surfaces on the scoped Trends chart stack
+        .first()
     ).toBeVisible();
   } finally {
     await page.context().close();

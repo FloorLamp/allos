@@ -44,10 +44,8 @@ function sessionRows(marker: string): SessionRow[] {
 // shape-tolerant matcher).
 async function pickActivity(page: Page, name: string) {
   await page.getByPlaceholder(/What did you do/).fill(name);
-  await comboboxRows(page)
-    .filter({ hasText: name })
-    .first() // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
-    .click();
+  // eslint-disable-next-line no-restricted-properties -- first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
+  await comboboxRows(page).filter({ hasText: name }).first().click();
 }
 
 // The replayed row is the POINT of this test, so it cannot be avoided — but it is a
@@ -62,7 +60,7 @@ test("a workout logged offline queues at close, then syncs exactly once (#1596)"
   page,
   context,
 }) => {
-  marker = `Offline session ${Date.now()}`; // clock-ok: unique-name suffix for this spec's own session title, never a stored timestamp
+  marker = `Offline session ${Date.now()}`; // eslint-disable-line no-restricted-properties -- clock-ok: unique-name suffix for this spec's own session title, never a stored timestamp
 
   await page.goto("/training?tab=log");
   await hydratedClick(

@@ -458,9 +458,10 @@ test.describe("the rail's column on a phone (#3403)", () => {
     // purpose (`sm:pr-7`), so measuring the gutter on it would assert the opposite of
     // the rule. Measured as a relationship between the two boxes, not against a
     // constant.
+    // eslint-disable-next-line no-restricted-properties -- first-ok: the rule is per-row and identical on every one
     const band = await page
       .getByTestId("history-row")
-      .first() // first-ok: the rule is per-row and identical on every one
+      .first()
       .evaluate((el) => el.getBoundingClientRect().right);
     expect(band).toBeGreaterThan(edges.row);
     expect(band).toBeCloseTo(430, 0);

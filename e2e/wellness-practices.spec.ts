@@ -141,13 +141,15 @@ test("a relevant Wellness profile can reach its practice home from nav (#1620)",
   expect(await history.locator("tbody tr").count()).toBeGreaterThan(5);
   await history.getByRole("button", { name: "Show fewer sessions" }).click();
   await page.setViewportSize({ width: 390, height: 844 });
+  // eslint-disable-next-line no-restricted-properties -- first-ok: asserts the responsive shape of any visible session row, not its fixture identity
   const rowAction = history
     .locator("tbody tr")
-    .first() // first-ok: asserts the responsive shape of any visible session row, not its fixture identity
+    .first()
     .getByRole("button", { name: "Session actions" });
+  // eslint-disable-next-line no-restricted-properties -- first-ok: asserts the responsive shape of any visible session row, not its fixture identity
   const emptyNotes = history
     .locator("tbody tr")
-    .first() // first-ok: asserts the responsive shape of any visible session row, not its fixture identity
+    .first()
     .locator("td:not([data-card])", { hasText: "—" });
   await expect(emptyNotes).toBeHidden();
   await expect(rowAction).toBeVisible();

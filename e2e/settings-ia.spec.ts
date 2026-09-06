@@ -351,10 +351,11 @@ test.describe("Settings IA (#1462) — Notifications group", () => {
       // round-trip (action + refresh) completed — only then is a reload safe.
       const toggleRoutingCell = async (testid: string, to: boolean) => {
         const cell = member.getByTestId(testid);
+        // eslint-disable-next-line no-restricted-properties -- topass-ok: re-click the routing cell until the optimistic flip proves onChange fired — 'my click landed' is non-atomic with no navigation to follow (#830)
         await expect(async () => {
           await cell.click();
           await expect(cell).toBeChecked({ checked: to });
-        }).toPass(); // topass-ok: re-click the routing cell until the optimistic flip proves onChange fired — 'my click landed' is non-atomic with no navigation to follow (#830)
+        }).toPass();
         await expect(cell).toBeEnabled();
       };
       const tgRefill = member.getByTestId("matrix-cell-telegram-refill");
@@ -440,10 +441,11 @@ test.describe("Settings IA (#1462) — Notifications group", () => {
       // hydration window is silently swallowed with no navigation to follow (#830).
       const tapUntil = async (testid: string, checked: boolean) => {
         const box = member.getByTestId(testid);
+        // eslint-disable-next-line no-restricted-properties -- topass-ok: re-tap until the optimistic flip proves onChange fired — "my tap landed" is non-atomic with no navigation to follow (#830)
         await expect(async () => {
           await box.click();
           await expect(box).toBeChecked({ checked });
-        }).toPass(); // topass-ok: re-tap until the optimistic flip proves onChange fired — "my tap landed" is non-atomic with no navigation to follow (#830)
+        }).toPass();
         await expect(box).toBeEnabled();
       };
 
@@ -462,10 +464,11 @@ test.describe("Settings IA (#1462) — Notifications group", () => {
 
       // Drive to a known state — a --repeat-each run re-enters with the previous run's
       // writes. `check()` is a no-op once the column is already fully on.
+      // eslint-disable-next-line no-restricted-properties -- topass-ok: idempotent drive-to-known-state on a client-onChange control that may still be hydrating (#830); check() is a no-op once already on
       await expect(async () => {
         await header.check();
         await expect(header).toBeChecked();
-      }).toPass(); // topass-ok: idempotent drive-to-known-state on a client-onChange control that may still be hydrating (#830); check() is a no-op once already on
+      }).toPass();
       await expect(refill).toBeChecked();
       await expect(digest).toBeChecked();
       await expect(dose).toBeChecked();
@@ -537,6 +540,7 @@ test.describe("Settings IA (#1462) — group pages write", () => {
       await expect(bd).toBeVisible();
       // Wait for hydration so the controlled field's onChange (and the autosave it drives)
       // is wired before filling — a pre-hydration fill would never save (#794 blur path).
+      // eslint-disable-next-line no-restricted-properties -- topass-ok: hydration gate for the controlled DateField whose display reformats a valid ISO, so a value assertion can't express the wait (#794)
       await expect(async () => {
         const hydrated = await bd.evaluate((el) =>
           Object.keys(el).some(
@@ -545,7 +549,7 @@ test.describe("Settings IA (#1462) — group pages write", () => {
           )
         );
         expect(hydrated, "birthdate field not hydrated yet").toBe(true);
-      }).toPass(); // topass-ok: hydration gate for the controlled DateField whose display reformats a valid ISO, so a value assertion can't express the wait (#794)
+      }).toPass();
       await bd.fill("1990-01-01");
       // The settings autosave path returns the closure acknowledgment as a toast (#1305).
       await expect(

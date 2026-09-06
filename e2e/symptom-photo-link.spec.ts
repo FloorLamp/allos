@@ -42,10 +42,11 @@ test.describe("Symptom photo ↔ log link (#1093)", () => {
 
     // Reach this fixture's OWN open episode through its index (it owns exactly one).
     await page.goto("/medical/episodes");
+    // eslint-disable-next-line no-restricted-properties -- first-ok: spec-owned fixture with a single ongoing episode — order-agnostic
     const episodeLink = page
       .getByTestId("episode-index-row")
       .filter({ hasText: /ongoing/i })
-      .first(); // first-ok: spec-owned fixture with a single ongoing episode — order-agnostic
+      .first();
     await followLink(page, episodeLink, /\/medical\/episodes\/\d+/);
 
     const strip = page.getByTestId("symptom-photo-strip");
@@ -66,7 +67,7 @@ test.describe("Symptom photo ↔ log link (#1093)", () => {
 
     async function emptyTheStrip() {
       for (let remaining = await tiles.count(); remaining > 0; remaining--) {
-        await tiles.first().click(); // first-ok: loop deletes EVERY photo on a spec-owned episode — order-agnostic
+        await tiles.first().click(); // eslint-disable-line no-restricted-properties -- first-ok: loop deletes EVERY photo on a spec-owned episode — order-agnostic
         await expect(lightbox).toBeVisible();
         await lightbox
           .locator('[data-testid^="symptom-photo-delete-"]')
@@ -116,7 +117,7 @@ test.describe("Symptom photo ↔ log link (#1093)", () => {
     await expect(strip.getByTestId("photo-gallery-series-cough")).toHaveText(
       "Cough"
     );
-    await tiles.first().click(); // first-ok: the strip was emptied above, so this is the only tile
+    await tiles.first().click(); // eslint-disable-line no-restricted-properties -- first-ok: the strip was emptied above, so this is the only tile
     await expect(lightbox).toBeVisible();
     await expect(lightbox).toContainText("Cough");
     await expect(lightbox).toContainText(caption);
@@ -125,7 +126,7 @@ test.describe("Symptom photo ↔ log link (#1093)", () => {
 
     // The reverse payoff: the episode cockpit gathers cough as one of its symptoms.
     await expect(
-      page.getByTestId("symptom-log-bar").first() // first-ok: spec-owned fixture's own symptom bar — order-agnostic
+      page.getByTestId("symptom-log-bar").first() // eslint-disable-line no-restricted-properties -- first-ok: spec-owned fixture's own symptom bar — order-agnostic
     ).toContainText("Cough");
 
     // Clean up every photo we added so a re-run starts where it began.
@@ -148,10 +149,11 @@ test.describe("Symptom photo ↔ log link (#1093)", () => {
     });
 
     await page.goto("/medical/episodes");
+    // eslint-disable-next-line no-restricted-properties -- first-ok: spec-owned fixture with a single ongoing episode — order-agnostic
     const episodeLink = page
       .getByTestId("episode-index-row")
       .filter({ hasText: /ongoing/i })
-      .first(); // first-ok: spec-owned fixture with a single ongoing episode — order-agnostic
+      .first();
     await followLink(page, episodeLink, /\/medical\/episodes\/\d+/);
 
     const strip = page.getByTestId("symptom-photo-strip");
@@ -163,7 +165,7 @@ test.describe("Symptom photo ↔ log link (#1093)", () => {
     // counts below are this test's own and the upload's content hash is free.
     async function emptyTheStrip() {
       for (let remaining = await tiles.count(); remaining > 0; remaining--) {
-        await tiles.first().click(); // first-ok: loop deletes EVERY photo on a spec-owned episode — order-agnostic
+        await tiles.first().click(); // eslint-disable-line no-restricted-properties -- first-ok: loop deletes EVERY photo on a spec-owned episode — order-agnostic
         await expect(lightbox).toBeVisible();
         await lightbox
           .locator('[data-testid^="symptom-photo-delete-"]')
@@ -202,7 +204,7 @@ test.describe("Symptom photo ↔ log link (#1093)", () => {
 
     // Clear the symptom-day. The photo goes with it — and the Undo affordance appears,
     // which the bar renders only when the action came back holding a capture token.
-    const bar = page.getByTestId("symptom-log-bar").first(); // first-ok: spec-owned fixture's own symptom bar — order-agnostic
+    const bar = page.getByTestId("symptom-log-bar").first(); // eslint-disable-line no-restricted-properties -- first-ok: spec-owned fixture's own symptom bar — order-agnostic
     await settledClick(page, bar.getByTestId("symptom-cough-clear"));
     await expect(page.getByText("Symptom removed.")).toBeVisible();
     await expect(tiles).toHaveCount(0, { timeout: 15_000 });
@@ -223,7 +225,7 @@ test.describe("Symptom photo ↔ log link (#1093)", () => {
       stripAfter.getByTestId("photo-gallery-series-cough")
     ).toHaveText("Cough");
     await expect(
-      page.getByTestId("symptom-log-bar").first() // first-ok: spec-owned fixture's own symptom bar — order-agnostic
+      page.getByTestId("symptom-log-bar").first() // eslint-disable-line no-restricted-properties -- first-ok: spec-owned fixture's own symptom bar — order-agnostic
     ).toContainText("Cough");
 
     // Clean up every photo we added so a re-run starts where it began.

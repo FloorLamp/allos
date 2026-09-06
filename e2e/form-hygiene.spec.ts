@@ -105,9 +105,10 @@ test("a disabled primary button uses the one accessible disabled treatment (#145
 
   // ONE treatment, not two: the admin Delete button in the same page family
   // resolves to the same disabled surface rather than its own grey.
+  // eslint-disable-next-line no-restricted-properties -- first-ok: spec asserts the shared disabled treatment on any one instance of this repeated admin row control
   const deleteLogin = page
     .getByRole("button", { name: "Sign out devices" })
-    .first(); // first-ok: spec asserts the shared disabled treatment on any one instance of this repeated admin row control
+    .first();
   if (await deleteLogin.isDisabled()) {
     const ghost = await deleteLogin.evaluate(
       (el) => getComputedStyle(el).backgroundColor
@@ -181,11 +182,12 @@ test("a date field displays its own value without clipping (#1450 A / #1448)", a
   // display text, so this cannot use settledFill (whose contract is that the
   // filled string STAYS the DOM value). Retry the fill so a pre-hydration one that
   // React reverts is re-applied, and settle on the formatted result.
+  // eslint-disable-next-line no-restricted-properties -- topass-ok: the fill and its formatted re-render are one non-atomic step — a bare expect cannot re-apply a fill React reverted before hydration
   await expect(async () => {
     await dateField.fill("2026-12-24");
     // The year-bearing short form, not the year-less long one it used to render.
     await expect(dateField).toHaveValue("Dec 24, 2026", { timeout: 2_000 });
-  }).toPass({ timeout: 15_000 }); // topass-ok: the fill and its formatted re-render are one non-atomic step — a bare expect cannot re-apply a fill React reverted before hydration
+  }).toPass({ timeout: 15_000 });
   const clipped = await dateField.evaluate(
     (el) => el.scrollWidth > el.clientWidth + 1
   );

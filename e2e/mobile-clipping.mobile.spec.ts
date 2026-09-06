@@ -174,10 +174,10 @@ test.describe("mobile clipping batch (#2614)", () => {
 
     // MOOD is the cell the census caught mid-glyph ("🙂 Good (4") at the card
     // edge. It is a labelled card line now, laid out inside the card it belongs to.
-    const mood = history.getByTestId("sleep-history-mood").first(); // first-ok: the claim is about the mood cell's SHAPE, not about which night
+    const mood = history.getByTestId("sleep-history-mood").first(); // eslint-disable-line no-restricted-properties -- first-ok: the claim is about the mood cell's SHAPE, not about which night
     await expect(mood).toBeVisible();
     await expect(mood.locator(".card-cell-label")).toHaveText("Mood");
-    const card = page.getByTestId("sleep-mood-history-row").first(); // first-ok: same row as the cell above — the card that holds it
+    const card = page.getByTestId("sleep-mood-history-row").first(); // eslint-disable-line no-restricted-properties -- first-ok: same row as the cell above — the card that holds it
     expect(await overhangWithin(mood, card)).toBeLessThanOrEqual(1);
   });
 
@@ -216,7 +216,7 @@ test.describe("mobile clipping batch (#2614)", () => {
     // its content satisfies every geometry claim made about it (#3384), and an
     // empty naps corpus is the state that flatters this test.
     await expect(
-      history.getByTestId("sleep-history-naps").first() // first-ok: any painted naps cell proves the rows rendered; the reads below are over ALL of them
+      history.getByTestId("sleep-history-naps").first() // eslint-disable-line no-restricted-properties -- first-ok: any painted naps cell proves the rows rendered; the reads below are over ALL of them
     ).toBeVisible();
 
     // The fixture first, in its own words: this test can only judge the layout of a
@@ -301,7 +301,7 @@ test.describe("mobile clipping batch (#2614)", () => {
     );
     await expect(family).toBeVisible();
     const rows = family.getByTestId("dashboard-candidate");
-    await expect(rows.first()).toBeVisible(); // first-ok: presence proves the family rendered; the assertions below are over ALL of them
+    await expect(rows.first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: presence proves the family rendered; the assertions below are over ALL of them
 
     // No name is sacrificed to the value column. The census measured this as the
     // rendered box against the text's own width; a Range says the same thing for an
@@ -352,8 +352,8 @@ test.describe("mobile clipping batch (#2614)", () => {
     // Wait for a real dose cell, not the container: a table measured before its
     // rows are laid out fits any width (the #3384 lesson).
     const doses = table.locator("tbody tr td:last-child");
-    await expect(doses.first()).toBeVisible(); // first-ok: presence proves the rows rendered; the assertions below read ALL of them
-    await expect(doses.filter({ hasText: "season" }).first()).toBeVisible(); // first-ok: the seeded labelled flu dose — the longest line in the column, and the one that used to set the min-content width
+    await expect(doses.first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: presence proves the rows rendered; the assertions below read ALL of them
+    await expect(doses.filter({ hasText: "season" }).first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: the seeded labelled flu dose — the longest line in the column, and the one that used to set the min-content width
 
     // It fits: nothing to scroll sideways to, inside its own scroller OR the card.
     expect(await scrollableBy(table)).toBeLessThanOrEqual(1);
@@ -416,7 +416,7 @@ test.describe("mobile clipping batch (#2614)", () => {
     // they land is a box that fits any width — and every assertion below is an
     // ABSENCE, the direction an unrendered page flatters.
     const days = calendar.getByTestId("day-history-day");
-    await expect(days.first()).toBeVisible(); // first-ok: presence proves the grid laid out; the assertions below read ALL of them
+    await expect(days.first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: presence proves the grid laid out; the assertions below read ALL of them
     const panel = page.getByTestId("day-history-calendar-panel");
 
     // 1. THE CONTAINER FITS. The panel is the grid item that used to be sized by
@@ -1043,7 +1043,7 @@ test("the record's standing offer stays inside its column (#4918)", async ({
       await expect(host).toBeVisible();
       // The seed's own claim, read back: a one-line label would satisfy the layout
       // assertion below on a tree that still had the defect.
-      const names = page.locator('[data-testid$="-names"]').first(); // first-ok: whichever window's offer stands, its summary is the truncating span
+      const names = page.locator('[data-testid$="-names"]').first(); // eslint-disable-line no-restricted-properties -- first-ok: whichever window's offer stands, its summary is the truncating span
       await expect(names).toBeVisible();
       expect(
         ((await names.textContent()) ?? "").length,
@@ -1056,7 +1056,7 @@ test("the record's standing offer stays inside its column (#4918)", async ({
       // cannot see a row that hangs past a container which is itself narrower than
       // the viewport.
       const overhang = await overhangWithin(
-        host.getByRole("button").first(), // first-ok: the first standing offer is the row measured
+        host.getByRole("button").first(), // eslint-disable-line no-restricted-properties -- first-ok: the first standing offer is the row measured
         page.getByTestId("history-add")
       );
       expect(

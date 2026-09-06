@@ -32,7 +32,7 @@ test.describe("encounter detail enrichment (#1350/#1353)", () => {
     await page.goto("/records/history/visits");
     await followLink(
       page,
-      page.getByRole("link", { name: /Office Visit/ }).first(), // first-ok: dedicated ENCRICH fixture profile — the newest of its own two visits is the subject
+      page.getByRole("link", { name: /Office Visit/ }).first(), // eslint-disable-line no-restricted-properties -- first-ok: dedicated ENCRICH fixture profile — the newest of its own two visits is the subject
       /\/encounters\/\d+/
     );
     await expect(page.getByTestId("encounter-detail")).toBeVisible();

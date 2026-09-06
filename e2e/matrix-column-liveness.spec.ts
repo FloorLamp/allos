@@ -86,10 +86,11 @@ test.describe("Matrix column liveness", () => {
       // wait for the box to re-enable, which proves the save round trip completed.
       const setCell = async (testid: string, to: boolean) => {
         const cell = member.getByTestId(testid);
+        // eslint-disable-next-line no-restricted-properties -- topass-ok: re-click the routing cell until the optimistic flip proves onChange fired — "my click landed" is non-atomic with no navigation to follow (#830)
         await expect(async () => {
           await cell.click();
           await expect(cell).toBeChecked({ checked: to });
-        }).toPass(); // topass-ok: re-click the routing cell until the optimistic flip proves onChange fired — "my click landed" is non-atomic with no navigation to follow (#830)
+        }).toPass();
         await expect(cell).toBeEnabled();
       };
 

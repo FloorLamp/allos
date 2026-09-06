@@ -29,9 +29,9 @@ test("Clinical results surfaces a derived clinical index (#40)", async ({
   // "derived indices render", not about pagination order.
   await page.goto("/results?q=non-hdl");
   // The derived index renders its Derived badge.
-  await expect(page.getByTestId("derived-badge").first()).toBeVisible(); // first-ok: asserts a Derived badge renders — order-agnostic presence
+  await expect(page.getByTestId("derived-badge").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: asserts a Derived badge renders — order-agnostic presence
   // Non-HDL Cholesterol is derived from the seeded Total + HDL readings.
-  const link = page.getByRole("link", { name: "Non-HDL Cholesterol" }).first(); // first-ok: the seeded Non-HDL Cholesterol result link — order-agnostic
+  const link = page.getByRole("link", { name: "Non-HDL Cholesterol" }).first(); // eslint-disable-line no-restricted-properties -- first-ok: the seeded Non-HDL Cholesterol result link — order-agnostic
   await followLink(page, link, /\/results\/clinical-results\/view/);
 
   const note = page.getByTestId("derived-note");
@@ -50,9 +50,9 @@ test("Clinical results surfaces the derived PhenoAge biological age (#157)", asy
 }) => {
   await page.goto("/results?q=phenoage");
   // Renders with the shared "Derived" badge.
-  await expect(page.getByTestId("derived-badge").first()).toBeVisible(); // first-ok: asserts a Derived badge renders — order-agnostic presence
+  await expect(page.getByTestId("derived-badge").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: asserts a Derived badge renders — order-agnostic presence
 
-  const link = page.getByRole("link", { name: "PhenoAge" }).first(); // first-ok: the seeded PhenoAge result link — order-agnostic
+  const link = page.getByRole("link", { name: "PhenoAge" }).first(); // eslint-disable-line no-restricted-properties -- first-ok: the seeded PhenoAge result link — order-agnostic
   await followLink(page, link, /\/results\/clinical-results\/view/);
 
   const note = page.getByTestId("derived-note");
@@ -160,7 +160,7 @@ test("command palette surfaces a seeded allergy for 'penicillin' (#19)", async (
   });
   const hit = results.getByRole("option", { name: /Penicillin/i });
   // Selecting it navigates to Problems › Allergies, the pane that owns the record.
-  await followLink(page, hit.first(), /\/records\/problems\/allergies$/); // first-ok: the command-palette Penicillin allergy result — order-agnostic
+  await followLink(page, hit.first(), /\/records\/problems\/allergies$/); // eslint-disable-line no-restricted-properties -- first-ok: the command-palette Penicillin allergy result — order-agnostic
   await expect(page).toHaveURL(/\/records\/problems\/allergies$/);
 });
 
@@ -175,7 +175,7 @@ test("supplements page shows a refill days-left estimate with its basis (#38)", 
   // The supplements list is a shared surface, so take the first refill badge (whichever
   // supplement leads); the `refill-days-left` anatomy is owned by the shared med-card
   // driver (#868 class-2). The assertions below stay in the spec.
-  const badge = refillBadge(page).first(); // first-ok: shared list — asserts the days-left FORMAT on whichever refill badge leads (see comment above), not a specific supplement
+  const badge = refillBadge(page).first(); // eslint-disable-line no-restricted-properties -- first-ok: shared list — asserts the days-left FORMAT on whichever refill badge leads (see comment above), not a specific supplement
   await expect(badge).toContainText(/days?\s+left/);
   await expect(badge).toContainText(/based on (your last 30 days|schedule)/);
 });

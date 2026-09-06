@@ -17,10 +17,11 @@ import { expectNoClippedContent, followLink, settledBoxes } from "./helpers";
 async function openRecordActions(page: Page): Promise<void> {
   const trigger = page.getByRole("button", { name: "Record actions" });
   const printLink = page.getByTestId("immunization-print-link");
+  // eslint-disable-next-line no-restricted-properties -- topass-ok: re-tap the ⋯ until its panel appears past the hydration swallow — visibility-guarded so a late tap cannot close it
   await expect(async () => {
     if (!(await printLink.isVisible())) await trigger.click();
     await expect(printLink).toBeVisible({ timeout: 1000 });
-  }).toPass({ timeout: 20000, intervals: [300, 700, 1500] }); // topass-ok: re-tap the ⋯ until its panel appears past the hydration swallow — visibility-guarded so a late tap cannot close it
+  }).toPass({ timeout: 20000, intervals: [300, 700, 1500] });
 }
 
 test.describe("Immunization record print + share (#1849)", () => {
@@ -61,11 +62,12 @@ test.describe("Immunization record print + share (#1849)", () => {
     const create = page.getByTestId("immunization-share-create");
     // Ride out the hydration window (#730): retry opening the modal until its
     // Create button (a client-state toggle) actually appears.
+    // eslint-disable-next-line no-restricted-properties -- topass-ok: re-open the ⋯ and the share modal until its client-state Create button appears past the hydration swallow (#730) — no awaitable event for a client toggle
     await expect(async () => {
       await openRecordActions(page);
       await page.getByTestId("immunization-share-open").click();
       await expect(create).toBeVisible({ timeout: 2000 });
-    }).toPass(); // topass-ok: re-open the ⋯ and the share modal until its client-state Create button appears past the hydration swallow (#730) — no awaitable event for a client toggle
+    }).toPass();
     await create.click();
     const urlField = page.getByTestId("immunization-share-url");
     await expect(urlField).toBeVisible();
@@ -118,11 +120,12 @@ test.describe("Immunization record print + share (#1849)", () => {
     // KIND so the right one can be picked out (#1849).
     await page.goto("/profile");
     await page.getByRole("button", { name: "Share" }).click();
+    // eslint-disable-next-line no-restricted-properties -- first-ok: newest-first list — the FIRST immunization-record row is the link THIS test just created
     const row = page
       .locator("li")
       .filter({ hasText: "Immunization record" })
       .filter({ has: page.getByRole("button", { name: "Revoke" }) })
-      .first(); // first-ok: newest-first list — the FIRST immunization-record row is the link THIS test just created
+      .first();
     await expect(row).toBeVisible();
     await row.getByRole("button", { name: "Revoke" }).click();
 

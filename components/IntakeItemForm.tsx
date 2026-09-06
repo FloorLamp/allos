@@ -373,6 +373,17 @@ export default function IntakeItemForm({
     pediatric,
     pediatric
   );
+  // MIRRORED IN A REF for the same reason `ledgerRef` above is, and it is the same
+  // pick that outruns it: the seed lands after the RxNorm confirm, so the WEIGHT it
+  // doses against must be the one that stands when it seeds. A caregiver who updates
+  // the weight during that wait was served the old weight's band amount afterwards —
+  // the new weight's refusal had already run, against an offer not yet made, so
+  // nothing withdrew it and the picker sat on a band the recorded weight does not
+  // support (#5443). Written from RENDER rather than an effect because the seed can
+  // land between commit and passive effects, which is exactly the case this fixes.
+  const pediatricRef = useRef(pediatricContext);
+  // eslint-disable-next-line react-hooks/refs
+  pediatricRef.current = pediatricContext;
   const [ingredientSeedNote, setIngredientSeedNote] = useState<string | null>(
     null
   );
@@ -608,7 +619,7 @@ export default function IntakeItemForm({
   function seedFromPick(source: IntakePrefillSource) {
     const pf = resolveIntakePrefill({
       source,
-      pediatric: pediatricContext,
+      pediatric: pediatricRef.current,
       ledger: ledgerRef.current,
     });
     setLedger(pf.ledger);

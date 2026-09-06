@@ -42,11 +42,10 @@ import SubmitButton from "@/components/SubmitButton";
 // time is still a use, and nothing invents one (#2053).
 //
 // EDIT MODE CORRECTS ONE EVENT, NOT A DAY (#5026 phase 2). A consumable is an EVENT
-// (owner ruling, 2026-09-04), so what a correction moves is this use's day and the
-// minute stated for it. TWO FIELDS THAT WERE HERE ARE NOT: the amount, because one
-// event is one unit and there is no day count left to restate; and the day's NOTE,
-// which stays a fact about the day rather than about any use under it — #5077 owns
-// where a day note lives now, and this is the phase it was sequenced behind. A DRINK
+// (owner ruling, 2026-09-04), so what a correction moves is this use's day, the
+// minute stated for it, and its note (#5304 — the note is the use's own, correctable
+// and clearable on its row like every other per-event field). The amount is not here
+// because one event is one unit and there is no day count left to restate. A DRINK
 // never reaches edit mode at all: its record row carries the FOOD edit payload and
 // corrects through the serving's own form.
 
@@ -62,6 +61,9 @@ export interface SubstanceEntryRow {
   date: string;
   /** The stated use instant, or null for the commonest answer: nobody said. */
   statedAt: string | null;
+  /** What the person wrote about this use, or null. Seeds the field so a save can
+   *  restate or clear it rather than open blank over stored text. */
+  notes: string | null;
 }
 
 export default function SubstanceForm({
@@ -182,30 +184,35 @@ export default function SubstanceForm({
           />
         </div>
       </div>
-      {/* THE ADD DOOR'S FIELDS, and only the add door's. A correction addresses ONE
-          use, so there is no amount to restate and no day note to rewrite through it
-          (#5026 phase 2). */}
+      {/* THE ADD DOOR'S OWN FIELD. A correction addresses ONE use, so there is no
+          amount to restate through it (#5026 phase 2). */}
       {row ? null : (
-        <>
-          <label className="text-xs text-slate-500 dark:text-slate-400">
-            {`Amount (${unit})`}
-            <input
-              type="number"
-              name="amount"
-              min={1}
-              max={MAX_SUBSTANCE_ENTRY_AMOUNT}
-              step={1}
-              defaultValue={1}
-              required
-              className="input mt-1 w-full"
-            />
-          </label>
-          <label className="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2">
-            Notes
-            <textarea name="notes" rows={2} className="input mt-1 w-full" />
-          </label>
-        </>
+        <label className="text-xs text-slate-500 dark:text-slate-400">
+          {`Amount (${unit})`}
+          <input
+            type="number"
+            name="amount"
+            min={1}
+            max={MAX_SUBSTANCE_ENTRY_AMOUNT}
+            step={1}
+            defaultValue={1}
+            required
+            className="input mt-1 w-full"
+          />
+        </label>
       )}
+      {/* ALWAYS POSTED, like `stated_at`: absent means "leave it", empty means
+          "clear it" (#5304). On an add with several units it lands on the first. */}
+      <label className="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2">
+        Notes
+        <textarea
+          name="notes"
+          rows={2}
+          className="input mt-1 w-full"
+          defaultValue={row?.notes ?? ""}
+          data-testid="substance-notes"
+        />
+      </label>
       <InlineError>{error}</InlineError>
       <div className="flex items-end gap-2 sm:col-span-2">
         <SubmitButton variant="primary" disabled={pending}>
@@ -227,10 +234,5 @@ const REFUSALS: Record<string, string> = {
   "invalid-date": "Enter a valid date.",
   "invalid-amount": `Enter an amount between 1 and ${MAX_SUBSTANCE_ENTRY_AMOUNT}.`,
   "invalid-stated-at": "Enter a time on that day, not in the future.",
-  // Named rather than left to the fallback, because the person can act on it: the note
-  // is the day's and there is no door that moves it (#5304), so the way to move the
-  // last use of a noted day is to delete it and add it again where it belongs.
-  "day-note-stranded":
-    "Moving the day's last use would lose its note. Delete this use and add it on the new day instead.",
 };
 const refusal = (kind: string) => REFUSALS[kind] ?? "Couldn't save that entry.";

@@ -35,7 +35,7 @@ test.describe("API tokens (#1734)", () => {
     page,
   }) => {
     test.slow();
-    const name = `spec token ${Date.now()}`; // clock-ok: a uniqueness suffix for this spec's own fixture row, never a stored timestamp — the token's created_at is stamped by the server
+    const name = `spec token ${Date.now()}`; // eslint-disable-line no-restricted-properties -- clock-ok: a uniqueness suffix for this spec's own fixture row, never a stored timestamp — the token's created_at is stamped by the server
     await page.goto("/settings/tokens");
 
     // With exactly one scope in the vocabulary, the mint form states the capability
@@ -62,10 +62,11 @@ test.describe("API tokens (#1734)", () => {
     await expect(copy).toHaveAttribute("aria-label", "Copy");
 
     // 2. The token is in the list, with the capability and a never-used stamp.
+    // eslint-disable-next-line no-restricted-properties -- first-ok: the name is unique to this test, so this is spec-owned data
     const row = page
       .getByTestId("api-token-row")
       .filter({ hasText: name })
-      .first(); // first-ok: the name is unique to this test, so this is spec-owned data
+      .first();
     await expect(row).toBeVisible();
     await expect(row.getByTestId("api-token-scope")).toHaveText(
       "Upload documents"
@@ -81,10 +82,11 @@ test.describe("API tokens (#1734)", () => {
     expect(await page.content()).not.toContain(shown.split(".")[1]);
 
     // 4. Revoke removes it from the list.
+    // eslint-disable-next-line no-restricted-properties -- first-ok: spec-owned row, matched by its unique name
     const survivor = page
       .getByTestId("api-token-row")
       .filter({ hasText: name })
-      .first(); // first-ok: spec-owned row, matched by its unique name
+      .first();
     await hydratedClick(page, survivor.getByTestId("api-token-revoke"));
     await expect(page.getByTestId("api-token-status")).toHaveText(
       "Token revoked."

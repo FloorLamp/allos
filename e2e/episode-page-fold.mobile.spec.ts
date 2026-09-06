@@ -429,17 +429,19 @@ test.describe("an active episode page on a phone (#2612)", () => {
         .locator(`${unfolded}[data-testid="illness-event-medication"]`)
         .filter({ hasText: MEDICINE });
       await expect(
-        laidOutMedicine.first() // first-ok: one laid-out ibuprofen row proves the medicine survives the default
+        laidOutMedicine.first() // eslint-disable-line no-restricted-properties -- first-ok: one laid-out ibuprofen row proves the medicine survives the default
       ).toBeVisible();
       await expect(
+        // eslint-disable-next-line no-restricted-properties -- first-ok: the assertion is that SOME symptom row is laid out, not which
         timeline
           .locator(`${unfolded}[data-testid="illness-event-symptom"]`)
-          .first() // first-ok: the assertion is that SOME symptom row is laid out, not which
+          .first()
       ).toBeVisible();
       await expect(
+        // eslint-disable-next-line no-restricted-properties -- first-ok: same — the temperature half of the illness signal is laid out
         timeline
           .locator(`${unfolded}[data-testid="illness-event-temperature"]`)
-          .first() // first-ok: same — the temperature half of the illness signal is laid out
+          .first()
       ).toBeVisible();
 
       // 4. THE PRINTED RECORD STAYS COMPLETE. The chip narrows the SCREEN; the
@@ -462,10 +464,11 @@ test.describe("an active episode page on a phone (#2612)", () => {
         "true"
       );
       await expect(
+        // eslint-disable-next-line no-restricted-properties -- first-ok: a stack row back in the layout proves the tap restored it
         timeline
           .locator(`${unfolded}[data-testid="illness-event-medication"]`)
           .filter({ hasText: STACK[0] })
-          .first() // first-ok: a stack row back in the layout proves the tap restored it
+          .first()
       ).toBeVisible();
     } finally {
       const cleanup = openDb();

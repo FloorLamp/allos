@@ -276,7 +276,7 @@ test("R1 — the OFF SWITCH stops the REQUEST, so nothing re-materialises before
   // Wake the refresher on a page that is still mounted and still authenticated, with an
   // empty store in front of it — the refresher's own public trigger, not a back door.
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
-  await page.waitForTimeout(2_000); // waitfortimeout-ok: the assertion IS an absence — nothing may re-materialise in the window the refresher would have written in
+  await page.waitForTimeout(2_000); // eslint-disable-line no-restricted-properties -- waitfortimeout-ok: the assertion IS an absence — nothing may re-materialise in the window the refresher would have written in
 
   // #2908: "nothing re-materializes until toggled back on".
   expect(await storedKinds(page)).toEqual([]);
@@ -294,7 +294,7 @@ test("R1 — the OFF SWITCH stops the REQUEST, so nothing re-materialises before
   await page.unroute("**/*");
   await page.reload();
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
-  await page.waitForTimeout(3_000); // waitfortimeout-ok: absence again, across a fresh mount whose own refresh would be the writer
+  await page.waitForTimeout(3_000); // eslint-disable-line no-restricted-properties -- waitfortimeout-ok: absence again, across a fresh mount whose own refresh would be the writer
   expect(await storedKinds(page)).toEqual([]);
 
   // Turning it back ON re-opens the lane — asserted, not just tidied up, because a
@@ -364,7 +364,7 @@ test("R2b — a tab that LOADS inside the logout window does not re-open the gat
 
   // Longer than the refresher's own initial delay, so this is the window it would have
   // used rather than a window that never arrived.
-  await late.waitForTimeout(4_000); // waitfortimeout-ok: absence — the refresh window must pass with nothing written
+  await late.waitForTimeout(4_000); // eslint-disable-line no-restricted-properties -- waitfortimeout-ok: absence — the refresh window must pass with nothing written
 
   expect(await storedKinds(late)).toEqual([]);
   expect(
@@ -422,11 +422,12 @@ test("R3d — a queue flush in flight does not re-write its intents after logout
   // nothing of the kind: the worker's database is shared by every test on it, and that
   // dose can already be taken by the time this runs. Nothing here is about which
   // medication it is.
+  // eslint-disable-next-line no-restricted-properties -- first-ok: any dose still offering "Take" — this test is about the gate
   const take = page
     .getByTestId("medications-today")
     .locator("[data-today-row]")
     .filter({ has: page.getByRole("button", { name: "Take", exact: true }) })
-    .first() // first-ok: any dose still offering "Take" — this test is about the gate
+    .first()
     .getByRole("button", { name: "Take", exact: true });
   await expect(take).toBeVisible({ timeout: 20_000 });
   await context.setOffline(true);
@@ -494,7 +495,7 @@ test("R3d — a queue flush in flight does not re-write its intents after logout
     .toEqual([]);
 
   // Outlast the held replay, whose resolution is where `putIntents(plan.retry)` runs.
-  await page.waitForTimeout(REPLAY_HOLD_MS + 3_000); // waitfortimeout-ok: absence — the re-write lands here or not at all
+  await page.waitForTimeout(REPLAY_HOLD_MS + 3_000); // eslint-disable-line no-restricted-properties -- waitfortimeout-ok: absence — the re-write lands here or not at all
 
   // NON-VACUITY CONTROL. Everything below is an absence, and an absence is only evidence
   // if the thing that would have caused a presence actually happened. A flush that never
@@ -546,7 +547,7 @@ test("R3e — a draft's autosave debounce does not land a half-typed record afte
   await page.waitForURL(/\/login/, { timeout: 30_000 });
   // Outlast the debounce several times over: this asserts an ABSENCE, and an empty store
   // read before the write would have landed proves nothing.
-  await page.waitForTimeout(4_000); // waitfortimeout-ok: absence — several times the 600ms autosave debounce that used to land the draft
+  await page.waitForTimeout(4_000); // eslint-disable-line no-restricted-properties -- waitfortimeout-ok: absence — several times the 600ms autosave debounce that used to land the draft
 
   // lib/offline/draft-db.ts's own contract: "the next login must never be offered the
   // previous one's half-typed workout."
@@ -589,7 +590,7 @@ test("R-A — a logout that FAILS leaves the device able to save again", async (
 
   await login(page);
   await page.goto("/medications");
-  await expect(takeable.first()).toBeVisible({ timeout: 20_000 }); // first-ok: any dose still offering "Take" — this test is about the gate, not about a medication
+  await expect(takeable.first()).toBeVisible({ timeout: 20_000 }); // eslint-disable-line no-restricted-properties -- first-ok: any dose still offering "Take" — this test is about the gate, not about a medication
 
   // Kill the logout POST outright. Not a contrivance — this is what a tap on Log out in a
   // dead zone does, and the failure the error boundary is for.
@@ -624,8 +625,9 @@ test("R-A — a logout that FAILS leaves the device able to save again", async (
   // WAIT FOR THE ROW BEFORE CUTTING THE NETWORK. The first version went offline as soon
   // as the sidebar appeared, which is chrome every page has — on a loaded runner the today
   // rows had not arrived yet, and cutting the network there means they never do.
+  // eslint-disable-next-line no-restricted-properties -- first-ok: same untaken dose, re-resolved after the reload
   const takeAfterReload = takeable
-    .first() // first-ok: same untaken dose, re-resolved after the reload
+    .first()
     .getByRole("button", { name: "Take", exact: true });
   await expect(takeAfterReload).toBeVisible({ timeout: 20_000 });
 
@@ -687,7 +689,7 @@ test("R-B — the OFF SWITCH is not a latch: a profile turned back on elsewhere 
   // Still off, though — the SERVER says so now, and it is asked on every refresh.
   await page.reload();
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
-  await page.waitForTimeout(3_000); // waitfortimeout-ok: absence — the server's own `enabled: false` must keep the store empty with no help from a device-local latch
+  await page.waitForTimeout(3_000); // eslint-disable-line no-restricted-properties -- waitfortimeout-ok: absence — the server's own `enabled: false` must keep the store empty with no help from a device-local latch
   expect(await storedKinds(page)).toEqual([]);
 
   // THE OTHER DEVICE turns it back on.
@@ -757,7 +759,7 @@ test("R-C — a STALE second tab does not erase the switched-to profile's snapsh
   // NON-VACUITY CONTROL: the refresh must actually have run, or "nothing was wiped" is a
   // statement about a refresher that never woke up.
   await expect.poll(() => gets, { timeout: 20_000 }).toBeGreaterThan(0);
-  await page.waitForTimeout(2_000); // waitfortimeout-ok: the wipe under review lands here or not at all
+  await page.waitForTimeout(2_000); // eslint-disable-line no-restricted-properties -- waitfortimeout-ok: the wipe under review lands here or not at all
 
   const kinds = await storedKinds(page);
   expect(
@@ -839,7 +841,7 @@ test("R-A2 — a logout that SUCCEEDS still ends every lane, past the POST", asy
     tabB.getByPlaceholder(/What did you do/),
     "Gate probe after the logout landed"
   );
-  await tabB.waitForTimeout(4_000); // waitfortimeout-ok: absence — several times the 600ms autosave debounce that would land the draft
+  await tabB.waitForTimeout(4_000); // eslint-disable-line no-restricted-properties -- waitfortimeout-ok: absence — several times the 600ms autosave debounce that would land the draft
 
   expect(await storedRows(tabB, "drafts")).toEqual([]);
   await tabB.close();
@@ -917,7 +919,7 @@ test("R-A3 — BARRIER 1 ALONE: a logout that SUCCEEDS never even asks the serve
 
   await page.getByRole("button", { name: "Log out" }).click();
   await page.waitForURL(/\/login/, { timeout: 30_000 });
-  await page.waitForTimeout(3_000); // waitfortimeout-ok: absence — the undo's probe is issued from the catch as the action settles, so it is already out by here
+  await page.waitForTimeout(3_000); // eslint-disable-line no-restricted-properties -- waitfortimeout-ok: absence — the undo's probe is issued from the catch as the action settles, so it is already out by here
 
   expect(
     probes,
@@ -995,7 +997,7 @@ test("R-A4 — BARRIER 2 ALONE: a delivered logout that loses its response leave
 
   // The undo is one IndexedDB write behind the probe's answer, so this is many times the
   // window it would have used.
-  await page.waitForTimeout(6_000); // waitfortimeout-ok: absence — the undo would have landed several times over in this window
+  await page.waitForTimeout(6_000); // eslint-disable-line no-restricted-properties -- waitfortimeout-ok: absence — the undo would have landed several times over in this window
 
   expect(
     await gateRow(tabB),
@@ -1010,7 +1012,7 @@ test("R-A4 — BARRIER 2 ALONE: a delivered logout that loses its response leave
     tabB.getByPlaceholder(/What did you do/),
     "Barrier draft after the session died"
   );
-  await tabB.waitForTimeout(4_000); // waitfortimeout-ok: absence — several times the 600ms autosave debounce that would land the draft
+  await tabB.waitForTimeout(4_000); // eslint-disable-line no-restricted-properties -- waitfortimeout-ok: absence — several times the 600ms autosave debounce that would land the draft
   expect(await storedRows(tabB, "drafts")).toEqual([]);
   await tabB.close();
 });

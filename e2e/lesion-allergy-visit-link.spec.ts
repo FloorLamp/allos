@@ -92,7 +92,7 @@ test.describe("lesion + allergy → visit links (#1526)", () => {
       .filter({ hasText: LESIONALLERGY_VISIT_TYPE });
     await followLink(
       page,
-      visitLinks.first(), // first-ok: spec-owned fixture, its only visit (see above)
+      visitLinks.first(), // eslint-disable-line no-restricted-properties -- first-ok: spec-owned fixture, its only visit (see above)
       /\/encounters\/\d+/
     );
     await expect(page.getByTestId("encounter-detail")).toBeVisible();

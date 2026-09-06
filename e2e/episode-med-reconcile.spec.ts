@@ -52,8 +52,8 @@ async function signInAsFreshMember(
   seed?: (db: Database.Database, profileId: number) => void
 ): Promise<MemberProfile> {
   const n = ++seq;
-  const profileName = `${label}-${Date.now()}-${n}`; // clock-ok: unique fixture-name suffix, never a stored timestamp
-  const username = `e2e_recon_${Date.now()}_${n}`; // clock-ok: unique login-name suffix, never a stored timestamp
+  const profileName = `${label}-${Date.now()}-${n}`; // eslint-disable-line no-restricted-properties -- clock-ok: unique fixture-name suffix, never a stored timestamp
+  const username = `e2e_recon_${Date.now()}_${n}`; // eslint-disable-line no-restricted-properties -- clock-ok: unique login-name suffix, never a stored timestamp
   const db = new Database(e2eDbPath());
   let profileId: number;
   try {

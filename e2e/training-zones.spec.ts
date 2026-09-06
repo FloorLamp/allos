@@ -24,7 +24,7 @@ test("Training → Analyze renders the HR training-intensity section (#159/#3512
   await expect(zones.getByText(/Karvonen/)).toBeVisible();
   // Zone names render in the boundary table.
   await expect(
-    zones.getByText("Zone 2", { exact: false }).first() // first-ok: "Zone 2" labels a row in the scoped HR-zone table; assert the zone renders at all
+    zones.getByText("Zone 2", { exact: false }).first() // eslint-disable-line no-restricted-properties -- first-ok: "Zone 2" labels a row in the scoped HR-zone table; assert the zone renders at all
   ).toBeVisible();
 
   // The easy/hard polarization split renders. The fixture is ~83/17, so "easy"

@@ -153,7 +153,7 @@ test("a minor still sees its own unspecified session (#3067/#2272)", async ({
   });
   try {
     await member.goto(`/history?day=${CHILD_DATE}`);
-    const row = member.getByText(CHILD_TITLE).first(); // first-ok: the ONLY row on this deep-past single-day view is the one this spec planted
+    const row = member.getByText(CHILD_TITLE).first(); // eslint-disable-line no-restricted-properties -- first-ok: the ONLY row on this deep-past single-day view is the one this spec planted
     await expect(row).toBeVisible({ timeout: 20_000 });
     await row.click();
     await expect(member).toHaveURL(/\/training\/activity\/\d+$/);
@@ -170,10 +170,11 @@ test("a minor still sees its own unspecified session (#3067/#2272)", async ({
       member.getByRole("button", { name: "Activity actions" })
     );
     await member.getByTestId("delete-activity").click();
+    // eslint-disable-next-line no-restricted-syntax -- confirm-delete-ok: the URL check below IS the server settle — leaveDeletedActivityPage navigates only once `onDeleted` has fired — and deleteActivityFromForm cannot be used here because it dismisses the very toast the Undo below has to press
     await member
       .getByTestId("confirm-dialog")
       .getByRole("button", { name: "Delete", exact: true })
-      .click(); // confirm-delete-ok: the URL check below IS the server settle — leaveDeletedActivityPage navigates only once `onDeleted` has fired — and deleteActivityFromForm cannot be used here because it dismisses the very toast the Undo below has to press
+      .click();
     await expect(member).toHaveURL(/\/history$/);
     await member.getByRole("button", { name: "Undo" }).click();
     await expect(member.getByText("Restored.")).toBeVisible();

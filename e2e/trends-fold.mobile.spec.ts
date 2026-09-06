@@ -22,10 +22,11 @@ import { expandTrendsContext } from "./trends-chrome";
 const LEAD_CHIPS = 3; // mirrors TrendingDigest's inline cap
 
 function firstBodyTile(page: import("@playwright/test").Page) {
+  // eslint-disable-next-line no-restricted-properties -- first-ok: this helper deliberately names the first census metric
   return page
     .getByTestId("body-metric-tiles")
     .locator('[data-testid^="body-tile-"]')
-    .first(); // first-ok: this helper deliberately names the first census metric
+    .first();
 }
 
 test.describe("the custom From/To form collapses behind a Custom… disclosure (A)", () => {
@@ -131,7 +132,7 @@ test.describe("Overview leads with charts (B)", () => {
     // Presence + "reachable without scrolling", not a pixel offset: toBeInViewport
     // asks exactly the question the issue does (is the payload above the fold?)
     // without pinning a number that ordinary content changes would break.
-    const tile = firstBodyTile(page); // first-ok: the census's topmost tile is the subject — "is the FIRST chart above the fold?"
+    const tile = firstBodyTile(page); // the census's topmost tile is the subject — "is the FIRST chart above the fold?"
     await expect(tile).toBeVisible();
     await expect(tile).toBeInViewport();
   });
@@ -140,7 +141,7 @@ test.describe("Overview leads with charts (B)", () => {
     page,
   }) => {
     await page.goto("/trends");
-    await expect(firstBodyTile(page)).toBeVisible(); // first-ok: any tile proves the Body census rendered before asserting an absence
+    await expect(firstBodyTile(page)).toBeVisible(); // any tile proves the Body census rendered before asserting an absence
     await expect(page.getByTestId("starred-results")).toHaveCount(0);
 
     // Its one remaining card surface still renders it — the store and the lens are
@@ -165,7 +166,7 @@ test.describe("Overview leads with charts (B)", () => {
     // The shared IconButton owns a RENDERED box and an EFFECTIVE target (#3938).
     // Measure one real mount rather than inferring geometry from its Tailwind
     // classes; all mounts receive this same root box from the primitive.
-    const dismiss = inline.first(); // first-ok: every digest dismiss is one mount of the same IconButton primitive
+    const dismiss = inline.first(); // eslint-disable-line no-restricted-properties -- first-ok: every digest dismiss is one mount of the same IconButton primitive
     await expect(dismiss).toHaveAttribute("data-icon-button", "");
     await expectPhoneTapTargets(page, "digest dismiss", [dismiss]);
   });

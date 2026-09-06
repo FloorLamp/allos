@@ -17,10 +17,8 @@ import { type Page } from "@playwright/test";
 // 'Use "…"' button, so match by SUBSTRING).
 async function pickActivity(page: Page, name: string) {
   await page.getByPlaceholder(/What did you do/).fill(name);
-  await comboboxRows(page)
-    .filter({ hasText: name })
-    .first() // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
-    .click();
+  // eslint-disable-next-line no-restricted-properties -- first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
+  await comboboxRows(page).filter({ hasText: name }).first().click();
 }
 
 test("the exercise detail panel shows a How-to guide for a catalog lift, and none for a custom lift (#734)", async ({
@@ -36,11 +34,11 @@ test("the exercise detail panel shows a How-to guide for a catalog lift, and non
   // A COVERED catalog lift with logged sessions → the guide sits behind a
   // collapsed "How to" disclosure (#2895 — familiar lifts collapse it; the
   // guide stays permanently reachable). Open it, then assert the content.
-  const disclosure = main.getByTestId("exercise-guide-disclosure").first(); // first-ok: asserts a guide disclosure renders — order-agnostic presence
+  const disclosure = main.getByTestId("exercise-guide-disclosure").first(); // eslint-disable-line no-restricted-properties -- first-ok: asserts a guide disclosure renders — order-agnostic presence
   await expect(disclosure).toBeVisible();
   await expect(disclosure).toContainText("How to");
   await disclosure.locator("summary").click();
-  const guide = main.getByTestId("exercise-guide").first(); // first-ok: asserts an exercise guide renders — order-agnostic presence
+  const guide = main.getByTestId("exercise-guide").first(); // eslint-disable-line no-restricted-properties -- first-ok: asserts an exercise guide renders — order-agnostic presence
   await expect(guide).toBeVisible();
   await expect(guide).toContainText("Form reference");
   await expect(guide).not.toContainText("Informational, not medical advice");
@@ -78,7 +76,7 @@ test("the strength set editor's ⓘ opens the shared guide overlay for a catalog
   await pickActivity(page, "Barbell Bench Press");
 
   // The ⓘ "How to" affordance renders for a catalog lift; open the overlay.
-  const openGuide = page.getByTestId("exercise-guide-open").first(); // first-ok: the How-to affordance for the lift this spec picked — order-agnostic
+  const openGuide = page.getByTestId("exercise-guide-open").first(); // eslint-disable-line no-restricted-properties -- first-ok: the How-to affordance for the lift this spec picked — order-agnostic
   await expect(openGuide).toBeVisible();
   await openGuide.click();
 

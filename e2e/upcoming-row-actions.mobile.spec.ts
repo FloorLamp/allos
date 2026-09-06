@@ -75,11 +75,12 @@ test("each row keeps one overflow trigger, folds its secondary chips, and fits t
   // inline control at this width, but it IS in the row's one menu. This half
   // keeps the fold honest — a care-tier action may be moved behind a kebab on a
   // phone, never removed (#449).
+  // eslint-disable-next-line no-restricted-properties -- first-ok: any preventive row proves the fold — order-agnostic
   const preventiveRow = main
     .locator(
       '[data-testid^="upcoming-item-visit:"], [data-testid^="upcoming-item-screening:"]'
     )
-    .first(); // first-ok: any preventive row proves the fold — order-agnostic
+    .first();
   await expect(preventiveRow).toBeVisible();
   await expect(
     preventiveRow.getByRole("button", { name: "Mark done" })
