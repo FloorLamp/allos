@@ -202,6 +202,7 @@ function part(over: Partial<PartEntry> = {}): PartEntry {
     durationMin: "",
     targetReps: "",
     toFailure: false,
+    varied: false,
     ...over,
   };
 }

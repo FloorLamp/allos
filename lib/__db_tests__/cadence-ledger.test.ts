@@ -420,8 +420,8 @@ describe("the cadence ledger (#2034)", () => {
       )
     );
     expect(training.map((p) => [p.count, p.per_week, p.met, p.pace])).toEqual([
-      [1, 2, false, "on-pace"],
-      [1, 2, false, "on-pace"],
+      [1, 2, false, "quiet"],
+      [1, 2, false, "quiet"],
     ]);
   });
 
@@ -507,9 +507,9 @@ describe("the cadence ledger (#2034)", () => {
     pace: FrequencyPace;
   }>([
     // The reported Wednesday: four days left, so nothing to say yet.
-    { starts: "Sunday", weekStart: 0, day: 4, daysLeft: 3, pace: "on-pace" },
+    { starts: "Sunday", weekStart: 0, day: 4, daysLeft: 3, pace: "quiet" },
     // Two days left for two sessions — the week still fits them.
-    { starts: "Friday", weekStart: 5, day: 6, daysLeft: 1, pace: "on-pace" },
+    { starts: "Friday", weekStart: 5, day: 6, daysLeft: 1, pace: "quiet" },
     // Today is the last day and two are owed: it cannot.
     { starts: "Thursday", weekStart: 4, day: 7, daysLeft: 0, pace: "behind" },
   ])(

@@ -291,13 +291,13 @@ export function validatePracticeCadence(
 
 // The range state of a practice (or any) frequency target this week — ONE computation
 // the adherence card, the widget, Upcoming, and the nudge all format over. `floor`
-// drives adherence + pacing (frequencyPace, the same 3-state pace every target uses);
+// drives adherence + pacing (frequencyPace, the same pace every target uses);
 // `ceiling` (nullable) is the "don't overdo it" cap: once count reaches it the target is
 // calmly DONE for the week ("that's plenty"), never a red state.
 export interface FrequencyRangeState {
   met: boolean; // count >= floor
   atCeiling: boolean; // ceiling != null && count >= ceiling
-  pace: FrequencyPace; // floor-based pacing (met / on-pace / behind)
+  pace: FrequencyPace; // floor-based pacing (frequencyPace)
 }
 
 export function frequencyRangeState(

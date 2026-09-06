@@ -152,7 +152,7 @@ export default function AllergiesSection({ scope }: { scope: ProfileScope }) {
 
           {crossReactivity.length > 0 ? (
             <Disclosure className="card" data-testid="cross-reactivity">
-              <summary className="cursor-pointer font-semibold text-slate-800 dark:text-slate-100">
+              <summary className="fold-control font-semibold text-slate-800 dark:text-slate-100">
                 Cross-reactivity information
               </summary>
               <p className="mb-3 mt-2 text-xs text-slate-500 dark:text-slate-400">

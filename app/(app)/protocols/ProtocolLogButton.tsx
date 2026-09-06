@@ -8,6 +8,7 @@ import type { ProtocolPractice } from "@/lib/queries/protocols";
 import type { LivePracticeSession } from "@/lib/types";
 import { protocolLogAction } from "@/lib/protocol-log-action";
 import {
+  DOSE_ACTION_BRAND,
   DOSE_ACTION_LABEL,
   DOSE_ACTION_NEUTRAL,
 } from "@/components/medications/dose-action-styles";
@@ -92,11 +93,11 @@ export default function ProtocolLogButton({
             quickEntry.open("food", { foodGroup: action.foodGroup });
           }
         }}
-        className={
-          primaryTone === "neutral"
-            ? `${DOSE_ACTION_LABEL} ${DOSE_ACTION_NEUTRAL}`
-            : "inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white"
-        }
+        // One control, one height (#4505 family 5): the tone paints, the box is
+        // the dose-action pill's in both, where the brand tone used to render 44.
+        className={`${DOSE_ACTION_LABEL} ${
+          primaryTone === "neutral" ? DOSE_ACTION_NEUTRAL : DOSE_ACTION_BRAND
+        }`}
       >
         <IconCheck className="h-4 w-4" stroke={2} aria-hidden />
         {action.label}

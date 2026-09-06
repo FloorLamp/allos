@@ -40,7 +40,7 @@ export default function MedicationListActions() {
     <div className="flex items-center gap-1 print:hidden">
       <Link
         href={PRINT_HREF}
-        className="tap-target flex h-9 w-9 items-center justify-center rounded-lg border border-(--border) bg-surface text-slate-600 transition hover:bg-(--ghost-hover) hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100"
+        className="tap-target flex h-(--control-box) w-(--control-box) items-center justify-center rounded-lg border border-(--border) bg-surface text-slate-600 transition hover:bg-(--ghost-hover) hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100"
         data-testid="medication-print-link"
         aria-label="Print medication list"
       >
@@ -48,7 +48,7 @@ export default function MedicationListActions() {
       </Link>
       <button
         type="button"
-        className="tap-target flex h-9 w-9 items-center justify-center rounded-lg border border-(--border) bg-surface text-slate-600 transition hover:bg-(--ghost-hover) hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100"
+        className="tap-target flex h-(--control-box) w-(--control-box) items-center justify-center rounded-lg border border-(--border) bg-surface text-slate-600 transition hover:bg-(--ghost-hover) hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100"
         data-testid="medication-share-open"
         aria-label="Share medication list"
         onClick={() => setOpen(true)}

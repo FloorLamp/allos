@@ -9,6 +9,7 @@
 // came from. The label column is a generic, non-PHI kind descriptor only.
 
 import { db, writeTx } from "./db";
+import type { OwnedTable } from "./owned-tables";
 import { DEFAULT_TRASH_RETENTION_DAYS, daysAgoModifier } from "./retention";
 import { dayCounterSpecFor } from "./day-counter-ledger";
 import { dayCounterLedger } from "./day-counter-ledger-db";
@@ -803,7 +804,7 @@ function unlinkPurgedFiles(files: CapturedFiles): void {
 // best-effort, and never throws (the row deletes already committed). (#1290)
 function unlinkPurgedVideoFiles(files: readonly CapturedVideoFile[]): void {
   for (const f of files) {
-    const table =
+    const table: OwnedTable =
       f.domain === "activity" ? "activity_videos" : "symptom_videos";
     const stillLive = db.prepare(
       `SELECT 1 FROM ${table} WHERE stored_path = ? OR poster_path = ?`
@@ -819,7 +820,7 @@ function unlinkPurgedVideoFiles(files: readonly CapturedVideoFile[]): void {
 
 // The live table each photo domain's rows sit in — the read side of the registry's
 // PHOTO_FILE_TABLES, kept here because the probe is SQL.
-const PHOTO_TABLE_FOR_DOMAIN: Record<CapturedPhotoDomain, string> = {
+const PHOTO_TABLE_FOR_DOMAIN: Record<CapturedPhotoDomain, OwnedTable> = {
   progress: "progress_photos",
   lesion: "lesion_photos",
   symptom: "symptom_photos",

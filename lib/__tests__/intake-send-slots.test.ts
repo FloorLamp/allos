@@ -34,10 +34,10 @@ const renderMerged = (
 ) => renderMergedIntakeMessage(profileId, parts, date, null, OFFER);
 
 import {
-  offerCallback,
   parseAllCallback,
   keyboardDoseFootprint,
 } from "../notifications/callback-data";
+import { offerCallback } from "../notifications/offer-tokens";
 import {
   accruesMisses,
   escalatesOnMiss,

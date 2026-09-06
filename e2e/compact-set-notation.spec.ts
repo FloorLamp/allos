@@ -166,9 +166,12 @@ async function logUniformProbe(page: Page, finish: boolean): Promise<string> {
   await pickActivity(page, "Barbell Bench Press");
 
   const stored = savePostWith(page, THREE_SETS);
+  // A uniform run states its weight ONCE, on the exercise band above the rows, and
+  // "+ Add set" copies that load — so the rows take only their reps (#5371). The
+  // band carries set 1's id; there is no `set2-weight` until a set varies.
+  await settledFill(page, page.getByTestId("set1-weight"), PROBE_WEIGHT);
   for (let i = 1; i <= PROBE_SETS; i++) {
     if (i > 1) await page.getByRole("button", { name: "+ Add set" }).click();
-    await settledFill(page, page.getByTestId(`set${i}-weight`), PROBE_WEIGHT);
     await settledFill(page, page.getByTestId(`set${i}-reps`), PROBE_REPS);
   }
   // The autosave that carries the WHOLE run. Without it the reopen below can race the
@@ -181,8 +184,13 @@ async function logUniformProbe(page: Page, finish: boolean): Promise<string> {
     // timezone puts local now at 13:mm (e2e/pinned-timezone.ts), so 23:59 is always
     // after the start the create form stamped.
     const ended = savePostWith(page, /23:59/);
-    await page.getByTestId("end-time-input").fill("23:59");
+    const endTime = page.getByTestId("end-time-input");
+    await endTime.fill("23:59");
     await ended;
+    // AND LEAVE THE FIELD. Focusing a time field opens its wheel beside it
+    // (#5360), and Escape closes the innermost open layer — so a caller that
+    // presses Escape to dismiss the FORM would close the wheel instead.
+    await endTime.blur();
   }
   return title;
 }
