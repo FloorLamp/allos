@@ -1157,18 +1157,18 @@ test.describe("the hit-area mechanism reaches the floor it claims (#3486)", () =
       await expect(row).toBeVisible();
     }
 
-    await settledClick(page, page.getByTestId("log-nuts_seeds"));
-    await expect(page.getByTestId("undo-nuts_seeds")).toBeVisible();
+    // Scoped to the row, not the page: the steppers are that row's own pair.
+    const plus = row.getByTestId("log-nuts_seeds");
+    const minus = row.getByTestId("undo-nuts_seeds");
+    await settledClick(page, plus);
+    await expect(minus).toBeVisible();
 
-    await expectPhoneTapTargets(
-      page,
-      "the food-log steppers",
-      [page.getByTestId("undo-nuts_seeds"), page.getByTestId("log-nuts_seeds")],
-      { disjoint: true }
-    );
+    await expectPhoneTapTargets(page, "the food-log steppers", [minus, plus], {
+      disjoint: true,
+    });
 
     // Leave the shared profile's day as it was found.
-    await settledClick(page, page.getByTestId("undo-nuts_seeds"));
+    await settledClick(page, minus);
   });
 
   // THE SWEEP, TIGHTENED AND WIDENED (#4505). It asked `height >= 32` of `/nutrition`
