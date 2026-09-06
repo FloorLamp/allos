@@ -115,7 +115,11 @@ export const RPE_HARD_MIN = 9.5;
 // "A larger load increment" = two standard steps rather than one.
 export const RPE_EASY_INCREMENTS = 2;
 
-export interface NextSet {
+// The RAW progression `suggestNextSet` computes: the load the ladder says comes next,
+// before this app's modifiers — the deload shave (#741), the recovering-injury temper
+// (#838), a live niggle's (#3244). Rendering it shows a number the person is not meant
+// to lift this week, so no surface takes this type.
+export interface RawNextSet {
   weightKg: number; // 0 for a bodyweight movement
   reps: number;
   bodyweight: boolean;
@@ -125,6 +129,19 @@ export interface NextSet {
   targetReps: number | null;
   rationale: string;
 }
+
+// WHAT EVERY SURFACE RENDERS (#5394): a raw progression that has been through
+// `contextualNextSet`, which is the only place that can mint the brand. A raw seed
+// passed straight to a render therefore does not compile, and the composition can no
+// longer be skipped by a new surface.
+//
+// This replaces a source scan that walked four directories to prove the two calls
+// co-occur in one file. That fact is invisible to a selector — four of the five
+// surfaces bind the raw suggestion to a local first — and ESLint has no cross-node
+// "if A appears then B must" form; the scan said so itself and named this type as its
+// own replacement (#5346/#5347's ruling: types over rules, rules over scans).
+declare const CONTEXTUAL: unique symbol;
+export type NextSet = RawNextSet & { readonly [CONTEXTUAL]: true };
 
 // The suggested top set as display text: "62.5 kg × 5", or "BW × 13" for
 // bodyweight lifts.
@@ -364,7 +381,7 @@ export type NextSetSeed = Pick<
 export function suggestNextSet(
   s: NextSetSeed,
   wu: WeightUnit = "kg"
-): NextSet | null {
+): RawNextSet | null {
   if (isTimed(s.exercise)) return null;
   // An ASSISTED movement gets no next-set target (#1922). Progression here means
   // "add load", and the number this lifter logs is the machine's counterweight —
@@ -513,8 +530,10 @@ export const DELOAD_MIN_SETS = 1; // never drop below a single working set
 export function deloadAdjust(slot: {
   exercise: string;
   sets: number;
-  nextSet: NextSet | null;
-}): { sets: number; nextSet: NextSet | null } {
+  // A LOAD transform, not a render: it takes the raw progression and hands back one
+  // still awaiting the rest of the composition (#5394).
+  nextSet: RawNextSet | null;
+}): { sets: number; nextSet: RawNextSet | null } {
   const sets = Math.max(DELOAD_MIN_SETS, slot.sets - DELOAD_SET_REDUCTION);
   return { sets, nextSet: deloadNextSet(slot.exercise, slot.nextSet) };
 }
@@ -554,11 +573,13 @@ export interface NextSetContext {
 // (matching the engine's prior composition), with the deload rationale winning. A
 // null/bodyweight/loadless base flows through unchanged (each internal is load-only).
 export function contextualNextSet(
-  base: NextSet | null,
+  base: RawNextSet | null,
   exercise: string,
   ctx: NextSetContext
 ): NextSet | null {
-  let ns = base;
+  // The one place the brand is minted: everything below has run, so what comes out is
+  // by definition the contextual set every surface is allowed to render.
+  let ns: RawNextSet | null = base;
   if (ctx.recoveringRegion && ctx.recoveringFactor != null) {
     ns = temperRecoveringNextSet(
       ns,
@@ -570,7 +591,7 @@ export function contextualNextSet(
   if (ctx.deloadWeek) {
     ns = deloadAdjust({ exercise, sets: 0, nextSet: ns }).nextSet;
   }
-  return ns;
+  return ns as NextSet | null;
 }
 
 // The recovering-injury tempered next-set (#838): a region returning from a RECOVERING
@@ -584,14 +605,14 @@ export const TEMPER_RECOVERING_RATIONALE =
   "Easing back from injury — lighter while the region recovers";
 
 export function temperRecoveringNextSet(
-  ns: NextSet | null,
+  ns: RawNextSet | null,
   exercise: string,
   factor: number,
   // What to say about the shave. Defaults to the recovering-injury copy; a caller whose
   // temper came from a different tier (#3211's live niggle) passes its own, so the
   // rendered rationale names the real reason.
   rationale: string = TEMPER_RECOVERING_RATIONALE
-): NextSet | null {
+): RawNextSet | null {
   if (!ns || ns.bodyweight || ns.weightKg <= 0) return ns;
   const inc = weightIncrementKg(exercise);
   const raw = ns.weightKg * factor;
@@ -599,7 +620,10 @@ export function temperRecoveringNextSet(
   return { ...ns, weightKg, rationale };
 }
 
-function deloadNextSet(exercise: string, ns: NextSet | null): NextSet | null {
+function deloadNextSet(
+  exercise: string,
+  ns: RawNextSet | null
+): RawNextSet | null {
   if (!ns || ns.bodyweight || ns.weightKg <= 0) return ns;
   const inc = weightIncrementKg(exercise);
   const raw = ns.weightKg * DELOAD_LOAD_FACTOR;
