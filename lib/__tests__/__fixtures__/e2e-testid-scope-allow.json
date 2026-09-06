@@ -104,7 +104,7 @@
   "encounter-type-filter.spec.ts": 3,
   "encounters.spec.ts": 11,
   "endurance-plans.spec.ts": 31,
-  "entry-ergonomics.spec.ts": 85,
+  "entry-ergonomics.spec.ts": 84,
   "entry-vocabularies.spec.ts": 5,
   "episode-med-reconcile.spec.ts": 2,
   "episode-page-fold.mobile.spec.ts": 7,

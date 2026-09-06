@@ -893,7 +893,8 @@ export default function StrengthSets({
   );
   const [varied, setVaried] = useState(() => !loadsMatch);
   if (!varied && !loadsMatch) setVaried(true);
-  const sharedLoad = stepsLoad && !varied;
+  // A part with no rows yet has no load to state.
+  const sharedLoad = stepsLoad && !varied && p.sets.length > 0;
   // Which set's "Vary" tap just revealed the per-set weights, so that set's weight
   // takes the caret; consumed by the input on mount.
   const varyFocus = useRef<number | null>(null);

@@ -964,7 +964,8 @@ test("strength set controls step, clamp, and toggle without losing their phone g
   // band mounts the same Stepper the row does, so the border and input contracts
   // below are asserted on it first, and again on the row once "Vary" moves the
   // weight back onto the set.
-  const band = page.getByTestId("exercise-weight");
+  const form = page.getByTestId("activity-form"); // testid-scope-ok: ActivityOverlay portals the workspace to <body>, one copy
+  const band = form.getByTestId("exercise-weight");
   const weightStepper = page.getByTestId("set1-weight-stepper");
   const weightInput = page.getByTestId("set1-weight");
   await expect(band.getByTestId("set1-weight-stepper")).toBeVisible();
@@ -991,9 +992,9 @@ test("strength set controls step, clamp, and toggle without losing their phone g
   // "Vary" gives the set its own weight field, carrying the load, with the caret in
   // it; the band is gone and the row is the `weight × reps` pair the rest of this
   // test measures.
-  await page.getByTestId("set-vary-1").click();
+  await form.getByTestId("set-vary-1").click();
   await expect(
-    page.getByTestId("set-values-1").getByTestId("set1-weight")
+    form.getByTestId("set-values-1").getByTestId("set1-weight")
   ).toHaveValue("2.5");
   await expect(weightInput).toBeFocused();
   await expect(band).toHaveCount(0);
@@ -1135,7 +1136,8 @@ test("weight is stated once per exercise until a set varies it (#5371)", async (
     .click();
   await pickActivity(page, "Barbell Bench Press");
 
-  const band = page.getByTestId("exercise-weight");
+  const form = page.getByTestId("activity-form"); // testid-scope-ok: ActivityOverlay portals the workspace to <body>, one copy
+  const band = form.getByTestId("exercise-weight");
   const weight = band.getByTestId("set1-weight");
   // The coached ghost rides on the band now — it is where set 1's weight goes.
   await expect(weight).toHaveAttribute("placeholder", /^\d/);
@@ -1143,30 +1145,30 @@ test("weight is stated once per exercise until a set varies it (#5371)", async (
   // Enter in the exercise-level weight lands in set 1's reps; Enter in a complete
   // reps field adds the next set (#336), which copies the load and stays shared.
   await weight.press("Enter");
-  await expect(page.getByTestId("set1-reps")).toBeFocused();
+  await expect(form.getByTestId("set1-reps")).toBeFocused();
   await page.keyboard.type("8");
   await page.keyboard.press("Enter");
-  await expect(page.getByTestId("set2-reps")).toHaveValue("8");
-  await expect(page.getByTestId("set2-weight")).toHaveCount(0);
-  await expect(page.getByLabel("Increase weight")).toHaveCount(1);
+  await expect(form.getByTestId("set2-reps")).toHaveValue("8");
+  await expect(form.getByTestId("set2-weight")).toHaveCount(0);
+  await expect(form.getByLabel("Increase weight")).toHaveCount(1);
 
   // Stepping the exercise weight moves every set — visible once set 2 varies: its
   // own field arrives already at the stepped load, with the caret in it.
   await hydratedClick(page, band.getByLabel("Increase weight"));
   await expect(weight).toHaveValue("62.5");
-  await page.getByTestId("set-vary-2").click();
-  const set2Weight = page.getByTestId("set2-weight");
+  await form.getByTestId("set-vary-2").click();
+  const set2Weight = form.getByTestId("set2-weight");
   await expect(set2Weight).toHaveValue("62.5");
   await expect(set2Weight).toBeFocused();
-  await expect(page.getByTestId("set1-weight")).toHaveValue("62.5");
+  await expect(form.getByTestId("set1-weight")).toHaveValue("62.5");
   await expect(band).toHaveCount(0);
   // Enter in a set's weight lands in THAT set's reps.
   await set2Weight.press("Enter");
-  await expect(page.getByTestId("set2-reps")).toBeFocused();
+  await expect(form.getByTestId("set2-reps")).toBeFocused();
   // Stepped back to match, the grid does not fold under the person's hands.
   await hydratedClick(
     page,
-    page.getByTestId("set-row-2").getByLabel("Decrease weight")
+    form.getByTestId("set-row-2").getByLabel("Decrease weight")
   );
   await expect(set2Weight).toHaveValue("60");
   await expect(band).toHaveCount(0);
@@ -1210,17 +1212,18 @@ test("a per-side lift saves each side's weight and reps from the shared band (#5
       .getByRole("button", { name: "Add activity" })
       .click();
     await pickActivity(page, "Hammer Curl");
+    const form = page.getByTestId("activity-form"); // testid-scope-ok: ActivityOverlay portals the workspace to <body>, one copy
     await openPartOptions(page, 0); // the sides control is behind the part's fact chips (#3349)
     await page.getByText("Track sides separately", { exact: true }).click();
-    await expect(page.getByTestId("per-side-checkbox")).toBeChecked();
+    await expect(form.getByTestId("per-side-checkbox")).toBeChecked();
     await closePartOptions(page);
-    await page.getByLabel("Activity name").fill(marker);
+    await form.getByLabel("Activity name").fill(marker);
 
     // One band per side above the rows, one reps stepper per side on the row. Each
     // side is reached through its L/R label: the label's line in the band holds
     // that side's weight, its line in the row holds that side's reps.
-    const band = page.getByTestId("exercise-weight");
-    const row = page.getByTestId("set-row-1");
+    const band = form.getByTestId("exercise-weight");
+    const row = form.getByTestId("set-row-1");
     const line = (scope: Locator, side: "L" | "R") =>
       scope.getByText(side, { exact: true }).locator("..");
     await expect(band.getByLabel("Increase weight")).toHaveCount(2);
