@@ -14,7 +14,7 @@
           "pr": 5417,
           "kind": "feature",
           "category": "History",
-          "title": "The day view's calendar opens a day at every screen width",
+          "title": "On a wide screen the day view calendar is a button, not an open grid",
           "issues": [5359]
         },
         {
@@ -35,7 +35,7 @@
           "pr": 5426,
           "kind": "fix",
           "category": "Training",
-          "title": "A week with nothing logged yet gets no pace verdict",
+          "title": "A habit says nothing about pace while the week can still fit what is left",
           "issues": [5395]
         },
         {
