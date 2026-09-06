@@ -20,7 +20,7 @@ import {
   isWithinTapReach,
 } from "@/lib/log-manifest";
 import { OFFLINE_REPLAY, type LoggedVia } from "../logged-via";
-import { now as clockNow } from "@/lib/clock";
+import { now as clockNow, sqlNow } from "@/lib/clock";
 import {
   isRealIsoDate,
   shiftDateStr,
@@ -897,8 +897,13 @@ export const logBristolStoolDeclares = STOOL_MOVEMENT_LOG;
 // delete. A null there means "not asked on this device", which is not an answer.
 //
 // So the caller states which of the two it is, and a payload composed blind MERGES:
-// it lands what it carries and leaves untouched every field it does not. It cannot
-// clear a field — clearing needs a form that showed you what you were clearing.
+// it lands what it carries and leaves untouched every field it does not.
+//
+// THE COST, STATED: a blind payload cannot CLEAR a field — including one this device
+// queued itself and is showing back to the person, since the cold-open copy folds in
+// its own queued check-ins. Deleting a note or deselecting every factor on that form
+// leaves both as they were. Failing to delete is the better half of the trade, and it
+// is the whole of it: clearing is reachable from any form that read the day.
 export type MoodWriteSight =
   // The payload is the day's whole answer; every field it carries, including its
   // nulls, replaces what is there. The default, and what every path but one passes.
@@ -921,7 +926,7 @@ function moodUpsert(sight: MoodWriteSight) {
            anxiety = COALESCE(excluded.anxiety, mood_logs.anxiety),
            factors = COALESCE(excluded.factors, mood_logs.factors),
            notes = COALESCE(excluded.notes, mood_logs.notes),
-           updated_at = datetime('now')`
+           updated_at = ?`
       )
     : db.prepare(
         `INSERT INTO mood_logs (profile_id, date, valence, energy, anxiety, factors, notes)
@@ -932,7 +937,7 @@ function moodUpsert(sight: MoodWriteSight) {
            anxiety = excluded.anxiety,
            factors = excluded.factors,
            notes = excluded.notes,
-           updated_at = datetime('now')`
+           updated_at = ?`
       );
 }
 
@@ -950,10 +955,10 @@ function moodUpsert(sight: MoodWriteSight) {
 // to inference). A check-in is a DAY's answer: `MoodPayload` carries no instant,
 // the queue's captured `date` is the whole of its time model (#94 day attribution,
 // untouched by the instant work), and a replay at dinner still lands on the day the
-// user tapped. The one clock read here is `updated_at = datetime('now')`, a pure
-// audit "last modified" stamp — nothing keys a day off it — which by the #1534 rule
-// correctly keeps SQL's real clock. So there is nothing here to route through the
-// seam; a captured instant is what the other three flows had.
+// user tapped. `updated_at` is a pure audit "last modified" stamp — nothing keys a
+// day off it, so the #1534 rule PERMITS SQL's own clock here — but both statements
+// bind `sqlNow()` anyway: the seam is byte-identical in production, and one bound
+// parameter is cheaper than two more raw clock reads for a stamp nothing reads back.
 export function upsertMoodLog(
   profileId: number,
   date: string,
@@ -983,7 +988,8 @@ export function upsertMoodLog(
     normalized.energy,
     normalized.anxiety,
     normalized.factors.length ? JSON.stringify(normalized.factors) : null,
-    normalized.note
+    normalized.note,
+    sqlNow()
   );
   resetMoodCheckinIgnored(profileId);
   return true;

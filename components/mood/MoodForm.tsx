@@ -105,6 +105,14 @@ export default function MoodForm({
   // UNKNOWN rather than cleared, and both write paths say so: the write core merges
   // instead of replacing the day's row. Every other mount pre-fills from the stored
   // check-in and leaves this false.
+  //
+  // FIXED FOR THE LIFE OF THE MOUNT. The fields below are seeded from `days` once,
+  // so a mount that composed blind holds blind state until it is replaced; a host
+  // that swapped this flag off under it would leave that state writing the replacing
+  // statement over a day it still cannot see. The one host that can learn the day
+  // mid-sheet remounts this form on it (QuickEntryProvider's body `key`) rather than
+  // moving the prop, so the sight the form was composed under is the sight it writes
+  // under.
   dayUnseen?: boolean;
   subjectProfileId?: number;
   dateReach?: "tap" | "dated";

@@ -6,6 +6,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { useState } from "react";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { ToastProvider } from "@/components/Toast";
 import QuickEntryProvider, {
@@ -50,19 +51,35 @@ vi.mock("@/components/quick-entry/QuickDoseList", () => ({
     <div data-testid="stub-dose">{doses.map((d) => d.doseId).join(",")}</div>
   ),
 }));
-vi.mock("@/components/mood/MoodForm", () => ({
-  default: ({
+vi.mock("@/components/mood/MoodForm", () => {
+  function StubMood({
     days,
     dayUnseen,
   }: {
     days: { date: string }[];
     dayUnseen?: boolean;
-  }) => (
-    <div data-testid="stub-mood" data-day-unseen={String(dayUnseen ?? false)}>
-      {days.map((d) => d.date).join(",")}
-    </div>
-  ),
-}));
+  }) {
+    // SEEDED ONCE, as the real form seeds its fields — so this stub can tell a
+    // remount from a prop swap. `composed-*` is what the mount was built from;
+    // the attributes beside it are the props as they stand now. The two agreeing
+    // is the property: a form's sight is the sight it was composed under.
+    const [composed] = useState(() => ({
+      days: days.map((d) => d.date).join(","),
+      dayUnseen: dayUnseen ?? false,
+    }));
+    return (
+      <div
+        data-testid="stub-mood"
+        data-day-unseen={String(dayUnseen ?? false)}
+        data-composed-unseen={String(composed.dayUnseen)}
+        data-composed-days={composed.days}
+      >
+        {days.map((d) => d.date).join(",")}
+      </div>
+    );
+  }
+  return { default: StubMood };
+});
 const upload = vi.hoisted(() => ({ failing: false }));
 vi.mock("@/components/UploadForm", () => ({
   default: () => {
@@ -203,6 +220,15 @@ describe("last-good render, revalidate behind it (#3416 proposal 1)", () => {
         screen.getByTestId("quick-entry-unavailable").textContent
       ).toContain("v2")
     );
+    // A revalidate is not a change of sight (#3416): both the held copy and the
+    // answer behind it are the server's, so the body is refreshed in place — nothing
+    // is remounted, nothing staged is discarded, and nothing is announced.
+    expect(
+      screen.getByTestId("quick-entry-body").getAttribute("data-body-sight")
+    ).toBe("read");
+    expect(
+      screen.queryByText(/Anything typed on the offline copy was discarded/)
+    ).toBeNull();
   });
 
   it("a failed revalidate behind a last-good render keeps the rendered form and says what it is", async () => {
@@ -430,6 +456,62 @@ describe("the stall bound and Retry (#3416 proposals 3 and 4)", () => {
       await vi.advanceTimersByTimeAsync(10_000);
     });
     expect(screen.getByTestId("stub-dose").textContent).toBe("41");
+  });
+
+  // THE FENCE CANNOT BE TAKEN AWAY FROM A FORM THAT IS STILL BLIND (#3416). The
+  // stall bound does not cancel the gather, so a slow-but-alive link answers with the
+  // real day while the device-known form is still on screen. The mood form's fields
+  // are seeded once at mount, so leaving that mount up and moving `dayUnseen` off it
+  // would strand a blind composition beside a payload that saw the day — and the next
+  // tap would write the replacing statement over the day the answer just delivered.
+  it("a late answer under a form composed blind remounts it with the day rather than taking its fence away", async () => {
+    let resolveLate: (v: unknown) => void;
+    loadQuickEntry.mockImplementationOnce(
+      () => new Promise((resolve) => (resolveLate = resolve))
+    );
+    renderSheet();
+    open("mood");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    const blind = screen.getByTestId("stub-mood");
+    expect(
+      screen.getByTestId("quick-entry-body").getAttribute("data-body-sight")
+    ).toBe("device");
+    expect(blind.getAttribute("data-day-unseen")).toBe("true");
+    expect(blind.getAttribute("data-composed-unseen")).toBe("true");
+    expect(screen.getByTestId("quick-entry-asof").textContent).toBe(
+      "Offline — showing only what's queued on this device."
+    );
+
+    resolveLate!({
+      form: "mood" as const,
+      days: [
+        { date: today(), label: "Today", mood: null },
+        { date: "2026-01-01", label: "New Year", mood: null },
+      ],
+      showCalm: true,
+    });
+    await act(async () => {});
+
+    const seeing = screen.getByTestId("stub-mood");
+    expect(
+      screen.getByTestId("quick-entry-body").getAttribute("data-body-sight")
+    ).toBe("read");
+    // The day arrived, so the form on screen is one built FROM the day: it shows the
+    // gathered days, it was composed from them, and it claims no blindness.
+    expect(seeing.textContent).toBe(`${today()},2026-01-01`);
+    expect(seeing.getAttribute("data-composed-days")).toBe(
+      `${today()},2026-01-01`
+    );
+    expect(seeing.getAttribute("data-day-unseen")).toBe("false");
+    expect(seeing.getAttribute("data-composed-unseen")).toBe("false");
+    // …and the sheet stops saying it is showing the device's copy, because it is not.
+    expect(screen.queryByTestId("quick-entry-asof")).toBeNull();
+    // The remount discards anything staged on the offline copy, so it is announced.
+    expect(
+      screen.getByText(/Anything typed on the offline copy was discarded/)
+    ).not.toBeNull();
   });
 
   it("Retry re-runs the SAME gather and a success replaces the error state", async () => {

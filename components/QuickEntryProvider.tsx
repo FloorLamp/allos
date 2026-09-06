@@ -227,13 +227,31 @@ const SHEET: Record<
 // one discriminated union either way, so the body below still switches on `form`.
 type QuickEntryBody = QuickEntryData | MeasurementsQuickEntry;
 
+// WHAT THE FORM ON SCREEN COULD SEE (#3416). A body built from the device's own
+// knowledge is composed BLIND — it shows the day as this device holds it, and the
+// mood form it produces writes under `dayUnseen` so it cannot erase what it never
+// saw. A body built from an answer this context actually got from the server saw the
+// day. The two are not interchangeable props on one mount: a form's local state was
+// seeded from one of them, so the sight the form was composed under has to be the
+// sight it keeps until it is remounted (see the body's `key` below).
+type BodySight =
+  // The server answered for this context — a fresh gather, or a last-good copy of one.
+  | "read"
+  // Built here from what the device holds: a #2908 snapshot, or its own queue.
+  | "device";
+
 type LoadState =
   | { status: "loading" }
   // `asOf` is the #2908 as-of line, set exactly when what is shown did not just come
   // from the server: a last-good copy whose revalidate FAILED, or the device's own
   // copy. Null for a fresh gather — and for a last-good render while its revalidate
   // is still in flight, since online that settles within the round trip.
-  | { status: "ready"; data: QuickEntryBody; asOf: string | null }
+  | {
+      status: "ready";
+      data: QuickEntryBody;
+      asOf: string | null;
+      sight: BodySight;
+    }
   | { status: "error" };
 
 // The stall bound a cold "Loading…" may sit under before the sheet stops waiting
@@ -264,6 +282,10 @@ interface Request {
   readonly parts: DayContextParts;
   readonly form: QuickEntryForm;
   settled: boolean;
+  // A device copy is on screen for this request (`recover` painted one). The late
+  // answer that lands behind it is a CHANGE OF SIGHT, not a refresh, so it remounts
+  // the body and says so — see the body's `key`.
+  copied: boolean;
 }
 
 function asOfCopy(fetchedAt: string | Date, why: string): string {
@@ -364,6 +386,7 @@ export default function QuickEntryProvider({
         parts,
         form: next,
         settled: false,
+        copied: false,
       };
       requestRef.current = request;
       const current = () => requestRef.current === request;
@@ -381,6 +404,7 @@ export default function QuickEntryProvider({
         setState({
           status: "ready",
           asOf: null,
+          sight: "read",
           data:
             subjectId === actingProfileId
               ? measurements
@@ -400,7 +424,7 @@ export default function QuickEntryProvider({
       // made (#3369: no extra query for having a cache).
       setState(
         held
-          ? { status: "ready", data: held.data, asOf: null }
+          ? { status: "ready", data: held.data, asOf: null, sight: "read" }
           : { status: "loading" }
       );
       // COLD FAILURE FALLS BACK TO THE DEVICE'S OWN COPY (#3416 proposal 2): the
@@ -428,10 +452,12 @@ export default function QuickEntryProvider({
           snapshots,
           intents
         );
+        if (copy) request.copied = true;
         setState(
           copy
             ? {
                 status: "ready",
+                sight: "device",
                 data: copy.data,
                 // WHAT THE COPY SAYS ABOUT ITSELF comes WITH the copy
                 // (lib/offline/quick-entry-read.ts), where each form's omissions are
@@ -460,7 +486,19 @@ export default function QuickEntryProvider({
           if (!current()) return;
           request.settled = true;
           rememberLastGood(token, parts, next, data);
-          setState({ status: "ready", data, asOf: null });
+          // A LATE ANSWER UNDER A DEVICE COPY CHANGES THE SIGHT, and the body is
+          // remounted on it (see the body's `key`) rather than swapped underneath the
+          // person: the form's fields were seeded from the device's day and its write
+          // is fenced by that day's blindness, so leaving the mount up while the props
+          // moved would strand blind state beside a payload that saw the day — which
+          // is how a fenced check-in loses its fence. The remount discards anything
+          // staged on the offline copy, so it is announced, in the same words the
+          // subject switch uses for the same loss.
+          if (request.copied)
+            toast(
+              "Connected — this form now shows what's saved. Anything typed on the offline copy was discarded."
+            );
+          setState({ status: "ready", data, asOf: null, sight: "read" });
         },
         () => {
           if (stallTimer != null) clearTimeout(stallTimer);
@@ -474,12 +512,13 @@ export default function QuickEntryProvider({
               status: "ready",
               data: held.data,
               asOf: asOfCopy(held.fetchedAt, "couldn't refresh."),
+              sight: "read",
             });
           else void recover();
         }
       );
     },
-    [actingProfileId, measurements, tz]
+    [actingProfileId, measurements, toast, tz]
   );
 
   const openForm = useCallback(
@@ -643,11 +682,22 @@ export default function QuickEntryProvider({
           <LoggedViaSurface value="quick-log">
             {/* Keyed on the subject (#4932): switching who this is for remounts the
                 body fresh, which is what actually discards a staged, half-typed
-                entry rather than leaving it to paint under the new subject's name. */}
+                entry rather than leaving it to paint under the new subject's name.
+                AND ON THE SIGHT (#3416): a form composed from the device's own copy
+                is composed blind, and its check-in writes fenced by that blindness.
+                A gather that stalled past the bound is not cancelled, so its answer
+                can arrive while that blind form is still up — carrying the very day
+                the form could not see. Making the sight part of the body's identity
+                is what stops the two from meeting: the answer mounts a NEW form,
+                seeded from the day, writing the ordinary replacing write. Without it
+                the mounted form keeps its blind state while the fence flips off
+                underneath it, and the next tap nulls the day the answer just
+                delivered. A form's sight is the sight it was composed under. */}
             <div
-              key={subject}
+              key={`${subject}:${state.status === "ready" ? state.sight : "read"}`}
               data-testid="quick-entry-body"
               data-form={form}
+              data-body-sight={state.status === "ready" ? state.sight : null}
               data-subject-profile-id={subject}
             >
               {state.status === "ready" && state.asOf ? (
