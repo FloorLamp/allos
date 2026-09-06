@@ -24,9 +24,9 @@ test("Weekly habits shows the seeded fatty-fish target with progress (#580)", as
   // the week's first day nothing is logged yet and the row is quiet: count, no badge.
   await expect(page.getByTestId("habit-fatty_fish")).toContainText("of 2");
   const servings = Number(
-    (await page.getByTestId("rollup-fatty_fish").innerText()).match(/^\d+/)![0]
+    (await card.getByTestId("rollup-fatty_fish").innerText()).match(/^\d+/)![0]
   );
-  const pace = page.getByTestId("habit-pace-fatty_fish");
+  const pace = card.getByTestId("habit-pace-fatty_fish");
   if (servings === 0) await expect(pace).toHaveCount(0);
   else await expect(pace).toHaveText(/On track|On pace|Behind/);
 });
