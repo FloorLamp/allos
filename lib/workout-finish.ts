@@ -19,9 +19,15 @@
 // session that ended at 11:35 was finished at 12:30, and the recovery, the zone split
 // and the recap were all measured over an hour of sitting down. `detectedWorkoutEndAt`
 // answers with that minute when this profile's own trace says it unambiguously, and
-// null otherwise — so the correction rides every finish path rather than a second
-// writer, and it is #5142 AC 3's want for the same tap. Nothing here runs unattended:
-// the detector PROPOSES and this core runs only from a person's Finish.
+// null otherwise — so the correction rides the finish path that already exists rather
+// than a second writer, and it is #5142 AC 3's want for the same tap. Nothing here runs
+// unattended: the detector PROPOSES and this core runs only from a person's Finish.
+//
+// IT IS THIS CORE'S CALLERS AND NOT EVERY FINISH IN THE APP. The in-app Finish is the
+// activity form's own (`ActivityForm.tsx`, end field := now, persisted by the autosave);
+// it does not come through here and is unchanged. The live caller of this core is the
+// "Still working out?" nudge's Finish button, which is also the surface that quotes the
+// detected minute — so what a person confirms and what lands are the same reading.
 
 import { db, writeTx } from "./db";
 import type { LoggedVia } from "./logged-via";
