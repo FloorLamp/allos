@@ -1,9 +1,14 @@
 import { test, expect } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
-import { hydratedClick, settledAfterAnimation, settledClick } from "./helpers";
+import {
+  expectPhoneTapTargets,
+  hydratedClick,
+  settledAfterAnimation,
+  settledClick,
+} from "./helpers";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_MOBILITY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
-import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
+import { CONTROL_BOX_PX } from "@/lib/tap-floor-tokens";
 
 // The phone toast is a SNACKBAR (issue #3373).
 //
@@ -33,7 +38,6 @@ import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 // block — so the phone viewport is passed explicitly rather than inherited from
 // this file's `.mobile.spec.ts` name.
 const PHONE = { viewport: { width: 390, height: 844 }, hasTouch: true };
-// The app's own touch floor (app/globals.css, `tap-target`; #644).
 // What `max(1rem, env(safe-area-inset-*))` resolves to with no hardware inset —
 // the gutter the bottom-edge tokens put on both sides of the bar.
 const GUTTER = 16;
@@ -126,10 +130,14 @@ test("a phone toast is one full-width bar above the dock, and a second waits its
     await expect(toast).toHaveClass(/overlay-enter-notice/);
 
     // ── Thumb affordances ──────────────────────────────────────────────────
+    // The control box, with the thumb floor met EFFECTIVELY (#4505 overturned the
+    // bar's own rendered 44); the geometry itself is measured at every width in
+    // e2e/button-height-floor.mobile.spec.ts, so this is the affordance's presence.
     const dismiss = toast.getByRole("button", { name: "Dismiss" });
     const dismissBox = (await dismiss.boundingBox())!;
-    expect(dismissBox.width).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
-    expect(dismissBox.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    expect(dismissBox.width).toBe(CONTROL_BOX_PX);
+    expect(dismissBox.height).toBe(CONTROL_BOX_PX);
+    await expectPhoneTapTargets(page, "the toast's dismiss", [dismiss]);
     // Reachable by keyboard as well as by thumb.
     await dismiss.focus();
     await expect(dismiss).toBeFocused();

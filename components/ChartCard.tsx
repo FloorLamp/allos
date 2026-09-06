@@ -232,7 +232,7 @@ export default function ChartCard({
                 href={detailHref}
                 data-testid="chart-card-expand"
                 aria-label={`Open ${detailTitle ?? title} detail`}
-                className="tap-target press inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-brand-700 sm:hidden dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-300"
+                className="tap-target press inline-flex h-(--control-box) w-(--control-box) items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-brand-700 sm:hidden dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-300"
               >
                 <IconArrowsMaximize className="h-4 w-4" aria-hidden />
               </Link>

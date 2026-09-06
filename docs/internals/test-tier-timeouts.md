@@ -127,8 +127,8 @@ whose work grows with every merge. It is now `perTestCeiling(4)`.
 **So `perTestCeiling` takes the basis as an argument.** A multiple derived from a
 green reading and one derived from an observed worst case are different claims and
 used to look identical in the source; `basis` is `"worst"` or `"green"`, it does no
-arithmetic, and `vitest-timeouts.test.ts` holds it mandatory with a
-`@ts-expect-error`. Where only a green reading exists, the source now says so.
+arithmetic, and it is a REQUIRED parameter, so a caller that omits the sentence does
+not compile. Where only a green reading exists, the source now says so.
 
 Two sites are deliberate exceptions. `chart-empty-states`' `CHART_CHUNK_WARMUP_MS`
 bounds a `findByText` INSIDE a hook, so it must stay BELOW the hook budget rather

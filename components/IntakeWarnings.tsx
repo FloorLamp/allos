@@ -41,7 +41,7 @@ export function IntakeSafetyScope({
       data-testid="safety-scope-footer"
     >
       <summary
-        className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded-sm outline-hidden transition hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500/40 [&::-webkit-details-marker]:hidden dark:hover:text-slate-200"
+        className="fold-control flex w-fit list-none items-center gap-1.5 rounded-sm outline-hidden transition hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500/40 [&::-webkit-details-marker]:hidden dark:hover:text-slate-200"
         data-testid="safety-scope-summary"
       >
         <span>Curated safety screen · no flags found</span>
