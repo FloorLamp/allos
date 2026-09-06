@@ -74,6 +74,7 @@ import type { PartEntry } from "@/lib/activity-form-model";
 import ActivityFormHeader from "./activity-form/ActivityFormHeader";
 import DateTimeFields from "./activity-form/DateTimeFields";
 import { useExertionPrefill } from "./activity-form/useExertionPrefill";
+import type { ExertionOffer } from "@/lib/exertion-offer";
 import IntensityPicker from "./activity-form/IntensityPicker";
 import ActivityMoreDetails from "./activity-form/ActivityMoreDetails";
 import ActivityFormFooter from "./activity-form/ActivityFormFooter";
@@ -381,28 +382,50 @@ export default function ActivityForm({
   // own times, a LIVE session is already running, and a form opened ON a window
   // (#4950's chart door) was told what it is about: none of the three has anything to
   // ask, and none of them is offered anything.
+  //
+  // THE MARK IS ABOUT THE PAIR, NOT ABOUT EITHER CLOCK. Adjusting Start alone drops it
+  // while End still holds the offer's minute, and that is the intended reading: once
+  // one of the two is the person's, "From your heart rate" is no longer true of what
+  // the pair says, and a label that stayed would be claiming the trace agreed with a
+  // span the person has just moved. A per-field mark was the alternative and is not
+  // what shipped — two labels under one paired field, to say something the person has
+  // just done themselves.
   const [timesFromHeartRate, setTimesFromHeartRate] = useState(false);
   // THE FIELD WINS, AND THIS REF IS THE WHOLE OF THAT CLAIM. The answer arrives over
   // the network, so the form is fully usable before it lands — somebody who types a
   // Start while the request is in flight must keep it. Set by the two change funnels
-  // and by a draft restore, read once when the answer arrives; nothing re-applies an
-  // offer afterwards, so a later render cannot put the span's minute back.
+  // and by a draft restore, read every time an answer arrives; once it is set no
+  // answer applies again, so a later render cannot put a span's minute back.
   const timesTouchedRef = useRef(false);
-  const exertionOffer = useExertionPrefill({
+  // What the Duration field held before any offer wrote one, so a withdrawn offer can
+  // put it back. "Log again" seeds a duration from the repeated row, and an offer that
+  // was taken back must not take that with it.
+  const preOfferDurationRef = useRef<string | null>(null);
+  const exertionAnswer = useExertionPrefill({
     enabled: !editData && !live && !initialStartTime && !initialEndTime,
     date,
   });
+  // AN OFFER IS THREE FIELDS AND ONE DAY. Both clocks, the duration between them, and
+  // the mark — applied together, and withdrawn together when the answer for a NEW date
+  // is that its trace says nothing. The date is mutable (`onDate` below), so an answer
+  // that only ever wrote could leave yesterday's form showing today's minutes under a
+  // label saying the heart rate found them.
+  function applyExertionOffer(offer: ExertionOffer | null) {
+    preOfferDurationRef.current ??= sessionDuration;
+    setStartTime(offer?.start ?? "");
+    setEndTime(offer?.end ?? "");
+    if (offer) rememberClockDuration(offer.start, offer.end);
+    else setSessionDuration(preOfferDurationRef.current);
+    setTimesFromHeartRate(offer != null);
+  }
   useEffect(() => {
-    if (!exertionOffer || timesTouchedRef.current) return;
-    setStartTime(exertionOffer.start);
-    setEndTime(exertionOffer.end);
-    rememberClockDuration(exertionOffer.start, exertionOffer.end);
-    setTimesFromHeartRate(true);
-    // The offer is a value that ARRIVES ONCE, and this effect is keyed on it alone.
-    // Re-running on the clocks it just set would be exactly the re-apply the guard
-    // above exists to refuse.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the offer alone: re-running on the clocks it sets is the re-apply this refuses
-  }, [exertionOffer]);
+    if (!exertionAnswer || timesTouchedRef.current) return;
+    applyExertionOffer(exertionAnswer.offer);
+    // Keyed on the ANSWER, which is a new value per question asked — including the
+    // answer "nothing", which is what makes a date change take the last offer back.
+    // Re-running on the clocks it just set would be the re-apply the guard refuses.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the answer alone: re-running on the fields it sets is the re-apply this refuses
+  }, [exertionAnswer]);
   const [sessionDuration, setSessionDuration] = useState(() =>
     seed?.duration_min != null ? String(Math.round(seed.duration_min)) : ""
   );

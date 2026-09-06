@@ -4,6 +4,21 @@ import { useEffect, useState } from "react";
 import { exertionPrefillOffer } from "@/app/(app)/training/activity-actions";
 import type { ExertionOffer } from "@/lib/exertion-offer";
 
+/**
+ * What one day's trace answered.
+ *
+ * AN ANSWER IS ABOUT A DAY, and that is why this wraps the offer rather than being it.
+ * `offer: null` is the answer "this day holds no unclaimed effort" — a different value
+ * from "nothing has come back yet", which is this hook returning null. A form that
+ * cannot tell those two apart keeps the previous day's clocks when the date changes to
+ * a day whose trace says nothing, and goes on marking them as derived.
+ */
+export interface ExertionAnswer {
+  /** The profile-local day this is an answer about. */
+  date: string;
+  offer: ExertionOffer | null;
+}
+
 // WHAT THE HEART RATE SAYS THE SESSION WAS (#5195, reader 2 of #5113).
 //
 // A form opened with no clocks of its own, on a day whose trace holds a finished effort
@@ -28,17 +43,19 @@ export function useExertionPrefill({
   // was told what it is about — none of the three has anything to ask.
   enabled: boolean;
   date: string;
-}): ExertionOffer | null {
-  const [offer, setOffer] = useState<ExertionOffer | null>(null);
+}): ExertionAnswer | null {
+  const [answer, setAnswer] = useState<ExertionAnswer | null>(null);
   useEffect(() => {
     if (!enabled) return;
     let live = true;
-    void exertionPrefillOffer(date).then((answer) => {
-      if (live) setOffer(answer);
+    void exertionPrefillOffer(date).then((offer) => {
+      // Stamped with the day it was asked about: the date is mutable on the form, so
+      // each answer replaces the last one whole rather than only when it is non-null.
+      if (live) setAnswer({ date, offer });
     });
     return () => {
       live = false;
     };
   }, [enabled, date]);
-  return offer;
+  return answer;
 }

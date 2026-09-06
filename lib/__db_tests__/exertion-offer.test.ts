@@ -16,7 +16,10 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
-import { latestExertionOffer } from "@/lib/exertion-offer";
+import {
+  latestExertionOffer,
+  unclaimedExertionSpans,
+} from "@/lib/exertion-offer";
 import { exertionSpanDismissalKey } from "@/lib/dismissal-keys";
 import { setTimezone } from "@/lib/settings";
 
@@ -144,23 +147,71 @@ describe("latestExertionOffer", () => {
         ).run(p, today(p));
       },
     ],
-    [
-      // CRITERION 4. Readers 2 to 4 offer one span ONCE, and the memory of a refusal is
-      // the suppression bus every other dismissal in this app already lives on — read
-      // here so no surface has to remember to filter.
-      "a span already declined on the dismissal registry",
-      (p: number) => {
-        seedOneEffort(p);
-        db.prepare(
-          `INSERT INTO upcoming_dismissals (profile_id, signal_key, dismissed_at)
-             VALUES (?, ?, datetime('now'))`
-        ).run(p, exertionSpanDismissalKey(`${today(p)}T16:00`));
-      },
-    ],
   ])("offers nothing for %s", (name, seed) => {
     const p = newProfile(`OfferNone-${name}`);
     seed(p);
     expect(latestExertionOffer(p, today(p))).toBeNull();
+  });
+
+  /** A decline, written the only way one is remembered: a row on the suppression bus. */
+  function decline(profileId: number, localMinute: string): void {
+    db.prepare(
+      `INSERT INTO upcoming_dismissals (profile_id, signal_key, dismissed_at)
+         VALUES (?, ?, datetime('now'))`
+    ).run(profileId, exertionSpanDismissalKey(localMinute));
+  }
+
+  // CRITERION 4. Readers 2 to 4 offer one span ONCE, and the memory of a refusal is the
+  // suppression bus every other dismissal in this app already lives on — read here so
+  // no surface has to remember to filter.
+  //
+  // ASKED BEFORE AND AFTER THE SAME ROW IS WRITTEN, because there is no writer for this
+  // namespace yet (#5197 holds it) and a case that only asserts a null could be passing
+  // on a fixture that never offered, or on a suppression map that came back empty. The
+  // first expectation rules out the fixture; the second can only change because the row
+  // landed and the filter read it. An empty map would leave the offer standing and red
+  // this case rather than green it.
+  it("stops offering a span the moment it is declined", () => {
+    const p = newProfile("OfferDeclined");
+    seedOneEffort(p);
+    expect(latestExertionOffer(p, today(p))?.start).toBe("16:00");
+    decline(p, `${today(p)}T16:00`);
+    expect(latestExertionOffer(p, today(p))).toBeNull();
+  });
+
+  it("reads the span's OWN key, not merely that some span was declined", () => {
+    // The namespace is not the identity. A refusal of the 15:00 span says nothing about
+    // the 16:00 one, and this is what says the filter compares keys instead of asking
+    // whether the profile has ever declined anything.
+    const p = newProfile("OfferDeclinedElsewhere");
+    seedOneEffort(p);
+    decline(p, `${today(p)}T15:00`);
+    expect(latestExertionOffer(p, today(p))?.start).toBe("16:00");
+  });
+
+  // SPAN ORDER, PINNED WHERE IT IS RELIED ON. `latestExertionOffer` takes the LAST span
+  // and calls it the newest, which is only true because `exertionWindows` appends runs
+  // in trace order and filters without reordering. A day with two efforts is what tells
+  // the two readings apart; the one-effort cases above pin the single-span day, and
+  // every refusal above pins the empty one (no last element, so no offer).
+  it("offers the day's latest effort, the spans arriving oldest first", () => {
+    const p = newProfile("OfferTwoEfforts");
+    seedRestingHr(p, 60);
+    seedRange(p, "13:00", "13:30", 55);
+    seedRange(p, "13:30", "14:00", 140);
+    seedRange(p, "14:00", "16:00", 55);
+    seedRange(p, "16:00", "16:35", 140);
+    seedRange(p, "16:35", "17:10", 55);
+    expect(
+      unclaimedExertionSpans(p, today(p)).map((span) =>
+        new Date(span.from).toISOString().slice(11, 16)
+      )
+    ).toEqual(["13:30", "16:00"]);
+    expect(latestExertionOffer(p, today(p))).toEqual({
+      start: "16:00",
+      end: "16:35",
+      dismissalKey: "exertion-span:2026-07-17T16:00",
+    });
   });
 
   it("is scoped to the profile that measured it", () => {
