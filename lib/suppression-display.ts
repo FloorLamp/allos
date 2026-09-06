@@ -38,7 +38,11 @@ import {
 import { STEPS_PACE_PREFIX } from "./steps-target";
 import { pairedObservationEntry } from "./paired-observations";
 import { biomarkerKeyLabel, titleizeKeyTail } from "./biomarker-key-label";
-import { PR_CARDIO_PREFIX, PR_STRENGTH_PREFIX } from "./dismissal-keys";
+import {
+  OFFER_ASKED_PREFIX,
+  PR_CARDIO_PREFIX,
+  PR_STRENGTH_PREFIX,
+} from "./dismissal-keys";
 import { formatNotifyTime } from "./notifications/schedule";
 
 // The domain GROUP a suppressed row renders under — the section's sub-headings.
@@ -499,6 +503,16 @@ const EXTRA_ENTRIES: ResolverEntry[] = [
       return sourceName
         ? `Bedtime watch reminder offer — ${sourceName}`
         : "Bedtime watch reminder offer";
+    },
+  },
+  {
+    // An offer family's "did we ask" (#4840), keyed `offer-asked:<familyId>`. The
+    // family id reads back as a name; Restore re-arms the offer.
+    prefix: OFFER_ASKED_PREFIX,
+    domain: "Suggestions",
+    label: (t) => {
+      const family = titleize(t.replace(/-/g, " "));
+      return family ? `Settings offer — ${family}` : "Settings offer";
     },
   },
   {
