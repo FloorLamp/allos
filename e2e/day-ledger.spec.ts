@@ -482,18 +482,25 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     // under load: the two grounds differed by a real amount, not a rounding step. The
     // control's own claim is untouched, because both halves of the comparison below
     // still come from the same object through the same reader.
+    //
+    // AS A DOCUMENT RULE, NOT AN INLINE STYLE (#5379, finishing #5000's half). The
+    // comment above this test already says the subtree is REPLACED rather than
+    // updated; an inline style is in force on the ONE node it was written to, so a
+    // replacement between the forge and `tones()`'s next read takes the forgery with
+    // it and the control reds on a page that is behaving. A sheet keyed on the
+    // testid holds for whatever node the locator resolves to, for as long as it is
+    // attached — which is the same object, said in the one way node replacement
+    // cannot undo.
     const beforeForge = await tones();
-    await dueRow.evaluate((el, bg) => {
-      (el as HTMLElement).style.backgroundColor = bg;
-    }, beforeForge.ground);
+    const forgery = await page.addStyleTag({
+      content: `[data-testid^="ledger-due-row-"] { background-color: ${beforeForge.ground} !important; }`,
+    });
     const forged = await tones();
     expect(
       forged.due,
       "the forged ground colour must reach the same object the assertion reads through"
     ).toBe(forged.ground);
-    await dueRow.evaluate((el) => {
-      (el as HTMLElement).style.backgroundColor = "";
-    });
+    await forgery.evaluate((el) => (el as HTMLStyleElement).remove());
     const restored = await tones();
     expect(restored.due).not.toBe(restored.ground);
 
@@ -597,20 +604,22 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     // the record's edge and the plan's fill and both comparisons must collapse, then
     // restore and both must part again. A control that re-queried would only prove
     // that SOME read can tell them apart.
-    await door.evaluate(
-      (el, dressed) => {
-        (el as HTMLElement).style.borderTopStyle = dressed.edge;
-        (el as HTMLElement).style.backgroundColor = dressed.fill;
-      },
-      { edge: dress.record.edge, fill: dress.due.fill }
-    );
+    //
+    // AND AS A DOCUMENT RULE FOR THE SAME REASON THE TRANSITION DISABLE IS ONE
+    // (#5379). #5000 moved the disable off an inline style and left the FORGE on one:
+    // it is written to a single resolved node while every read below re-resolves the
+    // locator, so a node replaced in between reads back the door's own `dashed` and
+    // the control reds — `Expected: "solid" / Received: "dashed"`, the two lines this
+    // test printed in CI. A sheet outlives the node it dresses.
+    const forgery = await page.addStyleTag({
+      content:
+        `[data-testid="food-add-door"] { border-top-style: ${dress.record.edge} !important;` +
+        ` background-color: ${dress.due.fill} !important; }`,
+    });
     const forged = await read();
     expect(forged.door.edge).toBe(forged.record.edge);
     expect(forged.door.fill).toBe(forged.due.fill);
-    await door.evaluate((el) => {
-      (el as HTMLElement).style.borderTopStyle = "";
-      (el as HTMLElement).style.backgroundColor = "";
-    });
+    await forgery.evaluate((el) => (el as HTMLStyleElement).remove());
     const restored = await read();
     expect(restored.door.edge).not.toBe(restored.record.edge);
     expect(restored.door.fill).not.toBe(restored.due.fill);
