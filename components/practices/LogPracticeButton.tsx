@@ -33,6 +33,7 @@ import {
   DOSE_ACTION_LABEL,
   DOSE_ACTION_NEUTRAL,
 } from "@/components/medications/dose-action-styles";
+import { OFFER_VERB_TONE } from "@/components/OfferRow";
 import type { LivePracticeSession, PracticeLogOutcome } from "@/lib/types";
 import {
   endPracticeLive,
@@ -71,6 +72,8 @@ export default function LogPracticeButton({
   lastLoggedTime = null,
   usualSessionDay = false,
   compact = false,
+  chipRow = false,
+  onServerRead,
   primaryTone = "brand",
   defaultDetailsOpen = false,
   initialDetailsDate,
@@ -120,6 +123,20 @@ export default function LogPracticeButton({
   usualSessionDay?: boolean;
   // Dashboard protocol rows collapse the redundant TODAY / no-sessions chrome.
   compact?: boolean;
+  // #5431's ruled row for the quick-log sheet: `label · facts · one trailing slot`.
+  // The HOST row states the day's and the week's facts, so this control renders the
+  // trailing slot alone — a labelled pill whose left half opens the duration editor
+  // and whose right half writes at the label shown, then Just finished and the clock
+  // door; or, while a session runs, one neutral End. The other three mounts keep the
+  // shape they have (this issue's own out-of-scope list).
+  chipRow?: boolean;
+  // RE-READ THE SERVER'S ROW. Every lifecycle transition here changes what the server
+  // says about this practice, and the surfaces that render from a server COMPONENT
+  // pick that up from the action's own revalidation. The quick-log sheet does not: its
+  // props were gathered by a read action when it opened, so it passes that read back
+  // down and this control asks for it rather than keeping a copy that can disagree
+  // with the store (#5431).
+  onServerRead?: () => void;
   // A may-tier practice is a secondary dashboard action, never the page's loudest.
   primaryTone?: "brand" | "neutral";
   defaultDetailsOpen?: boolean;
@@ -161,12 +178,9 @@ export default function LogPracticeButton({
   const [pending, setPending] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(defaultDetailsOpen);
   const [count, setCount] = useState(todayCount);
-  const [currentLive, setCurrentLive] = useState(liveSession);
-  const [serverLive, setServerLive] = useState(liveSession);
-  if (serverLive?.id !== liveSession?.id) {
-    setServerLive(liveSession);
-    setCurrentLive(liveSession);
-  }
+  // The duration editor's disclosure (#5431). Only the chip row has one — every other
+  // mount renders the stepper unconditionally, as it always did.
+  const [durationOpen, setDurationOpen] = useState(false);
   // The time the confirm names, dropped once this mount logs its own session: the
   // action answers with the day's count, not with a local clock reading, and a stale
   // time on a fresh session would be the informational half telling a small lie.
@@ -195,22 +209,34 @@ export default function LogPracticeButton({
     setDuration(defaultDurationMin == null ? "" : String(defaultDurationMin));
   }
 
-  // ONE expression, read by BOTH the stepper's render and the tap's write. Constraint
-  // 2 of #2204 — a logged duration must always be one the user saw — is only as strong
-  // as the fact that these two cannot disagree, so a future rule ("hide the stepper at
-  // the weekly ceiling", "hide it on a narrow row") is added HERE and both halves
-  // follow it. Adding it to the JSX alone would leave the tap posting a value that is
-  // no longer on screen, which is precisely the failure the constraint names.
-  // The duration belongs to the Just-finished statement. A running session's End
-  // action derives elapsed time from its two taps, so leaving this input beside End
-  // would show a value that the action deliberately ignores.
-  const stepperShown = inlineDuration && !currentLive;
+  // THE SESSION IS THE SERVER'S, NOT A COPY (#5431). This used to hold a second,
+  // client-only session beside the prop and follow the prop only when its id changed —
+  // so a Start moved the copy and nothing else, and a row that had completed itself
+  // server-side (#5091) still offered an End that answered "that session is no longer
+  // running". There is one reading now, and `onServerRead` is what keeps it current.
+  const live = liveSession;
+  // ONE expression, read by BOTH the value's render and the tap's write. Constraint 2
+  // of #2204 — a logged duration must always be one the user saw — is only as strong as
+  // the fact that these two cannot disagree, so a future rule ("hide it at the weekly
+  // ceiling", "hide it on a narrow row") is added HERE and both halves follow it.
+  // Adding it to the JSX alone would leave the tap posting a value that is no longer on
+  // screen, which is precisely the failure the constraint names.
+  // The duration belongs to the Just-finished statement. A running session's End action
+  // derives elapsed time from its two taps, so leaving this input beside End would show
+  // a value that the action deliberately ignores.
+  const durationShown = inlineDuration && !live;
+  // WHERE the value is shown is a second question, and only the chip row has two
+  // answers to it: its pill's LABEL states the duration at all times and its editor
+  // opens beneath the row on demand, so the tap may post what the label says whether or
+  // not the editor is open. Every other mount shows the value only in the editor, which
+  // is why they are the same expression there.
+  const stepperShown = durationShown && (!chipRow || durationOpen);
   // The collapsed time statement, retained from #3273 and now the shared one (#4426).
   // The same one-expression discipline the stepper keeps: `shown` is what both the
   // render and the write read, so a running session — whose End action derives elapsed
   // time from its two taps — can neither show the statement nor post one.
   const statement = useTimeStatement({
-    shown: inlineWhen && !currentLive,
+    shown: inlineWhen && !live,
     day: today,
     // SHORT, because it is a VISIBLE field label now (#4384 fix 3) and this row is one
     // of several on a phone-width sheet. The sentence it replaces was an `aria-label`
@@ -240,6 +266,7 @@ export default function LogPracticeButton({
         setCount(outcome.count);
         setLastTime(null);
       }
+      onServerRead?.();
     }
     toast(practiceLogOutcomeText(outcome, today));
   }
@@ -250,7 +277,7 @@ export default function LogPracticeButton({
   // is exactly what makes the offline capture safe without the #2007 confirm, since
   // there is no server to ask.
   async function queueOffline(): Promise<void> {
-    const mins = stepperShown ? durationValue() : null;
+    const mins = durationShown ? durationValue() : null;
     const kept =
       (await enqueue("practice", today, {
         practice,
@@ -323,7 +350,7 @@ export default function LogPracticeButton({
         // The intent is the statement: the server stamps the end tap and derives a
         // start only from the visible usual duration. Client clock fields never cross
         // this boundary.
-        const mins = stepperShown ? durationValue() : null;
+        const mins = durationShown ? durationValue() : null;
         if (mins != null) fd.set("duration_min", String(mins));
         // Only where the control is rendered AND a time was stated. The field's
         // ABSENCE is what tells the write core to stamp the tap instant (#2204 part
@@ -359,20 +386,20 @@ export default function LogPracticeButton({
   }
 
   async function onStart() {
-    if (pending || currentLive) return;
+    if (pending || live) return;
     setPending(true);
     const fd = stampLoggedVia(subject(new FormData()));
     fd.set("practice", practice);
     try {
       const outcome = await startPracticeLive(fd);
       if (outcome.kind === "started") {
-        setCurrentLive(outcome.session);
+        onServerRead?.();
         toast("Session started");
       } else if (outcome.kind === "already-live") {
         // The server's row wins over this mount's stale state. Offer the same shared
         // decision substrate as re-log, and end ONLY the exact row the typed refusal
         // returned — never a client-guessed practice/name lookup.
-        setCurrentLive(outcome.session);
+        onServerRead?.();
         if (
           await confirm({
             title: "End running session?",
@@ -398,7 +425,7 @@ export default function LogPracticeButton({
     const fd = subject(new FormData());
     fd.set("id", String(session.id));
     const outcome = await endPracticeLive(fd);
-    setCurrentLive(null);
+    onServerRead?.();
     if (outcome.kind === "ended") {
       setCount(outcome.count);
       setLastTime(null);
@@ -407,16 +434,64 @@ export default function LogPracticeButton({
   }
 
   async function onEnd() {
-    if (pending || !currentLive) return;
+    if (pending || !live) return;
     setPending(true);
     try {
-      await finishLive(currentLive);
+      await finishLive(live);
     } catch {
       toast("Couldn't end that session. Try again.");
     } finally {
       setPending(false);
     }
   }
+
+  // WHAT THE PILL'S LABEL SAYS (#5431). A blank duration still names its UNIT, which
+  // is both the smallest honest label for a control that opens a minutes editor and
+  // #4384 fix 4's rule — the stepper states "min" in every state, so the collapsed
+  // label does too. A blank label posts no duration, exactly as before.
+  const durationLabel =
+    durationValue() == null ? "min" : `${durationValue()} min`;
+
+  // ONE stepper element, two seats. Every mount but the chip row keeps it inline
+  // in the control cluster; the chip row opens it BENEATH the row, under the
+  // label that names its value (#5431).
+  const stepper = stepperShown ? (
+    // shrink-0: the three parts of the stepper stay together and stay legible;
+    // the cluster above is what wraps.
+    <Stepper
+      testId="practice-inline-duration"
+      stepTestId="practice-duration"
+      className="w-40 shrink-0 border-black/10 dark:border-white/10"
+      onStep={(direction) => step(direction * PRACTICE_DURATION_STEP_MIN)}
+      disabled={pending || ledger.pending()}
+      decreaseDisabled={duration === ""}
+      decreaseLabel={`Shorten the ${practice} session by ${PRACTICE_DURATION_STEP_MIN} minutes`}
+      increaseLabel={`Lengthen the ${practice} session by ${PRACTICE_DURATION_STEP_MIN} minutes`}
+    >
+      {/* THE UNIT IS STATED WHILE THE FIELD HOLDS A VALUE (#4384 fix 4). It
+                used to be the `placeholder`, which is the one state where a bare
+                number is not ambiguous: blank read "min" and a filled field read
+                "15", so the stepper stopped saying what it was counting exactly when
+                it had something to count. The caption is static and says the same
+                word in both states. */}
+      <div className="flex min-w-0 grow items-baseline border-x border-black/10 dark:border-white/10">
+        <input
+          type="number"
+          inputMode="numeric"
+          min="1"
+          step="1"
+          value={duration}
+          onChange={(event) => setDuration(event.target.value)}
+          className="number-no-spinner min-w-0 w-full bg-transparent px-1 py-1 text-right text-sm outline-hidden focus:ring-0"
+          aria-label={`Duration in minutes for this ${practice} session`}
+          data-testid="practice-duration-input"
+        />
+        <span className="pr-1.5 text-xs text-slate-500 dark:text-slate-400">
+          min
+        </span>
+      </div>
+    </Stepper>
+  ) : null;
 
   return (
     <div
@@ -425,7 +500,7 @@ export default function LogPracticeButton({
       }`}
       data-testid="practice-log-control"
     >
-      {!compact || count > 0 || usualSessionDay || atCeiling ? (
+      {!chipRow && (!compact || count > 0 || usualSessionDay || atCeiling) ? (
         <div className="min-w-0">
           {!compact ? <div className="section-label">Today</div> : null}
           <div
@@ -466,55 +541,79 @@ export default function LogPracticeButton({
             existed (zero extra taps when the default is right, which is the common
             case), adjusted with two steppers, and cleared by stepping off the bottom.
             Nothing here logs — the value rides the existing tap's FormData. */}
-        {stepperShown && (
-          // shrink-0: the three parts of the stepper stay together and stay legible;
-          // the cluster above is what wraps.
-          <Stepper
-            testId="practice-inline-duration"
-            stepTestId="practice-duration"
-            className="w-40 shrink-0 border-black/10 dark:border-white/10"
-            onStep={(direction) => step(direction * PRACTICE_DURATION_STEP_MIN)}
-            disabled={pending || ledger.pending()}
-            decreaseDisabled={duration === ""}
-            decreaseLabel={`Shorten the ${practice} session by ${PRACTICE_DURATION_STEP_MIN} minutes`}
-            increaseLabel={`Lengthen the ${practice} session by ${PRACTICE_DURATION_STEP_MIN} minutes`}
-          >
-            {/* THE UNIT IS STATED WHILE THE FIELD HOLDS A VALUE (#4384 fix 4). It
-                used to be the `placeholder`, which is the one state where a bare
-                number is not ambiguous: blank read "min" and a filled field read
-                "15", so the stepper stopped saying what it was counting exactly when
-                it had something to count. The caption is static and says the same
-                word in both states. */}
-            <div className="flex min-w-0 grow items-baseline border-x border-black/10 dark:border-white/10">
-              <input
-                type="number"
-                inputMode="numeric"
-                min="1"
-                step="1"
-                value={duration}
-                onChange={(event) => setDuration(event.target.value)}
-                className="number-no-spinner min-w-0 w-full bg-transparent px-1 py-1 text-right text-sm outline-hidden focus:ring-0"
-                aria-label={`Duration in minutes for this ${practice} session`}
-                data-testid="practice-duration-input"
-              />
-              <span className="pr-1.5 text-xs text-slate-500 dark:text-slate-400">
-                min
-              </span>
-            </div>
-          </Stepper>
-        )}
-        {currentLive ? (
+        {!chipRow && stepper}
+        {live ? (
           <button
             type="button"
             disabled={pending}
             onClick={onEnd}
             data-testid="practice-end-button"
             aria-label={`End the running ${practice} session`}
-            className={`${DOSE_ACTION_LABEL} ${DOSE_ACTION_BRAND}`}
+            // NEUTRAL on the chip row (#5431): the running row already says what is
+            // happening in its facts, so the one control left is an exit rather than
+            // the loudest thing on the sheet.
+            className={`${DOSE_ACTION_LABEL} ${
+              chipRow ? DOSE_ACTION_NEUTRAL : DOSE_ACTION_BRAND
+            }`}
           >
             <IconPlayerStop className="h-3.5 w-3.5" stroke={2.5} aria-hidden />
-            End session
+            {chipRow ? "End" : "End session"}
           </button>
+        ) : chipRow ? (
+          <>
+            {/* THE LABELLED PILL (#5431, #4753's grammar): the label IS the payload
+                the nub writes, so the verb is one word and never says when. Two
+                halves in one box, which is the shape `FactChipRow`'s removable pill
+                already draws — `data-fact-chip` puts both in the control-box selector
+                list and gives the flush halves a BLOCK-only reach, because an inline
+                reach could only be taken from the half next door (#3954). */}
+            <span
+              data-fact-chip="pill"
+              data-testid="practice-duration-chip"
+              className="inline-flex items-stretch overflow-hidden rounded-lg border border-(--border) bg-surface text-sm text-slate-700 dark:text-slate-200"
+            >
+              <button
+                type="button"
+                data-fact-chip="tiled"
+                disabled={pending}
+                aria-expanded={durationOpen}
+                aria-controls="practice-duration-editor"
+                onClick={() => setDurationOpen((open) => !open)}
+                data-testid="practice-duration-toggle"
+                aria-label={`Adjust the duration of this ${practice} session`}
+                className="flex items-center px-3 transition hover:bg-(--ghost-hover) disabled:opacity-50"
+              >
+                {durationLabel}
+              </button>
+              <button
+                type="button"
+                disabled={pending}
+                onClick={onStart}
+                data-fact-chip="tiled"
+                data-testid="practice-start-button"
+                aria-label={`Start a ${practice} session, ${durationLabel}`}
+                className={`flex items-center px-2.5 text-xs font-semibold transition disabled:opacity-50 ${OFFER_VERB_TONE.neutral}`}
+              >
+                Start
+              </button>
+            </span>
+            <button
+              type="button"
+              disabled={pending || ledger.blocked()}
+              onClick={onFinished}
+              data-testid="practice-log-button"
+              aria-label={
+                count === 0
+                  ? `Just finished a ${practice} session`
+                  : `Just finished another ${practice} session — ${count} already logged today`
+              }
+              className={`${DOSE_ACTION_LABEL} ${DOSE_ACTION_BRAND}`}
+            >
+              <IconCheck className="h-3.5 w-3.5" stroke={2.5} aria-hidden />
+              Just finished
+            </button>
+            {statement.door}
+          </>
         ) : (
           <>
             <button
@@ -577,6 +676,14 @@ export default function LogPracticeButton({
           </button>
         )}
       </div>
+      {chipRow && stepper ? (
+        // BENEATH THE ROW, with the label above it (#5431): the disclosure treatment
+        // the design system names for a strip that opens an editor, and the same
+        // full-width seat the clock door's statement already takes.
+        <div className="w-full" id="practice-duration-editor">
+          {stepper}
+        </div>
+      ) : null}
       {statement.reveal ? (
         <div className="w-full">{statement.reveal}</div>
       ) : null}

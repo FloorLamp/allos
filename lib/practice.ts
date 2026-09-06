@@ -6,7 +6,7 @@
 // protocol adherence card, the goal/habit atoms, Upcoming, and the Telegram nudge)
 // keys on the SAME computation (the "one question, one computation" rule, #221).
 
-import { WEEKDAYS_SHORT } from "./date";
+import { WEEKDAYS_SHORT, zonedDateParts } from "./date";
 import { frequencyPace, type FrequencyPace } from "./frequency-targets";
 import { inWakingWindow } from "./notifications/schedule";
 import type { PracticeLiveEndOutcome, PracticeLogOutcome } from "./types";
@@ -194,6 +194,21 @@ export function derivedSessionMinutes(session: {
   const minutes = session.durationMin;
   if (minutes == null || !Number.isFinite(minutes) || minutes <= 0) return null;
   return Math.max(1, Math.round(minutes));
+}
+
+// The INSTANT a live row completes itself, and the profile-local clock it lands on
+// (#5091). One derivation, taken by every reader that hands a live session to a client:
+// the quick sheet's row times a re-read to `at`, and prints `hhmm`. Null when the row
+// stamped no usual duration — those stay live until End or the abandonment bound.
+export function liveSessionExpectedEnd(
+  startedAt: number | null,
+  session: { durationMin: number | null; derivedWindow: boolean },
+  tz: string
+): { at: number; hhmm: string } | null {
+  const derived = derivedSessionMinutes(session);
+  if (derived == null || startedAt == null) return null;
+  const at = startedAt + derived * 60_000;
+  return { at, hhmm: zonedDateParts(tz, new Date(at)).hhmm };
 }
 
 // ── WHICH PRACTICE A WINDOW ON THE DAY CHART LOOKS LIKE (#4950 item 4) ───────
@@ -425,9 +440,62 @@ export function practiceCadenceText(
   floor: number,
   ceiling: number | null
 ): string {
+  return `${practiceTargetRangeText(floor, ceiling)}×/week`;
+}
+
+// Display: the bare weekly target — "3–5" for a range, "3" for a floor. The half of
+// the cadence text that reads as a QUANTITY rather than a rate, which is what the row
+// grammar's facts column says ("1 of 3–5 this week"). One spelling of the range, so
+// the two phrasings cannot drift apart.
+export function practiceTargetRangeText(
+  floor: number,
+  ceiling: number | null
+): string {
   return ceiling != null && ceiling > floor
-    ? `${floor}–${ceiling}×/week`
-    : `${floor}×/week`;
+    ? `${floor}–${ceiling}`
+    : `${floor}`;
+}
+
+// ── THE PRACTICE ROW'S FACTS COLUMN (#5431) ─────────────────────────────
+//
+// The middle of `label · facts · trailing slot`, in the two states that state a
+// STANDING rather than a session: idle and finished-today. TODAY'S COUNT IS A FACT ONLY
+// WHEN IT IS NOT ZERO — "No sessions yet" was the sheet printing the absence of one,
+// beside a control that already says what a tap would do.
+//
+// NO VERDICT HERE, EVER. The badge this replaced printed a pace over an empty week
+// (#5395); the row states the quantity and lets the person read it.
+//
+// The two parts come back SEPARATELY because the day's count is the half a surface
+// marks (`practice-today-count`) and the half whose absence is assertable.
+export function practiceRowFacts(standing: {
+  todayCount: number;
+  countThisWeek: number;
+  perWeek: number;
+  perWeekMax: number | null;
+  atCeiling: boolean;
+}): { today: string | null; week: string } {
+  const week = `${standing.countThisWeek} of ${practiceTargetRangeText(
+    standing.perWeek,
+    standing.perWeekMax
+  )} this week`;
+  return {
+    today: standing.todayCount > 0 ? `${standing.todayCount} today` : null,
+    // The ceiling is the one week fact the count alone cannot carry, and the line this
+    // row replaced stated it. It comes across as prose, not as a badge.
+    week: standing.atCeiling ? `${week} · ${PRACTICE_PLENTY_TEXT}` : week,
+  };
+}
+
+// The RUNNING state's facts, from the server's own row: the start it stamped, and the
+// end it already knows (#5091) when it stamped one. A row with no usual duration has no
+// end to name, and inventing one is exactly what the derived window exists to avoid.
+export function practiceRunningFacts(
+  startTime: string,
+  expectedEndHhmm: string | null
+): string {
+  const since = `Running since ${startTime}`;
+  return expectedEndHhmm ? `${since} · ends ~${expectedEndHhmm}` : since;
 }
 
 // Display: the calm at-ceiling reassurance, shared by the surfaces (#1259: never a red

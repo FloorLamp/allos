@@ -55,7 +55,12 @@ vi.mock("@/app/(app)/wellness/actions", () => ({
     record("startPracticeLive")(fd);
     return {
       kind: "started" as const,
-      session: { id: 5, date: "2026-08-20", startTime: "09:00" },
+      session: {
+        id: 5,
+        date: "2026-08-20",
+        startTime: "09:00",
+        expectedEnd: null,
+      },
       count: 1,
       date: "2026-08-20",
     };
@@ -379,18 +384,35 @@ describe("the subject is spelled once, on every write either piece makes", () =>
   // leaks through: a mount on a household member's row that logged to the member and
   // STARTED for the caregiver would look right on screen and be wrong in the store.
   it("the control's log, start and end all name the row's subject", async () => {
-    render(
+    const mount = (liveSession?: {
+      id: number;
+      date: string;
+      startTime: string;
+      expectedEnd: null;
+    }) => (
       <LogPracticeButton
         practice="Sauna"
         todayCount={0}
         today={TODAY}
         subjectProfileId={SUBJECT}
+        liveSession={liveSession ?? null}
       />
     );
+    const { rerender } = render(mount());
     fireEvent.click(screen.getByTestId("practice-log-button"));
     await waitFor(() => expect(posted.logPractice ?? []).toHaveLength(1));
     fireEvent.click(screen.getByTestId("practice-start-button"));
     await waitFor(() => expect(posted.startPracticeLive ?? []).toHaveLength(1));
+    // The row holds no copy of the session it just started (#5431): End appears when
+    // the SERVER's row reaches the prop, which is what the real mounts re-read for.
+    rerender(
+      mount({
+        id: 5,
+        date: TODAY,
+        startTime: "09:00",
+        expectedEnd: null,
+      })
+    );
     fireEvent.click(await screen.findByTestId("practice-end-button"));
     await waitFor(() => expect(posted.endPracticeLive ?? []).toHaveLength(1));
 
