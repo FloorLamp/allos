@@ -331,6 +331,29 @@ describe("the test:db gate's trigger set", () => {
       expect(covered(rel), `${rel} must fire the gate`).toBe(true);
   });
 
+  // #5260 asked whether this scan covers every ENTRY, or only the set it happens
+  // to import. It did the latter: a renamed fixture would leave its old path in
+  // the array forever, matching nothing, and only the NEW path going uncovered
+  // would ever fail here. So each file entry is now held to what the array's own
+  // comments claim of it — it exists, and an e2e/ entry is one the tier reaches.
+  it("every file entry is real, and every e2e entry is one the tier imports (#5260)", () => {
+    const files = triggerSet().include.filter((e) => !e.endsWith("/"));
+    expect(files.length).toBeGreaterThan(5);
+    expect(
+      files.filter((f) => !fs.existsSync(path.join(REPO, f))),
+      "a db_tier_paths entry names a file that is not in the tree — stale after a rename"
+    ).toEqual([]);
+    const reached = new Set(tierClosure());
+    expect(
+      files.filter((f) => f.startsWith("e2e/") && !reached.has(f)),
+      "an e2e/ entry the tier no longer imports — drop it, or it runs the gate for the browser suite"
+    ).toEqual([]);
+    // And the gate itself announces a stale entry at run time rather than
+    // letting the pathspec match nothing.
+    const src = fs.readFileSync(path.join(REPO, GATES), "utf8");
+    expect(src).toContain("db_tier_paths entry ABSENT");
+  });
+
   it("walks transitively, not one hop", () => {
     const seeds = new Set(seedFiles());
     const closure = tierClosure();
