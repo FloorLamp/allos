@@ -344,12 +344,13 @@ export function useActivityParts({
     setParts((prev) =>
       prev.map((part, idx) => {
         if (idx !== pi) return part;
-        const li = part.sets.length - 1;
-        const last = part.sets[li];
-        // A row nobody has confirmed is still an OFFER, so the coached set lands on
-        // it (#5373). This used to infer that from empty fields, which a planned row
-        // still has — the plan says it directly, and a record is never clobbered.
-        const untouched = !!last && !setDone(last);
+        // The NEXT row still on offer — the set the person is about to do. It used to
+        // be the last row, because a pristine part had exactly one; with the whole
+        // prescription on the grid (#5373) the last row is the third set, and landing
+        // a coached set there would answer a question nobody asked. A part whose every
+        // row is a record has none, and the set arrives as a new one.
+        const li = part.sets.findIndex((s) => !setDone(s));
+        const untouched = li >= 0;
         // The Use tap is #335's explicit single-set write, so the set it lands is a
         // RECORD (#5373) — unlike the Recent panel's session repeat, which replaces
         // the ghosts and leaves the person to confirm each row.

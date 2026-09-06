@@ -94,7 +94,7 @@ const stored = (over: Partial<RepeatSourceSet> = {}): RepeatSourceSet => ({
 });
 
 describe("fillSets (#5377)", () => {
-  it("lands a coached set on the untouched last row, then as a new set", () => {
+  it("lands a coached set on the next unconfirmed row, then as a new set", () => {
     const { result } = setUp();
     act(() => result.current.setParts([part()]));
     act(() =>

@@ -985,17 +985,21 @@ test("strength set controls step, clamp, and toggle without losing their phone g
   const weightBox = await weightInput.boundingBox();
   expect(weightBox).not.toBeNull();
   expect(weightBox!.width).toBeGreaterThanOrEqual(64);
-  // The + stepper bumps the (empty) exercise weight by one increment → 2.5. Only
-  // weight is set, so the set stays half-filled and nothing auto-saves.
+  // The + stepper bumps the exercise weight by one increment — from the PLAN the band
+  // is offering (#5373), not from zero, because a nudge is what a person does to an
+  // offer. Only weight is set, so no row is a record yet and nothing auto-saves.
+  const planned = Number(await weightInput.getAttribute("placeholder"));
+  expect(planned).toBeGreaterThan(0);
+  const stepped = String(planned + 2.5);
   await hydratedClick(page, band.getByLabel("Increase weight"));
-  await expect(weightInput).toHaveValue("2.5");
+  await expect(weightInput).toHaveValue(stepped);
   // "Vary" gives the set its own weight field, carrying the load, with the caret in
   // it; the band is gone and the row is the `weight × reps` pair the rest of this
   // test measures.
   await form.getByTestId("set-vary-1").click();
   await expect(
     form.getByTestId("set-values-1").getByTestId("set1-weight")
-  ).toHaveValue("2.5");
+  ).toHaveValue(stepped);
   await expect(weightInput).toBeFocused();
   await expect(band).toHaveCount(0);
 
@@ -1162,7 +1166,13 @@ test("weight is stated once per exercise until a set varies it (#5371)", async (
   await expect(form.getByTestId("set1-reps")).toBeFocused();
   await page.keyboard.type("8");
   await page.keyboard.press("Enter");
-  await expect(form.getByTestId("set2-reps")).toHaveValue("8");
+  // The new set arrives as a GHOST of the one just recorded (#5373): its numbers are
+  // the offer, painted in the placeholder, and it is not a record until confirmed.
+  await expect(form.getByTestId("set2-reps")).toHaveValue("");
+  await expect(form.getByTestId("set2-reps")).toHaveAttribute(
+    "placeholder",
+    "8"
+  );
   await expect(form.getByTestId("set2-weight")).toHaveCount(0);
   await expect(form.getByLabel("Increase weight")).toHaveCount(1);
 
