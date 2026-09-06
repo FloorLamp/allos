@@ -221,7 +221,7 @@ function LoadField({
   weightStep,
   showPlate,
   ids = null,
-  ghost = null,
+  planned,
   blocked,
   inputRef,
   onChange,
@@ -235,8 +235,12 @@ function LoadField({
   weightStep: number;
   showPlate: boolean;
   ids?: SetRowIds | null;
-  ghost?: NextSet | null;
-  blocked: boolean;
+  // Whether this load is still a PLAN (#5373) — the set it states has not been
+  // confirmed. A planned load is painted as a PLACEHOLDER over an empty field, never
+  // written into it: focus is arrival, not intent, so typing "60" into a ghost must
+  // give 60 and not 77.560 (#1971). The band's plan is the grid's: it is a ghost
+  // until some set of the exercise is done (#5371).
+  planned: boolean;
   // Hands the input up on mount, so a "Vary" tap can put the caret in the weight it
   // just revealed.
   inputRef?: (el: HTMLInputElement | null) => void;
@@ -268,7 +272,7 @@ function LoadField({
       min="0"
       inputMode="decimal"
       data-testid={ids?.weight}
-      value={set[f.weight]}
+      value={planned ? "" : set[f.weight]}
       onChange={(e) => onChange({ [f.weight]: stripNegative(e.target.value) })}
       onKeyDown={(e) => {
         if (e.key === "Enter") {
@@ -276,11 +280,7 @@ function LoadField({
           onEnter();
         }
       }}
-      placeholder={
-        ghost && !ghost.bodyweight
-          ? String(dispWeight(ghost.weightKg, unit, 1))
-          : unit
-      }
+      placeholder={(planned && set[f.weight]) || unit}
       className={
         stepped
           ? "number-no-spinner min-w-0 w-full border-x border-y-0 border-black/10 bg-transparent px-2 py-2 text-sm outline-hidden focus:ring-0 dark:border-white/10 dark:text-slate-100 dark:placeholder:text-slate-500"
@@ -341,7 +341,6 @@ function SetRow({
   weightStep,
   showPlate,
   ids = null,
-  ghost = null,
   className,
   testId,
   flagsFor,
@@ -360,9 +359,6 @@ function SetRow({
   weightStep: number;
   showPlate: boolean;
   ids?: SetRowIds | null;
-  // The coached offer this row ghosts its placeholders with, or null (#335). Set 1 of
-  // a fresh bilateral part only — a ghost is an offer, never a write.
-  ghost?: NextSet | null;
   className: string;
   testId?: string;
   // Which of this side's inputs to flag while a change is stuck.
@@ -386,15 +382,23 @@ function SetRow({
 }) {
   const f = SIDE[side];
   const timed = isTimed(exercise);
+  // This row is the PLAN until it is confirmed (#5373). Its numbers show as ghost
+  // placeholders, and the first step or keystroke into them writes the value AND
+  // confirms the set — correcting IS confirming, so a failed set is two taps on
+  // reps `−` and never a separate confirm afterwards.
+  const planned = !set.done;
+  const confirm = (patch: Partial<SetEntry>) => onChange({ ...patch, done: true });
   const flags = flagsFor(set[f.weight], set[f.reps], set[f.duration]);
   const reps = useRef<HTMLInputElement | null>(null);
   const effortRef = (el: HTMLInputElement | null) => {
     reps.current = el;
     repsRef?.(el);
   };
+  // Steps from the PLAN's reps while the row is a ghost — "stepping row 2's reps
+  // down twice" is `reps − 2` at the planned load, not a count started from zero.
   const stepReps = (direction: -1 | 1) => {
     const next = Math.max(0, (Number(set[f.reps]) || 0) + direction);
-    onChange({ [f.reps]: next > 0 ? String(next) : "" });
+    confirm({ [f.reps]: next > 0 ? String(next) : "" });
   };
   // The "effort" input is reps for normal lifts, a m:ss hold time for timed.
   const holdInvalid =
@@ -404,9 +408,9 @@ function SetRow({
       ref={effortRef}
       type="text"
       inputMode="numeric"
-      value={set[f.duration]}
-      onChange={(e) => onChange({ [f.duration]: e.target.value })}
-      placeholder="m:ss"
+      value={planned ? "" : set[f.duration]}
+      onChange={(e) => confirm({ [f.duration]: e.target.value })}
+      placeholder={(planned && set[f.duration]) || "m:ss"}
       aria-invalid={holdInvalid || undefined}
       className={`input ${
         holdInvalid
@@ -423,8 +427,8 @@ function SetRow({
       min="1"
       inputMode="numeric"
       data-testid={ids?.reps}
-      value={set[f.reps]}
-      onChange={(e) => onChange({ [f.reps]: stripNonPositive(e.target.value) })}
+      value={planned ? "" : set[f.reps]}
+      onChange={(e) => confirm({ [f.reps]: stripNonPositive(e.target.value) })}
       onKeyDown={
         onEnter
           ? (e) => {
@@ -437,7 +441,7 @@ function SetRow({
             }
           : undefined
       }
-      placeholder={ghost != null ? String(ghost.reps) : "reps"}
+      placeholder={(planned && set[f.reps]) || "reps"}
       // Divider on BOTH sides now that the reps stepper is symmetric
       // (#1524: − input +), exactly like the weight stepper's input.
       className="number-no-spinner min-w-0 w-full border-x border-y-0 border-black/10 bg-transparent px-2 py-2 text-sm outline-hidden focus:ring-0 dark:border-white/10 dark:text-slate-100 dark:placeholder:text-slate-500"
@@ -456,10 +460,10 @@ function SetRow({
             weightStep={weightStep}
             showPlate={showPlate}
             ids={ids}
-            ghost={ghost}
+            planned={planned}
             blocked={flags.weight}
             inputRef={loadRef}
-            onChange={onChange}
+            onChange={confirm}
             onPlateTarget={onPlateTarget}
             onEnter={() => reps.current?.focus()}
           />
@@ -791,8 +795,10 @@ export default function StrengthSets({
       effort: needsSet || (partial && (timed ? !d.trim() : !r.trim())),
     };
   };
-  const last = p.sets[p.sets.length - 1];
-  const canAddSet = !!last && setComplete(p.name, last, p.perSide);
+  // A further set copies the last one the person CONFIRMED (#5373) — until one
+  // exists the rows already state the plan, and there is nothing to add to.
+  const lastDone = [...p.sets].reverse().find((s) => s.done) ?? null;
+  const canAddSet = !!lastDone && setComplete(p.name, lastDone, p.perSide);
   const total = partTotal(p);
   // The sentence this part's sets read as, or null when they are not a uniform run and
   // must stay a grid (lib/activity-form-model). Null is the rule, not a hint: with no
@@ -804,9 +810,10 @@ export default function StrengthSets({
   // identical sets that differed only in effort still says so once compressed.
   const setsRpe = rpeTracking ? rpeSummaryText(p.sets) : null;
   const showGrid = !(collapsed && setsSentence);
-  // A pristine part (no set started): its set 1 shows the suggestion as ghost
-  // PLACEHOLDERS (#335). Once anything is typed it's no longer pristine, so the
-  // ghosts vanish and never fight real input.
+  // A pristine part: no set of it has been confirmed, so every row it holds is still
+  // the PLAN (#5373 widens #335's set-1 offer to the whole prescription). Confirming
+  // or correcting any row ends it, and the untouched-part gates that protect entry in
+  // progress from fills read this.
   //
   // The ghost is an OFFER, never a write. #335 originally also applied the
   // suggestion from the fields' `onFocus` — "no Use tap needed" — and #1971
@@ -817,19 +824,12 @@ export default function StrengthSets({
   // typing speed and at 6x CPU throttle — not a race. Focus is ARRIVAL, not
   // intent, and this repo's rule is that context gates an offer but the user's
   // tap is the write. The tap is the Next-set card's "Use" button below.
-  const partUntouched = p.sets.every(
-    (s) =>
-      !setComplete(p.name, s, p.perSide) && !setPartial(p.name, s, p.perSide)
-  );
-  // The bilateral suggestion to ghost set 1 with. Only for a fresh bilateral
-  // part with a weighted suggestion — per-side offers via its own Use button,
-  // and a bodyweight suggestion has no weight ghost.
-  const ghost = !p.perSide && partUntouched ? suggestion : null;
+  const partUntouched = p.sets.every((s) => !s.done);
   // Live version of the training log card's missed-target marker, judged by the
   // same shared rule the saved data will be (completed sets only).
   const intent = partIntent(p);
   const targetStatus = judgeTargets(
-    p.sets
+    doneSets(p)
       .filter((s) => setComplete(p.name, s, false))
       .map((s) => ({
         reps: Number(s.reps),

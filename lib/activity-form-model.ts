@@ -270,6 +270,10 @@ export function repeatSessionFill(
         s.duration_sec_right != null ? formatSeconds(s.duration_sec_right) : "",
       warmup: !!s.warmup,
       rpe: null as number | null,
+      // A fill states a PLAN, not a record (#5373). The Recent panel's "repeat this
+      // session" is how you plan from an older one, and the coached Use tap is #335's
+      // explicit single-set write — which says so at its own call site.
+      done: false,
     }));
   return { sets: out, perSide };
 }
@@ -287,6 +291,12 @@ export interface SetEntry {
   // a number (not a text field) — the set row edits it through a stepper, and the
   // save boundary canonicalizes it (lib/rpe.ts).
   rpe: number | null;
+  // Client-only (#5373): the person CONFIRMED this set — tapped its confirm control,
+  // or corrected its reps or load, which is the same gesture. Until then the row is
+  // the PLAN: its numbers are the offer painted as placeholders, and everything that
+  // asks what the session DID (`doneSets`) passes over it. Never saved — the stored
+  // shape is unchanged, and every stored set opens done.
+  done: boolean;
 }
 export interface PartEntry {
   name: string;
@@ -339,6 +349,7 @@ export const blankSet = (): SetEntry => ({
   durationRight: "",
   warmup: false,
   rpe: null,
+  done: false,
 });
 export const blankPart = (): PartEntry => ({
   name: "",
@@ -462,6 +473,9 @@ export function groupEditSets(
         s.duration_sec_right != null ? formatSeconds(s.duration_sec_right) : "",
       warmup: !!s.warmup,
       rpe: s.rpe ?? null,
+      // A stored set is a record, so an edit opens every set done (#5373) — nothing
+      // the person already logged is offered back to them as a plan.
+      done: true,
     });
   }
   return byName;
@@ -557,6 +571,15 @@ export const setPartial = (name: string, set: SetEntry, perSide: boolean) =>
   (perSide &&
     sidePartial(name, set.weightRight, set.repsRight, set.durationRight));
 
+// THE SETS THAT ARE A RECORD (#5373). Every set arrives as a plan; a confirmed one is
+// what happened. So everything that asks what this part DID — the payload, the volume
+// total, the target judgement, the compact sentence, the save gate — asks THIS, and a
+// planned row answers none of them however filled its fields look. `setComplete` keeps
+// its own meaning (a row whose fields make a set); the two questions are different and
+// the payload needs both.
+export const doneSets = (p: Pick<PartEntry, "sets">) =>
+  p.sets.filter((s) => s.done);
+
 // ---- The compact set notation (#3336) ----
 
 // How many sets a run has to be before stating it as one sentence beats reading the
@@ -593,9 +616,12 @@ export const MIN_COMPACT_SETS = 2;
  * so a part whose sets differ only in effort still compresses, and says so.
  */
 export function partSetsSummary(p: PartEntry, unit: WeightUnit): string | null {
-  if (p.sets.length < MIN_COMPACT_SETS) return null;
-  const first = p.sets[0];
-  const uniform = p.sets.every(
+  // Over the RECORD, never the plan (#5373): three ghost rows are an offer, and a
+  // sentence stating them would announce work nobody has done yet.
+  const done = doneSets(p);
+  if (done.length < MIN_COMPACT_SETS) return null;
+  const first = done[0];
+  const uniform = done.every(
     (s) =>
       !s.warmup &&
       s.weight === first.weight &&
@@ -621,7 +647,7 @@ export function partSetsSummary(p: PartEntry, unit: WeightUnit): string | null {
   if (!complete) return null;
 
   const timed = isTimed(p.name);
-  const rows: SetRow[] = p.sets.map((s, i) => ({
+  const rows: SetRow[] = done.map((s, i) => ({
     set_number: i + 1,
     weight_kg: s.weight ? toKg(Number(s.weight), unit) : null,
     reps: timed ? null : s.reps ? Number(s.reps) : null,
@@ -637,10 +663,11 @@ export function partSetsSummary(p: PartEntry, unit: WeightUnit): string | null {
   return summarizeExercise(rows, unit).text;
 }
 
-// Working-set volume (weight × reps, summed across sets and both sides).
-// Warmups are excluded (#338) — they're not working volume.
+// Working-set volume (weight × reps, summed across sets and both sides) over the sets
+// the person confirmed (#5373). Warmups are excluded (#338) — they're not working
+// volume.
 export function partTotal(p: PartEntry): number {
-  return p.sets.reduce((sum, s) => {
+  return doneSets(p).reduce((sum, s) => {
     if (s.warmup) return sum;
     let v = (Number(s.weight) || 0) * (Number(s.reps) || 0);
     if (p.perSide)

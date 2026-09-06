@@ -20,8 +20,6 @@ import {
   partIntent,
   initialPartsFromSeed,
   repeatSessionFill,
-  setComplete,
-  setPartial,
   latchVaried,
 } from "@/lib/activity-form-model";
 
@@ -81,8 +79,10 @@ export function useActivityParts({
   // Type-scoped protocol creates keep their requested cardio/sport type as the
   // fallback for a newly committed free-text name whose type cannot be inferred.
   defaultCustomType: "cardio" | "sport" | null;
-  // Fires when a set is "checked off" (a new set added) — the parent starts the
-  // live-mode rest timer off this (#340).
+  // Fires when a set is CHECKED OFF — confirmed, by its confirm control or by a
+  // correction to its numbers (#5373). The parent starts the live-mode rest timer and
+  // its haptic off this (#340); before #5373 the implicit gesture was adding the next
+  // row, which fired whether or not the previous set had happened.
   onSetCheckedOff: () => void;
 }): {
   parts: PartEntry[];
@@ -229,7 +229,19 @@ export function useActivityParts({
   }
   // Patch one set, or every set at once — the exercise-level weight (#5371) is one
   // load stated for the whole grid, so it writes through the same door as a row.
+  //
+  // AND CONFIRMING IS A PATCH LIKE ANY OTHER (#5373). A set row's own controls send
+  // `done: true` with whatever they changed, and the confirm control sends it alone —
+  // so "correcting is confirming" needs no second writer and cannot drift from the
+  // tap. Turning a PLANNED set into a record is the check-off gesture (#340), fired
+  // here rather than by each control that can confirm, so it happens exactly once per
+  // set however the person got there.
   function updateSet(pi: number, si: number | "all", patch: Partial<SetEntry>) {
+    if (
+      patch.done &&
+      parts[pi]?.sets.some((s, j) => (si === "all" || j === si) && !s.done)
+    )
+      onSetCheckedOff();
     setParts((prev) =>
       prev.map((p, idx) =>
         idx === pi
@@ -243,14 +255,16 @@ export function useActivityParts({
       )
     );
   }
+  // Append a further set as a PLAN copied from the last one the person confirmed
+  // (#5373) — the rows already carry the prescription, so this is the fourth set you
+  // decided to do while standing there. It no longer stands in for the check-off:
+  // confirming a set is its own gesture now, and firing the rest timer here as well
+  // would start it twice for one set.
   function addSet(pi: number) {
-    // Adding the next set is the "checked off the previous set" gesture — in live
-    // mode that's when the rest timer starts (issue #340).
-    onSetCheckedOff();
     setParts((prev) =>
       prev.map((p, idx) => {
         if (idx !== pi) return p;
-        const last = p.sets[p.sets.length - 1];
+        const last = [...p.sets].reverse().find((s) => s.done);
         return {
           ...p,
           sets: [
@@ -268,6 +282,7 @@ export function useActivityParts({
               // RPE is logged per set, never carried forward (#743) — blank by
               // default, so the next set starts unrated.
               rpe: null,
+              done: false,
             },
           ],
         };
@@ -307,10 +322,12 @@ export function useActivityParts({
   //
   // A session repeat replaces the part's sets outright and adopts the source's
   // side-tracking — the explicit gesture is gated on a pristine part in the set
-  // editor, so it can never clobber entry in progress (#923).
+  // editor, so it can never clobber entry in progress (#923). It replaces the GHOSTS
+  // (#5373): a prior session is another way to state this session's plan, and each
+  // row still waits to be confirmed.
   //
-  // A coached set fills the last row while that row is still UNTOUCHED (nothing
-  // counted, nothing half-entered), else arrives as a new set. It leaves the landing
+  // A coached set fills the last row while that row is still UNCONFIRMED, else
+  // arrives as a new set. It leaves the landing
   // row's warmup flag and RPE alone: those are what the person said about the row,
   // not what the suggestion says about the load. When the suggestion progresses a
   // declared rep target, adopt it as the exercise's intent — unless the user already
@@ -336,14 +353,18 @@ export function useActivityParts({
         if (idx !== pi) return part;
         const li = part.sets.length - 1;
         const last = part.sets[li];
-        const untouched =
-          !!last &&
-          !setComplete(part.name, last, part.perSide) &&
-          !setPartial(part.name, last, part.perSide);
+        // A row nobody has confirmed is still an OFFER, so the coached set lands on
+        // it (#5373). This used to infer that from empty fields, which a planned row
+        // no longer has — the flag says it directly, and a record is never clobbered.
+        const untouched = !!last && !last.done;
+        // The Use tap is #335's explicit single-set write, so the set it lands is a
+        // RECORD (#5373) — unlike the Recent panel's session repeat, which replaces
+        // the ghosts and leaves the person to confirm each row.
         const land = (row: SetEntry): SetEntry => ({
           ...values,
           warmup: row.warmup,
           rpe: row.rpe,
+          done: true,
         });
         return latchVaried({
           ...part,
