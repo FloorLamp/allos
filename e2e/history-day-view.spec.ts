@@ -1132,7 +1132,7 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
       // defect was a cell far wider than the disc inside it. In the door's `w-72`
       // panel the cell is the disc plus a little; in the retired rail card it was
       // nearly four times it.
-      const cell = days.first(); // first-ok: every cell is one column of the same grid, so any one answers this
+      const cell = days.first(); // eslint-disable-line no-restricted-properties -- first-ok: every cell is one column of the same grid, so any one answers this
       const [cellBox, glyphBox] = await settledBoxes([
         cell,
         cell.locator("span"),
