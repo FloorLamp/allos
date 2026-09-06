@@ -32,7 +32,13 @@ import {
 //
 // ONE AUTHORED PICKER, hosted by `AnchoredPanel` exactly as the calendar is: an
 // anchored popover from `md` up, a bottom sheet below, never a `hidden md:` twin
-// (#2305). The picker is a SCROLL-SNAP WHEEL — real scroll containers, so flick
+// (#2305). AND ROLE-LESS, exactly as the calendar is: a panel that declares a
+// role is one `AnchoredPanel` moves focus INTO on open (#3905), which is right
+// for a menu a button promised and wrong for a picker that opens when the FIELD
+// takes focus — the caret would leave the input the person just clicked into,
+// and their next keystroke would land in the hour column. The field itself is
+// the keyboard route here (typing, and the arrows step by a minute), so the
+// wheel promises no popup and nothing pulls focus out of the input. The picker is a SCROLL-SNAP WHEEL — real scroll containers, so flick
 // momentum and detent snapping are the platform's own physics rather than a
 // gesture recognizer this file would have to own. Chosen over dropping to native
 // below `md` knowing a web page gets no haptic tick on iOS: the look being the
@@ -278,7 +284,6 @@ export default function TimeField({
         }}
         disabled={disabled}
         aria-label="Open time picker"
-        aria-haspopup="dialog"
         className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 transition hover:text-slate-600 disabled:opacity-40 dark:text-slate-400 dark:hover:text-slate-300"
       >
         <svg
@@ -298,7 +303,6 @@ export default function TimeField({
         onClose={() => setOpen(false)}
         anchorRef={ref}
         title="Choose a time"
-        role="dialog"
         testId="time-field-wheel"
         sheetTestId="time-field-sheet"
         panelRef={popRef}
