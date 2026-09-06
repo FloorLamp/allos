@@ -79,8 +79,10 @@ describe("Telegram column gate (chokepoint)", () => {
     setLoginTelegramDisabledKinds(l, ["refill"]);
 
     const results = await dispatch(p, REFILL);
-    // Telegram is the only configured channel; the send short-circuited.
-    expect(results).toEqual([{ id: "telegram", ok: true }]);
+    // Telegram is the only configured channel; the send short-circuited. HEALTHY AND
+    // DELIVERED TO NOBODY, which are two different facts (#5194, tenth pass): a
+    // filtered audience must never read as a message somebody received.
+    expect(results).toEqual([{ id: "telegram", ok: true, delivered: false }]);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(getNotifyError()).toBeNull();
   });
@@ -94,7 +96,7 @@ describe("Telegram column gate (chokepoint)", () => {
     setLoginTelegramDisabledKinds(l, ["digest"]); // refill still on
 
     const results = await dispatch(p, REFILL);
-    expect(results).toEqual([{ id: "telegram", ok: true }]);
+    expect(results).toEqual([{ id: "telegram", ok: true, delivered: true }]);
     expect(fetchMock).toHaveBeenCalled();
   });
 });
@@ -117,7 +119,8 @@ describe("Web Push column gate (per owning login)", () => {
     setLoginPushDisabledKinds(member, ["refill"]);
 
     const results = await dispatch(p, REFILL);
-    expect(results).toEqual([{ id: "push", ok: true }]);
+    // Every subscription filtered out: healthy, and nobody was reached.
+    expect(results).toEqual([{ id: "push", ok: true, delivered: false }]);
     expect(getNotifyError()).toBeNull();
   });
 });

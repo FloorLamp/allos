@@ -109,7 +109,9 @@ describe("dispatch to an HA-only profile", () => {
     });
 
     const results = await dispatch(p, DOSE_MSG);
-    expect(results).toEqual([{ id: "home-assistant", ok: true }]);
+    expect(results).toEqual([
+      { id: "home-assistant", ok: true, delivered: true },
+    ]);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [calledUrl, init] = fetchMock.mock.calls[0];
@@ -151,8 +153,11 @@ describe("dispatch to an HA-only profile", () => {
       kind: "weekly-recap",
     });
     // Channel was configured (attempted) but the kind is off → no network call,
-    // counted as a healthy no-op (mirrors push with no live subscription).
-    expect(results).toEqual([{ id: "home-assistant", ok: true }]);
+    // counted as a healthy no-op (mirrors push with no live subscription) that
+    // reached nobody.
+    expect(results).toEqual([
+      { id: "home-assistant", ok: true, delivered: false },
+    ]);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

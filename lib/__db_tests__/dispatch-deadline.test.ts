@@ -118,9 +118,12 @@ describe("dispatch() under the shared deadline (#3057)", () => {
 
     const telegram = results!.find((r) => r.id === "telegram")!;
     const ha = results!.find((r) => r.id === "home-assistant")!;
-    expect(ha).toEqual({ id: "home-assistant", ok: true });
+    expect(ha).toEqual({ id: "home-assistant", ok: true, delivered: true });
     expect(telegram.ok).toBe(false);
     expect(telegram.timedOut).toBe(true);
+    // Abandoned, so delivery is UNKNOWN and reported as the safe half of unknown:
+    // the send may still land, and nothing here can see whether it did.
+    expect(telegram.delivered).toBe(false);
     expect(telegram.error).toBe(
       new DispatchTimeoutError("telegram", NOTIFICATION_DISPATCH_TIMEOUT_MS)
         .message

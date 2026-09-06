@@ -208,23 +208,44 @@ export async function runStillGoingSuggest(
     );
     if (results.length === 0) continue;
     if (results.some((r) => !r.ok)) failed = true;
-    if (results.some((r) => r.ok)) {
-      // WHAT THIS MESSAGE PROMISED, ON RECORD BECAUSE IT WAS DELIVERED (#5194, eighth
-      // and ninth falsifying passes). The body quotes `episode.detectedEnd`; the Finish
-      // button on it runs `finishWorkoutSession`, which stamps what is recorded here
-      // rather than asking the detector again hours later. Both halves read the same
-      // field, so the sentence and the row hold the same characters by construction. A
-      // message that names no minute records that too — it promises the tap's own
-      // instant, and a trace that starts answering afterwards must not back-date the row.
+    // REACHED SOMEBODY, which is not the same question as "did the channel succeed"
+    // (#5194, tenth falsifying pass). `ok` is a CHANNEL-level fact and Telegram is not
+    // one channel per person: it fans one message out to every managing login's chat and
+    // lets a single chat's throw fail the whole channel. So in a household where one
+    // chat has blocked the bot, the other chat receives this message — with its live
+    // Finish button quoting a minute — while `some(ok)` reads false. Recording nothing
+    // there is exactly the defect this record exists to prevent, from the other end:
+    // the tap then re-reads the trace and stamps something the message never said.
+    //
+    // `delivered` is the recipient-level answer each channel now gives
+    // (lib/notifications/types.ts, SendOutcome). It is also strictly more honest in the
+    // other direction: a channel whose whole audience was filtered by a per-kind gate
+    // is `ok` and reached nobody, and a proposal recorded for THAT would be a minute
+    // nobody was shown.
+    if (results.some((r) => r.delivered)) {
+      // WHAT THIS MESSAGE PROMISED, ON RECORD BECAUSE SOMEBODY RECEIVED IT (#5194,
+      // eighth, ninth and tenth falsifying passes). The body quotes
+      // `episode.detectedEnd`; the Finish button on it runs `finishWorkoutSession`,
+      // which stamps what is recorded here rather than asking the detector again hours
+      // later. Both halves read the same field, so the sentence and the row hold the
+      // same characters by construction. A message that names no minute records that
+      // too — it promises the tap's own instant, and a trace that starts answering
+      // afterwards must not back-date the row.
       //
-      // BESIDE THE ONE-SHOT MARKER AND UNDER ITS CONDITION, which is the ninth pass's
-      // correction. Recording before the dispatch was meant to close a window where a
-      // delivered message had no record; what it actually did was record for messages
-      // that never went anywhere — a profile with no channel at all reaches this loop
-      // every eligible tick — and `finishWorkout` would then stamp a minute nobody was
-      // shown. The record is written first of the two so a crash between them re-sends
-      // and re-records rather than leaving a live button with no record; nothing here
-      // needs an overwrite to be correct, because nothing undelivered is ever written.
+      // BESIDE THE ONE-SHOT MARKER AND UNDER THE SAME CONDITION, which is the ninth
+      // pass's correction kept on the tenth's gate. Recording before the dispatch was
+      // meant to close a window where a delivered message had no record; what it
+      // actually did was record for messages that never went anywhere — a profile with
+      // no channel at all reaches this loop every eligible tick — and `finishWorkout`
+      // would then stamp a minute nobody was shown. The record is written first of the
+      // two so a crash between them re-sends and re-records rather than leaving a live
+      // button with no record.
+      //
+      // THE MARKER RIDES THE SAME ANSWER, and that is load-bearing rather than
+      // symmetry: a nudge that reached one chat and is not marked would be re-sent on
+      // the next tick, and the second message can quote a DIFFERENT minute — leaving
+      // the first chat holding a live button for a minute no longer on record. One
+      // question, one answer, for the record and the "asked once" both.
       if (episode.kind === "workout")
         recordWorkoutEndProposal(profileId, episode.rowId, episode.detectedEnd);
       setProfileSetting(profileId, markerKey, date);

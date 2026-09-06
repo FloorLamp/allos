@@ -139,7 +139,7 @@ describe("Telegram owners", () => {
 
     const calls = stubWire();
     const results = await dispatch(p, DOSE);
-    expect(results).toEqual([{ id: "telegram", ok: true }]);
+    expect(results).toEqual([{ id: "telegram", ok: true, delivered: true }]);
     // TWO sends for three logins: the shared chat once, C's chat once.
     expect(calls.filter((u) => u.includes("sendMessage"))).toHaveLength(2);
     expect([a, b, c].map((l) => stateOf("telegram", l))).toEqual([
@@ -147,6 +147,47 @@ describe("Telegram owners", () => {
       "delivering",
       "delivering",
     ]);
+  });
+
+  // A CHANNEL IS NOT A RECIPIENT (#5194, tenth falsifying pass). One chat in the
+  // household has blocked the bot; the other chat is holding the message. The channel
+  // still FAILS — the slot must be able to retry and the blocked login must read as
+  // Erroring, both unchanged — and `delivered` says the household got it, which is what
+  // a caller whose correctness depends on somebody having SEEN the message needs and
+  // could not previously ask (lib/notifications/still-going.ts records what the nudge
+  // promised on exactly this answer).
+  it("a partly delivered household fan-out is a failed channel that DELIVERED", async () => {
+    const p = newProfile("Blocked one chat");
+    const good = seedLoginTelegram(p, "chat-good");
+    const blocked = seedLoginTelegram(p, "chat-blocked");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+        const body = String(init?.body ?? "");
+        return body.includes("chat-blocked")
+          ? new Response(
+              JSON.stringify({
+                ok: false,
+                description: "Forbidden: bot was blocked by the user",
+              }),
+              { status: 403, headers: { "content-type": "application/json" } }
+            )
+          : new Response(
+              JSON.stringify({ ok: true, result: { message_id: 7 } }),
+              { status: 200, headers: { "content-type": "application/json" } }
+            );
+      })
+    );
+
+    const results = await dispatch(p, DOSE);
+    expect(results).toHaveLength(1);
+    expect(results[0].ok).toBe(false);
+    expect(results[0].delivered).toBe(true);
+    // The per-owner accounting is untouched by the new field: the chat that received it
+    // is Delivering, the chat that refused it is Erroring.
+    expect(stateOf("telegram", good)).toBe("delivering");
+    expect(stateOf("telegram", blocked)).toBe("failing");
+    expect(getNotifyError()).not.toBeNull();
   });
 
   it("a failure moves the addressed logins to Erroring, and one login's success does not clear another's", async () => {

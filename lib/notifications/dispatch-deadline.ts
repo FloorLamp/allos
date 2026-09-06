@@ -35,9 +35,20 @@ export const NOTIFICATION_DISPATCH_TIMEOUT_MS = 120_000;
 // when the shared deadline fired. It is never success and never "nothing
 // configured" — the slot marker/retry semantics read `ok` exactly as they do
 // for an ordinary failure.
+//
+// `ok` and `delivered` answer DIFFERENT questions and neither implies the other
+// (#5194, tenth falsifying pass). `ok` is about the CHANNEL: it finished without
+// throwing, so nothing here is erroring and there is nothing to retry. `delivered`
+// is about the RECIPIENTS the channel fanned out to: at least one of them actually
+// received the message. A channel that filtered its whole audience by a per-kind
+// gate is `ok` and not `delivered`; Telegram that reached one chat in a household
+// and then threw for another is `delivered` and not `ok`. Every existing consumer
+// reads `ok` and is unchanged by this field's arrival.
 export interface DispatchResult {
   id: ChannelId;
   ok: boolean;
+  // At least one intended recipient received the message. See SendOutcome in ./types.
+  delivered: boolean;
   error?: string;
   timedOut?: true;
 }
@@ -90,6 +101,10 @@ export async function settleWithinDeadline(
       (e): DispatchResult => ({
         id: a.id,
         ok: false,
+        // An attempt that rejected never reported what it reached, so nothing here
+        // may claim it reached anybody. Unreachable today (dispatch() catches its
+        // own sends); this is the guard, not the working path.
+        delivered: false,
         error: e instanceof Error ? e.message : String(e),
       })
     )
@@ -131,6 +146,13 @@ export async function settleWithinDeadline(
     return {
       id: a.id,
       ok: false,
+      // ABANDONED, NOT ANSWERED. The send keeps running and may still land, and
+      // nothing in this process can observe whether it did — so delivery is
+      // UNKNOWN here and is reported as the safe half of unknown: not delivered.
+      // A caller that records what a message promised therefore records nothing
+      // for a timed-out channel and lets the next tick send a message it can
+      // account for, rather than storing a promise it cannot tie to anything.
+      delivered: false,
       error: new DispatchTimeoutError(a.id, deadlineMs).message,
       timedOut: true,
     };

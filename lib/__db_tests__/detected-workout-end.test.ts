@@ -24,13 +24,14 @@ import {
   renderStillGoingMessage,
   runStillGoingSuggest,
   stillGoingEpisodes,
+  stillGoingMarkerKey,
 } from "@/lib/notifications/still-going";
 import {
   priorEventWindows,
   usualRecoveryMin,
 } from "@/lib/queries/event-physiology";
 import { utcSqlString } from "@/lib/date";
-import { setSetting, setTimezone } from "@/lib/settings";
+import { getProfileSetting, setSetting, setTimezone } from "@/lib/settings";
 import { plainBody } from "@/lib/notifications/rich-text";
 import { seedLoginTelegram } from "./fixtures";
 import { sendMessageRaw, stubTelegramSends } from "./telegram-spies";
@@ -897,6 +898,88 @@ describe("what the nudge promised survives to the tap (#5194 F1)", () => {
 
     expect(finishWorkoutSession(p, id, RESUMED_TAP).kind).toBe("finished");
     expect(rowOf(id)).toEqual({ end_time: "18:55", duration_min: 175 });
+  });
+
+  // A HOUSEHOLD IS SEVERAL CHATS, AND THE CHANNEL IS ONE (#5194, tenth pass).
+  //
+  // The Telegram channel fans one message out to every managing login's chat and lets a
+  // single chat's throw fail the whole channel — deliberate, so the slot can retry. The
+  // record used to be gated on that channel-level `ok`, so a household where one chat
+  // has blocked the bot delivered the nudge to the other chat, with its live Finish
+  // button naming 16:35, and recorded nothing: the tap then re-read the trace and wrote
+  // the tap's own instant. The gate is the recipient-level `delivered` now, and this
+  // case is that household end to end.
+  it("records what the household's other chat is holding", async () => {
+    const p = newProfile("DetEndPromiseHousehold");
+    seedLoginTelegram(p, "chat-good");
+    seedLoginTelegram(p, "chat-blocked");
+    seedRestingHr(p, 60);
+    seedRange(p, "16:00", "16:35", 140);
+    seedRange(p, "16:35", "17:00", 55);
+    const id = seedOpenWorkout(p, "16:00", new Date("2026-07-17T16:30:00Z"));
+    sendMessageRaw.mockClear();
+    sendMessageRaw.mockImplementation(async (chatId) => {
+      if (chatId === "chat-blocked")
+        throw new Error("Telegram 403: bot was blocked by the user");
+      return 4242;
+    });
+
+    vi.setSystemTime(SENT);
+    const { failed } = await runStillGoingSuggest(p, "Ada", SENT);
+
+    // Both chats were addressed; the first one HAS the message and its button.
+    expect(sendMessageRaw.mock.calls.map(([chat]) => chat)).toEqual([
+      "chat-good",
+      "chat-blocked",
+    ]);
+    expect(plainBody(sendMessageRaw.mock.calls[0][1].body)).toContain(
+      "ended at 16:35"
+    );
+    // THE CONTROL INSIDE THE CASE: the channel really did fail — the tick's exit code
+    // says so and the blocked chat is still a delivery failure — so what is asserted
+    // below is a recipient-level answer and not a channel that quietly succeeded.
+    expect(failed).toBe(true);
+    expect(readWorkoutEndProposal(p, id)).toEqual({ minute: "16:35" });
+    // And the question is not asked twice: a second copy could quote a different
+    // minute, which would leave the first chat's button naming one nothing holds.
+    expect(
+      getProfileSetting(p, stillGoingMarkerKey("workout", id))
+    ).not.toBeNull();
+
+    // An ordinary evening voids a second reading of the trace. The chat that received
+    // the message gets the minute it was shown.
+    seedRange(p, "17:45", "18:00", 100);
+    vi.setSystemTime(TAP);
+    expect(detectedWorkoutEndAt(p, id)).toBeNull();
+    expect(finishWorkoutSession(p, id).kind).toBe("finished");
+    expect(rowOf(id)).toEqual({ end_time: "16:35", duration_min: 35 });
+  });
+
+  // THE PROMISED MINUTE BELONGS TO THE ROW'S OWN DAY (#5194, tenth pass).
+  //
+  // The cancel used to resolve a minute that preceded the start against the NEXT day,
+  // for the midnight-crossing session — which the nudge cannot reach, because presence
+  // refuses a row whose date is not today. The only way to reach that branch was to
+  // correct the start FORWARD after the message, and there it held a promise it should
+  // have refused and stamped an end before the start.
+  it("refuses the promise when the start is corrected past the minute it named", async () => {
+    const CORRECTED_TAP = new Date("2026-07-17T17:40:00Z");
+    const { p, id, body } = await nudged("DetEndPromiseStartFixed");
+    expect(body).toContain("ended at 16:35");
+
+    // They notice the session really started at 16:50 and fix it at 17:30.
+    db.prepare(
+      "UPDATE activities SET start_time = '16:50', updated_at = ? WHERE id = ?"
+    ).run(utcSqlString(new Date("2026-07-17T17:30:00Z")), id);
+
+    vi.setSystemTime(CORRECTED_TAP);
+    expect(readWorkoutEndProposal(p, id)).toEqual({ minute: "16:35" });
+
+    expect(finishWorkoutSession(p, id, CORRECTED_TAP).kind).toBe("finished");
+    expect(rowOf(id)).toEqual({ end_time: "17:40", duration_min: 50 });
+    // A row whose end preceded its start read as a live session for the rest of the
+    // day, and handed every physiology reader a 23-hour window to measure over.
+    expect(getWorkoutPresence(p, CORRECTED_TAP).state).toBe("finished");
   });
 
   // NOTHING IS RECORDED FOR A MESSAGE THAT NEVER WENT ANYWHERE (#5194, ninth pass, F2).

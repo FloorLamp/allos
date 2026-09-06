@@ -86,19 +86,31 @@ export interface WorkoutEndProposal {
  * honour on a tap for a message nobody received. The header argued that cost was
  * bounded by the next tick overwriting the record; arithmetic says otherwise, because
  * `EPISODE_BOUNDS.workout` is 45–90 minutes wide and the tick is hourly, so the tick
- * after the one that recorded is already past the window and there is no retry. The
- * caller now writes this inside the same `results.some(ok)` branch as the one-shot
- * marker and before it, so the only unwritten window is a crash between the two, which
- * re-sends and re-records.
+ * after the one that recorded is already past the window and there is no retry.
+ *
+ * DELIVERY IS A FACT ABOUT RECIPIENTS, NOT ABOUT CHANNELS, and that distinction is the
+ * whole of what makes the sentence above true. The caller writes this in the branch the
+ * one-shot marker shares, gated on `DispatchResult.delivered` — at least one recipient
+ * received the message — rather than on the channel's `ok`. Gating on `ok` failed both
+ * ways at once: Telegram fans one message out to every managing login's chat and fails
+ * whole when one of them has blocked the bot, so a household chat held a live Finish
+ * button for a minute nothing had recorded; and a channel whose whole audience was
+ * filtered by a per-kind gate reports success having reached nobody. The only unwritten
+ * window left is a crash between the record and the marker, which re-sends and
+ * re-records, plus a send abandoned at the dispatch deadline (#3057) that lands
+ * afterwards — unobservable by anything in this process, and counted as undelivered.
  *
  * RETENTION. One row per nudged workout, spent inside the finish or discard transaction
- * that resolves that row (`lib/workout-finish.ts`). Two paths leave one behind: a draft
- * nobody ever resolves, and a row ended by the activity form's own save, which persists
- * through `lib/activity-write.ts` and never reaches that core. Both are inert and stay
+ * that resolves that row (`lib/workout-finish.ts`). THREE paths leave one behind: a
+ * draft nobody ever resolves; a row ended by the activity form's own save, which
+ * persists through `lib/activity-write.ts` and never reaches that core; and a nudged
+ * draft whose sets are then all deleted, which answers `empty-draft` before the write
+ * transaction (#5194, tenth pass — the docblock said two). All three are inert and stay
  * forever — ids never recycle (#203), so a stranded record can only ever be read about
- * the row it names, and that row has an end, which `finishWorkoutSession` refuses before
- * it looks anything up. It is a dead setting on exactly the terms of the one-shot marker
- * it is written beside, and it is swept the same way that one is: not at all.
+ * the row it names, and that row is either ended, which `finishWorkoutSession` refuses
+ * before it looks anything up, or a husk `expireWorkoutDrafts` deletes at 24 hours,
+ * spending the record with it. It is a dead setting on exactly the terms of the one-shot
+ * marker it is written beside, and it is swept the same way that one is: not at all.
  */
 export function recordWorkoutEndProposal(
   profileId: number,

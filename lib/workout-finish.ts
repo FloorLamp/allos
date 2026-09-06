@@ -50,11 +50,21 @@
 // save is the only thing that can take the promise away.
 //
 // A tap with nothing on record is a finish nobody was shown a minute for — the request
-// path below, and any future programmatic finish. The record is written only once a
-// send actually succeeded (lib/notifications/still-going.ts), so "nothing on record"
-// really does mean "no message reached this person about this row". There is no promise
-// to keep there, so the trace is read once, at the tap, exactly as this core has done
-// since it landed.
+// path below, and any future programmatic finish. There is no promise to keep there, so
+// the trace is read once, at the tap, exactly as this core has done since it landed.
+//
+// What "nothing on record" means is exactly as strong as the gate that writes it, and
+// that gate is now the RECIPIENT-level one: `lib/notifications/still-going.ts` records
+// the minute when at least one recipient received the message, not when the channel
+// reported success. The two differ in an ordinary household — Telegram fans a message
+// out to every managing login's chat and fails whole when one of them has blocked the
+// bot — and under the channel-level reading the other chat held a live Finish button
+// for a minute nothing had recorded (#5194, tenth pass). One hole is left and no caller
+// can close it: a send abandoned at the 120-second dispatch deadline (#3057) may still
+// land, and nothing in the process can observe that it did. It counts as undelivered,
+// so the record follows the next tick's message; if the episode is over by then, that
+// abandoned message's button falls back to the tap's own instant, which is what this
+// core did before any of this and is never worse than `main`.
 //
 // IT IS THIS CORE'S CALLERS AND NOT EVERY FINISH IN THE APP. The in-app Finish is the
 // activity form's own (`ActivityForm.tsx`, end field := now, persisted by the autosave);
@@ -65,7 +75,6 @@ import type { LoggedVia } from "./logged-via";
 import { now as clockNow, sqlNow } from "./clock";
 import {
   parseUtcSql,
-  shiftDateStr,
   utcSqlString,
   zonedDateParts,
   zonedWallTimeToUtc,
@@ -202,14 +211,21 @@ function proposalStillHolds(
 ): boolean {
   const savedAt = parseUtcSql(row.updated_at ?? row.created_at);
   if (!savedAt) return true;
-  // The promised minute belongs to the row's own day unless it precedes the start, which
-  // is `activityWindow`'s crossing rule (lib/training-zones.ts) and therefore the day the
-  // stamped end will be read back on.
-  const day =
-    row.start_time && minute < row.start_time
-      ? shiftDateStr(row.date, 1)
-      : row.date;
-  const candidate = zonedWallTimeToUtc(tz, day, minute);
+  // THE PROMISED MINUTE IS ON THE ROW'S OWN DAY, always, and there is no crossing case
+  // to weigh (#5194, tenth pass). A recorded minute exists only because the nudge sent a
+  // message about this row, and the nudge cannot fire after local midnight:
+  // `computeWorkoutPresence` skips a row whose `date` is not today before it can read
+  // `active`, which lib/workout-detected-end.ts's header states in its own words. The
+  // message's instant is therefore on `row.date`, every sample it read is at or before
+  // that instant, and the candidate is at or before the last sample.
+  //
+  // This branched on `minute < row.start_time` and shifted to the next day for the
+  // midnight-crossing session it thought it was protecting. That session cannot be
+  // nudged, so the branch only ever fired on the one thing that CAN make the promised
+  // minute precede the start: the start being corrected forward AFTER the message. It
+  // then read a 16:35 promise against a 16:50 start as tomorrow's 16:35, held, and
+  // stamped an end before the start — a row `activityWindow` reads as a 23-hour session.
+  const candidate = zonedWallTimeToUtc(tz, row.date, minute);
   if (!candidate) return true;
   return savedAt.getTime() < candidate.getTime();
 }
