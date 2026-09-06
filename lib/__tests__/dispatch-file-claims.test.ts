@@ -300,7 +300,21 @@ describe("the brief a lane receives", () => {
       "WAIT ON A FACT, NEVER ON A NAME IN THE PROCESS TABLE",
       "the rule the poll loops broke",
     ],
-    ['while kill -0 "$(cat "$L.pid")"', "and the idiom to copy instead"],
+    // #5385: the idiom is now a script, because the copyable four-line form was
+    // folded into one `&&` chain by two lanes and backgrounded whole. The brief
+    // names the script, the trap, and the sibling-matching wait #5366 measured.
+    [
+      "bash scripts/orchestration/run-gates-recorded.sh",
+      "and the script to run instead",
+    ],
+    [
+      "DO NOT PASTE THE OLD INLINE FORM",
+      "with the &&-chain trap stated beside it",
+    ],
+    [
+      "a NAME matches your siblings (#5366)",
+      "and why pgrep by name cannot wait",
+    ],
     ["THE ONE EXCEPTION", "with the narrow run_in_background carve-out named"],
     [
       'MUT=$SCRATCH/mut-$(basename "$(git rev-parse --show-toplevel)")',

@@ -147,7 +147,21 @@ run_gate "lint" npm run lint
 run_gate "typecheck" npm run typecheck
 run_gate "test (pure, per-test ceiling ${ALLOS_VITEST_TIMEOUT_MS} ms)" npm test
 
-if paths_changed "${db_tier_paths[@]}"; then
+# A STALE FILE ENTRY SAYS SO (#5260). A rename leaves the old path in the array
+# and git's pathspec for a path that is gone matches nothing — silently, so the
+# trigger would narrow without a word. The import walk catches the NEW path
+# going uncovered at CI; this is the gate-time half: name the entry, and run
+# the tier anyway, because under-gating is the expensive mistake.
+stale_db_entry=0
+for p in "${db_tier_paths[@]}"; do
+  case "$p" in */ | ":(exclude)"*) continue ;; esac
+  if [ ! -e "$p" ]; then
+    echo "*** db_tier_paths entry ABSENT: $p — the test:db trigger set is stale; running the tier regardless ***"
+    stale_db_entry=1
+  fi
+done
+
+if [ "$stale_db_entry" = 1 ] || paths_changed "${db_tier_paths[@]}"; then
   run_gate "test:db (per-test ceiling ${ALLOS_VITEST_TIMEOUT_MS} ms)" npm run test:db
 else
   echo
