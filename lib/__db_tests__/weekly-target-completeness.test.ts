@@ -80,14 +80,14 @@ describe("every unmet weekly target reaches the ledger (#2579 ruling 1)", () => 
     const id = addTarget(profileId, "practice", "Cold plunge", 3);
 
     // The fixture states what it is testing rather than assuming it: nothing logged,
-    // one day of the week elapsed, so this target is under its floor and keeping up.
+    // one day of the week elapsed, so this target is under its floor with nothing to judge yet.
     const progress = getFrequencyTargetProgress(profileId).find(
       (p) => p.target.id === id
     );
     expect(progress).toBeDefined();
     expect(progress!.met).toBe(false);
     expect(progress!.atCeiling).toBe(false);
-    expect(progress!.pace).toBe("on-pace");
+    expect(progress!.pace).toBe("quiet");
 
     const item = practiceItems(profileId).find(
       (i) => i.key === practiceSignalKey(id)
@@ -100,7 +100,7 @@ describe("every unmet weekly target reaches the ledger (#2579 ruling 1)", () => 
 
   it("practice and training answer the SAME question about the same week", () => {
     // The asymmetry, stated as the symmetry that replaced it. Two targets in one
-    // profile, both unmet, both on pace: before the ruling the training one rendered
+    // profile, both unmet, both quiet: before the ruling the training one rendered
     // and the practice one did not, for no reason either row could have explained.
     const { profileId } = makeProfile("wtc-symmetry");
     const practiceId = addTarget(profileId, "practice", "Sauna", 3);
@@ -111,7 +111,7 @@ describe("every unmet weekly target reaches the ledger (#2579 ruling 1)", () => 
         (x) => x.target.id === id
       );
       expect(p!.met).toBe(false);
-      expect(p!.pace).toBe("on-pace");
+      expect(p!.pace).toBe("quiet");
     }
 
     expect(

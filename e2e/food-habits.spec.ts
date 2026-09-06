@@ -18,13 +18,17 @@ test("Weekly habits shows the seeded fatty-fish target with progress (#580)", as
   const card = page.getByTestId("weekly-habits");
   await expect(card).toBeVisible();
   await expect(page.getByTestId("habit-fatty_fish")).toBeVisible();
-  // "N / 2" plus a paced badge (#748 item 3) — On track / On pace / Behind.
-  // "N" on the row, "of 2" plus the pace badge on the habit's own span — the rollup
-  // count and the target now read as one sentence in ONE list (#3987).
+  // "N" on the row, "of 2" on the habit's own span — the rollup count and the target
+  // read as one sentence in ONE list (#3987) — and a pace badge (#748 item 3) only where
+  // there is a verdict to print (#5395). Profile 1 is pinned to a rolling week
+  // (e2e/seed/dashboard.ts) and scripts/seed.ts logs fish 1 and 4 days ago, so the
+  // trailing window holds both on every run day: the habit is met, and the verdict here
+  // is "On track". A quiet week (nothing logged, no badge) is not reachable on this
+  // fixture; frequency-pace.test.ts pins that state.
   await expect(page.getByTestId("habit-fatty_fish")).toContainText("of 2");
-  const pace = page.getByTestId("habit-pace-fatty_fish");
-  await expect(pace).toBeVisible();
-  await expect(pace).toHaveText(/On track|On pace|Behind/);
+  const pace = card.getByTestId("habit-pace-fatty_fish");
+  await expect(pace).toHaveAttribute("data-pace", "met");
+  await expect(pace).toHaveText("On track");
 });
 
 test("tracking a new food habit adds it, and removing it leaves the fixture as found (#580)", async ({
