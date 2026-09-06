@@ -113,9 +113,12 @@ test("checking off a set auto-starts rest, and Finish stamps the end time (#340)
     page.getByRole("button", { name: "Delete", exact: true })
   ).toBeVisible();
 
-  // Check off the set by adding the next one (Enter in a complete reps field, or
-  // the +Add set button) — in live mode this starts the rest countdown.
-  await page.getByRole("button", { name: "+ Add set" }).click();
+  // THE CHECK-OFF IS THE CONFIRM (#5373). Adding a row used to stand in for it, and it
+  // fired whether or not the previous set had happened; the grid now opens as the whole
+  // plan and each row's ✓ is the gesture. Set 1 is the record the Use tap landed, so
+  // row 2 is the next set still on offer.
+  const row2 = page.getByTestId("set-row-2"); // testid-scope-ok: the set grid is inside the held editor overlay, one copy
+  await row2.getByTestId("set-confirm-2").click();
   await expect(page.getByTestId("rest-toggle")).toHaveAttribute(
     "aria-label",
     "Pause rest timer"

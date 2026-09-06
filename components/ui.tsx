@@ -3,6 +3,7 @@ import { IconCaretUpFilled, IconCaretDownFilled } from "@tabler/icons-react";
 import ActivityIcon from "@/components/ActivityIcon";
 import CreateAction, {
   type CreateActionDeclaration,
+  type HousedKind,
 } from "@/components/CreateAction";
 import DestinationIndicator from "@/components/DestinationIndicator";
 import { PendingTextLink } from "@/components/PendingLink";
@@ -27,7 +28,7 @@ export function PageHeader({
   subtitle?: React.ReactNode;
   leading?: React.ReactNode;
   /** The page's one registered create. Unrelated controls stay in `action`. */
-  createAction?: CreateActionDeclaration;
+  createAction?: CreateActionDeclaration<HousedKind<"page">>;
   action?: React.ReactNode;
   // Give up the whole heading band below `sm` (issue #1485 F, following the #1413
   // dashboard precedent): the title goes `sr-only` and the subtitle is dropped, so

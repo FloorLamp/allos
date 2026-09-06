@@ -74,8 +74,8 @@ import {
   practiceDoneCallback,
   practiceLogCallback,
   rightSizeLowerCallback,
-  type InlineKeyboard,
-} from "./callback-data";
+} from "./practice-tokens";
+import type { InlineKeyboard } from "./callback-data";
 import { PRACTICES_HREF } from "../hrefs";
 import type { NotificationAction, NotificationMessage } from "./types";
 import { GLYPH } from "./glyphs";

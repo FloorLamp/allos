@@ -7,6 +7,7 @@ import {
   formatClockMinutes,
   formatClockValue,
   parseClockHhmm,
+  parseTypedClock,
   formatDateShape,
   formatDateWithYear,
   formatTimestamp,
@@ -224,6 +225,73 @@ describe("parseClockHhmm", () => {
   ])("%s", (_name, stored, expected) => {
     expect(parseClockHhmm(stored)).toBe(expected);
   });
+});
+
+// #5360 — the TYPED reader, whose whole job is the shorthand `parseClockHhmm`
+// above must never learn. Owner rulings, 2026-09-05: a bare time is 24-hour in
+// every profile (no meridiem is ever inferred), an hour on its own is o'clock,
+// the meridiem is a letter or the word with or without space and dots, and a bare
+// digit run of three or four splits from the right. Everything else is null.
+describe("parseTypedClock", () => {
+  it.each([
+    // A bare time is 24-hour, separated or as a run — never guessed at.
+    ["6:30", "06:30"],
+    ["630", "06:30"],
+    ["18:30", "18:30"],
+    ["1830", "18:30"],
+    ["0630", "06:30"],
+    ["1124", "11:24"],
+    ["19:30", "19:30"],
+    // Hour-only is :00.
+    ["6", "06:00"],
+    ["18", "18:00"],
+    ["5", "05:00"],
+    ["6p", "18:00"],
+    // The meridiem: one letter or the word, with or without space or dots.
+    ["1124p", "23:24"],
+    ["11:24 pm", "23:24"],
+    ["11.24 PM", "23:24"],
+    ["11:24p.m.", "23:24"],
+    ["11:24pm", "23:24"],
+    ["12a", "00:00"],
+    ["12p", "12:00"],
+    ["12:00am", "00:00"],
+    ["7:30 PM", "19:30"],
+    // `.` and `h` are separators.
+    ["6.30", "06:30"],
+    ["6h30", "06:30"],
+    // Surrounding space is not part of the time.
+    ["  7:05  ", "07:05"],
+    // The rejects.
+    ["24:00", null],
+    ["9:60", null],
+    ["6:3", null],
+    ["pm", null],
+    ["6 30 pm", null],
+    ["0p", null],
+    ["13p", null],
+    ["12345", null],
+    // THREE-OR-FOUR ONLY, and this is the case that says so. `12345` alone is
+    // also refused by the hour range once split (123 is no hour), so widening the
+    // run to five digits keeps it null and the rule goes unpinned; `01230` splits
+    // into a perfectly good 12:30 the moment the length stops being the limit.
+    ["01230", null],
+    ["6-30", null],
+    ["quarter past", null],
+    ["", null],
+    [null, null],
+  ])("%s → %s", (typed, expected) => {
+    expect(parseTypedClock(typed)).toBe(expected);
+  });
+
+  // THE STRICT READER IS NOT LOOSENED (#4550's forks depend on it): every
+  // shorthand above is still not a stored clock.
+  it.each(["630", "6p", "1124p", "6", "6h30"])(
+    "%s stays unreadable to parseClockHhmm",
+    (typed) => {
+      expect(parseClockHhmm(typed)).toBeNull();
+    }
+  );
 });
 
 describe("formatDateShape", () => {

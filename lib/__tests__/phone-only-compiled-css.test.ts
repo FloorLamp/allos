@@ -29,10 +29,11 @@ const PHONE_ONLY_CONTRACTS = [
 ] as const;
 
 // The control box's own selector list, spelled once (#3938). The fact chip's `solo`
-// shape joined it in #4035; the removable `pill` takes the FLOOR only, because it
-// draws its own border and the derived padding on top of it would render 36.
+// shape joined it in #4035 and the fold-as-control in #4505; the removable `pill`
+// takes the FLOOR only, because it draws its own border and the derived padding on
+// top of it would render 36.
 const CONTROL_BOX_SELECTOR =
-  '.chip-base, .btn, .btn-ghost, .btn-danger, .button-control, .input, [data-segmented-option], [data-fact-chip="solo"]';
+  '.chip-base, .btn, .btn-ghost, .btn-danger, .button-control, .input, .fold-control, [data-segmented-option], [data-fact-chip="solo"]';
 const CONTROL_BOX_FLOOR_SELECTOR = `${CONTROL_BOX_SELECTOR}, [data-fact-chip="pill"]`;
 const RANKING_UTILITIES = [
   "band",
@@ -244,21 +245,27 @@ describe("compiled phone-only CSS proof (#3518/#3727)", () => {
     );
   });
 
+  // PLANTED, not found: this used to widen the one raw `@media (max-width:
+  // 639.98px)` a phone-only contract carried — the readings row's 32px ⋯ override,
+  // retired with the sanction in #4505 — so the shape is written into the fixture
+  // instead. The claim is unchanged: a raw phone query past `sm` reads as a leak.
   it("rejects a widened raw phone media query while discovery still retains the utility", async () => {
     const root = postcss.parse(source, { from: GLOBALS });
-    let mutation: AtRule | undefined;
+    let planted = false;
     root.walkAtRules("utility", (utility) => {
       if (normalized(utility.params) !== "metric-readings-list") return;
-      utility.walkAtRules("media", (atRule) => {
-        if (!mutation && normalized(atRule.params) === "(max-width: 639.98px)")
-          mutation = atRule;
-      });
+      utility.append(
+        postcss
+          .atRule({ name: "media", params: "(max-width: 767.98px)" })
+          .append(
+            postcss
+              .rule({ selector: '& td[data-card="meta"]' })
+              .append({ prop: "color", value: "red" })
+          )
+      );
+      planted = true;
     });
-    expect(
-      mutation,
-      "the metric-readings-list raw phone-media probe must exist"
-    ).toBeDefined();
-    mutation!.params = "(max-width: 767.98px)";
+    expect(planted, "the metric-readings-list utility must exist").toBe(true);
     const widened = root.toString();
     expect(contractNames(widened)).toEqual(names);
 

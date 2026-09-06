@@ -50,7 +50,7 @@ export default function LevelBadge({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className={`tap-target inline-flex min-h-8 items-center gap-1 text-sm font-semibold transition hover:opacity-70 ${color}`}
+        className={`tap-target inline-flex min-h-(--control-box) items-center gap-1 text-sm font-semibold transition hover:opacity-70 ${color}`}
       >
         <IconMedal2 className="h-4 w-4" />
         {label}

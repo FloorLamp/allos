@@ -7,7 +7,7 @@ import {
   generateActivityTitle,
   resolveFormSessionDuration,
 } from "@/lib/activity-form-validate";
-import { blankPart, type PartEntry } from "@/lib/activity-form-model";
+import { blankPart, blankSet, type PartEntry } from "@/lib/activity-form-model";
 import type { ActivityType } from "@/lib/types";
 
 // The picker vocabulary the classifier reads: lowercased name → type. Variant
@@ -61,6 +61,10 @@ function part(o: Partial<PartEntry>): PartEntry {
 const set = (
   o: Partial<PartEntry["sets"][number]>
 ): PartEntry["sets"][number] => ({
+  ...blankSet(),
+  // These fixtures are sets a person ENTERED — the plan/record split (#5373) is
+  // asked about where a planned row is built explicitly.
+  plan: null,
   weight: "",
   reps: "",
   weightRight: "",

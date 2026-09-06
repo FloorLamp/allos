@@ -391,7 +391,7 @@ export default function AppointmentList({
                       type="button"
                       onClick={() => onComplete(a)}
                       aria-label="Mark completed"
-                      className="tap-target flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-emerald-50 hover:text-emerald-600 dark:text-slate-400 dark:hover:bg-emerald-950 dark:hover:text-emerald-400"
+                      className="tap-target flex h-(--control-box) w-(--control-box) items-center justify-center rounded-lg text-slate-500 transition hover:bg-emerald-50 hover:text-emerald-600 dark:text-slate-400 dark:hover:bg-emerald-950 dark:hover:text-emerald-400"
                     >
                       <IconCheck className="h-4 w-4" stroke={1.75} />
                     </button>
@@ -399,7 +399,7 @@ export default function AppointmentList({
                       type="button"
                       onClick={() => onCancel(a)}
                       aria-label="Cancel appointment"
-                      className="tap-target flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-800"
+                      className="tap-target flex h-(--control-box) w-(--control-box) items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-800"
                     >
                       <IconX className="h-4 w-4" stroke={1.75} />
                     </button>
@@ -412,7 +412,7 @@ export default function AppointmentList({
                           href={`/encounters/${a.encounter_id}`}
                           aria-label="View linked visit"
                           data-testid="view-linked-visit"
-                          className="tap-target flex h-8 w-8 items-center justify-center rounded-lg text-emerald-600 transition hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                          className="tap-target flex h-(--control-box) w-(--control-box) items-center justify-center rounded-lg text-emerald-600 transition hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950"
                         >
                           <IconStethoscope className="h-4 w-4" stroke={1.75} />
                         </Link>
@@ -422,7 +422,7 @@ export default function AppointmentList({
                           onClick={() => onLogVisit(a)}
                           aria-label="Log this visit"
                           data-testid="log-visit-row"
-                          className="tap-target flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-emerald-50 hover:text-emerald-600 dark:text-slate-400 dark:hover:bg-emerald-950 dark:hover:text-emerald-400"
+                          className="tap-target flex h-(--control-box) w-(--control-box) items-center justify-center rounded-lg text-slate-500 transition hover:bg-emerald-50 hover:text-emerald-600 dark:text-slate-400 dark:hover:bg-emerald-950 dark:hover:text-emerald-400"
                         >
                           <IconStethoscope className="h-4 w-4" stroke={1.75} />
                         </button>
@@ -432,7 +432,7 @@ export default function AppointmentList({
                         type="button"
                         onClick={() => setFollowUpFrom(a)}
                         aria-label="Schedule follow-up"
-                        className="tap-target flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-brand-50 hover:text-brand-600 dark:text-slate-400 dark:hover:bg-brand-950 dark:hover:text-brand-400"
+                        className="tap-target flex h-(--control-box) w-(--control-box) items-center justify-center rounded-lg text-slate-500 transition hover:bg-brand-50 hover:text-brand-600 dark:text-slate-400 dark:hover:bg-brand-950 dark:hover:text-brand-400"
                       >
                         <IconCalendarPlus className="h-4 w-4" stroke={1.75} />
                       </button>

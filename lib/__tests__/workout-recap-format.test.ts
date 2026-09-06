@@ -59,6 +59,7 @@ describe("recapNudgeLine", () => {
           {
             exercise: "Lat Pulldown",
             workingSets: 4,
+            plannedSets: null,
             volumeKg: 1500,
             verdict: "missed",
             bodyweight: false,
