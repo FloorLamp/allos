@@ -1,6 +1,8 @@
 import { test, expect } from "./fixtures";
 import { type Locator } from "@playwright/test";
 import {
+  appContent,
+  awaitHydrated,
   expectControlBoxHeight,
   expectPhoneTapTargets,
   hydratedClick,
@@ -256,9 +258,9 @@ test.describe("below md the time picker is a bottom sheet wheel", () => {
     const field = form.getByTestId("m-time");
 
     // TYPED ENTRY AT EVERY WIDTH, in either clock. This is the invariant #3376
-    // fixed for the date half and the reason the picker is an affordance BESIDE
-    // the field rather than something that opens when the field takes focus: a
-    // sheet that took focus on focus could never be typed into at all.
+    // fixed for the date half and the reason focus does NOT open the picker at
+    // this width, though it does from `md` up (#5360, the test below): a sheet
+    // that took focus on focus could never be typed into at all.
     await settledFill(page, field, "7:30pm");
     await field.blur();
     await expect(field).toHaveValue("19:30");
@@ -326,6 +328,38 @@ test.describe("below md the time picker is a bottom sheet wheel", () => {
       )
       .toBeLessThan(1);
     await expect(field).toHaveValue(/^(?:16|17):30$/);
+  });
+
+  // FOCUS DOES NOT OPEN THE SHEET (#5360). From `md` up focus opens the wheel,
+  // the way it opens the calendar; here the wheel is a modal sheet that takes
+  // focus, so a field that opened it on focus could never be typed into, and
+  // the glyph stays the door. jsdom proves the branch exists; only a real
+  // viewport proves the media query chose it under a real tap.
+  test("tapping the field focuses it without opening the sheet; the glyph is the door", async ({
+    page,
+  }) => {
+    await page.goto("/?quick=log-measurements");
+    const form = page.getByTestId("measurements-quick-add"); // testid-scope-ok: the quick-log sheet is a BottomSheet portalled to <body>
+    const field = form.getByTestId("m-time");
+    // Tapped AFTER hydration, or `onFocus` is not attached yet and "no sheet
+    // opened" is true of a page that could not have opened one.
+    await awaitHydrated(field);
+    await field.tap();
+    await expect(field).toBeFocused();
+    const sheet = page.getByTestId("time-field-sheet"); // testid-scope-ok: portalled to <body>, above every streamed boundary
+    await expect(sheet).toHaveCount(0);
+    // STILL TYPEABLE through the focus the tap gave it: the shorthand lands,
+    // the sheet stays down, and the entry settles into the profile's clock.
+    await page.keyboard.type("630");
+    await expect(field).toHaveValue("630");
+    await expect(sheet).toHaveCount(0);
+    await field.blur();
+    await expect(field).toHaveValue("06:30");
+    await hydratedClick(
+      page,
+      form.getByRole("button", { name: "Open time picker" })
+    );
+    await expect(sheet).toBeVisible();
   });
 });
 
@@ -419,6 +453,52 @@ test.describe("from md up the anchored popover is what opens", () => {
     await page.keyboard.press("Escape");
     await expect(page.getByTestId("time-field-wheel")).toHaveCount(0);
     await expect(field).toHaveValue("10:15");
+  });
+
+  // FOCUS OPENS THE WHEEL FROM `md` UP (#5360) — the calendar's rule, brought to
+  // the other half of the row. What a browser adds to the component tier: the
+  // media query chose the popover host, opening it did not move the caret, and
+  // Escape closes it without taking focus with it.
+  test("focusing the field opens the wheel, typing while it is open parses, and Escape closes it without taking focus", async ({
+    page,
+  }) => {
+    await page.goto("/trends?view=tiles");
+    await hydratedClick(
+      page,
+      appContent(page).getByTestId("log-measurements-toggle")
+    );
+    // The panel is a `ModalShell`, which is a `BottomSheet` portalled to <body>
+    // in both presentations — so the dialog, not the app content, is the scope.
+    const form = page
+      .getByRole("dialog", { name: "Log measurements" })
+      .getByTestId("measurements-quick-add");
+    const field = form.getByTestId("m-time");
+    await awaitHydrated(field);
+    const wheel = page.getByTestId("time-field-wheel"); // testid-scope-ok: portalled to <body>, above every streamed boundary
+    const sheet = page.getByTestId("time-field-sheet"); // testid-scope-ok: portalled to <body>, above every streamed boundary
+    await expect(wheel).toHaveCount(0);
+    await field.click();
+    await expect(wheel).toHaveAttribute("data-anchored-panel", "popover");
+    await expect(sheet).toHaveCount(0);
+    await expect(field).toBeFocused();
+    // TYPING WHILE IT IS OPEN PARSES. The wheel parks on the parent's COMMITTED
+    // value, so its selected rows are what say the keystrokes were emitted and
+    // not merely shown.
+    await page.keyboard.type("1124p");
+    await expect(field).toHaveValue("1124p");
+    const chosen = (name: string) =>
+      wheel
+        .getByRole("listbox", { name })
+        .getByRole("option", { selected: true });
+    await expect(chosen("Hour")).toHaveText("23");
+    await expect(chosen("Minute")).toHaveText("24");
+    await page.keyboard.press("Escape");
+    await expect(wheel).toHaveCount(0);
+    await expect(field).toBeFocused();
+    // The text it was typed as stays until the field is LEFT; then it settles.
+    await expect(field).toHaveValue("1124p");
+    await field.blur();
+    await expect(field).toHaveValue("23:24");
   });
 });
 

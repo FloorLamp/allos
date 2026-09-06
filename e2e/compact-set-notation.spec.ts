@@ -184,8 +184,13 @@ async function logUniformProbe(page: Page, finish: boolean): Promise<string> {
     // timezone puts local now at 13:mm (e2e/pinned-timezone.ts), so 23:59 is always
     // after the start the create form stamped.
     const ended = savePostWith(page, /23:59/);
-    await page.getByTestId("end-time-input").fill("23:59");
+    const endTime = page.getByTestId("end-time-input");
+    await endTime.fill("23:59");
     await ended;
+    // AND LEAVE THE FIELD. Focusing a time field opens its wheel beside it
+    // (#5360), and Escape closes the innermost open layer — so a caller that
+    // presses Escape to dismiss the FORM would close the wheel instead.
+    await endTime.blur();
   }
   return title;
 }

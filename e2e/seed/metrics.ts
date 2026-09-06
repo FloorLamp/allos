@@ -350,8 +350,9 @@ export function seedSourceCompare(): void {
   // Goals-and-habits card hides MET habits, and by mid-week the four scripts/seed.ts
   // targets are all met — leaving zero chips and a day-of-week-dependent spec. This
   // target stays 0/5 all week → always at least one open chip, whose pace is
-  // "on-pace" (day 1) or "behind" (later) — never met, never rose — exactly the
-  // invariant pace-tone.spec.ts pins. Idempotent by (profile, kind, value).
+  // "quiet" (days 1–3, drawn in the on-pace tint) or "behind" (later) — never met,
+  // never rose — exactly the invariant pace-tone.spec.ts pins. Idempotent by
+  // (profile, kind, value).
   db.prepare(
     `DELETE FROM frequency_targets
     WHERE profile_id = ? AND scope_kind = 'region' AND scope_value = 'Glutes'`
