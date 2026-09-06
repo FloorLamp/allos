@@ -1692,8 +1692,12 @@ export default function ActivityForm({
           initialBarId={parts[plateTarget.pi]?.equipmentId ?? null}
           initialWeight={
             plateTarget.seed ??
+            // The exercise-level target ("all") is every set's load, so set 1's
+            // value is the load (#5371).
             (Number(
-              parts[plateTarget.pi]?.sets[plateTarget.si]?.[plateTarget.field]
+              parts[plateTarget.pi]?.sets[
+                plateTarget.si === "all" ? 0 : plateTarget.si
+              ]?.[plateTarget.field]
             ) ||
               0)
           }

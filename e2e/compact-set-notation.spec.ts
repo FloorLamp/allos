@@ -166,9 +166,12 @@ async function logUniformProbe(page: Page, finish: boolean): Promise<string> {
   await pickActivity(page, "Barbell Bench Press");
 
   const stored = savePostWith(page, THREE_SETS);
+  // A uniform run states its weight ONCE, on the exercise band above the rows, and
+  // "+ Add set" copies that load — so the rows take only their reps (#5371). The
+  // band carries set 1's id; there is no `set2-weight` until a set varies.
+  await settledFill(page, page.getByTestId("set1-weight"), PROBE_WEIGHT);
   for (let i = 1; i <= PROBE_SETS; i++) {
     if (i > 1) await page.getByRole("button", { name: "+ Add set" }).click();
-    await settledFill(page, page.getByTestId(`set${i}-weight`), PROBE_WEIGHT);
     await settledFill(page, page.getByTestId(`set${i}-reps`), PROBE_REPS);
   }
   // The autosave that carries the WHOLE run. Without it the reopen below can race the
