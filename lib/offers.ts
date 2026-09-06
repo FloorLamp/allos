@@ -48,7 +48,10 @@ import {
 } from "./settings/notifications";
 import { DIGEST_DEFAULT_MINUTE } from "./notifications/digest-schedule";
 import { telegramChannel } from "./notifications/telegram";
-import type { NotificationAction, NotificationKind } from "./notifications/types";
+import type {
+  NotificationAction,
+  NotificationKind,
+} from "./notifications/types";
 import {
   dismissFinding,
   getFindingSuppressions,
@@ -132,11 +135,15 @@ export const OFFER_FAMILY_IDS = Object.keys(OFFER_FAMILIES) as OfferFamilyId[];
 
 /** The family whose `asked` key this is, or null — the action's only token. */
 export function offerFamilyForKey(key: string): OfferFamilyId | null {
-  return OFFER_FAMILY_IDS.find((id) => OFFER_FAMILIES[id].asked.key === key) ?? null;
+  return (
+    OFFER_FAMILY_IDS.find((id) => OFFER_FAMILIES[id].asked.key === key) ?? null
+  );
 }
 
 function askedAlready(profileId: number, id: OfferFamilyId): boolean {
-  const record = getFindingSuppressions(profileId).get(OFFER_FAMILIES[id].asked.key);
+  const record = getFindingSuppressions(profileId).get(
+    OFFER_FAMILIES[id].asked.key
+  );
   return isHiddenUnderPolicy("normal", record, today(profileId));
 }
 
