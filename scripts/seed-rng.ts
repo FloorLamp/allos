@@ -161,8 +161,9 @@ export function jitterStream(seed: number): () => number {
 // non-integer input falls back to DEFAULT_SEED — a typo must produce the
 // pinned look, never a silently different one. The env is a required argument,
 // deliberately never read from the global process here, so this module stays a
-// PURE helper outside the script-env-bootstrap scan: the entrypoint
-// (scripts/seed.ts) loads ./load-env first and hands its environment in.
+// PURE helper: the entrypoint (scripts/seed.ts) loads ./load-env first and hands
+// its environment in. Nothing checks that any more — the scan that did was a
+// guard on dev config and is deleted.
 export function seedFromEnv(env: Record<string, string | undefined>): number {
   const raw = env.SEED_RNG?.trim();
   if (!raw) return DEFAULT_SEED;
