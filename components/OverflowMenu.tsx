@@ -237,8 +237,8 @@ export default function OverflowMenu({
         // ≥44px EFFECTIVE hit box (#644, one number ruled on #3514) still holds and
         // holds by the same mechanism: `.tap-target`'s `inset: -6px` per side is a
         // fixed 12px, so 34 + 2×6 = 46 clears the floor exactly as 40 + 12 = 52 did.
-        // The 32px variant the responsive-table surface shrinks it to carries its own
-        // `::after` (app/globals.css, `.table-cards`), also at -6px, also reaching 44.
+        // The responsive-table surface used to shrink it to a sanctioned 32 with its
+        // own `::after`; #4505 retired that — one box there too.
         className="tap-target flex h-(--control-box) w-(--control-box) items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-300"
       >
         <IconDots className="h-4 w-4" />

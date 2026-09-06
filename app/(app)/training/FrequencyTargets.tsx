@@ -174,9 +174,12 @@ export default function FrequencyTargets({
         aria-expanded={formOpen}
         aria-controls={FORM_PANEL_ID}
         onClick={() => (formOpen ? reset() : setFormOpen(true))}
+        // One control, one height across both states (#4505 family 5): the open
+        // header is a full-width row on the same box as the closed btn-ghost, with
+        // the reach `.tap-target` gives a hand-rolled box.
         className={
           formOpen
-            ? "mt-3 flex min-h-11 w-full items-center justify-between gap-2 text-left text-sm font-semibold text-slate-800 dark:text-slate-100"
+            ? "tap-target mt-3 flex h-(--control-box) w-full items-center justify-between gap-2 text-left text-sm font-semibold text-slate-800 dark:text-slate-100"
             : "btn-ghost mt-3 text-sm"
         }
       >

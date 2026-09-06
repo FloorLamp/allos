@@ -4,10 +4,15 @@ import {
   TAP_FLOOR_FLOAT_EPSILON_PX,
   TAP_FLOOR_PX,
   TAP_TARGET_INSET_PX,
-  TAP_TARGET_MIN_RENDERED_PX,
 } from "@/lib/tap-floor-tokens";
 import { roundControlBoxExtraLines } from "./control-box-lines";
-import { hydratedClick, openFoodAdd, settledClick } from "./helpers";
+import {
+  expectPhoneTapTargets,
+  hydratedClick,
+  openFoodAdd,
+  settledBoxes,
+  settledClick,
+} from "./helpers";
 
 // THE CONTROL BOX (`--control-box` in app/globals.css, SECTION: Touch tap
 // targets), MEASURED — owner ruling #3938; the family floor it replaces was
@@ -113,6 +118,34 @@ const BOX_ROUTES: { route: string; ready: string; surfaces: BoxSurface[] }[] = [
       {
         kind: "severity option",
         testId: "symptom-cough-sev-1",
+        repairable: true,
+      },
+      // THE FOLD AS A CONTROL (#4505 family 1). A `<summary>` that IS the control
+      // wears `fold-control` and joins the selector list; this one held a hand-rolled
+      // `min-h-11` and is the dashboard's one fold mechanism (#4232).
+      {
+        kind: "fold-control",
+        testId: "dashboard-all-summary",
+        repairable: true,
+      },
+    ],
+  },
+  // THE ICON BUTTON (#4505 family 3). Hand-rolled `h-(--control-box) w-(--control-box)`
+  // with `.tap-target` for the reach — the pair that rendered 36 here, and 40/32
+  // across the twins this family converged. A button and a Link, so both bindings
+  // are measured beside each other.
+  {
+    route: "/medications",
+    ready: "medication-share-open",
+    surfaces: [
+      {
+        kind: "icon button",
+        testId: "medication-share-open",
+        repairable: true,
+      },
+      {
+        kind: "icon button (Link)",
+        testId: "medication-print-link",
         repairable: true,
       },
     ],
@@ -747,12 +780,31 @@ test.describe("segmented options wear the box and tile their track (#3954)", () 
                 block,
                 inline,
                 height: rect.height,
+                width: rect.width,
                 left: rect.left - inline,
                 right: rect.right + inline,
                 top: rect.top - block,
                 bottom: rect.bottom + block,
               };
             });
+            // THE INLINE HALF OF THE PREMISE, MEASURED (#4505, C's finding on #5399).
+            // Block-only reach is licensed by the tiling: the option next door starts
+            // where this one ends, so the tiling IS the inline target. Seven cadence
+            // weekday tiles wore this marker in a row with gaps and drew a hairline
+            // ring, 42px wide, with nothing reaching sideways — and a guard reading
+            // height alone passed them. So each option's inline target must clear the
+            // floor, and consecutive options on a line must actually touch.
+            const byLeft = [...targets].sort((a, b) => a.left - b.left);
+            const gaps: number[] = [];
+            for (let i = 1; i < byLeft.length; i += 1) {
+              const prev = byLeft[i - 1];
+              const next = byLeft[i];
+              const sameLine =
+                Math.min(prev.bottom, next.bottom) -
+                  Math.max(prev.top, next.top) >
+                0;
+              if (sameLine) gaps.push(next.left - prev.right);
+            }
             const overlaps: string[] = [];
             for (let i = 0; i < targets.length; i += 1) {
               for (let j = i + 1; j < targets.length; j += 1) {
@@ -766,7 +818,7 @@ test.describe("segmented options wear the box and tile their track (#3954)", () 
                   overlaps.push(`${targets[i].label}/${targets[j].label}`);
               }
             }
-            return { targets, overlaps };
+            return { targets, overlaps, gaps };
           })
         );
 
@@ -798,7 +850,23 @@ test.describe("segmented options wear the box and tile their track (#3954)", () 
               target.height + 2 * target.block + TAP_FLOOR_FLOAT_EPSILON_PX,
               `${target.label} @${width} effective height`
             ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+            expect(
+              target.width + 2 * target.inline + TAP_FLOOR_FLOAT_EPSILON_PX,
+              `${target.label} @${width} effective inline width`
+            ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
           }
+          expect(
+            track.gaps.length,
+            `${surface.route} @${width} has no adjacent segment pair to measure`
+          ).toBeGreaterThan(0);
+          expect(
+            track.gaps.every((gap) => Math.abs(gap) < 0.5),
+            `@${width} segments marked as a tiled track leave gaps between them (${track.gaps
+              .map((gap) => gap.toFixed(2))
+              .join(
+                ", "
+              )}px); a gapped row takes the all-sides reach, not this marker`
+          ).toBe(true);
           expect(
             track.overlaps,
             `@${width} two extended segment targets own the same point`
@@ -1061,10 +1129,20 @@ test.describe("the fact chip wears the box (#4035)", () => {
 test.describe("the hit-area mechanism reaches the floor it claims (#3486)", () => {
   test.use({ viewport: PHONE });
 
-  // `.tap-target`'s extension, and the smallest rendered box it can lift to the
-  // floor. Derived, not spelled — the same derivation `lib/tap-floor-tokens.ts`
-  // makes, so the two cannot disagree about what 32 means.
-  test("the food-log steppers are 44px effective, by box plus overlay", async ({
+  // WHAT ONLY THIS CASE CAN SAY (#3486, narrowed on #4505): the MINUS is not
+  // drawn at zero (#3987) — a permanently disabled control on the row people tap
+  // most is chrome that says nothing — so it exists only after a serving is
+  // logged, and the `goto` sweep below can no more see it than it can see a
+  // toast's buttons. The row is put at a non-zero count to bring it on screen and
+  // restored afterwards.
+  //
+  // Everything else this test used to assert by hand is now the sweep's, and
+  // strictly stronger: it read `>= TAP_TARGET_MIN_RENDERED_PX` (the 32 a 6px reach
+  // per side can lift to 44) where the sweep asserts the EXACT box, and it read
+  // the `::after` back to prove the overlay arrived where the shared helper counts
+  // a missing overlay as zero reach and reds on the 34 that leaves. The derived
+  // token went with it — this was its only reader.
+  test("the food-log steppers reach the floor, minus included", async ({
     page,
   }) => {
     await page.goto("/nutrition");
@@ -1079,105 +1157,290 @@ test.describe("the hit-area mechanism reaches the floor it claims (#3486)", () =
       await expect(row).toBeVisible();
     }
 
-    // THE MINUS IS NOT DRAWN AT ZERO (#3987) — a permanently disabled control on the
-    // row people tap most is chrome that says nothing. It is still a stepper and still
-    // owes the floor, so the row is put at a non-zero count to bring it on screen, and
-    // restored below. Measuring only the "+" would quietly halve what this test covers.
-    await settledClick(page, page.getByTestId("log-nuts_seeds"));
-    await expect(page.getByTestId("undo-nuts_seeds")).toBeVisible();
+    // Scoped to the row, not the page: the steppers are that row's own pair.
+    const plus = row.getByTestId("log-nuts_seeds");
+    const minus = row.getByTestId("undo-nuts_seeds");
+    await settledClick(page, plus);
+    await expect(minus).toBeVisible();
 
-    for (const testId of ["undo-nuts_seeds", "log-nuts_seeds"]) {
-      const stepper = page.getByTestId(testId);
-      await expect(stepper).toBeVisible();
-      const box = await stepper.boundingBox();
-      expect(box).not.toBeNull();
-
-      // Half one: the rendered box clears the mechanism's minimum.
-      expect(
-        box!.height,
-        `${testId} renders ${box!.height}px. \`.tap-target\` adds a fixed ` +
-          `2x${TAP_TARGET_INSET_PX}px, so a control below ${TAP_TARGET_MIN_RENDERED_PX}px cannot reach the ` +
-          `${TAP_FLOOR_PX}px floor no matter how the overlay is spelled.`
-      ).toBeGreaterThanOrEqual(TAP_TARGET_MIN_RENDERED_PX);
-      expect(box!.width).toBeGreaterThanOrEqual(TAP_TARGET_MIN_RENDERED_PX);
-
-      // Half two: the overlay actually ARRIVED at this element in this viewport.
-      // Read back out of the browser, not out of the stylesheet — the whole
-      // reason the family's floor needed a rendered guard.
-      const overlayInset = await stepper.evaluate((el) => {
-        const style = getComputedStyle(el, "::after");
-        return { content: style.content, top: style.top };
-      });
-      expect(
-        overlayInset.content,
-        `${testId} has no \`::after\` in a coarse-pointer viewport, so the ` +
-          "`.tap-target` class in its class list is decoration. The rule lives in " +
-          "app/globals.css under `@media (pointer: coarse)`."
-      ).not.toBe("none");
-      const inset = Math.abs(Number.parseFloat(overlayInset.top));
-      expect(Number.isFinite(inset)).toBe(true);
-      expect(
-        box!.height + 2 * inset,
-        `${testId} is ${box!.height}px rendered + 2x${inset}px overlay = ` +
-          `${box!.height + 2 * inset}px effective, under the ${TAP_FLOOR_PX}px floor #3514 ruled.`
-      ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
-    }
+    await expectPhoneTapTargets(page, "the food-log steppers", [minus, plus], {
+      disjoint: true,
+    });
 
     // Leave the shared profile's day as it was found.
-    await settledClick(page, page.getByTestId("undo-nuts_seeds"));
+    await settledClick(page, minus);
   });
 
-  test("no `.tap-target` on this page is too small for its own mechanism", async ({
-    page,
-  }) => {
-    await page.goto("/nutrition");
-    await expect(page.getByTestId("food-log-bar")).toBeVisible();
-    // EVERY `.tap-target` ON THIS PAGE IS IN THE ADD LAYER, and the add layer folds
-    // behind one door (#4477). Left closed, this sweep measures ZERO controls — which
-    // the visibleCount guard below correctly reds on, and which is the sweep asking
-    // its question of a page that is not showing its controls rather than of the
-    // controls themselves.
-    await openFoodAdd(page);
+  // THE SWEEP, TIGHTENED AND WIDENED (#4505). It asked `height >= 32` of `/nutrition`
+  // alone, so 36, 40 and 44 passed it by construction and every other route was
+  // unmeasured. Now: EXACT box on both hand-rolled kinds — `.tap-target` (a control
+  // that spells `h-(--control-box)` itself) and `.fold-control` (the `<summary>` that
+  // is a control) — on several routes at three widths, with the inline half of the
+  // floor measured too, since a guard that reads height alone is how C's #5399
+  // finding was missed.
+  //
+  // THE CONVERSE, so dropping the class is not an escape: every bare `<summary>` on
+  // the route must be a ROW — a card header stacking a title over a description,
+  // which #3979 rules is not a control — measured as a descendant holding two or
+  // more block-level children, or one of the ruled row-mechanism folds cited here
+  // by testid. THE CITED THREE, by issue: `food-more-groups-summary` (#3987 — one
+  // dense line row, the same height as the rows it extends),
+  // `dashboard-everything-*-fold-summary` (#4232's band fold) and
+  // `suppressed-summary` (upcoming/FoldSummary, pinned by its own spec). The other
+  // three row-mechanism sites the issue cites — IllnessNowGroup's toggle and its
+  // "More details" link (#3514) and DoseHistoryPanel's sheet rows — wear neither
+  // class and are not `<summary>`, so this sweep never reaches them; they are
+  // recorded here so their absence reads as scope rather than as coverage.
+  //
+  // WHAT THIS DOES NOT COVER, said plainly: controls that exist only after an
+  // interaction. A toast's buttons are rendered from `shown.map(...)`, so a plain
+  // `goto` renders none and a green here says nothing about them; the toast is
+  // measured by the targeted case below, and the add-layer's controls by the
+  // `open` step /nutrition declares. Anything else behind a door is outside this
+  // sweep's claim.
+  const SWEEP_ROUTES: {
+    route: string;
+    ready: string;
+    open?: (page: import("@playwright/test").Page) => Promise<void>;
+  }[] = [
+    { route: "/", ready: "dashboard-canvas" },
+    // EVERY `.tap-target` ON /nutrition IS IN THE ADD LAYER, behind one door (#4477).
+    { route: "/nutrition", ready: "food-log-bar", open: openFoodAdd },
+    { route: "/medications", ready: "medication-share-open" },
+    { route: "/upcoming", ready: "upcoming-total" },
+    { route: "/settings/notifications", ready: "notification-kinds" },
+    {
+      route: "/records/history/immunizations",
+      ready: "immunization-schedule-disclosure",
+    },
+  ];
+  const SWEEP_WIDTHS = [390, 768, 1280];
+  const CITED_ROW_FOLDS = [
+    "food-more-groups-summary",
+    "dashboard-everything-",
+    "suppressed-summary",
+  ];
 
-    // Measure visibility and geometry from the SAME rendered snapshot. A locator
-    // `:visible` filter and a later `evaluateAll` can straddle a responsive/details
-    // transition on repeat runs, leaving controls that are now display:none in the
-    // selected set with a 0px box. Zero-area controls are not rendered controls; a
-    // visible undersized one still has positive area and remains in `tooSmall`.
-    const measured = await page.locator(".tap-target").evaluateAll(
-      (els, minimum) =>
-        els.reduce(
-          (result, el) => {
-            const rect = el.getBoundingClientRect();
-            if (rect.width <= 0 || rect.height <= 0) return result;
-            result.visibleCount += 1;
-            if (rect.height >= minimum) return result;
-            result.tooSmall.push({
-              what:
-                el.getAttribute("data-testid") ??
-                el.getAttribute("aria-label") ??
-                (el.textContent ?? "").trim().slice(0, 30),
-              height: rect.height,
-            });
-            return result;
+  for (const { route, ready, open } of SWEEP_ROUTES) {
+    test(`every hand-rolled control on ${route} is the box at ${SWEEP_WIDTHS.join("/")}`, async ({
+      page,
+    }) => {
+      await page.goto(route);
+      await expect(page.getByTestId(ready)).toBeVisible();
+      if (open) await open(page);
+
+      for (const width of SWEEP_WIDTHS) {
+        await page.setViewportSize({ width, height: 900 });
+        // Visibility and geometry from ONE rendered snapshot: a `:visible` filter
+        // and a later `evaluateAll` can straddle a responsive transition and leave
+        // now-hidden controls in the set with a 0px box. Zero area is not rendered.
+        const swept = await page.evaluate(
+          ({ box, floor, epsilon, cited }) => {
+            const rectOf = (el: Element) => el.getBoundingClientRect();
+            const reachOf = (el: Element) => {
+              const after = getComputedStyle(el, "::after");
+              const side = (raw: string) => {
+                const inset = Math.abs(Number.parseFloat(raw));
+                return after.content === "none" || !Number.isFinite(inset)
+                  ? 0
+                  : inset;
+              };
+              return { block: side(after.top), inline: side(after.left) };
+            };
+            const nameOf = (el: Element) =>
+              el.getAttribute("data-testid") ??
+              el.getAttribute("aria-label") ??
+              (el.textContent ?? "").trim().slice(0, 30);
+            const offBox: string[] = [];
+            let controls = 0;
+            let folds = 0;
+            for (const el of Array.from(
+              document.querySelectorAll<HTMLElement>(
+                ".tap-target, .fold-control"
+              )
+            )) {
+              const r = rectOf(el);
+              if (r.width <= 0 || r.height <= 0) continue;
+              controls += 1;
+              if (el.classList.contains("fold-control")) folds += 1;
+              const style = getComputedStyle(el);
+              const lineHeight = Number.parseFloat(style.lineHeight);
+              const extra = (r.height - box) / lineHeight;
+              const lines = Math.round(extra);
+              const wholeLines =
+                Number.isFinite(extra) && Math.abs(extra - lines) <= 0.02;
+              const singleLine =
+                style.whiteSpace === "nowrap" || el.tagName === "INPUT";
+              const reach = reachOf(el);
+              const what = `<${el.tagName.toLowerCase()} ${nameOf(el)}>`;
+              if (!wholeLines || lines < 0 || (singleLine && lines !== 0))
+                offBox.push(
+                  `${what} renders ${r.height}px (${box} + ${extra.toFixed(3)} line boxes of ${lineHeight}px)`
+                );
+              if (r.height + 2 * reach.block + epsilon < floor)
+                offBox.push(
+                  `${what} reaches ${r.height + 2 * reach.block}px tall`
+                );
+              if (r.width + 2 * reach.inline + epsilon < floor)
+                offBox.push(
+                  `${what} reaches ${r.width + 2 * reach.inline}px wide`
+                );
+            }
+            const bareFolds: string[] = [];
+            for (const el of Array.from(
+              document.querySelectorAll<HTMLElement>(
+                "summary:not(.fold-control)"
+              )
+            )) {
+              const r = rectOf(el);
+              if (r.width <= 0 || r.height <= 0) continue;
+              const testId = el.getAttribute("data-testid") ?? "";
+              if (cited.some((id) => testId.startsWith(id))) continue;
+              const isBlock = (node: Element) =>
+                /^(block|flex|grid|list-item)$/.test(
+                  getComputedStyle(node).display
+                ) && (node.textContent ?? "").trim().length > 0;
+              const stacksTitleOverDescription = Array.from(
+                el.querySelectorAll("*")
+              ).some(
+                (node) => Array.from(node.children).filter(isBlock).length >= 2
+              );
+              if (!stacksTitleOverDescription)
+                bareFolds.push(`<summary ${nameOf(el)}> at ${r.height}px`);
+            }
+            return { controls, folds, offBox, bareFolds };
           },
           {
-            visibleCount: 0,
-            tooSmall: [] as { what: string; height: number }[],
+            box: CONTROL_BOX_PX,
+            floor: TAP_FLOOR_PX,
+            epsilon: TAP_FLOOR_FLOAT_EPSILON_PX,
+            cited: CITED_ROW_FOLDS,
           }
-        ),
-      TAP_TARGET_MIN_RENDERED_PX
-    );
-    // A sweep over nothing is green and says nothing — the same discipline the
-    // family sweep above keeps.
-    expect(measured.visibleCount).toBeGreaterThan(0);
+        );
+        // A sweep over nothing is green and says nothing.
+        expect(
+          swept.controls,
+          `${route} @${width} swept no controls`
+        ).toBeGreaterThan(0);
+        expect(
+          swept.folds,
+          `${route} @${width} swept no fold-control`
+        ).toBeGreaterThan(0);
+        expect(
+          swept.offBox,
+          `${route} @${width}: a hand-rolled control is off the ${CONTROL_BOX_PX}px box or ` +
+            `under the ${TAP_FLOOR_PX}px effective floor. One height, no exceptions ` +
+            "(#3938, re-ratified on #4505); give it `h-(--control-box)` / `fold-control`."
+        ).toEqual([]);
+        expect(
+          swept.bareFolds,
+          `${route} @${width}: a <summary> that is one line — a control — wears no ` +
+            "`fold-control`, and is neither a title-over-description row (#3979) nor a " +
+            "cited row-mechanism fold. Adopt the class, or cite the ruling here."
+        ).toEqual([]);
+      }
+    });
+  }
+});
 
+// THE TOAST'S PAIR (#4505; owner ruling 2026-09-05 overturning the rendered 44 that
+// #2642 and #644 had argued). Below `md` the action and the dismiss render the box
+// and take `.tap-target`'s reach, 46 effective; from `md` up the action is the
+// inline link under the message and the dismiss its bare glyph, by design, so this
+// is a phone claim. TRIGGERED, because the sweep above cannot see it: a toast's
+// buttons exist only inside a rendered toast. The e2e fixture harness raises one
+// through the same Toast layer with no write behind it, and its notice carries an
+// action for exactly this measurement.
+test.describe("the toast's action and dismiss wear the box (#4505)", () => {
+  test.use({ viewport: PHONE });
+
+  test("a rendered toast's pair is the box with reach at 390", async ({
+    page,
+  }) => {
+    await page.goto("/e2e-fixtures/bottom-sheet");
+    const raise = page.getByRole("dialog").getByTestId("fixture-raise-notice");
+    await hydratedClick(page, raise);
+    const toast = page.getByTestId("toast"); // testid-scope-ok: the toast layer is portalled above every streamed boundary
+    await expect(toast).toContainText("Fixture notice.");
+    const pair = [
+      toast.getByRole("button", { name: "Undo" }),
+      toast.getByRole("button", { name: "Dismiss" }),
+    ];
+    const boxes = await settledBoxes(pair);
     expect(
-      measured.tooSmall,
-      `A \`.tap-target\` control renders under ${TAP_TARGET_MIN_RENDERED_PX}px at ${PHONE.width}px. The ` +
-        `overlay adds a fixed 2x${TAP_TARGET_INSET_PX}px, so below that it lands short of the ` +
-        `${TAP_FLOOR_PX}px floor while carrying the class that claims it. Give the ` +
-        "control the rendered height or migrate it to a primitive that owns the floor."
-    ).toEqual([]);
+      boxes.map((b) => Math.round(b.height)),
+      "the toast's action and dismiss render more than one height"
+    ).toEqual([CONTROL_BOX_PX, CONTROL_BOX_PX]);
+    expect(Math.round(boxes[1].width), "the dismiss is square").toBe(
+      CONTROL_BOX_PX
+    );
+    await expectPhoneTapTargets(page, "the toast's pair", pair, {
+      disjoint: true,
+    });
+  });
+});
+
+// ONE CONTROL, TWO STATES, ONE HEIGHT (#4505 family 5). The weekly-target toggle
+// rendered `btn-ghost` closed and a hand-rolled `min-h-11` open; both states are
+// the box now. ProtocolLogButton's two tones share the dose-action pill, whose box
+// e2e/dose-history.spec.ts pins, and the lightbox delete is behind a photo — a
+// fixture this table does not build — so the state pair is the case measured here.
+test.describe("the weekly-target toggle is one height open and closed (#4505)", () => {
+  test.use({ viewport: PHONE });
+
+  test("renders the box in both states at 390", async ({ page }) => {
+    await page.goto("/training?tab=plan");
+    const toggle = page
+      .getByRole("main")
+      .getByTestId("frequency-target-toggle");
+    await expect(toggle).toBeVisible();
+    const [closed] = await settledBoxes([toggle]);
+    await hydratedClick(page, toggle);
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    const [open] = await settledBoxes([toggle]);
+    expect(
+      [Math.round(closed.height), Math.round(open.height)],
+      "the toggle renders two heights across its states"
+    ).toEqual([CONTROL_BOX_PX, CONTROL_BOX_PX]);
+    await expectPhoneTapTargets(page, "the open weekly-target toggle", [
+      toggle,
+    ]);
+  });
+});
+
+// THE BADGE THAT WAS A BUTTON (#4505 family 4). The mood form's day and factor chips
+// were `.badge`-styled buttons at 22px with no reach at all; they render through
+// `Chip` now — `chip-base`, an already-bound kind — in a `gap-1.5
+// pointer-coarse:gap-3.5` row, and its Details fold is a `fold-control`. The factor
+// row is measured here because it is on the sheet on arrival; the day chips exist
+// only when a day was missed, and are the same primitive in the same row grammar.
+test.describe("the mood sheet's chips and fold wear the box (#4505)", () => {
+  test.use({ viewport: PHONE });
+
+  test(`the factor chips and the Details fold are one box at ${BOX_WIDTHS.join("/")}`, async ({
+    page,
+  }) => {
+    await page.goto("/?quick=log-mood");
+    const form = page.getByRole("dialog").getByTestId("mood-form");
+    await expect(form).toBeVisible();
+    const details = form.getByTestId("mood-details").locator("summary");
+    await hydratedClick(page, details);
+    const chips = form.locator('[data-chip-role="filter"]');
+    await expect(chips.last()).toBeVisible();
+
+    for (const width of BOX_WIDTHS) {
+      await page.setViewportSize({ width, height: 900 });
+      const targets = [details, ...(await chips.all())];
+      const boxes = await settledBoxes(targets);
+      expect(
+        [...new Set(boxes.map((b) => Math.round(b.height)))],
+        `the mood sheet @${width} renders more than one box: ${boxes
+          .map((b) => b.height)
+          .join(", ")}`
+      ).toEqual([CONTROL_BOX_PX]);
+      await expectPhoneTapTargets(page, `the mood sheet @${width}`, targets, {
+        disjoint: true,
+      });
+    }
   });
 });

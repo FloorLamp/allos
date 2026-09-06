@@ -164,7 +164,7 @@ export default function FoodSuggestions({
                 >
                   <summary
                     data-testid={`food-suggestion-why-toggle-${s.key}`}
-                    className={`flex cursor-pointer list-none items-center gap-1 text-sm font-medium [&::-webkit-details-marker]:hidden ${
+                    className={`fold-control flex list-none items-center gap-1 text-sm font-medium [&::-webkit-details-marker]:hidden ${
                       reduce
                         ? "text-amber-800 dark:text-amber-300"
                         : "text-emerald-800 dark:text-emerald-300"

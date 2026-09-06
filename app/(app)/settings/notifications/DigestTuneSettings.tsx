@@ -64,7 +64,7 @@ export default function DigestTuneSettings({
       </p>
       <Disclosure>
         <summary
-          className="cursor-pointer text-xs text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+          className="fold-control text-xs text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
           data-testid="digest-tune-disclosure"
         >
           Change which categories
