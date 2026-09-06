@@ -15,7 +15,8 @@ const record = (name: string, fd: FormData) => {
   (posted[name] ??= []).push(fd);
 };
 
-let logMoodReply: (fd: FormData) => Promise<{ ok: true }> = async () => ({
+type MoodReply = { ok: true } | { ok: false; error: string };
+let logMoodReply: (fd: FormData) => Promise<MoodReply> = async () => ({
   ok: true,
 });
 let enqueueReply: "kept" | "closed" | "failed" = "kept";
@@ -307,6 +308,49 @@ describe("the mood domain's two pieces", () => {
     expect(staged.at(-1)).toBe(true);
     unmount();
     expect(staged.at(-1)).toBe(false);
+  });
+
+  // AND IT DOES NOT COUNT WHAT A WRITE HAS ALREADY TAKEN (#3416). In quick mode the
+  // valence tap IS the write, and `draft()` puts the whole Details block into the
+  // payload — so between the tap and the settle the note is staged AND in flight. The
+  // sheet announcing a discard in that window told somebody their paragraph was thrown
+  // away while the FormData carrying it was still open, and it lands: the blind
+  // check-in merges rather than replaces. A write that FAILS gives the fields back,
+  // and then there really is something to lose again.
+  it("is not holding input a write in flight has already taken", async () => {
+    let settle: (reply: MoodReply) => void = () => {};
+    logMoodReply = () =>
+      new Promise<MoodReply>((resolve) => {
+        settle = resolve;
+      });
+
+    const staged: boolean[] = [];
+    render(
+      <MoodForm
+        days={[EMPTY]}
+        showCalm={false}
+        onStagedChange={(value) => staged.push(value)}
+      />
+    );
+    fireEvent.change(screen.getByLabelText("Note"), {
+      target: { value: "woke at 4, could not get back to sleep" },
+    });
+    expect(staged.at(-1)).toBe(true);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Mood: Good" }));
+    });
+    expect(staged.at(-1)).toBe(false);
+    // The note really is in the payload the tap opened — which is why there is nothing
+    // to announce about it.
+    expect(posted.logMood?.[0]?.get("note")).toBe(
+      "woke at 4, could not get back to sleep"
+    );
+
+    await act(async () => {
+      settle({ ok: false, error: "Couldn't save that check-in." });
+    });
+    expect(staged.at(-1)).toBe(true);
   });
 
   it("names a single past-day quick tap from its actual date context", async () => {

@@ -243,21 +243,46 @@ type BodySight =
 // WHOSE IDENTITY THE SIGHT IS PART OF — exactly the bodies whose WRITE depends on it.
 // A late answer under a device copy changes the sight, and remounting the body on it
 // throws away whatever the person has already done in that mount. That is worth doing
-// only where keeping the mount could produce a WRONG WRITE, and one body qualifies:
+// only where keeping the mount could produce a WRONG WRITE.
 //
-// - MOOD remounts. Its check-in is the day's WHOLE answer and its fields are seeded
-//   from `days` once, so a blind composition left beside a payload that saw the day
-//   writes the replacing statement over what it never saw (`dayUnseen` →
-//   `MoodWriteSight`, lib/offline/writes.ts). The new mount carries the day and needs
-//   no fence at all.
-// - DOSE, PRACTICE and STOOL do not. Their writes name a (day, item) and are
-//   idempotent or additive, so no fence rides on the payload, and their in-progress
-//   state is keyed the same way the newer payload is: `QuickDoseList`'s `resolved`
-//   set is per (day, doseId) and filters whatever `doses` it is handed, and the other
-//   two already follow a newer payload in place by design. Remounting them would
-//   strike the person's own confirms off — a dose taken offline coming back offering
-//   Take, because the answer was gathered before the tap and the queue has not
-//   drained — for a fence none of them has to lose.
+// The table below is derived from WHAT EACH BODY ACTUALLY HOLDS and which of those
+// pieces FOLLOW a prop, because "keeps its mount" is only half an answer: a body that
+// keeps its mount can still have a value taken off it, by its own follower, the moment
+// the payload behind it moves. Both halves have to be true of every row.
+//
+// - MOOD — remounts. Holds the day's whole draft (valence, energy, Calm, factors,
+//   note, the #2128 day pick), all seeded from `days` ONCE and following nothing. Its
+//   check-in is the day's WHOLE answer, so a blind composition left beside a payload
+//   that saw the day writes the replacing statement over what it never saw (`dayUnseen`
+//   → `MoodWriteSight`, lib/offline/writes.ts). The new mount carries the day and needs
+//   no fence at all. It is therefore also the one body that can LOSE a draft to a late
+//   answer, so it is the one handed `onStagedChange` and the only one spoken about.
+// - DOSE — keeps its mount, and holds nothing that follows. `QuickDoseList`'s
+//   `resolved` set, its per-occurrence `notes` and its day tab are all local and are
+//   keyed per (day, doseId), which is how `markDoseTaken` names its write; the newer
+//   `doses`/`pastDays` are FILTERED through `resolved` rather than replacing it, and
+//   the rows reconcile by `key={dose.doseId}` so an in-flight confirm keeps its
+//   control. The arriving payload can only ADD (the PRN block and the past-day tabs
+//   the copy declines to offer). Remounting would strike the person's own confirms
+//   off — a dose taken offline coming back offering Take — for a fence it never had.
+// - PRACTICE — keeps its mount, and holds ONE thing that follows: the duration.
+//   `QuickPracticeList` reseeds `rows` from a newer `practices` (server data, nothing
+//   of the person's in it) and keys its items by `practice.identity`, so each
+//   `LogPracticeButton` survives; inside it, `count`/`lastTime` follow `todayCount`
+//   and are the server's own reading, the "Happened earlier?" statement is anchored on
+//   `today` (unchanged across this transition) and so survives untouched — but
+//   `duration` is the person's, and it followed `defaultDurationMin` unconditionally.
+//   The device copy carries no prefill, so this transition moved it `null → the usual
+//   duration` on every practice that has one and the next tap posted the server's
+//   number instead of theirs, silently. That is fixed where the value lives
+//   (`LogPracticeButton`: the follow yields once the person has answered), NOT by
+//   remounting — a new mount would seed from the same prefill and lose the same
+//   minutes, so the sight is not part of this body's identity either.
+// - STOOL — keeps its mount. Holds `count`, which follows `todayCount` and is the
+//   server's own reading, and — despite an earlier claim here that nothing on it is
+//   typeable — the "Happened earlier?" time statement, which IS the person's. It is
+//   anchored on `today`, unchanged across this transition, so it survives; the write
+//   is additive per instant and carries its own fields.
 //
 // Nothing else reaches this transition: `quickEntryOffline` answers null for every
 // other form, so a stalled cold open there reaches the retry state, already "read".
@@ -307,10 +332,24 @@ interface Request {
   readonly parts: DayContextParts;
   readonly form: QuickEntryForm;
   settled: boolean;
-  // A device copy is on screen for this request (`recover` painted one). The late
-  // answer that lands behind it is a CHANGE OF SIGHT, not a refresh — see the body's
-  // `key` for which bodies that remounts, and `stagedRef` for when it is announced.
-  copied: boolean;
+  // THE BODY A DEVICE COPY PUT ON SCREEN for this request (`recover` painted one), or
+  // null while none has. The late answer that lands behind it is a CHANGE OF SIGHT,
+  // not a refresh — and whether that change REPLACES the body is a question about the
+  // form on screen, which is this one: a copy can answer `unavailable` where the
+  // gather answers `mood`, and it is the mount being thrown away that decides, not the
+  // payload arriving. Read by `remounts` below, which is the question the announcement
+  // asks; the body's `key` asks the same predicate of the state on screen.
+  copiedForm: QuickEntryBody["form"] | null;
+}
+
+// WHETHER A LATE ANSWER REPLACES THE BODY ON SCREEN. One expression, so the sentence
+// spoken about a remount and the `key` that performs it cannot come apart: the answer
+// always renders at sight "read", so the mount is replaced exactly when the body a
+// device copy put up is one whose identity carries the sight. Asking `sightIsIdentity`
+// of the ARRIVING form instead would be a second, independently-edited spelling of the
+// same rule — the coupling that let a previous round drop this test as redundant.
+function remounts(request: Request): boolean {
+  return request.copiedForm != null && sightIsIdentity(request.copiedForm);
 }
 
 function asOfCopy(fetchedAt: string | Date, why: string): string {
@@ -368,21 +407,32 @@ export default function QuickEntryProvider({
   // The dynamic bodies, re-minted by Retry (see `loadBodies`).
   const [bodies, setBodies] = useState(() => loadBodies(0));
 
-  // WHAT THE BODY ON SCREEN WOULD LOSE IF IT WERE REPLACED. A body that both remounts
-  // on a change of sight and stages input reports this while it is mounted (today
-  // that is the mood form alone, `onStagedChange`), and the announcement below is made
-  // only when it says there is something to announce — a sheet nobody typed on says
-  // nothing. False again the moment the body goes: the sheet closing, a new request,
-  // or the body's own unmount, so a check-in that has already closed the sheet cannot
-  // be announced into the empty screen behind it.
+  // WHAT THE BODY ON SCREEN WOULD LOSE IF IT WERE REPLACED — input, and only input no
+  // write has taken. A body that both remounts on a change of sight and stages input
+  // reports this while it is mounted (today that is the mood form alone,
+  // `onStagedChange`), and the announcement below is made only when it says there is
+  // something to announce AND the answer actually replaces that body (`remounts`).
+  // A sheet nobody typed on says nothing; so does one whose draft is already inside a
+  // write in flight, because that write lands (`day_unseen=1` merges it) and telling
+  // somebody their paragraph was discarded while it is on its way is the same false
+  // sentence in the other direction. False again the moment the body goes: the sheet
+  // closing, a new request, or the body's own unmount.
   const stagedRef = useRef(false);
+  // A CLOSED SHEET HOLDS NOTHING, and it has to be a standing rule rather than a clear
+  // on the way out: the body stays mounted through the exit animation (`form` is
+  // retained below), and a check-in that closed the sheet by succeeding reports again
+  // the instant its write unfreezes the fields. Clearing once at `close` left that
+  // late report standing, which is the empty-screen announcement coming back by the
+  // one path that ends with the sheet already gone.
+  const sheetOpen = useRef(false);
   const reportStaged = useCallback((staged: boolean) => {
-    stagedRef.current = staged;
+    stagedRef.current = staged && sheetOpen.current;
   }, []);
 
   const close = useCallback(() => {
     setOpen(false);
     setPickerOpen(false);
+    sheetOpen.current = false;
     stagedRef.current = false;
   }, []);
 
@@ -424,7 +474,7 @@ export default function QuickEntryProvider({
         parts,
         form: next,
         settled: false,
-        copied: false,
+        copiedForm: null,
       };
       requestRef.current = request;
       // A new request is a new body: whatever the last one was holding is gone with
@@ -494,7 +544,7 @@ export default function QuickEntryProvider({
           snapshots,
           intents
         );
-        if (copy) request.copied = true;
+        if (copy) request.copiedForm = copy.data.form;
         setState(
           copy
             ? {
@@ -536,14 +586,16 @@ export default function QuickEntryProvider({
           // strand blind state beside a payload that saw the day — which is how a
           // fenced check-in loses its fence.
           //
-          // SAID ONLY WHEN IT IS TRUE, which is what `stagedRef` answers. The remount
-          // is the only thing here that discards anything, and only if that body was
-          // holding something — and only a body the sight remounts is handed the
-          // reporter (see `QuickEntryBody`), so a dose confirmed offline, which keeps
-          // its mount and its confirm, has nothing to report and nothing said over it.
-          // A form nobody typed on has nothing to lose either. So the sentence is
-          // spoken where a remount meets staged input, and otherwise not at all.
-          if (request.copied && stagedRef.current)
+          // SAID ONLY WHEN IT IS TRUE, and it is true only where a REMOUNT meets input
+          // no write has taken. Two questions, asked of two different things:
+          // `remounts(request)` asks whether this answer actually replaces the body on
+          // screen — a dose list, which keeps its mount and its confirms, is never
+          // spoken over even if something else had reported staged input — and
+          // `stagedRef` asks whether that body is holding anything to lose. Neither
+          // implies the other: which body is handed the reporter and which body the
+          // sight remounts are two edits, and the day they disagree this sentence must
+          // still be false rather than accidentally true.
+          if (remounts(request) && stagedRef.current)
             toast(
               "Connected — this form now shows what's saved. What you typed on the offline copy was discarded."
             );
@@ -582,6 +634,7 @@ export default function QuickEntryProvider({
       setSubject(resolvedSubject);
       setPickerOpen(false);
       setOpen(true);
+      sheetOpen.current = true;
       loadFor(next, resolvedSubject);
     },
     [actingProfileId, loadFor]
@@ -745,7 +798,8 @@ export default function QuickEntryProvider({
                 the answer just delivered. A form's sight is the sight it was composed
                 under. Every other body keeps its mount and takes the newer payload in
                 place, which is what a person who just confirmed a dose offline needs
-                it to do. */}
+                it to do — and what each of those bodies then does with the newer
+                payload, piece by piece, is the table above `sightIsIdentity`. */}
             <div
               key={`${subject}:${
                 state.status === "ready" && sightIsIdentity(state.data.form)
@@ -861,8 +915,12 @@ function QuickEntryBody({
   onRetry: () => void;
   // Handed to the one body the host remounts on a change of sight, so the host can
   // ask — at the moment it is about to replace it — whether there is anything to
-  // announce (see `stagedRef`). No other body is given it: nothing that keeps its
-  // mount loses what it is holding.
+  // announce (see `stagedRef`). No other body is given it, and the reason is narrower
+  // than it once read here: a body that keeps its mount can still lose a value, to its
+  // own follower rather than to a replacement (see the practice row of the table above)
+  // — but that loss is answered where the value lives, by the follower yielding, so
+  // there is nothing left for the host to announce about it. This reports what a
+  // REPLACEMENT would take, which is the only thing the host performs.
   onStaged: (staged: boolean) => void;
   // The chosen subject (#4932), already narrowed to "explicit and non-acting" by
   // the caller — every form below carries it through to its own write(s), gated

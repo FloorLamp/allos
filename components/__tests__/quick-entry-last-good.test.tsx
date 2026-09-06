@@ -78,10 +78,12 @@ vi.mock("@/components/mood/MoodForm", () => {
     days,
     dayUnseen,
     onStagedChange,
+    onDone,
   }: {
     days: { date: string }[];
     dayUnseen?: boolean;
     onStagedChange?: (staged: boolean) => void;
+    onDone?: () => void;
   }) {
     // SEEDED ONCE, as the real form seeds its fields — so this stub can tell a
     // remount from a prop swap. `composed-*` is what the mount was built from;
@@ -108,6 +110,17 @@ vi.mock("@/components/mood/MoodForm", () => {
       >
         {days.map((d) => d.date).join(",")}
         <button data-testid="stub-mood-stage" onClick={() => setStaged(true)} />
+        {/* THE REAL FORM'S ORDER when a quick check-in succeeds: it closes the sheet
+            (`complete` → `onDone`) and only THEN does its write release the fields,
+            at which point the effect above reports what they still hold. Modelled
+            imperatively because the point is the ORDER, not the state. */}
+        <button
+          data-testid="stub-mood-wrote-and-closed"
+          onClick={() => {
+            onDone?.();
+            onStagedChange?.(true);
+          }}
+        />
       </div>
     );
   }
@@ -579,6 +592,39 @@ describe("the stall bound and Retry (#3416 proposals 3 and 4)", () => {
         "Connected — this form now shows what's saved. What you typed on the offline copy was discarded."
       )
     ).not.toBeNull();
+  });
+
+  // AND NOT INTO A SCREEN THAT IS ALREADY GONE (#3416). A check-in that succeeds
+  // CLOSES the sheet, and its write releases the fields a moment later — so the body,
+  // still mounted behind the exit, reports that it is holding the note it just wrote.
+  // Clearing the ref once on the way out left that later report standing, and the
+  // stalled gather answering afterwards spoke a discard into the page behind a sheet
+  // nobody could see, about a check-in that landed. A closed sheet holds nothing.
+  it("a check-in that already closed the sheet is not announced into the screen behind it", async () => {
+    let resolveLate: (v: unknown) => void;
+    loadQuickEntry.mockImplementationOnce(
+      () => new Promise((resolve) => (resolveLate = resolve))
+    );
+    renderSheet();
+    open("mood");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    fireEvent.click(screen.getByTestId("stub-mood-stage"));
+    fireEvent.click(screen.getByTestId("stub-mood-wrote-and-closed"));
+
+    resolveLate!({
+      form: "mood" as const,
+      days: [{ date: today(), label: "Today", mood: null }],
+      showCalm: true,
+    });
+    await act(async () => {});
+
+    expect(
+      screen.queryByText(
+        "Connected — this form now shows what's saved. What you typed on the offline copy was discarded."
+      )
+    ).toBeNull();
   });
 
   // A BODY WITH NO FENCE TO LOSE KEEPS ITS MOUNT (#3416). The dose list's write is

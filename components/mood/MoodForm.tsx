@@ -154,14 +154,22 @@ export default function MoodForm({
   // WHAT WOULD BE LOST, against the day on screen — the person's own input, not the
   // day's stored answer. A note typed and then deleted back to what was there leaves
   // nothing to lose, and says so.
+  //
+  // AND NOT WHAT A WRITE HAS ALREADY TAKEN. `busy` is the transaction boundary the
+  // fieldset below is frozen behind: from the tap until it settles, every field here
+  // is already inside the payload in flight (`draft()` carries the whole Details
+  // block, which in quick mode is the whole of this), so replacing the form would
+  // discard a copy of something already on its way. A write that fails unfreezes the
+  // fields and this says `true` again, because then it really would be lost.
   const shown = day?.mood ?? null;
   const staged =
-    energy !== (shown?.energy ?? null) ||
-    anxiety !== (shown?.anxiety ?? null) ||
-    (note.trim() || null) !== (shown?.notes ?? null) ||
-    factors.length !== (shown?.factors.length ?? 0) ||
-    factors.some((slug) => !shown?.factors.includes(slug)) ||
-    (mode === "edit" && valence !== (shown?.valence ?? null));
+    !busy &&
+    (energy !== (shown?.energy ?? null) ||
+      anxiety !== (shown?.anxiety ?? null) ||
+      (note.trim() || null) !== (shown?.notes ?? null) ||
+      factors.length !== (shown?.factors.length ?? 0) ||
+      factors.some((slug) => !shown?.factors.includes(slug)) ||
+      (mode === "edit" && valence !== (shown?.valence ?? null)));
   useEffect(() => {
     onStagedChange?.(staged);
     return () => onStagedChange?.(false);

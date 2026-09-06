@@ -25,17 +25,17 @@ import type { TrackedPractice } from "@/lib/queries/wellness";
 // thing. What no tier below this could see is that the row's two columns agree, since
 // the facts and the control are rendered by different components.
 
-const { loadQuickEntry, startPracticeLive, endPracticeLive } = vi.hoisted(
-  () => ({
+const { loadQuickEntry, logPractice, startPracticeLive, endPracticeLive } =
+  vi.hoisted(() => ({
     loadQuickEntry: vi.fn(),
+    logPractice: vi.fn(),
     startPracticeLive: vi.fn(),
     endPracticeLive: vi.fn(),
-  })
-);
+  }));
 
 vi.mock("@/app/(app)/quick-entry-actions", () => ({ loadQuickEntry }));
 vi.mock("@/app/(app)/wellness/actions", () => ({
-  logPractice: vi.fn(),
+  logPractice,
   startPracticeLive,
   endPracticeLive,
 }));
@@ -85,6 +85,7 @@ const list = (practices: TrackedPractice[]) => (
 
 beforeEach(() => {
   loadQuickEntry.mockReset();
+  logPractice.mockReset();
   startPracticeLive.mockReset();
   endPracticeLive.mockReset();
 });
@@ -284,5 +285,96 @@ describe("the row follows the server's session rather than a copy of it", () => 
     // Never the pair the screenshot caught: the row cannot say a session is running
     // and count no sessions in the same breath, because one read produces both.
     expect(screen.queryByTestId("practice-today-count")).toBeNull();
+  });
+});
+
+// ── THE MINUTES ARE THE PERSON'S ONCE THEY HAVE SET THEM (#3416) ─────────────
+//
+// This row keeps its mount when the sheet hands it a newer payload — deliberately, so
+// a practice logged offline is not struck back out from under the person. The duration
+// field followed the payload's prefill unconditionally, which was harmless while the
+// only thing that moved it was a correction made in the history table beside it. The
+// quick sheet's cold offline open made it the ordinary case: its device copy carries no
+// prefill at all, so the answer that lands a few seconds later moves the prefill
+// `null → the usual duration` on every practice that has one, and the field went with
+// it. Somebody who opened the sheet with no connection, opened the editor and set 45
+// for a long sauna watched it become 15 with nothing said, and the tap posted 15.
+//
+// Driven here rather than at the host, because the loss is not the sheet's remount —
+// there is none — but this component's own follower, and this is the tier that owns it.
+describe("a newer prefill does not take back minutes the person set", () => {
+  const sauna: TrackedPractice = {
+    ...RED_LIGHT,
+    identity: "sauna",
+    name: "Sauna",
+    previousDurationMin: null,
+  };
+  // The sheet's own transition: the offline copy (no prefill), then the late answer
+  // (the usual duration), with the SAME row identity so the button keeps its mount.
+  const answered = { ...sauna, previousDurationMin: 15 };
+
+  const setDuration = (minutes: string) => {
+    fireEvent.click(screen.getByTestId("practice-duration-toggle"));
+    fireEvent.change(screen.getByTestId("practice-duration-input"), {
+      target: { value: minutes },
+    });
+  };
+  const logged = async () => {
+    logPractice.mockResolvedValue({ kind: "logged", date: TODAY, count: 1 });
+    loadQuickEntry.mockResolvedValue({ form: "practice", practices: [] });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("practice-log-button"));
+    });
+    const fd = logPractice.mock.calls[0]?.[0] as FormData;
+    return fd?.get("duration_min");
+  };
+
+  it("keeps the duration and posts it when the late answer brings a usual one", async () => {
+    const view = render(list([sauna]));
+    setDuration("45");
+    const button = screen.getByTestId("practice-log-button");
+
+    view.rerender(list([answered]));
+
+    // Same mount — this row is not remounted on a change of sight, and a remount would
+    // not have saved the value anyway: a new one seeds from the same prefill.
+    expect(screen.getByTestId("practice-log-button")).toBe(button);
+    expect(screen.getByTestId("practice-duration-toggle").textContent).toBe(
+      "45 min"
+    );
+    expect(
+      (screen.getByTestId("practice-duration-input") as HTMLInputElement).value
+    ).toBe("45");
+    expect(await logged()).toBe("45");
+  });
+
+  // THE CONTROL, and it is the reason the follow exists (#5431): a field nobody has
+  // answered still takes the newer prefill, so a session corrected or deleted beside
+  // this button stops being offered.
+  it("still follows the prefill on a field nobody has answered", async () => {
+    const view = render(list([sauna]));
+    expect(screen.getByTestId("practice-duration-toggle").textContent).toBe(
+      "min"
+    );
+
+    view.rerender(list([answered]));
+
+    expect(screen.getByTestId("practice-duration-toggle").textContent).toBe(
+      "15 min"
+    );
+    expect(await logged()).toBe("15");
+  });
+
+  // And the follow is not spent for the life of the mount: it yields to the person,
+  // and a person who clears the field back to blank has still answered.
+  it("keeps a blank the person cleared rather than refilling it", () => {
+    const view = render(list([{ ...sauna, previousDurationMin: 30 }]));
+    setDuration("");
+
+    view.rerender(list([answered]));
+
+    expect(screen.getByTestId("practice-duration-toggle").textContent).toBe(
+      "min"
+    );
   });
 });
