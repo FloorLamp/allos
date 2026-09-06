@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   IconX,
   IconCheck,
@@ -232,6 +232,30 @@ export default function ActivityPartsList({
   // toolbar without duplicating either. Holds the index of the part whose guide
   // is open, so at most one overlay exists no matter how many parts are entered.
   const [guideFor, setGuideFor] = useState<number | null>(null);
+  // WHICH PART IS BEING SEARCHED (#5370). A part that has a name is a HEADING, not a
+  // mounted search field: the picker is one tap behind it, and the field's own search
+  // glyph and Clear come back with the picker because they belong to searching. Holds
+  // an index for the same reason `guideFor` does — at most one picker is open — and
+  // `null` while every named part is settled. A part with no name yet has nothing to
+  // state, so it renders the picker whatever this says.
+  const [searchingPart, setSearchingPart] = useState<number | null>(null);
+  // Settling unmounts the field the caret was in, so the heading has to take the focus
+  // back or a keyboard pick drops it on <body> and the next Tab restarts at the top of
+  // the document. The element does not exist yet when the settle is decided, hence a
+  // request the effect below fulfils rather than a `.focus()` call here.
+  const [refocusHeading, setRefocusHeading] = useState<number | null>(null);
+  const headingRefs = useRef<Record<number, HTMLButtonElement | null>>({});
+  useEffect(() => {
+    if (refocusHeading === null) return;
+    headingRefs.current[refocusHeading]?.focus();
+    setRefocusHeading(null);
+  }, [refocusHeading]);
+  // Back to the heading, with focus. Called on a pick, on Escape, and when the field
+  // loses focus with a name in it.
+  const settleName = (pi: number, focus: boolean) => {
+    setSearchingPart((cur) => (cur === pi ? null : cur));
+    if (focus) setRefocusHeading(pi);
+  };
   // WHICH PART'S EQUIPMENT EDITOR IS OPEN (#3349), for the same reason `guideFor`
   // holds an index: at most one is open no matter how many parts are entered. That is
   // what keeps the registry door — which lives inside the panel — to ONE PER FORM
@@ -256,10 +280,12 @@ export default function ActivityPartsList({
   // otherwise the same key silently targets its new neighbour (#4185).
   const movePart = (pi: number, dir: -1 | 1) => {
     closePartFact();
+    setSearchingPart(null);
     onMovePart(pi, dir);
   };
   const removePart = (pi: number) => {
     closePartFact();
+    setSearchingPart(null);
     onRemovePart(pi);
   };
   // One RPE opt-in round-trip at a time (#3335). ONE flag for the list rather than one
@@ -641,6 +667,16 @@ export default function ActivityPartsList({
           const t = partType(p);
           const valid = t !== null;
           const muscle = t === "strength" ? muscleFor(p.name) : null;
+          // One badge, whether it sits in the heading or inside the open field.
+          const muscleBadge = muscle ? (
+            <span className="badge bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300">
+              {muscle}
+            </span>
+          ) : undefined;
+          const searching = searchingPart === pi;
+          // A part with a name states it; a part without one has only the picker to
+          // offer, so an empty part is never "settled" however this state reads.
+          const settled = !searching && p.name.trim() !== "";
           // Hoist companions of the OTHER entered lifts to the top of this
           // part's picker (issue #195); excludes this part's own name so it
           // can't bias its own list. No-op until a lift is entered.
@@ -697,49 +733,93 @@ export default function ActivityPartsList({
                 data-testid="part-header"
                 className="sticky top-edge-safe z-10 -mx-1 flex flex-col gap-1 bg-surface/95 px-1 py-1 backdrop-blur-sm sm:flex-row sm:items-center sm:gap-2 md:static md:mx-0 md:bg-transparent md:px-0 md:py-0 md:backdrop-blur-none dark:md:bg-transparent"
               >
-                <div className="min-w-0 sm:flex-1">
-                  <ActivityCombobox
-                    value={p.name}
-                    onChange={(v) => onTypePartName(pi, v)}
-                    onPick={(v) => onPickPartName(pi, v)}
-                    allowFreeText
-                    // Composed variant names ("Dumbbell Curl") aren't in the
-                    // options list but pick as the known lift — don't promise
-                    // a new activity the pick won't create.
-                    freeTextLabel={(q) =>
-                      isKnown(q) ? (
-                        <>Use “{q}”</>
-                      ) : (
-                        <>Add “{q}” as new activity</>
-                      )
+                <div
+                  className="min-w-0 sm:flex-1"
+                  // Escape settles the heading, and it is taken in CAPTURE so ONE press
+                  // does it: the field's own handler runs first otherwise, closes its
+                  // listbox and stops the event (ActivityCombobox pins
+                  // `closeStopsPropagation` so a picker inside a modal is the first
+                  // layer Escape reaches). Unmounting the field closes that listbox
+                  // anyway, so the press still costs the picker exactly one Escape —
+                  // and stopping it here keeps it from also closing the editor behind.
+                  onKeyDownCapture={(e) => {
+                    if (searching && e.key === "Escape") {
+                      e.stopPropagation();
+                      settleName(pi, true);
                     }
-                    options={biasedOptions}
-                    usedOptions={usedActivityNames}
-                    placeholder={
-                      pi === 0
-                        ? "What did you do? e.g. Bench Press, Running, Tennis"
-                        : "Add another activity…"
-                    }
-                    autoFocus={pi === 0 && !isEdit}
-                    // A committed custom part isn't "unrecognized" — its
-                    // pending type shows as amber chips, not a red border.
-                    invalid={p.name.trim() !== "" && !valid && !p.custom}
-                    badge={
-                      muscle ? (
-                        <span className="badge bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300">
-                          {muscle}
-                        </span>
-                      ) : undefined
-                    }
-                    badgeFor={(opt) => {
-                      const m = muscleFor(opt);
-                      return m ? (
-                        <span className="badge shrink-0 bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300">
-                          {m}
-                        </span>
-                      ) : null;
-                    }}
-                  />
+                  }}
+                >
+                  {settled ? (
+                    /* THE SETTLED EXERCISE IS A HEADING (#5370), on #5376's rung 2 —
+                       normal case, semibold, body size — so the thing a block is about
+                       stops reading like one of its numbers, and stops reading like a
+                       search that is still open. It keeps the field's 34px box (#3938)
+                       because `--set-schema-top` above is derived from that box and the
+                       sticky set-schema row parks against it.
+                       ACTIVATION IS THE TAP, NOT THE FOCUS. #5370 asks for both; focus
+                       cannot have it, because settling returns focus HERE, so an
+                       onFocus that reopened the picker would make Escape reopen what it
+                       just closed. Enter, Space and a tap all reach `onClick`, which is
+                       every gesture a person actually uses to open it. */
+                    <button
+                      type="button"
+                      ref={(node) => {
+                        headingRefs.current[pi] = node;
+                      }}
+                      data-testid="part-name-heading"
+                      onClick={() => setSearchingPart(pi)}
+                      className="flex min-h-(--control-box) w-full min-w-0 items-center gap-2 rounded-sm text-left transition hover:text-brand-700 focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:outline-hidden dark:hover:text-brand-300"
+                    >
+                      <span className="truncate text-base font-semibold text-slate-900 dark:text-slate-50">
+                        {p.name}
+                      </span>
+                      {muscleBadge}
+                    </button>
+                  ) : (
+                    <ActivityCombobox
+                      value={p.name}
+                      onChange={(v) => onTypePartName(pi, v)}
+                      onPick={(v) => {
+                        onPickPartName(pi, v);
+                        settleName(pi, true);
+                      }}
+                      // A name typed and left — a free-text custom activity — settles the
+                      // same way a picked one does, without stealing focus from whatever
+                      // the person moved to.
+                      onInputBlur={() => settleName(pi, false)}
+                      allowFreeText
+                      // Composed variant names ("Dumbbell Curl") aren't in the
+                      // options list but pick as the known lift — don't promise
+                      // a new activity the pick won't create.
+                      freeTextLabel={(q) =>
+                        isKnown(q) ? (
+                          <>Use “{q}”</>
+                        ) : (
+                          <>Add “{q}” as new activity</>
+                        )
+                      }
+                      options={biasedOptions}
+                      usedOptions={usedActivityNames}
+                      placeholder={
+                        pi === 0
+                          ? "What did you do? e.g. Bench Press, Running, Tennis"
+                          : "Add another activity…"
+                      }
+                      autoFocus={searching || (pi === 0 && !isEdit)}
+                      // A committed custom part isn't "unrecognized" — its
+                      // pending type shows as amber chips, not a red border.
+                      invalid={p.name.trim() !== "" && !valid && !p.custom}
+                      badge={muscleBadge}
+                      badgeFor={(opt) => {
+                        const m = muscleFor(opt);
+                        return m ? (
+                          <span className="badge shrink-0 bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300">
+                            {m}
+                          </span>
+                        ) : null;
+                      }}
+                    />
+                  )}
                 </div>
                 {hasActions && (
                   <div
