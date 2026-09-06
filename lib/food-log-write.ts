@@ -97,7 +97,9 @@ export function placementColumns(placement?: FoodPlacement): {
 // both mean the same thing as never having offered the field. Trimmed and folded to
 // NULL here so no caller has to decide, and so a note can be CLEARED by submitting an
 // empty one rather than only ever grown.
-export function normalizedNote(notes: string | null | undefined): string | null {
+export function normalizedNote(
+  notes: string | null | undefined
+): string | null {
   return notes?.trim() || null;
 }
 
