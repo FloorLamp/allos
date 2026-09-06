@@ -2,7 +2,7 @@
 
 Status: **active guide** (infrastructure shipped — DB-per-worker isolation (#1538),
 helpers module, hygiene guard incl. the `.first()`/`.toPass(` count-freezes and
-the #1392 fixture-login budget, changed-spec CI lane, the frozen app clock #990,
+the #1392 fixture-login budget, full-suite CI matrix, the frozen app clock #990,
 the sharded CI e2e matrix, retries=0 end-to-end #1160, the on-demand +
 weekly-census full-suite workflow, pass-on-retry flake telemetry, the opt-in
 `mobile` phone-viewport project #1420, the #1534 SQL clock seam + UTC-midnight
@@ -19,8 +19,8 @@ conventions that stop it.
 
 ## The four failure classes (from a day of worker-run verification)
 
-The suite is the right size (~340 specs, ~7m CI) and is **not** classically
-order-dependent. The recurring reds fall into four classes:
+The original investigation, when the suite had roughly 340 spec files, found
+four recurring failure classes:
 
 1. **Shared mutable world + exact-value assertions (the root disease).** One
    seeded DB and one shared logged-in session for the WHOLE run, and specs
@@ -445,13 +445,12 @@ one 72.5 kg reading against a series sitting around 80.5 kg — a legitimate wri
 in a spec about the command palette, that bends the fitted pace steeply downwards
 so both seeded goals project as reaching EARLY and the card renders nothing.
 
-The order-dependence that produces is uniquely nasty, because **CI shards by test
-index**: a shard is ~320 tests run sequentially in ONE worker against ONE
-database, and adding any spec file anywhere in `e2e/` shifts every later test's
-shard assignment. So the failure lands on whichever PR happens to add a spec —
+At the time, **CI sharded by test index**: a shard was roughly 320 tests run
+sequentially in one worker against one database, and adding a spec file shifted
+later tests' shard assignments. So the failure lands on whichever PR happens to add a spec —
 it blames the innocent, it is intermittent across PRs rather than across runs
 (so a re-run never clears it), and it is invisible to the PR author, whose
-changed-spec lane passes. Three PRs in one night, none of them touching training
+then-active changed-spec lane passed. Three PRs in one night, none of them touching training
 or goals, red on the same assertion.
 
 The fix is the fixture-ownership rule applied one level up from rows: the
@@ -1551,15 +1550,27 @@ real user gesture, and disposable by its own destructor** — when a creation pa
 grows a side effect, the fixture constructor/destructor pair grows with it,
 rather than each spec re-deriving day-one state (or its teardown) by hand.
 
-## Fix (c) — the changed-spec CI lane at retries=0
+## One browser run per PR
 
-A dedicated CI step computes the changed `e2e/*.spec.ts` versus the PR base and,
-if any, runs just those at `--repeat-each=3 --retries=0` **before** the full
-suite. A spec that is even 50%-flaky fails three-in-a-row-at-zero-retries, so
-retry-masking can no longer ship a flaky spec. No changed specs → the step is a
-cheap no-op. The full suite now runs at zero retries too (see the retries-drop
-note below), so this lane's strict verdict is the whole suite's standard, not a
-special case.
+The full sharded matrix runs every retained spec once at `retries=0`.
+The duplicate `e2e-changed` job and its GitHub required-check entry are removed.
+All 12 shard checks remain required.
+The old job ran changed files three additional times, adding merge delay and
+another source of unrelated failures. Repeated flake detection remains in the weekly and on-demand
+`e2e-full.yml` workflow. Use local repeats to diagnose a specific timing issue.
+
+The September 6 reduction removes the 29-test mobile density sweep (padding,
+frames, colours and synthetic CSS probes), the day-ledger style-forgery test,
+and the forced-hydration test of `settledFill`. The retained browser tests cover
+mobile navigation, clipping, touch targets, ledger actions, and offline food
+capture/replay. Existing density-convention and Notice tests still cover shared
+styling rules; exact per-page spacing and colour comparisons are intentionally
+no longer browser merge requirements. No replacement scans were added.
+
+The evidence includes the [68-minute repeat job](https://github.com/FloorLamp/allos/actions/runs/34035159363/job/101491800245)
+and a [separate PR failing the same detached-node style probe](https://github.com/FloorLamp/allos/actions/runs/34028844093/job/101474573610).
+The suite count falls from 1,935 to 1,904; the larger saving is that changed
+specs run once per PR instead of four times (for diffs within the former cap).
 
 ### Repeat scrutiny and shared-fixture parity are different (#3653)
 
@@ -1572,9 +1583,8 @@ not inherit the earlier repeat's worker fixture or database.
 
 `--workers=1` over the **whole file** asks the other question. All tests in that
 file run in declaration order against one worker fixture and one copied database,
-so a writer followed by a reader cannot be separated by the scheduler. Use both
-runs when a changed file's tests act on one shared profile or otherwise share
-mutable worker-scoped state:
+so a writer followed by a reader cannot be separated by the scheduler. Use the
+one-worker run for shared state; add the repeat run when diagnosing timing:
 
 ```bash
 # repeat scrutiny: independent attempts at the configured parallelism
@@ -1606,8 +1616,8 @@ and exits nonzero if they stop discriminating.
 
 ### CHANGED specs and AFFECTED specs are different sets (#3216)
 
-The lane above answers "did I break a spec I edited". That is not the same
-question as "did I break a spec", and the gap has a specific shape:
+A run limited to edited spec files answers "did I break a spec I edited".
+It cannot answer whether another spec broke. The gap has a specific shape:
 
 > **When a change makes a previously-unconditional element conditional, every
 > spec that addresses that element is affected — whether or not you edited it.**
@@ -1618,8 +1628,8 @@ renders once its fact chip is opened. 25 spec files were migrated and run at
 cheaper question. CI then failed three specs the change never touched —
 `episode-med-reconcile` (`med-end-date`), `intake-cadence` (`cadence-editor`),
 `prn-mg-max` (`redose-max-mg`) — each reaching for a field that used to render
-unconditionally in the edit form. `e2e-changed` structurally cannot see these:
-their diff is empty.
+unconditionally in the edit form. The former `e2e-changed` job could not see
+these files because their diff was empty. The full matrix covers both sets.
 
 **The cheap sweep that does see them.** Enumerate the markers whose rendering
 condition moved — from the component, not from whichever shard happened to go
@@ -1788,7 +1798,7 @@ future for part of the run. Refusing to nudge only trades this band for
 #1464's. The seam side is the only side where both bands close.
 
 The belt to that braces is a **CI backstop** in `.github/actions/e2e-setup` (so
-the sharded matrix, the changed-spec lane and `e2e-full.yml` all inherit it):
+the PR matrix, main detector and `e2e-full.yml` all inherit it):
 when the suite is about to start within 12 minutes of UTC midnight it sleeps
 past the boundary, loudly, bounded at 13 minutes. It runs LAST in setup, so the
 ~4 min build already counts toward clearing the boundary; outside the window it
@@ -1797,35 +1807,20 @@ problem the audit missed.
 
 ## Fix (e) — sharded CI, the on-demand full-suite workflow, and flake telemetry
 
-Three CI-shape changes from the flaky-e2e hardening pass (the merge-latency side
-of the problem; the orchestration runbook `docs/orchestration.md` documents the
-pain they replace):
+The browser workflows share `.github/actions/e2e-setup/action.yml` for Node,
+dependencies, Chromium and the production build:
 
-- **The CI e2e job is a 4-way shard matrix.** Each shard is a fresh runner + a
-  fresh `npx playwright test --shard=N/4` invocation → fresh app/demo servers
-  per chunk. That roughly halves the per-push e2e wall-clock AND removes the
-  long-lived-server cumulative degradation the runbook documents for
-  single-process full runs (its local finding — "each shard finishes clean where
-  one process degrades" — applied to CI). The changed-spec scrutiny lane moved
-  to its own `e2e-changed` job so its zero-retry verdict lands fast without
-  waiting on the matrix. Shared setup (Node, deps, Chromium, `next build`) lives
-  in the composite action `.github/actions/e2e-setup/action.yml` so the jobs
-  can't drift.
-- **`.github/workflows/e2e-full.yml` is the fresh-runner full-suite gate — on
-  demand AND weekly.** Dispatch it against any branch (defaults: `--retries=0`,
-  4-way sharded; `repeat_each` up to 3 for suite-wide hardening) in place of a
-  local full-suite run before a migration PR or big UI merge — it
-  institutionalizes the runbook's conclusion that "CI on a fresh GitHub runner
-  is the ultimate authority", skipping the local degradation-vs-regression
-  triage. It ALSO runs on a **weekly `schedule`** (Sundays) as a drift census:
-  the whole suite on main at `--retries=0 --repeat-each=2`. Per-PR CI runs each
-  spec once, so a newly-introduced low-rate timing flake can land green and only
-  bite weeks later; the weekly census re-proves the retries=0 cleanliness and
-  names any drift in its check annotations. A red weekly run is a new
-  flake-ledger item — fix the named spec like #1159; never re-add retries. (On a
-  `schedule` event `inputs.*` is empty, so the run step's `|| '0'` / `|| '2'`
-  fallbacks pick the census form; the `event_name`-scoped concurrency group
-  keeps a manual dispatch and the weekly run from cancelling each other.)
+- **PR CI** runs the full suite once at `retries=0` across 12 duration-balanced
+  shards. Each shard has fresh worker servers and databases. There is no
+  separate changed-spec job. These shard checks remain required for merging.
+- **`e2e-main.yml`** runs four duration-balanced shards after runtime changes
+  land on main, plus an unconditional nightly. It detects base regressions and
+  time-triggered failures; a red main must be fixed before more merges.
+- **`e2e-full.yml`** runs four shards on demand and weekly. A manual dispatch
+  defaults to one attempt at zero retries; `repeat_each` can be raised for
+  diagnosis. The weekly census runs each test twice at zero retries, plus the
+  forward-clock runs at +3 and +6 months. Investigate its failures and fix their
+  mechanisms; repetition is a diagnostic tool, not another routine PR gate.
 
 ### A census nobody reads, and the silence nobody hears (2026-08-16, #2968)
 
@@ -1867,20 +1862,12 @@ contamination, one is the relative-navigation retry. **The census was re-finding
 these two classes once a week and nobody was reading it** — which is the strongest
 available argument that the instrument works and the reading loop was what failed.
 
-- **Pass-on-retry flake telemetry → the retries drop.** The telemetry ran the
-  full suite at `retries: 1` and posted every `status: "flaky"` (pass-on-retry)
-  test to the job summary via a `json` reporter
-  (`test-results/e2e-results.json`)
-  - `scripts/e2e-flake-report.mjs`, so the flake backlog was measured instead of
-    masked. That backlog was the precondition for dropping retries — and once it
-    read clean (the family-calendar flake, the last item, closed by #1159), the
-    sharded CI matrix moved to **`retries: 0`** (`playwright.config.ts`). The
-    suite now runs at zero retries end-to-end — changed-spec lane, shared-infra
-    fallback, and full matrix — so a flake fails the run loudly instead of
-    shipping green on a retry. The telemetry step stays wired: an on-demand
-    `e2e-full.yml` census dispatched at `--retries=1` still surfaces
-    pass-on-retry tests through the same script, and at the default `retries: 0`
-    it reports an accurate empty.
+The earlier hardening pass used pass-on-retry telemetry to find flakes before
+removing retries (#1159/#1160). All routine workflows now run at `retries=0`.
+`scripts/e2e-flake-report.mjs` remains available for an on-demand census with
+`--retries=1`: it lists tests whose JSON report status is `flaky`. With zero
+retries there can be no pass-on-retry result, so an empty report says nothing
+about whether timing flakes remain.
 
 ## Shards plan themselves by DURATION, not test count
 
@@ -2887,8 +2874,8 @@ right starting point either way.
 **One clock, everywhere — a spec's "now" is the frozen now (#1538 follow-up).**
 `ALLOS_TEST_NOW` freezes the SERVER's `now()` for the whole run, but a browser
 cannot read an env var, and neither can a spec process. That gap is the length
-of the run, and it stopped being negligible: a `--repeat-each=3` lane over a
-large spec set runs ~90 minutes, where the old assumption "real time ≈ frozen
+of the run, and it stopped being negligible: the former `--repeat-each=3` lane
+over a large spec set ran roughly 90 minutes, where the old assumption "real time ≈ frozen
 time" breaks outright. It failed first as a deterministic red 29 minutes into a
 lane — `workout-presence`'s finished-session test back-dates the activity form's
 CLIENT-prefilled start by 40 minutes and gives it a 30-minute duration, a
@@ -2926,22 +2913,11 @@ coverage except in the handful of specs that hand-set a phone viewport via
 iPhone-class **390×844**, `hasTouch: true`, same per-worker seeded DB and same
 per-worker session as `chromium` — nothing else differs.
 
-**It is opt-in, not a second copy of the suite.** Its `testMatch` admits exactly
-two things:
-
-- `smoke.spec.ts` — the broad "every primary surface renders" sweep, worth
-  having at both viewports (it is the only spec that runs in BOTH projects); and
-- any spec named **`*.mobile.spec.ts`**.
-
-The naming convention was chosen over a `@mobile` tag because it needs no
-per-test annotation, it is visible in `ls e2e/`, and CI needs no new filter: the
-`e2e-changed` lane globs `^e2e/.*\.spec\.ts$` and runs
-`npx playwright test <specs>` with **no `--project` filter**, so a changed
-`*.mobile.spec.ts` lands in this project automatically (and a changed
-`smoke.spec.ts` runs in both). The sharded full matrix likewise runs
-`npm run test:e2e`, so the mobile project rides along and its handful of tests
-distribute across the four shards — the suite grows by the mobile spec count,
-never by a mobile clone of the whole thing.
+The mobile project admits only **`*.mobile.spec.ts`**. The broad phone route
+sweep lives in `primary-routes.mobile.spec.ts`; `smoke.spec.ts` stays desktop.
+A targeted `npx playwright test <specs>` needs no `--project` filter: the name
+routes each file to its project. The full sharded matrix uses the same routing,
+so phone coverage does not duplicate the desktop suite.
 
 That routing takes BOTH halves of the config, and the second half is easy to
 forget: a `--project`-less run executes a spec in **every** project whose
