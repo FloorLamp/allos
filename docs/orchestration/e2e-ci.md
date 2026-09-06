@@ -1,5 +1,30 @@
 # E2E and CI
 
+## What earns a guard, a scan, or a spec
+
+Owner direction, 2026-09-06: **reduce guards, scans, and low-value or flaky
+e2e specs.** Measured that day on `main`: 671k lines of tests against 649k
+lines of product code, of which 245 test files (69k lines) read the source
+tree as text, and 480 e2e specs run 125k lines. The suite had grown past the
+thing it protects.
+
+- **Subtraction beats addition.** When a finding could be answered by a new
+  guard or by removing what made the defect expressible, take the removal. A
+  lane that ends with one fewer scan and the same coverage has done the work.
+- **A source-text scan is the LAST resort**, in this order: a type that makes
+  the fact unstateable, then an ESLint rule on the parse ESLint already runs
+  (#5347's shape), then a scan. Adding one needs a named defect it would have
+  caught — not a class it might.
+- **An e2e spec earns its place by covering a user journey no cheaper tier
+  can.** A spec that asserts a formatter, a class name, or a pixel is a unit
+  test wearing a browser; move it down a tier or delete it.
+- **A flaky spec is fixed or deleted, never re-run.** "Flake" names a
+  mechanism to remove, not a verdict to record — and shard packing, worker
+  state and poll-versus-assert races are mechanisms, not bad luck.
+- **Deleting a dead guard or spec needs no issue of its own.** The PR states
+  what it protected, what protects it now, and how the deletion was measured —
+  the same bar as adding one.
+
 ## Ownership
 
 - The sharded CI E2E matrix is the full-suite authority. Local runs diagnose;
