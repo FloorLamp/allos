@@ -283,7 +283,7 @@ export default function ConsumptionSection({
       </div>
 
       <Disclosure className="text-sm">
-        <summary className="cursor-pointer text-slate-500 dark:text-slate-400">
+        <summary className="fold-control text-slate-500 dark:text-slate-400">
           8-week trend
         </summary>
         <div

@@ -620,7 +620,7 @@ function AggregateDisclosure({
     >
       <summary
         data-testid={`upcoming-aggregate-summary-${kind}`}
-        className="flex cursor-pointer list-none items-center gap-3 rounded-lg px-2 py-2 transition hover:bg-slate-50 dark:hover:bg-ink-850"
+        className="fold-control flex list-none items-center gap-3 rounded-lg px-2 transition hover:bg-slate-50 dark:hover:bg-ink-850"
       >
         <Icon
           className="h-5 w-5 shrink-0 text-slate-500 dark:text-slate-400"
@@ -936,7 +936,7 @@ function AvailableSection({
 }) {
   return (
     <Disclosure className="mt-8" data-testid="available-section">
-      <summary className="cursor-pointer section-label">
+      <summary className="fold-control section-label">
         Available to log{" "}
         <span className="text-slate-500 dark:text-slate-400">
           ({items.length})

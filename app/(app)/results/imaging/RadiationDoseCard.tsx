@@ -180,7 +180,7 @@ export default function RadiationDoseCard({
       <Disclosure className="mt-3" data-testid="radiation-dose-breakdown">
         <summary
           data-testid="radiation-dose-breakdown-toggle"
-          className="flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-brand-700 [&::-webkit-details-marker]:hidden dark:text-brand-400"
+          className="fold-control flex list-none items-center gap-1 text-xs font-medium text-brand-700 [&::-webkit-details-marker]:hidden dark:text-brand-400"
         >
           <span className="group-open:hidden">
             {contributions.length > 0

@@ -524,7 +524,7 @@ export default function ImmunizationsSection({
             </div>
 
             <Disclosure className="border-t border-black/5 pt-4 dark:border-white/5">
-              <summary className="cursor-pointer font-semibold text-slate-800 dark:text-slate-100">
+              <summary className="fold-control font-semibold text-slate-800 dark:text-slate-100">
                 All recorded doses{" "}
                 <span className="text-sm font-normal text-slate-400">
                   ({recordedDoses.length})
@@ -557,7 +557,7 @@ export default function ImmunizationsSection({
             <Disclosure className="border-t border-black/5 pt-4 dark:border-white/5">
               <summary
                 data-testid="immunization-schedule-disclosure"
-                className="cursor-pointer text-slate-800 dark:text-slate-100"
+                className="fold-control text-slate-800 dark:text-slate-100"
               >
                 <h3 className="inline font-semibold">
                   CDC recommended schedule

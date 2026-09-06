@@ -392,11 +392,13 @@ function ToastCard({
       {toast.action && (
         <button
           onClick={onAction}
-          // The snackbar-action idiom below `md`: a full-height trailing button on
-          // the bar, so a 10s undo window is actually hittable while walking
-          // (#2642). From `md` up it is the inline link under the message it has
-          // always been.
-          className="tap-target col-start-3 row-start-1 inline-flex h-11 shrink-0 items-center gap-1 rounded-lg px-3 text-sm font-medium text-brand-700 hover:bg-brand-50 md:col-start-2 md:row-start-2 md:mt-1.5 md:h-auto md:rounded-none md:px-0 md:hover:bg-transparent md:hover:underline dark:text-brand-400 dark:hover:bg-brand-950/40"
+          // The snackbar-action idiom below `md`: a trailing button on the bar, at
+          // the control box like every other control (#4505 overturned the bar's
+          // own 44) — the walking-thumb target for a 10s undo window is the
+          // EFFECTIVE one, 34 + 2×6 = 46 by `.tap-target`'s reach, and the bar's
+          // padding is what gives that reach somewhere to sit. From `md` up it is
+          // the inline link under the message it has always been.
+          className="tap-target col-start-3 row-start-1 inline-flex h-(--control-box) shrink-0 items-center gap-1 rounded-lg px-3 text-sm font-medium text-brand-700 hover:bg-brand-50 md:col-start-2 md:row-start-2 md:mt-1.5 md:h-auto md:rounded-none md:px-0 md:hover:bg-transparent md:hover:underline dark:text-brand-400 dark:hover:bg-brand-950/40"
         >
           {toast.action.label}
           <IconArrowRight className="h-4 w-4" />
@@ -405,11 +407,12 @@ function ToastCard({
       <button
         onClick={onDismiss}
         aria-label="Dismiss"
-        // A real 44px box below `md` (#644), not the `tap-target` pseudo-element
-        // on its own — that extension is coarse-pointer-only and invisible to a
-        // layout measurement, and this is the control a thumb reaches for while
-        // the bar is on a 6s clock. The desktop card keeps its 16px glyph.
-        className="tap-target col-start-4 row-start-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-300 hover:text-slate-500 md:col-start-3 md:h-auto md:w-auto md:rounded-none dark:text-slate-600 dark:hover:text-slate-400"
+        // The control box below `md` (#4505, overturning the rendered 44 #644 had
+        // here): the control a thumb reaches for on a 6s clock is 46 EFFECTIVE, by
+        // the same coarse-pointer reach every other control gets, and the guard
+        // measures that reach on a rendered toast rather than trusting the class.
+        // The desktop card keeps its 16px glyph.
+        className="tap-target col-start-4 row-start-1 flex h-(--control-box) w-(--control-box) shrink-0 items-center justify-center rounded-lg text-slate-300 hover:text-slate-500 md:col-start-3 md:h-auto md:w-auto md:rounded-none dark:text-slate-600 dark:hover:text-slate-400"
       >
         <IconX className="h-4 w-4" />
       </button>

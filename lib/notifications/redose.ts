@@ -41,7 +41,7 @@ import { now as clockNow } from "../clock";
 import { createLogger } from "../log";
 import type { NotificationAction } from "./types";
 import { GLYPH } from "./glyphs";
-import { redoseLogCallback } from "./callback-data";
+import { redoseLogCallback } from "./prn-tokens";
 
 const log = createLogger("notify");
 

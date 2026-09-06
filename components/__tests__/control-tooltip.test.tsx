@@ -214,6 +214,9 @@ function part(over: Partial<PartEntry> = {}): PartEntry {
 // per-set controls below would exist to hover.
 function renderForm() {
   const set: SetEntry = {
+    // An entered set, so the row shows its values and its options rather than the
+    // confirm control a planned row carries (#5373).
+    plan: null,
     weight: "60",
     reps: "5",
     weightRight: "",
