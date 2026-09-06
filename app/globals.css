@@ -553,10 +553,7 @@
      /sleep. The extension is SHIFTED, never shrunk: the whole 12px goes to the
      leading side, where the row has space, so the hit area keeps the exact size
      #3514 ruled and the cell keeps the exact width its flex line packed with. */
-  .table-cards td[data-card="actions"] .tap-target::after,
-  .table-cards
-    td[data-card="actions"]
-    [data-testid="overflow-menu-trigger"]::after {
+  .table-cards td[data-card="actions"] .tap-target::after {
     inset-inline: -12px 0;
   }
 }
@@ -1389,21 +1386,12 @@
   & td[data-card="meta"] {
     @apply max-sm:basis-full!;
   }
-  /* Keep the readings row compact without shrinking the menu's effective touch
-     target: the visible control occupies 32px in layout while its pseudo-element
-     extends the clickable button box to 44px — 32 + 2×6, the same arithmetic
-     `.tap-target` uses, which is the floor #3514 ruled. It was `-4px`, i.e. 40px
-     effective, back when the registry still said the floor was 40. */
-  & td[data-card="actions"] [data-testid="overflow-menu-trigger"] {
-    @apply max-sm:relative max-sm:h-8 max-sm:w-8;
-  }
-  @media (max-width: 639.98px) {
-    & td[data-card="actions"] [data-testid="overflow-menu-trigger"]::after {
-      content: "";
-      position: absolute;
-      inset: -6px;
-    }
-  }
+  /* THE 32px ICON BUTTON IS GONE (#4505). This rule used to shrink the readings
+     row's ⋯ to `h-8 w-8` below `sm` and grow it its own `::after`, sanctioning one
+     more height beside the box; "one height, no exceptions" (#4362 ruling 5,
+     re-ratified 2026-08-31) outranks it. The trigger renders `--control-box`
+     everywhere and takes `.tap-target`'s reach, shifted leading by `.table-cards`'
+     own rule. */
 }
 
 @utility logged-event-rows {
@@ -2713,7 +2701,8 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
 }
 
 /* The reach. `.tap-target` is the same mechanism under its own name, kept for the
-   hand-rolled controls outside the box (a 32px icon button, the dose pills).
+   hand-rolled controls that spell the box themselves (`h-(--control-box)`: the dose
+   pills, the icon buttons — none renders 32 since #4505).
 
    THE CONTAINING BLOCK IS IN `@layer components`, AND THAT IS NOT A DETAIL. The
    overlay needs SOME positioned ancestor, and `relative` is the right default —
