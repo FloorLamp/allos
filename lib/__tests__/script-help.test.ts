@@ -46,6 +46,7 @@ const ENTRY_SCRIPTS = [
   "scripts/orchestration/reconcile-tracker.ts",
   "scripts/orchestration/reconcile-watermark.ts",
   "scripts/orchestration/release-notes-gather.mjs",
+  "scripts/orchestration/run-gates-recorded.sh",
   "scripts/orchestration/session-metrics.mjs",
   "scripts/orchestration/title-rule.mjs",
 ] as const;
