@@ -414,6 +414,9 @@ function census(): Insert[] {
 const TRANCHE_MIGRATIONS = [
   "lib/migrations/versions/20260822-logged-via-provenance.ts",
   "lib/migrations/versions/20260901-substance-logged-via.ts",
+  // Tranche 3 (#5026 phase 2): the substance USE ledger is born in the same migration
+  // that gives it the column, so its list is one name and the table is new.
+  "lib/migrations/versions/20260905-substance-event-rows.ts",
 ];
 
 function migrationTranche(root: string): string[] {

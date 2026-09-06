@@ -92,7 +92,7 @@ export default function VisitFactRow({
               role="menu"
               aria-label="Add another detail"
               data-testid="visit-fact-more-menu"
-              className="inline-flex flex-wrap items-center gap-1.5"
+              className="inline-flex flex-wrap items-center gap-1.5 pointer-coarse:gap-3.5"
             >
               {summary.absent.map((key) => (
                 <button
@@ -104,7 +104,8 @@ export default function VisitFactRow({
                     setMoreOpen(false);
                     onOpen(key);
                   }}
-                  className="min-h-11 rounded-full border border-dashed border-(--border) px-3 py-1.5 text-sm text-slate-600 transition hover:bg-(--ghost-hover) dark:text-slate-300"
+                  data-fact-chip="solo"
+                  className="rounded-full border border-dashed border-(--border) px-3 text-sm text-slate-600 transition hover:bg-(--ghost-hover) dark:text-slate-300"
                 >
                   {VISIT_FACT_NOUNS[key]}
                 </button>

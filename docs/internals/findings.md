@@ -1334,8 +1334,9 @@ What survives, and why the line falls there:
 - **Runs the system reads but never shows as an achievement.** The coaching
   overtraining detector counts consecutive hard-session days to say "a rest or
   light day will help you recover" — the app telling you to STOP. Same math,
-  opposite direction; `lib/__tests__/streak-scope.test.ts` pins it as the only
-  surviving caller of `lib/streak`. The intake-delta engine likewise reads a
+  opposite direction; `no-restricted-imports` in `eslint.config.mjs` pins it as
+  the only surviving caller of `lib/streak`, and
+  `lib/__tests__/streak-scope.test.ts` pins that the nudge still fires. The intake-delta engine likewise reads a
   broken taken-run as EVIDENCE that something changed, and reports the change,
   not the run.
 - **Counts that ARE the thing being tracked, not a proxy for using the app.**

@@ -185,7 +185,7 @@ test.describe("goals can target a lab value (#1853)", () => {
       await expect(kindChip).toHaveText("Lab or vital");
       await expect(kindChip).toHaveAttribute("data-suggested", "1");
       await expect(form.getByTestId("goal-fact-startingFrom")).toHaveText(
-        /^from [\d.]+%$/
+        /^From [\d.]+%$/
       );
       await expect(form.getByTestId("goal-fact-startingFrom")).toHaveAttribute(
         "data-suggested",
@@ -205,7 +205,7 @@ test.describe("goals can target a lab value (#1853)", () => {
       await closeGoalFact(form);
       // The row now states the sentence the write will store.
       await expect(form.getByTestId("goal-fact-target")).toHaveText(
-        "under 6.5 %"
+        "Under 6.5 %"
       );
       await settledClick(
         page,

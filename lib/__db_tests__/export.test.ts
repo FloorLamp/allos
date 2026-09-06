@@ -88,6 +88,15 @@ beforeAll(() => {
       `INSERT INTO food_log_events (profile_id, group_key, date, recorded_at)
        VALUES (?, ?, '2024-01-02', '2024-01-02T12:00:00Z')`
     ).run(p.profileId, `${p.tag.toLowerCase()}-lunch`);
+    // The substance ledger #5026 phase 2 added, SEEDED rather than named in
+    // SCOPING_UNSEEDED: its select and its countSql are new statements with new
+    // profile filters, which is exactly what the loop below exists to watch, and an
+    // unseeded dataset is one the loop is silent about. Distinct substance per
+    // profile, so the two rows are distinguishable and a leak has something to be.
+    db.prepare(
+      `INSERT INTO substance_log_events (profile_id, substance, date, recorded_at)
+       VALUES (?, ?, '2024-01-02', '2024-01-02T21:00:00Z')`
+    ).run(p.profileId, `${p.tag} Nicotine`);
   }
 });
 
@@ -237,6 +246,13 @@ describe("dataset delete affordance", () => {
     expect(getDataset("conditions")!.deletable).not.toBe(false);
     expect(getDataset("encounters")!.deletable).not.toBe(false);
     expect(getDataset("metric_samples")!.deletable).not.toBe(false);
+    // #5026 phase 2: the substance COUNTER and its EVENT ledger are one fact in two
+    // tables, and the manage delete is a plain id + profile_id statement that can only
+    // move one of them — so both are browse-only, together. Named here rather than left
+    // to the sync invariants below, which only check that the flag and the policy
+    // AGREE: re-adding both entries would satisfy them and reopen the split.
+    expect(del("substance_daily_totals")).toBe(false);
+    expect(del("substance_log_events")).toBe(false);
   });
 });
 

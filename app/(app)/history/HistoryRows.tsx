@@ -55,7 +55,7 @@ import {
 import { deleteAdministration } from "@/app/(app)/nutrition/intake-actions";
 import { deleteFoodLogEvent } from "@/app/(app)/nutrition/actions";
 import { removePracticeSession } from "@/app/(app)/wellness/actions";
-import { deleteSubstanceDailyTotalAction } from "@/app/(app)/medical/substance-use/actions";
+import { deleteSubstanceUseAction } from "@/app/(app)/medical/substance-use/actions";
 import SubstanceForm from "@/components/substances/SubstanceForm";
 import { deleteMetricReading } from "@/app/(app)/trends/reading-actions";
 import ReadingValueControl from "@/components/vitals/ReadingValueControl";
@@ -101,7 +101,7 @@ import SubmitButton from "@/components/SubmitButton";
 //
 // WHAT THE ⋯ DOES, AND WHAT IT MAY NOT DO. Every branch below posts to the Server
 // Action that domain already had — `deleteAdministration`, `updateFoodLogEvent`,
-// `editPracticeSession`, `updateSubstanceDailyTotalAction`, `updateMetricReading` —
+// `editPracticeSession`, `correctSubstanceUseAction`, `updateMetricReading` —
 // and renders that domain's own form where one exists. NO NEW WRITE PATH: the page is
 // a second door onto five write cores, not a sixth core. Each of those actions
 // re-checks write access server-side, so the menu below is an affordance and never the
@@ -302,8 +302,11 @@ async function removeSymptomDay(fd: FormData) {
     : { undoId: null, error: outcome.error };
 }
 
-async function removeSubstanceDay(fd: FormData) {
-  const outcome = await deleteSubstanceDailyTotalAction(fd);
+// ONE recorded use, addressed by its event (#5026 phase 2) — the drink's own delete
+// shape, which is what the doctrine's "one correction shape" asks for. It used to take
+// the whole DAY, because the row on this record WAS the day.
+async function removeSubstanceUse(fd: FormData) {
+  const outcome = await deleteSubstanceUseAction(fd);
   return outcome.kind === "deleted"
     ? { undoId: outcome.undoId }
     : { undoId: null, error: outcome.error };
@@ -455,9 +458,8 @@ export default function HistoryRows({
           });
           break;
         case "substance":
-          fd.set("substance", edit.substance);
-          fd.set("id", String(edit.rowId));
-          await undoable(removeSubstanceDay, fd, {
+          fd.set("event_id", String(edit.eventId));
+          await undoable(removeSubstanceUse, fd, {
             deletedMessage: "Entry removed",
           });
           break;
@@ -644,20 +646,20 @@ export default function HistoryRows({
           />
         );
       case "substance":
-        // THE DOMAIN'S ONE FORM, IN EDIT MODE (#4424 ruling 1), seeded from this row.
-        // It stamps the ROW's profile itself, like the dose form above, so it does not
-        // run through `post()`.
+        // THE DOMAIN'S ONE FORM, IN EDIT MODE (#4424 ruling 1), seeded from this row —
+        // which is ONE recorded use since #5026 phase 2, so what it opens on is that
+        // use's day and the minute stated for it. It stamps the ROW's profile itself,
+        // like the dose form above, so it does not run through `post()`.
         return (
           <SubstanceForm
             substances={[{ key: edit.substance, label: row.title }]}
             date={row.date}
             maxDate={maxDateFor(row)}
             row={{
-              id: edit.rowId,
+              eventId: edit.eventId,
               substance: edit.substance,
               date: row.date,
-              amount: edit.amount,
-              notes: edit.notes ?? null,
+              statedAt: edit.statedAt,
             }}
             subjectProfileId={row.profileId}
             onSaved={done}
