@@ -70,39 +70,23 @@ const PANEL_WIDTH_PX = 288;
 // at the width that can pay it.
 const GRID_HOST = "md:p-3";
 
-// THE BINDING, EXTRACTED FROM THE HOST (#4974). The record now mounts this grid in
-// two places — behind the door below, and open in the day view's `xl` rail — and
-// what they share is not the popover but the ANSWER to "what does a marked day
-// mean". `MonthCalendar`'s `href` is a function, which a Server Component cannot
+// WHERE A MARKED DAY GOES: the record's day view, in the SAME view the grid was
+// read in. `MonthCalendar`'s `href` is a FUNCTION, which a Server Component cannot
 // hand across the RSC boundary, so the binding has to live on the client side of it
-// anyway; putting it here rather than beside each mount is what keeps one answer.
+// — here, in the one host that opens the grid.
 //
-// Where a marked day goes: the record's day view, in the SAME view the grid was read
-// in. Through the SHARED helper — this hand-built its own `/timeline?from=…&to=…#…`
+// IT WAS A SEPARATE `EventMonthGrid` EXPORT while the day view's rail mounted this
+// grid open beside the door (#4974), so the two hosts could not drift into two
+// answers about what a marked day means. That mount left in #5359 — the calendar is
+// a door at EVERY width, and the rail holds the chart card and the add layer — so
+// there is one host again and the split had nothing left to hold together.
+//
+// Through the SHARED helper — this hand-built its own `/timeline?from=…&to=…#…`
 // string, which is exactly why no sweep over `timelineDayHref` could see it when the
 // route was retired. `everyone` rides across because every other href on /history
 // carries it (chipHref, dayNavHref, foldHref): once the marks union, a door that
 // dropped the mode would open a household day on the acting profile alone — a lit
 // day leading to an empty one.
-export function EventMonthGrid({
-  eventDates,
-  everyone = false,
-  onNavigate,
-}: {
-  /** Every day the VIEWED members have an event on — the page's union (#4393). */
-  eventDates: string[];
-  /** The feed's mode, so a marked day opens inside the view it was marked from. */
-  everyone?: boolean;
-  /** A popover host closes on a destination; an inline one has nothing to close. */
-  onNavigate?: () => void;
-}) {
-  const href = (day: string): Route => historyHref({ day, everyone });
-  return (
-    <MonthCalendar
-      binding={{ kind: "linked", dates: eventDates, href, onNavigate }}
-    />
-  );
-}
 
 export default function EventCalendar({
   eventDates,
@@ -115,6 +99,7 @@ export default function EventCalendar({
 }) {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
+  const href = (day: string): Route => historyHref({ day, everyone });
 
   return (
     <>
@@ -151,10 +136,13 @@ export default function EventCalendar({
             just opened (#3905). */}
         {() => (
           <div className={GRID_HOST}>
-            <EventMonthGrid
-              eventDates={eventDates}
-              everyone={everyone}
-              onNavigate={() => setOpen(false)}
+            <MonthCalendar
+              binding={{
+                kind: "linked",
+                dates: eventDates,
+                href,
+                onNavigate: () => setOpen(false),
+              }}
             />
           </div>
         )}

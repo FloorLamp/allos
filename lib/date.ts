@@ -368,21 +368,51 @@ export function utcSqlString(d: Date = new Date()): BareInstant {
   return d.toISOString().slice(0, 19).replace("T", " ") as BareInstant;
 }
 
-// Parse a stored UTC datetime ("YYYY-MM-DD HH:MM:SS" or ISO with a T) back to a
-// Date. SQLite datetimes carry no zone, so the value is UTC by construction; append
-// "Z" so JS doesn't reinterpret it in the process-local zone. Null on garbage. Pure.
+// Parse a stored datetime back to a Date: "YYYY-MM-DD HH:MM:SS", ISO with a T, with
+// or without millis, ending in "Z", in an offset ("+09:00", "-0400"), or in nothing.
+// A value that STATES no zone is UTC by construction (SQLite datetimes carry none),
+// so "Z" is appended to exactly those; one that states a zone keeps it, which is what
+// `metric_samples.started_at`/`ended_at` need — Health Connect and Oura pass the
+// device's offset-bearing instant through verbatim (#5338). Null on garbage. Pure.
 export function parseUtcSql(s: string | null | undefined): Date | null {
   if (!s) return null;
-  const d = new Date(s.replace(" ", "T") + (/[zZ]$/.test(s) ? "" : "Z"));
+  const stated = /(?:[zZ]|[+-]\d\d:?\d\d)$/.test(s);
+  const d = new Date(s.replace(" ", "T") + (stated ? "" : "Z"));
   return Number.isNaN(d.getTime()) ? null : d;
+}
+
+// ── THE CLOCK SEAM (#5338) ───────────────────────────────────────────────────
+//
+// `Date.parse` is banned in production (eslint.config.mjs): for a zoneless date-TIME
+// string it answers in the SERVER's zone, silently, and a self-host that sets TZ
+// (`seedTimezoneFromEnv`) is a real configuration. These two are the typed way in.
+// They take #2899's brands rather than `string`, so "is this value UTC?" is answered
+// by the type: a caller holding a bare `string` cannot reach them, and that refusal
+// is where the reader is made to say which shape the value has.
+//
+// Both return EPOCH MILLISECONDS — what every `Date.parse` site wanted — so a
+// migration is a swap, and `NaN` on a malformed value keeps each site's existing
+// `Number.isFinite` guard fail-closed: a brand carried by a DB row shape is asserted,
+// not validated, so a corrupt row must still read as unparseable.
+
+// A stored UTC instant, on either serialization, as epoch milliseconds.
+export function parseInstant(s: CanonicalInstant | BareInstant): number {
+  return parseUtcSql(s)?.getTime() ?? NaN;
+}
+
+// A calendar day as the epoch milliseconds of its UTC midnight — the anchor this
+// repo's day arithmetic has always used (`${day}T00:00:00Z`). NOT the instant the
+// day began where the profile stands; `zonedWallTimeToUtc` is that question.
+export function parseDay(day: LocalDay): number {
+  return parseUtcSql(`${day}T00:00:00`)?.getTime() ?? NaN;
 }
 
 // Whole days from calendar date `a` to `b` (both YYYY-MM-DD), i.e. b − a.
 // UTC-anchored so it's timezone-independent and never crosses a DST boundary.
 // Returns null if either date is unparseable.
 export function daysBetweenDateStr(a: string, b: string): number | null {
-  const ta = Date.parse(a.slice(0, 10) + "T00:00:00Z");
-  const tb = Date.parse(b.slice(0, 10) + "T00:00:00Z");
+  const ta = parseUtcSql(a.slice(0, 10) + "T00:00:00")?.getTime() ?? NaN;
+  const tb = parseUtcSql(b.slice(0, 10) + "T00:00:00")?.getTime() ?? NaN;
   if (Number.isNaN(ta) || Number.isNaN(tb)) return null;
   return Math.round((tb - ta) / 86400000);
 }

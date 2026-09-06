@@ -6,6 +6,8 @@
 // lib/share-links-db.ts; token hashing in lib/share-token.ts; raw-token minting
 // in the action layer.
 
+import { parseUtcSql } from "./date";
+
 // The field allow-list: which sections of the passport a share link may expose.
 // The creator picks a subset at creation; the public render shows ONLY the
 // in-scope sections (so a link can share e.g. blood type + medications without
@@ -98,7 +100,10 @@ export function shareLinkStatus(
   now: Date
 ): ShareLinkStatus {
   if (link.revoked_at != null) return "revoked";
-  const expiresMs = Date.parse(link.expires_at);
+  // parseUtcSql, not the typed seam: `expires_at` is written ISO-with-Z by `expiresAtFor`
+  // while TIME_COLUMNS declares the column bare, and either shape is UTC — a link must
+  // not outlive its expiry on a host whose TZ is not UTC (#5338).
+  const expiresMs = parseUtcSql(link.expires_at)?.getTime() ?? NaN;
   if (!Number.isFinite(expiresMs)) return "expired";
   return expiresMs > now.getTime() ? "valid" : "expired";
 }

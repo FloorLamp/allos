@@ -173,6 +173,26 @@ describe("getSuspectSleepSessions", () => {
     );
   });
 
+  it("finds the skewed night when the device stamped it in its own offset", () => {
+    // 18:39+09:00 IS 09:39Z — Health Connect and Oura store the payload's instant
+    // verbatim, offset and all, and a reader that overwrote it with a Z would drop the
+    // night through the finite guard before the detector ever saw it (#5338).
+    const day = shiftDateStr(T, -1);
+    const id = session(day, `${day}T18:39:00+09:00`, `${day}T23:37:00+09:00`);
+    trace(`${shiftDateStr(day, -1)}T22:00:00Z`, `${day}T22:00:00Z`, {
+      from: `${day}T03:39:00Z`,
+      to: `${day}T08:37:00Z`,
+    });
+    const found = getSuspectSleepSessions(profileId, shiftDateStr(T, -30));
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({ sampleId: id, wakeDay: day });
+    expect(found[0].evidence).toMatchObject({
+      claimedBpm: AWAKE,
+      troughBpm: ASLEEP,
+      start: `${day}T18:39:00+09:00`,
+    });
+  });
+
   it("finds a shift shorter than the session, which the median reading misses", () => {
     const day = shiftDateStr(T, -1);
     const id = partialShiftNight(day);
