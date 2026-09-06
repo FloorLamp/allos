@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { logMood } from "@/app/(app)/mood-actions";
+import Chip from "@/components/Chip";
 import Disclosure from "@/components/Disclosure";
 import MoodValencePicker from "@/components/MoodValencePicker";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
@@ -320,23 +321,21 @@ export default function MoodForm({
         disabled={busy}
       >
         {days.length > 1 ? (
-          <div className="flex flex-wrap items-center gap-1.5">
+          // A wrapping strip of box-height chips: `gap-3.5` where the reach exists, so
+          // two extended targets on adjacent lines never own the same point (#4035's
+          // measurement — `gap-3` against 6px per side lands on exactly zero margin).
+          <div className="flex flex-wrap items-center gap-1.5 pointer-coarse:gap-3.5">
             {days.map((entry, index) => (
-              <button
+              <Chip
                 key={entry.date}
-                type="button"
-                data-testid={`quick-mood-day-${index}`}
-                data-date={entry.date}
-                aria-pressed={index === selected}
+                role="filter"
+                pressed={index === selected}
+                testId={`quick-mood-day-${index}`}
+                data={{ "data-date": entry.date }}
                 onClick={() => pickDay(index)}
-                className={`badge cursor-pointer border ${
-                  index === selected
-                    ? "border-brand-400 bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
-                    : "border-slate-300 bg-transparent text-slate-500 dark:border-slate-600 dark:text-slate-400"
-                }`}
               >
                 {entry.label}
-              </button>
+              </Chip>
             ))}
           </div>
         ) : null}
@@ -357,7 +356,7 @@ export default function MoodForm({
         </div>
 
         <Disclosure data-testid="mood-details">
-          <summary className="cursor-pointer text-sm font-medium text-link">
+          <summary className="fold-control text-sm font-medium text-link">
             Details
           </summary>
           <div className="mt-3 space-y-3">
@@ -386,21 +385,16 @@ export default function MoodForm({
             ) : null}
             <fieldset>
               <legend className="label mb-1">What’s going on?</legend>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap gap-1.5 pointer-coarse:gap-3.5">
                 {MOOD_FACTORS.map((factor) => (
-                  <button
+                  <Chip
                     key={factor.slug}
-                    type="button"
-                    aria-pressed={factors.includes(factor.slug)}
+                    role="filter"
+                    pressed={factors.includes(factor.slug)}
                     onClick={() => toggleFactor(factor.slug)}
-                    className={`badge cursor-pointer border ${
-                      factors.includes(factor.slug)
-                        ? "border-brand-400 bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
-                        : "border-slate-300 bg-transparent text-slate-500 dark:border-slate-600 dark:text-slate-400"
-                    }`}
                   >
                     {factor.label}
-                  </button>
+                  </Chip>
                 ))}
               </div>
             </fieldset>

@@ -65,7 +65,7 @@ export default function BedtimeSupplementStatus({
       data-state={summary.state}
     >
       <summary
-        className={`inline-flex cursor-pointer list-none items-center gap-1 font-medium ${TONE[summary.state]}`}
+        className={`fold-control inline-flex list-none items-center gap-1 font-medium ${TONE[summary.state]}`}
         aria-label={`${prefix ? `${prefix}: ` : ""}${label}. ${details}`}
         data-testid="bedtime-supplement-status-summary"
       >
