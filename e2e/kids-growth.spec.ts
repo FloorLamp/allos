@@ -32,6 +32,7 @@ async function switchProfile(page: Page, name: string) {
   // proxy for it. That pair is what the sweep was testing for. The loops that had to
   // go were the ones re-driving a control that TOGGLED (`setOpen((v) => !v)`, a
   // native `<details>`) or a `useConfirm` whose second request cancels the first.
+  // eslint-disable-next-line no-restricted-properties -- topass-ok: pre-hydration swallow leaves NO POST/signal to await — the submit itself must be retried until the header reflects the switch
   await expect(async () => {
     if (!((await trigger.textContent()) ?? "").includes(name)) {
       const popover = page.getByTestId("profile-switcher-panel");
@@ -46,7 +47,7 @@ async function switchProfile(page: Page, name: string) {
         .click({ timeout: 2000 });
     }
     await expect(trigger).toContainText(name, { timeout: 4000 });
-  }).toPass({ timeout: 25000, intervals: [500, 1000, 2000] }); // topass-ok: pre-hydration swallow leaves NO POST/signal to await — the submit itself must be retried until the header reflects the switch
+  }).toPass({ timeout: 25000, intervals: [500, 1000, 2000] });
 }
 
 // The weight unit is a LOGIN-scoped preference (shared across profiles/specs),
@@ -54,11 +55,12 @@ async function switchProfile(page: Page, name: string) {
 // switch. Auto-saves on change (SaveStatus check).
 async function setWeightUnit(page: Page, value: "kg" | "lb") {
   await page.goto("/settings/display");
+  // eslint-disable-next-line no-restricted-properties -- first-ok: the weight-unit select, filtered by its lb option — one match
   const select = page
     .getByRole("main")
     .locator("select")
     .filter({ has: page.locator('option[value="lb"]') })
-    .first(); // first-ok: the weight-unit select, filtered by its lb option — one match
+    .first();
   await select.selectOption(value);
   await expect(page.getByLabel("Saved")).toBeVisible();
 }
@@ -404,8 +406,9 @@ test.describe.serial("kids growth trends", () => {
 
       // Hover the weight chart: the recharts tooltip renders values with the
       // display unit suffix. Re-hover on each retry (recharts needs a mousemove).
-      const surface = card.locator(".recharts-surface").first(); // first-ok: the scoped weight card's chart surface — one chart per card
+      const surface = card.locator(".recharts-surface").first(); // eslint-disable-line no-restricted-properties -- first-ok: the scoped weight card's chart surface — one chart per card
       const tooltip = card.locator(".recharts-tooltip-wrapper");
+      // eslint-disable-next-line no-restricted-properties -- topass-ok: recharts opens the tooltip only after a hover mousemove — re-hover per attempt, no single awaitable render event (the sleep-page precedent)
       await expect(async () => {
         const box = await surface.boundingBox();
         if (!box) throw new Error("no growth chart surface");
@@ -419,7 +422,7 @@ test.describe.serial("kids growth trends", () => {
           },
         });
         await expect(tooltip).toContainText("lb");
-      }).toPass({ timeout: 10_000 }); // topass-ok: recharts opens the tooltip only after a hover mousemove — re-hover per attempt, no single awaitable render event (the sleep-page precedent)
+      }).toPass({ timeout: 10_000 });
 
       // And never kg while lb is the preference.
       await expect(tooltip).not.toContainText("kg");

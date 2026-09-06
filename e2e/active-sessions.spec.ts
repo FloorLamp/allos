@@ -22,7 +22,7 @@ test.describe("Active sessions list (#1451.A)", () => {
     await expect(card).toBeVisible();
 
     const rows = card.getByTestId("session-row");
-    await expect(rows.first()).toBeVisible(); // first-ok: spec-owned assertion that the list renders at all
+    await expect(rows.first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: spec-owned assertion that the list renders at all
     const labels = await card.getByTestId("session-device").allInnerTexts();
     expect(labels.length).toBeGreaterThan(0);
     for (const label of labels) {
@@ -65,7 +65,7 @@ test.describe("Active sessions list (#1451.A)", () => {
     });
     const [bulkBox, firstRowBox] = await settledBoxes([
       bulk,
-      rows.first(), // first-ok: comparing the bulk control against the topmost row is the assertion
+      rows.first(), // eslint-disable-line no-restricted-properties -- first-ok: comparing the bulk control against the topmost row is the assertion
     ]);
     expect(bulkBox.y).toBeLessThan(firstRowBox.y);
 

@@ -49,7 +49,7 @@ async function openPhone(browser: Parameters<typeof loginAs>[0]) {
 
 // Where the index starts, in document coordinates (independent of scroll position).
 async function firstHeaderTop(page: Page): Promise<number> {
-  const header = page.getByTestId("clinical-result-panel-header").first(); // first-ok: the spec-owned e2e_panelindex profile — "where the index starts" IS the first header
+  const header = page.getByTestId("clinical-result-panel-header").first(); // eslint-disable-line no-restricted-properties -- first-ok: the spec-owned e2e_panelindex profile — "where the index starts" IS the first header
   await expect(header).toBeVisible();
   return header.evaluate(
     (el) => (el as HTMLElement).getBoundingClientRect().top + window.scrollY
@@ -130,7 +130,7 @@ test("the trajectory watch keeps its headline above the index and folds its rows
   await expect(card.getByRole("heading")).toContainText("Trajectory watch");
   await expect(card).toContainText("trending before a single reading");
   await expect(
-    card.getByTestId("trajectory-rollup").first() // first-ok: spec-owned profile; any one folded row proves the list is not laid out
+    card.getByTestId("trajectory-rollup").first() // eslint-disable-line no-restricted-properties -- first-ok: spec-owned profile; any one folded row proves the list is not laid out
   ).toBeHidden();
 
   const toggle = page.getByTestId("trajectory-rows-fold-toggle");
@@ -143,13 +143,13 @@ test("the trajectory watch keeps its headline above the index and folds its rows
   const folded = await firstHeaderTop(page);
   await hydratedClick(page, toggle);
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
-  await expect(card.getByTestId("trajectory-rollup").first()).toBeVisible(); // first-ok: same spec-owned row
+  await expect(card.getByTestId("trajectory-rollup").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: same spec-owned row
   const unfolded = await firstHeaderTop(page);
   expect(unfolded - folded).toBeGreaterThan(100);
 
   // And it folds back.
   await hydratedClick(page, toggle);
-  await expect(card.getByTestId("trajectory-rollup").first()).toBeHidden(); // first-ok: same spec-owned row
+  await expect(card.getByTestId("trajectory-rollup").first()).toBeHidden(); // eslint-disable-line no-restricted-properties -- first-ok: same spec-owned row
 
   await page.context().close();
 });
@@ -228,7 +228,7 @@ test("the bio-age hero folds its inputs but never its estimate caveat (#1578)", 
   // — the nine analytes plus chronological age (#2366).
   await expect(hero.getByTestId("bio-age-input")).toHaveCount(10);
   await expect(
-    hero.getByTestId("bio-age-input").first() // first-ok: spec-owned profile; any one folded input proves the list is not laid out
+    hero.getByTestId("bio-age-input").first() // eslint-disable-line no-restricted-properties -- first-ok: spec-owned profile; any one folded input proves the list is not laid out
   ).toBeHidden();
 
   const toggle = page.getByTestId("bio-age-inputs-fold-toggle");
@@ -253,7 +253,7 @@ test("desktop renders every card whole, above the index, with no fold controls (
   await expect(page.getByTestId("starred-fold-toggle")).toBeHidden();
   await expect(page.getByTestId("trajectory-rows-fold-toggle")).toBeHidden();
   await expect(
-    page.getByTestId("trajectory-rollup").first() // first-ok: spec-owned profile; any one row proves the list is inline again
+    page.getByTestId("trajectory-rollup").first() // eslint-disable-line no-restricted-properties -- first-ok: spec-owned profile; any one row proves the list is inline again
   ).toBeVisible();
 
   // Every stack slot resets its order at `sm`, so the page renders in DOM order —

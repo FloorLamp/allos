@@ -44,10 +44,11 @@ async function deleteIntakeItem(
   page: import("@playwright/test").Page,
   name: string
 ) {
+  // eslint-disable-next-line no-restricted-properties -- first-ok: spec-owned unique name; a multi-dose item renders one row per dose and any of ITS rows opens the same item menu
   const row = page
     .getByTestId("supplement-row")
     .filter({ hasText: name })
-    .first(); // first-ok: spec-owned unique name; a multi-dose item renders one row per dose and any of ITS rows opens the same item menu
+    .first();
   await hydratedClick(
     page,
     row.getByRole("button", { name: "Supplement actions" })

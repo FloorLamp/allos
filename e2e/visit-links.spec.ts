@@ -29,7 +29,7 @@ test.describe("record ↔ visit / episode ↔ visit linking (#1050/#1053)", () =
     await page.goto("/records/history/visits");
     await followLink(
       page,
-      page.getByRole("link", { name: /Office Visit/ }).first(), // first-ok: exactly one link ON THIS PAGE matches — the dedicated VISITLINKS profile owns a single Office Visit — and the destination (the encounter detail) names its type only in a heading, never in a link
+      page.getByRole("link", { name: /Office Visit/ }).first(), // eslint-disable-line no-restricted-properties -- first-ok: exactly one link ON THIS PAGE matches — the dedicated VISITLINKS profile owns a single Office Visit — and the destination (the encounter detail) names its type only in a heading, never in a link
       /\/encounters\/\d+/
     );
     await expect(page.getByTestId("encounter-detail")).toBeVisible();
@@ -61,7 +61,7 @@ test.describe("record ↔ visit / episode ↔ visit linking (#1050/#1053)", () =
     await page.goto("/medications");
     await followLink(
       page,
-      page.getByRole("link", { name: /Amoxicillin \(e2e\)/ }).first(), // first-ok: exactly one link ON THIS PAGE matches — the dedicated VISITLINKS profile seeds a single Amoxicillin (e2e) — and the destination (the medication detail) names it only in its heading, never in a link
+      page.getByRole("link", { name: /Amoxicillin \(e2e\)/ }).first(), // eslint-disable-line no-restricted-properties -- first-ok: exactly one link ON THIS PAGE matches — the dedicated VISITLINKS profile seeds a single Amoxicillin (e2e) — and the destination (the medication detail) names it only in its heading, never in a link
       /\/medications\/\d+/
     );
     await expect(page.getByTestId("medication-detail")).toBeVisible();
@@ -83,10 +83,11 @@ test.describe("record ↔ visit / episode ↔ visit linking (#1050/#1053)", () =
     // the locator can no longer resolve anywhere else.
     await followLink(
       page,
+      // eslint-disable-next-line no-restricted-properties -- first-ok: exactly one episode row ON THIS PAGE carries that text — the axis that makes a .first() safe is "one match on the page being clicked", not "one match in the fixture profile"
       page
         .getByTestId("episode-index-row")
         .filter({ hasText: /sinus infection/i })
-        .first(), // first-ok: exactly one episode row ON THIS PAGE carries that text — the axis that makes a .first() safe is "one match on the page being clicked", not "one match in the fixture profile"
+        .first(),
       /\/medical\/episodes\/\d+/
     );
     const care = appContent(page).getByTestId("episode-care");
@@ -144,10 +145,11 @@ test.describe("record ↔ visit / episode ↔ visit linking (#1050/#1053)", () =
   // the thing being asserted and it is gone by the time a page has settled.
   test("Care and context stream below the episode summary", async () => {
     await page.goto("/medical/episodes");
+    // eslint-disable-next-line no-restricted-properties -- first-ok: exactly one episode row ON THIS PAGE carries that text
     const href = await appContent(page)
       .getByTestId("episode-index-row")
       .filter({ hasText: /sinus infection/i })
-      .first() // first-ok: exactly one episode row ON THIS PAGE carries that text
+      .first()
       .getAttribute("href");
     expect(href).toMatch(/\/medical\/episodes\/\d+/);
     const response = await page.request.get(href!);

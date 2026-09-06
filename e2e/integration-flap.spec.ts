@@ -215,7 +215,7 @@ test("a flapping source is amber Intermittent on all three surfaces and escalate
   await expect(review.getByTestId(`import-issue-${PROVIDER}`)).toHaveCount(0);
 
   // The Data badge does not count it: removing the fixture leaves the count as-is.
-  const badge = page.getByTestId("review-badge").first(); // first-ok: the badge renders in the desktop sidebar AND the (hidden) mobile drawer's shared Nav; either mirror carries the same count
+  const badge = page.getByTestId("review-badge").first(); // eslint-disable-line no-restricted-properties -- first-ok: the badge renders in the desktop sidebar AND the (hidden) mobile drawer's shared Nav; either mirror carries the same count
   const withFlap = Number((await badge.textContent())?.trim());
   clearFixture();
   await page.goto("/data?section=review");

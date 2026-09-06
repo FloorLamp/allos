@@ -58,13 +58,14 @@ test.describe("Illness round 3 (#859)", () => {
     // contain other household members' episode links after earlier stress-lane specs
     // create profiles, so a page-global first-match would make this test order-dependent.
     await page.goto("/medical/episodes");
+    // eslint-disable-next-line no-restricted-properties -- first-ok: the acting profile's own ongoing episode via its index (see comment) — order-agnostic
     const episodeLink = page
       .getByTestId("episode-index-row")
       .filter({ hasText: /ongoing/i })
-      .first(); // first-ok: the acting profile's own ongoing episode via its index (see comment) — order-agnostic
+      .first();
     await followLink(page, episodeLink, /\/medical\/episodes\/\d+/);
 
-    const bar = page.getByTestId("symptom-log-bar").first(); // first-ok: the acting profile's own symptom bar — order-agnostic
+    const bar = page.getByTestId("symptom-log-bar").first(); // eslint-disable-line no-restricted-properties -- first-ok: the acting profile's own symptom bar — order-agnostic
 
     // Item 3: log a very high fever (104.5°F) — the source's cited single-reading
     // red-flag instruction fires inline at logging (any age).
@@ -124,7 +125,7 @@ test.describe("Illness round 3 (#859)", () => {
     // count-drop assertion runs against the applied state, not a race.
     async function emptyTheStrip() {
       for (let remaining = await tiles.count(); remaining > 0; remaining--) {
-        await tiles.first().click(); // first-ok: loop deletes EVERY photo; first-of-remaining is order-agnostic
+        await tiles.first().click(); // eslint-disable-line no-restricted-properties -- first-ok: loop deletes EVERY photo; first-of-remaining is order-agnostic
         await expect(lightbox).toBeVisible();
         await lightbox
           .locator('[data-testid^="symptom-photo-delete-"]')
@@ -175,7 +176,7 @@ test.describe("Illness round 3 (#859)", () => {
 
     // The caption rides with the photo: the grid shows pixels, the lightbox shows
     // what the person wrote about them.
-    await tiles.first().click(); // first-ok: the strip was emptied above, so this is the only tile
+    await tiles.first().click(); // eslint-disable-line no-restricted-properties -- first-ok: the strip was emptied above, so this is the only tile
     await expect(lightbox).toContainText("Rash on left forearm");
 
     // Existing captions can be corrected without replacing the image.
@@ -195,7 +196,7 @@ test.describe("Illness round 3 (#859)", () => {
       "Rash improving"
     );
     await settledClick(page, lightbox.getByRole("button", { name: "Save" }));
-    await tiles.first().click(); // first-ok: still the only tile in the emptied strip
+    await tiles.first().click(); // eslint-disable-line no-restricted-properties -- first-ok: still the only tile in the emptied strip
     await expect(lightbox).toContainText("Rash improving", {
       timeout: 15_000,
     });

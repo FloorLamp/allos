@@ -35,7 +35,7 @@ test("Trends → Nutrition shows the macros+fiber chart, the adherence trend, an
   // Part 2 — food-goal adherence trend over the fatty-fish habit's history.
   const adherence = page.getByTestId("food-adherence-trend");
   await expect(adherence).toBeVisible();
-  await expect(adherence.getByTestId("adherence-week").first()).toBeVisible(); // first-ok: read-only presence on a spec-scoped card
+  await expect(adherence.getByTestId("adherence-week").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: read-only presence on a spec-scoped card
   await expect(adherence.getByTestId("adherence-week")).not.toHaveCount(0);
 
   // The intake history LEADS the tab: the day-history calendar (coverage) and
@@ -77,9 +77,10 @@ test("food and dose histories stay contained and stack details on a phone", asyn
 
   for (const { section, helper } of cases) {
     await expect(section).toContainText(helper);
+    // eslint-disable-next-line no-restricted-properties -- first-ok: every domain row shares the same responsive detail-panel contract
     const rowButton = section
       .getByRole("button", { name: /View occurrences for/ })
-      .first(); // first-ok: every domain row shares the same responsive detail-panel contract
+      .first();
     if ((await rowButton.getAttribute("aria-pressed")) !== "true") {
       // First interaction after the goto, on a client toggle: a bare click here
       // can be swallowed pre-hydration, and the ONLY thing waiting for its
@@ -108,7 +109,7 @@ test("a day tap opens the day panel; the Timeline stays one link away (#1166)", 
 
   // Tapping a populated day SELECTS it — no navigation — and the panel lists
   // what that day held.
-  const day = history.getByTestId("day-history-day").first(); // first-ok: read-only, any populated day proves the interaction
+  const day = history.getByTestId("day-history-day").first(); // eslint-disable-line no-restricted-properties -- first-ok: read-only, any populated day proves the interaction
   await hydratedClick(page, day);
   await expect(page).toHaveURL(/\/trends\?tab=nutrition/);
   const panel = history.getByTestId("day-history-daypanel");
@@ -141,7 +142,7 @@ test("a dose day panel links into the record for that day", async ({
     "/history?kind=dose"
   );
 
-  const day = doses.getByTestId("day-history-day").first(); // first-ok: read-only, any populated dose day proves the interaction
+  const day = doses.getByTestId("day-history-day").first(); // eslint-disable-line no-restricted-properties -- first-ok: read-only, any populated dose day proves the interaction
   await hydratedClick(page, day);
   const panel = doses.getByTestId("day-history-daypanel");
   await expect(panel).toBeVisible();
@@ -154,7 +155,7 @@ test("a dose day panel links into the record for that day", async ({
   // The food section's panel has no such link — the declaration is per domain.
   await page.goto("/trends?tab=nutrition");
   const history = page.getByTestId("intake-history");
-  await hydratedClick(page, history.getByTestId("day-history-day").first()); // first-ok: read-only, any populated food day proves the absence
+  await hydratedClick(page, history.getByTestId("day-history-day").first()); // eslint-disable-line no-restricted-properties -- first-ok: read-only, any populated food day proves the absence
   await expect(
     history
       .getByTestId("day-history-daypanel")
@@ -171,7 +172,7 @@ test("a group filter chip removes that group's matrix row", async ({
 
   // The top-ranked row always has a chip of its own (folding only ever affects
   // the tail). Toggle it off: the chip unpresses and its row leaves the matrix.
-  const firstRow = history.getByTestId("day-history-row").first(); // first-ok: rank order is deterministic for a given seed; any top row proves the filter
+  const firstRow = history.getByTestId("day-history-row").first(); // eslint-disable-line no-restricted-properties -- first-ok: rank order is deterministic for a given seed; any top row proves the filter
   const group = await firstRow.getAttribute("data-group");
   expect(group).toBeTruthy();
   const chip = history.locator(
@@ -241,7 +242,7 @@ test("filtering to one row selects it temporarily and keeps one keyboard entry p
   await expect(lastCell).toBeFocused();
   await history.getByRole("button", { name: "None", exact: true }).click();
   await expect(grid).toHaveCount(0);
-  const onlyChip = history.getByTestId("day-history-chip").first(); // first-ok: any one remaining group produces the one-row shrink case
+  const onlyChip = history.getByTestId("day-history-chip").first(); // eslint-disable-line no-restricted-properties -- first-ok: any one remaining group produces the one-row shrink case
   const onlyGroup = await onlyChip.getAttribute("data-group");
   const onlyLabel = await onlyChip.getAttribute("aria-label");
   expect(onlyGroup).toBeTruthy();
@@ -349,7 +350,7 @@ test("selecting a week opens the WEEK panel, and a partial week says how far it 
   await page.goto(`/trends?tab=nutrition&from=${YEAR_AGO}&to=${MIDWEEK_TO}`);
   const history = page.getByTestId("intake-history");
   const weeks = history.getByTestId("day-history-week");
-  await expect(weeks.first()).toBeVisible(); // first-ok: read-only presence before selecting
+  await expect(weeks.first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: read-only presence before selecting
 
   await hydratedClick(page, weeks.last());
   const panel = history.getByTestId("day-history-daypanel");
@@ -412,8 +413,8 @@ test("calendar axis labels sit outside the grid, never on a cell (#2582)", async
   // Calendar cells resize themselves after mount (they grow toward 34px when the
   // window is short), so wait for a layout that holds still before measuring.
   await settledBoxes([
-    calendar.getByTestId("day-history-weekday-label").first(), // first-ok: any one label proves the whole grid has settled
-    calendar.getByTestId("day-history-day").first(), // first-ok: same, on the cell side
+    calendar.getByTestId("day-history-weekday-label").first(), // eslint-disable-line no-restricted-properties -- first-ok: any one label proves the whole grid has settled
+    calendar.getByTestId("day-history-day").first(), // eslint-disable-line no-restricted-properties -- first-ok: same, on the cell side
   ]);
 
   const overlaps = await calendar.evaluate((root) => {
@@ -451,7 +452,7 @@ test("calendar axis labels sit outside the grid, never on a cell (#2582)", async
   // cells at any scroll offset past zero, and those cells stay reachable by
   // scrolling. What it may NOT do is leave them dimly visible through it — a
   // washed-out cell states a level it does not have. So its backdrop is opaque.
-  const label = history.locator("[data-matrix-label]").first(); // first-ok: every matrix row label shares one backdrop constant
+  const label = history.locator("[data-matrix-label]").first(); // eslint-disable-line no-restricted-properties -- first-ok: every matrix row label shares one backdrop constant
   const backdrop = await label.evaluate((el) => {
     const cs = getComputedStyle(el);
     return {

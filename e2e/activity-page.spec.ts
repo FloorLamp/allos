@@ -29,7 +29,7 @@ test("an Analyze sessions row opens the activity's canonical page", async ({
 }) => {
   await page.goto("/training?tab=analyze&kind=strength&item=Back%20Squat");
   const sessions = page.getByTestId("analyze-sessions");
-  const firstRow = sessions.getByRole("link").first(); // first-ok: any seeded session's date link proves the deep link; order-agnostic
+  const firstRow = sessions.getByRole("link").first(); // eslint-disable-line no-restricted-properties -- first-ok: any seeded session's date link proves the deep link; order-agnostic
   await followLink(page, firstRow, /\/training\/activity\/\d+$/);
 
   const record = page.getByTestId("training-activity-page");
@@ -49,7 +49,7 @@ test("an Analyze sessions row opens the activity's canonical page", async ({
   await expect(record.getByTestId("activity-detail-link")).toHaveCount(0);
   // The page-native body still carries the full per-exercise detail, sets first.
   await expect(record.getByTestId("activity-details")).toBeVisible();
-  await expect(record.getByText("Back Squat").first()).toBeVisible(); // first-ok: asserts the exercise renders on the record — order-agnostic
+  await expect(record.getByText("Back Squat").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: asserts the exercise renders on the record — order-agnostic
 
   // The page is part of the ledger, not a dead end: back to the log, and the
   // neighbor links walk (date, id) order when neighbors exist.
@@ -58,7 +58,7 @@ test("an Analyze sessions row opens the activity's canonical page", async ({
   // "vs last" (#2870): the seeded history progresses this lift week over week,
   // so the record answers "am I progressing" in place rather than sending the
   // reader to Analyze to compare two numbers by eye.
-  const delta = record.getByTestId("exercise-vs-last").first(); // first-ok: every lift on the session carries one; any proves the column
+  const delta = record.getByTestId("exercise-vs-last").first(); // eslint-disable-line no-restricted-properties -- first-ok: every lift on the session carries one; any proves the column
   await expect(delta).toBeVisible();
   await expect(delta).toHaveText(/(\+|−).+|same as last/);
 });
@@ -187,7 +187,7 @@ test("the ledger walk: older/newer links traverse adjacent activities", async ({
   await page.goto("/training?tab=analyze&kind=strength&item=Back%20Squat");
   await followLink(
     page,
-    page.getByTestId("analyze-sessions").getByRole("link").first(), // first-ok: newest session row; the walk below is what's under test
+    page.getByTestId("analyze-sessions").getByRole("link").first(), // eslint-disable-line no-restricted-properties -- first-ok: newest session row; the walk below is what's under test
     /\/training\/activity\/\d+$/
   );
   // The newest session of a seeded multi-session history has an older neighbor.
@@ -205,7 +205,7 @@ test("Edit uses the same activity workspace at desktop and phone widths", async 
   await page.goto("/training?tab=analyze&kind=strength&item=Back%20Squat");
   await followLink(
     page,
-    page.getByTestId("analyze-sessions").getByRole("link").first(), // first-ok: any session reaches its page; the dock is what's under test
+    page.getByTestId("analyze-sessions").getByRole("link").first(), // eslint-disable-line no-restricted-properties -- first-ok: any session reaches its page; the dock is what's under test
     /\/training\/activity\/\d+$/
   );
 
@@ -246,8 +246,8 @@ test("Edit uses the same activity workspace at desktop and phone widths", async 
   // `set1-weight` in the document at all. The grid is one tap behind the summary chip
   // — `hydratedClick`, because a tap that lands pre-hydration is swallowed silently and
   // the next line would read as "element not found" rather than as a missed click.
-  await hydratedClick(page, page.getByTestId("set-summary").first()); // first-ok: any part's sets can be made incomplete; the first is always present
-  await page.getByTestId("set1-weight").first().fill(""); // first-ok: any incomplete stored set blocks this edit; set 1 is always present
+  await hydratedClick(page, page.getByTestId("set-summary").first()); // eslint-disable-line no-restricted-properties -- first-ok: any part's sets can be made incomplete; the first is always present
+  await page.getByTestId("set1-weight").first().fill(""); // eslint-disable-line no-restricted-properties -- first-ok: any incomplete stored set blocks this edit; set 1 is always present
   await page.goBack();
   const discard = page.getByTestId("confirm-dialog");
   await expect(discard).toContainText("Discard unsaved changes?");
@@ -262,7 +262,7 @@ test("the overlay closes back onto the same activity", async ({ page }) => {
   await page.goto("/training?tab=analyze&kind=strength&item=Back%20Squat");
   await followLink(
     page,
-    page.getByTestId("analyze-sessions").getByRole("link").first(), // first-ok: any session reaches the edit flow under test
+    page.getByTestId("analyze-sessions").getByRole("link").first(), // eslint-disable-line no-restricted-properties -- first-ok: any session reaches the edit flow under test
     /\/training\/activity\/\d+$/
   );
   const startPath = new URL(page.url()).pathname;
@@ -278,7 +278,7 @@ test("a global 'Log activity' on the page uses the same overlay", async ({
   await page.goto("/training?tab=analyze&kind=strength&item=Back%20Squat");
   await followLink(
     page,
-    page.getByTestId("analyze-sessions").getByRole("link").first(), // first-ok: any session's page reaches the overlay under test
+    page.getByTestId("analyze-sessions").getByRole("link").first(), // eslint-disable-line no-restricted-properties -- first-ok: any session's page reaches the overlay under test
     /\/training\/activity\/\d+$/
   );
 
@@ -306,10 +306,11 @@ test("a session is measured against its own like-for-like peers (#3009)", async 
     await member.goto("/training?tab=log");
     await followLink(
       member,
+      // eslint-disable-next-line no-restricted-properties -- first-ok: the newest of four same-titled fixture sessions — the subject
       member
         .getByTestId("history-row")
         .filter({ hasText: SESSION_PEERS_TITLE })
-        .first() // first-ok: the newest of four same-titled fixture sessions — the subject
+        .first()
         .getByTestId("history-row-title"),
       /\/training\/activity\/\d+$/
     );

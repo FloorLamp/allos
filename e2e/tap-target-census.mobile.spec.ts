@@ -577,7 +577,7 @@ test.describe("typed fields render the ruled 44px box on a phone (#3708)", () =>
     // Wait for the rows, then measure them — a listbox measured before its options
     // arrive is an empty sweep that passes by looking at nothing.
     const options = page.getByTestId("combobox-option");
-    await expect(options.first()).toBeVisible(); // first-ok: the picker's own freshly-opened list, whose row count is asserted on the next line
+    await expect(options.first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: the picker's own freshly-opened list, whose row count is asserted on the next line
     const rows = await options.count();
     expect(rows, "the picker must offer rows to measure").toBeGreaterThan(1);
     const rowBoxes = await options.evaluateAll((els) =>
@@ -651,7 +651,7 @@ test.describe("typed fields render the ruled 44px box on a phone (#3708)", () =>
     );
     try {
       await page.goto("/");
-      const bar = page.getByTestId("symptom-log-bar").first(); // first-ok: the acting profile's own symptom bar — order-agnostic
+      const bar = page.getByTestId("symptom-log-bar").first(); // eslint-disable-line no-restricted-properties -- first-ok: the acting profile's own symptom bar — order-agnostic
       await expect(bar).toBeVisible();
 
       await bar.getByTestId("symptom-add-picker-toggle").click();

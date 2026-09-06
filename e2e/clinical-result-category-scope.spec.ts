@@ -19,7 +19,7 @@ test("the Clinical results catalog lists labs but not a re-homed instrument scor
   // A lab is present.
   await page.goto("/results/clinical-results?q=Cholesterol");
   const section = page.getByTestId("results-clinical-results");
-  const cholesterol = section.getByText("Total Cholesterol").first(); // first-ok: read-only presence check; shared seed may hold several Total Cholesterol readings
+  const cholesterol = section.getByText("Total Cholesterol").first(); // eslint-disable-line no-restricted-properties -- first-ok: read-only presence check; shared seed may hold several Total Cholesterol readings
   await expect(cholesterol).toBeVisible();
 
   // A screening instrument (the seeded AUDIT-C substance-use score) is NOT browsable
@@ -57,7 +57,7 @@ test("the browser drops a vitals analyte with a metric home, keeps one without (
     "/results/clinical-results?q=" + encodeURIComponent("Hearing Threshold")
   );
   await expect(
-    section.getByText("Hearing Threshold", { exact: false }).first() // first-ok: read-only presence check; the seed holds several ear/frequency series
+    section.getByText("Hearing Threshold", { exact: false }).first() // eslint-disable-line no-restricted-properties -- first-ok: read-only presence check; the seed holds several ear/frequency series
   ).toBeVisible();
 });
 

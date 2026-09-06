@@ -310,7 +310,7 @@ test.describe("Provider registry closeout", () => {
         /\bbtn\b/
       );
       const decline = suggestions.getByTestId("affiliation-decline");
-      if (await decline.count()) await settledClick(page, decline.first()); // first-ok: spec-owned Sam Ng fixture, sole suggestion
+      if (await decline.count()) await settledClick(page, decline.first()); // eslint-disable-line no-restricted-properties -- first-ok: spec-owned Sam Ng fixture, sole suggestion
     }
     await expect(
       page
@@ -352,7 +352,7 @@ test.describe("Provider registry closeout", () => {
     await settledClick(page, form.getByRole("button", { name: "Add" }));
 
     // The saved Rx renders the provider as a link into the registry.
-    const link = page.getByRole("link", { name: /Dr\. Vision E2E/ }).first(); // first-ok: spec-owned provider just created, any matching row proves the link
+    const link = page.getByRole("link", { name: /Dr\. Vision E2E/ }).first(); // eslint-disable-line no-restricted-properties -- first-ok: spec-owned provider just created, any matching row proves the link
     await followLink(page, link, /\/providers\/\d+$/);
 
     // On the provider's detail, the Rx surfaces under the Vision activity section.
@@ -362,7 +362,7 @@ test.describe("Provider registry closeout", () => {
       "aria-selected",
       "true"
     );
-    const rxEntry = detail.getByText(/Glasses|Contact lenses/).first(); // first-ok: spec-owned provider's own Rx list
+    const rxEntry = detail.getByText(/Glasses|Contact lenses/).first(); // eslint-disable-line no-restricted-properties -- first-ok: spec-owned provider's own Rx list
     await expect(rxEntry).toBeVisible();
   });
 });

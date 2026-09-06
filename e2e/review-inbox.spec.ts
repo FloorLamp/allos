@@ -402,7 +402,7 @@ test.describe("Data → Review import inbox", () => {
     await page.goto("/");
     // The badge folded into the Data nav item when the profile menu it used to
     // hang on retired: it is Data → Review's number, so it badges the Data entry.
-    const badge = page.getByTestId("review-badge").first(); // first-ok: the badge renders in the desktop sidebar AND the (hidden) mobile drawer's shared Nav; either mirror carries the same count
+    const badge = page.getByTestId("review-badge").first(); // eslint-disable-line no-restricted-properties -- first-ok: the badge renders in the desktop sidebar AND the (hidden) mobile drawer's shared Nav; either mirror carries the same count
     await expect(badge).toBeVisible();
     // The badge sums currently-failing integrations (Strava, always present) and
     // any unresolved detected duplicate pairs (issue #10). The exact count depends

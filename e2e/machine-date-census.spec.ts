@@ -461,7 +461,7 @@ const ROUTES: CensusRoute[] = [
     path: "/history?kind=dose",
     why: "The record's sticky day headers — the one date shape a day group prints (#3958).",
     assertReady: async (page) => {
-      await expect(page.getByTestId("history-day").first()).toBeVisible(); // first-ok: the readiness proof is that ANY day group rendered; no per-day claim is made
+      await expect(page.getByTestId("history-day").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: the readiness proof is that ANY day group rendered; no per-day claim is made
     },
     subject: '[data-testid="history-day-link"]',
   },
@@ -673,7 +673,7 @@ test("no rendered copy states machine dates or ASCII microgram lab units (#3492/
           .locator(route.subject)
           .filter({ hasText: DISPLAY_DATE });
         await expect(
-          subject.first(), // first-ok: read-only census — one instance is all that proves the surface rendered
+          subject.first(), // eslint-disable-line no-restricted-properties -- first-ok: read-only census — one instance is all that proves the surface rendered
           `${route.path}: no element matching \`${route.subject}\` rendered a date in ` +
             `the display shape, so this route's silence about machine dates means ` +
             `nothing — ${route.why}`

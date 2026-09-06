@@ -251,7 +251,7 @@ const TENANT_ROUTES = [
     // Its charts live behind the practice card's own disclosure, so the sweep
     // opens it the way a reader does (e2e/trends-practices.spec.ts, same shape).
     reveal: async (page: Page) => {
-      const trends = page.getByTestId("wellness-practice-trends").first(); // first-ok: any practice with a trend block serves; the sweep then reads EVERY plot on the page
+      const trends = page.getByTestId("wellness-practice-trends").first(); // eslint-disable-line no-restricted-properties -- first-ok: any practice with a trend block serves; the sweep then reads EVERY plot on the page
       await expect(trends).toBeVisible();
       await trends.locator("summary").click();
     },

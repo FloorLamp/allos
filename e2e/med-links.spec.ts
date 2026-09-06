@@ -14,7 +14,7 @@ test("medication detail shows the linked prescriber and 'For:' indication", asyn
   // Into the Sertraline detail via its list-row link.
   await followLink(
     page,
-    page.getByRole("link", { name: /Sertraline/i }).first(), // first-ok: on profile 1 the seed has one Sertraline med; it renders in both the out-of-supply Today band and the list, both linking the same /medications/<id> detail ("Sertraline 50 mg" lives on a separate isolated fixture profile)
+    page.getByRole("link", { name: /Sertraline/i }).first(), // eslint-disable-line no-restricted-properties -- first-ok: on profile 1 the seed has one Sertraline med; it renders in both the out-of-supply Today band and the list, both linking the same /medications/<id> detail ("Sertraline 50 mg" lives on a separate isolated fixture profile)
     /\/medications\/\d+/
   );
 
@@ -36,6 +36,6 @@ test("condition list shows 'Treated with:' the linked medication", async ({
   const treated = page
     .getByTestId("condition-treated-with")
     .filter({ hasText: "Sertraline" });
-  await expect(treated.first()).toBeVisible(); // first-ok: filtered to the one seed condition (MDD) treated with Sertraline on profile 1 — deterministic single match
-  await expect(treated.first()).toContainText("Treated with:"); // first-ok: same filtered MDD row as above
+  await expect(treated.first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: filtered to the one seed condition (MDD) treated with Sertraline on profile 1 — deterministic single match
+  await expect(treated.first()).toContainText("Treated with:"); // eslint-disable-line no-restricted-properties -- first-ok: same filtered MDD row as above
 });

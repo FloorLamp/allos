@@ -46,11 +46,12 @@ export async function openCommandPalette(page: Page): Promise<Locator> {
   const input = page.getByRole("combobox", {
     name: "Search or run a command",
   });
+  // eslint-disable-next-line no-restricted-properties -- topass-ok: re-press Ctrl+K until the palette input appears past the hydration window — visibility-guarded so a late press can't toggle it shut
   await expect(async () => {
     if (!(await input.isVisible())) {
       await page.keyboard.press("Control+KeyK");
     }
     await expect(input).toBeVisible({ timeout: 1000 });
-  }).toPass({ timeout: 20000, intervals: [300, 700, 1500] }); // topass-ok: re-press Ctrl+K until the palette input appears past the hydration window — visibility-guarded so a late press can't toggle it shut
+  }).toPass({ timeout: 20000, intervals: [300, 700, 1500] });
   return input;
 }

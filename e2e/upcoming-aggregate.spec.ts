@@ -223,7 +223,7 @@ test.describe("Upcoming display aggregation (#1504)", () => {
 
     // IDENTITY SURVIVES THE FOLD (#1496): each folded row still carries its own
     // dedupeKey and its own per-item dismiss.
-    const note = notes.first(); // first-ok: any folded note proves per-item dismiss — order-agnostic
+    const note = notes.first(); // eslint-disable-line no-restricted-properties -- first-ok: any folded note proves per-item dismiss — order-agnostic
     const noteTestId = await note.getAttribute("data-testid");
     await note.getByRole("button", { name: "More actions" }).click();
     await page

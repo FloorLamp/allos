@@ -131,7 +131,7 @@ async function expectActing(
     String(profileIdValue)
   );
   await expect(
-    bar.locator('[data-testid^="identity-avatar-"]').first() // first-ok: the assertion IS about the first avatar — acting-first is the safety rule this pins
+    bar.locator('[data-testid^="identity-avatar-"]').first() // eslint-disable-line no-restricted-properties -- first-ok: the assertion IS about the first avatar — acting-first is the safety rule this pins
   ).toHaveAttribute("data-testid", `identity-avatar-${profileIdValue}`);
   await expect(
     bar.getByTestId(`identity-avatar-${profileIdValue}`)
@@ -329,7 +329,7 @@ test.describe("Unified profile switcher (issue #1801)", () => {
       // Wait for the switched profile's page to paint at all before reading the
       // named row, so a slow switch fails as "the row is missing" rather than as
       // whatever the previous profile's page still had on screen.
-      const anyRow = page.getByTestId("medication-row").first(); // first-ok: a paint gate, not an assertion about a particular row — the named row is asserted immediately below
+      const anyRow = page.getByTestId("medication-row").first(); // eslint-disable-line no-restricted-properties -- first-ok: a paint gate, not an assertion about a particular row — the named row is asserted immediately below
       await expect(anyRow).toBeVisible({ timeout: 20_000 });
       await expect(
         page.getByTestId("medication-row").filter({ hasText: MVMEDS_RO_MED })

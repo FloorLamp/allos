@@ -42,6 +42,7 @@ export async function ensureUnlogged(
   key: string,
   tap: Tap = plainTap
 ): Promise<void> {
+  // eslint-disable-next-line no-restricted-properties -- topass-ok: driver-internal tap-retry: re-drive the affordance tap until its settledTap-armed wait lands; a refresh that wipes the affordance is re-driven
   await expect(async () => {
     const clear = bar.getByTestId(`symptom-${key}-clear`);
     if ((await clear.count()) > 0) {
@@ -50,7 +51,7 @@ export async function ensureUnlogged(
     await expect(bar.getByTestId(`symptom-${key}`)).toHaveCount(0, {
       timeout: STEP,
     });
-  }).toPass({ timeout: OUTER }); // topass-ok: driver-internal tap-retry: re-drive the affordance tap until its settledTap-armed wait lands; a refresh that wipes the affordance is re-driven
+  }).toPass({ timeout: OUTER });
 }
 
 // Add a catalog symptom via the "＋ add symptom" picker — it logs at severity 1 and
@@ -62,6 +63,7 @@ export async function addFromPicker(
   tap: Tap = plainTap
 ): Promise<void> {
   const row = bar.getByTestId(`symptom-${key}`);
+  // eslint-disable-next-line no-restricted-properties -- topass-ok: driver-internal tap-retry: re-drive the affordance tap until its settledTap-armed wait lands; a refresh that wipes the affordance is re-driven
   await expect(async () => {
     if ((await row.count()) === 0) {
       if ((await bar.getByTestId("symptom-add-picker").count()) === 0) {
@@ -74,7 +76,7 @@ export async function addFromPicker(
       }
     }
     await expect(row).toBeVisible({ timeout: STEP });
-  }).toPass({ timeout: OUTER }); // topass-ok: driver-internal tap-retry: re-drive the affordance tap until its settledTap-armed wait lands; a refresh that wipes the affordance is re-driven
+  }).toPass({ timeout: OUTER });
 }
 
 // Raise a logged symptom to a severity level (a tap only RAISES — worst-severity).
@@ -85,12 +87,13 @@ export async function raiseSeverity(
   tap: Tap = plainTap
 ): Promise<void> {
   const chip = bar.getByTestId(`symptom-${key}-sev-${level}`);
+  // eslint-disable-next-line no-restricted-properties -- topass-ok: driver-internal tap-retry: re-drive the affordance tap until its settledTap-armed wait lands; a refresh that wipes the affordance is re-driven
   await expect(async () => {
     await tap(chip);
     await expect(chip).toHaveAttribute("aria-pressed", "true", {
       timeout: STEP,
     });
-  }).toPass({ timeout: OUTER }); // topass-ok: driver-internal tap-retry: re-drive the affordance tap until its settledTap-armed wait lands; a refresh that wipes the affordance is re-driven
+  }).toPass({ timeout: OUTER });
 }
 
 // Lowering is also a direct labeled-chip action. It writes through the dedicated lower
@@ -102,24 +105,26 @@ export async function lowerSeverity(
   tap: Tap = plainTap
 ): Promise<void> {
   const chip = bar.getByTestId(`symptom-${key}-sev-${level}`);
+  // eslint-disable-next-line no-restricted-properties -- topass-ok: driver-internal tap-retry: re-drive the affordance tap until its settledTap-armed wait lands; a refresh that wipes the affordance is re-driven
   await expect(async () => {
     await tap(chip);
     await expect(chip).toHaveAttribute("aria-pressed", "true", {
       timeout: STEP,
     });
-  }).toPass({ timeout: OUTER }); // topass-ok: driver-internal tap-retry: re-drive the affordance tap until its settledTap-armed wait lands; a refresh that wipes the affordance is re-driven
+  }).toPass({ timeout: OUTER });
 }
 
 // Expand the collapsed temperature entry (idempotent — a no-op if already open; re-opens
 // if a refresh collapsed it). Client-only (no write), so no settle.
 export async function openTempEntry(bar: Locator): Promise<void> {
   const input = bar.getByTestId("temp-quick-input");
+  // eslint-disable-next-line no-restricted-properties -- topass-ok: driver-internal tap-retry: re-drive the affordance tap until its settledTap-armed wait lands; a refresh that wipes the affordance is re-driven
   await expect(async () => {
     if ((await bar.getByTestId("temp-quick-entry").count()) === 0) {
       await bar.getByTestId("temp-quick-toggle").click();
     }
     await expect(input).toBeVisible({ timeout: STEP });
-  }).toPass({ timeout: OUTER }); // topass-ok: driver-internal tap-retry: re-drive the affordance tap until its settledTap-armed wait lands; a refresh that wipes the affordance is re-driven
+  }).toPass({ timeout: OUTER });
 }
 
 // Set a symptom's one-line note and confirm it PERSISTED — the logAndConfirm
@@ -152,8 +157,10 @@ export async function saveNote(
   key: string,
   text: string
 ): Promise<void> {
+  // eslint-disable-next-line no-restricted-properties -- first-ok: the acting profile's own symptom bar (top of the dashboard) — order-agnostic
   await expect(async () => {
-    let bar = page.getByTestId("symptom-log-bar").first(); // first-ok: the acting profile's own symptom bar (top of the dashboard) — order-agnostic
+    // eslint-disable-next-line no-restricted-properties -- first-ok: the acting profile's own symptom bar (re-queried after a refresh) — order-agnostic
+    let bar = page.getByTestId("symptom-log-bar").first();
     const note = bar.getByTestId(`symptom-${key}-note`);
     if (!((await note.count()) > 0 && (await note.innerText()) === text)) {
       const input = bar.getByTestId(`symptom-${key}-note-input`);
@@ -173,11 +180,12 @@ export async function saveNote(
       await saved;
     }
     await page.reload();
-    bar = page.getByTestId("symptom-log-bar").first(); // first-ok: the acting profile's own symptom bar (re-queried after a refresh) — order-agnostic
+    // eslint-disable-next-line no-restricted-properties -- topass-ok: driver-internal tap-retry: re-drive the affordance tap until its settledTap-armed wait lands; a refresh that wipes the affordance is re-driven
+    bar = page.getByTestId("symptom-log-bar").first();
     await expect(bar.getByTestId(`symptom-${key}-note`)).toHaveText(text, {
       timeout: 3_000,
     });
     // Budget note: the whole loop must fit inside the 30s per-test timeout, so
     // OUTER (25s) rather than a larger custom budget.
-  }).toPass({ timeout: OUTER }); // topass-ok: driver-internal tap-retry: re-drive the affordance tap until its settledTap-armed wait lands; a refresh that wipes the affordance is re-driven
+  }).toPass({ timeout: OUTER });
 }

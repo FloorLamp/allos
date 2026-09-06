@@ -30,7 +30,7 @@ test("provider detail exposes an Open in Maps link built from the address", asyn
   const detail = page.getByTestId("provider-detail");
   await expect(detail).toBeVisible();
 
-  const maps = detail.getByTestId("open-in-maps").first(); // first-ok: the scoped provider-detail's single maps link (seeded address); href asserted below
+  const maps = detail.getByTestId("open-in-maps").first(); // eslint-disable-line no-restricted-properties -- first-ok: the scoped provider-detail's single maps link (seeded address); href asserted below
   await expect(maps).toBeVisible();
   const href = await maps.getAttribute("href");
   // Google Maps universal search URL with the seeded address URL-encoded.

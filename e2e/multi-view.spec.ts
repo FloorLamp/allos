@@ -790,8 +790,8 @@ test.describe("the record's merged view across the date line (#1329)", () => {
       await expectInView(page, 2);
       await page.goto("/history?view=everyone");
 
-      const eastRow = rows.filter({ hasText: TL_EAST_ACTIVITY }).first(); // first-ok: one seeded activity carries this fixture-owned title
-      const westRow = rows.filter({ hasText: TL_WEST_ACTIVITY }).first(); // first-ok: one seeded activity carries this fixture-owned title
+      const eastRow = rows.filter({ hasText: TL_EAST_ACTIVITY }).first(); // eslint-disable-line no-restricted-properties -- first-ok: one seeded activity carries this fixture-owned title
+      const westRow = rows.filter({ hasText: TL_WEST_ACTIVITY }).first(); // eslint-disable-line no-restricted-properties -- first-ok: one seeded activity carries this fixture-owned title
       await expect(eastRow).toBeVisible();
       await expect(westRow).toBeVisible();
 
@@ -983,11 +983,11 @@ test.describe("Medications multi-view regimen boards (issue #1373)", () => {
       await page.goto("/medications");
       // The acting medication renders without multi-view wrappers or a leading strip.
       await expect(
-        page.getByText(MVMEDS_SELF_MED, { exact: false }).first() // first-ok: spec-owned med, appears in Today + Current on the one board
+        page.getByText(MVMEDS_SELF_MED, { exact: false }).first() // eslint-disable-line no-restricted-properties -- first-ok: spec-owned med, appears in Today + Current on the one board
       ).toBeVisible();
       await expect(page.locator('[data-testid^="med-board-"]')).toHaveCount(0);
       await expect(page.getByTestId("med-today-everyone")).toHaveCount(0);
-      await expect(page.getByTestId("dose-status").first()).toBeVisible(); // first-ok: spec-owned single-board Today panel
+      await expect(page.getByTestId("dose-status").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: spec-owned single-board Today panel
       await expect(page.getByText(MVMEDS_RO_MED, { exact: false })).toHaveCount(
         0
       );
@@ -1005,9 +1005,9 @@ test.describe("Medications multi-view regimen boards (issue #1373)", () => {
       await expect(page.getByTestId(`med-board-ro-${roId}`)).toBeVisible();
       await expect(roBoard.getByTestId("dose-status")).toHaveCount(0);
       await expect(
-        roBoard.getByText(MVMEDS_RO_MED, { exact: false }).first() // first-ok: spec-owned board-scoped med, appears in Today + Current
+        roBoard.getByText(MVMEDS_RO_MED, { exact: false }).first() // eslint-disable-line no-restricted-properties -- first-ok: spec-owned board-scoped med, appears in Today + Current
       ).toBeVisible();
-      await expect(selfBoard.getByTestId("dose-status").first()).toBeVisible(); // first-ok: spec-owned board-scoped Today panel
+      await expect(selfBoard.getByTestId("dose-status").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: spec-owned board-scoped Today panel
     } finally {
       await page.context().close();
     }
@@ -1140,7 +1140,7 @@ test.describe("Multi-view Clinical results table (issue #1331)", () => {
       await page.goto("/results/clinical-results");
       await expect(page.getByTestId("results-clinical-results")).toBeVisible();
       await expect(
-        page.getByText(MVBIO_SELF_ANALYTE, { exact: false }).first() // first-ok: spec-owned analyte, one row
+        page.getByText(MVBIO_SELF_ANALYTE, { exact: false }).first() // eslint-disable-line no-restricted-properties -- first-ok: spec-owned analyte, one row
       ).toBeVisible();
       await expect(
         page.getByRole("columnheader", { name: "Profile" })
@@ -1160,13 +1160,13 @@ test.describe("Multi-view Clinical results table (issue #1331)", () => {
         page.getByRole("columnheader", { name: "Profile" })
       ).toBeVisible();
       await expect(
-        page.getByText(MVBIO_SELF_ANALYTE, { exact: false }).first() // first-ok: spec-owned analyte, one row
+        page.getByText(MVBIO_SELF_ANALYTE, { exact: false }).first() // eslint-disable-line no-restricted-properties -- first-ok: spec-owned analyte, one row
       ).toBeVisible();
       await expect(
-        page.getByText(MVBIO_RO_ANALYTE, { exact: false }).first() // first-ok: spec-owned analyte, one row
+        page.getByText(MVBIO_RO_ANALYTE, { exact: false }).first() // eslint-disable-line no-restricted-properties -- first-ok: spec-owned analyte, one row
       ).toBeVisible();
       const roChip = page.getByTestId(`subject-chip-${roId}`);
-      await expect(roChip.first()).toBeVisible(); // first-ok: spec-owned RO fixture, its rows all chip
+      await expect(roChip.first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: spec-owned RO fixture, its rows all chip
 
       // Both members' shared-family rows survive the per-member dedup partition.
       await page.goto("/results/clinical-results?q=vitamin+d");
@@ -1180,7 +1180,7 @@ test.describe("Multi-view Clinical results table (issue #1331)", () => {
       });
       await expect(roRow.getByTestId("overflow-menu-trigger")).toHaveCount(0);
       await expect(
-        page.getByTestId("overflow-menu-trigger").first() // first-ok: acting member's own write rows
+        page.getByTestId("overflow-menu-trigger").first() // eslint-disable-line no-restricted-properties -- first-ok: acting member's own write rows
       ).toBeVisible();
     } finally {
       await page.context().close();
@@ -1246,7 +1246,7 @@ test.describe("Cross-profile Undo round trip (#2104)", () => {
   }) => {
     test.slow();
     const { sharedId } = multiIds();
-    const probeName = `${UNDO_PROBE_PREFIX} ${Date.now()}`; // clock-ok: unique probe-name suffix, not a stored timestamp
+    const probeName = `${UNDO_PROBE_PREFIX} ${Date.now()}`; // eslint-disable-line no-restricted-properties -- clock-ok: unique probe-name suffix, not a stored timestamp
     seedProbe(sharedId, probeName);
 
     const page = await loginAs(browser, {

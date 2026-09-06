@@ -693,10 +693,11 @@ test.describe("Message kinds at phone width (#3495)", () => {
       // cell fires its action from a CLIENT onChange, so a tap landing in the
       // hydration window is silently swallowed with no navigation to follow (#830).
       const tapChip = async (to: boolean) => {
+        // eslint-disable-next-line no-restricted-properties -- topass-ok: re-tap the chip until the optimistic flip proves onChange fired — "my tap landed" is non-atomic with no navigation to follow (#830)
         await expect(async () => {
           await chip.click();
           await expect(cell).toBeChecked({ checked: to });
-        }).toPass(); // topass-ok: re-tap the chip until the optimistic flip proves onChange fired — "my tap landed" is non-atomic with no navigation to follow (#830)
+        }).toPass();
         await expect(cell).toBeEnabled();
       };
 

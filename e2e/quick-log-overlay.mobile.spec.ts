@@ -1685,11 +1685,12 @@ test("the sheet's Care segment takes a household member's fever, with no profile
     // THE READING LANDED ON THE CHILD, from the store rather than from the toast —
     // and none landed on the caregiver, which is the failure this path used to take
     // when a bar posted no subject.
+    // eslint-disable-next-line no-restricted-properties -- topass-ok: the write is a Server Action the click does not resolve for us; the row is the settle signal
     await expect(async () => {
       expect(profileTemperatures(sharedId)).toEqual([
         { value_num: Number(FEVER_READING_F), logged_via: "quick-log" },
       ]);
-    }).toPass({ timeout: 15_000 }); // topass-ok: the write is a Server Action the click does not resolve for us; the row is the settle signal
+    }).toPass({ timeout: 15_000 });
     expect(profileTemperatures(ownerId)).toEqual([]);
 
     // THE FEVER OFFER HAS A PRE-EPISODE SURFACE AT LAST (#4712 judgement 1, which

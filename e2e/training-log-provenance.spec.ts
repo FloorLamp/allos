@@ -92,10 +92,11 @@ test("training log cards show a source provenance chip and 'added' timestamp (#1
   await page.keyboard.press("Escape");
 
   // A hand-logged session reads "Manual" — provenance distinguishes the two.
+  // eslint-disable-next-line no-restricted-properties -- first-ok: the manual "Basketball pickup" activity THIS spec created (unique name)
   const manualRow = page
     .getByTestId("history-row")
     .filter({ hasText: "Basketball pickup" })
-    .first(); // first-ok: the manual "Basketball pickup" activity THIS spec created (unique name)
+    .first();
   const manualCard = await openActivityPage(
     page,
     manualRow,
@@ -117,7 +118,7 @@ test("training log cards show a source provenance chip and 'added' timestamp (#1
   await expect(page.getByTestId("est-calories-input")).toHaveValue(
     /^[1-9]\d*$/
   );
-  await page.waitForTimeout(900); // waitfortimeout-ok: bounded absence-of-effect: wait past the 700ms autosave debounce, then assert the manual row stayed un-edited — opening it must not trip autosave; non-occurrence has no positive event to await
+  await page.waitForTimeout(900); // eslint-disable-line no-restricted-properties -- waitfortimeout-ok: bounded absence-of-effect: wait past the 700ms autosave debounce, then assert the manual row stayed un-edited — opening it must not trip autosave; non-occurrence has no positive event to await
   await page.getByRole("button", { name: "Done" }).click();
   await expect(manualCard.getByTestId("activity-provenance")).not.toContainText(
     "edited"
@@ -151,7 +152,7 @@ test("training log cards show a source provenance chip and 'added' timestamp (#1
   await expect(page.getByTestId("imported-edit-note")).toHaveCount(0);
   // Opening an imported row must not run the manual calorie auto-fill, dirty
   // the form, and trigger the 700 ms autosave/edit lock by itself.
-  await page.waitForTimeout(900); // waitfortimeout-ok: bounded absence-of-effect: wait past the 700ms autosave debounce, then assert the imported row stayed un-edited — opening it must not run the calorie auto-fill; non-occurrence has no positive event to await
+  await page.waitForTimeout(900); // eslint-disable-line no-restricted-properties -- waitfortimeout-ok: bounded absence-of-effect: wait past the 700ms autosave debounce, then assert the imported row stayed un-edited — opening it must not run the calorie auto-fill; non-occurrence has no positive event to await
   await page.getByRole("button", { name: "Done" }).click();
   await expect(
     healthConnectCard.getByTestId("activity-provenance")
@@ -184,10 +185,11 @@ test("an imported ride with a route shows a tile-free SVG route thumbnail (#569)
   await expect(routeMap.locator("path")).toHaveCount(1);
 
   // A hand-logged session has no route → no thumbnail (swap the pane to it).
+  // eslint-disable-next-line no-restricted-properties -- first-ok: the manual "Basketball pickup" activity THIS spec created (unique name)
   const manualRow = page
     .getByTestId("history-row")
     .filter({ hasText: "Basketball pickup" })
-    .first(); // first-ok: the manual "Basketball pickup" activity THIS spec created (unique name)
+    .first();
   const manualCard = await openActivityPage(
     page,
     manualRow,
@@ -230,10 +232,11 @@ test("training log cards prioritize a summary and progressively disclose details
   await expect(summary).not.toContainText("≈ 648 kcal");
 
   // Intensity renders on the full record: swap the pane to the hard session.
+  // eslint-disable-next-line no-restricted-properties -- first-ok: the "Intervals" activity THIS spec created (filtered by its name)
   const hardRow = page
     .getByTestId("history-row")
     .filter({ hasText: "Intervals" })
-    .first(); // first-ok: the "Intervals" activity THIS spec created (filtered by its name)
+    .first();
   const hardActivity = await openActivityPage(page, hardRow, "Intervals");
   const intensity = hardActivity.getByTestId("activity-intensity");
   await expect(intensity).toContainText("Hard");
@@ -276,18 +279,20 @@ test("strength target status is named and muscle filters are quiet text", async 
 }) => {
   await page.goto("/training?tab=log");
 
+  // eslint-disable-next-line no-restricted-properties -- first-ok: the newest seeded Push day session — order-agnostic
   const pushRow = page
     .getByTestId("history-row")
     .filter({ hasText: "Push day" })
-    .first(); // first-ok: the newest seeded Push day session — order-agnostic
+    .first();
   const push = await openActivityPage(page, pushRow, "Push day");
   await expect(push.getByTestId("activity-summary")).toContainText("kcal");
   await expect(push.getByTestId("activity-metrics")).toHaveCount(0);
   await expect(push.getByText("Target met", { exact: true })).toBeVisible();
+  // eslint-disable-next-line no-restricted-properties -- first-ok: filtered to the Barbell Bench Press strength row — one match
   const benchRow = push
     .getByTestId("training-log-strength-row")
     .filter({ hasText: "Barbell Bench Press" })
-    .first(); // first-ok: filtered to the Barbell Bench Press strength row — one match
+    .first();
   const targetDetails = benchRow.getByTestId("exercise-row-info");
   await targetDetails.click();
   await expect(page.getByRole("tooltip")).toContainText(
@@ -303,7 +308,7 @@ test("strength target status is named and muscle filters are quiet text", async 
   // Muscle labels are quiet text everywhere the record renders — filterable
   // (the pane injects the tag handler like the old feed card did) but never
   // badge-styled.
-  const muscleFilter = push.getByText("Chest", { exact: true }).first(); // first-ok: the Chest muscle label within the scoped Push day card (Bench and Incline both tag Chest)
+  const muscleFilter = push.getByText("Chest", { exact: true }).first(); // eslint-disable-line no-restricted-properties -- first-ok: the Chest muscle label within the scoped Push day card (Bench and Incline both tag Chest)
   await expect(muscleFilter).toBeVisible();
   await expect(muscleFilter).not.toHaveClass(/badge/);
 
@@ -463,11 +468,11 @@ test("the Log feed folds older history and opens a fold in place (#4079)", async
   await page.goto("/training?tab=log");
 
   const days = page.locator('section[id^="day-"]');
-  await expect(days.first()).toBeVisible(); // first-ok: asserts a day section renders — order-agnostic presence
+  await expect(days.first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: asserts a day section renders — order-agnostic presence
   const before = await days.count();
 
   // A fold card stands for the months the bound left out, and states what it holds.
-  const fold = page.locator('[data-testid^="training-log-fold-"]').first(); // first-ok: the newest fold, whichever month it is — order-agnostic
+  const fold = page.locator('[data-testid^="training-log-fold-"]').first(); // eslint-disable-line no-restricted-properties -- first-ok: the newest fold, whichever month it is — order-agnostic
   await expect(fold).toBeVisible();
   await expect(fold).toHaveAttribute("data-fold-open", "false");
   const toggle = fold.locator('[data-testid$="-toggle"]');

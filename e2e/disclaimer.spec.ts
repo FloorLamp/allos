@@ -43,10 +43,11 @@ test.describe("consolidated disclaimer surface (issue #1049)", () => {
     // Disclaimer link mounts — toPass is the sanctioned last resort for a
     // hydration-timed interaction with no POST to await.
     const drawerLink = page.getByRole("link", { name: "Disclaimer" });
+    // eslint-disable-next-line no-restricted-properties -- topass-ok: opening the mobile drawer is a client-only toggle with no POST/nav to await; retry past the pre-hydration swallow
     await expect(async () => {
       await page.getByTestId("dock-slot-more").click();
       await expect(drawerLink).toBeVisible({ timeout: 1000 });
-    }).toPass({ timeout: 15000, intervals: [300, 700, 1500] }); // topass-ok: opening the mobile drawer is a client-only toggle with no POST/nav to await; retry past the pre-hydration swallow
+    }).toPass({ timeout: 15000, intervals: [300, 700, 1500] });
     // The footer link renders in the drawer (the mobile surface) and points at the
     // canonical route. Assert its target and load it directly — navigating through
     // the drawer overlay is a timing race with no bearing on what this test proves.

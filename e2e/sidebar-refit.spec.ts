@@ -53,12 +53,13 @@ const NAV_TOP_CEILING_PX = 280;
 // one opened.
 async function openLogPanel(page: Page): Promise<Locator> {
   const panel = page.getByTestId("sidebar-log-panel");
+  // eslint-disable-next-line no-restricted-properties -- topass-ok: re-tap past the pre-hydration swallow — a client toggle with no POST, visibility-guarded so a late tap can't re-close it
   await expect(async () => {
     if (!(await panel.isVisible())) {
       await page.locator("aside").getByTestId("sidebar-log").click();
     }
     await expect(panel).toBeVisible({ timeout: 1000 });
-  }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-tap past the pre-hydration swallow — a client toggle with no POST, visibility-guarded so a late tap can't re-close it
+  }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] });
   return panel;
 }
 
@@ -119,7 +120,7 @@ test.describe("the desktop sidebar refit (#3154)", () => {
     await expect(panel).toHaveCount(0);
     // WHAT MUST NOT MOVE IS THE PAGE, not the nav: measured on the first record
     // row, which is the thing the ~140px budget is measured to.
-    const firstRow = page.getByTestId("history-row").first(); // first-ok: the claim is that opening a portaled panel moves the feed by nothing, true of whichever record leads
+    const firstRow = page.getByTestId("history-row").first(); // eslint-disable-line no-restricted-properties -- first-ok: the claim is that opening a portaled panel moves the feed by nothing, true of whichever record leads
     await expect(firstRow).toBeVisible();
     const rowTop = async () =>
       firstRow.evaluate((el) => el.getBoundingClientRect().top);
@@ -140,7 +141,7 @@ test.describe("the desktop sidebar refit (#3154)", () => {
       if (await previous.isDisabled()) break;
       await previous.click();
     }
-    const anyMarked = marked.first(); // first-ok: the claim is "a marked day is a door", true of every cell in the set — the grid renders one link per marked day of the month and this spec plants none, so naming one would be naming a seed fixture this test does not own
+    const anyMarked = marked.first(); // eslint-disable-line no-restricted-properties -- first-ok: the claim is "a marked day is a door", true of every cell in the set — the grid renders one link per marked day of the month and this spec plants none, so naming one would be naming a seed fixture this test does not own
     await expect(anyMarked).toBeVisible();
     const href = (await anyMarked.getAttribute("href"))!;
     const day = /day=(\d{4}-\d{2}-\d{2})/.exec(href)![1];

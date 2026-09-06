@@ -620,7 +620,7 @@ test("the illness cockpit names its situation exactly once at 390px (#3238)", as
 }) => {
   const page = await openDashboard(browser, { username: E2E_LOGIN_SICK_SELF });
   try {
-    const cockpit = page.locator("[data-testid^='illness-cockpit-']").first(); // first-ok: the acting profile's own cockpit leads the group
+    const cockpit = page.locator("[data-testid^='illness-cockpit-']").first(); // eslint-disable-line no-restricted-properties -- first-ok: the acting profile's own cockpit leads the group
     await expect(cockpit).toBeVisible();
     const situation = (await cockpit.getAttribute("data-situation"))!;
     expect(situation.length).toBeGreaterThan(0);
@@ -678,10 +678,11 @@ test("a Now row puts its label and detail on one line, one gutter inside its own
   for (const viewport of ATOM_VIEWPORTS) {
     await page.setViewportSize(viewport.size);
     await page.goto("/");
+    // eslint-disable-next-line no-restricted-properties -- first-ok: every Now row is laid out by the same renderer
     const row = page
       .locator('[data-testid="dashboard-candidate"][data-lane="now"]')
       .filter({ has: page.getByTestId("attention-item-detail") })
-      .first(); // first-ok: every Now row is laid out by the same renderer
+      .first();
     await expect(row).toBeVisible();
     // Wait for the DETAIL, not the row: the thing being measured is the flow between
     // two elements, and a row that has only painted its label would let this pass by
@@ -880,7 +881,7 @@ test("the illness cockpit keeps every section at 390px, on the stepped-down seam
       options
     );
     try {
-      const cockpit = page.getByTestId("illness-cockpit-body").first(); // first-ok: the acting profile's own cockpit leads the group
+      const cockpit = page.getByTestId("illness-cockpit-body").first(); // eslint-disable-line no-restricted-properties -- first-ok: the acting profile's own cockpit leads the group
       await expect(cockpit).toBeVisible();
       // NOTHING WAS REMOVED — this is a spacing pass over a safety surface, and
       // the content set is a ruling it may not touch.

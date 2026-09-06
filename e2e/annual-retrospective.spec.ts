@@ -113,11 +113,12 @@ test("the year is reachable without spending a permanent nav row (#2762)", async
   // Reachable, through the palette that now carries it.
   const input = await openCommandPalette(page);
   await input.fill("Year in review");
+  // eslint-disable-next-line no-restricted-properties -- first-ok: one registered page carries this title
   const hit = page
     .getByRole("listbox", { name: "Results" })
     .getByRole("option")
     .filter({ hasText: "Year in review" })
-    .first(); // first-ok: one registered page carries this title
+    .first();
   await expect(hit).toBeVisible();
   await followLink(page, hit, /\/retrospective$/);
 });

@@ -69,10 +69,11 @@ test.describe("Public passport share links (#391)", () => {
     // (created_at DESC, id DESC), and scripts/seed.ts now seeds a second live
     // link (#422 item 3), so scope to the FIRST row — the link this test just
     // created — instead of the (now ambiguous) bare Revoke button.
+    // eslint-disable-next-line no-restricted-properties -- first-ok: newest-first list — the FIRST row is the link THIS test just created (see comment above)
     await page
       .locator("li")
       .filter({ has: page.getByRole("button", { name: "Revoke" }) })
-      .first() // first-ok: newest-first list — the FIRST row is the link THIS test just created (see comment above)
+      .first()
       .getByRole("button", { name: "Revoke" })
       .click();
 

@@ -22,7 +22,7 @@ test.describe("Equipment manager (#391)", () => {
 
     // Unique name so a CI retry against the same DB doesn't collide on the
     // per-profile name-uniqueness guard.
-    const name = `E2E Own Weight Bar ${Date.now()}`; // clock-ok: unique fixture-name suffix, never a stored timestamp
+    const name = `E2E Own Weight Bar ${Date.now()}`; // eslint-disable-line no-restricted-properties -- clock-ok: unique fixture-name suffix, never a stored timestamp
     await page.getByRole("button", { name: "Add equipment" }).click();
     await page.getByLabel("Name").fill(name);
     // The equipment-weight label carries the login's unit — match it
@@ -71,10 +71,11 @@ test.describe("Equipment manager (#391)", () => {
     // Training Log — the set's equipment_id was detached, not cascade-dropped.
     await page.goto("/training?tab=log");
     await expect(
+      // eslint-disable-next-line no-restricted-properties -- first-ok: the session THIS spec created (unique name); asserts its set survived the equipment delete
       page
         .getByTestId("history-row")
         .filter({ hasText: "E2E Equipment Delete Session" })
-        .first() // first-ok: the session THIS spec created (unique name); asserts its set survived the equipment delete
+        .first()
     ).toBeVisible();
   });
 

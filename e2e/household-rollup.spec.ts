@@ -254,7 +254,7 @@ test.describe("the household glance's biomarker line (#3487)", () => {
     test.slow();
     await page.goto("/household");
     const cards = page.getByTestId("household-card");
-    await expect(cards.first()).toBeVisible(); // first-ok: the set is judged below, order-agnostic
+    await expect(cards.first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: the set is judged below, order-agnostic
     const count = await cards.count();
     expect(count).toBeGreaterThan(0);
 
@@ -277,7 +277,7 @@ test.describe("the household glance's biomarker line (#3487)", () => {
       .getByTestId("household-biomarkers")
       .filter({ hasText: /\d+ of \d+/ });
     if (await judged.count()) {
-      const badge = judged.first().getByTestId("pillar-tone-badge"); // first-ok: one judged card is enough to prove the badge rides the fraction
+      const badge = judged.first().getByTestId("pillar-tone-badge"); // eslint-disable-line no-restricted-properties -- first-ok: one judged card is enough to prove the badge rides the fraction
       await expect(badge).toBeVisible();
     }
   });

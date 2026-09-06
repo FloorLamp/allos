@@ -103,7 +103,7 @@ test.describe("Equipment registry (#343)", () => {
     // search action costs 4-7s on a cold server under CI load, past the 5s default.
     // Not a sleep — this still fails if the hit never arrives.
     await expect(hit).toBeVisible({ timeout: 20_000 });
-    await followLink(page, hit.first(), /\/equipment$/); // first-ok: the command-palette "sauna" search resolves to the single Equipment page result
+    await followLink(page, hit.first(), /\/equipment$/); // eslint-disable-line no-restricted-properties -- first-ok: the command-palette "sauna" search resolves to the single Equipment page result
     await expect(page).toHaveURL(/\/equipment$/);
     await expect(
       page.getByRole("heading", { name: "Your equipment" })
