@@ -246,6 +246,32 @@ describe("visual title parity", () => {
     expect(tooltip.textContent).toContain("Hard:");
   });
 
+  // ONE COLOUR, ONE MEANING (#5376). Easy/Moderate/Hard used to be painted green,
+  // amber and rose — the same three colours that elsewhere on that form mean primary
+  // action, missed target and destructive. The row is neutral now and only the
+  // SELECTION is brand, so what is asserted is the relationship: three options, one
+  // rest paint between them, and a different one under the one that is pressed.
+  it("paints the intensity row neutral and only the selection brand", () => {
+    const levels = ["Easy", "Moderate", "Hard"];
+    const paintOf = (name: string) =>
+      screen.getByRole("button", { name, exact: true }).className;
+    const { rerender } = render(
+      <IntensityPicker intensity="" onChange={() => undefined} />
+    );
+
+    expect(new Set(levels.map(paintOf)).size).toBe(1);
+    // It is the field surface the rest of the form wears — entry-ergonomics.spec.ts
+    // measures that equality for real, in a browser.
+    expect(paintOf("Easy")).toContain("bg-field");
+
+    rerender(<IntensityPicker intensity="hard" onChange={() => undefined} />);
+    const picked = screen.getByRole("button", { name: "Hard", exact: true });
+    expect(picked.getAttribute("aria-pressed")).toBe("true");
+    expect(picked.className).toContain("bg-brand-600");
+    // The two nobody picked still share the one rest paint.
+    expect(new Set(["Easy", "Moderate"].map(paintOf)).size).toBe(1);
+  });
+
   it("keeps the real anatomy host list-first", () => {
     render(<ExerciseGuideSection name="Back Squat" />);
     const host = screen.getByTestId("guide-muscles");

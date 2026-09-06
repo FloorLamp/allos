@@ -2,6 +2,7 @@ import { fireEvent, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExerciseHistoryMap } from "@/lib/queries";
 import type { PlateauFormHint } from "@/lib/rule-findings";
+import { blankSet } from "@/lib/activity-form-model";
 import { part, renderList } from "./activity-parts-fixture";
 
 // A SETTLED EXERCISE IS A HEADING (#5370), at the tier that can ask about it.
@@ -258,5 +259,133 @@ describe("history is one line, the rest one tap behind (#5370)", () => {
     renderList([part()], { history: {}, plateauHints: PLATEAU });
     expect(screen.queryByTestId("recent-sessions")).toBeNull();
     expect(screen.getByTestId("plateau-hint")).toBeTruthy();
+  });
+});
+
+// ── THE TYPE AND COLOUR LADDER (#5376) ───────────────────────────────────────
+//
+// #5370 took rung 2 for the exercise name and deliberately left the rest. These
+// cases are the rest, and each asks about a RELATIONSHIP rather than about a class
+// on its own — two rungs are distinct, a row's date and its numbers sit at one
+// brightness, a colour is present only under the condition it means. A class name
+// asserted alone would go green on a tree where the ladder had been rewritten
+// underneath it.
+
+/**
+ * The tone an element actually renders at: its own `text-slate-*` when it states
+ * one, else the nearest ancestor's. That is what tells "this row is muted" apart
+ * from "this child overrides its row", which is the whole reference question.
+ */
+const toneOf = (el: Element): string | undefined => {
+  for (let n: Element | null = el; n; n = n.parentElement) {
+    const hit = [...n.classList].find((c) => /^text-slate-\d+$/.test(c));
+    if (hit) return hit;
+  }
+  return undefined;
+};
+
+describe("the type and colour ladder (#5376)", () => {
+  // Two sets so the row carries a set remover, and not identical so the part stays a
+  // grid rather than collapsing into the compact sentence (#3336).
+  const worked = [
+    { ...blankSet(), weight: "60", reps: "8", plan: null },
+    { ...blankSet(), weight: "60", reps: "7", plan: null },
+  ];
+  const ladder = () =>
+    renderList([part({ sets: worked }), part({ name: "Barbell Row" })], {
+      history: HISTORY,
+      plateauHints: PLATEAU,
+    });
+
+  // RUNG 3 IS ONE UTILITY. `label` and `section-label` are told apart only by weight
+  // 500 against 600, and this form wore both — so what is pinned is that exactly one
+  // of the pair survives in the rendered editor, whichever one that is.
+  it("wears exactly one of the two uppercase label utilities", () => {
+    ladder();
+    expect(
+      ["label", "section-label"].filter((c) => document.querySelector(`.${c}`))
+    ).toEqual(["label"]);
+  });
+
+  // RUNG 2 IS NOT RUNG 3. The heading that names the block and the uppercase labels
+  // inside it resolving to one look is the defect; `.section-heading` is the node the
+  // exercise name and the Session heading (ActivityForm) now share, so they cannot
+  // drift apart the way two hand-rolled spellings would.
+  it("states the block's name a rung above the labels inside it", () => {
+    ladder();
+    const heading = screen.getAllByTestId("part-name-heading")[0];
+    expect(heading.querySelector(".section-heading")).toBeTruthy();
+    expect(heading.querySelector(".label")).toBeNull();
+  });
+
+  /** The stated recent line — the fill BUTTON while the part is pristine, the
+      read-only row once anything is typed. Both carry the row's tone. */
+  const statedLine = () =>
+    within(screen.getAllByTestId("recent-sessions")[0])
+      .getAllByRole("listitem")[0]
+      .firstElementChild!.firstElementChild!;
+
+  // RUNG 4. Only the DATE of a recent row was muted; the numbers beside it inherited
+  // body colour, so a reference line read as loud as the sets being typed under it.
+  // Both shapes of the row are asked, because the fill path and the read-only path
+  // are two renderings of the same reference.
+  it.each([
+    ["a pristine part, where the line is a fill", () => renderList([part()], { history: HISTORY, plateauHints: PLATEAU })],
+    ["a worked part, where it is read-only", ladder],
+  ])("reads a recent session at one muted brightness — %s", (_what, mount) => {
+    mount();
+    const [date, values] = Array.from(statedLine().children);
+    expect(toneOf(date)).toBe(toneOf(values));
+    expect(toneOf(date)).toBe("text-slate-500");
+  });
+
+  // The plateau/deload note supports the load being chosen, so it belongs to the same
+  // rung as the history it sits behind rather than to the record's brightness.
+  it("keeps the plateau note at the reference rung", () => {
+    ladder();
+    fireEvent.click(screen.getAllByTestId("recent-more-toggle")[0]);
+    expect(
+      toneOf(within(screen.getByTestId("plateau-hint")).getByText(/Flat for/))
+    ).toBe(toneOf(statedLine()));
+  });
+
+  // ROSE IS DESTRUCTIVE INTENT, NOT A RESTING STATE. A two-exercise workout showed a
+  // destructive glyph per set while nothing was being deleted. The property is "no
+  // UNCONDITIONAL rose", and its converse rides in the same case: taking the colour
+  // away entirely must not satisfy it either.
+  it("paints no remover rose at rest, and paints one on hover and on focus", () => {
+    ladder();
+    const row = screen.getAllByTestId("activity-part")[0];
+    for (const el of [
+      within(row).getByRole("button", { name: "Remove activity" }),
+      within(row).getByTestId("set-remove-2"),
+    ]) {
+      const rose = [...el.classList].filter((c) => c.includes("rose"));
+      // At rest: nothing. A variant class carries its condition in its prefix.
+      expect(rose.filter((c) => !c.includes(":"))).toEqual([]);
+      // And the keyboard gets exactly what the pointer gets, in both themes: every
+      // hover paint has a focus-visible twin and back. `some(hover) && some(focus)`
+      // was the first spelling here and a DARK-ONLY twin satisfied it — measured,
+      // so the pairing is asserted instead of the presence.
+      const swap = (c: string) =>
+        c.includes("focus-visible:")
+          ? c.replace("focus-visible:", "hover:")
+          : c.replace("hover:", "focus-visible:");
+      expect(new Set(rose.map(swap))).toEqual(new Set(rose));
+      // …and it is not the empty set: taking the colour away entirely is the other
+      // way to make every line above pass.
+      expect(rose.length).toBeGreaterThan(0);
+    }
+  });
+
+  // Brand marks the primary action and the add link on this form. A chip that only
+  // NAMES the muscle a lift trains is not an action, so it stops borrowing that paint.
+  it("keeps brand off the muscle chip", () => {
+    ladder();
+    const chip = within(screen.getAllByTestId("activity-part")[0]).getByText(
+      "Chest",
+      { exact: true }
+    );
+    expect([...chip.classList].filter((c) => c.includes("brand"))).toEqual([]);
   });
 });
