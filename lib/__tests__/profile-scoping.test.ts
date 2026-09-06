@@ -409,10 +409,11 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
   // ── Table-position interpolations (#5274) ────────────────────────────────────
   // Statements whose TABLE is inside a `${…}` and whose WHERE carries no profile_id
   // predicate. The scan used to drop these in silence; they are the ones a literal
-  // `profile_id = ?` does not clear, so each says what does. Keyed on the text the scan
-  // sees — for a `+`-concatenated literal that is the FIRST piece only (#5384's
-  // constant-assembled shape; cascade-delete's UPDATE and orphan DELETE end mid-statement
-  // here for that reason).
+  // `profile_id = ?` does not clear, so each says what does. Keyed on THE TEXT THE SCAN
+  // SEES, which for a statement written as two literals joined by `+` is the FIRST piece
+  // alone — firstStringArgs stops at that literal's closing backtick — so cascade-delete's
+  // SET NULL and orphan DELETE keys end mid-statement, and their `why` carries the half
+  // the key cannot.
   {
     file: "lib/undo-delete-db.ts",
     includes: "SELECT 1 FROM ${ref.table} WHERE id = ?",
@@ -436,11 +437,12 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
   {
     file: "lib/migrations/cascade-delete.ts",
     includes: "UPDATE ${q(link.table)} AS ${alias} SET ${sets}",
-    why: "deleteRowsWithCascade's SET NULL arm: a migration-time reproduction of what the runtime FK action would do, over a table set read from PRAGMA foreign_key_list at apply time (#2680). The rows it touches are exactly the doomed root's descendants (the correlated EXISTS predicate lives in the second literal, which this scan does not see). Migrations run across every profile by design; a registry key would be the wrong type here, since a migration may cascade from portal_accounts",
+    why: "deleteRowsWithCascade's SET NULL arm: a migration-time reproduction of what the runtime FK action would do, over a table set read from PRAGMA foreign_key_list at apply time (#2680). The rows it touches are exactly the doomed root's descendants (the correlated EXISTS predicate lives in the second literal, which this scan does not see). Migrations run across every profile by design, and an OwnedTable key would be the wrong type here: the walk starts wherever its caller points it, and lib/__db_tests__/migration-child-links.test.ts drives it from `portal_accounts` (global) and from synthetic tables that are in no registry",
   },
   {
     file: "lib/migrations/cascade-delete.ts",
-    includes: "DELETE FROM ${q(link.table)} AS ${alias} WHERE ${childPredicate.sql}",
+    includes:
+      "DELETE FROM ${q(link.table)} AS ${alias} WHERE ${childPredicate.sql}",
     why: "deleteRowsWithCascade's CASCADE arm — the same schema-derived, migration-time, every-profile delete as the SET NULL arm above, one depth deeper per recursion",
   },
   {
@@ -455,17 +457,20 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
   },
   {
     file: "lib/import-persist.ts",
-    includes: "DELETE FROM ${t.table} WHERE ${t.key} = ? AND ${footprintScope(t)}",
-    why: "clearImportedDocumentRows: `footprintScope(t)` RETURNS `profile_id = ?` (plus the entry's `extra`), so the statement is scoped in fact and not in text — the #5362 constant-assembled shape #5384 will widen the scan to read. Every IMPORT_FOOTPRINT_TABLES entry names an owned table",
+    includes:
+      "DELETE FROM ${t.table} WHERE ${t.key} = ? AND ${footprintScope(t)}",
+    why: "clearImportedDocumentRows: `footprintScope(t)` RETURNS `profile_id = ?` (plus the entry's `extra`), so the statement is scoped in fact and not in text. No static read of THIS file resolves it: the predicate is returned by a helper at call time, which is a step past the module-scope constants #5362 describes — whether the scan should follow a helper-returned fragment is #5384's question. Every IMPORT_FOOTPRINT_TABLES entry names an owned table",
   },
   {
     file: "lib/import-persist.ts",
-    includes: "UPDATE ${t.table} SET profile_id = ? WHERE ${t.key} = ? AND ${footprintScope(t)}",
+    includes:
+      "UPDATE ${t.table} SET profile_id = ? WHERE ${t.key} = ? AND ${footprintScope(t)}",
     why: "reassignImportedDocumentRows: the cross-profile REASSIGN of a document's rows, whose WHERE is `footprintScope(t)` = `profile_id = ?` bound to the SOURCE profile; the SET names the target. Same assembled-predicate shape as the delete above",
   },
   {
     file: "lib/import-persist.ts",
-    includes: "SELECT COUNT(*) AS n FROM ${t.table} WHERE ${t.key} = ? AND ${footprintScope(t)}",
+    includes:
+      "SELECT COUNT(*) AS n FROM ${t.table} WHERE ${t.key} = ? AND ${footprintScope(t)}",
     why: "countImportedDocumentRows and documentFootprintByKind: two identical COUNTs over the same registry, both scoped by `footprintScope(t)` = `profile_id = ?`, which the text does not show. Integers only, and the two are kept identical on purpose so the per-kind split cannot disagree with the total",
   },
   {
@@ -480,21 +485,23 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
   },
   {
     file: "lib/assessment-reclass-db.ts",
-    includes: "DELETE FROM ${definitionTable} WHERE name = ? COLLATE NOCASE AND source = 'ai'",
+    includes:
+      "DELETE FROM ${definitionTable} WHERE name = ? COLLATE NOCASE AND source = 'ai'",
     why: "`definitionTable` is the GLOBAL vocabulary table under either schema-era name (canonical_result_definitions / canonical_biomarkers, chosen by canonicalResultDefinitionTableForSchema); it carries no profile_id at all. Only the interpolation hides that from the scan",
   },
   {
     file: "lib/canonical-alias-merge-db.ts",
-    includes: "SELECT name, source FROM ${definitionTable} ORDER BY (source = 'ai'), name COLLATE NOCASE",
+    includes:
+      "SELECT name, source FROM ${definitionTable} ORDER BY (source = 'ai'), name COLLATE NOCASE",
     why: "the same GLOBAL vocabulary table as above, read whole to plan an alias merge — no profile_id column exists to filter on",
   },
   {
     file: "lib/legacy-category-reclass-db.ts",
-    includes: "SELECT name, category FROM ${definitionTable} WHERE TRIM(COALESCE(category, '')) != ''",
+    includes:
+      "SELECT name, category FROM ${definitionTable} WHERE TRIM(COALESCE(category, '')) != ''",
     why: "the same GLOBAL vocabulary table, read for the legacy-category reclass — no profile_id column exists to filter on",
   },
 ];
-
 
 // db.exec() statements that legitimately touch an owned table without a profile_id
 // predicate (issue #1208 fix 2), keyed by file. Same SHORT-and-justified discipline
@@ -1084,7 +1091,10 @@ describe("profile-scoping scanner rules (issue #1208)", () => {
     // The WHERE is the claim: a scoping predicate passes whichever table it names,
     // including one the scan cannot resolve — the shape the four table-walkers use.
     ["SELECT * FROM ${table} WHERE id IN (${ids}) AND profile_id = ?", false],
-    ["UPDATE ${table} SET encounter_id = ? WHERE id = ? AND profile_id = ?", false],
+    [
+      "UPDATE ${table} SET encounter_id = ? WHERE id = ? AND profile_id = ?",
+      false,
+    ],
     ["DELETE FROM metric_samples WHERE profile_id = ? AND date = ?", false],
     // The drop, closed: a table-position interpolation with no predicate used to be
     // skipped as if it named no owned table. Each spelling the corpus uses, and JOIN.
@@ -1094,14 +1104,16 @@ describe("profile-scoping scanner rules (issue #1208)", () => {
     ["SELECT 1 FROM t JOIN ${child} c ON c.parent_id = t.id", true],
     // Unchanged: an owned table with no predicate, and a global table whose only
     // interpolation is a placeholder list, which has nothing to enforce.
-    ["UPDATE medical_documents SET extraction_status = 'failed' WHERE id = ?", true],
+    [
+      "UPDATE medical_documents SET extraction_status = 'failed' WHERE id = ?",
+      true,
+    ],
     ["SELECT id FROM portals WHERE id IN (${ids})", false],
     ["PRAGMA table_info(${q(table)})", false],
   ])("needsWaiver(%s) = %s", (sql, refused) => {
     expect(needsWaiver(norm(sql))).toBe(refused);
   });
 });
-
 
 // COMPANION RULE — set-based cross-profile SQL is confined to registered modules
 // (issue #1095 §3). The scanner above requires `profile_id` in every owned-table
