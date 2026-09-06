@@ -51,6 +51,7 @@ const HEALTH_CONNECT = "import the shared constants from";
 const LEAF = "stays dependency-free";
 const STRENGTH_ENGINE = "must not be sourced from the strength coverage engine";
 const EXERCISE_SETS = "never from strength set rows";
+const DATE_PARSE = "Date.parse answers in the SERVER's zone";
 
 // One row per config block, plus the exemptions each block's `ignores` creates.
 const CASES: [file: string, must: string[], mustNot: string[]][] = [
@@ -69,9 +70,15 @@ const CASES: [file: string, must: string[], mustNot: string[]][] = [
       FITBIT,
       DISCLAIMER,
       REFRESH,
+      DATE_PARSE,
     ],
     [SCOPE_KIND],
   ],
+  // The clock seam (#5338) reaches lib/, and its on-touch population is exempt BY FILE
+  // while keeping every other ban — an on-touch app surface keeps #1878 in particular.
+  ["lib/share-links.ts", [TEMPORAL, RPE_CAST, STREAK, DATE_PARSE], []],
+  ["lib/weight-anomaly.ts", [TEMPORAL, RPE_CAST, STREAK], [DATE_PARSE]],
+  ["components/illness/FeverChart.tsx", [TEMPORAL, REFRESH], [DATE_PARSE]],
   [
     "app/(app)/training/OverviewSection.tsx",
     [TEMPORAL, RPE_CAST, RPE_KEY, STREAK, OURA, FITBIT, SCOPE_KIND],
@@ -121,7 +128,7 @@ const CASES: [file: string, must: string[], mustNot: string[]][] = [
   [
     "lib/__action_tests__/ai-log-clear.actions.test.ts",
     [TEMPORAL],
-    [REVALIDATE, DIALOG],
+    [REVALIDATE, DIALOG, DATE_PARSE],
   ],
 ];
 
@@ -288,6 +295,35 @@ const BITES: [file: string, code: string, fragment: string, hits: number][] = [
     "export const f = (router: { refresh: () => void }) => router.refresh();",
     REFRESH,
     1,
+  ],
+
+  // the clock seam (#5338): a new Date.parse is an error in lib/ and on the app
+  // surface alike; an on-touch file is exempt from this ban only, and a test tier from
+  // all of it.
+  [FIXTURE, "export const f = (s: string) => Date.parse(s);", DATE_PARSE, 1],
+  [
+    "components/BiteFixture.tsx",
+    "export const f = (s: string) => Date.parse(s);",
+    DATE_PARSE,
+    1,
+  ],
+  [
+    "lib/weight-anomaly.ts",
+    "export const f = (s: string) => Date.parse(s);",
+    DATE_PARSE,
+    0,
+  ],
+  [
+    "components/illness/FeverChart.tsx",
+    "export const f = (router: { refresh: () => void }) => router.refresh();",
+    REFRESH,
+    1,
+  ],
+  [
+    "lib/__tests__/bite-fixture.test.ts",
+    "export const f = (s: string) => Date.parse(s);",
+    DATE_PARSE,
+    0,
   ],
 ];
 
