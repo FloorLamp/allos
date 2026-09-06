@@ -177,19 +177,151 @@ const SIDE = {
 
 // The ids a row is addressed by. The bilateral row carries them (specs drive
 // `set1-weight`, `set2-reps`, `set1-reps-stepper`); a per-side half is reached through
-// its L/R label instead, and giving it ids would only duplicate its sibling's.
+// its L/R label instead, and giving it ids would only duplicate its sibling's. While
+// the grid shares one load (#5371) set 1's weight ids sit on the exercise-level field:
+// that field IS where set 1's weight is entered — and every other set's — and the two
+// never render together.
 interface SetRowIds {
   weight: string;
   reps: string;
   weightStepper: string;
   repsStepper: string;
+  vary: string;
 }
 const rowIds = (si: number): SetRowIds => ({
   weight: `set${si + 1}-weight`,
   reps: `set${si + 1}-reps`,
   weightStepper: si === 0 ? "set1-weight-stepper" : "weight-stepper",
   repsStepper: si === 0 ? "set1-reps-stepper" : "reps-stepper",
+  vary: `set-vary-${si + 1}`,
 });
+
+// The sides a part renders: one row, or an L row over an R row (#335).
+const BILATERAL: readonly RowSide[] = ["both"];
+const PER_SIDE: readonly RowSide[] = ["left", "right"];
+
+const sideLabel = (side: RowSide) =>
+  SIDE[side].label && (
+    <span className="w-4 shrink-0 text-xs font-semibold text-slate-500 dark:text-slate-400">
+      {SIDE[side].label}
+    </span>
+  );
+
+// ONE LOAD FIELD: a side's weight stepper (or the plain input a bodyweight or timed
+// lift takes added load through), its plate door and its stuck-change flag. A set row
+// mounts it beside its reps; while every set shares one load the exercise-level band
+// mounts it once above the grid instead (#5371), which is what makes "the exercise-
+// level stepper is the same stepper component" true by construction.
+function LoadField({
+  side,
+  set,
+  exercise,
+  unit,
+  weightStep,
+  showPlate,
+  ids = null,
+  ghost = null,
+  blocked,
+  inputRef,
+  onChange,
+  onPlateTarget,
+  onEnter,
+}: {
+  side: RowSide;
+  set: SetEntry;
+  exercise: string;
+  unit: UnitPrefs["weightUnit"];
+  weightStep: number;
+  showPlate: boolean;
+  ids?: SetRowIds | null;
+  ghost?: NextSet | null;
+  blocked: boolean;
+  // Hands the input up on mount, so a "Vary" tap can put the caret in the weight it
+  // just revealed.
+  inputRef?: (el: HTMLInputElement | null) => void;
+  onChange: (patch: Partial<SetEntry>) => void;
+  onPlateTarget: (field: "weight" | "weightRight") => void;
+  // Enter moves on to the reps this load pairs with (#5371) — the form never
+  // submits on Enter, so the keystroke is free.
+  onEnter: () => void;
+}) {
+  const f = SIDE[side];
+  // A weighted, untimed lift steps its load; bodyweight and timed lifts have no load
+  // to step, so the field stays a plain input.
+  const stepped = !isTimed(exercise) && !isBodyweight(exercise);
+  // Increment steppers (issue #337). The weight step is lift-appropriate and
+  // plate-loadable — the SAME weightIncrementKg/Lb the next-set suggestion adds
+  // (5 kg squat vs 2.5 kg accessory), in the user's display unit.
+  const stepWeight = (direction: -1 | 1) => {
+    const next = Math.max(
+      0,
+      round((Number(set[f.weight]) || 0) + direction * weightStep, 2)
+    );
+    onChange({ [f.weight]: next > 0 ? String(next) : "" });
+  };
+  const input = (
+    <input
+      ref={inputRef}
+      type="number"
+      step="0.5"
+      min="0"
+      inputMode="decimal"
+      data-testid={ids?.weight}
+      value={set[f.weight]}
+      onChange={(e) => onChange({ [f.weight]: stripNegative(e.target.value) })}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          onEnter();
+        }
+      }}
+      placeholder={
+        ghost && !ghost.bodyweight
+          ? String(dispWeight(ghost.weightKg, unit, 1))
+          : unit
+      }
+      className={
+        stepped
+          ? "number-no-spinner min-w-0 w-full border-x border-y-0 border-black/10 bg-transparent px-2 py-2 text-sm outline-hidden focus:ring-0 dark:border-white/10 dark:text-slate-100 dark:placeholder:text-slate-500"
+          : `input ${blocked ? blockedField : ""}`
+      }
+    />
+  );
+  return (
+    <>
+      {stepped ? (
+        <Stepper
+          testId={ids?.weightStepper ?? "weight-stepper"}
+          tabStops={false}
+          onStep={stepWeight}
+          decreaseLabel="Decrease weight"
+          increaseLabel="Increase weight"
+          className={`min-w-28 flex-1 basis-0 ${fieldBorder(blocked)}`}
+        >
+          {input}
+        </Stepper>
+      ) : (
+        input
+      )}
+      {showPlate && (
+        // Keep the set grid's established 28px plate COLUMN while IconButton owns a
+        // centered 44px TARGET. The heading reserves this same w-7 slot, so widening
+        // the layout column would move both value-column centers (#337).
+        <span className="flex w-7 min-w-0 shrink-0 items-center justify-center">
+          <IconButton
+            type="button"
+            // Pointer affordance only — keep it out of the weight→reps tab order (#336).
+            tabIndex={-1}
+            onClick={() => onPlateTarget(f.weight)}
+            label="Open plate builder"
+          >
+            <IconBarbell className="h-4 w-4" />
+          </IconButton>
+        </span>
+      )}
+    </>
+  );
+}
 
 // ONE set row: a side's `weight × reps` (or hold time) with its steppers, its plate
 // door and its stuck-change flags. The bilateral part mounts it once as the values
@@ -197,6 +329,9 @@ const rowIds = (si: number): SetRowIds => ({
 // (#335). `className` is the difference the two mounts genuinely have — the phone's
 // two-line wrap (#1612) is a property of the column, and a stacked side is a line
 // inside it.
+//
+// While the grid shares one load (#5371) the row is reps only — the load is stated
+// once, above the rows — and carries the "Vary" door back to per-set weights.
 function SetRow({
   side,
   set,
@@ -209,9 +344,13 @@ function SetRow({
   className,
   testId,
   flagsFor,
+  load,
+  loadRef,
+  repsRef,
   onChange,
   onPlateTarget,
   onEnter,
+  onVary,
 }: {
   side: RowSide;
   set: SetEntry;
@@ -231,57 +370,37 @@ function SetRow({
     r: string,
     d: string
   ) => { weight: boolean; effort: boolean };
+  // Whether this row states its own load, or the exercise-level band above does.
+  load: "own" | "shared";
+  loadRef?: (el: HTMLInputElement | null) => void;
+  // Hands this row's reps input up, so the exercise-level weight's Enter can land in
+  // set 1's reps (#5371).
+  repsRef?: (el: HTMLInputElement | null) => void;
   onChange: (patch: Partial<SetEntry>) => void;
   onPlateTarget: (field: "weight" | "weightRight") => void;
   // Enter in a complete reps field adds the next set (#336), when there is one to add.
   onEnter?: () => void;
+  // Give every set its own weight again, starting with this one.
+  onVary?: () => void;
 }) {
   const f = SIDE[side];
   const timed = isTimed(exercise);
   const flags = flagsFor(set[f.weight], set[f.reps], set[f.duration]);
-  // A weighted, untimed lift steps its load; bodyweight and timed lifts have no load
-  // to step, so the field stays a plain input.
-  const stepped = !timed && !isBodyweight(exercise);
-  // Increment steppers (issue #337). The weight step is lift-appropriate and
-  // plate-loadable — the SAME weightIncrementKg/Lb the next-set suggestion adds
-  // (5 kg squat vs 2.5 kg accessory), in the user's display unit; reps step ±1.
-  const stepWeight = (direction: -1 | 1) => {
-    const next = Math.max(
-      0,
-      round((Number(set[f.weight]) || 0) + direction * weightStep, 2)
-    );
-    onChange({ [f.weight]: next > 0 ? String(next) : "" });
+  const reps = useRef<HTMLInputElement | null>(null);
+  const effortRef = (el: HTMLInputElement | null) => {
+    reps.current = el;
+    repsRef?.(el);
   };
   const stepReps = (direction: -1 | 1) => {
     const next = Math.max(0, (Number(set[f.reps]) || 0) + direction);
     onChange({ [f.reps]: next > 0 ? String(next) : "" });
   };
-  const weightInput = (
-    <input
-      type="number"
-      step="0.5"
-      min="0"
-      inputMode="decimal"
-      data-testid={ids?.weight}
-      value={set[f.weight]}
-      onChange={(e) => onChange({ [f.weight]: stripNegative(e.target.value) })}
-      placeholder={
-        ghost && !ghost.bodyweight
-          ? String(dispWeight(ghost.weightKg, unit, 1))
-          : unit
-      }
-      className={
-        stepped
-          ? "number-no-spinner min-w-0 w-full border-x border-y-0 border-black/10 bg-transparent px-2 py-2 text-sm outline-hidden focus:ring-0 dark:border-white/10 dark:text-slate-100 dark:placeholder:text-slate-500"
-          : `input ${flags.weight ? blockedField : ""}`
-      }
-    />
-  );
   // The "effort" input is reps for normal lifts, a m:ss hold time for timed.
   const holdInvalid =
     !!set[f.duration].trim() && !isValidDuration(set[f.duration]);
   const effortInput = timed ? (
     <input
+      ref={effortRef}
       type="text"
       inputMode="numeric"
       value={set[f.duration]}
@@ -298,6 +417,7 @@ function SetRow({
     />
   ) : (
     <input
+      ref={effortRef}
       type="number"
       min="1"
       inputMode="numeric"
@@ -324,44 +444,29 @@ function SetRow({
   );
   return (
     <div className={className} data-testid={testId}>
-      {f.label && (
-        <span className="w-4 shrink-0 text-xs font-semibold text-slate-500 dark:text-slate-400">
-          {f.label}
-        </span>
+      {sideLabel(side)}
+      {load === "own" && (
+        <>
+          <LoadField
+            side={side}
+            set={set}
+            exercise={exercise}
+            unit={unit}
+            weightStep={weightStep}
+            showPlate={showPlate}
+            ids={ids}
+            ghost={ghost}
+            blocked={flags.weight}
+            inputRef={loadRef}
+            onChange={onChange}
+            onPlateTarget={onPlateTarget}
+            onEnter={() => reps.current?.focus()}
+          />
+          <span className="w-2 shrink-0 text-center text-slate-500 dark:text-slate-400">
+            ×
+          </span>
+        </>
       )}
-      {stepped ? (
-        <Stepper
-          testId={ids?.weightStepper ?? "weight-stepper"}
-          tabStops={false}
-          onStep={stepWeight}
-          decreaseLabel="Decrease weight"
-          increaseLabel="Increase weight"
-          className={`min-w-28 flex-1 basis-0 ${fieldBorder(flags.weight)}`}
-        >
-          {weightInput}
-        </Stepper>
-      ) : (
-        weightInput
-      )}
-      {showPlate && (
-        // Keep the set grid's established 28px plate COLUMN while IconButton owns a
-        // centered 44px TARGET. The heading reserves this same w-7 slot, so widening
-        // the layout column would move both value-column centers (#337).
-        <span className="flex w-7 min-w-0 shrink-0 items-center justify-center">
-          <IconButton
-            type="button"
-            // Pointer affordance only — keep it out of the weight→reps tab order (#336).
-            tabIndex={-1}
-            onClick={() => onPlateTarget(f.weight)}
-            label="Open plate builder"
-          >
-            <IconBarbell className="h-4 w-4" />
-          </IconButton>
-        </span>
-      )}
-      <span className="w-2 shrink-0 text-center text-slate-500 dark:text-slate-400">
-        ×
-      </span>
       {!timed ? (
         <Stepper
           testId={ids?.repsStepper ?? "reps-stepper"}
@@ -375,6 +480,16 @@ function SetRow({
         </Stepper>
       ) : (
         effortInput
+      )}
+      {onVary && (
+        <button
+          type="button"
+          onClick={onVary}
+          data-testid={ids?.vary}
+          className="w-12 shrink-0 py-2 text-xs text-link-muted"
+        >
+          Vary
+        </button>
       )}
     </div>
   );
@@ -446,7 +561,8 @@ export default function StrengthSets({
   onBwInput: (v: string) => void;
   onSaveBodyweight: () => void;
   onUpdatePart: (patch: Partial<PartEntry>) => void;
-  onUpdateSet: (si: number, patch: Partial<SetEntry>) => void;
+  // One set, or every set at once — the exercise-level weight (#5371).
+  onUpdateSet: (si: number | "all", patch: Partial<SetEntry>) => void;
   onAddSet: () => void;
   onRemoveSet: (si: number) => void;
   onUpdatePartName: (name: string, extra?: Partial<PartEntry>) => void;
@@ -458,7 +574,7 @@ export default function StrengthSets({
   // pre-loads it from the coached suggestion instead of the field's current value —
   // the suggestion → plate deep-link (#335).
   onPlateTarget: (
-    si: number,
+    si: number | "all",
     field: "weight" | "weightRight",
     seed?: number
   ) => void;
@@ -755,6 +871,48 @@ export default function StrengthSets({
     units.weightUnit === "lb"
       ? weightIncrementLb(p.name)
       : weightIncrementKg(p.name);
+  // ONE LOAD FOR THE WHOLE GRID (#5371). Straight sets decide the weight once and
+  // vary the reps, so while every set carries the same load (both sides of it, for a
+  // per-side lift) the grid states that load once, above the rows, and the rows are
+  // reps only. The stored shape is untouched — every set still carries its own
+  // weight, and the band writes all of them — this is how the common case RENDERS.
+  // Only a lift that steps its load: bodyweight and timed lifts have no stepper to
+  // share.
+  //
+  // AND EXPANSION LATCHES. Derive "shared" from uniformity alone and a grid someone
+  // varied on purpose would snap back to one band the moment set 2 was typed back to
+  // set 1's number — the fold-under-the-fingers #3336 refused. So once the sets
+  // differ (a "Vary" tap, a mixed Recent fill, a stored session that arrived varied)
+  // this part stays per-set. Latched during render rather than in an effect, so the
+  // frame that shows the difference is the frame that records it.
+  const stepsLoad = !timed && !isBodyweight(p.name);
+  const loadsMatch = p.sets.every(
+    (s) =>
+      s.weight === p.sets[0].weight &&
+      (!p.perSide || s.weightRight === p.sets[0].weightRight)
+  );
+  const [varied, setVaried] = useState(() => !loadsMatch);
+  if (!varied && !loadsMatch) setVaried(true);
+  const sharedLoad = stepsLoad && !varied;
+  // Which set's "Vary" tap just revealed the per-set weights, so that set's weight
+  // takes the caret; consumed by the input on mount.
+  const varyFocus = useRef<number | null>(null);
+  const vary = (si: number) => {
+    varyFocus.current = si;
+    setVaried(true);
+  };
+  const loadRef = (si: number) => (el: HTMLInputElement | null) => {
+    if (el && varyFocus.current === si) {
+      varyFocus.current = null;
+      el.focus();
+    }
+  };
+  // Set 1's reps input per side: Enter in the exercise-level weight lands there.
+  const firstReps = useRef<Record<RowSide, HTMLInputElement | null>>({
+    both: null,
+    left: null,
+    right: null,
+  });
   // A coached next set stated as a STORED set, so the fill runs it through the same
   // kg → display-unit mapping the "repeat last session" path uses and the two can
   // never round apart (#5377). Sides are independent (#335): a side with no
@@ -1071,6 +1229,44 @@ export default function StrengthSets({
       )}
       {showGrid && (
         <>
+          {sharedLoad && (
+            <div
+              data-testid="exercise-weight"
+              className="mt-2 flex items-center gap-2"
+            >
+              <span className="shrink-0 text-xs font-medium whitespace-nowrap text-slate-500 dark:text-slate-400">
+                Weight ({units.weightUnit})
+              </span>
+              <div className="min-w-0 flex-1 space-y-1.5">
+                {(p.perSide ? PER_SIDE : BILATERAL).map((side) => (
+                  <div key={side} className="flex items-center gap-2">
+                    {sideLabel(side)}
+                    <LoadField
+                      side={side}
+                      set={p.sets[0]}
+                      exercise={p.name}
+                      unit={units.weightUnit}
+                      weightStep={weightStep}
+                      showPlate={showPlate}
+                      ids={p.perSide ? null : rowIds(0)}
+                      ghost={ghost}
+                      blocked={p.sets.some(
+                        (s) =>
+                          sideFlags(
+                            s[SIDE[side].weight],
+                            s[SIDE[side].reps],
+                            s[SIDE[side].duration]
+                          ).weight
+                      )}
+                      onChange={(patch) => onUpdateSet("all", patch)}
+                      onPlateTarget={(field) => onPlateTarget("all", field)}
+                      onEnter={() => firstReps.current[side]?.focus()}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {/* On phones, keep the set schema immediately below the sticky exercise
           picker while long sessions scroll. Desktop has room to keep the whole
           editor context visible, so the row returns to normal flow there.
@@ -1092,25 +1288,31 @@ export default function StrengthSets({
             className="sticky top-edge-safe [--top-edge-offset:var(--set-schema-top)] z-9 -mx-1 mt-2 flex items-center gap-2 bg-surface/95 px-1 py-1 section-label backdrop-blur-sm md:static md:mx-0 md:bg-transparent md:px-0 md:backdrop-blur-none dark:md:bg-transparent"
           >
             <span className="hidden w-12 shrink-0 sm:block">Set</span>
-            {!timed && !isBodyweight(p.name) ? (
+            {stepsLoad ? (
               <div className="flex min-w-0 flex-1 basis-0 items-center gap-2 text-center">
                 {p.perSide && <span className="w-4 shrink-0" aria-hidden />}
-                <span
-                  data-testid="weight-column-heading"
-                  className="min-w-28 flex-1 basis-0"
-                >
-                  Weight ({units.weightUnit})
-                </span>
-                {showPlate && <span className="w-7 shrink-0" aria-hidden />}
-                <span className="w-2 shrink-0" aria-hidden>
-                  ×
-                </span>
+                {!sharedLoad && (
+                  <>
+                    <span
+                      data-testid="weight-column-heading"
+                      className="min-w-28 flex-1 basis-0"
+                    >
+                      Weight ({units.weightUnit})
+                    </span>
+                    {showPlate && <span className="w-7 shrink-0" aria-hidden />}
+                    <span className="w-2 shrink-0" aria-hidden>
+                      ×
+                    </span>
+                  </>
+                )}
                 <span
                   data-testid="reps-column-heading"
                   className="min-w-28 flex-1 basis-0"
                 >
                   Reps
                 </span>
+                {/* The rows' "Vary" slot, so the heading centres over the stepper. */}
+                {sharedLoad && <span className="w-12 shrink-0" aria-hidden />}
               </div>
             ) : (
               <span className="flex-1 basis-0 text-center">
@@ -1151,7 +1353,7 @@ export default function StrengthSets({
                     data-testid={`set-values-${si + 1}`}
                     className="order-last basis-full flex-1 space-y-1.5 sm:order-0 sm:basis-0"
                   >
-                    {(["left", "right"] as const).map((rowSide) => (
+                    {PER_SIDE.map((rowSide) => (
                       <SetRow
                         key={rowSide}
                         side={rowSide}
@@ -1162,9 +1364,21 @@ export default function StrengthSets({
                         weightStep={weightStep}
                         showPlate={showPlate}
                         flagsFor={sideFlags}
+                        load={sharedLoad ? "shared" : "own"}
+                        loadRef={rowSide === "left" ? loadRef(si) : undefined}
+                        repsRef={
+                          si === 0
+                            ? (el) => (firstReps.current[rowSide] = el)
+                            : undefined
+                        }
                         onChange={(patch) => onUpdateSet(si, patch)}
                         onPlateTarget={(field) => onPlateTarget(si, field)}
                         onEnter={canAddSet ? onAddSet : undefined}
+                        onVary={
+                          sharedLoad && rowSide === "right"
+                            ? () => vary(si)
+                            : undefined
+                        }
                       />
                     ))}
                   </div>
@@ -1181,9 +1395,17 @@ export default function StrengthSets({
                     weightStep={weightStep}
                     showPlate={showPlate}
                     flagsFor={sideFlags}
+                    load={sharedLoad ? "shared" : "own"}
+                    loadRef={loadRef(si)}
+                    repsRef={
+                      si === 0
+                        ? (el) => (firstReps.current.both = el)
+                        : undefined
+                    }
                     onChange={(patch) => onUpdateSet(si, patch)}
                     onPlateTarget={(field) => onPlateTarget(si, field)}
                     onEnter={canAddSet ? onAddSet : undefined}
+                    onVary={sharedLoad ? () => vary(si) : undefined}
                   />
                 )}
                 <div

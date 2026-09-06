@@ -26,10 +26,12 @@ import {
 
 // Which set's weight field the plate builder is targeting, if open. `seed`
 // (display-unit weight) pre-loads the builder from the coached suggestion instead
-// of the field's current value (#335); omitted for a plain icon tap.
+// of the field's current value (#335); omitted for a plain icon tap. `"all"` is the
+// exercise-level weight (#5371): while every set shares one load the builder is
+// seeded from it and its result lands on every set, so the grid stays shared.
 export interface PlateTarget {
   pi: number;
-  si: number;
+  si: number | "all";
   field: "weight" | "weightRight";
   seed?: number;
 }
@@ -90,7 +92,7 @@ export function useActivityParts({
   updatePartName: (i: number, name: string, extra?: Partial<PartEntry>) => void;
   typePartName: (i: number, v: string) => void;
   pickPartName: (i: number, rawName: string) => void;
-  updateSet: (pi: number, si: number, patch: Partial<SetEntry>) => void;
+  updateSet: (pi: number, si: number | "all", patch: Partial<SetEntry>) => void;
   addSet: (pi: number) => void;
   movePart: (i: number, dir: -1 | 1) => void;
   removeSet: (pi: number, si: number) => void;
@@ -224,13 +226,17 @@ export function useActivityParts({
       perSide: false,
     });
   }
-  function updateSet(pi: number, si: number, patch: Partial<SetEntry>) {
+  // Patch one set, or every set at once — the exercise-level weight (#5371) is one
+  // load stated for the whole grid, so it writes through the same door as a row.
+  function updateSet(pi: number, si: number | "all", patch: Partial<SetEntry>) {
     setParts((prev) =>
       prev.map((p, idx) =>
         idx === pi
           ? {
               ...p,
-              sets: p.sets.map((s, j) => (j === si ? { ...s, ...patch } : s)),
+              sets: p.sets.map((s, j) =>
+                si === "all" || j === si ? { ...s, ...patch } : s
+              ),
             }
           : p
       )
