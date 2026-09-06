@@ -353,9 +353,12 @@ async function updateDosingWeight(kg: string) {
   });
   await act(async () => {
     fireEvent.click(
-      within(screen.getByTestId("pediatric-weight-update")).getByRole("button", {
-        name: "Save",
-      })
+      within(screen.getByTestId("pediatric-weight-update")).getByRole(
+        "button",
+        {
+          name: "Save",
+        }
+      )
     );
   });
 }
