@@ -58,12 +58,21 @@ function finishedRow(
   const end = minsAgo(ageMin);
   const hh = String(end.getUTCHours()).padStart(2, "0");
   const mm = String(end.getUTCMinutes()).padStart(2, "0");
+  // THE START TRACKS THE END (#5212 falsifying pass). It was the constant "13:00",
+  // which for most values of `ageMin` puts the end BEFORE the start — a row the rest of
+  // the app reads as a session that crossed midnight (`activityWindow`), not as one
+  // that ended `ageMin` minutes ago. It only ever read as "recently finished" because
+  // presence resolved its end against the row's own date and nothing else did. With one
+  // rollover rule this fixture has to describe a row that can exist.
+  const start = minsAgo(ageMin + 30);
+  const sh = String(start.getUTCHours()).padStart(2, "0");
+  const sm = String(start.getUTCMinutes()).padStart(2, "0");
   return {
     id: 2,
     type: "cardio",
     title: "Dog walk",
     date: TODAY,
-    start_time: "13:00",
+    start_time: `${sh}:${sm}`,
     end_time: `${hh}:${mm}`,
     duration_min: null,
     created_at: utcSqlString(minsAgo(ageMin + 30)),

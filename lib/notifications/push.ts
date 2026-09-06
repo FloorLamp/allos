@@ -228,13 +228,14 @@ export const PUSH_SEND_TIMEOUT_MS = 30_000;
 // Delivering when at least one of its browsers took the push, Erroring when every
 // live attempt failed, and — when its last browser was just pruned — has no browser
 // left to be about, so its stale outcome goes with the subscription (Not set up).
+/** How many subscriptions actually received it — 0 when there was nobody live. */
 async function sendToSubscriptions(
   subs: SubscriptionRow[],
   msg: NotificationMessage
-): Promise<void> {
+): Promise<number> {
   if (!applyVapid())
     throw new Error("Web Push is not configured (no VAPID keys)");
-  if (subs.length === 0) return; // nothing live to deliver to — not an error
+  if (subs.length === 0) return 0; // nothing live to deliver to — not an error
 
   const payload = buildPushPayload(msg);
   const byLogin = new Map<number, { ok: number; errors: string[] }>();
@@ -279,6 +280,7 @@ async function sendToSubscriptions(
   if (ok === 0 && errors.length > 0) {
     throw new Error(`web-push failed: ${errors.join("; ")}`);
   }
+  return ok;
 }
 
 // Test send to a single login's OWN browsers (the "send test" button), bypassing
@@ -324,7 +326,9 @@ export const pushChannel: NotificationChannel = {
         profile: profileId,
         kind: msg.kind ?? "other",
       });
-      return;
+      // Healthy, and it reached nobody. Both halves are true and a caller may need
+      // either one (SendOutcome, ./types).
+      return { delivered: false };
     }
     // Per-kind matrix gate (#928): the push column is LOGIN-scoped, but the audience
     // spans every login entitled to this profile — so gate each subscription against
@@ -332,6 +336,12 @@ export const pushChannel: NotificationChannel = {
     // browsers out of the fan-out; a login that left it on still receives. A fully
     // filtered set is a deliberate no-op success (sendToSubscriptions treats an empty
     // list as "nothing live"), never a failure, so it can't set notify_last_error.
-    await sendToSubscriptions(audience(profileId, msg.kind), msg);
+    // Already recipient-level: this throws only when NOBODY was reached, so a partly
+    // delivered fan-out is a healthy channel here and always has been.
+    const reached = await sendToSubscriptions(
+      audience(profileId, msg.kind),
+      msg
+    );
+    return { delivered: reached > 0 };
   },
 };

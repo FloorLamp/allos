@@ -34,10 +34,11 @@ import { today } from "../db";
 import { now } from "../clock";
 import { zonedDateParts } from "../date";
 import { createLogger } from "../log";
-import type {
-  DispatchOptions,
-  NotificationChannel,
-  NotificationMessage,
+import {
+  PartialDeliveryError,
+  type DispatchOptions,
+  type NotificationChannel,
+  type NotificationMessage,
 } from "./types";
 import { composeForSend, composeMessage } from "./compose";
 import { prefixForProfile } from "./attribution";
@@ -150,54 +151,92 @@ export const telegramChannel: NotificationChannel = {
     // per-login mute of a chat that isn't a login's is meaningless. Deduped so a
     // repeated id can't double-send. A throw still propagates, so dispatch() records
     // the delivery outcome for an override send exactly as for a fan-out send.
+    //
+    // THIS CHANNEL IS NOT ONE RECIPIENT (#5194, tenth falsifying pass). Both loops
+    // below are a fan-out: a household is several chats, and one of them blocking the
+    // bot fails the whole channel while every other chat is holding the message. So
+    // the loops report what they REACHED — `delivered` on the way out, and
+    // `deliveryFailure` carrying the same bit through the throw — and the propagation
+    // above is unchanged. Web Push and email already answer at the recipient level
+    // (they throw only when nobody was reached); this is the third fan-out learning
+    // to say the same thing without giving up its retry.
     const override = opts?.telegramChatIds;
+    let delivered = false;
     if (override?.length) {
       for (const chatId of Array.from(new Set(override))) {
-        const messageId = await sendMessageRaw(chatId, msg);
-        // An override chat is not a login, but the MESSAGE still goes stale exactly
-        // like a fan-out copy — a caregiver's escalation chat is the last place a
-        // false "still outstanding" belongs (#1779). The subject is the profile the
-        // message is ABOUT, which this path has always had and never had to guess.
-        await trackDelivered(profileId, chatId, messageId, msg);
+        try {
+          const messageId = await sendMessageRaw(chatId, msg);
+          delivered = true;
+          // An override chat is not a login, but the MESSAGE still goes stale exactly
+          // like a fan-out copy — a caregiver's escalation chat is the last place a
+          // false "still outstanding" belongs (#1779). The subject is the profile the
+          // message is ABOUT, which this path has always had and never had to guess.
+          await trackDelivered(profileId, chatId, messageId, msg);
+        } catch (e) {
+          throw deliveryFailure(e, delivered);
+        }
       }
-      return;
+      return { delivered };
     }
     // One send per chat; the outcome is recorded for EVERY login mapped to that chat
     // (#2565), since the message that reached the family group reached all of them.
     for (const { chatId, loginIds } of resolveTelegramChats(profileId)) {
       if (!isKindEnabled(msg.kind, getLoginTelegramDisabledKinds(loginIds[0])))
         continue;
-      const messageId = await recordedSend("telegram", loginIds, () =>
-        sendMessageRaw(chatId, msg)
-      );
-      // The HOUSEHOLD ROUND needs the identical rotation (#1719) and never had it:
-      // its confirm tokens carry each member's SEND-TIME date, so a surviving round
-      // keyboard from an earlier day logs a dose to YESTERDAY — for someone else's
-      // medication. It shares `kind: "dose"` with the ordinary slot reminder, so the
-      // round is identified by its `hh:` tokens, never by kind (which would strip a
-      // plain dose reminder's keyboard too). Same strictly-best-effort posture.
-      if (messageId != null)
-        await rotateHouseholdRoundPointer(profileId, chatId, messageId, msg);
-      // A DIGEST carrying the offer tail (#1505) records its message id for the same
-      // class of reason: the tail's label names the slot it opens into, so the tick
-      // has to re-label it at each boundary — which needs the message to edit. Same
-      // chokepoint placement and same strictly-best-effort posture as the food
-      // pointer above; a bookkeeping failure must never turn a delivered digest into
-      // a failed one.
-      if (msg.kind === "digest" && messageId != null && msg.actions?.length)
-        recordDigestTailPointer(profileId, chatId, messageId);
-      // The UNIVERSAL live-message pointer (#1779). Recorded HERE, in the chokepoint,
-      // for the same reason the two special-purpose pointers above are: this is the
-      // only place that has both the delivered message id and the message it was
-      // rendered from — and it is per RECIPIENT, so a dose confirmed from a family
-      // group's copy can correct the copies in every other subscriber's chat.
-      // ONE LIVE KEYBOARD PER (chat, kind) (#1898) rides with it: a re-issuable kind
-      // closes the copy it replaces, AFTER the record, so the chat never briefly
-      // holds none.
-      await trackDelivered(profileId, chatId, messageId, msg);
+      try {
+        const messageId = await recordedSend("telegram", loginIds, () =>
+          sendMessageRaw(chatId, msg)
+        );
+        // The moment the wire call resolves, and before any bookkeeping: this chat HAS
+        // the message, whatever the rest of the fan-out or the lines below do with it.
+        delivered = true;
+        // The HOUSEHOLD ROUND needs the identical rotation (#1719) and never had it:
+        // its confirm tokens carry each member's SEND-TIME date, so a surviving round
+        // keyboard from an earlier day logs a dose to YESTERDAY — for someone else's
+        // medication. It shares `kind: "dose"` with the ordinary slot reminder, so the
+        // round is identified by its `hh:` tokens, never by kind (which would strip a
+        // plain dose reminder's keyboard too). Same strictly-best-effort posture.
+        if (messageId != null)
+          await rotateHouseholdRoundPointer(profileId, chatId, messageId, msg);
+        // A DIGEST carrying the offer tail (#1505) records its message id for the same
+        // class of reason: the tail's label names the slot it opens into, so the tick
+        // has to re-label it at each boundary — which needs the message to edit. Same
+        // chokepoint placement and same strictly-best-effort posture as the food
+        // pointer above; a bookkeeping failure must never turn a delivered digest into
+        // a failed one.
+        if (msg.kind === "digest" && messageId != null && msg.actions?.length)
+          recordDigestTailPointer(profileId, chatId, messageId);
+        // The UNIVERSAL live-message pointer (#1779). Recorded HERE, in the chokepoint,
+        // for the same reason the two special-purpose pointers above are: this is the
+        // only place that has both the delivered message id and the message it was
+        // rendered from — and it is per RECIPIENT, so a dose confirmed from a family
+        // group's copy can correct the copies in every other subscriber's chat.
+        // ONE LIVE KEYBOARD PER (chat, kind) (#1898) rides with it: a re-issuable kind
+        // closes the copy it replaces, AFTER the record, so the chat never briefly
+        // holds none.
+        await trackDelivered(profileId, chatId, messageId, msg);
+      } catch (e) {
+        throw deliveryFailure(e, delivered);
+      }
     }
+    return { delivered };
   },
 };
+
+// The failure a fan-out propagates, carrying whether anybody had already received the
+// message (#5194, tenth pass). The channel still fails and the slot can still retry —
+// `ok` is untouched — but dispatch() can now tell "nobody got this" from "the household
+// got this and one chat is blocked", which is the difference between a nudge whose
+// promise is on record and one whose promise is lost.
+// The wrapped error is kept as the `cause` so nothing downstream is worse off for
+// having been wrapped: `classifyTelegramFailure` reads the TelegramApiError's status and
+// description through it, which is what tells a blocked chat (permanent, forget the
+// pointer) from a rate limit (transient, keep it).
+function deliveryFailure(e: unknown, delivered: boolean): Error {
+  const message = e instanceof Error ? e.message : String(e);
+  if (!delivered) return e instanceof Error ? e : new Error(message);
+  return new PartialDeliveryError(message, { cause: e });
+}
 
 // The bookkeeping every delivered message gets, whichever send path delivered it:
 // record the pointer, then close what this send superseded. ONE function because the
