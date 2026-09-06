@@ -104,7 +104,12 @@ import {
   observedTickMinutes,
 } from "../notifications/schedule";
 import { checkpointWal } from "../db";
-import { dateStrInTz, minuteOfDayInTz, weekdayInTz } from "../date";
+import {
+  dateStrInTz,
+  minuteOfDayInTz,
+  parseUtcSql,
+  weekdayInTz,
+} from "../date";
 import { createLogger } from "../log";
 import { pruneSyncEvents } from "../integrations/connections";
 import { syncIntegrations } from "../integrations/pull-tick";
@@ -211,7 +216,10 @@ export async function runDigestTick(
 }
 
 export function recordNotifyTickStart(nowMs: number): number {
-  const prevTickMs = Date.parse(getSetting("notify_tick_last_run_at") ?? "");
+  // parseUtcSql: a settings value carries no brand; the shape expected is the ISO
+  // instant this function writes below (#5338).
+  const prevTickMs =
+    parseUtcSql(getSetting("notify_tick_last_run_at"))?.getTime() ?? NaN;
   const tickMinutes = observedTickMinutes(
     Number.isFinite(prevTickMs) ? prevTickMs : null,
     nowMs

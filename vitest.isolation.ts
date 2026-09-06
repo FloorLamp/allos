@@ -18,6 +18,19 @@ import path from "node:path";
 //   process.chdir( — worker threads reject it outright, and even on `forks` the
 //                    directory change would outlive the file and follow every
 //                    later spec in that worker.
+//   process.env.TZ = — the SAME shape, and the one that hid because it fails
+//                    SILENTLY (#5387/#5338). A worker thread's `process.env` is a
+//                    plain copy with no native setter, so the assignment lands, the
+//                    variable reads back as the new zone, and V8's timezone cache
+//                    never moves: `Date.parse("2026-07-17T16:00")` and
+//                    `getTimezoneOffset()` both answer in the zone the PROCESS
+//                    started in. A spec that reads the same rows under three zones
+//                    therefore takes one pass three times and its zone claims are
+//                    vacuous. Measured on this tree, host TZ=UTC, same probe in both
+//                    projects: threads answered 1784304000000 / offset 0 after
+//                    setting America/New_York, forks answered 1784318400000 /
+//                    offset 240. On `forks` the flip is real — which is also why the
+//                    change would outlive the file, exactly like chdir.
 //
 // Scanning rather than hand-keeping a list is the whole point: adding either of
 // these to a spec silently routes it to the isolated project, where it behaves
@@ -33,6 +46,10 @@ import path from "node:path";
 const CANNOT_SHARE = [
   /vi\s*\.\s*(?:doMock|doUnmock|mock|unmock)\s*\(/,
   /process\s*\.\s*chdir\(/,
+  // Assignment only — `delete process.env.TZ` and a plain READ (capturing the
+  // previous zone to restore it) are not what needs a private process. Both the
+  // dot and the bracket spelling, since either reaches the same variable.
+  /process\s*\.\s*env\s*(?:\.\s*TZ|\[\s*["'`]TZ["'`]\s*\])\s*=[^=]/,
 ];
 
 // The third thing that cannot share a registry, and the one that hid: a spec that
