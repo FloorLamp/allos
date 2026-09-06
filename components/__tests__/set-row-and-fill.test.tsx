@@ -181,7 +181,8 @@ describe("fillSets (#5377)", () => {
 // a mocked callback's arguments.
 let latest: PartEntry[] = [];
 let latestFill: (fill: SetFill) => void = () => {};
-function Harness({ initial }: { initial: PartEntry }) {
+let live: ReturnType<typeof useActivityParts>;
+function Harness({ initial }: { initial: PartEntry[] }) {
   const h = useActivityParts({
     seed: null,
     units,
@@ -194,44 +195,50 @@ function Harness({ initial }: { initial: PartEntry }) {
     onSetCheckedOff: () => {},
   });
   const { setParts } = h;
-  useEffect(() => setParts([initial]), [initial, setParts]);
+  useEffect(() => setParts(initial), [initial, setParts]);
   // Published after each commit, so a test reads the state a tap produced rather
   // than a mocked callback's arguments.
   useEffect(() => {
+    live = h;
     latest = h.parts;
     latestFill = (fill) => h.fillSets(0, fill);
   });
-  return (
-    <StrengthSets
-      part={h.parts[0]}
-      fault={null}
-      units={units}
-      isEdit={false}
-      live={false}
-      history={{}}
-      deloadContext={{ isDeloadWeek: false, routineKeys: [] }}
-      recoveringContext={{ temperedRegions: [], constraints: [] }}
-      plateauHints={[]}
-      rpeTracking={null}
-      currentActivityId={null}
-      editedDate={null}
-      equipmentList={[]}
-      showBodyweightPrompt={false}
-      bwInput=""
-      bwSaving={false}
-      onBwInput={vi.fn()}
-      onSaveBodyweight={vi.fn()}
-      onUpdatePart={(patch) => h.updatePart(0, patch)}
-      onUpdateSet={(si, patch) => h.updateSet(0, si, patch)}
-      onAddSet={() => h.addSet(0)}
-      onRemoveSet={(si) => h.removeSet(0, si)}
-      onUpdatePartName={vi.fn()}
-      onFill={(fill) => h.fillSets(0, fill)}
-      onPlateTarget={vi.fn()}
-    />
-  );
+  // Keyed by INDEX, as ActivityPartsList mounts the editors: whatever a part's
+  // editor holds in its own state belongs to the slot, not the exercise.
+  return h.parts.map((p, pi) => (
+    <div key={pi} data-testid="activity-part">
+      <StrengthSets
+        part={p}
+        fault={null}
+        units={units}
+        isEdit={false}
+        live={false}
+        history={{}}
+        deloadContext={{ isDeloadWeek: false, routineKeys: [] }}
+        recoveringContext={{ temperedRegions: [], constraints: [] }}
+        plateauHints={[]}
+        rpeTracking={null}
+        currentActivityId={null}
+        editedDate={null}
+        equipmentList={[]}
+        showBodyweightPrompt={false}
+        bwInput=""
+        bwSaving={false}
+        onBwInput={vi.fn()}
+        onSaveBodyweight={vi.fn()}
+        onUpdatePart={(patch) => h.updatePart(pi, patch)}
+        onUpdateSet={(si, patch) => h.updateSet(pi, si, patch)}
+        onAddSet={() => h.addSet(pi)}
+        onRemoveSet={(si) => h.removeSet(pi, si)}
+        onUpdatePartName={vi.fn()}
+        onFill={(fill) => h.fillSets(pi, fill)}
+        onPlateTarget={vi.fn()}
+      />
+    </div>
+  ));
 }
-const mountLive = (initial: PartEntry) => render(<Harness initial={initial} />);
+const mountLive = (...initial: PartEntry[]) =>
+  render(<Harness initial={initial} />);
 const sets = (...loads: [string, string][]): SetEntry[] =>
   loads.map(([weight, reps]) => ({ ...blankSet(), weight, reps }));
 const weights = () => latest[0].sets.map((s) => s.weight);
@@ -307,6 +314,35 @@ describe("the shared weight stepper (#5371)", () => {
     expect(screen.queryByTestId("exercise-weight")).toBeNull();
     expect(byId("set2-weight")).toHaveProperty("value", "60");
   });
+
+  // The latch is the PART's, not its slot's. ActivityPartsList keys each editor by
+  // index, so a latch held in the editor's own state stays in slot 0 when the
+  // exercise there is removed or moved — and the next exercise, three straight sets
+  // at one load, would unfold into per-set weights with nothing typed.
+  it.each([
+    ["removed", () => live.removePart(0), [1]],
+    ["moved below it", () => live.movePart(0, 1), [1, 2]],
+  ])(
+    "part 2 keeps its one band after a varied part 1 is %s",
+    (_how, shuffle, weightSteppersPerSlot) => {
+      // Part 2's last set is still open: a finished uniform run arrives folded into
+      // its summary, which is a different fold from the one asked about here.
+      mountLive(
+        bench(["60", "8"], ["60", "8"]),
+        part({ name: "Barbell Squat", sets: sets(["100", "5"], ["100", ""]) })
+      );
+      const slots = () => screen.getAllByTestId("activity-part");
+      fireEvent.click(within(slots()[0]).getByTestId("set-vary-2"));
+      expect(within(slots()[1]).getByTestId("exercise-weight")).toBeTruthy();
+      act(shuffle);
+      expect(within(slots()[0]).getByTestId("exercise-weight")).toBeTruthy();
+      expect(
+        slots().map(
+          (el) => within(el).getAllByLabelText("Increase weight").length
+        )
+      ).toEqual(weightSteppersPerSlot);
+    }
+  );
 
   it("a mixed fill renders per-set weights from the start, and keeps them", () => {
     mountLive(part());

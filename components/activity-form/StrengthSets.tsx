@@ -63,6 +63,7 @@ import {
   sidePartial,
   blockedField,
   partSetsSummary,
+  sharesLoad,
   type PartEntry,
   type SetEntry,
   type RepeatSourceSet,
@@ -883,24 +884,23 @@ export default function StrengthSets({
   // varied on purpose would snap back to one band the moment set 2 was typed back to
   // set 1's number — the fold-under-the-fingers #3336 refused. So once the sets
   // differ (a "Vary" tap, a mixed Recent fill, a stored session that arrived varied)
-  // this part stays per-set. Latched during render rather than in an effect, so the
-  // frame that shows the difference is the frame that records it.
+  // this part stays per-set. The latch is the PART's (`p.varied`, client-only, never
+  // saved), not this editor's: ActivityPartsList keys the editors by slot, and a
+  // latch held here would stay in the slot when the exercise above was removed or
+  // moved, unfolding the next exercise with nothing typed. The Vary tap writes it
+  // here; the seed and the fills write it where they write the sets (`latchVaried`),
+  // so an untouched form's signature never moves. `sharesLoad` stays in the render
+  // so a part that arrives without the latch still shows the loads it has.
   const stepsLoad = !timed && !isBodyweight(p.name);
-  const loadsMatch = p.sets.every(
-    (s) =>
-      s.weight === p.sets[0].weight &&
-      (!p.perSide || s.weightRight === p.sets[0].weightRight)
-  );
-  const [varied, setVaried] = useState(() => !loadsMatch);
-  if (!varied && !loadsMatch) setVaried(true);
   // A part with no rows yet has no load to state.
-  const sharedLoad = stepsLoad && !varied && p.sets.length > 0;
+  const sharedLoad =
+    stepsLoad && !p.varied && sharesLoad(p) && p.sets.length > 0;
   // Which set's "Vary" tap just revealed the per-set weights, so that set's weight
   // takes the caret; consumed by the input on mount.
   const varyFocus = useRef<number | null>(null);
   const vary = (si: number) => {
     varyFocus.current = si;
-    setVaried(true);
+    onUpdatePart({ varied: true });
   };
   const loadRef = (si: number) => (el: HTMLInputElement | null) => {
     if (el && varyFocus.current === si) {

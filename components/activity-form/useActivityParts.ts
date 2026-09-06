@@ -22,6 +22,7 @@ import {
   repeatSessionFill,
   setComplete,
   setPartial,
+  latchVaried,
 } from "@/lib/activity-form-model";
 
 // Which set's weight field the plate builder is targeting, if open. `seed`
@@ -324,7 +325,7 @@ export function useActivityParts({
     if (fill.source === "session") {
       setParts((prev) =>
         prev.map((part, idx) =>
-          idx === pi ? { ...part, sets, perSide } : part
+          idx === pi ? latchVaried({ ...part, sets, perSide }) : part
         )
       );
       return;
@@ -344,7 +345,7 @@ export function useActivityParts({
           warmup: row.warmup,
           rpe: row.rpe,
         });
-        return {
+        return latchVaried({
           ...part,
           sets: untouched
             ? part.sets.map((s, j) => (j === li ? land(s) : s))
@@ -356,7 +357,7 @@ export function useActivityParts({
             !part.toFailure
               ? String(targetReps)
               : part.targetReps,
-        };
+        });
       })
     );
   }
