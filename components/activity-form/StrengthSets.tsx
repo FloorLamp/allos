@@ -1262,6 +1262,11 @@ export default function StrengthSets({
                       onPlateTarget={(field) => onPlateTarget("all", field)}
                       onEnter={() => firstReps.current[side]?.focus()}
                     />
+                    {/* The rows' "Vary" slot, reserved here too: the band's stepper
+                        ends where the reps steppers under it end, and the plate
+                        door's target (which overhangs its 28px slot) stays inside
+                        the band's own box. */}
+                    <span className="w-12 shrink-0" aria-hidden />
                   </div>
                 ))}
               </div>
