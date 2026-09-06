@@ -254,7 +254,7 @@ describe("visual title parity", () => {
   it("paints the intensity row neutral and only the selection brand", () => {
     const levels = ["Easy", "Moderate", "Hard"];
     const paintOf = (name: string) =>
-      screen.getByRole("button", { name, exact: true }).className;
+      screen.getByRole("button", { name }).className;
     const { rerender } = render(
       <IntensityPicker intensity="" onChange={() => undefined} />
     );
@@ -265,7 +265,7 @@ describe("visual title parity", () => {
     expect(paintOf("Easy")).toContain("bg-field");
 
     rerender(<IntensityPicker intensity="hard" onChange={() => undefined} />);
-    const picked = screen.getByRole("button", { name: "Hard", exact: true });
+    const picked = screen.getByRole("button", { name: "Hard" });
     expect(picked.getAttribute("aria-pressed")).toBe("true");
     expect(picked.className).toContain("bg-brand-600");
     // The two nobody picked still share the one rest paint.
