@@ -51,7 +51,7 @@ cap and E2E cap. What they share is GitHub — issues, branches, PRs, `main`.
 
 ## Bookkeeping
 
-- One orchestrator, named in the Ladder, writes the day's release-notes
-  batch; the others send their user-visible bullets to the PM.
+- The PM writes the day's release-notes batch off its digest's gather (owner,
+  2026-09-06); the gather reads `main`, so orchestrators send nothing.
 - Report the census line (`lifecycle.md` §Status pulse) to the PM on request
   by SendMessage. The PM arbitrates fence disputes and slot starvation.
