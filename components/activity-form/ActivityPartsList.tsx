@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
   IconX,
   IconCheck,
@@ -237,18 +237,16 @@ export default function ActivityPartsList({
   // behind it. Holds an index for the same reason `guideFor` does.
   const [searchingPart, setSearchingPart] = useState<number | null>(null);
   // Settling unmounts the field the caret was in, so the heading has to take the focus
-  // back or a keyboard pick drops it on <body>. The heading does not exist yet when
-  // the settle is decided, hence a request the effect fulfils rather than a `.focus()`.
-  const [refocusHeading, setRefocusHeading] = useState<number | null>(null);
-  const headingRefs = useRef<Record<number, HTMLButtonElement | null>>({});
-  useEffect(() => {
-    if (refocusHeading === null) return;
-    headingRefs.current[refocusHeading]?.focus();
-    setRefocusHeading(null);
-  }, [refocusHeading]);
+  // back or a keyboard pick drops it on <body>. The heading does not exist yet when the
+  // settle is decided, so this is a REQUEST that the heading's own ref callback fulfils
+  // on mount — not React state, because the fulfilment is a DOM call at commit time and
+  // clearing a state flag from an effect is the cascading render eslint refuses (and
+  // would be right to: nothing renders differently for it).
+  const refocusHeading = useRef<number | null>(null);
   const settleName = (pi: number, focus: boolean) => {
     setSearchingPart((cur) => (cur === pi ? null : cur));
-    if (focus) setRefocusHeading(pi);
+    // Always assigned, so a settle that focuses nothing also drops a stale request.
+    refocusHeading.current = focus ? pi : null;
   };
   // WHICH PART'S EQUIPMENT EDITOR IS OPEN (#3349), for the same reason `guideFor`
   // holds an index: at most one is open no matter how many parts are entered. That is
@@ -737,7 +735,9 @@ export default function ActivityPartsList({
                   onKeyDownCapture={(e) => {
                     if (searching && e.key === "Escape") {
                       e.stopPropagation();
-                      settleName(pi, true);
+                      // Nothing to hand the focus to when the name is empty: that part
+                      // stays the picker.
+                      settleName(pi, p.name.trim() !== "");
                     }
                   }}
                 >
@@ -753,7 +753,9 @@ export default function ActivityPartsList({
                     <button
                       type="button"
                       ref={(node) => {
-                        headingRefs.current[pi] = node;
+                        if (!node || refocusHeading.current !== pi) return;
+                        refocusHeading.current = null;
+                        node.focus();
                       }}
                       data-testid="part-name-heading"
                       onClick={() => setSearchingPart(pi)}
