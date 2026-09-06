@@ -272,7 +272,7 @@ describe("practice_logs store + range progress (#1259)", () => {
     logPracticeSession(pid, "Sauna", shiftDateStr(t, -1), "page");
     prog = getFrequencyTargetProgress(pid).find((p) => p.target.id === tid)!;
     expect(prog).toMatchObject({ count: 2, met: false, atCeiling: false });
-    expect(prog.pace).toBe("on-pace");
+    expect(prog.pace).toBe("quiet");
 
     // Reach the floor (3 distinct days) → met, still below the ceiling.
     logPracticeSession(pid, "Sauna", shiftDateStr(t, -2), "page");

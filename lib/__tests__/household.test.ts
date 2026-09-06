@@ -6,6 +6,7 @@ import {
   weightTrend,
 } from "@/lib/household";
 import type { OutcomeGoal, IntakeItem } from "@/lib/types";
+import type { GoalProgress } from "@/lib/goal-progress";
 import type { UpcomingItem } from "@/lib/upcoming";
 
 // Minimal outcome-goal factory (freeform by default), matching goals.test.ts.
@@ -288,5 +289,25 @@ describe("goalHighlights", () => {
     // never a raw-completion rose; a goal with no numeric basis renders no bar.
     expect(hi[0].barClass).toBe("bg-brand-600");
     expect(hi[1].barClass).toBe("");
+  });
+
+  it("renders no percent and no bar for a measured goal nothing has measured (#5396)", () => {
+    const goal = makeGoal({ id: 1, kind: "body", body_metric: "weight" });
+    const progress = new Map<number, GoalProgress>([
+      [
+        1,
+        {
+          current: 0,
+          target: 70,
+          pct: 0,
+          done: false,
+          unavailable: "no-readings",
+        },
+      ],
+    ]);
+    expect(goalHighlights([goal], progress, "2026-06-01")[0]).toMatchObject({
+      pct: null,
+      barClass: "",
+    });
   });
 });

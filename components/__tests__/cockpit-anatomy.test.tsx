@@ -155,7 +155,7 @@ const INTAKE_CONTEXT: IntakeFormContext = {
   todayStr: "2026-09-02",
 };
 
-function meds(props: { profileId?: number } = {}) {
+function meds(props: { profileId?: number; canAdd?: boolean } = {}) {
   render(
     <IllnessMedicationLogger
       meds={MEDS}
@@ -193,6 +193,11 @@ describe("meds are labeled-verb chips, detail only when acting (#4752 item 4)", 
     expect(screen.queryByTestId("prn-redose-line")).toBeNull();
     fireEvent.click(screen.getByTestId("cockpit-med-more"));
     expect(screen.getByTestId("cockpit-med-chip-34")).toBeTruthy();
+  });
+
+  it("omits the add door when the viewer cannot add", () => {
+    meds({ canAdd: false });
+    expect(screen.queryByTestId("illness-add-medication")).toBeNull();
   });
 
   it("opens the full statement in place, and a chip opens the med rather than giving it", () => {
