@@ -10,11 +10,6 @@ import {
   escalationAckCloseText,
   escalationTakeCloseText,
   parseAllCallback,
-  offerCallback,
-  parseOfferCallback,
-  parseEscalationCallback,
-  parsePreventiveCallback,
-  parseRefillCallback,
   parseSkipCallback,
   parseTakeCallback,
   parseStillGoingCallback,
@@ -45,6 +40,13 @@ import {
   callbackDataFits,
   TELEGRAM_CALLBACK_DATA_MAX_BYTES,
 } from "../notifications/callback-tokens";
+import {
+  offerCallback,
+  parseOfferCallback,
+} from "../notifications/offer-tokens";
+import { parsePreventiveCallback } from "../notifications/preventive-tokens";
+import { parseRefillCallback } from "../notifications/refill-tokens";
+import { parseEscalationCallback } from "../notifications/escalation-tokens";
 
 describe("parseTakeCallback", () => {
   it("parses a full take token", () => {
