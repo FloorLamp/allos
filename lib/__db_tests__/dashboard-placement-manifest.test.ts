@@ -15,7 +15,7 @@ import { zonedWallTimeToUtc } from "@/lib/calendar-ics";
 import { reconcileFlags } from "@/lib/queries";
 import { saveFitnessEntry } from "@/lib/fitness-assessment";
 import { recordGlucoseTrace } from "@/lib/glucose-trace-db";
-import { getTimezone } from "@/lib/settings";
+import { getTimezone, setWeekMode } from "@/lib/settings";
 import { perTestCeiling } from "../../vitest.timeouts";
 import { seedStandardMetricSaves } from "@/lib/standard-metric-seeds";
 import { episodesForSituation } from "@/lib/symptom-episode";
@@ -1735,12 +1735,16 @@ describe("actual atomic dashboard manifests", () => {
 // ruling). Self-contained: its own profiles, its own render — it does not touch
 // PERSONAS or QUERY_BASELINE above, so a change here cannot silently move either.
 //
-// Rolling mode (the default; no week_start/week_mode setting is written) makes the
-// window always fully elapsed (#748 item 3's `elapsedDays: 7`), so the only day left
-// to act on is today and a fresh per_week >= 2 target with zero sessions in the
-// trailing week is BEHIND by construction — no calendar alignment to pin. (Two, not
-// one: since #4758 a single owed session still fits in the day that is left.) That is the fixture every case below
-// reuses, varied on exactly the one axis each case is about.
+// Rolling week mode is SET, not assumed (#5410). The default is calendar
+// (`DEFAULT_WEEK_MODE`), whose window grows from the week-start day, so
+// `elapsedDays` is the weekday + 1 and #4758's rule reads a fresh 2x/week target
+// with zero sessions as BEHIND only once the window is fully elapsed — one day a
+// week. Rolling makes the window the trailing 7 days whatever the calendar day
+// (#748 item 3's `elapsedDays: 7`), so the only day left to act on is today and the
+// target is BEHIND by construction — no calendar alignment to pin. (Two, not one:
+// since #4758 a single owed session still fits in the day that is left.) That is
+// the fixture every case below reuses, varied on exactly the one axis each case is
+// about.
 describe("the practice-target row logs in place (#4076)", () => {
   const adminLoginId = (): number =>
     (
@@ -1780,6 +1784,7 @@ describe("the practice-target row logs in place (#4076)", () => {
     perWeek: number
   ): number {
     const profileId = newProfile(`dashboard:${name}`);
+    setWeekMode(profileId, "rolling");
     // `practice` rows carry a NOT-NULL `scope_identity` (#123's trigger) — the same
     // lowercase key every practice write already uses.
     db.prepare(
