@@ -36,6 +36,10 @@ set -uo pipefail
 BRANCH=$1
 MODE=${2:-start}
 HELPERS=$(dirname "$0")
+case "$MODE" in start | --wait) ;; *)
+  echo "run-gates-recorded.sh: unknown mode $MODE — see --help" >&2
+  exit 2 ;;
+esac
 
 # The state dir is the resolver's answer or nothing: a guessed one writes the
 # .pid where no later shell will look, which is the defect this file replaces.
@@ -75,9 +79,5 @@ case "$MODE" in
     # fail or kill — and the `.exit` file then tells the three apart.
     while kill -0 "$pid" 2>/dev/null; do sleep 5; done
     report
-    ;;
-  *)
-    echo "run-gates-recorded.sh: unknown mode $MODE — see --help" >&2
-    exit 2
     ;;
 esac

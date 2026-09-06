@@ -82,7 +82,11 @@ describe("resolveStateDir", () => {
   const durable = "/Users/wang/.local/state/allos-work";
   const legacy = "/Users/wang/.local/state/allos-orchestration";
   it.each([
-    [[durable + "/" + LEDGER_FILE], durable, "the ledger under the durable dir"],
+    [
+      [durable + "/" + LEDGER_FILE],
+      durable,
+      "the ledger under the durable dir",
+    ],
     [
       [container + "/" + LEDGER_FILE],
       container,
@@ -107,7 +111,10 @@ describe("resolveStateDir", () => {
   it("SCRATCH still outranks a ledger that lives elsewhere", () => {
     const present = new Set([container, container + "/" + LEDGER_FILE]);
     expect(
-      resolveStateDir({ SCRATCH: "/elsewhere" }, io({ exists: (p) => present.has(p) }))
+      resolveStateDir(
+        { SCRATCH: "/elsewhere" },
+        io({ exists: (p) => present.has(p) })
+      )
     ).toBe("/elsewhere");
   });
 });

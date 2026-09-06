@@ -53,7 +53,9 @@ describe("the check-in's roster section", () => {
       "  Cluster wt-b lane-b issues=2,3 port=5600",
     ]);
     expect(lines[3]).toContain("5 closed dispatch(es) on record");
-    expect(lines.slice(4)).toEqual([done(3), done(4), done(5)].map((d) => `    ${d}`));
+    expect(lines.slice(4)).toEqual(
+      [done(3), done(4), done(5)].map((d) => `    ${d}`)
+    );
     expect(lines.join("\n")).not.toContain("old-lane-1");
   });
 

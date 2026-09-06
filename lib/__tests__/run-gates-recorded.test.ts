@@ -109,14 +109,23 @@ describe("run-gates-recorded.sh", () => {
     expect(run.stdout).toContain("GATES EXIT=KILLED — no exit recorded");
   });
 
-  it("refuses before running when the state dir cannot be resolved", () => {
-    const h = harness(0);
-    const run = h.run(["br"], { TEST_STATE_DIR: "" });
-    expect(run.status).toBe(2);
-    expect(run.stderr).toContain("STATE-DIR RESOLVER FAILED");
-    expect(run.stderr).toContain("host.mjs: boom");
-    expect(fs.readdirSync(h.state)).toEqual([]);
-  });
+  it.each([
+    [
+      ["br"],
+      { TEST_STATE_DIR: "" },
+      ["STATE-DIR RESOLVER FAILED", "host.mjs: boom"],
+    ],
+    [["br", "--frob"], {}, ["unknown mode --frob"]],
+  ])(
+    "refuses before running — args %j, env %j — and touches nothing",
+    (args, env, fragments) => {
+      const h = harness(0);
+      const run = h.run(args, env);
+      expect(run.status).toBe(2);
+      for (const f of fragments) expect(run.stderr).toContain(f);
+      expect(fs.readdirSync(h.state)).toEqual([]);
+    }
+  );
 
   it("--wait with no recorded pid refuses rather than waiting on a name", () => {
     const h = harness(0);

@@ -307,8 +307,14 @@ describe("the brief a lane receives", () => {
       "bash scripts/orchestration/run-gates-recorded.sh",
       "and the script to run instead",
     ],
-    ["DO NOT PASTE THE OLD INLINE FORM", "with the &&-chain trap stated beside it"],
-    ["a NAME matches your siblings (#5366)", "and why pgrep by name cannot wait"],
+    [
+      "DO NOT PASTE THE OLD INLINE FORM",
+      "with the &&-chain trap stated beside it",
+    ],
+    [
+      "a NAME matches your siblings (#5366)",
+      "and why pgrep by name cannot wait",
+    ],
     ["THE ONE EXCEPTION", "with the narrow run_in_background carve-out named"],
     [
       'MUT=$SCRATCH/mut-$(basename "$(git rev-parse --show-toplevel)")',

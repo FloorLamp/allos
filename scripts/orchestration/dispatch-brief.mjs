@@ -558,13 +558,14 @@ ${landingLines}
   It writes ${STATE_DIR}/gates-${opts.branch}.log, \`.log.pid\` and \`.log.exit\`, waits
   with \`kill -0\` on the PID it captured — the KERNEL's answer, which no other process's
   command line can claim, and which stops on ANY exit: pass, fail or kill — and reads
-  the \`.exit\` file, the second fact, which tells those three apart. DO NOT PASTE THE
-  OLD INLINE FORM: two lanes on 2026-09-06 folded \`cd … && L=… && { … } & echo \$! >
-  "\$L.pid"\` into one command, an \`&&\` chain ending in \`&\` backgrounds the WHOLE chain,
-  \`\$L\` was empty in the foreground, \`.pid\` landed in the main checkout and a finished
-  gate read as KILLED. And never wait on \`pgrep -f agent-gates.sh\`: every lane runs the
-  same script, so a NAME matches your siblings (#5366) — only the PID and the \`.exit\`
-  file are yours. Do not substitute a poll for \`ALL GATES PASSED\` either:
+  the \`.exit\` file, the second fact, which tells those three apart.
+  DO NOT PASTE THE OLD INLINE FORM: an \`&&\` chain ending in \`&\` backgrounds the WHOLE
+  chain, so \`cd … && L=… && { … } & echo \$! > "\$L.pid"\` ran with \`\$L\` EMPTY in the
+  foreground — two lanes on 2026-09-06 wrote \`.pid\` into the main checkout and read a
+  finished gate as KILLED. The script holds the assignments and the \`&\` in ONE shell.
+  And never wait on \`pgrep -f agent-gates.sh\`: every lane runs the same script, so
+  a NAME matches your siblings (#5366) — only the PID and the \`.exit\` file are yours.
+  Do not substitute a poll for \`ALL GATES PASSED\` either:
   \`agent-gates.sh\` prints that only on the success path and
   \`=== GATE <name>: FAIL (exit N) ===\` on the other, so a loop waiting for the PASS
   line hangs forever on a RED — the same trap wearing a green hat.
