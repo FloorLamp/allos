@@ -726,8 +726,11 @@ test("a strength part states its implement, and the registry door is one per for
     await firstName.fill("Curl");
     // The dropdown is open over the row below; Escape dismisses it without committing
     // a pick, which is exactly what this state needs.
+    // Escape settles the typed name back to its heading (#5370) without committing
+    // a pick, which is exactly what this state needs.
     await firstName.press("Escape");
-    await expect(firstName).toHaveValue("Curl");
+    const firstHeading = form.getByTestId("part-name-heading");
+    await expect(firstHeading).toContainText("Curl");
     await expect(chips).toHaveCount(1);
     await expect(chips).toHaveText("Pick equipment");
     await expect(chips).toHaveAttribute("data-fact-state", "missing");
@@ -745,7 +748,7 @@ test("a strength part states its implement, and the registry door is one per for
     );
     await expect(doors).toHaveCount(1);
     await page.getByRole("button", { name: "Barbell", exact: true }).click();
-    await expect(firstName).toHaveValue("Barbell Curl");
+    await expect(firstHeading).toContainText("Barbell Curl");
     // The dirty half, asserted FIRST — `dirty` is transient, and reading it after the
     // panel closes would be reading it after the state it names has passed.
     await expect(form).toHaveAttribute("data-unsaved", "true");
@@ -777,7 +780,10 @@ test("a strength part states its implement, and the registry door is one per for
       .filter({ hasText: "Barbell Bench Press" })
       .first()
       .click();
-    await expect(secondName).toHaveValue("Barbell Bench Press");
+    // The pick settles it into its heading (#5370).
+    await expect(
+      form.getByTestId("part-name-heading").nth(1) // nth-ok: the part this spec just added
+    ).toContainText("Barbell Bench Press");
 
     // TWO PARTS, TWO CONCLUSIONS, AND STILL NO DOOR. The second part's implement comes
     // from the lift's own name rather than from a pick, and it is stated the same way.

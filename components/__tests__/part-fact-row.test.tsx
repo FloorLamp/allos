@@ -1,7 +1,7 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import ActivityPartsList from "@/components/activity-form/ActivityPartsList";
 import type { PartEntry } from "@/lib/activity-form-model";
+import { part, renderList } from "./activity-parts-fixture";
 
 // THE PER-PART FACT ROW (#3349), at the tier where its wiring is cheap to ask about.
 //
@@ -34,87 +34,6 @@ beforeEach(() => {
     }
   );
 });
-
-function part(over: Partial<PartEntry> = {}): PartEntry {
-  return {
-    name: "Barbell Bench Press",
-    custom: false,
-    customType: null,
-    sets: [],
-    perSide: false,
-    equipmentId: null,
-    distance: "",
-    durationMin: "",
-    targetReps: "",
-    toFailure: false,
-    varied: false,
-    ...over,
-  };
-}
-
-function renderList(parts: PartEntry[], over: Record<string, unknown> = {}) {
-  const onUpdatePart = vi.fn();
-  const list = (
-    currentParts: PartEntry[],
-    currentOver: Record<string, unknown> = over
-  ) => (
-    <ActivityPartsList
-      parts={currentParts}
-      stickyFooter={false}
-      isEdit={false}
-      live={false}
-      units={{ weightUnit: "kg", distanceUnit: "km", temperatureUnit: "F" }}
-      history={{}}
-      deloadContext={{ isDeloadWeek: false, routineKeys: [] }}
-      recoveringContext={{ temperedRegions: [], constraints: [] }}
-      plateauHints={[]}
-      rpeTracking={null}
-      onRpeTrackingChange={vi.fn()}
-      currentActivityId={null}
-      editedDate={null}
-      equipmentList={[]}
-      onEquipmentCreated={vi.fn()}
-      overallDuration={null}
-      bwKnown
-      firstBwPart={-1}
-      bwInput=""
-      bwSaving={false}
-      onBwInput={vi.fn()}
-      onSaveBodyweight={vi.fn()}
-      equipmentRankedOptions={[]}
-      usedActivityNames={new Set()}
-      enteredLiftBases={[]}
-      liftCompanions={{}}
-      isKnown={() => true}
-      partType={() => "strength"}
-      partNeedsDistance={() => false}
-      partIssue={() => null}
-      blocked={false}
-      canAddPart={false}
-      showRollup={false}
-      rollupDistanceKm={null}
-      rollupDurationMin={null}
-      onTypePartName={vi.fn()}
-      onPickPartName={vi.fn()}
-      onMovePart={vi.fn()}
-      onRemovePart={vi.fn()}
-      onAddPart={vi.fn()}
-      onUpdatePart={onUpdatePart}
-      onUpdateSet={vi.fn()}
-      onAddSet={vi.fn()}
-      onRemoveSet={vi.fn()}
-      onUpdatePartName={vi.fn()}
-      onFill={vi.fn()}
-      onPlateTarget={vi.fn()}
-      {...currentOver}
-    />
-  );
-  const view = render(list(parts));
-  return {
-    onUpdatePart,
-    rerenderParts: (next: PartEntry[]) => view.rerender(list(next)),
-  };
-}
 
 describe("the per-part fact row states what the exercise records (#3349)", () => {
   it.each([
