@@ -199,14 +199,33 @@ export default function LogPracticeButton({
   const [duration, setDuration] = useState(
     defaultDurationMin == null ? "" : String(defaultDurationMin)
   );
+  // WHOSE ANSWER THE FIELD IS HOLDING. False while it still shows the prefill it was
+  // seeded with; true from the moment the person types or steps it, and only they can
+  // set it — the follow below never does.
+  const [durationIsOurs, setDurationIsOurs] = useState(false);
+  const stateDuration = (next: string) => {
+    setDurationIsOurs(true);
+    setDuration(next);
+  };
   // Follow the SERVER's usual-duration prefill for the same reason the count does: a
   // session can be corrected or deleted from the history table beside this button. A
   // local value frozen at mount would keep offering a duration the log no longer
   // supports.
+  //
+  // UNTIL THE PERSON HAS ANSWERED (#3416). The follow exists to replace a prefill
+  // nobody has touched, and a prefill nobody has touched is the only thing it may
+  // replace: this control keeps its mount across a change of the payload behind it —
+  // the quick sheet hands it a late answer under an offline copy, and that copy
+  // carries no prefill at all, so the move is `null → the usual duration` on every
+  // practice that has one — and overwriting the minutes somebody set for THIS session
+  // makes the next tap post the server's number instead of theirs, with nothing said.
+  // `serverDuration` still moves, so the field goes back to following the prefill the
+  // moment a new mount seeds it.
   const [serverDuration, setServerDuration] = useState(defaultDurationMin);
   if (serverDuration !== defaultDurationMin) {
     setServerDuration(defaultDurationMin);
-    setDuration(defaultDurationMin == null ? "" : String(defaultDurationMin));
+    if (!durationIsOurs)
+      setDuration(defaultDurationMin == null ? "" : String(defaultDurationMin));
   }
 
   // THE SESSION IS THE SERVER'S, NOT A COPY (#5431). This used to hold a second,
@@ -257,7 +276,7 @@ export default function LogPracticeButton({
   };
   function step(delta: number) {
     const next = stepPracticeDuration(durationValue(), delta);
-    setDuration(next == null ? "" : String(next));
+    stateDuration(next == null ? "" : String(next));
   }
 
   function report(outcome: PracticeLogOutcome) {
@@ -481,7 +500,7 @@ export default function LogPracticeButton({
           min="1"
           step="1"
           value={duration}
-          onChange={(event) => setDuration(event.target.value)}
+          onChange={(event) => stateDuration(event.target.value)}
           className="number-no-spinner min-w-0 w-full bg-transparent px-1 py-1 text-right text-sm outline-hidden focus:ring-0"
           aria-label={`Duration in minutes for this ${practice} session`}
           data-testid="practice-duration-input"

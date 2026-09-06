@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  Component,
+  Suspense,
   createContext,
   useCallback,
   useContext,
@@ -8,6 +10,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from "react";
 import dynamic from "next/dynamic";
 import { IconChevronDown } from "@tabler/icons-react";
@@ -15,6 +18,7 @@ import BottomSheet from "./BottomSheet";
 import { LoggedViaSurface } from "./LoggedViaSurface";
 import Avatar from "./Avatar";
 import { useToast } from "./Toast";
+import { useTimezone } from "./TimezoneProvider";
 import QuickDoseList from "./quick-entry/QuickDoseList";
 import MeasurementsQuickAdd from "@/app/(app)/trends/MeasurementsQuickAdd";
 import FoodLogBar from "@/app/(app)/nutrition/FoodLogBar";
@@ -27,6 +31,23 @@ import type { MeasurementsQuickEntry } from "@/lib/quick-entry-measurements";
 import type { QuickEntryForm, QuickEntryPrefill } from "@/lib/quick-log";
 import type { SessionProfile } from "@/lib/auth";
 import type { OverlaySize } from "./overlay";
+import { dateStrInTz } from "@/lib/date";
+import {
+  dayContextKey,
+  type DayContextKey,
+  type DayContextParts,
+  type TapReach,
+} from "@/lib/day-context-key";
+import { formatRelativeTime } from "@/lib/format-date";
+import {
+  captureLastGoodToken,
+  clearLastGood,
+  quickEntryOffline,
+  recallLastGood,
+  rememberLastGood,
+} from "@/lib/offline/quick-entry-read";
+import { allIntents } from "@/lib/offline/queue-db";
+import { allSnapshots } from "@/lib/offline/snapshot-db";
 
 // The newest bodies load ON DEMAND (#1525/#1633/#1892). This host is mounted on every
 // route, and its promise is that it COSTS NOTHING until opened — a promise about
@@ -36,35 +57,49 @@ import type { OverlaySize } from "./overlay";
 // practice button's modal and date field) that no page-load should pay for. Both are
 // only rendered AFTER `loadQuickEntry` resolves, so the chunk fetch overlaps a round
 // trip that was already happening and costs nothing perceptible.
-const UploadForm = dynamic(() => import("./UploadForm"));
-const QuickPracticeList = dynamic(
-  () => import("./quick-entry/QuickPracticeList")
-);
-// Same rule, third body (#1892): the period panel drags in the shared offer button
-// and, through it, the cycle Server Actions' client references. Static-importing it
-// would put that on the initial JS of EVERY route — including routes with no cycle
-// surface at all — which is exactly the promise this host makes above. Hydration
-// latency is not free: a wider hydration window is what turns a pre-hydration
-// `.fill()` on a controlled input into a silently stale save (see settledFill in
-// e2e/helpers.ts), so the cost of breaking this rule is paid by other pages' flakes.
-const QuickCyclePanel = dynamic(() => import("./quick-entry/QuickCyclePanel"));
-// Same rule, fourth body (#2130): the mood check-in drags in the shared ledger
-// hook and the mood action's client reference; loaded only once opened.
-const MoodForm = dynamic(() => import("./mood/MoodForm"));
-// Same rule, fifth body (#2785): the stool picker drags in the shared ledger hook,
-// the seven inline glyphs and the stool action's client reference; loaded on open.
-const StoolTypeControl = dynamic(() => import("./stool/StoolTypeControl"));
-// Same rule, sixth body (#3327): the substance list drags in the shared ledger hook
-// and the substance action's client reference; loaded on open.
-const QuickSubstanceList = dynamic(
-  () => import("./quick-entry/QuickSubstanceList")
-);
-// Same rule, seventh body (#4064), and the heaviest of them: the symptom bar drags in
-// the shared combobox, the optimistic ledger, the undo toast lifecycle and five symptom
-// actions' client references. Loaded on open, after the gather it needs anyway.
-const QuickSymptomPanel = dynamic(
-  () => import("./quick-entry/QuickSymptomPanel")
-);
+//
+// A FACTORY, NOT SEVEN MODULE CONSTANTS, because a chunk fetch can fail (#3416
+// proposal 4 — the first open of one of these bodies on bad wifi). `dynamic()` is
+// `React.lazy` underneath, and a lazy whose import rejected stays rejected for the
+// life of that instance: re-rendering it re-throws the same error without asking the
+// network again. So the retry state's button cannot re-mount the SAME components — it
+// mints a fresh set, whose imports ask again (and, once the chunk is cached by the
+// service worker, resolve at once). Called once at mount and once per retry.
+function loadBodies(attempt: number) {
+  return {
+    attempt,
+    UploadForm: dynamic(() => import("./UploadForm")),
+    QuickPracticeList: dynamic(() => import("./quick-entry/QuickPracticeList")),
+    // Same rule, third body (#1892): the period panel drags in the shared offer
+    // button and, through it, the cycle Server Actions' client references.
+    // Static-importing it would put that on the initial JS of EVERY route — including
+    // routes with no cycle surface at all — which is exactly the promise this host
+    // makes above. Hydration latency is not free: a wider hydration window is what
+    // turns a pre-hydration `.fill()` on a controlled input into a silently stale save
+    // (see settledFill in e2e/helpers.ts), so the cost of breaking this rule is paid by
+    // other pages' flakes.
+    QuickCyclePanel: dynamic(() => import("./quick-entry/QuickCyclePanel")),
+    // Same rule, fourth body (#2130): the mood check-in drags in the shared ledger
+    // hook and the mood action's client reference; loaded only once opened.
+    MoodForm: dynamic(() => import("./mood/MoodForm")),
+    // Same rule, fifth body (#2785): the stool picker drags in the shared ledger
+    // hook, the seven inline glyphs and the stool action's client reference; loaded
+    // on open.
+    StoolTypeControl: dynamic(() => import("./stool/StoolTypeControl")),
+    // Same rule, sixth body (#3327): the substance list drags in the shared ledger
+    // hook and the substance action's client reference; loaded on open.
+    QuickSubstanceList: dynamic(
+      () => import("./quick-entry/QuickSubstanceList")
+    ),
+    // Same rule, seventh body (#4064), and the heaviest of them: the symptom bar
+    // drags in the shared combobox, the optimistic ledger, the undo toast lifecycle
+    // and five symptom actions' client references. Loaded on open, after the gather
+    // it needs anyway.
+    QuickSymptomPanel: dynamic(() => import("./quick-entry/QuickSymptomPanel")),
+  };
+}
+
+type Bodies = ReturnType<typeof loadBodies>;
 
 // The shared quick-entry overlay host (issue #1468).
 //
@@ -192,16 +227,136 @@ const SHEET: Record<
 // one discriminated union either way, so the body below still switches on `form`.
 type QuickEntryBody = QuickEntryData | MeasurementsQuickEntry;
 
+// WHAT THE FORM ON SCREEN COULD SEE (#3416). A body built from the device's own
+// knowledge is composed BLIND — it shows the day as this device holds it, and the
+// mood form it produces writes under `dayUnseen` so it cannot erase what it never
+// saw. A body built from an answer this context actually got from the server saw the
+// day. The two are not interchangeable props on one mount: a form's local state was
+// seeded from one of them, so the sight the form was composed under has to be the
+// sight it keeps until it is remounted (see the body's `key` below).
+type BodySight =
+  // The server answered for this context — a fresh gather, or a last-good copy of one.
+  | "read"
+  // Built here from what the device holds: a #2908 snapshot, or its own queue.
+  | "device";
+
+// WHOSE IDENTITY THE SIGHT IS PART OF — exactly the bodies whose WRITE depends on it.
+// A late answer under a device copy changes the sight, and remounting the body on it
+// throws away whatever the person has already done in that mount. That is worth doing
+// only where keeping the mount could produce a WRONG WRITE.
+//
+// The table below is derived from WHAT EACH BODY ACTUALLY HOLDS and which of those
+// pieces FOLLOW a prop, because "keeps its mount" is only half an answer: a body that
+// keeps its mount can still have a value taken off it, by its own follower, the moment
+// the payload behind it moves. Both halves have to be true of every row.
+//
+// - MOOD — remounts. Holds the day's whole draft (valence, energy, Calm, factors,
+//   note, the #2128 day pick), all seeded from `days` ONCE and following nothing. Its
+//   check-in is the day's WHOLE answer, so a blind composition left beside a payload
+//   that saw the day writes the replacing statement over what it never saw (`dayUnseen`
+//   → `MoodWriteSight`, lib/offline/writes.ts). The new mount carries the day and needs
+//   no fence at all. It is therefore also the one body that can LOSE a draft to a late
+//   answer, so it is the one handed `onStagedChange` and the only one spoken about.
+// - DOSE — keeps its mount, and holds nothing that follows. `QuickDoseList`'s
+//   `resolved` set, its per-occurrence `notes` and its day tab are all local and are
+//   keyed per (day, doseId), which is how `markDoseTaken` names its write; the newer
+//   `doses`/`pastDays` are FILTERED through `resolved` rather than replacing it, and
+//   the rows reconcile by `key={dose.doseId}` so an in-flight confirm keeps its
+//   control. The arriving payload can only ADD (the PRN block and the past-day tabs
+//   the copy declines to offer). Remounting would strike the person's own confirms
+//   off — a dose taken offline coming back offering Take — for a fence it never had.
+// - PRACTICE — keeps its mount, and holds ONE thing that follows: the duration.
+//   `QuickPracticeList` reseeds `rows` from a newer `practices` (server data, nothing
+//   of the person's in it) and keys its items by `practice.identity`, so each
+//   `LogPracticeButton` survives; inside it, `count`/`lastTime` follow `todayCount`
+//   and are the server's own reading, the "Happened earlier?" statement is anchored on
+//   `today` (unchanged across this transition) and so survives untouched — but
+//   `duration` is the person's, and it followed `defaultDurationMin` unconditionally.
+//   The device copy carries no prefill, so this transition moved it `null → the usual
+//   duration` on every practice that has one and the next tap posted the server's
+//   number instead of theirs, silently. That is fixed where the value lives
+//   (`LogPracticeButton`: the follow yields once the person has answered), NOT by
+//   remounting — a new mount would seed from the same prefill and lose the same
+//   minutes, so the sight is not part of this body's identity either.
+// - STOOL — keeps its mount. Holds `count`, which follows `todayCount` and is the
+//   server's own reading, and — despite an earlier claim here that nothing on it is
+//   typeable — the "Happened earlier?" time statement, which IS the person's. It is
+//   anchored on `today`, unchanged across this transition, so it survives; the write
+//   is additive per instant and carries its own fields.
+//
+// Nothing else reaches this transition: `quickEntryOffline` answers null for every
+// other form, so a stalled cold open there reaches the retry state, already "read".
+function sightIsIdentity(form: QuickEntryBody["form"]): boolean {
+  return form === "mood";
+}
+
 type LoadState =
   | { status: "loading" }
-  | { status: "ready"; data: QuickEntryBody }
+  // `asOf` is the #2908 as-of line, set exactly when what is shown did not just come
+  // from the server: a last-good copy whose revalidate FAILED, or the device's own
+  // copy. Null for a fresh gather — and for a last-good render while its revalidate
+  // is still in flight, since online that settles within the round trip.
+  | {
+      status: "ready";
+      data: QuickEntryBody;
+      asOf: string | null;
+      sight: BodySight;
+    }
   | { status: "error" };
 
-// The stall bound a cold "Loading…" may sit under before the sheet admits the
-// gather is not coming back (#3416 proposal 3) — long enough that an ordinary slow
-// connection still finishes first, short enough that a dead one does not leave the
-// sheet looking merely quiet.
+// The stall bound a cold "Loading…" may sit under before the sheet stops waiting
+// for the gather (#3416 proposal 3) — long enough that an ordinary slow connection
+// still finishes first, short enough that a dead one does not leave the sheet looking
+// merely quiet. Firing it INVALIDATES THE REQUEST, nothing more: the Server Action
+// may still be executing, and if its answer arrives while this context is still the
+// one on screen it is applied (fresh beats a copy). Nothing here cancels server work.
 const QUICK_ENTRY_LOAD_TIMEOUT_MS = 10_000;
+
+// THE SHEET'S REACH — the day context it stands on (#5211), which is #5211's to mint
+// as `SHEET_REACH` in lib/log-manifest.ts once its provider lands; until then it is
+// declared HERE, once, as what this host actually offers today: every body is handed
+// the profile's today and no day switcher sits above them, so the host's own reach
+// is `today`. When #5211 widens it, the key below moves with it and every held entry
+// under the old shape becomes a miss (clause 5) — nothing to migrate, because nothing
+// durable is keyed by it.
+const SHEET_REACH: TapReach = { kind: "today" };
+
+// ONE OPEN, ONE REQUEST. Minted when a form is asked for and compared by identity when
+// its answers come back, so a response — the gather's, the stall timer's, the device
+// copy's — is applied only if THIS is still the request on screen. `key` is the
+// #5211 identity it was issued for (clause 3: captured at request time, never read
+// at response time); `settled` records that the server itself answered, so a slower
+// recovery path never paints a copy over the real thing.
+interface Request {
+  readonly key: DayContextKey;
+  readonly parts: DayContextParts;
+  readonly form: QuickEntryForm;
+  settled: boolean;
+  // THE BODY A DEVICE COPY PUT ON SCREEN for this request (`recover` painted one), or
+  // null while none has. The late answer that lands behind it is a CHANGE OF SIGHT,
+  // not a refresh — and whether that change REPLACES the body is a question about the
+  // form on screen, which is this one: a copy can answer `unavailable` where the
+  // gather answers `mood`, and it is the mount being thrown away that decides, not the
+  // payload arriving. Read by `remounts` below, which is the question the announcement
+  // asks; the body's `key` asks the same predicate of the state on screen.
+  copiedForm: QuickEntryBody["form"] | null;
+}
+
+// WHETHER A LATE ANSWER REPLACES THE BODY ON SCREEN. One expression, so the sentence
+// spoken about a remount and the `key` that performs it cannot come apart: the answer
+// always renders at sight "read", so the mount is replaced exactly when the body a
+// device copy put up is one whose identity carries the sight. Asking `sightIsIdentity`
+// of the ARRIVING form instead would be a second, independently-edited spelling of the
+// same rule — the coupling that let a previous round drop this test as redundant.
+function remounts(request: Request): boolean {
+  return request.copiedForm != null && sightIsIdentity(request.copiedForm);
+}
+
+function asOfCopy(fetchedAt: string | Date, why: string): string {
+  return `As of ${formatRelativeTime(
+    typeof fetchedAt === "string" ? fetchedAt : fetchedAt.toISOString()
+  )} — ${why}`;
+}
 
 export default function QuickEntryProvider({
   children,
@@ -225,6 +380,12 @@ export default function QuickEntryProvider({
   actingProfileId: number;
 }) {
   const toast = useToast();
+  // The acting profile's zone (the shell's one `TimezoneProvider`), which is what the
+  // sheet's day is minted in below. A chosen non-acting subject in another zone is
+  // keyed by THIS zone's day: the shell holds no other, and the key is a cache key
+  // (a miss on their midnight, refetched; never a record). #5211's provider owns the
+  // day from then on.
+  const tz = useTimezone();
   const [open, setOpen] = useState(false);
   // The form is RETAINED after close so the panel keeps its content through the
   // sheet's exit animation instead of blanking on the way out.
@@ -239,29 +400,62 @@ export default function QuickEntryProvider({
   // The "Who is this for?" block (#4932). Toggled by the chip; nothing else opens
   // it and it never opens on its own.
   const [pickerOpen, setPickerOpen] = useState(false);
-  // Ignore a response that lost its race — tapping weight then dose before the
-  // first gather returns must not paint the weight form into the dose sheet.
-  const requestRef = useRef(0);
+  // The request on screen (see `Request`). Tapping weight then dose before the first
+  // gather returns must not paint the weight form into the dose sheet; a subject
+  // switch or a new day mints a new one and the old answer is discarded WHOLE.
+  const requestRef = useRef<Request | null>(null);
+  // The dynamic bodies, re-minted by Retry (see `loadBodies`).
+  const [bodies, setBodies] = useState(() => loadBodies(0));
+
+  // WHAT THE BODY ON SCREEN WOULD LOSE IF IT WERE REPLACED — input, and only input no
+  // write has taken. A body that both remounts on a change of sight and stages input
+  // reports this while it is mounted (today that is the mood form alone,
+  // `onStagedChange`), and the announcement below is made only when it says there is
+  // something to announce AND the answer actually replaces that body (`remounts`).
+  // A sheet nobody typed on says nothing; so does one whose draft is already inside a
+  // write in flight, because that write lands (`day_unseen=1` merges it) and telling
+  // somebody their paragraph was discarded while it is on its way is the same false
+  // sentence in the other direction. False again the moment the body goes: the sheet
+  // closing, a new request, or the body's own unmount.
+  const stagedRef = useRef(false);
+  // A CLOSED SHEET HOLDS NOTHING, and it has to be a standing rule rather than a clear
+  // on the way out: the body stays mounted through the exit animation (`form` is
+  // retained below), and a check-in that closed the sheet by succeeding reports again
+  // the instant its write unfreezes the fields. Clearing once at `close` left that
+  // late report standing, which is the empty-screen announcement coming back by the
+  // one path that ends with the sheet already gone.
+  const sheetOpen = useRef(false);
+  const reportStaged = useCallback((staged: boolean) => {
+    stagedRef.current = staged && sheetOpen.current;
+  }, []);
 
   const close = useCallback(() => {
     setOpen(false);
     setPickerOpen(false);
+    sheetOpen.current = false;
+    stagedRef.current = false;
   }, []);
 
-  // LAST-GOOD, PER (FORM, SUBJECT) (#3416/#4454). Held in a ref, not state: it is
-  // read synchronously inside `loadFor` and never itself drives a render — only the
-  // `ready`/`error` state transitions below do. Keyed on the subject (#4932's Refs:
-  // "the subject joins #3416's snapshot key") so a cached read for Mia can never
-  // paint as Alex's, and cleared whenever the ACTING profile changes (below) — the
-  // same device-local wipe boundary ProfileSwitchWatcher enforces for the offline
-  // read snapshots, extended to this in-memory one.
-  const lastGoodRef = useRef(new Map<string, QuickEntryData>());
-  const priorActingProfileId = useRef(actingProfileId);
+  // LAST-GOOD (#3416/#4454) lives in lib/offline/quick-entry-read.ts, keyed by the
+  // #5211 day-context key (subject, day, reach) plus the form — so a cached read for
+  // Mia can never paint as Alex's, and a today copy can never fill a yesterday form.
+  // Dropped whenever the ACTING profile changes and by the device wipe
+  // (components/device-wipe.ts) — the same boundary ProfileSwitchWatcher and logout
+  // enforce for the offline read snapshots, extended to this in-memory one.
+  //
+  // AND ON EVERY MOUNT, which is the half the wipe cannot do. The store is module
+  // state (it has to be: the wipe must reach it, and a per-mount ref could not be
+  // reached), and a sign-out is a CLIENT navigation — `logoutAction`'s redirect
+  // through the RedirectBoundary, not a document load — so the next sign-in mounts a
+  // new host in the SAME document. A copy gathered by the session being torn down
+  // (a Retry tapped while the logout round trip is in flight, answered 200 by a
+  // session that has not ended yet) is a copy the wipe has already run past; this
+  // makes a mount the store's beginning, so nothing from before it can paint after
+  // it. The write-side half is the generation below.
+  const actingNow = useRef(actingProfileId);
   useLayoutEffect(() => {
-    if (priorActingProfileId.current !== actingProfileId) {
-      priorActingProfileId.current = actingProfileId;
-      lastGoodRef.current.clear();
-    }
+    actingNow.current = actingProfileId;
+    clearLastGood();
   }, [actingProfileId]);
 
   // ONE GATHER, taking the subject (#4932's own wording: "loadQuickEntry has one
@@ -269,7 +463,29 @@ export default function QuickEntryProvider({
   // Reused by a fresh open, a mid-sheet subject switch AND a retry (below), so none
   // of the three can diverge into its own reader of the same form.
   const loadFor = useCallback(
-    (next: QuickEntryForm, subjectId: number, token: number) => {
+    (next: QuickEntryForm, subjectId: number) => {
+      const parts: DayContextParts = {
+        profileId: subjectId,
+        day: dateStrInTz(tz),
+        reach: SHEET_REACH,
+      };
+      const request: Request = {
+        key: dayContextKey(parts),
+        parts,
+        form: next,
+        settled: false,
+        copiedForm: null,
+      };
+      requestRef.current = request;
+      // A new request is a new body: whatever the last one was holding is gone with
+      // it, and its own discard has already been announced where it had one (the
+      // subject switch) or asked for (a reopen).
+      stagedRef.current = false;
+      const current = () => requestRef.current === request;
+      // Captured HERE, beside the parts, and spent when the answer lands: a wipe or an
+      // identity change while this gather is in flight moves the store's generation,
+      // and the answer is then remembered nowhere (lib/offline/quick-entry-read.ts).
+      const token = captureLastGoodToken();
       // NO ROUND TRIP for measurements — the props are already here (#4091), and
       // that gather is resolved for the ACTING profile only (no subject-keyed
       // version exists). #4932 invariant 2: a form that cannot follow the subject
@@ -279,6 +495,8 @@ export default function QuickEntryProvider({
       if (next === "measurements") {
         setState({
           status: "ready",
+          asOf: null,
+          sight: "read",
           data:
             subjectId === actingProfileId
               ? measurements
@@ -290,43 +508,118 @@ export default function QuickEntryProvider({
         });
         return;
       }
-      const key = `${next}:${subjectId}`;
-      const cached = lastGoodRef.current.get(key);
+      const held = recallLastGood(parts, next);
       // LAST-GOOD RENDER, REVALIDATE BEHIND IT (#3416 proposal 1). A held copy from
-      // an earlier successful open of this SAME (form, subject) pair renders
-      // immediately instead of a loading state that would be a lie about what the
-      // sheet already knows; the fetch below still runs regardless — the SAME one
-      // gather an open always made (#3369: no extra query for having a cache).
+      // an earlier successful open of this SAME context renders immediately instead
+      // of a loading state that would be a lie about what the sheet already knows;
+      // the fetch below still runs regardless — the SAME one gather an open always
+      // made (#3369: no extra query for having a cache).
       setState(
-        cached ? { status: "ready", data: cached } : { status: "loading" }
+        held
+          ? { status: "ready", data: held.data, asOf: null, sight: "read" }
+          : { status: "loading" }
       );
-      // THE STALL BOUND (#3416 proposal 3): with no last-good to fall back on, a
-      // gather that never settles must not leave "Loading…" up forever. ~10s, so a
+      // COLD FAILURE FALLS BACK TO THE DEVICE'S OWN COPY (#3416 proposal 2): the
+      // #2908 snapshots for the forms that map onto one, the device's own day and
+      // queue for mood and stool, and the retry state for everything else. Read
+      // only on the way to that state — an open that succeeds never touches
+      // IndexedDB — and applied only while this request is still on screen AND the
+      // server has not answered in the meantime.
+      const recover = async () => {
+        const [snapshots, intents] = await Promise.all([
+          allSnapshots(),
+          allIntents(),
+        ]);
+        if (!current() || request.settled) return;
+        // THE ACTING PROFILE AS OF NOW, not as of when this request was minted.
+        // The bound exists because the queue captures under the acting profile and
+        // refuses a cross-profile write, so a mood or stool form built for anyone
+        // else is a door onto a refusal — and nothing mints a new request when the
+        // acting profile moves under an open sheet, so a captured id would be
+        // compared against itself and could never catch the move.
+        const copy = quickEntryOffline(
+          next,
+          parts,
+          actingNow.current,
+          snapshots,
+          intents
+        );
+        if (copy) request.copiedForm = copy.data.form;
+        setState(
+          copy
+            ? {
+                status: "ready",
+                sight: "device",
+                data: copy.data,
+                // WHAT THE COPY SAYS ABOUT ITSELF comes WITH the copy
+                // (lib/offline/quick-entry-read.ts), where each form's omissions are
+                // argued: the dose copy holds one day and says so, and a copy built
+                // from the device's own knowledge has no capture instant to date, so
+                // its sentence is the whole line rather than the `why` half.
+                asOf:
+                  copy.fetchedAt == null
+                    ? copy.says
+                    : asOfCopy(copy.fetchedAt, copy.says),
+              }
+            : { status: "error" }
+        );
+      };
+      // THE STALL BOUND (#3416 proposal 3): with no last-good on screen, a gather
+      // that never settles must not leave "Loading…" up forever. ~10s, so a
       // slow-but-real network still finishes ahead of it in the ordinary case.
-      const stallTimer = cached
+      const stallTimer = held
         ? null
-        : setTimeout(() => {
-            if (requestRef.current === token) setState({ status: "error" });
-          }, QUICK_ENTRY_LOAD_TIMEOUT_MS);
+        : setTimeout(() => void recover(), QUICK_ENTRY_LOAD_TIMEOUT_MS);
       void loadQuickEntry(next, subjectId).then(
         (data) => {
           if (stallTimer != null) clearTimeout(stallTimer);
-          if (requestRef.current !== token) return;
-          lastGoodRef.current.set(key, data);
-          setState({ status: "ready", data });
+          // DISCARDED WHOLE if the context moved (#5211 clause 3): never merged,
+          // never remembered under the key it was not issued for.
+          if (!current()) return;
+          request.settled = true;
+          rememberLastGood(token, parts, next, data);
+          // A LATE ANSWER UNDER A DEVICE COPY CHANGES THE SIGHT. For a body whose
+          // write depends on that sight the answer mounts a NEW body (see the body's
+          // `key`) rather than being swapped underneath the person: the mood form's
+          // fields were seeded from the device's day and its write is fenced by that
+          // day's blindness, so leaving the mount up while the props moved would
+          // strand blind state beside a payload that saw the day — which is how a
+          // fenced check-in loses its fence.
+          //
+          // SAID ONLY WHEN IT IS TRUE, and it is true only where a REMOUNT meets input
+          // no write has taken. Two questions, asked of two different things:
+          // `remounts(request)` asks whether this answer actually replaces the body on
+          // screen — a dose list, which keeps its mount and its confirms, is never
+          // spoken over even if something else had reported staged input — and
+          // `stagedRef` asks whether that body is holding anything to lose. Neither
+          // implies the other: which body is handed the reporter and which body the
+          // sight remounts are two edits, and the day they disagree this sentence must
+          // still be false rather than accidentally true.
+          if (remounts(request) && stagedRef.current)
+            toast(
+              "Connected — this form now shows what's saved. What you typed on the offline copy was discarded."
+            );
+          setState({ status: "ready", data, asOf: null, sight: "read" });
         },
         () => {
           if (stallTimer != null) clearTimeout(stallTimer);
-          if (requestRef.current !== token) return;
+          if (!current()) return;
           // A FAILED REVALIDATE BEHIND A LAST-GOOD RENDER KEEPS WHAT IS ALREADY
           // SHOWN (#3416 proposal 1) — the person is mid-use of a form that just
-          // proved it still has yesterday's answer; only a COLD failure (nothing
-          // cached yet) reaches the error state.
-          if (!cached) setState({ status: "error" });
+          // proved it still has an answer — and SAYS SO: what is on screen did not
+          // just come from the server, so it carries the #2908 as-of line from here.
+          if (held)
+            setState({
+              status: "ready",
+              data: held.data,
+              asOf: asOfCopy(held.fetchedAt, "couldn't refresh."),
+              sight: "read",
+            });
+          else void recover();
         }
       );
     },
-    [actingProfileId, measurements]
+    [actingProfileId, measurements, toast, tz]
   );
 
   const openForm = useCallback(
@@ -335,14 +628,14 @@ export default function QuickEntryProvider({
       nextPrefill?: QuickEntryPrefill,
       subjectProfileId?: number
     ) => {
-      const token = ++requestRef.current;
       const resolvedSubject = subjectProfileId ?? actingProfileId;
       setForm(next);
       setPrefill(nextPrefill ?? null);
       setSubject(resolvedSubject);
       setPickerOpen(false);
       setOpen(true);
-      loadFor(next, resolvedSubject, token);
+      sheetOpen.current = true;
+      loadFor(next, resolvedSubject);
     },
     [actingProfileId, loadFor]
   );
@@ -365,8 +658,7 @@ export default function QuickEntryProvider({
       if (profileId === subject || form == null) return;
       setSubject(profileId);
       setPrefill(null);
-      const token = ++requestRef.current;
-      loadFor(form, profileId, token);
+      loadFor(form, profileId);
       const name = writableProfiles.find((p) => p.id === profileId)?.name;
       toast(
         name
@@ -379,11 +671,13 @@ export default function QuickEntryProvider({
 
   // Re-runs the SAME gather (#3416 proposal 3) — the error state's Retry button, and
   // the one thing that gets the sheet out of a stalled/cold-failed open without
-  // closing it. No-op once the sheet has no form (already closed).
+  // closing it. ONE mechanism for both failures: a body whose chunk failed to fetch
+  // reaches the same state (`BodyBoundary` below), and the same button re-mints the
+  // bodies so the import is asked again. No-op once the sheet has no form.
   const retry = useCallback(() => {
     if (form == null) return;
-    const token = ++requestRef.current;
-    loadFor(form, subject, token);
+    setBodies((prior) => loadBodies(prior.attempt + 1));
+    loadFor(form, subject);
   }, [form, subject, loadFor]);
 
   const api = useMemo<QuickEntryApi>(
@@ -490,20 +784,52 @@ export default function QuickEntryProvider({
           <LoggedViaSurface value="quick-log">
             {/* Keyed on the subject (#4932): switching who this is for remounts the
                 body fresh, which is what actually discards a staged, half-typed
-                entry rather than leaving it to paint under the new subject's name. */}
+                entry rather than leaving it to paint under the new subject's name.
+                AND ON THE SIGHT (#3416) FOR THE BODIES WHOSE WRITE DEPENDS ON IT —
+                the mood form, and see `sightIsIdentity` for why it alone. A form
+                composed from the device's own copy is composed blind, and its check-in
+                writes fenced by that blindness. A gather that stalled past the bound
+                is not cancelled, so its answer can arrive while that blind form is
+                still up — carrying the very day the form could not see. Making the
+                sight part of THAT body's identity is what stops the two from meeting:
+                the answer mounts a NEW form, seeded from the day, writing the ordinary
+                replacing write. Without it the mounted form keeps its blind state
+                while the fence flips off underneath it, and the next tap nulls the day
+                the answer just delivered. A form's sight is the sight it was composed
+                under. Every other body keeps its mount and takes the newer payload in
+                place, which is what a person who just confirmed a dose offline needs
+                it to do — and what each of those bodies then does with the newer
+                payload, piece by piece, is the table above `sightIsIdentity`. */}
             <div
-              key={subject}
+              key={`${subject}:${
+                state.status === "ready" && sightIsIdentity(state.data.form)
+                  ? state.sight
+                  : "read"
+              }`}
               data-testid="quick-entry-body"
               data-form={form}
+              data-body-sight={state.status === "ready" ? state.sight : null}
               data-subject-profile-id={subject}
             >
-              <QuickEntryBody
-                state={state}
-                prefill={prefill}
-                onDone={close}
-                onRetry={retry}
-                subjectProfileId={subjectId}
-              />
+              {state.status === "ready" && state.asOf ? (
+                <p
+                  data-testid="quick-entry-asof"
+                  className="mb-2 text-xs text-slate-500 dark:text-slate-400"
+                >
+                  {state.asOf}
+                </p>
+              ) : null}
+              <BodyBoundary key={bodies.attempt} onRetry={retry}>
+                <QuickEntryBody
+                  state={state}
+                  bodies={bodies}
+                  prefill={prefill}
+                  onDone={close}
+                  onRetry={retry}
+                  onStaged={reportStaged}
+                  subjectProfileId={subjectId}
+                />
+              </BodyBoundary>
             </div>
           </LoggedViaSurface>
         </BottomSheet>
@@ -512,20 +838,90 @@ export default function QuickEntryProvider({
   );
 }
 
+// The retry state: what a cold failure, a stalled gather and a failed chunk fetch all
+// render (#3416 proposal 3). The copy stops instructing "close this and try again" —
+// the button does the trying.
+function RetryState({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div data-testid="quick-entry-error" className="py-6">
+      <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
+        Couldn&apos;t open that form.
+      </p>
+      <button
+        type="button"
+        data-testid="quick-entry-retry"
+        onClick={onRetry}
+        className="btn-ghost mt-2"
+      >
+        Retry
+      </button>
+    </div>
+  );
+}
+
+function Loading() {
+  return (
+    <p
+      data-testid="quick-entry-loading"
+      className="py-6 text-sm text-slate-500 dark:text-slate-400"
+    >
+      Loading…
+    </p>
+  );
+}
+
+// A body whose chunk failed to fetch throws from its lazy import (#3416 proposal 4):
+// without this the nearest boundary was the ROUTE's, which replaced the whole page
+// under an open sheet. Here it is the same retry state the gather's failures render;
+// the host re-mounts it under a new key per Retry (see `loadBodies` for why the
+// bodies have to be re-minted too). The Suspense boundary is the same body's LOADING
+// half: a chunk still on its way shows the same "Loading…" a gather does, rather
+// than whatever boundary happens to sit above the sheet.
+class BodyBoundary extends Component<
+  { onRetry: () => void; children: ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError(): { failed: boolean } {
+    return { failed: true };
+  }
+
+  render() {
+    return this.state.failed ? (
+      <RetryState onRetry={this.props.onRetry} />
+    ) : (
+      <Suspense fallback={<Loading />}>{this.props.children}</Suspense>
+    );
+  }
+}
+
 function QuickEntryBody({
   state,
+  bodies,
   prefill,
   onDone,
   onRetry,
+  onStaged,
   subjectProfileId,
 }: {
   state: LoadState;
+  bodies: Bodies;
   prefill: QuickEntryPrefill | null;
   onDone: () => void;
   // #3416 proposal 3: re-runs the SAME gather in place — the error state's Retry
   // button. Never called from any other branch; a ready form has nothing to retry
   // and a loading one is already trying.
   onRetry: () => void;
+  // Handed to the one body the host remounts on a change of sight, so the host can
+  // ask — at the moment it is about to replace it — whether there is anything to
+  // announce (see `stagedRef`). No other body is given it, and the reason is narrower
+  // than it once read here: a body that keeps its mount can still lose a value, to its
+  // own follower rather than to a replacement (see the practice row of the table above)
+  // — but that loss is answered where the value lives, by the follower yielding, so
+  // there is nothing left for the host to announce about it. This reports what a
+  // REPLACEMENT would take, which is the only thing the host performs.
+  onStaged: (staged: boolean) => void;
   // The chosen subject (#4932), already narrowed to "explicit and non-acting" by
   // the caller — every form below carries it through to its own write(s), gated
   // server-side by `gateItemProfile` (or, for the two forms whose write cannot yet
@@ -533,40 +929,19 @@ function QuickEntryBody({
   // turned a non-acting subject into the `unavailable` case above this switch).
   subjectProfileId?: number;
 }) {
-  if (state.status === "loading") {
-    return (
-      <p
-        data-testid="quick-entry-loading"
-        className="py-6 text-sm text-slate-500 dark:text-slate-400"
-      >
-        Loading…
-      </p>
-    );
-  }
-  if (state.status === "error") {
-    return (
-      <div data-testid="quick-entry-error" className="py-6">
-        {/* #3416 proposal 3: the copy stops instructing "close this and try
-            again" — the button does the trying. A stalled gather (past
-            QUICK_ENTRY_LOAD_TIMEOUT_MS) reaches here exactly like a hard
-            rejection; both are the same "try again" ask to the person looking
-            at the sheet. */}
-        <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
-          Couldn&apos;t open that form.
-        </p>
-        <button
-          type="button"
-          data-testid="quick-entry-retry"
-          onClick={onRetry}
-          className="btn-ghost mt-2"
-        >
-          Retry
-        </button>
-      </div>
-    );
-  }
+  if (state.status === "loading") return <Loading />;
+  if (state.status === "error") return <RetryState onRetry={onRetry} />;
 
   const data = state.data;
+  const {
+    UploadForm,
+    QuickPracticeList,
+    QuickCyclePanel,
+    MoodForm,
+    StoolTypeControl,
+    QuickSubstanceList,
+    QuickSymptomPanel,
+  } = bodies;
   switch (data.form) {
     case "measurements":
       return (
@@ -652,6 +1027,14 @@ function QuickEntryBody({
         <MoodForm
           days={data.days}
           showCalm={data.showCalm}
+          // Set only by the cold offline open (#3416): those days carry what this
+          // device queued itself and nothing the server holds, so the check-in the
+          // form writes must not erase what it could not show.
+          dayUnseen={data.dayUnseen}
+          // The host remounts this body when the day arrives (its `key`), so it is
+          // the one body that can lose staged input to a late answer — and the only
+          // one that says whether there is any.
+          onStagedChange={onStaged}
           onDone={onDone}
           subjectProfileId={subjectProfileId}
         />

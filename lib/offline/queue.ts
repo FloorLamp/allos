@@ -305,6 +305,16 @@ export interface MoodPayload {
   anxiety: number | null;
   factors: string[];
   note: string | null;
+  // WHAT THE FORM COULD SEE (#3416). Set only by the quick logger's COLD OFFLINE
+  // OPEN, where the sheet builds the mood form from the device's own day and queue
+  // and therefore cannot show a check-in the server already holds for that day. A
+  // null in this payload then means "not asked on this device", not "the person
+  // answered nothing" — so the replay merges it instead of replacing the row
+  // (`MoodWriteSight` in lib/offline/writes.ts). OPTIONAL for the same
+  // backward-compatibility reason the measurement markers above are: an intent
+  // queued before this shipped came from a form that DID see the day, and absent
+  // must keep meaning "this is the day's whole answer".
+  dayUnseen?: true;
 }
 
 // Workout session logged entirely offline (#1596, landing #28's "add set"). The
@@ -666,11 +676,18 @@ export function syncedAnnouncement(
 // gates. The surface's optimistic state must ROLL BACK in the same breath: the
 // queue kept nothing, so nothing may stand in for it.
 //
-// The flows that read it (a new quick-log surface joins this list and reuses the
-// constant rather than inventing a ninth copy):
-//   • components/DoseStatusControl.tsx — dose take/skip
+// The surfaces that read it (a new quick-log surface joins this list and reuses the
+// constant rather than inventing a copy):
+//   • components/DoseStatusControl.tsx — dose take/skip, the domain's one row
+//     control; MOUNTED by components/quick-entry/QuickDoseList.tsx (the sheet's dose
+//     rows) and app/(app)/nutrition/DayLedger.tsx (the record's dose rows), so the
+//     sentence is what those two surfaces say too (#4434)
+//   • components/useWritePipeline.ts — the shared client write pipeline (#3276);
+//     every pipeline consumer (StoolTypeControl, DoseStatusControl, …) refuses
+//     through it
 //   • components/practices/LogPracticeButton.tsx — practice session
-//   • components/quick-entry/QuickMoodCheckin.tsx — quick-entry mood
+//   • components/mood/MoodForm.tsx — the mood domain's one form, quick-entry mount
+//     included
 //   • components/ActivityForm.tsx — close-path workout capture
 //   • app/(app)/nutrition/FoodLogBar.tsx — food serving "+"
 //   • app/(app)/nutrition/ProteinQuickAdd.tsx — protein grams "+"
@@ -679,6 +696,10 @@ export function syncedAnnouncement(
 // lib/__tests__/offline-refused-capture.test.ts pins both halves: every consumer
 // of the queue's `enqueue` references this constant, and the sentence itself
 // exists exactly once.
+//
+// The symptom bar is NOT here and does not queue: LOG_MANIFEST.symptom.offline defers
+// its offline story to #1860 — which is the queue's symptom flow and reshapes no
+// capture surface, so the deferral is about the write, not the sheet row (#4434).
 export const OFFLINE_CAPTURE_REFUSED_MESSAGE =
   "This entry wasn't saved. Try again once you're back online.";
 

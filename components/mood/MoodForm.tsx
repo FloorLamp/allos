@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { logMood } from "@/app/(app)/mood-actions";
 import Chip from "@/components/Chip";
 import Disclosure from "@/components/Disclosure";
@@ -88,16 +88,40 @@ function ScaleRow({
 export default function MoodForm({
   days,
   showCalm,
+  dayUnseen = false,
   subjectProfileId,
   dateReach = "tap",
   mode = "quick",
   repeatAfterSave = false,
+  onStagedChange,
   onSaved,
   onDone,
   onCancel,
 }: {
   days: readonly MoodFormDay[];
   showCalm: boolean;
+  // `days` COULD NOT BE READ from the server (#3416) — the quick logger's cold
+  // offline open, whose days carry only what this device queued itself. A day the
+  // person filled in elsewhere opens empty here, so what this form does not carry is
+  // UNKNOWN rather than cleared, and both write paths say so: the write core merges
+  // instead of replacing the day's row. Every other mount pre-fills from the stored
+  // check-in and leaves this false.
+  //
+  // FIXED FOR THE LIFE OF THE MOUNT. The fields below are seeded from `days` once,
+  // so a mount that composed blind holds blind state until it is replaced; a host
+  // that swapped this flag off under it would leave that state writing the replacing
+  // statement over a day it still cannot see. The one host that can learn the day
+  // mid-sheet remounts this form on it (QuickEntryProvider's body `key`) rather than
+  // moving the prop, so the sight the form was composed under is the sight it writes
+  // under.
+  dayUnseen?: boolean;
+  // WHETHER THIS MOUNT IS HOLDING INPUT A REPLACEMENT WOULD DISCARD (#3416), reported
+  // while it is mounted and false when it goes. One host replaces this form under the
+  // person — the quick sheet, when the day it could not see arrives — and it makes
+  // its announcement only when this says there is something to announce. In quick
+  // mode the valence tap IS the write, so what is staged is the Details block; in
+  // edit mode nothing is written until Save, so the rating is staged too.
+  onStagedChange?: (staged: boolean) => void;
   subjectProfileId?: number;
   dateReach?: "tap" | "dated";
   mode?: "quick" | "edit";
@@ -126,6 +150,30 @@ export default function MoodForm({
   const writing = useRef(false);
 
   const day = days[selected];
+
+  // WHAT WOULD BE LOST, against the day on screen — the person's own input, not the
+  // day's stored answer. A note typed and then deleted back to what was there leaves
+  // nothing to lose, and says so.
+  //
+  // AND NOT WHAT A WRITE HAS ALREADY TAKEN. `busy` is the transaction boundary the
+  // fieldset below is frozen behind: from the tap until it settles, every field here
+  // is already inside the payload in flight (`draft()` carries the whole Details
+  // block, which in quick mode is the whole of this), so replacing the form would
+  // discard a copy of something already on its way. A write that fails unfreezes the
+  // fields and this says `true` again, because then it really would be lost.
+  const shown = day?.mood ?? null;
+  const staged =
+    !busy &&
+    (energy !== (shown?.energy ?? null) ||
+      anxiety !== (shown?.anxiety ?? null) ||
+      (note.trim() || null) !== (shown?.notes ?? null) ||
+      factors.length !== (shown?.factors.length ?? 0) ||
+      factors.some((slug) => !shown?.factors.includes(slug)) ||
+      (mode === "edit" && valence !== (shown?.valence ?? null)));
+  useEffect(() => {
+    onStagedChange?.(staged);
+    return () => onStagedChange?.(false);
+  }, [staged, onStagedChange]);
 
   function pickDay(index: number): void {
     if (index === selected) return;
@@ -188,6 +236,7 @@ export default function MoodForm({
     if (next.anxiety != null) fd.set("anxiety", String(next.anxiety));
     for (const factor of next.factors) fd.append("factors", factor);
     if (next.notes) fd.set("note", next.notes);
+    if (dayUnseen) fd.set("day_unseen", "1");
     if (subjectProfileId != null)
       fd.set("profile_id", String(subjectProfileId));
     fd.set("date_reach", dateReach);
@@ -219,6 +268,7 @@ export default function MoodForm({
         anxiety: next.anxiety,
         factors: next.factors,
         note: next.notes,
+        ...(dayUnseen ? { dayUnseen: true as const } : {}),
       });
     } catch {
       outcome = "failed";

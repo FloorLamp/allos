@@ -181,7 +181,10 @@ export type QuickEntryData =
       // TODAY's offer, unchanged: the arrived-slot due-now slice. An evening dose is
       // still not "due right now" in the morning.
       doses: QuickEntryDose[];
-      prn: QuickEntryPrn;
+      // Absent only on the device's own offline copy (lib/offline/quick-entry-read.ts):
+      // the PRN row is an argued exclusion of the offline queue, and its redose
+      // advisory is server state. The gather always sets it.
+      prn?: QuickEntryPrn;
       // The recent-past days the sheet may switch to (#3936), newest first — exactly
       // `doseLogDays(today)` minus today, so the switcher offers precisely the window
       // the write cores accept. A day with nothing left to log is still LISTED (with
@@ -227,6 +230,12 @@ export type QuickEntryData =
         } | null;
       }[];
       showCalm: boolean;
+      // THE DAYS ABOVE COULD NOT BE READ (#3416). Never set by this gather — it reads
+      // the stored check-ins — and always set by the cold offline open, which builds
+      // the same shape from the device's own day and queue and so shows nothing for a
+      // day the person filled in elsewhere. It rides to `upsertMoodLog` so a one-tap
+      // check-in composed blind merges rather than replacing that day's row.
+      dayUnseen?: true;
     }
   | {
       // The well-day symptom bar (#4064) — the SAME props the dashboard's own mount

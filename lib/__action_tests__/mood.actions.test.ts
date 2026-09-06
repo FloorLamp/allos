@@ -211,6 +211,61 @@ describe("logMood — the #2128 backfill window", () => {
     expect(getMoodOnDate(profile.id, old)?.valence).toBe(4);
   });
 
+  // THE COLD OFFLINE OPEN REACHES THIS ACTION TOO (#3416). The sheet falls back to
+  // the device's own copy when the gather fails, and the connection can be back by
+  // the time the person taps — so the same check-in that would have been queued goes
+  // straight through logMood instead. It carries the same statement of what its form
+  // could see, and lands the same merge.
+  it("a check-in posted from a cold offline open does not erase the day it never saw", async () => {
+    const login = createLogin();
+    const profile = createProfile("mood-blind", login.id);
+    actAs(login, profile);
+    const DATE = today(profile.id);
+
+    const morning = fd({
+      date: DATE,
+      valence: 2,
+      energy: 1,
+      anxiety: 5,
+      note: "Rough night, back pain all day.",
+    });
+    morning.append("factors", "work");
+    expect(await logMood(morning)).toEqual({ ok: true });
+
+    // The evening tap: a face, and nothing else the form could show.
+    expect(
+      await logMood(fd({ date: DATE, valence: 4, day_unseen: "1" }))
+    ).toEqual({ ok: true });
+    expect(getMoodOnDate(profile.id, DATE)).toMatchObject({
+      valence: 4,
+      energy: 1,
+      anxiety: 5,
+      factors: ["work"],
+      notes: "Rough night, back pain all day.",
+    });
+  });
+
+  // The control: the same bare tap from a form that showed the person their day
+  // replaces it, exactly as it always has.
+  it("the same bare tap from a form that saw the day still replaces it", async () => {
+    const login = createLogin();
+    const profile = createProfile("mood-sighted", login.id);
+    actAs(login, profile);
+    const DATE = today(profile.id);
+
+    const morning = fd({ date: DATE, valence: 2, energy: 1, note: "rough" });
+    morning.append("factors", "work");
+    expect(await logMood(morning)).toEqual({ ok: true });
+
+    expect(await logMood(fd({ date: DATE, valence: 4 }))).toEqual({ ok: true });
+    expect(getMoodOnDate(profile.id, DATE)).toMatchObject({
+      valence: 4,
+      energy: null,
+      factors: [],
+      notes: null,
+    });
+  });
+
   it("refuses a future date — backfill is past-only", async () => {
     const login = createLogin();
     const profile = createProfile("mood-future", login.id);

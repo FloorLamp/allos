@@ -15,10 +15,16 @@ const record = (name: string, fd: FormData) => {
   (posted[name] ??= []).push(fd);
 };
 
-let logMoodReply: (fd: FormData) => Promise<{ ok: true }> = async () => ({
+type MoodReply = { ok: true } | { ok: false; error: string };
+let logMoodReply: (fd: FormData) => Promise<MoodReply> = async () => ({
   ok: true,
 });
 let enqueueReply: "kept" | "closed" | "failed" = "kept";
+const queued: {
+  flow: string;
+  date: string;
+  payload: Record<string, unknown>;
+}[] = [];
 const toasts: string[] = [];
 
 vi.mock("@/app/(app)/mood-actions", () => ({
@@ -38,7 +44,16 @@ vi.mock("@/components/Toast", () => ({
   useToast: () => (message: string) => toasts.push(message),
 }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
-  useOfflineQueue: () => ({ enqueue: async () => enqueueReply }),
+  useOfflineQueue: () => ({
+    enqueue: async (
+      flow: string,
+      date: string,
+      payload: Record<string, unknown>
+    ) => {
+      queued.push({ flow, date, payload });
+      return enqueueReply;
+    },
+  }),
 }));
 vi.mock("@/components/ConfirmDialog", () => ({
   useConfirm: () => async () => true,
@@ -90,6 +105,7 @@ beforeEach(() => {
   for (const key of Object.keys(posted)) delete posted[key];
   logMoodReply = async () => ({ ok: true });
   enqueueReply = "kept";
+  queued.length = 0;
   toasts.length = 0;
   vi.stubGlobal(
     "ResizeObserver",
@@ -212,6 +228,129 @@ describe("the mood domain's two pieces", () => {
     ).toBe("true");
     expect(toasts).toContain("Saved offline — will sync when you reconnect.");
     expect(done).toHaveBeenCalledOnce();
+  });
+
+  // THE COLD OFFLINE OPEN'S CHECK-IN CARRIES WHAT ITS FORM COULD SEE (#3416). The
+  // quick logger builds these days from the device's own queue when the gather fails,
+  // so a day the person filled in elsewhere shows as empty here — and the write must
+  // not read that emptiness as an answer. Both paths say so, because either can be
+  // the one that runs: the queue when the connection is still down, and logMood when
+  // it came back between the open and the tap.
+  it("a form whose days could not be read says so on both write paths", async () => {
+    render(<MoodForm days={[EMPTY]} showCalm={false} dayUnseen />);
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "Mood: Good" }))
+    );
+    expect(Object.fromEntries(posted.logMood[0])).toMatchObject({
+      valence: "4",
+      day_unseen: "1",
+    });
+
+    cleanup();
+    logMoodReply = async () => {
+      throw new TypeError("Failed to fetch");
+    };
+    render(<MoodForm days={[EMPTY]} showCalm={false} dayUnseen />);
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "Mood: Good" }))
+    );
+    expect(queued).toHaveLength(1);
+    expect(queued[0].payload).toMatchObject({ valence: 4, dayUnseen: true });
+  });
+
+  // The control: an ordinary mount pre-fills from the stored check-in, so neither
+  // path claims the day was unseen and the write keeps replacing the row.
+  it("an ordinary mount claims nothing about what it could not see", async () => {
+    render(<MoodForm days={[EMPTY]} showCalm={false} />);
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "Mood: Good" }))
+    );
+    expect(Object.fromEntries(posted.logMood[0])).not.toHaveProperty(
+      "day_unseen"
+    );
+
+    cleanup();
+    logMoodReply = async () => {
+      throw new TypeError("Failed to fetch");
+    };
+    render(<MoodForm days={[EMPTY]} showCalm={false} />);
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "Mood: Good" }))
+    );
+    expect(queued[0].payload).not.toHaveProperty("dayUnseen");
+  });
+
+  // THE OTHER HALF OF THE ANNOUNCEMENT (#3416). The quick sheet remounts this form
+  // when the day it could not see arrives, and says so only when the mount was
+  // holding something. This form is what answers that question, so it has to answer
+  // honestly: something typed is staged, the same field put back is not, and a mount
+  // that goes leaves nothing to lose.
+  it("says whether it is holding input a replacement would discard", async () => {
+    const staged: boolean[] = [];
+    const { unmount } = render(
+      <MoodForm
+        days={[LOGGED]}
+        showCalm={false}
+        onStagedChange={(value) => staged.push(value)}
+      />
+    );
+    expect(staged.at(-1)).toBe(false);
+
+    const note = screen.getByLabelText("Note");
+    fireEvent.change(note, { target: { value: "long day, and a headache" } });
+    expect(staged.at(-1)).toBe(true);
+
+    // Typed back to what the day already said: nothing to discard, nothing to say.
+    fireEvent.change(note, { target: { value: "long day" } });
+    expect(staged.at(-1)).toBe(false);
+
+    fireEvent.change(note, { target: { value: "long day, and a headache" } });
+    expect(staged.at(-1)).toBe(true);
+    unmount();
+    expect(staged.at(-1)).toBe(false);
+  });
+
+  // AND IT DOES NOT COUNT WHAT A WRITE HAS ALREADY TAKEN (#3416). In quick mode the
+  // valence tap IS the write, and `draft()` puts the whole Details block into the
+  // payload — so between the tap and the settle the note is staged AND in flight. The
+  // sheet announcing a discard in that window told somebody their paragraph was thrown
+  // away while the FormData carrying it was still open, and it lands: the blind
+  // check-in merges rather than replaces. A write that FAILS gives the fields back,
+  // and then there really is something to lose again.
+  it("is not holding input a write in flight has already taken", async () => {
+    let settle: (reply: MoodReply) => void = () => {};
+    logMoodReply = () =>
+      new Promise<MoodReply>((resolve) => {
+        settle = resolve;
+      });
+
+    const staged: boolean[] = [];
+    render(
+      <MoodForm
+        days={[EMPTY]}
+        showCalm={false}
+        onStagedChange={(value) => staged.push(value)}
+      />
+    );
+    fireEvent.change(screen.getByLabelText("Note"), {
+      target: { value: "woke at 4, could not get back to sleep" },
+    });
+    expect(staged.at(-1)).toBe(true);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Mood: Good" }));
+    });
+    expect(staged.at(-1)).toBe(false);
+    // The note really is in the payload the tap opened — which is why there is nothing
+    // to announce about it.
+    expect(posted.logMood?.[0]?.get("note")).toBe(
+      "woke at 4, could not get back to sleep"
+    );
+
+    await act(async () => {
+      settle({ ok: false, error: "Couldn't save that check-in." });
+    });
+    expect(staged.at(-1)).toBe(true);
   });
 
   it("names a single past-day quick tap from its actual date context", async () => {

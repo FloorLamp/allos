@@ -51,13 +51,23 @@ export async function logMood(formData: FormData): Promise<FormResult> {
     return v === null || String(v).trim() === "" ? null : String(v).trim();
   };
 
-  const ok = upsertMoodLog(profileId, date, {
-    valence: String(formData.get("valence") ?? ""),
-    energy: opt("energy"),
-    anxiety: opt("anxiety"),
-    factors: formData.getAll("factors").map((f) => String(f)),
-    note: opt("note"),
-  });
+  const ok = upsertMoodLog(
+    profileId,
+    date,
+    {
+      valence: String(formData.get("valence") ?? ""),
+      energy: opt("energy"),
+      anxiety: opt("anxiety"),
+      factors: formData.getAll("factors").map((f) => String(f)),
+      note: opt("note"),
+    },
+    // WHAT THE FORM COULD SEE (#3416). Posted only by the quick logger's cold offline
+    // open, which builds the mood form from the device's own day and queue and so
+    // cannot show a check-in already stored for that day — and which reaches this
+    // action, not the queue, when the connection comes back between the open and the
+    // tap. Absent everywhere else: every other mount pre-fills from the stored row.
+    formData.get("day_unseen") === "1" ? "day-unseen" : "saw-the-day"
+  );
   if (!ok) return formError("Couldn't save that check-in — try again.");
 
   revalidateRoute("/");

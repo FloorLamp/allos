@@ -466,6 +466,11 @@ const SUSPENSE_BOUNDARY_FILES = [
   // #4997 rebuilt nine chart trees around two renderers, so two of the three are
   // new names for the same client-only shape.
   "components/BarSeriesChart.tsx",
+  // The quick logger's bodies are `dynamic()` imports from inside a "use client"
+  // host, rendered only after a client-side open (#3416): nothing is ever staged.
+  // The boundary is the body's own loading half, so a failed chunk lands on the
+  // sheet's retry state instead of the route's error boundary.
+  "components/QuickEntryProvider.tsx",
   "components/ScatterChartCard.tsx",
   "components/TimeSeriesChart.tsx",
 ];

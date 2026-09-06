@@ -21,6 +21,11 @@ vi.mock("@/lib/offline/write-gate", () => ({
 }));
 
 import { clearQueue } from "@/lib/offline/queue-db";
+import {
+  captureLastGoodToken,
+  recallLastGood,
+  rememberLastGood,
+} from "@/lib/offline/quick-entry-read";
 import { wipeIfRevoked } from "../device-wipe";
 
 // `clearQueue` is the wipe's own single transaction — it clears every store AND closes
@@ -60,7 +65,23 @@ describe("wipeIfRevoked (#3053)", () => {
     ["a 500 mid-deploy", 500, { error: "revoked" }, false],
     ["a 200 that happens to carry the word", 200, { error: "revoked" }, false],
   ])("%s → wipes: %j", async (_name, status, body, wiped) => {
+    // The quick logger's in-memory last-good copy (#3416) is part of the perimeter:
+    // it goes with the wipe, and only with the wipe.
+    const held = {
+      profileId: 1,
+      day: "2026-09-05",
+      reach: { kind: "today" } as const,
+    };
+    const copy = { form: "unavailable", message: "held" } as const;
+    // The token a gather already in flight would be carrying.
+    const inFlight = captureLastGoodToken();
+    rememberLastGood(inFlight, held, "dose", copy);
     expect(await wipeIfRevoked(answer(status, body))).toBe(wiped);
     expect(wipes).toHaveBeenCalledTimes(wiped ? 1 : 0);
+    // THE PROPERTY, NOT THE CALL. The document stays mounted for the whole sign-out
+    // round trip and nothing cancels a Server Action, so the wipe only holds if the
+    // gather that answers AFTER it cannot write the copy back.
+    rememberLastGood(inFlight, held, "dose", copy);
+    expect(recallLastGood(held, "dose") === undefined).toBe(wiped);
   });
 });
