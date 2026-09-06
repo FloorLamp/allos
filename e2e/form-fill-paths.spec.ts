@@ -193,7 +193,8 @@ test("each Recent row repeats that session into the set editor (#923)", async ({
     await expect(reps).toHaveValue("");
     await expect(reps).toHaveAttribute("placeholder", "8");
     // Confirming row 1 turns the plan it states into the record.
-    await page.getByTestId("set-confirm-1").click();
+    const row1 = page.getByTestId("set-row-1"); // testid-scope-ok: the set grid is inside the held editor overlay, one copy
+    await row1.getByTestId("set-confirm-1").click();
     await expect(load).toHaveValue("30");
     await expect(reps).toHaveValue("8");
 

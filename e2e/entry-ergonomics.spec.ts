@@ -1078,11 +1078,12 @@ test("strength set controls step, clamp, and toggle without losing their phone g
   // the options column's 34px control (#3938) around a 44px phone target — asserted
   // through the same sweep the column's other controls take, not with a number of its
   // own. Confirming is the last thing a row needs, so it goes away once tapped.
-  const confirm = page.getByTestId("set-confirm-1");
+  const row1 = page.getByTestId("set-row-1"); // testid-scope-ok: the set grid is inside the held editor overlay, one copy
+  const confirm = row1.getByTestId("set-confirm-1");
   await expect(confirm).toHaveAttribute("data-icon-button", "");
   await expectPhoneTapTargets(page, "strength-set confirm", [confirm]);
   await hydratedClick(page, confirm);
-  await expect(page.getByTestId("set-confirm-1")).toHaveCount(0);
+  await expect(row1.getByTestId("set-confirm-1")).toHaveCount(0);
 
   // Reps returned to empty, so the set stays half-filled and nothing auto-saves — a
   // confirmed row with a missing half is still a half-filled set, so confirming it
