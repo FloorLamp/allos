@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   confirm: vi.fn(),
   start: vi.fn(),
   end: vi.fn(),
+  serverRead: vi.fn(),
 }));
 
 vi.mock("@/components/ConfirmDialog", () => ({
@@ -43,6 +44,7 @@ describe("practice one-tap cooldown (#4491)", () => {
     mocks.confirm.mockReset();
     mocks.start.mockReset();
     mocks.end.mockReset();
+    mocks.serverRead.mockReset();
   });
 
   it("exposes the existing cooldown by disabling the one-tap control", () => {
@@ -82,7 +84,12 @@ describe("practice one-tap cooldown (#4491)", () => {
         todayCount={0}
         today="2026-08-31"
         inlineDuration
-        liveSession={{ id: 7, date: "2026-08-31", startTime: "09:15" }}
+        liveSession={{
+          id: 7,
+          date: "2026-08-31",
+          startTime: "09:15",
+          expectedEnd: null,
+        }}
       />
     );
     expect(
@@ -97,7 +104,12 @@ describe("practice one-tap cooldown (#4491)", () => {
   it("asks before ending the exact session returned by a stale Start now", async () => {
     mocks.start.mockResolvedValue({
       kind: "already-live",
-      session: { id: 37, date: "2026-08-31", startTime: "09:15" },
+      session: {
+        id: 37,
+        date: "2026-08-31",
+        startTime: "09:15",
+        expectedEnd: null,
+      },
     });
     mocks.confirm.mockResolvedValue(true);
     mocks.end.mockResolvedValue({
@@ -117,19 +129,52 @@ describe("practice one-tap cooldown (#4491)", () => {
     expect(fd.get("id")).toBe("37");
   });
 
-  it("leaves the returned live session open when the shared confirm is cancelled", async () => {
+  // A CANCELLED STALE START ASKS THE SERVER RATHER THAN ADOPTING ITS ANSWER (#5431).
+  // This control used to keep a client copy of the session and set it here, which is
+  // the same copy that let an `End` outlive a row the server had already completed.
+  // The guarantee is unchanged — the row shows End afterwards — but it now arrives
+  // through the read: the typed refusal asks for one, the row itself writes nothing,
+  // and the session it renders is the one the read hands back.
+  it("re-reads rather than adopting the session a stale Start now returned", async () => {
     mocks.start.mockResolvedValue({
       kind: "already-live",
-      session: { id: 41, date: "2026-08-31", startTime: "09:15" },
+      session: {
+        id: 41,
+        date: "2026-08-31",
+        startTime: "09:15",
+        expectedEnd: null,
+      },
     });
     mocks.confirm.mockResolvedValue(false);
-    render(
-      <LogPracticeButton practice="Sauna" todayCount={0} today="2026-08-31" />
+    const { rerender } = render(
+      <LogPracticeButton
+        practice="Sauna"
+        todayCount={0}
+        today="2026-08-31"
+        onServerRead={mocks.serverRead}
+      />
     );
 
     fireEvent.click(screen.getByTestId("practice-start-button"));
     await waitFor(() => expect(mocks.confirm).toHaveBeenCalledTimes(1));
     expect(mocks.end).not.toHaveBeenCalled();
+    expect(mocks.serverRead).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("practice-end-button")).toBeNull();
+
+    rerender(
+      <LogPracticeButton
+        practice="Sauna"
+        todayCount={0}
+        today="2026-08-31"
+        onServerRead={mocks.serverRead}
+        liveSession={{
+          id: 41,
+          date: "2026-08-31",
+          startTime: "09:15",
+          expectedEnd: null,
+        }}
+      />
+    );
     expect(screen.getByTestId("practice-end-button")).toBeTruthy();
   });
 });

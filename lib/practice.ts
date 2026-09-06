@@ -204,11 +204,11 @@ export function liveSessionExpectedEnd(
   startedAt: number | null,
   session: { durationMin: number | null; derivedWindow: boolean },
   tz: string
-): { at: string; hhmm: string } | null {
+): { at: number; hhmm: string } | null {
   const derived = derivedSessionMinutes(session);
   if (derived == null || startedAt == null) return null;
-  const at = new Date(startedAt + derived * 60_000);
-  return { at: at.toISOString(), hhmm: zonedDateParts(tz, at).hhmm };
+  const at = startedAt + derived * 60_000;
+  return { at, hhmm: zonedDateParts(tz, new Date(at)).hhmm };
 }
 
 // ── WHICH PRACTICE A WINDOW ON THE DAY CHART LOOKS LIKE (#4950 item 4) ───────
@@ -465,26 +465,26 @@ export function practiceTargetRangeText(
 //
 // NO VERDICT HERE, EVER. The badge this replaced printed a pace over an empty week
 // (#5395); the row states the quantity and lets the person read it.
+//
+// The two parts come back SEPARATELY because the day's count is the half a surface
+// marks (`practice-today-count`) and the half whose absence is assertable.
 export function practiceRowFacts(standing: {
   todayCount: number;
   countThisWeek: number;
   perWeek: number;
   perWeekMax: number | null;
   atCeiling: boolean;
-}): string {
+}): { today: string | null; week: string } {
   const week = `${standing.countThisWeek} of ${practiceTargetRangeText(
     standing.perWeek,
     standing.perWeekMax
   )} this week`;
-  return [
-    standing.todayCount > 0 ? `${standing.todayCount} today` : null,
-    week,
-    // The ceiling is the one week fact the count alone cannot carry, and the line
-    // above this row used to state it. It comes across as prose, not as a badge.
-    standing.atCeiling ? PRACTICE_PLENTY_TEXT : null,
-  ]
-    .filter((part) => part != null)
-    .join(" · ");
+  return {
+    today: standing.todayCount > 0 ? `${standing.todayCount} today` : null,
+    // The ceiling is the one week fact the count alone cannot carry, and the line this
+    // row replaced stated it. It comes across as prose, not as a badge.
+    week: standing.atCeiling ? `${week} · ${PRACTICE_PLENTY_TEXT}` : week,
+  };
 }
 
 // The RUNNING state's facts, from the server's own row: the start it stamped, and the

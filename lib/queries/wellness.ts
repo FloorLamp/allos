@@ -4,7 +4,7 @@
 
 import { db, today as profileToday } from "../db";
 import { now as clockNow } from "../clock";
-import { shiftDateStr, utcSqlString } from "../date";
+import { parseUtcSql, shiftDateStr, utcSqlString } from "../date";
 import { eventInstant, recordInstant } from "../row-instants";
 import { getTimezone } from "../settings";
 import {
@@ -526,7 +526,9 @@ export function liveSessionOf(
     date: row.date,
     startTime: row.start_time,
     expectedEnd: liveSessionExpectedEnd(
-      started.known ? Date.parse(started.at) : null,
+      // `RowInstant.at` is the canonical UTC serialization the reader normalizes to
+      // (lib/row-instants.ts), which no brand names yet — #5338's stated route.
+      started.known ? (parseUtcSql(started.at)?.getTime() ?? null) : null,
       {
         durationMin: row.duration_min,
         derivedWindow: row.derived_window === 1,

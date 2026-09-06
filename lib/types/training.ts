@@ -431,11 +431,11 @@ export interface LivePracticeSession {
   // THE END THE ROW ALREADY KNOWS (#5091), read rather than guessed. A Start now
   // stamps the practice's usual duration, and at start plus that duration the row
   // completes itself server-side — so a client holding only `startTime` cannot tell a
-  // running session from one that ended without it. `at` is the INSTANT (a client
-  // times to it); `hhmm` is the profile-local clock the row prints. Null for a
-  // practice with no usual duration, which stays live until End or the abandonment
-  // bound.
-  expectedEnd: { at: string; hhmm: string } | null;
+  // running session from one that ended without it. `at` is EPOCH MILLISECONDS, which
+  // is what a client times to and carries no zone to get wrong; `hhmm` is the
+  // profile-local clock the row prints. Null for a practice with no usual duration,
+  // which stays live until End or the abandonment bound.
+  expectedEnd: { at: number; hhmm: string } | null;
 }
 
 export type PracticeLiveStartOutcome =
