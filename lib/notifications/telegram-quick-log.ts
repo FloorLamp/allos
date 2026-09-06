@@ -1476,13 +1476,14 @@ import {
   type DigestTimeCallback,
   type MoodCheckinCallback,
   type MoodKeepCallback,
-  type PracticeDoneCallback,
-  type RightSizeLowerCallback,
-  type PrnLogCallback,
-  type RedoseLogCallback,
   type SymptomPickCallback,
   type SymptomSeverityCallback,
 } from "./callback-data";
+import type { PrnLogCallback, RedoseLogCallback } from "./prn-tokens";
+import type {
+  PracticeDoneCallback,
+  RightSizeLowerCallback,
+} from "./practice-tokens";
 import {
   answerCallbackQuery,
   closeMessage,

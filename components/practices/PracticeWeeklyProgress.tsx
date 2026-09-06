@@ -30,6 +30,15 @@ export default function PracticeWeeklyProgress({
       : count === 1
         ? `1 ${noun}`
         : `${count} ${noun}s`;
+  // "That's plenty" outranks the pace, and a quiet week (#5395) has no badge at all.
+  const badge = atCeiling
+    ? {
+        tint: "bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300",
+        text: PRACTICE_PLENTY_TEXT,
+      }
+    : pace === "quiet"
+      ? null
+      : { tint: PACE_BADGE_CLASS[pace], text: frequencyPaceLabel(pace) };
 
   return (
     <div data-testid={testId}>
@@ -45,15 +54,9 @@ export default function PracticeWeeklyProgress({
           {countText} this week
         </span>
         {" · "}Target {practiceCadenceText(perWeek, perWeekMax)}
-        <span
-          className={`badge ml-1.5 ${
-            atCeiling
-              ? "bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300"
-              : PACE_BADGE_CLASS[pace]
-          }`}
-        >
-          {atCeiling ? PRACTICE_PLENTY_TEXT : frequencyPaceLabel(pace)}
-        </span>
+        {badge && (
+          <span className={`badge ml-1.5 ${badge.tint}`}>{badge.text}</span>
+        )}
       </div>
     </div>
   );
