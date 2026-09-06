@@ -130,19 +130,39 @@ Tuesday's rail at a minute that describes the typing and nothing else, which is 
 whole argument `EXCLUDED_TICK_CATEGORIES` makes about an insight's `created_at`. A
 drink with no event instant draws nothing.
 
-**Nicotine, cannabis and custom substances are still day rows**, date-only, sinking
-below the day's timed rows, corrected through the day-count form. Their ledger is
-`substance_daily_totals` — UNIQUE per (profile, date, substance) and declaring no event
-column — so there is nowhere to put an instant. That is the trap to know:
-`bestKnownInstant` on that table answers with `recorded_at`, the FILING stamp, which
-would hand them a minute they never claimed. **#3295 phase 2** gives them per-event
-rows on this same model and that branch goes with it.
+**Nicotine, cannabis and custom substances are event rows too, since #3295 phase 2
+(#5026 items 2 and 3).** They were day rows — date-only, sinking below the day's timed
+rows, corrected through the day-count form — because `substance_daily_totals` is UNIQUE
+per (profile, date, substance) and declares no event column. `substance_log_events` is
+that column, so the branch that emitted a `sortTime: null` day row is gone and this
+loop is the drinks loop with its own ledger and its own correction door. The trap it
+closes is worth keeping in mind: `bestKnownInstant` on the COUNTER answers with
+`recorded_at`, the filing stamp, which would hand a day a minute it never claimed.
 
-**A drink can state its minute (#3295 phase 1).** The substance add door offers alcohol
-the shared `WhenControl` (`grain="minute"`), gated by `judgeStatedAt` at the action —
-not future, and on the entry's own day — and the statement rides every unit of the
-entry as `occurred_at` with `time_source = 'stated'`. Nothing invents one: a drink
-nobody timed keeps a NULL instant.
+**Every substance can state its minute (#3295 phase 1; every key since phase 2).** The
+substance add door offers the shared `WhenControl` (`grain="minute"`), gated by
+`judgeStatedAt` at the action — not future, and on the entry's own day — and the
+statement rides every unit of the entry as `occurred_at` with `time_source = 'stated'`.
+Nothing invents one: a use nobody timed keeps a NULL instant, so its row says "logged"
+and it draws no tick.
+
+**And every substance corrects on its own row.** `edit.kind: "substance"` addresses an
+EVENT and moves the two things a use has — its day and its stated minute. Neither the
+day's amount nor the day's note is on that door: one event is one unit, and a note
+describes the sitting rather than any use in it (#5077 owns where a day note lives now).
+A drink's row carries the FOOD payload instead and corrects through the serving's form,
+which is the same shape through a door that already existed.
+
+**Everything logged before phase 2 became rows rather than disappearing.** The record
+reads events, so a counter row with none behind it would count on the substance card
+and against the weekly cap while showing nothing here. Migration
+`20260905-substance-event-rows` derives the missing events on both ledgers — the whole
+uses each substance day is SHORT, and the alcohol day's shortfall (item 3, the state
+#5085 measures from the other side) — with `occurred_at` NULL, because a day total
+declares no instant and inventing one would be worse than the gap. A shortfall, not a
+count: a day that already carries real taps is topped up rather than doubled, and the
+subtraction is floored so a fraction can never round a use up into the record. So a legacy day shows one row
+per use, each reading "logged HH:MM" off the day's own filing stamp, and draws nothing.
 
 **The drink does not disappear, and the totals do not move.** The food door writes
 the `food_daily_totals` counter as well as the event, and both the cap and the
@@ -154,7 +174,7 @@ Food _totals_ and the nutrition arithmetic are untouched: this is the record's r
 
 `lib/history.ts` composes the readers each ledger already used
 (`getIntakeDoseLedgerPage`, `getFoodLedgerPage`, `getPracticeLedgerPage`,
-`getAllSubstanceDailyTotals`, plus the `body_metrics` rows the metric detail
+`getSubstanceLedgerPage`, plus the `body_metrics` rows the metric detail
 pages render). Every read takes `profileId` first and is scoped by it in SQL; the
 module imports no auth.
 
@@ -244,8 +264,8 @@ styles. The add layer sits directly above the rows it creates, offers first (#48
 
 **On a wide screen that stack becomes two columns** (#4974). The day bar runs across
 the top; beneath it the rows keep the reading measure in the left column and a
-**sticky rail** on the right holds, top to bottom, the chart card, the add layer and
-the month calendar — `grid-template-columns: 48rem minmax(0, 760px)`, the page capped
+**sticky rail** on the right holds, top to bottom, the chart card and the add layer
+— `grid-template-columns: 48rem minmax(0, 760px)`, the page capped
 at their sum plus the gap (`PageContainer width="rail"`, 97rem). The reading column is
 the right width for one-line rows and the wrong one for the day's map: it left half
 the viewport empty and capped the chart inside it, and reading the rows took the map
@@ -308,14 +328,26 @@ compact drawing between 1440 and 1633 IS the ruled design (2026-09-04); the rail
 not have to hold the wide one. `xl` is payable by neither geometry — a 166px drawing
 is under the compact variant's own 300px floor too.
 
-**The calendar is open in the rail, and a door everywhere else.** It is a door
-(#4102) because the grid could not spend the ~140px chrome budget above the first
-record; in the rail it is BESIDE the rows and spends none of it, so where the rail
-exists the trigger in the pinned cluster stands down and the grid renders inline. Both
-mounts are the same `EventMonthGrid` — the binding split out of `EventCalendar` so the
-popover host and the rail host cannot drift into two answers about what a marked day
-means. `MonthCalendar`'s `href` is a function, which a Server Component cannot hand
-across the RSC boundary, so that binding lives client-side either way.
+**The calendar is a door at every width** (#5359, returning to #4102's answer). It
+is a door because the grid could not spend the ~140px chrome budget above the first
+record, and the trigger in the pinned cluster stands at 390px and at 2000px alike.
+
+#4974 mounted the grid OPEN in the rail instead, on the reasoning that beside the rows
+it spends none of that budget — and it shipped without a width. `MonthCalendar`
+renders no root element by design; it fills whatever it is given, and every other host
+gives it the 264-288px it is drawn for (the door's own `w-72` panel, `DateField`,
+`WhenControl`). The rail card was a block child of a track that reaches 760px, so the
+grid drew at 736: 28px day discs 105px apart, a weekday header spread across the width
+of the chart. The owner read it at ~2000px on 2026-09-05 and ruled the open mount out;
+this supersedes #4974's item 2, which is recorded here rather than by editing #4974.
+Capping the rail card at the door's width was considered and rejected — a 288px card
+alone in a 760px rail — as was filling the width with more months. `MonthCalendar` is
+one cursor by design (#3744).
+
+With one host again, the `EventMonthGrid` export that existed to keep the popover and
+the rail from drifting into two answers is folded back into `EventCalendar`.
+`MonthCalendar`'s `href` is a function, which a Server Component cannot hand across
+the RSC boundary, so that binding still lives client-side.
 
 **The rail cannot outgrow the viewport.** A sticky element taller than the screen pins
 its top and strands its own bottom, unreachable at any page scroll, so it is capped at
@@ -392,7 +424,8 @@ practice form takes both clocks; a dose, a serving, a body sitting and a movemen
 the start (one stated instant, built once by the door, so they cannot disagree about
 what `19:10` on this day means — and a serving's meal follows that hour as it does
 anywhere else). A check-in and a symptom have a day and no event instant, so there is
-nothing for a window to open and they ignore it; a substance use waits on #3295. The
+nothing for a window to open and they ignore it; a substance use takes the start too,
+since #3295 phase 2 gave it an instant to state. The
 practice picker also opens on the practice whose weekly rhythm predicts the window's
 weekday and hour, tie-broken by the usual duration nearest its length — habit matching
 and never physiology, and a practice with no rhythm can never fit. Every one of these is

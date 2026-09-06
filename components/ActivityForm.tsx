@@ -473,10 +473,7 @@ export default function ActivityForm({
     removeSet,
     removePart,
     addPart,
-    applySuggestion,
-    fillFromSession,
-    applyPerSideSuggestion,
-    plateFromSuggestion,
+    fillSets,
     applyPlateBuild,
   } = activityParts;
 
@@ -1506,10 +1503,7 @@ export default function ActivityForm({
             onAddSet={addSet}
             onRemoveSet={removeSet}
             onUpdatePartName={updatePartNameWithIdentity}
-            onApplySuggestion={applySuggestion}
-            onApplyPerSideSuggestion={applyPerSideSuggestion}
-            onFillFromSession={fillFromSession}
-            onPlateFromSuggestion={plateFromSuggestion}
+            onFill={fillSets}
             onPlateTarget={setPlateTarget}
           />
 

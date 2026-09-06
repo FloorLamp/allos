@@ -654,7 +654,22 @@ const BELOW_RAIL = { width: 1439, height: 900 };
 const LAPTOP = { width: 1024, height: 900 };
 // Wide enough for the rail, too short to hold it: the state the height cap exists
 // for, and the test below proves the fixture reaches it rather than assuming so.
-const RAIL_SHORT = { width: 1440, height: 420 };
+//
+// 256, AND THE NUMBER IS DERIVED, NOT CHOSEN. It was 420 while the rail also held the
+// open month grid (#4974); #5359 took that card out, and the rail is now the chart
+// card and the 42px add row — measured at 1440 with a throwaway probe on this
+// fixture's own day: `intraday-panel` 178px, `history-day-rail-scroll` scrollHeight
+// 42px. The cap is the viewport minus the rail's two 1.5rem insets, so the rail only
+// outgrows it below 268, and the box below the chart only has travel above 226:
+// `visible = height - 226`, `travel = 42 - visible`. 256 sits inside that band with
+// room either side — 220px of content against a 208px cap, an 18px scrolling box with
+// 24px of travel. THAT BAND IS 42px WIDE AND IT USED TO BE ~230, so a change to the
+// chart card's height now moves both tests below; see the note in
+// docs/internals/history.md.
+const RAIL_SHORT = { width: 1440, height: 256 };
+// What the rail's two insets cost it, so the tests can say what the cap IS rather
+// than comparing content against the raw viewport (`max-h-[calc(100dvh-3rem)]`).
+const RAIL_INSETS_PX = 48;
 // The drawing the rail's box earns (#4973). The rail is 368px at 1440 and the chart
 // card 326px of that, well under `INTRADAY_VARIANTS.wide.minContainerPx` — so the
 // chart in the rail is the compact geometry at every width this file drives.
@@ -663,7 +678,7 @@ const RAIL_DRAWING = '[data-variant="compact"]';
 test.describe("the day view's rail beside its reading column (#4974)", () => {
   // THE WHOLE ARRANGEMENT AT THE THRESHOLD. 1440 is both the first railed width and
   // #4974's acceptance criterion, so one run covers the boundary and the criterion.
-  test("at 1440 the rows sit beside a sticky rail holding chart, add layer and calendar", async ({
+  test("at 1440 the rows sit beside a sticky rail holding chart and add layer", async ({
     browser,
   }) => {
     test.slow();
@@ -717,21 +732,26 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
       // that would say so, rather than the labels quietly changing size.
       await expect(panel.locator(RAIL_DRAWING)).toBeVisible();
 
-      // WHAT THE RAIL HOLDS, TOP TO BOTTOM, asserted as order rather than presence.
+      // WHAT THE RAIL HOLDS, TOP TO BOTTOM, asserted as order rather than presence:
+      // the chart card and the add layer, and nothing else (#5359).
       const add = rail.getByTestId("history-add");
-      const calendar = rail.getByTestId("history-calendar-open");
       await expect(add).toBeVisible();
-      await expect(calendar).toBeVisible();
-      const [panelBox, addBox, calBox] = await settledBoxes([
-        panel,
-        add,
-        calendar,
-      ]);
+      const [panelBox, addBox] = await settledBoxes([panel, add]);
       expect(panelBox.y).toBeLessThan(addBox.y);
-      expect(addBox.y).toBeLessThan(calBox.y);
-      // The door disappears at this width and nowhere else — the grid it opens is
-      // already on screen, so a second way to it is a second copy.
-      await expect(app.getByTestId("history-calendar")).toBeHidden();
+
+      // AND THE CALENDAR IS A DOOR HERE, exactly as it is at 1024 and on the phone
+      // (#5359, returning to #4102). #4974 mounted the grid OPEN in this rail, in a
+      // card with no width of its own, so the 264px grid drew at 736: 28px day discs
+      // 105px apart.
+      //
+      // COUNTED BY THE GRID'S OWN SHAPE, NOT BY THE RETIRED TESTID. `history-calendar-open`
+      // no longer exists, and an assertion that it is absent would stay green against
+      // a rail that remounted the grid under any other name or none. Every
+      // `MonthCalendar` cell carries `data-calendar-day` whatever hosts it, so this
+      // counts the grid itself.
+      const railDays = rail.locator("[data-calendar-day]");
+      await expect(app.getByTestId("history-calendar")).toBeVisible();
+      await expect(railDays).toHaveCount(0);
 
       // THE SCROLL, which is the whole point of the rail: reading the rows must not
       // take the map off screen. Asserted as the two boxes moving DIFFERENTLY —
@@ -904,6 +924,14 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
       const svg = panel.locator(RAIL_DRAWING).getByTestId("intraday-svg");
       await expect(svg).toBeVisible();
 
+      // PIN THE RAIL BEFORE AIMING AT IT. Sticky only pins once the page has scrolled
+      // to it, and at this viewport the unpinned rail sits below the fold — so a
+      // pointer placed on the chart's page coordinates would be over NOTHING, the
+      // wheel would reach the document by default, and both halves below would pass
+      // without the chart ever having been under the cursor.
+      await scrollTo(page, 400);
+      await expect(svg).toBeInViewport();
+
       // THE FIXTURE REACHES THE STATE THIS FORBIDS. If the rail's own box cannot
       // scroll at all, "the rail did not scroll" is true of every arrangement.
       const room = await scroller.evaluate(
@@ -959,7 +987,6 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
       await page.goto(dayUrl(TL_CHROME_BUSY_DAY));
       const rail = app.getByTestId("history-day-rail");
       await expect(rail.getByTestId("intraday-panel")).toBeVisible();
-      await expect(rail.getByTestId("history-calendar-open")).toBeVisible();
 
       const box = (await rail.boundingBox())!;
       // THE SCROLLING BOX IS NOT THE RAIL. The rail caps the height; the box BELOW
@@ -977,11 +1004,16 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
       const panelHeight = (await rail
         .getByTestId("intraday-panel")
         .boundingBox())!.height;
+      // AGAINST THE CAP, NOT THE RAW VIEWPORT, because the cap is what this test is
+      // about: `100dvh` minus the rail's two 1.5rem insets. The two quantities differ
+      // by 48px, which did not matter while the rail held ~450px of content and is
+      // the whole margin now that #5359 has left it 220.
+      const cap = RAIL_SHORT.height - RAIL_INSETS_PX;
       expect(
         panelHeight + scroll.content,
         `the rail holds ${Math.round(panelHeight + scroll.content)}px of content ` +
-          `in a ${RAIL_SHORT.height}px viewport`
-      ).toBeGreaterThan(RAIL_SHORT.height);
+          `against a ${cap}px cap in a ${RAIL_SHORT.height}px viewport`
+      ).toBeGreaterThan(cap);
       expect(Math.round(box.height)).toBeLessThanOrEqual(RAIL_SHORT.height);
       expect(
         scroll.content,
@@ -1038,13 +1070,81 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
         await expect
           .poll(() => rail.evaluate((el) => getComputedStyle(el).position))
           .toBe("static");
-        // AND THE CALENDAR IS STILL A DOOR (#4102's ruling, kept below xl): the
-        // trigger stands in the filter row and the open grid is not on the page.
+        // AND THE CALENDAR IS A DOOR (#4102's ruling, and #5359's at every width):
+        // the trigger stands in the filter row and no month grid is open on the page.
+        // Counted by the grid's own `data-calendar-day` cells rather than by the
+        // retired `history-calendar-open` testid, so a remount under a new name is
+        // still caught. The twin above the threshold is the test below.
         await expect(app.getByTestId("history-calendar")).toBeVisible();
-        await expect(app.getByTestId("history-calendar-open")).toBeHidden();
+        await expect(app.locator("[data-calendar-day]")).toHaveCount(0);
       } finally {
         await page.context().close();
       }
     });
   }
+
+  // THE TWIN OF THE LOOP ABOVE, ABOVE THE THRESHOLD (#5359). #4974 mounted the month
+  // grid OPEN in the rail; the card holding it was a block child of a track that
+  // reaches 760px and `MonthCalendar` renders no root element by design, so the grid
+  // drawn for the door's 264px panel rendered at 736 — 28px day discs 105px apart.
+  // The owner read that at ~2000px and ruled the calendar back to a door at every
+  // width.
+  //
+  // TWO CLAIMS, AND THE SECOND IS THE ONE AN ABSENCE ASSERTION CANNOT MAKE. "No grid
+  // in the rail" is equally true of a tree where the calendar vanished from the day
+  // view altogether, so the door is opened here and the grid found through the same
+  // `[data-calendar-day]` shape the rail is swept with.
+  test(`at ${RAIL.width} the calendar is a door, and the door still opens the grid`, async ({
+    browser,
+  }) => {
+    test.slow();
+    const page = await signIn(browser);
+    const app = appContent(page);
+    try {
+      await page.setViewportSize(RAIL);
+      await page.goto(dayUrl(TL_CHROME_BUSY_DAY));
+
+      // WAIT FOR THE RAIL'S CONTENT BEFORE SWEEPING IT. A count of 0 is what an
+      // unrendered rail returns too, so the absence below would be green on a page
+      // that had not painted the rail at all.
+      const rail = app.getByTestId("history-day-rail");
+      await expect(rail.getByTestId("intraday-panel")).toBeVisible();
+      await expect(rail.getByTestId("history-add")).toBeVisible();
+      await expect(rail.locator("[data-calendar-day]")).toHaveCount(0);
+
+      // THE DOOR IS IN THE FILTER ROW, where it stands at every other width.
+      const door = app
+        .getByTestId("history-filters")
+        .getByTestId("history-calendar");
+      await expect(door).toBeVisible();
+      await hydratedClick(page, door);
+      const panel = page.getByTestId("history-calendar-panel"); // testid-scope-ok: AnchoredPanel portals the popover to <body>, one copy
+      await expect(panel).toBeVisible();
+
+      // A WHOLE MONTH OF CELLS, not merely "something opened": six weeks of seven is
+      // the grid's own shape, and 28 is the shortest month.
+      const days = panel.locator("[data-calendar-day]");
+      expect(await days.count()).toBeGreaterThanOrEqual(28);
+
+      // AND IT IS DRAWN AT THE WIDTH IT WAS DESIGNED FOR — asserted as the
+      // RELATIONSHIP that looked wrong rather than as a pixel count against the
+      // viewport. `DAY_HIT` is `w-full` and `DAY_GLYPH` a fixed 28px disc, so the
+      // defect was a cell far wider than the disc inside it. In the door's `w-72`
+      // panel the cell is the disc plus a little; in the retired rail card it was
+      // nearly four times it.
+      const cell = days.first(); // first-ok: every cell is one column of the same grid, so any one answers this
+      const [cellBox, glyphBox] = await settledBoxes([
+        cell,
+        cell.locator("span"),
+      ]);
+      expect(
+        cellBox.width,
+        `the day cell is ${Math.round(cellBox.width)}px around a ${Math.round(
+          glyphBox.width
+        )}px glyph`
+      ).toBeLessThan(glyphBox.width * 2);
+    } finally {
+      await page.context().close();
+    }
+  });
 });

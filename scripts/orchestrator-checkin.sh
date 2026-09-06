@@ -689,8 +689,24 @@ fi
 echo
 
 # 3. The roster the orchestrator's own memory cannot be trusted to hold.
+# LIVE LANES FIRST, CLOSED ONES AS A COUNT (#5259). ledger.mjs leaves one
+# `(done: …)` trailer per dispatch ever closed — about 200 by 2026-09-05 — and
+# this used to print the whole file, so the live Cluster lines and every alarm
+# below them sat under a wall of settled history that was walked past for
+# hours. The trailers stay in the file; the check-in prints what is running now,
+# then how much history sits behind it, newest three named so a lane that was
+# just closed is still visible.
 echo "--- in-flight roster (written at dispatch; the only copy that outlives you) ---"
-if [ -s "$ROSTER" ]; then sed 's/^/  /' "$ROSTER"; else echo "  (empty)"; fi
+if grep -qE '^Cluster ' "$ROSTER" 2>/dev/null; then
+  grep -E '^Cluster ' "$ROSTER" | sed 's/^/  /'
+else
+  echo "  (no live Cluster line)"
+fi
+closed=$(grep -c '^(done: ' "$ROSTER" 2>/dev/null || true)
+if [ "${closed:-0}" -gt 0 ]; then
+  echo "  $closed closed dispatch(es) on record, newest three below — full list: $ROSTER"
+  grep '^(done: ' "$ROSTER" | tail -3 | sed 's/^/    /'
+fi
 
 # ROSTER vs LEDGER DIVERGENCE. They are two files kept in step by
 # dispatch-brief.mjs, and ONLY by it: `new` appends to both, `done` closes both.

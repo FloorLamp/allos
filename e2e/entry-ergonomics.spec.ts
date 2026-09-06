@@ -938,7 +938,7 @@ test("strength set controls step, clamp, and toggle without losing their phone g
   // …and the row now STATES it. The chip is the conversion's whole point: the
   // conclusion is on screen without the control that produced it.
   await closePartOptions(page);
-  await expect(page.getByTestId("part-fact-intent")).toHaveText("to failure");
+  await expect(page.getByTestId("part-fact-intent")).toHaveText("To failure");
 
   await openPartOptions(page, 0);
   await page.getByText("To failure", { exact: true }).click();
@@ -954,7 +954,7 @@ test("strength set controls step, clamp, and toggle without losing their phone g
   // components/__tests__/part-fact-row.test.tsx rather than against the seed's
   // training history.
   await expect(page.getByTestId("part-fact-intent")).toHaveText(
-    /^target \d+ reps$/
+    /^Target \d+ reps$/
   );
 
   const weightStepper = page.getByTestId("set1-weight-stepper");

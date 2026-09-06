@@ -15,11 +15,11 @@ import {
   DELETE_POLICY,
   getDataset,
   PROVIDER_LINK_SELECTS,
+  readsSelect,
   toCsv,
 } from "@/lib/export";
 import { OWNED_TABLES } from "@/lib/owned-tables";
 import { ownedChildTables } from "@/lib/profile-delete";
-import { stripComments } from "../__tests__/strip-comments";
 import {
   execArgs,
   prepareArgs,
@@ -88,6 +88,15 @@ beforeAll(() => {
       `INSERT INTO food_log_events (profile_id, group_key, date, recorded_at)
        VALUES (?, ?, '2024-01-02', '2024-01-02T12:00:00Z')`
     ).run(p.profileId, `${p.tag.toLowerCase()}-lunch`);
+    // The substance ledger #5026 phase 2 added, SEEDED rather than named in
+    // SCOPING_UNSEEDED: its select and its countSql are new statements with new
+    // profile filters, which is exactly what the loop below exists to watch, and an
+    // unseeded dataset is one the loop is silent about. Distinct substance per
+    // profile, so the two rows are distinguishable and a leak has something to be.
+    db.prepare(
+      `INSERT INTO substance_log_events (profile_id, substance, date, recorded_at)
+       VALUES (?, ?, '2024-01-02', '2024-01-02T21:00:00Z')`
+    ).run(p.profileId, `${p.tag} Nicotine`);
   }
 });
 
@@ -237,6 +246,13 @@ describe("dataset delete affordance", () => {
     expect(getDataset("conditions")!.deletable).not.toBe(false);
     expect(getDataset("encounters")!.deletable).not.toBe(false);
     expect(getDataset("metric_samples")!.deletable).not.toBe(false);
+    // #5026 phase 2: the substance COUNTER and its EVENT ledger are one fact in two
+    // tables, and the manage delete is a plain id + profile_id statement that can only
+    // move one of them — so both are browse-only, together. Named here rather than left
+    // to the sync invariants below, which only check that the flag and the policy
+    // AGREE: re-adding both entries would satisfy them and reopen the split.
+    expect(del("substance_daily_totals")).toBe(false);
+    expect(del("substance_log_events")).toBe(false);
   });
 });
 
@@ -288,10 +304,14 @@ describe("DATASETS ⇄ DELETE_POLICY stay in sync", () => {
 const jsBuiltColumns = (ds: (typeof DATASETS)[number]) =>
   (ds.jsBuilt ?? []).map((c) => c.column);
 
-// The datasets that do NOT carry the `readsSelect` marker — they hand-write their
-// reads instead of taking q(select)/qPage(select) from tableDataset — so the binding
-// has to be PROVEN on seeded rows rather than held by construction.
-const HAND_AUTHORED_READS = ["activities", "intake_items", "providers"];
+// The datasets tableDataset() does NOT build — they hand-write their reads instead of
+// taking q(select)/qPage(select) from it — so the binding has to be PROVEN on seeded
+// rows rather than held by construction. It was three; `activities` and `intake_items`
+// came off it when tableDataset grew the `shape` hook their child-table fold needed
+// (#5324). `providers` cannot follow: its declared select's one `?` stands for the
+// runtime id LIST, not the profile id, so q(select) would bind a profile id into
+// `id IN (?)`.
+const HAND_AUTHORED_READS = ["providers"];
 
 describe("the declared select is the statement the export runs (#5117)", () => {
   const expectedKeys = (ds: (typeof DATASETS)[number]) =>
@@ -366,16 +386,17 @@ describe("the declared select is the statement the export runs (#5117)", () => {
     // tableDataset() sets `readsSelect`, and its rows/page ARE q(select)/qPage(select).
     // Anything else must be in HAND_AUTHORED_READS, which the seeded comparison covers.
     const unbound = DATASETS.filter(
-      (d) => !d.readsSelect && !HAND_AUTHORED_READS.includes(d.key)
+      (d) => !readsSelect(d) && !HAND_AUTHORED_READS.includes(d.key)
     ).map((d) => d.key);
     expect(
       unbound,
       `\nThese datasets hand-write their reads and nothing proves the reads match their declared select.\nSeed them in this file and add them to HAND_AUTHORED_READS:\n${unbound.join("\n")}\n`
     ).toEqual([]);
     // …and nothing is listed that tableDataset now builds.
-    const stale = HAND_AUTHORED_READS.filter(
-      (key) => getDataset(key)?.readsSelect
-    );
+    const stale = HAND_AUTHORED_READS.filter((key) => {
+      const ds = getDataset(key);
+      return ds && readsSelect(ds);
+    });
     expect(stale, `built by tableDataset now — remove from the list`).toEqual(
       []
     );
@@ -398,36 +419,23 @@ describe("the declared select is the statement the export runs (#5117)", () => {
           );
           continue;
         }
-        for (const [reader, got, fn] of [
-          ["rows()", rows, ds.rows],
-          ["page()", page, ds.page],
+        // WHAT THIS ESTABLISHES, exactly: the cell is on every row the export
+        // emits, with a value rather than `undefined`. It does NOT establish that
+        // the value came from `cell.by` — the two guards that reached for that (a
+        // regex over `String(reader)`, and a source-text read of lib/export.ts for a
+        // declaration of that name) both existed because `by` was a STRING that
+        // could name nothing at all. It is the function reference now (#5324), so
+        // what is left is the behavioural half, which is the half worth running.
+        for (const [reader, got] of [
+          ["rows()", rows],
+          ["page()", page],
         ] as const) {
           const built = got.every(
             (r) => cell.column in r && r[cell.column] !== undefined
           );
           if (!built) {
             missing.push(
-              `${ds.key}.${cell.column}: ${ds.key}.${reader} does not put it on every row — ${cell.by}() is not building it`
-            );
-          }
-          // …and `by` names THE builder, not merely a function of that name.
-          // export-completeness.test.ts reads lib/export.ts as text and can only ask
-          // whether such a function is declared — renaming this to `shapeSupplements`,
-          // a real function building a different cell, passes there. Here the reader
-          // itself is in hand, so the call can be looked for in its own source.
-          //
-          // WHAT THIS ESTABLISHES, exactly: the reader's CODE names `by(`. Comments
-          // are stripped first (the shared scanner, #3595 — they are part of
-          // `String(fn)`, and one line mentioning the function by name satisfied this
-          // while the reader called something else). It still does not establish that
-          // the emitted cell CAME from that call — the `built` check above is what
-          // says the cell is there, and the two together are what the declaration is
-          // worth.
-          if (
-            !new RegExp(`\\b${cell.by}\\s*\\(`).test(stripComments(String(fn)))
-          ) {
-            missing.push(
-              `${ds.key}.${cell.column}: ${ds.key}.${reader} never calls ${cell.by}() — jsBuilt names a function that does not build this cell`
+              `${ds.key}.${cell.column}: ${ds.key}.${reader} does not put it on every row — ${cell.by.name}() is not building it`
             );
           }
         }
@@ -478,59 +486,126 @@ const SCOPING_GLOBAL: { key: string; why: string }[] = [
   },
 ];
 
-// Datasets the shared fixture seeds no row for, on either profile. The loop has
-// nothing to compare for these and is therefore silent about them, so they are
-// written down and the list is asserted EXACT: seeding one means deleting its name
-// here, and a dataset that stops being seeded has to be added rather than quietly
-// dropping out of the sweep.
-const SCOPING_UNSEEDED = [
-  "activity_routes",
-  "activity_telemetry",
-  "activity_laps",
-  "activity_segment_efforts",
-  "medical_record_revisions",
-  "injuries",
-  "niggles",
-  "endurance_plans",
-  "cycles",
-  "mood_logs",
-  "dose_schedule_versions",
-  "procedures",
-  "genomic_variants",
-  "imaging_studies",
-  "dental_procedures",
-  "skin_lesions",
-  "optical_prescriptions",
-  "family_history",
-  "care_goals",
-  "appointments",
-  "preventive_events",
-  "preventive_overrides",
-  "preventive_record_decisions",
-  "protocols",
-  "milestones",
-  "equipment",
-  "frequency_targets",
-  "food_daily_totals",
-  "substance_daily_totals",
-  "protein_daily_totals",
-  "fasts",
-  "symptom_logs",
-  "situations",
-  "medication_courses",
-  "intake_item_ingredients",
-  "intake_item_purposes",
-  "intake_item_side_effects",
-];
+// EVERY OTHER DATASET IS SEEDED, NOT LISTED (#5314). This used to be
+// SCOPING_UNSEEDED, 37 names the loop below was silent about: the shared fixture
+// seeds no row for them, both profiles came back empty, and `WHERE profile_id = ?`
+// could be deleted from any of those 37 statements with nothing observing it. A
+// shorter list would have grown back, so there is no list — the row is DERIVED from
+// the dataset:
+//
+//   - WHICH column distinguishes the two profiles is read off the dataset's own
+//     select (a text or numeric column of ds.table that the select emits and that is
+//     not a key, an FK or profile_id), because the loop compares row CONTENT: two
+//     rows that differ only by `id` would let an id-shaped leak through.
+//   - EVERYTHING ELSE the row needs comes from seedSchemaRow, which fills required
+//     columns from the schema and reaches profile_id through the parent FK for a
+//     child table.
+//
+// So a dataset added tomorrow arrives with its case already written, and one this
+// cannot seed THROWS naming itself — an unseedable dataset is the defect, not an
+// exemption.
+type PhysicalColumn = { name: string; type: string; pk: number };
+
+// Columns of ds.table this dataset actually emits, minus the ones that cannot carry a
+// per-profile difference: keys renumber, FKs point at a parent already scoped, and
+// profile_id is the thing under test.
+function distinguishableColumns(ds: (typeof DATASETS)[number]): string[] {
+  const emitted = new Set(
+    db
+      .prepare(ds.select)
+      .columns()
+      .filter((c) => c.table === ds.table && c.column)
+      .map((c) => c.column!)
+  );
+  const fks = new Set(
+    (db.pragma(`foreign_key_list(${ds.table})`) as { from: string }[]).map(
+      (f) => f.from
+    )
+  );
+  const cols = db.pragma(`table_info(${ds.table})`) as PhysicalColumn[];
+  const usable = cols.filter(
+    (c) =>
+      emitted.has(c.name) &&
+      !c.pk &&
+      c.name !== "profile_id" &&
+      !fks.has(c.name)
+  );
+  // Text first: a free-form text column is the one least likely to be CHECK'd to a
+  // closed set of values, and the fallback below tries the rest in turn anyway.
+  return [
+    ...usable.filter((c) => /CHAR|CLOB|TEXT/i.test(c.type)),
+    ...usable.filter((c) => !/CHAR|CLOB|TEXT/i.test(c.type)),
+  ].map((c) => c.name);
+}
+
+// The rows the derivation above cannot produce, because a MULTI-COLUMN CHECK ties
+// several columns together and no single made-up value satisfies it. This is a list
+// of ROWS, not of exemptions: a dataset here still gets its case, and its row still
+// has to differ between the profiles or the case reds. Keep it as short as the
+// schema forces.
+const SCOPING_SEEDS: Record<string, (tag: string) => Record<string, unknown>> =
+  {
+    // CHECK ties `kind` to exactly one of goal_key / condition_id / biomarker_key, with
+    // `direction` allowed only on the biomarker arm.
+    intake_item_purposes: (tag) => ({
+      kind: "goal",
+      goal_key: `${tag.toLowerCase()}-purpose`,
+      condition_id: null,
+      biomarker_key: null,
+      direction: null,
+    }),
+  };
+
+// One row of `ds`, belonging to `p`, whose emitted content differs from the other
+// profile's. Candidate columns are tried in turn because a CHECK constraint can
+// refuse a made-up value; the FIRST that inserts is the one used, and running out is
+// an error naming the dataset.
+function seedForScoping(
+  ds: (typeof DATASETS)[number],
+  p: SeededProfile,
+  ordinal: number
+): void {
+  const explicit = SCOPING_SEEDS[ds.key];
+  if (explicit) {
+    seedSchemaRow(ds.table, explicit(p.tag), p.profileId);
+    return;
+  }
+  const refusals: string[] = [];
+  for (const column of distinguishableColumns(ds)) {
+    const type = (
+      db.pragma(`table_info(${ds.table})`) as PhysicalColumn[]
+    ).find((c) => c.name === column)!.type;
+    const value = /CHAR|CLOB|TEXT/i.test(type) ? `${p.tag} scope` : ordinal;
+    try {
+      seedSchemaRow(ds.table, { [column]: value }, p.profileId);
+      return;
+    } catch (e) {
+      refusals.push(`${column}=${String(value)}: ${(e as Error).message}`);
+    }
+  }
+  throw new Error(
+    `${ds.key}: could not seed a row on ${ds.table} that differs between profiles. Seed one by hand in this file's beforeAll.\n${refusals.join("\n")}`
+  );
+}
 
 describe("every dataset's rows() and page() are profile-scoped (#5117)", () => {
-  const skipped = new Set([
-    ...SCOPING_GLOBAL.map((e) => e.key),
-    ...SCOPING_UNSEEDED,
-  ]);
+  const skipped = new Set(SCOPING_GLOBAL.map((e) => e.key));
   const checked = DATASETS.filter((ds) => !skipped.has(ds.key)).map(
     (ds) => ds.key
   );
+
+  // Fill the gaps the shared fixture leaves, so every case below has both profiles'
+  // rows to compare (#5314). Datasets seeded above keep the rows they already have.
+  beforeAll(() => {
+    for (const ds of DATASETS) {
+      if (skipped.has(ds.key)) continue;
+      let ordinal = 0;
+      for (const p of [a, b]) {
+        ordinal += 1;
+        if (ds.rows(p.profileId).length === 0) seedForScoping(ds, p, ordinal);
+      }
+    }
+  });
 
   it.each(checked)("%s carries none of the other profile's rows", (key) => {
     const ds = getDataset(key)!;
@@ -579,10 +654,13 @@ describe("every dataset's rows() and page() are profile-scoped (#5117)", () => {
           ds.rows(a.profileId).length === 0 || ds.rows(b.profileId).length === 0
       )
       .map((ds) => ds.key);
+    // NOT a list to append to (#5314). Every dataset the export can emit is seeded on
+    // both profiles and gets a case; the only skip is a GLOBAL table, asserted exact
+    // below against schema-derived ownership.
     expect(
       unseeded,
-      `\nDatasets the loop above is silent about. Seed one in this file and delete its name from SCOPING_UNSEEDED, or add a newly unseeded one to it:\n${unseeded.join("\n")}\n`
-    ).toEqual(SCOPING_UNSEEDED);
+      `\nDatasets the loop above is silent about — they have no row on one of the two profiles, so their case cannot fail. seedForScoping() above should have filled this in:\n${unseeded.join("\n")}\n`
+    ).toEqual([]);
     // A global dataset must still be SEEDED — otherwise its exemption is really the
     // unseeded one wearing a reason, and the reason stops being true unnoticed.
     for (const e of SCOPING_GLOBAL) {

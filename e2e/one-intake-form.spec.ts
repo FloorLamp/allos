@@ -193,7 +193,7 @@ test("the label's proposal is marked suggested, and stops being once the person 
   const rule = form.getByTestId("intake-fact-rule");
   await expect(rule).toHaveCount(1);
   await expect(rule).toHaveAttribute("data-suggested", "1");
-  await expect(rule).toContainText("empty stomach");
+  await expect(rule).toContainText("Empty stomach");
   await expect(rule).toContainText("suggested");
 
   // Open the rules builder from the chip itself. The disclosure is the button carrying
@@ -213,7 +213,7 @@ test("the label's proposal is marked suggested, and stops being once the person 
   // THE NEGATIVE, on the same chip: tracked, and now false. Absent would be a different
   // claim — untracked — and this fact is tracked either way, so "0" is the honest value.
   await expect(rule).toHaveAttribute("data-suggested", "0");
-  await expect(rule).toContainText("with food");
+  await expect(rule).toContainText("With food");
   await expect(rule).not.toContainText("suggested");
 
   // And Done put focus back on the disclosure that opened the editor (#3311) — the

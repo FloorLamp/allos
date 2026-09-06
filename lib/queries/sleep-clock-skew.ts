@@ -23,7 +23,7 @@
 // which is the same answer those two readers give.)
 
 import { db } from "../db";
-import { utcInstant } from "../date";
+import { parseUtcSql, utcInstant } from "../date";
 import { cache } from "../request-cache";
 import { getTravelSwitches } from "../settings/travel";
 import {
@@ -181,9 +181,12 @@ function suspectSleepSessionsUncached(
   // for every step. `sliceByTs` does that with two binary searches on the sorted `ts`,
   // so each night is handed exactly the minutes it can reach.
   const context = HR_CONTEXT_HOURS * 60 * 60 * 1000;
+  // parseUtcSql throughout, not the typed seam: `metric_samples.started_at`/`ended_at`
+  // carry no brand. The shape expected is a synced night's own instant — `Z`, an offset
+  // (Health Connect, Oura), or no suffix read as UTC — and a stated offset is kept (#5338).
   const spans = nights.map((row) => ({
-    start: Date.parse(row.started_at),
-    end: Date.parse(row.ended_at),
+    start: parseUtcSql(row.started_at)?.getTime() ?? NaN,
+    end: parseUtcSql(row.ended_at)?.getTime() ?? NaN,
   }));
   const usable = spans.filter(
     (s) => Number.isFinite(s.start) && Number.isFinite(s.end)
@@ -208,8 +211,8 @@ function suspectSleepSessionsUncached(
   const switches = getTravelSwitches(profileId);
 
   return nights.flatMap((row) => {
-    const start = Date.parse(row.started_at);
-    const end = Date.parse(row.ended_at);
+    const start = parseUtcSql(row.started_at)?.getTime() ?? NaN;
+    const end = parseUtcSql(row.ended_at)?.getTime() ?? NaN;
     if (!Number.isFinite(start) || !Number.isFinite(end)) return [];
     const evidence = detectSleepClockSkew(
       { start: row.started_at, end: row.ended_at },
@@ -227,7 +230,8 @@ function suspectSleepSessionsUncached(
         source: row.source,
         evidence,
         nearTimezoneSwitch: switches.some((s) => {
-          const at = Date.parse(s.at);
+          // parseUtcSql: TimezoneSwitch.at is documented canonical but not yet branded.
+          const at = parseUtcSql(s.at)?.getTime() ?? NaN;
           return (
             Number.isFinite(at) && at >= start - DAY_MS && at <= end + DAY_MS
           );

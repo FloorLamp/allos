@@ -153,6 +153,18 @@ describe("utcSqlString / parseUtcSql", () => {
     expect(parseUtcSql(null)).toBeNull();
     expect(parseUtcSql("nope")).toBeNull();
   });
+
+  // A stated offset is KEPT, not overwritten with a Z: metric_samples holds the
+  // device's own instant verbatim, and Health Connect / Oura state one (#5338).
+  it.each([
+    ["2026-09-05T12:00:00+09:00", "2026-09-05T03:00:00.000Z"],
+    ["2026-09-05T12:00:00.000+02:00", "2026-09-05T10:00:00.000Z"],
+    ["2026-09-05T12:00:00-0400", "2026-09-05T16:00:00.000Z"],
+    ["2026-09-05T12:00:00", "2026-09-05T12:00:00.000Z"],
+    ["2026-09-05", "2026-09-05T00:00:00.000Z"],
+  ])("reads %s as %s", (stored, iso) => {
+    expect(parseUtcSql(stored)?.toISOString()).toBe(iso);
+  });
 });
 
 describe("localDayMinutes / isDstTransitionDay", () => {

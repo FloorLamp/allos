@@ -16,23 +16,37 @@ export { toCsv };
 // WHAT MAKES A COLUMN EXPORTABLE (#5117). Every column of a table that has a
 // dataset here is exported, unless it is named in COLUMN_EXPORT_ALLOWLIST in
 // lib/__db_tests__/export-completeness.test.ts with the reason a migrating family
-// is not losing health data by its absence. There is no third option: a column
-// added to one of these tables either joins its dataset (`columns` AND `select`)
-// or gets written down as a deliberate omission, and the guard is red until one
-// of those happens. That is the rule `bundle_id` was missing for four datasets —
-// the export CARRIES provenance, and precedent is not a decision.
+// is not losing health data by its absence. That is the rule `bundle_id` was
+// missing for four datasets — the export CARRIES provenance, and precedent is not
+// a decision.
+//
+// THERE IS A THIRD CASE AND IT IS NOT ONE YOU ARGUE FOR (#5342): a table that ALSO
+// feeds the FHIR passport is carved out of the column guard, which reads flat
+// SELECTs and cannot read what a FHIR builder emits. Neither option above applies
+// there — an allowlist entry for its column is what reds, telling its author to
+// remove the entry they just added. Membership is FHIR_INPUT_TABLES, derived where
+// the passport input is declared, not a second list.
 // The Data page shows PAGE_SIZE rows per dataset table; the same size drives the
 // bounded `page()` reads below so a visit ships one page, not the whole table
 // (issue #113 — /data used to serialize every dataset in full).
 export const PAGE_SIZE = 25;
 
-// A CSV cell no SELECT produces: built after the read by the named function.
+// A CSV cell no SELECT produces: built after the read by the function itself.
 export type JsBuiltCell = {
   column: string;
-  // The function in this file that puts the cell on the row.
-  by: string;
+  // THE function that puts the cell on the row — the reference, not its name
+  // (#5324). A name could answer to nothing, which cost two guards: a source-text
+  // read of this file for a matching declaration, and a regex over the stringified
+  // reader. A reference cannot, so both are gone and the behavioural claim is what
+  // remains (lib/__db_tests__/export.test.ts): the cell is on every row, not
+  // `undefined`.
+  by: (...args: never[]) => unknown;
   why: string;
 };
+
+// The token above. `unique symbol`, module-private, and minted in exactly one place
+// (tableDataset, below) — that is the whole of the brand.
+const SELECT_BOUND: unique symbol = Symbol("export-dataset-reads-select");
 
 export interface ExportDataset {
   key: string;
@@ -59,12 +73,14 @@ export interface ExportDataset {
   // comparison in lib/__db_tests__/export.test.ts asserts that what rows() and
   // page() actually emit is exactly what this statement selects.
   select: string;
-  // Set by tableDataset(): this dataset's rows()/page() ARE q(select)/qPage(select),
-  // so the export runs the declared statement by construction. A dataset that
-  // hand-writes its reads (activities, intake_items, providers) leaves this unset
-  // and is proven bound by the seeded key comparison instead — export.test.ts fails
-  // on a dataset that is neither.
-  readsSelect?: true;
+  // STAMPED BY tableDataset() AND BY NOTHING ELSE (#5341): this dataset's
+  // rows()/page() ARE q(select)/qPage(select), so the export runs the declared
+  // statement by construction. It used to be `readsSelect?: true`, a property a
+  // dataset could assert about ITSELF — which deleted it from the guard watching
+  // it. The key is a module-private `unique symbol` now, unspellable outside this
+  // file. A dataset that hand-writes its reads (`providers`) cannot carry it and is
+  // proven bound by the seeded key comparison instead.
+  readonly [SELECT_BOUND]?: true;
   // Cells this dataset's rows()/page() BUILD IN JS after the read — a child-table
   // roll-up the parent select cannot fold into a column. They are in `columns` (so
   // the CSV ships them) and in no `select`, which is otherwise exactly the shape of a
@@ -72,11 +88,9 @@ export interface ExportDataset {
   //
   // Declaring one is a claim with two halves, and both are checked:
   // lib/__db_tests__/export-completeness.test.ts asserts the column really is absent
-  // from the select, and that a `readsSelect` dataset never carries one (q(select)
-  // leaves no JS step that could build a cell); lib/__db_tests__/export.test.ts
-  // asserts the named cell is actually EMITTED, non-undefined, on a seeded row. One
-  // list, not two: a declaration nothing runs against is how a column named after a
-  // function that does not exist stays green.
+  // from the select; lib/__db_tests__/export.test.ts asserts the cell is EMITTED,
+  // non-undefined, on a seeded row. A third half was a guard until tableDataset's
+  // parameter type took it: `shape` and `jsBuilt` arrive together or not at all.
   jsBuilt?: JsBuiltCell[];
   // FULL dataset — every row, unbounded. Used ONLY by the export routes
   // (/api/export/*), which stream/serialize the complete table. The Data page
@@ -101,6 +115,10 @@ export interface ExportDataset {
   // they are intentionally absent from the manage-actions delete policy.
   deletable?: boolean;
 }
+
+// Whether tableDataset() built this dataset, for the guards that used to read a
+// hand-writable boolean off it.
+export const readsSelect = (ds: ExportDataset): boolean => SELECT_BOUND in ds;
 
 // Each dataset query is scoped to the caller's profile; the export route passes
 // the session's active profile id.
@@ -136,25 +154,53 @@ const qCount =
 // ORDER BY): full export via rows(), bounded display via page(), total via
 // count(). `countSql` is a COUNT over the same FROM/WHERE (child datasets pass a
 // JOINed COUNT so it still filters the parent's profile_id).
-function tableDataset(cfg: {
-  key: string;
-  label: string;
-  table: string;
-  columns: string[];
-  select: string;
-  countSql: string;
-  deletable?: boolean;
-}): ExportDataset {
+//
+// `shape` is the JS step a dataset that folds a CHILD table needs (#5324). It runs
+// on whatever the declared statement returned — full read and bounded page alike,
+// so the two shape identically by construction — and it is the ONLY way to get one,
+// which is why `activities` and `intake_items` no longer hand-write their readers.
+//
+// `shape` AND `jsBuilt` TRAVEL TOGETHER, in the type: a dataset with no JS step
+// declaring a JS-built cell is not a claim that turned out false but one that could
+// never be true, shipping an empty CSV column. That was a guard; it is now
+// unrepresentable.
+type ShapeHook<T> = (rows: T[], profileId: number) => Record<string, unknown>[];
+
+function tableDataset<
+  T extends Record<string, unknown> = Record<string, unknown>,
+>(
+  cfg: {
+    key: string;
+    label: string;
+    table: string;
+    columns: string[];
+    select: string;
+    countSql: string;
+    deletable?: boolean;
+  } & (
+    | { shape: ShapeHook<T>; jsBuilt: JsBuiltCell[] }
+    | { shape?: never; jsBuilt?: never }
+  )
+): ExportDataset {
+  const read = q(cfg.select);
+  const readPage = qPage(cfg.select);
+  const shape = cfg.shape;
   return {
     key: cfg.key,
     label: cfg.label,
     table: cfg.table,
     columns: cfg.columns,
     select: cfg.select,
-    readsSelect: true,
+    jsBuilt: cfg.jsBuilt,
+    [SELECT_BOUND]: true,
     deletable: cfg.deletable,
-    rows: q(cfg.select),
-    page: qPage(cfg.select),
+    rows: shape
+      ? (profileId) => shape(read(profileId) as T[], profileId)
+      : read,
+    page: shape
+      ? (profileId, limit, offset) =>
+          shape(readPage(profileId, limit, offset) as T[], profileId)
+      : readPage,
     count: qCount(cfg.countSql),
   };
 }
@@ -184,23 +230,33 @@ type ActivityRow = {
 };
 type ActivitySet = SetRow & { activity_id: number; exercise: string };
 
-// Columns selected from `activities` (shared by the full + bounded reads). Carries
-// the full device/Strava telemetry, not just the display projection (#466).
-const ACTIVITY_COLUMNS = `id, date, type, title, duration_min, distance_km, intensity,
+// The activities read, carrying the full device/Strava telemetry rather than the
+// display projection (#466). One statement, run by q()/qPage() through
+// tableDataset like every other dataset's.
+const ACTIVITIES_SELECT = `SELECT id, date, type, title, duration_min, distance_km, intensity,
           start_time, end_time, avg_hr, max_hr, elevation_m, avg_power_w, avg_cadence,
-          kilojoules, est_calories, workout_type, source, external_id, notes`;
-// The activities read itself, complete through its WHERE — one const so the full
-// read, the bounded page read and the dataset's `select` are the same statement.
-const ACTIVITIES_SELECT = `SELECT ${ACTIVITY_COLUMNS}
-           FROM activities WHERE profile_id = ? ORDER BY date DESC, id DESC`;
-// Exercise-sets read, scoped to the profile through the activities JOIN. The page
-// reader appends `AND s.activity_id IN (...)` to fetch only the shown activities'
-// sets; the export reader takes them all. Kept as one const so both share the
-// (profile-scoped) FROM/WHERE.
-const SETS_SELECT = `SELECT s.activity_id, s.exercise, s.set_number, s.weight_kg, s.reps,
-          s.weight_kg_right, s.reps_right, s.duration_sec, s.duration_sec_right
-   FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
-   WHERE a.profile_id = ?`;
+          kilojoules, est_calories, workout_type, source, external_id, notes
+     FROM activities WHERE profile_id = ? ORDER BY date DESC, id DESC`;
+
+// The exercise sets of the given activities, scoped to the profile through the
+// activities JOIN. ONE statement for both readers — the full export passes every
+// activity's id, the Data page passes the 25 it is showing — and the id list rides a
+// single bound parameter as JSON, so this is a complete literal the profile-scoping
+// scan reads directly. It used to be a const plus two interpolations, which that
+// scan cannot see through and silently skipped (#5323).
+const activitySets = (
+  profileId: number,
+  activityIds: number[]
+): ActivitySet[] =>
+  db
+    .prepare(
+      `SELECT s.activity_id, s.exercise, s.set_number, s.weight_kg, s.reps,
+              s.weight_kg_right, s.reps_right, s.duration_sec, s.duration_sec_right
+         FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
+        WHERE a.profile_id = ? AND s.activity_id IN (SELECT value FROM json_each(?))
+        ORDER BY s.activity_id, s.exercise, s.set_number`
+    )
+    .all(profileId, JSON.stringify(activityIds)) as ActivitySet[];
 
 // Fold each activity's exercise_sets into a compact `exercises` summary using the
 // shortened (base) lift name. Shared by the full export (rows) and the bounded page
@@ -270,9 +326,7 @@ type DoseRow = {
 };
 
 // Parent intake_items read (supplements + medications), complete through its ORDER
-// BY so the full read, the bounded page read (which appends only LIMIT/OFFSET) and
-// the dataset's declared `select` are the same statement. Both filter profile_id
-// directly.
+// BY: q()/qPage() run it for the full export and the bounded page alike.
 //
 // `, id` is what makes that sentence true. `ORDER BY name` alone is not a TOTAL
 // order — two items a family named the same way (two brands of one supplement) tie —
@@ -284,12 +338,18 @@ const ITEMS_SELECT = `SELECT id, name, kind, brand, product, condition, obligati
           stack, active, critical, prescriber, pharmacy, rx_number,
           quantity_on_hand, notes
    FROM intake_items WHERE profile_id = ? ORDER BY name, id`;
-// Dose-schedule read, scoped to the profile through the intake_items JOIN. The
-// page reader appends `AND d.item_id IN (...)` to fetch only the shown
-// items' doses.
-const DOSES_SELECT = `SELECT d.item_id, d.amount, d.time_of_day, d.food_timing
-   FROM intake_item_doses d JOIN intake_items ii ON ii.id = d.item_id
-   WHERE ii.profile_id = ?`;
+// The dose rows of the given items, scoped to the profile through the intake_items
+// JOIN — the activities/exercise_sets shape one domain over, and one literal
+// statement for the same reason.
+const itemDoses = (profileId: number, itemIds: number[]): DoseRow[] =>
+  db
+    .prepare(
+      `SELECT d.item_id, d.amount, d.time_of_day, d.food_timing
+         FROM intake_item_doses d JOIN intake_items ii ON ii.id = d.item_id
+        WHERE ii.profile_id = ? AND d.item_id IN (SELECT value FROM json_each(?))
+        ORDER BY ii.name, d.sort, d.id`
+    )
+    .all(profileId, JSON.stringify(itemIds)) as DoseRow[];
 
 // Fold each item's dose rows into a readable `schedule` summary. Shared by the
 // full export (rows) and the bounded page reader.
@@ -396,7 +456,7 @@ const providersDataset: ExportDataset = {
 };
 
 export const DATASETS: ExportDataset[] = [
-  {
+  tableDataset<ActivityRow>({
     // Activities and their exercise sets combined: one row per activity, with an
     // `exercises` summary that folds in the sets using the shortened (base) lift
     // name (e.g. "Barbell Bench Press" -> "Bench Press") and a compact per-set
@@ -405,10 +465,19 @@ export const DATASETS: ExportDataset[] = [
     label: "Activities",
     table: "activities",
     select: ACTIVITIES_SELECT,
+    countSql: `SELECT COUNT(*) AS n FROM activities WHERE profile_id = ?`,
+    shape: (acts, profileId) =>
+      shapeActivities(
+        acts,
+        activitySets(
+          profileId,
+          acts.map((a) => a.id)
+        )
+      ),
     jsBuilt: [
       {
         column: "exercises",
-        by: "shapeActivities",
+        by: shapeActivities,
         why: "the activity's exercise_sets folded into one prose summary — a child-table roll-up, not a column of activities. The sets themselves export in full via the exercise_sets dataset.",
       },
     ],
@@ -434,35 +503,7 @@ export const DATASETS: ExportDataset[] = [
       "external_id",
       "notes",
     ],
-    count: qCount(`SELECT COUNT(*) AS n FROM activities WHERE profile_id = ?`),
-    rows: (profileId: number) => {
-      const acts = db
-        .prepare(ACTIVITIES_SELECT)
-        .all(profileId) as ActivityRow[];
-      const sets = db
-        .prepare(
-          `${SETS_SELECT} ORDER BY s.activity_id, s.exercise, s.set_number`
-        )
-        .all(profileId) as ActivitySet[];
-      return shapeActivities(acts, sets);
-    },
-    page: (profileId: number, limit: number, offset: number) => {
-      const acts = db
-        .prepare(`${ACTIVITIES_SELECT} LIMIT ? OFFSET ?`)
-        .all(profileId, limit, offset) as ActivityRow[];
-      if (acts.length === 0) return [];
-      // Fetch sets only for the shown activities (still profile-scoped via the
-      // JOIN); the id list comes from the profile-scoped page query above.
-      const ph = acts.map(() => "?").join(",");
-      const sets = db
-        .prepare(
-          `${SETS_SELECT} AND s.activity_id IN (${ph})
-           ORDER BY s.activity_id, s.exercise, s.set_number`
-        )
-        .all(profileId, ...acts.map((a) => a.id)) as ActivitySet[];
-      return shapeActivities(acts, sets);
-    },
-  },
+  }),
   tableDataset({
     // Per-set strength numerics (weight/reps/target/to-failure/equipment) — the raw
     // data behind the activities `exercises` prose summary, which existed NOWHERE in
@@ -856,7 +897,7 @@ export const DATASETS: ExportDataset[] = [
        FROM practice_logs WHERE profile_id = ? ORDER BY date DESC, id DESC`,
     countSql: `SELECT COUNT(*) AS n FROM practice_logs WHERE profile_id = ?`,
   }),
-  {
+  tableDataset({
     // Supplements + medications (the parent intake_items rows), one per row, with
     // each item's dose SCHEDULE folded into a readable `schedule` summary (built
     // in JS from its intake_item_doses children, ordered by sort — e.g.
@@ -868,10 +909,19 @@ export const DATASETS: ExportDataset[] = [
     label: "Supplements & Medications",
     table: "intake_items",
     select: ITEMS_SELECT,
+    countSql: `SELECT COUNT(*) AS n FROM intake_items WHERE profile_id = ?`,
+    shape: (items, profileId) =>
+      shapeSupplements(
+        items,
+        itemDoses(
+          profileId,
+          items.map((it) => it.id as number)
+        )
+      ),
     jsBuilt: [
       {
         column: "schedule",
-        by: "shapeSupplements",
+        by: shapeSupplements,
         why: "the item's intake_item_doses folded into one readable dose summary — a child-table roll-up, not a column of intake_items. The doses themselves export in full via the intake_doses dataset.",
       },
     ],
@@ -893,38 +943,7 @@ export const DATASETS: ExportDataset[] = [
       "notes",
       "schedule",
     ],
-    count: qCount(
-      `SELECT COUNT(*) AS n FROM intake_items WHERE profile_id = ?`
-    ),
-    rows: (profileId: number) => {
-      const items = db.prepare(ITEMS_SELECT).all(profileId) as Record<
-        string,
-        unknown
-      >[];
-      // Doses reach profile_id through the intake_items JOIN (child table); the
-      // WHERE ii.profile_id = ? keeps this scoped just like the old dose dataset.
-      const doses = db
-        .prepare(`${DOSES_SELECT} ORDER BY ii.name, d.sort, d.id`)
-        .all(profileId) as DoseRow[];
-      return shapeSupplements(items, doses);
-    },
-    page: (profileId: number, limit: number, offset: number) => {
-      const items = db
-        .prepare(`${ITEMS_SELECT} LIMIT ? OFFSET ?`)
-        .all(profileId, limit, offset) as Record<string, unknown>[];
-      if (items.length === 0) return [];
-      // Fetch doses only for the shown items (still profile-scoped via the JOIN);
-      // the id list comes from the profile-scoped page query above.
-      const ph = items.map(() => "?").join(",");
-      const doses = db
-        .prepare(
-          `${DOSES_SELECT} AND d.item_id IN (${ph})
-           ORDER BY ii.name, d.sort, d.id`
-        )
-        .all(profileId, ...items.map((it) => it.id)) as DoseRow[];
-      return shapeSupplements(items, doses);
-    },
-  },
+  }),
   tableDataset({
     // Adherence log: one row per confirmed dose on a date. A child of
     // intake_items (joined via item_id), so browse/export-only.
@@ -1466,8 +1485,21 @@ export const DATASETS: ExportDataset[] = [
   tableDataset({
     // Non-food substance consumption ledger (#1078): one row per (date, substance)
     // with a per-use units count (nicotine/cannabis; alcohol rides food_daily_totals above).
-    // User-entered health data, so it's in the portable export; id-keyed + owned,
-    // deletable like the other logged datasets.
+    // User-entered health data, so it's in the portable export.
+    //
+    // deletable: false SINCE #5026 PHASE 2, and this is a pair of tables rather than one
+    // table's quirk. A use is now a `substance_log_events` row AND a tick of this
+    // counter, written in one transaction so no reader can see them apart. The manage
+    // delete is a plain `DELETE … WHERE id IN (…) AND profile_id = ?` — the id + profile
+    // model this flag exists to opt out of — and here it can only ever move ONE half:
+    // dropping a day row leaves that day's uses standing in the record for ever, and
+    // dropping an event leaves the card and the weekly cap counting a use nothing shows.
+    // Either way the count and the record contradict each other, which is exactly the
+    // state phase 2's migration exists to repair. The DOORS that CAN move both halves
+    // are still there and are still undoable: the card's ⋯ deletes a whole day through
+    // the `substance-history` kind, and the record's ⋯ deletes one use through
+    // `substance-use`, which gives the counter its tick back.
+    deletable: false,
     key: "substance_daily_totals",
     label: "Substance log",
     table: "substance_daily_totals",
@@ -1475,6 +1507,22 @@ export const DATASETS: ExportDataset[] = [
     select: `SELECT id, date, substance, units, recorded_at, notes
        FROM substance_daily_totals WHERE profile_id = ? ORDER BY date DESC, substance`,
     countSql: `SELECT COUNT(*) AS n FROM substance_daily_totals WHERE profile_id = ?`,
+  }),
+  tableDataset({
+    // The substance EVENT ledger (#5026 phase 2): one append-only row per use, carrying
+    // the tap `recorded_at` and the stated `occurred_at` — what makes a use a thing that
+    // happened rather than a number on a day. The counter above stays the cap's
+    // substrate and the card's count. User-entered health data, so it is in the portable
+    // export; browse-only for the reason stated on that counter — the two are one fact
+    // and a plain id + profile_id delete can only move one of them.
+    deletable: false,
+    key: "substance_log_events",
+    label: "Substance log events",
+    table: "substance_log_events",
+    columns: ["date", "substance", "recorded_at", "occurred_at", "time_source"],
+    select: `SELECT id, date, substance, recorded_at, occurred_at, time_source
+       FROM substance_log_events WHERE profile_id = ? ORDER BY recorded_at DESC`,
+    countSql: `SELECT COUNT(*) AS n FROM substance_log_events WHERE profile_id = ?`,
   }),
   tableDataset({
     // Protein-grams quick-add log (#824): one row per date with a running gram total
@@ -1745,9 +1793,13 @@ export const DELETE_POLICY = {
   frequency_targets: { revalidate: ["/training", "/"] },
   food_daily_totals: { revalidate: ["/nutrition", "/trends", "/"] },
   food_log_events: { revalidate: ["/nutrition", "/"] },
-  substance_daily_totals: {
-    revalidate: ["/records/specialty/substance-use", "/"],
-  },
+  // `substance_daily_totals` and `substance_log_events` HAVE NO ENTRY, which is what
+  // makes the browse-only decision above enforceable rather than remembered: the
+  // manage action resolves a dataset through this map, so a key that is absent here is
+  // answered "Unknown dataset" by BOTH doors — the row-selection delete and delete-all
+  // — and `DeletableDatasetKey` (this map's own keys) drops them, so no later type can
+  // ask `dataset-undo.ts` to decide about a table whose bulk delete no longer exists.
+  // The counter was mapped here until phase 2 gave it an event ledger underneath.
   protein_daily_totals: { revalidate: ["/nutrition", "/"] },
   // The fasting card and its history live on the nutrition tab. A plain id + profile_id
   // delete: nothing FKs into `fasts`, no counter is decremented beside it, and no derived

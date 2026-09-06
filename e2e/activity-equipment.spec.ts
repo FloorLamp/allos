@@ -196,7 +196,7 @@ test("the activity form shows an 'Add equipment' door when the profile owns no g
     // because a session with no gear is complete rather than waiting on a field.
     const chip = page.getByTestId("activity-fact-equipment");
     await expect(chip).toBeVisible();
-    await expect(chip).toHaveText(/equipment/);
+    await expect(chip).toHaveText(/Equipment/);
     await chip.click();
 
     // With no gear on file the picker renders its empty-state door, not a <select>.
@@ -590,7 +590,7 @@ test("gear chosen behind a closed panel still saves, and still counts as a chang
     // "+ equipment" PROMPT rather than a dashed missing essential, because a session
     // with no gear is complete. Only then is the <select>'s absence read, at a settled
     // point rather than left to retry its own way to green.
-    await expect(chip).toHaveText(/equipment/);
+    await expect(chip).toHaveText(/Equipment/);
     await expect(page.getByTestId("activity-form")).toBeVisible();
     await expect(select).toHaveCount(0);
     // Focus came back to the chip that opened the editor (#3311), not to <body>.
@@ -729,7 +729,7 @@ test("a strength part states its implement, and the registry door is one per for
     await firstName.press("Escape");
     await expect(firstName).toHaveValue("Curl");
     await expect(chips).toHaveCount(1);
-    await expect(chips).toHaveText("pick equipment");
+    await expect(chips).toHaveText("Pick equipment");
     await expect(chips).toHaveAttribute("data-fact-state", "missing");
     // NOTHING ELSE IS ON SCREEN. This is the row's whole complaint: these three were
     // drawn on every exercise, unasked.

@@ -5,6 +5,7 @@ import {
   MIN_MEDIAN_BPM_GAP,
   type HrMinuteSample,
 } from "@/lib/sleep-clock-skew";
+import { utcInstant } from "@/lib/date";
 
 // The PURE discriminator for issue #4299. The whole point of this module is that it
 // keys on the HR contradiction and on nothing else, so these fixtures differ ONLY in
@@ -44,7 +45,7 @@ function segmentTrace(
     const at = start + i * MIN;
     const hit = bounds.find((b) => at >= b.lo && at < b.hi);
     out.push({
-      ts: new Date(at).toISOString().slice(0, 19) + "Z",
+      ts: utcInstant(new Date(at)),
       bpm: hit ? hit.bpm : AWAKE,
     });
   }
@@ -162,6 +163,19 @@ describe("detectSleepClockSkew", () => {
     ],
   ])("stays silent on %s", (_case, session, hr) => {
     expect(detectSleepClockSkew(session, hr)).toBeNull();
+  });
+
+  it("reads a session the device stamped in its own offset (Health Connect, Oura)", () => {
+    // 18:39+09:00 IS 09:39Z: the same sighting, the same evidence. A reader that
+    // overwrote the offset with a Z would drop the night through the finite guard.
+    const found = detectSleepClockSkew(
+      { start: "2026-08-30T18:39:00+09:00", end: "2026-08-30T23:37:00+09:00" },
+      trace(DAY_FROM, DAY_TO, {
+        from: "2026-08-30T03:39:00Z",
+        to: "2026-08-30T08:37:00Z",
+      })
+    );
+    expect(found).toMatchObject({ claimedBpm: AWAKE, troughBpm: ASLEEP });
   });
 
   it("ignores a trough further from the claim than the surrounding day", () => {
@@ -467,7 +481,7 @@ describe("troughStart names where the body settled", () => {
             ? AWAKE
             : AWAKE + 2
           : AWAKE;
-      hr.push({ ts: new Date(t).toISOString(), bpm });
+      hr.push({ ts: utcInstant(new Date(t)), bpm });
     }
 
     const found = detectSleepClockSkew(SKEWED_SESSION, hr);

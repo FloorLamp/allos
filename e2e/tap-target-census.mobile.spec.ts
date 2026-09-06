@@ -22,12 +22,25 @@ const PHONE = { width: 390, height: 844 };
 // a gap floor of twice that reach instead. So the reach is READ OFF THE RENDER —
 // a class list cannot say whether `@media (pointer: coarse)` arrived — and the
 // pairwise check below moves to the extended boxes.
-async function reachOf(locator: Locator): Promise<number> {
+//
+// AND IT IS READ PER AXIS, WHICH IS NOT A REFINEMENT (#3954/#4035). A TILED control —
+// a segmented track's options, the two halves of one removable chip — reaches on the
+// BLOCK axis only, because it has no inline gap to spend and an inline reach could
+// only be taken from the neighbour. Reading `top` and applying it to both axes
+// therefore invents 6px of inline extension that the browser never drew, and the
+// pairwise check below then reports two halves of one pill as owning the same point.
+// A guard that reds on a correct tiled control gets deleted within a week, taking the
+// real assertion with it.
+async function reachOf(
+  locator: Locator
+): Promise<{ block: number; inline: number }> {
   return locator.evaluate((el) => {
     const after = getComputedStyle(el, "::after");
-    if (after.content === "none") return 0;
-    const inset = Math.abs(Number.parseFloat(after.top));
-    return Number.isFinite(inset) ? inset : 0;
+    const side = (raw: string) => {
+      const inset = Math.abs(Number.parseFloat(raw));
+      return after.content === "none" || !Number.isFinite(inset) ? 0 : inset;
+    };
+    return { block: side(after.top), inline: side(after.left) };
   });
 }
 
@@ -37,8 +50,8 @@ async function expectEffectiveFloor(name: string, locator: Locator) {
   expect(box, name).not.toBeNull();
   const reach = await reachOf(locator);
   expect(
-    box!.height + 2 * reach + TAP_FLOOR_FLOAT_EPSILON_PX,
-    `${name} effective height (${box!.height} rendered + 2x${reach} reach)`
+    box!.height + 2 * reach.block + TAP_FLOOR_FLOAT_EPSILON_PX,
+    `${name} effective height (${box!.height} rendered + 2x${reach.block} reach)`
   ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
 }
 
@@ -70,10 +83,10 @@ async function expectRenderedTargetsDisjoint(name: string, row: Locator) {
       return box === null
         ? null
         : {
-            x: box.x - reach,
-            y: box.y - reach,
-            width: box.width + 2 * reach,
-            height: box.height + 2 * reach,
+            x: box.x - reach.inline,
+            y: box.y - reach.block,
+            width: box.width + 2 * reach.inline,
+            height: box.height + 2 * reach.block,
           };
     })
   );
