@@ -581,7 +581,7 @@ function openPracticeSession(
         derived_window: number;
       }
     | undefined;
-  return row ? liveSessionOf(getTimezone(profileId), row) : null;
+  return row ? liveSessionOf(profileId, row) : null;
 }
 
 export function startLivePracticeSession(

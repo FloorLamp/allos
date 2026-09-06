@@ -474,7 +474,7 @@ export function getWellnessPractices(
               (session) => session.live === 1 && session.start_time != null
             )
             .map((session) =>
-              liveSessionOf(getTimezone(profileId), {
+              liveSessionOf(profileId, {
                 id: session.id,
                 date: session.date,
                 start_time: session.start_time!,
@@ -510,8 +510,14 @@ export function getWellnessPractices(
 // A live `practice_logs` row as a CLIENT sees it — the one place the shape is built, so
 // the sheet's row and the page aggregates cannot hold different opinions about when a
 // running session ends (#5431).
+//
+// IT TAKES THE PROFILE AND NOT THE ZONE, so a gather with nothing live reads no
+// timezone at all: `getTimezone` is two settings rows, and hoisting it to the caller
+// spent them on every profile whether or not one had a session running
+// (lib/__db_tests__/tick-gather-budget.test.ts caught exactly that). It is
+// request-cached, so several live rows in one request still cost one read.
 export function liveSessionOf(
-  tz: string,
+  profileId: number,
   row: {
     id: number;
     date: string;
@@ -520,6 +526,7 @@ export function liveSessionOf(
     derived_window: number;
   }
 ): LivePracticeSession {
+  const tz = getTimezone(profileId);
   const started = eventInstant("practice_logs", row, tz);
   return {
     id: row.id,
@@ -619,11 +626,12 @@ export function getTrackedPractices(
     duration_min: number | null;
     derived_window: number;
   }[];
-  const tz = getTimezone(profileId);
   const liveByIdentity = new Map(
     liveRows.flatMap((row) => {
       const identity = practiceIdentity(row.practice);
-      return identity ? [[identity, liveSessionOf(tz, row)] as const] : [];
+      return identity
+        ? [[identity, liveSessionOf(profileId, row)] as const]
+        : [];
     })
   );
 

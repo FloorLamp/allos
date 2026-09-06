@@ -19,12 +19,7 @@ import {
   isPredictedPracticeDay,
   practiceSpellingsFor,
 } from "@/lib/queries";
-import {
-  getProfileAge,
-  getSituations,
-  getTimezone,
-  getUnitPrefs,
-} from "@/lib/settings";
+import { getProfileAge, getSituations, getUnitPrefs } from "@/lib/settings";
 import { liveSessionOf } from "@/lib/queries/wellness";
 import { mergedSituationOptions } from "@/lib/situations";
 import { SituationOptionsProvider } from "@/components/SituationOptionsContext";
@@ -319,7 +314,7 @@ export default async function ProtocolDetailPage(props: {
                   defaultDurationMin={previousDurationMin}
                   liveSession={
                     liveSession
-                      ? liveSessionOf(getTimezone(profile.id), {
+                      ? liveSessionOf(profile.id, {
                           id: liveSession.id,
                           date: liveSession.date,
                           start_time: liveSession.start_time ?? "",
