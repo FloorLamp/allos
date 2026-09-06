@@ -357,7 +357,7 @@ export default function MoodForm({
         </div>
 
         <Disclosure data-testid="mood-details">
-          <summary className="cursor-pointer text-sm font-medium text-link">
+          <summary className="fold-control text-sm font-medium text-link">
             Details
           </summary>
           <div className="mt-3 space-y-3">

@@ -29,10 +29,11 @@ const PHONE_ONLY_CONTRACTS = [
 ] as const;
 
 // The control box's own selector list, spelled once (#3938). The fact chip's `solo`
-// shape joined it in #4035; the removable `pill` takes the FLOOR only, because it
-// draws its own border and the derived padding on top of it would render 36.
+// shape joined it in #4035 and the fold-as-control in #4505; the removable `pill`
+// takes the FLOOR only, because it draws its own border and the derived padding on
+// top of it would render 36.
 const CONTROL_BOX_SELECTOR =
-  '.chip-base, .btn, .btn-ghost, .btn-danger, .button-control, .input, [data-segmented-option], [data-fact-chip="solo"]';
+  '.chip-base, .btn, .btn-ghost, .btn-danger, .button-control, .input, .fold-control, [data-segmented-option], [data-fact-chip="solo"]';
 const CONTROL_BOX_FLOOR_SELECTOR = `${CONTROL_BOX_SELECTOR}, [data-fact-chip="pill"]`;
 const RANKING_UTILITIES = [
   "band",

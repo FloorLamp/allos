@@ -198,7 +198,7 @@ export default function DoseRowsEditor({
               open={d.weekdays.length > 0 || !!d.start_date || !!d.end_date}
             >
               <summary
-                className="cursor-pointer text-xs text-slate-500 dark:text-slate-400"
+                className="fold-control text-xs text-slate-500 dark:text-slate-400"
                 data-testid={`dose-advanced-${i}`}
               >
                 {doseCadenceLabel({
