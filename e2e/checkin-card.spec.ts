@@ -95,6 +95,7 @@ test("the well-day symptom action logs burden without activating illness", async
     );
     await expect(bar.getByTestId("symptom-illness-bridge")).toBeVisible();
 
+    // eslint-disable-next-line no-restricted-properties -- topass-ok: re-read until the committed symptom log changes coaching
     await expect(async () => {
       await page.reload();
       await openDashboardAll(page);
@@ -105,7 +106,7 @@ test("the well-day symptom action logs burden without activating illness", async
           "severe headache"
         )
       ).toBeVisible({ timeout: 3_000 });
-    }).toPass({ timeout: 20_000 }); // topass-ok: re-read until the committed symptom log changes coaching
+    }).toPass({ timeout: 20_000 });
   } finally {
     resetWellSymptomState();
     await page.context().close();

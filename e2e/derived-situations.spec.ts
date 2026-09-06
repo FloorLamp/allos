@@ -51,7 +51,7 @@ test.describe("derived situations (#1292/#1298/#1726)", () => {
 
     // The magnesium keyed to Poor sleep is DUE while the derived context holds.
     await expect(
-      page.getByText(DERIVED_SITU_SLEEP_ITEM).first() // first-ok: order-agnostic presence of this spec's own fixture item
+      page.getByText(DERIVED_SITU_SLEEP_ITEM).first() // eslint-disable-line no-restricted-properties -- first-ok: order-agnostic presence of this spec's own fixture item
     ).toBeVisible();
   });
 
@@ -69,7 +69,7 @@ test.describe("derived situations (#1292/#1298/#1726)", () => {
     // The quercetin keyed to High pollen is DUE while the context holds — the whole
     // point: "antihistamine when pollen is high" stops being a manual toggle.
     await expect(
-      page.getByText(DERIVED_SITU_POLLEN_ITEM).first() // first-ok: order-agnostic presence of this spec's own fixture item
+      page.getByText(DERIVED_SITU_POLLEN_ITEM).first() // eslint-disable-line no-restricted-properties -- first-ok: order-agnostic presence of this spec's own fixture item
     ).toBeVisible();
   });
 
@@ -90,14 +90,14 @@ test.describe("derived situations (#1292/#1298/#1726)", () => {
     await expect(periodLine).toContainText(/Period logged/);
     await expect(periodLine).toContainText(/1 item active/);
     await expect(
-      page.getByText(DERIVED_SITU_PERIOD_ITEM).first() // first-ok: order-agnostic presence of this spec's own fixture item
+      page.getByText(DERIVED_SITU_PERIOD_ITEM).first() // eslint-disable-line no-restricted-properties -- first-ok: order-agnostic presence of this spec's own fixture item
     ).toBeVisible();
 
     // Clean up: end + delete the period (fully clears today's coverage) → the derived
     // Period context — and the line — go away, restoring the starting state.
     await page.goto("/medical/cycles");
     await settledClick(page, page.getByTestId("period-ended-button"));
-    const row = page.getByTestId("cycle-history-row").first(); // first-ok: this spec's newest fixture row
+    const row = page.getByTestId("cycle-history-row").first(); // eslint-disable-line no-restricted-properties -- first-ok: this spec's newest fixture row
     await hydratedClick(page, row.getByTestId("overflow-menu-trigger"));
     await hydratedClick(page, page.getByTestId("cycle-delete-button"));
     const confirm = page.getByRole("button", { name: "Delete period" });

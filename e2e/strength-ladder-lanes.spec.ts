@@ -129,7 +129,7 @@ test("the top rows are ordered by movement, the moved lift first", async ({
     // Three lifts, three rows: nothing is truncated, so the order below is the whole
     // ranking rather than a window onto it.
     await expect(rows).toHaveCount(3);
-    await expect(rows.first()).toContainText(LADDER_PR_LIFT); // first-ok: the ladder is a RANKED list and this asserts its head — the ordering is the property under test
+    await expect(rows.first()).toContainText(LADDER_PR_LIFT); // eslint-disable-line no-restricted-properties -- first-ok: the ladder is a RANKED list and this asserts its head — the ordering is the property under test
     await expect(rows.nth(1)).toContainText(LADDER_DECLINED_LIFT);
     await expect(rows.nth(2)).toContainText(LADDER_FLAT_LIFT);
   } finally {

@@ -33,10 +33,8 @@ import { workerDbPath } from "./worker-env";
 // to a single 'Use "…"' button, a partial filter lists name+badge — match by substring).
 async function pickActivity(page: Page, name: string) {
   await page.getByPlaceholder(/What did you do/).fill(name);
-  await comboboxRows(page)
-    .filter({ hasText: name })
-    .first() // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
-    .click();
+  // eslint-disable-next-line no-restricted-properties -- first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
+  await comboboxRows(page).filter({ hasText: name }).first().click();
 }
 
 // Clear the FORM_PLATEAU profile's plateau dismissals so the hint is guaranteed present
@@ -182,7 +180,7 @@ test("each Recent row repeats that session into the set editor (#923)", async ({
     // Tap the STATED line's Fill — the primary "repeat last session" gesture, and
     // since #5370 the only history row on the default view (the rest are behind the
     // chevron, still a tap away and still fills).
-    await recent.getByTestId("recent-session-fill").first().click(); // first-ok: prefills from the most-recent session (this spec's own logged session) — order-agnostic
+    await recent.getByTestId("recent-session-fill").first().click(); // eslint-disable-line no-restricted-properties -- first-ok: prefills from the most-recent session (this spec's own logged session) — order-agnostic
 
     // The set editor now states that session's LITERAL work (30 kg × 8) as this
     // session's PLAN (#5373): a repeat replaces the ghosts, not the record, so the

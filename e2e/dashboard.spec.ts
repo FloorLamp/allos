@@ -677,15 +677,17 @@ test("a Standing row reveals its door on hover and on keyboard focus alike", asy
   page,
 }) => {
   await page.goto("/");
+  // eslint-disable-next-line no-restricted-properties -- first-ok: plotless families use the same two-column template
   const family = page
     .locator("[data-standing-family]:not([data-standing-trend])")
     .filter({ has: page.getByTestId("standing-door") })
-    .first(); // first-ok: plotless families use the same two-column template
+    .first();
+  // eslint-disable-next-line no-restricted-properties -- first-ok: every doored row uses the same rail
   const row = family
     .locator('[data-testid="dashboard-candidate"][data-lane="standing"]')
     .filter({ has: page.getByTestId("standing-door") })
-    .first(); // first-ok: every doored row uses the same rail
-  const link = row.getByRole("link").first(); // first-ok: the row above is one candidate; its link IS the row
+    .first();
+  const link = row.getByRole("link").first(); // eslint-disable-line no-restricted-properties -- first-ok: the row above is one candidate; its link IS the row
   const door = row.getByTestId("standing-door");
   const opacity = (target: typeof door) =>
     target.evaluate((node) => getComputedStyle(node).opacity);
@@ -757,10 +759,11 @@ test("a stacked family's door lands on the member you are pointing at, not on th
   // anchored to the stack keeps the identical right edge and moves in y. So this
   // reads y.
   await page.goto("/");
+  // eslint-disable-next-line no-restricted-properties -- first-ok: every stacked family anchors its doors the same way
   const family = page
     .locator('[data-standing-family][data-standing-composition="members"]')
     .filter({ has: page.getByTestId("standing-door") })
-    .first(); // first-ok: every stacked family anchors its doors the same way
+    .first();
   await expect(family).toBeVisible();
 
   const doored = family
@@ -776,7 +779,7 @@ test("a stacked family's door lands on the member you are pointing at, not on th
   // The LAST member — furthest from the top of the stack, so a door anchored to
   // the stack is furthest from where it belongs.
   const member = doored.nth(count - 1);
-  const link = member.getByRole("link").first(); // first-ok: the member row IS its link
+  const link = member.getByRole("link").first(); // eslint-disable-line no-restricted-properties -- first-ok: the member row IS its link
   await link.scrollIntoViewIfNeeded();
   await link.hover();
   const door = member.getByTestId("standing-door");
@@ -837,7 +840,7 @@ test("the shared rail answers with the row's primary door", async ({
     .locator('[data-standing-family][data-standing-composition="composed"]')
     .filter({ has: page.getByTestId("standing-door") });
   const candidateCount = await candidates.count();
-  let family = candidates.first(); // first-ok: throwaway default the loop below always overwrites when a stacked composed family exists (asserted next)
+  let family = candidates.first(); // eslint-disable-line no-restricted-properties -- first-ok: throwaway default the loop below always overwrites when a stacked composed family exists (asserted next)
   let doorCount = 0;
   for (let index = 0; index < candidateCount; index++) {
     const entry = candidates.nth(index);
@@ -857,11 +860,12 @@ test("the shared rail answers with the row's primary door", async ({
     );
 
   // PRESENCE: a member's own text does reveal that member's door.
+  // eslint-disable-next-line no-restricted-properties -- first-ok: the leading member, hovered to prove a door can appear
   const first = family
     .getByTestId("dashboard-candidate")
     .filter({ has: page.getByTestId("standing-door") })
-    .first(); // first-ok: the leading member, hovered to prove a door can appear
-  await first.getByRole("link").first().hover(); // first-ok: the member row IS its link
+    .first();
+  await first.getByRole("link").first().hover(); // eslint-disable-line no-restricted-properties -- first-ok: the member row IS its link
   await expect.poll(async () => (await opacities()).includes("1")).toBe(true);
 
   // The widened primary link owns the rail; overlapping doors do not take pointer
@@ -886,15 +890,16 @@ test("the Standing link covers its phone label and desktop plot without covering
   });
   try {
     await page.goto("/");
+    // eslint-disable-next-line no-restricted-properties -- first-ok: plotted families share this row anatomy
     const family = page
       .locator("[data-standing-family][data-standing-trend]")
       .filter({ has: page.locator(".standing-age") })
-      .first(); // first-ok: plotted families share this row anatomy
+      .first();
     const row = family
       .getByTestId("dashboard-candidate")
       .filter({ has: page.locator(".standing-age") });
     const age = row.locator(".standing-age");
-    const link = row.getByRole("link").first(); // first-ok: the selected candidate's link
+    const link = row.getByRole("link").first(); // eslint-disable-line no-restricted-properties -- first-ok: the selected candidate's link
     const door = link.getByTestId("standing-door");
     await link.scrollIntoViewIfNeeded();
     const before = (await family.boundingBox())!;
@@ -934,10 +939,11 @@ test("the Standing link covers its phone label and desktop plot without covering
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/");
+    // eslint-disable-next-line no-restricted-properties -- first-ok: every primary surface uses the same mobile reach
     const phoneFamily = page
       .locator("[data-standing-family]")
       .filter({ has: page.locator("a.standing-primary") })
-      .first(); // first-ok: every primary surface uses the same mobile reach
+      .first();
     const phoneName = (await phoneFamily.locator("dt").boundingBox())!;
     const phoneHref = await phoneFamily
       .locator("a.standing-primary")
@@ -1021,7 +1027,7 @@ test("no row on the dashboard draws an identity icon, and the severity marks sta
 
   // …and this locator CAN see one: a glyph put into a label on purpose, counted back
   // through `labels` itself, then returned to the shipped tree.
-  const anyLabel = labels.first(); // first-ok: the control plants a glyph in ONE label cell of the set the claim above counted in full
+  const anyLabel = labels.first(); // eslint-disable-line no-restricted-properties -- first-ok: the control plants a glyph in ONE label cell of the set the claim above counted in full
   const forged = await anyLabel.evaluateHandle((label) => {
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.dataset.forged = "FORGED BY A SPEC on purpose — not a shipped glyph";
@@ -1064,9 +1070,10 @@ test("no row on the dashboard draws an identity icon, and the severity marks sta
       carets: await value.locator("svg").count(),
       // The paint the word exists to survive, read off the element rather than a
       // class string.
+      // eslint-disable-next-line no-restricted-properties -- first-ok: MedicalValue's own paint span, inside a row addressed by its seeded candidate id
       paint: await value
         .locator("span")
-        .first() // first-ok: MedicalValue's own paint span, inside a row addressed by its seeded candidate id
+        .first()
         .evaluate((node) => getComputedStyle(node).color),
     };
   };

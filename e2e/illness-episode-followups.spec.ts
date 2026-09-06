@@ -72,10 +72,11 @@ async function expectClosedEpisodeAction(
 
 async function openCurrentEpisode(page: Page) {
   await page.goto("/medical/episodes");
+  // eslint-disable-next-line no-restricted-properties -- first-ok: the fixture's own ongoing episode (filtered) — order-agnostic
   const ongoing = page
     .getByTestId("episode-index-row")
     .filter({ hasText: /ongoing/i })
-    .first(); // first-ok: the fixture's own ongoing episode (filtered) — order-agnostic
+    .first();
   const href = await ongoing.getAttribute("href");
   expect(href).toMatch(/^\/medical\/episodes\/\d+$/);
   await page.goto(href!);
@@ -141,10 +142,11 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     await expect(page.getByTestId("symptom-log-bar")).toBeVisible();
     await expect(page.getByTestId("episode-fever-chart")).toBeVisible();
     await expect(page.getByTestId("episode-illness-timeline")).toBeVisible();
+    // eslint-disable-next-line no-restricted-properties -- first-ok: the Today group in the episode timeline — order-agnostic
     const todayGroup = page
       .getByTestId("episode-illness-timeline")
       .getByText("Today", { exact: true })
-      .first(); // first-ok: the Today group in the episode timeline — order-agnostic
+      .first();
     await expect(todayGroup).toBeVisible();
     await expect(
       page
@@ -234,7 +236,7 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     await expect(
       peakSymptoms.getByTestId("episode-print-symptoms")
     ).toHaveClass(/print:flex/);
-    const severityDots = page.getByTestId("episode-severity-dots").first(); // first-ok: asserts a severity-dots row renders — order-agnostic presence
+    const severityDots = page.getByTestId("episode-severity-dots").first(); // eslint-disable-line no-restricted-properties -- first-ok: asserts a severity-dots row renders — order-agnostic presence
     await expect(severityDots).toBeVisible();
     await expect(page.getByText("Daily symptoms", { exact: true })).toHaveCount(
       0
@@ -264,10 +266,11 @@ test.describe("Illness-episode follow-ups (#856)", () => {
       .boundingBox();
     expect(updateBox?.y).toBeLessThan(historyBox?.y ?? 0);
     expect(historyBox?.y).toBeLessThan(progressPhotosBox?.y ?? 0);
+    // eslint-disable-next-line no-restricted-properties -- first-ok: a logged-symptom row — asserts its border layout, order-agnostic
     const symptomWorkingRow = page
       .getByTestId("symptom-logged-list")
       .locator("li")
-      .first(); // first-ok: a logged-symptom row — asserts its border layout, order-agnostic
+      .first();
     await expect(symptomWorkingRow).toHaveCSS("border-top-style", "solid");
     // DETAIL IS ONE TAP AWAY, AND ONLY WHEN ACTING ON THE MED (#4752 item 4).
     // Collapsed, a med is its NAME beside one shared status line — no per-row day
@@ -277,12 +280,12 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     await expect(page.getByTestId("prn-day-label")).toHaveCount(0);
     await expect(page.getByTestId("prn-redose-line")).toHaveCount(0);
     await expect(page.getByTestId("cockpit-med-panel")).toHaveCount(0);
-    const medChip = page.locator('[data-testid^="cockpit-med-chip-"]').first(); // first-ok: the row's leading med chip; every chip opens the same panel shape
+    const medChip = page.locator('[data-testid^="cockpit-med-chip-"]').first(); // eslint-disable-line no-restricted-properties -- first-ok: the row's leading med chip; every chip opens the same panel shape
     await medChip.click();
     const doseWorkingRow = page.getByTestId("cockpit-med-panel");
     await expect(doseWorkingRow).toBeVisible();
     await expect(medChip).toHaveAttribute("aria-expanded", "true");
-    const doseLink = doseWorkingRow.getByRole("link").first(); // first-ok: the med link naming the open panel — order-agnostic
+    const doseLink = doseWorkingRow.getByRole("link").first(); // eslint-disable-line no-restricted-properties -- first-ok: the med link naming the open panel — order-agnostic
     await expect(doseLink).toHaveCSS("font-size", "14px");
     // The ONE inline action-link treatment, now named rather than spelled out:
     // #3607 item 3 swept the hand-rolled `font-medium text-brand-600
@@ -346,12 +349,13 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     // FIRST med row is nondeterministic — a PRN with a non-mg/mL dose (Klor-Con
     // "10 mEq") can sort ahead and fail a bare first-match mg/mL assertion. The seed's
     // ibuprofen "200 mg" doses are always in the episode, so a mg/mL row is stable.
+    // eslint-disable-next-line no-restricted-properties -- first-ok: filtered to a dosed (mg/mL) med row; all such rows render identically
     const dosedMedicationRow = medicationRows
       .filter({ hasText: /\d+(?:\.\d+)?\s*(?:mg|mL)/i })
-      .first(); // first-ok: filtered to a dosed (mg/mL) med row; all such rows render identically
+      .first();
     await expect(dosedMedicationRow).toBeVisible();
     await expect(dosedMedicationRow).toContainText(/mg|mL/i);
-    const dosedLink = dosedMedicationRow.getByRole("link").first(); // first-ok: the med link inside the content-filtered dosed row — order-agnostic
+    const dosedLink = dosedMedicationRow.getByRole("link").first(); // eslint-disable-line no-restricted-properties -- first-ok: the med link inside the content-filtered dosed row — order-agnostic
     await expect(dosedLink).toHaveAttribute("href", /^\/medications\/\d+$/);
     await expect(dosedLink).toHaveClass(/text-link/); // #3607 item 3: the tone is `text-link` now
     await expect(
@@ -360,8 +364,8 @@ test.describe("Illness-episode follow-ups (#856)", () => {
         .filter({ hasText: "Lab results review" })
     ).toBeVisible();
     const dayGroups = page.getByTestId("illness-timeline-day");
-    await expect(dayGroups.first()).toBeVisible(); // first-ok: a timeline day group — asserts its padding, order-agnostic
-    await expect(dayGroups.first()).toHaveCSS("padding-top", "6px"); // first-ok: the same timeline day group — order-agnostic
+    await expect(dayGroups.first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: a timeline day group — asserts its padding, order-agnostic
+    await expect(dayGroups.first()).toHaveCSS("padding-top", "6px"); // eslint-disable-line no-restricted-properties -- first-ok: the same timeline day group — order-agnostic
     expect(await dayGroups.count()).toBeLessThan(
       await page.locator('[data-testid^="illness-event-"]').count()
     );
@@ -392,7 +396,7 @@ test.describe("Illness-episode follow-ups (#856)", () => {
       historyFilters.getByRole("button", { name: "All" })
     ).not.toHaveClass(/bg-brand/);
     await historyFilters.getByRole("button", { name: "Temperature" }).click();
-    const tempEvent = page.getByTestId("illness-event-temperature").first(); // first-ok: asserts a temperature event renders under the Temperature filter — order-agnostic
+    const tempEvent = page.getByTestId("illness-event-temperature").first(); // eslint-disable-line no-restricted-properties -- first-ok: asserts a temperature event renders under the Temperature filter — order-agnostic
     await expect(tempEvent).toBeVisible();
     // A filtered-out row is HIDDEN, not removed (#2612): it leaves the layout so the
     // page shortens, stays in the document, and comes back under print so a printed
@@ -415,13 +419,14 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     ).toBe(true);
     await page.emulateMedia({ media: null });
     await historyFilters.getByRole("button", { name: "All" }).click();
-    const medEvent = page.getByTestId("illness-event-medication").first(); // first-ok: asserts a medication event renders under the All filter — order-agnostic
+    const medEvent = page.getByTestId("illness-event-medication").first(); // eslint-disable-line no-restricted-properties -- first-ok: asserts a medication event renders under the All filter — order-agnostic
     await expect(medEvent).toBeVisible();
     // Historical symptom severity and notes can be corrected from the same ledger.
+    // eslint-disable-next-line no-restricted-properties -- first-ok: filtered to the note THIS spec logged — one match
     const historicalSymptom = page
       .getByTestId("illness-event-symptom")
       .filter({ hasText: "Peaked in the evening" })
-      .first(); // first-ok: filtered to the note THIS spec logged — one match
+      .first();
     const openSymptomEditor = async () => {
       await hydratedClick(
         page,
@@ -499,7 +504,7 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     await dismissToast(page, "Symptom updated.");
 
     // Historical readings and doses have a real correction path from the ledger.
-    const tempRow = page.getByTestId("illness-event-temperature").first(); // first-ok: a temperature event row (has a correction path) — order-agnostic
+    const tempRow = page.getByTestId("illness-event-temperature").first(); // eslint-disable-line no-restricted-properties -- first-ok: a temperature event row (has a correction path) — order-agnostic
     await hydratedClick(page, tempRow.getByTestId("overflow-menu-trigger"));
     await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
     const eventEditor = page.getByTestId("illness-event-editor");
@@ -591,7 +596,7 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     // Log a symptom at a severity from the episode page — the SHARED SymptomLogBar now
     // uses the #857 active-first layout, so add via the picker then raise (the same
     // helpers the dashboard spec drives — one flow, no per-mount drift).
-    const bar = page.getByTestId("symptom-log-bar").first(); // first-ok: the acting profile's own symptom bar (top of the card) — order-agnostic
+    const bar = page.getByTestId("symptom-log-bar").first(); // eslint-disable-line no-restricted-properties -- first-ok: the acting profile's own symptom bar (top of the card) — order-agnostic
     await ensureUnlogged(bar, "sore_throat");
     await addFromPicker(bar, "sore_throat");
     await raiseSeverity(bar, "sore_throat", 3);
@@ -697,7 +702,7 @@ test.describe("Illness-episode follow-ups (#856)", () => {
         .getByTestId("episode-med-reconcile-list")
         .locator('input[type="checkbox"]:checked');
       for (let count = await selected.count(); count > 0; count--) {
-        await selected.first().uncheck(); // first-ok: loop unchecks EVERY selected item; first-of-remaining is order-agnostic
+        await selected.first().uncheck(); // eslint-disable-line no-restricted-properties -- first-ok: loop unchecks EVERY selected item; first-of-remaining is order-agnostic
       }
       await reconcileConfirm.click();
     } else {
@@ -743,11 +748,11 @@ test.describe("Illness-episode follow-ups (#856)", () => {
       page.getByRole("heading", { name: "Illness episodes" })
     ).toBeVisible();
     const rows = page.getByTestId("episode-index-row");
-    await expect(rows.first()).toBeVisible(); // first-ok: asserts an episode-index row renders — order-agnostic presence
+    await expect(rows.first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: asserts an episode-index row renders — order-agnostic presence
     expect(await rows.count()).toBeGreaterThanOrEqual(2); // open + past (seed)
 
     // Following a row opens its detail page.
-    await followLink(page, rows.first(), /\/medical\/episodes\/\d+/); // first-ok: follows an episode-index row to its detail — order-agnostic
+    await followLink(page, rows.first(), /\/medical\/episodes\/\d+/); // eslint-disable-line no-restricted-properties -- first-ok: follows an episode-index row to its detail — order-agnostic
     await expect(
       page.getByRole("heading", { name: /Illness episode/ })
     ).toBeVisible();
@@ -761,10 +766,11 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     // The PAST (resolved) episode — the seed labels its outcome "Self-resolved". This
     // test EDITS that outcome, so under repeat-each a later run finds the edited value
     // instead; match either so it's repeat-safe.
+    // eslint-disable-next-line no-restricted-properties -- first-ok: filtered to the resolved episode row (repeat-safe match) — order-agnostic
     const resolvedRow = page
       .getByTestId("episode-index-row")
       .filter({ hasText: /Self-resolved|Recovered without a visit/ })
-      .first(); // first-ok: filtered to the resolved episode row (repeat-safe match) — order-agnostic
+      .first();
     await followLink(page, resolvedRow, /\/medical\/episodes\/\d+/);
 
     await openEpisodeEditor(page);
@@ -795,12 +801,13 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     // The outcome + note persist on the summary. Scope the note to its rendered
     // paragraph — the edit form's <textarea> also holds the text, so an unscoped
     // getByText matches two elements.
-    const recoveredText = page.getByText("Recovered without a visit").first(); // first-ok: the resolution text also lives in the edit textarea (see comment); assert the paragraph — order-agnostic
+    const recoveredText = page.getByText("Recovered without a visit").first(); // eslint-disable-line no-restricted-properties -- first-ok: the resolution text also lives in the edit textarea (see comment); assert the paragraph — order-agnostic
     await expect(recoveredText).toBeVisible();
+    // eslint-disable-next-line no-restricted-properties -- first-ok: filtered to the resolution note THIS spec logged — one match
     const restedNote = page
       .getByRole("paragraph")
       .filter({ hasText: "Rested; plenty of fluids" })
-      .first(); // first-ok: filtered to the resolution note THIS spec logged — one match
+      .first();
     await expect(restedNote).toBeVisible();
   });
 

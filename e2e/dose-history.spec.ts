@@ -37,8 +37,8 @@ test("dosage restructure keeps the taken history at its original amount", async 
   const addDialog = page.getByRole("dialog", { name: "Add supplement" });
   await addDialog.getByLabel("Name").fill(name);
   const doseEditor1 = await openFact(page, "dose", addDialog);
-  await doseEditor1.getByLabel("Amount").first().fill("500 mg"); // first-ok: the first dose's Amount field in the scoped add modal
-  await doseEditor1.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the first dose's Time-of-day field in the scoped add modal
+  await doseEditor1.getByLabel("Amount").first().fill("500 mg"); // eslint-disable-line no-restricted-properties -- first-ok: the first dose's Amount field in the scoped add modal
+  await doseEditor1.getByLabel("Time of day").first().selectOption("Morning"); // eslint-disable-line no-restricted-properties -- first-ok: the first dose's Time-of-day field in the scoped add modal
   await addDialog
     .getByRole("button", { name: "Add dose", exact: true })
     .click();
@@ -55,7 +55,7 @@ test("dosage restructure keeps the taken history at its original amount", async 
   // ── Confirm the Morning dose, where the day is stated (#3987) ───────────────
   await page.goto("/nutrition?tab=food");
   await expandLedgerDueGroups(page);
-  const ledgerRow = ledgerDoseRow(page, name).first(); // first-ok: this item's Morning dose — the Evening one is a separate row and either proves the confirm
+  const ledgerRow = ledgerDoseRow(page, name).first(); // eslint-disable-line no-restricted-properties -- first-ok: this item's Morning dose — the Evening one is a separate row and either proves the confirm
   await ledgerRow.getByRole("button", { name: "Take", exact: true }).click();
   await expect(
     ledgerRow.getByRole("button", { name: "Undo take", exact: true })
@@ -63,11 +63,12 @@ test("dosage restructure keeps the taken history at its original amount", async 
 
   // The row that OWNS the item — edit, history — is the stack's, on the other tab.
   await page.goto("/nutrition?tab=supplements");
+  // eslint-disable-next-line no-restricted-properties -- first-ok: both dose rows carry the same item actions; either opens the edit form
   const morningRow = page
     .getByTestId("supplement-stack")
     .getByTestId("supplement-row")
     .filter({ hasText: name })
-    .first(); // first-ok: both dose rows carry the same item actions; either opens the edit form
+    .first();
 
   // ── Restructure: replace both doses with a single 1000 mg dose ─────────────
   await morningRow.getByRole("button", { name: "Supplement actions" }).click();
@@ -80,18 +81,19 @@ test("dosage restructure keeps the taken history at its original amount", async 
   // Remove the confirmed Morning dose (the first dose row), then repurpose the
   // remaining one as the new single 1000 mg dose.
   const doseEditor2 = await openFact(page, "dose", editForm);
+  // eslint-disable-next-line no-restricted-properties -- first-ok: removes the first (Morning) dose row — see comment above
   await doseEditor2
     .getByRole("button", { name: "Remove dose" })
-    .first() // first-ok: removes the first (Morning) dose row — see comment above
+    .first()
     .click();
-  await doseEditor2.getByLabel("Amount").first().fill("1000 mg"); // first-ok: the remaining dose's Amount field in this spec's edit form
-  await doseEditor2.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the remaining dose's Time-of-day field in this spec's edit form
+  await doseEditor2.getByLabel("Amount").first().fill("1000 mg"); // eslint-disable-line no-restricted-properties -- first-ok: the remaining dose's Amount field in this spec's edit form
+  await doseEditor2.getByLabel("Time of day").first().selectOption("Morning"); // eslint-disable-line no-restricted-properties -- first-ok: the remaining dose's Time-of-day field in this spec's edit form
   await closeEditor(page, editForm);
   await editForm.getByRole("button", { name: "Save", exact: true }).click();
 
   // The schedule shrank to the one new dose, showing the new amount.
   await expect(rows).toHaveCount(1);
-  await expect(rows.first()).toContainText("1000 mg"); // first-ok: the single remaining dose row (count asserted above) — order-agnostic
+  await expect(rows.first()).toContainText("1000 mg"); // eslint-disable-line no-restricted-properties -- first-ok: the single remaining dose row (count asserted above) — order-agnostic
 
   // ── History survived at the original amount ─────────────────────────────────
   // The record still lists the confirmed dose — retired, not cascaded — at the
@@ -105,10 +107,11 @@ test("dosage restructure keeps the taken history at its original amount", async 
   // composed by the dose kind's own reader, and the snapshot is exactly what it
   // prints. One row, named by this spec's own item, so nothing else can satisfy it.
   await page.goto("/history?kind=dose");
+  // eslint-disable-next-line no-restricted-properties -- first-ok: this spec plants a uniquely-named item; one row carries it
   const doseRow = page
     .getByTestId("history-row")
     .filter({ hasText: name })
-    .first(); // first-ok: this spec plants a uniquely-named item; one row carries it
+    .first();
   await expect(doseRow).toBeVisible();
   await expect(doseRow).toContainText("500 mg");
   await expect(doseRow).not.toContainText("1000 mg");
@@ -130,8 +133,8 @@ test("a supplement's dose history offers the medication row actions, and an edit
   const addDialog = page.getByRole("dialog", { name: "Add supplement" });
   await addDialog.getByLabel("Name").fill(name);
   const doseEditor3 = await openFact(page, "dose", addDialog);
-  await doseEditor3.getByLabel("Amount").first().fill("250 mg"); // first-ok: the first (only) dose's Amount field in the scoped add modal
-  await doseEditor3.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the first (only) dose's Time-of-day field in the scoped add modal
+  await doseEditor3.getByLabel("Amount").first().fill("250 mg"); // eslint-disable-line no-restricted-properties -- first-ok: the first (only) dose's Amount field in the scoped add modal
+  await doseEditor3.getByLabel("Time of day").first().selectOption("Morning"); // eslint-disable-line no-restricted-properties -- first-ok: the first (only) dose's Time-of-day field in the scoped add modal
   await closeEditor(page, addDialog);
   await addDialog.getByRole("button", { name: "Add", exact: true }).click();
   await expect(addDialog).toHaveCount(0);
@@ -140,17 +143,18 @@ test("a supplement's dose history offers the medication row actions, and an edit
   // the item's own row — history, edit — stays on the tab that manages the stack.
   await page.goto("/nutrition?tab=food");
   await expandLedgerDueGroups(page);
-  const taken = ledgerDoseRow(page, name).first(); // first-ok: this item's only due dose
+  const taken = ledgerDoseRow(page, name).first(); // eslint-disable-line no-restricted-properties -- first-ok: this item's only due dose
   await taken.getByRole("button", { name: "Take", exact: true }).click();
   await expect(
     taken.getByRole("button", { name: "Undo take", exact: true })
   ).toBeVisible();
   await page.goto("/nutrition?tab=supplements");
+  // eslint-disable-next-line no-restricted-properties -- first-ok: every dose row of this item carries the same item actions
   const row = page
     .getByTestId("supplement-stack")
     .getByTestId("supplement-row")
     .filter({ hasText: name })
-    .first(); // first-ok: every dose row of this item carries the same item actions
+    .first();
 
   // ── The row's ⋯ menu now reaches dose history ──────────────────────────────
   await row.getByRole("button", { name: "Supplement actions" }).click();
@@ -248,8 +252,8 @@ test("the supplements tab reaches the cross-item record and logs a past dose fro
   const addDialog = page.getByRole("dialog", { name: "Add supplement" });
   await addDialog.getByLabel("Name").fill(name);
   const doseEditor5 = await openFact(page, "dose", addDialog);
-  await doseEditor5.getByLabel("Amount").first().fill("125 mg"); // first-ok: the first (only) dose's Amount field in the scoped add modal
-  await doseEditor5.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the first (only) dose's Time-of-day field in the scoped add modal
+  await doseEditor5.getByLabel("Amount").first().fill("125 mg"); // eslint-disable-line no-restricted-properties -- first-ok: the first (only) dose's Amount field in the scoped add modal
+  await doseEditor5.getByLabel("Time of day").first().selectOption("Morning"); // eslint-disable-line no-restricted-properties -- first-ok: the first (only) dose's Time-of-day field in the scoped add modal
   await closeEditor(page, addDialog);
   await addDialog.getByRole("button", { name: "Add", exact: true }).click();
   await expect(addDialog).toHaveCount(0);
@@ -258,17 +262,18 @@ test("the supplements tab reaches the cross-item record and logs a past dose fro
   // the item's own row — history, edit — stays on the tab that manages the stack.
   await page.goto("/nutrition?tab=food");
   await expandLedgerDueGroups(page);
-  const taken = ledgerDoseRow(page, name).first(); // first-ok: this item's only due dose
+  const taken = ledgerDoseRow(page, name).first(); // eslint-disable-line no-restricted-properties -- first-ok: this item's only due dose
   await taken.getByRole("button", { name: "Take", exact: true }).click();
   await expect(
     taken.getByRole("button", { name: "Undo take", exact: true })
   ).toBeVisible();
   await page.goto("/nutrition?tab=supplements");
+  // eslint-disable-next-line no-restricted-properties -- first-ok: every dose row of this item carries the same item actions
   const row = page
     .getByTestId("supplement-stack")
     .getByTestId("supplement-row")
     .filter({ hasText: name })
-    .first(); // first-ok: every dose row of this item carries the same item actions
+    .first();
 
   // ── ONE click from the supplements tab to the whole record ────────────────
   // The door used to open a route of its own; #3958 folded the four ledgers into
@@ -353,8 +358,8 @@ test("the backfill offers the missed days the strip already computed (#3674)", a
   const addDialog = page.getByRole("dialog", { name: "Add supplement" });
   await addDialog.getByLabel("Name").fill(name);
   const doseEditor = await openFact(page, "dose", addDialog);
-  await doseEditor.getByLabel("Amount").first().fill("250 mg"); // first-ok: the first (only) dose's Amount field in the scoped add modal
-  await doseEditor.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the first (only) dose's Time-of-day field in the scoped add modal
+  await doseEditor.getByLabel("Amount").first().fill("250 mg"); // eslint-disable-line no-restricted-properties -- first-ok: the first (only) dose's Amount field in the scoped add modal
+  await doseEditor.getByLabel("Time of day").first().selectOption("Morning"); // eslint-disable-line no-restricted-properties -- first-ok: the first (only) dose's Time-of-day field in the scoped add modal
   await closeEditor(page, addDialog);
   await addDialog.getByRole("button", { name: "Add", exact: true }).click();
   await expect(addDialog).toHaveCount(0);
@@ -391,11 +396,12 @@ test("the backfill offers the missed days the strip already computed (#3674)", a
   }
 
   await page.goto("/nutrition?tab=supplements");
+  // eslint-disable-next-line no-restricted-properties -- first-ok: every dose row of this item carries the same item actions
   const row = page
     .getByTestId("supplement-stack")
     .getByTestId("supplement-row")
     .filter({ hasText: name })
-    .first(); // first-ok: every dose row of this item carries the same item actions
+    .first();
   await hydratedClick(
     page,
     row.getByRole("button", { name: "Supplement actions" })
@@ -414,7 +420,7 @@ test("the backfill offers the missed days the strip already computed (#3674)", a
   // slot is the bucket word "Morning", which is not a clock and so cannot be
   // written: the row therefore names the day and the amount and says nothing about
   // a time, rather than printing "morning" over a write that records the default.
-  const newest = offers.first(); // first-ok: the offer list of a supplement this spec created and backdated itself; newest-first by construction, so this is yesterday
+  const newest = offers.first(); // eslint-disable-line no-restricted-properties -- first-ok: the offer list of a supplement this spec created and backdated itself; newest-first by construction, so this is yesterday
   await expect(newest).toContainText("250 mg");
   await expect(newest).not.toContainText("Morning");
 
@@ -503,7 +509,7 @@ test("the backfill offers the missed days the strip already computed (#3674)", a
     page,
     clockPanel.getByRole("button", { name: "Log past dose" })
   );
-  const clockOffer = clockPanel.getByTestId("dose-backfill-offer").first(); // first-ok: same spec-owned offer list, newest first
+  const clockOffer = clockPanel.getByTestId("dose-backfill-offer").first(); // eslint-disable-line no-restricted-properties -- first-ok: same spec-owned offer list, newest first
   await expect(clockOffer).toContainText(/(?:8:00am|08:00)/);
   await settledClick(page, clockOffer);
   await expect(page.getByText(`Logged past dose of ${name}.`)).toBeVisible();

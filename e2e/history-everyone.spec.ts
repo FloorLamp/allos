@@ -475,7 +475,7 @@ test.describe("the record's merged household view (#4009 item 3)", () => {
       ]) {
         await page.goto(view);
         await expect(
-          page.getByTestId("history-row-subject").first() // first-ok: waited on so the read below is not of an empty list
+          page.getByTestId("history-row-subject").first() // eslint-disable-line no-restricted-properties -- first-ok: waited on so the read below is not of an empty list
         ).toBeVisible();
 
         const lines = await page.evaluate(() => {

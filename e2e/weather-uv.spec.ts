@@ -140,9 +140,10 @@ function setTodayWetWeather(weatherCode: number | null): void {
 // chip assertions below open that day first.
 async function newestDay(page: Page): Promise<string> {
   await page.goto("/history");
+  // eslint-disable-next-line no-restricted-properties -- first-ok: the newest day group; the assertion is about position
   const id = await page
     .locator("[id^='timeline-day-']")
-    .first() // first-ok: the newest day group; the assertion is about position
+    .first()
     .getAttribute("id");
   expect(id, "the record rendered no day group to open").not.toBeNull();
   return id!.replace("timeline-day-", "");
@@ -261,12 +262,12 @@ test.describe("Weather & UV integration (#1172)", () => {
       // The seeded walk today logged 120 daylight-outdoor minutes → the minutes chip
       // (the offline #571 behavior) AND, because live UV is cached, the UV badge on
       // top of it (the #1172 enrichment). Scope to the fixture's own day header.
-      const uvBadge = member.getByTestId("daylight-uv").first(); // first-ok: fixture-owned single seeded outdoor day
+      const uvBadge = member.getByTestId("daylight-uv").first(); // eslint-disable-line no-restricted-properties -- first-ok: fixture-owned single seeded outdoor day
       await expect(uvBadge).toBeVisible();
       await expect(uvBadge).toContainText("UV");
       // Degradation guarantee: the minutes-outdoors chip is always present too.
       await expect(
-        member.getByTestId("daylight-outdoor-minutes").first() // first-ok: fixture-owned single seeded outdoor day
+        member.getByTestId("daylight-outdoor-minutes").first() // eslint-disable-line no-restricted-properties -- first-ok: fixture-owned single seeded outdoor day
       ).toBeVisible();
     } finally {
       await member.context().close();
@@ -288,10 +289,11 @@ test.describe("Weather & UV integration (#1172)", () => {
       // carries none — the catalog flag decides, not the availability of data.
       // The feed is slim rows: follow the ride to its canonical page for metrics.
       await member.goto("/training?tab=log");
+      // eslint-disable-next-line no-restricted-properties -- first-ok: fixture-owned single seeded ride
       const rideRow = member
         .getByTestId("history-row")
         .filter({ hasText: "Cycling" })
-        .first(); // first-ok: fixture-owned single seeded ride
+        .first();
       await followLink(
         member,
         rideRow.getByRole("link", { name: "Cycling", exact: true }),

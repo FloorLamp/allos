@@ -127,7 +127,7 @@ test("the first data row fits in the first viewport on key record panes (#1497)"
       // markup tree), so it names the first DATA row at both presentations
       // without counting.
       row: () =>
-        page.getByTestId("records-conditions").locator("tbody tr").first(), // first-ok: the topmost condition row — which is exactly the "first data row" this test measures
+        page.getByTestId("records-conditions").locator("tbody tr").first(), // eslint-disable-line no-restricted-properties -- first-ok: the topmost condition row — which is exactly the "first data row" this test measures
     },
     {
       href: "/records/history/immunizations",
@@ -138,10 +138,11 @@ test("the first data row fits in the first viewport on key record panes (#1497)"
       // measuring a different row than the one it names. The first vaccine's own
       // link is the row's identity and survives both presentations.
       row: () =>
+        // eslint-disable-next-line no-restricted-properties -- first-ok: the topmost vaccine in the sorted list — which is exactly the "first data row" this test measures
         page
           .getByTestId("records-immunizations")
           .locator('a[href^="/immunizations/"]')
-          .first(), // first-ok: the topmost vaccine in the sorted list — which is exactly the "first data row" this test measures
+          .first(),
     },
   ];
 

@@ -143,10 +143,10 @@ test("class A + the tap floor: appointment rows tighten without shrinking (#3466
   await page.goto("/appointments");
   const main = page.getByRole("main");
 
-  const row = main.getByTestId("appointment-row").first(); // first-ok: every row is the same component; the assertion is about the shape, not this appointment
+  const row = main.getByTestId("appointment-row").first(); // eslint-disable-line no-restricted-properties -- first-ok: every row is the same component; the assertion is about the shape, not this appointment
   // The row's own title is the content the box is sized around.
   await expect(row).toBeVisible();
-  await expect(row.locator("span").first()).toBeVisible(); // first-ok: the leading span is the row's title
+  await expect(row.locator("span").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: the leading span is the row's title
 
   // `p-3` (12) on desktop, 10 here — and no horizontal gutter at all since #3673,
   // which is what puts the row's first character on the page gutter with every
@@ -556,11 +556,12 @@ test("#3899 a converted container loses its frame and keeps the page rag", async
     .click();
   const affiliations = appContent(page).getByTestId("provider-affiliations");
   const heading = affiliations.getByRole("heading", { name: "Practices at" });
+  // eslint-disable-next-line no-restricted-properties -- first-ok: every affiliation row is the same element with the same class list, and the seed guarantees this one
   const row = affiliations
     .getByTestId("affiliation-list")
     .getByRole("listitem")
-    .first(); // first-ok: every affiliation row is the same element with the same class list, and the seed guarantees this one
-  const content = row.getByRole("link").first(); // first-ok: the row's leading link is the run whose left edge is the rag being measured
+    .first();
+  const content = row.getByRole("link").first(); // eslint-disable-line no-restricted-properties -- first-ok: the row's leading link is the run whose left edge is the rag being measured
   await expect(row).toBeVisible();
 
   const [border, radius] = await bandFrame(row);
@@ -586,7 +587,7 @@ test("#3673 the sweep can SEE a frame, and stays quiet on the Notice that keeps 
   // asked of the same DOM: the forged offender must be caught, and the shipped
   // safety notice beside it must not be.
   await page.goto("/nutrition?tab=supplements");
-  const notice = page.locator("[data-notice='amber']").first(); // first-ok: every Notice is the same primitive; the assertion is about the shape
+  const notice = page.locator("[data-notice='amber']").first(); // eslint-disable-line no-restricted-properties -- first-ok: every Notice is the same primitive; the assertion is about the shape
   await expect(notice).toBeVisible();
   expect(await cardFrames(page)).toEqual([]);
 
@@ -810,9 +811,9 @@ test("#3673 the record's band bleeds and its rows keep the gutter", async ({
 }) => {
   test.slow();
   await page.goto("/history");
-  const list = page.locator('[data-testid="history-rows"]').first(); // first-ok: every day's list is the same primitive
+  const list = page.locator('[data-testid="history-rows"]').first(); // eslint-disable-line no-restricted-properties -- first-ok: every day's list is the same primitive
   await expect(list).toBeVisible();
-  const row = list.locator('[data-testid="history-row"]').first(); // first-ok: every row is the same primitive
+  const row = list.locator('[data-testid="history-row"]').first(); // eslint-disable-line no-restricted-properties -- first-ok: every row is the same primitive
 
   // THE TWO HALVES ARE DIFFERENT BOXES, and that is the whole #3920 shape: the FILL
   // reaches the viewport edge while the CONTENT starts at the page gutter. Asserting
@@ -1048,7 +1049,7 @@ for (const [tone, surface] of REACHABLE_TONES) {
     test.slow();
     await page.goto(surface.route);
     if (surface.expand) await openDisclosure(page, surface.expand);
-    const notice = page.locator(surface.locator).first(); // first-ok: every Notice of a tone is the same primitive; the assertion is about the shape
+    const notice = page.locator(surface.locator).first(); // eslint-disable-line no-restricted-properties -- first-ok: every Notice of a tone is the same primitive; the assertion is about the shape
     await expect(notice).toBeVisible();
     await expect(notice).toHaveAttribute("data-notice", tone);
 
@@ -1070,7 +1071,7 @@ for (const [tone, surface] of REACHABLE_TONES) {
 
     // QUIET: an ordinary neutral surface on the SAME page — a different element,
     // so this is a comparison rather than a claim about one box read twice.
-    const row = page.locator("main .card").first(); // first-ok: any neutral surface is the comparison; the claim is about the shape
+    const row = page.locator("main .card").first(); // eslint-disable-line no-restricted-properties -- first-ok: any neutral surface is the comparison; the claim is about the shape
     await expect(row).toBeVisible();
     const quiet = await read(row);
     expect(quiet.border).toBe(0);
@@ -1154,8 +1155,8 @@ for (const surface of LOUD_SURFACES) {
     await page.goto(surface.route);
     if ("expand" in surface) await openDisclosure(page, surface.expand);
 
-    const loud = page.locator(surface.loud).first(); // first-ok: every finding of this kind is the same component; the assertion is about the shape
-    const quiet = page.locator(surface.quiet).first(); // first-ok: any ordinary neutral surface on this page is the comparison
+    const loud = page.locator(surface.loud).first(); // eslint-disable-line no-restricted-properties -- first-ok: every finding of this kind is the same component; the assertion is about the shape
+    const quiet = page.locator(surface.quiet).first(); // eslint-disable-line no-restricted-properties -- first-ok: any ordinary neutral surface on this page is the comparison
     await expect(loud).toBeVisible();
     await expect(quiet).toBeVisible();
 

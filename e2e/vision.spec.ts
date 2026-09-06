@@ -87,7 +87,7 @@ test.describe("Optical prescriptions — add → view → edit → delete (#697)
 
     // Add a glasses Rx with the marker OD sphere.
     await form.getByLabel("Type").selectOption("glasses");
-    await form.getByLabel("Sphere").first().fill(String(MARKER)); // first-ok: the right-eye Sphere field in the prescription form this spec fills — order-agnostic
+    await form.getByLabel("Sphere").first().fill(String(MARKER)); // eslint-disable-line no-restricted-properties -- first-ok: the right-eye Sphere field in the prescription form this spec fills — order-agnostic
     await form.getByLabel("PD (mm)").fill("64");
     await form.getByRole("button", { name: "Add", exact: true }).click();
     await expect(page.getByText("Prescription saved")).toBeVisible();
@@ -175,7 +175,7 @@ test.describe("Optical prescriptions — add → view → edit → delete (#697)
       page,
       form.getByRole("button", { name: "Add", exact: true })
     );
-    await expect(page.getByText("Prescription saved").first()).toBeVisible(); // first-ok: asserts the save confirmation appears — order-agnostic presence
+    await expect(page.getByText("Prescription saved").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: asserts the save confirmation appears — order-agnostic presence
     // The save closes the add modal and fires router.refresh(). Wait for the
     // server-rendered marker of the completed refresh before reopening the form.
     const list = page.getByTestId("optical-prescription-list");
@@ -187,7 +187,7 @@ test.describe("Optical prescriptions — add → view → edit → delete (#697)
     ).toBeHidden();
     await page.getByTestId("add-prescription-panel-toggle").click();
     form = page.getByTestId("optical-prescription-form");
-    await expect(form.getByLabel("Sphere").first()).toHaveValue(""); // first-ok: the right-eye Sphere field starts blank after reopening — order-agnostic
+    await expect(form.getByLabel("Sphere").first()).toHaveValue(""); // eslint-disable-line no-restricted-properties -- first-ok: the right-eye Sphere field starts blank after reopening — order-agnostic
 
     // Rx 2 — the SAME refraction in plus-cyl (ophthalmology) notation, dated
     // NEWER than every seeded Rx so it is the progression's last point:

@@ -43,9 +43,10 @@ export async function fillPeriodDate(
   const input = page.locator(`#cycle-${field}-new`);
   const hidden = form.locator(`input[type="hidden"][name="period_${field}"]`);
   await expect(input).toBeVisible();
+  // eslint-disable-next-line no-restricted-properties -- topass-ok: hydration gate for a DateField whose display reformats a valid ISO, so a same-field value assertion can't express the wait (the #794 precedent)
   await expect(async () => {
     await input.fill(iso);
     await expect(hidden).toHaveValue(iso, { timeout: 2_000 });
-  }).toPass({ timeout: 10_000, intervals: [200, 500, 1000] }); // topass-ok: hydration gate for a DateField whose display reformats a valid ISO, so a same-field value assertion can't express the wait (the #794 precedent)
+  }).toPass({ timeout: 10_000, intervals: [200, 500, 1000] });
   await input.press("Escape");
 }

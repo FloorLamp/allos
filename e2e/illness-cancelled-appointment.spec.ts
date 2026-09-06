@@ -80,10 +80,11 @@ test("a cancelled appointment shows on the episode timeline as cancelled", async
   page,
 }) => {
   await page.goto("/medical/episodes");
+  // eslint-disable-next-line no-restricted-properties -- first-ok: the fixture's own ongoing episode (filtered) — order-agnostic
   const ongoing = page
     .getByTestId("episode-index-row")
     .filter({ hasText: /ongoing/i })
-    .first(); // first-ok: the fixture's own ongoing episode (filtered) — order-agnostic
+    .first();
   const href = await ongoing.getAttribute("href");
   expect(href).toMatch(/^\/medical\/episodes\/\d+$/);
   await page.goto(href!);

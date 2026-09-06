@@ -293,7 +293,7 @@ async function expand(cockpit: Locator) {
 async function pickMedication(page: Page, scope: Page | Locator, name: string) {
   await settledFill(page, scope.getByRole("combobox", { name: "Name" }), name);
   // Portaled listbox (#3271): it lives on <body>, not inside `scope`.
-  const option = comboboxRows(page).filter({ hasText: name }).first(); // first-ok: the typed medication narrows this transient list
+  const option = comboboxRows(page).filter({ hasText: name }).first(); // eslint-disable-line no-restricted-properties -- first-ok: the typed medication narrows this transient list
   await expect(option).toBeVisible();
   await option.click();
 }
@@ -351,6 +351,7 @@ test("collapse and expansion survive a reload", async ({ browser }) => {
       cockpit().locator('[data-testid^="illness-cockpit-toggle-"]');
 
     async function persist(want: "true" | "false") {
+      // eslint-disable-next-line no-restricted-properties -- topass-ok: the async preference write has no earlier persisted marker
       await expect(async () => {
         if ((await cockpit().getAttribute("data-expanded")) !== want)
           await settledClick(page, toggle());
@@ -358,7 +359,7 @@ test("collapse and expansion survive a reload", async ({ browser }) => {
         await expect(cockpit()).toHaveAttribute("data-expanded", want, {
           timeout: 3_000,
         });
-      }).toPass({ timeout: 25_000 }); // topass-ok: the async preference write has no earlier persisted marker
+      }).toPass({ timeout: 25_000 });
     }
 
     await persist("true");
@@ -661,7 +662,7 @@ for (const [label, viewport, wide] of [
       // A CLIENT TOGGLE, not a write: the chip opens the med and posts nothing.
       await hydratedClick(
         page,
-        chips.locator('[data-testid^="cockpit-med-chip-"]').first() // first-ok: the row's leading med chip; every chip opens the same panel
+        chips.locator('[data-testid^="cockpit-med-chip-"]').first() // eslint-disable-line no-restricted-properties -- first-ok: the row's leading med chip; every chip opens the same panel
       );
       const panel = card.getByTestId("cockpit-med-panel");
       await expect(panel).toBeVisible();

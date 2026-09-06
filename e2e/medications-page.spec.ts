@@ -34,6 +34,7 @@ async function openRowMenuItemAndFollow(
   destination: RegExp
 ): Promise<void> {
   const item = page.getByRole("menuitem", { name: itemName });
+  // eslint-disable-next-line no-restricted-properties -- topass-ok: reopen-if-closed + click + await-URL for a client-side portaled menu-nav past post-nav hydration — no awaitable POST to settle on
   await expect(async () => {
     if (!(await item.isVisible().catch(() => false))) {
       await row.getByRole("button", { name: "Medication actions" }).click(); // hydrated-ok: inside the reviewed reopen-if-closed toPass below — the loop already tolerates a swallowed tap, and it re-opens ONLY when the item is not visible, so it can never toggle the menu shut
@@ -41,7 +42,7 @@ async function openRowMenuItemAndFollow(
     }
     await item.click();
     await page.waitForURL(destination, { timeout: 3_000 });
-  }).toPass({ timeout: 20_000 }); // topass-ok: reopen-if-closed + click + await-URL for a client-side portaled menu-nav past post-nav hydration — no awaitable POST to settle on
+  }).toPass({ timeout: 20_000 });
 }
 
 // #817 Medications page redesign: the Today panel (scheduled dose check-off + PRN
@@ -66,7 +67,7 @@ test("Today panel leads with a due scheduled dose and a PRN administration row",
   // A scheduled, currently-due med shows its tri-state dose check-off inline.
   const scheduled = scheduledTodayItem(today, "Adherence Refill Med (e2e)");
   await expect(scheduled).toBeVisible();
-  await expect(scheduled.getByTestId("dose-status").first()).toBeVisible(); // first-ok: scoped to the uniquely-named Adherence Refill Med (e2e) Today card; its own first dose-status pill
+  await expect(scheduled.getByTestId("dose-status").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: scoped to the uniquely-named Adherence Refill Med (e2e) Today card; its own first dose-status pill
 
   // A PRN med shows a one-tap administration row (not a scheduled pill).
   await expect(prnTodayItem(today, "PRN Quicklog Med (e2e)")).toBeVisible();
@@ -414,7 +415,7 @@ test("a medication row links to its clinical-record detail page", async ({
   const doseHistory = detail.getByTestId("dose-history");
   // The newest seeded dose is from yesterday. Its database insertion timestamp is
   // today, but history must use the dose's logical date before adding relative age.
-  const newestDoseRow = doseHistory.getByTestId("dose-history-row").first(); // first-ok: newest row on the uniquely-named "Adherence Refill Med (e2e)" detail page; deterministically yesterday's seeded dose — the only sibling that logs a dose (medications-followups) targets a different med (PRN Quicklog Med), so no concurrent write can push a newer row here
+  const newestDoseRow = doseHistory.getByTestId("dose-history-row").first(); // eslint-disable-line no-restricted-properties -- first-ok: newest row on the uniquely-named "Adherence Refill Med (e2e)" detail page; deterministically yesterday's seeded dose — the only sibling that logs a dose (medications-followups) targets a different med (PRN Quicklog Med), so no concurrent write can push a newer row here
   await expect(newestDoseRow).not.toContainText("(just now)");
   await doseHistory.getByRole("button", { name: "Log past dose" }).click();
   const historyForm = doseHistory.getByTestId("historical-dose-form");

@@ -65,7 +65,7 @@ test.describe("Import detail: type-appropriate produced panels (#1182)", () => {
     ).toBeVisible();
     // The analyte grid keeps its per-row editing affordance.
     await expect(
-      page.getByRole("button", { name: "Result actions" }).first() // first-ok: doc 909 is this spec's own fixture (a single lab row)
+      page.getByRole("button", { name: "Result actions" }).first() // eslint-disable-line no-restricted-properties -- first-ok: doc 909 is this spec's own fixture (a single lab row)
     ).toBeVisible();
   });
 

@@ -81,7 +81,7 @@ function cardsByTitle(page: Page, text: string | RegExp) {
 async function openEditorFromRow(page: Page, row: Locator): Promise<void> {
   await hydratedClick(
     page,
-    row.getByRole("link").first() // first-ok: the canonical title link precedes any exercise links in the row
+    row.getByRole("link").first() // eslint-disable-line no-restricted-properties -- first-ok: the canonical title link precedes any exercise links in the row
   );
   await page
     .getByTestId("training-activity-page")
@@ -93,10 +93,8 @@ async function openEditorFromRow(page: Page, row: Locator): Promise<void> {
 // entry-ergonomics / rpe-logging specs document).
 async function pickActivity(page: Page, name: string) {
   await page.getByPlaceholder(/What did you do/).fill(name);
-  await comboboxRows(page)
-    .filter({ hasText: name })
-    .first() // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
-    .click();
+  // eslint-disable-next-line no-restricted-properties -- first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
+  await comboboxRows(page).filter({ hasText: name }).first().click();
 }
 
 async function confirmDelete(page: Page): Promise<void> {
@@ -139,7 +137,7 @@ async function sweepProbes(page: Page): Promise<void> {
   for (let guard = 0; guard < 12; guard++) {
     const n = await probes.count();
     if (n === 0) break;
-    const row = probes.first(); // first-ok: every PROBE_PREFIX row is this spec's own leftover; cleanup is order-agnostic
+    const row = probes.first(); // eslint-disable-line no-restricted-properties -- first-ok: every PROBE_PREFIX row is this spec's own leftover; cleanup is order-agnostic
     await openEditorFromRow(page, row);
     await confirmDelete(page);
     await page.goto("/training?tab=log");
@@ -159,7 +157,7 @@ async function logUniformProbe(page: Page, finish: boolean): Promise<string> {
   await page.goto("/training?tab=log");
   await page.getByTestId("training-log-add-activity").click();
 
-  const title = `${PROBE_PREFIX} ${Date.now()}-${++probeSeq}`; // clock-ok: unique probe-name suffix, never a stored timestamp
+  const title = `${PROBE_PREFIX} ${Date.now()}-${++probeSeq}`; // eslint-disable-line no-restricted-properties -- clock-ok: unique probe-name suffix, never a stored timestamp
   await page.getByRole("textbox", { name: "Activity name" }).fill(title);
   // The fully-qualified variant, not the bare base: a bare variant base needs a
   // per-set equipment pick before it can save (#342).

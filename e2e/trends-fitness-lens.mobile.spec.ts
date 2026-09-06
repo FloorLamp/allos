@@ -38,9 +38,10 @@ test.describe("Training → Analyze, All training (#3512)", () => {
 
     // #1492's phone stacking contract follows the history to its new owner: an
     // expanded activity matrix starts below the calendar instead of overlaying it.
+    // eslint-disable-next-line no-restricted-properties -- first-ok: every history row shares this stacking contract
     await history
       .getByRole("button", { name: /View occurrences for/ })
-      .first() // first-ok: every history row shares this stacking contract
+      .first()
       .click();
     const [calendarBox, rowBox] = await settledBoxes([
       history.getByTestId("day-history-calendar-panel"),
@@ -92,20 +93,22 @@ test.describe("Training → Analyze, All training (#3512)", () => {
     await page.goto("/training?tab=analyze");
 
     const history = page.getByTestId("workout-history");
+    // eslint-disable-next-line no-restricted-properties -- first-ok: the grid's oldest bucket is the window measurement
     const defaultFirst = await history
       .getByTestId("day-history-calendar")
       .locator("[data-date]")
-      .first() // first-ok: the grid's oldest bucket is the window measurement
+      .first()
       .getAttribute("data-date");
 
     await page.getByLabel("Range").selectOption("all");
     await expect(page).toHaveURL(/tab=analyze&range=all/);
     await expect(page.getByTestId("analyze-all-training")).toBeVisible();
     await expect(history.getByTestId("day-history-calendar")).toHaveCount(0);
+    // eslint-disable-next-line no-restricted-properties -- first-ok: the widened grid's oldest bucket is the comparison
     const allTimeFirst = await history
       .getByTestId("day-history-strip")
       .locator("[data-date]")
-      .first() // first-ok: the widened grid's oldest bucket is the comparison
+      .first()
       .getAttribute("data-date");
     expect(allTimeFirst! < defaultFirst!).toBe(true);
 

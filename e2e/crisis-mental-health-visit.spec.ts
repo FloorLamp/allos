@@ -74,10 +74,11 @@ test.describe("mental-health visit sensitivity + crisis resources (#997/#996)", 
     // minimized. First-match (not an exact count): the spec re-books under
     // --repeat-each, so its own rows accumulate on the reused profile (#868).
     await expect(
+      // eslint-disable-next-line no-restricted-properties -- first-ok: filtered to this spec's therapy appointment; .first() because rows accumulate under --repeat-each (see comment above)
       upcoming
         .getByTestId("appointment-row")
         .filter({ hasText: THERAPY_TITLE })
-        .first() // first-ok: filtered to this spec's therapy appointment; .first() because rows accumulate under --repeat-each (see comment above)
+        .first()
     ).toBeVisible({ timeout: 15_000 });
   });
 
@@ -89,8 +90,8 @@ test.describe("mental-health visit sensitivity + crisis resources (#997/#996)", 
     await page.goto("/integrations/calendar-feed");
     const list = page.getByTestId("calendar-preview-list");
     await expect(list).toBeVisible();
-    await expect(list.getByText(PHYSICAL_TITLE).first()).toBeVisible(); // first-ok: this spec's booked physical visit (accumulates under --repeat-each) — order-agnostic
+    await expect(list.getByText(PHYSICAL_TITLE).first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: this spec's booked physical visit (accumulates under --repeat-each) — order-agnostic
     await expect(list.getByText(THERAPY_TITLE)).toHaveCount(0);
-    await expect(list.getByText("Medical appointment").first()).toBeVisible(); // first-ok: the minimized mental_health visit label (this spec's booked visit) — order-agnostic
+    await expect(list.getByText("Medical appointment").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: the minimized mental_health visit label (this spec's booked visit) — order-agnostic
   });
 });

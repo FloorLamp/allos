@@ -37,7 +37,7 @@ test.describe("Visit detail page", () => {
 
     // The most recent visit renders as a clickable row titled by its type, whose
     // link targets the new per-visit detail route (not the old list page).
-    const visitLink = page.getByRole("link", { name: "Office Visit" }).first(); // first-ok: opens an Office Visit encounter detail (asserts the detail's structure, not a specific one) — order-agnostic
+    const visitLink = page.getByRole("link", { name: "Office Visit" }).first(); // eslint-disable-line no-restricted-properties -- first-ok: opens an Office Visit encounter detail (asserts the detail's structure, not a specific one) — order-agnostic
     await expect(visitLink).toBeVisible();
     expect(await visitLink.getAttribute("href")).toMatch(/^\/encounters\/\d+$/);
 
@@ -104,10 +104,11 @@ test.describe("Visit detail page", () => {
     await expect(
       past.getByRole("columnheader", { name: "Source" })
     ).toHaveCount(0);
+    // eslint-disable-next-line no-restricted-properties -- first-ok: either seeded Annual physical row proves the class badge is absent from table rows
     const annualPhysicalRow = past
       .getByRole("row")
       .filter({ hasText: "Annual physical" })
-      .first(); // first-ok: either seeded Annual physical row proves the class badge is absent from table rows
+      .first();
     await expect(
       annualPhysicalRow.getByText("Ambulatory", { exact: true })
     ).toHaveCount(0);
@@ -129,7 +130,7 @@ test.describe("Visit detail page", () => {
     // hydrates swallows the client navigation (the URL never changes). followLink
     // retries the click until the router commits the detail URL — no networkidle
     // hydration gate needed (#868).
-    const rowLink = page.getByRole("link", { name: "Office Visit" }).first(); // first-ok: opens an Office Visit encounter detail (asserts the detail's structure, not a specific one) — order-agnostic
+    const rowLink = page.getByRole("link", { name: "Office Visit" }).first(); // eslint-disable-line no-restricted-properties -- first-ok: opens an Office Visit encounter detail (asserts the detail's structure, not a specific one) — order-agnostic
     await expect(rowLink).toHaveAttribute("href", /\/encounters\/\d+$/);
     await expect(rowLink).toHaveClass(/\btext-brand-700\b/);
     await followLink(page, rowLink, /\/encounters\/\d+$/);
@@ -160,11 +161,12 @@ test.describe("Visit detail page", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/records/history/visits");
 
+    // eslint-disable-next-line no-restricted-properties -- first-ok: either seeded Annual physical row exercises the same responsive EncounterList columns
     const row = page
       .getByTestId("visits-past")
       .getByRole("row")
       .filter({ hasText: "Annual physical" })
-      .first(); // first-ok: either seeded Annual physical row exercises the same responsive EncounterList columns
+      .first();
     await expect(row).toBeVisible();
 
     await expect(row.getByText("Source", { exact: true })).toHaveCount(0);

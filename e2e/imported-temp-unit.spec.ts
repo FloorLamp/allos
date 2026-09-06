@@ -25,10 +25,11 @@ test("a legacy imported Celsius reading renders converted on the episode surface
     // Reach the fixture's own open episode through its episodes index (the
     // order-independent route illness-round3 uses).
     await page.goto("/medical/episodes");
+    // eslint-disable-next-line no-restricted-properties -- first-ok: the fixture's own open episode via its episodes index (order-independent route)
     const row = page
       .getByTestId("episode-index-row")
       .filter({ hasText: /ongoing/i })
-      .first(); // first-ok: the fixture's own open episode via its episodes index (order-independent route)
+      .first();
     await followLink(page, row, /\/medical\/episodes\/\d+/);
 
     // The latest-reading readout renders the CONVERTED canonical value in the

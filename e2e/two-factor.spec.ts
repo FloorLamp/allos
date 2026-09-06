@@ -27,7 +27,7 @@ function e2eDbPath(): string {
 }
 
 function seedMemberOnProfile1(): { username: string; password: string } {
-  const username = `e2e_2fa_${Date.now()}_${++memberSeq}`; // clock-ok: unique login-name suffix, never a stored timestamp
+  const username = `e2e_2fa_${Date.now()}_${++memberSeq}`; // eslint-disable-line no-restricted-properties -- clock-ok: unique login-name suffix, never a stored timestamp
   const db = new Database(e2eDbPath());
   try {
     db.pragma("busy_timeout = 5000");
@@ -62,16 +62,18 @@ async function completeTotpLogin(page: Page, secret: string): Promise<void> {
   // next-step code (strictly newer, so the replay guard never blocks a retry),
   // and the loop cannot false-pass — only a real verify navigates off /login.
   // The url guard keeps a slow-but-successful verify from being re-driven.
+  // eslint-disable-next-line no-restricted-properties -- clock-ok: TOTP must follow the verifier's real clock
   await expect(async () => {
     if (new URL(page.url()).pathname.startsWith("/login")) {
-      const nextStepCode = totp(secret, { timeMs: Date.now() + 30_000 })!; // clock-ok: TOTP must follow the verifier's real clock
+      // eslint-disable-next-line no-restricted-properties -- topass-ok: re-verify with a freshly minted TOTP until off /login — the time-based code can expire between attempts, so code+submit is re-driven
+      const nextStepCode = totp(secret, { timeMs: Date.now() + 30_000 })!;
       await page.getByTestId("totp-code").fill(nextStepCode);
       await page.getByRole("button", { name: "Verify" }).click();
     }
     await page.waitForURL((u) => !u.pathname.startsWith("/login"), {
       timeout: 10_000,
     });
-  }).toPass({ timeout: 45_000 }); // topass-ok: re-verify with a freshly minted TOTP until off /login — the time-based code can expire between attempts, so code+submit is re-driven
+  }).toPass({ timeout: 45_000 });
 }
 
 test("2FA: enroll, then second-factor login with code and recovery code (#23)", async ({
@@ -104,6 +106,7 @@ test("2FA: enroll, then second-factor login with code and recovery code (#23)", 
   // load, and the recovery codes then never render (the observed failure).
   // toPass justified as in completeTotpLogin — recompute a fresh code per retry;
   // only a real activation renders the one-time recovery codes, so no false pass.
+  // eslint-disable-next-line no-restricted-properties -- topass-ok: re-activate with a fresh TOTP until the one-time recovery codes render — time-based code, re-driven per attempt
   await expect(async () => {
     if (!(await m.getByTestId("twofa-recovery-codes").isVisible())) {
       await m.getByTestId("twofa-code").fill(totp(secret)!);
@@ -113,14 +116,10 @@ test("2FA: enroll, then second-factor login with code and recovery code (#23)", 
     await expect(m.getByTestId("twofa-recovery-codes")).toBeVisible({
       timeout: 5000,
     });
-  }).toPass({ timeout: 45_000 }); // topass-ok: re-activate with a fresh TOTP until the one-time recovery codes render — time-based code, re-driven per attempt
-  const recoveryCode = (
-    await m
-      .getByTestId("twofa-recovery-codes")
-      .locator("li")
-      .first() // first-ok: any one of THIS login's freshly-shown recovery codes; the recovery path needs exactly one
-      .innerText()
-  ).trim();
+  }).toPass({ timeout: 45_000 });
+  const recoveryCodes = m.getByTestId("twofa-recovery-codes").locator("li");
+  // eslint-disable-next-line no-restricted-properties -- first-ok: any one of THIS login's freshly-shown recovery codes; the recovery path needs exactly one
+  const recoveryCode = (await recoveryCodes.first().innerText()).trim();
   await enrollCtx.close();
 
   // Fresh context: the password now leads to the second-factor step (NOT a

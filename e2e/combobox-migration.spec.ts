@@ -103,10 +103,11 @@ test.describe("Combobox migration (#1176/#1177)", () => {
     // individual), which the person icon marks — rendered LEADING (before the label).
     await provider.fill("patel");
     const listbox = page.getByRole("listbox");
+    // eslint-disable-next-line no-restricted-properties -- first-ok: transient list this spec just opened by typing "patel"; the first Patel match is the intended row
     const indivOption = listbox
       .getByRole("option")
       .filter({ hasText: /Patel/ })
-      .first(); // first-ok: transient list this spec just opened by typing "patel"; the first Patel match is the intended row
+      .first();
     await expect(indivOption).toBeVisible();
     const icon = indivOption.getByTestId("provider-icon-individual");
     await expect(icon).toBeVisible();
@@ -118,9 +119,10 @@ test.describe("Combobox migration (#1176/#1177)", () => {
     // (2) An organization shows the building icon instead.
     await provider.fill("quest");
     await expect(
+      // eslint-disable-next-line no-restricted-properties -- first-ok: transient list opened by typing "quest"; first Quest match is intended
       comboboxRows(page)
         .filter({ hasText: /Quest/ })
-        .first() // first-ok: transient list opened by typing "quest"; first Quest match is intended
+        .first()
         .getByTestId("provider-icon-organization")
     ).toBeVisible();
 
@@ -149,7 +151,7 @@ test.describe("Combobox migration (#1176/#1177)", () => {
       .getByRole("combobox", { name: "Provider" })
       .fill("Combobox Clinic");
     await expect(
-      comboboxRows(page).filter({ hasText: NEW_PROVIDER }).first() // first-ok: transient list opened by typing; first match is the just-created provider
+      comboboxRows(page).filter({ hasText: NEW_PROVIDER }).first() // eslint-disable-line no-restricted-properties -- first-ok: transient list opened by typing; first match is the just-created provider
     ).toBeVisible();
   });
 
@@ -171,9 +173,10 @@ test.describe("Combobox migration (#1176/#1177)", () => {
     // labels the native prefix-only datalist would have missed.
     const specialty = editForm.getByRole("combobox", { name: "Specialty" });
     await specialty.fill("cardio");
+    // eslint-disable-next-line no-restricted-properties -- first-ok: transient NUCC list opened by typing "cardio"; first match is the intended pick
     const match = comboboxRows(page)
       .filter({ hasText: /cardio/i })
-      .first(); // first-ok: transient NUCC list opened by typing "cardio"; first match is the intended pick
+      .first();
     await expect(match).toBeVisible();
     const picked = (await match.textContent())!.trim();
     await match.click();
@@ -244,7 +247,7 @@ test.describe("Combobox migration (#1176/#1177)", () => {
     );
     await expect(
       // Portaled listbox (#3271) — resolved from the page, not the form.
-      comboboxRows(page).filter({ hasText: CUSTOM_SITUATION }).first() // first-ok: transient list opened by typing; the created situation is the intended option
+      comboboxRows(page).filter({ hasText: CUSTOM_SITUATION }).first() // eslint-disable-line no-restricted-properties -- first-ok: transient list opened by typing; the created situation is the intended option
     ).toBeVisible();
   });
 

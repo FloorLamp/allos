@@ -98,13 +98,13 @@ test("the Reference cell states the bands the flag came from, and keeps the lab'
   // reading detail page's own "Lab reference" column. Asserted at the NEW location
   // rather than assumed — the row's own link is the path a reader takes.
   const nameLink = row.getByRole("link", { name: "Apolipoprotein B (ApoB)" });
-  await nameLink.first().click(); // first-ok: the row's name cell is its one identity link
+  await nameLink.first().click(); // eslint-disable-line no-restricted-properties -- first-ok: the row's name cell is its one identity link
   await expect(page).toHaveURL(/\/results\/clinical-results\/view/);
   // `toContainText`, not `toHaveText`: the cell also carries its own card-mode label
   // ("Lab reference"), which is the ResponsiveTable contract and not this claim. The
   // scope is the ONE cell, so nothing else on the page can satisfy the substring.
   await expect(
-    page.getByTestId("reading-lab-reference").first() // first-ok: the newest reading's row, which is the one the index showed
+    page.getByTestId("reading-lab-reference").first() // eslint-disable-line no-restricted-properties -- first-ok: the newest reading's row, which is the one the index showed
   ).toContainText("<90");
 });
 
@@ -118,7 +118,7 @@ test("a flagged row's severity word is in the visible text, not only the accessi
   const words = table.locator(
     '[data-testid="medical-flag-text"][data-visible="true"]'
   );
-  await expectRenderedWide(words.first()); // first-ok: every row under this filter is flagged, so which word is measured is irrelevant — only that it is drawn, not clipped
+  await expectRenderedWide(words.first()); // eslint-disable-line no-restricted-properties -- first-ok: every row under this filter is flagged, so which word is measured is irrelevant — only that it is drawn, not clipped
   for (const t of await words.allTextContents()) {
     expect(["High", "Low", "Abnormal"]).toContain(t.trim());
   }

@@ -42,7 +42,7 @@ test.describe("Trends mini-tile sparkline (#1445)", () => {
     await expect(tile.locator(".recharts-cartesian-grid")).toHaveCount(0);
     // Dots are part of the shared line-tile grammar (not a Sleep-only exception).
     await expect(
-      tile.locator(".recharts-line-dot").first() // first-ok: any rendered point proves the shared dot grammar
+      tile.locator(".recharts-line-dot").first() // eslint-disable-line no-restricted-properties -- first-ok: any rendered point proves the shared dot grammar
     ).toBeVisible();
 
     // …and the numbers the Y axis used to imply are present as legible text.
@@ -69,9 +69,10 @@ test.describe("Trends mini-tile sparkline (#1445)", () => {
     ).not.toHaveCount(0);
 
     // Ticks stay at or above the 10px legibility floor the scaffold sets.
+    // eslint-disable-next-line no-restricted-properties -- first-ok: sampling any one tick — they all come from the same chartAxisProps bag
     const tickSize = await chart
       .locator(".recharts-cartesian-axis-tick-value")
-      .first() // first-ok: sampling any one tick — they all come from the same chartAxisProps bag
+      .first()
       .evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
     expect(tickSize).toBeGreaterThanOrEqual(10);
   });
