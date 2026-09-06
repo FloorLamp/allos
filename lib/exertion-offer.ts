@@ -40,7 +40,10 @@ import {
 } from "./exertion-window";
 import { db, today } from "./db";
 import { getHrInstantsInRange } from "./queries/metrics";
-import { restingCeilingBpm, usualRecoveryMin } from "./queries/event-physiology";
+import {
+  restingCeilingBpm,
+  usualRecoveryMin,
+} from "./queries/event-physiology";
 import { USUAL_RECENT_EVENTS } from "./event-physiology";
 import {
   activityWindow,

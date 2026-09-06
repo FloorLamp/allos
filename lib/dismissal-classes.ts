@@ -43,10 +43,7 @@ import {
   STREAM_OFFBOARD_PREFIX,
   STREAM_ONBOARD_PREFIX,
 } from "./integrations/stream-lifecycle";
-import {
-  EXERTION_SPAN_PREFIX,
-  OFFER_ASKED_PREFIX,
-} from "./dismissal-keys";
+import { EXERTION_SPAN_PREFIX, OFFER_ASKED_PREFIX } from "./dismissal-keys";
 
 /**
  * How a dismissal key is protected from re-attaching to a subject the user never

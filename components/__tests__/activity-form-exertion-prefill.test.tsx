@@ -41,7 +41,9 @@ vi.mock("../Toast", () => ({ useToast: () => vi.fn() }));
 vi.mock("../OfflineQueueProvider", () => ({
   useOfflineQueue: () => ({ enqueue: vi.fn() }),
 }));
-vi.mock("../ConfirmDialog", () => ({ useConfirm: () => vi.fn(async () => true) }));
+vi.mock("../ConfirmDialog", () => ({
+  useConfirm: () => vi.fn(async () => true),
+}));
 
 import ActivityForm from "../ActivityForm";
 import { TimezoneProvider } from "../TimezoneProvider";

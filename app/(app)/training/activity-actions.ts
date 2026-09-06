@@ -1,10 +1,7 @@
 "use server";
 import { requireSession, requireWriteAccess } from "@/lib/auth";
 import { isRealIsoDate } from "@/lib/date";
-import {
-  latestExertionOffer,
-  type ExertionOffer,
-} from "@/lib/exertion-offer";
+import { latestExertionOffer, type ExertionOffer } from "@/lib/exertion-offer";
 import {
   LOGGED_VIA_FIELD,
   parseWebOrigin,
