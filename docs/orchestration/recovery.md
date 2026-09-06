@@ -23,6 +23,16 @@
 - Recovery ends with a REFILL, not a report: once every rescue and relaunch is
   done, triage and dispatch. An empty roster after a restart is a to-do.
 
+## Replacing a session
+
+- `archive`/`unarchive` recycles the CONTAINER and keeps the model; only a new
+  session changes it. A dead proxy, a wedged container or a model change is
+  therefore a replacement, not a recycle.
+- A replacement discards context, never state: the Ladder, the `Dispatched:`
+  notes and the pushed branches are what the successor reads. Unpushed work is
+  the only thing it loses — so commit and push before replacing, and tell the
+  successor which branch heads are real.
+
 ## Lost credentials
 
 - Credential loss can leave reads working while pushes fail. Reauthorize push

@@ -2,19 +2,9 @@
 
 Each orchestrator runs in its own container: its own roster, ledger, machine
 cap and E2E cap. What they share is GitHub — issues, branches, PRs, `main`.
-
-## Spawning one
-
-- The PM spawns every orchestrator on **Opus**, naming the model explicitly:
-  `create_session` inherits the PM's model otherwise, so a PM running anything
-  else silently seeds the fleet with it (owner, 2026-09-06).
-- The model is fixed at creation. A running session keeps the model it started
-  with until it is REPLACED — a new session, not `archive`/`unarchive`, which
-  recycles the container and keeps the model. So a fleet is moved onto Opus one
-  replacement at a time, at the moments a session is being replaced anyway.
-- Replacing a session discards its context; its durable state is the Ladder,
-  the `Dispatched:` notes and the pushed branches, which is what the successor
-  reads. Unpushed work is the only thing a replacement loses.
+The PM spawns each on **Opus**, named explicitly because `create_session`
+inherits the PM's own model (owner, 2026-09-06); it is fixed at creation, so a
+fleet moves one REPLACEMENT at a time (`recovery.md` §Replacing a session).
 
 ## The slice
 

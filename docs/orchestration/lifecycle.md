@@ -21,8 +21,8 @@
   parallel concept (CLAUDE.md). A scan gap is a line on its #5346 adopter, a
   harness nit a line on the harness issue, a flake joins its mechanism.
 - **A new guard, scan or e2e spec is not free work**: what earns one, and what
-  a deletion needs instead, is `e2e-ci.md` §What earns a guard, a scan, or a
-  spec (owner, 2026-09-06).
+  a deletion needs instead, is `e2e-ci.md` §What earns a guard, a scan, or a spec
+  (owner, 2026-09-06).
 - After each UI-affecting merge, while its PR context is fresh, run
   `UX_SEED=1 node scripts/orchestration/post-merge-census.mjs HEAD^ HEAD --run`.
   It scopes territories, expands shared UI to a census, stops on a manual plan.
