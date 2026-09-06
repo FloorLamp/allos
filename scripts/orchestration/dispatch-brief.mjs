@@ -284,6 +284,13 @@ function discoverNode24() {
 // two-merge chain, and the brief told it that was impossible in a container
 // where it works. So it is discovered, like the node bin dir and the port range,
 // and neither branch bakes a date.
+//
+// AND THE SHALLOW BRANCH NAMES THE REMEDY RATHER THAN A REFUSAL. It used to end
+// "anything older is UNREACHABLE and no command here can measure a span across
+// it" — the boundary honest, the conclusion drawn from it false: a census of
+// whether 283 guards had ever caught a defect is worth reading only because
+// that lane disbelieved the sentence and unshallowed on its own (#5469). The
+// timing is a MEASUREMENT of the fetch, not a discovered fact like the depth.
 
 /**
  * What a lane may conclude from how much history it can reach.
@@ -297,7 +304,11 @@ export function historyDepthLine(shallow, firstCommit) {
     : "the oldest reachable commit could not be read";
   return shallow
     ? `THIS CLONE IS SHALLOW — \`git rev-parse --is-shallow-repository\` is true and ` +
-        `${begins}, so anything older is UNREACHABLE and no command here can measure a span across it`
+        `${begins}, so anything older is ABSENT, NOT UNREACHABLE: ` +
+        `\`git fetch --unshallow origin main\` brings the whole history back ` +
+        `(measured 2026-09-06, three runs: 9-10s, 76 commits to ~3000). A claim ` +
+        `about an older tree IS checkable here: deepen, then check, rather than ` +
+        `assuming you cannot`
     : `This clone has FULL history — \`git rev-parse --is-shallow-repository\` is false and ` +
         `${begins}, so a claim about an older tree IS checkable here: check it rather than assuming you cannot`;
 }
