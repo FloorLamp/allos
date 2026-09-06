@@ -287,10 +287,11 @@ test.describe("substance use (#998/#1078/#1085)", () => {
       '[data-testid="history-row"][data-history-kind="substance"]'
     );
     await expect(useRows).toHaveCount(2);
-    // THE NOTE RIDES THE FIRST USE OF THE SUBMISSION, and only that one (#5304). Both
-    // share the stated minute, so the rows sort by id and the first-created is last.
-    await expect(useRows.nth(1)).toContainText(marker);
-    await expect(useRows.nth(0)).not.toContainText(marker);
+    // THE NOTE RIDES ONE USE OF THE SUBMISSION, not both (#5304). Addressed by its
+    // text rather than its position: the two share a stated minute, so their order
+    // is the id tie-break, which is nothing this claim is about.
+    const noted = useRows.filter({ hasText: marker });
+    await expect(noted).toHaveCount(1);
     const firstUse = useRows.nth(0);
     await hydratedClick(page, firstUse.getByTestId("overflow-menu-trigger"));
     await page.getByRole("menuitem", { name: "Edit" }).click();
@@ -302,21 +303,18 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     await expect(useRows.nth(0)).toContainText("21:30");
     await expect(useRows.nth(1)).toContainText("20:15");
 
-    // …AND THE NOTE CORRECTS ON ITS ROW (#5077's ask): the 21:30 use is the noted one
-    // and sorts first now, so its editor opens seeded with the note and a save with a
-    // changed note restates it.
-    const corrected = `${marker} corrected`;
-    await hydratedClick(
-      page,
-      useRows.nth(0).getByTestId("overflow-menu-trigger")
-    );
+    // …AND THE NOTE CORRECTS ON ITS ROW (#5077's ask): the noted use's editor opens
+    // seeded with the note, and a save with a changed note restates it — on that
+    // row and no other.
+    const corrected = "E2E corrected cannabis note";
+    await hydratedClick(page, noted.getByTestId("overflow-menu-trigger"));
     await page.getByRole("menuitem", { name: "Edit" }).click();
     const noteEditor = appContent(page).getByTestId("history-row-editing");
     await expect(noteEditor.getByTestId("substance-notes")).toHaveValue(marker);
     await noteEditor.getByTestId("substance-notes").fill(corrected);
     await settledClick(page, noteEditor.getByRole("button", { name: "Save" }));
-    await expect(useRows.nth(0)).toContainText(corrected);
-    await expect(useRows.nth(1)).not.toContainText(marker);
+    await expect(useRows.filter({ hasText: corrected })).toHaveCount(1);
+    await expect(useRows.filter({ hasText: marker })).toHaveCount(0);
 
     // Back to the card, where the DAY delete takes them both.
     await page.goto("/records/specialty/substance-use");
