@@ -3,6 +3,9 @@ import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { runMigrations } from "@/lib/migrations/runner";
 import { MIGRATIONS, migrationsBefore } from "@/lib/migrations/versions";
+import { up as renameRecordedAt } from "@/lib/migrations/versions/20260815-substance-recorded-at";
+import { backfill } from "@/lib/migrations/versions/20260905-substance-event-rows";
+import { attachNotes } from "@/lib/migrations/versions/20260905-event-notes";
 import { up } from "@/lib/migrations/versions/20260907-substance-trash-recorded-at";
 import { restoreDeletedRow } from "@/lib/undo-delete-db";
 
@@ -85,9 +88,26 @@ describe("#5406 substance-history trash payload compatibility", () => {
       JSON.stringify({
         v: 1,
         kind: "substance-history",
-        rows: { entry: [legacyEntry(profileId)], events: [] },
+        rows: { entry: [legacyEntry(profileId)] },
       })
     );
+
+    // Exercise the real historical order. The rename migration does not visit Trash;
+    // the event migration then cannot read the old timestamp key, but still adds an
+    // empty entity; the notes migration only visits live rows and misses the note too.
+    const beforeRename = JSON.parse(String(storedPayload(db, undoId)));
+    renameRecordedAt(db);
+    expect(JSON.parse(String(storedPayload(db, undoId)))).toEqual(beforeRename);
+    backfill(db);
+    const afterEvents = JSON.parse(String(storedPayload(db, undoId))) as {
+      rows: { entry: Record<string, unknown>[]; events: unknown[] };
+    };
+    expect(afterEvents.rows.entry[0].logged_at).toBe(
+      "2026-08-14T12:34:56.789Z"
+    );
+    expect(afterEvents.rows.events).toEqual([]);
+    attachNotes(db);
+    expect(JSON.parse(String(storedPayload(db, undoId)))).toEqual(afterEvents);
 
     up(db);
 
@@ -110,7 +130,19 @@ describe("#5406 substance-history trash payload compatibility", () => {
     };
     expect(repaired.rows.entry[0]).not.toHaveProperty("logged_at");
     expect(repaired.rows.entry[0].recorded_at).toBe("2026-08-14T12:34:56.789Z");
-    expect(repaired.rows.events).toEqual([]);
+    const derived = {
+      profile_id: profileId,
+      substance: "nicotine",
+      date: "2026-08-14",
+      recorded_at: "2026-08-14T12:34:56.789Z",
+      occurred_at: null,
+      time_source: null,
+      logged_via: null,
+    };
+    expect(repaired.rows.events).toEqual([
+      { ...derived, notes: "after lunch" },
+      derived,
+    ]);
 
     expect(restoreDeletedRow(profileId, undoId)).toBe(true);
     expect(
@@ -133,6 +165,36 @@ describe("#5406 substance-history trash payload compatibility", () => {
       notes: "after lunch",
       logged_via: null,
     });
+    expect(
+      db
+        .prepare(
+          `SELECT profile_id, substance, date, recorded_at, occurred_at,
+                  time_source, logged_via, notes
+             FROM substance_log_events
+            WHERE profile_id = ? AND substance = 'nicotine'
+            ORDER BY id`
+        )
+        .all(profileId)
+    ).toEqual([
+      { ...derived, notes: "after lunch" },
+      { ...derived, notes: null },
+    ]);
+    expect(
+      db
+        .prepare(
+          `SELECT * FROM substance_daily_totals
+            WHERE profile_id = ? AND substance = 'cannabis' ORDER BY id`
+        )
+        .all(profileId)
+    ).toEqual(liveTotalsBefore);
+    expect(
+      db
+        .prepare(
+          `SELECT * FROM substance_log_events
+            WHERE profile_id = ? AND substance = 'cannabis' ORDER BY id`
+        )
+        .all(profileId)
+    ).toEqual(liveEventsBefore);
   });
 
   it("is scoped, idempotent, and preserves canonical and malformed payloads", () => {
@@ -170,6 +232,19 @@ describe("#5406 substance-history trash payload compatibility", () => {
         rows: { entry: [dualEntry], events: [] },
       })
     );
+    const notedZero = insertCapture(
+      target,
+      1,
+      "substance-history",
+      JSON.stringify({
+        v: 1,
+        kind: "substance-history",
+        rows: {
+          entry: [{ ...legacyEntry(1), id: 7002, units: 0 }],
+          events: [],
+        },
+      })
+    );
     const canonicalText = JSON.stringify(
       {
         v: 1,
@@ -200,6 +275,17 @@ describe("#5406 substance-history trash payload compatibility", () => {
       rows: { entry: [{ logged_at: "unrelated" }] },
     });
     const unrelated = insertCapture(target, 1, "cycle", unrelatedText);
+    const wrongPayloadKindText = JSON.stringify({
+      v: 1,
+      kind: "cycle",
+      rows: { entry: [legacyEntry(1)], events: [] },
+    });
+    const wrongPayloadKind = insertCapture(
+      target,
+      1,
+      "substance-history",
+      wrongPayloadKindText
+    );
     const unparseableText = "{not-json";
     const unparseable = insertCapture(
       target,
@@ -236,12 +322,39 @@ describe("#5406 substance-history trash payload compatibility", () => {
     expect(repaired.marker).toBe("leave this payload field alone");
 
     const repairedDual = JSON.parse(String(storedPayload(target, dual))) as {
-      rows: { entry: Record<string, unknown>[] };
+      rows: {
+        entry: Record<string, unknown>[];
+        events: Record<string, unknown>[];
+      };
     };
     expect(repairedDual.rows.entry[0]).not.toHaveProperty("logged_at");
     expect(repairedDual.rows.entry[0].recorded_at).toBe("2026-08-14T09:00:00Z");
+    expect(repairedDual.rows.events).toHaveLength(2);
+    expect(repairedDual.rows.events[0]).toMatchObject({
+      recorded_at: "2026-08-14T09:00:00Z",
+      occurred_at: null,
+      time_source: null,
+      logged_via: null,
+      notes: "after lunch",
+    });
+    const repairedNotedZero = JSON.parse(
+      String(storedPayload(target, notedZero))
+    ) as { rows: { events: Record<string, unknown>[] } };
+    expect(repairedNotedZero.rows.events).toEqual([
+      {
+        profile_id: 1,
+        substance: "nicotine",
+        date: "2026-08-14",
+        recorded_at: "2026-08-14T12:34:56.789Z",
+        occurred_at: null,
+        time_source: null,
+        logged_via: null,
+        notes: "after lunch",
+      },
+    ]);
     expect(storedPayload(target, canonical)).toBe(canonicalText);
     expect(storedPayload(target, unrelated)).toBe(unrelatedText);
+    expect(storedPayload(target, wrongPayloadKind)).toBe(wrongPayloadKindText);
     expect(storedPayload(target, unparseable)).toBe(unparseableText);
     expect(storedPayload(target, malformed)).toBe(malformedText);
 
