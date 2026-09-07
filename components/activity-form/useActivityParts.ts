@@ -229,8 +229,8 @@ export function useActivityParts({
       perSide: false,
     });
   }
-  // Patch one set, or every set at once — the exercise-level weight (#5371) is one
-  // load stated for the whole grid, so it writes through the same door as a row.
+  // Patch one set, or the still-planned sets from the exercise-level weight (#5371).
+  // An all-record edit keeps the established behavior of changing every set.
   //
   // AND CONFIRMING IS A PATCH LIKE ANY OTHER (#5373). A set row's own controls send
   // `confirmSet`'s patch with whatever they changed, and the confirm control sends it
@@ -245,16 +245,18 @@ export function useActivityParts({
     )
       onSetCheckedOff();
     setParts((prev) =>
-      prev.map((p, idx) =>
-        idx === pi
-          ? {
-              ...p,
-              sets: p.sets.map((s, j) =>
-                si === "all" || j === si ? { ...s, ...patch } : s
-              ),
-            }
-          : p
-      )
+      prev.map((p, idx) => {
+        if (idx !== pi) return p;
+        const allSetsDone = p.sets.every(setDone);
+        return {
+          ...p,
+          sets: p.sets.map((s, j) => {
+            const selected =
+              si === "all" ? allSetsDone || !setDone(s) : j === si;
+            return selected ? { ...s, ...patch } : s;
+          }),
+        };
+      })
     );
   }
   // Append a further set as a PLAN copied from the last one the person confirmed

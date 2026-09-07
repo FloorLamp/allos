@@ -395,6 +395,22 @@ describe("the shared weight stepper (#5371)", () => {
     expect(weights()).toEqual(["70", "70", "70"]);
   });
 
+  it("keeps a confirmed load when the shared load changes", () => {
+    const planned = asPlan({ ...blankSet(), weight: "60", reps: "8" });
+    mountLive(part({ sets: [planned, planned, planned] }));
+
+    fireEvent.click(byId("set-confirm-1"));
+    fireEvent.click(screen.getByLabelText("Increase weight"));
+
+    expect(weights()).toEqual(["60", "62.5", "62.5"]);
+    expect(latest[0].sets.map(setDone)).toEqual([true, false, false]);
+
+    fireEvent.click(byId("set-confirm-2"));
+    expect(
+      buildActivityPayload(classifier, latest).flat.map((s) => s.weight)
+    ).toEqual([60, 62.5]);
+  });
+
   it("Vary expands to per-set weights, focuses that set's, and stays expanded", () => {
     mountLive(bench(["60", "8"], ["60", "8"], ["60", "8"]));
     fireEvent.click(byId("set-vary-2"));
