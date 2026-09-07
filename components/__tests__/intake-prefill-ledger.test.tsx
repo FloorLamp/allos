@@ -698,6 +698,7 @@ describe("product identity owns every pending RxNorm stage (#5518)", () => {
         siblingKind: "medication" as const,
       },
       restoredAmount: "180 mg",
+      confirmedIngredient: false,
       supported: false,
     },
     {
@@ -708,12 +709,13 @@ describe("product identity owns every pending RxNorm stage (#5518)", () => {
         form: null,
         siblingKind: "medication" as const,
       },
-      restoredAmount: "",
+      restoredAmount: "175 mg",
+      confirmedIngredient: true,
       supported: true,
     },
   ])(
     "restores a draft linked to the $bottle.name bottle before delayed options arrive",
-    async ({ bottle, restoredAmount, supported }) => {
+    async ({ bottle, restoredAmount, confirmedIngredient, supported }) => {
       actions.listSharedSupplyOptions.mockResolvedValue([bottle]);
       const first = mount("medication", CHILD_ON_PICK, true);
       await pickName(ACETAMINOPHEN);
@@ -723,6 +725,14 @@ describe("product identity owns every pending RxNorm stage (#5518)", () => {
       fireEvent.change(screen.getByTestId("shared-supply-new-item-select"), {
         target: { value: String(bottle.id) },
       });
+      if (confirmedIngredient) {
+        await pickName(ACETAMINOPHEN);
+        await waitFor(() =>
+          expect(screen.getByTestId("rxcui-current").textContent).toContain(
+            "161"
+          )
+        );
+      } else await act(async () => {});
       openFact("dose");
       fireEvent.change(screen.getByRole("combobox", { name: "Amount" }), {
         target: { value: restoredAmount },
@@ -734,7 +744,6 @@ describe("product identity owns every pending RxNorm stage (#5518)", () => {
       expect(Boolean(screen.queryByTestId("pediatric-band-picker"))).toBe(
         supported
       );
-
       first.unmount();
       await waitFor(() => expect(actions.putDraft).toHaveBeenCalled());
       const saved = actions.putDraft.mock.calls.at(-1)![0];
@@ -753,7 +762,17 @@ describe("product identity owns every pending RxNorm stage (#5518)", () => {
         )
       );
       openFact("dose");
-      expect(screen.queryByTestId("pediatric-band-picker")).toBeNull();
+      expect(Boolean(screen.queryByTestId("pediatric-band-picker"))).toBe(
+        supported
+      );
+      if (supported) {
+        expect(
+          screen.getByTestId("pediatric-suggestion").textContent
+        ).toContain("Acetaminophen");
+        expect(screen.getByTestId("rxcui-current").textContent).toContain(
+          "161"
+        );
+      }
       expect(screen.getByRole("combobox", { name: "Amount" })).toHaveProperty(
         "value",
         restoredAmount
@@ -771,7 +790,7 @@ describe("product identity owns every pending RxNorm stage (#5518)", () => {
       if (supported) {
         expect(
           screen.getByTestId("pediatric-suggestion").textContent
-        ).toContain("Ibuprofen");
+        ).toContain("Acetaminophen");
         expect(screen.getByTestId("pediatric-band-picker")).toBeTruthy();
       } else {
         expect(screen.queryByTestId("pediatric-band-picker")).toBeNull();

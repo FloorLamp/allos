@@ -461,7 +461,7 @@ export default function IntakeItemForm({
   );
   const prnDefaults = useMemo(
     () =>
-      isMed && prnIdentity.name.trim() && ingredientsAreEmpty(state.ingredients)
+      isMed && ingredientsAreEmpty(state.ingredients)
         ? prnDefaultsFor(prnIdentity)
         : null,
     [isMed, prnIdentity, state.ingredients]
