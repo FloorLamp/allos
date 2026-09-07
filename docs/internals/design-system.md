@@ -36,7 +36,11 @@ live in `lib/chart-colors.ts` and `components/useChartColors.ts`; validate again
 both card surfaces. The root error boundary and script-less offline shell keep
 standalone Botanical literals deliberately.
 
-Declare page width through `PageContainer`. Custom named breakpoints use `rem`
+Declare page width through `PageContainer` with a required named `width`;
+`full` explicitly fills the shell. Its `className` accepts spacing and centering;
+ESLint rejects literal `max-w-*` overrides. The route-width scan separately
+checks centered caps and whether a page or ancestor layout declares a measure.
+Custom named breakpoints use `rem`
 so Tailwind orders them consistently. Media-query `rem` uses the browser's
 initial font size; it responds to that preference, not authored root font size.
 
