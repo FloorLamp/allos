@@ -139,6 +139,12 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "the symptom-photo serve route (#1696): the same resolve-the-owner-then-gate lookup as the clip route above, for the photo strip that renders on the SAME cross-profile episode page",
   },
   {
+    file: "app/api/training-photo/[id]/route.ts",
+    includes:
+      "SELECT profile_id, stored_path, thumb_path, mime_type FROM training_photos WHERE id = ?",
+    why: "the training-photo serve route (#3285 item 3): the same resolve-the-owner-then-gate lookup as the activity-clip route above, for the strip that mounts beside ActivityMediaStrip on the SAME cross-profile activity page and takes the same subjectProfileId. Pinning it to the ACTIVE profile is the bug both entries above describe — every tile 404'd on a household member's page while the cross-profile write beside it landed. The gate is the protection, not the filter, and a profile with no grant is refused identically to a nonexistent id",
+  },
+  {
     file: "lib/queries/intake/supply-pool.ts",
     includes:
       "FROM intake_items i LEFT JOIN intake_item_doses d ON d.item_id = i.id AND d.retired = 0 WHERE i.supply_id = ?",
