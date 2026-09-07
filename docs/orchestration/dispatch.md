@@ -93,7 +93,7 @@ closed taxonomy, and `needs-human` handling.
 - `queue-snapshot.mjs`: the dispatchable queue in `$SCRATCH/.queue`, refreshed
   4-hourly, `[lane:B]` on rows the ledger holds. A "thin" claim answers it.
 - `session-metrics.mjs`: the trend pulse — throughput, review depth, queue
-  shape, needs-human aging; denominators first. Argue caps from its numbers.
+  shape, needs-human issue age; denominators first. Argue caps from its numbers.
 - `release-notes-gather.mjs`: gather merged user-visible changes.
 - `adversarial-review-brief.mjs`: route and brief high-stakes second reviews.
 

@@ -1,7 +1,7 @@
 // Session metrics — the pipeline's trend pulse, read-only. pm-digest.sh
 // answers "what happened since I last looked" (events, anchored); this
 // answers "how is the pipeline trending" (rates, fixed window): merge
-// throughput, review-queue depth, queue shape by priority, needs-human aging,
+// throughput, review-queue depth, queue shape by priority, needs-human issue age,
 // and the drift signals the runbook forbids (draft PRs, revert merges).
 // Numbers first, rules later — a cap or cadence argued from measurement beats
 // one argued from memory, which is how the machine cap (#2964) and the

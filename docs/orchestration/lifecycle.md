@@ -4,7 +4,8 @@
   background fallback. Record the next fire time for the check-in script.
 - Owner HOLDS live in `$SCRATCH/.holds`, never in the orchestrator's head: one
   per line as `<scope> :: <release condition> :: <what it gates>`. The check-in
-  prints them; test every release condition on every wake.
+  prints them; test every release condition on every wake. A hold stops only
+  what it names; it neither accepts an outcome nor widens the cycle scope.
 - A hold is the only input no script can derive, so its loss to a restart is the
   silent one. Everything else the recorder prints is recoverable.
 - The wake prompt carries only DURABLE facts — holds, owner-gated items,
@@ -24,10 +25,14 @@
 - After each UI-affecting merge, while its PR context is fresh, run
   `UX_SEED=1 node scripts/orchestration/post-merge-census.mjs HEAD^ HEAD --run`.
   It scopes territories, expands shared UI to a census, stops on a manual plan.
-- Dispatch within the owner's current scope. A bounded improvement cycle ends
-  when its agreed outcomes are accepted; an open backlog does not extend it.
-  For an explicitly continuous cycle, continue until every remaining issue is
-  blocked, owner-gated, or dependency-bound; state that explicitly.
+- The Ladder records the cycle's authorized scope, outcomes, and bounded or
+  continuous termination. If that record is missing or conflicting, mark it
+  `needs-human`; continue only clear, unheld work, then bank and report blocked.
+- Dispatch only within that scope. A bounded cycle completes only when every
+  recorded outcome is accepted; a hold or blocker can end active work, not turn
+  it into completion. A continuous cycle reaches exhaustion only when every
+  remaining eligible in-scope issue is accounted for as blocked, owner-gated,
+  or dependency-bound.
 - Keep `parked` labels and status reports consistent.
 - Merge Dependabot minors on green current main. Send majors through
   `dependabot-eval-brief.mjs` within a day.
@@ -65,6 +70,8 @@
 
 - Stop dispatching new work, land or clearly bank in-flight work, clean
   worktrees and stale branches, stop check-ins, and hand off remaining state.
+- Name the terminal state: bounded completion, continuous exhaustion, or a
+  blocked handoff with its unmet outcomes. Do not collapse them into "done."
 - Use an unverified WIP marker only when an agent actually died.
 - Before deleting a branch or dirty work, settle it on CONTENT: compare its
   files against `main` and say which comparison answered. The PR record and

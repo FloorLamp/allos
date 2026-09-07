@@ -17,7 +17,7 @@ This is the entrypoint. Read only the procedure needed for the current job:
 
 ## Standing contract
 
-> Work all development; prioritize P0/P1 bugs over features; delegate to
+> Work the owner's recorded cycle scope; prioritize P0/P1 bugs over features; delegate to
 > coding agents; GitHub REST for ALL READS + MOST WRITES; open PRs as ready; allow at most two
 > agents working on E2E; only the orchestrator runs full E2E suites; parallelize
 > non-E2E work; review every PR, adversarial when needed
@@ -36,10 +36,11 @@ This is the entrypoint. Read only the procedure needed for the current job:
   banked work stays branch-only instead (`docs/orchestration/dispatch.md`).
 - Self-filed issues default P3 and never jump the owner's queue
   (`dispatch.md`); labels come only from the closed taxonomy (`labels.md`).
-- Dispatch continuously while viable work exists. Do not ask permission to
-  resume or refill the pipeline — and never block on the owner: no
-  `AskUserQuestion` while working; questions become `needs-human`
-  labels with the owner assigned, and the session keeps moving.
+- Follow the Ladder's recorded scope and termination condition
+  (`orchestration/lifecycle.md`); an empty roster or open backlog changes
+  neither. Never block clear, unheld work on the owner: no `AskUserQuestion`;
+  questions become `needs-human`, and if no authorized work remains, bank and
+  report the blocked handoff.
 
 ## Start every check-in
 
