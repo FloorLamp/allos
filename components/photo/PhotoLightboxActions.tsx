@@ -1,8 +1,9 @@
 "use client";
 
+import { useTransition } from "react";
 import Button, { type ButtonProps } from "@/components/Button";
 import { useToast } from "@/components/Toast";
-import { useConfirmedAction } from "@/components/useConfirmedAction";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 type DeleteResult = { ok: true } | { ok: false; error: string };
 type ActionProps = Pick<
@@ -25,20 +26,26 @@ export function LightboxAction(props: ActionProps) {
 
 export default function PhotoDeleteAction({ remove, close, testId }: Props) {
   const toast = useToast();
-  const { run, pending } = useConfirmedAction(
-    {
-      title: "Delete this photo?",
-      message: "This photo and its stored files will be permanently deleted.",
-      confirmLabel: "Delete photo",
-      danger: true,
-    },
-    async () => {
+  const confirm = useConfirm();
+  const [pending, startTransition] = useTransition();
+
+  async function run() {
+    if (
+      !(await confirm({
+        title: "Delete this photo?",
+        message: "This photo and its stored files will be permanently deleted.",
+        confirmLabel: "Delete photo",
+        danger: true,
+      }))
+    )
+      return;
+    startTransition(async () => {
       const result = await remove();
       if (!result.ok) return toast(result.error, { tone: "error" });
       toast("Photo deleted.");
       close();
-    }
-  );
+    });
+  }
 
   return (
     <button

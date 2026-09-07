@@ -82,7 +82,7 @@ export type ExemptCadence = Exclude<SendCadence, "nudge-cadence">;
  * was a second copy of a sentence the `why` already carried, and the scan's other half
  * — that a module calling the engine has joined this declaration — is a class it might
  * catch rather than a defect it has, which is not what earns a scan
- * (docs/orchestration/what-earns-a-guard.md).
+ * (docs/change-policy.md).
  */
 export type KindCadenceEntry = { cadence: SendCadence; why: string };
 

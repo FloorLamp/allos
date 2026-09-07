@@ -14,7 +14,7 @@
   E2E lane.
 - A new navigation item requires updating `TOP_LEVEL_ORDER` in
   `e2e/nav-consolidation.spec.ts`.
-- What earns a new spec, scan or guard: `what-earns-a-guard.md`.
+- What earns a new spec, scan or guard: [change and test policy](../change-policy.md).
 
 ## The first round in a new worktree
 
