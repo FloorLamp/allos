@@ -344,6 +344,28 @@ export function formulationDoseAmount(mg: number): string {
 // still saves, and a caregiver who has already given a dose must still be able to
 // record it. `amount` therefore falls back to the stored snapshot for every non-dose
 // verdict, and the row states the refusal beside it.
+// The one spelling of what a refusal SAYS. #798's gates are stated in two places now
+// — the add form that sets the snapshot and, since #4713, the dose row that offers the
+// band — and a refusal a caregiver reads at 2 a.m. must not be a second, drifting
+// wording of the one they read when they added the medicine. Null for a dose, which is
+// not a refusal.
+export function pediatricRefusalLine(
+  result: PediatricDoseResult | null | undefined
+): string | null {
+  switch (result?.kind) {
+    case "ask-doctor":
+      return result.reason;
+    case "need-weight":
+      return "Enter a current weight to match the package label’s weight band.";
+    case "stale-weight":
+      return `The latest recorded weight is over ${result.thresholdDays} days old. Enter a current weight before using a weight band.`;
+    case "below-weight-band":
+      return `Recorded weight is ${result.weightLbs} lb. The available package-label chart starts at ${result.minimumLbs} lb, so no dose band is suggested. Check the product label and ask a clinician or pharmacist before use.`;
+    default:
+      return null;
+  }
+}
+
 export interface PrnDoseRowOffer {
   // The amount the row offers and the tap records: the label band's figure when one
   // is derivable, else the item's stored snapshot (adults, no-band items, refusals).

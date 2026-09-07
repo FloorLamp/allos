@@ -70,6 +70,7 @@ import {
   isChildProfileAge,
   pediatricAgeYears,
   pediatricDoseSuggestion,
+  pediatricRefusalLine,
   type PediatricFormContext,
 } from "@/lib/prn-dosing";
 import {
@@ -515,6 +516,10 @@ export default function IntakeItemForm({
       formulationSlug: activeSlug || null,
     });
   }, [affordances.pediatric, prnDefaults, pediatricContext, activeSlug]);
+  // The refusal SENTENCE for that verdict, in the one spelling the dose row states at
+  // the tap (#4713) — the gates are #798's, and two wordings of one gate is how a
+  // caregiver reads a different refusal depending on which door they came through.
+  const pediatricRefusal = pediatricRefusalLine(pediatricResult);
 
   // Switching the formulation re-derives what the PRODUCT decides — the dose amount
   // (volume with its milligram equivalence), the redose preset, and the pediatric
@@ -1097,31 +1102,9 @@ export default function IntakeItemForm({
                 <p className="font-semibold">
                   Pediatric label dose — {prnDefaults?.label}
                 </p>
-                {pediatricResult.kind === "ask-doctor" && (
+                {pediatricRefusal && (
                   <p className="mt-0.5 text-amber-700 dark:text-amber-300">
-                    {pediatricResult.reason}
-                  </p>
-                )}
-                {pediatricResult.kind === "need-weight" && (
-                  <p className="mt-0.5 text-amber-700 dark:text-amber-300">
-                    Enter a current weight to match the package label’s weight
-                    band.
-                  </p>
-                )}
-                {pediatricResult.kind === "stale-weight" && (
-                  <p className="mt-0.5 text-amber-700 dark:text-amber-300">
-                    The latest recorded weight is over{" "}
-                    {pediatricResult.thresholdDays} days old. Enter a current
-                    weight before using a weight band.
-                  </p>
-                )}
-                {pediatricResult.kind === "below-weight-band" && (
-                  <p className="mt-0.5 text-amber-700 dark:text-amber-300">
-                    Recorded weight is {pediatricResult.weightLbs} lb. The
-                    available package-label chart starts at{" "}
-                    {pediatricResult.minimumLbs} lb, so no dose band is
-                    suggested. Check the product label and ask a clinician or
-                    pharmacist before use.
+                    {pediatricRefusal}
                   </p>
                 )}
                 {pediatricContext && (

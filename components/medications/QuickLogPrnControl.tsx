@@ -22,7 +22,11 @@ import {
 } from "@/components/medications/dose-action-styles";
 import { medicationHref } from "@/lib/hrefs";
 import { formatMedicationDoseProduct } from "@/lib/medication-dose-format";
-import { prnDoseRowOffer, type PediatricFormContext } from "@/lib/prn-dosing";
+import {
+  pediatricRefusalLine,
+  prnDoseRowOffer,
+  type PediatricFormContext,
+} from "@/lib/prn-dosing";
 import { logMedicationAdministration } from "@/app/(app)/medications/actions";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { dateStrInTz } from "@/lib/date";
@@ -343,31 +347,23 @@ export default function QuickLogPrnControl({
   // surface a dose is actually given from. A missing or stale weight also mounts the
   // shared one-field fixer already open, because "go to Body, expand the body group,
   // come back" is the trip that made these refusals unreachable in practice.
-  const refusal = offer.result;
+  const refusalLine = pediatricRefusalLine(offer.result);
   const needsWeight =
-    refusal?.kind === "need-weight" || refusal?.kind === "stale-weight";
-  const bandNote =
-    refusal && refusal.kind !== "dose" ? (
-      <div data-testid="prn-band-refusal" className="text-xs">
-        <p className="text-amber-700 dark:text-amber-300">
-          {refusal.kind === "ask-doctor"
-            ? refusal.reason
-            : refusal.kind === "need-weight"
-              ? "Enter a current weight to match the package label\u2019s weight band."
-              : refusal.kind === "stale-weight"
-                ? `The latest recorded weight is over ${refusal.thresholdDays} days old. Enter a current weight before using a weight band.`
-                : `Recorded weight is ${refusal.weightLbs} lb. The available package-label chart starts at ${refusal.minimumLbs} lb, so no dose band is suggested. Check the product label and ask a clinician or pharmacist before use.`}
-        </p>
-        {needsWeight && pediatric ? (
-          <PediatricWeightUpdate
-            idPrefix={`prn-${itemId}`}
-            context={pediatric}
-            initiallyOpen
-            onSaved={setPediatric}
-          />
-        ) : null}
-      </div>
-    ) : null;
+    offer.result?.kind === "need-weight" ||
+    offer.result?.kind === "stale-weight";
+  const bandNote = refusalLine ? (
+    <div data-testid="prn-band-refusal" className="text-xs">
+      <p className="text-amber-700 dark:text-amber-300">{refusalLine}</p>
+      {needsWeight && pediatric ? (
+        <PediatricWeightUpdate
+          idPrefix={`prn-${itemId}`}
+          context={pediatric}
+          initiallyOpen
+          onSaved={setPediatric}
+        />
+      ) : null}
+    </div>
+  ) : null;
 
   const sublines = (
     <div className="mt-0.5 min-w-0">
@@ -386,7 +382,6 @@ export default function QuickLogPrnControl({
         </div>
       )}
       {bandBasis}
-      {bandNote}
     </div>
   );
 
@@ -468,8 +463,12 @@ export default function QuickLogPrnControl({
       control={control}
       sublines={sublines}
       footer={
-        options ? (
-          <div className="border-t border-black/5 pt-2 pl-6 dark:border-white/5">
+        /* The refusal and its fixer sit in the FOOTER, not among the sublines: the
+           subline column is the row's narrow left cell, and the fixer is a two-field
+           editor. Same seat the retro-time options already take. */
+        bandNote || options ? (
+          <div className="space-y-2 border-t border-black/5 pt-2 pl-6 dark:border-white/5">
+            {bandNote}
             {options}
           </div>
         ) : null
