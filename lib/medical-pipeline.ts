@@ -1199,14 +1199,9 @@ export async function reprocessAllForProfile(
   return { status: "done", message: parts.join(", ") + "." };
 }
 
-// The apply outcome (issue #946), so the UI can tell the user whether it committed
-// exactly what they previewed or fell back to a fresh (possibly different)
-// re-extraction. `committed-preview` means the cached previewed input was persisted
-// verbatim with NO model call; `re-extracted` means the direct path, or a fallback
-// because the preview token was missing/expired/stale/superseded — the fresh
-// extraction runs in the background and its result may differ from the preview.
 export type ReprocessApplyOutcome =
-  { mode: "committed-preview" } | { mode: "re-extracted" };
+  | { mode: "committed-preview" | "re-extracted" }
+  | { mode: "refused"; error: string };
 
 // A signature of the document row captured to detect that it changed between a
 // preview and its apply (#946 / the #467 stale-form discipline). content_hash
@@ -1249,26 +1244,29 @@ function documentStalenessKey(profileId: number, docId: number): string | null {
     .digest("hex");
 }
 
-// Try to commit a previously-previewed extraction (#946) instead of re-extracting.
-// Returns "committed" (the cached input was persisted verbatim), "fallback" (token
-// missing/expired/stale, or a concurrent reprocess owns the row — the caller should
-// re-extract), or "failed-terminal" (the persist crashed AFTER claiming; the row is
-// marked 'failed', so the caller must NOT re-dispatch). The token is single-use and
-// profile-scoped: takePreviewInput consumes it only for the rightful owner.
+// Consume only the reviewed input. A refused preview never starts extraction.
 function commitCachedPreview(
   loginId: number,
   profileId: number,
   id: number,
   previewToken: string
-): "committed" | "fallback" | "failed-terminal" {
+): ReprocessApplyOutcome {
   const currentKey = documentStalenessKey(profileId, id);
-  if (currentKey === null) return "fallback"; // row vanished — let the re-extract path record the miss
+  if (currentKey === null)
+    return { mode: "refused", error: "Couldn't find this document." };
   const taken = takePreviewInput(profileId, id, previewToken, currentKey);
-  if (!("input" in taken)) return "fallback"; // missing / expired / stale
-  // Claim the row atomically so a concurrent reprocess can't also write it (#324).
-  // A lost claim means an extraction is already in flight — fall back (which will
-  // see 'processing' and no-op) rather than committing over it.
-  if (!claimDocumentForExtraction(profileId, id)) return "fallback";
+  if (!("input" in taken))
+    return {
+      mode: "refused",
+      error:
+        "This preview is no longer available. Preview changes again before saving.",
+    };
+  if (!claimDocumentForExtraction(profileId, id))
+    return {
+      mode: "refused",
+      error:
+        "This document is being processed. Preview changes again when it finishes.",
+    };
   const filename =
     (
       db
@@ -1284,42 +1282,29 @@ function commitCachedPreview(
     commitPersistInput(profileId, id, taken.input, filename, loginId);
     cleanupOrphanBiomarkerKeyedState(profileId);
     revalidateAfterReprocess();
-    return "committed";
+    return { mode: "committed-preview" };
   } catch (err) {
-    // The persist crashed after the claim — the row is 'processing'; mark it
-    // terminally 'failed' so it isn't wedged, and report failed-terminal so the
-    // caller doesn't then pay for a re-extraction on top.
+    // A failed commit must not dispatch another extraction or leave the claim held.
     failCrashed(profileId, id, filename, false, err);
     revalidateAfterReprocess();
-    return "failed-terminal";
+    return {
+      mode: "refused",
+      error:
+        "Couldn't save these changes. Preview changes again before saving.",
+    };
   }
 }
 
-// Reprocess a single document. Overwrites that document's observations. Mirrors the
-// upload path: flip the document to 'processing' and run extraction in the
-// BACKGROUND (do NOT await) so the caller returns immediately. Awaiting the AI
-// call would keep the client's transition pending for its entire duration,
-// freezing the page. The app-wide ExtractionToaster poller refreshes the page and
-// toasts once the background job finishes; the row shows a spinner (status
-// 'processing') in the meantime.
-//
-// When `previewToken` is supplied (the reprocess-with-preview apply, #946), the
-// cached previewed input is committed VERBATIM — zero extra extractions, no consent
-// drift. A missing/expired/stale token degrades to the re-extract below and the
-// returned outcome says `re-extracted` so the UI can note the divergence. The
-// direct no-preview path (no token) is untouched: always a fresh re-extraction.
+// With a token, commit only that preview. Without one, explicitly re-extract;
+// background completion is observed by the existing extraction toaster.
 export function reprocessDocumentById(
   loginId: number,
   profileId: number,
   id: number,
   previewToken?: string
 ): ReprocessApplyOutcome {
-  if (previewToken) {
-    const committed = commitCachedPreview(loginId, profileId, id, previewToken);
-    if (committed === "committed") return { mode: "committed-preview" };
-    if (committed === "failed-terminal") return { mode: "re-extracted" };
-    // "fallback" — the token didn't apply; drop through to a fresh re-extraction.
-  }
+  if (previewToken !== undefined)
+    return commitCachedPreview(loginId, profileId, id, previewToken);
   // We're about to re-extract and replace this document's rows, so any lingering
   // previewed input for it is now moot — evict it (delete/reassign evict at their
   // own actions; every persist path evicts via persistDocumentImport).
@@ -1642,8 +1627,7 @@ export type PreviewReprocessResult =
 // diff it against the currently-persisted rows, and return the diff WITHOUT
 // touching the DB. The client shows the diff, then calls reprocessDocumentById
 // with the returned `previewToken` (issue #946) to commit THIS exact input — no
-// second extraction. The apply falls back to a fresh re-extract (and says so) if
-// the token has expired or the document changed underneath the preview.
+// second extraction. Expiry or a changed document requires another preview.
 export async function previewReprocessById(
   loginId: number,
   profileId: number,

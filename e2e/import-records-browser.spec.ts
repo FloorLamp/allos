@@ -146,16 +146,8 @@ test.describe("Import detail: tabbed records browser", () => {
     );
   });
 
-  // The preview-first re-extraction panel (ReprocessDiffPanel) — the SOLE
-  // per-document reprocess after the #1071 verb consolidation. The e2e env has NO
-  // extractor configured, so a preview reports it can't re-extract and the panel
-  // offers "Re-extract anyway" rather than a diff/commit — which is exactly the
-  // reachable state here. It proves the panel still renders and drives its preview
-  // Server Action end-to-end; the committed-preview vs re-extracted-fallback
-  // outcome + its fallback note need a live extractor and are covered at the
-  // action tier. The no-change disabled-commit decision is unit-tested
-  // (lib/__tests__/reprocess-preview-view.test.ts) since the ok/no-change branch is
-  // unreachable without an extractor.
+  // The extractor-less browser reaches the skipped-preview override. Action tests
+  // cover persisted approval/refusal; component tests cover refusal feedback.
   test("re-extraction is preview-first only — no immediate fire-and-replace (#1071)", async ({
     page,
   }) => {

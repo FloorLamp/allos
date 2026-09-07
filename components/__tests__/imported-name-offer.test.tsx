@@ -2,45 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen } from "@testing-library/react";
 import ImportedNameOffer from "../import/ImportedNameOffer";
 
-// THE OFFER'S OWN CONTENT (#3480), and the reason this file exists at all.
-//
-// `ImportedNameOffer` is where the doctrine's central sentence is actually kept: "no
-// stored name changes without a person seeing BOTH VERSIONS and choosing". Every word
-// of that is a claim about this component's DOM — the document's wording is on
-// screen, there is a control that accepts a replacement, and once one is accepted the
-// row still says what the document called it.
-//
-// NOTHING COULD SEE ANY OF IT. It is a client component, so the server-tier render
-// test (`lib/__action_tests__/imported-names-card.render.test.ts`) walks the tree and
-// finds an unrendered element carrying PROPS — which is the right assertion for the
-// question that file asks (is the card handed the right rows, on the right tab) and
-// is structurally incapable of answering this one. All three of these mutations
-// passed every tier before this file:
-//
-//   * delete the `{name}` span, so the offer stops showing the current name;
-//   * delete the "Use this name" button, so nothing can be accepted;
-//   * delete the `sourceName &&` block, so what the document said disappears.
-//
-// WHY THIS TIER AND NOT PLAYWRIGHT. docs/internals/component-tests.md says not to
-// reach here for "does this page paint", and this is not that: the subject is one
-// client component's own DOM, with no Server/Client boundary inside it, so what jsdom
-// renders is what a browser renders. The alternative was a new e2e spec — which
-// re-partitions all twelve shards (see the brief) and would need a seeded portal
-// document carrying a document-string medication — to observe three elements.
-//
-// WHAT IS MOCKED, and it is only the module boundary this component already talks
-// over: the two Server Actions, the router and the toast. The component's own logic —
-// the `isCleanerName` filter over what RxNorm returned, the loading and busy copy,
-// the conditional blocks — is the real thing.
-//
-// THE ADOPT MOCK ANSWERS THREE WAYS, and the first version of this file answered only
-// one. A stub that always returns `{ok: true}` cannot observe either failure branch,
-// and `use()` had a `try … finally` with NO `catch`: a Server Action that REJECTS —
-// offline, a 500, a deploy mid-click — produced an unhandled rejection, the button
-// un-busied, and nothing on screen told the person the rename had not happened. The
-// `{ok:false}` branch was equally unobserved. Both are driven below, and the toast is
-// a SHARED spy so what the person was told is an assertion rather than an assumption.
-
+// Render the real offer; mock its action boundaries to exercise accepted names,
+// returned refusals, and rejected requests without a live terminology service.
 vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
   lookupRxcui: vi.fn(async () => [
     // One usable concept and one that is itself a document string, so the
@@ -65,10 +28,6 @@ const adopt = vi.fn(async (fd: FormData) => {
 });
 vi.mock("@/app/(app)/import/name-actions", () => ({
   adoptImportedMedicationName: (fd: FormData) => adopt(fd),
-}));
-
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ refresh: vi.fn() }),
 }));
 
 // One spy for every render, so a test can read what the person was told. `useToast`

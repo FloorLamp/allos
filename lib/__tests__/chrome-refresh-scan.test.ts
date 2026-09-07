@@ -66,14 +66,11 @@ const CHROME_CALL_SITES = [
  */
 const USER_CALL_SITES = [
   "components/PullToRefresh.tsx",
-  "components/ReprocessDiffPanel.tsx",
-  "components/ImportDetailActions.tsx",
   "app/(app)/settings/server/SmtpSettings.tsx",
   "app/(app)/integrations/fitbit-takeout/TakeoutUpload.tsx",
   "app/(app)/training/activity/DiscardDraftButton.tsx",
   "app/(app)/training/activity/[id]/NiggleConfirmChip.tsx",
   "app/(app)/history/HistoryAddDoor.tsx",
-  "components/import/ImportedNameOffer.tsx",
   // The registry itself: the drain it owes, and the no-provider fallback.
   "components/DirtyFormRegistry.tsx",
 ];

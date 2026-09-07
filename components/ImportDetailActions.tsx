@@ -1,5 +1,4 @@
 "use client";
-/* eslint-disable no-restricted-properties -- USER-initiated repaint (#1878): follows the user's own confirmed re-import */
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -84,9 +83,6 @@ export default function ImportDetailActions({
     startReimport(async () => {
       try {
         setRawResult(await reprocessDocumentFromRaw(fd));
-        // Survives the #1473 sweep: reprocessDocumentFromRaw rewrites the extracted
-        // rows but calls no revalidatePath, so this is the only repaint.
-        router.refresh();
       } catch {
         // Keep a throw on this row instead of escalating to the route error
         // boundary (issue #477).
