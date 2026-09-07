@@ -105,6 +105,13 @@ describe("prn-defaults dataset", () => {
 
   it.each([
     { name: "Tylenol with Codeine", rxcui: null },
+    { name: "Tylenol / 可待因", rxcui: null },
+    { name: "Advil / кодеин", rxcui: null },
+    {
+      name: "Tylenol",
+      rxcui: null,
+      ingredients: [{ name: "Acetaminophen" }, { name: "可待因" }],
+    },
     { name: "Paracetamol / codeine", rxcui: null },
     { name: "Acetaminophen (with Codeine)", rxcui: null },
     { name: "Acetaminophen 300 mg / codeine 30 mg", rxcui: null },

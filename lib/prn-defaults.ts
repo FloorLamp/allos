@@ -122,9 +122,13 @@ function ingredientEntryFor(item: PrnItem): PrnDefaultEntry | null {
 // qualifiers (including combination brands) refuse; a package label or pharmacist
 // can supply a dose where this small curated dataset cannot.
 function isPlainProductName(name: string, entry: PrnDefaultEntry): boolean {
-  let remaining = normalize(
-    name.replace(/\b\d+(?:\.\d+)?\s*(?:mg|mcg|g|ml)\b/gi, " ")
-  );
+  // Unlike ingredient presence matching, refusal must retain unknown letters in
+  // every script; dropping them would erase a second ingredient from the name.
+  let remaining = name
+    .replace(/\b\d+(?:\.\d+)?\s*(?:mg|mcg|g|ml)\b/gi, " ")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\p{M}]+/gu, " ")
+    .trim();
   for (const synonym of [...entry.synonyms].sort(
     (a, b) => b.length - a.length
   )) {

@@ -17,7 +17,8 @@ unrecognized name qualifiers refuse the label. Plain names retain age, strength,
 and formulation descriptors (for example, Children's Tylenol or Advil 200 mg).
 Unknown qualifiers stay in picked names; only exact catalog labels can discard a
 brand suffix. Ingredient-level interaction and fever classification still include
-combination products.
+combination products. A name, composition, or confirmed-code change withdraws
+only the prior suggestion-owned dose; saved and caregiver-edited amounts stay.
 
 Prefer confirmed ingredient/product identity where available and preserve the
 distinction between confirmed identity and a name-only match. Editing identity

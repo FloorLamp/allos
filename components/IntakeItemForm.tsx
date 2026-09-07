@@ -557,8 +557,26 @@ export default function IntakeItemForm({
   // second pick during that wait owns the form, and the first must not land on top of it.
   const pickGeneration = useRef(0);
 
+  // A dose offered for the previous product has no authority over a new identity.
+  // The ledger distinguishes that offer from a saved or caregiver-edited amount.
+  function withdrawDoseSuggestion() {
+    if (!ledgerRef.current.suggested.has("doseAmount")) return;
+    patch((current) => ({
+      doses: current.doses.map((dose, index) =>
+        index === 0 ? { ...dose, amount: "" } : dose
+      ),
+    }));
+    setLedger(withdrawPrefill(ledgerRef.current, "doseAmount"));
+  }
+
+  function changeProductIdentity() {
+    ++pickGeneration.current;
+    withdrawDoseSuggestion();
+  }
+
   async function onPickName(picked: string, query?: string) {
-    const generation = ++pickGeneration.current;
+    changeProductIdentity();
+    const generation = pickGeneration.current;
     setSelectedPediatricBandMinLbs(null);
     setFormulationSlug("");
     // A BOTTLE row. It seeds the product facts the pool is authoritative for, rides as
@@ -665,15 +683,9 @@ export default function IntakeItemForm({
     }));
     if (seed) {
       writePrefill(offerPrefill({ doseAmount: seed.amount }));
-    } else if (ledgerRef.current.suggested.has("doseAmount")) {
-      // Unlinked: the bottle that stated this strength is gone, so the offer goes with
-      // it. A figure the person typed is theirs and is never withdrawn.
-      patch((current) => ({
-        doses: current.doses.map((d, i) =>
-          i === 0 ? { ...d, amount: "" } : d
-        ),
-      }));
-      setLedger(withdrawPrefill(ledgerRef.current, "doseAmount"));
+    } else {
+      // Unlinked: the bottle that stated this strength is gone.
+      withdrawDoseSuggestion();
     }
     onLinkSupply(supply);
     seededRef.current = seed;
@@ -946,6 +958,7 @@ export default function IntakeItemForm({
               setFormulationSlug("");
               setSelectedPediatricBandMinLbs(null);
             }
+            changeProductIdentity();
             patch({ name: v });
             rx.onNameChange();
           }}
@@ -953,7 +966,20 @@ export default function IntakeItemForm({
           options={nameOptions}
           placeholder={affordances.namePlaceholder}
         />
-        <RxNormAffordance name={state.name} rx={rx} />
+        <RxNormAffordance
+          name={state.name}
+          rx={{
+            ...rx,
+            confirm: (code) => {
+              changeProductIdentity();
+              return rx.confirm(code);
+            },
+            clear: () => {
+              changeProductIdentity();
+              rx.clear();
+            },
+          }}
+        />
         {isChildProfile &&
         state.name.trim() &&
         isMed &&
@@ -1166,15 +1192,8 @@ export default function IntakeItemForm({
                             doseAmount: formulationDoseAmount(nextResult.mg),
                           })
                         );
-                      } else if (nextResult.kind !== "dose" && offered) {
-                        patch((current) => ({
-                          doses: current.doses.map((dose, index) =>
-                            index === 0 ? { ...dose, amount: "" } : dose
-                          ),
-                        }));
-                        setLedger(
-                          withdrawPrefill(ledgerRef.current, "doseAmount")
-                        );
+                      } else if (nextResult.kind !== "dose") {
+                        withdrawDoseSuggestion();
                       }
                     }}
                   />
@@ -1692,14 +1711,15 @@ export default function IntakeItemForm({
             ) : (
               <IngredientsEditor
                 rows={state.ingredients}
-                setRows={(update) =>
+                setRows={(update) => {
+                  changeProductIdentity();
                   patch((current) => ({
                     ingredients:
                       typeof update === "function"
                         ? update(current.ingredients)
                         : update,
-                  }))
-                }
+                  }));
+                }}
                 seedNote={ingredientSeedNote}
               />
             )}
