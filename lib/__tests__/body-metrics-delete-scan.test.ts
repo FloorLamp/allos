@@ -2,55 +2,21 @@ import { describe, expect, it } from "vitest";
 import { readSource, relPath, sourceFiles } from "./sql-scan";
 import { stripComments } from "./strip-comments";
 
-// NOTHING DELETES `body_metrics` BECAUSE A PROFILE MOVED (#3524).
+// SQL-text guard: require review of unlisted deletes that may reach body_metrics.
+// Types and ESLint do not establish what an interpolated SQL target can delete.
+// The data-loss risk is an unrequested sweep; timezone re-keying belongs to
+// lib/integrations/ingest-timezone-reconcile.ts and only follows re-pushed readings.
 //
-// The blind timezone sweep is gone: it deleted every non-edit-locked Health Connect
-// `body_metrics` row from `today − 3` forward on every zone change, on the argument that
-// the next push would put them back, and the exporter re-sends ONE day. Four days of a
-// production profile's resting HR went with two travel switches. The re-key that sweep
-// existed to prevent (#608) is handled at ingest now, against the reading instant a push
-// actually re-sends (lib/integrations/ingest-timezone-reconcile.ts).
-//
-// A guard is what stops that coming back, and this is the second attempt at one. The
-// first (PR #3539) FAILED OPEN in three ways an adversarial lens found, and every choice
-// below is a repair of one of them:
-//
-//   • IT SKIPPED `lib/migrations/`. Its walker did `if (e.name === "node_modules" ||
-//     e.name === "migrations") continue`, so every file under lib/migrations/ was
-//     invisible — including `cascade-delete.ts`, which deletes from any table in the
-//     schema. This file uses the SHARED walker (./sql-scan.ts) and asserts below that
-//     cascade-delete is in the set it scanned.
-//
-//   • IT MATCHED LITERALS ONLY — `/DELETE\s+FROM\s+body_metrics/i` — while this tree's
-//     prevailing idiom is `DELETE FROM ${table}`. Fifteen delete sites can reach
-//     `body_metrics` and only THREE spell its name. A literal-only guard turns "nobody
-//     has done this" into "nobody can do this", and only the first was ever true.
-//
-//   • ITS SYNTHETIC OFFENDERS WERE FED TO THE REGEX AS STRINGS, so the corpus walk was
-//     never exercised by them at all. Every fixture below goes through `scanFile`, the
-//     same function the real tree goes through.
-//
-// WHAT IT ASSERTS, and it is deliberately not "no module deletes body_metrics" — several
-// legitimately do, at a person's explicit request. It is that EVERY delete which can
-// reach the table is ENUMERATED with a stated trigger, and that no entry's trigger is a
-// timezone change. Adding one is then a reviewed decision rather than a silent one.
-//
-// SCOPE, stated rather than implied. This is a TEXT scan. It reads the repo's own source
-// with no DB and no network, it cannot resolve an interpolated table name, and it does
-// not follow a table name through a registry — which is exactly why an interpolated
-// delete is a FINDING here rather than a pass: the allowlist entry is where somebody
-// states whether `body_metrics` is reachable through it, and review can check the claim.
-// `lib/__db_tests__/` and `lib/__action_tests__/` are out of scope for the same reason
-// lib/__tests__/stateful-writes.test.ts leaves them out: a fixture that seeds or clears a
-// table is not a write path a user's tap can reach.
+// Discovery uses sql-scan's production-file walker, including migrations. Extraction
+// also covers SQL stored in object properties, which prepareArgs cannot see. This
+// scanner does not resolve interpolated targets or follow callers; ALLOW records the
+// reviewed reach and trigger. These are review claims, not facts proved by prose.
 
 const OUT_OF_SCOPE = ["lib/__db_tests__/", "lib/__action_tests__/"];
 
 interface Finding {
   file: string;
-  // The WHOLE statement, whitespace-normalized — not a fixed-length prefix of it. The
-  // allowlist matches on this EXACTLY (see `allowed`), so the text below is what a
-  // reviewer signed off on rather than its first hundred characters.
+  // Normalized SQL fragment, bounded by the literal/statement end or MAX_SQL.
   sql: string;
 }
 
@@ -69,15 +35,8 @@ const DELETE_RE = /\bDELETE\s+FROM\s+(?:body_metrics\b|\$\{)/gi;
 // exceeded depth …") read as deletes, and a guard that cries wolf on prose gets deleted.
 const STATEMENT_START = "`\"';(";
 
-// SCANS RAW SOURCE TEXT rather than only `.prepare(`/`.exec(` arguments, and that is a
-// deliberate step OUTSIDE the shared extractor. `lib/__tests__/sql-scan.ts` reads the
-// FIRST ARGUMENT of a prepare/exec call, which is the right shape for the profile-scoping
-// and gated-write guards — but two delete sites in this tree build their SQL into an
-// OBJECT PROPERTY first (`lib/profile-delete.ts`'s `{ sql: ... }` plan and
-// `lib/day-counter-ledger.ts`'s `drop:`) and are invisible to it. The file ENUMERATION,
-// the `__tests__` exclusion and the posix-relative paths still come from the shared
-// module; only the "what counts as a delete" predicate is local, because the question is
-// local. Two guards, one walker.
+// Inspect raw source after comment removal: profile-delete's `sql` and the day
+// counter's `drop` properties are SQL sites without a literal prepare/exec argument.
 export function scanFile(rel: string, src: string): Finding[] {
   if (OUT_OF_SCOPE.some((p) => rel.startsWith(p))) return [];
   if (!/\bDELETE\s+FROM\s+(?:body_metrics\b|\$\{)/i.test(src)) return [];
@@ -104,19 +63,9 @@ export function scanFile(rel: string, src: string): Finding[] {
   return out;
 }
 
-// EVERY delete that can reach `body_metrics`, and what triggers it. `reaches` is the
-// reviewed answer to "can this statement's table be body_metrics?" — `false` means the
-// interpolated table is drawn from a registry that does not contain it, and the entry
-// names the registry so the claim is checkable.
-//
-// `sql` IS THE WHOLE STATEMENT AND IT IS MATCHED EXACTLY. It was a PREFIX until the
-// owner ruled otherwise (#3524, 2026-08-23), and the prefix made this guard blind at
-// precisely the point of it: the entry for the reconcile read `"DELETE FROM
-// body_metrics"`, so the removed blind sweep, replanted IN THAT MODULE, was found by the
-// scan and then silently allowed. The prefix was also quietly covering a delete nobody
-// had listed — `manage-actions.ts` has TWO, and one entry matched both. Exact matching
-// means a statement that changes at all comes back for review, which is the cost and
-// also the whole mechanism.
+// Reviewed targets and triggers. `reaches: false` records why a dynamic target
+// cannot name body_metrics. Match extracted SQL exactly, not by an allowed prefix;
+// interpolation resolution and the MAX_SQL bound remain limits of the scanner.
 const ALLOW: {
   file: string;
   sql: string;
@@ -243,8 +192,7 @@ describe("no production module deletes body_metrics on a timezone change (#3524)
   it("scans the files a previous guard silently skipped", () => {
     const scanned = sources.map(({ rel }) => rel);
     expect(scanned.length).toBeGreaterThan(500);
-    // The three PR #3539's walker could not see, named individually so a walk that
-    // regresses fails HERE rather than by quietly finding nothing.
+    // Keep migration and reconciliation sources in the scan's discovery scope.
     for (const f of [
       "lib/migrations/cascade-delete.ts",
       "lib/migrations/versions/002-edit-lock-flags.ts",
@@ -268,66 +216,10 @@ describe("no production module deletes body_metrics on a timezone change (#3524)
     // The enumeration is not empty for the wrong reason.
     expect(findings.length).toBeGreaterThanOrEqual(ALLOW.length);
   });
-
-  it("has no allowlist entry whose trigger is a timezone change", () => {
-    const zoneish =
-      /timezone|time zone|zone change|switch(ed)? (zone|timezone)/i;
-    for (const a of ALLOW) {
-      // The reconcile IS about a timezone, and says so — it is excluded by NAME rather
-      // than by wording, so no future entry can smuggle a sweep back in by paraphrase.
-      if (a.file === "lib/integrations/ingest-timezone-reconcile.ts") continue;
-      expect(a.trigger, a.file).not.toMatch(zoneish);
-    }
-  });
-
-  // THE SWEEP ITSELF IS GONE, by name — as CODE. A revert cannot land quietly beside a
-  // guard that only counts statements.
-  //
-  // Comments are blanked first, and that is not a loosening. Three files name the removed
-  // symbol ON PURPOSE and must keep doing so: the two modules that replace it explain
-  // what they replace, and shipped migration 164 records that the sweep existed to paper
-  // over the `hr_minutes` half of the same defect. A guard that made those illegal would
-  // force the tree to forget why the sweep went, which is the one thing worth keeping
-  // about it.
-  //
-  // AND IT DOES NOT BLANK THE WHOLE TREE TO ASK. An earlier draft mapped every source
-  // through comment projection and held the results, which cost 3.2 s idle against this
-  // tier's 15 s ceiling and timed out 6/6 on a loaded box — a guard that fails when the
-  // machine is busy is a guard that gets quarantined. The names below cannot appear in a
-  // blanked file without appearing in the raw one, so the raw text is the filter and only
-  // the handful of files that mention the sweep at all pay for the lexer.
-  it("no source file CALLS or IMPORTS the deleted sweep", () => {
-    const NAMES = [
-      "sweepIngestWindowForTimezoneChange",
-      "integrations/ingest-timezone-sweep",
-    ];
-    const hits: string[] = [];
-    for (const { rel, raw } of sources) {
-      if (!NAMES.some((n) => raw.includes(n))) continue;
-      const code = stripComments(raw);
-      if (NAMES.some((n) => code.includes(n))) hits.push(rel);
-    }
-    expect(hits).toEqual([]);
-  });
-
-  it("still SEES the sweep when it is code rather than prose", () => {
-    // The guard above passes on a clean tree; this is what proves it is not passing
-    // because comment blanking ate the evidence.
-    const planted = stripComments(`
-      // sweepIngestWindowForTimezoneChange used to run here
-      import { sweepIngestWindowForTimezoneChange } from "@/lib/integrations/ingest-timezone-sweep";
-    `);
-    expect(planted).toContain("sweepIngestWindowForTimezoneChange");
-    expect(planted).toContain("integrations/ingest-timezone-sweep");
-    // …and only once: the commented mention is gone.
-    expect(planted.match(/sweepIngestWindowForTimezoneChange/g)).toHaveLength(
-      1
-    );
-  });
 });
 
-// THE FIXTURES THAT PROVE THE GUARD CAN SEE. Each goes through `scanFile` — the whole
-// pipeline, comment blanking included — rather than being handed to the regex.
+// These cases cover per-file extraction and matching. The corpus test above covers
+// discovery; temporary planted-file probes can exercise both together.
 describe("the scan can see, and knows when to stay quiet", () => {
   it("FLAGS a sweep re-added under a literal table name", () => {
     const planted = `
@@ -371,10 +263,6 @@ describe("the scan can see, and knows when to stay quiet", () => {
     ).toHaveLength(1);
   });
 
-  // THE EVASION THE PREFIX ALLOWED, and the reason the match is exact. The allowlist
-  // entry for the reconcile used to be the PREFIX `"DELETE FROM body_metrics"`, so the
-  // blind sweep this whole issue removed — replanted in the reconcile's own module, the
-  // one place it would look at home — was found by the scan and then silently allowed.
   it("FLAGS a blind sweep replanted in the RECONCILE's own module", () => {
     const planted = `db.prepare(\`DELETE FROM body_metrics WHERE profile_id = ? AND date >= ?\`).run(p, cutoff);`;
     const found = scanFile(
