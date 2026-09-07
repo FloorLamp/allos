@@ -92,7 +92,7 @@ export type KindCadenceEntry = { cadence: SendCadence; why: string };
  * not compile until it is removed; a duplicate cannot be written down. This used to be
  * an ARRAY with `lib/__tests__/cadence-registry.test.ts` reconciling it against the
  * union on every run, which is the shape
- * docs/internals/verification-failure-modes.md line 83 names: a guard that lists a
+ * docs/internals/verification-failure-modes.md#can-the-check-observe-the-defect names: a guard that lists a
  * union's members does not track the union.
  *
  * A SAFETY KIND MAY NOT BE A MEMBER, and that is the row's TYPE rather than a rule a
