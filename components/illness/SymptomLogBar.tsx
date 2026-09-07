@@ -4,7 +4,7 @@ import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import type { StampedFormData } from "@/lib/logged-via";
 
 import {
-  useEffect,
+  useLayoutEffect,
   useMemo,
   useState,
   useTransition,
@@ -306,8 +306,8 @@ export default function SymptomLogBar({
   // episode half — an offer with no eligible PRN takes nothing off the screen.
   const offersDose = antipyreticMeds.length > 0 && !!intakeContext && !!nowIso;
   const yieldMeds = useDoseOfferSignal();
-  // The persistent medication chips yield only while this day's offer is visible.
-  useEffect(() => {
+  // Hide the persistent copy before paint, so the offer never duplicates its chip.
+  useLayoutEffect(() => {
     yieldMeds(tempOpen && feverOffer !== null && offersDose);
     return () => yieldMeds(false);
   }, [tempOpen, feverOffer, offersDose, yieldMeds]);
