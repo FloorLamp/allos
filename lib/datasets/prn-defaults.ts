@@ -42,6 +42,8 @@ export interface PrnPediatricDefaults {
   // Hard age gate (label's own): below this age the lookup refuses with ageGateText.
   minAgeMonths: number;
   ageGateText: string;
+  // Exclusive upper age boundary of this chart, independent of the profile's age tier.
+  maxAgeMonths: number;
   bands: PediatricBand[];
   formulations: PrnFormulation[];
   // The CHILD label's redose interval / daily-max, when the pediatric label DIFFERS
