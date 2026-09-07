@@ -347,31 +347,9 @@ export function pediatricRefusalLine(
   }
 }
 
-// What the label says about THIS dose row's subject, right now (#4713).
-//
-// THE BAND RUNS AT THE TAP, NOT ONLY AT ADD TIME. The machinery above had exactly one
-// consumer — the add/edit medication form — so a child's dose row said nothing at all
-// about the weight band, and the `amount` it showed was the snapshot the band produced
-// whenever the item was last edited. A growing child's snapshot said 160 mg and three
-// months later the row still said 160 mg with nothing re-deriving it, and the
-// staleness refusals were unreachable from the only surface anybody opens at 2 a.m.
-//
-// IT STATES; IT DOES NOT APPLY. That is line 15 of this file, and it survives the
-// move: "the band amount is a SUGGESTION to confirm, carrying the label caveat —
-// never silently applied (that confirm is the liability line)". The row goes on
-// offering and recording the item's OWN dose, because nothing stored distinguishes a
-// band figure that has gone stale from a figure a prescriber set — `intake_item_doses
-// .amount` records the dose, not its provenance — and a lookup that cannot tell those
-// apart may not overwrite either. So this returns what the LABEL says, for the row to
-// state beside the dose, and the confirm stays where #798 put it.
-//
-// THE FIGURE IN MILLIGRAMS OR NOT AT ALL — AND ONLY THE FIGURE. The chart's figures
-// are milligrams of one ingredient, so a stored dose that does not read as milligrams
-// of anything (`5 mL` of a combination liquid) has no comparable figure and gets NO
-// band line: printing "160 mg" beside a volume-dosed combination product would invite
-// exactly the substitution this function refuses to make. `parseAmountMg` is #1854's
-// reader, already the one place that answers "are these milligrams". The REFUSALS are
-// not gated by it — see the note at the check itself.
+// The current label band is informational; recording still uses the item's stored
+// dose. Label eligibility comes from the complete medication identity, independent
+// of the amount's units. Only a milligram amount can be compared to the band figure.
 export interface PrnDoseBandStatement {
   // The band's own figure as the row should spell it ("100 mg"), or null when the
   // label refuses. Never the row's offered amount — see above.
@@ -383,10 +361,7 @@ export interface PrnDoseBandStatement {
   // ordinary case: the add form's own band wrote that amount.
   differsFromStored: boolean;
   // The label's verdict, for the row to state — including for a dose written as a
-  // volume, whose refusals are the label's whatever units the item uses. Null only for
-  // an adult profile and an item with no pediatric chart, the byte-identical paths.
-  // "no-pediatric" is not among the verdicts a caller has to handle: an entry without
-  // a chart never reaches the lookup.
+  // volume. Null without a child context or an eligible label chart.
   result: Exclude<PediatricDoseResult, { kind: "no-pediatric" }> | null;
 }
 
@@ -398,17 +373,17 @@ const NO_BAND: PrnDoseBandStatement = {
 };
 
 export function prnDoseBandStatement(
-  item: { name: string; product?: string | null; amount?: string | null },
+  item: {
+    identity: Parameters<typeof prnDefaultsFor>[0];
+    product?: string | null;
+    amount?: string | null;
+  },
   context: PediatricFormContext | null | undefined
 ): PrnDoseBandStatement {
   if (!context) return NO_BAND;
   const { ageMonths } = context;
   if (ageMonths == null || !isChildProfileAge(ageMonths)) return NO_BAND;
-  const entry = prnDefaultsFor({
-    name: item.name,
-    rxcui: null,
-    rxcuiIngredients: null,
-  });
+  const entry = prnDefaultsFor(item.identity);
   const pediatric = entry?.pediatric;
   if (!entry || !pediatric) return NO_BAND;
   const result = pediatricDoseSuggestion({
@@ -422,13 +397,7 @@ export function prnDoseBandStatement(
       item.product
     ),
   });
-  // THE MILLIGRAM GATE IS ON THE FIGURE, NEVER ON THE VERDICT. It used to run before
-  // the lookup, which suppressed the REFUSALS too — and a refusal carries no
-  // milligrams to be confused by, so it was being withheld for free. The dataset's own
-  // infant formulations are `50 mg / 1.25 mL` and `160 mg / 5 mL`, so a volume is the
-  // normal way an infant dose is written: a 4-month-old on `1.25 mL` of ibuprofen got
-  // silence where `50 mg` got the label's hard age gate, and the add form went on
-  // refusing for both. The two doors have to agree about whether #798 speaks at all.
+  // Refusals also apply to an eligible product whose dose is written as a volume.
   const storedMg = parseAmountMg(item.amount);
   if (result.kind !== "dose" || storedMg == null) return { ...NO_BAND, result };
   return {

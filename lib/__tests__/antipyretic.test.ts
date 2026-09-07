@@ -14,6 +14,8 @@ describe("antipyretic classification", () => {
     for (const name of [
       "Ibuprofen",
       "Children's Tylenol",
+      "Tylenol with Codeine",
+      "Advil 200mg",
       "Advil",
       "Aspirin",
     ]) {
