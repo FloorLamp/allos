@@ -59,13 +59,13 @@ describe("prn-defaults dataset", () => {
   });
 
   it("matches by RxNorm ingredient CUI (authoritative)", () => {
-    const hit = prnDefaultsFor({ name: "Some Brand", rxcui: "5640" });
+    const hit = prnDefaultsFor({ name: "Advil 200mg", rxcui: "5640" });
     expect(hit?.slug).toBe("ibuprofen");
   });
 
   it("matches by ingredient CUI in the cached ingredient list (#279)", () => {
     const hit = prnDefaultsFor({
-      name: "Unknown combo",
+      name: "Resolved product",
       rxcui: "99999",
       rxcuiIngredients: ["161"],
     });
@@ -73,13 +73,28 @@ describe("prn-defaults dataset", () => {
   });
 
   it("falls back to a name/synonym match when no CUI", () => {
-    expect(prnDefaultsFor({ name: "Advil 200mg", rxcui: null })?.slug).toBe(
+    expect(prnDefaultsFor({ name: "Advil", rxcui: null })?.slug).toBe(
       "ibuprofen"
     );
     expect(prnDefaultsFor({ name: "Tylenol", rxcui: null })?.slug).toBe(
       "acetaminophen"
     );
   });
+
+  it.each([
+    { name: "Tylenol with Codeine", rxcui: null },
+    { name: "Tylenol 300 mg / Codeine 30 mg", rxcui: null },
+    { name: "Tylenol PM", rxcui: null },
+    { name: "Tylenol+", rxcui: null },
+    { name: "Advil 200mg", rxcui: null },
+    { name: "Tylenol", rxcui: "99999", rxcuiIngredients: ["161", "2670"] },
+    { name: "Tylenol", rxcui: "2670" },
+  ])(
+    "declines label defaults without a matching complete identity: $name",
+    (item) => {
+      expect(prnDefaultsFor(item)).toBeNull();
+    }
+  );
 
   it("returns null for an unknown ingredient", () => {
     expect(prnDefaultsFor({ name: "Metformin", rxcui: null })).toBeNull();

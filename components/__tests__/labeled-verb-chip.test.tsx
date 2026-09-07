@@ -143,6 +143,7 @@ describe("OfferRow", () => {
 function prnRow(props: { compactActions?: boolean } = {}) {
   render(
     <QuickLogPrnControl
+      identity={{ name: "Ibuprofen", rxcui: null }}
       itemId={31}
       name="Ibuprofen"
       doseAmount="200 mg"
@@ -194,6 +195,7 @@ describe("the PRN row adopts the labeled-verb chip (#4753)", () => {
   it("names the medication when it carries no recorded dose", () => {
     render(
       <QuickLogPrnControl
+        identity={{ name: "Ibuprofen", rxcui: null }}
         itemId={31}
         name="Ibuprofen"
         dayLabel="None today"
