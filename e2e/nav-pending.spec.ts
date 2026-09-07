@@ -195,12 +195,12 @@ for (const { label, destination, control } of [
   {
     label: "A card navigation",
     destination: CARD_DESTINATION,
-    control: '[data-testid="settings-group-account"]',
+    control: (page: Page) => page.getByTestId("settings-group-account"),
   },
   {
     label: "A same-URL navigation",
     destination: "/settings",
-    control: 'aside nav a[href="/settings"]',
+    control: (page: Page) => page.locator('aside nav a[href="/settings"]'),
   },
 ]) {
   test(`${label} reports pending and clears at commit`, async ({ page }) => {
@@ -208,7 +208,7 @@ for (const { label, destination, control } of [
     await page.route(`**${destination}?*`, nav.handler);
 
     await page.goto("/settings");
-    const card = page.locator(control);
+    const card = control(page);
     await expect(card).toBeVisible();
     const indicatorSeen = await watchIndicator(page);
 
