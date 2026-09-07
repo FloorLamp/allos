@@ -449,7 +449,7 @@ and a notification body never restates its title.
 The rule is not new — it is what `#3238` decided for the illness accordion row
 ("the DAY only, never `dayLabel`, because the header two lines up already
 renders the situation") — but it was decided per site and so had to be
-rediscovered at each one. Three sweeps applied it:
+rediscovered at each one. Two sweeps applied it:
 
 - **The temperature red-flag nudge.** `[Dune] 🌡️ Fever check: Dune — Temperature
 40.1 °C / 104.2 °F — Very high fever (104°F or higher)` named the person twice
@@ -457,21 +457,23 @@ rediscovered at each one. Three sweeps applied it:
   three times (the rule's label, its cited line, and a `source` restating the
   guidance it cited) and the reading twice. See
   `docs/internals/notifications.md`.
-- **The illness cockpit header.** The expanded body opened with the person's
-  name and an `Illness · Day 1` badge, both rendered by the accordion row about
-  100px above — which suppresses its own temperature and dose clauses while
-  expanded for exactly this reason. `cockpitRecoveryHeadline` takes no name now
-  and returns null rather than falling back to one.
 - **The cockpit summary line.** `No reading since 104.2 °F (4h ago) · last
 reading 104.2 °F at 11:39 AM (5 hrs ago)` is one reading twice — and two ages
   for one instant, because the school-return clause FLOORS whole hours off the
   convention's clock while the shared formatter ROUNDS. Duplication is how that
   disagreement became visible; removing it removed both.
 
-**A duplicated fact is not only noise.** Each of these three shipped with the
-copies already disagreeing, or one edit away from it: two ages for one reading,
-and a name that doubled on a household instance while a single-profile one
-showed the only person there is. The second copy is where the drift lands.
+**A duplicated fact is not only noise.** Both shipped with the copies already
+disagreeing, or one edit away from it: two ages for one reading, and a name that
+doubled on a household instance while a single-profile one showed the only
+person there is. The second copy is where the drift lands.
+
+**THE RULE DOES NOT OVERRIDE AN APPROVED DESIGN.** The illness cockpit header
+restates the person's name and the `Illness · Day N` tag that the accordion row
+about 100px above already renders, and a pass removing them was REVERTED (owner,
+2026-09-06): #4752 §1 approved a header that carries both, and a board the owner
+blessed outranks this rule. Where a duplicate is specified rather than accidental,
+it is raised, not deleted — and resolved, if at all, by amending the design.
 
 **Durations and clock times are part of the spelling.** A decimal hour is not a
 unit anybody keeps time in: `hoursLabel` (`lib/redose-format.ts`) reads

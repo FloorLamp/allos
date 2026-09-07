@@ -932,23 +932,23 @@ export interface CockpitRecovery {
 
 // THE HEADLINE, AND WHAT IT REFUSES TO SAY. It states only what the fever-free clock
 // already establishes; with no clock — no fever this episode, or nothing measured
-// since one — there is NO headline, because every sentence available at that point
-// would be a judgement the data has not made.
+// since one — it is the person's NAME and nothing else, because every other sentence
+// available at that point would be a judgement the data has not made.
 //
-// IT NAMES NOBODY (#3238, one layer in). It used to take the person's name and, in
-// the no-clock arm, return that name alone — a heading whose whole content was a word
-// the accordion row two lines above had already rendered. The name is that row's job;
-// the arms that DO have something to say now say it about the clock rather than about
-// a subject the reader has already been given. Null is the honest empty here: a
-// heading that renders nothing is absent, not blank.
+// IT NAMES THE PERSON, AND THAT IS THE BLESSED DESIGN (#4752 §1, owner-reaffirmed
+// 2026-09-06). The name and the Illness · Day-N tag also appear on the accordion row
+// this header sits under, and a pass at removing them from here as duplicates was
+// REVERTED: the board that #4752 approved names both as part of this header, and the
+// duplication is the row's to resolve if it is ever resolved at all.
 export function cockpitRecoveryHeadline(
+  name: string,
   recovery: CockpitRecovery | null
-): string | null {
-  if (!recovery || recovery.clearedForHours == null) return null;
-  if (recovery.met) return "Fever-free";
+): string {
+  if (!recovery || recovery.clearedForHours == null) return name;
+  if (recovery.met) return `${name} is fever-free`;
   return recovery.clearedForHours * 2 >= recovery.thresholdHours
-    ? "Nearly there"
-    : "On the mend";
+    ? `${name} is nearly there`
+    : `${name} is on the mend`;
 }
 
 // ONE LINE, THREE CLAUSES. The stat grid it replaces spread the same three facts

@@ -900,17 +900,21 @@ describe("the cockpit recovery header (#4752 item 1)", () => {
     label: "Fever-free 22h of 24",
   });
 
-  // The headline names NOBODY (#3238, one layer in): the accordion row this header
-  // sits under already renders the person. With no clock there is no headline at all
-  // — null, not a blank heading and not the bare name it used to fall back to.
+  // The headline NAMES THE PERSON (#4752 §1, owner-reaffirmed 2026-09-06). The row
+  // above says the name too; a pass removing it from here was reverted, because the
+  // approved board is a header that carries it.
   it.each([
-    ["no clock at all has nothing to say", null, null],
-    ["nothing measured has nothing to say", recovery(null), null],
-    ["past halfway is nearly there", recovery(12), "Nearly there"],
-    ["short of halfway is on the mend", recovery(11), "On the mend"],
-    ["a met convention says so outright", recovery(24, true), "Fever-free"],
+    ["no clock at all is the name and nothing more", null, "Dune"],
+    ["nothing measured is the name and nothing more", recovery(null), "Dune"],
+    ["past halfway is nearly there", recovery(12), "Dune is nearly there"],
+    ["short of halfway is on the mend", recovery(11), "Dune is on the mend"],
+    [
+      "a met convention says so outright",
+      recovery(24, true),
+      "Dune is fever-free",
+    ],
   ] as const)("headline: %s", (_name, input, expected) => {
-    expect(cockpitRecoveryHeadline(input)).toBe(expected);
+    expect(cockpitRecoveryHeadline("Dune", input)).toBe(expected);
   });
 
   it.each([

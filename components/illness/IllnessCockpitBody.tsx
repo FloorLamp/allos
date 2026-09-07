@@ -90,6 +90,7 @@ export default function IllnessCockpitBody({
           data-testid="illness-cockpit-body"
         >
           <CockpitRecoveryHeader
+            name={profileDisplayName}
             status={status}
             recovery={feverFree}
             temperatureIdentity={temperatureIdentity}
