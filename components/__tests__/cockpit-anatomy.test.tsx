@@ -67,6 +67,7 @@ const RECOVERY = {
   thresholdHours: 24,
   met: false,
   label: "Fever-free 22h of 24",
+  lastFeverLabel: "101.9 °F",
 };
 
 describe("the recovery header IS the status (#4752 item 1)", () => {

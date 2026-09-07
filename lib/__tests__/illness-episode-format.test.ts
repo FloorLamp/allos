@@ -898,6 +898,7 @@ describe("the cockpit recovery header (#4752 item 1)", () => {
     thresholdHours: 24,
     met,
     label: "Fever-free 22h of 24",
+    lastFeverLabel: "103.4 °F",
   });
 
   // The headline NAMES THE PERSON (#4752 §1, owner-reaffirmed 2026-09-06). The row
@@ -999,6 +1000,7 @@ describe("the cockpit recovery header (#4752 item 1)", () => {
         thresholdHours: 24,
         met: false,
         label: "No reading since 104.2 °F (4h ago)",
+        lastFeverLabel: "104.2 °F",
       }
     );
     expect(line).toBe(
@@ -1027,9 +1029,46 @@ describe("the cockpit recovery header (#4752 item 1)", () => {
           thresholdHours: 24,
           met: false,
           label: "No reading since 104.2 °F (4h ago)",
+          lastFeverLabel: "104.2 °F",
         }
       )
     ).toBe("No reading since 104.2 °F · last med Ibuprofen yesterday 11:30 PM");
+  });
+
+  // ── "NO NORMAL SINCE" IS NOT "NOTHING SINCE" ────────────────────────────────
+  //
+  // `school-return-data.ts` skips every OUT-OF-RANGE reading when it looks for the
+  // normal one — in BOTH directions — so a hypothermic reading logged after the fever
+  // leaves `clearedForHours` null while being the episode's LATEST. Merging on the arm
+  // alone rendered "No reading since 95.0 °F": a reading that is not the fever, under a
+  // sentence only true of the fever, in the reassuring direction, on the surface whose
+  // whole posture is the person's own logged facts. The gate is that the two clauses
+  // must NAME THE SAME READING.
+  it("does NOT merge when the latest reading is not the fever the clause quotes", () => {
+    const line = cockpitSummaryLine(
+      status({
+        temperature: {
+          id: 9,
+          value: "95.0 °F",
+          when: "at 3:10 PM (1 hr ago)",
+          high: false,
+        },
+      }),
+      {
+        clearedForHours: null,
+        thresholdHours: 24,
+        met: false,
+        label: "No reading since 103.4 °F (14h ago)",
+        lastFeverLabel: "103.4 °F",
+      }
+    );
+    // Both clauses survive, each naming its own reading — two readings are two facts.
+    expect(line).toBe(
+      "No reading since 103.4 °F (14h ago) · last reading 95.0 °F at 3:10 PM (1 hr ago)" +
+        " · last med Ibuprofen yesterday 11:30 PM"
+    );
+    // The fever's sentence is never attached to the later reading.
+    expect(line).not.toContain("No reading since 95.0 °F");
   });
 
   // The merge is gated on there BEING a reading: a recovery object with no
@@ -1041,6 +1080,7 @@ describe("the cockpit recovery header (#4752 item 1)", () => {
         thresholdHours: 24,
         met: false,
         label: "No reading since 104.2 °F (4h ago)",
+        lastFeverLabel: "104.2 °F",
       })
     ).toBe(
       "No reading since 104.2 °F (4h ago) · no temperature logged · last med Ibuprofen yesterday 11:30 PM"

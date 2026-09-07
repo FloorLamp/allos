@@ -928,6 +928,12 @@ export interface CockpitRecovery {
   met: boolean;
   /** The shared compact clause (lib/school-return.ts) — one spelling, every surface. */
   label: string;
+  /**
+   * The LAST FEVER the clause quotes, rendered in the same unit as the status's
+   * own reading — the two are compared as strings, so a unit that ever diverged
+   * fails the comparison and falls back rather than merging two different scales.
+   */
+  lastFeverLabel: string;
 }
 
 // THE HEADLINE, AND WHAT IT REFUSES TO SAY. It states only what the fever-free clock
@@ -967,21 +973,33 @@ export function cockpitSummaryParts(
   status: EpisodeCollapsedStatus,
   recovery: CockpitRecovery | null
 ): { key: CockpitSummaryPart; text: string }[] {
-  // ONE READING, ONE AGE. `recovery` exists only when this episode has a high reading,
-  // and a null `clearedForHours` is the arm where nothing has been measured SINCE that
-  // reading — so the episode's latest reading IS the fever the school-return clause
-  // names, and the two clauses were one fact twice. Worse, they disagreed: the clause
-  // counts whole hours FLOORED off the convention's own clock (lib/school-return.ts)
-  // while every other age on this line is ROUNDED by the shared formatter, so a reading
-  // 4h35m old read "No reading since 104.2 °F (4h ago) · last reading 104.2 °F at
-  // 11:39 AM (5 hrs ago)" — the same instant, two ages, in adjacent clauses.
+  // ONE READING, ONE AGE — WHEN THEY ARE THE SAME READING. A null `clearedForHours` is
+  // the arm where no NORMAL reading is established after the fever, and in the ordinary
+  // case that also means nothing has been measured since it: the episode's latest
+  // reading IS the fever the clause quotes, and the line stated one fact twice. Worse,
+  // it disagreed with itself — the clause counts whole hours FLOORED off the
+  // convention's own clock (lib/school-return.ts) while every other age here is ROUNDED
+  // by the shared formatter, so a reading 4h35m old read "No reading since 104.2 °F
+  // (4h ago) · last reading 104.2 °F at 11:39 AM (5 hrs ago)".
   //
-  // The merged clause keeps the school-return sentence and takes its when-and-age from
-  // the temperature part, so the line has ONE age vocabulary. It stays keyed
-  // "temperature" because that is the clause carrying the dashboard candidate's
-  // identity — the fact has not changed, only how many times the line states it.
+  // BUT "NO NORMAL SINCE" IS NOT "NOTHING SINCE", and merging on the arm alone was a
+  // defect. `school-return-data.ts` skips every OUT-OF-RANGE reading when it looks for
+  // the normal one, in either direction — so a HYPOTHERMIC 95.0 °F logged after a
+  // 103.4 °F fever leaves this arm while being the episode's latest reading, and a
+  // clause built from `latestTemp` would have read "No reading since 95.0 °F": a
+  // reading that is not the fever, under a sentence that is only true of the fever, in
+  // the reassuring direction, on the surface whose whole posture is the person's own
+  // logged facts. The same holds when ordering is unproven — an untimed fever and an
+  // untimed normal on one day are not established as ordered, so that arm too can
+  // outlive a later reading.
+  //
+  // So the merge is gated on the two clauses NAMING THE SAME READING, compared as the
+  // strings both surfaces render. When they differ the line keeps both clauses, which
+  // is the honest shape: two different readings are two facts.
   const noReadingSinceFever =
-    recovery != null && recovery.clearedForHours == null;
+    recovery != null &&
+    recovery.clearedForHours == null &&
+    recovery.lastFeverLabel === status.temperature?.value;
   const readingWhen = status.temperature?.when
     ? ` ${status.temperature.when}`
     : "";

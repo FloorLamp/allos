@@ -23,6 +23,7 @@ import {
 } from "./intake-form-context";
 import { schoolReturnStatusesFor } from "./school-return-data";
 import { schoolReturnCompactLabel } from "./school-return";
+import { fmtTemp } from "./units";
 import {
   getStaleNudgeAcked,
   type StaleEpisodeNudge,
@@ -190,6 +191,10 @@ export function gatherDashboardIllnessCockpits(
           ? {
               label: schoolReturnCompactLabel(
                 schoolStatus,
+                options.temperatureUnit
+              ),
+              lastFeverLabel: fmtTemp(
+                schoolStatus.lastFeverDegF,
                 options.temperatureUnit
               ),
               met: schoolStatus.met,
