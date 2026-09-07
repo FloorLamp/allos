@@ -19,6 +19,11 @@ Unknown qualifiers stay in picked names; only exact catalog labels can discard a
 brand suffix. Ingredient-level interaction and fever classification still include
 combination products. A name, composition, or confirmed-code change withdraws
 only the prior suggestion-owned dose; saved and caregiver-edited amounts stay.
+`useIntakeRxcui` owns one revision across name lookup and ingredient confirmation.
+A new identity operation, clear, composition edit, draft restore, reset, or unmount
+retires every pending response, including a lookup for the same code. Only a current
+completion can seed the form; a current offline/no-match result retains name-only
+fallback. Restoring a draft restores its code and treats its dose as personal input.
 
 Prefer confirmed ingredient/product identity where available and preserve the
 distinction between confirmed identity and a name-only match. Editing identity

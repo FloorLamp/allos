@@ -7,6 +7,9 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import { ActiveProfileProvider } from "@/components/ActiveProfileProvider";
+import type { FormDraft } from "@/lib/offline/drafts";
+import type { SupplyOption } from "@/lib/supply-product";
 import { PREFILL_FIELDS, type PrefillField } from "@/lib/intake-prefill";
 import type { PediatricFormContext } from "@/lib/prn-dosing";
 import MedicationAddWorkspace from "@/app/(app)/medications/MedicationAddWorkspace";
@@ -51,6 +54,9 @@ vi.mock("@/lib/prn-defaults", async (importOriginal) => {
 });
 
 const actions = vi.hoisted(() => ({
+  getDraft: vi.fn(async (): Promise<FormDraft | null> => null),
+  putDraft: vi.fn(async (_draft: FormDraft) => {}),
+  listSharedSupplyOptions: vi.fn(async (): Promise<SupplyOption[]> => []),
   addIntakeItem: vi.fn(async (_data: FormData) => ({ ok: true as const })),
   // RxNorm resolves each ingredient to its own concept id, which is what makes a
   // read of the PREVIOUS drug's code observable rather than merely theoretical.
@@ -76,8 +82,14 @@ vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
 vi.mock("@/app/(app)/trends/measurement-actions", () => ({
   addMeasurements: vi.fn(async () => ({ wrote: true })),
 }));
+vi.mock("@/lib/offline/draft-db", () => ({
+  getDraft: actions.getDraft,
+  putDraft: actions.putDraft,
+  deleteDraft: vi.fn(async () => {}),
+  purgeExpiredDrafts: vi.fn(async () => {}),
+}));
 vi.mock("@/app/(app)/supplies/actions", () => ({
-  listSharedSupplyOptions: vi.fn(async () => []),
+  listSharedSupplyOptions: actions.listSharedSupplyOptions,
   createPoolAction: vi.fn(async () => ({ ok: true })),
   linkItemAction: vi.fn(async () => ({ ok: true })),
   unlinkItemAction: vi.fn(async () => ({ ok: true })),
@@ -113,9 +125,10 @@ const ACETAMINOPHEN = "Acetaminophen (Tylenol)";
  */
 function mount(
   kind: "medication" | "supplement",
-  pediatric?: PediatricFormContext
+  pediatric?: PediatricFormContext,
+  drafts = false
 ) {
-  render(
+  const content = (
     <ToastProvider>
       <ConfirmProvider>
         {kind === "medication" ? (
@@ -148,11 +161,19 @@ function mount(
       </ConfirmProvider>
     </ToastProvider>
   );
+  const view = render(
+    drafts ? (
+      <ActiveProfileProvider profileId={1}>{content}</ActiveProfileProvider>
+    ) : (
+      content
+    )
+  );
   fireEvent.click(
     screen.getByTestId(
       kind === "medication" ? "medication-add-toggle" : "supplement-add-toggle"
     )
   );
+  return view;
 }
 
 /** Choose `option` from the one Name field — a PICK, not a keystroke. */
@@ -168,7 +189,14 @@ async function pickName(option: string) {
 
 /** Open one fact's editor by its chip. */
 function openFact(key: string) {
-  fireEvent.click(screen.getByTestId(`intake-fact-${key}`));
+  const done = screen.queryByTestId("intake-editor-done");
+  if (done) fireEvent.click(done);
+  const chip = screen.queryByTestId(`intake-fact-${key}`);
+  if (chip) fireEvent.click(chip);
+  else {
+    fireEvent.click(screen.getByTestId("intake-fact-more"));
+    fireEvent.click(screen.getByTestId(`intake-more-${key}`));
+  }
 }
 
 const redoseFigures = () => ({
@@ -192,16 +220,18 @@ const PEDIATRIC_SLUG = "childrens_susp_160_5";
  * code has not arrived yet — the window `onPickName` currently resolves the PRN entry in.
  */
 function deferLookup() {
+  let reject!: (reason: Error) => void;
   let release!: () => void;
-  const gate = new Promise<void>((r) => {
+  const gate = new Promise<void>((r, fail) => {
     release = r;
+    reject = fail;
   });
   const real = actions.lookupRxcui.getMockImplementation()!;
-  actions.lookupRxcui.mockImplementation(async (term: string) => {
+  actions.lookupRxcui.mockImplementationOnce(async (term: string) => {
     await gate;
     return real(term);
   });
-  return { resolve: release };
+  return { resolve: release, reject: () => reject(new Error("offline")) };
 }
 
 /** The recorded PRN resolutions for one drug name. */
@@ -209,9 +239,13 @@ const prnCallsFor = (name: string) =>
   prnSpy.calls.filter((call) => call.name === name);
 
 beforeEach(() => {
+  actions.getDraft.mockReset().mockResolvedValue(null);
+  actions.putDraft.mockClear();
+  actions.listSharedSupplyOptions.mockReset().mockResolvedValue([]);
   actions.addIntakeItem.mockClear();
   actions.lookupRxcui.mockClear();
-  actions.lookupRxcuiIngredients.mockClear();
+  actions.lookupRxcuiIngredients.mockReset();
+  actions.lookupRxcuiIngredients.mockImplementation(async (code) => [code]);
   actions.lookupRxcui.mockImplementation(BASE_LOOKUP);
   prnSpy.calls.length = 0;
 });
@@ -393,6 +427,267 @@ describe("a pick that lands after a weight update doses against the new weight (
     // And the confirm landing changes none of it. Without this the seed wrote the
     // 36 lb band's 240 mg — the weight the pick STARTED on — over both rows.
     expect(dosedAt()).toEqual({ amount, bands });
+  });
+});
+
+// Exercise the complete lookup → confirmation lifetime through the shipped door.
+// Holding the first stage catches identity writes that a prefill-only guard misses;
+// holding decomposition catches same-code operations that a code comparison misses.
+describe("product identity owns every pending RxNorm stage (#5518)", () => {
+  it.each(["resolve", "reject"] as const)(
+    "a typed replacement ignores an old lookup that %ss",
+    async (settle) => {
+      const old = deferLookup();
+      mount("medication", CHILD_ON_PICK);
+      await pickName(ACETAMINOPHEN);
+      fireEvent.change(screen.getByRole("combobox", { name: "Name" }), {
+        target: { value: "Vicodin" },
+      });
+      openFact("dose");
+      expect(screen.queryByTestId("pediatric-band-picker")).toBeNull();
+      await act(async () => old[settle]());
+      expect(screen.getByRole("combobox", { name: "Name" })).toHaveProperty(
+        "value",
+        "Vicodin"
+      );
+      expect(screen.queryByTestId("rxcui-current")).toBeNull();
+      expect(screen.queryByTestId("pediatric-band-picker")).toBeNull();
+      expect(screen.getByRole("combobox", { name: "Amount" })).toHaveProperty(
+        "value",
+        ""
+      );
+    }
+  );
+
+  it("a newer pick keeps its own code and dose when the old lookup lands", async () => {
+    const old = deferLookup();
+    mount("medication", CHILD_ON_PICK);
+    await pickName(ACETAMINOPHEN);
+    await pickName("Ibuprofen (Advil, Motrin)");
+    openFact("dose");
+    expect(screen.getByTestId("rxcui-current").textContent).toContain("5640");
+    expect(dosedAt().amount).toBe("150 mg");
+    await act(async () => old.resolve());
+    expect(screen.getByTestId("rxcui-current").textContent).toContain("5640");
+    expect(dosedAt().amount).toBe("150 mg");
+  });
+
+  it.each(["resolve", "reject"] as const)(
+    "an obsolete manual lookup cannot publish candidates, errors or completion when it %ss",
+    async (settle) => {
+      const old = deferLookup();
+      mount("medication", CHILD_ON_PICK);
+      const name = screen.getByRole("combobox", { name: "Name" });
+      fireEvent.change(name, { target: { value: "Acetaminophen" } });
+      fireEvent.click(screen.getByTestId("rxcui-lookup"));
+      fireEvent.change(name, { target: { value: "Ibuprofen" } });
+      const current = deferLookup();
+      fireEvent.click(screen.getByTestId("rxcui-lookup"));
+      await act(async () => old[settle]());
+      expect(screen.getByTestId("rxcui-lookup").textContent).toBe(
+        "Looking up…"
+      );
+      expect(screen.queryByTestId("rxcui-candidates")).toBeNull();
+      expect(screen.queryByText(/Couldn't reach the RxNorm lookup/)).toBeNull();
+      await act(async () => current.resolve());
+      expect(screen.getByTestId("rxcui-use-5640")).toBeTruthy();
+      expect(screen.queryByTestId("rxcui-use-161")).toBeNull();
+    }
+  );
+
+  it("returning to the same code cannot accept an older ingredient response", async () => {
+    let release!: (ingredients: string[]) => void;
+    actions.lookupRxcuiIngredients.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        })
+    );
+    mount("medication", CHILD_ON_PICK);
+    await pickName(ACETAMINOPHEN);
+    await pickName("Ibuprofen (Advil, Motrin)");
+    await pickName(ACETAMINOPHEN);
+    openFact("dose");
+    expect(dosedAt().amount).toBe("240 mg");
+    await act(async () => release(["161", "2670"]));
+    expect(screen.getByTestId("rxcui-current").textContent).toContain("161");
+    expect(dosedAt().amount).toBe("240 mg");
+  });
+
+  it.each(["no match", "offline"])(
+    "a current %s lookup still seeds the supported plain-name dose",
+    async (outcome) => {
+      if (outcome === "offline")
+        actions.lookupRxcui.mockRejectedValueOnce(new Error("offline"));
+      else actions.lookupRxcui.mockResolvedValueOnce([]);
+      mount("medication", CHILD_ON_PICK);
+      await pickName(ACETAMINOPHEN);
+      openFact("dose");
+      expect(screen.queryByTestId("rxcui-current")).toBeNull();
+      expect(dosedAt().amount).toBe("240 mg");
+    }
+  );
+
+  it("an explicit supplement composition edit invalidates pending confirmation", async () => {
+    let release!: (ingredients: string[]) => void;
+    actions.lookupRxcuiIngredients.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        })
+    );
+    mount("supplement");
+    fireEvent.change(screen.getByRole("combobox", { name: "Name" }), {
+      target: { value: "Acetaminophen" },
+    });
+    await act(async () => fireEvent.click(screen.getByTestId("rxcui-lookup")));
+    await act(async () => fireEvent.click(screen.getByTestId("rxcui-use-161")));
+    openFact("composition");
+    fireEvent.click(screen.getByTestId("add-ingredients"));
+    fireEvent.change(screen.getByTestId("ingredient-name-0"), {
+      target: { value: "Codeine" },
+    });
+    await act(async () => release(["161"]));
+    expect(screen.queryByTestId("rxcui-current")).toBeNull();
+  });
+
+  it("clearing a confirmed code invalidates its pending ingredient response and prefill", async () => {
+    let release!: (ingredients: string[]) => void;
+    actions.lookupRxcuiIngredients.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        })
+    );
+    mount("medication", CHILD_ON_PICK);
+    await pickName(ACETAMINOPHEN);
+    fireEvent.click(screen.getByTestId("rxcui-clear"));
+    await act(async () => release(["161"]));
+    openFact("dose");
+    expect(screen.queryByTestId("rxcui-current")).toBeNull();
+    expect(dosedAt().amount).toBe("");
+  });
+
+  it.each(["name", "supply"])(
+    "the %s bottle picker retires the older lookup",
+    async (door) => {
+      actions.listSharedSupplyOptions.mockResolvedValue([
+        {
+          id: 99,
+          name: "Acetaminophen with Codeine",
+          strength: null,
+          form: null,
+          siblingKind: "medication",
+        },
+      ]);
+      const old = deferLookup();
+      mount("medication", CHILD_ON_PICK);
+      await pickName(ACETAMINOPHEN);
+      if (door === "name") {
+        actions.lookupRxcui.mockResolvedValueOnce([
+          { rxcui: "99999", name: "Acetaminophen with Codeine", score: 100 },
+        ]);
+        actions.lookupRxcuiIngredients.mockResolvedValueOnce(["161", "2670"]);
+        await pickName("Acetaminophen with Codeine — shared bottle");
+      } else {
+        openFact("more");
+        fireEvent.click(screen.getByTestId("intake-more-supply"));
+        fireEvent.change(screen.getByTestId("shared-supply-new-item-select"), {
+          target: { value: "99" },
+        });
+      }
+      await act(async () => old.resolve());
+      openFact("dose");
+      if (door === "name")
+        expect(screen.getByTestId("rxcui-current").textContent).toContain(
+          "99999"
+        );
+      else expect(screen.queryByTestId("rxcui-current")).toBeNull();
+      expect(screen.getByRole("combobox", { name: "Amount" })).toHaveProperty(
+        "value",
+        ""
+      );
+    }
+  );
+
+  it("restoring a draft preserves its identity and personal dose after an old lookup lands", async () => {
+    const first = mount("medication", CHILD_ON_PICK, true);
+    await pickName("Ibuprofen (Advil, Motrin)");
+    openFact("dose");
+    fireEvent.change(screen.getByRole("combobox", { name: "Amount" }), {
+      target: { value: "180 mg" },
+    });
+    first.unmount();
+    const saved = actions.putDraft.mock.calls.at(-1)![0];
+    expect(saved).toBeTruthy();
+    actions.getDraft.mockResolvedValue(saved);
+    mount("medication", CHILD_ON_PICK, true);
+    await screen.findByTestId("draft-restore-resume");
+    await pickName(ACETAMINOPHEN);
+    openFact("dose");
+    expect(dosedAt().amount).toBe("240 mg");
+    const old = deferLookup();
+    await pickName(ACETAMINOPHEN);
+    fireEvent.click(screen.getByTestId("draft-restore-resume"));
+    await act(async () =>
+      fireEvent.click(
+        within(screen.getByTestId("confirm-dialog")).getByRole("button", {
+          name: "Resume",
+        })
+      )
+    );
+    await act(async () => old.resolve());
+    expect(screen.getByRole("combobox", { name: "Name" })).toHaveProperty(
+      "value",
+      "Ibuprofen"
+    );
+    expect(screen.getByTestId("rxcui-current").textContent).toContain("5640");
+    expect(dosedAt().amount).toBe("180 mg");
+    fireEvent.click(screen.getByTestId("intake-editor-done"));
+    expect(screen.getByTestId("intake-fact-dose").textContent).not.toContain(
+      "from label defaults"
+    );
+    openFact("dose");
+    // A restored amount is personal state, not the prior live label's offer.
+    fireEvent.change(screen.getByRole("combobox", { name: "Name" }), {
+      target: { value: "Vicodin" },
+    });
+    expect(screen.getByRole("combobox", { name: "Amount" })).toHaveProperty(
+      "value",
+      "180 mg"
+    );
+  });
+
+  it("unmounting the form retires the pending pick before it resolves a label", async () => {
+    const old = deferLookup();
+    const view = mount("medication", CHILD_ON_PICK);
+    await pickName(ACETAMINOPHEN);
+    view.unmount();
+    const calls = prnSpy.calls.length;
+    await act(async () => old.resolve());
+    expect(prnSpy.calls).toHaveLength(calls);
+  });
+
+  it("manual confirmation supersedes an older automatic lookup", async () => {
+    const old = deferLookup();
+    mount("medication", CHILD_ON_PICK);
+    await pickName(ACETAMINOPHEN);
+    actions.lookupRxcui.mockResolvedValueOnce([
+      { rxcui: "99999", name: "Acetaminophen with Codeine", score: 100 },
+    ]);
+    actions.lookupRxcuiIngredients.mockResolvedValueOnce(["161", "2670"]);
+    await act(async () => fireEvent.click(screen.getByTestId("rxcui-lookup")));
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("rxcui-use-99999"))
+    );
+    await act(async () => old.resolve());
+    openFact("dose");
+    expect(screen.getByTestId("rxcui-current").textContent).toContain("99999");
+    expect(screen.queryByTestId("pediatric-band-picker")).toBeNull();
+    expect(screen.getByRole("combobox", { name: "Amount" })).toHaveProperty(
+      "value",
+      ""
+    );
   });
 });
 
