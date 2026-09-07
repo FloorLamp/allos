@@ -557,6 +557,7 @@ export default function MedicationCard({
                 layout="detail"
                 profileId={subjectProfileId}
                 tz={timezone}
+                pediatric={pediatric}
               />
             ) : (
               <CardSectionHeader title="Today" variant="label">

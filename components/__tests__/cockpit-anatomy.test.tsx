@@ -218,6 +218,12 @@ describe("meds are labeled-verb chips, detail only when acting (#4752 item 4)", 
     const give = within(panel).getByTestId("prn-log-now");
     expect(give.textContent).toBe("160 mgGive");
     expect(give.getAttribute("aria-label")).toBe("Give Ibuprofen · 160 mg");
+    // AND THE PANEL STATES WHAT THE LABEL SAYS (#4713), without changing that dose.
+    // This subject is 26.5 lb, whose ibuprofen band is 100 mg; the item still carries
+    // the 160 mg it was saved with, and only a person may reconcile the two.
+    expect(within(panel).getByTestId("prn-band-basis").textContent).toContain(
+      "Label band for this weight is 100 mg · 24–35 lb band"
+    );
     // The clock door, in its seat and spelled only as the glyph (#4752 item 8).
     const door = within(panel).getByTestId("prn-log-when-toggle");
     expect(door.getAttribute("aria-label")).toBe("Happened earlier?");

@@ -18,6 +18,7 @@ import QuickLogPrnControl from "@/components/medications/QuickLogPrnControl";
 import { CockpitDayProvider } from "@/components/illness/CockpitDayContext";
 import SymptomLogBar from "@/components/illness/SymptomLogBar";
 import type { LedgerGroup } from "@/lib/day-ledger";
+import type { PediatricFormContext } from "@/lib/prn-dosing";
 
 // TWO PIECES FOR THE DOSE DOMAIN (#4424): `HistoricalDoseForm` and
 // `DoseStatusControl`. What each claim here is about is the thing a COPY forgot.
@@ -38,6 +39,7 @@ const mocks = vi.hoisted(() => ({
   updateHistoricalDose: vi.fn(),
   setDoseStatus: vi.fn(),
   logMedicationAdministration: vi.fn(),
+  addMeasurements: vi.fn(async (_formData: FormData) => ({})),
 }));
 
 vi.mock("@/components/LoggedViaSurface", () => ({
@@ -88,6 +90,11 @@ vi.mock("@/app/(app)/symptom-actions", () => ({
 }));
 vi.mock("@/app/(app)/medications/actions", () => ({
   logMedicationAdministration: mocks.logMedicationAdministration,
+}));
+// The row's inline weight fixer posts the real body-metric action; only the Server
+// Action import is stood in for, so the fixer itself is the shipped component.
+vi.mock("@/app/(app)/trends/measurement-actions", () => ({
+  addMeasurements: mocks.addMeasurements,
 }));
 vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
   logHistoricalDose: mocks.logHistoricalDose,
@@ -674,6 +681,151 @@ describe("the PRN row's earlier-dose statement takes the card's day (#4691/#4738
     expect(fd.offset).toBe("custom");
     expect(fd.time).toBe("23:30");
     expect(fd.date).toBe(YESTERDAY_UTC);
+  });
+});
+
+// THE BAND RUNS AT THE TAP (#4713). #798's weight-band machinery had one consumer —
+// the add/edit form — so the dose row rendered whatever milligram figure the item was
+// last SAVED with. For a growing child that snapshot goes stale silently, and the
+// label's own refusals were unreachable from the surface a dose is given from.
+//
+// The subject here is a 6-year-old at 12 kg (26.5 lb), whose ibuprofen label band is
+// 100 mg; the item still carries the 160 mg it was saved with, so every claim below
+// separates "what the label says now" from "what the row remembers".
+describe("the PRN row states the child's label band at dose time (#4713)", () => {
+  const CHILD: PediatricFormContext = {
+    ageMonths: 72,
+    weightKg: 12,
+    weightDate: "2026-09-01",
+    weightUnit: "kg",
+    today: "2026-09-02",
+  };
+
+  function row(
+    pediatric: PediatricFormContext | null,
+    over: { name?: string; doseAmount?: string; profileId?: number } = {}
+  ) {
+    render(
+      <QuickLogPrnControl
+        itemId={31}
+        name={over.name ?? "Ibuprofen"}
+        doseAmount={over.doseAmount ?? "100 mg"}
+        dayLabel="None today"
+        tz="UTC"
+        profileId={over.profileId}
+        pediatric={pediatric}
+      />
+    );
+  }
+
+  it("states the band the dose stands on, with the label caveat", () => {
+    row(CHILD);
+    const basis = screen.getByTestId("prn-band-basis").textContent!;
+    expect(basis).toContain("100 mg · 24–35 lb band");
+    expect(basis).toContain("confirm against your package");
+    expect(screen.queryByTestId("prn-band-refusal")).toBeNull();
+  });
+
+  // THE LINE THE ISSUE EXISTS FOR, and the line that must not become a substitution.
+  // A 26.5 lb child whose item still carries the 160 mg it was saved with: the row
+  // SAYS the chart reads 100 mg for this weight, and goes on offering — and recording
+  // — the 160 mg the item actually carries. Nothing on this surface may overwrite a
+  // dose whose provenance the data does not record.
+  it("reports a band that differs without changing what the tap writes", () => {
+    row(CHILD, { doseAmount: "160 mg" });
+    expect(screen.getByTestId("prn-band-basis").textContent).toContain(
+      "Label band for this weight is 100 mg · 24–35 lb band"
+    );
+    expect(screen.getByTestId("prn-log-now").getAttribute("aria-label")).toBe(
+      "Take Ibuprofen · 160 mg"
+    );
+  });
+
+  // THE POSITIVE CONTROL for the criterion that matters most. Same row, same stored
+  // dose, four subjects that must all be the row that shipped — no band line, no
+  // refusal, the item's own figure. The mL case is the third falsified example: a
+  // volume-dosed combination liquid has no milligram figure to compare, so printing
+  // the OTC monograph's band beside it would invite exactly the wrong substitution.
+  it.each([
+    { subject: "an adult profile", pediatric: null, over: {} },
+    {
+      subject: "an item with no label chart",
+      pediatric: CHILD,
+      over: { name: "Aspirin" },
+    },
+    {
+      subject: "a dose that is not in milligrams",
+      pediatric: CHILD,
+      over: { name: "Tylenol with Codeine", doseAmount: "5 mL" },
+    },
+  ])("leaves $subject exactly as it was", ({ pediatric, over }) => {
+    row(pediatric, over);
+    expect(screen.queryByTestId("prn-band-basis")).toBeNull();
+    expect(screen.queryByTestId("prn-band-refusal")).toBeNull();
+    expect(
+      screen.getByTestId("prn-log-now").getAttribute("aria-label")
+    ).toContain(over.doseAmount ?? "100 mg");
+  });
+
+  // THE REFUSALS ARE NOT GATED BY THE UNITS THE DOSE IS WRITTEN IN. The milligram
+  // check above suppresses the band FIGURE, and a refusal carries none — so an infant
+  // whose dose is written as a volume gets the same verdict a milligram-spelled one
+  // does. It matters because the dataset's own infant formulations are `50 mg /
+  // 1.25 mL` and `160 mg / 5 mL`: a volume IS how an infant dose is written, and the
+  // add form refuses for every one of these inputs.
+  it.each([
+    { spelling: "milligrams", doseAmount: "50 mg" },
+    { spelling: "a volume", doseAmount: "1.25 mL" },
+  ])(
+    "states the label's age gate for a 4-month-old dosed in $spelling",
+    ({ doseAmount }) => {
+      row({ ...CHILD, ageMonths: 4, weightKg: 6 }, { doseAmount });
+      // Ibuprofen's chart starts at 6 months; below it the label's own words stand in
+      // for any dose, and no band figure is printed beside either spelling.
+      expect(screen.getByTestId("prn-band-refusal").textContent).toContain(
+        "months"
+      );
+      expect(screen.queryByTestId("prn-band-basis")).toBeNull();
+    }
+  );
+
+  // A MISSING WEIGHT DATE READS AS STALE (#798), and under 12 months the threshold is
+  // 60 days — the infant case the machinery was built for, and the one that was
+  // unreachable from this row. The fixer is one tap away in place, and the weight it
+  // writes is the SUBJECT's: this row carries a `profileId` exactly when the acting
+  // login is somebody else, which for an infant is always.
+  it("surfaces the stale-weight refusal and fixes the SUBJECT's weight in place", async () => {
+    const infant = { ...CHILD, ageMonths: 8, weightKg: 5, weightDate: null };
+    row(infant, { doseAmount: "160 mg", profileId: 99 });
+    expect(screen.getByTestId("prn-band-refusal").textContent).toContain(
+      "over 60 days old"
+    );
+    expect(screen.queryByTestId("prn-band-basis")).toBeNull();
+
+    // Not open on arrival: a list refuses per row for ONE fact, so N rows would mount
+    // N editors. One tap opens it where it stands.
+    expect(screen.queryByTestId("pediatric-weight-input")).toBeNull();
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("pediatric-weight-update-open"))
+    );
+    fireEvent.change(screen.getByTestId("pediatric-weight-input"), {
+      target: { value: "12" },
+    });
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "Save" }))
+    );
+
+    // THE WEIGHT IS THE CHILD'S. Without this the body-metric write falls back to
+    // `gateItemProfile`'s acting profile and files an infant's weight on the parent.
+    const posted = mocks.addMeasurements.mock.calls.at(-1)![0];
+    expect(posted.get("weight")).toBe("12");
+    expect(posted.get("profile_id")).toBe("99");
+
+    // …and the refusal is answered in place, with the band now stated.
+    expect(screen.queryByTestId("prn-band-refusal")).toBeNull();
+    expect(screen.getByTestId("prn-band-basis").textContent).toContain(
+      "Label band for this weight is 100 mg · 24–35 lb band"
+    );
   });
 });
 
