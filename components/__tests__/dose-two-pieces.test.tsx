@@ -613,15 +613,33 @@ describe("the PRN row's earlier-dose statement takes the card's day (#4691/#4738
     expect(fields().date).toBe(YESTERDAY);
   });
 
-  // THE DAY RIDES BOTH ARMS (#5489 fix 1). The now-tap used to post `offset=now` and
-  // NO day, so the action stamped the server's today — from a card that might be
-  // standing on yesterday. The day is the surface's in both arms or in neither.
-  it("the taken-now tap states the surface's day beside its now", async () => {
+  // THE CARD'S DAY RIDES BOTH ARMS (#5489 fix 1). The now-tap used to post
+  // `offset=now` and NO day, so the action stamped the server's today — from a card
+  // that might be standing on yesterday. Under a card the day is the surface's in both
+  // arms; with no card there is no surface day to state, which is the action's own
+  // rule and is what keeps a page left open across midnight a one-tap dose.
+  it("the taken-now tap states the CARD's day, and none where there is no card", async () => {
+    render(
+      <CockpitDayProvider date={TODAY_UTC}>
+        <QuickLogPrnControl
+          itemId={31}
+          name="Ibuprofen"
+          doseAmount="200 mg"
+          dayLabel="1 today · last 4:02pm"
+          tz="UTC"
+        />
+      </CockpitDayProvider>
+    );
+    await act(async () => fireEvent.click(screen.getByTestId("prn-log-now")));
+    expect(fields().offset).toBe("now");
+    expect(fields().date).toBe(TODAY_UTC);
+
+    cleanup();
+    posted.length = 0;
     row();
     await act(async () => fireEvent.click(screen.getByTestId("prn-log-now")));
-    const fd = fields();
-    expect(fd.offset).toBe("now");
-    expect(fd.date).toBe(TODAY_UTC);
+    expect(fields().offset).toBe("now");
+    expect(fields().date).toBeUndefined();
   });
 
   // ON A DAY THAT HAS ENDED, THE TAP ASKS (#5489 fix 2, the #4686 ruling). The green

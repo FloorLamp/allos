@@ -341,3 +341,28 @@ describe("the fixed-day arm speaks the surface's words, never a storage day (#54
     expect(fixedDayText({}, TODAY)).toBe("Today");
   });
 });
+
+// MANUAL ISO ENTRY STILL WORKS ON A MOVABLE DAY (#3376's invariant, kept while
+// `WhenValue.date` became `LocalDay`). `DateField` is a TEXT input by design, so it
+// emits every keystroke — and a half-typed "2026-09-0" is not a day. A control that
+// simply refused those emits would leave the parent's value unchanged and React would
+// restore the box to the old date after each character, so the field could only ever
+// be changed by the calendar. The draft is held beside the pair instead.
+describe("a movable day can still be typed (#3376)", () => {
+  it("renders what was typed, states nothing until it is a day, then emits the pair", () => {
+    const { seen } = mount(
+      { maxDate: "2026-12-31" },
+      { date: DAY, statedAt: null }
+    );
+    const field = screen.getByTestId("w-date") as HTMLInputElement;
+    fireEvent.change(field, { target: { value: "2026-09-0" } });
+    // The box shows the half-typed text…
+    expect(field.value).toBe("2026-09-0");
+    // …and the PAIR has not moved: a draft is not a stated day.
+    expect(seen).toEqual([]);
+
+    fireEvent.change(field, { target: { value: "2026-09-04" } });
+    expect(field.value).toBe("2026-09-04");
+    expect(seen.at(-1)!.date).toBe("2026-09-04");
+  });
+});

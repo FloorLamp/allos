@@ -130,6 +130,8 @@ export default function WhenControl({
   // Prefer the host's day label, then the login's date format.
   const card = useCockpitDay();
   const prefs = useFormatPrefs();
+  // The day half MID-EDIT, or null when the field is showing the pair's own day.
+  const [draft, setDraft] = useState<string | null>(null);
 
   // EVERY EMITTER BUILDS THE NEXT PAIR FROM THE PAIR AS IT IS *NOW*, never from
   // the one its render closed over. Each half's widget emits only its own half,
@@ -152,8 +154,11 @@ export default function WhenControl({
   }, [value]);
 
   const setDate = (date: string) => {
-    // Empty or partial picker input is not yet a day.
-    if (!isRealIsoDate(date)) return;
+    if (!isRealIsoDate(date)) {
+      setDraft(date);
+      return;
+    }
+    setDraft(null);
     // The pair moves together: a date change re-anchors the stated instant onto
     // the new day (or clears it — never invents one), so the two fields cannot
     // come apart even mid-edit.
@@ -240,7 +245,7 @@ export default function WhenControl({
             <label className="block">
               <span className="sr-only">{dateLabel}</span>
               <DateField
-                value={value.date}
+                value={draft ?? value.date}
                 onChange={setDate}
                 min={minDate}
                 max={maxDate}

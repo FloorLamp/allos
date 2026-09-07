@@ -10,6 +10,7 @@ import { useTimeStatement } from "@/components/TimeStatement";
 import { useTimezone } from "@/components/TimezoneProvider";
 import {
   cockpitDayLabel,
+  useCockpitDay,
   useDayBinding,
 } from "@/components/illness/CockpitDayContext";
 import {
@@ -130,6 +131,7 @@ export default function QuickLogPrnControl({
   // on today.
   const card = useDayBinding(todayStr, tz);
   const cardDay = card.activeDate;
+  const inCard = useCockpitDay() !== null;
   const isPrimaryDay = card.isPrimaryDay;
   const toast = useToast();
   const ledger = useOptimisticLedger("prn-dose");
@@ -167,8 +169,7 @@ export default function QuickLogPrnControl({
         const fd = stampLoggedVia(new FormData());
         fd.set("id", String(itemId));
         fd.set("offset", offset);
-        // Both immediate and stated-time writes carry the surface's day.
-        fd.set("date", cardDay);
+        if (inCard || customTime) fd.set("date", cardDay);
         if (customTime) fd.set("time", customTime);
         if (profileId != null) fd.set("profileId", String(profileId));
         return logMedicationAdministration(fd);
@@ -210,7 +211,10 @@ export default function QuickLogPrnControl({
       void log("now");
       return;
     }
-    const stated = statement.at;
+    // ONLY WHAT IS ON SCREEN (`TimeStatement` rule 2). A minute typed and then
+    // dismissed is not a statement this tap may spend, so a closed reveal asks again
+    // rather than writing the answer the reader just walked away from.
+    const stated = statement.open ? statement.at : null;
     if (stated) void log("custom", stated);
     else statement.setOpen(true);
   }
