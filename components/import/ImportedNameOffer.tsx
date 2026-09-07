@@ -1,39 +1,13 @@
 "use client";
-/* eslint-disable no-restricted-properties -- USER-initiated repaint (#1878): follows the user's own 'Use this name' tap (#3480) — the tap IS the rename, and the row must repaint into the name they just chose rather than keep offering it */
 
 import { useState } from "react";
 import { lookupRxcui } from "@/app/(app)/nutrition/intake-actions";
 import { adoptImportedMedicationName } from "@/app/(app)/import/name-actions";
 import { isCleanerName } from "@/lib/imported-name";
 import { useToast } from "@/components/Toast";
-import { useRouter } from "next/navigation";
 
-// The OFFER half of the imported-name boundary (issue #3480) — one row per imported
-// medication still carrying its document's own label.
-//
-// WHAT THE PERSON SEES. The name as the document wrote it, and a button: "Find a
-// clearer name". Pressing it lists the RxNorm concepts that match the string, each
-// with "Use this name" — and nothing else: the list carries no caution copy, for the
-// reason recorded at the list itself. Nothing changes until one is pressed, and the
-// row then says what it kept: "Imported as “…”". Ignoring the offer is a complete
-// answer — the medication keeps the name it has, which is the issue's "declining
-// keeps today's behavior".
-//
-// WHY IT IS AN OFFER AND NOT A TRANSFORM. A casing pass at the display boundary
-// cannot tell whether "OR" is the route abbreviation or a word in a product name,
-// and it would rewrite, on every render, text nobody agreed to change
-// (lib/imported-name.ts carries the full reasoning; lib/allergen-vocabulary.ts is
-// the recorded precedent for the sibling problem). A medicine's name is how somebody
-// identifies their own medicine, so the only safe place to change one is a moment
-// where a person is looking at both versions.
-//
-// THE LOOKUP IS THE EXISTING ONE. `lookupRxcui` is the shared server action behind
-// the intake forms' "Match standardized ingredient" affordance (#846 →
-// components/intake/RxNormAffordance.tsx → lib/rxnorm.ts, #144). This component
-// deliberately does NOT reuse `useIntakeRxcui`: that hook is a FORM-FIELD state
-// machine (hidden inputs, invalidate-on-name-edit, reset-after-save) whose copy
-// speaks about saving an item, none of which exists here. It shares the one thing
-// worth sharing — the resolver — and adds nothing beside it.
+// Keep the imported name until a person confirms a candidate from the shared RxNorm
+// lookup. This offer has no intake-form fields, so it calls the resolver directly.
 export default function ImportedNameOffer({
   itemId,
   documentId,
@@ -48,7 +22,6 @@ export default function ImportedNameOffer({
   // `name` is still the document's own label.
   sourceName: string | null;
 }) {
-  const router = useRouter();
   const toast = useToast();
   const [candidates, setCandidates] = useState<
     { rxcui: string; name: string }[] | null
@@ -94,18 +67,8 @@ export default function ImportedNameOffer({
       }
       toast(`Renamed to ${candidate.name}.`);
       setCandidates(null);
-      router.refresh();
     } catch {
-      // A REJECTED Server Action is not a returned error, and this block used to be
-      // a bare `try … finally`: offline, a 500, a deploy mid-click — the promise
-      // rejects, nothing is caught, and the only thing the person sees is the button
-      // stopping saying "Renaming…". They are left believing a medicine was renamed
-      // when it was not. `find()` above has always caught its own; this is the same
-      // failure on the half that WRITES.
-      //
-      // The same sentence the action returns for its own refusals, deliberately: the
-      // person's question is whether the name changed, and the answer is no either
-      // way.
+      // A rejected request needs the same visible failure as an action refusal.
       toast("Couldn't rename that medication.", { tone: "error" });
     } finally {
       setBusy(null);

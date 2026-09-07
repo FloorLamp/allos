@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { workerDbPath } from "./worker-env";
+import { appContent, openConfirm, settledClick } from "./helpers";
 
 // Import-detail cohesion (#1340), finishing the #1071/#1332 verb consolidation:
 //  1. Per-control explainers ride the rendered buttons — deterministic docs get
@@ -82,7 +83,12 @@ test.beforeAll(() => {
         mime_type: "application/pdf",
         doc_type: "Lab report",
         source: null,
-        raw: '{"records":[]}',
+        raw: JSON.stringify({
+          document_date: "2026-07-10",
+          results: [
+            { category: "lab", name: "Sodium", value: "140", unit: "mmol/L" },
+          ],
+        }),
         portal: null,
       }).lastInsertRowid
     );
@@ -164,8 +170,10 @@ test.afterAll(() => {
   const handle = new Database(DB_PATH);
   try {
     handle
-      .prepare(`DELETE FROM medical_records WHERE source = ?`)
-      .run(RECORD_SOURCE);
+      .prepare(
+        `DELETE FROM medical_records WHERE profile_id = ? AND (source = ? OR document_id = ?)`
+      )
+      .run(PROFILE_ID, RECORD_SOURCE, ids[AI_WITH_RAW]);
     handle
       .prepare(
         `DELETE FROM medical_documents WHERE profile_id = ? AND filename IN (?, ?, ?, ?, ?)`
@@ -202,7 +210,7 @@ test.describe("Import detail cohesion (#1340)", () => {
     await expect(page.getByText(/Re-apply saved extraction/)).toHaveCount(0);
   });
 
-  test("AI doc with a saved extraction: re-apply offered, preview carries the cost note", async ({
+  test("AI doc re-applies its saved extraction and displays the imported result", async ({
     page,
   }) => {
     await page.goto(`/import/${ids[AI_WITH_RAW]}`);
@@ -214,6 +222,18 @@ test.describe("Import detail cohesion (#1340)", () => {
     await expect(page.getByTestId("reapply-subtext")).toContainText(
       "no AI call, no quota"
     );
+    const content = appContent(page);
+    const sodium = content.getByRole("link", { name: "Sodium", exact: true });
+    await expect(sodium).toHaveCount(0);
+    const dialog = await openConfirm(
+      page,
+      content.getByTestId("reimport-from-raw")
+    );
+    await settledClick(
+      page,
+      dialog.getByRole("button", { name: "Re-apply", exact: true })
+    );
+    await expect(sodium).toBeVisible();
   });
 
   test("AI doc without a saved extraction: cost note present, but no re-apply", async ({
