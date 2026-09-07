@@ -161,22 +161,10 @@ export interface SendOutcome {
   delivered: boolean;
 }
 
-// A send that reached SOME of its recipients and then failed for another.
-//
-// The Telegram channel fans out in a loop and lets a recipient's throw propagate, so
-// dispatch() marks the channel failed and the slot can retry — deliberate, stated in
-// that module's header, and unchanged. What the throw discarded was the knowledge that
-// an earlier chat in the same loop already HAS the message: in a two-chat household
-// where one chat has blocked the bot, the healthy chat holds a delivered message with a
-// live button while the channel reports nothing but failure. This carries that one bit
-// out past the throw, so `ok` keeps its exact meaning and `delivered` is still answerable.
-//
-// IT KEEPS THE ERROR IT WRAPS as its `cause`. The thing being wrapped is normally a
-// `TelegramApiError`, which #1885 typed precisely so classification reads STRUCTURE (a
-// status, a description) rather than a formatted sentence — and a wrapper that kept only
-// the sentence quietly undid that: an unrecognised 403 classified permanent before the
-// wrap and transient after it. `classifyTelegramFailure` follows the cause
-// (./telegram-error), so wrapping costs nothing (#5194, eleventh pass).
+// A send that reached some recipients while others failed. The channel finishes
+// its fan-out before throwing, retaining the failed channel outcome for retries.
+// The cause preserves the original typed transport error, including Telegram's
+// status/description, while the message can describe multiple recipient failures.
 export class PartialDeliveryError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
     super(message, options);

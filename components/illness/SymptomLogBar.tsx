@@ -30,6 +30,7 @@ import Combobox from "@/components/Combobox";
 import type { TemperatureUnit } from "@/lib/settings";
 import { useToast } from "@/components/Toast";
 import { useLatestRef } from "@/components/useLatestRef";
+import { useResettableState } from "@/components/useResettableState";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import { fmtTemp } from "@/lib/units";
 import { useTemperatureUnitDetection } from "@/components/useTemperatureUnitDetection";
@@ -262,6 +263,7 @@ export default function SymptomLogBar({
 
   // Body-temperature quick entry (issue #800) — collapsed by default (#857) to one line.
   const tempOpen = panels.openKey === TEMPERATURE_PANEL;
+  const currentPanel = useLatestRef(panels.openKey);
   const tempUnitDetection = useTemperatureUnitDetection(temperatureUnit);
   // Reading time (#800/#843) through the shared control, which is what retires this
   // bar's own <input type="time"> from the #2236 allowlist. The day is FIXED to the
@@ -296,13 +298,11 @@ export default function SymptomLogBar({
   const [tempPending, setTempPending] = useState(false);
 
   // The offer retains the reading's day and stated instant, not a detached clock time.
-  const [offeredReading, setFeverOffer] = useState<{
+  const [offeredReading, setFeverOffer] = useResettableState<{
     degF: number;
     when: WhenValue;
-  } | null>(null);
-  // THE BLOCK LIVES IN THE FOLD (#4712 judgement 1), as a derivation rather than as
-  // three sites that remember to clear it: the fold closes any way at all — including
-  // by another panel on the card opening (#5487 fix 1) — and the offer goes with it.
+  } | null>(null, tempOpen);
+  // Closing the panel discards the offer, including when another panel opens.
   const feverOffer =
     tempOpen && offeredReading?.when.date === activeDate
       ? offeredReading
@@ -476,8 +476,11 @@ export default function SymptomLogBar({
     setTempPending(false);
     if (res.ok) {
       // A completed write still gets its toast, but cannot reset another day's form
-      // or offer a dose there using this reading's time.
-      if (currentDay.current === activeDate) {
+      // or dismiss the panel opened while this request was pending.
+      if (
+        currentDay.current === activeDate &&
+        currentPanel.current === TEMPERATURE_PANEL
+      ) {
         form.reset();
         tempUnitDetection.reset();
         setTempWhen(whenOnDay(activeDate, timeZone ?? tempZone));
