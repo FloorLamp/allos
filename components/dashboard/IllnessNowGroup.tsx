@@ -174,7 +174,17 @@ export default function IllnessNowGroup({
             // gutter (the strip's row supplies none for it) and it keeps the rail
             // and the fill that say someone is ill right now: below `sm` there are
             // no borders, so the FILL is what carries that (#3897).
-            // The Now band owns the width; this row supplies its gutter and rail.
+            // A READABLE MEASURE, DECLARED BY THE BAND (#4752 item 2, reconciled by
+            // #5490 site 3). The cockpit was a phone layout stretched across whatever
+            // the viewport happened to be: a med's name sat a monitor's width from its
+            // own button and three stat headings spread across the gulfs between them.
+            // ~880px dissolves both by construction — nothing inside needs a desktop
+            // rule — but the measure is not this component's to spend: it is a ROW in
+            // the Now band's one frame (#4076), and a centred cap on the row stepped
+            // its edges 136px in from every sibling inside that frame. The band caps
+            // itself now (components/dashboard/NowCards.tsx), so this takes the row
+            // treatment like every other entry and keeps only its own gutter, rail
+            // and fill.
             className="w-full min-w-0 border-l-4 border-l-rose-500 p-4 max-sm:bg-rose-50! sm:p-5 dark:border-l-rose-400 max-sm:dark:bg-rose-950!"
           >
             <div
