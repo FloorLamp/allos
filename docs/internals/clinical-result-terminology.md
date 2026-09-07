@@ -1,377 +1,153 @@
 # Clinical-result terminology
 
-Status: shipped (#2479 part 1 — the vocabulary and the type and predicate renames;
-part 2 — the persisted `"biomarker"` catch-all retirement, migration 185)
-
-One word, "biomarker", used to name four unrelated things: the canonical
-definition registry, the identity a dated result is keyed on, the flat catalog
-at Medical → Results, and a legacy `medical_records.category` value that means
-"nothing else fit". This file is the contract that separates them. Each term
-below states what it covers, what it does **not** cover, and which axis it lives
-on.
-
-## The three axes
-
-The defect this vocabulary exists to fix is that two of these were routinely read
-as one. They are independent questions with independent mechanisms, and a row's
-answer to one says nothing about its answer to another.
-
-| axis                     | question                                                         | mechanism                                                                                                                 |
-| ------------------------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| **storage category**     | which class of clinical thing is this row?                       | `MEDICAL_CATEGORIES` (11 values) and the `medical_records.category` CHECK                                                 |
-| **catalog browsability** | may the flat Results catalog list it?                            | `RESULTS_CATALOG_CATEGORIES` (4) — and inside `vitals`, decided **per analyte** by `lib/trend-metric-analytes.ts` (#2365) |
-| **identity**             | may it coin a canonical name, be a Coverage candidate, a series? | `NON_IDENTITY_CATEGORIES` and `carriesResultIdentity()`                                                                   |
-
-**Quantitation — "does this report a number?" — is a property, not one of these
-axes.** It is a real distinction (see `QualitativeResult` below), but nothing
-selects on it, and using it as a stand-in for identity is exactly the error #2479
-was opened with. In this codebase the two cross in both directions:
-
-|                 | identity-bearing                                                                                                                                                                                | identity withheld                                                            |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| **numeric**     | LDL Cholesterol, Grip Strength (`lab`, `vitals`)                                                                                                                                                | a screening questionnaire's ITEM answer — typically 0–3, stored `assessment` |
-| **non-numeric** | urine dipstick (Protein / Glucose / Ketones / Bilirubin / Blood / Nitrite / Leukocyte Esterase, `lab`), serology (HBsAg, Anti-HCV, `lab`), ABO Blood Group / Rh Type / Blood Type (`reference`) | a functional-status finding, a temperature's body site (`assessment`)        |
-
-Read the bottom-left cell before writing any rule of the form "if it has no
-number then …": seven dipstick analytes, two serologies and the three blood-type
-facts are registered, browsable-or-passport, fully identity-bearing entries that
-report a word.
-
-## The terms
-
-### `CanonicalResultDefinition`
-
-**Axis: none — it is the registry entry itself.** The row shape of the
-`canonical_result_definitions` table and of the committed `lib/canonical-result-definitions.json`
-that seeds it: a **definition of a reportable clinical result plus the knowledge
-needed to interpret it** — `unit`, `ref_low/high` with sex, age-band, reproductive
-status and cycle-phase overrides, `optimal_low/high`, `direction`, `retest_days`,
-`panel`, `note`, `source`.
-
-It does **not** cover: a dated result (that is a `Reading` or a
-`ClinicalObservation`), and it is not a claim that the entry is a laboratory
-analyte or even a quantity — 68 of its 324 entries are not lab, 63 carry no unit
-and 98 carry no reference range.
-
-Named for the shipped user-facing noun: **Medical → Results** is already where
-labs, imaging and genomics live. Alternatives were ruled out on evidence, not
-taste — `CanonicalQuantity`/`CanonicalMeasure` (blood group is not a quantity),
-`CanonicalAnalyte` (68 non-lab entries), `CanonicalReference` (`reference` is
-already a category **value** inside the registry, held by those same three
-blood-type entries — an umbrella cannot share a name with one of its members),
-`CanonicalClinicalConcept` (says nothing about ranges or a retest clock, and
-invites anything clinical to be filed there).
-
-### `Clinical result`
-
-**Axis: presentation.** The umbrella for the mixed Results catalog and its broad
-APIs, components, filters, sort vocabulary, routes and copy. It includes numeric
-quantities and qualitative identity-bearing observations; the catalog row shape is
-therefore a `ClinicalObservation` plus presentation context, not a `Reading`.
-
-It does **not** mean every `ClinicalObservation` is catalog-browsable: category and
-per-analyte catalog rules still decide that axis. It also does not replace
-`Biomarker` / `Analyte` where the subject genuinely is one, or `Reading` where the
-subject is specifically a quantity.
-
-### `Reading`
-
-**Axis: identity.** A dated numeric quantity keyed on the #482 canonical family,
-spanning `body_metrics`, `metric_samples` and `medical_records`
-(`lib/reading-model.ts`, `docs/internals/reading-model.md`). A question about a
-QUANTITY, never about a table.
-
-Does **not** cover a stored observation that reports no number — a `Reading` has a
-`value: number` by construction.
-
-### `ClinicalObservation`
-
-**Axis: storage.** The stored `medical_records` row, quantities and
-non-quantities alike, with its document / encounter / provider links, the lab's
-own printed range, the flag and the provenance. Already the shipped word (47
-files; `getClinicalObservations` in 31) and unchanged by #2479.
-
-Does **not** imply identity: an `assessment` row is a `ClinicalObservation` too.
-
-### `Assessment`
-
-**Axis: identity.** A dated observation the app **deliberately denies biomarker
-identity**: no `canonical_result_definitions` registration, absent from
-`getUsedCanonicalNames`, never a Coverage candidate, never a series, no backing
-reading for the ★ / retest de-orphan sweeps. Viewable on its own document, which
-is the point — the observation is not hidden, only refused an identity.
-
-The reason is #2318: identity runs on the CODE **and** on the NAME, and a guard on
-one axis is not a guard. `functionalStatusExtractor` nulled the assessment LOINC
-and the same rows coined canonical names anyway.
-
-`NON_IDENTITY_CATEGORIES = ["assessment"]` is the mechanism; `carriesResultIdentity()`
-is the predicate. The recognisers at the import door are
-`lib/non-analyte-observations.ts`.
-
-Does **not** mean "non-quantitative" — see the crossing table above. A
-questionnaire item answer is numeric and is stored `assessment` precisely so it
-cannot coin a name; a urine dipstick result is non-numeric and is fully
-identity-bearing.
-
-Nor does it mean "nothing more can be understood here". A questionnaire item is
-`assessment` because it is not an analyte, but a whole SET of them may be a
-recognisable screening **instrument**, and that has an identity of its own — the
-curated instrument score (`instrument` category, canonical `PHQ-9` / `GAD-7` /
-`EPDS`), banded and crisis-aware. `lib/instrument-recognize.ts` asks that question
-at the import door and `lib/instrument-import.ts` folds a recognised set into one
-score row plus `instrument_responses` (#2321). A set that is not recognised — or is
-recognised but attributed to another subject, or unattributable in a document naming
-more than one patient (#2558), or only partly answered — stays as `assessment` rows
-and is refused a score, with a reported drop. Identity is granted to the SCORE, never
-to a question.
-
-### `QualitativeResult`
-
-**Axis: quantitation (a property, not a selector).** A property of a
-`CanonicalResultDefinition`: a registered entry that reports a **value rather than
-a number** — a blood group, a positive/negative serology, a dipstick trace, an ECG
-interpretation, an audiologic diagnosis. Classified at read time by
-`classifyQualitativeResult` (`lib/reference-range/qualitative.ts`) with
-`qualitativePresence` / `screeningRisk` / `qualitativeFlagResolution`.
-
-A value that **states no result** — `See Note`, `SEE COMMENT`, `QNS`, `Cancelled` —
-is a fourth thing again, and it moves a row on **none** of the three axes. The
-analyte is real, so the row keeps its storage category, its catalog place, its
-canonical name, its series, its Coverage candidacy and its retest clock (a test that
-produced no answer is if anything more worth redrawing). What it cannot carry is a
-**flag**: a flag is a verdict about a value, and there is no value — only a pointer
-to the narrative the document files the finding in. `statesNoResult`
-(`lib/reference-range/qualitative.ts`) is the vocabulary and
-`qualitativeFlagResolution` is its one consumer, which **clears** an out-of-range
-flag there instead of preserving it (#2687). It is deliberately narrower than the
-neighbouring `SCREEN_INDETERMINATE`: `indeterminate` / `inconclusive` / `equivocal` /
-`borderline` are ambiguous **findings**, and overriding a finding is what #549
-forbids. Being non-quantitative is not what withholds identity here either — see the
-crossing table above.
-
-Four conditions gate that clear, and each one exists because dropping it deletes a
-real verdict (#2712). The **value** must be consumed WHOLE by the non-answer
-vocabulary — matching a `see` prefix plus a target word anywhere let `See note:
-POSITIVE` count as stating no result, and the extractor is instructed to copy the
-document's own H/L marker, so the flag beside a printed result is the lab's. The
-**flag** must be out of range: this is one transition, never a promotion. The
-**notes** must assert nothing recognizable — `classifyQualitativeResult` reads notes
-only inside its recognized classes, so an unrecognized analyte's narrative was being
-discarded by the very clear that claims to follow the pointer. And the **row** must
-not be edit-locked (`isEditLocked`, #133): `updateResult` writes the user's chosen
-flag and `edited = 1` and then reconciles on the next line, so without the lock the
-save deletes the flag it just stored.
-
-That lock reaches a **second** clear, and only a second one (#2715, #2777).
-`qualitativeFlagResolution` deletes a stored flag in exactly two places: the no-result
-clear above, and the #548 §1 clear of a blunt `abnormal` on a context-neutral attribute.
-Both exist to remove an **extractor guess** on a value that cannot be abnormal, and on an
-edit-locked row the flag is not a guess but the one thing in the row a human is known to
-have chosen.
-
-Where the second clear's gate stops is decided by **`valueIndependent`** on the
-classification, and the reason it is not `immutable` is worth stating. #2715 gated the
-identity class by reading `immutable`, which happened to name exactly that set — but
-`immutable` answers the **retest** question (#548 §2: does this value change over time?),
-and whether a value changes over time says nothing about whether someone meant what they
-typed. The question the gate is actually asking is whether the verdict is a statement about
-the **analyte** rather than about this reading's **value**. "A blood type is never
-abnormal", "a urine colour is never abnormal" and "fetal fraction is a run-quality number,
-not a health signal" are analyte facts, and no correction to the value revises them — so
-withholding the clear strands nothing, because the app was never holding back a flag it
-could later produce. Those three classes are gated. "This HIV antibody reads Non-Reactive,
-therefore reassuring" (#544) and "this screen reads Low Risk" (#687) are read off the
-value, and gating them would leave someone who corrected `Reactive` to `Non-Reactive`
-looking at `abnormal` forever — the same argument #221 makes for re-deriving a corrected
-numeric row's flag. Those still clear on a locked row, as does an indeterminate screen,
-which is polarity-`neutral` but value-dependent. Neither PROMOTION moves either: #544's
-immune titer and #629's bad-polarity positive still resolve while locked, because the lock
-protects what a person wrote and is not a licence to leave an infection-positive
-displaying as `Normal`.
-
-The honest cost of the wider gate is that an edit lock stamps the **row**, not the flag
-field, so someone who corrects a urinalysis row's value and never touches its flag also
-protects whatever flag is sitting there. That population is small by construction:
-`applyImportFollowups` reconciles every inserted record at import, when no row is
-edit-locked, so a colour row's blunt `abnormal` is already gone before any human opens it
-— the gate's population and #548 §1's are disjoint at the door. What survives is a row the
-classifier could not read at import and can now (a rename, a widened vocabulary), and the
-record editor shows the flag in a visible select on the same form, so it is one tap from
-being corrected, which a silently deleted flag is not. Nothing strips what is already
-stored, and the two axes stay independent: an identity row keeping its hand-set flag is
-still exempt from the retest clock (#548 §2 reads `immutable`, now that field's only job).
-
-The **numeric** reconcile has no such gate and needs none. `RECONCILABLE_FLAGS`
-(`lib/queries/medical/flags.ts`) is that pass's own vocabulary — high / low / normal /
-non-optimal\* — which it may revisit because it can re-derive those, and must revisit
-because #221 says a corrected value re-derives its flag. `abnormal` and `immune` are not
-in it: the numeric pass cannot produce them, so it never touches a row carrying one, which
-is the edit lock's protection reached from the other side. The qualitative pass is the only
-place a hand-set `abnormal` was ever at risk, because it is the pass that owns the word.
-
-It sits on a **different axis from `Assessment`**, and the map says so explicitly
-because conflating the two is the mistake #2479's body made. A `QualitativeResult`
-is registered, browsable where its category allows, and carries full identity; an
-`Assessment` carries none, whatever its shape.
-
-### `Biomarker` / `Analyte`
-
-**Retained only where clinically accurate.** #2479 is a de-conflation, not a purge:
-`biomarkerFamily()` (the #482 identity function), `biomarker_family()` in SQL,
-`biomarker_panels`, `biomarkerRetestStatus`, and the lab-scoped trajectory grammar
-all keep the word, because those genuinely are about biomarkers. The mixed
-user-facing catalog is **Results › Clinical results**. What was retired is the
-word standing in for
-"clinical result of any kind".
-
-`Analyte` already existed (47 files) and already meant what it should: the
-substance or property being measured. Unchanged.
-
-## The constants and predicates
-
-| name                             | axis     | what it selects                                                             |
-| -------------------------------- | -------- | --------------------------------------------------------------------------- |
-| `MEDICAL_CATEGORIES`             | storage  | every legal `medical_records.category`                                      |
-| `RESULTS_CATALOG_CATEGORIES`     | catalog  | `lab \| vitals \| genomics \| scan` — the classes the flat catalog may list |
-| `NON_RESULTS_CATALOG_CATEGORIES` | catalog  | the **derived** complement; never hand-listed, so the two cannot drift      |
-| `listedInResultsCatalog(row)`    | catalog  | the per-analyte `vitals` refinement (#2365) on top of the category answer   |
-| `NON_IDENTITY_CATEGORIES`        | identity | the classes denied a canonical name, Coverage candidacy and a series        |
-| `carriesResultIdentity(cat)`     | identity | its predicate — pure; SQL reads the array directly                          |
-| `RETIRED_MEDICAL_CATEGORIES`     | time     | the values nothing may be FILED under any more (see part 2 below)           |
-| `ASSIGNABLE_MEDICAL_CATEGORIES`  | time     | the **derived** complement — what a write may pick                          |
-
-Category membership does **not** settle catalog browsability on its own: within
-`vitals`, `listedInResultsCatalog` drops an analyte whose quantity already owns a
-`/trends/metric/<slug>` home, and keeps the ones that would otherwise be stranded
-(audiogram thresholds, intraocular pressure, visual acuity, periodontal depth).
-Browsability is the **conjunction** of the two — the category class, then the
-per-analyte refinement — which is how both the row gather
-(`app/(app)/results/clinical-result-index.ts`) and the panel facet
-(`lib/biomarker-panel-reach.ts`) compose it. Asked alone, the predicate answers
-`true` for a PHQ-9: it refines `vitals` and says nothing about a category the
-catalog already excludes.
-
-`lib/__tests__/clinical-result-terminology.test.ts` is this file's ratchet, over
-the real registry and the real predicates, one representative concept per class.
-
-## Canonical registry name (#2737)
-
-The registry spans every result that carries identity, including vital signs,
-instruments, scans, genomics, derived quantities, and immutable reference facts. Its
-current umbrella name is therefore **canonical result definition**:
-`canonical_result_definitions`, `CanonicalResultDefinition`,
-`seedCanonicalResultDefinitions`, `getCanonicalResultDefinition`,
-`canonicalResultDefinitionForName`, and the `canonical-result-definitions` dataset.
-The LOINC vocabulary lives in `lib/canonical-result-loinc.ts` and resolves through
-`canonicalResultNameForLoinc` for the same reason.
-
-Migration `20260814-canonical-result-definitions` renames the established table in
-place. SQLite preserves its rows, columns, constraints, indexes, source values, and
-foreign-key targets. This is a clean namespace change: current code exposes no legacy
-view, dual write, module alias, dataset-id alias, JSON `biomarkers` property, or
-`gen:biomarkers` command. Repository consumers move atomically; existing databases
-move through the forward migration. Frozen earlier migrations and their historical
-shape fixtures retain `canonical_biomarkers`, because that is the table those versions
-actually ran against.
-
-Still retained on purpose:
-
-- **`biomarkerFamily`, `getBiomarkerSeries`, `biomarker_panels`, `biomarkerRetestStatus`**
-  and the rest of the genuinely-biomarker surface (see above).
-- **`ClinicalObservation` and `Analyte`** — already correct, already shipped.
-
-## The retired catch-all (part 2)
-
-`biomarker` was never a class of clinical thing. It was the pre-#1076 bucket meaning
-**"this is a result and nothing narrower was picked"**. No current type, schema,
-reader, writer, or category picker accepts it as a `medical_records.category`.
-
-### The rows: migration 185
-
-`reclassifyLegacyBiomarkerCategory` (`lib/legacy-category-reclass-db.ts`) re-files each
-legacy row using the canonical registry's own `category`, matched on the row's identity
-— its `canonical_name`, else the printed `name` — by exact NOCASE name against
-`canonical_result_definitions`.
-
-That is **not a new policy**. It is the rule the AI ingest path has followed since
-#1076 (`lib/medical-extract/normalize.ts`: "the canonical dataset owns the
-classification … its category WINS over the model's guess"), applied retroactively to
-the rows that predate it, and it generalises migration 090's hand-list of seven names
-to the whole registry so the answer cannot drift from the vocabulary.
-
-Migration 185 was the evidence pass that made final retirement possible. Three
-properties made it small:
-
-- **Nothing is deleted and no id moves.** It is a single-column UPDATE, so the #2444
-  child-link hazard cannot arise — `care_plan_items.source_medical_record_id`,
-  `care_plan_items.resolved_by_medical_record_id` and `intake_items.source_record_id`
-  all keep pointing at the same rows. There is deliberately **no** `CHILD_LINKS`
-  registry in migration 185: a probe guarding a delete that cannot happen is exactly
-  the guard-that-covers-nothing #2444 is about.
-- **Identity is never removed.** Every target in `RECLASS_TARGET_CATEGORIES` carries
-  result identity, so a moved row keeps its registration, its place in
-  `getUsedCanonicalNames`, its ★, its dismissals, its coverage entry and its series —
-  and there is no side-state sweep to get right, unlike #2318's pass. `assessment` is
-  excluded from the targets for precisely that reason.
-- **Unclassifiable was measured, not guessed.** A row whose identity the registry did
-  not recognise stayed in the residue for the final migration to present for review.
-
-What the move changes on purpose: the rows the registry calls `lab` / `vitals` /
-`genomics` / `scan` **enter the flat Results catalog**, which the bucket had been
-hiding them from; and a row re-filed as `vitals` / `instrument` / `derived` /
-`reference` stops carrying a lab retest clock it never earned. Nothing else — value,
-flag, name, canonical name, document link and provenance are untouched.
-
-### Final retirement: migration `20260814-medical-category-residue`
-
-The final migration runs the same canonical-registry pass once more, rebuilds
-`medical_records` without `biomarker` in its CHECK, and copies any unresolved residue
-as `category = NULL`. `NULL` is not a replacement catch-all: it is an explicit review
-state shown on Results, where a user chooses one supported category. All row ids,
-revisions, care-plan links, source-record links, saved identity, dismissals, and series
-identity remain attached while review is pending.
-
-### The writers
-
-A migration that moves rows without fixing the writers leaves the bucket refilling
-itself, so the same change closes every path:
-
-| path                                                     | closure                                                        |
-| -------------------------------------------------------- | -------------------------------------------------------------- |
-| the extraction prompt's "only if nothing else fits"      | clause deleted; an explicit no-catch-all rule replaces it      |
-| the extractor's tool enum and accept-list                | `ASSIGNABLE_MEDICAL_CATEGORIES`                                |
-| VO₂ Max from Health Connect, Withings, the fitness check | `vitals` — the registry's own category for it                  |
-| `NormVital.category`, `FitnessStore`'s vital arm         | the string is **out of the type**: a writer no longer compiles |
-| the manual category picker (`ResultForm`)                | requires one supported category                                |
-| `scripts/seed.ts`                                        | its three legacy analytes file as `lab`                        |
-
-The final migration test proves the evidence-backed and review-state outcomes while
-preserving linked behavior. The category action test proves that a pending row is
-surfaced, cannot take an unsupported category, and keeps its identity when classified.
-Migration 185's tests remain as history for the preliminary evidence pass.
-
-## Normalized reading provenance (#2735)
-
-`ReadingSource = "clinical"` names any reading linked to a clinical document,
-encounter, or provider. It deliberately does not say `"lab"`: a clinic-recorded
-intraocular pressure or pulse has the same provenance without being a laboratory
-result. Raw provider/import source strings and genuinely laboratory-specific copy
-keep their own terminology.
-
-Deliberately NOT renamed by part 2, on the owner's ruling that `Biomarker` and
-`Analyte` are retained where clinically accurate: `biomarkerFamily()` and
-`getBiomarkerSeries()` are the #482 biomarker identity function and the series drawn
-over it. The `Reading` model delegating to them is the word being used correctly, not a
-misdescription — renaming them for uniformity would make the code say less.
-
-## Persisted vocabulary audit (#2740)
-
-The follow-up audit includes schema names, stored discriminators, portable-export
-keys, undo payloads, JSON namespaces, and replay-only compatibility shells. Its
-decisions and removal conditions are recorded in
-`docs/internals/persisted-vocabulary.md`. Migration
-`20260814-persisted-vocabulary` moves established databases atomically; current
-readers and writers expose only the resulting vocabulary. There are no route shims or
-portable-export aliases: retired routes are allowed to stop resolving, and exported
-dataset keys describe the current data model.
+Status: shipped.
+
+Use these terms to distinguish what an observation stores, where it appears,
+and whether it participates in canonical identity. Follow the
+[change and test policy](../change-policy.md) when changing the model; reuse its
+existing predicates and readers.
+
+## Independent questions
+
+| Question           | Owner                                                           | Meaning                                                                        |
+| ------------------ | --------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Storage category   | `MEDICAL_CATEGORIES`, `MedicalCategory`, and the database CHECK | The supported class of clinical observation.                                   |
+| Catalog visibility | `RESULTS_CATALOG_CATEGORIES` plus `listedInResultsCatalog`      | Whether the flat Clinical results catalog lists the observation.               |
+| Identity           | `NON_IDENTITY_CATEGORIES` and `carriesResultIdentity`           | Whether the category permits canonical naming, Coverage candidacy, and series. |
+
+[medical-categories.ts](../../lib/medical-categories.ts) owns the category sets.
+`ASSIGNABLE_MEDICAL_CATEGORIES` aliases the supported categories for writers and
+pickers. `NON_RESULTS_CATALOG_CATEGORIES` derives the catalog complement.
+`carriesResultIdentity` is an exclusion predicate, not category validation; use
+the supported category vocabulary at input boundaries.
+
+Quantitation is a separate property. Numeric values do not automatically earn
+identity, and a missing number does not remove it:
+
+| Example                                | Numeric? | Identity?                | Flat catalog?                             |
+| -------------------------------------- | -------- | ------------------------ | ----------------------------------------- |
+| LDL Cholesterol                        | Yes      | Yes                      | Yes                                       |
+| Blood Pressure Systolic                | Yes      | Yes                      | No; it has a Trends metric home.          |
+| A questionnaire item                   | Often    | No; it is an assessment. | No                                        |
+| PHQ-9 total score                      | Yes      | Yes                      | No; it belongs in its instrument surface. |
+| Urine dipstick or qualitative serology | No       | Yes                      | Yes when in a catalog category.           |
+| Blood type                             | No       | Yes                      | No; it is a reference fact.               |
+
+## Terms and owners
+
+**`CanonicalResultDefinition`** is a registry definition of a reportable result
+and its interpretation knowledge. It can describe a quantity, instrument score,
+scan, genomic result, or qualitative reference fact. Units, ranges, contextual
+range overrides, direction, retest cadence, and explanatory fields may be absent.
+A definition is not a dated observation.
+
+The current names are `canonical_result_definitions`,
+`CanonicalResultDefinition`, and the `canonical-result-definitions` dataset.
+Use [the shared types](../../lib/types/medical.ts),
+[dataset accessor](../../lib/datasets/canonical-result-definitions.ts), and
+[LOINC lookup](../../lib/canonical-result-loinc.ts). Do not maintain another
+registry shape in documentation or introduce legacy namespace aliases.
+
+**Clinical result** is the presentation umbrella for the mixed Results catalog,
+its APIs, components, filters, and copy. Its rows include qualitative observations
+as well as quantities, so a numeric-only `Reading` cannot represent the whole
+catalog.
+
+**`ClinicalObservation`** is a stored `medical_records` row. It carries the
+reported value, range, flag, provenance, and document/encounter/provider links.
+It may be numeric or qualitative and may belong to a category without identity.
+
+**`Reading`** is a dated numeric quantity with canonical identity, spanning
+`body_metrics`, `metric_samples`, and `medical_records`. Its `value` is a number;
+qualitative observations stay outside that shape. Use the
+[reading model](reading-model.md) for identity mapping, series folding,
+interpretation, placement, and corrections. Its normalized `ReadingSource`
+value `clinical` describes clinical provenance independently of physical storage;
+it does not rename raw provider or import source strings.
+
+**Assessment** is an observation deliberately excluded from result identity.
+`NON_IDENTITY_CATEGORIES` contains `assessment`; `report` is not in that set.
+Assessment rows remain visible with their document, but do not register canonical
+names, enter `getUsedCanonicalNames`, contribute series points, or provide backing
+readings for stars and retest-dismissal cleanup. Both name and code paths must
+respect this exclusion. [Non-analyte recognition](../../lib/non-analyte-observations.ts)
+owns recognition at import.
+
+Questionnaire items remain assessments, including numeric item answers.
+[Instrument recognition](../../lib/instrument-recognize.ts) and
+[instrument import](../../lib/instrument-import.ts) can turn a complete,
+recognized, correctly attributed set into an identity-bearing instrument score
+and `instrument_responses`. Partial, unrecognized, wrong-subject, or ambiguous
+multi-patient material must not acquire a score; refused imports retain their
+assessment representation and report the refusal.
+
+**Qualitative result** describes a reported value such as a blood group,
+positive/negative serology, or dipstick trace. It is not another storage category
+or an identity exclusion. [The qualitative classifier](../../lib/reference-range/qualitative.ts)
+interprets supported result classes through `classifyQualitativeResult`,
+`qualitativePresence`, and `screeningRisk`.
+
+**Biomarker** and **analyte** remain appropriate for their narrower subjects.
+Keep established owners such as `biomarkerFamily`, SQL's `biomarker_family`,
+`getBiomarkerSeries`, `biomarker_panels`, and `biomarkerRetestStatus`. The broad
+presentation term is Clinical results; terminology cleanup must not replace
+precise domain names merely for uniformity.
+
+## Catalog visibility and category review
+
+The flat catalog admits `lab`, `vitals`, `genomics`, and `scan`. Within `vitals`,
+[listedInResultsCatalog](../../lib/trend-metric-analytes.ts) excludes identities
+with an existing Trends metric home and retains those without one. It uses the
+canonical name when present, otherwise the printed name.
+
+Apply category membership and the per-analyte predicate together.
+`listedInResultsCatalog` alone returns true for non-vitals categories, including
+instrument scores that category membership excludes. The Results row gather in
+`app/(app)/results/clinical-result-index.ts` and panel reach in
+`lib/biomarker-panel-reach.ts` compose both decisions. Exclusion from the catalog
+does not withhold identity or a dedicated domain surface.
+
+The category value `biomarker` is retired. Current writers and the schema accept
+supported categories; unresolved legacy rows use `category = NULL` as an explicit
+review state. Results lets the person choose a supported category while retaining
+row identity, revisions, source links, saved identity, and related state.
+Canonical registry evidence owns classification when recognized at import;
+absence of evidence must not create another catch-all category.
+
+[Persisted vocabulary](persisted-vocabulary.md) owns durable names and migration
+compatibility. Historical migrations retain the names valid at their version;
+current readers, writers, and portable exports use the resulting vocabulary.
+
+## Qualitative flags and retest clocks
+
+`qualitativeFlagResolution` returns a flag to replace it, `null` to clear it, or
+`undefined` to preserve it. These outcomes are distinct. Its current rules are:
+
+- A recognized bad-polarity result promotes an unflagged/normal row to
+  `abnormal`; an existing specific flag is preserved.
+- A recognized good durable-immunity result resolves to `immune`.
+- Other classified neutral or good results can clear an out-of-range flag.
+  An edit lock prevents this clear when `valueIndependent` says the verdict is
+  about the analyte rather than the reported value.
+- Without a classification, a no-result statement clears only when the whole
+  value matches `statesNoResult`, the flag is out of range, notes assert no
+  recognizable finding, and the row is not edit-locked. Otherwise it is preserved.
+
+A pointer such as `See Note` is not the same as an ambiguous finding such as
+`equivocal`. A pointer followed by a result must not be consumed as a non-answer.
+No-result handling changes neither category nor canonical identity, catalog
+eligibility, or retest eligibility.
+
+The edit lock is row-wide. Editing a value can therefore preserve an existing
+flag even if the person never touched the flag selector. It protects the
+no-result clear and value-independent clear; it does not block value-dependent
+reclassification or immunity/bad-polarity promotion. `immutable` answers a
+different question: whether the retest clock applies. Do not use it as a proxy
+for flag ownership.
+
+`biomarkerRetestStatus` owns cadence and its category, immutable-value,
+quality-control, and durable-immunity exemptions. Keep those decisions separate
+from catalog visibility and flag correction. Numeric reconciliation has its own
+flag vocabulary in `lib/queries/medical/flags.ts`; the
+[reading model's flag contract](reading-model.md#flag-ownership-and-missing-context)
+owns that behavior rather than a second list here.
