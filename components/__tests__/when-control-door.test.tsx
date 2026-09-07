@@ -340,6 +340,23 @@ describe("the fixed-day arm speaks the surface's words, never a storage day (#54
   it("says Today on today with no day context", () => {
     expect(fixedDayText({}, TODAY)).toBe("Today");
   });
+
+  // ONE DECLARED WIDTH ACROSS BOTH ARMS (#5490 site 1). The picker arm declared `w-36`
+  // and this one declared nothing, so the slot was content-sized in one arm and fixed
+  // in the other — and switching a card's day changed this control's width by ~35px,
+  // which `flex-1` then spent on whatever sat beside it.
+  it("declares the same slot width as the picker arm", () => {
+    const fixed = fixedDayText({}, TODAY);
+    expect(fixed).toBe("Today");
+    const text = screen.getByTestId("w-date").className;
+    cleanup();
+    mount({ maxDate: "2026-12-31" }, { date: DAY, statedAt: null });
+    const picker = screen.getByTestId("w-date").className;
+    for (const declared of ["h-8", "w-36", "text-sm"]) {
+      expect(text, `fixed-day arm: ${text}`).toContain(declared);
+      expect(picker, `picker arm: ${picker}`).toContain(declared);
+    }
+  });
 });
 
 // MANUAL ISO ENTRY STILL WORKS ON A MOVABLE DAY (#3376's invariant, kept while

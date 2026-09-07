@@ -108,7 +108,10 @@ export default function QuickLogPrnControl({
   // — the shared WhenControl's day/time must be that profile's, not the viewer's.
   // Defaults to the app-wide TimezoneProvider (the acting profile).
   tz?: string;
-  // A host may visibly propose the minute of the reading it is answering.
+  // THE MINUTE THE HOST'S PROMPT IS ABOUT (#5489 fix 5): the fever offer's reading
+  // time, a profile-local HH:MM on this surface's day. The statement opens seeded with
+  // it — VISIBLY, because a statement only ever posts what was on screen — so the dose
+  // offered for an 11:30 PM reading proposes 11:30 PM instead of an empty field.
   proposedTime?: string | null;
   // Fired once a dose is RECORDED — used by the illness fold's dose offer, which the
   // ruling ends when the offer is "taken" (#4712, 2026-09-04 11:20 UTC part 2). It
@@ -129,9 +132,19 @@ export default function QuickLogPrnControl({
   // disagree about which day the card is showing. Outside a cockpit (the medications
   // page, the dashboard's own dose card) there is no card day and the statement opens
   // on today.
+  // ONE DAY BINDING, card or no card (#4691) — `useDayBinding` answers the card's day
+  // where there is one and this surface's single day where there is not, so
+  // `isPrimaryDay` has one definition here rather than a hand-written fallback beside
+  // the context arm.
   const card = useDayBinding(todayStr, tz);
   const cardDay = card.activeDate;
+  // WHETHER THIS ROW IS UNDER A CARD AT ALL. `useDayBinding` answers a day either
+  // way — that is what makes `isPrimaryDay` one definition — but only a card's day
+  // is STATE. Outside one it is this render's `today`, which the write below must
+  // not post (see `log`).
   const inCard = useCockpitDay() !== null;
+  // WHETHER THE CARD IS STANDING ON A DAY THAT STILL HAS A "NOW" (#4686). A day that
+  // has ended has none, so the tap below asks for the minute instead of stamping one.
   const isPrimaryDay = card.isPrimaryDay;
   const toast = useToast();
   const ledger = useOptimisticLedger("prn-dose");
@@ -169,6 +182,17 @@ export default function QuickLogPrnControl({
         const fd = stampLoggedVia(new FormData());
         fd.set("id", String(itemId));
         fd.set("offset", offset);
+        // THE SURFACE'S DAY RIDES BOTH ARMS (#5489 fix 1). The day is the surface's
+        // and the statement is only the time half (#4738 ruling 1) — so the day is
+        // stated whether or not a minute was, and the now-tap can no longer post a
+        // dose with no day at all from a card that says Yesterday.
+        //
+        // A HOST WITH NO DAY OF ITS OWN STILL SAYS NOTHING, which is the action's own
+        // rule and matters more now that a stale day is REFUSED rather than ignored:
+        // outside a card `cardDay` is the day this render computed, so a medications
+        // page left open across local midnight would post yesterday on the next tap
+        // and turn a one-tap dose into "add the time". A stated minute is different —
+        // it was anchored on the day the statement showed, so that day rides with it.
         if (inCard || customTime) fd.set("date", cardDay);
         if (customTime) fd.set("time", customTime);
         if (profileId != null) fd.set("profileId", String(profileId));
@@ -205,7 +229,14 @@ export default function QuickLogPrnControl({
     });
   }
 
-  // Past days require a stated minute; they have no current instant to stamp.
+  // THE PRIMARY TAP, AND WHAT IT DOES ON A DAY THAT HAS ENDED (#5489 fix 2, the
+  // #4686 ruling): "on a day that has ended, ASK for the minute, as the temperature
+  // fold and the PRN row's 'Earlier dose' both do". Yesterday has no "now" to stamp,
+  // and the instant this writes is the safety line — it arms the redose clock and the
+  // trailing-24h ceiling — so the tap RESOLVES TO THE STATEMENT rather than stamping
+  // the current minute: it writes the minute already stated beside it, or opens the
+  // statement to ask for one. On the card's own today it is the one-tap it always was,
+  // and a statement made beside it still survives a tap that did not pay for it.
   function take(): void {
     if (isPrimaryDay) {
       void log("now");

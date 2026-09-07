@@ -49,14 +49,26 @@ import type { LocalDay } from "./temporal-types";
 
 // The pair the shared control renders and emits. One value, both grains.
 export interface WhenValue {
-  // The validated profile-local day; format it at the display boundary.
+  // The row's profile-local day — `LocalDay`, not `string` (#5105's ruling, applied
+  // by #5489). The control renders a FIXED day as text, and a storage spelling reached
+  // that text as a fallback: one card showed `Yesterday` on its toggle and `2026-09-06`
+  // in the fold below. A brand cannot stop a day being rendered, but it makes every
+  // day that enters this pair one a minter validated or constructed, so a caller
+  // cannot hand it something that is a day only by convention.
   date: LocalDay;
   // The stated instant (ISO UTC), or null = "not stated" — a real answer, never
   // a gap to fill. When non-null, its profile-local date is `date`.
   statedAt: string | null;
 }
 
-// Seed a day/time pair; invalid day input uses the profile's current day.
+// THE PAIR, OPENED ON A SURFACE'S DAY (#5489). `date` is `LocalDay` because the shared
+// control renders a FIXED day as TEXT, and a storage spelling reaching display text is
+// exactly the defect that ruling exists to make unrepresentable — so the day a host
+// holds is VALIDATED here (#5105's minter; never asserted) rather than checked eight
+// times over at eight `useState` seeds that each wrote this literal themselves. A value
+// that is not a calendar day falls back to the profile's today, because a mounted
+// control must open on some day and inventing one from unreadable text is the very
+// substitution the brand forbids.
 export function whenOnDay(
   day: string,
   tz: string,
