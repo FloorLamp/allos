@@ -14,12 +14,12 @@ These instructions apply to the migration runner and migrations.
   (`columns` and `select` in `lib/export.ts`) or is named in
   `COLUMN_EXPORT_ALLOWLIST` with the reason it stays out. The portable export
   carries provenance columns, not just facts (#5117).
-- Before renaming or dropping a column, audit `KIND_SPECS` for entities that
-  capture its table and preserve restore compatibility by retaining or rewriting
-  the affected `deleted_rows` payload keys.
 - Neither option applies if that table also feeds the FHIR passport
   (`FHIR_INPUT_TABLES`): those are carved out of the column guard, so adding an
   allowlist entry for one is what fails (#5342).
+- Before renaming or dropping a column, audit `KIND_SPECS` for entities that
+  capture its table and preserve restore compatibility by retaining or rewriting
+  the affected `deleted_rows` payload keys.
 - Put one-shot data moves in migrations, not settings flags. Per-boot
   reconciliation belongs in `boot-tasks.ts`.
 - A migration that deletes rows must declare and exercise non-cascading child
