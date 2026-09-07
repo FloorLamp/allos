@@ -21,11 +21,8 @@ import { randomBytes } from "node:crypto";
 // throwing — so a hostile Authorization header can only ever produce a 401, never a
 // 500 and never a stack trace naming this module.
 
-// The capability vocabulary. v1 ships exactly one scope, and it is WRITE-ONLY: a
-// leaked upload token can add documents to a profile its login may write, and can read
-// nothing back out of the instance. Read scopes are future work and deliberately
-// absent — adding one means a rebuild migration to grow the CHECK enum on
-// `api_tokens.scope`, which is the intended friction.
+// Upload scope includes authorized destination, inventory, and sync-request reads.
+// Keep its UI description aligned with the endpoint contract in docs/api-tokens.md.
 export const API_TOKEN_SCOPES = ["upload:documents"] as const;
 
 export type ApiTokenScope = (typeof API_TOKEN_SCOPES)[number];
@@ -46,7 +43,7 @@ export function apiTokenScopeLabel(scope: ApiTokenScope): string {
 export function apiTokenScopeSummary(scope: ApiTokenScope): string {
   switch (scope) {
     case "upload:documents":
-      return "Add medical documents to the profiles this login can write to. It cannot read anything back.";
+      return "Upload documents and read permitted destination names, document hashes, and sync requests.";
   }
 }
 
