@@ -10,7 +10,7 @@
 // The db singleton is redirected at a per-file temp DB by setup.ts before import.
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { db, today } from "@/lib/db";
+import { rawDb as db, today } from "@/lib/db";
 import { reconcileFlagsIfCanonicalChanged } from "@/lib/migrations/boot-tasks";
 import { canonicalFlagsSignature } from "@/lib/canonical-flags-version";
 import { shiftDateStr } from "@/lib/date";

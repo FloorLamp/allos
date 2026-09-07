@@ -14,7 +14,7 @@
 // All values synthetic (Test Patient–class fixtures; no PHI).
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { db } from "@/lib/db";
+import { rawDb as db } from "@/lib/db";
 import { parseCcda } from "@/lib/cda";
 import { healthRecordToPersistInput } from "@/lib/import-shape";
 import {

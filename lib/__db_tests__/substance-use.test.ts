@@ -23,7 +23,7 @@
 // Deterministic: :memory:-backed temp DB via setup.ts; dates anchored on today.
 
 import { describe, it, expect } from "vitest";
-import { db, today } from "@/lib/db";
+import { rawDb as db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import {
   recordInstrumentScore,

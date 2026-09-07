@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+import { rawDb as db } from "@/lib/db";
 import { getCyclingOverviewData, getRideDetailData } from "@/lib/queries";
 import { reconcileCyclingStreamSummaries } from "@/lib/cycling-stream-summary-db";
 import {

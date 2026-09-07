@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+import { rawDb as db } from "@/lib/db";
 import { up } from "@/lib/migrations/versions/20260817-retire-training-age-setting";
 
 describe("retired training age setting migration (#3067)", () => {

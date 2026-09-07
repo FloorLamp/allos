@@ -3,74 +3,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-// Static boundary guard for the write-transaction lock mode (issue #468). A plain
-// `db.transaction(fn)` is DEFERRED: it opens a read snapshot and only tries to take
-// the write lock at its FIRST write. If another connection committed in between, that
-// upgrade throws SQLITE_BUSY *immediately* — NOT covered by busy_timeout. With three
-// processes writing this file (the web app, the hourly notify tick, the poll
-// sidecar), a read-then-write transaction hits that trap under the top-of-hour write
-// burst and 500s. The fix routes every WRITE transaction through `writeTx` (BEGIN
-// IMMEDIATE) and every read-only snapshot through `readTx` (DEFERRED, never writes),
-// both in lib/db.ts. This test reads the repo's own source as TEXT (no DB, no
-// network, so it stays "pure" in the vitest sense) and fails the build if any
-// production module opens a raw `db.transaction(...)` — which would default back to
-// DEFERRED and re-open the trap — instead of going through the helpers.
-
+// Full-handle boot helpers cannot import the request singleton without a cycle.
+// Keep their existing IMMEDIATE-wrapper check here. Request db.transaction calls
+// are rejected by the exported db type, including renamed imports.
+// This source check recognizes wrapper spellings; it does not prove execution.
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
-// Directories scanned for production source.
-const SCAN_DIRS = ["lib", "app", "scripts"];
-
-// The ONLY files permitted to name `db.transaction(` directly:
-//  - lib/db.ts defines writeTx/readTx (the sanctioned wrappers) in terms of it.
-//  - The migration layer (runner + boot tasks + versioned migrations) manages its
-//    own BEGIN IMMEDIATE + bounded SQLITE_BUSY retry via runBootTx / `.immediate()`
-//    around the parallel-`next build` boot path (schema-utils.ts) — a different,
-//    already-hardened concurrency contract than the request-path writeTx.
-//  - lib/offline/queue-db.ts and lib/offline/draft-db.ts call the browser IndexedDB
-//    `db.transaction(store, mode)`
-//    — a completely unrelated API that merely shares the method name.
-const ALLOWLIST = new Set<string>([
-  "lib/db.ts",
-  // The one-time photo metadata backfill (#1844) is boot-path work under the SAME
-  // hardened contract as lib/migrations/*: every write goes through runBootTx
-  // (BEGIN IMMEDIATE + bounded SQLITE_BUSY retry). It cannot use writeTx — it is
-  // reached from bootTasks and takes the Database handle directly, so importing
-  // lib/db here would close the db → boot-tasks → db import cycle.
-  "lib/photo/metadata-backfill.ts",
-  // The superseded-canonical-name merge (#2306) is boot-path work under the SAME
-  // hardened contract as lib/migrations/*: its one write transaction goes through
-  // runBootTx (BEGIN IMMEDIATE + bounded SQLITE_BUSY retry). It cannot use writeTx —
-  // it is reached from bootTasks AND from migration 174, and takes the Database
-  // handle directly, so importing lib/db here would close the db → boot-tasks → db
-  // import cycle (and the migration runs before that singleton exists at all).
-  "lib/canonical-alias-merge-db.ts",
-  // The cycling stream-summary reconcile (#2292) is boot-path work under the SAME
-  // hardened contract: its one write transaction goes through runBootTx (BEGIN
-  // IMMEDIATE + bounded SQLITE_BUSY retry), and it is reached from bootTasks with
-  // the Database handle in hand, so importing lib/db here would close the
-  // db → boot-tasks → db import cycle.
-  "lib/cycling-stream-summary-db.ts",
-  // The AI tier store (#875) takes the Database handle for the same reason (#2958):
-  // lib/db imports it to register the tier-config provider, so importing lib/db back
-  // is a runtime cycle. Its one write transaction is opened `.immediate()` by hand.
-  // The guarded subset below verifies that it stays that way.
-  "lib/settings/ai-tiers.ts",
-  "lib/offline/queue-db.ts",
-  // Same story as queue-db: the browser IndexedDB `db.transaction(store, mode)`,
-  // nothing to do with SQLite write locks (#1699).
-  "lib/offline/draft-db.ts",
-  // And again for the offline READ snapshots (#2908) — the third tenant of the same
-  // browser database, same unrelated API.
-  "lib/offline/snapshot-db.ts",
-  // And the device write GATE (#2908), which is the one place all four tenants' writes
-  // are decided. Same browser IndexedDB API, same non-relationship to SQLite write locks
-  // — and here the transaction is the POINT: the gate is read and the data written in
-  // one atomic IndexedDB transaction, so no wipe can interleave between them.
-  "lib/offline/write-gate.ts",
-]);
-
-const GUARDED_ALLOWLIST = new Set([
+const HANDLE_OWNERS = new Set([
   "lib/photo/metadata-backfill.ts",
   "lib/canonical-alias-merge-db.ts",
   "lib/cycling-stream-summary-db.ts",
@@ -79,50 +18,6 @@ const GUARDED_ALLOWLIST = new Set([
   "lib/migrations/boot-tasks.ts",
 ]);
 
-function isAllowlisted(rel: string): boolean {
-  return ALLOWLIST.has(rel) || rel.startsWith("lib/migrations/");
-}
-
-function isExcluded(rel: string): boolean {
-  return (
-    rel.includes("__tests__") ||
-    rel.includes("__db_tests__") ||
-    rel.includes("__action_tests__") ||
-    rel.endsWith(".test.ts") ||
-    rel.endsWith(".test.tsx")
-  );
-}
-
-function walk(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      if (entry.name === "node_modules" || entry.name === ".next") continue;
-      out.push(...walk(full));
-    } else if (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx")) {
-      out.push(full);
-    }
-  }
-  return out;
-}
-
-function sourceFiles(): { rel: string; text: string }[] {
-  const files: { rel: string; text: string }[] = [];
-  for (const d of SCAN_DIRS) {
-    const abs = path.join(REPO, d);
-    if (!fs.existsSync(abs)) continue;
-    for (const full of walk(abs)) {
-      const rel = path.relative(REPO, full).split(path.sep).join("/");
-      if (isExcluded(rel)) continue;
-      files.push({ rel, text: fs.readFileSync(full, "utf8") });
-    }
-  }
-  return files;
-}
-
-// Strip line and block comments so a mention of `db.transaction` in prose (e.g. a
-// doc comment explaining the helper) can't trip the scanner — only real code counts.
 function stripComments(text: string): string {
   return text
     .replace(/\/\*[\s\S]*?\*\//g, "")
@@ -149,26 +44,14 @@ function unguardedTransactions(text: string): number {
   }).length;
 }
 
-describe("write-transaction lock mode boundary (issue #468)", () => {
-  it("no production module opens a raw db.transaction() — writes use writeTx, reads use readTx", () => {
-    const offenders: string[] = [];
-    for (const { rel, text } of sourceFiles()) {
-      if (isAllowlisted(rel)) {
-        if (GUARDED_ALLOWLIST.has(rel) && unguardedTransactions(text) > 0) {
-          offenders.push(rel);
-        }
-        continue;
-      }
-      if (/\bdb\.transaction\s*\(/.test(stripComments(text))) {
-        offenders.push(rel);
-      }
-    }
-    expect(
-      offenders,
-      `These modules must route through writeTx (BEGIN IMMEDIATE) or readTx ` +
-        `(read-only snapshot) from @/lib/db instead of a raw, DEFERRED ` +
-        `db.transaction():\n${offenders.join("\n")}`
-    ).toEqual([]);
+describe("full-handle transaction owners", () => {
+  it("keeps boot and AI-tier writes behind their IMMEDIATE wrappers", () => {
+    const offenders = [...HANDLE_OWNERS].filter(
+      (file) =>
+        unguardedTransactions(fs.readFileSync(path.join(REPO, file), "utf8")) >
+        0
+    );
+    expect(offenders).toEqual([]);
   });
 
   it("rejects a handle-owned transaction when its IMMEDIATE wrapper is removed", () => {
@@ -186,11 +69,5 @@ describe("write-transaction lock mode boundary (issue #468)", () => {
         `db.transaction(() => first()); runBootTx(db.transaction(() => second()))`
       )
     ).toBe(1);
-  });
-
-  it("the writeTx / readTx helpers exist in lib/db.ts", () => {
-    const dbSrc = fs.readFileSync(path.join(REPO, "lib/db.ts"), "utf8");
-    expect(/export function writeTx\b/.test(dbSrc)).toBe(true);
-    expect(/export function readTx\b/.test(dbSrc)).toBe(true);
   });
 });

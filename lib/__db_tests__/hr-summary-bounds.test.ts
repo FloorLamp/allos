@@ -21,7 +21,7 @@ import {
   getHrSeriesBySource,
   getHrSeriesBySourceInRange,
 } from "@/lib/queries";
-import { db } from "@/lib/db";
+import { rawDb as db } from "@/lib/db";
 
 function newProfile(name: string): number {
   return Number(

@@ -16,7 +16,7 @@
 // exactly as the notify-lifecycle 061 test does).
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { db } from "@/lib/db";
+import { rawDb as db } from "@/lib/db";
 import { up as migrate167 } from "@/lib/migrations/versions/167-notify-lifecycle-utc-instant";
 import { dispatch, getNotifyError } from "@/lib/notifications";
 import { deliveryKey } from "@/lib/notifications/delivery-marker";

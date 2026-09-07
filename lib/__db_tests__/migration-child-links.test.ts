@@ -43,7 +43,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript-api";
 import { describe, expect, it, vi } from "vitest";
-import { db } from "@/lib/db";
+import { rawDb as db } from "@/lib/db";
 import {
   deleteRowsWithCascade,
   foreignKeyViolationTally,

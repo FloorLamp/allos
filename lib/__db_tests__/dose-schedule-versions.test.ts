@@ -18,7 +18,7 @@
 // throwaway per-file temp DB by lib/__db_tests__/setup.ts.
 
 import { describe, it, expect } from "vitest";
-import { db, today } from "@/lib/db";
+import { rawDb as db, today } from "@/lib/db";
 import { shiftDateStr, lastNDates } from "@/lib/date";
 import { up as migrate151 } from "@/lib/migrations/versions/151-dose-schedule-versions";
 import { buildAdherencePatternFindings } from "@/lib/rule-findings";

@@ -11,7 +11,7 @@
 // Deterministic: :memory: only, no network.
 
 import { describe, it, expect } from "vitest";
-import { db, migrate } from "@/lib/db";
+import { rawDb as db, migrate } from "@/lib/db";
 import { claimDocumentForExtraction } from "@/lib/extraction-claim";
 
 process.env.ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "db-test-admin-pw";

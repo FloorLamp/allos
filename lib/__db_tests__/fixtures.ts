@@ -11,7 +11,7 @@
 // per-file temp DB by lib/__db_tests__/setup.ts (a setupFile that runs before any
 // test module loads), so this touches only the throwaway database.
 
-import { db, today } from "@/lib/db";
+import { rawDb as db, today } from "@/lib/db";
 
 export interface SeededProfile {
   profileId: number;

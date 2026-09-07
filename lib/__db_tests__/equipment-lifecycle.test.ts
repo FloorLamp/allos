@@ -7,7 +7,7 @@
 
 import Database from "better-sqlite3";
 import { describe, it, expect, beforeEach } from "vitest";
-import { db } from "@/lib/db";
+import { rawDb as db } from "@/lib/db";
 import { MIGRATIONS } from "@/lib/migrations/versions";
 import { up as up017 } from "@/lib/migrations/versions/017-equipment-retire";
 import { up as up018 } from "@/lib/migrations/versions/018-equipment-category-enum";

@@ -21,7 +21,7 @@
 // SYNTHETIC ONLY: fictional profiles, deep-past dates, invented values. No PHI.
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+import { rawDb as db } from "@/lib/db";
 import { bootTasks } from "@/lib/migrations/boot-tasks";
 import { mergeSupersededCanonicalNames } from "@/lib/canonical-alias-merge-db";
 import { getCanonicalVocabulary } from "@/lib/queries";

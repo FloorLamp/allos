@@ -16,7 +16,7 @@
 // two answers coinciding IS the defect, so the assertions are only meaningful together.
 
 import { describe, expect, it } from "vitest";
-import { db, today } from "@/lib/db";
+import { rawDb as db, today } from "@/lib/db";
 import {
   adoptProfileFromExtraction,
   getProfileAge,

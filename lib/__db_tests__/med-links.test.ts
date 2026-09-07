@@ -7,7 +7,7 @@
 // Deterministic: :memory: DB via setup.ts; fixed dates.
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { db } from "@/lib/db";
+import { rawDb as db } from "@/lib/db";
 import {
   persistDocumentImport,
   clearImportedDocumentRows,

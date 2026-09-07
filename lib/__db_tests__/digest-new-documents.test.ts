@@ -19,7 +19,7 @@
 // All values synthetic — fictional filenames/sources, no real PHI.
 
 import { describe, it, expect } from "vitest";
-import { db } from "@/lib/db";
+import { rawDb as db } from "@/lib/db";
 import { sqlNow } from "@/lib/clock";
 import { gatherDigestInput } from "@/lib/notifications/digest-data";
 import { persistDocumentImport } from "@/lib/import-persist";

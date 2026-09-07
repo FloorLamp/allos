@@ -22,7 +22,7 @@ export const DUP_DATE = "2026-01-02";
 // source='strava' delete would eat the training-log-provenance "Strava morning ride" when
 // the frozen clock rolls a relative daysAgo onto DUP_DATE).
 export function seedDupReviewPair(
-  db: Database.Database,
+  db: Pick<Database.Database, "prepare">,
   profileId: number
 ): void {
   db.prepare(

@@ -15,7 +15,7 @@
 //      unchanged. The migration must not have disturbed that mechanism.
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { db, today } from "@/lib/db";
+import { rawDb as db, today } from "@/lib/db";
 import { CANONICAL_RESULT_DEFINITIONS } from "@/lib/datasets/canonical-result-definitions";
 import { canonicalFlagsSignature } from "@/lib/canonical-flags-version";
 import { reconcileFlagsIfCanonicalChanged } from "@/lib/migrations/boot-tasks";

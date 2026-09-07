@@ -19,7 +19,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import sharp from "sharp";
-import { db } from "@/lib/db";
+import { rawDb as db } from "@/lib/db";
 import { readJpegExif } from "@/lib/photo/exif";
 import { spliceExifIntoJpeg } from "@/lib/__tests__/exif-fixture";
 import { processPhoto } from "@/lib/photo/ingest";

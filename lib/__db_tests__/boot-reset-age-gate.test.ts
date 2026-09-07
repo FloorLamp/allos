@@ -12,7 +12,7 @@
 // controlled window against the real schema and pin: fresh rows survive, stale rows reap.
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { db } from "@/lib/db";
+import { rawDb as db } from "@/lib/db";
 import { resetInterruptedWork } from "@/lib/migrations/boot-tasks";
 
 function newProfile(name: string): number {

@@ -19,7 +19,7 @@
 // data only.
 
 import { describe, it, expect } from "vitest";
-import { db } from "@/lib/db";
+import { rawDb as db } from "@/lib/db";
 import { migration as m148 } from "@/lib/migrations/versions/148-retire-run-milestones";
 import { getTimelineEvents } from "@/lib/timeline";
 

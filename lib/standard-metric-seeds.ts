@@ -79,7 +79,7 @@ function seedCreatedAt(index: number, total: number): string {
 // its own row, its own position and its own real `created_at`, so existing curation
 // is left exactly as it was.
 export function seedStandardMetricSaves(
-  db: Database.Database,
+  db: Pick<Database.Database, "prepare">,
   profileId: number
 ): void {
   const insert = db.prepare(

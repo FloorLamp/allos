@@ -25,8 +25,7 @@
 // WHY total_changes() RATHER THAN A COUNTER IN writeTx. #5073 proposed incrementing a
 // counter inside `writeTx` on the grounds that it is "the one path every mutation
 // takes". It is not, and the difference is a stale health reading. `writeTx` is where
-// every write TRANSACTION goes — lib/__tests__/immediate-tx.test.ts enforces that and
-// nothing else — but a single-statement write needs no transaction and dozens skip it.
+// request write transactions go, but single-statement writes need no transaction.
 // `deleteAppointment` (app/(app)/encounters/appointment-actions.ts) removes the row with
 // one prepared statement and no wrapper, and `getScheduledAppointments` is one of the
 // gathers memoized here, so a writeTx-only counter would have served the deleted
@@ -44,7 +43,6 @@
 // Outside a request `cache()` is identity, and then this wrapper is a plain
 // passthrough: a DB test, a script and the notify sidecar compute every call, exactly
 // as `cache()` and `tickCached` degrade outside their own scopes.
-import type Database from "better-sqlite3";
 import { db, hoistedStatement } from "./db";
 import { cache } from "./request-cache";
 
@@ -90,7 +88,7 @@ interface Store {
 // result carries closures — `weather.canDo` is
 // `(candidate) => canDoIndoorActivity(profileId, candidate)` (lib/queries/coaching.ts) —
 // which JSON does not see, so their captured scopes are held until the next commit too.
-const stores = new WeakMap<Database.Database, Store>();
+const stores = new WeakMap<typeof db, Store>();
 
 function storeAt(version: string): Store {
   let store = stores.get(db);

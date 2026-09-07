@@ -18,7 +18,7 @@
 // data only; no PHI.
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { db } from "@/lib/db";
+import { rawDb as db } from "@/lib/db";
 import { up } from "@/lib/migrations/versions/158-notify-times-minute-grain";
 import { getNotifySchedule, setProfileSetting } from "@/lib/settings";
 
