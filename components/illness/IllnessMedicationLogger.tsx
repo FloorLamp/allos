@@ -57,9 +57,11 @@ function IllnessAddMedicationControl({
 // #4753's primitive claims that a chip's label shows the payload its tap carries —
 // so a chip that wrote a dose the reader never saw would break the one thing the
 // primitive promises. The panel it opens states the dose, that med's own redose
-// line, and — since #4713 — the weight-band basis the dose came from, evaluated for
-// THIS subject at the moment the panel opens; the labeled-verb chip inside it is the
-// tap that writes, and its label is the dose.
+// line, and — since #4713 — what the OTC label band reads for THIS subject's recorded
+// weight, evaluated at the moment the panel opens: the dose's own basis in the
+// ordinary case, and a stated difference when the chart and the item disagree. The
+// labeled-verb chip inside it is the tap that writes, and its label is the dose the
+// item carries — the band is stated beside it, never substituted into it.
 export default function IllnessMedicationLogger({
   meds,
   tz,
