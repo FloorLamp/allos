@@ -136,32 +136,18 @@ export const telegramChannel: NotificationChannel = {
     msg: NotificationMessage,
     opts?: DispatchOptions
   ) {
-    // Fan the message out to every managing login's chat (deduped by chat id, so a
-    // shared family group gets ONE copy). Each recipient is gated by ITS login's
-    // Telegram disabled-kinds set (#928, now login-scoped per #1072) — a kind a
-    // login turned off is a deliberate non-send for that login, not a failure (no
-    // throw, so dispatch() counts the channel healthy and never sets
-    // notify_last_error, mirroring the HA/push disabled-kind no-op). `test` is
-    // always allowed. Enforced HERE, inside the chokepoint, so the gate can't be
-    // bypassed by a raw-primitive send. A send throw for ANY recipient propagates so
-    // dispatch() marks the channel failed and the slot can retry.
-    // An explicit chat override REPLACES the fan-out for this send (#615/#1716): the
-    // targets are raw chat ids, not logins, so the per-login disabled-kinds gate below
-    // does not apply to them — the chat was named for exactly this item, and a
-    // per-login mute of a chat that isn't a login's is meaningless. Deduped so a
-    // repeated id can't double-send. A throw still propagates, so dispatch() records
-    // the delivery outcome for an override send exactly as for a fan-out send.
+    // A chat failure must not prevent the remaining caregivers from receiving this
+    // message. Attempt every eligible chat, then fail the channel if any failed.
+    // The existing slot retry may send healthy chats a second copy; retaining that
+    // bounded retry is safer than consuming a safety reminder after partial delivery.
+    // Permanent errors remain visible in each login's delivery health; a transport
+    // failure does not change the person's notification preferences.
     //
-    // THIS CHANNEL IS NOT ONE RECIPIENT (#5194, tenth falsifying pass). Both loops
-    // below are a fan-out: a household is several chats, and one of them blocking the
-    // bot fails the whole channel while every other chat is holding the message. So
-    // the loops report what they REACHED — `delivered` on the way out, and
-    // `deliveryFailure` carrying the same bit through the throw — and the propagation
-    // above is unchanged. Web Push and email already answer at the recipient level
-    // (they throw only when nobody was reached); this is the third fan-out learning
-    // to say the same thing without giving up its retry.
+    // Explicit chat overrides replace managed recipients and bypass per-login kinds.
+    // Shared chat IDs receive one copy, whichever path supplied them.
     const override = opts?.telegramChatIds;
     let delivered = false;
+    const failures: unknown[] = [];
     if (override?.length) {
       for (const chatId of Array.from(new Set(override))) {
         try {
@@ -173,9 +159,10 @@ export const telegramChannel: NotificationChannel = {
           // message is ABOUT, which this path has always had and never had to guess.
           await trackDelivered(profileId, chatId, messageId, msg);
         } catch (e) {
-          throw deliveryFailure(e, delivered);
+          failures.push(e);
         }
       }
+      if (failures.length) throw deliveryFailure(failures, delivered);
       return { delivered };
     }
     // One send per chat; the outcome is recorded for EVERY login mapped to that chat
@@ -216,26 +203,24 @@ export const telegramChannel: NotificationChannel = {
         // holds none.
         await trackDelivered(profileId, chatId, messageId, msg);
       } catch (e) {
-        throw deliveryFailure(e, delivered);
+        failures.push(e);
       }
     }
+    if (failures.length) throw deliveryFailure(failures, delivered);
     return { delivered };
   },
 };
 
-// The failure a fan-out propagates, carrying whether anybody had already received the
-// message (#5194, tenth pass). The channel still fails and the slot can still retry —
-// `ok` is untouched — but dispatch() can now tell "nobody got this" from "the household
-// got this and one chat is blocked", which is the difference between a nudge whose
-// promise is on record and one whose promise is lost.
-// The wrapped error is kept as the `cause` so nothing downstream is worse off for
-// having been wrapped: `classifyTelegramFailure` reads the TelegramApiError's status and
-// description through it, which is what tells a blocked chat (permanent, forget the
-// pointer) from a rate limit (transient, keep it).
-function deliveryFailure(e: unknown, delivered: boolean): Error {
-  const message = e instanceof Error ? e.message : String(e);
-  if (!delivered) return e instanceof Error ? e : new Error(message);
-  return new PartialDeliveryError(message, { cause: e });
+// Preserve every failure's description, and keep the original first error as the
+// cause so its typed Telegram status survives partial-delivery reporting.
+function deliveryFailure(failures: unknown[], delivered: boolean): Error {
+  const message = failures
+    .map((e) => (e instanceof Error ? e.message : String(e)))
+    .join("; ");
+  if (delivered)
+    return new PartialDeliveryError(message, { cause: failures[0] });
+  if (failures.length === 1 && failures[0] instanceof Error) return failures[0];
+  return new Error(message, { cause: failures[0] });
 }
 
 // The bookkeeping every delivered message gets, whichever send path delivered it:

@@ -30,6 +30,12 @@ credentials degrade gracefully; no channel is not a transport error.
   skip both bands. Use the existing schedule planners, not a wider due window.
 - Route sends through the shared dispatch path, including safety escalation.
   Preserve per-channel routing, delivery outcomes, and delivery-health reporting.
+- Telegram attempts every eligible chat even when another recipient fails. Any
+  failure keeps the channel failed, while partial delivery records that someone
+  received the message. Slot retries may therefore send healthy chats a second
+  copy. Permanent failures remain visible in delivery health and do not silently
+  change a login's channel preferences. Explicit chat overrides follow the same
+  isolation and retry behavior without claiming a login's delivery outcome.
 - A send marker records delivered content. A failed send must not consume it.
   Keep the existing marker vocabulary in `send-markers.ts` and the kind cadence
   declaration; do not build marker keys ad hoc in callers.

@@ -21,6 +21,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import path from "node:path";
 import { rawDb as db } from "@/lib/db";
 import {
+  getLoginTelegram,
   setLoginEmailNotify,
   setLoginTelegram,
   setProfileHomeAssistant,
@@ -155,46 +156,77 @@ describe("Telegram owners", () => {
     ]);
   });
 
-  // A CHANNEL IS NOT A RECIPIENT (#5194, tenth falsifying pass). One chat in the
-  // household has blocked the bot; the other chat is holding the message. The channel
-  // still FAILS — the slot must be able to retry and the blocked login must read as
-  // Erroring, both unchanged — and `delivered` says the household got it, which is what
-  // a caller whose correctness depends on somebody having SEEN the message needs and
-  // could not previously ask (lib/notifications/still-going.ts records what the nudge
-  // promised on exactly this answer).
-  it("a partly delivered household fan-out is a failed channel that DELIVERED", async () => {
-    const p = newProfile("Blocked one chat");
-    const good = seedLoginTelegram(p, "chat-good");
-    const blocked = seedLoginTelegram(p, "chat-blocked");
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
-        const body = String(init?.body ?? "");
-        return body.includes("chat-blocked")
-          ? new Response(
-              JSON.stringify({
-                ok: false,
-                description: "Forbidden: bot was blocked by the user",
-              }),
-              { status: 403, headers: { "content-type": "application/json" } }
-            )
-          : new Response(
-              JSON.stringify({ ok: true, result: { message_id: 7 } }),
-              { status: 200, headers: { "content-type": "application/json" } }
-            );
-      })
-    );
+  describe.each(["managed", "override"] as const)(
+    "%s recipient failures",
+    (route) => {
+      it.each([
+        [403, 200, 200],
+        [200, 403, 200],
+        [200, 200, 503],
+        [403, 503, 429],
+      ])(
+        "attempts every chat for HTTP outcomes %i, %i, %i",
+        async (...statuses) => {
+          const failed = statuses.flatMap((status, index) =>
+            status === 200 ? [] : [index]
+          );
+          const p = newProfile("Recipient isolation");
+          const chats = ["chat-first", "chat-middle", "chat-last"];
+          const owners = chats.map((chat) => seedLoginTelegram(p, chat));
+          const attempted: string[] = [];
+          vi.stubGlobal(
+            "fetch",
+            vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+              const { chat_id: chatId } = JSON.parse(String(init?.body));
+              attempted.push(chatId);
+              const fails = failed.includes(chats.indexOf(chatId));
+              return new Response(
+                JSON.stringify(
+                  fails
+                    ? { ok: false, description: `Failure for ${chatId}` }
+                    : { ok: true, result: { message_id: 7 } }
+                ),
+                {
+                  status: statuses[chats.indexOf(chatId)],
+                  headers: { "content-type": "application/json" },
+                }
+              );
+            })
+          );
 
-    const results = await dispatch(p, DOSE);
-    expect(results).toHaveLength(1);
-    expect(results[0].ok).toBe(false);
-    expect(results[0].delivered).toBe(true);
-    // The per-owner accounting is untouched by the new field: the chat that received it
-    // is Delivering, the chat that refused it is Erroring.
-    expect(stateOf("telegram", good)).toBe("delivering");
-    expect(stateOf("telegram", blocked)).toBe("failing");
-    expect(getNotifyError()).not.toBeNull();
-  });
+          const [result] = await dispatch(
+            p,
+            DOSE,
+            route === "override"
+              ? { telegramChatIds: [...chats, chats[0]] }
+              : undefined
+          );
+          expect(attempted).toEqual(chats);
+          expect(result).toMatchObject({
+            ok: false,
+            delivered: failed.length < chats.length,
+          });
+          for (const index of failed)
+            expect(result.error).toContain(chats[index]);
+          // Overrides name no login: even a coincident managed chat cannot claim their
+          // outcome. Managed sends record every owner independently, including the last.
+          expect(owners.map((owner) => stateOf("telegram", owner))).toEqual(
+            chats.map((_, index) =>
+              route === "override"
+                ? null
+                : failed.includes(index)
+                  ? "failing"
+                  : "delivering"
+            )
+          );
+          if (route === "managed") expect(getNotifyError()).not.toBeNull();
+          expect(
+            owners.map((owner) => getLoginTelegram(owner).telegramEnabled)
+          ).toEqual([true, true, true]);
+        }
+      );
+    }
+  );
 
   // THE WRAPPER KEEPS THE ERROR IT WRAPS (#5194, eleventh pass). `delivered` rides out
   // past the throw inside a PartialDeliveryError, and the thing being wrapped is the
