@@ -25,6 +25,7 @@ import type { FoodSlotBoundaries } from "@/lib/food-slot";
 import FoodServingForm from "@/components/nutrition/FoodServingForm";
 import type { MeasurementsQuickEntry } from "@/lib/quick-entry-measurements";
 import MoodForm, { type MoodFormDay } from "@/components/mood/MoodForm";
+import type { LocalDay } from "@/lib/temporal-types";
 
 // THE ADD DOOR RESOLVES IN PLACE (#4045 §1), which is what #3958 asked for and what
 // only the dose kind shipped: "one door, kind-resolved — filtered to a kind it IS that
@@ -181,8 +182,8 @@ export default function HistoryAddDoor({
 }: {
   kind: HistoryAddKind;
   /** The day the reader is looking at, or today. */
-  date: string;
-  maxDate: string;
+  date: LocalDay;
+  maxDate: LocalDay;
   vocabulary: HistoryAddVocabulary;
   /**
    * The window the day chart was showing when a kind chip was tapped (#4950), as

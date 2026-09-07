@@ -129,7 +129,15 @@ export default function NowCards({
     );
 
   return (
-    <ul className="band flex min-w-0 flex-col overflow-hidden rounded-xl border border-(--border) bg-surface px-0!">
+    // THE BAND DECLARES ITS ROWS' MEASURE, ONCE (#5490 site 3). ~880px is #4752 §2's
+    // approved reading measure for the illness cockpit, which spent it as
+    // `mx-auto max-w-[880px]` on its OWN box — but the cockpit is a row inside this
+    // one frame (#4076), so that centred cap stepped its edges 136px in from the
+    // ordinary rows it shares the frame with. `NowCards` already guards this rule
+    // against 16px eight lines below; the 136px arrived from a child. The cap belongs
+    // to the FRAME: one width decision, applied once, and a future Now row cannot
+    // re-introduce the step. Below the cap `w-full` means the phone is unchanged.
+    <ul className="band mx-auto flex w-full max-w-[880px] min-w-0 flex-col overflow-hidden rounded-xl border border-(--border) bg-surface px-0!">
       {rows.map((row, index) => {
         const animating = motion.animate.has(row.id);
         // THE LABEL IS THE CLUSTER'S FIRST ROW'S (#4752 item 6). The ranker already

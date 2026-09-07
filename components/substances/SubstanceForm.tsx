@@ -11,6 +11,7 @@ import {
   correctSubstanceUseAction,
 } from "@/app/(app)/medical/substance-use/actions";
 import SubmitButton from "@/components/SubmitButton";
+import type { LocalDay } from "@/lib/temporal-types";
 
 // THE SUBSTANCE DOMAIN'S ONE FORM (#4424 ruling 1), named by
 // `LOG_MANIFEST.substance.pieces.form`, replacing the `/history` add door's spelling,
@@ -58,7 +59,7 @@ export interface SubstanceChoice {
 export interface SubstanceEntryRow {
   eventId: number;
   substance: string;
-  date: string;
+  date: LocalDay;
   /** The stated use instant, or null for the commonest answer: nobody said. */
   statedAt: string | null;
   /** What the person wrote about this use, or null. Seeds the field so a save can

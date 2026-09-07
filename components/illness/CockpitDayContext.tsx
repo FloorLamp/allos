@@ -3,6 +3,7 @@
 import { createContext, useContext, useState } from "react";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { dateStrInTz } from "@/lib/date";
+import type { LocalDay } from "@/lib/temporal-types";
 
 // THE DAY A CARD IS STANDING ON (issue #4691), supplied to every control beneath it.
 //
@@ -21,11 +22,11 @@ import { dateStrInTz } from "@/lib/date";
 export interface CockpitDay {
   // The card's primary day. Its "now" is a real instant, which is what lets a control
   // beneath it fall back to the current clock.
-  date: string;
+  date: LocalDay;
   // The second day the toggle offers, when the card offers one.
-  altDate?: string;
+  altDate?: LocalDay;
   // The day every write and statement beneath this card binds to.
-  activeDate: string;
+  activeDate: LocalDay;
   // Whether `activeDate` is THE PROFILE'S TODAY — not merely the card's primary day.
   // A day that has ENDED has no "now", so anything that would otherwise stamp the
   // current clock — a reading time, a dose time — must ask instead.
@@ -38,7 +39,7 @@ export interface CockpitDay {
   isPrimaryDay: boolean;
   dateLabel: string;
   altDateLabel: string;
-  select: (day: string) => void;
+  select: (day: LocalDay) => void;
 }
 
 const CockpitDayContext = createContext<CockpitDay | null>(null);
@@ -51,8 +52,8 @@ export function CockpitDayProvider({
   tz,
   children,
 }: {
-  date: string;
-  altDate?: string;
+  date: LocalDay;
+  altDate?: LocalDay;
   dateLabel?: string;
   altDateLabel?: string;
   // The SUBJECT profile's zone, for a card logging a household member (#858). Defaults
@@ -105,7 +106,7 @@ export function useCockpitDay(): CockpitDay | null {
 // it. An unwrapped mount is a single-day surface standing on the day it was handed;
 // asking the calendar whether that day is today is the same question the provider
 // asks, which is what makes the required-time rule reach the unwrapped mounts too.
-export function useDayBinding(fallbackDate: string, tz?: string): CockpitDay {
+export function useDayBinding(fallbackDate: LocalDay, tz?: string): CockpitDay {
   const card = useCockpitDay();
   const appTz = useTimezone();
   const todayStr = dateStrInTz(tz ?? appTz);
@@ -118,4 +119,16 @@ export function useDayBinding(fallbackDate: string, tz?: string): CockpitDay {
     altDateLabel: "Yesterday",
     select: () => {},
   };
+}
+
+// THE WORDS A SURFACE USES FOR ONE OF ITS DAYS (#5489) — the same words its toggle
+// shows, or null when the day is not one this surface names. Every control beneath a
+// day context reads its day's SPELLING here rather than re-deriving one from the
+// clock: four consumers each asked the clock and three of them answered a storage
+// day, which is how one card came to show `Yesterday` above `2026-09-06`.
+export function cockpitDayLabel(card: CockpitDay, day: LocalDay): string | null {
+  if (day === card.date) return card.dateLabel;
+  if (card.altDate !== undefined && day === card.altDate)
+    return card.altDateLabel;
+  return null;
 }

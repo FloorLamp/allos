@@ -48,6 +48,7 @@ import {
   addMeasurements,
   type MeasurementsSaveResult,
 } from "./measurement-actions";
+import type { LocalDay } from "@/lib/temporal-types";
 
 export type { MeasurementEntryMetric } from "@/lib/measurement-entry";
 
@@ -158,7 +159,7 @@ function refusedMessage(
 // HR), so dropping them would be a silent regression rather than a simplification.
 
 export interface MeasurementsQuickAddProps {
-  defaultDate: string;
+  defaultDate: LocalDay;
   // The stated instant already on `defaultDate`'s manual body-metrics row, or null
   // (#2235 decision 5): editing an existing day seeds the Time from the row's own
   // `occurred_at` — the only thing there is to seed, since body_metrics has no

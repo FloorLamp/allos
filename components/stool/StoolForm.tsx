@@ -9,6 +9,7 @@ import { BRISTOL_STOOL_TYPES } from "@/lib/bristol-stool";
 import { statedHhmm } from "@/lib/stated-time";
 import { correctStoolReading, logStoolForm } from "@/app/(app)/stool-actions";
 import SubmitButton from "@/components/SubmitButton";
+import type { LocalDay } from "@/lib/temporal-types";
 
 // THE STOOL DOMAIN'S ONE FORM (#4424 ruling 1), named by
 // `LOG_MANIFEST.stool.pieces.form`: the record's "Log a movement" door and that row's
@@ -49,7 +50,7 @@ export default function StoolForm({
   onCancel,
 }: {
   /** The day in hand (ruling 2) — the record day, never a re-derived today. */
-  date: string;
+  date: LocalDay;
   /** The subject's own today: any real past day is writable, never the future. */
   maxDate: string;
   row?: StoolReadingRow;

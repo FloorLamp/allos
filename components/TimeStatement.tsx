@@ -8,7 +8,8 @@ import {
   DOSE_ACTION_ICON,
   DOSE_ACTION_NEUTRAL,
 } from "@/components/medications/dose-action-styles";
-import { statedHhmm } from "@/lib/stated-time";
+import { statedHhmm, statedInstantOnDate } from "@/lib/stated-time";
+import type { LocalDay } from "@/lib/temporal-types";
 
 // THE CLOCK GLYPH IS THE ONLY SPELLING OF THIS TOGGLE (#4426's rendering ruling,
 // 2026-09-02), so it is not a `label` prop any more and no mount can choose words —
@@ -73,9 +74,25 @@ export interface TimeStatement {
   setOpen: (open: boolean) => void;
 }
 
+// The pair a mount opens on: the surface's day, and the minute its host is proposing
+// (rule 6) — or none, which is the empty field every other mount opens with.
+function seedWhen(
+  day: LocalDay,
+  proposed: string | null,
+  tz: string
+): WhenValue {
+  return {
+    date: day,
+    statedAt: proposed
+      ? (statedInstantOnDate(day, proposed, tz)?.toISOString() ?? null)
+      : null,
+  };
+}
+
 export function useTimeStatement({
   shown = true,
   day,
+  proposed = null,
   timeLabel,
   testId,
   tz: tzProp,
@@ -90,7 +107,15 @@ export function useTimeStatement({
   // one statement serve create and edit: edit seeds the day from the row, create takes
   // it from the surface, and the statement is the same control in both. A mount that
   // wants to reach another day moves its SURFACE's day, never this control's.
-  day: string;
+  day: LocalDay;
+  // Rule 6 — A HOST ANSWERING A TIMED OBSERVATION MAY PROPOSE ITS MINUTE (#5489).
+  // The illness fold's fever offer knows the reading it is about; the dose it offers
+  // should open on that reading's minute rather than on an empty field the caregiver
+  // has to re-type. A proposal is a profile-local HH:MM on `day`, and it opens the
+  // reveal WITH it — rule 2 is not weakened, it is honoured: a statement this control
+  // posts is one the reader saw. Absent everywhere else, which keeps the closed-and-
+  // empty fast path exactly what it was.
+  proposed?: string | null;
   // The revealed field's own label. The DOOR takes no words from a mount (see
   // `HAPPENED_EARLIER`); this names the minute being stated, which is the domain's.
   timeLabel: string;
@@ -103,14 +128,24 @@ export function useTimeStatement({
 }): TimeStatement {
   const contextTz = useTimezone();
   const tz = tzProp ?? contextTz;
-  const [open, setOpen] = useState(false);
-  const [when, setWhen] = useState<WhenValue>({ date: day, statedAt: null });
+  const [open, setOpen] = useState(proposed !== null);
+  const [when, setWhen] = useState<WhenValue>(() =>
+    seedWhen(day, proposed, tz)
+  );
   // Rule 3 as a render-phase follower, not an effect: the drop lands on the same
-  // commit the new day does, so no render can post against the day that left.
+  // commit the new day does, so no render can post against the day that left. A NEW
+  // PROPOSAL re-seeds through the same follower, for the same reason — the offer that
+  // made it is about one reading, and a second reading is a different minute.
   const [seenDay, setSeenDay] = useState(day);
-  if (seenDay !== day) {
+  const [seenProposed, setSeenProposed] = useState(proposed);
+  if (seenDay !== day || seenProposed !== proposed) {
+    const proposalChanged = seenProposed !== proposed;
     setSeenDay(day);
-    setWhen({ date: day, statedAt: null });
+    setSeenProposed(proposed);
+    setWhen(seedWhen(day, proposed, tz));
+    // A proposal arrives WITH its reveal; a day change alone leaves the door as the
+    // user left it.
+    if (proposalChanged && proposed !== null) setOpen(true);
   }
 
   const at = shown ? statedHhmm(when.statedAt, tz) || null : null;

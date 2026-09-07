@@ -12,6 +12,7 @@ import {
   logHistoricalDose,
   updateHistoricalDose,
 } from "@/app/(app)/nutrition/intake-actions";
+import type { LocalDay } from "@/lib/temporal-types";
 
 export interface HistoricalDoseOption {
   id: number;
@@ -70,13 +71,13 @@ export default function HistoricalDoseForm({
   /** In the order the mount wants them offered; one item renders no picker. */
   items: HistoricalDoseItem[];
   minDate?: string;
-  maxDate: string;
-  initialDate?: string;
+  maxDate: LocalDay;
+  initialDate?: LocalDay;
   defaultTime: string;
   editing?: {
     logId: number;
     doseId: number;
-    date: string;
+    date: LocalDay;
     // The row's stated event instant (occurred_at, ISO UTC), or null = no intake
     // time was ever stated. Never a record-chain fallback.
     statedAt: string | null;

@@ -42,6 +42,7 @@ import {
   setLedgerSelectionTime,
   type LedgerSelectionEditResult,
 } from "./intake-actions";
+import type { LocalDay } from "@/lib/temporal-types";
 
 // THE DAY LEDGER (#3987 phase 1).
 //
@@ -80,7 +81,7 @@ function occurrenceKey(date: string, doseId: number): string {
 }
 
 export interface DayLedgerProps {
-  date: string;
+  date: LocalDay;
   groups: LedgerGroup[];
   /**
    * Whether this day is still inside `DOSE_LOG_DATE_WINDOW_DAYS`. Beyond it the write

@@ -44,11 +44,17 @@ import {
   zonedDateParts,
   zonedWallTimeToUtc,
 } from "./date";
+import type { LocalDay } from "./temporal-types";
 
 // The pair the shared control renders and emits. One value, both grains.
 export interface WhenValue {
-  // The row's profile-local day, YYYY-MM-DD.
-  date: string;
+  // The row's profile-local day — `LocalDay`, not `string` (#5105's ruling, applied
+  // by #5489). The control renders a FIXED day as text, and a storage spelling reached
+  // that text as a fallback: one card showed `Yesterday` on its toggle and `2026-09-06`
+  // in the fold below. A brand cannot stop a day being rendered, but it makes every
+  // day that enters this pair one a minter validated or constructed, so a caller
+  // cannot hand it something that is a day only by convention.
+  date: LocalDay;
   // The stated instant (ISO UTC), or null = "not stated" — a real answer, never
   // a gap to fill. When non-null, its profile-local date is `date`.
   statedAt: string | null;

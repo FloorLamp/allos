@@ -226,12 +226,20 @@ export async function deleteSideEffect(
 // the profile's today, so a row rendered under a Yesterday toggle wrote today anyway
 // and no cockpit path could reach last night's dose. An absent `date` still means
 // today — every host that shows no day of its own says nothing here.
+//
+// AND A DAY THAT HAS ENDED HAS NO "NOW" (#4686, applied by #5489). The quick-log's
+// primary tap used to post `offset=now` with no day at all, so a dose tapped on a
+// card standing on Yesterday was stored at the current minute on today — a wrong-day
+// administration record, and the instant that arms the redose clock and the
+// trailing-24h ceiling. Both arms now state the day, and a "now" on a day that is not
+// the profile's today is REFUSED rather than silently stamped: the surface asks for
+// the minute instead.
 function resolveGivenAt(
   profileId: number,
   offset: string,
   time: string | null,
   date: string | null
-): Date | undefined | "invalid" {
+): Date | undefined | "invalid" | "needs-time" {
   switch (offset) {
     case "custom": {
       if (!time) return "invalid";
@@ -247,7 +255,9 @@ function resolveGivenAt(
     }
     case "now":
     default:
-      return undefined;
+      return date !== null && date !== today(profileId)
+        ? "needs-time"
+        : undefined;
   }
 }
 
@@ -280,6 +290,8 @@ export async function logMedicationAdministration(
     strOrNull(formData.get("time")),
     strOrNull(formData.get("date"))
   );
+  if (given === "needs-time")
+    return formError("Add the time this dose was given.");
   if (given === "invalid") return formError("Enter a valid time.");
   const outcome = logAdministration(
     profileId,

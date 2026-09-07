@@ -66,6 +66,7 @@ export default function IllnessMedicationLogger({
   intakeContext,
   canAdd,
   nowIso,
+  proposedTime,
   yieldsTo,
   onLogged,
 }: {
@@ -82,6 +83,12 @@ export default function IllnessMedicationLogger({
   // The server's redose-window "now" (see QuickLogPrnContent.nowIso) — this is a
   // "use client" mount, so the frozen-clock env override is invisible here.
   nowIso: string;
+  // THE TIME THE HOST'S OWN PROMPT IS ABOUT (#5489 fix 5) — the fever offer's reading
+  // minute, a profile-local HH:MM on the surface's day. The dose panel opens its
+  // statement on it, so the control that asked for this dose says WHEN the thing it
+  // is answering happened. Absent on every host that is not answering a timed
+  // observation, which is what keeps it a data prop rather than a mode.
+  proposedTime?: string | null;
   // THE CHIPS THIS ROW YIELDS TO THE FOLD'S DOSE OFFER (#4712 ruling 2026-09-04 11:20
   // UTC part 2). A persistent Meds section names the antipyretics the fold offers, and
   // those chips step aside WHILE that offer is live — one prompt for one dose. Absent
@@ -211,6 +218,7 @@ export default function IllnessMedicationLogger({
             profileId={profileId}
             layout="detail"
             tz={tz}
+            proposedTime={proposedTime}
             onLogged={onLogged}
           />
         </div>

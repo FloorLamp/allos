@@ -34,6 +34,8 @@ import {
 } from "@/components/illness/CockpitDayContext";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { statedHhmm } from "@/lib/stated-time";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import { formatClock } from "@/lib/format-date";
 import {
   logSymptom,
   logTemperature,
@@ -53,6 +55,7 @@ import { useDoseOfferSignal } from "@/components/illness/DoseOfferContext";
 import type { PrnMedForQuickLog } from "@/lib/queries/intake/adherence";
 import type { IntakeFormContext } from "@/lib/intake-form-context";
 import SubmitButton from "@/components/SubmitButton";
+import type { LocalDay } from "@/lib/temporal-types";
 
 // One-tap symptom logger (issue #799/#857), modeled on the FoodLogBar one-tap pattern:
 // optimistic local severities, a Server Action per tap, and reconciliation to the
@@ -112,7 +115,7 @@ export default function SymptomLogBar({
 }: {
   // Primary date (YYYY-MM-DD). On the dashboard this is today; on the Timeline it's the
   // selected day.
-  date: string;
+  date: LocalDay;
   // Optional second date for the toggle (yesterday on the dashboard). Absent → single-day.
   altDate?: string;
   // symptom key → severity already logged, for the primary and alt dates.
@@ -249,6 +252,9 @@ export default function SymptomLogBar({
   // thermometer-to-phone reading meant anyway. Adjusting it for an earlier reading is
   // still one tap away, on the same absolute-local terms every other statement uses.
   const tempZone = useTimezone();
+  // The login's own clock convention (#964) — the fever offer states the reading's
+  // minute, and it says it the way every other rendered time on the page does.
+  const formatPrefs = useFormatPrefs();
   const [tempWhen, setTempWhen] = useState<WhenValue>(() => ({
     date,
     statedAt: null,
@@ -276,7 +282,16 @@ export default function SymptomLogBar({
   // the day, or the fold closing. It never survives the fold: rendering below reads
   // `tempOpen && feverOffer`, so there is no separate cleanup this state can forget
   // that would leave the block up with the fold closed.
-  const [feverOffer, setFeverOffer] = useState<{ degF: number } | null>(null);
+  // IT CARRIES THE READING IT IS ABOUT (#5489 fix 5) — the degrees AND the minute
+  // that reading was stated for, which `logTemp` held two lines above and threw away.
+  // Without it the offer said only "That's a fever — 104.8 °F" about a reading taken
+  // at 11:30 PM yesterday, and the dose control it mounts opened its "When was it
+  // taken?" field empty. `at` is the reading's profile-local HH:MM on the day the fold
+  // is standing on, or null when nobody stated one.
+  const [feverOffer, setFeverOffer] = useState<{
+    degF: number;
+    at: string | null;
+  } | null>(null);
   const [episodeOfferPending, setEpisodeOfferPending] = useState(false);
   // WHICH DOOR ASKED (#4962). The offer and the "Mark as illness" bridge post the
   // same activation, so they share one failure sentence — but it has to appear
@@ -294,7 +309,9 @@ export default function SymptomLogBar({
   // ONE SETTER FOR THE OFFER AND ITS SIGNAL, so the host's Meds section cannot be
   // left yielding to a block that is no longer there. Every path that raises or
   // clears the offer goes through here.
-  function showFeverOffer(offer: { degF: number } | null): void {
+  function showFeverOffer(
+    offer: { degF: number; at: string | null } | null
+  ): void {
     setFeverOffer(offer);
     yieldMeds(offer != null && offersDose);
     // The offer's own failure sentence lives and dies with the block it is in, so
@@ -460,7 +477,8 @@ export default function SymptomLogBar({
       // offer (an episode already open and no eligible PRN) closes exactly as before.
       const offers = !hasOpenEpisode || offersDose;
       if (res.flag === "high" && offers) {
-        showFeverOffer({ degF: res.degF });
+        // The minute this reading was filed under — the one the offered dose proposes.
+        showFeverOffer({ degF: res.degF, at: hhmm || null });
       } else {
         showFeverOffer(null);
         setTempOpen(false);
@@ -1078,17 +1096,17 @@ export default function SymptomLogBar({
               Temperature
             </label>
             <div className="flex flex-wrap items-start gap-2">
-              <div className="min-w-40 flex-1">
-                {/* THE VITALS FORM'S FIELD (#4424 ruling 5), not a second drawing of it. */}
-                <TemperatureField
-                  id="temp-quick-input"
-                  testIdPrefix="temp-quick"
-                  detection={tempUnitDetection}
-                  unitLabel="Temperature unit"
-                  required
-                  autoFocus
-                />
-              </div>
+              {/* THE VITALS FORM'S FIELD (#4424 ruling 5), not a second drawing of
+                  it — and it brings its own width (#5490 site 2), so this row no
+                  longer hands it the remainder. */}
+              <TemperatureField
+                id="temp-quick-input"
+                testIdPrefix="temp-quick"
+                detection={tempUnitDetection}
+                unitLabel="Temperature unit"
+                required
+                autoFocus
+              />
               <WhenControl
                 mode="state"
                 grain="minute"
@@ -1138,7 +1156,15 @@ export default function SymptomLogBar({
                 data-testid="fever-offer-sentence"
                 className="text-sm text-slate-700 dark:text-slate-200"
               >
-                That’s a fever — {fmtTemp(feverOffer.degF, temperatureUnit)}.
+                That’s a fever — {fmtTemp(feverOffer.degF, temperatureUnit)}
+                {feverOffer.at
+                  ? ` at ${formatClock(
+                      formatPrefs.timeFormat,
+                      Number(feverOffer.at.slice(0, 2)),
+                      Number(feverOffer.at.slice(3))
+                    )}`
+                  : ""}
+                .
               </p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 {/* PRIMARY, beside the dose (#4712 judgement 1's row grammar) —
@@ -1166,6 +1192,12 @@ export default function SymptomLogBar({
                       intakeContext={intakeContext}
                       canAdd={false}
                       nowIso={nowIso}
+                      // THE OFFER'S OWN READING, PROPOSED (#5489 fix 5). The one
+                      // control that knows why it is on screen can now say when: a
+                      // reading with a stated minute opens the dose's statement on
+                      // that minute; one with none proposes nothing and the tap asks
+                      // wherever the day has ended (#4686).
+                      proposedTime={feverOffer.at}
                       // TAKEN ENDS THE OFFER (#4712 ruling part 2's own words). The
                       // dose is on the ledger and the host's Meds chip comes straight
                       // back; the fold itself stays open, exactly as accepting the

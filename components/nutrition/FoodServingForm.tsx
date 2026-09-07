@@ -23,6 +23,7 @@ import {
   type FoodEventEditResult,
 } from "@/app/(app)/nutrition/actions";
 import SubmitButton from "@/components/SubmitButton";
+import type { LocalDay } from "@/lib/temporal-types";
 
 // THE FOOD DOMAIN'S ONE FORM (#4424 ruling 1), named by `LOG_MANIFEST.food.pieces.form`.
 // `row` absent posts `logFoodServing`; `row` present seeds from that row and posts
@@ -67,7 +68,7 @@ export interface FoodGroupChoice {
 export interface FoodServingRow {
   eventId: number;
   groupKey: string;
-  date: string;
+  date: LocalDay;
   mealSlot: FoodSlot;
   /** Profile-local "HH:MM" the serving was EATEN at, or null when nobody stated one. */
   eatenAt: string | null;

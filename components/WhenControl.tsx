@@ -7,7 +7,11 @@ import MonthCalendar from "@/components/MonthCalendar";
 import TimeField, { TimeWheel } from "@/components/TimeField";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { useTimezone } from "@/components/TimezoneProvider";
-import { dateStrInTz, zonedDateParts } from "@/lib/date";
+import {
+  cockpitDayLabel,
+  useCockpitDay,
+} from "@/components/illness/CockpitDayContext";
+import { dateStrInTz, isRealIsoDate, zonedDateParts } from "@/lib/date";
 import { formatClock, formatWeekdayDate } from "@/lib/format-date";
 import {
   reanchorStatedAt,
@@ -98,6 +102,13 @@ export interface WhenControlProps {
   testId: string;
 }
 
+// THE DATE SLOT'S ONE DECLARED WIDTH (#5490 site 1, #3938's ruling applied here).
+// The picker arm declared `w-36` and the fixed-day arm declared nothing, so the slot
+// was content-sized in one arm and fixed in the other — and the content changes with
+// the day ("Today" is five characters, a written date is a dozen). A card's day
+// toggle then resized whatever sat beside this control. One constant, both arms.
+const DATE_SLOT = "h-8 w-36 text-sm";
+
 export default function WhenControl({
   mode,
   grain,
@@ -120,6 +131,15 @@ export default function WhenControl({
   const now = new Date();
   const today = dateStrInTz(tz, now);
   const fixedDay = minDate !== undefined && minDate === maxDate;
+  // WHAT A FIXED DAY SAYS IS THE SURFACE'S, NOT THE CLOCK'S (#5489 fix 3). This arm
+  // used to ask `dateStrInTz(tz, now)` whether the day was today and fall through to
+  // `value.date` — the storage spelling — whenever it was not, so a cockpit standing
+  // on Yesterday showed `Yesterday` on its toggle and `2026-09-06` in the temperature
+  // fold 130px below it. The card already computed the right words; this asks it for
+  // them, and formats through the login's own date shape (#964) where there is no
+  // card. `value.date` never reaches display text again.
+  const card = useCockpitDay();
+  const prefs = useFormatPrefs();
 
   // EVERY EMITTER BUILDS THE NEXT PAIR FROM THE PAIR AS IT IS *NOW*, never from
   // the one its render closed over. Each half's widget emits only its own half,
@@ -142,6 +162,11 @@ export default function WhenControl({
   }, [value]);
 
   const setDate = (date: string) => {
+    // THE PICKER'S RAW VALUE BECOMES A DAY ONLY ONCE IT IS ONE (#5105's validating
+    // minter, applied by #5489). A date input emits "" while it is being cleared and
+    // a partial string while it is being typed; neither is a day, and the pair's
+    // `date` is `LocalDay` precisely so neither can become one by assignment.
+    if (!isRealIsoDate(date)) return;
     // The pair moves together: a date change re-anchors the stated instant onto
     // the new day (or clears it — never invents one), so the two fields cannot
     // come apart even mid-edit.
@@ -216,10 +241,13 @@ export default function WhenControl({
         <>
           {fixedDay ? (
             <span
-              className="text-sm text-slate-600 dark:text-slate-300"
+              className={`inline-flex items-center ${DATE_SLOT} text-slate-600 dark:text-slate-300`}
               data-testid={`${testId}-date`}
             >
-              {value.date === today ? "Today" : value.date}
+              {(card && cockpitDayLabel(card, value.date)) ??
+                (value.date === today
+                  ? "Today"
+                  : formatWeekdayDate(value.date, prefs))}
             </span>
           ) : (
             <label className="block">
@@ -231,7 +259,7 @@ export default function WhenControl({
                 max={maxDate}
                 required
                 id={`${testId}-date`}
-                inputClassName="h-8 w-36 text-sm"
+                inputClassName={DATE_SLOT}
                 data-testid={`${testId}-date`}
               />
             </label>
