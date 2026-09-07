@@ -38,12 +38,14 @@ cap and E2E cap. What they share is GitHub — issues, branches, PRs, `main`.
   every other orchestrator's live branches. Overlap is sequencing, not a race:
   bank, or take the next issue.
 
-## Merges are serial, PRs are not
+## One candidate per session, serial merges
 
-- Open a PR for every branch that passed its gates, whichever orchestrator
-  owns it; CI and review run in parallel. Only the merge is serial,
-  repo-wide: re-read `main`'s head, merge one green exact head, then let the
-  other's candidates re-judge with `landing-independence.mjs` (exit 0 = fine).
+- Each session follows [dispatch.md](dispatch.md): bank validated branches and
+  open a ready PR only for its landing candidate. Separate sessions may each
+  have a candidate; coordinate their order in the Ladder and stop dispatch when
+  the shared review queue is full. Merge serially repo-wide: re-read `main`'s
+  head, merge one green exact head, then let the other candidates re-judge with
+  `landing-independence.mjs` (exit 0 = fine).
 - A red `main` is everyone's problem: the merge that turned it red owns the
   next landing; the others leave it alone and tell the PM.
 - `e2e-main` is one concurrency group across all sessions; a queued run is

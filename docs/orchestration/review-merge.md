@@ -34,9 +34,14 @@
   fresh pass. The test: does the fix create a surface the last pass could not
   have attacked? A new store, key, lifetime, or owning row is yes; a corrected
   constant or bound is no.
-- Two falsifying passes per PR. A THIRD falsification means SIMPLIFY the
-  guards, the code, or both — never a third round (owner 2026-09-05; #5203
-  took seven). Pass-three prose mismatches are follow-ups unless they leak.
+- Keep the two-falsifying-pass ceiling: after two blocking rounds, stop patching
+  and bank the PR, even when the findings concern different defects. Before
+  another implementation round,
+  write the revised ownership model, what mechanism retires, and the concrete
+  attack it must survive; have a non-author review that design. A smaller guard
+  or a new exception alone is not a redesign. This applies before spending a
+  third repair round; changing the defect category does not reset the count.
+  Non-leaking prose mismatches remain follow-ups.
 - A PR the owner opens gets a plain non-author review and the standard gates;
   a blocker is fixed as a new commit on the owner's branch, stated on the
   PR — never rebase, amend or force-push it (owner 2026-09-04).

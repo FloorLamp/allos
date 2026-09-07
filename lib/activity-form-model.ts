@@ -433,15 +433,21 @@ export const blankPart = (): PartEntry => ({
 // so the question has to be asked of what the person is reading.
 const shownLoad = (s: SetEntry, side: "weight" | "weightRight") =>
   s[side] || s.plan?.[side] || "";
-// One load across every set — both sides of it, for a per-side lift — which the set
-// grid states once, above the rows (#5371).
-export const sharesLoad = (p: Pick<PartEntry, "sets" | "perSide">) =>
-  p.sets.every(
+// Shared edits belong to remaining plans, or to every record when none remain.
+export const sharedLoadSets = (sets: readonly SetEntry[]) => {
+  const planned = sets.filter((s) => !setDone(s));
+  return planned.length ? planned : sets;
+};
+
+export const sharesLoad = (p: Pick<PartEntry, "sets" | "perSide">) => {
+  const sets = sharedLoadSets(p.sets);
+  return sets.every(
     (s) =>
-      shownLoad(s, "weight") === shownLoad(p.sets[0], "weight") &&
+      shownLoad(s, "weight") === shownLoad(sets[0], "weight") &&
       (!p.perSide ||
-        shownLoad(s, "weightRight") === shownLoad(p.sets[0], "weightRight"))
+        shownLoad(s, "weightRight") === shownLoad(sets[0], "weightRight"))
   );
+};
 // Sets that arrive or are filled at differing loads keep their own weights from then
 // on; every writer that puts values into a part's sets says so here, so the grid's
 // render never has to write state to remember what it showed.
