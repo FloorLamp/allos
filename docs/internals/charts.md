@@ -130,15 +130,16 @@ margin. A live-outage caption can expose “Fix a range” through `fixRangeFiel
 
 [trend-sparkline.ts](../../lib/trend-sparkline.ts) owns mark shape, gap policy,
 continuity spans, and maximum gap lengths on the shared `metric:`/`result:` keys.
-Pages consume these decisions instead of choosing their own.
+TypeScript checks all three policy maps against the metric vocabulary.
 
-| Gap policy  | Meaning                                                                                 |
-| ----------- | --------------------------------------------------------------------------------------- |
-| `bridge`    | A level exists between samples; fill missing days with nulls, subject to the gap limit. |
-| `break`     | Missing daily/nightly readings break the stroke.                                        |
-| `slot-zero` | A missing daily total really is zero, such as training on a rest day.                   |
-| `slot-null` | A daily total was not measured, including missing steps or nutrition logs.              |
-| `exempt`    | No day filling, such as sparse lab-result series.                                       |
+| Gap policy          | Meaning                                                                     |
+| ------------------- | --------------------------------------------------------------------------- |
+| `bridge`            | A level exists between samples; null-filled missing days retain the stroke. |
+| `bridge-with-limit` | Bridge only holes within the series' gap limit.                             |
+| `break`             | Missing daily/nightly readings break the stroke.                            |
+| `slot-zero`         | A missing daily total really is zero, such as training on a rest day.       |
+| `slot-null`         | A daily total was not measured, including missing steps or nutrition logs.  |
+| `exempt`            | No day filling, such as sparse lab-result series.                           |
 
 [day-fill.ts](../../lib/day-fill.ts) preserves calendar spacing. Trim leading empty
 days, retain trailing days through the requested end, and keep an empty series
@@ -198,5 +199,4 @@ transitions. Do not add pulsing, animated gradients, or per-point staggering.
 Use existing palette, scaffold, chart-tree, day-fill, sparse-series, and SVG tests
 for their respective behavior. Browser checks cover touch inspection, sizing, and
 SVG text containment (`expectSvgTextInsidePlot`). Follow the shared
-[test policy](../change-policy.md): verify the changed behavior without adding
-source-wording tests or automatically changing assertions for CSS edits.
+[test policy](../change-policy.md).
