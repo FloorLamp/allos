@@ -136,76 +136,55 @@ export const telegramChannel: NotificationChannel = {
     msg: NotificationMessage,
     opts?: DispatchOptions
   ) {
-    // A chat failure must not prevent the remaining caregivers from receiving this
-    // message. Attempt every eligible chat, then fail the channel if any failed.
-    // The existing slot retry may send healthy chats a second copy; retaining that
-    // bounded retry is safer than consuming a safety reminder after partial delivery.
-    // Permanent errors remain visible in each login's delivery health; a transport
-    // failure does not change the person's notification preferences.
-    //
-    // Explicit chat overrides replace managed recipients and bypass per-login kinds.
-    // Shared chat IDs receive one copy, whichever path supplied them.
+    // Independent chats start together: serial 30-second transport failures can
+    // exhaust the whole-dispatch deadline before a healthy caregiver is attempted.
+    // Chunks and pointer updates within each chat still retain their own ordering.
+    // Any recipient failure keeps the channel failed; the existing bounded slot
+    // retry may send healthy chats a second copy. A permanent transport error stays
+    // visible in delivery health without changing notification preferences.
     const override = opts?.telegramChatIds;
+    const chats = override?.length
+      ? [...new Set(override)].map((chatId) => ({ chatId, loginIds: [] }))
+      : resolveTelegramChats(profileId).filter(({ loginIds }) =>
+          isKindEnabled(msg.kind, getLoginTelegramDisabledKinds(loginIds[0]))
+        );
     let delivered = false;
-    const failures: unknown[] = [];
-    if (override?.length) {
-      for (const chatId of Array.from(new Set(override))) {
-        try {
-          const messageId = await sendMessageRaw(chatId, msg);
-          delivered = true;
-          // An override chat is not a login, but the MESSAGE still goes stale exactly
-          // like a fan-out copy — a caregiver's escalation chat is the last place a
-          // false "still outstanding" belongs (#1779). The subject is the profile the
-          // message is ABOUT, which this path has always had and never had to guess.
-          await trackDelivered(profileId, chatId, messageId, msg);
-        } catch (e) {
-          failures.push(e);
-        }
-      }
-      if (failures.length) throw deliveryFailure(failures, delivered);
-      return { delivered };
-    }
-    // One send per chat; the outcome is recorded for EVERY login mapped to that chat
-    // (#2565), since the message that reached the family group reached all of them.
-    for (const { chatId, loginIds } of resolveTelegramChats(profileId)) {
-      if (!isKindEnabled(msg.kind, getLoginTelegramDisabledKinds(loginIds[0])))
-        continue;
-      try {
+    // Legacy food/household pointers are shared by this profile. Keep their
+    // rotations serialized, independently of the concurrent network sends.
+    let tracking = Promise.resolve();
+    const results = await Promise.allSettled(
+      chats.map(async ({ chatId, loginIds }) => {
+        // An explicit override names no login; recordedSend's empty owner list
+        // records nothing. A managed shared chat records every mapped login.
         const messageId = await recordedSend("telegram", loginIds, () =>
           sendMessageRaw(chatId, msg)
         );
-        // The moment the wire call resolves, and before any bookkeeping: this chat HAS
-        // the message, whatever the rest of the fan-out or the lines below do with it.
+        // Set before bookkeeping: this chat already holds the message.
         delivered = true;
-        // The HOUSEHOLD ROUND needs the identical rotation (#1719) and never had it:
-        // its confirm tokens carry each member's SEND-TIME date, so a surviving round
-        // keyboard from an earlier day logs a dose to YESTERDAY — for someone else's
-        // medication. It shares `kind: "dose"` with the ordinary slot reminder, so the
-        // round is identified by its `hh:` tokens, never by kind (which would strip a
-        // plain dose reminder's keyboard too). Same strictly-best-effort posture.
-        if (messageId != null)
-          await rotateHouseholdRoundPointer(profileId, chatId, messageId, msg);
-        // A DIGEST carrying the offer tail (#1505) records its message id for the same
-        // class of reason: the tail's label names the slot it opens into, so the tick
-        // has to re-label it at each boundary — which needs the message to edit. Same
-        // chokepoint placement and same strictly-best-effort posture as the food
-        // pointer above; a bookkeeping failure must never turn a delivered digest into
-        // a failed one.
-        if (msg.kind === "digest" && messageId != null && msg.actions?.length)
-          recordDigestTailPointer(profileId, chatId, messageId);
-        // The UNIVERSAL live-message pointer (#1779). Recorded HERE, in the chokepoint,
-        // for the same reason the two special-purpose pointers above are: this is the
-        // only place that has both the delivered message id and the message it was
-        // rendered from — and it is per RECIPIENT, so a dose confirmed from a family
-        // group's copy can correct the copies in every other subscriber's chat.
-        // ONE LIVE KEYBOARD PER (chat, kind) (#1898) rides with it: a re-issuable kind
-        // closes the copy it replaces, AFTER the record, so the chat never briefly
-        // holds none.
-        await trackDelivered(profileId, chatId, messageId, msg);
-      } catch (e) {
-        failures.push(e);
-      }
-    }
+        const track = async () => {
+          if (loginIds.length > 0 && messageId != null) {
+            await rotateHouseholdRoundPointer(
+              profileId,
+              chatId,
+              messageId,
+              msg
+            );
+            if (msg.kind === "digest" && msg.actions?.length)
+              recordDigestTailPointer(profileId, chatId, messageId);
+          }
+          // Overrides still have a subject and need stale keyboards tracked.
+          await trackDelivered(profileId, chatId, messageId, msg);
+        };
+        // A bookkeeping failure remains this recipient's outcome and cannot stop
+        // the next recipient's tracking. allSettled observes each returned promise.
+        tracking = tracking.then(track, track);
+        await tracking;
+      })
+    );
+    // allSettled keeps recipient order, independent of when each failure arrived.
+    const failures: unknown[] = results.flatMap((result) =>
+      result.status === "rejected" ? [result.reason] : []
+    );
     if (failures.length) throw deliveryFailure(failures, delivered);
     return { delivered };
   },

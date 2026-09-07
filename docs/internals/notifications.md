@@ -30,12 +30,16 @@ credentials degrade gracefully; no channel is not a transport error.
   skip both bands. Use the existing schedule planners, not a wider due window.
 - Route sends through the shared dispatch path, including safety escalation.
   Preserve per-channel routing, delivery outcomes, and delivery-health reporting.
-- Telegram attempts every eligible chat even when another recipient fails. Any
-  failure keeps the channel failed, while partial delivery records that someone
-  received the message. Slot retries may therefore send healthy chats a second
-  copy. Permanent failures remain visible in delivery health and do not silently
+- Telegram starts eligible chats concurrently, keeping chunks ordered within each
+  chat and shared profile-pointer updates serialized. Recipient timeouts therefore
+  do not accumulate ahead of a healthy chat. Any failure keeps the channel failed, while partial delivery
+  records that someone received the message. Slot retries may therefore send
+  healthy chats a second copy. Permanent failures remain visible in delivery health and do not silently
   change a login's channel preferences. Explicit chat overrides follow the same
-  isolation and retry behavior without claiming a login's delivery outcome.
+  isolation and retry behavior without claiming a login's delivery outcome. Each
+  API call retains its 30-second bound and dispatch its 120-second bound; a single
+  chat's lengthy chunk sequence or the pointer-edit queue can still reach that
+  deadline.
 - A send marker records delivered content. A failed send must not consume it.
   Keep the existing marker vocabulary in `send-markers.ts` and the kind cadence
   declaration; do not build marker keys ad hoc in callers.
