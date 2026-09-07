@@ -68,11 +68,21 @@ fs.writeFileSync(
 # body, newline, code — the shape curl() splits on its last newline.
 case "$*" in
   *graphql*) printf '{}\\n403' ;;
-  *compare*) cat ${JSON.stringify(comparePath)}; printf '\\n200' ;;
+  *compare*)
+    if [ "\${MERGE_GATE_TEST_FAIL_COMPARE:-}" = 1 ]; then
+      printf 'private child stderr: %s\n' "$GH_TOKEN" >&2
+      exit 7
+    fi
+    cat ${JSON.stringify(comparePath)}; printf '\\n200' ;;
   *reviews*|*comments*) printf '[]\\n200' ;;
   *check-runs*) printf '{"total_count":1,"check_runs":[{"id":1,"name":"a-check","status":"completed","conclusion":"success"}]}\\n200' ;;
   */status*) printf '{"state":"success","statuses":[]}\\n200' ;;
-  *pulls/12*) cat ${JSON.stringify(prPath)}; printf '\\n200' ;;
+  *pulls/12*)
+    if [ "\${MERGE_GATE_TEST_FAIL_REQUIRED:-}" = 1 ]; then
+      printf 'private child stderr: %s\n' "$GH_TOKEN" >&2
+      exit 7
+    fi
+    cat ${JSON.stringify(prPath)}; printf '\\n200' ;;
   *) printf '{}\\n200' ;;
 esac
 `
@@ -105,4 +115,62 @@ it("reaches a verdict when the base comparison outgrows the exec default", () =>
   // can only be printed if the comparison was read and parsed.
   expect(run.stdout).toContain(`CI base IS main@${HEAD.slice(0, 8)}`);
   expect(run.stdout).toContain("GATE CLOSED");
+});
+
+it("turns a failed soft comparison into an unknown comparison verdict", () => {
+  const run = spawnSync(
+    process.execPath,
+    [SCRIPT, "12", "--repo", "owner/name", "--session", "session_0test12"],
+    {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        GH_TOKEN: "soft-secret-that-must-not-print",
+        MERGE_GATE_TEST_FAIL_COMPARE: "1",
+        PATH: `${bin}:${process.env.PATH}`,
+      },
+    }
+  );
+
+  expect(run.status).toBe(1);
+  expect(run.stdout).toContain(
+    "cannot tell how far 477cd8a1 is behind main — the comparison did not fit one page"
+  );
+  expect(run.stdout).toContain("STATUS:");
+  expect(run.stderr).toContain(
+    "Soft read unavailable: GET repos/owner/name/compare/477cd8a1afd4ff38afb33ff7c9b1de5fd380fb31...main: curl exited 7."
+  );
+  expect(`${run.stdout}\n${run.stderr}`).not.toContain(
+    "soft-secret-that-must-not-print"
+  );
+  expect(run.stderr).not.toContain("private child stderr");
+  expect(run.stderr).not.toContain("spawnSync");
+  expect(run.stderr).not.toContain("Authorization: Bearer");
+});
+
+it("reports a concise reason when a required read cannot run", () => {
+  const run = spawnSync(
+    process.execPath,
+    [SCRIPT, "12", "--repo", "owner/name", "--session", "session_0test12"],
+    {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        GH_TOKEN: "test-secret-that-must-not-print",
+        MERGE_GATE_TEST_FAIL_REQUIRED: "1",
+        PATH: `${bin}:${process.env.PATH}`,
+      },
+    }
+  );
+
+  expect(run.status).toBe(2);
+  expect(run.stdout).toContain(
+    "STATUS: unable to evaluate — GET repos/owner/name/pulls/12: curl exited 7"
+  );
+  expect(run.stderr).toContain("Unable to evaluate:");
+  expect(`${run.stdout}\n${run.stderr}`).not.toContain(
+    "test-secret-that-must-not-print"
+  );
+  expect(run.stderr).not.toContain("private child stderr");
+  expect(run.stderr).not.toContain("spawnSync");
 });
