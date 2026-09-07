@@ -1,42 +1,7 @@
-// THE DECLARED TEMPORAL-COLUMN INDEX (issue #2205, phase 3).
-//
-// ── THE QUESTION THIS ANSWERS ────────────────────────────────────────────────
-//
-// "What does this column mean, and what shape is in it?" Two analyses in one evening
-// produced confidently wrong answers from correct-looking SQL because that question
-// had no answer anywhere: the reader assumed a convention for a table and the schema
-// disagreed silently. #2090 tried to answer it in prose and was closed because prose
-// rots. This is the same index as data, with a scan
-// (lib/__db_tests__/time-column-index.test.ts) that runs it against the migrated
-// schema, so a new table with an undeclared temporal column fails CI.
-//
-// ── WHY THE INDEX AND THE ROW READERS ARE ONE ARTIFACT ───────────────────────
-//
-// lib/row-instants.ts asks a ROW-level question — "when did this happen", "when was
-// it recorded" — and to answer it, it has to know which column of which table carries
-// which semantic. That mapping and this index are THE SAME FACT. Keeping them apart
-// would mean two declarations of one thing, which is exactly how the prose index
-// rotted. So the readers consult this registry and nothing else, and the published
-// docs page (docs/internals/time-columns.md) is GENERATED from it
-// (`npm run gen:time-columns`) with the pure test asserting the committed file still
-// matches. A rename in phase 2 therefore edits one entry, and the readers, the scan
-// and the docs all follow.
-//
-// ── WHAT IS DECLARED, AND WHAT IS DELIBERATELY NOT ───────────────────────────
-//
-// `semantic` and `grain` are claims about MEANING and are settled here. `convention`
-// is a claim about the stored SERIALIZATION and is only as good as its evidence — a
-// column DEFAULT (which the scan checks against this file) or a writer that was read.
-// Where neither settles it, the entry says `unverified` WITH a note, rather than
-// guessing. That is not rot: it is the phase-2 worklist, counted and frozen by the
-// scan so it can only shrink.
-//
-// Nothing here changes schema. Phase 3 lands BEFORE phase 2's renames, so every entry
-// is keyed on the column name that exists today; phase 2's job is to change the name
-// in the migration and in the matching entry, in one change.
-//
-// PURE — no DB, no clock, no imports beyond types. The scan opens the database; this
-// file only declares.
+// Temporal meanings and stored shapes, shared by row-instants.ts and the generated
+// docs index. Update entries with schema changes; regenerate with gen:time-columns.
+// DB coverage checks the migrated schema, and pure coverage checks the doc copy.
+// Mixed/unverified entries require notes; do not infer serialization from a name.
 
 // What a temporal column MEANS.
 export type TimeSemantic =
@@ -134,28 +99,28 @@ export const TIME_COLUMNS = {
       semantic: "window-start",
       grain: "time-of-day",
       convention: "n/a",
-      note: "A profile-local HH:MM, optional (a hand-entered activity may state only a day). It is NOT an instant: resolving it needs the row's `date` AND the profile timezone. Every writer agrees — `NormActivity.start_time` is declared HH:MM for all integrations, the editor's field is a `type=\"time\"` input, and the AI extractor's ISO shape is folded to HH:MM at the persist boundary (`activityClockHHMM`, #2245).",
+      note: "Optional profile-local HH:MM. Resolve with the row date and profile timezone. activityClockHHMM converts extracted ISO input at persistence.",
     },
     {
       column: "end_time",
       semantic: "window-end",
       grain: "time-of-day",
       convention: "n/a",
-      note: "The same profile-local HH:MM as start_time, and NULL both for a hand-entered activity that stated only a day and while a live session is unfinished.",
+      note: "Profile-local HH:MM. NULL for day-only entries and unfinished live sessions.",
     },
     {
       column: "created_at",
       semantic: "record",
       grain: "instant",
       convention: "bare",
-      note: "Still bare, but no longer written by SQL: every app write path BINDS it from the clock seam (`sqlNow()`, #2287) instead of leaning on the column's own SQL-clock DEFAULT. `computeWorkoutPresence` reads it as a draft's first-seen instant (and as an imported row's freshness anchor) and subtracts it from a seam-derived now, so a stamp off SQL's real clock made a seconds-old draft read as an hour quiet whenever the two clocks diverged. The DEFAULT stays — it lives in a shipped migration — and is now only a backstop.",
+      note: "App writers bind sqlNow(); the schema DEFAULT is a backstop. Workout presence uses this as first-seen time when updated_at is absent.",
     },
     {
       column: "updated_at",
       semantic: "bookkeeping",
       grain: "instant",
       convention: "bare",
-      note: "The #451 auto-save stamp, and the LIVENESS signal workout presence prefers over `created_at` (lastTouchMs = updated_at ?? created_at). Bound from the clock seam (`sqlNow()`, #2287) at every writer for the same reason: it is compared to the app's now, not merely displayed.",
+      note: "Autosave/liveness stamp, bound from sqlNow(). Workout presence prefers this over created_at.",
     },
   ],
   activity_telemetry: [
@@ -164,7 +129,7 @@ export const TIME_COLUMNS = {
       semantic: "record",
       grain: "instant",
       convention: "unverified",
-      note: "Supplied by the Strava sync as a caller argument; its serialization is whatever that path produced. Nothing compares it in SQL, so phase 1 left it unclaimed.",
+      note: "Supplied by Strava sync; writer serialization remains unverified. No SQL time comparison.",
     },
   ],
   activity_videos: [
@@ -226,14 +191,14 @@ export const TIME_COLUMNS = {
       semantic: "planned",
       grain: "day",
       convention: "n/a",
-      note: "The CLINIC-local calendar day of the visit (#2234) — NOT a profile-local day: the clinic is frequently not in the profile's zone, and the value is never resolved against the profile timezone. NOT NULL.",
+      note: "Required clinic-local visit day. Never resolve against the profile timezone.",
     },
     {
       column: "time_of_day",
       semantic: "planned",
       grain: "time-of-day",
       convention: "n/a",
-      note: "The CLINIC-local wall clock (HH:MM), NULL for a day-only booking — a real product state, not a missing time. Resolving it to an instant needs the row's date AND the clinic's zone, which the app does not store (#2243 owns that question); it is never resolved against the profile timezone.",
+      note: "Optional clinic-local HH:MM; NULL means day-only booking. Resolving an instant requires the clinic timezone, which is not stored.",
     },
     {
       column: "created_at",
@@ -252,28 +217,28 @@ export const TIME_COLUMNS = {
       semantic: "event",
       grain: "instant",
       convention: "canonical",
-      note: "Migration 165 (#2235, #2205 phase 2 wave 1). When the day's weigh-in was actually taken. Body weight moves a kilogram across a day, so morning-fasted and evening-fed are different measurements of one quantity and an unlabelled mix carries that swing as unattributable noise. NULL means DAY-GRAIN. Descriptive only — the natural key stays (profile_id, date, source), and one row per day is unchanged, so this records WHEN the day's reading was taken and does not enable two weigh-ins in one day. This table has no record stamp at all, so there is nothing here for an event column to be laundered from. It is the time the PERSON stated for their sitting; the three per-measure columns below are what the SOURCE said about each measure, and neither answers the other's question.",
+      note: "The person-stated sitting instant; NULL means day grain. Distinct from source-reported per-measure instants. Descriptive only: the natural key remains (profile_id, date, source), and there is no record stamp to substitute.",
     },
     {
       column: "weight_at",
       semantic: "event",
       grain: "instant",
       convention: "canonical",
-      note: "Migration 20260902-body-metric-measure-instants (#3950, owner-ruled 2026-08-29). When the SOURCE says this day's stored weight was measured. Health Connect delivers weight, body fat and resting HR with their own instants, so one shared column cannot hold three — a 07:00 fasted weigh-in stamped with the day's latest instant reads as 22:00. NULL means the source stated no instant. Descriptive: the natural key stays (profile_id, date, source) and the #608 two-device dedup is untouched.",
+      note: "Source-reported instant for the stored weight; NULL when unstated. Each measure has its own instant. Does not change the daily natural key or device deduplication.",
     },
     {
       column: "body_fat_at",
       semantic: "event",
       grain: "instant",
       convention: "canonical",
-      note: "Migration 20260902-body-metric-measure-instants (#3950). As weight_at, for the day's body-fat reading. Body fat is stored as the DAY AVERAGE, so this is the instant of the reading whose value the merge kept, not of the average.",
+      note: "Source-reported instant for the retained body-fat reading, not an instant for the stored day average. NULL when unstated.",
     },
     {
       column: "resting_hr_at",
       semantic: "event",
       grain: "instant",
       convention: "canonical",
-      note: "Migration 20260902-body-metric-measure-instants (#3950). As weight_at, for the day's resting-HR reading, with the same day-average caveat as body_fat_at.",
+      note: "Source-reported instant for the retained resting-HR reading, with the same day-average caveat as body_fat_at. NULL when unstated.",
     },
   ],
   canonical_result_definitions: [
@@ -350,7 +315,7 @@ export const TIME_COLUMNS = {
       semantic: "event",
       grain: "instant",
       convention: "unverified",
-      note: "When the AI produced this gap — the row's own event. Its serialization is settled by neither a DEFAULT nor a writer that was read, so phase 2 has to look.",
+      note: "When AI produced the gap. Serialization remains unverified: neither a DEFAULT nor an inspected writer establishes it.",
     },
     {
       column: "created_at",
@@ -488,28 +453,28 @@ export const TIME_COLUMNS = {
       semantic: "window-start",
       grain: "instant",
       convention: "canonical",
-      note: "Migration 20260816-fasts (#2756). The instant the user CLAIMS the fast began — a claim, never a sensor reading, and never inferred from the food log (whose instants are tap times). BORN canonical, so the first writer is bound to utcInstant() by CANONICAL_INSTANT_COLUMNS rather than choosing a shape at the call site. An INSTANT and not a day on purpose: a fast spans a profile-local day boundary by nature, so a day column would be wrong on the majority of rows. Accepts a backdated value (forgot-to-tap is the common failure); the write core refuses a future one and one further back than FAST_MAX_HOURS. No column DEFAULT, deliberately: SQLite's own SQL clock writes the BARE shape, which is exactly how a canonical column ends up holding two serializations.",
+      note: "User-claimed start, never inferred from food. The writer binds utcInstant with no clock DEFAULT; future starts and backdating beyond FAST_MAX_HOURS are refused.",
     },
     {
       column: "ended_at",
       semantic: "window-end",
       grain: "instant",
       convention: "canonical",
-      note: "The claimed end, and NULL is load-bearing: `ended_at IS NULL` IS the active state (there is no status enum), which the partial unique index makes at-most-one-per-profile and every derivation downstream assumes. EXCLUSIVE as an interval end — ending one fast and starting the next at the same instant is a legitimate back-to-back pair, not an overlap. The profile-local DAY a completed fast counts for (#94) is derived from this column at read time (fastAttributedDay: a fast counts for the day it ENDS) and deliberately not stored, because storing it would freeze one timezone's answer.",
+      note: "Claimed exclusive end. NULL means active; at most one active fast per profile. Completed fasts count for the profile-local day of this end, derived at read time.",
     },
     {
       column: "end_written_at",
       semantic: "lifecycle",
       grain: "instant",
       convention: "canonical",
-      note: "When the row's CURRENT end was WRITTEN — a transition in the record's own life, never a claim about the subject, and the pair of `ended_at` rather than a second opinion about it. NULL exactly while `ended_at` is NULL: the two are one argument at the store (`FastEnd`, lib/fast-store.ts) and are set and cleared together. It exists because the Undo window has to be measured from the ACTION, and `ended_at` is a claim the surface invites the user to backdate — an end backdated past the window was `too-old` the microsecond it landed. `created_at` cannot answer this either: it is the INSERT stamp and an end is an UPDATE. Read by lib/fast-write.ts's `reopenFast` and by nothing else; no reader surface sees it.",
+      note: "When the current end was written, for the Undo clock. Set/cleared with ended_at through FastEnd. A backdated end and the insert stamp cannot answer this action-time question.",
     },
     {
       column: "created_at",
       semantic: "record",
       grain: "instant",
       convention: "bare",
-      note: "The ordinary bookkeeping stamp, on the schema's bare convention like every other one — NOT claimed canonical, and never a substitute for `started_at`: when the row reached the app says nothing about when the fast began, which is the whole point of accepting a backdated start. Nor for `end_written_at`: this is stamped once at INSERT, when the fast is still open, and no writer restamps it when the end lands.",
+      note: "Insert bookkeeping only. Never substitute for the claimed start or the later end-written stamp.",
     },
   ],
   fitness_assessment_entries: [
@@ -545,7 +510,7 @@ export const TIME_COLUMNS = {
       semantic: "record",
       grain: "instant",
       convention: "canonical",
-      note: "The TAP instant, `logged_at` until migration 183 (#2205 phase 2, the food wave). Migration 056 froze what it means — never backfilled, because the ranking predicts the next TAP — which is the `recorded_at` semantic under a name the table had coined for itself. The same migration normalized the millisecond-shaped values the offline replay had been writing (#2370) and bound every writer to lib/date.ts.",
+      note: "The immutable tap/capture instant used by tap prediction. Canonical across online and offline writers; never backfill it from an eating time.",
     },
     {
       column: "created_at",
@@ -558,7 +523,7 @@ export const TIME_COLUMNS = {
       semantic: "event",
       grain: "instant",
       convention: "canonical",
-      note: "NULL means nobody stated an eating time, and that stays a real answer (#2019/#2053) rather than being filled in from the tap. `time_source` records whether a present value was a tap contract or a stated one. Named `eaten_at` until migration 183; nothing was backfilled into it then either, because food REFUSES to infer an eating instant where intake infers one, and that divergence is deliberate.",
+      note: "Eating instant; NULL when unstated, never filled from capture time. time_source distinguishes a tap contract from a stated time. The web bar does not infer one.",
     },
   ],
   frequency_targets: [
@@ -589,7 +554,7 @@ export const TIME_COLUMNS = {
       semantic: "event",
       grain: "instant",
       convention: "canonical",
-      note: "The instant a CGM sensor emitted one interstitial reading, minute-truncated (lib/date.ts utcMinute) and part of the row's primary key. Migration 20260819-glucose-trace (#2810), BORN canonical — unlike hr_minutes.ts, which had to be converted off a profile-local wall clock by migration 164, this column has never held any other shape. The profile-local day is derived at read time through lib/local-day-window.ts.",
+      note: "Sensor reading instant, minute-truncated by utcMinute and part of the primary key. Profile-local day is derived at read time.",
     },
   ],
   goals: [
@@ -610,7 +575,7 @@ export const TIME_COLUMNS = {
       semantic: "lifecycle",
       grain: "instant",
       convention: "canonical",
-      note: "Migration 182 (#2394) — BORN canonical: the instant `status` became 'achieved', written by setStatus through instantNow() and NULLed when a goal is set back to active. LIFECYCLE and not `event`: it is when the goal ROW was marked reached, not when the underlying performance happened — the app never observes that. NULL on every pre-182 achieved goal, deliberately: the recap announces a goal in the period its RECORDED achievement falls in, so an unrecorded one stays silent rather than being announced retroactively.",
+      note: "When the goal row was marked achieved, bound by instantNow(), not when the performance happened. Cleared on reactivation. Legacy achievements with no recorded instant remain NULL and are not announced retroactively.",
     },
   ],
   hr_minutes: [
@@ -619,7 +584,7 @@ export const TIME_COLUMNS = {
       semantic: "event",
       grain: "instant",
       convention: "canonical",
-      note: "Minute-truncated (lib/date.ts utcMinute) and the row's primary key. Migration 164 converted it from a profile-local wall clock; the local day is now derived at read time.",
+      note: "Minute-truncated by utcMinute and part of the primary key. Profile-local day is derived at read time.",
     },
   ],
   illness_episodes: [
@@ -628,14 +593,14 @@ export const TIME_COLUMNS = {
       semantic: "window-start",
       grain: "day",
       convention: "n/a",
-      note: "The inclusive first active day, NULL when the episode predates the log. Renamed from `started_at` by migration 169 (#2232).",
+      note: "Inclusive first active day; NULL when the episode predates the log.",
     },
     {
       column: "end_date",
       semantic: "window-end",
       grain: "day",
       convention: "n/a",
-      note: "The INCLUSIVE last active day, NULL while ongoing — the house day-window convention. Migration 169 (#2232) renamed it from `ended_at` AND rewrote the stored value (the old column held the exclusive first inactive day).",
+      note: "Inclusive last active day; NULL while ongoing.",
     },
   ],
   imaging_studies: [
@@ -809,14 +774,14 @@ export const TIME_COLUMNS = {
       semantic: "event",
       grain: "instant",
       convention: "canonical",
-      note: "The stored administration instant. Issue #2876 moved administration writers and corrections here and migrated the old overloaded recorded_at value into it.",
+      note: "Administration instant, written and corrected by the administration paths. Distinct from immutable capture time.",
     },
     {
       column: "recorded_at",
       semantic: "record",
       grain: "instant",
       convention: "canonical",
-      note: "The immutable capture/insert stamp. Issue #2876 renamed the old taken_at column to this vocabulary and converted it to canonical UTC+Z, matching food_log_events.recorded_at.",
+      note: "Immutable capture/insert instant, matching the food ledger capture semantic.",
     },
   ],
   intake_item_side_effects: [
@@ -863,21 +828,21 @@ export const TIME_COLUMNS = {
       semantic: "lifecycle",
       grain: "instant",
       convention: "mixed",
-      note: "Written through utcInstant since #2205 phase 1, but no migration rewrote the rows that predate it, so the column can still hold both shapes. A phase-2 wave settles it.",
+      note: "Current writers use utcInstant; historical bare values remain.",
     },
     {
       column: "retry_after_at",
       semantic: "planned",
       grain: "instant",
       convention: "mixed",
-      note: "The lease/backoff cutoff. Its two writers disagreeing about serialization is the bug the time-model doc uses as its worked example; both now bind utcInstant, historical rows are still bare.",
+      note: "Lease/backoff cutoff. Current writers use utcInstant; historical bare values remain.",
     },
     {
       column: "finished_at",
       semantic: "lifecycle",
       grain: "instant",
       convention: "mixed",
-      note: "Written through utcInstant since phase 1, with pre-phase-1 rows still bare. Moves with started_at.",
+      note: "Current writers use utcInstant; historical bare values remain.",
     },
     {
       column: "created_at",
@@ -898,7 +863,7 @@ export const TIME_COLUMNS = {
       semantic: "lifecycle",
       grain: "instant",
       convention: "mixed",
-      note: "Written through utcInstant since #2205 phase 1; rows written before it are still on SQLite's bare shape, so both live here until a phase-2 wave converts them.",
+      note: "Current writers use utcInstant; historical bare values remain.",
     },
     {
       column: "created_at",
@@ -917,7 +882,7 @@ export const TIME_COLUMNS = {
       semantic: "lifecycle",
       grain: "instant",
       convention: "mixed",
-      note: "Written through utcInstant since #2205 phase 1; rows written before it are still on SQLite's bare shape, so both live here until a phase-2 wave converts them.",
+      note: "Current writers use utcInstant; historical bare values remain.",
     },
   ],
   integration_sync_events: [
@@ -1109,7 +1074,7 @@ export const TIME_COLUMNS = {
       semantic: "event",
       grain: "instant",
       convention: "canonical",
-      note: "Migration 165 (#2154, #2205 phase 2 wave 1). When the vital was actually taken — the reading's own instant, distinct from `created_at`, which is when it reached the app. NULL means DAY-GRAIN: nobody stated a time, so `eventInstant` answers not-recorded rather than inventing one. Born on the canonical convention rather than converted onto it, so it is in CANONICAL_INSTANT_COLUMNS from the migration that added it and the first writer is already bound to utcInstant(). No column DEFAULT, deliberately: a clock default would stamp the record instant into the event column.",
+      note: "Stated measurement instant; NULL means day grain. No clock DEFAULT: capture time must not become event time. Writers use utcInstant.",
     },
     {
       column: "created_at",
@@ -1145,7 +1110,7 @@ export const TIME_COLUMNS = {
       semantic: "window-start",
       grain: "instant",
       convention: "mixed",
-      note: "THE column that most rewards reading this table before writing SQL. It holds whatever each writer put there, and NO inventory of the shapes is claimed complete — two falsifying passes on #2899 (2026-09-05) each found shapes the previous note omitted. Known so far: the device's own value VERBATIM from an integration — ISO with or without milliseconds, `Z` or an offset (lib/integrations/health-connect.ts and oura.ts pass the payload's time through; normalize.ts upsertMetricSamples inserts it unchanged); `${date}T00:00:00`, a profile-local DAY midnight, for a reading whose author stated only a day (lib/reading-writes.ts); `${date}THH:MM:SS`, a profile-local ZONELESS datetime, for a hydration tap or a stated time (lib/offline/writes.ts sampleTime); a bare `YYYY-MM-DD` for a document-import point sample (lib/import-persist.ts); and `<ISO>#<stage>` for a Fitbit Takeout sleep-stage row (lib/integrations/fitbit-takeout.ts). It is also the natural key (profile, metric, source, origin, started_at) that makes a re-entry a correction, so no shape can be normalized without changing dedupe — and no brand types it (#2899).",
+      note: "Writer-owned shapes include ISO with/without milliseconds or offsets (integrations), zoneless local midnight for day-only readings (reading-writes), local datetime (offline sampleTime), bare day (import-persist), and <ISO>#<stage> (Fitbit Takeout). This inventory is not exhaustive. Part of the natural key (profile, metric, source, origin, started_at): normalizing changes deduplication. Unbranded.",
     },
     {
       column: "ended_at",
@@ -1159,7 +1124,7 @@ export const TIME_COLUMNS = {
       semantic: "bookkeeping",
       grain: "instant",
       convention: "canonical",
-      note: "WHEN THE PUSH THAT WROTE THIS ROW HAPPENED, as the payload itself states it (#3424) — never when the reading was taken, which is started_at. Health Connect only; NULL on every other source and on every row written before 20260821-hc-overlap-supersede. It holds the exporter's own `payload.timestamp` and NOTHING derived from the rows themselves — a byte-identical replay therefore carries the same value as the push it replays and cannot out-rank it. An earlier cut fell back to the furthest-forward `ended_at` in the push and was measured LOSING a reading: an end belongs to the reading, not to the push, and a re-anchored completed day ends earlier than the still-filling row it corrects. NULL when the push stated nothing readable, or when the stated instant was further ahead of the server clock than MAX_PUSH_CLOCK_SKEW_MS, and a NULL stamp supersedes nothing. CANONICAL rather than mixed, unlike its started_at/ended_at neighbours: the writer parses whichever of those two it picked and re-serializes through utcInstant, so a new column is not born holding two shapes. It also refuses an offset-less spelling outright, because a delete decision must not move with the server's zone. The supersede compares it as an instant; nothing else reads it.",
+      note: "Health Connect payload.timestamp, never a reading timestamp; identical replays keep the same stamp. NULL for other sources, unstated/unreadable/offset-less stamps, or excessive future skew (MAX_PUSH_CLOCK_SKEW_MS). NULL supersedes nothing. Parsed and serialized through utcInstant; supersede compares instants.",
     },
   ],
   milestones: [
@@ -1217,14 +1182,14 @@ export const TIME_COLUMNS = {
       semantic: "window-start",
       grain: "instant",
       convention: "canonical",
-      note: "When the person FIRST reported this niggle — i.e. when they tapped the confirm chip on the note that named it. Migration 20260819-niggles (#2948), BORN canonical (lib/clock.ts instantNow). `window-start` on the `injuries.since` reading: it opens the span the niggle has been going on for, and never advances — a re-report moves last_reported_at and leaves this alone. It is deliberately NOT the row's `event` column: the fact every consumer reads is the FRESHEST report, so declaring two events here would be exactly the substitution-wearing-a-declaration the index forbids.",
+      note: "First confirmed report. Opens the injuries.since window and never advances on re-report; latest-report consumers use last_reported_at.",
     },
     {
       column: "last_reported_at",
       semantic: "event",
       grain: "instant",
       convention: "canonical",
-      note: "The MOST RECENT report of the same niggle (same region + laterality). Migration 20260819-niggles (#2948), BORN canonical. `event`, not `lifecycle`: a re-report is a fact about the person's body, not a transition in the row's bookkeeping. It is also the whole expiry clock — a niggle is live iff now - last_reported_at < NIGGLE_QUIET_DAYS (lib/niggle-model.ts), so nothing is stored about expiry and nothing has to run to resolve one.",
+      note: "Most recent report for the region/laterality. A body event, not bookkeeping. Live while now minus this instant is below NIGGLE_QUIET_DAYS; expiry is derived.",
     },
   ],
   notify_lifecycle: [
@@ -1233,7 +1198,7 @@ export const TIME_COLUMNS = {
       semantic: "event",
       grain: "instant",
       convention: "canonical",
-      note: "Was `new Date().toISOString()` — milliseconds and a `Z`, a third serialization phase 1's rule C could not see because the module that builds the string writes no SQL of its own. Migration 167 (#2233) normalized the stored values and the writer now binds instantNow(). Nothing compares it in SQL.",
+      note: "Canonical instant, bound by instantNow(). No SQL time comparison.",
     },
   ],
   notify_messages: [
@@ -1252,7 +1217,7 @@ export const TIME_COLUMNS = {
       semantic: "event",
       grain: "instant",
       convention: "bare",
-      note: "The #2460 offer-mint stamp, BARE like its sibling `notify_messages.sent_at`: the retention sweep compares it in SQL against `datetime(?, ?)`, which a canonical `…Z` string would not compare against at all.",
+      note: "Offer-mint stamp. Must remain bare for retention comparisons against SQLite datetime(?, ?).",
     },
   ],
   notify_post_workout_claims: [
@@ -1261,7 +1226,7 @@ export const TIME_COLUMNS = {
       semantic: "event",
       grain: "instant",
       convention: "canonical",
-      note: "The #3058 dispatch-claim lease stamp. Born canonical (the table is new and its one writer binds instantNow), and compared only in JS against POST_WORKOUT_CLAIM_LEASE_MS; nothing compares it in SQL.",
+      note: "Dispatch-claim lease stamp, bound by instantNow(). Compared in JS against POST_WORKOUT_CLAIM_LEASE_MS; no SQL time comparison.",
     },
   ],
   optical_prescriptions: [
@@ -1370,14 +1335,14 @@ export const TIME_COLUMNS = {
       semantic: "event",
       grain: "time-of-day",
       convention: "n/a",
-      note: 'The START of the session, a profile-local HH:MM, optional (a backdated correction states none). It is NOT an instant: resolving it needs the row\'s `date` AND the profile timezone, which is why eventInstant refuses without one. It stays the table\'s `event` column through #3142\'s rename because it is still the one answer to "when did this happen" — but a TAP-stamped start trails the true start by up to a session length (a "Done" tap fires at or after the end), which is noise at the hour granularity the rhythm inference reads and is what the #2875 chips correct.',
+      note: "Optional session-start HH:MM; resolve with the row date and profile timezone. A Done tap may stamp later than the true start; stated-time corrections refine it.",
     },
     {
       column: "end_time",
       semantic: "window-end",
       grain: "time-of-day",
       convention: "n/a",
-      note: "The same profile-local HH:MM as start_time, and NULL for every session nobody stated an end for — which is every tap (#3142: being one-tap is the point) and every import. Never derived from `duration_min`: `activityWindow` falls back to the duration at READ time, so storing that end would turn a derivation into a claim.",
+      note: "Optional stated end HH:MM; taps and imports leave it NULL. Never store a duration-derived end: activityWindow supplies that fallback at read time.",
     },
     {
       column: "created_at",
@@ -1409,7 +1374,7 @@ export const TIME_COLUMNS = {
       semantic: "day",
       grain: "day",
       convention: "n/a",
-      note: "The person-confirmed completion day for a confirmed decision (#3025) — prefilled from the record date, edited before writing. NULL exactly when decision = 'dismissed' (schema CHECK).",
+      note: "Person-confirmed completion day, prefilled from the record date and editable before saving. NULL exactly for dismissed decisions (schema CHECK).",
     },
     {
       column: "created_at",
@@ -1555,7 +1520,7 @@ export const TIME_COLUMNS = {
       semantic: "lifecycle",
       grain: "instant",
       convention: "bare",
-      note: "When a LIVE session was deliberately ended (#3053) — the tombstone that lets the server answer REVOKED rather than merely unauthorized. Written by lib/auth's revocation paths and only for a session that had not already lapsed, so a device whose cookie merely expired is never told it was revoked; never written by purgeExpiredSessions, which sweeps these once past the session absolute-max ceiling.",
+      note: "Deliberate revocation of a still-live session. Expiry alone creates no tombstone. purgeExpiredSessions only removes tombstones after the absolute session-age ceiling.",
     },
   ],
   routines: [
@@ -1586,7 +1551,7 @@ export const TIME_COLUMNS = {
       semantic: "record",
       grain: "instant",
       convention: "canonical",
-      note: "The migration runner's applied-set ledger (name-keyed migrations; lib/migrations/runner.ts is the only writer, bound to instantNow()). BORN canonical. For rows backfilled from a pre-ledger user_version stamp this is when the backfill ran, not when the migration originally applied — the name is the fact, the timestamp is provenance.",
+      note: "Migration runner stamp, bound by instantNow(). Backfilled ledger rows record backfill time, not original application time; the migration name is the applied-set identity.",
     },
   ],
   sessions: [
@@ -1651,21 +1616,21 @@ export const TIME_COLUMNS = {
       semantic: "event",
       grain: "instant",
       convention: "canonical",
-      note: "The newest EVENT instant the stream had reached when ingest last looked — a watermark copied from the stream table's own event column (hr_minutes.ts today), so it carries that column's semantic. NULL while the stream has never delivered a row. Migration 179 (#2341), born canonical.",
+      note: "Newest event instant observed in the stream, copied from its event column. NULL until the stream delivers a row.",
     },
     {
       column: "advanced_at",
       semantic: "lifecycle",
       grain: "instant",
       convention: "canonical",
-      note: "When the frontier was last observed to MOVE. A transition in this watermark row's own life, not in the subject's: it is the instant the observation was made, never the instant the data carries. Migration 179 (#2341), born canonical.",
+      note: "When ingest observed the frontier move, not the event time carried by the data.",
     },
     {
       column: "observed_at",
       semantic: "record",
       grain: "instant",
       convention: "canonical",
-      note: "When ingest last looked at all, advancing or not — the stamp that makes `syncs_since_advance` auditable. Migration 179 (#2341), born canonical.",
+      note: "When ingest last checked, advancing or not; makes syncs_since_advance auditable.",
     },
   ],
   substance_daily_totals: [
@@ -1690,7 +1655,7 @@ export const TIME_COLUMNS = {
       semantic: "record",
       grain: "instant",
       convention: "canonical",
-      note: "The tap instant, born canonical by DEFAULT and by writer (#5026 phase 2). A row DERIVED from a pre-ledger day count carries that day row's own `substance_daily_totals.recorded_at` — the LAST tap's stamp, shared by every event the migration derived from that day — because the counter remembers exactly one and it is the only filing instant there is.",
+      note: "Tap/capture instant. Events backfilled from a day counter share that counter's last recorded_at; it is the only capture stamp the counter retained.",
     },
     {
       column: "created_at",
@@ -1703,7 +1668,7 @@ export const TIME_COLUMNS = {
       semantic: "event",
       grain: "instant",
       convention: "canonical",
-      note: "When the use happened. NULL means nobody stated one and that is a real answer, never filled in from the tap — the food_log_events.occurred_at rule, re-instantiated for nicotine, cannabis and every custom key (#5026 phase 2). `time_source` records whether a present value was a tap contract or a stated one. Every row the backfill derived from a day count has NULL here: a day total declares no instant, and the migration refuses to invent one.",
+      note: "Stated use instant; NULL when absent, including events backfilled from day counts. Never infer from capture time. time_source distinguishes tap contracts from stated times.",
     },
   ],
   symptom_logs: [
