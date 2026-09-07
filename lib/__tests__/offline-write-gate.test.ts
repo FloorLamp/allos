@@ -36,11 +36,7 @@ import {
 // describe for why it has to be a genuinely pending promise rather than an absent
 // IndexedDB. Everything else in this file is pure and never touches it.
 //
-// A GLOBAL, NOT A MODULE MOCK. lib/offline/idb reads `indexedDB` off the global and
-// nothing else, so a global is all this needs — and a mock marker would buy this spec a
-// private module registry, which lib/__tests__/vitest-isolation-budget.test.ts exists to
-// stop happening by accident. Installed and removed per test, because the registry is
-// shared with every other spec in the tier.
+// Stub IndexedDB per test; lib/offline/idb reads it from globalThis.
 let answerTheDatabase: (() => void) | null = null;
 
 function holdTheDatabaseOpen(): void {
