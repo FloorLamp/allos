@@ -395,7 +395,7 @@ describe("the shared weight stepper (#5371)", () => {
     expect(weights()).toEqual(["70", "70", "70"]);
   });
 
-  it("keeps confirmed loads and the remaining-load editor stable while typing", () => {
+  it("keeps load editing stable across the final planned-set removal", () => {
     const planned = asPlan({ ...blankSet(), weight: "60", reps: "8" });
     mountLive(part({ sets: [planned, planned, planned] }));
     fireEvent.click(byId("set-confirm-1"));
@@ -412,14 +412,16 @@ describe("the shared weight stepper (#5371)", () => {
     expect(
       buildActivityPayload(classifier, latest).flat.map((s) => s.weight)
     ).toEqual([60, 62.5]);
-    fireEvent.click(
-      within(byId("set-row-1")).getByLabelText("Increase weight")
-    );
-    expect(weights()).toEqual(["62.5", "62.5", "62.5"]);
-    expect(within(byId("set-row-1")).getByTestId("set1-weight")).toHaveProperty(
-      "value",
-      "62.5"
-    );
+    fireEvent.click(byId("set-remove-3"));
+    expect(weights()).toEqual(["60", "62.5"]);
+    expect(screen.queryByTestId("exercise-weight")).toBeNull();
+
+    const firstWeight = byId("set1-weight");
+    firstWeight.focus();
+    fireEvent.change(firstWeight, { target: { value: "62.5" } });
+    expect(document.activeElement).toBe(firstWeight);
+    expect(weights()).toEqual(["62.5", "62.5"]);
+    expect(screen.queryByTestId("exercise-weight")).toBeNull();
   });
 
   it("Vary expands to per-set weights, focuses that set's, and stays expanded", () => {
