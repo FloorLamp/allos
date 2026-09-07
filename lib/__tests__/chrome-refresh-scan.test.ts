@@ -66,7 +66,6 @@ const CHROME_CALL_SITES = [
  */
 const USER_CALL_SITES = [
   "components/PullToRefresh.tsx",
-  "components/ReprocessDiffPanel.tsx",
   "components/ImportDetailActions.tsx",
   "app/(app)/settings/server/SmtpSettings.tsx",
   "app/(app)/integrations/fitbit-takeout/TakeoutUpload.tsx",
