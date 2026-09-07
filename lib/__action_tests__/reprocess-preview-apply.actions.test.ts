@@ -1,17 +1,3 @@
-// SERVER-ACTION TIER — the reprocess-with-preview APPLY path (issue #946).
-//
-// The reprocess preview used to extract, and the confirmed apply re-extracted a
-// SECOND, possibly-different result — 2× spend and consent drift (the user approves
-// one diff, the app commits another). The fix caches the preview's PersistInput under
-// a single-use token; the apply commits EXACTLY that input with no re-extraction, and
-// degrades to a fresh re-extract (with a typed `re-extracted` outcome the UI notes)
-// when the token is missing/expired/stale.
-//
-// This drives the REAL server actions (previewReprocess + applyReprocessPreview)
-// through the mocked auth boundary and asserts the typed outcome DISTINGUISHES a
-// committed preview from a re-extracted fallback — the seam the UI's fallback note
-// keys on.
-
 import {
   describe,
   it,
@@ -19,6 +5,7 @@ import {
   vi,
   beforeAll,
   afterAll,
+  afterEach,
   beforeEach,
 } from "vitest";
 import fs from "fs";
@@ -31,7 +18,7 @@ vi.mock("@/lib/medical-extract", async (importActual) => {
 });
 
 import { db } from "@/lib/db";
-import { seedActor, fd } from "./harness";
+import { seedActor, actAs, fd } from "./harness";
 import { extractMedicalDocument } from "@/lib/medical-extract";
 import type { ExtractionResult } from "@/lib/medical-extract";
 import { _resetPreviewCache } from "@/lib/reprocess-preview-cache";
@@ -40,9 +27,11 @@ import {
   applyReprocessPreview,
 } from "@/app/(app)/medical/document-actions";
 
+import { extractionSemaphore } from "@/lib/ai-concurrency";
+
 const extractMock = vi.mocked(extractMedicalDocument);
 
-function doneResult(): Extract<ExtractionResult, { status: "done" }> {
+function doneResult(value = 95): Extract<ExtractionResult, { status: "done" }> {
   return {
     status: "done",
     meta: {
@@ -60,8 +49,8 @@ function doneResult(): Extract<ExtractionResult, { status: "done" }> {
         panel: null,
         name: "Glucose",
         canonical_name: "Glucose",
-        value: "95",
-        value_num: 95,
+        value: String(value),
+        value_num: value,
         unit: "mg/dL",
         reference_range: "70-99",
         flag: null,
@@ -123,60 +112,166 @@ beforeEach(() => {
   _resetPreviewCache();
 });
 
-describe("applyReprocessPreview typed outcome (#946)", () => {
-  it("commits the previewed extraction (committed-preview) and does not re-extract", async () => {
+async function settleExtractions() {
+  await vi.waitFor(() => {
+    expect(extractionSemaphore.inUse).toBe(0);
+    expect(extractionSemaphore.waiting).toBe(0);
+  });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+}
+
+afterEach(async () => {
+  await settleExtractions();
+  vi.restoreAllMocks();
+});
+
+function importedValues(profileId: number, docId: number) {
+  return db
+    .prepare(
+      "SELECT value_num FROM medical_records WHERE profile_id = ? AND document_id = ?"
+    )
+    .all(profileId, docId);
+}
+
+async function preview(docId: number) {
+  const result = await previewReprocess(fd({ id: docId }));
+  if (result.status !== "ok") throw new Error(result.message);
+  return result.previewToken;
+}
+
+describe("applyReprocessPreview", () => {
+  it("commits the reviewed input once and refuses replay without another extraction", async () => {
     const { profile } = seedActor();
     const docId = insertDoc(profile.id);
     extractMock.mockResolvedValue(doneResult());
+    const token = await preview(docId);
+    extractMock.mockResolvedValue(doneResult(120));
 
-    const preview = await previewReprocess(fd({ id: docId }));
-    expect(preview.status).toBe("ok");
-    if (preview.status !== "ok") return;
-    expect(extractMock).toHaveBeenCalledTimes(1);
-
-    const outcome = await applyReprocessPreview(
-      fd({ id: docId, previewToken: preview.previewToken })
+    expect(
+      await applyReprocessPreview(fd({ id: docId, previewToken: token }))
+    ).toEqual({ mode: "committed-preview" });
+    const replay = await applyReprocessPreview(
+      fd({ id: docId, previewToken: token })
     );
-    expect(outcome).toEqual({ mode: "committed-preview" });
-    // The apply added no extractor call — exactly one across the whole flow.
+    await settleExtractions();
+    expect(replay.mode).toBe("refused");
+    expect(importedValues(profile.id, docId)).toEqual([{ value_num: 95 }]);
     expect(extractMock).toHaveBeenCalledTimes(1);
-    const names = (
-      db
+  });
+
+  it.each(["expired", "changed", "missing", "cache lost", "processing"])(
+    "%s preview preserves existing records without another extraction",
+    async (reason) => {
+      const { profile } = seedActor();
+      const docId = insertDoc(profile.id);
+      extractMock.mockResolvedValue(doneResult());
+      await applyReprocessPreview(
+        fd({ id: docId, previewToken: await preview(docId) })
+      );
+      extractMock.mockResolvedValue(doneResult(120));
+      const token = await preview(docId);
+      extractMock.mockResolvedValue(doneResult(130));
+      const before = db
         .prepare(
-          "SELECT name FROM medical_records WHERE profile_id = ? AND document_id = ?"
+          "SELECT extraction_status FROM medical_documents WHERE id = ? AND profile_id = ?"
         )
-        .all(profile.id, docId) as { name: string }[]
-    ).map((r) => r.name);
-    expect(names).toEqual(["Glucose"]);
+        .get(docId, profile.id);
+      if (reason === "expired")
+        vi.spyOn(Date, "now").mockReturnValue(Date.now() + 16 * 60 * 1000);
+      if (reason === "changed")
+        db.prepare(
+          "UPDATE medical_documents SET content_hash = 'changed' WHERE id = ? AND profile_id = ?"
+        ).run(docId, profile.id);
+      if (reason === "cache lost") _resetPreviewCache();
+      if (reason === "processing")
+        db.prepare(
+          "UPDATE medical_documents SET extraction_status = 'processing' WHERE id = ? AND profile_id = ?"
+        ).run(docId, profile.id);
+      const outcome = await applyReprocessPreview(
+        fd({
+          id: docId,
+          previewToken: reason === "missing" ? undefined : token,
+        })
+      );
+      await settleExtractions();
+      expect(outcome.mode).toBe("refused");
+      expect(importedValues(profile.id, docId)).toEqual([{ value_num: 95 }]);
+      expect(extractMock).toHaveBeenCalledTimes(2);
+      expect(
+        db
+          .prepare(
+            "SELECT extraction_status FROM medical_documents WHERE id = ? AND profile_id = ?"
+          )
+          .get(docId, profile.id)
+      ).toEqual(
+        reason === "processing" ? { extraction_status: "processing" } : before
+      );
+    }
+  );
+
+  it("a changed acting profile cannot consume the owner's preview", async () => {
+    const owner = seedActor();
+    const docId = insertDoc(owner.profile.id);
+    extractMock.mockResolvedValue(doneResult());
+    const token = await preview(docId);
+    const other = seedActor();
+    const otherDocId = insertDoc(other.profile.id);
+    expect(
+      (await applyReprocessPreview(fd({ id: otherDocId, previewToken: token })))
+        .mode
+    ).toBe("refused");
+    expect(
+      (await applyReprocessPreview(fd({ id: docId, previewToken: token }))).mode
+    ).toBe("refused");
+    actAs(owner.login, owner.profile);
+    expect(
+      await applyReprocessPreview(fd({ id: docId, previewToken: token }))
+    ).toEqual({ mode: "committed-preview" });
+    expect(importedValues(owner.profile.id, docId)).toEqual([
+      { value_num: 95 },
+    ]);
+    expect(importedValues(other.profile.id, otherDocId)).toEqual([]);
+    expect(extractMock).toHaveBeenCalledTimes(1);
   });
 
-  it("falls back to re-extract (re-extracted) when no token is supplied", async () => {
+  it("reports a failed preview commit without starting a second extraction", async () => {
     const { profile } = seedActor();
     const docId = insertDoc(profile.id);
     extractMock.mockResolvedValue(doneResult());
-
-    // Preview so a cache entry exists, but apply WITHOUT the token — the apply must
-    // not silently commit the cached input; it re-extracts and says so.
-    await previewReprocess(fd({ id: docId }));
-    const outcome = await applyReprocessPreview(fd({ id: docId }));
-    expect(outcome).toEqual({ mode: "re-extracted" });
-  });
-
-  it("falls back (re-extracted) when the document changed since the preview", async () => {
-    const { profile } = seedActor();
-    const docId = insertDoc(profile.id);
-    extractMock.mockResolvedValue(doneResult());
-
-    const preview = await previewReprocess(fd({ id: docId }));
-    expect(preview.status).toBe("ok");
-    if (preview.status !== "ok") return;
+    const token = await preview(docId);
     db.prepare(
-      "UPDATE medical_documents SET content_hash = 'changed' WHERE id = ? AND profile_id = ?"
-    ).run(docId, profile.id);
+      "CREATE TEMP TRIGGER refuse_preview BEFORE INSERT ON medical_records BEGIN SELECT RAISE(ABORT, 'synthetic persist failure'); END"
+    ).run();
+    try {
+      const outcome = await applyReprocessPreview(
+        fd({ id: docId, previewToken: token })
+      );
+      expect(outcome.mode).toBe("refused");
+      expect(importedValues(profile.id, docId)).toEqual([]);
+      expect(
+        db
+          .prepare(
+            "SELECT extraction_status FROM medical_documents WHERE id = ? AND profile_id = ?"
+          )
+          .get(docId, profile.id)
+      ).toEqual({ extraction_status: "failed" });
+      expect(extractMock).toHaveBeenCalledTimes(1);
+    } finally {
+      db.prepare("DROP TRIGGER refuse_preview").run();
+    }
+  });
 
-    const outcome = await applyReprocessPreview(
-      fd({ id: docId, previewToken: preview.previewToken })
-    );
-    expect(outcome).toEqual({ mode: "re-extracted" });
+  it("only an explicit re-extract request runs a fresh extraction", async () => {
+    const { profile } = seedActor();
+    const docId = insertDoc(profile.id);
+    extractMock.mockResolvedValue(doneResult());
+    await preview(docId);
+    extractMock.mockResolvedValue(doneResult(120));
+    expect(
+      await applyReprocessPreview(fd({ id: docId, force: "true" }))
+    ).toEqual({ mode: "re-extracted" });
+    await settleExtractions();
+    expect(importedValues(profile.id, docId)).toEqual([{ value_num: 120 }]);
+    expect(extractMock).toHaveBeenCalledTimes(2);
   });
 });

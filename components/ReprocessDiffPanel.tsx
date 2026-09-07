@@ -1,8 +1,6 @@
 "use client";
-/* eslint-disable no-restricted-properties -- USER-initiated repaint (#1878): follows the user's own 'Save changes' commit; deferring it would leave them staring at the rows they just replaced */
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { IconRefresh } from "@tabler/icons-react";
 import {
   previewReprocess,
@@ -12,18 +10,7 @@ import type { PreviewReprocessResult } from "@/lib/medical-pipeline";
 import type { EntityDiff } from "@/lib/import-diff";
 import { reprocessPreviewView } from "@/lib/reprocess-preview-view";
 
-// Preview-first re-extraction — the SOLE per-document reprocess control (#1071).
-// Instead of silently re-extracting and replacing a document's rows, this previews
-// the diff between what's currently persisted and what a fresh re-extraction would
-// produce, then commits on a separate confirm. The verbs say what differs (#1071):
-// "Preview changes" calls the read-only preview action (no DB writes) — it never
-// writes, so it can't be mistaken for the commit; "Save changes" calls
-// applyReprocessPreview, which commits EXACTLY the previewed extraction (#946) — no
-// second model call — unless the token has expired or the document changed, in
-// which case it falls back to a fresh re-extraction and we surface that the result
-// may differ from the preview. When the preview shows no changes the commit is
-// disabled (nothing to save); the content-hash "skipped" short-circuit is a
-// different case and keeps its "Re-extract anyway" override.
+// Preview approval and explicit re-extraction are separate user choices.
 export default function ReprocessDiffPanel({
   id,
   filename,
@@ -39,17 +26,14 @@ export default function ReprocessDiffPanel({
   // from what renders.
   subtext?: string;
 }) {
-  const router = useRouter();
   const [previewing, startPreview] = useTransition();
   const [committing, startCommit] = useTransition();
   const [result, setResult] = useState<PreviewReprocessResult | null>(null);
-  // Set when the apply fell back to a fresh re-extraction instead of committing
-  // the previewed input, so the user knows the result may differ from the diff.
-  const [fallbackNote, setFallbackNote] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   function preview() {
     setResult(null);
-    setFallbackNote(false);
+    setError(null);
     startPreview(async () => {
       const fd = new FormData();
       fd.set("id", String(id));
@@ -57,28 +41,22 @@ export default function ReprocessDiffPanel({
     });
   }
 
-  function commit() {
-    // Carry the preview token (when we have one) so the apply commits exactly the
-    // previewed input; without it the apply always re-extracts.
-    const token = result?.status === "ok" ? result.previewToken : undefined;
+  function commit(previewResult: PreviewReprocessResult) {
+    const fd = new FormData();
+    fd.set("id", String(id));
+    if (previewResult.status === "ok")
+      fd.set("previewToken", previewResult.previewToken);
+    else fd.set("force", "true");
     startCommit(async () => {
-      const fd = new FormData();
-      fd.set("id", String(id));
-      if (token) fd.set("previewToken", token);
       const outcome = await applyReprocessPreview(fd);
       setResult(null);
-      // Only note the divergence when we actually HAD a preview to commit but the
-      // apply had to re-extract anyway (expired/stale/superseded token).
-      setFallbackNote(!!token && outcome.mode === "re-extracted");
-      // Survives the #1473 sweep: applyReprocessPreview rewrites the document's
-      // extracted rows but calls no revalidatePath, so this is the only repaint.
-      router.refresh();
+      setError(outcome.mode === "refused" ? outcome.error : null);
     });
   }
 
   function cancel() {
     setResult(null);
-    setFallbackNote(false);
+    setError(null);
   }
 
   const busy = previewing || committing || !!disabled;
@@ -105,13 +83,12 @@ export default function ReprocessDiffPanel({
               {subtext}
             </p>
           )}
-          {fallbackNote && (
+          {error && (
             <p
-              data-testid="reprocess-fallback-note"
+              role="alert"
               className="text-sm text-amber-700 dark:text-amber-400"
             >
-              Re-extracted — the preview had expired or the document changed, so
-              the results may differ from the preview you saw.
+              {error}
             </p>
           )}
         </div>
@@ -125,7 +102,7 @@ export default function ReprocessDiffPanel({
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={commit}
+              onClick={() => commit(result)}
               disabled={busy}
               data-testid="reprocess-anyway"
               className="btn inline-flex items-center gap-1.5 text-sm"
@@ -196,21 +173,19 @@ export default function ReprocessDiffPanel({
 
           {result.diff.hasChanges && (
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Saving re-runs extraction and replaces this document’s imported
-              rows (any manual edits to them are discarded). A fresh AI
-              re-extraction may differ slightly from this preview; deterministic
-              health-record imports are exact. Records diff exactly, but body
-              metrics, height/head-circumference and medications shown as
-              “added” may instead be deferred or skipped on commit when another
-              source already covers that date or an existing medication matches
-              — so those additions are indicative.
+              Saving applies this preview and replaces this document’s imported
+              rows. Existing import rules still apply: body metrics,
+              height/head-circumference and medications shown as “added” may
+              instead be deferred or skipped on commit when another source
+              already covers that date or an existing medication matches — so
+              those additions are indicative.
             </p>
           )}
 
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={commit}
+              onClick={() => commit(result)}
               disabled={
                 busy || reprocessPreviewView(result.diff).commitDisabled
               }

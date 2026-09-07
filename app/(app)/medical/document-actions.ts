@@ -168,26 +168,23 @@ export async function previewReprocess(
   return previewReprocessById(login.id, profile.id, id);
 }
 
-// Apply a previewed reprocess (#946): commit exactly the input the user reviewed
-// (identified by the preview token) with NO second extraction. If the token is
-// missing/expired/stale — another tab reprocessed, the file changed, or the 15-min
-// TTL lapsed — this falls back to a fresh background re-extraction and the returned
-// outcome (`re-extracted`) lets the UI note that the result may differ from the
-// preview. This preview→apply pair is the SOLE per-document re-extraction (#1071):
-// there is no un-previewed fire-and-replace action anymore.
+// Missing preview input is a refusal. Fresh extraction requires explicit intent.
 export async function applyReprocessPreview(
   formData: FormData
 ): Promise<ReprocessApplyOutcome> {
   const { login, profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
-  if (!id) return { mode: "re-extracted" };
+  if (!Number.isSafeInteger(id) || id <= 0)
+    return { mode: "refused", error: "Couldn't find this document." };
   const token = formData.get("previewToken");
-  return reprocessDocumentById(
-    login.id,
-    profile.id,
-    id,
-    typeof token === "string" && token ? token : undefined
-  );
+  if (typeof token === "string" && token)
+    return reprocessDocumentById(login.id, profile.id, id, token);
+  if (formData.get("force") === "true")
+    return reprocessDocumentById(login.id, profile.id, id);
+  return {
+    mode: "refused",
+    error: "Preview changes again before saving.",
+  };
 }
 
 export interface ReassignResult {

@@ -58,7 +58,6 @@ behind it. In practice that is one of:
 - **An action that deliberately does not revalidate** but still writes something
   the current page renders. `sendTestEmail` is the live example: it persists the
   SMTP form through `saveSmtpConfigSync` and skips `revalidatePath` on purpose.
-  So are `applyReprocessPreview` and `reprocessDocumentFromRaw`.
 
 Every surviving call site carries a one-line comment naming which of these it is.
 If you add one, add the comment; a bare `router.refresh()` after an action reads
