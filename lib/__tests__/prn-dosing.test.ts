@@ -188,6 +188,30 @@ describe("pediatricDoseSuggestion — orchestrated lookup", () => {
     expect(r.kind).toBe("ask-doctor");
   });
 
+  it.each([IBUPROFEN, ACETAMINOPHEN])(
+    "$slug stops offering its children's chart at the twelfth birthday",
+    (entry) => {
+      for (const ageMonths of [132, 143, 144, 145, 192]) {
+        const result = pediatricDoseSuggestion({
+          ...base,
+          entry,
+          ageMonths,
+          weightKg: 60,
+        });
+        if (ageMonths < 144) {
+          expect(result).toEqual(
+            pediatricDoseSuggestion({ ...base, entry, weightKg: 60 })
+          );
+        } else {
+          expect(result).toEqual({
+            kind: "ask-doctor",
+            reason: expect.stringContaining("under 12 years"),
+          });
+        }
+      }
+    }
+  );
+
   it("no recorded weight → need-weight", () => {
     const r = pediatricDoseSuggestion({ ...base, weightKg: null });
     expect(r.kind).toBe("need-weight");
