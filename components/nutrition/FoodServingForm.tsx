@@ -9,6 +9,7 @@ import {
   statedHhmm,
   statedInstantOnDate,
   type WhenValue,
+  whenOnDay,
 } from "@/lib/stated-time";
 import { eatingHoursOnDate } from "@/lib/food-eating-time";
 import {
@@ -165,10 +166,9 @@ export default function FoodServingForm({
   );
   const [mealTouched, setMealTouched] = useState(false);
   const [notes, setNotes] = useState(row?.notes ?? "");
-  const [when, setWhen] = useState<WhenValue>(() => ({
-    date: row?.date ?? date,
-    statedAt: openingStatedAt,
-  }));
+  const [when, setWhen] = useState<WhenValue>(() =>
+    whenOnDay(row?.date ?? date, tz, openingStatedAt)
+  );
 
   function moveWhen(next: WhenValue): void {
     if (

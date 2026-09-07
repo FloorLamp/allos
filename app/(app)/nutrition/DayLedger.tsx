@@ -34,7 +34,7 @@ import type { PendingDayDose } from "@/lib/queries/usual-routine";
 import CheckboxControl from "@/components/CheckboxControl";
 import WhenControl from "@/components/WhenControl";
 import { useTimezone } from "@/components/TimezoneProvider";
-import { statedHhmm, type WhenValue } from "@/lib/stated-time";
+import { statedHhmm, whenOnDay, type WhenValue } from "@/lib/stated-time";
 import { useConfirm } from "@/components/ConfirmDialog";
 import {
   deleteLedgerSelection,
@@ -204,10 +204,9 @@ export default function DayLedger({
   // batch never re-dates through this control — Move to day… is the other verb, and
   // giving Set time… a day picker too would be two answers to one question.
   const tz = useTimezone();
-  const [batchWhen, setBatchWhen] = useState<WhenValue>(() => ({
-    date,
-    statedAt: null,
-  }));
+  const [batchWhen, setBatchWhen] = useState<WhenValue>(() =>
+    whenOnDay(date, tz)
+  );
   const [batchDay, setBatchDay] = useState("");
   const pickedCount = picked.servings.length + picked.doses.length;
 
@@ -227,7 +226,7 @@ export default function DayLedger({
     setSelecting(false);
     setSheet(null);
     setPicked({ servings: [], doses: [] });
-    setBatchWhen({ date, statedAt: null });
+    setBatchWhen(whenOnDay(date, tz));
   }
 
   /** The box a selectable row carries while selection mode is on, and nothing otherwise. */

@@ -505,9 +505,12 @@ describe("the PRN row's earlier-dose statement takes the card's day (#4691/#4738
       </CockpitDayProvider>
     );
     await openStatement();
-    expect(screen.getByTestId("prn-log-when-date").textContent).toBe(
-      YESTERDAY_UTC
-    );
+    // THE DAY IS WORDS, NEVER THE STORAGE SPELLING (#5489 fix 3). This used to read
+    // `2026-09-06` — the raw `date` — beside a card whose own toggle said Yesterday.
+    // It now says what the card says, and the card does not call a past day "Today".
+    const stated = screen.getByTestId("prn-log-when-date").textContent!;
+    expect(stated).not.toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(stated).not.toBe("Today");
     await act(async () =>
       fireEvent.change(screen.getByTestId("prn-log-when-time"), {
         target: { value: "19:15" },
@@ -610,12 +613,67 @@ describe("the PRN row's earlier-dose statement takes the card's day (#4691/#4738
     expect(fields().date).toBe(YESTERDAY);
   });
 
-  it("the taken-now tap states no day at all — its action stamps today", async () => {
+  // THE CARD'S DAY RIDES BOTH ARMS (#5489 fix 1). The now-tap used to post
+  // `offset=now` and NO day, so the action stamped the server's today — from a card
+  // that might be standing on yesterday. Under a card the day is the surface's in both
+  // arms; with no card there is no surface day to state, which is the action's own
+  // rule and is what keeps a page left open across midnight a one-tap dose.
+  it("the taken-now tap states the CARD's day, and none where there is no card", async () => {
+    render(
+      <CockpitDayProvider date={TODAY_UTC}>
+        <QuickLogPrnControl
+          itemId={31}
+          name="Ibuprofen"
+          doseAmount="200 mg"
+          dayLabel="1 today · last 4:02pm"
+          tz="UTC"
+        />
+      </CockpitDayProvider>
+    );
+    await act(async () => fireEvent.click(screen.getByTestId("prn-log-now")));
+    expect(fields().offset).toBe("now");
+    expect(fields().date).toBe(TODAY_UTC);
+
+    cleanup();
+    posted.length = 0;
     row();
     await act(async () => fireEvent.click(screen.getByTestId("prn-log-now")));
+    expect(fields().offset).toBe("now");
+    expect(fields().date).toBeUndefined();
+  });
+
+  // ON A DAY THAT HAS ENDED, THE TAP ASKS (#5489 fix 2, the #4686 ruling). The green
+  // pill is the control a caregiver reaches for at 2 a.m.; on a card standing on a day
+  // that has no "now" it must not stamp one silently. Two claims, because "it wrote
+  // nothing" and "it asked" are different outcomes and only one of them is the ruling.
+  it("asks for the minute instead of stamping one on a day that has ended", async () => {
+    render(
+      <CockpitDayProvider date={YESTERDAY_UTC}>
+        <QuickLogPrnControl
+          itemId={31}
+          name="Ibuprofen"
+          doseAmount="200 mg"
+          dayLabel="1 today · last 4:02pm"
+          tz="UTC"
+        />
+      </CockpitDayProvider>
+    );
+    await act(async () => fireEvent.click(screen.getByTestId("prn-log-now")));
+    expect(posted).toHaveLength(0);
+    expect(screen.getByTestId("prn-log-options")).toBeTruthy();
+
+    // …and the SAME tap, once a minute stands beside it, writes that minute on the
+    // card's day rather than a "now" the day cannot supply.
+    await act(async () =>
+      fireEvent.change(screen.getByTestId("prn-log-when-time"), {
+        target: { value: "23:30" },
+      })
+    );
+    await act(async () => fireEvent.click(screen.getByTestId("prn-log-now")));
     const fd = fields();
-    expect(fd.offset).toBe("now");
-    expect(fd.date).toBeUndefined();
+    expect(fd.offset).toBe("custom");
+    expect(fd.time).toBe("23:30");
+    expect(fd.date).toBe(YESTERDAY_UTC);
   });
 });
 

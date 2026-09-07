@@ -7,7 +7,11 @@ import MonthCalendar from "@/components/MonthCalendar";
 import TimeField, { TimeWheel } from "@/components/TimeField";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { useTimezone } from "@/components/TimezoneProvider";
-import { dateStrInTz, zonedDateParts } from "@/lib/date";
+import {
+  cockpitDayLabel,
+  useCockpitDay,
+} from "@/components/illness/CockpitDayContext";
+import { dateStrInTz, isRealIsoDate, zonedDateParts } from "@/lib/date";
 import { formatClock, formatWeekdayDate } from "@/lib/format-date";
 import {
   reanchorStatedAt,
@@ -98,6 +102,9 @@ export interface WhenControlProps {
   testId: string;
 }
 
+// Both date arms reserve the same space beside the time field.
+const DATE_SLOT = "h-8 w-36 text-sm";
+
 export default function WhenControl({
   mode,
   grain,
@@ -120,6 +127,11 @@ export default function WhenControl({
   const now = new Date();
   const today = dateStrInTz(tz, now);
   const fixedDay = minDate !== undefined && minDate === maxDate;
+  // Prefer the host's day label, then the login's date format.
+  const card = useCockpitDay();
+  const prefs = useFormatPrefs();
+  // The day half MID-EDIT, or null when the field is showing the pair's own day.
+  const [draft, setDraft] = useState<string | null>(null);
 
   // EVERY EMITTER BUILDS THE NEXT PAIR FROM THE PAIR AS IT IS *NOW*, never from
   // the one its render closed over. Each half's widget emits only its own half,
@@ -142,6 +154,11 @@ export default function WhenControl({
   }, [value]);
 
   const setDate = (date: string) => {
+    if (!isRealIsoDate(date)) {
+      setDraft(date);
+      return;
+    }
+    setDraft(null);
     // The pair moves together: a date change re-anchors the stated instant onto
     // the new day (or clears it — never invents one), so the two fields cannot
     // come apart even mid-edit.
@@ -216,22 +233,25 @@ export default function WhenControl({
         <>
           {fixedDay ? (
             <span
-              className="text-sm text-slate-600 dark:text-slate-300"
+              className={`inline-flex items-center ${DATE_SLOT} text-slate-600 dark:text-slate-300`}
               data-testid={`${testId}-date`}
             >
-              {value.date === today ? "Today" : value.date}
+              {(card && cockpitDayLabel(card, value.date)) ??
+                (value.date === today
+                  ? "Today"
+                  : formatWeekdayDate(value.date, prefs))}
             </span>
           ) : (
             <label className="block">
               <span className="sr-only">{dateLabel}</span>
               <DateField
-                value={value.date}
+                value={draft ?? value.date}
                 onChange={setDate}
                 min={minDate}
                 max={maxDate}
                 required
                 id={`${testId}-date`}
-                inputClassName="h-8 w-36 text-sm"
+                inputClassName={DATE_SLOT}
                 data-testid={`${testId}-date`}
               />
             </label>

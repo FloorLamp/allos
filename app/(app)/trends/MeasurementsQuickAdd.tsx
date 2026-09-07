@@ -48,6 +48,7 @@ import {
   addMeasurements,
   type MeasurementsSaveResult,
 } from "./measurement-actions";
+import { whenOnDay } from "@/lib/stated-time";
 
 export type { MeasurementEntryMetric } from "@/lib/measurement-entry";
 
@@ -304,11 +305,10 @@ export default function MeasurementsQuickAdd({
   // profile-local date is the row's date by construction. Posted through the hidden
   // pair below; the initial statedAt is the seed from the day's existing manual row
   // (or null — the control never defaults it to now).
-  const [when, setWhen] = useState<WhenValue>(() => ({
-    date: defaultDate,
-    statedAt: defaultStatedAt,
-  }));
   const tz = useTimezone();
+  const [when, setWhen] = useState<WhenValue>(() =>
+    whenOnDay(defaultDate, tz, defaultStatedAt)
+  );
   // The night's two clocks (#1851, #4976), controlled the same way `when` is —
   // `TimeRangeFields` posts them through its own hidden inputs (`bed_time`/
   // `wake_time`, unchanged names), so the write below reads the pair exactly as

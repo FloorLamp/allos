@@ -628,26 +628,51 @@ for (const [label, viewport, wide] of [
       ).not.toHaveCount(0);
 
       // ONE SETTLED GROUP: every claim below is the card measured AGAINST its own
-      // column, so the two boxes have to describe the same layout.
-      const [cardBox, columnBox] = await settledBoxes([
+      // column and against a row it shares a frame with, so all three boxes have to
+      // describe the same layout.
+      //
+      // INSIDE ONE FRAME, EVERY ROW HAS ONE LEFT EDGE (#3673, restated by #5490 site
+      // 3). The ~880px measure is still #4752 §2's, but it is the BAND's now: the
+      // cockpit used to spend it on itself as `mx-auto max-w-[880px]`, which stepped
+      // its own edges (1152 − 880) / 2 = 136px in from the ordinary Now rows it shares
+      // the band's one visible frame with. `NowCards` guards that rule against 16px
+      // eight lines above the child that produced 136. Both edges, because a centered
+      // cap is symmetric and a single-edge claim would pass on one that only moved.
+      // EVERY ROW IN THE BAND, not one representative: the claim is about the frame,
+      // and a single sibling would let a second row re-introduce the step unseen. It
+      // is stated as "every row spans its frame" rather than "row A matches row B"
+      // because a band can legitimately hold one row, and the step is still a step.
+      const band = card.locator('xpath=ancestor::ul[contains(@class,"band")]');
+      const bandRows = band.locator("> li");
+      const rowCount = await bandRows.count();
+      expect(
+        rowCount,
+        "the Now band's rows — the subject of this claim"
+      ).toBeGreaterThan(0);
+      const [cardBox, columnBox, bandBox, ...rowBoxes] = await settledBoxes([
         card,
         card.locator("xpath=.."),
+        band,
+        ...Array.from({ length: rowCount }, (_, i) => bandRows.nth(i)),
       ]);
       expect(cardBox.width, `${label} cockpit measure`).toBeLessThanOrEqual(
         880
       );
-      if (wide) {
-        // INSET AND CENTERED in the column it sits in — the two gutters equal, and
-        // both real. A full-bleed card leaves neither.
-        const left = cardBox.x - columnBox.x;
-        const right =
-          columnBox.x + columnBox.width - (cardBox.x + cardBox.width);
-        expect(left, `${label} left gutter`).toBeGreaterThan(1);
-        expect(Math.abs(left - right), `${label} centering`).toBeLessThan(2);
-      } else {
-        // Below the cap the phone is unchanged: the card is the column.
-        expect(Math.abs(cardBox.width - columnBox.width)).toBeLessThan(2);
+      for (const [index, row] of rowBoxes.entries()) {
+        // ±2 absorbs the frame's own 1px border, which is the only thing between a
+        // row's box and the frame's.
+        expect(
+          Math.abs(row.x - bandBox.x),
+          `${label} band row ${index} left edge`
+        ).toBeLessThanOrEqual(2);
+        expect(
+          Math.abs(row.x + row.width - (bandBox.x + bandBox.width)),
+          `${label} band row ${index} right edge`
+        ).toBeLessThanOrEqual(2);
       }
+      // …and the cockpit is the whole of its own row in that frame, at every width:
+      // the band decides the measure, the row spends only its gutter.
+      expect(Math.abs(cardBox.width - columnBox.width)).toBeLessThan(2);
 
       // IN PLACE (#4752 item 3). Everything the panel opens BENEATH keeps its exact
       // box, and the card keeps its edges — a panel that reflowed the chips, or one
@@ -709,6 +734,41 @@ for (const [label, viewport, wide] of [
         names.filter((name) => /happened earlier/i.test(name)).length,
         names.join(" | ")
       ).toBeGreaterThan(0);
+
+      // ── SWITCHING THE DAY MOVES NO OTHER CONTROL (#5490 sites 1 and 2) ────
+      //
+      // The two defects composed: the fixed-day arm of `WhenControl` declared no
+      // width, so its slot resized with its own text ("Today" is five characters, a
+      // written date is a dozen), and the reading field took the row's remainder with
+      // `flex-1` — so flipping this toggle resized a number field that may be focused
+      // and being typed into, and slid `Log temp` with it. Both are declared widths
+      // now, so the claim is the geometry rather than either class: the input's box is
+      // IDENTICAL on the card's two days.
+      const bar = card.getByTestId("symptom-log-bar");
+      const toggle = bar.getByTestId("symptom-day-alt");
+      await expect(
+        toggle,
+        "the card's Yesterday toggle — the gesture this claim is about"
+      ).toBeVisible();
+      await hydratedClick(page, bar.getByTestId("temp-quick-toggle"));
+      const reading = bar.getByTestId("temp-quick-input");
+      await expect(reading).toBeVisible();
+      const [onToday] = await settledBoxes([reading]);
+      await hydratedClick(page, toggle);
+      await expect(bar.getByTestId("symptom-day-alt")).toHaveAttribute(
+        "aria-pressed",
+        "true"
+      );
+      const [onYesterday] = await settledBoxes([reading]);
+      // ITS HORIZONTAL BOX, not its `y`: the day toggle legitimately changes what is
+      // ABOVE the fold (that day's own symptom rows), so a whole-box equality would
+      // be asserting the fixture's content rather than this control's geometry. What
+      // must not move is the field the caregiver is typing in — its left edge and its
+      // width, which is what the two undeclared widths used to change by ~35px.
+      expect(
+        { x: onYesterday.x, width: onYesterday.width },
+        `${label} reading field across the day toggle`
+      ).toEqual({ x: onToday.x, width: onToday.width });
 
       if (!wide) await expectNoClippedContent(page);
     } finally {

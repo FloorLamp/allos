@@ -13,6 +13,8 @@ import type { useTemperatureUnitDetection } from "@/components/useTemperatureUni
 // arrangement and now the only one: the value can never run under it (`pr-16`), and
 // `select-bare` is the primitive that pins the OPEN option list's colors in dark mode.
 //
+// Keep a short desktop field and a full-width phone field at every host.
+//
 // DETECTION IS THE HOST'S, passed in rather than owned here, because a host resets it
 // on its own schedule (the measurements form clears the whole sitting; the bar clears
 // after one reading) and two `useTemperatureUnitDetection` instances over one field
@@ -41,7 +43,7 @@ export default function TemperatureField({
   autoFocus?: boolean;
 }) {
   return (
-    <div className="min-w-0">
+    <div className="w-full min-w-0 sm:w-40">
       <div className="relative">
         <input
           id={id}

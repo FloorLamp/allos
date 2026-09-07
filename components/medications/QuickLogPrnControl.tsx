@@ -8,7 +8,11 @@ import TodayMedRow from "@/components/medications/TodayMedRow";
 import { LabeledVerbChip } from "@/components/OfferRow";
 import { useTimeStatement } from "@/components/TimeStatement";
 import { useTimezone } from "@/components/TimezoneProvider";
-import { useCockpitDay } from "@/components/illness/CockpitDayContext";
+import {
+  cockpitDayLabel,
+  useCockpitDay,
+  useDayBinding,
+} from "@/components/illness/CockpitDayContext";
 import {
   DOSE_ACTION_BRAND,
   DOSE_ACTION_ICON,
@@ -75,6 +79,7 @@ export default function QuickLogPrnControl({
   layout = "row",
   compactActions = false,
   tz: tzProp,
+  proposedTime,
   onLogged,
 }: {
   itemId: number;
@@ -103,6 +108,8 @@ export default function QuickLogPrnControl({
   // — the shared WhenControl's day/time must be that profile's, not the viewer's.
   // Defaults to the app-wide TimezoneProvider (the acting profile).
   tz?: string;
+  // A host may visibly propose the minute of the reading it is answering.
+  proposedTime?: string | null;
   // Fired once a dose is RECORDED — used by the illness fold's dose offer, which the
   // ruling ends when the offer is "taken" (#4712, 2026-09-04 11:20 UTC part 2). It
   // fires on the duplicate outcome too: the dose the offer existed to get is on the
@@ -122,8 +129,10 @@ export default function QuickLogPrnControl({
   // disagree about which day the card is showing. Outside a cockpit (the medications
   // page, the dashboard's own dose card) there is no card day and the statement opens
   // on today.
-  const card = useCockpitDay();
-  const cardDay = card?.activeDate ?? todayStr;
+  const card = useDayBinding(todayStr, tz);
+  const cardDay = card.activeDate;
+  const inCard = useCockpitDay() !== null;
+  const isPrimaryDay = card.isPrimaryDay;
   const toast = useToast();
   const ledger = useOptimisticLedger("prn-dose");
   const busy = ledger.pending("now") || ledger.pending("custom");
@@ -144,6 +153,7 @@ export default function QuickLogPrnControl({
   const statement = useTimeStatement({
     day: cardDay,
     tz,
+    proposed: proposedTime ?? null,
     timeLabel: "Specific time",
     testId: "prn-log-when",
     disabled: busy,
@@ -159,12 +169,8 @@ export default function QuickLogPrnControl({
         const fd = stampLoggedVia(new FormData());
         fd.set("id", String(itemId));
         fd.set("offset", offset);
-        if (customTime) {
-          fd.set("time", customTime);
-          // The card's day, not the statement's: the day is the surface's and the
-          // statement is the time half (#4738 ruling 1).
-          fd.set("date", cardDay);
-        }
+        if (inCard || customTime) fd.set("date", cardDay);
+        if (customTime) fd.set("time", customTime);
         if (profileId != null) fd.set("profileId", String(profileId));
         return logMedicationAdministration(fd);
       },
@@ -199,6 +205,20 @@ export default function QuickLogPrnControl({
     });
   }
 
+  // Past days require a stated minute; they have no current instant to stamp.
+  function take(): void {
+    if (isPrimaryDay) {
+      void log("now");
+      return;
+    }
+    // ONLY WHAT IS ON SCREEN (`TimeStatement` rule 2). A minute typed and then
+    // dismissed is not a statement this tap may spend, so a closed reveal asks again
+    // rather than writing the answer the reader just walked away from.
+    const stated = statement.open ? statement.at : null;
+    if (stated) void log("custom", stated);
+    else statement.setOpen(true);
+  }
+
   // Seated by whichever arm renders below; the reveal opens in this row's FOOTER,
   // which is why this mount draws the statement in two pieces. The door itself used
   // to be hand-rolled here, glyph and accessible name and all (#4426).
@@ -215,7 +235,7 @@ export default function QuickLogPrnControl({
     <>
       <button
         type="button"
-        onClick={() => log("now")}
+        onClick={take}
         disabled={busy}
         className={`${DOSE_ACTION_ICON} ${redosePrimary ? DOSE_ACTION_BRAND : DOSE_ACTION_NEUTRAL}`}
         aria-label={takeName}
@@ -236,7 +256,7 @@ export default function QuickLogPrnControl({
       label={doseLabel}
       verb={verb}
       tone={redosePrimary ? "brand" : "neutral"}
-      onAct={() => log("now")}
+      onAct={take}
       disabled={busy}
       ariaLabel={takeName}
       testId="prn-log-now"
@@ -291,12 +311,18 @@ export default function QuickLogPrnControl({
   if (layout === "detail") {
     return (
       <div data-testid="quick-log-prn-item" data-item-id={itemId}>
-        {/* THE SHARED HEADER ROW (#4548 ruling 4). The same "Today" eyebrow with the
-            same trailing control the read-only arm of this card already draws as a
+        {/* THE SHARED HEADER ROW (#4548 ruling 4). The same eyebrow with the same
+            trailing control the read-only arm of this card already draws as a
             CardSectionHeader — one alignment, one margin — so the two arms of the
-            medication card's Today block can no longer be arranged differently.
-            The day label and the redose line are the block's BODY, not the row. */}
-        <CardSectionHeader title="Today" variant="label">
+            medication card's day block can no longer be arranged differently.
+            The day label and the redose line are the block's BODY, not the row.
+            ITS WORDS ARE THE CARD'S (#5489 fix 4): the eyebrow was the literal
+            "Today", so a panel opened on a cockpit standing on Yesterday was headed
+            TODAY above a tap that wrote yesterday. */}
+        <CardSectionHeader
+          title={cockpitDayLabel(card, cardDay) ?? "Today"}
+          variant="label"
+        >
           {control}
         </CardSectionHeader>
         <div

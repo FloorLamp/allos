@@ -3,7 +3,13 @@ import { measurementsSavedText } from "@/lib/body-metric-input";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import type { StampedFormData } from "@/lib/logged-via";
 
-import { useMemo, useState, useTransition, type FormEvent } from "react";
+import {
+  useLayoutEffect,
+  useMemo,
+  useState,
+  useTransition,
+  type FormEvent,
+} from "react";
 import {
   IconX,
   IconPlus,
@@ -23,6 +29,7 @@ import Chip from "@/components/Chip";
 import Combobox from "@/components/Combobox";
 import type { TemperatureUnit } from "@/lib/settings";
 import { useToast } from "@/components/Toast";
+import { useLatestRef } from "@/components/useLatestRef";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import { fmtTemp } from "@/lib/units";
 import { useTemperatureUnitDetection } from "@/components/useTemperatureUnitDetection";
@@ -33,7 +40,9 @@ import {
   useDayBinding,
 } from "@/components/illness/CockpitDayContext";
 import { useTimezone } from "@/components/TimezoneProvider";
-import { statedHhmm } from "@/lib/stated-time";
+import { statedHhmm, whenOnDay } from "@/lib/stated-time";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import { formatClockValue } from "@/lib/format-date";
 import {
   logSymptom,
   logTemperature,
@@ -206,6 +215,7 @@ export default function SymptomLogBar({
   // without a stated time.
   const day = useDayBinding(date, timeZone);
   const activeDate = day.activeDate;
+  const currentDay = useLatestRef(activeDate);
   const isPrimaryDay = day.isPrimaryDay;
   const hasToggle = !!card?.altDate;
 
@@ -249,16 +259,18 @@ export default function SymptomLogBar({
   // thermometer-to-phone reading meant anyway. Adjusting it for an earlier reading is
   // still one tap away, on the same absolute-local terms every other statement uses.
   const tempZone = useTimezone();
-  const [tempWhen, setTempWhen] = useState<WhenValue>(() => ({
-    date,
-    statedAt: null,
-  }));
+  // The login's own clock convention (#964) — the fever offer states the reading's
+  // minute, and it says it the way every other rendered time on the page does.
+  const formatPrefs = useFormatPrefs();
+  const [tempWhen, setTempWhen] = useState<WhenValue>(() =>
+    whenOnDay(date, timeZone ?? tempZone)
+  );
   // Switching the day re-anchors the pair rather than leaving a time stated on the
   // day the user just left — the WhenControl's own invariant 1, applied by the owner
   // of the day it is pinned to.
   function selectDay(next: string): void {
     card?.select(next);
-    setTempWhen({ date: next, statedAt: null });
+    setTempWhen(whenOnDay(next, timeZone ?? tempZone));
     // THE STAGE BELONGS TO THE DAY IT WAS MADE ON (#4691). A selection carried
     // across the toggle would spend itself on a day the person never chose it
     // for, which is the same mistake the reading time above is re-anchored to
@@ -271,12 +283,15 @@ export default function SymptomLogBar({
   const [tempError, setTempError] = useState<string | null>(null);
   const [tempPending, setTempPending] = useState(false);
 
-  // THE FEVER OFFER (#4712 judgement 1) — set on a fever-range reading, cleared by
-  // whatever ends its lifetime: dismissing it, accepting the episode offer, changing
-  // the day, or the fold closing. It never survives the fold: rendering below reads
-  // `tempOpen && feverOffer`, so there is no separate cleanup this state can forget
-  // that would leave the block up with the fold closed.
-  const [feverOffer, setFeverOffer] = useState<{ degF: number } | null>(null);
+  // The offer retains the reading's day and stated instant, not a detached clock time.
+  const [offeredReading, setFeverOffer] = useState<{
+    degF: number;
+    when: WhenValue;
+  } | null>(null);
+  const feverOffer =
+    offeredReading?.when.date === activeDate ? offeredReading : null;
+  const feverOfferTime =
+    statedHhmm(feverOffer?.when.statedAt ?? null, timeZone ?? tempZone) || null;
   const [episodeOfferPending, setEpisodeOfferPending] = useState(false);
   // WHICH DOOR ASKED (#4962). The offer and the "Mark as illness" bridge post the
   // same activation, so they share one failure sentence — but it has to appear
@@ -291,12 +306,15 @@ export default function SymptomLogBar({
   // episode half — an offer with no eligible PRN takes nothing off the screen.
   const offersDose = antipyreticMeds.length > 0 && !!intakeContext && !!nowIso;
   const yieldMeds = useDoseOfferSignal();
-  // ONE SETTER FOR THE OFFER AND ITS SIGNAL, so the host's Meds section cannot be
-  // left yielding to a block that is no longer there. Every path that raises or
-  // clears the offer goes through here.
-  function showFeverOffer(offer: { degF: number } | null): void {
+  // Hide the persistent copy before paint, so the offer never duplicates its chip.
+  useLayoutEffect(() => {
+    yieldMeds(tempOpen && feverOffer !== null && offersDose);
+    return () => yieldMeds(false);
+  }, [tempOpen, feverOffer, offersDose, yieldMeds]);
+  function showFeverOffer(
+    offer: { degF: number; when: WhenValue } | null
+  ): void {
     setFeverOffer(offer);
-    yieldMeds(offer != null && offersDose);
     // The offer's own failure sentence lives and dies with the block it is in, so
     // a fresh reading never reopens the offer under the last attempt's error. The
     // bridge's sentence is not this function's to clear.
@@ -451,19 +469,23 @@ export default function SymptomLogBar({
     const res = await logTemperature(withTarget(fd));
     setTempPending(false);
     if (res.ok) {
-      form.reset();
-      tempUnitDetection.reset();
-      setTempWhen({ date: activeDate, statedAt: null });
-      // FEVER-RANGE KEEPS THE FOLD OPEN (#4712 judgement 1). The confirmation block
-      // renders under the reading, in the SAME fold — closing it here would bury the
-      // offer under the very toggle that reveals it. A fever reading with nothing to
-      // offer (an episode already open and no eligible PRN) closes exactly as before.
-      const offers = !hasOpenEpisode || offersDose;
-      if (res.flag === "high" && offers) {
-        showFeverOffer({ degF: res.degF });
-      } else {
-        showFeverOffer(null);
-        setTempOpen(false);
+      // A completed write still gets its toast, but cannot reset another day's form
+      // or offer a dose there using this reading's time.
+      if (currentDay.current === activeDate) {
+        form.reset();
+        tempUnitDetection.reset();
+        setTempWhen(whenOnDay(activeDate, timeZone ?? tempZone));
+        if (res.flag === "high" && (!hasOpenEpisode || offersDose)) {
+          showFeverOffer({
+            degF: res.degF,
+            when: res.statedTimeRefused
+              ? whenOnDay(activeDate, timeZone ?? tempZone)
+              : tempWhen,
+          });
+        } else {
+          showFeverOffer(null);
+          setTempOpen(false);
+        }
       }
       // NO ACTION ON THIS TOAST (#4712 judgement 1's second exclusion). The owner
       // ruled the offer never rides a toast; the toast stays exactly what it was
@@ -488,7 +510,7 @@ export default function SymptomLogBar({
         toast(measurementsSavedText("Saved", res.statedTimeRefused));
       }
     } else {
-      setTempError(res.error);
+      if (currentDay.current === activeDate) setTempError(res.error);
       toast(res.error, { tone: "error" });
     }
   }
@@ -1078,17 +1100,17 @@ export default function SymptomLogBar({
               Temperature
             </label>
             <div className="flex flex-wrap items-start gap-2">
-              <div className="min-w-40 flex-1">
-                {/* THE VITALS FORM'S FIELD (#4424 ruling 5), not a second drawing of it. */}
-                <TemperatureField
-                  id="temp-quick-input"
-                  testIdPrefix="temp-quick"
-                  detection={tempUnitDetection}
-                  unitLabel="Temperature unit"
-                  required
-                  autoFocus
-                />
-              </div>
+              {/* THE VITALS FORM'S FIELD (#4424 ruling 5), not a second drawing of
+                  it — and it brings its own width (#5490 site 2), so this row no
+                  longer hands it the remainder. */}
+              <TemperatureField
+                id="temp-quick-input"
+                testIdPrefix="temp-quick"
+                detection={tempUnitDetection}
+                unitLabel="Temperature unit"
+                required
+                autoFocus
+              />
               <WhenControl
                 mode="state"
                 grain="minute"
@@ -1138,7 +1160,11 @@ export default function SymptomLogBar({
                 data-testid="fever-offer-sentence"
                 className="text-sm text-slate-700 dark:text-slate-200"
               >
-                That’s a fever — {fmtTemp(feverOffer.degF, temperatureUnit)}.
+                That’s a fever — {fmtTemp(feverOffer.degF, temperatureUnit)}
+                {feverOfferTime
+                  ? ` at ${formatClockValue(feverOfferTime, formatPrefs.timeFormat)}`
+                  : ""}
+                .
               </p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 {/* PRIMARY, beside the dose (#4712 judgement 1's row grammar) —
@@ -1166,6 +1192,12 @@ export default function SymptomLogBar({
                       intakeContext={intakeContext}
                       canAdd={false}
                       nowIso={nowIso}
+                      // THE OFFER'S OWN READING, PROPOSED (#5489 fix 5). The one
+                      // control that knows why it is on screen can now say when: a
+                      // reading with a stated minute opens the dose's statement on
+                      // that minute; one with none proposes nothing and the tap asks
+                      // wherever the day has ended (#4686).
+                      proposedTime={feverOfferTime}
                       // TAKEN ENDS THE OFFER (#4712 ruling part 2's own words). The
                       // dose is on the ledger and the host's Meds chip comes straight
                       // back; the fold itself stays open, exactly as accepting the

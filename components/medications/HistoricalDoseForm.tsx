@@ -6,7 +6,7 @@ import { useToast } from "@/components/Toast";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import WhenControl, { type WhenValue } from "@/components/WhenControl";
 import { useTimezone } from "@/components/TimezoneProvider";
-import { statedHhmm, statedInstantOnDate } from "@/lib/stated-time";
+import { statedHhmm, statedInstantOnDate, whenOnDay } from "@/lib/stated-time";
 import InlineError from "@/components/InlineError";
 import {
   logHistoricalDose,
@@ -141,19 +141,15 @@ export default function HistoricalDoseForm({
     setDoseId(next.doses[0]?.id ?? 0);
     setAmount(next.doses[0]?.amount ?? "");
   }
-  const [when, setWhen] = useState<WhenValue>(() =>
-    editing
-      ? { date: editing.date, statedAt: editing.statedAt }
-      : {
-          date: initialDate ?? maxDate,
-          statedAt:
-            statedInstantOnDate(
-              initialDate ?? maxDate,
-              defaultTime,
-              tz
-            )?.toISOString() ?? null,
-        }
-  );
+  const [when, setWhen] = useState<WhenValue>(() => {
+    if (editing) return whenOnDay(editing.date, tz, editing.statedAt);
+    const on = whenOnDay(initialDate ?? maxDate, tz);
+    return {
+      ...on,
+      statedAt:
+        statedInstantOnDate(on.date, defaultTime, tz)?.toISOString() ?? null,
+    };
+  });
   const [error, setError] = useState<string | null>(null);
   const toast = useToast();
   const stampLoggedVia = useLoggedViaStamp();

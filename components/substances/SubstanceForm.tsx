@@ -11,6 +11,8 @@ import {
   correctSubstanceUseAction,
 } from "@/app/(app)/medical/substance-use/actions";
 import SubmitButton from "@/components/SubmitButton";
+import { whenOnDay } from "@/lib/stated-time";
+import { useTimezone } from "@/components/TimezoneProvider";
 
 // THE SUBSTANCE DOMAIN'S ONE FORM (#4424 ruling 1), named by
 // `LOG_MANIFEST.substance.pieces.form`, replacing the `/history` add door's spelling,
@@ -97,12 +99,13 @@ export default function SubstanceForm({
     row?.substance ?? substances[0]?.key ?? ""
   );
   const unit = substanceDef(substance).unitPlural;
-  const [when, setWhen] = useState<WhenValue>({
-    date: row?.date ?? date,
-    // Seeded from the row's own `occurred_at`, so a correction opens on the minute the
-    // person actually stated and a re-save does not silently clear it.
-    statedAt: row?.statedAt ?? null,
-  });
+  // The acting profile's zone — the one the pair's day is minted against.
+  const tz = useTimezone();
+  // Seeded from the row's own `occurred_at`, so a correction opens on the minute the
+  // person actually stated and a re-save does not silently clear it.
+  const [when, setWhen] = useState<WhenValue>(() =>
+    whenOnDay(row?.date ?? date, tz, row?.statedAt ?? null)
+  );
 
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();

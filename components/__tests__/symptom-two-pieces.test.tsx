@@ -678,10 +678,12 @@ describe("the day the bar shows is the day it writes (#4691)", () => {
     }
     // What the fold DISPLAYS: the shared control is pinned to the bar's day, so it
     // draws it as text rather than a picker and the pair rule holds by construction.
-    // The control renders the primary day as "Today" (it IS today now) and the alt
-    // day as its date — either way, the day it SHOWS is the day it writes below.
-    expect(screen.getByTestId("temp-quick-date").textContent).toContain(
-      day === TODAY ? "Today" : day
+    // AND IT SAYS WHAT THE TOGGLE SAYS (#5489 fix 3). It used to render the alt day's
+    // raw `date` — one card, one day, two spellings, one of them a storage format —
+    // because the arm asked the clock instead of the surface. Read off the toggle
+    // rather than restated here, so the two cannot be fixed apart.
+    expect(screen.getByTestId("temp-quick-date").textContent).toBe(
+      screen.getByTestId(`symptom-day-${side}`).textContent
     );
     // …and what it WRITES is that same day.
     await saveTemp();

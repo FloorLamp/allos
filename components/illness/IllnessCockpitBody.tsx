@@ -24,10 +24,12 @@ import { DoseOfferProvider } from "@/components/illness/DoseOfferContext";
 //   1. THE HEADER IS THE STATUS. The fever-free ring, the sentence about the person,
 //      the Illness · Day-N tag, one prose line folding last-temp and last-meds, and
 //      "Feeling better" beside the countdown rather than at the card's bottom edge.
-//   2. A READABLE MEASURE. ~880px, centered — declared on the cockpit container in
-//      `IllnessNowGroup` so the collapsed accordion line and this body share one
-//      column. The stat-spread and the eye-travel from a med's name to its own button
-//      dissolve by construction rather than by a desktop rule.
+//   2. A READABLE MEASURE. ~880px, centered — declared by the Now BAND
+//      (`components/dashboard/NowCards.tsx`, #5490 site 3) rather than by the cockpit
+//      row inside it, so the collapsed accordion line, this body and every other row
+//      in that one frame share one column. The stat-spread and the eye-travel from a
+//      med's name to its own button dissolve by construction rather than by a desktop
+//      rule.
 //   3. EXPANSIONS OPEN IN PLACE. The symptom picker, the temperature entry and the med
 //      panel each open into a quiet inset panel beneath their own row. Nothing
 //      navigates and nothing outside the panel moves.

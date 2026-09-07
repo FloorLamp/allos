@@ -6,7 +6,7 @@ import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { useTimezone } from "@/components/TimezoneProvider";
 import WhenControl, { type WhenValue } from "@/components/WhenControl";
 import { BRISTOL_STOOL_TYPES } from "@/lib/bristol-stool";
-import { statedHhmm } from "@/lib/stated-time";
+import { statedHhmm, whenOnDay } from "@/lib/stated-time";
 import { correctStoolReading, logStoolForm } from "@/app/(app)/stool-actions";
 import SubmitButton from "@/components/SubmitButton";
 
@@ -74,10 +74,9 @@ export default function StoolForm({
   // was looking at and `statedAt` opens on the instant the door was opened at, or EMPTY
   // — never defaulted to now, so a backfill that states no minute still states none and
   // the record renders it honestly.
-  const [when, setWhen] = useState<WhenValue>(() => ({
-    date,
-    statedAt: defaultStatedAt,
-  }));
+  const [when, setWhen] = useState<WhenValue>(() =>
+    whenOnDay(date, tz, defaultStatedAt)
+  );
 
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();

@@ -40,18 +40,29 @@
 
 import {
   dateStrInTz,
+  isRealIsoDate,
   parseUtcSql,
   zonedDateParts,
   zonedWallTimeToUtc,
 } from "./date";
+import type { LocalDay } from "./temporal-types";
 
 // The pair the shared control renders and emits. One value, both grains.
 export interface WhenValue {
-  // The row's profile-local day, YYYY-MM-DD.
-  date: string;
+  // The validated profile-local day; format it at the display boundary.
+  date: LocalDay;
   // The stated instant (ISO UTC), or null = "not stated" — a real answer, never
   // a gap to fill. When non-null, its profile-local date is `date`.
   statedAt: string | null;
+}
+
+// Seed a day/time pair; invalid day input uses the profile's current day.
+export function whenOnDay(
+  day: string,
+  tz: string,
+  statedAt: string | null = null
+): WhenValue {
+  return { date: isRealIsoDate(day) ? day : dateStrInTz(tz), statedAt };
 }
 
 // One offered hour of a named day: the local wall time the option shows and the
