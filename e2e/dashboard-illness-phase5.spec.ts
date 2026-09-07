@@ -707,6 +707,38 @@ for (const [label, viewport, wide] of [
       const [cardAfter] = await settledBoxes([card]);
       expect(cardAfter.x).toBe(cardBox.x);
       expect(cardAfter.width).toBe(cardBox.width);
+
+      // ── ONE PANEL IS ONE PANEL'S WORTH OF HEIGHT (#5487) ──────────────────
+      //
+      // The card was measured in production at ~800px at rest and ~890px with a
+      // panel open, against a board approved at ~215 and ~320: six disclosures
+      // opened independently, so a screenshot could carry the med panel and the
+      // whole add-medication form at once. The bound is stated on the card's own
+      // resting height rather than on a pixel target, because the fixture's symptom
+      // and med rows are the fixture's — what must hold is that opening ONE panel
+      // costs one panel, and that the card is nowhere near four boards tall.
+      expect(cardBox.height, `${label} cockpit at rest`).toBeLessThan(560);
+      expect(
+        cardAfter.height - cardBox.height,
+        `${label} cockpit growth for one open panel`
+      ).toBeLessThan(280);
+
+      // ── EXPANDED, THE ROW STATES NOTHING THE BODY RESTATES (#5488 fix 1) ──
+      //
+      // One rule over the row, not six clause rules: the situation, the day, the
+      // trend arrow, the last reading, the last dose and the fever clock are all the
+      // recovery header's, ~100px below. The name and the avatar stay — that is
+      // #531/#534's safety identity, and the one duplication the ruling keeps.
+      await expect(card.getByTestId("illness-cockpit-status-row")).toHaveCount(
+        0
+      );
+      const headerRow = card.getByTestId("illness-cockpit-header-row");
+      await expect(headerRow).not.toContainText(
+        (await card.getAttribute("data-situation"))!
+      );
+      await expect(
+        headerRow.locator('[data-testid^="illness-cockpit-name-"]')
+      ).toBeVisible();
       // ── ONE GRAMMAR ACROSS THE WHOLE SECTION (#4752 items 7 and 8) ────────
       //
       // A RENDERED sweep, not a source one: what a reader meets is the accessible

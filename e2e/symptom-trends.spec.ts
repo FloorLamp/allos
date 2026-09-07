@@ -123,15 +123,22 @@ test.describe("symptom trends (#1852)", () => {
     }
   });
 
-  // THE BAR THIS DRIVES MOVED (#4851). It used to be the record day view's own
-  // symptom card; that card retired when the day view's symptom entry became the Add
-  // past row's door, and the bar now reaches this page from the surfaces that still
-  // mount it. The dashboard's illness cockpit is the nearest of those — it is the
-  // sick-day surface the ruling names — and the assertion below is unchanged. The
-  // cockpit draws here because the shared seed gives profile 1 an OPEN illness episode
-  // (e2e/seed/illness.ts): if that ever stops being true this test loses its bar, so
-  // the dependency is named rather than left to be rediscovered from a bare timeout.
-  test("the bar links to the analysis", async ({ page }) => {
+  // THE DOOR IS ONE LEVEL DOWN (#5487 fix 3, owner ruling 2026-09-07). It used to sit
+  // on the dashboard cockpit as well as on the episode page, which is the same journey
+  // at two depths — and the cockpit's own `More` already leads to the page that
+  // carries it. So the ladder is cockpit → More → episode → trends, and this walks it.
+  //
+  // ONE ASSERTION PER MOUNT. Three call sites passed the one prop, which is the shape
+  // that lets two get fixed and one get missed: the cockpit's is gone, the episode
+  // page's carries the journey, and the cycles page's is untouched.
+  //
+  // The cockpit draws here because the shared seed gives profile 1 an OPEN illness
+  // episode (e2e/seed/illness.ts): if that ever stops being true this test loses its
+  // bar, so the dependency is named rather than left to be rediscovered from a bare
+  // timeout.
+  test("the bar links to the analysis from the episode, not from the cockpit", async ({
+    page,
+  }) => {
     const db = openDb();
     try {
       const tz = profileTimezone(db);
@@ -144,9 +151,16 @@ test.describe("symptom trends (#1852)", () => {
 
       await page.goto("/");
       // eslint-disable-next-line no-restricted-properties -- first-ok: the acting profile's own symptom bar — order-agnostic
+      const cockpitBar = page.getByTestId("symptom-log-bar").first();
+      await expect(cockpitBar).toBeVisible();
+      await expect(cockpitBar.getByTestId("symptom-analysis-link")).toHaveCount(
+        0
+      );
+
+      // eslint-disable-next-line no-restricted-properties -- first-ok: the acting profile's own cockpit — order-agnostic
+      await page.getByTestId("illness-cockpit-full-episode").first().click();
       const link = page
         .getByTestId("symptom-log-bar")
-        .first()
         .getByTestId("symptom-analysis-link");
       await expect(link).toBeVisible();
       await link.click();
@@ -156,6 +170,12 @@ test.describe("symptom trends (#1852)", () => {
       await expect(page.getByTestId("symptom-trends-occasional")).toContainText(
         `${RECURRING} (1 day)`
       );
+
+      // AND THE THIRD MOUNT IS UNTOUCHED: the cycles page is not this surface.
+      await page.goto("/medical/cycles");
+      await expect(
+        page.getByTestId("symptom-log-bar").getByTestId("symptom-analysis-link")
+      ).toBeVisible();
     } finally {
       deleteFixtureRows(db);
       db.close();

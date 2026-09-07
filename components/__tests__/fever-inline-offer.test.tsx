@@ -636,6 +636,43 @@ describe("the Meds chip yields to the fold's dose offer (#4712 ruling part 2)", 
     expect(section().contains(chips()[0])).toBe(true);
   });
 
+  // A PANEL INSIDE THE OFFER IS NOT ONE OF THE CARD'S (#5487 fixes 1 and 2). The
+  // offer lives INSIDE the temperature fold (#4712), so joining the card's
+  // one-open-panel rule would let the dose the offer exists to give close the fold
+  // it is standing in — and drawing its own frame put a border three deep inside a
+  // card that draws none of its own (#4076).
+  it("opens the offer's dose panel without closing the fold or drawing a second inset", async () => {
+    renderCockpit();
+    await openFold();
+    await logReading("102.1");
+    const offer = () => screen.getByTestId("fever-offer");
+    await act(async () =>
+      fireEvent.click(
+        within(offer()).getByTestId(`cockpit-med-chip-${ANTIPYRETIC.id}`)
+      )
+    );
+    // Both are still up, and the dose panel is inside the offer.
+    expect(screen.getByTestId("temp-quick-entry")).toBeTruthy();
+    expect(offer().contains(screen.getByTestId("cockpit-med-panel"))).toBe(
+      true
+    );
+    // RENDERED, not read off the source: no inset box anywhere on this card sits
+    // inside another one.
+    const insets = Array.from(
+      document.querySelectorAll('[class*="subpanel-inset"]')
+    );
+    // A positive control: the card DOES draw inset boxes, so an empty corpus is
+    // never what makes this pass.
+    expect(insets.length).toBeGreaterThan(1);
+    expect(
+      insets
+        .filter((el) =>
+          insets.some((other) => other !== el && other.contains(el))
+        )
+        .map((el) => el.getAttribute("data-testid") ?? el.className)
+    ).toEqual([]);
+  });
+
   // THE SECTION YIELDS TO A DOSE, NEVER TO THE EPISODE HALF ALONE. With no eligible
   // antipyretic the offer takes nothing off the screen.
   it("yields nothing when the offer carries no dose", async () => {

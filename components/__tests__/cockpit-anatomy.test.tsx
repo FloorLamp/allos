@@ -16,6 +16,7 @@ import { CockpitDayProvider } from "@/components/illness/CockpitDayContext";
 import { CockpitPanelProvider } from "@/components/illness/CockpitPanelContext";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 import { PICKER_SYMPTOMS } from "@/lib/symptoms";
+import { episodeHref } from "@/lib/hrefs";
 import type { EpisodeCollapsedStatus } from "@/lib/illness-episode-format";
 import type { IntakeFormContext } from "@/lib/intake-form-context";
 import type { PrnMedForQuickLog } from "@/lib/queries";
@@ -485,7 +486,7 @@ const ROW_COCKPIT: IllnessContextCockpit = {
   episodeKey: "e1",
   episodeOrder: 0,
   profileId: 4,
-  profile: { id: 4, name: "Dune", color: null, photoId: null },
+  profile: { id: 4, name: "Dune", photo_path: null, photo_version: 0 },
   displayName: "Dune",
   situation: "Illness",
   isActive: true,
@@ -508,7 +509,7 @@ const ROW_COCKPIT: IllnessContextCockpit = {
     worsening: { driver: "symptom", label: "Cough" },
   },
   feverFree: { label: "Fever-free 10h of 24", met: false },
-  episodeHref: "/medical/episodes/1",
+  episodeHref: episodeHref(1),
   body: <p data-testid="row-body">body</p>,
   stateIdentity: null,
   temperatureIdentity: null,
