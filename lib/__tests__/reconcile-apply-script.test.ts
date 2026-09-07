@@ -147,16 +147,8 @@ describe("reconcile-apply visibility contract", () => {
     // place that number exists — the gather proposes candidates and cannot know
     // which of them landed. Written rather than retyped from stdout: a
     // hand-copied count in a durable record is a count nobody can check.
+    const outcome = path.join(makeTmpDir("reconcile-outcome"), "outcome.json");
     const run = runApply(
-      {
-        "7": { body: BODY, comments: 0 },
-        "8": { body: "unrelated", comments: 0 },
-      },
-      patchPlan("7", "8"),
-      ["--apply"]
-    );
-    const outcome = path.join(run.dir, "outcome.json");
-    const again = runApply(
       {
         "7": { body: BODY, comments: 0 },
         "8": { body: "unrelated", comments: 0 },
@@ -164,7 +156,7 @@ describe("reconcile-apply visibility contract", () => {
       patchPlan("7", "8"),
       ["--apply", "--outcome", outcome]
     );
-    expect(again.status).toBe(0);
+    expect(run.status).toBe(0);
     expect(JSON.parse(fs.readFileSync(outcome, "utf8"))).toEqual({
       applied: 1,
       refused: 1,
@@ -175,18 +167,16 @@ describe("reconcile-apply visibility contract", () => {
   });
 
   it("a DRY RUN's outcome reports zero applied, so a summary built from it counts nothing as patched", () => {
-    const first = runApply(
-      { "7": { body: BODY, comments: 0 } },
-      patchPlan("7"),
-      []
-    );
-    const outcome = path.join(first.dir, "outcome.json");
+    const outcome = path.join(makeTmpDir("reconcile-outcome"), "outcome.json");
     const run = runApply({ "7": { body: BODY, comments: 0 } }, patchPlan("7"), [
       "--outcome",
       outcome,
     ]);
     expect(run.status).toBe(0);
-    expect(JSON.parse(fs.readFileSync(outcome, "utf8")).wrote).toBe(false);
+    expect(JSON.parse(fs.readFileSync(outcome, "utf8"))).toMatchObject({
+      applied: 0,
+      wrote: false,
+    });
     expect(run.calls.filter((c) => c.method !== "GET")).toEqual([]);
   });
 
