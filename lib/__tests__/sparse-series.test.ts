@@ -4,8 +4,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   BIO_CONTINUITY_DAYS,
-  METRIC_CONTINUITY_DAYS,
-  METRIC_GAP,
   continuityDaysForSeriesKey,
   medianIntervalDays,
   sparseSeriesCaption,
@@ -209,42 +207,6 @@ describe("sparseSeriesCaption", () => {
     for (const text of [caption(3, 1001), caption(2, 87), caption(4, 45)]) {
       expect(text).not.toMatch(/sparse|thin|limited|only|few|insufficient/i);
     }
-  });
-});
-
-describe("registry completeness (#2653 state 5)", () => {
-  it("declares a continuity span for every series that declares a gap", () => {
-    const missing = Object.keys(METRIC_GAP).filter(
-      (id) => METRIC_CONTINUITY_DAYS[id] == null
-    );
-    expect(
-      missing,
-      `These series declare what a missing DAY means but not how far apart two ` +
-        `readings may sit before the stroke between them over-claims. Add them ` +
-        `to METRIC_CONTINUITY_DAYS in lib/trend-sparkline.ts with a named ` +
-        `tier:\n${missing.join(", ")}`
-    ).toEqual([]);
-  });
-
-  it("declares no continuity span for a series that is not in the gap registry", () => {
-    const stale = Object.keys(METRIC_CONTINUITY_DAYS).filter(
-      (id) => METRIC_GAP[id] == null
-    );
-    expect(
-      stale,
-      `These METRIC_CONTINUITY_DAYS entries name no series METRIC_GAP knows ` +
-        `about:\n${stale.join(", ")}`
-    ).toEqual([]);
-  });
-
-  it("every registered trend metric reaches a declared span through its key", () => {
-    const missing = TREND_METRIC_SLUGS.filter(
-      (slug) =>
-        continuityDaysForSeriesKey(
-          `metric:${savedMetricIdForTrendSlug(slug)}`
-        ) == null
-    );
-    expect(missing).toEqual([]);
   });
 });
 

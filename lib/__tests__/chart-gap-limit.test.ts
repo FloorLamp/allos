@@ -36,19 +36,7 @@ function days(start: string, values: (number | null)[]) {
   });
 }
 
-describe("the registry is complete and consistent with its siblings", () => {
-  it("declares a limit for exactly the metrics that declare a gap policy", () => {
-    expect(Object.keys(METRIC_GAP_LIMIT_DAYS).sort()).toEqual(
-      Object.keys(METRIC_GAP).sort()
-    );
-  });
-
-  it("declares a limit for exactly the metrics that declare a continuity span", () => {
-    expect(Object.keys(METRIC_GAP_LIMIT_DAYS).sort()).toEqual(
-      Object.keys(METRIC_CONTINUITY_DAYS).sort()
-    );
-  });
-
+describe("gap limits and continuity spans", () => {
   it("never lets a hole outlast the span the stroke may fairly cross", () => {
     // The invariant that keeps the two registries related instead of merely
     // coexisting: a hole longer than the continuity span is one the stroke should

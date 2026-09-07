@@ -23,6 +23,7 @@ import { daysBetweenDateStr } from "./date";
 import type { DayFillWindow, DayGapFill, DaySeriesPoint } from "./day-fill";
 import { fillDailyRows, fillDailySeries } from "./day-fill";
 import type { DaySourceSpread } from "./metric-sources";
+import type { SavedTrendMetricId } from "./trend-metrics";
 
 export type SparklineShape = "line" | "bar";
 
@@ -159,16 +160,20 @@ export const SLEEP_REGULARITY_SERIES_KEY = "metric:sleep-regularity";
 export const OURA_SCORE_SERIES_KEY = "metric:oura-score";
 export const MACROS_SERIES_KEY = "metric:macros";
 
-/**
- * The gap policy per `metric:` id. EXHAUSTIVE over the metric vocabulary — every
- * savable metric id (`savedMetricIdForTrendSlug` over every registered body slug,
- * plus training volume) and every render-only key above appears exactly once, and
- * `lib/__tests__/day-fill-scan.test.ts` fails the build when a new one does not.
- * A metric joins by NAME with its reason, never by a heuristic over the data:
- * a runtime "does this look like a total?" test would flip a chart's gap semantics
- * between windows, and a series whose holes change meaning as you move the range
- * is worse than one that is occasionally conservative.
- */
+type RenderOnlySeriesKey =
+  | typeof SLEEP_DURATION_SERIES_KEY
+  | typeof SLEEP_STAGES_SERIES_KEY
+  | typeof SLEEP_REGULARITY_SERIES_KEY
+  | typeof OURA_SCORE_SERIES_KEY
+  | typeof MACROS_SERIES_KEY;
+
+type MetricSeriesId =
+  | SavedTrendMetricId
+  | "volume"
+  | (RenderOnlySeriesKey extends `metric:${infer Id}` ? Id : never);
+
+// Check declarations against the closed vocabulary; allow string lookups for
+// persisted/unknown keys, whose rendering fallbacks remain intentional.
 export const METRIC_GAP: Readonly<Record<string, SeriesGap>> = {
   // ── levels ────────────────────────────────────────────────────────────────
   weight: "bridge",
@@ -224,13 +229,13 @@ export const METRIC_GAP: Readonly<Record<string, SeriesGap>> = {
   "sleep-regularity": "break",
   "oura-score": "break",
   macros: "slot-null",
-};
+} satisfies Record<MetricSeriesId, SeriesGap>;
 
 /** The gap policy for a metric tile, by its `metric:` id (`"steps"`). */
 export function seriesGapForMetric(id: string): SeriesGap {
   // An unregistered id bridges: that is today's rendering (a line with
   // `connectNulls`), so an unknown series can only gain calendar spacing, never a
-  // silently-invented zero. The completeness test is what keeps this unreachable.
+  // silently-invented zero. Known metrics are checked at their declarations.
   return METRIC_GAP[id] ?? "bridge";
 }
 
@@ -351,11 +356,7 @@ const SLOW_CONTINUITY = 730;
  *  namespace rather than a row per analyte. */
 export const BIO_CONTINUITY_DAYS = 540;
 
-/**
- * The continuity span per `metric:` id. EXHAUSTIVE over the same vocabulary as
- * `METRIC_GAP` — `lib/__tests__/sparse-series.test.ts` fails a key that is in one
- * registry and not the other, in both directions, so the two cannot drift apart.
- */
+// Continuity span per metric: the longest interval a stroke may imply.
 export const METRIC_CONTINUITY_DAYS: Readonly<Record<string, number>> = {
   // ── levels ────────────────────────────────────────────────────────────────
   weight: HABIT_CONTINUITY,
@@ -399,7 +400,7 @@ export const METRIC_CONTINUITY_DAYS: Readonly<Record<string, number>> = {
   "sleep-regularity": STREAM_CONTINUITY,
   "oura-score": STREAM_CONTINUITY,
   macros: STREAM_CONTINUITY,
-};
+} satisfies Record<MetricSeriesId, number>;
 
 /**
  * The continuity span for any trend series, or null when the series declares
@@ -638,13 +639,7 @@ const SLOW_GAP_LIMIT = 365;
  *  number serves the namespace. */
 export const BIO_GAP_LIMIT_DAYS = 540;
 
-/**
- * The longest run of unlogged days this series may carry without saying so.
- * EXHAUSTIVE over the same vocabulary as `METRIC_GAP` and
- * `METRIC_CONTINUITY_DAYS` — the completeness test fails a key present in one
- * registry and absent from another, in every direction, so the three cannot
- * drift apart.
- */
+// Longest unlogged run before the chart names the gap.
 export const METRIC_GAP_LIMIT_DAYS: Readonly<Record<string, number>> = {
   // ── levels ────────────────────────────────────────────────────────────────
   weight: HABIT_GAP_LIMIT,
@@ -700,7 +695,7 @@ export const METRIC_GAP_LIMIT_DAYS: Readonly<Record<string, number>> = {
   "sleep-regularity": STREAM_GAP_LIMIT,
   "oura-score": STREAM_GAP_LIMIT,
   macros: STREAM_GAP_LIMIT,
-};
+} satisfies Record<MetricSeriesId, number>;
 
 /**
  * The gap limit for any trend series, or null when the series declares none.

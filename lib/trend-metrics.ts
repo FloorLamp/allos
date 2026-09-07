@@ -511,22 +511,22 @@ export type CheckInMetricSlug = (typeof CHECK_IN_METRIC_SLUGS)[number];
 
 // The first saved metric ids predate the detail-page slug registry. Preserve those
 // stored keys while every newer metric uses its slug directly.
-const LEGACY_SAVED_TREND_METRIC_IDS: Partial<Record<TrendMetricSlug, string>> =
-  {
-    "body-fat": "bodyfat",
-    "resting-hr": "resting_hr",
-  };
-
-export function savedMetricIdForTrendSlug(slug: TrendMetricSlug): string {
-  return LEGACY_SAVED_TREND_METRIC_IDS[slug] ?? slug;
+export function savedMetricIdForTrendSlug(slug: TrendMetricSlug) {
+  return slug === "body-fat"
+    ? "bodyfat"
+    : slug === "resting-hr"
+      ? "resting_hr"
+      : slug;
 }
 
+export type SavedTrendMetricId = ReturnType<typeof savedMetricIdForTrendSlug>;
+
 export function trendMetricSlugForSavedId(id: string): TrendMetricSlug | null {
-  const legacy = Object.entries(LEGACY_SAVED_TREND_METRIC_IDS).find(
-    ([, savedId]) => savedId === id
-  )?.[0];
-  if (legacy && isTrendMetricSlug(legacy)) return legacy;
-  return isTrendMetricSlug(id) ? id : null;
+  if (isTrendMetricSlug(id)) return id;
+  return (
+    TREND_METRIC_SLUGS.find((slug) => savedMetricIdForTrendSlug(slug) === id) ??
+    null
+  );
 }
 
 // ── The ★ ↔ Body-card correspondence (#1643) ────────────────────────────────
