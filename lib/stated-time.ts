@@ -40,6 +40,7 @@
 
 import {
   dateStrInTz,
+  isRealIsoDate,
   parseUtcSql,
   zonedDateParts,
   zonedWallTimeToUtc,
@@ -58,6 +59,22 @@ export interface WhenValue {
   // The stated instant (ISO UTC), or null = "not stated" — a real answer, never
   // a gap to fill. When non-null, its profile-local date is `date`.
   statedAt: string | null;
+}
+
+// THE PAIR, OPENED ON A SURFACE'S DAY (#5489). `date` is `LocalDay` because the shared
+// control renders a FIXED day as TEXT, and a storage spelling reaching display text is
+// exactly the defect that ruling exists to make unrepresentable — so the day a host
+// holds is VALIDATED here (#5105's minter; never asserted) rather than checked eight
+// times over at eight `useState` seeds that each wrote this literal themselves. A value
+// that is not a calendar day falls back to the profile's today, because a mounted
+// control must open on some day and inventing one from unreadable text is the very
+// substitution the brand forbids.
+export function whenOnDay(
+  day: string,
+  tz: string,
+  statedAt: string | null = null
+): WhenValue {
+  return { date: isRealIsoDate(day) ? day : dateStrInTz(tz), statedAt };
 }
 
 // One offered hour of a named day: the local wall time the option shows and the

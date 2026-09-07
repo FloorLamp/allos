@@ -12,7 +12,11 @@ import {
   type FoodSlot,
   type FoodSlotBoundaries,
 } from "@/lib/food-slot";
-import { statedHhmm, STATED_TIME_REFUSAL_NOTE } from "@/lib/stated-time";
+import {
+  statedHhmm,
+  whenOnDay,
+  STATED_TIME_REFUSAL_NOTE,
+} from "@/lib/stated-time";
 import WhenControl, { type WhenValue } from "@/components/WhenControl";
 import { useTimezone } from "@/components/TimezoneProvider";
 import FoodGroupIcon, {
@@ -361,10 +365,13 @@ export default function FoodLogBar({
   // which the NULL default already refuses. Switching days CLEARS it rather than
   // re-anchoring: a time chosen for Tuesday is a claim about Tuesday, and carrying it to
   // Wednesday would restate it about a day the person never looked at.
-  const [eatingWhen, setEatingWhen] = useState<WhenValue>({
-    date: today,
-    statedAt: null,
-  });
+  // The acting profile's timezone — the zone the correction sheet's day/time pair is
+  // judged in, matching the server's own resolution of the submitted wall time, and the
+  // zone the eating statement's day is minted against.
+  const tz = useTimezone();
+  const [eatingWhen, setEatingWhen] = useState<WhenValue>(() =>
+    whenOnDay(today, tz)
+  );
   // The fold's own state, so switching days can close it along with the statement it
   // was showing.
   const [whenOpen, setWhenOpen] = useState(false);
@@ -499,9 +506,6 @@ export default function FoodLogBar({
       },
     });
   };
-  // The acting profile's timezone — the zone the correction sheet's day/time pair is
-  // judged in, matching the server's own resolution of the submitted wall time.
-  const tz = useTimezone();
   // Offline quick-log queue (#1596): an ADD tap with no signal queues for replay.
   const { enqueue } = useOfflineQueue();
   // The shared one-tap ledger (#2041): optimistic bump, rollback, and adoption of
@@ -1190,9 +1194,7 @@ export default function FoodLogBar({
   // Wednesday. Nothing is silently in force either — the fold's summary prints the time
   // whenever one is, so switching back to Tuesday shows what Tuesday still says.
   const whenForDay: WhenValue =
-    eatingWhen.date === activeDate
-      ? eatingWhen
-      : { date: activeDate, statedAt: null };
+    eatingWhen.date === activeDate ? eatingWhen : whenOnDay(activeDate, tz);
   // The statement in force, as the two things every consumer of it needs: the INSTANT an
   // offline capture carries (resolved here because a replay has no server to ask, and
   // validated server-side before it lands), and the profile-local wall time the online

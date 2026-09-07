@@ -6,13 +6,12 @@ import { useToast } from "@/components/Toast";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import WhenControl, { type WhenValue } from "@/components/WhenControl";
 import { useTimezone } from "@/components/TimezoneProvider";
-import { statedHhmm, statedInstantOnDate } from "@/lib/stated-time";
+import { statedHhmm, statedInstantOnDate, whenOnDay } from "@/lib/stated-time";
 import InlineError from "@/components/InlineError";
 import {
   logHistoricalDose,
   updateHistoricalDose,
 } from "@/app/(app)/nutrition/intake-actions";
-import type { LocalDay } from "@/lib/temporal-types";
 
 export interface HistoricalDoseOption {
   id: number;
@@ -71,13 +70,13 @@ export default function HistoricalDoseForm({
   /** In the order the mount wants them offered; one item renders no picker. */
   items: HistoricalDoseItem[];
   minDate?: string;
-  maxDate: LocalDay;
-  initialDate?: LocalDay;
+  maxDate: string;
+  initialDate?: string;
   defaultTime: string;
   editing?: {
     logId: number;
     doseId: number;
-    date: LocalDay;
+    date: string;
     // The row's stated event instant (occurred_at, ISO UTC), or null = no intake
     // time was ever stated. Never a record-chain fallback.
     statedAt: string | null;
@@ -142,19 +141,15 @@ export default function HistoricalDoseForm({
     setDoseId(next.doses[0]?.id ?? 0);
     setAmount(next.doses[0]?.amount ?? "");
   }
-  const [when, setWhen] = useState<WhenValue>(() =>
-    editing
-      ? { date: editing.date, statedAt: editing.statedAt }
-      : {
-          date: initialDate ?? maxDate,
-          statedAt:
-            statedInstantOnDate(
-              initialDate ?? maxDate,
-              defaultTime,
-              tz
-            )?.toISOString() ?? null,
-        }
-  );
+  const [when, setWhen] = useState<WhenValue>(() => {
+    if (editing) return whenOnDay(editing.date, tz, editing.statedAt);
+    const on = whenOnDay(initialDate ?? maxDate, tz);
+    return {
+      ...on,
+      statedAt:
+        statedInstantOnDate(on.date, defaultTime, tz)?.toISOString() ?? null,
+    };
+  });
   const [error, setError] = useState<string | null>(null);
   const toast = useToast();
   const stampLoggedVia = useLoggedViaStamp();

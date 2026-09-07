@@ -6,10 +6,9 @@ import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { useTimezone } from "@/components/TimezoneProvider";
 import WhenControl, { type WhenValue } from "@/components/WhenControl";
 import { BRISTOL_STOOL_TYPES } from "@/lib/bristol-stool";
-import { statedHhmm } from "@/lib/stated-time";
+import { statedHhmm, whenOnDay } from "@/lib/stated-time";
 import { correctStoolReading, logStoolForm } from "@/app/(app)/stool-actions";
 import SubmitButton from "@/components/SubmitButton";
-import type { LocalDay } from "@/lib/temporal-types";
 
 // THE STOOL DOMAIN'S ONE FORM (#4424 ruling 1), named by
 // `LOG_MANIFEST.stool.pieces.form`: the record's "Log a movement" door and that row's
@@ -50,7 +49,7 @@ export default function StoolForm({
   onCancel,
 }: {
   /** The day in hand (ruling 2) — the record day, never a re-derived today. */
-  date: LocalDay;
+  date: string;
   /** The subject's own today: any real past day is writable, never the future. */
   maxDate: string;
   row?: StoolReadingRow;
@@ -75,10 +74,9 @@ export default function StoolForm({
   // was looking at and `statedAt` opens on the instant the door was opened at, or EMPTY
   // — never defaulted to now, so a backfill that states no minute still states none and
   // the record renders it honestly.
-  const [when, setWhen] = useState<WhenValue>(() => ({
-    date,
-    statedAt: defaultStatedAt,
-  }));
+  const [when, setWhen] = useState<WhenValue>(() =>
+    whenOnDay(date, tz, defaultStatedAt)
+  );
 
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();

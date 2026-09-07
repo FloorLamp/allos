@@ -334,7 +334,10 @@ export default function QuickLogPrnControl({
             ITS WORDS ARE THE CARD'S (#5489 fix 4): the eyebrow was the literal
             "Today", so a panel opened on a cockpit standing on Yesterday was headed
             TODAY above a tap that wrote yesterday. */}
-        <CardSectionHeader title={cockpitDayLabel(card, cardDay) ?? "Today"} variant="label">
+        <CardSectionHeader
+          title={cockpitDayLabel(card, cardDay) ?? "Today"}
+          variant="label"
+        >
           {control}
         </CardSectionHeader>
         <div

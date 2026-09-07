@@ -2,6 +2,8 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useState } from "react";
 import WhenControl, { type WhenValue } from "@/components/WhenControl";
+import { isRealIsoDate } from "@/lib/date";
+import type { LocalDay } from "@/lib/temporal-types";
 import { TimezoneProvider } from "@/components/TimezoneProvider";
 import { WeekStartProvider } from "@/components/WeekStartProvider";
 import { FormatPrefsProvider } from "@/components/FormatPrefsProvider";
@@ -34,7 +36,15 @@ beforeEach(() => {
   );
 });
 
-const DAY = "2026-08-29";
+// A DAY LITERAL IS NOT A `LocalDay` (#5105's cast ban, reached by #5489's branding of
+// `WhenValue.date`): the fixture mints one through the validating minter, exactly as
+// lib/__tests__/clock-seam.test.ts does.
+const day = (value: string): LocalDay => {
+  if (!isRealIsoDate(value)) throw new Error(`not a day: ${value}`);
+  return value;
+};
+
+const DAY = day("2026-08-29");
 /** 19:30 in UTC on DAY — the zone every case below runs in. */
 const AT = "2026-08-29T19:30:00.000Z";
 

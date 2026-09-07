@@ -33,7 +33,7 @@ import {
   useDayBinding,
 } from "@/components/illness/CockpitDayContext";
 import { useTimezone } from "@/components/TimezoneProvider";
-import { statedHhmm } from "@/lib/stated-time";
+import { statedHhmm, whenOnDay } from "@/lib/stated-time";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { formatClock } from "@/lib/format-date";
 import {
@@ -55,7 +55,6 @@ import { useDoseOfferSignal } from "@/components/illness/DoseOfferContext";
 import type { PrnMedForQuickLog } from "@/lib/queries/intake/adherence";
 import type { IntakeFormContext } from "@/lib/intake-form-context";
 import SubmitButton from "@/components/SubmitButton";
-import type { LocalDay } from "@/lib/temporal-types";
 
 // One-tap symptom logger (issue #799/#857), modeled on the FoodLogBar one-tap pattern:
 // optimistic local severities, a Server Action per tap, and reconciliation to the
@@ -115,7 +114,7 @@ export default function SymptomLogBar({
 }: {
   // Primary date (YYYY-MM-DD). On the dashboard this is today; on the Timeline it's the
   // selected day.
-  date: LocalDay;
+  date: string;
   // Optional second date for the toggle (yesterday on the dashboard). Absent → single-day.
   altDate?: string;
   // symptom key → severity already logged, for the primary and alt dates.
@@ -255,16 +254,15 @@ export default function SymptomLogBar({
   // The login's own clock convention (#964) — the fever offer states the reading's
   // minute, and it says it the way every other rendered time on the page does.
   const formatPrefs = useFormatPrefs();
-  const [tempWhen, setTempWhen] = useState<WhenValue>(() => ({
-    date,
-    statedAt: null,
-  }));
+  const [tempWhen, setTempWhen] = useState<WhenValue>(() =>
+    whenOnDay(date, timeZone ?? tempZone)
+  );
   // Switching the day re-anchors the pair rather than leaving a time stated on the
   // day the user just left — the WhenControl's own invariant 1, applied by the owner
   // of the day it is pinned to.
   function selectDay(next: string): void {
     card?.select(next);
-    setTempWhen({ date: next, statedAt: null });
+    setTempWhen(whenOnDay(next, timeZone ?? tempZone));
     // THE STAGE BELONGS TO THE DAY IT WAS MADE ON (#4691). A selection carried
     // across the toggle would spend itself on a day the person never chose it
     // for, which is the same mistake the reading time above is re-anchored to
@@ -470,7 +468,7 @@ export default function SymptomLogBar({
     if (res.ok) {
       form.reset();
       tempUnitDetection.reset();
-      setTempWhen({ date: activeDate, statedAt: null });
+      setTempWhen(whenOnDay(activeDate, timeZone ?? tempZone));
       // FEVER-RANGE KEEPS THE FOLD OPEN (#4712 judgement 1). The confirmation block
       // renders under the reading, in the SAME fold — closing it here would bury the
       // offer under the very toggle that reveals it. A fever reading with nothing to

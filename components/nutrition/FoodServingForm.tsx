@@ -9,6 +9,7 @@ import {
   statedHhmm,
   statedInstantOnDate,
   type WhenValue,
+  whenOnDay,
 } from "@/lib/stated-time";
 import { eatingHoursOnDate } from "@/lib/food-eating-time";
 import {
@@ -23,7 +24,6 @@ import {
   type FoodEventEditResult,
 } from "@/app/(app)/nutrition/actions";
 import SubmitButton from "@/components/SubmitButton";
-import type { LocalDay } from "@/lib/temporal-types";
 
 // THE FOOD DOMAIN'S ONE FORM (#4424 ruling 1), named by `LOG_MANIFEST.food.pieces.form`.
 // `row` absent posts `logFoodServing`; `row` present seeds from that row and posts
@@ -68,7 +68,7 @@ export interface FoodGroupChoice {
 export interface FoodServingRow {
   eventId: number;
   groupKey: string;
-  date: LocalDay;
+  date: string;
   mealSlot: FoodSlot;
   /** Profile-local "HH:MM" the serving was EATEN at, or null when nobody stated one. */
   eatenAt: string | null;
@@ -166,10 +166,9 @@ export default function FoodServingForm({
   );
   const [mealTouched, setMealTouched] = useState(false);
   const [notes, setNotes] = useState(row?.notes ?? "");
-  const [when, setWhen] = useState<WhenValue>(() => ({
-    date: row?.date ?? date,
-    statedAt: openingStatedAt,
-  }));
+  const [when, setWhen] = useState<WhenValue>(() =>
+    whenOnDay(row?.date ?? date, tz, openingStatedAt)
+  );
 
   function moveWhen(next: WhenValue): void {
     if (

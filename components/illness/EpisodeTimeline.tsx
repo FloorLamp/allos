@@ -36,7 +36,7 @@ import { ResponsiveTable, Td } from "@/components/ResponsiveTable";
 import { CARD_MODE_ONLY, CARD_MODE_TABLE_ONLY } from "@/lib/card-row";
 import WhenControl, { type WhenValue } from "@/components/WhenControl";
 import { useTimezone } from "@/components/TimezoneProvider";
-import { statedHhmm, statedInstantOnDate } from "@/lib/stated-time";
+import { statedHhmm, statedInstantOnDate, whenOnDay } from "@/lib/stated-time";
 import {
   deleteEpisodeDoseAction,
   deleteEpisodeTemperatureAction,
@@ -130,12 +130,14 @@ function EventWhenFields({
   const [when, setWhen] = useState<WhenValue>(() => {
     const stated =
       event.kind === "medication" && event.timeRecorded ? null : event.time24;
-    return {
-      date: event.date,
-      statedAt: stated
-        ? (statedInstantOnDate(event.date, stated, tz)?.toISOString() ?? null)
-        : null,
-    };
+    const on = whenOnDay(event.date, tz);
+    return stated
+      ? {
+          ...on,
+          statedAt:
+            statedInstantOnDate(on.date, stated, tz)?.toISOString() ?? null,
+        }
+      : on;
   });
   return (
     <div className="min-w-0" data-testid="illness-event-date-time">
