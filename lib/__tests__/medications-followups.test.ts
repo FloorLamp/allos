@@ -195,6 +195,7 @@ describe("#851 item 14 — one option per med, 'Generic (Brand, Brand)'", () => 
     "Acetaminophen 300 mg / codeine 30 mg",
     "Ibuprofen 200 mg / diphenhydramine 25 mg",
     "Acetaminophen (Tylenol, Panadol)",
+    "Advil 200mg",
   ])("preserves unrecognized product qualifiers when picking %s", (name) => {
     expect(resolveMedicationPick(name).name).toBe(name);
     expect(

@@ -12,8 +12,6 @@
 // match_keys, so the framework's multi-value matcher finds one entry under any of its
 // names. INFORMATIONAL, NOT MEDICAL ADVICE.
 
-import { preservesPrnProductName } from "./prn-defaults";
-
 import {
   MED_DESCRIPTION_ENTRIES,
   medEntryForName,
@@ -173,19 +171,17 @@ export function catalogLabelGeneric(label: string): string {
 // typed query matched a brand of that med ("tylenol" → { name: "Acetaminophen", brand:
 // "Tylenol" }). A generic-matched pick (or no query) leaves brand null so the
 // Generic/brand_names picker (#851 item 3) owns it. A free-text pick outside the
-// catalog falls back to splitMedicationName. Pure; pinned by the descriptions test.
+// catalog stays unchanged. Only an exact displayed label or generic may be
+// canonicalized; the educational lookup's strength-stripping is intentionally not
+// identity authority. Pure; pinned by the descriptions test.
 export function resolveMedicationPick(
   picked: string,
   query?: string
 ): { name: string; brand: string | null } {
-  const generic = catalogLabelGeneric(picked);
-  const info = getMedicationInfo(generic);
-  if (!info) return splitMedicationName(picked);
-  // Description lookup strips strength tails. Do not let that turn a free-text
-  // combination into a plain ingredient before the dosing-label gate sees it.
-  if (!preservesPrnProductName(generic, info.generic)) {
-    return { name: picked.trim(), brand: null };
-  }
+  const raw = picked.trim();
+  const generic = catalogLabelIndex().genericBy.get(raw.toLowerCase());
+  if (!generic) return { name: raw, brand: null };
+  const info = getMedicationInfo(generic)!;
   const qn = normalizeMedName(query ?? "");
   let brand: string | null = null;
   // Only treat the query as a brand match when it does NOT already match the generic

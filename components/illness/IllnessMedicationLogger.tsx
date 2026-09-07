@@ -236,6 +236,7 @@ export default function IllnessMedicationLogger({
           </div>
           <QuickLogPrnControl
             itemId={open.med.id}
+            identity={open.med.identity}
             name={open.med.displayName ?? open.med.name}
             doseAmount={open.med.amount}
             product={open.med.product}

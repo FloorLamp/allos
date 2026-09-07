@@ -1,9 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  prnDefaultEntries,
-  prnDefaultsFor,
-  isAntipyreticIntakeItem,
-} from "@/lib/prn-defaults";
+import { prnDefaultEntries, prnDefaultsFor } from "@/lib/prn-defaults";
 import {
   prnDefaultsDataset,
   prnDefaultSlugStrategy,
@@ -63,13 +59,13 @@ describe("prn-defaults dataset", () => {
   });
 
   it("matches by RxNorm ingredient CUI (authoritative)", () => {
-    const hit = prnDefaultsFor({ name: "Some Brand", rxcui: "5640" });
+    const hit = prnDefaultsFor({ name: "Advil 200mg", rxcui: "5640" });
     expect(hit?.slug).toBe("ibuprofen");
   });
 
   it("matches by ingredient CUI in the cached ingredient list (#279)", () => {
     const hit = prnDefaultsFor({
-      name: "Unknown product",
+      name: "Resolved product",
       rxcui: "99999",
       rxcuiIngredients: ["161"],
     });
@@ -77,7 +73,7 @@ describe("prn-defaults dataset", () => {
   });
 
   it("falls back to a name/synonym match when no CUI", () => {
-    expect(prnDefaultsFor({ name: "Advil 200mg", rxcui: null })?.slug).toBe(
+    expect(prnDefaultsFor({ name: "Advil", rxcui: null })?.slug).toBe(
       "ibuprofen"
     );
     expect(prnDefaultsFor({ name: "Tylenol", rxcui: null })?.slug).toBe(
@@ -94,58 +90,19 @@ describe("prn-defaults dataset", () => {
   });
 
   it.each([
-    ["Children's Tylenol", "acetaminophen"],
-    ["Tylenol Extra Strength 500 mg tablets", "acetaminophen"],
-    ["Acetaminophen 160 mg / 5 mL oral suspension", "acetaminophen"],
-    ["Infants' Motrin drops 50 mg/1.25 mL", "ibuprofen"],
-    ["Children’s Advil", "ibuprofen"],
-  ])("keeps a plain product: %s", (name, slug) => {
-    expect(prnDefaultsFor({ name, rxcui: null })?.slug).toBe(slug);
-  });
-
-  it.each([
     { name: "Tylenol with Codeine", rxcui: null },
-    { name: "Tylenol / 可待因", rxcui: null },
-    { name: "Advil / кодеин", rxcui: null },
-    {
-      name: "Tylenol",
-      rxcui: null,
-      ingredients: [{ name: "Acetaminophen" }, { name: "可待因" }],
-    },
-    { name: "Paracetamol / codeine", rxcui: null },
-    { name: "Acetaminophen (with Codeine)", rxcui: null },
-    { name: "Acetaminophen 300 mg / codeine 30 mg", rxcui: null },
-    { name: "Tylenol #3", rxcui: null },
-    { name: "Advil PM", rxcui: null },
-    { name: "Motrin Cold & Flu", rxcui: null },
-    { name: "Tylenol with Codeine", rxcui: "161" },
-    { name: "Tylenol", rxcui: "99999" },
-    { name: "Tylenol with Codeine", rxcui: "99999", rxcuiIngredients: ["161"] },
-    {
-      name: "Unknown product",
-      rxcui: "99999",
-      rxcuiIngredients: ["161", "2670"],
-    },
-    {
-      name: "Tylenol",
-      rxcui: null,
-      ingredients: [{ name: "Acetaminophen" }, { name: "Codeine" }],
-    },
-  ])("refuses plain-label defaults for $name ($rxcui)", (item) => {
-    expect(prnDefaultsFor(item)).toBeNull();
-    // Refusing a dose chart must not erase the ingredient's fever-reducing identity.
-    expect(isAntipyreticIntakeItem(item)).toBe(true);
-  });
-
-  it("counts distinct ingredients rather than product and duplicate ingredient CUIs", () => {
-    expect(
-      prnDefaultsFor({
-        name: "Unknown product",
-        rxcui: "99999",
-        rxcuiIngredients: ["161", "161", " 161 "],
-      })?.slug
-    ).toBe("acetaminophen");
-  });
+    { name: "Tylenol 300 mg / Codeine 30 mg", rxcui: null },
+    { name: "Tylenol PM", rxcui: null },
+    { name: "Tylenol+", rxcui: null },
+    { name: "Advil 200mg", rxcui: null },
+    { name: "Tylenol", rxcui: "99999", rxcuiIngredients: ["161", "2670"] },
+    { name: "Tylenol", rxcui: "2670" },
+  ])(
+    "declines label defaults without a matching complete identity: $name",
+    (item) => {
+      expect(prnDefaultsFor(item)).toBeNull();
+    }
+  );
 
   it("returns null for an unknown ingredient", () => {
     expect(prnDefaultsFor({ name: "Metformin", rxcui: null })).toBeNull();

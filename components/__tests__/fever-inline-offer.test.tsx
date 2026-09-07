@@ -117,6 +117,7 @@ const TODAY = new Date().toISOString().slice(0, 10);
 const SUBJECT = 42;
 
 const ANTIPYRETIC: PrnMedForQuickLog = {
+  identity: { name: "Ibuprofen", rxcui: null },
   id: 501,
   name: "Ibuprofen",
   kind: "medication",
@@ -515,6 +516,7 @@ describe("the Meds chip yields to the fold's dose offer (#4712 ruling part 2)", 
     ...ANTIPYRETIC,
     id: 502,
     name: "Antacid",
+    identity: { name: "Antacid", rxcui: null },
   };
 
   function cockpitModel(

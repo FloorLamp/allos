@@ -423,12 +423,11 @@ export default function IntakeItemForm({
   // ---- Datasets for the derived kind ----
   const prnDefaults = useMemo(
     () =>
-      isMed && state.name.trim()
+      isMed && state.name.trim() && ingredientsAreEmpty(state.ingredients)
         ? prnDefaultsFor({
             name: state.name,
             rxcui: rx.rxcui,
             rxcuiIngredients: rx.rxcuiIngredients,
-            ingredients: state.ingredients,
           })
         : null,
     [isMed, state.name, state.ingredients, rx.rxcui, rx.rxcuiIngredients]
@@ -624,12 +623,13 @@ export default function IntakeItemForm({
         withBottle({
           vocabulary: "medication",
           info: getMedicationInfo(generic),
-          prn: prnDefaultsFor({
-            name: generic,
-            rxcui: confirmed?.rxcui ?? null,
-            rxcuiIngredients: confirmed?.rxcuiIngredients ?? null,
-            ingredients: state.ingredients,
-          }),
+          prn: ingredientsAreEmpty(state.ingredients)
+            ? prnDefaultsFor({
+                name: generic,
+                rxcui: confirmed?.rxcui ?? null,
+                rxcuiIngredients: confirmed?.rxcuiIngredients ?? null,
+              })
+            : null,
         })
       );
     });

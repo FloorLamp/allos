@@ -1,3 +1,4 @@
+import type { PrnMedForQuickLog } from "@/lib/queries/intake/adherence";
 import { IconCircleCheck } from "@tabler/icons-react";
 import LedgerDoorLink from "@/components/LedgerDoorLink";
 import QuickLogPrnControl from "@/components/medications/QuickLogPrnControl";
@@ -56,6 +57,7 @@ export default function MedicationsTodayPanel({
   scheduled: MedCardData[];
   // The recently-used active PRN meds with pre-formatted day + redose lines.
   prnToday: {
+    identity: PrnMedForQuickLog["identity"];
     id: number;
     name: string;
     product: string | null;
@@ -255,6 +257,7 @@ export default function MedicationsTodayPanel({
               <QuickLogPrnControl
                 key={m.id}
                 itemId={m.id}
+                identity={m.identity}
                 name={m.name}
                 doseAmount={m.amount}
                 product={m.product}
