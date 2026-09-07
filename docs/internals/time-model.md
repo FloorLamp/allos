@@ -1,465 +1,168 @@
 # The time model
 
-Status: partial (phases 0–3 shipped — the ingest boundary, storage, writer
-chokepoint, persisted column-name vocabulary, declared column index, and row-level
-readers. The remaining work is serialization cleanup, not naming.
-`practice_logs.start_time` / `end_time` and `activities.start_time` / `end_time` stay
-profile-local clock values by design;
-`food_log_events.time_source` stays because it distinguishes an unstated time from a
-stated time the write path refused.)
-
-Two questions look the same and are not:
-
-| question                               | stored as                  | example                                                       |
-| -------------------------------------- | -------------------------- | ------------------------------------------------------------- |
-| **When did this happen?** (INSTANT)    | UTC, absolute              | `medical_records.occurred_at`, `metric_samples.ended_at`      |
-| **Which day does it count for?** (DAY) | profile-local `YYYY-MM-DD` | `body_metrics.date`, `food_daily_totals.date`, dose adherence |
-
-A day is **not** a lesser instant. It is the answer to a different question
-(#94): dose, adherence, cadence and the digest all key on it, and several
-domains genuinely have no instant at all — a hand-typed weigh-in date is a day
-and nothing more. Collapsing the two would be a regression. Everything below is
-about instants only, and `date` semantics are untouched throughout.
-
-## The instant convention
-
-```
-2026-07-15T20:02:03Z      UTC · second resolution · explicit Z
-```
-
-`lib/date.ts` owns it:
-
-| helper             | use                                                       |
-| ------------------ | --------------------------------------------------------- |
-| `utcInstant(d?)`   | THE writer for a column on this convention                |
-| `toUtcInstant(s)`  | re-serialize an already-stored value of either convention |
-| `parseUtcSql(s)`   | read a stored value of either convention back to a `Date` |
-| `utcSqlString(d?)` | the writer for a column still on SQLite's bare shape      |
-
-`lib/clock.ts` adds the seam wrappers: `instantNow()` beside `sqlNow()`. Which
-of the two a write site binds is decided by the **column's** declared
-convention, never by the site's taste; the choice between the seam and real
-time is the #1534 rule (day-semantic ⇒ seam, duration ⇒ real time). The one
-exception is the persisted, cross-process post-workout claim lease: its anchor
-must be a wall-clock instant because a monotonic timer cannot cross processes,
-and both its canonical writer and age comparison read the seam.
-
-Why this shape rather than SQLite's own `datetime('now')`:
-
-- it **states** the zone instead of leaving a reader to assume one;
-- it is byte-identical to `strftime('%Y-%m-%dT%H:%M:%SZ','now')`, so a
-  JS-written value and a SQL-written one sort, compare and `date()`-truncate
-  identically;
-- SQLite's date functions parse it natively, so `date()`, `julianday()` and
-  `strftime()` keep working over a converted column.
-
-## Why it is enforced rather than documented
-
-Comparison of stored datetimes in SQLite is **lexical**. Within one day, `' '`
-(0x20) sorts before `'T'` (0x54), so a bare value and a `Z` value in the same
-column — or a `Z` column compared against a bare cutoff — silently answer wrong
-while every query still looks right. That is not hypothetical: the boot lease
-sweep wrote `integration_backfill_jobs.retry_after_at` bare while the job runner
-wrote it with `Z`, and `resumeDueIntegrationBackfills` therefore read every
-sweep-paused job as due immediately. The test that covered it seeded the same
-bare shape the sweep used, so fixture and code agreed on the wrong serialization
-and the assertion passed.
-
-The lesson generalizes: with no declared convention, a test can only pin
-whichever shape the writer happened to pick, and a green suite proves nothing
-about the comparison. So the convention is a **scan**, not prose.
-
-## The ratchet
-
-`lib/__tests__/instant-writer-scan.test.ts` reads the repo's own source as text
-(no DB, no network) and enforces three rules:
-
-- **A** — a column on the canonical convention is written through a bound
-  parameter, never SQL's own clock and never a literal.
-- **B** — no statement touching a canonical table carries a raw SQL now-read.
-- **C** — no module that writes SQL may hand-build an instant
-  (`.toISOString()`, a `` `${day} 00:00:00` `` template).
-
-`CANONICAL_INSTANT_COLUMNS` in that file is the registry of columns on the
-convention, and there are exactly two ways in:
-
-- **Converted** — the migration that moves an existing column onto the
-  convention adds its entry, in the same change as its readers. Never
-  speculatively: A and B are enforced immediately, so claiming a column is
-  canonical before its values are would fail the statements that are still
-  correct.
-- **Born on it** — a brand-new nullable column with no rows and no writer yet
-  (`occurred_at`, migration 165). There is nothing to convert: the column is
-  empty, so the claim cannot be false, and listing it is what keeps it true —
-  rule A forces the _first_ writer to bind `utcInstant()` instead of choosing a
-  serialization at the call site. This applies only to a column that has never
-  held a value.
-
-Everything not listed is still on SQLite's bare shape and is written through
-`utcSqlString`/`sqlNow`; that is a phase, not a free-for-all.
-
-Allowlist entries in either the registry or the rule-C ledger **require a stated
-reason**, the same discipline as `profile-scoping` and `sql-clock-seam`. A
-count that is too low fails as loudly as one that is too high, so the ledger
-only shrinks.
-
-Known gaps, stated rather than implied:
-
-- Rule C's gate is "this module writes SQL", so an instant hand-built in a pure
-  ingest NORMALIZER is not seen. Those feed `metric_samples`, whose natural-key
-  dedupe is keyed on the stored instant — converting them is a value change with
-  an idempotency blast radius, so phase 1 leaves them and the registry does not
-  claim them. The type vocabulary below is what closes this: a `CanonicalInstant`
-  is visible to the compiler wherever it is built, SQL or not, so the gap shrinks
-  each time a normalizer's output is narrowed to the brand — and the
-  `metric_samples` writers are never narrowed to canonical, because that column
-  is not (see the registry note on it).
-- Column `DEFAULT`s live in shipped, immutable migrations and cannot be scanned
-  from source. A converted table's `DEFAULT` is pinned by its own migration test.
-
-## The type vocabulary (#2899)
-
-The scans above reach SQL and stop at the writer. Nothing in them makes it a
-compile error to pass a profile-local day where an instant is wanted, or an
-`HH:MM` clock reading where a day is wanted — three different questions that
-#2883 finished separating, and that review alone was keeping apart. So the
-registry's grain and convention are also stated as TYPES, beside the scans and
-never instead of them. `lib/temporal-types.ts` owns the vocabulary:
-
-| brand              | shape                    | minted by                                                                               |
-| ------------------ | ------------------------ | --------------------------------------------------------------------------------------- |
-| `LocalDay`         | `YYYY-MM-DD`, a real day | `isRealIsoDate` (validates); `today`, `dateStrInTz`, `shiftDateStr`, `startOfWeekStr` … |
-| `LocalTime`        | `HH:MM`, profile-local   | `zonedDateParts`, `nowTime`, `activityClockHHMM`, the `SourceTime` local arm            |
-| `CanonicalInstant` | `…THH:MM:SSZ`            | `utcInstant`, `utcMinute`, `toUtcInstant`, `instantNow`, `sourceInstant`                |
-| `BareInstant`      | `YYYY-MM-DD HH:MM:SS`    | `utcSqlString`, `sqlNow`                                                                |
-
-Grain and serialization are separate axes, so `CanonicalInstant` and
-`BareInstant` are two types and there is no umbrella instant brand: one over
-both would make the lexical-comparison bug the scan exists to catch look
-checked.
-
-`metric_samples.started_at` / `ended_at` carry **no brand**. They are the
-natural key that makes a re-push a correction, and they hold whatever each
-writer put there: the device's own value verbatim, a `${day}T00:00:00`
-day-midnight anchor, a `${day}THH:MM:SS` zoneless local datetime, a bare
-`YYYY-MM-DD`, an `<ISO>#<stage>` key — the registry note on that column names
-the writers and does not claim its list is complete. A two-shape union was
-proposed and falsified against the writers twice on 2026-09-05: it modelled the
-registry note, not the column. A truthful type for it needs every writer
-inventoried first; until then the column is `string`, and saying so is the
-point.
-
-Three rules keep a brand worth something:
-
-- **A minter validates or constructs.** `isRealIsoDate` checks the calendar and
-  is a type predicate, so it needs no cast; the constructing minters build from
-  a `Date` and carry their one permitted cast on a `-- <brand> minter:` disable
-  line. A function that receives a string and casts it is not a minter and must
-  not exist.
-- **A cast to a brand is refused by ESLint as a ratchet, not a proof**
-  (`eslint.config.mjs`, `no-restricted-syntax`). The rule refuses the ways of
-  naming a brand as a cast target, as an alias, or as a renamed import/export
-  that `lib/__tests__/temporal-types.test.ts` lists, and that list is the
-  definition of what it catches. TypeScript's type grammar has more ways to
-  name a type than any selector list — three falsifying passes each found new
-  ones — so a spelling the test does not list is an addition (a selector and a
-  test row), never a refutation, and the reviewer's job is unchanged. A cast
-  that appears anywhere outside a minter is the defect, not a shortcut: bring
-  it back to #2899 rather than adding a disable. The rule does not chase what a
-  name resolves to (an indexed access into a row type, an interface's heritage
-  or call signature, an object literal whose method returns a brand), a lying
-  type predicate, an overload, `as any`, `as never`, a generic launderer or a
-  `.js` file; those are review's, as for every other type. The test pins six
-  of them as lint-clean, so a limit the rule later starts catching fails a
-  test rather than drifting silently.
-- **A DB row shape may carry the brand the registry declares for that column**
-  (`.get(...) as { date: LocalDay }`), and nothing else. That assertion already
-  exists on every read; the brand adds what `TIME_COLUMNS` says about the column,
-  and the column-index scan is what keeps the two in agreement.
-
-A brand is a subtype of `string`, so branding a minter's RETURN broke no caller.
-Narrowing a PARAMETER is where a consumer starts being checked, and that happens
-at each consumer as it is touched — the three-way confusion becomes a compile
-error one signature at a time, with the cast ban holding at every intermediate
-state. There is no sweep to schedule and no cast to grow around.
-
-## One reader per question (phase 3)
-
-`lib/date.ts` answers a question about a VALUE. The question a surface actually asks is
-about a ROW — "when did this dose happen", "which day does this serving count for" — and
-until phase 3 nothing owned it, so dose readers hand-rolled a record chain and food paired `occurred_at ?? recorded_at` (then spelled
-`eaten_at ?? logged_at`) in four more.
-
-`lib/time-columns.ts` declares what every temporal column MEANS, and `lib/row-instants.ts`
-asks the row-level question over that declaration: `eventInstant`, `recordInstant`,
-`bestKnownInstant`, `rowLocalDay`. A surface names a quantity, never a column, so phase
-2's renames reach it through one registry entry.
-
-Issue #2876 completed the dose ledger's vocabulary: `recorded_at` is now its immutable
-capture instant and `occurred_at` its event instant, both canonical UTC+Z. Dose readers
-that need a best-known administration time fall from event to capture explicitly.
-
-Two rules are worth repeating here:
-
-- **`eventInstant` never falls back.** A row with no event instant — a web-logged serving
-  nobody stated an eating time for, a quick-path practice tick — comes back as an explicit
-  absence with a reason. Answering it with the record instant is how a distribution of
-  eating times becomes a distribution of tapping times. `bestKnownInstant` still offers the
-  substitution and reports which column it used.
-- **`localDayOf` (`lib/local-day-window.ts`) stays the single instant→day path.** Phase 3
-  adds no synonym for it; `rowLocalDay` routes through it and prefers a row's stored `date`
-  whenever it has one, because a day attribution is a decision the app already made (#94).
-
-See `docs/internals/time-columns.md` for the per-column index and the entries that most
-reward reading before writing SQL.
-
-## The ingest boundary (phase 0)
-
-Everything above is about a value the app already holds. **Phase 0 is about how one
-gets in.** Until #2243, the clinical-document parsers answered a narrower question than
-they were asked: `hl7Date` truncated an HL7 v3 TS at its eighth character and `isoDate`
-did `v.slice(0, 10)`, so a C-CDA `effectiveTime` of `20260807143000-0500` arrived as a
-bare day — three layers before any destination column was chosen. 21% of production's
-`medical_records` came in that way. Nothing was wrong at any destination; the value had
-already been destroyed at the door.
-
-The rule, stated once:
-
-> **Preserve at the source's own grain; narrow at the destination, per the grain that
-> destination declares.**
-
-`lib/source-time.ts` is the boundary. Both parsers return a `SourceTime` — three arms,
-because the source genuinely has three cases:
-
-| arm       | the source stated               | reachable destinations                          |
-| --------- | ------------------------------- | ----------------------------------------------- |
-| `day`     | a calendar day and nothing more | day only                                        |
-| `instant` | a time **and** an offset        | day (`sourceDay`) and instant (`sourceInstant`) |
-| `local`   | a time with **no** offset       | day only — the instant column stays NULL        |
-
-The third arm is the point: a `string | null` return can never express "a clock with no
-zone", so the old signature had to guess, and guessing meant either dropping the time or
-resolving it against a timezone nobody supplied.
-
-Three consequences worth stating separately:
-
-- **A day-grained destination reads `sourceDay` and nothing else** — never the offset,
-  never a UTC re-derivation. `20260101003000+0900` states the day `2026-01-01` and _is_
-  `2025-12-31T15:30:00Z`. Both are right; the day attribution (#94) is the one the
-  document stated, and shifting it would be a #2205-constraint-4 regression. The pin
-  lives in `lib/__tests__/source-time.test.ts` and again, end to end, in
-  `lib/__db_tests__/ccda-source-time.test.ts`.
-- **A `local` source leaves an instant destination NULL.** The facility's zone is not
-  the patient's, and "usually the same country" is how correct-looking code produces a
-  confidently wrong moment. The day is still stored, so nothing that was ever _stated_
-  is lost. Facility-zone inference is a separate decision needing its own evidence.
-- **Repair is by reprocess, not by migration.** The discarded times were never in the
-  database, so there is nothing for a migration to move — but `lib/medical-pipeline.ts`
-  retains the source document, so re-parsing the file the app still holds recovers them
-  through the affordance that already exists.
-
-Device integrations are untouched: their destinations always wanted instants, so they
-already preserved them (`lib/integrations/oura.ts` writes one straight into
-`metric_samples.started_at`). #2096 tracks the one device path with the same class of
-problem.
-
-### The narrowing ledger
-
-`lib/__tests__/ingest-narrowing-scan.test.ts` is phase 0's ratchet, and it is a
-**registry, not a dataflow scan** — a scan cannot follow a value from a parser to a
-column. It is the same shape as `HANDBUILT_ALLOW`: every place in the clinical-ingest
-surface that still narrows below its source's grain, with a stated reason and a frozen
-count that may only shrink. A new narrowing fails; converting one lowers the count.
-
-It currently holds **one** entry, total count 1: `appointmentDateTime` keeps the wall
-clock `Appointment.start` printed and drops the offset, because the destination —
-`appointments.date` + `appointments.time_of_day`, the CLINIC-local day and wall clock
-that #2234's split replaced the old mixed-grain `scheduled_at` with — has no companion
-column for a zone anywhere (#2243 owns that question). The parser preserves the
-offset; the drop happens at the MAPPER, which knows the destination, rather than at
-the parser, which does not.
-
-## Which clock stamps a record instant (#2287)
-
-Storing a stamp in the right SHAPE is not the whole of it. A value SQL stamps
-itself — `datetime('now')` in a statement, or a column DEFAULT that reads it —
-comes off the **real** clock, which `lib/clock.ts`'s seam cannot reach. Any code
-that then compares that value against the seam's `now()` is comparing two
-clocks, and answers by the distance between them rather than by the data.
-
-That distance is not always zero. The e2e suite freezes the seam, and
-`lib/e2e-freeze-instant.ts` nudges the frozen instant **forward across UTC
-midnight** for a run that starts inside its hazard window — so inside that
-window the seam leads real time by 30–60 minutes. #2287 reproduced what that
-costs, twice:
-
-- `activities.created_at` / `updated_at` are the LIVENESS signal
-  `computeWorkoutPresence` subtracts from the seam's now. Stamped by SQL, a
-  draft saved seconds earlier read as 58 minutes quiet — past the workout kind's
-  stale bound (45; `EPISODE_BOUNDS` in `lib/open-episode.ts`) — and the dock
-  rendered "Still working out? Finish or discard".
-- the offline food replay judged a queued eating-time statement against a bare
-  `new Date()` while the statement had been resolved against the seam, so
-  `acceptEatenAt` refused a seconds-old statement as being in the future and
-  `food_log_events.time_source` landed NULL instead of `'stated'`.
-
-The rule, then: **bind the record instant at the write site from the seam** —
-`sqlNow()` for a bare-shaped column, `instantNow()` for a canonical one — and
-pass the seam's `now()` to any pure gate that judges a stored or captured
-instant. A column DEFAULT lives in a shipped, immutable migration and stays
-where it is; binding explicitly at every write path makes it a backstop rather
-than the writer. Nothing about this changes production behaviour: with the
-override unset the seam **is** the real clock, so the bound value is
-byte-identical to what SQLite would have written.
-
-The question to ask of an audit stamp is therefore not "is it merely displayed"
-but "does anything ever compare it to the app's now — as a DAY, or as an ELAPSED
-interval?" `activities.updated_at` was allowlisted in
-`lib/__tests__/sql-clock-seam.test.ts` as a plain last-modified stamp and was
-still wrong, because presence subtracts it. `lib/__db_tests__/record-instant-clock-seam.test.ts`
-pins both consequences by freezing the seam AHEAD of real time, the way the
-nudge does.
-
-## The day-midnight anchor
-
-Three write paths file a day-only reading at `` `${date}T00:00:00` ``
-(`lib/reading-writes.ts`, `lib/ttc-store.ts`, `lib/offline/writes.ts`). That
-string is a **day attribution** wearing an instant column's clothes, and it is
-simultaneously the `metric_samples` natural key that makes a re-entry a
-correction rather than a duplicate. It is allowlisted, not converted: moving it
-would change a day attribution — out of scope by definition — and break the
-dedupe. Folding the three into one helper is phase-3 work.
-
-The three observation stores spell the same absence differently, **on purpose**.
-`medical_records`, `body_metrics` and `intake_item_logs` leave `occurred_at`
-NULL for an untimed reading (migration 165) rather than anchoring it at
-midnight, because each carries a real `date` column and keys on it, so it can
-afford honest absence. `metric_samples` cannot: its `started_at` is part of the
-natural key, and a NULL there would make a re-entry a duplicate instead of a
-correction. Two stores say NULL, one says midnight; that difference is real and
-an eventual readings merge has to resolve it, which is why it is named here
-rather than hidden behind a uniform-looking anchor.
-
-## The stated-time acceptance gate
-
-A STATED instant — one somebody actually said, as opposed to a stamp the app took
-— goes through one gate, `judgeStatedAt` (`lib/stated-time.ts`, #2236), worn by
-every surface that records when an observed event happened. Two rules:
-
-1. not meaningfully in the future, tolerating `STATED_FUTURE_SKEW_MS` (five
-   minutes — "neither a forgery nor a broken clock"), and
-2. the instant's profile-local date IS the row's own `date`.
-
-What a refusal COSTS is the caller's, deliberately. A **log path** keeps the row and
-drops the statement: losing the stated minute is cosmetic, losing the food serving is
-not. A **correction path**, where the statement is the whole submission, refuses the
-write.
-
-What a refusal costs is _not_ silence (#2296, owner ruling 2026-08-08). The gate used
-to answer `Date | null`, which cannot distinguish **"nobody stated a time"** from
-**"somebody stated one and we refused it"** — so a device whose clock ran more than
-five minutes fast discarded the eating time it had just been told, kept the serving,
-and said nothing. The tolerance is defensible and stays at five minutes; the shape of
-the answer was the defect. `judgeStatedAt` returns a verdict:
-
-| verdict                       | means                                               |
-| ----------------------------- | --------------------------------------------------- |
-| `{ kind: "accepted", at }`    | use it                                              |
-| `{ kind: "unstated" }`        | nobody said — nothing to record, nothing to report  |
-| `{ kind: "refused", reason }` | somebody said; `future` / `other-day` / `malformed` |
-
-A refusal is a **notice, never a validation failure that costs the write**. Where it
-surfaces:
-
-- **Web food bar** (`app/(app)/nutrition/actions.ts` → `FoodLogBar`) — the ok result
-  carries `statedTimeRefused`, and the bar raises an ordinary success-tone toast:
-  _"Serving saved without its time — …"_. Online this is only reachable when a page
-  goes stale across local midnight, because the form sends the CHOICE and the server
-  resolves it; no client clock can push it into the future.
-- **Offline replay** (`lib/offline/writes.ts` → `/api/offline-replay` →
-  `OfflineQueueProvider`) — the one food path that carries a client INSTANT, and
-  therefore the one a fast clock actually bites. The replay stays `done` and adds a
-  `timeNotice`; the client folds it into the sync confirmation it already shows
-  (`syncedAnnouncement`). Deliberately **not** the red dead-letter panel: that panel
-  says "these weren't saved", which would be false here and an alarm for a cosmetic
-  loss. See `docs/internals/findings.md` on right-sizing.
-- **Correction sheet** — unchanged posture (the statement is the submission, so it
-  errors) with the reason now naming the rule that fired, instead of blaming the day
-  for a time the user deliberately put in the future.
-- **Measurements form** (`app/(app)/trends/measurement-actions.ts` →
-  `MeasurementsQuickAdd`, #2311) — the body-metrics half of the same ruling.
-  `resolveStatedOccurredAt` answers `{ value, refused }` instead of collapsing a
-  refusal into an absence, `insertBodyMetric` answers `BodyMetricWriteOutcome`
-  instead of `boolean`, and the action returns `statedTimeRefused`. The form amends
-  its own success toast (`measurementsSavedText`, `lib/body-metric-input.ts`):
-  _"Measurements saved without the time — that time hasn't happened yet."_ Unlike
-  food, this one is reachable ONLINE, because the form posts a resolved instant
-  rather than a choice the server resolves. The offline body-metric intent joins the
-  food flow's existing `timeNotice` channel unchanged.
-
-Phrasing is per surface; the REASON CODE is shared. `STATED_TIME_REFUSAL_NOTE` is the
-clause for a surface that timestamped the statement ITSELF ("your device's clock is
-ahead"); a surface where the user TYPED the time owns its own words, because there a
-future instant is not a diagnosis of the device. The measurements form is the second
-kind: its Time is a field the user can see, so it says "that time hasn't happened
-yet" and never diagnoses their clock.
-
-**The whole sitting reports now (#2363).** The vitals half used to be silent:
-`insertVitals` answered a bare `boolean` and `ReadingRecordOutcome` had nowhere to
-carry a verdict, so a submission with only a blood pressure kept its reading, lost
-the stated minute and said nothing — while the very same sitting with a weight
-beside it DID report, off the body half. That the answer turned on which fields the
-user happened to fill is the tell that the SHAPE was wrong, not the scope.
-
-Both are widened: `ReadingRecordOutcome`'s success arm and `insertVitals` carry
-`statedTimeRefused`, and `addMeasurements` answers for the SITTING rather than for
-one half of it. Both halves resolve ONE statement through ONE gate
-(`resolveStatedOccurredAt`), so their verdicts agree by construction and taking
-whichever answered is not a choice between two opinions.
-
-WHO reports is the caller's decision, and both answers are correct:
-
-- a MANUAL sitting reports — the user typed a minute and the app discarded it;
-- a NON-MANUAL writer does not, because there is nobody in the room to tell. A
-  document import's readings carry the DOCUMENT's stated time, not a user's, and its
-  refusals belong in the import report. The fitness battery states a day and no clock
-  at all, so its outcome's `statedTimeRefused` is unreachable by construction rather
-  than collapsed; the sleep form posts hours for a night, likewise.
-
-The point of widening the type is that this choice is now MADE at each call site,
-instead of being made for everyone by a shape that could not carry the answer.
-`STATED_FUTURE_SKEW_MS` is unchanged, and a refusal is still a NOTICE: the reading
-always lands, and nothing is persisted to chase the user later.
-
-## Related
-
-- #2205 — the umbrella issue, its phasing, and its constraints.
-- #2296 — the acceptance gate's verdict, and the ruling that a refused statement is
-  never silent.
-- #2311 — the same ruling carried to body metrics: the resolver and the write core
-  stop collapsing the verdict, and the measurements form says what it could not keep.
-- #2363 — the vitals half of the same sitting, and the per-caller rule for who
-  reports a refusal and who is right not to.
-- #2312 — WHICH clock a replayed capture is judged against. `resolveCapturedInstant`
-  now REQUIRES its `now`, so a server-side replay site cannot fall back to the wall
-  clock by omission; the dose guard reads the seam like its `isGivenAtAccepted`
-  sibling already did. Mood queues no instant at all — its time model is the captured
-  `date` — and body/vitals were already on the seam through `resolveStatedOccurredAt`.
-- #2522 — the reading half of the same confusion: `formatRelativeTime` bounds its
-  future tolerance on BOTH sides, so a genuinely future stated time says "in 7 hrs"
-  instead of claiming to have just happened.
-- #94 — the day-attribution decision this deliberately does not revisit.
-- #2243 — phase 0, the ingest boundary: `lib/source-time.ts`, the three-arm
-  `SourceTime`, and the narrowing ledger.
-- #2234 / #2096 — the two open narrowings phase 0 names but does not close: an
-  appointment's zone, and zoneless Fitbit Takeout timestamps.
-- #1534 / `lib/__tests__/sql-clock-seam.test.ts` — the sibling ratchet: WHICH
-  clock a now-read comes from. This one is about WHAT SHAPE the value is stored
-  in. A write site usually has to satisfy both.
-- #2287 — the owner ruling that record instants are stamped through the seam
-  rather than by SQL's own clock, and the two reproductions behind it. Part A of
-  that issue (a fixture-zone scan and a fixture-timezone registry) is a separate,
-  still-open proposal.
-- `docs/internals/time-columns.md` — the per-column index (generated from
-  `lib/time-columns.ts`) and the row-level readers over it.
-- `docs/versioned-migrations-spec.md` — how a converting migration ships.
+Status: Implemented primitives and readers; stored serialization remains
+column-specific, with mixed and unverified entries in the column registry.
+
+An **instant** answers when something happened. A **local day** answers which
+calendar day it belongs to. A **local clock time** needs a date and timezone to
+become an instant. Preserve these distinctions at input, storage, and display
+boundaries; an unstated event time must not acquire invented precision.
+
+Use the [change and test policy](../change-policy.md) for scope and verification.
+The [temporal-column index](time-columns.md) owns each column's meaning, grain,
+serialization, and exceptions, plus the row-reader API. Consult it before changing
+SQL or choosing between event time and capture time.
+
+## Stored formats and writers
+
+[date.ts](../../lib/date.ts) owns serialization:
+
+| Helper             | Use                                                                                              |
+| ------------------ | ------------------------------------------------------------------------------------------------ |
+| `utcInstant(d?)`   | Canonical UTC, second resolution: `2026-07-15T20:02:03Z`                                         |
+| `utcMinute(d)`     | Canonical UTC truncated to a minute                                                              |
+| `utcSqlString(d?)` | Bare UTC: `2026-07-15 20:02:03`                                                                  |
+| `toUtcInstant(s)`  | Parse a stored UTC value and normalize it to canonical form; null for absent or unreadable input |
+| `parseUtcSql(s)`   | Parse stored UTC timestamps, including explicit offsets; zoneless values are interpreted as UTC  |
+
+Choose a writer from the **destination column's convention**. Do not treat a
+clinic-local datetime as UTC merely because `parseUtcSql` accepts its shape.
+Use the domain timezone when resolving a local wall clock.
+
+SQL text comparisons depend on serialization: a space sorts before `T`, so
+mixing bare and canonical timestamps can produce incorrect ordering or cutoffs
+within the same day. Bind cutoffs in the column's convention. Declaring a column
+canonical requires its stored values, defaults, writers, and readers to agree;
+changing only the TypeScript return type does not convert existing data.
+
+For an existing column, coordinate normalization with its readers and a new
+[migration](../versioned-migrations-spec.md). A new empty column can start on the
+canonical convention. Mixed and unverified columns require their documented
+handling; absence from the canonical-writer scan is not evidence that a column
+uses the bare format.
+
+## Choose the clock as well as the format
+
+[clock.ts](../../lib/clock.ts) owns the app's `now()`, with `instantNow()` and
+`sqlNow()` for canonical and bare stamps. `ALLOS_TEST_NOW` can fix this clock
+across processes; it is a test hook. Without a valid override, `now()` uses the
+real clock. The helper does not replace global `Date` or timers.
+
+Use this clock for day-derived behavior and for stored/captured instants compared
+against the app's now. Bind the record stamp explicitly when a SQL default would
+read a different clock. This includes activity presence and acceptance of
+replayed event times. Pass the chosen `now` into pure gates;
+`resolveCapturedInstant` in [offline/queue.ts](../../lib/offline/queue.ts)
+requires it explicitly.
+
+Timers, session expiry, rate limits, and other operational durations use real
+time. The persisted `notify_post_workout_claims.claimed_at` lease is an explicit
+exception: both its writer and age comparison use the app clock. A monotonic
+timer cannot serve as a shared persisted anchor across processes.
+
+The [SQL clock check](../../lib/__tests__/sql-clock-seam.test.ts) records the
+remaining raw-clock sites and their reasons. Check the consumer's comparison,
+not just whether a timestamp looks like an audit field. Test-clock setup belongs
+in [E2E hygiene](e2e-hygiene.md) and the existing test-tier fixtures.
+
+## Temporal types
+
+[temporal-types.ts](../../lib/temporal-types.ts) declares four string brands:
+
+| Type               | Meaning                           | Existing constructors or validators                                      |
+| ------------------ | --------------------------------- | ------------------------------------------------------------------------ |
+| `LocalDay`         | Real `YYYY-MM-DD` calendar day    | `isRealIsoDate`, `dateStrInTz`, `shiftDateStr`, `today`                  |
+| `LocalTime`        | `HH:MM` local clock time          | `zonedDateParts`, `nowTime`, `activityClockHHMM`                         |
+| `CanonicalInstant` | UTC with seconds and explicit `Z` | `utcInstant`, `utcMinute`, `toUtcInstant`, `instantNow`, `sourceInstant` |
+| `BareInstant`      | UTC in SQLite's bare format       | `utcSqlString`, `sqlNow`                                                 |
+
+Obtain a brand by validation or construction. Do not cast an arbitrary string or
+hide the cast in a new helper. A DB row assertion may carry the brand supported
+by that column's registry entry and storage contract. Narrow consumer parameters
+as they are changed; a branded return alone does not check a string-typed consumer.
+
+The existing ESLint restriction catches enumerated cast and alias spellings. It
+is not type resolution or runtime validation: indirect types, dishonest predicates,
+`any`, and other type-system escapes still need review. Keep legitimate constructor
+casts at their existing owners rather than adding exceptions at callers.
+
+## Source precision and day attribution
+
+[source-time.ts](../../lib/source-time.ts) distinguishes what a clinical source
+states before the destination decides what to store:
+
+| `SourceTime` grain | Source information                 | Destination readers                       |
+| ------------------ | ---------------------------------- | ----------------------------------------- |
+| `day`              | Calendar day                       | `sourceDay`                               |
+| `instant`          | Time with an offset                | `sourceDay` and `sourceInstant`           |
+| `local`            | Clock time without a usable offset | `sourceDay`; `sourceInstant` returns null |
+
+`sourceDay` keeps the source's printed day. For example, `20260101003000+0900`
+states January 1 even though its UTC instant is December 31. Do not rederive a
+day-grained destination from UTC. A facility-local clock cannot be resolved using
+the patient's timezone without evidence that it is the correct zone.
+
+The FHIR appointment mapper keeps the clinic-local day and clock in
+`appointments.date` and `time_of_day`; those columns have no companion timezone.
+The mapper makes that narrowing decision, not the parser. The
+[ingest narrowing check](../../lib/__tests__/ingest-narrowing-scan.test.ts)
+tracks textual narrowing patterns in clinical parsers and mappers. It does not
+trace data flow, cover device integrations, or detect precision discarded by an
+AI extraction prompt.
+
+When an earlier parse discarded source time, recovery requires reprocessing a
+retained source document. A migration cannot reconstruct information absent from
+storage.
+
+## Day anchors and unknown event times
+
+`metric_samples.started_at` participates in a natural key and retains several
+writer-specific shapes. It is not branded as a canonical or bare instant.
+Normalizing it can change deduplication and turn a correction into another row.
+Read its registry notes before changing a writer or comparison.
+
+Manual day-only point readings in `reading-writes.ts`, `ttc-store.ts`, and
+`offline/writes.ts` use a stable `YYYY-MM-DDT00:00:00` key. This is day attribution,
+not evidence that the event happened at midnight. Conversely, untimed
+`medical_records`, `body_metrics`, and `intake_item_logs` can leave `occurred_at`
+null because they have a separate day column. Preserve each store's identity and
+absence semantics when consolidating readers or writes.
+
+## Accepting a stated event time
+
+[judgeStatedAt](../../lib/stated-time.ts) checks a supplied instant against the
+row's profile-local day and a caller-supplied `now`. It rejects malformed times,
+times more than `STATED_FUTURE_SKEW_MS` (five minutes) in the future, and times on
+another local day. Its result distinguishes `accepted`, `unstated`, and
+`refused`, with `future`, `other-day`, or `malformed` as the refusal reason.
+
+An additive log keeps a valid reading while dropping a refused time statement.
+A correction whose submission is the time itself refuses the correction. Do not
+collapse refusal into absence or report that a successfully saved row failed.
+
+Food and measurement actions carry `statedTimeRefused` to the calling surface.
+[resolveStatedOccurredAt](../../lib/reading-writes.ts) preserves the refusal in
+body and vital outcomes; the measurement action reports for the whole sitting.
+Offline replay carries the notice through `timeNotice` while the write remains
+synced. Use the existing success or sync feedback, not the failed-write queue.
+
+Keep the reason code shared and wording appropriate to the input. A user-entered
+future time does not establish that the device clock is wrong. Non-manual imports
+and day-only inputs have different reporting needs; handle the outcome at their
+own boundary. Relative-time display must also preserve future meaning rather than
+labeling every future instant as “just now.”
+
+## Verification boundaries
+
+The [instant-writer check](../../lib/__tests__/instant-writer-scan.test.ts)
+requires recognized writes to registered canonical columns to bind parameters,
+rejects raw SQL now-reads in statements touching registered tables, and counts
+hand-built instant patterns in SQL-writing modules against explained exceptions.
+It does not prove bound values are canonical, inspect every pure normalizer, or
+validate stored data and shipped defaults. Use the relevant domain or migration
+coverage for those properties.
+
+Reuse existing temporal-type, source-time, row-reader, stated-time, and clock
+coverage for their respective behavior. Add a focused case only for an uncovered
+failure; the presence of a registry, brand, or source scan is not a substitute for
+checking the value's meaning at the boundary being changed.
