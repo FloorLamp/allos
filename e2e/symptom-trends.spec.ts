@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { workerDbPath, frozenNow } from "./worker-env";
+import { appContent } from "./helpers";
 
 // The symptom analysis surface (#1852): "how many migraine days last month, and is it
 // getting worse?". `/trends/symptoms` answers it in counts; the chronological record is
@@ -158,8 +159,11 @@ test.describe("symptom trends (#1852)", () => {
       );
 
       // eslint-disable-next-line no-restricted-properties -- first-ok: the acting profile's own cockpit — order-agnostic
-      await page.getByTestId("illness-cockpit-full-episode").first().click();
-      const link = page
+      await appContent(page)
+        .getByTestId("illness-cockpit-full-episode")
+        .first()
+        .click();
+      const link = appContent(page)
         .getByTestId("symptom-log-bar")
         .getByTestId("symptom-analysis-link");
       await expect(link).toBeVisible();
@@ -174,7 +178,9 @@ test.describe("symptom trends (#1852)", () => {
       // AND THE THIRD MOUNT IS UNTOUCHED: the cycles page is not this surface.
       await page.goto("/medical/cycles");
       await expect(
-        page.getByTestId("symptom-log-bar").getByTestId("symptom-analysis-link")
+        appContent(page)
+          .getByTestId("symptom-log-bar")
+          .getByTestId("symptom-analysis-link")
       ).toBeVisible();
     } finally {
       deleteFixtureRows(db);
