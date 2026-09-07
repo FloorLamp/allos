@@ -180,9 +180,12 @@ test("Training Log houses its primary in the header and keeps secondary actions 
   ).toBeVisible();
   await page.goto("/training?tab=log");
 
-  const actions = page.getByTestId("training-log-actions");
-  const addActivity = page.getByTestId("training-log-add-activity");
-  const button = page.getByTestId("repeat-last");
+  // Filter navigation temporarily stages another copy under <body>. Scope controls
+  // to the live page so that hidden streamed markup cannot match (#4890).
+  const training = page.getByTestId("training-page");
+  const actions = training.getByTestId("training-log-actions");
+  const addActivity = training.getByTestId("training-log-add-activity");
+  const button = training.getByTestId("repeat-last");
   await expect(actions).toContainText("Repeat last");
   await expect(actions).toContainText("Start workout");
   await expect(addActivity).toBeVisible();
@@ -197,43 +200,31 @@ test("Training Log houses its primary in the header and keeps secondary actions 
     )
   ).toHaveCount(1);
   await expect(
-    page.getByTestId("training-log-add-activity-inline")
+    training.getByTestId("training-log-add-activity-inline")
   ).toBeHidden();
 
   // Search is a GET form now (#4079): a filtered Log is a place, so the refinements
   // are in the URL and the control is a submit rather than a debounced client
   // filter. It still shares the controls block with the type segments.
-  const search = page.getByPlaceholder("Search activities or exercises…");
+  const search = training.getByPlaceholder("Search activities or exercises…");
   await expect(
     search.locator('xpath=ancestor::*[@data-testid="training-log-controls"][1]')
   ).toHaveCount(1);
   await search.fill("Bench");
-  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await training.getByRole("button", { name: "Search", exact: true }).click();
   await page.waitForURL(/[?&]q=Bench/);
   await expect(search).toHaveValue("Bench");
 
   // The type segments are LINKS, so the selected one is the page rather than a
   // pressed button, and one control clears every refinement at once.
-  const types = page.getByRole("group", { name: "Activity type" });
+  const types = training.getByRole("group", { name: "Activity type" });
   await types.getByRole("link", { name: "Strength" }).click();
   await page.waitForURL(/[?&]type=strength/);
   await expect(types.getByRole("link", { name: "Strength" })).toHaveAttribute(
     "aria-current",
     "page"
   );
-  // Scoped through `training-page`, which the STAGED copy has no ancestor of (#4890).
-  // Each Suspense boundary's content lands in a `<div hidden>` on `<body>` before an
-  // inline script relocates it, so through that window this testid exists twice and an
-  // unscoped locator throws a strict-mode violation rather than retrying down to one.
-  // The two clicks above navigate through the log's GET form, which is what puts this
-  // assertion inside the streaming window; #5017's shard refresh made the wait long
-  // enough under load to outlive Playwright's retry. Same one-line scoping #4833
-  // applied to `training-log-search-depth.spec.ts` and `unclassified-activity.spec.ts`;
-  // #4890 still owns the other twenty-one call sites.
-  await page
-    .getByTestId("training-page")
-    .getByTestId("training-log-clear-filters")
-    .click();
+  await training.getByTestId("training-log-clear-filters").click();
   await page.waitForURL(/\/training\?tab=log$/);
   await expect(types.getByRole("link", { name: "All" })).toHaveAttribute(
     "aria-current",
@@ -245,7 +236,7 @@ test("Training Log houses its primary in the header and keeps secondary actions 
   // to add — the defect was a reader standing in their own log with no door into it.
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(addActivity).toBeHidden();
-  const inlineAdd = page.getByTestId("training-log-add-activity-inline");
+  const inlineAdd = training.getByTestId("training-log-add-activity-inline");
   await expect(inlineAdd).toBeVisible();
   await expectPhoneTapTargets(page, "training log inline add", [inlineAdd]);
 
@@ -1159,62 +1150,67 @@ test("the bilateral (per-side) reps stepper steps down too (#1524)", async ({
 test("weight is stated once per exercise until a set varies it (#5371)", async ({
   page,
 }) => {
-  await page.goto("/training?tab=log");
-  await page
-    .getByRole("main")
-    .getByRole("button", { name: "Add activity" })
-    .click();
-  await pickActivity(page, "Barbell Bench Press");
+  const marker = `Shared weight probe ${Date.now()}`; // eslint-disable-line no-restricted-properties -- clock-ok: unique fixture title, never a stored timestamp
+  try {
+    await page.goto("/training?tab=log");
+    await page
+      .getByRole("main")
+      .getByRole("button", { name: "Add activity" })
+      .click();
+    await pickActivity(page, "Barbell Bench Press");
 
-  const form = page.getByTestId("activity-form"); // testid-scope-ok: ActivityOverlay portals the workspace to <body>, one copy
-  const band = form.getByTestId("exercise-weight");
-  const weight = band.getByTestId("set1-weight");
-  // The coached ghost rides on the band now — it is where set 1's weight goes.
-  await expect(weight).toHaveAttribute("placeholder", /^\d/);
-  await settledFill(page, weight, "60");
-  // Enter in the exercise-level weight lands in set 1's reps; Enter in a complete
-  // reps field adds the next set (#336), which copies the load and stays shared.
-  await weight.press("Enter");
-  await expect(form.getByTestId("set1-reps")).toBeFocused();
-  await page.keyboard.type("8");
-  await page.keyboard.press("Enter");
-  // The new set arrives as a GHOST of the one just recorded (#5373): its numbers are
-  // the offer, painted in the placeholder, and it is not a record until confirmed.
-  await expect(form.getByTestId("set2-reps")).toHaveValue("");
-  await expect(form.getByTestId("set2-reps")).toHaveAttribute(
-    "placeholder",
-    "8"
-  );
-  await expect(form.getByTestId("set2-weight")).toHaveCount(0);
-  await expect(form.getByLabel("Increase weight")).toHaveCount(1);
+    const form = page.getByTestId("activity-form"); // testid-scope-ok: ActivityOverlay portals the workspace to <body>, one copy
+    await form.getByLabel("Activity name").fill(marker);
+    const band = form.getByTestId("exercise-weight");
+    const weight = band.getByTestId("set1-weight");
+    // The coached ghost rides on the band now — it is where set 1's weight goes.
+    await expect(weight).toHaveAttribute("placeholder", /^\d/);
+    await settledFill(page, weight, "60");
+    // Set the shared load before recording reps. Once a set is confirmed, shared
+    // load edits belong only to remaining planned sets (#5484).
+    await hydratedClick(page, band.getByLabel("Increase weight"));
+    await expect(weight).toHaveValue("62.5");
+    // Enter in the exercise-level weight lands in set 1's reps.
+    await weight.press("Enter");
+    await expect(form.getByTestId("set1-reps")).toBeFocused();
+    await page.keyboard.type("8");
+    // The existing second row stays planned and shares the exercise-level load.
+    await expect(form.getByTestId("set2-reps")).toHaveValue("");
+    await expect(form.getByTestId("set2-weight")).toHaveCount(0);
+    await expect(form.getByLabel("Increase weight")).toHaveCount(1);
 
-  // Stepping the exercise weight moves every set — visible once set 2 varies: its
-  // own field arrives already at the stepped load, with the caret in it.
-  await hydratedClick(page, band.getByLabel("Increase weight"));
-  await expect(weight).toHaveValue("62.5");
-  await form.getByTestId("set-vary-2").click();
-  const set2Weight = form.getByTestId("set2-weight");
-  await expect(set2Weight).toHaveValue("62.5");
-  await expect(set2Weight).toBeFocused();
-  await expect(form.getByTestId("set1-weight")).toHaveValue("62.5");
-  await expect(band).toHaveCount(0);
-  // Enter in a set's weight lands in THAT set's reps.
-  await set2Weight.press("Enter");
-  await expect(form.getByTestId("set2-reps")).toBeFocused();
-  // Stepped back to match, the grid does not fold under the person's hands.
-  await hydratedClick(
-    page,
-    form.getByTestId("set-row-2").getByLabel("Decrease weight")
-  );
-  await expect(set2Weight).toHaveValue("60");
-  await expect(band).toHaveCount(0);
+    // Vary exposes the planned set's inherited load with the caret in its field.
+    await form.getByTestId("set-vary-2").click();
+    const set2Weight = form.getByTestId("set2-weight");
+    await expect(set2Weight).toHaveValue("62.5");
+    await expect(set2Weight).toBeFocused();
+    await expect(form.getByTestId("set1-weight")).toHaveValue("62.5");
+    await expect(band).toHaveCount(0);
+    // Enter in a set's weight lands in THAT set's reps.
+    await set2Weight.press("Enter");
+    await expect(form.getByTestId("set2-reps")).toBeFocused();
+    // Change the second set, then return to the same load: the grid must stay open.
+    await hydratedClick(
+      page,
+      form.getByTestId("set-row-2").getByLabel("Decrease weight")
+    );
+    await expect(set2Weight).toHaveValue("60");
+    await hydratedClick(
+      page,
+      form.getByTestId("set-row-2").getByLabel("Increase weight")
+    );
+    await expect(set2Weight).toHaveValue("62.5");
+    await expect(band).toHaveCount(0);
 
-  // Two complete sets auto-saved the draft; delete it so the shared seed is left
-  // as found (#3454: wait for the row to be gone, not for the form to close).
-  await expect(
-    page.getByRole("button", { name: "Delete", exact: true })
-  ).toBeVisible();
-  await deleteActivityFromForm(page);
+    // The recorded set auto-saved the draft; delete it so the shared seed is left
+    // as found (#3454: wait for the row to be gone, not for the form to close).
+    await expect(
+      page.getByRole("button", { name: "Delete", exact: true })
+    ).toBeVisible();
+    await deleteActivityFromForm(page);
+  } finally {
+    deleteActivitiesTitled(marker);
+  }
 });
 
 // The per-side payload, end-to-end. Nothing in the tree drove an R value through a
