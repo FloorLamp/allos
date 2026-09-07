@@ -22,6 +22,13 @@ export interface CockpitFactIdentity {
 // three facts, and "Feeling better" — the action the state ripens toward — beside the
 // countdown instead of at the card's bottom edge.
 //
+// THE NAME AND THE DAY TAG ALSO APPEAR ON THE ROW ABOVE, AND STAY (owner, 2026-09-06).
+// The accordion row this body expands from renders the avatar, the name, the situation
+// and "Day N" about 100px up, so the header restates both. A pass removed them as
+// duplicates and was REVERTED: #4752 §1 approved a header that carries them, and that
+// board is the specification. If the duplication is resolved it is resolved on the row,
+// not by deleting what the blessed header was asked to say.
+//
 // Every string comes from `lib/illness-episode-format.ts`, over the SAME
 // `EpisodeCollapsedStatus` the collapsed accordion line renders, so an expanded
 // cockpit and its own one-line summary cannot disagree about the last dose.

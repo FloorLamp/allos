@@ -928,12 +928,24 @@ export interface CockpitRecovery {
   met: boolean;
   /** The shared compact clause (lib/school-return.ts) — one spelling, every surface. */
   label: string;
+  /**
+   * The LAST FEVER the clause quotes, rendered in the same unit as the status's
+   * own reading — the two are compared as strings, so a unit that ever diverged
+   * fails the comparison and falls back rather than merging two different scales.
+   */
+  lastFeverLabel: string;
 }
 
 // THE HEADLINE, AND WHAT IT REFUSES TO SAY. It states only what the fever-free clock
 // already establishes; with no clock — no fever this episode, or nothing measured
 // since one — it is the person's NAME and nothing else, because every other sentence
 // available at that point would be a judgement the data has not made.
+//
+// IT NAMES THE PERSON, AND THAT IS THE BLESSED DESIGN (#4752 §1, owner-reaffirmed
+// 2026-09-06). The name and the Illness · Day-N tag also appear on the accordion row
+// this header sits under, and a pass at removing them from here as duplicates was
+// REVERTED: the board that #4752 approved names both as part of this header, and the
+// duplication is the row's to resolve if it is ever resolved at all.
 export function cockpitRecoveryHeadline(
   name: string,
   recovery: CockpitRecovery | null
@@ -961,18 +973,64 @@ export function cockpitSummaryParts(
   status: EpisodeCollapsedStatus,
   recovery: CockpitRecovery | null
 ): { key: CockpitSummaryPart; text: string }[] {
+  // ONE READING, ONE AGE — WHEN THEY ARE THE SAME READING. A null `clearedForHours` is
+  // the arm where no NORMAL reading is established after the fever, and in the ordinary
+  // case that also means nothing has been measured since it: the episode's latest
+  // reading IS the fever the clause quotes, and the line stated one fact twice. Worse,
+  // it disagreed with itself — the clause counts whole hours FLOORED off the
+  // convention's own clock (lib/school-return.ts) while every other age here is ROUNDED
+  // by the shared formatter, so a reading 4h35m old read "No reading since 104.2 °F
+  // (4h ago) · last reading 104.2 °F at 11:39 AM (5 hrs ago)".
+  //
+  // BUT "NO NORMAL SINCE" IS NOT "NOTHING SINCE", and merging on the arm alone was a
+  // defect. `school-return-data.ts` skips every OUT-OF-RANGE reading when it looks for
+  // the normal one, in either direction — so a HYPOTHERMIC 95.0 °F logged after a
+  // 103.4 °F fever leaves this arm while being the episode's latest reading, and a
+  // clause built from `latestTemp` would have read "No reading since 95.0 °F": a
+  // reading that is not the fever, under a sentence that is only true of the fever, in
+  // the reassuring direction, on the surface whose whole posture is the person's own
+  // logged facts. The same holds when ordering is unproven — an untimed fever and an
+  // untimed normal on one day are not established as ordered, so that arm too can
+  // outlive a later reading.
+  //
+  // So the merge is gated on the two clauses NAMING THE SAME READING, compared as the
+  // strings both surfaces render. When they differ the line keeps both clauses, which
+  // is the honest shape: two different readings are two facts.
+  const noReadingSinceFever =
+    recovery != null &&
+    recovery.clearedForHours == null &&
+    recovery.lastFeverLabel === status.temperature?.value;
+  const readingWhen = status.temperature?.when
+    ? ` ${status.temperature.when}`
+    : "";
+  if (noReadingSinceFever && status.temperature) {
+    return [
+      {
+        key: "temperature" as const,
+        text: `No reading since ${status.temperature.value}${readingWhen}`,
+      },
+      ...medicationPart(status),
+    ];
+  }
   return [
     ...(recovery ? [{ key: "recovery" as const, text: recovery.label }] : []),
     {
       key: "temperature" as const,
       text: status.temperature
-        ? `last reading ${status.temperature.value}${
-            status.temperature.when ? ` ${status.temperature.when}` : ""
-          }`
+        ? `last reading ${status.temperature.value}${readingWhen}`
         : "no temperature logged",
     },
+    ...medicationPart(status),
+  ];
+}
+
+// The last-dose clause, extracted because both arms above end with it.
+function medicationPart(
+  status: EpisodeCollapsedStatus
+): { key: CockpitSummaryPart; text: string }[] {
+  return [
     {
-      key: "medication" as const,
+      key: "medication",
       text: status.lastMeds
         ? `last med ${status.lastMeds.name}${
             status.lastMeds.when ? ` ${status.lastMeds.when}` : ""
