@@ -184,6 +184,12 @@ describe("redactSecrets: boundaries", () => {
     expect(redactSecrets(s)).toBe(s);
   });
 
+  it("masks a UUID query value even when its key is not a credential name", () => {
+    expect(redactSecrets(`https://h.example.com/label?setid=${UUID}`)).toBe(
+      "https://h.example.com/label?setid=***"
+    );
+  });
+
   it("leaves the errno and status fields an operator reads the error for", () => {
     const s = '{"code":"ECONNREFUSED","status_code":401,"errno":-111}';
     expect(redactSecrets(s)).toBe(s);

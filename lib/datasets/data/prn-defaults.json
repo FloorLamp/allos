@@ -2,12 +2,22 @@
   "$schema": "allos-dataset/v1",
   "id": "prn-defaults",
   "title": "OTC PRN (as-needed) dosing defaults",
-  "description": "Curated OTC PRN (as-needed) dosing DEFAULTS (issue #798). The medication-info / food-drug-interactions pattern: a committed, human-reviewable, CITED dataset keyed by RxNorm INGREDIENT CUI with a name/synonym fallback (#279). Every value is a public OTC Drug Facts label figure — NOT medical advice. The app only PRE-FILLS these onto the med form as a suggestion the user explicitly confirms/edits; nothing here is applied silently. `adult.minIntervalHours`/`adult.maxDailyCount` pre-fill the redose-notice fields; `pediatric.bands` reproduce the label's weight-band chart (mg per weight band) for informational lookup — NEVER a mg/kg computation. `pediatric.minAgeMonths` is a hard age GATE rendered as the label's own 'ask a doctor' refusal, not a dose. ASPIRIN has NO pediatric entry (Reye's syndrome) — the dataset structurally omits it, pinned by a dataset test. Bands carry an inclusive lower bound (minLbs) only; the lookup picks the highest band whose minLbs <= the child's weight, so a weight between two label bands lands conservatively on the LOWER (lower-dose) band, and a weight below the smallest band is a refusal.",
+  "description": "OTC label defaults for explicit confirmation. Pediatric weight bands reproduce the cited children's charts without mg/kg calculation. The shared lookup refuses below minAgeMonths or at/above maxAgeMonths (exclusive), before checking weight. Bands use inclusive lower weight bounds; between bands, the lower band applies. Ingredients without a weight-band chart omit pediatric data.",
   "citation": [
     {
       "source": "U.S. FDA OTC Drug Facts labels (public).",
       "url": "https://dailymed.nlm.nih.gov",
       "note": "Every value is a public OTC Drug Facts label figure; each entry additionally carries its own per-entry `source`. Pre-fill suggestions only, never applied silently."
+    },
+    {
+      "source": "Children's Motrin, ibuprofen 100 mg/5 mL, Drug Facts",
+      "url": "https://dailymed.nlm.nih.gov/dailymed/fda/fdaDrugXsl.cfm?setid=152189e5-391c-42d3-a03b-c8364e2de6bf",
+      "note": "The weight-band chart ends at age 11; maxAgeMonths is exclusive (144)."
+    },
+    {
+      "source": "Children's Tylenol, acetaminophen 160 mg/5 mL, Drug Facts",
+      "url": "https://dailymed.nlm.nih.gov/dailymed/fda/fdaDrugXsl.cfm?setid=34247a3b-0846-4086-becd-76e630b3b721&type=display",
+      "note": "The weight-band chart ends at age 11; maxAgeMonths is exclusive (144)."
     }
   ],
   "identity": {
@@ -37,6 +47,7 @@
       "pediatric": {
         "minAgeMonths": 6,
         "ageGateText": "For children under 6 months, ask a doctor before use (per the product label).",
+        "maxAgeMonths": 144,
         "bands": [
           {
             "minLbs": 24,
@@ -97,6 +108,7 @@
       "pediatric": {
         "minAgeMonths": 3,
         "ageGateText": "For children under 12 weeks (about 3 months), ask a doctor before use (per the product label).",
+        "maxAgeMonths": 144,
         "bands": [
           {
             "minLbs": 24,

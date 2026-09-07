@@ -534,7 +534,9 @@ export default function IntakeItemForm({
     const mg =
       pediatricResult?.kind === "dose"
         ? pediatricResult.mg
-        : (prnDefaults?.adult.doseMgLow ?? null);
+        : pediatricResult
+          ? null
+          : (prnDefaults?.adult.doseMgLow ?? null);
     // Everything here follows from the PRODUCT, so it is an offer like any other: the
     // ledger refuses whichever figures the person set themselves, and marks the rest.
     writePrefill(
