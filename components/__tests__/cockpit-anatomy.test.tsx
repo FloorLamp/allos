@@ -67,6 +67,7 @@ const RECOVERY = {
   thresholdHours: 24,
   met: false,
   label: "Fever-free 22h of 24",
+  lastFeverLabel: "101.9 °F",
 };
 
 describe("the recovery header IS the status (#4752 item 1)", () => {
@@ -83,6 +84,9 @@ describe("the recovery header IS the status (#4752 item 1)", () => {
     expect(screen.getByTestId("cockpit-headline").textContent).toBe(
       "Dune is nearly there"
     );
+    // THE NAME AND THE DAY TAG STAY (owner, 2026-09-06). Both also appear on the
+    // accordion row this body expands from, and a pass removing them from here as
+    // duplicates was reverted: #4752 §1 approved a header that carries them.
     expect(screen.getByTestId("cockpit-day-tag").textContent).toBe(
       "Illness · Day 3"
     );
