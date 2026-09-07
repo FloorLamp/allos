@@ -1,5 +1,7 @@
 # Migration runner and contributor guide
 
+Status: Implemented. This guide describes the current migration runner.
+
 The shipped runner is `lib/migrations/runner.ts`. Applied migration **names**
 in `schema_migrations` determine what runs; `PRAGMA user_version` remains an
 applied-count tripwire for downgrade and restore checks. `MIGRATIONS` in
