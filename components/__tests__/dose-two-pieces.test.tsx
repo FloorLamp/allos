@@ -467,6 +467,7 @@ describe("the PRN row's earlier-dose statement takes the card's day (#4691/#4738
   function row(): void {
     render(
       <QuickLogPrnControl
+        identity={{ name: "Ibuprofen", rxcui: null }}
         itemId={31}
         name="Ibuprofen"
         doseAmount="200 mg"
@@ -503,6 +504,7 @@ describe("the PRN row's earlier-dose statement takes the card's day (#4691/#4738
     render(
       <CockpitDayProvider date={YESTERDAY_UTC}>
         <QuickLogPrnControl
+          identity={{ name: "Ibuprofen", rxcui: null }}
           itemId={31}
           name="Ibuprofen"
           doseAmount="200 mg"
@@ -554,6 +556,7 @@ describe("the PRN row's earlier-dose statement takes the card's day (#4691/#4738
     render(
       <CockpitDayProvider date={TODAY} altDate={YESTERDAY}>
         <QuickLogPrnControl
+          identity={{ name: "Ibuprofen", rxcui: null }}
           itemId={31}
           name="Ibuprofen"
           doseAmount="200 mg"
@@ -595,6 +598,7 @@ describe("the PRN row's earlier-dose statement takes the card's day (#4691/#4738
           showTitle={false}
         />
         <QuickLogPrnControl
+          identity={{ name: "Ibuprofen", rxcui: null }}
           itemId={31}
           name="Ibuprofen"
           doseAmount="200 mg"
@@ -629,6 +633,7 @@ describe("the PRN row's earlier-dose statement takes the card's day (#4691/#4738
     render(
       <CockpitDayProvider date={TODAY_UTC}>
         <QuickLogPrnControl
+          identity={{ name: "Ibuprofen", rxcui: null }}
           itemId={31}
           name="Ibuprofen"
           doseAmount="200 mg"
@@ -657,6 +662,7 @@ describe("the PRN row's earlier-dose statement takes the card's day (#4691/#4738
     render(
       <CockpitDayProvider date={YESTERDAY_UTC}>
         <QuickLogPrnControl
+          identity={{ name: "Ibuprofen", rxcui: null }}
           itemId={31}
           name="Ibuprofen"
           doseAmount="200 mg"
@@ -703,10 +709,18 @@ describe("the PRN row states the child's label band at dose time (#4713)", () =>
 
   function row(
     pediatric: PediatricFormContext | null,
-    over: { name?: string; doseAmount?: string; profileId?: number } = {}
+    over: {
+      name?: string;
+      doseAmount?: string;
+      profileId?: number;
+      identity?: Parameters<typeof QuickLogPrnControl>[0]["identity"];
+    } = {}
   ) {
     render(
       <QuickLogPrnControl
+        identity={
+          over.identity ?? { name: over.name ?? "Ibuprofen", rxcui: null }
+        }
         itemId={31}
         name={over.name ?? "Ibuprofen"}
         doseAmount={over.doseAmount ?? "100 mg"}
@@ -719,7 +733,10 @@ describe("the PRN row states the child's label band at dose time (#4713)", () =>
   }
 
   it("states the band the dose stands on, with the label caveat", () => {
-    row(CHILD);
+    row(CHILD, {
+      name: "Advil 200mg",
+      identity: { name: "Advil 200mg", rxcui: "5640" },
+    });
     const basis = screen.getByTestId("prn-band-basis").textContent!;
     expect(basis).toContain("100 mg · 24–35 lb band");
     expect(basis).toContain("confirm against your package");
@@ -757,6 +774,23 @@ describe("the PRN row states the child's label band at dose time (#4713)", () =>
       subject: "a dose that is not in milligrams",
       pediatric: CHILD,
       over: { name: "Tylenol with Codeine", doseAmount: "5 mL" },
+    },
+    {
+      subject: "a combination product measured in milligrams",
+      pediatric: CHILD,
+      over: { name: "Tylenol with Codeine", doseAmount: "300 mg / 30 mg" },
+    },
+    {
+      subject: "a resolved combination with a generic display name",
+      pediatric: CHILD,
+      over: {
+        name: "Tylenol",
+        identity: {
+          name: "Tylenol",
+          rxcui: "99999",
+          rxcuiIngredients: ["161", "2670"],
+        },
+      },
     },
   ])("leaves $subject exactly as it was", ({ pediatric, over }) => {
     row(pediatric, over);

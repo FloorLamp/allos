@@ -76,6 +76,7 @@ const doseVerb = (crossProfile: boolean) => (crossProfile ? "Give" : "Take");
 export default function QuickLogPrnControl({
   itemId,
   name,
+  identity,
   doseAmount,
   product,
   dayLabel,
@@ -93,6 +94,7 @@ export default function QuickLogPrnControl({
 }: {
   itemId: number;
   name: string;
+  identity: Parameters<typeof prnDoseBandStatement>[0]["identity"];
   doseAmount?: string | null;
   product?: string | null;
   dayLabel: string;
@@ -177,14 +179,10 @@ export default function QuickLogPrnControl({
     pediatricProp,
     `${pediatricProp?.weightKg ?? ""}|${pediatricProp?.weightDate ?? ""}|${pediatricProp?.today ?? ""}`
   );
-  // #798's band lookup, run at DOSE time (#4713) — and STATED, never applied. The
-  // dose this row offers and records is the item's own, exactly as before; the band
-  // is a line beside it. Nothing distinguishes a stale band figure from a prescriber's
-  // in `intake_item_doses.amount`, so a lookup may not overwrite either (see
-  // `prnDoseBandStatement`). For an adult, an item with no label chart, or a host that
-  // states no context, nothing below renders at all.
+  // Derive the label statement from stored identity, never the shortened display
+  // name. The offered and recorded dose remains the item's confirmed amount.
   const band = prnDoseBandStatement(
-    { name, product, amount: doseAmount },
+    { identity, product, amount: doseAmount },
     pediatric
   );
   const doseDetail = formatMedicationDoseProduct(doseAmount, product);
@@ -333,18 +331,7 @@ export default function QuickLogPrnControl({
     />
   );
 
-  // THE ROW STATES ITS BASIS (#4713 fix 1, and #4752's last unmet clause). Two
-  // sentences, because there are two facts and only one of them is reassuring:
-  //
-  //   • the dose this row offers IS the label band for this child's recorded weight —
-  //     "160 mg · 24–35 lb band", which is the ordinary case, because the add form's
-  //     own band wrote that amount;
-  //   • the label band for that weight is a DIFFERENT figure — said plainly, with the
-  //     item's own dose still the thing the tap writes. A growing child reaches this
-  //     line, and so does a prescribed dose that the OTC chart does not agree with;
-  //     the row cannot tell those apart, so it reports and lets a person decide.
-  //
-  // The caveat rides both (#798): this is a label lookup, not a prescription.
+  // State the label's band beside the confirmed dose, including when they differ.
   const bandBasis = band.bandLabel ? (
     <div
       className="text-xs text-slate-500 dark:text-slate-400"

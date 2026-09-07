@@ -5,6 +5,8 @@
 // Adherence / dose-log reads and writes: taken/skipped dose sets, the idempotent
 // mark-taken/skipped log writers (the notification-webhook counterparts), the
 // escalation-authorization helpers, and the adherence-strip range read.
+import type { MedFamilyItem } from "../../medication-family";
+import { parseRxcuiIngredients } from "../../rxnorm";
 import { db, hoistedStatement, today, writeTx } from "../../db";
 import { readAllForUpdate } from "../../tx";
 import type { LoggedVia } from "../../logged-via";
@@ -1935,6 +1937,7 @@ export function getPrnOverMaxItems(
 // the family values equal the per-item ones. The per-item count/lastGivenAt stay for
 // the "N today · last 4:02pm" day label (the item's own administrations).
 export interface PrnMedForQuickLog {
+  identity: Omit<MedFamilyItem, "id">;
   id: number;
   name: string;
   kind: IntakeItemKind;
@@ -1968,14 +1971,9 @@ export interface PrnMedForQuickLog {
 // alphabetical. One profile-scoped read so every surface agrees;
 // the #1027 family counters are overlaid from the ONE getMedicationFamilyStates
 // gather so every redose surface widens identically.
-function getPrnQuickLogItems(
-  profileId: number,
-  medicationsOnly: boolean
-): PrnMedForQuickLog[] {
-  const date = today(profileId);
-  const rows = db
-    .prepare(
-      `SELECT s.id AS id, s.name AS name, s.kind AS kind, s.product AS product,
+const PRN_QUICK_LOG_STMT = hoistedStatement(
+  `SELECT s.id AS id, s.name AS name, s.kind AS kind, s.product AS product,
+              s.rxcui, s.rxcui_ingredients,
               (SELECT d.amount FROM intake_item_doses d
                 WHERE d.item_id = s.id AND d.retired = 0
                 ORDER BY d.sort, d.id LIMIT 1) AS amount,
@@ -1991,23 +1989,39 @@ function getPrnQuickLogItems(
         WHERE s.profile_id = ? AND s.active = 1
           AND s.obligation = 'may' AND (? = 0 OR s.kind = 'medication')
         ORDER BY (lastGivenAt IS NULL), lastGivenAt DESC, s.name`
-    )
-    .all(date, profileId, medicationsOnly ? 1 : 0) as Omit<
+);
+
+function getPrnQuickLogItems(
+  profileId: number,
+  medicationsOnly: boolean
+): PrnMedForQuickLog[] {
+  const date = today(profileId);
+  const rows = PRN_QUICK_LOG_STMT.all(
+    date,
+    profileId,
+    medicationsOnly ? 1 : 0
+  ) as (Omit<
     PrnMedForQuickLog,
+    | "identity"
     | "familyCount"
     | "familyLastGivenAt"
     | "familyMaxDailyCount"
     | "familyExposure"
     | "familyMemberCount"
-  >[];
+  > & { rxcui: string | null; rxcui_ingredients: string | null })[];
   const families = getMedicationFamilyStates(
     profileId,
     ceilingWindowEndMinute(clockNow())
   );
-  return rows.map((r) => {
+  return rows.map(({ rxcui, rxcui_ingredients, ...r }) => {
     const fam = families.get(r.id);
     return {
       ...r,
+      identity: {
+        name: r.name,
+        rxcui,
+        rxcuiIngredients: parseRxcuiIngredients(rxcui_ingredients),
+      },
       familyCount: fam?.countInWindow ?? r.count,
       familyLastGivenAt: fam?.latestGivenAt ?? r.lastGivenAt,
       familyMaxDailyCount: fam?.minConfirmedMax ?? r.maxDailyCount,

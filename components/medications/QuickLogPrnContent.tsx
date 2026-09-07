@@ -81,6 +81,7 @@ export default function QuickLogPrnContent({
       <QuickLogPrnControl
         key={m.id}
         itemId={m.id}
+        identity={m.identity}
         name={m.displayName ?? m.name}
         doseAmount={m.amount}
         product={m.product}
