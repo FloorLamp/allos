@@ -1,8 +1,10 @@
 # Workout UX: guides, anatomy, routines, and progression
 
-This guide describes the shipped training model. Routines are programs people
-adopt or author; recommendations resolve those programs and suggest loads. The
-app does not invent a program or infer a training cycle from fatigue.
+Status: **shipped**.
+
+Routines are programs people adopt or author; recommendations resolve those
+programs and suggest loads. The app does not invent a program or infer a training
+cycle from fatigue.
 
 Use the [development guide](development.md) and
 [change and test policy](change-policy.md) for implementation scope and checks.
