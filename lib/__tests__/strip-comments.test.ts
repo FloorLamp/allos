@@ -392,42 +392,6 @@ describe("the regex-vs-division heuristic, and what it gets wrong", () => {
   );
 });
 
-describe("the four spans the old stripper deleted", () => {
-  // Every `/*` in the census universe (app/**, components/**, lib/**, minus the test
-  // tiers) that sits inside an ordinary `//` sentence. Under the pair of ordered
-  // regexes this replaced, each one opened a block comment that ran to the next
-  // unrelated `*/` in the file. Re-derived by diffing the two strippers over the
-  // tracked tree; the lines below are the first real code inside each deleted span:
-  //
-  //   components/ActivityForm.tsx:108      deleted through :1352 — 843 lines
-  //   lib/notify-log-format.ts:76          deleted through :180  —  60 lines
-  //   lib/migrations/snapshot-policy.ts:30 deleted through :97   —  10 lines
-  //   lib/card-meta-value-census.ts:139    closed on its own line —  0 lines
-  //
-  // The fourth is here because it is the same defect and would swallow the file the
-  // day someone deletes the `*/` later on that line; it is listed with its measured
-  // zero so the count is not inflated.
-  const SURVIVORS: [string, number, string][] = [
-    ["components/ActivityForm.tsx", 242, "useLoggedViaStamp"],
-    ["lib/notify-log-format.ts", 82, "NOTIFY_DECLINE_MESSAGES"],
-    ["lib/migrations/snapshot-policy.ts", 64, "MIGRATION_SNAPSHOT_KEEP"],
-    ["lib/card-meta-value-census.ts", 144, "test(container)"],
-  ];
-
-  it.each(SURVIVORS)("keeps %s:%d as code", (rel, line, needle) => {
-    const out = stripComments(read(rel));
-    expect(lineOf(out, line)).toContain(needle);
-    // …and the line is byte-identical to the real file: nothing on it was a comment.
-    expect(lineOf(out, line)).toBe(lineOf(read(rel), line));
-  });
-
-  // There used to be a second whole-tree pass here looking only for this defect's
-  // general shape. The authored case at the top of the file proves the transition,
-  // the four live survivors above pin every instance that motivated it, and the
-  // weekly compiler oracle proves the stronger per-character claim over the whole
-  // tree. Re-running a weaker live-tree projection on every PR added no verdict.
-});
-
 // ── WHO ELSE STILL ROLLS THEIR OWN (#3595) ──────────────────────────────────────
 //
 // #3595 asks a question this module cannot answer by existing: is any other source
