@@ -9,7 +9,7 @@
 // is `tsc`: an undeclared kind, a retired one, a duplicate, an exemption outside the
 // `SendCadence` vocabulary and a safety kind claiming membership are each a compile
 // error. The import-graph tooth is deleted rather than converted — it names a class it
-// might catch, not a defect it has (docs/orchestration/what-earns-a-guard.md).
+// might catch, not a defect it has (docs/change-policy.md).
 //
 // What stays cannot be typed: the `why` prose has to actually say something, and the
 // membership set is a POLICY about which families the shared engine may decide for.
