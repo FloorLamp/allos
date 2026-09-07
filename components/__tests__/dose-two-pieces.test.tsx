@@ -758,6 +758,17 @@ describe("the PRN row states the child's label band at dose time (#4713)", () =>
     );
   });
 
+  it("refuses an adolescent's chart lookup while keeping the prescribed dose", () => {
+    row({ ...CHILD, ageMonths: 192, weightKg: 60 }, { doseAmount: "600 mg" });
+    expect(screen.getByTestId("prn-band-refusal").textContent).toContain(
+      "under 12 years"
+    );
+    expect(screen.queryByTestId("prn-band-basis")).toBeNull();
+    expect(screen.getByTestId("prn-log-now").getAttribute("aria-label")).toBe(
+      "Take Ibuprofen · 600 mg"
+    );
+  });
+
   // THE POSITIVE CONTROL for the criterion that matters most. Same row, same stored
   // dose, four subjects that must all be the row that shipped — no band line, no
   // refusal, the item's own figure. The mL case is the third falsified example: a
