@@ -21,6 +21,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import path from "node:path";
 import { rawDb as db } from "@/lib/db";
 import {
+  getLoginTelegram,
+  setFoodNudgePointer,
   setLoginEmailNotify,
   setLoginTelegram,
   setProfileHomeAssistant,
@@ -37,6 +39,7 @@ import {
 import { sendTestEmailToLogin } from "@/lib/notifications/email";
 import { telegramChannel } from "@/lib/notifications/telegram";
 import { PartialDeliveryError } from "@/lib/notifications/types";
+import { liveMessagePointersForKind } from "@/lib/notifications/message-pointers";
 import {
   classifyTelegramFailure,
   TelegramApiError,
@@ -122,6 +125,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.useRealTimers();
   delete process.env.EMAIL_TEST_CAPTURE;
 });
 
@@ -155,45 +159,182 @@ describe("Telegram owners", () => {
     ]);
   });
 
-  // A CHANNEL IS NOT A RECIPIENT (#5194, tenth falsifying pass). One chat in the
-  // household has blocked the bot; the other chat is holding the message. The channel
-  // still FAILS — the slot must be able to retry and the blocked login must read as
-  // Erroring, both unchanged — and `delivered` says the household got it, which is what
-  // a caller whose correctness depends on somebody having SEEN the message needs and
-  // could not previously ask (lib/notifications/still-going.ts records what the nudge
-  // promised on exactly this answer).
-  it("a partly delivered household fan-out is a failed channel that DELIVERED", async () => {
-    const p = newProfile("Blocked one chat");
-    const good = seedLoginTelegram(p, "chat-good");
-    const blocked = seedLoginTelegram(p, "chat-blocked");
+  describe.each(["managed", "override"] as const)(
+    "%s recipient failures",
+    (route) => {
+      it("reaches healthy tail chats before simultaneous transport timeouts settle", async () => {
+        vi.useFakeTimers();
+        const p = newProfile("Transport timeouts");
+        const chats = [
+          "good-first",
+          "timeout-1",
+          "timeout-2",
+          "timeout-3",
+          "timeout-4",
+          "timeout-5",
+          "good-last",
+        ];
+        const owners = chats.map((chat) => seedLoginTelegram(p, chat));
+        const attempted: string[] = [];
+        vi.stubGlobal(
+          "fetch",
+          vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+            const { chat_id: chatId } = JSON.parse(String(init?.body));
+            attempted.push(chatId);
+            if (chatId.startsWith("timeout")) {
+              return await new Promise<Response>((_resolve, reject) => {
+                setTimeout(
+                  () =>
+                    reject(
+                      new DOMException("request timed out", "TimeoutError")
+                    ),
+                  30_000
+                );
+              });
+            }
+            return new Response(
+              JSON.stringify({ ok: true, result: { message_id: 17 } }),
+              { status: 200 }
+            );
+          })
+        );
+
+        const pending = dispatch(
+          p,
+          DOSE,
+          route === "override" ? { telegramChatIds: chats } : undefined
+        );
+        // All recipients start before even the first stalled transport times out.
+        expect(attempted).toEqual(chats);
+        await vi.advanceTimersByTimeAsync(30_000);
+        const [result] = await pending;
+        expect(result).toMatchObject({ ok: false, delivered: true });
+        expect(result.timedOut).toBeUndefined();
+        expect(owners.map((owner) => stateOf("telegram", owner))).toEqual(
+          chats.map((chat) =>
+            route === "override"
+              ? null
+              : chat.startsWith("good")
+                ? "delivering"
+                : "failing"
+          )
+        );
+      });
+
+      it.each([
+        [403, 200, 200],
+        [200, 403, 200],
+        [200, 200, 503],
+        [403, 503, 429],
+      ])(
+        "attempts every chat for HTTP outcomes %i, %i, %i",
+        async (...statuses) => {
+          const failed = statuses.flatMap((status, index) =>
+            status === 200 ? [] : [index]
+          );
+          const p = newProfile("Recipient isolation");
+          const chats = ["chat-first", "chat-middle", "chat-last"];
+          const owners = chats.map((chat) => seedLoginTelegram(p, chat));
+          const attempted: string[] = [];
+          vi.stubGlobal(
+            "fetch",
+            vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+              const { chat_id: chatId } = JSON.parse(String(init?.body));
+              attempted.push(chatId);
+              const fails = failed.includes(chats.indexOf(chatId));
+              return new Response(
+                JSON.stringify(
+                  fails
+                    ? { ok: false, description: `Failure for ${chatId}` }
+                    : { ok: true, result: { message_id: 7 } }
+                ),
+                {
+                  status: statuses[chats.indexOf(chatId)],
+                  headers: { "content-type": "application/json" },
+                }
+              );
+            })
+          );
+
+          const [result] = await dispatch(
+            p,
+            DOSE,
+            route === "override"
+              ? { telegramChatIds: [...chats, chats[0]] }
+              : undefined
+          );
+          expect(attempted).toEqual(chats);
+          expect(result).toMatchObject({
+            ok: false,
+            delivered: failed.length < chats.length,
+          });
+          for (const index of failed)
+            expect(result.error).toContain(chats[index]);
+          // Overrides name no login: even a coincident managed chat cannot claim their
+          // outcome. Managed sends record every owner independently, including the last.
+          expect(owners.map((owner) => stateOf("telegram", owner))).toEqual(
+            chats.map((_, index) =>
+              route === "override"
+                ? null
+                : failed.includes(index)
+                  ? "failing"
+                  : "delivering"
+            )
+          );
+          if (route === "managed") expect(getNotifyError()).not.toBeNull();
+          expect(
+            owners.map((owner) => getLoginTelegram(owner).telegramEnabled)
+          ).toEqual([true, true, true]);
+        }
+      );
+    }
+  );
+
+  it("serializes shared food-pointer rotation while sending to both chats", async () => {
+    vi.useFakeTimers();
+    const p = newProfile("Shared pointer ordering");
+    const chats = ["chat-first", "chat-last"];
+    chats.forEach((chat) => seedLoginTelegram(p, chat));
+    setFoodNudgePointer(p, {
+      chatId: "chat-old",
+      messageId: 1,
+      date: "2026-09-07",
+      window: "Morning",
+    });
+    const sent: string[] = [];
+    const stripped: string[] = [];
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
-        const body = String(init?.body ?? "");
-        return body.includes("chat-blocked")
-          ? new Response(
-              JSON.stringify({
-                ok: false,
-                description: "Forbidden: bot was blocked by the user",
-              }),
-              { status: 403, headers: { "content-type": "application/json" } }
-            )
-          : new Response(
-              JSON.stringify({ ok: true, result: { message_id: 7 } }),
-              { status: 200, headers: { "content-type": "application/json" } }
-            );
+      vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+        const { chat_id: chatId } = JSON.parse(String(init?.body));
+        if (String(url).endsWith("sendMessage")) sent.push(chatId);
+        else {
+          stripped.push(chatId);
+          if (chatId === "chat-old")
+            await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        return new Response(
+          JSON.stringify({ ok: true, result: { message_id: 17 } }),
+          { status: 200 }
+        );
       })
     );
-
-    const results = await dispatch(p, DOSE);
-    expect(results).toHaveLength(1);
-    expect(results[0].ok).toBe(false);
-    expect(results[0].delivered).toBe(true);
-    // The per-owner accounting is untouched by the new field: the chat that received it
-    // is Delivering, the chat that refused it is Erroring.
-    expect(stateOf("telegram", good)).toBe("delivering");
-    expect(stateOf("telegram", blocked)).toBe("failing");
-    expect(getNotifyError()).not.toBeNull();
+    const pending = dispatch(p, {
+      title: "Food",
+      body: "Synthetic reminder",
+      kind: "food",
+      actions: [{ label: "Fruit", data: `food:${p}:Morning:2026-09-07:fruit` }],
+    });
+    expect(sent).toEqual(chats);
+    await vi.advanceTimersByTimeAsync(10);
+    expect(await pending).toEqual([
+      { id: "telegram", ok: true, delivered: true },
+    ]);
+    expect(stripped).toEqual(["chat-old", "chat-first"]);
+    // A later rotation stripped the first copy. It must not reappear as a live
+    // pointer when that copy's earlier, delayed predecessor edit finally settles.
+    expect(liveMessagePointersForKind(p, "chat-first", "food")).toHaveLength(0);
+    expect(liveMessagePointersForKind(p, "chat-last", "food")).toHaveLength(1);
   });
 
   // THE WRAPPER KEEPS THE ERROR IT WRAPS (#5194, eleventh pass). `delivered` rides out
