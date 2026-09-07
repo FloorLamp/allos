@@ -17,6 +17,14 @@ vi.mock("@/lib/medical-extract", async (importActual) => {
   return { ...actual, extractMedicalDocument: vi.fn() };
 });
 
+// A configured key also enables the fire-and-forget post-import recommendation.
+// Keep that separate AI feature from outliving these import-action tests.
+vi.mock("@/lib/recommendation-engine", async (importActual) => {
+  const actual =
+    await importActual<typeof import("@/lib/recommendation-engine")>();
+  return { ...actual, runRecommendation: vi.fn(async () => "") };
+});
+
 import { db } from "@/lib/db";
 import { seedActor, actAs, fd } from "./harness";
 import { extractMedicalDocument } from "@/lib/medical-extract";
