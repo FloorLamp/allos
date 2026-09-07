@@ -8,7 +8,10 @@ import {
   IconChevronRight,
 } from "@tabler/icons-react";
 import Avatar, { type AvatarProfile } from "@/components/Avatar";
-import type { EpisodeCollapsedStatus } from "@/lib/illness-episode-format";
+import {
+  episodeWorseningLabel,
+  type EpisodeCollapsedStatus,
+} from "@/lib/illness-episode-format";
 import type { AppRoute } from "@/lib/hrefs";
 
 // One patient's cockpit descriptor. `body` is the server-rendered full cockpit
@@ -139,6 +142,15 @@ export default function IllnessNowGroup({
               ? !collapsedActive
               : !collapsedAdditionalActiveKeys.has(c.episodeKey))
           : openOtherKey === c.episodeKey;
+        // EXPANDED, THE ROW IS IDENTITY AND A COLLAPSE CONTROL (#5488 fix 1, owner
+        // ruling 2026-09-07). The body it expands into restates the situation, the
+        // day, the trend arrow, the last reading, the last dose and the fever clock
+        // about 100px below — four of them word for word. Three clauses already knew
+        // that and carried their own `&& !expanded`, which made it six clause rules
+        // and four separator computations where one rule about the ROW does. The
+        // name and the avatar stay either way: that is #531/#534's safety identity,
+        // and it is the one duplication this deliberately keeps.
+        const statesFacts = !expanded;
         const bodyId = `illness-cockpit-body-${c.episodeKey}`;
         const episodeLabel = `${c.situation} episode ${c.episodeOrder + 1}`;
         return (
@@ -227,9 +239,11 @@ export default function IllnessNowGroup({
                     >
                       {c.displayName}
                     </span>
-                    <span className="truncate text-xs text-slate-500 dark:text-slate-400">
-                      {c.situation}
-                    </span>
+                    {statesFacts && (
+                      <span className="truncate text-xs text-slate-500 dark:text-slate-400">
+                        {c.situation}
+                      </span>
+                    )}
                     {!lockedOpen &&
                       (expanded ? (
                         <IconChevronDown
@@ -247,102 +261,104 @@ export default function IllnessNowGroup({
                         />
                       ))}
                   </span>
-                  <span
-                    data-testid="illness-cockpit-status-row"
-                    className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-slate-500 dark:text-slate-400"
-                  >
+                  {statesFacts && (
                     <span
-                      data-testid={`illness-cockpit-line-${c.episodeKey}`}
-                      className="contents"
+                      data-testid="illness-cockpit-status-row"
+                      className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-slate-500 dark:text-slate-400"
                     >
-                      {/* The DAY only — never `dayLabel`. The header row two lines
-                          up already renders `c.situation`, and the full form put
-                          "admin Illness" and "Illness · Day 4" on adjacent lines at
-                          390px (#3238). The formatter keeps the full string for the
-                          surfaces that show this status with nothing else naming it. */}
-                      {c.status.dayOnlyLabel && (
-                        <span data-testid="illness-cockpit-day">
-                          {c.status.dayOnlyLabel}
-                        </span>
-                      )}
-                      {c.status.temperature && !expanded ? (
-                        <span className="contents">
-                          {c.status.dayOnlyLabel && (
-                            <span aria-hidden="true">·</span>
-                          )}
-                          <span
-                            data-testid="illness-cockpit-temperature"
-                            data-candidate-id={
-                              c.temperatureIdentity?.candidateId
-                            }
-                            data-fact-key={c.temperatureIdentity?.factKey}
-                            data-group-key={c.temperatureIdentity?.groupKey}
-                          >
+                      <span
+                        data-testid={`illness-cockpit-line-${c.episodeKey}`}
+                        className="contents"
+                      >
+                        {/* The DAY only — never `dayLabel`. The header row two lines
+                            up already renders `c.situation`, and the full form put
+                            "admin Illness" and "Illness · Day 4" on adjacent lines at
+                            390px (#3238). The formatter keeps the full string for the
+                            surfaces that show this status with nothing else naming it. */}
+                        {c.status.dayOnlyLabel && (
+                          <span data-testid="illness-cockpit-day">
+                            {c.status.dayOnlyLabel}
+                          </span>
+                        )}
+                        {c.status.temperature ? (
+                          <span className="contents">
+                            {c.status.dayOnlyLabel && (
+                              <span aria-hidden="true">·</span>
+                            )}
                             <span
-                              className={
-                                c.status.temperature.high
-                                  ? "font-medium text-rose-600 tabular-nums dark:text-rose-400"
-                                  : "font-medium text-slate-600 tabular-nums dark:text-slate-300"
+                              data-testid="illness-cockpit-temperature"
+                              data-candidate-id={
+                                c.temperatureIdentity?.candidateId
                               }
+                              data-fact-key={c.temperatureIdentity?.factKey}
+                              data-group-key={c.temperatureIdentity?.groupKey}
                             >
-                              {c.status.temperature.value}
+                              <span
+                                className={
+                                  c.status.temperature.high
+                                    ? "font-medium text-rose-600 tabular-nums dark:text-rose-400"
+                                    : "font-medium text-slate-600 tabular-nums dark:text-slate-300"
+                                }
+                              >
+                                {c.status.temperature.value}
+                              </span>
+                              {c.status.temperature.when
+                                ? ` ${c.status.temperature.when}`
+                                : ""}
                             </span>
-                            {c.status.temperature.when
-                              ? ` ${c.status.temperature.when}`
-                              : ""}
                           </span>
-                        </span>
-                      ) : null}
-                      {c.status.lastMeds && !expanded ? (
-                        <span className="contents">
-                          {(c.status.dayOnlyLabel ||
-                            (c.status.temperature && !expanded)) && (
-                            <span aria-hidden="true">·</span>
-                          )}
+                        ) : null}
+                        {c.status.lastMeds ? (
+                          <span className="contents">
+                            {(c.status.dayOnlyLabel ||
+                              c.status.temperature) && (
+                              <span aria-hidden="true">·</span>
+                            )}
+                            <span
+                              data-testid="illness-cockpit-last-meds"
+                              data-candidate-id={
+                                c.medicationIdentity?.candidateId
+                              }
+                              data-fact-key={c.medicationIdentity?.factKey}
+                              data-group-key={c.medicationIdentity?.groupKey}
+                            >
+                              Last meds {c.status.lastMeds.name}
+                              {c.status.lastMeds.dose
+                                ? ` · ${c.status.lastMeds.dose}`
+                                : ""}
+                              {c.status.lastMeds.when
+                                ? ` ${c.status.lastMeds.when}`
+                                : ""}
+                            </span>
+                          </span>
+                        ) : null}
+                        {c.status.worsening ? (
+                          <>
+                            {(c.status.dayOnlyLabel ||
+                              c.status.temperature ||
+                              c.status.lastMeds) && (
+                              <span aria-hidden="true">·</span>
+                            )}
+                            <span className="font-medium text-rose-600 dark:text-rose-400">
+                              {episodeWorseningLabel(c.status.worsening)}
+                            </span>
+                          </>
+                        ) : null}
+                        {c.feverFree ? (
                           <span
-                            data-testid="illness-cockpit-last-meds"
-                            data-candidate-id={
-                              c.medicationIdentity?.candidateId
-                            }
-                            data-fact-key={c.medicationIdentity?.factKey}
-                            data-group-key={c.medicationIdentity?.groupKey}
+                            data-testid="illness-cockpit-fever-status"
+                            className={`badge tabular-nums ${
+                              c.feverFree.met
+                                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                                : "bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300"
+                            }`}
                           >
-                            Last meds {c.status.lastMeds.name}
-                            {c.status.lastMeds.dose
-                              ? ` · ${c.status.lastMeds.dose}`
-                              : ""}
-                            {c.status.lastMeds.when
-                              ? ` ${c.status.lastMeds.when}`
-                              : ""}
+                            {c.feverFree.label}
                           </span>
-                        </span>
-                      ) : null}
-                      {c.status.worsening ? (
-                        <>
-                          {(c.status.dayOnlyLabel ||
-                            (!expanded &&
-                              (c.status.temperature || c.status.lastMeds))) && (
-                            <span aria-hidden="true">·</span>
-                          )}
-                          <span className="font-medium text-rose-600 dark:text-rose-400">
-                            Worsening ↑
-                          </span>
-                        </>
-                      ) : null}
-                      {c.feverFree && !expanded ? (
-                        <span
-                          data-testid="illness-cockpit-fever-status"
-                          className={`badge tabular-nums ${
-                            c.feverFree.met
-                              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                              : "bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300"
-                          }`}
-                        >
-                          {c.feverFree.label}
-                        </span>
-                      ) : null}
+                        ) : null}
+                      </span>
                     </span>
-                  </span>
+                  )}
                 </span>
               </button>
               {c.episodeHref ? (
@@ -354,7 +370,9 @@ export default function IllnessNowGroup({
                   // measured by the same dashboard-now sweep.
                   className="inline-flex min-h-11 shrink-0 items-center rounded-md px-2 py-1.5 text-xs text-link focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-900"
                 >
-                  More details
+                  {/* THE BOARD'S LABEL (#5487 fix 4). The accessible name still
+                      says which episode and whose it is. */}
+                  More
                 </Link>
               ) : null}
             </div>

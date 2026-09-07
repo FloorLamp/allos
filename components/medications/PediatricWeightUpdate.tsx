@@ -30,11 +30,20 @@ export default function PediatricWeightUpdate({
   idPrefix,
   context,
   initiallyOpen = false,
+  profileId,
   onSaved,
 }: {
   idPrefix: string;
   context: PediatricFormContext;
   initiallyOpen?: boolean;
+  // WHOSE WEIGHT THIS IS (#4713, the #858 gate). `addMeasurements` resolves its
+  // subject through `gateItemProfile`, which falls back to the ACTING profile when no
+  // `profile_id` rides the post — right for the add form, which only ever mounts under
+  // the profile being written. The PRN dose row mounts this on the cross-profile
+  // surfaces, where the acting login is the caregiver and the subject is the child, so
+  // that fallback would file an infant's weight as the parent's body weight. Absent
+  // keeps the acting-profile path byte-identical.
+  profileId?: number;
   onSaved: (next: PediatricFormContext) => void;
 }) {
   const toast = useToast();
@@ -65,6 +74,7 @@ export default function PediatricWeightUpdate({
     formData.set("date", date);
     formData.set("weight", weight);
     formData.set("weight_unit", context.weightUnit);
+    if (profileId != null) formData.set("profile_id", String(profileId));
     setPending(true);
     let saved;
     try {

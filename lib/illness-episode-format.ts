@@ -419,12 +419,16 @@ export function feverTrend(temps: readonly TemperaturePoint[]): FeverTrend {
   return "steady";
 }
 
+// The rising arm's own words, shared with the worsening arrow below so the two
+// surfaces that name a rising fever cannot spell it two ways.
+const FEVER_TRENDING_UP = "fever trending up";
+
 // The fever phrase for a headline ("fever trending down"), or null when there's no
 // fever curve (so the caller omits the clause).
 export function feverTrendLabel(trend: FeverTrend): string | null {
   switch (trend) {
     case "rising":
-      return "fever trending up";
+      return FEVER_TRENDING_UP;
     case "falling":
       return "fever trending down";
     case "steady":
@@ -518,7 +522,9 @@ export interface EpisodeCollapsedStatus {
     dose: string | null;
     when: string | null;
   } | null;
-  worsening: boolean;
+  // WHAT is worsening, or null (#5488 fix 2) — never a bare flag, so no host can
+  // draw an arrow that does not say what it is about.
+  worsening: EpisodeWorsening | null;
 }
 
 function collapsedReadingWhen(
@@ -585,8 +591,8 @@ export function readingClockWithRelativeAge(
 // The dashboard cockpit's compact safety summary. It deliberately favors the latest
 // reading and administration times over aggregate symptom/med counts: those are the
 // facts a collapsed card must answer without making the user reopen it. Color remains
-// a rendering concern, but the high/worsening booleans ensure every host applies the
-// same existing semantic treatment.
+// a rendering concern, but the `high` flag and the typed worsening answer ensure every
+// host applies the same existing semantic treatment.
 export function episodeCollapsedStatus(
   ep: AssembledEpisode,
   tempUnit: TemperatureUnit = "F",
@@ -630,9 +636,17 @@ export function episodeCollapsedStatus(
           ),
         }
       : null,
-    worsening: episodeIsWorsening(ep),
+    worsening: episodeWorsening(ep),
   };
 }
+
+// WHAT IS WORSENING, NOT MERELY THAT SOMETHING IS (#5488 fix 2). This used to answer
+// `boolean`, so the arrow it draws could only say "Worsening ↑" — beside a headline
+// reading "Dune is on the mend", which is one question answered twice and in opposite
+// directions. The engine always knew which arm fired; the return type is what threw it
+// away, so the type carries it and every render site names the driver by construction.
+export type EpisodeWorsening =
+  { driver: "fever" } | { driver: "symptom"; label: string };
 
 // Whether an OPEN episode is trending WORSE right now — a pure VISIBILITY signal over
 // the same #801 assembly (no second engine, no medical claim, issue #805): the fever
@@ -640,8 +654,10 @@ export function episodeCollapsedStatus(
 // consecutive day. This is only a caregiver-facing "the trend is up" arrow on the
 // illness cockpit and Household page — it is NOT the cited illness-care finding (that lives in
 // lib/illness-care.ts, dataset-gated per symptom) and asserts nothing clinical.
-export function episodeIsWorsening(ep: AssembledEpisode): boolean {
-  if (feverTrend(ep.temperatures) === "rising") return true;
+export function episodeWorsening(
+  ep: AssembledEpisode
+): EpisodeWorsening | null {
+  if (feverTrend(ep.temperatures) === "rising") return { driver: "fever" };
   for (const s of ep.symptoms) {
     // The fever half of "worsening" is `feverTrend` above, over the same readings the
     // derived row is composed from — asking this arm again would double-count it.
@@ -654,9 +670,26 @@ export function episodeIsWorsening(ep: AssembledEpisode): boolean {
       daysBetweenDateStr(prev.date, last.date) === 1 &&
       last.severity > prev.severity
     )
-      return true;
+      return { driver: "symptom", label: s.label };
   }
-  return false;
+  return null;
+}
+
+// THE ARROW'S ONE SPELLING (#5488 fix 2) — "fever trending up ↑" / "cough worsening ↑".
+// Three surfaces hand-spelled a bare "Worsening ↑" of their own; the fever arm reuses
+// `feverTrendLabel`'s existing words so a rising fever reads the same wherever it is
+// named. Lowercase for the household line's own clause list; `episodeWorseningLabel`
+// is the sentence-cased form the cockpit renders, spelled once for the reason
+// `schoolReturnCompactLabel` is.
+export function episodeWorseningClause(worsening: EpisodeWorsening): string {
+  return worsening.driver === "fever"
+    ? `${FEVER_TRENDING_UP} ↑`
+    : `${worsening.label.toLowerCase()} worsening ↑`;
+}
+
+export function episodeWorseningLabel(worsening: EpisodeWorsening): string {
+  const clause = episodeWorseningClause(worsening);
+  return clause.charAt(0).toUpperCase() + clause.slice(1);
 }
 
 // The most-recent PRN administration across the episode's meds. Derived from the SAME
@@ -714,12 +747,12 @@ export function episodeLastDoseClause(
     : `last ${medication}`;
 }
 
-// The cross-profile accordion line: "Mia · sick day 3 · 101.3 °F · worsening ↑ · last
+// The cross-profile accordion line: "Mia · sick day 3 · 101.3 °F · cough worsening ↑ · last
 // ibuprofen 4:02pm". `name` is the profile's (disambiguated) name; every clause drops
 // out when its data is absent. The temperature renders in the VIEWER's login unit
 // preference (#857) via fmtTemp — storage is canonical °F; `tempUnit` defaults to °F for
-// callers without a pref. The "worsening ↑" marker is a visibility-only trend arrow
-// (episodeIsWorsening) — no medical claim (issue #805). The last-dose clause (#858) is
+// callers without a pref. The "cough worsening ↑" marker is a visibility-only trend
+// arrow (episodeWorsening) — no medical claim (issue #805). The last-dose clause (#858) is
 // the passive co-caregiver double-dose guard: both parents' dashboards show it.
 export function householdSickLine(
   name: string,
@@ -738,8 +771,9 @@ export function householdSickLine(
   if (ep.latestTemp) {
     parts.push(fmtTemp(ep.latestTemp.degF, tempUnit));
   }
-  if (episodeIsWorsening(ep)) {
-    parts.push("worsening ↑");
+  const worsening = episodeWorsening(ep);
+  if (worsening) {
+    parts.push(episodeWorseningClause(worsening));
   }
   const lastDose = episodeLastDoseClause(ep, timeFormat);
   if (lastDose) parts.push(lastDose);

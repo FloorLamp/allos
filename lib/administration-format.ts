@@ -31,21 +31,38 @@ export function formatGivenAtClock(
   return formatClock(timeFormat, Number(hStr), Number(m), "lower-nospace");
 }
 
-// A redose notice may legitimately cross midnight (or use a multi-day interval).
-// Keep today's compact clock, but name the date whenever the arming administration was
-// on another local day so `(10:41am)` can never look like it happened this morning.
+// NAME THE DAY A CLOCK BELONGS TO, when nothing beside it does. An administration may
+// legitimately be on another local day (a redose notice crossing midnight, a cockpit
+// panel whose last dose was last night), and a bare `(10:41am)` then looks like it
+// happened this morning. Takes the already-rendered clock so each caller keeps its own
+// clock convention — the notice's plain one, the panel's relative-aged one — and there
+// is still ONE spelling of the date half.
+export function withGivenAtDay(
+  tz: string,
+  stored: string | null | undefined,
+  referenceDate: string,
+  clock: string
+): string {
+  const d = parseUtcSql(stored);
+  if (!d || !clock) return clock;
+  const localDate = zonedDateParts(tz, d).date;
+  return localDate === referenceDate
+    ? clock
+    : `${formatRecordDate(localDate)} at ${clock}`;
+}
+
+// The redose notice's arming time.
 export function formatGivenAtNoticeTime(
   tz: string,
   stored: string | null | undefined,
   referenceDate: string
 ): string {
-  const d = parseUtcSql(stored);
-  if (!d) return "";
-  const clock = formatGivenAtClock(tz, stored);
-  const localDate = zonedDateParts(tz, d).date;
-  return localDate === referenceDate
-    ? clock
-    : `${formatRecordDate(localDate)} at ${clock}`;
+  return withGivenAtDay(
+    tz,
+    stored,
+    referenceDate,
+    formatGivenAtClock(tz, stored)
+  );
 }
 
 // A displayed administration that landed on the profile's current local day keeps
@@ -82,13 +99,16 @@ export function administrationDayLabel(
 
 // When a neighboring redose line already owns the 24h count ("1 of 4 in 24h"),
 // keep this line focused on the other useful fact instead of repeating "1 today".
-// A missing clock is unusual, but the fallback remains honest and useful.
-export function administrationLastDoseLabel(
-  count: number,
-  lastClock: string
-): string {
-  if (count <= 0) return "None today";
-  return lastClock ? `Last dose ${lastClock}` : `${count} today`;
+//
+// IT CANNOT ASK FOR A DAY IT DOES NOT RENDER (#5488 fix 3). It used to take the
+// profile-local DAY's count and answer "None today" on a zero — under an eyebrow that
+// had just said the same word, and discarding `lastClock`, the one fact the function
+// exists to carry. `lastGivenAt` has no date bound, so at 6 a.m. after an overnight
+// dose the panel led with the least useful of its two answers. A signature that cannot
+// express the wrong question is the cheapest guard there is (#4724's class): the last
+// dose, or the honest absence of one, and no day word in either arm.
+export function administrationLastDoseLabel(lastClock: string): string {
+  return lastClock ? `Last dose ${lastClock}` : "No doses logged";
 }
 
 // Human summary of a PRN administration attempt, shared by the dashboard quick-log
