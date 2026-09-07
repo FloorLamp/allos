@@ -2,7 +2,11 @@
 // and list it here.
 
 import { createLogger } from "../log";
-import { type DispatchOptions, type NotificationMessage } from "./types";
+import {
+  PartialDeliveryError,
+  type DispatchOptions,
+  type NotificationMessage,
+} from "./types";
 import { telegramChannel } from "./telegram";
 import { composeForSend } from "./compose";
 import { pushChannel } from "./push";
@@ -93,13 +97,23 @@ export async function dispatch(
       id: c.id,
       promise: (async (): Promise<DispatchResult> => {
         try {
-          await c.send(profileId, composed, opts);
-          log.info("sent", { channel: c.id, title: composed.title });
-          return { id: c.id, ok: true };
+          const { delivered } = await c.send(profileId, composed, opts);
+          log.info("sent", { channel: c.id, title: composed.title, delivered });
+          return { id: c.id, ok: true, delivered };
         } catch (e) {
           const error = e instanceof Error ? e.message : String(e);
           log.error("send failed", { channel: c.id, error });
-          return { id: c.id, ok: false, error };
+          // A failed channel that had ALREADY reached one of its recipients says so
+          // (./types PartialDeliveryError). `ok` is untouched — the channel failed,
+          // the marker and the retry band read exactly what they always read — but a
+          // message a person is holding in their chat is delivered whatever the
+          // channel's aggregate outcome was (#5194, tenth pass).
+          return {
+            id: c.id,
+            ok: false,
+            delivered: e instanceof PartialDeliveryError,
+            error,
+          };
         }
       })(),
     })),

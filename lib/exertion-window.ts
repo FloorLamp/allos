@@ -135,9 +135,18 @@ export function exertionFloorMin(minWindowMin: number | null): number {
   return Math.round(minWindowMin ?? EXERTION_MIN_WINDOW_DEFAULT_MIN);
 }
 
-/** How long the quiet either side of a span must run, FOR THIS PROFILE. */
+/**
+ * How long the quiet either side of a span must run, FOR THIS PROFILE.
+ *
+ * A usual that rounds to 0 is ABSENT, as a declared 0 is to `usual()`. Nobody is back
+ * inside their resting range within the minute; a measured 0 is a prior whose end was
+ * stamped after its recovery — the tap-late Finish this module exists to replace — and
+ * ten of those average to 0. Obeyed, it emptied both quiet tests and finished a session
+ * still elevated at its frontier (#5212, sixth pass).
+ */
 export function exertionRecoveryMin(usualRecoveryMin: number | null): number {
-  return Math.round(usualRecoveryMin ?? EXERTION_RECOVERY_DEFAULT_MIN);
+  const usual = Math.round(usualRecoveryMin ?? 0);
+  return usual > 0 ? usual : EXERTION_RECOVERY_DEFAULT_MIN;
 }
 
 /**
@@ -191,17 +200,42 @@ export function exertionWindows(input: ExertionWindowInput): ExertionSpan[] {
 }
 
 /**
- * The END an open row should adopt, or null when the trace does not say.
+ * The END an open row should be OFFERED, or null when the trace does not say.
  *
  * Reader 1 of the detector (#5113). "Open" is the ROW's shape rather than the editor's
  * mode: a row with a start and no end, live or left open in the plain form while sets
  * are added. The end is the last elevated minute of the effort that contains the
  * start, and it is only offered once the quiet after it has actually been measured.
  *
+ * The answer is a PROPOSAL and never a write (#5194, owner ruling 2026-09-06): it is
+ * quoted in the "Still working out?" nudge and stamped by the Finish the person taps.
+ * That is what the guards below are for — a wrong minute is a wrong SENTENCE now, and
+ * refusing is always available, so each one buys a refusal rather than a safety net.
+ *
  * A SET LOGGED AFTER THE CANDIDATE MINUTE CANCELS IT. A long rest between sets does
  * not reach the resting range for most people, and when it does, the next set reopens
  * the session — so a set on the far side of the candidate is proof the session had not
  * ended there. That is the one rule keeping this from finishing somebody mid-workout.
+ *
+ * ── IT ANSWERS ONE SHAPE, AND REFUSES EVERY OTHER ────────────────────────────
+ * Three rounds of falsifying passes each broke a different SEGMENTING of the trace: a
+ * cut that took the last elevated minute of two whole days, then one that took the
+ * first effort at or after the start (an 08:00 row with the wrist put on at 17:00 was
+ * answered 19:00), then one that hid the frontier so a rest between heavy sets finished
+ * somebody mid-session. Each fix was a new mechanism, and each new mechanism had its own
+ * neighbouring case.
+ *
+ * So there is no segmenting. This answers exactly one shape — a trace that begins at the
+ * start, begins ELEVATED, and holds ONE effort — and refuses every other, including
+ * shapes an earlier draft could answer. The refusals are not a gap: the stale suggest
+ * still reaches the row and the person finishes it themselves, which is what this module
+ * replaces only where the trace is unambiguous.
+ *
+ * The four guards are one line each and none of them invents a number. `recovery` is
+ * the profile's own, and it already means "this effort has ended"; the gap bound is
+ * `EXERTION_MAX_GAP_MIN`, and it already means "nobody measured this". The tail below —
+ * newest elevated minute, quiet after it, the save-stamp cancel — is unchanged from the
+ * detector #5139 landed.
  */
 export function detectedWorkoutEnd(input: {
   samples: readonly ExertionSample[];
@@ -217,13 +251,56 @@ export function detectedWorkoutEnd(input: {
   const recovery = exertionRecoveryMin(input.usualRecoveryMin) * MINUTE_MS;
   const last = samples[samples.length - 1].at + MINUTE_MS;
 
-  // The newest elevated minute is where this session ended, if it ended at all — an
-  // earlier one would be a rest the person came back from.
-  let candidate: number | null = null;
+  // 1. THE TRACE BEGINS AT THE START. A wrist put on at five o'clock says nothing about
+  //    a session started at eight, however plainly it reads afterwards.
+  if (samples[0].at - input.startedAt > EXERTION_MAX_GAP_MIN * MINUTE_MS)
+    return null;
+  // 2. AND IT BEGINS ELEVATED, which is what "the effort that contains the start" means
+  //    when it is asked about the start rather than about the trace. Someone whose
+  //    warm-up sits inside their own resting range gets no detected end, and finishes
+  //    the session themselves.
+  if (samples[0].bpm <= input.ceilingBpm) return null;
+
+  // 3. ONE EFFORT, OR NOTHING. An elevated minute arriving after this profile's own
+  //    recovery of quiet — or after minutes nobody measured — is a SECOND effort, and a
+  //    trace with two of them does not say which one this row was. Refusing is the whole
+  //    of the simplification: every attempt to pick one was a mechanism with a
+  //    neighbouring case that picked wrong.
+  //    The rest is measured from the minute the elevation STOPPED, not from the first
+  //    quiet minute somebody measured after it: an unmeasured transition minute — the
+  //    ordinary case the gap bound forgives — must not read as a shorter rest.
+  let previous = samples[0].at;
+  let lastElevatedEnd = samples[0].at + MINUTE_MS;
+  let quietFrom: number | null = null;
   for (const sample of samples) {
-    if (sample.bpm > input.ceilingBpm) candidate = sample.at + MINUTE_MS;
+    const separated =
+      sample.at - previous > EXERTION_MAX_GAP_MIN * MINUTE_MS ||
+      (quietFrom != null && sample.at - quietFrom >= recovery);
+    if (sample.bpm > input.ceilingBpm) {
+      if (separated) return null;
+      quietFrom = null;
+      lastElevatedEnd = sample.at + MINUTE_MS;
+    } else if (quietFrom == null) quietFrom = lastElevatedEnd;
+    previous = sample.at;
   }
-  if (candidate == null) return null;
+
+  // The newest elevated minute is where this session ended — and with one effort that is
+  // the effort's own end, which is what makes the rest of this correct without a cut.
+  let candidate = samples[0].at + MINUTE_MS;
+  for (const sample of samples)
+    if (sample.bpm > input.ceilingBpm) candidate = sample.at + MINUTE_MS;
+  // 4. AND THEY HAVE COME BACK DOWN (#5139's own rule, not this reader's). A trace
+  //    still elevated at its frontier is a session in progress, measured rather than
+  //    assumed, so the recovery has to fit between the candidate and the newest minute
+  //    anybody measured.
+  //    THE RESIDUE, STATED RATHER THAN CLAIMED AWAY: how much quiet that is comes from
+  //    `usualRecoveryMin`, whose own population is polluted by the defect this feature
+  //    exists to fix — a prior finished by a late tap measures a 0-minute recovery, and
+  //    nine of those plus one honest ten average to exactly 1. At a recovery of one
+  //    minute, one measured quiet minute is enough (#5212, seventh pass). That is now a
+  //    minute-late sentence in a message the person confirms, not an unattended write,
+  //    and the fix is upstream: this feature's own corrected ends stop feeding a 0 back
+  //    into the mean. A floor invented here would be the fifth constant in a row.
   if (candidate + recovery > last) return null;
   if (!quiet(samples, input.ceilingBpm, candidate, candidate + recovery))
     return null;

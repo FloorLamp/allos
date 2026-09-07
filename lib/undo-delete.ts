@@ -230,8 +230,15 @@ const KIND_SPECS = {
         // activity was captured (deleteEquipment nulls only LIVE activities, so this
         // captured row kept its equipment_id), null it on restore rather than
         // re-inserting a dangling FK (#202) — same treatment as the per-set link.
+        // The event link (#3285 item 2) is the same class: deleteEndurancePlanCore
+        // unlinks only LIVE activities.
         externalRefs: [
           { column: "equipment_id", table: "equipment", onMissing: "null" },
+          {
+            column: "endurance_plan_id",
+            table: "endurance_plans",
+            onMissing: "null",
+          },
         ],
       },
       {

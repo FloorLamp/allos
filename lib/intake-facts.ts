@@ -118,11 +118,19 @@ export interface IntakeFactInput {
 // catch-all sent everything unrecognised to the `timing` chip — so a new PrefillField
 // would have marked the wrong sentence, silently, with nothing to fail. A Record over
 // the field union makes an unhandled field a type error instead.
+//
+// A FIELD'S MARK GOES WHERE ITS SENTENCE IS. The redose pair reads as an importance
+// question and is not one: `timingLabel` below prints it ("≤ every 8 h · max 3/day")
+// on the TIMING chip, and its inputs live in the timing panel. Marked as `importance`
+// they lit the chip that states only the obligation — so a caregiver who set "As
+// needed" themselves was told, in the app's own words, that it came from the label
+// (#5443). The chip that DID carry the offer stayed unmarked unless the food rule
+// happened to be offered with it.
 export const PREFILL_FIELD_FACT: Record<PrefillField, IntakeFactKey> = {
   doseAmount: "dose",
   asNeeded: "importance",
-  minIntervalHours: "importance",
-  maxDailyCount: "importance",
+  minIntervalHours: "timing",
+  maxDailyCount: "timing",
   foodTiming: "timing",
   timeOfDay: "timing",
 };

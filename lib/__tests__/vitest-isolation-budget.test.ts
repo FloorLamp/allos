@@ -103,7 +103,13 @@ import { specsNeedingIsolation } from "@/vitest.isolation";
 // a zone assignment to forks because on a worker thread it is inert — the variable
 // reads back as the new zone while Date.parse and getTimezoneOffset() stay in the zone
 // the process started in, so its three-zone agreement was one pass three times (#5387).
-const DB_ISOLATED = 40;
+// 41 since #5194: still-going-delivered-gate substitutes the web-push transport so every
+// subscription answers 410 Gone — a channel that is HEALTHY and reached nobody, which is
+// the one production shape the still-going record gate exists for and the only one that
+// family can reach. The tier cannot install that shared for entry 33's reason, and it is
+// a separate file from delivery-lifecycle because it seeds heart-rate traces and an open
+// workout draft, which is not what that spec's per-owner health states are about.
+const DB_ISOLATED = 41;
 // 7 since #3065: Longevity's server-component FitnessSection is tested directly with
 // controlled session, age, and assembler boundaries. It must prove that minor and unknown
 // profiles return null before assembling adult population data; sharing those module stubs

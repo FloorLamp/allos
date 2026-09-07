@@ -72,7 +72,15 @@ describe("the practice kind's stale window (#5142 AC 3)", () => {
 
     at(90);
     expect(stillGoingEpisodes(pid, new Date())).toEqual([
-      { kind: "practice", rowId: id, label: "Sauna", quietMin: 90 },
+      {
+        kind: "practice",
+        rowId: id,
+        label: "Sauna",
+        quietMin: 90,
+        // A practice has no heart-rate reader; the workout kind is the only one
+        // that ever carries a detected end (#5194).
+        detectedEnd: null,
+      },
     ]);
   });
 

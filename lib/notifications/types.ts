@@ -131,11 +131,57 @@ export interface NotificationChannel {
     msg: NotificationMessage,
     opts?: DispatchOptions
   ): number[];
+  // Deliver the message, and say WHO it reached — see SendOutcome. A throw is still the
+  // channel-level failure dispatch() reports as `ok: false`; nothing about that changed.
   send(
     profileId: number,
     msg: NotificationMessage,
     opts?: DispatchOptions
-  ): Promise<void>;
+  ): Promise<SendOutcome>;
+}
+
+// WHAT A COMPLETED SEND ACTUALLY REACHED — the RECIPIENT-level fact `ok` cannot carry
+// (#5194, tenth falsifying pass).
+//
+// A channel result says whether the CHANNEL finished without throwing. That is a
+// different question from "did anybody get this", because three of the four channels fan
+// one message out to many recipients: Telegram to every managing login's chat, Web Push
+// to every subscribed browser, email to every address. A channel can finish cleanly
+// having delivered to NOBODY — a per-kind gate that filtered the whole audience is a
+// deliberate no-op success on all of them — and Telegram can throw having ALREADY
+// delivered to somebody (see PartialDeliveryError).
+//
+// So the channel answers it rather than a caller inferring it from `ok`. A caller that
+// only wants "is the channel healthy" keeps reading `ok` and is unaffected; a caller
+// whose correctness depends on a person having actually been shown the message reads
+// `delivered` — today the "Still working out?" nudge, which records the minute its body
+// promised so the tap stamps that minute instead of a second reading of the trace.
+export interface SendOutcome {
+  // At least one intended recipient received this message.
+  delivered: boolean;
+}
+
+// A send that reached SOME of its recipients and then failed for another.
+//
+// The Telegram channel fans out in a loop and lets a recipient's throw propagate, so
+// dispatch() marks the channel failed and the slot can retry — deliberate, stated in
+// that module's header, and unchanged. What the throw discarded was the knowledge that
+// an earlier chat in the same loop already HAS the message: in a two-chat household
+// where one chat has blocked the bot, the healthy chat holds a delivered message with a
+// live button while the channel reports nothing but failure. This carries that one bit
+// out past the throw, so `ok` keeps its exact meaning and `delivered` is still answerable.
+//
+// IT KEEPS THE ERROR IT WRAPS as its `cause`. The thing being wrapped is normally a
+// `TelegramApiError`, which #1885 typed precisely so classification reads STRUCTURE (a
+// status, a description) rather than a formatted sentence — and a wrapper that kept only
+// the sentence quietly undid that: an unrecognised 403 classified permanent before the
+// wrap and transient after it. `classifyTelegramFailure` follows the cause
+// (./telegram-error), so wrapping costs nothing (#5194, eleventh pass).
+export class PartialDeliveryError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "PartialDeliveryError";
+  }
 }
 
 // Prefix a message's title with a profile name so a shared channel (or a

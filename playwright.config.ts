@@ -68,8 +68,8 @@ export default defineConfig({
   // it for the worker processes.
   metadata: { frozenNow: FROZEN_NOW },
   // Zero retries EVERYWHERE (#1159 closed the last flake, family-calendar). The
-  // suite runs clean at --retries=0 end-to-end — the changed-spec lane, the
-  // shared-infra fallback, and the sharded full matrix — so retries stay OFF: a
+  // suite runs clean at --retries=0 end-to-end — the sharded PR matrix, main
+  // detector, and weekly census — so retries stay OFF: a
   // flake fails the run loudly instead of being silently retried into green
   // (`retries: 1` proves "passes within N attempts", not "works" — a ≤50%-flaky
   // spec could ship green). The on-demand e2e-full.yml census can still opt INTO
@@ -190,7 +190,7 @@ export default defineConfig({
       // Exclude the demo spec (it runs its worker's server in demo mode)
       // and the phone-viewport specs (they belong to the `mobile` project below —
       // this project's testMatch admits EVERYTHING, so without this a
-      // `--project`-less invocation like the CI e2e-changed lane's
+      // `--project`-less invocation like a targeted local
       // `npx playwright test <spec>` would also run a `*.mobile.spec.ts` at
       // 1280×900, where the mobile shell legitimately doesn't render).
       testIgnore: [/demo\.spec\.ts/, /\.mobile\.spec\.ts$/],
@@ -212,15 +212,14 @@ export default defineConfig({
     // Desktop feature smoke stays in smoke.spec.ts and already overlaps the broad
     // desktop suite. The naming convention was chosen over a `@mobile` tag
     // because it needs no per-test annotation, it is visible in `ls e2e/`, and
-    // the CI `e2e-changed` lane's `^e2e/.*\.spec\.ts$` glob picks a changed
-    // mobile spec up automatically (it runs `npx playwright test <specs>` with no
-    // `--project` filter, so the spec lands in this project by its name alone).
+    // targeted `npx playwright test <specs>` runs need no `--project` filter:
+    // the spec lands in this project by its name alone.
     // A new mobile feature lands its spec as `<feature>.mobile.spec.ts`; the rest
     // of the suite stays desktop-only, so the sharded CI matrix grows by the
     // mobile spec count, not by a second full suite.
     //
     // That name-based routing takes BOTH halves: this testMatch, and `chromium`'s
-    // `testIgnore` above. A `--project`-less run (the e2e-changed lane, the sharded
+    // `testIgnore` above. A `--project`-less run (a targeted local run, the sharded
     // matrix) runs a spec in EVERY project whose filters admit it, and `chromium`
     // admits everything — so without the ignore a mobile spec would also run at
     // 1280×900 and fail deterministically. (`demo` needs no such guard: its

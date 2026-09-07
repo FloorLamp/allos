@@ -265,7 +265,27 @@ describe("which fact carries a prefill's marking (#4672)", () => {
   it("collapses fields sharing a chip to one entry", () => {
     expect([
       ...suggestedIntakeFacts(["minIntervalHours", "maxDailyCount"]),
-    ]).toEqual(["importance"]);
+    ]).toEqual(["timing"]);
+  });
+
+  // The redose pair marks the chip that PRINTS it, which is the timing chip — the
+  // importance chip states the obligation and nothing else, so marking it there told
+  // the caregiver their own "As needed" came from the label (#5443).
+  it("marks the chip the redose sentence is printed on", () => {
+    const marked = suggestedIntakeFacts(["minIntervalHours"]);
+    const summary = intakeFactSummary(
+      base({
+        obligation: "may",
+        minIntervalHours: "8",
+        maxDailyCount: "3",
+        suggestedFacts: marked,
+      })
+    );
+    const chip = (key: string) => summary.chips.find((c) => c.key === key);
+    expect(chip("timing")?.label).toContain("8 h");
+    expect(chip("timing")?.suggested).toBe(true);
+    expect(chip("importance")?.label).toBe("As needed");
+    expect(chip("importance")?.suggested).toBe(false);
   });
 
   it("is empty when nothing is suggested", () => {

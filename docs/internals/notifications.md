@@ -1972,8 +1972,8 @@ it wrong.
 
 `lib/notifications/cadence-registry.ts` closes that: `KIND_CADENCE` declares,
 for **every** `NotificationKind`, what owns its cadence — either
-`nudge-cadence` (naming the adapter module) or one of the exemption owners, each
-with a written reason:
+`nudge-cadence` or one of the exemption owners, each with a written reason that
+names the adapter module or the mechanism:
 
 | Owner               | What decides the send                                                                                             | Families                                                  |
 | ------------------- | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
@@ -1995,15 +1995,21 @@ midnight whatever the subject does, and nothing is ever spaced off a first send
 or swept. Mood's auto-pause is a contact-consent mechanism (#992/#1668), not an
 episode lifecycle.
 
-**The teeth** (`lib/__tests__/cadence-registry.test.ts`): membership is total
-over `ALL_NOTIFICATION_KINDS` and no entry is stale; every reason is real in
-both directions; a member's declared `planner` must be a module that genuinely
-calls `planNudgeCadence`, and the set of such modules must be **exactly** the
-declared set — so a fifth domain adopting the engine cannot ship without joining
-the declaration, and a declaration cannot claim an adapter that does not exist.
-A safety kind may never be declared a member: the planner's freeze rule is a
+**The teeth** (#5351): `KIND_CADENCE` is keyed on `NotificationKind`, so
+membership is total, no entry is stale and no kind is declared twice — each of
+those is a compile error rather than a test run. A safety kind may never be
+declared a member, and that is the row's type: the planner's freeze rule is a
 suppression-bus lookup, and putting that between a person and their medication
-is the one policy that must not move.
+is the one policy that must not move. `lib/__tests__/cadence-registry.test.ts`
+keeps only what a type cannot hold — that every reason is real in both
+directions, and which four families the engine may decide for.
+
+A member's `why` names its adapter module. The separate `planner` path field and
+the source scan that read it back against the import graph are gone: the field
+restated a sentence the `why` already carried, and the scan's live half — that a
+module calling `planNudgeCadence` has joined this declaration — never caught
+anything, which is not what earns a scan
+(`docs/orchestration/what-earns-a-guard.md`).
 
 ## The review has a cadence (#2178)
 

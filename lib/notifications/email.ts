@@ -105,11 +105,12 @@ export function resolveEmailRecipients(
 // deliver to — a healthy no-op, never a failure); throws only when EVERY attempt
 // failed, so dispatch() marks the channel failed and the slot's shared attempt
 // band retries an hour later.
+/** How many addresses actually received it — 0 when there was nobody to write to. */
 async function sendToRecipients(
   recipients: EmailRecipient[],
   msg: NotificationMessage
-): Promise<void> {
-  if (recipients.length === 0) return;
+): Promise<number> {
+  if (recipients.length === 0) return 0;
   const publicUrl = getPublicUrl();
   let ok = 0;
   const errors: string[] = [];
@@ -135,6 +136,7 @@ async function sendToRecipients(
   if (ok === 0 && errors.length > 0) {
     throw new Error(`email send failed: ${errors.join("; ")}`);
   }
+  return ok;
 }
 
 export const emailChannel: NotificationChannel = {
@@ -156,14 +158,17 @@ export const emailChannel: NotificationChannel = {
         profile: profileId,
         kind: msg.kind ?? "other",
       });
-      return;
+      // Healthy, and it reached nobody — see SendOutcome (./types).
+      return { delivered: false };
     }
     // A fully kind-filtered audience is a deliberate no-op success (mirrors the HA
     // disabled-kind gate) — it must never set the delivery-health marker.
-    await sendToRecipients(
+    // Recipient-level like Web Push: a throw here means no address took it.
+    const reached = await sendToRecipients(
       resolveEmailRecipients(profileId, msg.kind ?? "other"),
       msg
     );
+    return { delivered: reached > 0 };
   },
 };
 

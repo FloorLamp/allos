@@ -20,8 +20,9 @@ import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 // touch target — and the exercise guide consumed yet another, mostly empty,
 // right-aligned row below.
 //
-// The contract now: below `sm` the header is TWO rows. The combobox owns the
-// whole first row (badge and clear intact); "How to" plus the reorder/remove
+// The contract now: below `sm` the header is TWO rows. The exercise NAME owns the
+// whole first row — since #5370 that is a heading once a lift is picked, and the
+// picker only while one is being searched; "How to" plus the reorder/remove
 // actions share one second-row toolbar, each at least 44×44. From `sm` up the
 // header is the single compact row it always was, so this lives in the mobile
 // project (by filename) and asserts geometry rather than a pixel snapshot.
@@ -98,22 +99,35 @@ test("a multi-part exercise header reads and taps at 390px (#1613)", async ({
   const actions = first.getByTestId("part-actions");
   const viewport = page.viewportSize()!;
 
-  // 1. The lift name is fully readable — the reported truncation. The input
-  //    scrolling its own value is the direct expression of "clipped", and it
-  //    holds whatever the font metrics are.
-  await expect(firstName).toHaveValue("Barbell Bench Press");
+  // 1. The lift name is fully readable — the reported truncation. Since #5370 a
+  //    picked lift is a HEADING rather than a mounted field, so the element that
+  //    could clip is the truncating span inside it; the property and the number are
+  //    the same, and it still holds whatever the font metrics are.
+  const heading = first.getByTestId("part-name-heading");
+  await expect(heading).toContainText("Barbell Bench Press");
   expect(
-    await firstName.evaluate((el) => el.scrollWidth > el.clientWidth + 1),
-    "the exercise name is clipped inside its own input at 390px"
+    await heading.evaluate(
+      (el) =>
+        el.scrollWidth > el.clientWidth + 1 ||
+        [...el.querySelectorAll("span")].some(
+          (s) => s.scrollWidth > s.clientWidth + 1
+        )
+    ),
+    "the exercise name is clipped inside its own heading at 390px"
   ).toBe(false);
-  // Its muscle badge and clear action are still there.
+  // Its muscle badge rides the heading. Its CLEAR does not, and that is #5370: the
+  // field's clear belongs to searching, so a settled row carries exactly one X and
+  // that X removes the exercise.
   await expect(first.getByText("Chest", { exact: true })).toBeVisible();
-  await expect(first.getByRole("button", { name: "Clear" })).toBeVisible();
+  await expect(first.getByRole("button", { name: "Clear" })).toHaveCount(0);
+  await expect(
+    first.getByRole("button", { name: "Remove activity" })
+  ).toHaveCount(1);
 
-  // 2. Two rows: the combobox spans the first, the toolbar sits under it, and
+  // 2. Two rows: the name spans the first, the toolbar sits under it, and
   //    the actions take no width from the name.
   const headerBox = await box(header);
-  const nameBox = await box(firstName);
+  const nameBox = await box(heading);
   const actionsBox = await box(actions);
   expect(nameBox.width).toBeGreaterThanOrEqual(headerBox.width - 12);
   expect(actionsBox.y).toBeGreaterThanOrEqual(nameBox.y + nameBox.height - 1);
@@ -163,15 +177,16 @@ test("a multi-part exercise header reads and taps at 390px (#1613)", async ({
   expect(Math.abs(stickyTop - headerBox.height)).toBeLessThanOrEqual(2);
 
   // 6. The callbacks are untouched: reordering still swaps the parts.
+  const firstHeading = parts
+    .nth(0) // nth-ok: the leading part, which is what reordering moves
+    .getByTestId("part-name-heading");
   await down.click();
-  await expect(page.getByPlaceholder(/What did you do/)).toHaveValue("Running");
+  await expect(firstHeading).toContainText("Running");
   await parts
     .nth(1) // nth-ok: the bench part this spec just moved down
     .getByRole("button", { name: "Move activity up" })
     .click();
-  await expect(page.getByPlaceholder(/What did you do/)).toHaveValue(
-    "Barbell Bench Press"
-  );
+  await expect(firstHeading).toContainText("Barbell Bench Press");
 
   // 7. The relocated guide trigger still opens the ONE shared overlay.
   await guide.click();

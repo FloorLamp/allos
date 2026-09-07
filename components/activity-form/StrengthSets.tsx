@@ -3,6 +3,7 @@
 import FactChipRow, { FactChip } from "@/components/facts/FactChipRow";
 import ControlTooltip from "@/components/ControlTooltip";
 import IconButton from "@/components/IconButton";
+import ExerciseHistory from "./ExerciseHistory";
 import { useEffect, useRef, useState } from "react";
 import type { Equipment } from "@/lib/types";
 import { isBarbell } from "@/lib/types";
@@ -20,9 +21,7 @@ import {
   RECOVERING_LOAD_FACTOR,
 } from "@/lib/injury-model";
 import { isValidDuration } from "@/lib/duration";
-import { formatLongDate } from "@/lib/format-date";
-import { useFormatPrefs } from "@/components/FormatPrefsProvider";
-import { judgeTargets, summarizeExercise } from "@/lib/training-log-format";
+import { judgeTargets } from "@/lib/training-log-format";
 import {
   suggestNextSet,
   contextualNextSet,
@@ -592,7 +591,6 @@ export default function StrengthSets({
     seed?: number
   ) => void;
 }) {
-  const formatPrefs = useFormatPrefs();
   const p = part;
   // Plateau hints dismissed in this session (#923) — an optimistic local hide so the
   // inline hint vanishes on tap while the shared-bus write persists it everywhere else.
@@ -980,6 +978,37 @@ export default function StrengthSets({
           !!s.durationRight.trim() &&
           !isValidDuration(s.durationRight))
     );
+  // Inline plateau hint (#923): a calm one-liner when this lift has an active
+  // (undismissed) plateau finding, at the point of load selection. Reuses the SAME
+  // plateau computation/dedupeKey as the Training-watch card — dismissing it here
+  // silences that surface too (and vice versa). Never blocks the fill paths; yields
+  // to the deload rationale on a deload week.
+  // ONE DEFINITION, TWO MOUNTS, and they are mutually exclusive: #5370 folds the note
+  // in behind the history line, and a lift with no recent session has no fold for it
+  // to go behind.
+  const plateauNote =
+    showPlateauHint && plateauHint ? (
+      <div
+        data-testid="plateau-hint"
+        className="mt-2 flex items-start justify-between gap-2 rounded-md border border-black/10 bg-slate-50/70 px-2.5 py-1.5 text-xs dark:border-white/10 dark:bg-ink-850/40"
+      >
+        <span className="flex items-start gap-1.5 text-slate-500 dark:text-slate-400">
+          <IconTrendingDown className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+          {/* The SHARED plateau-break advice (#1203): the ~10% deload magnitude
+              + named variations, phrased identically to the finding/next-set
+              surfaces, pre-rendered by the one-computation helper. */}
+          <span>{plateauHint.hintText}</span>
+        </span>
+        <IconButton
+          type="button"
+          onClick={() => dismissPlateau(plateauHint.dedupeKey)}
+          data-testid="plateau-hint-dismiss"
+          label="Dismiss plateau hint"
+        >
+          <IconX className="h-3.5 w-3.5" stroke={2} />
+        </IconButton>
+      </div>
+    ) : null;
   return (
     <>
       {/* The "How to" affordance for this lift (#734) now rides in the part
@@ -1014,75 +1043,13 @@ export default function StrengthSets({
           </div>
         </div>
       )}
-      {recent.length > 0 && (
-        <div
-          data-testid="recent-sessions"
-          className="mt-2 rounded-md border border-black/10 bg-surface px-2.5 py-1.5 text-xs dark:border-white/10"
-        >
-          <div className="section-label">Recent</div>
-          {/* Each row is a "repeat this session" fill path (#923) while the part is
-              pristine (same partUntouched gate as the ghosts, so a tap can never clobber
-              in-progress entry) — the newest row is the primary "repeat last session"
-              gesture, but every recent session is a tap away (a light/off last day makes
-              the one before it useful). Once anything is typed the rows revert to plain
-              read-only reference. */}
-          <ul className="mt-0.5 space-y-0.5">
-            {recent.map((sess, i) => {
-              const dateEl = (
-                <span className="shrink-0 text-slate-500 dark:text-slate-400">
-                  {formatLongDate(sess.date, formatPrefs)}
-                </span>
-              );
-              const metrics = (
-                <span className="flex items-center gap-1 tabular-nums">
-                  {summarizeExercise(sess.sets, units.weightUnit).text}
-                  {/* Logged RPE for the session, shown when present (#743). */}
-                  {rpeSummaryText(sess.sets) && (
-                    <span className="rounded-sm bg-slate-100 px-1 text-xs font-medium text-slate-500 dark:bg-ink-800 dark:text-slate-400">
-                      {rpeSummaryText(sess.sets)}
-                    </span>
-                  )}
-                  {/* Same missed-target marker as the training log card; the
-                      session status is judged server-side. */}
-                  {sess.status === "missed" && (
-                    <span className="inline-flex items-center gap-0.5 text-xs text-amber-500 dark:text-amber-400">
-                      <IconAlertTriangle className="h-3.5 w-3.5" stroke={2} />
-                      Missed target
-                    </span>
-                  )}
-                </span>
-              );
-              return (
-                <li key={i}>
-                  {partUntouched ? (
-                    <button
-                      type="button"
-                      data-testid="recent-session-fill"
-                      onClick={() =>
-                        onFill({ source: "session", sets: sess.sets })
-                      }
-                      className="-mx-1 flex w-full items-center justify-between gap-3 rounded-sm px-1 py-0.5 text-left text-slate-600 transition hover:bg-brand-50 hover:text-brand-700 dark:text-slate-300 dark:hover:bg-brand-950/40 dark:hover:text-brand-300"
-                    >
-                      {dateEl}
-                      <span className="flex items-center gap-2">
-                        {metrics}
-                        <span className="shrink-0 rounded-sm border border-brand-300 px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-brand-600 dark:border-brand-800 dark:text-brand-400">
-                          Fill
-                        </span>
-                      </span>
-                    </button>
-                  ) : (
-                    <div className="flex items-center justify-between gap-3 text-slate-600 dark:text-slate-300">
-                      {dateEl}
-                      {metrics}
-                    </div>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
+      <ExerciseHistory
+        sessions={recent}
+        fillable={partUntouched}
+        onFill={(sets) => onFill({ source: "session", sets })}
+        unit={units.weightUnit}
+        note={plateauNote}
+      />
       {/* The coached next set (same progression as the exercise detail
           panel's card) with a one-tap fill, so the suggestion can be acted
           on right where sets are logged. For a fresh bilateral part it's also
@@ -1181,33 +1148,9 @@ export default function StrengthSets({
           </p>
         </div>
       )}
-      {/* Inline plateau hint (#923): a calm one-liner when this lift has an active
-          (undismissed) plateau finding, at the point of load selection. Reuses the SAME
-          plateau computation/dedupeKey as the Training-watch card — dismissing it here
-          silences that surface too (and vice versa). Never blocks the fill paths; yields
-          to the deload rationale on a deload week. */}
-      {showPlateauHint && plateauHint && (
-        <div
-          data-testid="plateau-hint"
-          className="mt-2 flex items-start justify-between gap-2 rounded-md border border-black/10 bg-slate-50/70 px-2.5 py-1.5 text-xs dark:border-white/10 dark:bg-ink-850/40"
-        >
-          <span className="flex items-start gap-1.5 text-slate-600 dark:text-slate-300">
-            <IconTrendingDown className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
-            {/* The SHARED plateau-break advice (#1203): the ~10% deload magnitude
-                + named variations, phrased identically to the finding/next-set
-                surfaces, pre-rendered by the one-computation helper. */}
-            <span>{plateauHint.hintText}</span>
-          </span>
-          <IconButton
-            type="button"
-            onClick={() => dismissPlateau(plateauHint.dedupeKey)}
-            data-testid="plateau-hint-dismiss"
-            label="Dismiss plateau hint"
-          >
-            <IconX className="h-3.5 w-3.5" stroke={2} />
-          </IconButton>
-        </div>
-      )}
+      {/* With no history to fold it into, the note is the block's only reference and
+          stays where it always was. */}
+      {recent.length === 0 && plateauNote}
       {/* THE COMPACT SET NOTATION (#3336). A uniform run of completed sets reads as the
           statement it already is on every other surface — the Recent panel, the training
           log card, the timeline — instead of as N identical rows of four controls each.
@@ -1331,7 +1274,7 @@ export default function StrengthSets({
           band of headings. */}
           <div
             data-testid="set-column-headings"
-            className="sticky top-edge-safe [--top-edge-offset:var(--set-schema-top)] z-9 -mx-1 mt-2 flex items-center gap-2 bg-surface/95 px-1 py-1 section-label backdrop-blur-sm md:static md:mx-0 md:bg-transparent md:px-0 md:backdrop-blur-none dark:md:bg-transparent"
+            className="sticky top-edge-safe [--top-edge-offset:var(--set-schema-top)] z-9 -mx-1 mt-2 flex items-center gap-2 bg-surface/95 px-1 py-1 label mb-0 backdrop-blur-sm md:static md:mx-0 md:bg-transparent md:px-0 md:backdrop-blur-none dark:md:bg-transparent"
           >
             <span className="hidden w-12 shrink-0 sm:block">Set</span>
             {stepsLoad ? (
@@ -1553,7 +1496,7 @@ export default function StrengthSets({
                             type="button"
                             onClick={() => onRemoveSet(si)}
                             data-testid={`set-remove-${si + 1}`}
-                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-rose-400 hover:bg-rose-50 hover:text-rose-600 sm:mt-1 sm:h-8 sm:w-8 dark:text-rose-500/80 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 focus-visible:bg-rose-50 focus-visible:text-rose-600 sm:mt-1 sm:h-8 sm:w-8 dark:text-slate-400 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 dark:focus-visible:bg-rose-950/40 dark:focus-visible:text-rose-400"
                           >
                             <IconX className="h-4 w-4" />
                           </button>

@@ -78,10 +78,22 @@ const PERMANENT_DESCRIPTIONS: readonly RegExp[] = [
   /group chat was upgraded to a supergroup/i,
 ];
 
+// The typed throw, WHEREVER IT IS. A fan-out may wrap the transport's error to carry an
+// extra bit out past the throw (PartialDeliveryError, ./types) — and a wrapper that
+// reduced the error to its sentence would silently downgrade classification back to
+// regexing text, which is the thing #1885 exists to stop. So a wrapper's `cause` is
+// followed, one link, which is as deep as any wrapping in this module goes.
+function typedFailure(e: unknown): TelegramApiError | null {
+  if (e instanceof TelegramApiError) return e;
+  if (e instanceof Error && e.cause instanceof TelegramApiError) return e.cause;
+  return null;
+}
+
 // The text to pattern-match: the structured description when the transport typed the
 // throw, otherwise the raw message (mock/legacy shape).
 function failureText(e: unknown): string {
-  if (e instanceof TelegramApiError) return e.description ?? e.message;
+  const typed = typedFailure(e);
+  if (typed) return typed.description ?? typed.message;
   if (e instanceof Error) return e.message;
   return String(e);
 }
@@ -90,7 +102,8 @@ function failureText(e: unknown): string {
 // the transport's own `HTTP <n>` message tail — the format `call()` uses when Telegram
 // answered without a description.
 function statusOf(e: unknown): number | null {
-  if (e instanceof TelegramApiError) return e.status;
+  const typed = typedFailure(e);
+  if (typed) return typed.status;
   const m = /\bHTTP (\d{3})\b/.exec(failureText(e));
   return m ? Number(m[1]) : null;
 }

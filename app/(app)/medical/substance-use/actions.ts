@@ -53,7 +53,7 @@ import { formError, formOk, type FormResult } from "@/lib/types";
 import {
   addSubstanceDailyTotalCore,
   deleteSubstanceDailyTotalCore,
-  type SubstanceHistoryMutationOutcome,
+  type SubstanceHistoryAddOutcome,
 } from "@/lib/substance-daily-totals-write";
 
 // #1174 gated the substance-use SURFACE (hidden nav + page redirect) to adults;
@@ -89,7 +89,7 @@ export type SubstanceHistoryDeleteResult =
 // that readout — and the FORM surfaces had none, so a correction could take somebody
 // past their weekly cap in silence. Derived AFTER the write, and null for a profile
 // that set no target.
-export type SubstanceHistoryWriteResult = SubstanceHistoryMutationOutcome & {
+export type SubstanceHistoryWriteResult = SubstanceHistoryAddOutcome & {
   readonly capProgress?: string | null;
 };
 
@@ -350,7 +350,7 @@ function historyInput(
       amount: number;
       notes: string | null;
     }
-  | { ok: false; outcome: SubstanceHistoryMutationOutcome } {
+  | { ok: false; outcome: SubstanceHistoryAddOutcome } {
   const substanceRaw = resolveSubstanceKey(
     String(formData.get("substance") ?? "")
   );

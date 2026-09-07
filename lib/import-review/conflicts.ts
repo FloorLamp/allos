@@ -18,6 +18,7 @@
 // say, the Health Connect distance on a Strava keeper. The pairwise merge is the
 // two-member case of the same computation.
 
+import { eventLinkDecisionSeq } from "../endurance-plan";
 import {
   ACTIVITY_FOLD_FIELDS,
   ZERO_IS_MISSING_FIELDS,
@@ -225,6 +226,9 @@ export function foldActivityFieldsWithOverrides(
 export interface KeeperFoldState {
   fields: Record<ActivityFoldField, unknown>;
   equipmentId: number | null;
+  // The event link and the ordinal of the hand decision it came from (#3285 item 2).
+  endurancePlanId: number | null;
+  enduranceLinkDecidedSeq: number;
   edited: number;
 }
 
@@ -240,7 +244,8 @@ export interface KeeperFoldState {
 //
 // `keeper` is either the live pre-fold row (writeActivityFold) or the captured
 // keeperBefore snapshot (revertActivityMerge); both carry the fold fields,
-// equipment_id and edited, which is all this reads. Pure.
+// equipment_id, the event link with its decision ordinal, and edited, which is all
+// this reads. Pure.
 export function keeperFoldState(
   keeper: Record<string, unknown>,
   drops: Record<string, unknown>[],
@@ -258,12 +263,46 @@ export function keeperFoldState(
   for (const drop of ordered)
     equipmentId =
       equipmentId ?? (drop.equipment_id as number | null | undefined) ?? null;
+  // The EVENT link (#3285 item 2) folds by RECENCY, not keeper-first, because a merge
+  // destroys rows and one of the things it destroys is a person's decision about this
+  // session's link. Gap-fill alone let the unattended auto-merge delete the row
+  // carrying a detach and hand the sync a fresh candidate; keeper-first among decided
+  // rows then did the mirror, reverting a hand link — or a "Move here" — to whatever
+  // the other copy said. Keepership comes from richness and token order
+  // (autoMergeKeeperId), so it can say nothing about which decision came last.
+  //
+  // So: the row carrying the NEWEST decision (`endurance_link_decided_seq`, the
+  // profile-wide ordinal both hand moves write) sets the link outright, its null
+  // included, and the winning ordinal rides along so a later fold — or the undo — can
+  // still tell what came after it. A detach therefore blocks the gap-fill and a hand
+  // link survives being folded in, whichever row is the keeper. Equal ordinals mean
+  // the pre-ordinal past, where the flag knew only THAT a decision existed: keeper
+  // first, deterministically. With no decision anywhere it is plain keeper-wins
+  // gap-fill, exactly as the gear link above.
+  const linkRows = [keeper, ...ordered];
+  let decided: Record<string, unknown> | undefined;
+  for (const row of linkRows)
+    if (
+      eventLinkDecisionSeq(row.endurance_link_decided_seq as number | null) >
+      eventLinkDecisionSeq(decided?.endurance_link_decided_seq as number | null)
+    )
+      decided = row;
+  let endurancePlanId: number | null = null;
+  for (const row of decided ? [decided] : linkRows)
+    endurancePlanId =
+      endurancePlanId ??
+      (row.endurance_plan_id as number | null | undefined) ??
+      null;
   // A keeper carrying ANY folded drop is a merged result, so it stays edit-locked
   // (#133) — a re-ingest of the rolling window must not clobber it. Only when the last
   // drop is un-folded does the keeper get its own pre-merge lock state back.
   return {
     fields,
     equipmentId,
+    endurancePlanId,
+    enduranceLinkDecidedSeq: eventLinkDecisionSeq(
+      decided?.endurance_link_decided_seq as number | null
+    ),
     edited: ordered.length > 0 ? 1 : Number(keeper.edited ?? 0),
   };
 }

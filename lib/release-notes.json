@@ -1,6 +1,108 @@
 {
   "days": [
     {
+      "date": "2026-09-06",
+      "entries": [
+        {
+          "pr": 5290,
+          "kind": "feature",
+          "category": "Medical",
+          "title": "Each substance use gets its own row and its own time, like drinks",
+          "issues": [5026]
+        },
+        {
+          "pr": 5417,
+          "kind": "feature",
+          "category": "History",
+          "title": "On a wide screen the day view calendar is a button, not an open grid",
+          "issues": [5359]
+        },
+        {
+          "pr": 5422,
+          "kind": "feature",
+          "category": "Training",
+          "title": "State a lift's weight once and every set in the exercise shares it",
+          "issues": [5371]
+        },
+        {
+          "pr": 5425,
+          "kind": "feature",
+          "category": "Interface",
+          "title": "A time field takes 830, and opens on focus on a wide screen",
+          "issues": [5360]
+        },
+        {
+          "pr": 5426,
+          "kind": "fix",
+          "category": "Training",
+          "title": "A habit shows On pace only once something is logged and keeping up",
+          "issues": [5395]
+        },
+        {
+          "pr": 5426,
+          "kind": "fix",
+          "category": "Training",
+          "title": "A goal with no reading yet shows no percent, on every surface",
+          "issues": [5396]
+        },
+        {
+          "pr": 5391,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Saving a change that asks you to confirm no longer sticks on Saving…",
+          "issues": [5336]
+        },
+        {
+          "pr": 5306,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "The offline schedule offers the doses that were actually due that day",
+          "issues": [5167]
+        },
+        {
+          "pr": 5365,
+          "kind": "perf",
+          "category": "Interface",
+          "title": "Upcoming and the episode page show their first rows while the rest loads",
+          "issues": [2641]
+        },
+        {
+          "pr": 5422,
+          "kind": "feature",
+          "category": "Training",
+          "title": "Give one set its own weight without changing the others",
+          "issues": [5371]
+        },
+        {
+          "pr": 5450,
+          "kind": "feature",
+          "category": "Training",
+          "title": "Sets arrive as a plan — only the ones you confirm are saved",
+          "issues": [5373]
+        },
+        {
+          "pr": 5444,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Buttons, chips and folds share one height across the app",
+          "issues": [4505]
+        },
+        {
+          "pr": 5290,
+          "category": "Documents",
+          "title": "Substance rows can no longer be selected and deleted on Data → Manage",
+          "issues": [5026]
+        },
+        {
+          "pr": 5423,
+          "kind": "feature",
+          "category": "Medical",
+          "title": "Correct a drink or substance note on the use itself, not the whole day",
+          "issues": [5304]
+        }
+      ]
+    },
+    {
       "date": "2026-09-05",
       "entries": [
         {

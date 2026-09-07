@@ -24,6 +24,7 @@
 
 import { parseUtcSql, zonedWallTimeToUtc } from "./date";
 import { episodeIsOpen, episodeState } from "./open-episode";
+import { activityWindow } from "./training-zones";
 import type { ActivityType } from "./types/training";
 
 // --- Window constants (documented; the boundary tests pin each edge). ---
@@ -143,15 +144,45 @@ function lastTouchMs(row: PresenceActivityRow): number | null {
 // start wall time plus its logged duration. Returns null when neither is known —
 // an end-less, duration-less import has no reliable end, so it is NOT treated as
 // finished (the scheduled slot remains its fallback) rather than guessed.
+// ONE ROLLOVER RULE, NOT TWO (#5212 falsifying pass). This resolved `end_time` against
+// the row's own date and stopped there, while `activityWindow` — which every other
+// reader of a session's span uses — reads an end at or before its start as a crossing
+// of local midnight. So a session that started at 23:50 and ended at 00:20 had an end
+// instant twenty-three and a half hours BEFORE its own start here, and one thirty
+// minutes after it everywhere else.
+//
+// That is not a cosmetic disagreement: `runPostWorkoutFinish` is presence-gated and
+// safety tier, so for a cross-midnight finish the post-workout dose delivery and the
+// #924 recap were unreachable at every instant — the same silencing the sweep's tick
+// ordering exists to prevent, arriving by a different door. Asking `activityWindow`
+// rather than restating half of it is the fix: it already covers the start-plus-
+// duration case this function's second branch was, so the second branch goes too.
+//
+// A SPAN OF ZERO IS STILL AN END (#5194, eighth falsifying pass, F3). `activityWindow`
+// answers a WINDOW and refuses `end <= start`, because a window containing no minute
+// cannot scope one — which is right for the zone split and every other reader that fills
+// it with measurements. Presence asks a different question: WHEN did this session end.
+// A session finished inside its own start minute (`end == start`, and `minutesBetween`
+// leaves `duration_min` null for a non-positive span) has an end, and reading it as
+// unfinished is how the tick's safety-tier `runPostWorkoutFinish` and the #924 recap
+// stop seeing a row they used to see. That shape is reachable from this app's own
+// Finish, so the equal case is answered here rather than left to the window's refusal.
+//
+// `end < start` deliberately stays the window's crossing and is not rescued: a typo is
+// indistinguishable from a session that ran through local midnight, and reading it as a
+// crossing is the fix above.
 function endInstantMs(row: PresenceActivityRow, tz: string): number | null {
-  if (row.end_time) {
-    const end = zonedWallTimeToUtc(tz, row.date, row.end_time);
-    if (end) return end.getTime();
+  const window = activityWindow(row);
+  if (window) {
+    const [day, clock] = window.end.split("T");
+    return zonedWallTimeToUtc(tz, day, clock)?.getTime() ?? null;
   }
-  if (row.start_time && row.duration_min != null && row.duration_min > 0) {
-    const start = zonedWallTimeToUtc(tz, row.date, row.start_time);
-    if (start) return start.getTime() + row.duration_min * 60_000;
-  }
+  if (
+    row.start_time &&
+    row.end_time &&
+    row.end_time.slice(0, 5) === row.start_time.slice(0, 5)
+  )
+    return zonedWallTimeToUtc(tz, row.date, row.end_time)?.getTime() ?? null;
   return null;
 }
 
