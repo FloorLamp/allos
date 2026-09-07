@@ -22,6 +22,8 @@ credentials degrade gracefully; no channel is not a transport error.
 ## Tick, dispatch, and markers
 
 - `tick.ts` is import-safe; the CLI in `scripts/notify.ts` owns process behavior.
+- Global retention sweeps run independently after notification fan-out. A thrown
+  cleanup error is logged without stopping later sweeps or changing the exit code.
 - Reminder evaluation and integration polling have separate cadences. Increasing
   tick frequency must not multiply external polling or a slot's retry budget.
 - Reminder slots permit two attempt bands, an hour apart. Travel-skipped slots

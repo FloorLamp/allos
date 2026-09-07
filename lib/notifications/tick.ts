@@ -1282,67 +1282,26 @@ export async function runNotifyTick(
     anyFailed = true;
   }
 
-  // Audit-log retention (#22, window configurable per #98): global, once per tick.
-  // Deletes events past the admin-configured window (Settings → Server; generous
-  // 24-month default). Best-effort (pruneAuditEvents never throws); a failure here
-  // must never affect the notification flow or the exit code.
-  const pruned = pruneAuditEvents({ maxMonths: getAuditRetentionMonths() });
-  if (pruned > 0) log.info("pruned audit events", { pruned });
-
-  // Undo/Trash retention sweep (#30, window configurable per #2013): global, once per
-  // tick. Purges holding rows past the admin-configured window (Settings → Server;
-  // 30-day default) — and unlinks the video clips they captured — so a deleted row is
-  // genuinely gone once the window runs out. Best-effort (sweepDeletedRows never
-  // throws); never affects the notification flow/exit code.
-  const swept = sweepDeletedRows(getTrashRetentionDays());
-  if (swept > 0) log.info("swept expired undo rows", { swept });
-
-  // Offline-replay ledger sweep (#98): global, once per tick. Prunes replayed_keys
-  // rows older than the replay-race window (~7 days) so the idempotency ledger
-  // doesn't grow forever. Best-effort (sweepReplayedKeys never throws); never
-  // affects the notification flow/exit code.
-  try {
-    const sweptKeys = sweepReplayedKeys();
-    if (sweptKeys > 0) log.info("swept expired replay keys", { sweptKeys });
-  } catch (e) {
-    log.error("replay-key sweep failed", {
-      err: e instanceof Error ? e : String(e),
-    });
-  }
-
-  // Sync-event retention sweep (#388): global, once per tick. integration_sync_events
-  // gains a row per source per hourly tick and was the one tick sibling nothing
-  // pruned. Keeps the last 90 days plus the newest event per (profile, source).
-  // Best-effort (pruneSyncEvents never throws); never affects the notification
-  // flow/exit code.
-  try {
-    const prunedSync = pruneSyncEvents();
-    if (prunedSync > 0) log.info("pruned sync events", { prunedSync });
-  } catch (e) {
-    log.error("sync-event prune failed", {
-      err: e instanceof Error ? e : String(e),
-    });
-  }
-
-  // Expired-session + TOTP-challenge sweep (#1843): global, once per tick. Both
-  // purges existed but were called ONLY from the login action, so "somebody signs
-  // in" was the sole trigger — and with 30-day SLIDING sessions, a family instance
-  // where nobody signs in for months accumulated dead `sessions` and
-  // `login_totp_challenges` rows unbounded. Purely a bookkeeping sweep: an expired
-  // row is already refused by every read path, so this deletes nothing a live
-  // session depends on. Best-effort, like its siblings; never affects the
-  // notification flow/exit code.
-  try {
-    const sweptSessions = purgeExpiredSessions();
-    if (sweptSessions > 0)
-      log.info("swept expired sessions", { sweptSessions });
-    const sweptChallenges = purgeExpiredTotpChallenges();
-    if (sweptChallenges > 0)
-      log.info("swept expired 2FA challenges", { sweptChallenges });
-  } catch (e) {
-    log.error("session sweep failed", {
-      err: e instanceof Error ? e : String(e),
-    });
+  // Global, once per tick. Read settings inside each job so a failure in one
+  // sweep cannot skip another or change the notification exit code.
+  const retentionSweeps = {
+    audit: () => pruneAuditEvents({ maxMonths: getAuditRetentionMonths() }),
+    trash: () => sweepDeletedRows(getTrashRetentionDays()),
+    replayKeys: sweepReplayedKeys,
+    syncEvents: pruneSyncEvents,
+    sessions: purgeExpiredSessions,
+    totpChallenges: purgeExpiredTotpChallenges,
+  };
+  for (const [sweep, run] of Object.entries(retentionSweeps)) {
+    try {
+      const removed = run();
+      if (removed > 0) log.info("retention sweep", { sweep, removed });
+    } catch (e) {
+      log.error("retention sweep failed", {
+        sweep,
+        err: e instanceof Error ? e : String(e),
+      });
+    }
   }
 
   // Stuck-extraction lease reap (#135 item 4): global, once per tick. Boot already
