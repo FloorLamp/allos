@@ -355,6 +355,18 @@ describe("logAdministration — PRN multiples, per-dose supply, dedup, window gu
     );
   });
 
+  it("carries the complete stored ingredient identity into quick-log rows", () => {
+    const { profileId, itemId } = seedPrnMed(10);
+    db.prepare(
+      "UPDATE intake_items SET name = ?, rxcui = ?, rxcui_ingredients = ? WHERE id = ?"
+    ).run("Tylenol", "99999", JSON.stringify(["161", "2670"]), itemId);
+    expect(getPrnMedicationsForQuickLog(profileId)[0].identity).toEqual({
+      name: "Tylenol",
+      rxcui: "99999",
+      rxcuiIngredients: ["161", "2670"],
+    });
+  });
+
   it("surfaces may intake items with safe quick-log labels and excludes ineligible rows", () => {
     const { profileId, itemId } = seedPrnMed(10);
     db.prepare(
