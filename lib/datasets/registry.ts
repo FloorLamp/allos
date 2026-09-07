@@ -1,15 +1,6 @@
-// Curated-dataset framework — the registry (issue #860 Track B).
-//
-// The single list of datasets that have been MIGRATED onto the framework. The linter
-// (lib/__tests__/datasets-framework.test.ts) walks this registry and enforces the
-// contract (citation present, identity resolves, refusal gate holds) on every entry,
-// and cross-checks it against the JSON files under lib/datasets/data/. Migrating a
-// dataset = add its loaded dataset + primary strategy here (a thin adoption).
-//
-// SCOPE: this registry lists ONLY framework datasets. Root-level JSON assets that are
-// not framework candidates stay outside it and are explicitly classified in
-// docs/internals/datasets.md; the linter keeps that inventory and this registry in
-// lockstep with the document.
+// Registered datasets and their primary identity strategies. The framework tests
+// validate each entry and check membership against committed data sources.
+// Root-level JSON exceptions are classified in docs/internals/datasets.md.
 
 import {
   allergenCrossReactivityDataset,
