@@ -15,12 +15,8 @@
 // things that matter — the refusal, and the row afterwards. A refusal that still
 // wrote would satisfy an assertion about the message alone.
 //
-// RXNAV IS STUBBED AT `fetch`, NOT AT THE MODULE, and that is the better seam twice
-// over. It keeps the REAL `lookupRxNormCandidates` in the picture — its non-OK
-// branch, its catch, its `parseApproximateTerm` — so a malformed body is refused by
-// the code that actually ships rather than by a stand-in; and `fetch` is a global
-// rather than a module-registry entry, so this file shares the tier's module graph
-// instead of buying a private one (lib/__tests__/vitest-isolation-budget.test.ts).
+// Stub fetch so lookupRxNormCandidates still parses responses and handles failures.
+// This file keeps the tier's shared module registry.
 //
 // All fixtures synthetic. The medication string is a product label, not anybody's
 // data, and the response bodies are hand-written.

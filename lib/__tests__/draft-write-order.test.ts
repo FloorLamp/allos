@@ -23,9 +23,7 @@
 //     is the part a single global chain got wrong: it made every form's draft write wait
 //     behind every other's, far beyond the ordering its callers actually assume.
 //
-// A GLOBAL STUB, NOT A MODULE MOCK — a mock marker would route this spec to the tier's
-// isolated project (lib/__tests__/vitest-isolation-budget.test.ts), and one global is all
-// lib/offline/idb reads.
+// Only IndexedDB.open needs a stub; the file shares the tier's module registry.
 
 import { describe, it, expect, afterEach } from "vitest";
 import { deleteDraft, putDraft } from "@/lib/offline/draft-db";
