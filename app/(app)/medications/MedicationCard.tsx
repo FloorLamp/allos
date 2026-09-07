@@ -50,6 +50,7 @@ import AdherenceCalendar from "@/components/medications/AdherenceCalendar";
 import ScheduledDoseAction from "@/components/medications/ScheduledDoseAction";
 import DoseHistoryPanel from "@/components/intake/DoseHistoryPanel";
 import IngredientsDisclosure from "@/components/intake/IngredientsDisclosure";
+import { parseRxcuiIngredients } from "@/lib/rxnorm";
 import QuickLogPrnControl from "@/components/medications/QuickLogPrnControl";
 import IntakeItemForm from "@/components/IntakeItemForm";
 import RxOtcBadge from "@/components/RxOtcBadge";
@@ -547,6 +548,11 @@ export default function MedicationCard({
           >
             {canConfirm ? (
               <QuickLogPrnControl
+                identity={{
+                  name: s.name,
+                  rxcui: s.rxcui,
+                  rxcuiIngredients: parseRxcuiIngredients(s.rxcui_ingredients),
+                }}
                 itemId={s.id}
                 name={s.name}
                 doseAmount={doses[0]?.amount ?? null}
