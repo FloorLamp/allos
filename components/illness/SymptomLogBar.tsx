@@ -35,7 +35,7 @@ import {
 import { useTimezone } from "@/components/TimezoneProvider";
 import { statedHhmm, whenOnDay } from "@/lib/stated-time";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
-import { formatClock } from "@/lib/format-date";
+import { formatClockValue } from "@/lib/format-date";
 import {
   logSymptom,
   logTemperature,
@@ -1156,11 +1156,7 @@ export default function SymptomLogBar({
               >
                 That’s a fever — {fmtTemp(feverOffer.degF, temperatureUnit)}
                 {feverOffer.at
-                  ? ` at ${formatClock(
-                      formatPrefs.timeFormat,
-                      Number(feverOffer.at.slice(0, 2)),
-                      Number(feverOffer.at.slice(3))
-                    )}`
+                  ? ` at ${formatClockValue(feverOffer.at, formatPrefs.timeFormat)}`
                   : ""}
                 .
               </p>

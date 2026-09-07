@@ -140,6 +140,8 @@ export default function WhenControl({
   // card. `value.date` never reaches display text again.
   const card = useCockpitDay();
   const prefs = useFormatPrefs();
+  // The day half MID-EDIT, or null when the field is showing the pair's own day.
+  const [draft, setDraft] = useState<string | null>(null);
 
   // EVERY EMITTER BUILDS THE NEXT PAIR FROM THE PAIR AS IT IS *NOW*, never from
   // the one its render closed over. Each half's widget emits only its own half,
@@ -163,10 +165,18 @@ export default function WhenControl({
 
   const setDate = (date: string) => {
     // THE PICKER'S RAW VALUE BECOMES A DAY ONLY ONCE IT IS ONE (#5105's validating
-    // minter, applied by #5489). A date input emits "" while it is being cleared and
-    // a partial string while it is being typed; neither is a day, and the pair's
-    // `date` is `LocalDay` precisely so neither can become one by assignment.
-    if (!isRealIsoDate(date)) return;
+    // minter, applied by #5489) — AND THE FIELD STILL RENDERS WHAT WAS TYPED.
+    // `DateField` is a text input by design (#3376 keeps manual ISO entry at every
+    // width), so it emits every keystroke: "2026-09-0" is not a day, the pair's
+    // `date` is `LocalDay`, and a control that simply swallowed the emit would snap
+    // the box back to the old day on each character. The half-typed text lives HERE,
+    // beside the pair rather than inside it, and is spent the moment a real day
+    // arrives — so nothing downstream can mistake a draft for a stated day.
+    if (!isRealIsoDate(date)) {
+      setDraft(date);
+      return;
+    }
+    setDraft(null);
     // The pair moves together: a date change re-anchors the stated instant onto
     // the new day (or clears it — never invents one), so the two fields cannot
     // come apart even mid-edit.
@@ -253,7 +263,7 @@ export default function WhenControl({
             <label className="block">
               <span className="sr-only">{dateLabel}</span>
               <DateField
-                value={value.date}
+                value={draft ?? value.date}
                 onChange={setDate}
                 min={minDate}
                 max={maxDate}

@@ -8,8 +8,7 @@ import {
   DOSE_ACTION_ICON,
   DOSE_ACTION_NEUTRAL,
 } from "@/components/medications/dose-action-styles";
-import { statedHhmm, statedInstantOnDate } from "@/lib/stated-time";
-import { dateStrInTz, isRealIsoDate } from "@/lib/date";
+import { statedHhmm, statedInstantOnDate, whenOnDay } from "@/lib/stated-time";
 
 // THE CLOCK GLYPH IS THE ONLY SPELLING OF THIS TOGGLE (#4426's rendering ruling,
 // 2026-09-02), so it is not a `label` prop any more and no mount can choose words —
@@ -77,19 +76,18 @@ export interface TimeStatement {
 // The pair a mount opens on: the surface's day, and the minute its host is proposing
 // (rule 6) — or none, which is the empty field every other mount opens with.
 //
-// THE SURFACE'S DAY IS VALIDATED INTO THE PAIR'S (#5105's minter, reached by #5489).
-// `day` is whatever the host's own day context holds; `WhenValue.date` is `LocalDay`,
-// because the control renders a fixed day as TEXT and a storage spelling must not be
-// able to reach that text. A day that is not a day falls back to the profile's today
-// rather than being asserted into one.
+// The surface's day is validated into the pair's by `whenOnDay` — the ONE minter
+// (#5105, reached by #5489), never a second copy of its rule here; this adds only the
+// proposal's anchor, which is this control's own.
 function seedWhen(day: string, proposed: string | null, tz: string): WhenValue {
-  const date = isRealIsoDate(day) ? day : dateStrInTz(tz);
-  return {
-    date,
-    statedAt: proposed
-      ? (statedInstantOnDate(date, proposed, tz)?.toISOString() ?? null)
-      : null,
-  };
+  const on = whenOnDay(day, tz);
+  return proposed
+    ? {
+        ...on,
+        statedAt:
+          statedInstantOnDate(on.date, proposed, tz)?.toISOString() ?? null,
+      }
+    : on;
 }
 
 export function useTimeStatement({

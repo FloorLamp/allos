@@ -10,6 +10,7 @@ import { useTimeStatement } from "@/components/TimeStatement";
 import { useTimezone } from "@/components/TimezoneProvider";
 import {
   cockpitDayLabel,
+  useCockpitDay,
   useDayBinding,
 } from "@/components/illness/CockpitDayContext";
 import {
@@ -137,6 +138,11 @@ export default function QuickLogPrnControl({
   // the context arm.
   const card = useDayBinding(todayStr, tz);
   const cardDay = card.activeDate;
+  // WHETHER THIS ROW IS UNDER A CARD AT ALL. `useDayBinding` answers a day either
+  // way — that is what makes `isPrimaryDay` one definition — but only a card's day
+  // is STATE. Outside one it is this render's `today`, which the write below must
+  // not post (see `log`).
+  const inCard = useCockpitDay() !== null;
   // WHETHER THE CARD IS STANDING ON A DAY THAT STILL HAS A "NOW" (#4686). A day that
   // has ended has none, so the tap below asks for the minute instead of stamping one.
   const isPrimaryDay = card.isPrimaryDay;
@@ -176,11 +182,18 @@ export default function QuickLogPrnControl({
         const fd = stampLoggedVia(new FormData());
         fd.set("id", String(itemId));
         fd.set("offset", offset);
-        // THE CARD'S DAY RIDES BOTH ARMS (#5489 fix 1). The day is the surface's and
-        // the statement is only the time half (#4738 ruling 1) — so the day is stated
-        // whether or not a minute was, and the now-tap can no longer post a dose with
-        // no day at all from a card that says Yesterday.
-        fd.set("date", cardDay);
+        // THE SURFACE'S DAY RIDES BOTH ARMS (#5489 fix 1). The day is the surface's
+        // and the statement is only the time half (#4738 ruling 1) — so the day is
+        // stated whether or not a minute was, and the now-tap can no longer post a
+        // dose with no day at all from a card that says Yesterday.
+        //
+        // A HOST WITH NO DAY OF ITS OWN STILL SAYS NOTHING, which is the action's own
+        // rule and matters more now that a stale day is REFUSED rather than ignored:
+        // outside a card `cardDay` is the day this render computed, so a medications
+        // page left open across local midnight would post yesterday on the next tap
+        // and turn a one-tap dose into "add the time". A stated minute is different —
+        // it was anchored on the day the statement showed, so that day rides with it.
+        if (inCard || customTime) fd.set("date", cardDay);
         if (customTime) fd.set("time", customTime);
         if (profileId != null) fd.set("profileId", String(profileId));
         return logMedicationAdministration(fd);
@@ -229,7 +242,10 @@ export default function QuickLogPrnControl({
       void log("now");
       return;
     }
-    const stated = statement.at;
+    // ONLY WHAT IS ON SCREEN (`TimeStatement` rule 2). A minute typed and then
+    // dismissed is not a statement this tap may spend, so a closed reveal asks again
+    // rather than writing the answer the reader just walked away from.
+    const stated = statement.open ? statement.at : null;
     if (stated) void log("custom", stated);
     else statement.setOpen(true);
   }
