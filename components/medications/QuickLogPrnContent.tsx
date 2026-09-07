@@ -6,6 +6,7 @@ import type { AppRoute } from "@/lib/hrefs";
 import { now as clockNow } from "@/lib/clock";
 import { prnRowStatus } from "@/lib/redose-format";
 import type { TimeFormat } from "@/lib/format-date";
+import type { PediatricFormContext } from "@/lib/prn-dosing";
 import Disclosure from "@/components/Disclosure";
 
 // PRN (as-needed) medication quick-log content (#797). The one-tap
@@ -29,6 +30,7 @@ export default function QuickLogPrnContent({
   titleHref,
   timeFormat,
   nowIso,
+  pediatric,
 }: {
   meds: PrnMedForQuickLog[];
   tz: string;
@@ -52,6 +54,10 @@ export default function QuickLogPrnContent({
   // recorded_at under ALLOS_TEST_NOW (the frozen e2e clock). Server mounts may omit
   // it (the local clockNow() below is the same server clock).
   nowIso?: string;
+  // The SUBJECT's pediatric dosing context (#4713), forwarded to every row so the
+  // label band is evaluated at the tap rather than only inside the add form. Absent
+  // for an adult profile, and every line below is what it always was.
+  pediatric?: PediatricFormContext | null;
 }) {
   // The frozen-clock seam (#1005): recorded_at is stamped through lib/clock, so the
   // elapsed-window "now" must come from the same source (a production no-op). A
@@ -86,6 +92,7 @@ export default function QuickLogPrnContent({
         rowVariant={rowVariant}
         compactActions={compact}
         tz={tz}
+        pediatric={pediatric}
       />
     );
   };

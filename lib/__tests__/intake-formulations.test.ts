@@ -3,10 +3,10 @@ import {
   DEFAULT_FORMULATION_SLUG,
   defaultFormulationSlug,
   formulationChoices,
-  formulationDoseAmount,
   formulationRedosePreset,
   pediatricContextLine,
 } from "@/lib/intake-formulations";
+import { formulationDoseAmount } from "@/lib/prn-dosing";
 import { prnDefaultsFor } from "@/lib/prn-defaults";
 import { parseAmountMg, prnDayExposure } from "@/lib/prn-redose";
 import { formatMedicationDoseProduct } from "@/lib/medication-dose-format";

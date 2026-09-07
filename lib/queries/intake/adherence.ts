@@ -636,7 +636,8 @@ function logAdministrationTx(
   occurredAtStr: string,
   expectedRedoseAdministrationId: null,
   loggedVia: LoggedVia,
-  notifyMessageId?: number | null
+  notifyMessageId?: number | null,
+  amountOverride?: string | null
 ): AdministrationOutcome;
 function logAdministrationTx(
   profileId: number,
@@ -646,7 +647,8 @@ function logAdministrationTx(
   occurredAtStr: string,
   expectedRedoseAdministrationId: number,
   loggedVia: LoggedVia,
-  notifyMessageId?: number | null
+  notifyMessageId?: number | null,
+  amountOverride?: string | null
 ): RedoseWindowAdministrationOutcome;
 function logAdministrationTx(
   profileId: number,
@@ -656,7 +658,8 @@ function logAdministrationTx(
   occurredAtStr: string,
   expectedRedoseAdministrationId: number | null,
   loggedVia: LoggedVia,
-  notifyMessageId?: number | null
+  notifyMessageId?: number | null,
+  amountOverride?: string | null
 ): RedoseWindowAdministrationOutcome {
   // Resolve the item's primary loggable (non-retired) dose + live state, scoped to
   // the profile through the parent item. A PRN med always has at least one dose row
@@ -714,7 +717,11 @@ function logAdministrationTx(
       dose.dose_id,
       itemId,
       date,
-      dose.amount,
+      // WHAT WAS ACTUALLY GIVEN (#4713 fix 3). Normally the schedule row's amount,
+      // snapshotted so history survives a later dosage edit; for a child whose label
+      // band was evaluated at the tap it is that band's figure, because the row
+      // offered it and the record must state what the reader was shown.
+      amountOverride ?? dose.amount,
       recordedAtStr,
       occurredAtStr,
       notifyMessageId ?? null,
@@ -761,7 +768,11 @@ export function logAdministration(
   // the chat rather than the message it came from (#2418 part 2): the digest's offer
   // list is not a dose reminder, so its taps have to say where they happened or their
   // 🕐 chips surface on an unrelated reminder.
-  notifyMessageId?: number | null
+  notifyMessageId?: number | null,
+  // The amount to RECORD in place of the schedule row's snapshot (#4713) — the
+  // pediatric label band evaluated at dose time by the caller that also rendered it.
+  // Null/absent everywhere else, which is every adult and no-band administration.
+  amountOverride?: string | null
 ): AdministrationOutcome {
   const tz = getTimezone(profileId);
   const capturedAt = clockNow();
@@ -782,7 +793,8 @@ export function logAdministration(
       occurredAtStr,
       null,
       loggedVia,
-      notifyMessageId
+      notifyMessageId,
+      amountOverride
     )
   );
 }

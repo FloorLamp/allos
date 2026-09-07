@@ -15,10 +15,12 @@
 //   • The band amount is a SUGGESTION to confirm, carrying the label caveat — never
 //     silently applied (that confirm is the liability line).
 
+import { prnDefaultsFor } from "./prn-defaults";
 import type {
   PediatricBand,
   PrnDefaultEntry,
   PrnFormulation,
+  PrnPediatricDefaults,
 } from "./prn-defaults";
 import type { WeightUnit } from "./settings";
 import { daysBetweenDateStr } from "./date";
@@ -209,6 +211,26 @@ export type PediatricDoseResult =
 // entry. Order of decisions is deliberate: no-table → age gate → no weight →
 // stale weight → below-smallest-band refusal → the band dose. `formulationSlug` is the
 // user's picked product concentration (mL only surfaces when it's set and known).
+// An entry KNOWN to carry a chart cannot come back "no-pediatric" — that verdict is
+// the absence of the table, and #4713's dose row would otherwise have to handle a
+// case it has already excluded. Stated as an overload rather than re-checked at the
+// call site (types over guards).
+export function pediatricDoseSuggestion(input: {
+  entry: PrnDefaultEntry & { pediatric: PrnPediatricDefaults };
+  ageMonths: number;
+  weightKg: number | null;
+  weightDate: string | null;
+  today: string;
+  formulationSlug?: string | null;
+}): Exclude<PediatricDoseResult, { kind: "no-pediatric" }>;
+export function pediatricDoseSuggestion(input: {
+  entry: PrnDefaultEntry;
+  ageMonths: number;
+  weightKg: number | null;
+  weightDate: string | null;
+  today: string;
+  formulationSlug?: string | null;
+}): PediatricDoseResult;
 export function pediatricDoseSuggestion(input: {
   entry: PrnDefaultEntry;
   ageMonths: number;
@@ -266,5 +288,111 @@ export function pediatricDoseSuggestion(input: {
     ml: mlForBand(formulation, band.mg),
     formulationLabel: formulation?.label ?? null,
     caveat: PEDIATRIC_DOSE_CAVEAT,
+  };
+}
+
+// The dose amount a formulation implies for a given milligram figure. It lives beside
+// the band lookup because it is the band's ONE spelling as a stored string: the add
+// form writes it into `intake_item_doses.amount`, the dose row offers it, and #4713's
+// administration record stores it — one function, so those three can never disagree.
+//
+// THE VOLUME IS NOT STORED HERE, and that is the whole decision. #3216 asks a
+// formulation switch to re-derive the dose "volume-first with strength equivalence",
+// and a suspension's dose really is a volume — but the volume is already DERIVED at
+// every display boundary by `formatMedicationDoseProduct`, which scales the product's
+// concentration to the selected milligrams and renders "240 mg / 7.5 mL". So the
+// switch re-derives `product`, and the amount stays milligrams.
+//
+// WHAT A VOLUME-LEADING AMOUNT WOULD COST. `parseAmountMg` (#1854) is anchored at a
+// leading number + mass unit, so it reads "240 mg / 7.5 mL" perfectly well — an
+// mg-leading string with the volume appended is NOT the hazard. The hazard is the
+// literal reading of "volume-first": "7.5 mL (240 mg)" and "7.5 mL" both parse to
+// null. And `prnDayExposure` treats an unreadable amount as a reason to abandon the
+// milligram basis — `PrnExposureBasis` flips from "mg" to "count", so a confirmed
+// mg/day ceiling silently stops being a mg/day ceiling and becomes a dose count.
+// That would land on a child's liquid medicine, which is the single case where the
+// milligram ceiling matters most (200 mg and 800 mg of the same ingredient are the
+// same "dose" and four times the exposure). Nothing surfaces the downgrade.
+//
+// Storing BOTH would also put one datum in two columns, free to drift the moment
+// someone edits one, and make `formatMedicationDoseProduct` render the concentration
+// twice ("240 mg / 7.5 mL · 160 mg / 5 mL").
+//
+// The band PICKER still shows the volume beside each band — there it is a label the
+// person reads before measuring, not a value the row stores.
+export function formulationDoseAmount(mg: number): string {
+  return `${mg} mg`;
+}
+
+// What one PRN dose row offers, and what its tap writes (#4713).
+//
+// THE BAND RUNS AT THE TAP, NOT ONLY AT ADD TIME. The machinery above had exactly one
+// consumer — the add/edit medication form — so a child's dose row rendered the
+// `amount` SNAPSHOT the band produced whenever the item was last edited. A growing
+// child's snapshot said 160 mg; three months later the tap still wrote 160 mg with
+// nothing re-deriving it, and the staleness refusals below were unreachable from the
+// only surface anybody opens to give a dose at 2 a.m.
+//
+// MATCHED BY NAME, DELIBERATELY. The quick-log projection carries no RxCUI (the same
+// row `antipyreticPrnMeds` already matches name-only, for the same reason), and the
+// row and the WRITE must resolve the same entry or the record would state a figure the
+// reader was never shown — #4753's primitive, that a chip's label is its payload. So
+// both sides run this one function over the same two fields.
+//
+// A REFUSAL DOES NOT BLOCK THE TAP. #798's gates decide what the LABEL suggests, and
+// this moves where they run, not what they decide: the add form states a refusal and
+// still saves, and a caregiver who has already given a dose must still be able to
+// record it. `amount` therefore falls back to the stored snapshot for every non-dose
+// verdict, and the row states the refusal beside it.
+export interface PrnDoseRowOffer {
+  // The amount the row offers and the tap records: the label band's figure when one
+  // is derivable, else the item's stored snapshot (adults, no-band items, refusals).
+  amount: string | null;
+  // The band the amount came from ("24–35 lb"), for the row's basis line. Null
+  // whenever `amount` is the stored snapshot — which is also what tells the write
+  // path there is nothing to override.
+  bandLabel: string | null;
+  // The label's verdict, for the row to state. Null for an adult profile or an item
+  // with no pediatric chart — the byte-identical path, and the reason "no-pediatric"
+  // is not among the verdicts a caller has to handle: an entry without a chart never
+  // reaches the lookup.
+  result: Exclude<PediatricDoseResult, { kind: "no-pediatric" }> | null;
+}
+
+export function prnDoseRowOffer(
+  item: { name: string; product?: string | null; amount?: string | null },
+  context: PediatricFormContext | null | undefined
+): PrnDoseRowOffer {
+  const snapshot: PrnDoseRowOffer = {
+    amount: item.amount ?? null,
+    bandLabel: null,
+    result: null,
+  };
+  if (!context) return snapshot;
+  const { ageMonths } = context;
+  if (ageMonths == null || !isChildProfileAge(ageMonths)) return snapshot;
+  const entry = prnDefaultsFor({
+    name: item.name,
+    rxcui: null,
+    rxcuiIngredients: null,
+  });
+  const pediatric = entry?.pediatric;
+  if (!entry || !pediatric) return snapshot;
+  const result = pediatricDoseSuggestion({
+    entry: { ...entry, pediatric },
+    ageMonths,
+    weightKg: context.weightKg,
+    weightDate: context.weightDate,
+    today: context.today,
+    formulationSlug: formulationSlugForProduct(
+      pediatric.formulations,
+      item.product
+    ),
+  });
+  if (result.kind !== "dose") return { ...snapshot, result };
+  return {
+    amount: formulationDoseAmount(result.mg),
+    bandLabel: result.bandLabel,
+    result,
   };
 }

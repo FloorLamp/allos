@@ -38,6 +38,7 @@ const mocks = vi.hoisted(() => ({
   updateHistoricalDose: vi.fn(),
   setDoseStatus: vi.fn(),
   logMedicationAdministration: vi.fn(),
+  addMeasurements: vi.fn(async () => ({})),
 }));
 
 vi.mock("@/components/LoggedViaSurface", () => ({
@@ -88,6 +89,11 @@ vi.mock("@/app/(app)/symptom-actions", () => ({
 }));
 vi.mock("@/app/(app)/medications/actions", () => ({
   logMedicationAdministration: mocks.logMedicationAdministration,
+}));
+// The row's inline weight fixer posts the real body-metric action; only the Server
+// Action import is stood in for, so the fixer itself is the shipped component.
+vi.mock("@/app/(app)/trends/measurement-actions", () => ({
+  addMeasurements: mocks.addMeasurements,
 }));
 vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
   logHistoricalDose: mocks.logHistoricalDose,
@@ -674,6 +680,101 @@ describe("the PRN row's earlier-dose statement takes the card's day (#4691/#4738
     expect(fd.offset).toBe("custom");
     expect(fd.time).toBe("23:30");
     expect(fd.date).toBe(YESTERDAY_UTC);
+  });
+});
+
+// THE BAND RUNS AT THE TAP (#4713). #798's weight-band machinery had one consumer —
+// the add/edit form — so the dose row rendered whatever milligram figure the item was
+// last SAVED with. For a growing child that snapshot goes stale silently, and the
+// label's own refusals were unreachable from the surface a dose is given from.
+//
+// The subject here is a 6-year-old at 12 kg (26.5 lb), whose ibuprofen label band is
+// 100 mg; the item still carries the 160 mg it was saved with, so every claim below
+// separates "what the label says now" from "what the row remembers".
+describe("the PRN row bands from the child's weight at dose time (#4713)", () => {
+  const CHILD = {
+    ageMonths: 72,
+    weightKg: 12,
+    weightDate: "2026-09-01",
+    weightUnit: "kg" as const,
+    today: "2026-09-02",
+  };
+
+  function row(pediatric: typeof CHILD | null, over: { name?: string } = {}) {
+    render(
+      <QuickLogPrnControl
+        itemId={31}
+        name={over.name ?? "Ibuprofen"}
+        doseAmount="160 mg"
+        dayLabel="None today"
+        tz="UTC"
+        pediatric={pediatric}
+      />
+    );
+  }
+
+  it("offers the band's amount and states the basis it read", () => {
+    row(CHILD);
+    expect(screen.getByTestId("prn-log-now").getAttribute("aria-label")).toBe(
+      "Take Ibuprofen · 100 mg"
+    );
+    expect(screen.getByTestId("prn-band-basis").textContent).toBe(
+      "100 mg · 24–35 lb band"
+    );
+    expect(screen.queryByTestId("prn-band-refusal")).toBeNull();
+  });
+
+  // THE POSITIVE CONTROL for the criterion that matters most: the same row, same
+  // stored snapshot, with no child context and with a child the label chart does not
+  // cover. Both must be the row that shipped — no basis line, no refusal, the
+  // snapshot's own figure.
+  it.each([
+    { subject: "an adult profile", pediatric: null, name: "Ibuprofen" },
+    {
+      subject: "an item with no label chart",
+      pediatric: CHILD,
+      name: "Aspirin",
+    },
+  ])("leaves $subject exactly as it was", ({ pediatric, name }) => {
+    row(pediatric, { name });
+    expect(screen.getByTestId("prn-log-now").getAttribute("aria-label")).toBe(
+      `Take ${name} · 160 mg`
+    );
+    expect(screen.queryByTestId("prn-band-basis")).toBeNull();
+    expect(screen.queryByTestId("prn-band-refusal")).toBeNull();
+  });
+
+  // A MISSING WEIGHT DATE READS AS STALE (#798), and under 12 months the threshold is
+  // 60 days — the infant case the machinery was built for, and the one that was
+  // unreachable from this row. The fixer opens WITH the refusal, so the trip to the
+  // Body page and back is not on the path.
+  it("surfaces the stale-weight refusal with the fixer already open, and re-offers in place", async () => {
+    const infant = { ...CHILD, ageMonths: 8, weightKg: 5, weightDate: null };
+    row(infant);
+    expect(screen.getByTestId("prn-band-refusal").textContent).toContain(
+      "over 60 days old"
+    );
+    // Nothing was banded, so the row still offers what it remembers rather than a
+    // figure derived from a weight the label refuses.
+    expect(screen.queryByTestId("prn-band-basis")).toBeNull();
+    expect(screen.getByTestId("prn-log-now").getAttribute("aria-label")).toBe(
+      "Take Ibuprofen · 160 mg"
+    );
+
+    // One field, one save, and the offer follows — no navigation, no item edit.
+    fireEvent.change(screen.getByTestId("pediatric-weight-input"), {
+      target: { value: "12" },
+    });
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "Save" }))
+    );
+    expect(screen.queryByTestId("prn-band-refusal")).toBeNull();
+    expect(screen.getByTestId("prn-band-basis").textContent).toBe(
+      "100 mg · 24–35 lb band"
+    );
+    expect(screen.getByTestId("prn-log-now").getAttribute("aria-label")).toBe(
+      "Take Ibuprofen · 100 mg"
+    );
   });
 });
 

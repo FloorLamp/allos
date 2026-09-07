@@ -65,6 +65,7 @@ import { SUPPLEMENT_BRANDS } from "@/lib/supplement-brands";
 import { prnDefaultsFor, redoseLabelDefaults } from "@/lib/prn-defaults";
 import type { PediatricBand } from "@/lib/datasets/prn-defaults";
 import {
+  formulationDoseAmount,
   formulationSlugForProduct,
   isChildProfileAge,
   pediatricAgeYears,
@@ -75,7 +76,6 @@ import {
   DEFAULT_FORMULATION_SLUG,
   defaultFormulationSlug,
   formulationChoices,
-  formulationDoseAmount,
   formulationRedosePreset,
   pediatricContextLine,
 } from "@/lib/intake-formulations";

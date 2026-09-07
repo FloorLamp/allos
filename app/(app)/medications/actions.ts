@@ -13,6 +13,7 @@ import {
   deleteMedicationSideEffect,
   promoteMedicationSideEffect,
   logAdministration,
+  pediatricAdministrationAmount,
   dismissFinding,
   restoreFinding,
   refillSupply,
@@ -302,7 +303,14 @@ export async function logMedicationAdministration(
     // in the illness cockpit. `page` is this action's home, not the whole answer, so
     // the surface rides the post like every other shared web write.
     parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page"),
-    given
+    given,
+    null,
+    // THE BAND RUNS AT THE TAP (#4713 fix 3). Every web dose row states the label band
+    // for a child before it is tapped, so the record states it too — derived HERE from
+    // the same pure lookup the row rendered, never posted by the client. Null for an
+    // adult, an item with no label chart, and every refusal, which is the untouched
+    // stored-snapshot path.
+    pediatricAdministrationAmount(profileId, id)
   );
   revalidateRoute("/medications");
   revalidateRoute("/nutrition");
