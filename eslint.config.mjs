@@ -217,11 +217,14 @@ const SYNTAX_ALL = TEMPORAL_BRAND_CAST_SELECTORS.map((selector) => ({
   message:
     "Do not cast or re-alias to a temporal brand. Obtain it from a minter that validates or constructs it (lib/temporal-types.ts, #2899).",
 }));
-// These two used to sit inline in the revalidate block and had been DEAD since the
-// temporal-brand block landed after it: flat config replaces a rule's options, so the
-// broader block was switching both off for every file the narrower one governs. Named
-// here, re-stated by every block below, and proven with a forged violation.
+// Shared syntax restrictions remain active in every narrower block below.
 const APP_SURFACE_SYNTAX = [
+  {
+    selector:
+      "JSXOpeningElement[name.name='PageContainer'] > JSXAttribute[name.name='className'] :matches(Literal[value=/(^|[\\s:])max-w-[[\\w./-]/], TemplateElement[value.raw=/(^|[\\s:])max-w-[[\\w./-]/])",
+    message:
+      "Use PageContainer's width prop for its measure; className may supply spacing and centering, not max-w-* overrides.",
+  },
   {
     selector:
       "VariableDeclarator[id.type='ObjectPattern']:has(Property[key.name='revalidatePath']) ImportExpression[source.value='next/cache']",
