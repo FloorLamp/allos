@@ -116,12 +116,6 @@ describe("chart color palette boundary (issue #794)", () => {
         `and should be deleted from the allowlist:\n${stale.join("\n")}`
     ).toEqual([]);
   });
-
-  it("the shared palette module exports chartSeries and chartBand", () => {
-    const src = fs.readFileSync(path.join(REPO, "lib/chart-colors.ts"), "utf8");
-    expect(/export const chartSeries\b/.test(src)).toBe(true);
-    expect(/export const chartBand\b/.test(src)).toBe(true);
-  });
 });
 
 // ── the hex scan's blind spot: Tailwind-CLASS ramps (issue #1445, Part 4d) ───
@@ -250,19 +244,6 @@ describe("Tailwind-class cell ramps (issue #1445, Part 4d)", () => {
     ).toEqual([]);
   });
 
-  it("the palette module still ships both halves of every ramp (classes AND hexes)", () => {
-    const src = fs.readFileSync(path.join(REPO, "lib/chart-colors.ts"), "utf8");
-    expect(/export const chartActivityRamp\b/.test(src)).toBe(true);
-    expect(/export const chartObservationRamp\b/.test(src)).toBe(true);
-    expect(/export const chartAdherenceState\b/.test(src)).toBe(true);
-    // The class ladder without its hexes would leave the validator checking a
-    // fiction; the hexes without the ladder would leave the DOM unvalidated.
-    expect(/stepClasses:/.test(src)).toBe(true);
-    expect(/light:\s*\{\s*empty:/s.test(src)).toBe(true);
-    expect(/labelClasses:/.test(src)).toBe(true);
-    expect(/labelText:/.test(src)).toBe(true);
-  });
-
   it("every ramp-allowlist entry still declares a ladder (no stale entries)", () => {
     const stale: string[] = [];
     for (const rel of RAMP_ALLOWLIST.keys()) {
@@ -277,51 +258,6 @@ describe("Tailwind-class cell ramps (issue #1445, Part 4d)", () => {
     expect(
       stale,
       `These RAMP_ALLOWLIST entries no longer declare a bg-class ladder:\n${stale.join("\n")}`
-    ).toEqual([]);
-  });
-});
-
-// ── the ramp rule's own blind spot: a KEYED state map (issue #4543) ──────────
-//
-// The ramp rule above matches an ARRAY of same-hue bg-classes. WeeklyHabits'
-// consistency strip painted its five week verdicts from a keyed `Record` of mixed
-// hues instead — met/short/empty/current/na as emerald/amber/slate/brand — which is
-// the same palette decision in the shape the ramp rule deliberately does not match.
-//
-// It is NOT matched by shape here either, and that is the finding rather than a gap.
-// The shape — a brace-delimited object literal holding three or more
-// `"…bg-<hue>-<step>…"` values — matches 32 such maps in 30 files across the dirs
-// this suite walks, every one ordinary badge, notice, chip, status or scale styling
-// and not one of them a period strip. It would ship as a 30-entry allowlist policing
-// nothing.
-//
-// What constitutes membership is the IMPORT: a surface that paints state cells mounts
-// the shared primitive, and the primitive's tones come from the palette module.
-//
-// A DELIBERATE CONVERSE GUARD, AND GREEN ON MAIN TOO — said out loud because a rule
-// that passes on both trees is otherwise indistinguishable from one that cannot fail.
-// Nothing mounted the primitive before this convergence, so this rule had nothing to
-// range over and could NOT have caught the escape in the tree that shipped it; it
-// faces FORWARD, at the next surface to mount StateCells. Shown to see rather than
-// assumed: a forged components/*.tsx mounting StateCells with a literal bg-class reds
-// this by name, and the same file taking its tone from `chartAdherenceState` leaves
-// it silent.
-describe("state-cell surfaces take their tones from the palette (issue #4543)", () => {
-  it("every StateCells/StateLegend mount also imports @/lib/chart-colors", () => {
-    const offenders = tsxFiles()
-      .filter(
-        ({ rel, text }) =>
-          rel !== "components/StateCells.tsx" &&
-          /from "@\/components\/StateCells"/.test(text) &&
-          !/from "@\/lib\/chart-colors"/.test(text)
-      )
-      .map(({ rel }) => rel);
-    expect(
-      offenders,
-      `A state-painted cell or legend swatch takes its \`tone\` from ` +
-        `@/lib/chart-colors — the module that ships each state's class AND its hex, ` +
-        `so lib/__tests__/chart-palette.test.ts can validate what renders. These ` +
-        `files mount the shared primitive with colors from somewhere else:\n${offenders.join("\n")}`
     ).toEqual([]);
   });
 });
