@@ -422,6 +422,7 @@ export default function ScheduleGrid({
                             : "bg-surface"
                         }`}
                         onMouseMove={(e) => showHover(e, nameTip(entry))}
+                        onMouseLeave={() => setHoverTip(null)}
                       >
                         <button
                           type="button"
@@ -471,6 +472,7 @@ export default function ScheduleGrid({
                                 : ""
                             } ${content ? "cursor-help" : ""}`}
                             onMouseMove={(e) => showHover(e, content)}
+                            onMouseLeave={() => setHoverTip(null)}
                           >
                             {content ? (
                               <button

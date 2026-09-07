@@ -29,6 +29,6 @@ it("keeps a dismissed tip closed when scrolling changes the cell beneath the mou
 
   fireEvent.mouseMove(next, { clientX: 200, clientY: 100 });
   expect(screen.getByRole("tooltip").textContent).toContain("Polio (IPV)");
-  fireEvent.mouseLeave(screen.getByTestId("cdc-schedule-grid"));
+  fireEvent.mouseLeave(next, { relatedTarget: first });
   expect(screen.queryByRole("tooltip")).toBeNull();
 });
