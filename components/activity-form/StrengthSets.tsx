@@ -67,6 +67,7 @@ import {
   blockedField,
   partSetsSummary,
   sharesLoad,
+  sharedLoadSets,
   type PartEntry,
   type SetEntry,
   type SetPlan,
@@ -927,29 +928,14 @@ export default function StrengthSets({
     units.weightUnit === "lb"
       ? weightIncrementLb(p.name)
       : weightIncrementKg(p.name);
-  // ONE LOAD FOR THE WHOLE GRID (#5371). Straight sets decide the weight once and
-  // vary the reps, so while every set carries the same load (both sides of it, for a
-  // per-side lift) the grid states that load once, above the rows, and the rows are
-  // reps only. The stored shape is untouched — every set still carries its own
-  // weight, and the band writes all of them — this is how the common case RENDERS.
-  // Only a lift that steps its load: bodyweight and timed lifts have no stepper to
-  // share.
-  //
-  // AND EXPANSION LATCHES. Derive "shared" from uniformity alone and a grid someone
-  // varied on purpose would snap back to one band the moment set 2 was typed back to
-  // set 1's number — the fold-under-the-fingers #3336 refused. So once the sets
-  // differ (a "Vary" tap, a mixed Recent fill, a stored session that arrived varied)
-  // this part stays per-set. The latch is the PART's (`p.varied`, client-only, never
-  // saved), not this editor's: ActivityPartsList keys the editors by slot, and a
-  // latch held here would stay in the slot when the exercise above was removed or
-  // moved, unfolding the next exercise with nothing typed. The Vary tap writes it
-  // here; the seed and the fills write it where they write the sets (`latchVaried`),
-  // so an untouched form's signature never moves. `sharesLoad` stays in the render
-  // so a part that arrives without the latch still shows the loads it has.
+  // Keep the shared editor on remaining plans; confirmed rows show their own
+  // weights. Explicit Vary and differing planned loads keep per-set editing open.
+  const sharedSets = sharedLoadSets(p.sets);
+  const sharedIndex = p.sets.indexOf(sharedSets[0]);
   const stepsLoad = !timed && !isBodyweight(p.name);
-  // A part with no rows yet has no load to state.
   const sharedLoad =
-    stepsLoad && !p.varied && sharesLoad(p) && p.sets.length > 0;
+    stepsLoad && !p.varied && sharesLoad(p) && sharedSets.length > 0;
+  const sharesBand = (s: SetEntry) => sharedLoad && sharedSets.includes(s);
   // Which set's "Vary" tap just revealed the per-set weights, so that set's weight
   // takes the caret; consumed by the input on mount.
   const varyFocus = useRef<number | null>(null);
@@ -963,7 +949,7 @@ export default function StrengthSets({
       el.focus();
     }
   };
-  // Set 1's reps input per side: Enter in the exercise-level weight lands there.
+  // Enter in the shared weight lands in its first set's reps.
   const firstReps = useRef<Record<RowSide, HTMLInputElement | null>>({
     both: null,
     left: null,
@@ -1219,7 +1205,10 @@ export default function StrengthSets({
               className="mt-2 flex items-center gap-2"
             >
               <span className="shrink-0 text-xs font-medium whitespace-nowrap text-slate-500 dark:text-slate-400">
-                Weight ({units.weightUnit})
+                {sharedSets.length < p.sets.length
+                  ? "Remaining weight"
+                  : "Weight"}{" "}
+                ({units.weightUnit})
               </span>
               <div className="min-w-0 flex-1 space-y-1.5">
                 {(p.perSide ? PER_SIDE : BILATERAL).map((side) => (
@@ -1227,14 +1216,14 @@ export default function StrengthSets({
                     {sideLabel(side)}
                     <LoadField
                       side={side}
-                      set={p.sets[0]}
+                      set={sharedSets[0]}
                       exercise={p.name}
                       unit={units.weightUnit}
                       weightStep={weightStep}
                       showPlate={showPlate}
-                      ids={p.perSide ? null : rowIds(0)}
-                      plan={p.sets[0].plan}
-                      blocked={p.sets.some(
+                      ids={p.perSide ? null : rowIds(sharedIndex)}
+                      plan={sharedSets[0].plan}
+                      blocked={sharedSets.some(
                         (s) =>
                           sideFlags(
                             s[SIDE[side].weight],
@@ -1353,10 +1342,10 @@ export default function StrengthSets({
                         weightStep={weightStep}
                         showPlate={showPlate}
                         flagsFor={sideFlags}
-                        load={sharedLoad ? "shared" : "own"}
+                        load={sharesBand(s) ? "shared" : "own"}
                         loadRef={rowSide === "left" ? loadRef(si) : undefined}
                         repsRef={
-                          si === 0
+                          si === sharedIndex
                             ? (el) => (firstReps.current[rowSide] = el)
                             : undefined
                         }
@@ -1364,7 +1353,7 @@ export default function StrengthSets({
                         onPlateTarget={(field) => onPlateTarget(si, field)}
                         onEnter={canAddSet ? onAddSet : undefined}
                         onVary={
-                          sharedLoad && rowSide === "right"
+                          sharesBand(s) && rowSide === "right"
                             ? () => vary(si)
                             : undefined
                         }
@@ -1383,17 +1372,17 @@ export default function StrengthSets({
                     weightStep={weightStep}
                     showPlate={showPlate}
                     flagsFor={sideFlags}
-                    load={sharedLoad ? "shared" : "own"}
+                    load={sharesBand(s) ? "shared" : "own"}
                     loadRef={loadRef(si)}
                     repsRef={
-                      si === 0
+                      si === sharedIndex
                         ? (el) => (firstReps.current.both = el)
                         : undefined
                     }
                     onChange={(patch) => onUpdateSet(si, patch)}
                     onPlateTarget={(field) => onPlateTarget(si, field)}
                     onEnter={canAddSet ? onAddSet : undefined}
-                    onVary={sharedLoad ? () => vary(si) : undefined}
+                    onVary={sharesBand(s) ? () => vary(si) : undefined}
                   />
                 )}
                 <div

@@ -395,6 +395,33 @@ describe("the shared weight stepper (#5371)", () => {
     expect(weights()).toEqual(["70", "70", "70"]);
   });
 
+  it("keeps confirmed loads and the remaining-load editor stable while typing", () => {
+    const planned = asPlan({ ...blankSet(), weight: "60", reps: "8" });
+    mountLive(part({ sets: [planned, planned, planned] }));
+    fireEvent.click(byId("set-confirm-1"));
+    const weight = within(byId("exercise-weight")).getByRole("spinbutton");
+    weight.focus();
+    fireEvent.change(weight, { target: { value: "6" } });
+    expect(document.activeElement).toBe(weight);
+    fireEvent.change(weight, { target: { value: "62.5" } });
+    expect(weight).toHaveProperty("value", "62.5");
+    expect(weights()).toEqual(["60", "62.5", "62.5"]);
+    expect(latest[0].sets.map(setDone)).toEqual([true, false, false]);
+
+    fireEvent.click(byId("set-confirm-2"));
+    expect(
+      buildActivityPayload(classifier, latest).flat.map((s) => s.weight)
+    ).toEqual([60, 62.5]);
+    fireEvent.click(
+      within(byId("set-row-1")).getByLabelText("Increase weight")
+    );
+    expect(weights()).toEqual(["62.5", "62.5", "62.5"]);
+    expect(within(byId("set-row-1")).getByTestId("set1-weight")).toHaveProperty(
+      "value",
+      "62.5"
+    );
+  });
+
   it("Vary expands to per-set weights, focuses that set's, and stays expanded", () => {
     mountLive(bench(["60", "8"], ["60", "8"], ["60", "8"]));
     fireEvent.click(byId("set-vary-2"));
