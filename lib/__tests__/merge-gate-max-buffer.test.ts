@@ -103,7 +103,7 @@ it("reaches a verdict when the base comparison outgrows the exec default", () =>
       encoding: "utf8",
       env: {
         ...process.env,
-        GH_TOKEN: "soft-secret-that-must-not-print",
+        GH_TOKEN: "test",
         PATH: `${bin}:${process.env.PATH}`,
       },
     }
@@ -125,7 +125,7 @@ it("turns a failed soft comparison into an unknown comparison verdict", () => {
       encoding: "utf8",
       env: {
         ...process.env,
-        GH_TOKEN: "test",
+        GH_TOKEN: "soft-secret-that-must-not-print",
         MERGE_GATE_TEST_FAIL_COMPARE: "1",
         PATH: `${bin}:${process.env.PATH}`,
       },
