@@ -372,9 +372,9 @@ describe("the fever offer states the reading's time and proposes it (#5489)", ()
     bar();
     await openFold();
     await logReading("104.8");
-    expect(
-      screen.getByTestId("fever-offer-sentence").textContent
-    ).not.toMatch(/\d{1,2}:\d{2}/);
+    expect(screen.getByTestId("fever-offer-sentence").textContent).not.toMatch(
+      /\d{1,2}:\d{2}/
+    );
     fireEvent.click(screen.getByTestId(`cockpit-med-chip-${ANTIPYRETIC.id}`));
     expect(screen.queryByTestId("prn-log-when-time")).toBeNull();
   });
