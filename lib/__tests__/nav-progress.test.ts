@@ -5,49 +5,13 @@ import {
   failNavProgress,
   getNavProgress,
   getServerNavProgress,
-  navProgressPhase,
+  installNavProgress,
   resetNavProgress,
   retryNavProgress,
   settleNavProgress,
   startNavProgress,
   subscribeNavProgress,
 } from "@/lib/nav-progress";
-
-describe("navProgressPhase", () => {
-  it("is idle when nothing is navigating", () => {
-    expect(
-      navProgressPhase({ navigating: false, elapsedMs: 5000, failed: false })
-    ).toBe("idle");
-  });
-
-  it("paints nothing under the threshold, so a fast network sees no flash", () => {
-    expect(
-      navProgressPhase({
-        navigating: true,
-        elapsedMs: NAV_PROGRESS_THRESHOLD_MS - 1,
-        failed: false,
-      })
-    ).toBe("waiting");
-  });
-
-  it("shows the indicator at the threshold", () => {
-    expect(
-      navProgressPhase({
-        navigating: true,
-        elapsedMs: NAV_PROGRESS_THRESHOLD_MS,
-        failed: false,
-      })
-    ).toBe("slow");
-  });
-
-  it("reports a failure that arrives before the threshold", () => {
-    // A dead connection rejects almost instantly, so the ask has to be reachable
-    // without first waiting out a threshold meant for slowness.
-    expect(
-      navProgressPhase({ navigating: true, elapsedMs: 10, failed: true })
-    ).toBe("failed");
-  });
-});
 
 describe("the navigation progress store", () => {
   beforeEach(() => {
@@ -82,6 +46,26 @@ describe("the navigation progress store", () => {
     settleNavProgress();
     vi.advanceTimersByTime(1000);
     expect(seen).toEqual(["waiting", "idle"]);
+    expect(getNavProgress()).toBe("idle");
+  });
+
+  it("ignores state-only history and commits queued before a newer navigation", async () => {
+    const win = {
+      history: { pushState: vi.fn(), replaceState: vi.fn() },
+    } as unknown as Window;
+    installNavProgress(win);
+    startNavProgress();
+    win.history.pushState({ backClose: true }, "");
+    await Promise.resolve();
+    expect(getNavProgress()).toBe("waiting");
+
+    win.history.replaceState({}, "", "/settings");
+    startNavProgress();
+    await Promise.resolve();
+    expect(getNavProgress()).toBe("waiting");
+
+    win.history.replaceState({}, "", "/settings");
+    await Promise.resolve();
     expect(getNavProgress()).toBe("idle");
   });
 
