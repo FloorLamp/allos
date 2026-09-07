@@ -115,6 +115,16 @@ beforeEach(() => {
   toasts.length = 0;
   removeResult = { ok: true, undoId: 9 };
   staged = null;
+  // The custom-symptom Combobox anchors its list through `useAnchoredPopover`,
+  // which jsdom has no ResizeObserver for — the repo's standing stub.
+  vi.stubGlobal(
+    "ResizeObserver",
+    class ResizeObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+  );
   cleanup();
 });
 
@@ -426,6 +436,114 @@ describe("SymptomLogBar mounts both pieces", () => {
   });
 });
 
+// ── THE PICKER STAGES A CHOICE, AND ONE SAVE SPENDS IT (#4752 §3) ──────────
+//
+// The chip used to WRITE on tap, at severity 1 — so the panel could not say "this
+// one, this badly", and every symptom added from it arrived Mild whatever it was.
+// The blessed board is ranked chips → the domain's severity control → a save whose
+// verb names the symptom.
+//
+// THE CLAIM THAT MATTERS IS THE NEGATIVE ONE: a chip tap posts NOTHING. An absence
+// passes just as well on a tree where the chip stopped working altogether, so every
+// case below carries the save that spends the stage — through the SAME recorder,
+// proving it was listening — and reads back the severity that save posted.
+describe("the symptom picker stages instead of logging (#4752 §3)", () => {
+  async function openPicker(): Promise<void> {
+    render(
+      <SymptomLogBar
+        date={TODAY}
+        initial={{}}
+        initialNotes={{}}
+        symptoms={PICKER_SYMPTOMS}
+        customNames={[]}
+        suggestActivateIllness={false}
+        temperatureUnit="F"
+        profileId={SUBJECT}
+        showTitle={false}
+      />
+    );
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-add-picker-toggle"))
+    );
+  }
+
+  const typeCustom = () => {
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "Add another symptom" }),
+      { target: { value: "ear ache" } }
+    );
+    fireEvent.click(screen.getByTestId("symptom-custom-add"));
+  };
+
+  // BOTH DOORS INTO THE PANEL, one grammar. A typed name that wrote behind the
+  // chip's back would leave one panel with two meanings for one gesture.
+  it.each([
+    [
+      "a ranked chip",
+      () => fireEvent.click(screen.getByTestId("symptom-pick-cough")),
+      "Log Cough",
+    ],
+    ["a typed name", typeCustom, "Log ear ache"],
+  ] as const)("%s stages rather than writing", async (_name, choose, verb) => {
+    await openPicker();
+    await act(async () => {
+      choose();
+    });
+    expect(posted.log, "nothing is written until the save").toBeUndefined();
+    expect(screen.getByTestId("symptom-picker-save").textContent).toBe(verb);
+    // The domain's own 1–4 control, mounted whole — never a second drawing of it.
+    expect(
+      screen.getByTestId("symptom-picker-severity-4").getAttribute("aria-label")
+    ).toContain("severity 4 of 4");
+  });
+
+  it.each([
+    ["untouched", null, "1"],
+    ["chosen", 3, "3"],
+  ] as const)(
+    "the save posts the %s severity, and only then",
+    async (_name, level, expected) => {
+      await openPicker();
+      await act(async () =>
+        fireEvent.click(screen.getByTestId("symptom-pick-cough"))
+      );
+      if (level !== null) {
+        await act(async () =>
+          fireEvent.click(
+            screen.getByTestId(`symptom-picker-severity-${level}`)
+          )
+        );
+        expect(
+          posted.log,
+          "choosing a severity is not a write"
+        ).toBeUndefined();
+      }
+      await act(async () =>
+        fireEvent.click(screen.getByTestId("symptom-picker-save"))
+      );
+      expect(payload("log")).toMatchObject({
+        symptom: "cough",
+        severity: expected,
+        date: TODAY,
+        profile_id: String(SUBJECT),
+      });
+      // Spent: the stage goes with the write it became.
+      expect(screen.queryByTestId("symptom-picker-stage")).toBeNull();
+    }
+  );
+
+  it("puts the lit chip back down, leaving nothing staged", async () => {
+    await openPicker();
+    const chip = () => screen.getByTestId("symptom-pick-cough");
+    await act(async () => fireEvent.click(chip()));
+    expect(chip().getAttribute("aria-pressed")).toBe("true");
+    await act(async () => fireEvent.click(chip()));
+    expect(chip().getAttribute("aria-pressed")).toBe("false");
+    expect(screen.queryByTestId("symptom-picker-stage")).toBeNull();
+    expect(posted.log).toBeUndefined();
+  });
+});
+
 // ONE DAY CONTEXT PER SURFACE (#4691). The bar renders a Today/Yesterday toggle and
 // then bound three things to three different days: the severity taps followed it, the
 // temperature fold hard-set the primary date under a comment that said so, and the
@@ -568,6 +686,37 @@ describe("the day the bar shows is the day it writes (#4691)", () => {
     // …and what it WRITES is that same day.
     await saveTemp();
     expect(payload("temperature").date).toBe(day);
+  });
+
+  // THE PICKER'S SAVE IS A DATED WRITE TOO (#4752 §3). It stages, so there is now a
+  // window in which the day can change under an unspent choice — and a selection made
+  // about yesterday must not be spent on today. Both halves, in one pass.
+  it("the picker save writes the toggle's day, and switching days drops the staged choice", async () => {
+    toggledBar();
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-day-alt"))
+    );
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-add-picker-toggle"))
+    );
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-pick-cough"))
+    );
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-day-primary"))
+    );
+    expect(screen.queryByTestId("symptom-picker-stage")).toBeNull();
+
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-day-alt"))
+    );
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-pick-cough"))
+    );
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-picker-save"))
+    );
+    expect(payload("log").date).toBe(FOUND_DAY);
   });
 
   it("switching days re-anchors the stated reading time instead of carrying it over", async () => {

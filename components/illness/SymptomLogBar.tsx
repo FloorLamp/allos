@@ -16,8 +16,10 @@ import {
   symptomLabel,
   symptomBySlug,
   MAX_SYMPTOM_SEVERITY,
+  MIN_SYMPTOM_SEVERITY,
   symptomLabelOptions,
 } from "@/lib/symptoms";
+import Chip from "@/components/Chip";
 import Combobox from "@/components/Combobox";
 import type { TemperatureUnit } from "@/lib/settings";
 import { useToast } from "@/components/Toast";
@@ -64,7 +66,10 @@ import SubmitButton from "@/components/SubmitButton";
 // severity chips + note + ×) — the working set. Everything else (the ~20-symptom catalog +
 // previously-used customs + a free-text add) collapses into ONE "＋ add symptom" picker,
 // ranked by the profile's symptom history (rankedKeys) and FROZEN while mounted so a row
-// never jumps mid-tap. On the dashboard this renders with a today/yesterday toggle; on the
+// never jumps mid-tap. THE PICKER ITSELF IS NOT ONE-TAP (#4752 §3): its chips select, the
+// selection gets the domain's severity control, and one verb-carrying save writes. Only
+// the LOGGED rows above it are one-tap, which is what "active-first" was always about.
+// On the dashboard this renders with a today/yesterday toggle; on the
 // Timeline day view it renders for a single day. When no illness-type situation is active
 // it offers a suggest-only "Mark as illness" bridge.
 
@@ -219,6 +224,16 @@ export default function SymptomLogBar({
   }));
   const [customDraft, setCustomDraft] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
+  // WHAT THE PICKER IS STAGING (#4752 §3) — the chosen symptom and the severity
+  // it will be logged at. Nothing here has been written: the panel holds a
+  // choice until the save below spends it, which is what lets a symptom arrive
+  // at the severity it actually has. Seeded at the floor, so a save that never
+  // touches the severity control logs exactly what the old one-tap chip did.
+  const [picked, setPicked] = useState<{ key: string; label: string } | null>(
+    null
+  );
+  const [pickedSeverity, setPickedSeverity] =
+    useState<number>(MIN_SYMPTOM_SEVERITY);
   const [, startTransition] = useTransition();
   const toast = useToast();
   const ledger = useOptimisticLedger<number>("symptom-severity");
@@ -244,6 +259,11 @@ export default function SymptomLogBar({
   function selectDay(next: string): void {
     card?.select(next);
     setTempWhen({ date: next, statedAt: null });
+    // THE STAGE BELONGS TO THE DAY IT WAS MADE ON (#4691). A selection carried
+    // across the toggle would spend itself on a day the person never chose it
+    // for, which is the same mistake the reading time above is re-anchored to
+    // avoid.
+    setPicked(null);
     // The offer is about the reading that produced it, on the day it was on; leaving
     // it up under a different day would say something about a day it never saw.
     showFeverOffer(null);
@@ -383,6 +403,10 @@ export default function SymptomLogBar({
   function toggleSymptomPicker() {
     const opening = !pickerOpen;
     setPickerOpen(opening);
+    // THE STAGE LIVES IN THE FOLD, like the fever offer below: closing the
+    // picker takes the unsaved selection with it rather than leaving it to
+    // reappear, pre-chosen, the next time the panel opens.
+    setPicked(null);
     if (opening) {
       setTempOpen(false);
       // THE BLOCK LIVES IN THE FOLD (#4712 judgement 1). Closing it any way —
@@ -599,7 +623,8 @@ export default function SymptomLogBar({
     });
   }
 
-  // Tap RAISES (worst-severity), matching the server. Adding from the picker taps at 1.
+  // Tap RAISES (worst-severity), matching the server. The picker's save taps at the
+  // severity it staged (#4752 §3); it no longer fires on the chip.
   async function tap(key: string, severity: number) {
     const prev = severities[key] ?? 0;
     await ledger.tap({
@@ -633,6 +658,28 @@ export default function SymptomLogBar({
     });
   }
 
+  // Selecting is idempotent and reversible: the lit chip puts itself back down,
+  // and every fresh choice re-seeds the severity so the last symptom's answer is
+  // never inherited by the next one.
+  function selectPick(key: string, label: string): void {
+    setPicked((current) => (current?.key === key ? null : { key, label }));
+    setPickedSeverity(MIN_SYMPTOM_SEVERITY);
+  }
+
+  // THE ONE WRITE THE PICKER MAKES, through the same `tap` every other symptom
+  // affordance uses — so the day, the subject stamp, the surface and the
+  // optimistic ledger are the ones already established rather than a second
+  // spelling of them. The stage clears BEFORE the await: the row it becomes
+  // appears optimistically, and a stage left standing would be offering to log
+  // a symptom that is no longer in the picker.
+  async function savePick(): Promise<void> {
+    if (!picked) return;
+    const { key } = picked;
+    const severity = pickedSeverity;
+    setPicked(null);
+    await tap(key, severity);
+  }
+
   function addCustom(name: string = customDraft) {
     // #3325: resolve against the spellings this profile already uses, so a typed
     // "kratom" raises the existing "Kratom" chip instead of putting a second one beside
@@ -646,8 +693,10 @@ export default function SymptomLogBar({
     const key = resolveSymptomKey(name, customNames);
     setCustomDraft("");
     if (!key) return;
-    // One add path (#857): a typed name logs at severity 1, becoming a logged row.
-    void tap(key, 1);
+    // ONE ADD PATH (#857), and since #4752 §3 one GRAMMAR: a typed name stages
+    // exactly like a tapped chip, so the panel has a single save rather than a
+    // chip that waits and a text field that writes behind it.
+    selectPick(key, symptomLabel(key));
   }
 
   const loggedCount = loggedKeys.length;
@@ -896,23 +945,59 @@ export default function SymptomLogBar({
             </div>
           )}
 
+          {/* THE RANKED CHIPS SELECT (#4752 §3). They used to WRITE — one tap
+              logged severity 1 — so the panel had no way to say "this one, this
+              badly" and every symptom arrived Mild. `chip-filter` is the role
+              that follows from that: the vocabulary picks a role by what a chip
+              DOES, and a chip that names a SELECTION paints its lit state off
+              `aria-pressed` rather than off a ternary. Tapping the lit chip
+              puts it back down. */}
           <div className="flex flex-wrap gap-1.5">
             {pickerKeys.map((key) => {
               const r = rowMap.get(key);
               if (!r) return null;
               return (
-                <Button
+                <Chip
                   key={key}
-                  type="button"
-                  data-testid={`symptom-pick-${key}`}
-                  onClick={() => void tap(key, 1)}
+                  role="filter"
+                  pressed={picked?.key === key}
+                  testId={`symptom-pick-${key}`}
+                  onClick={() => selectPick(key, r.label)}
                 >
-                  {r.icon && <span aria-hidden>{r.icon} </span>}
+                  {r.icon && <span aria-hidden>{r.icon}</span>}
                   {r.label}
-                </Button>
+                </Chip>
               );
             })}
           </div>
+
+          {/* …AND THE SELECTION IS WHAT THE SEVERITY AND THE SAVE ARE ABOUT.
+              The domain's own 1–4 control (never a second drawing of it), and a
+              verb that names the symptom it is about to log — "Log Runny nose",
+              so the commit reads as a sentence rather than as "Save". Primary:
+              it is the action this panel exists for, and the file's other
+              primary lives in the temperature fold, which this one closes. */}
+          {picked && (
+            <div
+              data-testid="symptom-picker-stage"
+              className="mt-3 flex flex-wrap items-center gap-3"
+            >
+              <SymptomSeverityControl
+                symptomLabel={picked.label}
+                value={pickedSeverity}
+                onChange={setPickedSeverity}
+                testIdPrefix="symptom-picker-severity"
+              />
+              <Button
+                type="button"
+                variant="primary"
+                data-testid="symptom-picker-save"
+                onClick={() => void savePick()}
+              >
+                Log {picked.label}
+              </Button>
+            </div>
+          )}
           <form
             className="mt-2 flex items-center gap-2"
             onSubmit={(e) => {

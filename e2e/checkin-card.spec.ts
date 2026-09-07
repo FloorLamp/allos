@@ -87,7 +87,10 @@ test("the well-day symptom action logs burden without activating illness", async
     const bar = overlay.getByTestId("symptom-log-bar");
     await expect(bar).toBeVisible();
     await bar.getByTestId("symptom-add-picker-toggle").click();
-    await settledClick(page, bar.getByTestId("symptom-pick-headache"));
+    // The picker chip SELECTS (#4752 §3); the panel's one save is the write, so
+    // that is where the settle is armed.
+    await bar.getByTestId("symptom-pick-headache").click();
+    await settledClick(page, bar.getByTestId("symptom-picker-save"));
     await settledClick(page, bar.getByTestId("symptom-headache-sev-3"));
     await expect(bar.getByTestId("symptom-headache-sev-3")).toHaveAttribute(
       "aria-pressed",

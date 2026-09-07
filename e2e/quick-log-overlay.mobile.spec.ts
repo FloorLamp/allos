@@ -1435,7 +1435,10 @@ test("the symptom row logs a well day in place, and its illness verb resolves on
     // The picker toggle is a pure client disclosure — it posts nothing, so the wait
     // is for the revealed control rather than for a Server Action.
     await hydratedClick(page, bar.getByTestId("symptom-add-picker-toggle"));
-    await settledClick(page, bar.getByTestId("symptom-pick-headache"));
+    // …and so is the chip since #4752 §3: it stages the choice, and the panel's one
+    // verb-carrying save is the Server Action this settle is armed against.
+    await hydratedClick(page, bar.getByTestId("symptom-pick-headache"));
+    await settledClick(page, bar.getByTestId("symptom-picker-save"));
     await settledClick(page, bar.getByTestId("symptom-headache-sev-3"));
     await expect(bar.getByTestId("symptom-headache-sev-3")).toHaveAttribute(
       "aria-pressed",
