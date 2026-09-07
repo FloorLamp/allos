@@ -62,8 +62,14 @@ describe("the stool sheet's stated time follows the server's day (#3273)", () =>
     fireEvent.click(screen.getByTestId("stool-when-toggle"));
     fireEvent.change(timeField(), { target: { value: "23:50" } });
     expect(timeField().value).toBe("23:50");
-    expect(screen.getByTestId("stool-when-date").textContent).toBe(
-      "2026-07-08"
+    // THE DAY IS WORDS, NEVER THE STORAGE SPELLING (#5489 fix 3). This arm used to
+    // print `value.date` whenever the fixed day was not today; it now names the day
+    // through the login's own date shape, and only the day the sheet is standing on.
+    expect(screen.getByTestId("stool-when-date").textContent).not.toMatch(
+      /^\d{4}-\d{2}-\d{2}$/
+    );
+    expect(screen.getByTestId("stool-when-date").textContent).toContain(
+      "Jul 8"
     );
 
     // Local midnight passes and the server's day moves under the open sheet.
@@ -73,8 +79,8 @@ describe("the stool sheet's stated time follows the server's day (#3273)", () =>
     // claim about today, and re-anchoring it would invent one — in the future, on the
     // day the action actually files under.
     expect(timeField().value).toBe("");
-    expect(screen.getByTestId("stool-when-date").textContent).toBe(
-      "2026-07-09"
+    expect(screen.getByTestId("stool-when-date").textContent).toContain(
+      "Jul 9"
     );
   });
 

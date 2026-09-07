@@ -639,32 +639,36 @@ for (const [label, viewport, wide] of [
       // eight lines above the child that produced 136. Both edges, because a centered
       // cap is symmetric and a single-edge claim would pass on one that only moved.
       // EVERY ROW IN THE BAND, not one representative: the claim is about the frame,
-      // and a single sibling would let a second row re-introduce the step unseen.
-      const bandRows = card
-        .locator('xpath=ancestor::ul[contains(@class,"band")]')
-        .locator("> li");
+      // and a single sibling would let a second row re-introduce the step unseen. It
+      // is stated as "every row spans its frame" rather than "row A matches row B"
+      // because a band can legitimately hold one row, and the step is still a step.
+      const band = card.locator('xpath=ancestor::ul[contains(@class,"band")]');
+      const bandRows = band.locator("> li");
       const rowCount = await bandRows.count();
       expect(
         rowCount,
         "the Now band's rows — the subject of this claim"
-      ).toBeGreaterThan(1);
-      const [cardBox, columnBox, ...rowBoxes] = await settledBoxes([
+      ).toBeGreaterThan(0);
+      const [cardBox, columnBox, bandBox, ...rowBoxes] = await settledBoxes([
         card,
         card.locator("xpath=.."),
+        band,
         ...Array.from({ length: rowCount }, (_, i) => bandRows.nth(i)),
       ]);
       expect(cardBox.width, `${label} cockpit measure`).toBeLessThanOrEqual(
         880
       );
       for (const [index, row] of rowBoxes.entries()) {
-        expect(row.x, `${label} band row ${index} left edge`).toBeCloseTo(
-          cardBox.x,
-          0
-        );
+        // ±2 absorbs the frame's own 1px border, which is the only thing between a
+        // row's box and the frame's.
         expect(
-          row.x + row.width,
+          Math.abs(row.x - bandBox.x),
+          `${label} band row ${index} left edge`
+        ).toBeLessThanOrEqual(2);
+        expect(
+          Math.abs(row.x + row.width - (bandBox.x + bandBox.width)),
           `${label} band row ${index} right edge`
-        ).toBeCloseTo(cardBox.x + cardBox.width, 0);
+        ).toBeLessThanOrEqual(2);
       }
       // …and the cockpit is the whole of its own row in that frame, at every width:
       // the band decides the measure, the row spends only its gutter.
@@ -756,10 +760,15 @@ for (const [label, viewport, wide] of [
         "true"
       );
       const [onYesterday] = await settledBoxes([reading]);
+      // ITS HORIZONTAL BOX, not its `y`: the day toggle legitimately changes what is
+      // ABOVE the fold (that day's own symptom rows), so a whole-box equality would
+      // be asserting the fixture's content rather than this control's geometry. What
+      // must not move is the field the caregiver is typing in — its left edge and its
+      // width, which is what the two undeclared widths used to change by ~35px.
       expect(
-        onYesterday,
+        { x: onYesterday.x, width: onYesterday.width },
         `${label} reading field across the day toggle`
-      ).toEqual(onToday);
+      ).toEqual({ x: onToday.x, width: onToday.width });
 
       if (!wide) await expectNoClippedContent(page);
     } finally {
