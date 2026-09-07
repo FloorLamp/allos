@@ -14,10 +14,9 @@
 // label's own "ask a doctor" refusals. Aspirin has NO pediatric entry (Reye's) — the
 // dataset omits it, pinned by lib/__tests__/prn-defaults.test.ts.
 //
-// Matching mirrors the drug/food datasets: RxCUI is authoritative (an exact match of
-// ANY of the item's CUIs — the confirmed product-level rxcui plus its cached active-
-// ingredient CUIs, #279 — against an entry's ingredient CUIs); a normalized name/
-// synonym match is the fallback (#279's name path). One ingredient per item.
+// Ingredient presence supports fever classification, but a product label applies only
+// to a single-ingredient product. Keep those questions separate: combination products
+// retain their ingredient identity without inheriting one ingredient's dose chart.
 
 import {
   PRN_DEFAULT_ENTRIES,
@@ -60,10 +59,6 @@ function nameContains(itemNorm: string, synNorm: string): boolean {
   return ` ${itemNorm} `.includes(` ${synNorm} `);
 }
 
-// The curated OTC defaults for one intake item, or null when the ingredient isn't in
-// the dataset. RxCUI is authoritative (exact match of ANY of the item's CUIs against
-// an entry's ingredient CUIs); a normalized name/synonym match is the fallback. First
-// match wins (an item resolves to at most one ingredient's defaults).
 // The redose interval / daily-max to PRE-FILL for a profile from a matched entry
 // (issue #851 item 12). For an adult (or unknown age), the adult label figures. For a
 // CHILD, the pediatric label figures WHEN the entry carries them (the label differs) —
@@ -101,11 +96,14 @@ export function redoseLabelDefaults(
   };
 }
 
-export function prnDefaultsFor(item: {
+interface PrnItem {
   name: string;
   rxcui: string | null;
   rxcuiIngredients?: string[] | null;
-}): PrnDefaultEntry | null {
+  ingredients?: readonly { name: string }[];
+}
+
+function ingredientEntryFor(item: PrnItem): PrnDefaultEntry | null {
   const cuis = itemRxcuis(item);
   const itemNorm = normalize(item.name);
   for (const e of ENTRIES) {
@@ -116,6 +114,85 @@ export function prnDefaultsFor(item: {
     if (byRxcui || byName) return e;
   }
   return null;
+}
+
+// A name-only label match must explain the whole product name. Strip only ordinary
+// age, strength and dosage-form descriptors, never arbitrary words after a strength:
+// "acetaminophen 300 mg / codeine 30 mg" still names a second ingredient. Unknown
+// qualifiers (including combination brands) refuse; a package label or pharmacist
+// can supply a dose where this small curated dataset cannot.
+function isPlainProductName(name: string, entry: PrnDefaultEntry): boolean {
+  let remaining = normalize(
+    name.replace(/\b\d+(?:\.\d+)?\s*(?:mg|mcg|g|ml)\b/gi, " ")
+  );
+  for (const synonym of [...entry.synonyms].sort(
+    (a, b) => b.length - a.length
+  )) {
+    remaining = remaining.replace(
+      new RegExp(`\\b${normalize(synonym)}\\b`, "g"),
+      " "
+    );
+  }
+  return (
+    remaining
+      .replace(
+        /\b(?:children s|childrens|infant s|infants|junior|extra strength|regular strength|oral|suspension|drops|liquid|tablets?|caplets?|capsules?|chewable|gelcaps?)\b/g,
+        " "
+      )
+      .trim() === ""
+  );
+}
+
+// Before a picker simplifies a product name to a known generic, preserve any
+// qualifiers the generic's dosing label cannot explain. This asks only about the
+// name; it does not resolve or manufacture confirmed RxNorm identity.
+export function preservesPrnProductName(
+  name: string,
+  generic: string
+): boolean {
+  const entry = ingredientEntryFor({ name: generic, rxcui: null });
+  return !entry || isPlainProductName(name, entry);
+}
+
+// Label defaults are for a single ingredient. Ingredient presence alone is still
+// sufficient for safety/classification consumers, which use ingredientEntryFor.
+export function prnDefaultsFor(item: PrnItem): PrnDefaultEntry | null {
+  const entry = ingredientEntryFor(item);
+  if (!entry) return null;
+  const ingredients = new Set(
+    (item.rxcuiIngredients ?? []).map((cui) => cui.trim()).filter(Boolean)
+  );
+  if (ingredients.size > 1) return null;
+  // A product CUI with unresolved composition cannot confirm a single ingredient.
+  if (
+    item.rxcui?.trim() &&
+    ingredients.size === 0 &&
+    !entry.rxcuis.includes(item.rxcui.trim())
+  ) {
+    return null;
+  }
+  if (
+    ingredients.size === 1 &&
+    !entry.rxcuis.some((cui) => ingredients.has(cui))
+  ) {
+    return null;
+  }
+  // A recognized name must not conceal another product behind a matching CUI.
+  // With no recognized name, a confirmed sole ingredient supplies the identity.
+  const named = ENTRIES.some((candidate) =>
+    candidate.synonyms.some((syn) =>
+      nameContains(normalize(item.name), normalize(syn))
+    )
+  );
+  if (named && !isPlainProductName(item.name, entry)) return null;
+  if (
+    item.ingredients?.some(
+      (ingredient) =>
+        ingredient.name.trim() && !isPlainProductName(ingredient.name, entry)
+    )
+  )
+    return null;
+  return entry;
 }
 
 // The fever-reducing (antipyretic) ingredient slugs in the curated PRN dataset
@@ -138,14 +215,14 @@ export function isAntipyreticEntry(entry: PrnDefaultEntry | null): boolean {
 }
 
 // Whether an intake item is a fever reducer — the item resolves to an antipyretic
-// ingredient in the curated dataset. Reuses prnDefaultsFor's RxCUI-authoritative /
+// ingredient in the curated dataset, including combination products. RxCUI /
 // name-fallback match, so an "Advil"/"Children's Tylenol" row classifies correctly.
 export function isAntipyreticIntakeItem(item: {
   name: string;
   rxcui: string | null;
   rxcuiIngredients?: string[] | null;
 }): boolean {
-  return isAntipyreticEntry(prnDefaultsFor(item));
+  return isAntipyreticEntry(ingredientEntryFor(item));
 }
 
 // Narrows a PRN quick-log list to fever reducers (#4712 judgement 1's dose offer). The

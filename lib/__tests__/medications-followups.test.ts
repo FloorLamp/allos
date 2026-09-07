@@ -149,7 +149,7 @@ describe("#851 item 14 — one option per med, 'Generic (Brand, Brand)'", () => 
   });
 
   it("catalogLabelGeneric resolves a label to its generic", () => {
-    expect(catalogLabelGeneric("Acetaminophen (Tylenol, Panadol)")).toBe(
+    expect(catalogLabelGeneric("Acetaminophen (Tylenol)")).toBe(
       "Acetaminophen"
     );
     expect(catalogLabelGeneric("Metformin")).toBe("Metformin");
@@ -190,6 +190,18 @@ describe("#851 item 14 — one option per med, 'Generic (Brand, Brand)'", () => 
     );
   });
 
+  it.each([
+    "Acetaminophen (with Codeine)",
+    "Acetaminophen 300 mg / codeine 30 mg",
+    "Ibuprofen 200 mg / diphenhydramine 25 mg",
+    "Acetaminophen (Tylenol, Panadol)",
+  ])("preserves unrecognized product qualifiers when picking %s", (name) => {
+    expect(resolveMedicationPick(name).name).toBe(name);
+    expect(
+      prnDefaultsFor({ name: resolveMedicationPick(name).name, rxcui: null })
+    ).toBeNull();
+  });
+
   it("returns one option per medication (no flat brand entries)", () => {
     const opts = medicationCatalogOptions();
     // A collapsed acetaminophen option exists exactly once, brands in the label.
@@ -201,7 +213,7 @@ describe("#851 item 14 — one option per med, 'Generic (Brand, Brand)'", () => 
   });
 
   it("a brand-matched pick prefills the brand; a generic-matched pick does not", () => {
-    const label = "Acetaminophen (Tylenol, Panadol)";
+    const label = "Acetaminophen (Tylenol)";
     const byBrand = resolveMedicationPick(label, "tyle");
     expect(byBrand.name).toBe("Acetaminophen");
     expect(byBrand.brand).toBe("Tylenol");

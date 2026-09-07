@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { prnDefaultEntries, prnDefaultsFor } from "@/lib/prn-defaults";
+import {
+  prnDefaultEntries,
+  prnDefaultsFor,
+  isAntipyreticIntakeItem,
+} from "@/lib/prn-defaults";
 import {
   prnDefaultsDataset,
   prnDefaultSlugStrategy,
@@ -65,7 +69,7 @@ describe("prn-defaults dataset", () => {
 
   it("matches by ingredient CUI in the cached ingredient list (#279)", () => {
     const hit = prnDefaultsFor({
-      name: "Unknown combo",
+      name: "Unknown product",
       rxcui: "99999",
       rxcuiIngredients: ["161"],
     });
@@ -79,6 +83,61 @@ describe("prn-defaults dataset", () => {
     expect(prnDefaultsFor({ name: "Tylenol", rxcui: null })?.slug).toBe(
       "acetaminophen"
     );
+  });
+
+  it.each(
+    prnDefaultEntries().flatMap((entry) =>
+      entry.synonyms.map((name) => ({ name, slug: entry.slug }))
+    )
+  )("keeps the supported synonym $name", ({ name, slug }) => {
+    expect(prnDefaultsFor({ name, rxcui: null })?.slug).toBe(slug);
+  });
+
+  it.each([
+    ["Children's Tylenol", "acetaminophen"],
+    ["Tylenol Extra Strength 500 mg tablets", "acetaminophen"],
+    ["Acetaminophen 160 mg / 5 mL oral suspension", "acetaminophen"],
+    ["Infants' Motrin drops 50 mg/1.25 mL", "ibuprofen"],
+    ["Children’s Advil", "ibuprofen"],
+  ])("keeps a plain product: %s", (name, slug) => {
+    expect(prnDefaultsFor({ name, rxcui: null })?.slug).toBe(slug);
+  });
+
+  it.each([
+    { name: "Tylenol with Codeine", rxcui: null },
+    { name: "Paracetamol / codeine", rxcui: null },
+    { name: "Acetaminophen (with Codeine)", rxcui: null },
+    { name: "Acetaminophen 300 mg / codeine 30 mg", rxcui: null },
+    { name: "Tylenol #3", rxcui: null },
+    { name: "Advil PM", rxcui: null },
+    { name: "Motrin Cold & Flu", rxcui: null },
+    { name: "Tylenol with Codeine", rxcui: "161" },
+    { name: "Tylenol", rxcui: "99999" },
+    { name: "Tylenol with Codeine", rxcui: "99999", rxcuiIngredients: ["161"] },
+    {
+      name: "Unknown product",
+      rxcui: "99999",
+      rxcuiIngredients: ["161", "2670"],
+    },
+    {
+      name: "Tylenol",
+      rxcui: null,
+      ingredients: [{ name: "Acetaminophen" }, { name: "Codeine" }],
+    },
+  ])("refuses plain-label defaults for $name ($rxcui)", (item) => {
+    expect(prnDefaultsFor(item)).toBeNull();
+    // Refusing a dose chart must not erase the ingredient's fever-reducing identity.
+    expect(isAntipyreticIntakeItem(item)).toBe(true);
+  });
+
+  it("counts distinct ingredients rather than product and duplicate ingredient CUIs", () => {
+    expect(
+      prnDefaultsFor({
+        name: "Unknown product",
+        rxcui: "99999",
+        rxcuiIngredients: ["161", "161", " 161 "],
+      })?.slug
+    ).toBe("acetaminophen");
   });
 
   it("returns null for an unknown ingredient", () => {

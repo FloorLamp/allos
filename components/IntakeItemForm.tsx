@@ -427,9 +427,10 @@ export default function IntakeItemForm({
             name: state.name,
             rxcui: rx.rxcui,
             rxcuiIngredients: rx.rxcuiIngredients,
+            ingredients: state.ingredients,
           })
         : null,
-    [isMed, state.name, rx.rxcui, rx.rxcuiIngredients]
+    [isMed, state.name, state.ingredients, rx.rxcui, rx.rxcuiIngredients]
   );
   const catalogEntry = CATALOG_BY_NAME.get(state.name.trim().toLowerCase());
   // One call site each for the two suggestion lists #846 found teaching wrong.
@@ -610,6 +611,7 @@ export default function IntakeItemForm({
           name: generic,
           rxcui: confirmed?.rxcui ?? null,
           rxcuiIngredients: confirmed?.rxcuiIngredients ?? null,
+          ingredients: state.ingredients,
         }),
       })
     );
@@ -960,8 +962,8 @@ export default function IntakeItemForm({
             data-testid="medication-pediatric-no-chart"
             className="mt-1 text-xs text-slate-500 dark:text-slate-400"
           >
-            No pediatric label weight-band chart is available for this
-            medication.
+            No pediatric dose chart is available for this product. Check the
+            package or ask a pharmacist for the child’s dose.
           </p>
         ) : null}
         {medInfo && (

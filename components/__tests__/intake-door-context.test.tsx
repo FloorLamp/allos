@@ -201,6 +201,33 @@ describe("every add door feeds IntakeItemForm the same subject context (#4609)",
     }
   );
 
+  it("refuses a combination label while retaining its ingredient interaction", async () => {
+    await openDoor("medications", CHILD, "Children's Tylenol");
+    fireEvent.click(screen.getByTestId("intake-fact-dose"));
+    expect(screen.getByTestId("pediatric-band-picker")).toBeTruthy();
+    fireEvent.change(screen.getByRole("combobox", { name: "Name" }), {
+      target: { value: "Acetaminophen (with Codeine)" },
+    });
+    // Commit the free-text pick, exercising the picker normalization as well as
+    // the derived form lookup. Both must retain the combination's identity.
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Name" }), {
+      key: "Enter",
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("medication-pediatric-no-chart").textContent
+      ).toContain("ask a pharmacist")
+    );
+    expect(screen.queryByTestId("pediatric-band-picker")).toBeNull();
+    expect(screen.queryByTestId("pediatric-suggestion")).toBeNull();
+    expect(screen.getByTestId("interaction-notice").textContent).toContain(
+      "Warfarin"
+    );
+    expect(
+      (screen.getByRole("combobox", { name: "Name" }) as HTMLInputElement).value
+    ).toBe("Acetaminophen (with Codeine)");
+  });
+
   // `todayStr` is not cosmetic: with it absent the form posts no `started_on`, and
   // addIntakeItem skips its whole start-date branch on `formData.has("started_on")`.
   it.each(DOORS)(

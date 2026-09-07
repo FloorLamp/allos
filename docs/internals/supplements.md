@@ -11,7 +11,13 @@ Use the shared intake form. The entry point owns the kind; naming and product
 selection do not silently change it. Present the selected facts with focused
 editors and submit the complete form state so hidden editors do not drop values.
 Formulation/concentration must come from an explicit product choice before an
-amount can be expressed in mL.
+amount can be expressed in mL. `prnDefaultsFor` offers single-ingredient label
+figures only: multiple ingredient CUIs, additional stated ingredients, or
+unrecognized name qualifiers refuse the label. Plain names retain age, strength,
+and formulation descriptors (for example, Children's Tylenol or Advil 200 mg).
+Unknown qualifiers stay in picked names; only exact catalog labels can discard a
+brand suffix. Ingredient-level interaction and fever classification still include
+combination products.
 
 Prefer confirmed ingredient/product identity where available and preserve the
 distinction between confirmed identity and a name-only match. Editing identity
