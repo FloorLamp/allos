@@ -40,7 +40,7 @@ describe("illness-thresholds cited figures survive the migration", () => {
 
 describe("prn-defaults cited figures + matching survive the migration", () => {
   it("preserves ibuprofen adult + pediatric label figures", () => {
-    const ibu = prnDefaultsFor({ name: "Advil 200mg", rxcui: null });
+    const ibu = prnDefaultsFor({ name: "Advil 200mg", rxcui: "5640" });
     expect(ibu?.slug).toBe("ibuprofen");
     expect(ibu?.adult.minIntervalHours).toBe(6);
     expect(ibu?.adult.maxDailyCount).toBe(4);
