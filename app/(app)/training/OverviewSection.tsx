@@ -590,7 +590,6 @@ export default async function OverviewSection() {
                     ),
                     count: t.count,
                     perWeek: t.per_week,
-                    met: t.met,
                     pace: t.pace,
                   }))}
                 />

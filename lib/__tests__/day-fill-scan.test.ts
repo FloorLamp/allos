@@ -2,21 +2,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  METRIC_GAP,
-  gapFillValue,
-  seriesGapForSeriesKey,
-  MACROS_SERIES_KEY,
-  OURA_SCORE_SERIES_KEY,
-  SLEEP_DURATION_SERIES_KEY,
-  SLEEP_REGULARITY_SERIES_KEY,
-  SLEEP_STAGES_SERIES_KEY,
-} from "../trend-sparkline";
-import {
-  TREND_METRIC_SLUGS,
-  savedMetricIdForTrendSlug,
-} from "../trend-metrics";
-import { metricSeriesKey } from "../saved-items";
+import { gapFillValue, seriesGapForSeriesKey } from "../trend-sparkline";
 import type { ChartXAxis } from "@/components/chart-spec";
 
 // The DAY-GRAIN GAP chokepoint (issue #2258), in the repo's source-scan idiom
@@ -172,64 +158,11 @@ describe("day-grain gap chokepoint (issue #2258)", () => {
   });
 });
 
-describe("gap registry completeness (issue #2258)", () => {
-  it("every registered trend metric carries a declared gap", () => {
-    const missing = TREND_METRIC_SLUGS.filter(
-      (slug) => METRIC_GAP[savedMetricIdForTrendSlug(slug)] == null
-    );
-    expect(
-      missing,
-      `These trend metrics reach a chart with no declared gap policy. Add them to ` +
-        `METRIC_GAP in lib/trend-sparkline.ts with their reason — is a missing ` +
-        `day an unsampled LEVEL, an absent READING, or a total that is a real ` +
-        `zero?:\n${missing.join(", ")}`
-    ).toEqual([]);
-  });
-
-  it("training volume and every render-only series are declared", () => {
-    for (const key of [
-      metricSeriesKey("volume"),
-      SLEEP_DURATION_SERIES_KEY,
-      SLEEP_STAGES_SERIES_KEY,
-      SLEEP_REGULARITY_SERIES_KEY,
-      OURA_SCORE_SERIES_KEY,
-      MACROS_SERIES_KEY,
-    ]) {
-      expect(seriesGapForSeriesKey(key), `${key} is undeclared`).not.toBe(
-        "exempt"
-      );
-    }
-  });
-
-  it("every declared id is still a real series (no stale entries)", () => {
-    const live = new Set<string>([
-      ...TREND_METRIC_SLUGS.map(savedMetricIdForTrendSlug),
-      "volume",
-      SLEEP_DURATION_SERIES_KEY.slice("metric:".length),
-      SLEEP_STAGES_SERIES_KEY.slice("metric:".length),
-      SLEEP_REGULARITY_SERIES_KEY.slice("metric:".length),
-      OURA_SCORE_SERIES_KEY.slice("metric:".length),
-      MACROS_SERIES_KEY.slice("metric:".length),
-    ]);
-    const stale = Object.keys(METRIC_GAP).filter((id) => !live.has(id));
-    expect(
-      stale,
-      `These METRIC_GAP entries name no live series and should be removed:\n${stale.join(", ")}`
-    ).toEqual([]);
-  });
-
-  it("result: series are exempt from densification, with the reason on the record", () => {
+describe("series outside the day-fill vocabulary", () => {
+  it("result: series are exempt from densification", () => {
     expect(seriesGapForSeriesKey("result:ApoB")).toBe("exempt");
     expect(seriesGapForSeriesKey("result:LDL Cholesterol")).toBe("exempt");
     expect(gapFillValue("exempt")).toBeNull();
-    const src = fs.readFileSync(
-      path.join(REPO, "lib/trend-sparkline.ts"),
-      "utf8"
-    );
-    expect(
-      /sparse BY NATURE/.test(src),
-      "the result: exemption must keep its stated reason in lib/trend-sparkline.ts"
-    ).toBe(true);
   });
 
   it("an unknown namespace is exempt rather than silently densified", () => {

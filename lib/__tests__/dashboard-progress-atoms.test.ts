@@ -18,7 +18,6 @@ describe("weekly target chips", () => {
             label: "Yoga",
             count: 3,
             perWeek: 3,
-            met: true,
             pace: "met" as const,
           },
         ],

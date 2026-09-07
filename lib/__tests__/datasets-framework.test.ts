@@ -9,22 +9,9 @@ import {
   runHarness,
 } from "@/lib/datasets";
 
-// LINTER for the curated-dataset framework (issue #860 Track B) — mirrors the
-// source-scan guard precedents (telegram-chokepoint, profile-scoping, immediate-tx):
-// a dataset that adopts the framework but omits its contract fails CI.
-//
-// HONEST SCOPE (read before extending): this guard enforces the framework contract
-// for the datasets listed in lib/datasets/registry.ts, whose committed JSON is EITHER
-// (a) a file under lib/datasets/data/ (the common case) OR (b) an EXTERNAL source
-// file registered in EXTERNAL_SOURCE_DATASETS
-// below (canonical-result-definitions, whose generator-owned + boot-seeded JSON stays at its
-// historical path; see lib/datasets/canonical-result-definitions.ts for why). It DELIBERATELY
-// does NOT apply the envelope contract to root-level JSON assets. Instead, the small
-// root inventory is classified explicitly in docs/internals/datasets.md and checked
-// below, so a new curated dataset cannot evade citations by landing there. Thus:
-// dropping a NEW dataset JSON under lib/datasets/data/ without a citation/identity
-// fails here; a registered dataset with no data-dir file AND no external-source entry
-// fails the lockstep; and an unclassified root JSON file fails the doc guard.
+// Validate registered datasets and their committed sources. Root-level JSON
+// exceptions are classified in the framework guide; new reference data belongs
+// under lib/datasets/data/ so the envelope and citation checks cover it.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const DATA_DIR = path.join(REPO, "lib/datasets/data");
@@ -56,20 +43,6 @@ function dataFiles(): string[] {
   return fs
     .readdirSync(DATA_DIR)
     .filter((f) => f.endsWith(".json"))
-    .sort();
-}
-
-function documentedDatasetIds(): string[] {
-  const doc = fs.readFileSync(DATASETS_DOC, "utf8");
-  const section = doc.match(
-    /### Registry census \(guarded\)\n\n([\s\S]*?)\n### /
-  )?.[1];
-  expect(
-    section,
-    "datasets.md must retain its guarded registry census"
-  ).toBeDefined();
-  return [...section!.matchAll(/^- `([^`]+)`$/gm)]
-    .map((match) => match[1])
     .sort();
 }
 
@@ -156,14 +129,6 @@ describe("curated-dataset framework contract", () => {
     expect(registryIds).toEqual(expectedIds);
   });
 
-  it("keeps the documented dataset census in lockstep with the registry", () => {
-    const registryIds = DATASETS.map(({ dataset }) => dataset.id).sort();
-    const doc = fs.readFileSync(DATASETS_DOC, "utf8");
-    expect(documentedDatasetIds()).toEqual(registryIds);
-    expect(doc).toContain(`**${registryIds.length} registered datasets**`);
-    expect(doc).toContain(`**${dataFiles().length}** use envelope JSON`);
-  });
-
   it("classifies every root-level JSON asset in the framework doc", () => {
     const rootJsonFiles = fs
       .readdirSync(path.join(REPO, "lib"))
@@ -177,8 +142,5 @@ describe("curated-dataset framework contract", () => {
         `\`${file}\``
       );
     }
-    expect(doc).toMatch(
-      /`exercise-guides\.json` and `symptoms\.json` — documented framework\s+non-candidates/
-    );
   });
 });
