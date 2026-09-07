@@ -1130,10 +1130,11 @@ function cmdList() {
   const threshold = median === null ? null : 3 * median;
   if (!active.length) {
     console.log(
-      "No active dispatches — a DISPATCH ORDER, not calm. Unless a hold or an\n" +
-        "owner wind-down governs, triage and refill now; 'the lanes are empty' is\n" +
-        "only honest beside the list of why every remaining issue is blocked,\n" +
-        "owner-gated, or dependency-bound."
+      "No active dispatches. Read the Ladder's owner-recorded scope and terminal\n" +
+        "condition; the ledger cannot supply either. Refill unmet bounded outcomes,\n" +
+        "or eligible continuous in-scope work. Bounded means all outcomes accepted;\n" +
+        "continuous exhaustion accounts for every in-scope remainder. If a hold or\n" +
+        "unclear scope leaves no authorized work, report a blocked handoff."
     );
   } else {
     console.log(`Active dispatches (ledger: ${ledgerPath}):`);
@@ -1174,10 +1175,9 @@ function cmdList() {
         `  ${active.length} lane(s) active (e2e ${e2eActive}/${E2E_LANE_CAP}, ` +
           `other ${active.length - e2eActive}) — UNDER-SATURATED. A full e2e lane\n` +
           "  is NOT a thin queue: the caps are separate axes (2 e2e, ~5 lanes, ~3\n" +
-          "  unreviewed PRs). Before calling the queue thin: PAIR small issues into\n" +
-          "  one cluster, source self-filed P3s (back of the queue is still IN the\n" +
-          "  queue), do the standing work (reconcile, release notes) — or list why\n" +
-          "  each remaining issue is blocked, owner-gated, or dependency-bound."
+          "  unreviewed PRs). Inside the Ladder's recorded scope, PAIR small issues,\n" +
+          "  source eligible self-filed P3s, or do standing work. Otherwise report\n" +
+          "  bounded completion or the in-scope blockers; do not widen the cycle."
       );
     }
   }

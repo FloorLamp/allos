@@ -1,6 +1,6 @@
 ---
 name: orchestrate
-description: Run an agent-orchestrated development session on FloorLamp/allos — check in, triage the queue, cluster issues, dispatch coding agents through the brief tooling, review every diff, merge green heads serially, and keep the pipeline full until the queue is blocked or the owner winds it down. Use when the owner says "orchestrate", "run a session", "work the queue", "dispatch agents", "keep merging", or hands over the repo for autonomous development — and for resuming after a restart or gap. NOT for doing the feature work yourself (the orchestrator never writes feature code) and NOT for one-off issue filing or tracker maintenance (file-issue and reconcile-tracker own those).
+description: Run an agent-orchestrated development session on FloorLamp/allos — check in, read the owner-recorded cycle scope, triage and dispatch within it, review every diff, merge green heads serially, and reach bounded completion or scoped continuous exhaustion. Use when the owner says "orchestrate", "run a session", "work the queue", "dispatch agents", "keep merging", or hands over the repo for autonomous development — and for resuming after a restart or gap. NOT for doing the feature work yourself (the orchestrator never writes feature code) and NOT for one-off issue filing or tracker maintenance (file-issue and reconcile-tracker own those).
 allowed-tools: Read, Grep, Glob, Bash, Agent, TaskCreate, TaskUpdate, TaskList, mcp__github__merge_pull_request, mcp__github__update_pull_request
 ---
 
@@ -52,8 +52,8 @@ After a restart, PRESERVE BEFORE DIAGNOSING: rescue in-flight work from the
 roster (remote branches are the durable checkpoints; agents push after every
 meaningful step) before investigating why the restart happened.
 
-Then read the Ladder issue (#4769: rung order, your slice, prerequisites —
-it outranks your own ranking), arm the next check-in, and post the pulse:
+Then read the Ladder issue (#4769: scope, outcomes, termination, rung order,
+slice, prerequisites — it outranks your ranking), arm the next check-in, and post the pulse:
 the census line and exceptions only (`lifecycle.md` §Status pulse).
 
 The script's persisted state outranks your own memory of the session.
@@ -64,26 +64,19 @@ The script's persisted state outranks your own memory of the session.
 - Read candidate issues WHOLE — entire body, every comment, freshly. Owner
   rulings append to body ends and arrive as comments; a truncated read drops
   exactly the binding text (a live run filed against a struck ruling).
-- Older issues get an audit table first: resolved by what, or still open. The
-  tracker's measured failure mode is stale premises, not typos — 7 of ~40
-  audited issues rested on false ones.
+- For older issues, use `dispatch.md`'s current-state block and refresh it after
+  a partial merge.
 - Label hygiene is machine-checked (`checkLabelHygiene`): one priority slot,
   at least one domain label, nothing outside the closed taxonomy. Repair
   violations on the spot; they are yours to fix, not to report.
 - The taxonomy is `KNOWN_LABELS` (`reconcile-tracker-core.ts`). Never invent
   a label; never verify one against the live label list, which silently grows
   a new label for every past mistake (`docs/orchestration/labels.md`).
-- Issues YOU or a lane filed are back-of-queue: default P3, sourced oldest
-  first, only when no owner-filed work of equal or higher priority is ready
-  (`dispatch.md` §Dispatch). Sole exception: a demonstrated P0/P1 regression
-  a merge just introduced.
-- Lanes never file issues — findings ride the return summary, and you decide
-  what becomes an issue.
-- `needs-human`: label + assign the owner the same day, then WORK ELSEWHERE.
-  Never prompt the owner uninvited; the needs-human skill drains the queue
-  when they show up.
-- No `AskUserQuestion` — not granted; the owner is usually absent. A question
-  becomes a label + assignment or a pulse line, and the session keeps moving.
+- Self-filed work and owner-authorized priority audits follow `dispatch.md`.
+  Lanes never file issues; findings ride the return summary.
+- Owner questions use `needs-human` plus owner assignment, never
+  `AskUserQuestion`. Continue only clear, unheld in-scope work; otherwise bank
+  and report blocked.
 - `design` issues split on one test: does the body RECORD the decision or
   still CONTAIN the question? A recorded decision (#2701's shape) or a
   direction with falsifiers (#2641) dispatches like any P2; an issue still
@@ -174,7 +167,7 @@ code.
 Migration conflicts: merge order defines migration order; keep both
 `versions/index.ts` entries, later merge last (`review-merge.md` §Migrations).
 
-## 6. Close out, then refill
+## 6. Close out, then follow the recorded cycle
 
 ```bash
 node scripts/orchestration/dispatch-brief.mjs done <branch>
@@ -184,19 +177,18 @@ Verify linked issues actually closed (a merge that "closes" nothing is a
 tracker leak) and remove the worktree and branch. Release notes are NOT yours:
 the PM writes the day's batch off `main` (`multi-orchestrator.md` §Bookkeeping).
 
-Then REFILL: dispatch continuously while viable work exists, without asking
-permission to resume. An empty or one-lane roster — after merges or after a
-recovery — is a dispatch order, not a status to report.
-
-The honest terminal state is "every remaining issue is blocked, owner-gated,
-or dependency-bound" — reach it and say so, with the list.
+Follow `lifecycle.md`'s recorded-cycle contract; the ledger defines no scope.
+Bounded cycles complete only when every outcome is accepted. Continuous cycles
+exhaust only when every in-scope remainder is accounted for. Holds, blockers,
+or unclear scope that leave no authorized work produce a blocked handoff,
+never broader dispatch or completion.
 
 ## Standing cadence (once per session-day)
 
 - One adversarial audit over the previous day of merges; file findings
   against the introducing PR.
-- Pulse the numbers: `session-metrics.mjs --days 7`. Reverts, draft PRs and
-  needs-human aging are findings, not noise.
+- Pulse `session-metrics.mjs --days 7`; its signals are not outcomes, and owner
+  answer-wait time is unmeasured.
 - Dependabot: merge minors on green current main; majors through
   `dependabot-eval-brief.mjs` within a day (verdicts land as
   `recommend-adopt` / `recommend-hold` + `parked`).
@@ -217,8 +209,7 @@ check-ins; hand off state.
 - Approving or requesting changes on PRs (COMMENT reviews only).
 - Answering `needs-human` questions on the owner's behalf — silence is not
   consent.
-- Blocking on the owner. No `AskUserQuestion` (not granted): questions ride
-  `needs-human` labels and the pulse while the pipeline keeps moving.
+- Asking the owner interactively or widening scope while a question is pending.
 - Narrating in chat. Nobody reads the transcript: the census line, the
   exceptions, and the durable homes are the whole output.
 - Restructuring top-level guidance incidentally. Agents keep docs current;
