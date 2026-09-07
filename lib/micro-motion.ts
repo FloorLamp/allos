@@ -1,62 +1,7 @@
-// MICRO-MOTION: the small moves the app is allowed to make (#2654, #3676).
-//
-// The app is almost entirely static, and that is the calm identity working. TWO
-// classes of motion are allowed out of that stillness, and they answer different
-// questions:
-//
-//   INFORMATION motion answers "did that work?" — a tap-shaped confirm visibly
-//   becoming its done state, a quantity visibly CHANGING rather than being
-//   replaced. It carries a fact, and is held to the same standard as copy.
-//
-//   CONTINUITY motion (#3676) answers nothing. Its job is that THE EYE KEEPS ITS
-//   PLACE through a change the reader caused: a panel growing under the summary
-//   they tapped. It carries no information, which is exactly why rule 3 below is
-//   scoped to the information class and why continuity motions declare
-//   `preserves` and `causedBy` instead.
-//
-// Both classes are held to the same four rules, with rule 3 read per class:
-//
-//   1. 150–300 ms. Long enough to be seen as a transition, short enough that a
-//      returning glance never waits on it. `MICRO_MOTION_MIN_MS`/`MAX_MS` are the
-//      band, and the completeness test below fails a duration outside it — unless
-//      the motion carries an ARGUED EXEMPTION (`MICRO_MOTION_BAND_EXEMPTIONS`),
-//      which is a value that cannot be constructed without its reasoning.
-//   2. NOTHING LOOPS. A looping animation is an attention claim that never stops
-//      making itself, and a health app must not campaign at anyone. Every class in
-//      the stylesheet's Micro-motion section runs once; the test fails an
-//      `infinite`/`alternate` iteration there.
-//   3. Reduced motion is a DESIGNED STATE, not a degradation. Every motion in
-//      EITHER class declares `reducedEndState`: for an information motion, the same
-//      information arriving instantly; for a continuity motion, the end layout,
-//      instantly. The second sentence of this rule is scoped to the INFORMATION
-//      class: a motion in THAT table whose meaning is lost when it is switched off
-//      was decoration and does not belong in it. A continuity motion is defined by
-//      having no meaning to lose, so that sentence cannot judge it — `preserves`
-//      and `causedBy` are what stop it becoming garnish instead.
-//   4. Motion is never the ONLY carrier. Every INFORMATION motion declares
-//      `carriedBy` — the text, attribute or colour that states the same fact for a
-//      reader who sees no motion at all, including a screen-reader user and a
-//      printed page. A continuity motion carries no fact, so it has none to declare.
-//
-// WHAT IS REFUSED, in both classes, stated so the continuity class cannot be read
-// as an opening: ambient or idle animation; anything looping; motion on a surface
-// the reader did not act on; decorative entrances on page load; and motion that
-// delays a reader's next action — a control is interactive on the FIRST FRAME of
-// any continuity motion, never after it.
-//
-// This is TOKENS AND A DECLARATION, not a registry engine (#2654's own words): the
-// numbers, one ease curve, and the pure fold of the viewer's preference into a
-// duration. There is no scheduler and no runtime dispatch. The CSS half lives in
-// app/globals.css's "Micro-motion" section, and lib/__tests__/micro-motion.test.ts
-// pins the two copies of every number together.
-//
-// NOT this module: the OVERLAY family (lib/motion.ts) — a panel arriving is
-// navigation, runs at 240 ms, and answers a different question. Keep them apart; a
-// surface that slides a sheet does not reach in here.
-//
-// Pure by construction: no DOM, no React, no clock.
+// Shared feedback and continuity tokens. The current contract and caller rules
+// live in docs/internals/micro-motion.md; app/globals.css owns the CSS half.
+// Pure: no DOM, React, clock, scheduler, or runtime dispatch.
 
-// The 150–300 ms band from the issue title, as checkable numbers.
 export const MICRO_MOTION_MIN_MS = 150;
 export const MICRO_MOTION_MAX_MS = 300;
 
@@ -76,16 +21,8 @@ export interface MicroMotionDecl {
   readonly reducedEndState: string;
 }
 
-// Every micro-motion in the app. A new one is a row here plus a
-// `--motion-<name>` custom property in the stylesheet's Micro-motion section;
-// the completeness test fails either half on its own.
-//
-// `slide` and `fold` are TWO motions, not one, and conflating them is the mistake
-// the owner ruling below exists to prevent: the dismissed row TRAVELLING is one
-// duration (in-band), and the fold line ANSWERING is another (exempt). They are
-// authored, tokenized and timed apart because they are separately true — a fold can
-// pulse for a dismissal that came from a keyboard with no row travel worth drawing,
-// and a row can travel on a surface whose fold is currently empty.
+// Each declaration has matching CSS timing and a class. Information motions
+// name the fact they convey, its independent carrier, and its reduced end state.
 export const MICRO_MOTIONS = {
   settle: {
     ms: 300,
@@ -114,15 +51,6 @@ export const MICRO_MOTIONS = {
     reducedEndState:
       "the row is simply gone from the list on the frame the page re-renders, and the fold below already holds it.",
   },
-  // The fifth tenant, and the first that is not feedback on a WRITE (#2657 item 4). It
-  // answers the same question — "did that register?" — for a GESTURE instead of a save:
-  // the jump rail's bubble beats once as the finger crosses out of one month and into
-  // the next. It belongs in this vocabulary rather than the overlay family because it
-  // is a beat IN PLACE rather than a panel arriving, and it is held to all four rules
-  // including the band. It is also the rule-4 case at its starkest: the platform half
-  // of the same feedback (one 8 ms haptic, `HAPTIC_PATTERNS.select`) does not
-  // exist on iOS at all, which is exactly why the #2657 ruling makes the VISUAL pulse
-  // the universal carrier — and why this row is not optional.
   tick: {
     ms: 180,
     conveys:
@@ -132,21 +60,7 @@ export const MICRO_MOTIONS = {
     reducedEndState:
       "the bubble simply reads the new period on the next frame, with no beat — and the haptic is suppressed by the same preference (lib/haptics), so the text is the whole feedback.",
   },
-  // The sixth tenant, and the first on the dashboard (#3253 decision 4). A reading
-  // whose value changed enough to be promoted LIFTS out of Standing and arrives in Now
-  // as a card. It is feedback on a change rather than on a write, like `tick` — and it
-  // is held to all four rules, including the band.
-  //
-  // 300 ms, not the issue's "~320 ms": 320 is 20 ms outside the band, and the honest
-  // price of 20 ms is a band exemption — a ruling, with reasoning, that would then be
-  // the SECOND entry in a list whose whole value is having one. The tilde is doing the
-  // work it was written for. If a future ruling wants 320 it costs an exemption, and
-  // that is the right price to make someone pay.
-  //
-  // WITNESSED ONLY. Whether this class is applied at all is `witnessedNowMotion`
-  // (lib/dashboard-motion.ts): a promotion that lands while you are looking gets the
-  // lift; the same diff arriving after a resume lands quietly, because "this just
-  // moved" is false once you were away.
+  // Only witnessed changes animate; lib/dashboard-motion.ts owns that decision.
   promote: {
     ms: 300,
     conveys:
@@ -156,9 +70,7 @@ export const MICRO_MOTIONS = {
     reducedEndState:
       "the card is simply in Now on the frame the page re-renders, and Standing no longer lists the row; no keyframe is ever scheduled.",
   },
-  // The seventh tenant (#3675). The quick-log sheet reserves the context slot
-  // before this asynchronous gather starts, so the opacity receipt can say
-  // "finished gathering" without moving the segment strip under the reader.
+  // QuickLogMenu reserves panel height before gathering; the fade marks completion.
   arrive: {
     ms: 200,
     conveys:
@@ -185,26 +97,8 @@ export function microMotion(kind: MicroMotion): MicroMotionDecl {
   return MICRO_MOTIONS[kind];
 }
 
-// ── The CONTINUITY class (#3676) ─────────────────────────────────────────────
-//
-// A second class, for motion whose job is that THE EYE KEEPS ITS PLACE through a
-// change the reader caused. It conveys nothing — switch it off and no fact is
-// lost, only the reader's grip on where they were — so it cannot declare
-// `conveys` or `carriedBy` and it cannot be judged by rule 3's decoration
-// sentence. Two other questions do that work instead, and both are required:
-//
-//   `preserves` — what stays continuous across the change, in the reader's terms.
-//   `causedBy`  — the reader's OWN action that licenses it. This is the guard that
-//                 keeps "nothing moves without a gesture" true. A network answer
-//                 arriving unprompted is NOT a cause; the tap that requested it is.
-//
-// Everything else is inherited from the information class UNCHANGED: the
-// 150-300 ms band and its mechanical test, the same `bandExemption()` shape if one
-// is ever argued (the pinned exempt-key list still names `fold` alone), the
-// nothing-loops stylesheet scan, the single MICRO_MOTION_EASE so the two classes
-// cannot feel different, and `reducedEndState` — which for this class is simply
-// the end layout, instantly. That last one is why the class is safe: a reader who
-// turns motion off gets exactly today's app.
+// Continuity preserves the reader's place through their own action. It carries
+// no separate fact, so its declaration names what stays continuous and why it moves.
 export interface ContinuityMotionDecl {
   // Milliseconds. Mirrored by a CSS custom property of the same name.
   readonly ms: number;
@@ -216,11 +110,6 @@ export interface ContinuityMotionDecl {
   readonly reducedEndState: string;
 }
 
-// A continuity declaration is a VALUE THAT CANNOT BE CONSTRUCTED BLANK — the same
-// declare-or-argue shape `bandExemption()` above and `arguedExclusion()` in
-// lib/loggable-domains.ts use. The two new fields are the only thing standing
-// between this class and garnish, so a row that leaves one empty must not exist
-// rather than merely fail a length assertion somewhere later.
 export function continuityMotion(
   ms: number,
   preserves: string,
@@ -243,34 +132,15 @@ export function continuityMotion(
 // the completeness test fails either half on its own, exactly as it does for the
 // information table.
 export const CONTINUITY_MOTIONS = {
-  // The first tenant (#3677). Every disclosure in the app used to snap: the panel
-  // appeared at full height with the reader's finger still on the summary, which on
-  // a phone is a full-screen jump. The panel now grows from the summary downward.
-  //
-  // Written in CSS on `::details-content` rather than driven from JS, and that is
-  // the reason this class can exist without a scheduler: the browser owns the
-  // interpolation, the element is interactive on the first frame, and a disclosure
-  // that was restored open before first paint (lib/disclosure-memory.ts's boot
-  // script) is simply open — there is no prior height to transition FROM, so no
-  // entrance replays on load. That replay is exactly the ambient motion #3676
-  // refuses, and it is refused here structurally rather than by a guard.
+  // Restored-open disclosures have no prior closed paint to animate from.
   disclose: continuityMotion(
     200,
     "the summary you tapped stays exactly where it is while the panel grows below it, so the line you were reading never moves out from under you.",
     "the reader's own tap, click or Enter on the summary. Nothing else opens a disclosure: a fold restored from memory on page load is already open and does not animate.",
     "the panel is simply at its full height on the frame the disclosure opens, and simply gone on the frame it closes; no transition is scheduled."
   ),
-  // The second tenant (#4365), and the first that crosses a NAVIGATION rather than a
-  // client toggle. /history's fold and rollup lines are still plain URL state (#4135:
-  // collapsed content stays server-omitted, the URL stays the carrier), so there is no
-  // client fold model here for a `.motion-<name>` element to transition — the whole
-  // re-rendered feed crosses at once. What smooths THAT without either side inventing
-  // a second state machine is the browser's own View Transition API: it diffs the
-  // page's own before/after paint, so a row that renders pixel-identical either side
-  // is never drawn as moving, and only the fold or rollup actually toggled visibly
-  // changes. Not a "route/page transition" in #3676's excluded sense — that phrase
-  // named a transition spanning two DIFFERENT documents' worth of state; this is one
-  // route re-rendering its own same params.
+  // History fold state stays in the URL. Its gesture uses a browser View
+  // Transition around the committed feed, with ordinary link navigation as fallback.
   historyfold: continuityMotion(
     250,
     "every row that was not the one you tapped stays exactly where it was and exactly how it looked — the fold or rollup you opened or closed is the only thing that visibly changes.",
@@ -300,15 +170,7 @@ export function motionMsOf(kind: AnyMotion): number {
   return decl.ms;
 }
 
-// ── The band, and the one thing exempt from it ───────────────────────────────
-//
-// Rule 1 is 150–300 ms and #2705 made it mechanical, which is what turned "nothing
-// lingers" from a promise into a build property. An exemption is therefore not a
-// number you may quietly widen: it is a VALUE, and `bandExemption()` refuses to
-// construct one without its reasoning written down. That is the same declare-or-argue
-// shape `arguedExclusion()` uses in lib/loggable-domains.ts, for the same reason — a
-// bare numeric exception with no stated why is how a band stops being a rule and
-// becomes a default the next motion argues it also deserves.
+// A duration outside the shared band must name its ruling and reasoning.
 declare const BandExemptionBrand: unique symbol;
 
 export interface BandExemption {
@@ -337,14 +199,8 @@ export function bandExemption(
   return { exemptMs, ruling, because } as BandExemption;
 }
 
-// The exemptions, keyed by the motion they name. `Partial<Record<AnyMotion, …>>`
-// so an exemption can only ever name a motion that exists — in EITHER class, since
-// the band is inherited unchanged and so is the price of leaving it — and the test fails a
-// STALE one — an entry whose motion has since come back inside the band is a
-// permission nobody needs, and leaving it there is how the list grows.
-//
-// One entry today. A second is a deliberate edit of this table AND of the test's
-// pinned key list, with its own ruling beside it.
+// Exemptions name existing motions and their exact durations. Tests reject
+// stale exemptions and changes to the approved set of keys.
 export const MICRO_MOTION_BAND_EXEMPTIONS = {
   fold: bandExemption(
     500,
