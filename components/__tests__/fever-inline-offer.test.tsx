@@ -109,6 +109,10 @@ vi.mock("@/components/Toast", () => ({
   ToastProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
+vi.mock("@/app/(app)/supplies/actions", () => ({
+  listSharedSupplyOptions: async () => [],
+}));
+
 const TODAY = new Date().toISOString().slice(0, 10);
 const SUBJECT = 42;
 
@@ -210,7 +214,10 @@ beforeEach(() => {
   pendingTemperature.wait = null;
   pendingTemperature.refusedTime = false;
 });
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 describe("the fever offer's lifetime is the fold's (#4712 judgement 1)", () => {
   it("renders after a fever-range reading and survives while the fold stays open", async () => {
@@ -565,6 +572,36 @@ describe("the Meds chip yields to the fold's dose offer (#4712 ruling part 2)", 
     screen.queryAllByTestId(`cockpit-med-chip-${id}`);
   const section = () => screen.getByTestId("cockpit-prn");
 
+  it("preserves a new medication draft when an earlier temperature save finishes", async () => {
+    let release!: () => void;
+    pendingTemperature.wait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      }
+    );
+    renderCockpit();
+    await openFold();
+    await logReading("98.6");
+    expect(posted.temperature).toHaveLength(1);
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("illness-add-medication"))
+    );
+    const name = screen.getByRole("combobox", { name: "Name" });
+    fireEvent.change(name, { target: { value: "Draft medication" } });
+    expect(name).toHaveProperty("value", "Draft medication");
+    await act(async () => release());
+    expect(screen.getByRole("combobox", { name: "Name" })).toHaveProperty(
+      "value",
+      "Draft medication"
+    );
+  });
+
   it("moves the antipyretic's chip into the offer and leaves the section standing", async () => {
     renderCockpit(
       EPISODE.id,
@@ -612,6 +649,9 @@ describe("the Meds chip yields to the fold's dose offer (#4712 ruling part 2)", 
     expect(section().contains(chips()[0])).toBe(false);
     await openFold(); // the same toggle, now closing the fold
     expect(chips()).toHaveLength(1);
+    expect(section().contains(chips()[0])).toBe(true);
+    await openFold();
+    expect(screen.queryByTestId("fever-offer")).toBeNull();
     expect(section().contains(chips()[0])).toBe(true);
   });
 
