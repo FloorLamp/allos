@@ -15,24 +15,9 @@ import {
   type SqlArg,
 } from "./sql-scan";
 
-// GATED-TABLE WRITE SCAN (issue #1893) — the enforcement layer of the stateful-affordance
-// pattern. Where a table has a stateful write CORE, no other module may reach past it
-// with a raw INSERT/UPDATE/DELETE, so every write passes the core that enforces the gate
-// and returns a typed refusal.
-//
-// It reuses the profile-scoping guard's source scanner verbatim (./sql-scan.ts) — same
-// file enumeration, same `.prepare`/`.exec` first-argument extraction, same normalization.
-// Two questions, one scanner; a third hand-rolled SQL parser would be this issue's own
-// disease, in the test tier.
-//
-// WHAT THIS DOES NOT GUARANTEE, stated so the guarantee isn't overread:
-//   • It is a TEXT scan. A statement whose table name is interpolated (the generic
-//     undo-delete/restore machinery builds `DELETE FROM ${root.table}`) is invisible to
-//     it, and no allowlist entry pretends otherwise.
-//   • It says nothing about whether an AFFORDANCE renders the offer state. That is the
-//     audit's job; the registry's `offerState` field names the derivation so review has
-//     one place to look. With this scan in place a state-blind button degrades to
-//     tap → honest refusal, never corruption.
+// Checks supported literal SQL against the registered write owners using the
+// shared scanner. Computed SQL, excluded files, core correctness, and UI outcome
+// handling are outside its coverage. See docs/internals/stateful-affordances.md.
 
 // Statements that legitimately write a gated table from OUTSIDE its cores, keyed by the
 // file they live in (so an unrelated file can't ride the exemption). Matched as a

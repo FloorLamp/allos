@@ -1,38 +1,15 @@
-// Gated-table write registry (issue #1893) — the enforcement half of the stateful-
-// affordance pattern (#1892).
-//
-// THE SPLIT, stated plainly, because the two halves guarantee different things:
-//
-//   • THIS SCAN GUARANTEES NO SILENT CORRUPTION. Where a stateful write CORE exists, no
-//     other module may reach past it to the table with a raw INSERT/UPDATE/DELETE. Every
-//     write therefore passes the core that enforces the gate and returns a typed refusal.
-//   • THE AUDIT UPGRADES REFUSALS INTO GOOD UX. No static check can prove that a button
-//     was rendered from state — that is what the `offerState` field names, so a reviewer
-//     has ONE place to look for the derivation a surface should be rendering. With the
-//     scan in place, the worst a state-blind button can do is tap → honest refusal. It
-//     can never corrupt.
-//
-// The criterion the audit applies: ADDITIVE writes may stay plain; LIFECYCLE writes render
-// from state. A weight entry or a food serving adds a fact and is correctly a plain
-// button; a period start, an episode close, or a supply counter is a transition over
-// existing state and needs a core that can refuse.
-//
-// Registering a table asserts that its listed `cores` are the only modules allowed to
-// mutate it, and that each core answers with a typed outcome rather than confirming
-// unconditionally. The registry is deliberately SMALL — it is a chokepoint list, not an
-// inventory of the schema. Precedents for the shape: CROSS_PROFILE_SQL_MODULES
-// (lib/cross-profile.ts) and the lib/notifications/telegram.ts outbound chokepoint.
-//
-// Enforced by lib/__tests__/stateful-writes.test.ts over the shared source scanner.
+// Lifecycle/counter write owners checked by lib/__tests__/stateful-writes.test.ts.
+// The scan detects supported literal SQL outside these cores; computed SQL and
+// excluded files remain outside its coverage. It does not prove core correctness
+// or that UI callers render offer state and handle typed outcomes.
+// Contract: docs/internals/stateful-affordances.md.
 
 export interface StatefulWriteTable {
   // The SQL table name, matched as a whole word directly after INSERT INTO / UPDATE /
   // DELETE FROM.
   table: string;
-  // Optional COLUMN narrowing. When present, only a write that also names one of these
-  // columns is gated — the table itself has many legitimate non-stateful writes and it is
-  // one counter on it that carries the state. A DELETE names no column and so is never
-  // matched by a column-narrowed entry: removing the row is not a counter transition.
+  // Optional narrowing to SQL mentioning a listed column anywhere, including a
+  // WHERE predicate. This is a text match, not an analysis of assigned columns.
   columns?: readonly string[];
   // Repo-relative path SUFFIXES of the modules permitted to hold that DML. Suffix-matched
   // like the profile-scoping allowlist, so a nested path resolves.
