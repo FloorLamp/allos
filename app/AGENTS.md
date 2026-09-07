@@ -25,6 +25,7 @@ These instructions apply to request boundaries under `app/`.
 - Keep API and Server Action behavior compatible with deployment skew where the
   relevant internal design document requires it.
 
-- Read the relevant documents in `docs/internals/`, especially
-  `server-action-refresh.md`, `import-actions.md`, `deploy-skew.md`, and
-  `undo-contract.md`.
+- For write/revalidation changes, read `docs/internals/server-action-refresh.md`.
+  For imports, use `import-actions.md`; for client/server compatibility across
+  deployments, `deploy-skew.md`; for deletion/undo, `undo-contract.md`.
+  These documents live in `docs/internals/`.

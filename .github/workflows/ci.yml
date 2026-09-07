@@ -41,8 +41,12 @@ jobs:
   # slowest of them, not their sum, is what a push waits for.
   check:
     runs-on: ubuntu-latest
+    env:
+      DOC_BREVITY_BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - uses: ./.github/actions/node-setup
 
