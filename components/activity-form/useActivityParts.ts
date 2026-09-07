@@ -248,14 +248,14 @@ export function useActivityParts({
       prev.map((p, idx) => {
         if (idx !== pi) return p;
         const allSetsDone = p.sets.every(setDone);
-        return {
+        return latchVaried({
           ...p,
           sets: p.sets.map((s, j) => {
             const selected =
               si === "all" ? allSetsDone || !setDone(s) : j === si;
             return selected ? { ...s, ...patch } : s;
           }),
-        };
+        });
       })
     );
   }

@@ -409,6 +409,12 @@ describe("the shared weight stepper (#5371)", () => {
     expect(
       buildActivityPayload(classifier, latest).flat.map((s) => s.weight)
     ).toEqual([60, 62.5]);
+
+    fireEvent.click(
+      within(byId("set-row-1")).getByLabelText("Increase weight")
+    );
+    expect(weights()).toEqual(["62.5", "62.5", "62.5"]);
+    expect(screen.queryByTestId("exercise-weight")).toBeNull();
   });
 
   it("Vary expands to per-set weights, focuses that set's, and stays expanded", () => {
