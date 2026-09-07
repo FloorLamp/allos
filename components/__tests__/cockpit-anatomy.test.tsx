@@ -111,7 +111,7 @@ describe("the recovery header IS the status (#4752 item 1)", () => {
   it("leads with the ring, the sentence, the day tag, one summary line and the promoted action", () => {
     render(
       <CockpitRecoveryHeader
-        name="Dune"
+        name="Example Child"
         status={STATUS}
         recovery={RECOVERY}
         action={<button type="button">Feeling better</button>}
@@ -119,7 +119,7 @@ describe("the recovery header IS the status (#4752 item 1)", () => {
     );
     const header = screen.getByTestId("cockpit-recovery-header");
     expect(screen.getByTestId("cockpit-headline").textContent).toBe(
-      "Dune is nearly there"
+      "Example Child is nearly there"
     );
     // THE NAME AND THE DAY TAG STAY (owner, 2026-09-06). Both also appear on the
     // accordion row this body expands from, and a pass removing them from here as
@@ -147,17 +147,24 @@ describe("the recovery header IS the status (#4752 item 1)", () => {
 
   it("draws no ring when nothing has been measured", () => {
     render(
-      <CockpitRecoveryHeader name="Dune" status={STATUS} recovery={null} />
+      <CockpitRecoveryHeader
+        name="Example Child"
+        status={STATUS}
+        recovery={null}
+      />
     );
     // A ring at zero and a ring that does not apply look identical, and only one
     // of them is true.
     expect(screen.queryByTestId("cockpit-recovery-ring")).toBeNull();
-    expect(screen.getByTestId("cockpit-headline").textContent).toBe("Dune");
+    expect(screen.getByTestId("cockpit-headline").textContent).toBe(
+      "Example Child"
+    );
   });
 });
 
 function med(over: Partial<PrnMedForQuickLog> & { id: number; name: string }) {
   return {
+    identity: { name: over.name, rxcui: null },
     kind: "medication" as const,
     product: null,
     amount: "160 mg",
@@ -492,8 +499,8 @@ const ROW_COCKPIT: IllnessContextCockpit = {
   episodeKey: "e1",
   episodeOrder: 0,
   profileId: 4,
-  profile: { id: 4, name: "Dune", photo_path: null, photo_version: 0 },
-  displayName: "Dune",
+  profile: { id: 4, name: "Example Child", photo_path: null, photo_version: 0 },
+  displayName: "Example Child",
   situation: "Illness",
   isActive: true,
   canWrite: true,
@@ -557,13 +564,13 @@ describe("the accordion row goes quiet when it is expanded (#5488 fix 1)", () =>
     // #531/#534's safety identity stays: which person a control writes to is never
     // a matter of screen position.
     expect(screen.getByTestId("illness-cockpit-name-e1").textContent).toBe(
-      "Dune"
+      "Example Child"
     );
     expect(screen.getByTestId("row-body")).toBeTruthy();
     // …and the toggle still names the situation and the person, so the row painting
     // neither does not take them off the accessible name.
     const toggle = screen.getByTestId("illness-cockpit-toggle-e1");
     expect(toggle.getAttribute("aria-label")).toContain("Illness episode 1");
-    expect(toggle.getAttribute("aria-label")).toContain("Dune");
+    expect(toggle.getAttribute("aria-label")).toContain("Example Child");
   });
 });

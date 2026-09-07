@@ -307,6 +307,7 @@ describe("the PRN row spends its statement on the tap that paid for it (#4426)",
   function prnRow() {
     return render(
       <QuickLogPrnControl
+        identity={{ name: "Ibuprofen", rxcui: null }}
         itemId={5}
         name="Ibuprofen"
         doseAmount="200 mg"

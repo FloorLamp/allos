@@ -6,6 +6,7 @@
 // "one question, one computation" rule). Server-only (reaches the DB + profile tz);
 // the client components receive the pre-built values as props.
 
+import type { PrnMedForQuickLog } from "@/lib/queries/intake/adherence";
 import {
   getIntakeDoses,
   getRetiredDoses,
@@ -202,6 +203,7 @@ export interface MedicationsData {
   // The recently-used active PRN meds for the Today panel, with pre-formatted
   // day-summary + redose-window lines (same read the dashboard presentation uses).
   prnToday: {
+    identity: PrnMedForQuickLog["identity"];
     id: number;
     name: string;
     product: string | null;
@@ -549,6 +551,7 @@ export function loadMedicationsData(
     const redoseLine = redoseCardLabel(redoseStatus, m.familyMemberCount);
     return {
       id: m.id,
+      identity: m.identity,
       name: m.name,
       product: m.product,
       amount: m.amount,

@@ -1,29 +1,15 @@
-// Curated OTC PRN dosing DEFAULTS matcher (issue #798). The single-item lookup twin
-// of the food-drug matcher (lib/food-drug-interactions.ts): given ONE intake item
-// (its name + cached RxCUI(s)), return the committed OTC label defaults for that
-// ingredient — the adult redose interval/max to PRE-FILL, and (for ibuprofen /
-// acetaminophen) the label's pediatric weight-band chart. No DB, no network — the facts
-// live in the curated-dataset framework (lib/datasets/prn-defaults.ts over the committed,
-// hand-maintained, CITED lib/datasets/data/prn-defaults.json).
-//
-// LIABILITY POSTURE (kept apart, like the food-drug data): everything here is
-// INFORMATIONAL. The dataset only PRE-FILLS a suggestion onto the med form that the
-// user explicitly confirms/edits; nothing is ever applied silently, and the redose
-// notice only ever states facts about the user's OWN confirmed numbers. The pediatric
-// bands REPRODUCE the public label chart (no mg/kg computation); age gates are the
-// label's own "ask a doctor" refusals. Aspirin has NO pediatric entry (Reye's) — the
-// dataset omits it, pinned by lib/__tests__/prn-defaults.test.ts.
-//
-// Matching mirrors the drug/food datasets: RxCUI is authoritative (an exact match of
-// ANY of the item's CUIs — the confirmed product-level rxcui plus its cached active-
-// ingredient CUIs, #279 — against an entry's ingredient CUIs); a normalized name/
-// synonym match is the fallback (#279's name path). One ingredient per item.
+// Label defaults require a complete single-ingredient identity. Ingredient presence
+// is a separate question: a combination can reduce fever without sharing the
+// single-ingredient product's dosing chart. All suggestions still require confirmation.
 
 import {
   PRN_DEFAULT_ENTRIES,
   type PrnDefaultEntry,
 } from "./datasets/prn-defaults";
 import { itemRxcuis } from "./drug-interactions";
+import { ingredientCuiKey, type MedFamilyItem } from "./medication-family";
+
+type PrnItem = Omit<MedFamilyItem, "id">;
 
 // Re-export the entry + sub-types from their framework home (lib/datasets/prn-defaults
 // .ts) so the existing consumer import paths (`@/lib/prn-defaults`) are unchanged.
@@ -60,16 +46,7 @@ function nameContains(itemNorm: string, synNorm: string): boolean {
   return ` ${itemNorm} `.includes(` ${synNorm} `);
 }
 
-// The curated OTC defaults for one intake item, or null when the ingredient isn't in
-// the dataset. RxCUI is authoritative (exact match of ANY of the item's CUIs against
-// an entry's ingredient CUIs); a normalized name/synonym match is the fallback. First
-// match wins (an item resolves to at most one ingredient's defaults).
-// The redose interval / daily-max to PRE-FILL for a profile from a matched entry
-// (issue #851 item 12). For an adult (or unknown age), the adult label figures. For a
-// CHILD, the pediatric label figures WHEN the entry carries them (the label differs) —
-// otherwise null, a deliberate REFUSAL to prefill the adult numbers for a child (the
-// #798 "never guess below the label's floor" posture). `tier` labels the button/badge
-// so a prefilled value is always attributed to the right label. Pure.
+// Label redose defaults for the selected age tier; no adult fallback for children.
 export interface RedoseLabelDefaults {
   minIntervalHours: number;
   maxDailyCount: number;
@@ -101,21 +78,20 @@ export function redoseLabelDefaults(
   };
 }
 
-export function prnDefaultsFor(item: {
-  name: string;
-  rxcui: string | null;
-  rxcuiIngredients?: string[] | null;
-}): PrnDefaultEntry | null {
-  const cuis = itemRxcuis(item);
-  const itemNorm = normalize(item.name);
-  for (const e of ENTRIES) {
-    const byRxcui = e.rxcuis.some((cui) => cuis.has(cui));
-    const byName =
-      !byRxcui &&
-      e.synonyms.some((syn) => nameContains(itemNorm, normalize(syn)));
-    if (byRxcui || byName) return e;
-  }
-  return null;
+// A resolved ingredient set takes precedence over the display name. Unresolved
+// names must match a whole curated synonym; extra wording may name another product.
+export function prnDefaultsFor(item: PrnItem): PrnDefaultEntry | null {
+  const identity = ingredientCuiKey(item);
+  const name = item.name.trim().toLowerCase();
+  return (
+    ENTRIES.find((entry) =>
+      identity
+        ? entry.rxcuis.some(
+            (cui) => identity === ingredientCuiKey({ rxcui: cui })
+          )
+        : entry.synonyms.some((synonym) => name === synonym.toLowerCase())
+    ) ?? null
+  );
 }
 
 // The fever-reducing (antipyretic) ingredient slugs in the curated PRN dataset
@@ -137,23 +113,21 @@ export function isAntipyreticEntry(entry: PrnDefaultEntry | null): boolean {
   return entry != null && ANTIPYRETIC_SLUGS.has(entry.slug);
 }
 
-// Whether an intake item is a fever reducer — the item resolves to an antipyretic
-// ingredient in the curated dataset. Reuses prnDefaultsFor's RxCUI-authoritative /
-// name-fallback match, so an "Advil"/"Children's Tylenol" row classifies correctly.
-export function isAntipyreticIntakeItem(item: {
-  name: string;
-  rxcui: string | null;
-  rxcuiIngredients?: string[] | null;
-}): boolean {
-  return isAntipyreticEntry(prnDefaultsFor(item));
+// Ingredient presence retains the broader name/CUI match, including combinations.
+export function isAntipyreticIntakeItem(item: PrnItem): boolean {
+  const cuis = itemRxcuis(item);
+  const name = normalize(item.name);
+  return ENTRIES.some(
+    (entry) =>
+      isAntipyreticEntry(entry) &&
+      (entry.rxcuis.some((cui) => cuis.has(cui)) ||
+        entry.synonyms.some((synonym) =>
+          nameContains(name, normalize(synonym))
+        ))
+  );
 }
 
-// Narrows a PRN quick-log list to fever reducers (#4712 judgement 1's dose offer). The
-// quick-log projection (`getPrnQuickLogItems`) never selects rxcui/rxcui_ingredients —
-// it is the same row every dashboard/episode meds chip already reads — so this takes
-// NAME-ONLY, which is exactly isAntipyreticIntakeItem's fallback path when rxcui is
-// absent. Generic over the caller's row shape so this stays free of a dependency on
-// the queries module's PrnMedForQuickLog type.
+// Name-only callers use the same ingredient-presence fallback for dose offers.
 export function antipyreticPrnMeds<T extends { name: string }>(
   meds: readonly T[]
 ): T[] {
