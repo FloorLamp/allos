@@ -12,6 +12,8 @@ import {
   doseScheduleAsOf,
   type DoseScheduleVersion,
 } from "@/lib/intake-cadence";
+import { formatMedicationDoseLine } from "@/lib/medication-dose-format";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import {
   logHistoricalDose,
   updateHistoricalDose,
@@ -19,8 +21,9 @@ import {
 
 export interface HistoricalDoseOption {
   id: number;
-  label: string;
   amount: string | null;
+  time_of_day: string | null;
+  product?: string | null;
   versions?: readonly DoseScheduleVersion[];
 }
 
@@ -135,16 +138,16 @@ export default function HistoricalDoseForm({
   const doses = item?.doses ?? [];
   const first = doses[0];
   const initialDay = editing?.date ?? initialDate ?? maxDate;
-  const initialDose = editing
+  const initialDose: HistoricalDoseOption | undefined = editing
     ? (doses.find((dose) => dose.id === editing.doseId) ?? {
         id: editing.doseId,
-        label: "Recorded dose",
         amount: editing.amount,
+        time_of_day: null,
       })
     : first;
   const [doseId, setDoseId] = useState(initialDose?.id ?? 0);
   const [amount, setAmount] = useState(
-    editing?.amount ?? amountOn(initialDose, initialDay)
+    editing ? (editing.amount ?? "") : amountOn(initialDose, initialDay)
   );
   const [amountEdited, setAmountEdited] = useState(false);
   const [adjustSupply, setAdjustSupply] = useState(false);
@@ -171,6 +174,7 @@ export default function HistoricalDoseForm({
   const [error, setError] = useState<string | null>(null);
   const toast = useToast();
   const stampLoggedVia = useLoggedViaStamp();
+  const formatPrefs = useFormatPrefs();
 
   function resetAddEntry(): void {
     const resetItem = items[0];
@@ -192,6 +196,19 @@ export default function HistoricalDoseForm({
   const { name: itemName, asNeeded, courseBound } = item;
   const selectedDose = doses.find((dose) => dose.id === doseId) ?? initialDose;
   const selectedSchedule = doseScheduleAsOf(selectedDose, when.date);
+
+  function optionLabel(dose: HistoricalDoseOption): string {
+    const schedule = doseScheduleAsOf(dose, when.date);
+    return (
+      formatMedicationDoseLine({
+        amount: schedule.amount ?? null,
+        product: dose.product,
+        timeOfDay: schedule.time_of_day ?? null,
+        asNeeded,
+        timeFormat: formatPrefs.timeFormat,
+      }) || "Dose"
+    );
+  }
 
   return (
     <form
@@ -271,7 +288,7 @@ export default function HistoricalDoseForm({
             >
               {doses.map((dose) => (
                 <option key={dose.id} value={dose.id}>
-                  {dose.label}
+                  {optionLabel(dose)}
                 </option>
               ))}
             </select>

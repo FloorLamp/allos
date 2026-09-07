@@ -21,10 +21,7 @@ import {
   parseClockHhmm,
 } from "@/lib/format-date";
 import { missedDoseDays, type AdherenceDot } from "@/lib/intake-adherence";
-import {
-  formatMedicationDoseLine,
-  formatMedicationDoseProduct,
-} from "@/lib/medication-dose-format";
+import { formatMedicationDoseProduct } from "@/lib/medication-dose-format";
 import {
   doseScheduleAsOf,
   type DoseScheduleVersion,
@@ -163,15 +160,9 @@ export default function DoseHistoryPanel({
       courseBound,
       doses: doses.map((dose) => ({
         id: dose.id,
-        label:
-          formatMedicationDoseLine({
-            amount: dose.amount,
-            product,
-            timeOfDay: dose.time_of_day,
-            asNeeded,
-            timeFormat: formatPrefs.timeFormat,
-          }) || "Dose",
         amount: dose.amount,
+        time_of_day: dose.time_of_day,
+        product,
         versions: dose.versions,
       })),
     },

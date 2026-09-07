@@ -1,5 +1,5 @@
-import { formatMedicationDoseLine } from "@/lib/medication-dose-format";
 import type { DoseHistoryDose } from "@/components/intake/DoseHistoryPanel";
+import type { HistoricalDoseOption } from "@/components/medications/HistoricalDoseForm";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
 import type { IntakeItemKind } from "@/lib/types";
 
@@ -37,23 +37,17 @@ export interface DoseLedgerItem {
   doses: DoseHistoryDose[];
 }
 
-// The dose options a HistoricalDoseForm offers for one item, in the profile's own
-// clock format. Both halves of the mount build the same list, so they build it here.
+// The raw dose options a HistoricalDoseForm offers for one item. Both halves of the
+// mount build the same list here; the form resolves and formats them for its chosen day.
 export function doseOptionsFor(
   item: DoseLedgerItem,
-  prefs: DisplayFormatPrefs
-): { id: number; label: string; amount: string | null }[] {
+  _prefs: DisplayFormatPrefs
+): HistoricalDoseOption[] {
   return item.doses.map((dose) => ({
     id: dose.id,
-    label:
-      formatMedicationDoseLine({
-        amount: dose.amount,
-        product: item.product,
-        timeOfDay: dose.time_of_day,
-        asNeeded: item.asNeeded,
-        timeFormat: prefs.timeFormat,
-      }) || "Dose",
     amount: dose.amount,
+    time_of_day: dose.time_of_day,
+    product: item.product,
     versions: dose.versions,
   }));
 }

@@ -200,8 +200,9 @@ function datedDoseWrite(
   const at = statedInstantOnDate(date, hhmm, tz);
   if (!at) return "stale-dose";
   return datedDoseOutcome(
-    // amountOverride null keeps the dose row's own amount, and supply moves exactly as
-    // the ±2 writer moves it — one tap is one tap, whichever writer it reaches.
+    // amountOverride null lets the writer resolve the amount for this target day, and
+    // supply moves exactly as the ±2 writer moves it — one tap is one tap whichever
+    // writer it reaches.
     logHistoricalDose(
       profileId,
       dose.itemId,

@@ -2,8 +2,6 @@
 
 import { useState } from "react";
 import HistoricalDoseForm from "@/components/medications/HistoricalDoseForm";
-import { useFormatPrefs } from "@/components/FormatPrefsProvider";
-import { formatMedicationDoseLine } from "@/lib/medication-dose-format";
 import type { DoseScheduleVersion } from "@/lib/intake-cadence";
 
 export interface HistoricalDoseLauncherItem {
@@ -35,7 +33,6 @@ export default function HistoricalDoseLauncher({
   defaultTime: string;
   invalidRequestedDate?: boolean;
 }) {
-  const formatPrefs = useFormatPrefs();
   const [open, setOpen] = useState(true);
 
   return (
@@ -69,15 +66,9 @@ export default function HistoricalDoseLauncher({
             courseBound: false,
             doses: item.doses.map((dose) => ({
               id: dose.id,
-              label:
-                formatMedicationDoseLine({
-                  amount: dose.amount,
-                  product: item.product,
-                  timeOfDay: dose.timeOfDay,
-                  asNeeded: item.asNeeded,
-                  timeFormat: formatPrefs.timeFormat,
-                }) || "Dose",
               amount: dose.amount,
+              time_of_day: dose.timeOfDay,
+              product: item.product,
               versions: dose.versions,
             })),
           }))}
