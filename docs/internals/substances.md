@@ -1,383 +1,157 @@
 # Substances
 
-## Consumables share one event model and one correction shape
+Consumption is an observation. Keep the ledger neutral; screening instruments
+and weekly reduction caps are tools a person chooses. Do not add dosage,
+titration, benefit, or legality guidance. No gamification, streaks, badges,
+celebration, or crisis wiring: a severe screener result may show its calm
+clinician-discussion note, never a notification.
 
-**Owner ruling, 2026-09-04.** Substances are consumables, like food and intake, and
-behave the same way. A drink, a cigarette or a joint is an **event with an instant**,
-exactly as a food serving or a dose is. The daily total is a **rollup** — the cap's
-substrate and the card's count — and never the editable thing.
+## Event storage and correction
 
-Two consequences, and they are the doctrine rather than a rendering preference:
+One countable use is one event. Daily totals support counts and caps; they are
+not editable substitutes for events.
 
-- **One record row per event.** A day with drinks at 21:00 and 23:00 is two rows and
-  two chart ticks, not one row saying "2 standard drinks". The count derives from the
-  events.
-- **One correction shape.** A substance event is corrected where a food serving is
-  corrected — re-time, re-file, delete, on the event itself — never through a
-  day-count form.
+| Consumption                         | Event ledger                                    | Daily rollup             |
+| ----------------------------------- | ----------------------------------------------- | ------------------------ |
+| Alcohol                             | `food_log_events`, curated `alcohol` food group | `food_daily_totals`      |
+| Nicotine, cannabis, or a custom key | `substance_log_events`                          | `substance_daily_totals` |
 
-**Phase 1 (#3295) applies it to alcohol, which already had the ledger for it.** Alcohol
-lives in `food_log_events`, so its events existed and only the record was hiding them:
-the add door now mounts `WhenControl` for the food-log ledger, the statement lands on
-each serving event as `occurred_at` / `time_source = 'stated'` through the food ledger's
-own log core, and `/history` composes one `substance` row per drink carrying the FOOD
-edit payload. It stays a `substance` row — the life-stage gate and "the act in the
-person's own terms" are the record's reasons for that and neither is amended;
-`edit.kind` names the correction door, `kind` names what the thing is.
+Every write updates the event and its counter in one transaction through the
+existing ledger core. `substanceDef(key).ledger` chooses the store; custom keys
+always use the substance ledger and cannot create nutrition records.
 
-**Both of a drink's doors agree (#5026 item 1).** The substance-use card's history is
-that same rollup, one row per day, and it used to open the day-count form on an alcohol
-row — so the same drink had two correction doors disagreeing about what the editable
-thing is. Measured on that path: two drinks stated at 21:00 and 23:00, corrected to the
-next day, came back with `occurred_at` and `time_source` NULL on both, and shrinking the
-day from 2 to 1 deleted whichever was filed first. Now `updateSubstanceDailyTotalCore`
-refused a food-log ledger outright and the card's row offered Delete alone, pointing at
-the record where each drink corrects on its own. The day-count substances kept that form
-for one more phase, because for them the day still WAS the stored fact; phase 2 below
-took the last of it, so the card's ⋯ offers Delete alone on every substance and
-`updateSubstanceDailyTotalCore` is gone rather than left refusing everything.
+[History](history.md) renders one substance row per use. Alcohol stays a
+substance for display and age gating, but carries the food event's correction
+payload: `kind` identifies the record, `edit.kind` identifies its editor.
+Correct, re-time, re-file, or delete the individual event using
+`correctSubstanceEventCore`/`deleteSubstanceEventCore` or the food ledger's
+corresponding cores. A substance card's daily row offers whole-day deletion,
+not count replacement. The timeline gather's daily substance rollup is
+browse-only; it is not the event correction surface.
 
-**Phase 2 (#3295, landed as #5026 items 2 and 3) gave nicotine, cannabis and every
-custom key the same model.** `substance_log_events` is `food_log_events`
-re-instantiated: one row per use, carrying `occurred_at` + `time_source` (NULL meaning
-nobody said) and `logged_via`, beside the `substance_daily_totals` counter, which stays
-exactly where it is as the cap's substrate and the card's count. Every write moves both
-in one transaction, so a reader can never see a bumped count with no matching use.
+The dedicated substance event and daily-total datasets are browse/export-only
+in Data → Manage. A raw delete in either would split the event/counter pair.
+Use the domain's undoable event or day deletion path.
 
-Four things followed, and they are the phase rather than side effects:
+`occurred_at` and `time_source` belong to the event. A stated minute applies to
+every unit in one submitted entry; an unstated time remains unknown. Never turn
+a counter's `recorded_at` filing stamp into a use instant. The add-history core
+appends uses, including when that day already has data.
 
-- **The day-count correction is gone**, not left refusing everything. Phase 1 kept it
-  for these keys because for them the day WAS the stored fact; it is not any more, so a
-  use is re-timed, re-filed and deleted on its own record row and the day keeps one
-  operation of its own — the DELETE, which removes them all and restates nothing.
-- **The add door offers a time for every substance.** The refusal that dropped a posted
-  `stated_at` for a timeless ledger has no subject left.
-- **Both substance tables became BROWSE-ONLY on Data → Manage.** A use is a counter tick
-  and an event row written in one transaction; the manage delete is a plain
-  `DELETE … WHERE id IN (…) AND profile_id = ?` and can only ever move one of them, so
-  it would leave the card counting uses the record does not show, or the reverse — the
-  exact split the migration above exists to repair. They still export and browse. The
-  doors that move BOTH halves are unchanged and still undoable: the card's ⋯ deletes a
-  whole day, the record's ⋯ deletes one use and gives the counter its tick back.
-- **Everything logged before it became rows.** The record reads events, so a counter row
-  with none behind it would count on the card and against the cap while showing nothing
-  in the record. Migration `20260905-substance-event-rows` derives the missing events on
-  BOTH ledgers — the whole uses each substance day is SHORT, and the orphan alcohol
-  day's shortfall — with `occurred_at` NULL, because a day total declares no instant and
-  inventing one would be worse than the gap. It tops up a shortfall rather than
-  inserting a count, so a day that already has real taps is not doubled, and the
-  subtraction is floored so a fraction never rounds a use up. A derived row carries the day row's own filing stamp,
-  which is the only one the counter remembers, so a legacy day shows one row per use
-  reading "logged HH:MM" and draws no chart tick.
+Notes belong to uses. A multi-unit entry puts its note on the first event only;
+each event can later correct or clear its own note. Daily note columns remain
+in storage and exports; entry forms and event displays use event notes.
+Re-filing an event moves its note with it.
 
-The trap the counter still holds: `substance_daily_totals.recorded_at` is a FILING
-stamp, so `bestKnownInstant` on the COUNTER would hand a day a minute it never claimed.
-Ask the EVENT store.
+Legacy counters were reconciled by `20260905-substance-event-rows`: derive only
+whole missing uses, never double existing taps or round fractions up. Their
+instant stays null and their filing stamp comes from the day row, so they can
+show “logged HH:MM” without creating a chart tick. `20260905-event-notes` copied
+each day note once, preferring the first event with `logged_via IS NULL`, otherwise
+the earliest event, and created a timeless event for a noted day with none. Read those shipped migrations
+when interpreting legacy records; do not rewrite them.
 
-**A note belongs on the use (#5304, ruling on #5077).** Both event ledgers carry
-`notes`; the day rows do not collect or show one any more (their `notes` columns stand,
-copied from and never read). The add door's note lands on the entry's FIRST tap — one
-sentence for the sitting, not one per cigarette — and every use corrects or clears its
-own on its record row, through `correctSubstanceEventCore` and, for a drink and any
-other serving, `updateFoodLogEventCore`/`FoodServingForm`. The migration
-`20260905-event-notes` moved each stored day note onto that day's first derived event
-(`logged_via IS NULL` first, else the earliest row), once, and minted one timeless event
-for a noted day with no event at all. With the note on the row, re-dating a noted day's
-last use moves the note with it; the `day-note-stranded` refusal that guarded the day
-column is gone.
+## Vocabulary
 
-The cross-domain Timeline browses alcohol, nicotine, cannabis, and custom
-substances as one per-day `substance` rollup, and that is browse-only. Substance rows
-land on the app's one record — the `substance` kind in `lib/history.ts`, recorded in
-`docs/internals/history.md` — rather than creating a substance shell beside it. The
-shared event-ledger frame that sentence used to name is gone: #3958 folded the four
-ledger routes into `/history`, and the substance record's first door opens onto it.
+`SubstanceKey` is a curated key (`alcohol`, `nicotine`, `cannabis`) or a profile's
+normalized custom name. `lib/substance-use.ts` owns the catalog, units, labels,
+normalization, and total `substanceDef()` lookup. Curated units have their own
+nouns; custom entries count generic uses. An unknown custom key renders its
+name rather than throwing.
 
-Status: vocabulary shipped (#3279); the surfaces that consume it are in flight
+A custom name needs no registration table: its ledger rows are its identity.
+`getProfileSubstanceKeys()` returns curated defaults plus custom keys with data.
+`getLoggedSubstanceKeys()` returns only keys with ledger data, and
+`hasLoggedSubstance()` supplies the cheaper shell-level presence check. Removing
+the final use and its day row removes a custom key from the offered vocabulary;
+do not introduce an independent “delete substance” concept.
 
-This is the file to read before adding anything to the substance domain. It records
-what the words mean, which store owns which shape, and where the opt-in boundary sits.
-The rulings are the repo owner's, 2026-08-19, recorded on #3279.
+Reuse the [identity vocabulary](identity-registry.md): the substance and symptom
+resolvers share `matchFoldedVocabulary` and `resolveProfileVocabularyKey`.
+Normalize whitespace, preserve display case, and fold only for matching typed
+names. The oldest stored spelling wins. Do not duplicate the fold with SQLite
+`LOWER` or `NOCASE`, whose matching differs from the shared resolver.
 
-## The doctrine
+Use `validateProfileSubstanceName` at a typed-name write boundary. The underlying
+validation rejects empty or over-60-character normalized names instead of
+silently truncating input; `substanceNameError` owns the wording. Avoid an input
+`maxLength` that silently clips pasted names. Keys posted back by an existing
+row use the bare resolver so an edit cannot move to a case-equivalent neighbor.
+Existing differently cased rows retain their own history; do not merge them
+implicitly in a migration.
 
-**Consumption is observation.** Substance consumption is data like food or mood. A
-person logging two drinks is recording a fact, not confessing one. Screening
-instruments (AUDIT-C, AUDIT, DAST-10) and weekly reduction caps are **opt-in tools** a
-person reaches for — never the page's default framing. This is #2380's
-"an observation, never a target" applied to the one domain that never got it.
+## Episodic uses and regimens
 
-The app records; it never advises. No dosage guidance, no titration suggestions, no
-benefit claims, no legality modelling. A custom substance gets a ledger and honest
-unknowns, and nothing more.
+Countable drinks, sessions, or uses belong to the substance event ledger. A
+named amount per administration on a cadence belongs to an intake item, with
+its existing amount units, interval cadence, and situational holds. Protocols
+can use the existing intake-linked N-of-1 tally. Do not add dose columns to the
+substance counter or build another regimen engine.
 
-## The vocabulary
+## Optional tools and quick logging
 
-| term                     | meaning                                                                                                                                                                          |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **substance key**        | The stored identity of a substance: `substance_daily_totals.substance`, and `frequency_targets.scope_value` for the `substance` scope. `SubstanceKey` in `lib/substance-use.ts`. |
-| **curated key**          | One of the app's authored substances (`alcohol`, `nicotine`, `cannabis`). A closed set that may grow modestly where good defaults exist. `Substance` / `isCuratedSubstance()`.   |
-| **custom key**           | A profile's own substance, stored as its normalized name. Not registered anywhere before use. `isCustomSubstanceKey()`.                                                          |
-| **unit**                 | One countable use: a standard drink, a cigarette, a session. Custom substances always count in generic uses.                                                                     |
-| **episodic consumption** | Countable uses, each an event with an instant, rolled up to a per-day total. What a substance key names. Alcohol has the events today; phase 2 owes them to the rest.            |
-| **dosed regimen**        | A named substance taken at an amount on a cadence. **Not a substance key** — see the boundary below.                                                                             |
-| **reduction cap**        | An opt-in weekly ceiling on units. A `frequency_targets` row with `scope_kind = 'substance'`.                                                                                    |
-| **screener**             | An opt-in screening instrument administered or entered on the substance page.                                                                                                    |
+A reduction cap is a `frequency_targets` row with `scope_kind="substance"` and
+ceiling semantics. `getSubstanceWeekState` produces `status: null` without a
+target; otherwise `substanceCapStatus` supplies the status and `capProgressLine`
+formats it. Zero is a real opted-in cap, not absence. Never manufacture a
+default cap or send a ceiling through a frequency-floor reader that encourages
+more consumption.
 
-`SubstanceDef` is the per-key display and ledger record. `substanceDef()` is **total**
-over the key space: authored fields for a curated key, derived fields for a custom one.
-An unknown key renders as itself rather than throwing, so a ledger row always has a card
-to live in (the #203 name-keyed discipline).
+Screeners remain behind their own affordance. `lib/substance-use.ts` owns the
+instrument definitions, capture modes, citations, and scoring; do not copy
+those tables into another guide or surface.
 
-## Curated plus custom is borrowed, not invented
+Typing a name and logging its first use creates the same card used by curated
+keys. The quick-log sheet offers substances only when the profile has ledger
+data, and lists those logged keys rather than the whole vocabulary. It includes
+cap progress only where the person set a cap. The gate defaults closed in menu,
+segment, and shortcut construction; `loadQuickEntry` also checks data presence
+and refuses known minors at the server boundary. The domain's write actions
+retain their own subject authorization and age checks.
 
-The substance vocabulary is `lib/symptoms.ts` re-instantiated. Both answer one question
-— "which entries exist for this profile, and what is each one called?" — so both use the
-same four functions, and `docs/internals/identity-registry.md` lists them side by side:
-
-| symptoms                 | substances                 |
-| ------------------------ | -------------------------- |
-| `normalizeSymptomName()` | `normalizeSubstanceName()` |
-| `resolveSymptomKey()`    | `resolveSubstanceKey()`    |
-| `isCuratedSymptom()`     | `isCuratedSubstance()`     |
-| `isCustomSymptomKey()`   | `isCustomSubstanceKey()`   |
-| `symptomLabel()`         | `substanceLabel()`         |
-
-A second normalization rule for the same shape of user text would be the
-"one question, one computation" disease at the identity layer.
-
-**Case folds for matching, never for display (#3325).** Case is stored verbatim, because
-"MDMA" must not read as "Mdma" on a card heading; what #3325 removed was case DECIDING
-identity, which had made `"Kratom"` and `"kratom"` two substances with two cards and two
-ledgers, each looking correct. This is the one part of the model that is not
-re-instantiated but genuinely **shared**: both resolvers call `matchFoldedVocabulary()`
-from `lib/vocabulary-fold.ts`, and both are handed this profile's own spellings by
-`resolveProfileVocabularyKey()` in `lib/vocabulary-store.ts`. Two copies of a fold would
-drift the moment one domain's rule changed, which is why #3279's lane left the defect
-alone rather than fixing one half of it.
-
-The fold is **compared, never stored**: no code path leads from a fold to a key, so no
-normalizer can hand back a lower-cased label. It is also **not re-spellable in SQL** —
-SQLite's `LOWER(...)` / `COLLATE NOCASE` fold ASCII only, so a case-insensitive match written
-in SQL would disagree with the write boundary and quietly re-create the duplicate;
-`lib/__tests__/vocabulary-sql-fold-census.test.ts` fails the day anyone reaches for it. The spelling that wins is the **first seen**
-— the oldest ledger row's — so a card is never re-titled behind somebody's back, and the
-surface says which one took the log ("Kratom: 1 logged today" for a typed "kratom").
-
-It applies where a person **types** a name: `trackSubstanceUseAction` here,
-`logSymptomCore` on the symptom side. A key a surface hands back — correcting a day,
-setting a cap, renaming, deleting — resolves bare, because it came from a row the app
-just rendered and folding it could redirect the edit onto a neighbour.
-
-**Rows that already differ only by case are left alone**, deliberately. Merging them is an
-irreversible edit to a health record that nothing at migration time can ask about, and the
-merge rule already exists as a USER action (`renameCustomSymptom` for symptoms; the day
-rows are editable and undoable for substances) — re-implementing it in raw migration SQL,
-where the write cores are unreachable, would fork the collision semantics. So new writes
-join the first-seen card and the other spelling keeps its own history, readable and
-editable; it simply stops being the target of new logs.
-
-**No new table, and no migration.** A custom substance's identity _is_ its normalized
-name in the ledger, exactly as a custom symptom's is in `symptom_logs.symptom`. Migration
-096 declared this on day one: `substance` carries no `CHECK`, "so a future substance needs
-no rebuild". The catalog is what widened; the column never had to.
-
-**The ledger is the register.** A custom substance exists for a profile because there is a
-row. `getProfileSubstanceKeys()` is the curated catalog plus every custom key with data —
-ruling 3's read half. Undo the last unit and the row is dropped, so the substance quietly
-leaves the vocabulary; that is why there is no delete-a-substance affordance to build.
-
-**Which ledger a custom substance rides is not a choice.** It is `substance_daily_totals`,
-with count semantics, always. The food-log ledger is a curated fact about alcohol
-specifically — a standard drink _is_ one serving of the curated `alcohol` food group
-(#860/#944) — and nothing a person types can be shown to be a food, so nothing typed may
-pollute the nutrition ledger.
-
-## The episodic / regimen boundary
-
-Two shapes, two existing stores, no third engine.
-
-- **Episodic consumption** — sessions, drinks, uses — is a substance key on the substance
-  ledger. Alcohol on `food_daily_totals`/`food_log_events`, everything else on
-  `substance_daily_totals`/`substance_log_events`. Each use is an EVENT (see the doctrine
-  at the top); the daily total is the rollup over them.
-- **A dosed regimen** — 10 µg every 3 days — is an **intake item**: free-text name,
-  µg-capable amount, interval cadence, situational holds, linked to a protocol through the
-  shipped intake-linked N-of-1 tally (#3144), with outcome metrics like any protocol. This
-  path works mechanically today; #3279 blesses it rather than building anything.
-
-The practical test, for anyone tempted to widen `lib/substance-use.ts`: **if the thing
-being logged carries an amount per administration, it is an intake item; if it carries a
-count per day, it is a substance key.** A dose column on `substance_daily_totals` is the
-mistake this boundary exists to prevent.
-
-## Where the opt-in boundary is
-
-Opt-in has to be structural, not a flag every read path remembers to check.
-
-There is no cap-shaped value to render unless a target row exists. `substanceCapStatus()`
-is the only producer of a `SubstanceCapStatus`, `capProgressLine()` is the only consumer,
-and `lib/queries/substance.ts` calls the producer only when `getSubstanceTarget()` returned
-a row — one line, `status: target ? … : null`. A surface cannot render cap framing for a
-profile that never opted in, because it holds nothing to render. A helper that manufactured
-a status from a count and a default cap would make the opt-in cosmetic again; do not add one.
-
-**`cap: 0` is not "no cap".** A zero cap is an opted-in target — a substance-free week,
-"Dry January", a quit target — and it renders its own line. The absence of a target is a
-different state that renders nothing. The two are `status === null` versus
-`status.cap === 0`, and conflating them produces reduction framing for someone who asked
-for none.
-
-Screeners sit behind their own affordance for the same reason: an unadministered
-instrument has no reading, so there is nothing for the ledger-led page to show.
-
-## Naming your own, and where it can be reached from
-
-**Logging it is creating it (#3326).** A custom substance has no registration row, so
-the surface has no create step: one field on Health record › Specialty › Substance use
-takes a name and logs the first use, and the card that appears underneath is the same
-`ConsumptionSection` a curated substance gets. There is nothing else to build, because
-a custom substance is not a lesser kind of substance.
-
-**The 60-character cap is refused, not trimmed.** `resolveSubstanceKey` normalizes and
-truncates, which is right for a stored key and wrong for a person typing — 61 characters
-would silently become a different substance. `validateSubstanceName()` asks "usable
-exactly as typed?" first and then resolves through the same one normalizer, and
-`substanceNameError()` is the single wording both the form and the Server Action use.
-Deliberately no `maxLength` on the input either: the browser would clip a paste without
-a word, which is the same defect in nicer clothes.
-
-**The quick-log sheet's substance row (#3327).** `QUICK_LOG_DOMAIN_CENSUS` argued this
-domain out for years: substance logging lived beside its cap verdict, and a sheet row
-would detach the tap from the context that made it honest. #3279 ruling 1 narrowed that
-to its premise — it presumes a cap exists. The row now ships with both halves answered:
-
-- it is offered **only to a profile that has a substance ledger row**, never for the
-  vocabulary at large, and a profile that tracks none gets **no row at all** — an empty
-  offer is worse than no offer. `hasLoggedSubstance()` gates the row; the list itself is
-  `getLoggedSubstanceKeys()`, gathered on open. Both are distinct from
-  `getProfileSubstanceKeys()`, which answers the _vocabulary_ question and therefore
-  always opens with the curated three;
-- the overlay renders `capProgressLine` beside the tap for any substance whose target
-  exists, and nothing for one whose target does not — so a tap is never detached from a
-  verdict there is one to detach from, and reduction framing never reaches somebody who
-  opted into none.
-
-The gate defaults **closed** wherever it is threaded (`quickLogMenu`, `logSheetSegments`,
-`shortcutAction`), which is the opposite of the cycle gate's default and deliberately so:
-an unthreaded caller must not over-SHOW here, because the unconditional offer is the
-defect. The same two facts are re-checked server-side in `loadQuickEntry`, so a
-hand-written `?quick=log-substance` cannot reach the offer either.
-
-A substance tap is also one hand-entered row of logging evidence, so `LOG_DAY_SOURCES`
-declares `substance_daily_totals` for the Consume segment. Alcohol is deliberately **not**
-declared there: its taps land on `food_daily_totals`, which the Consume arm already counts,
-through the `log-food` entry that owns that writer. The substance entry declares only its
-dedicated store, so one store never has two quick-log owners in the census.
+`LOG_DAY_SOURCES` declares the dedicated substance counter for Consume evidence.
+Alcohol already belongs to the food writer's evidence; declaring it again would
+give one store two owners.
 
 ## Reach
 
-Substance data stays out of share links, the emergency card and print surfaces by
-default, and a send names a substance only behind the per-profile opt-in below. The
-neutral stance changes what the **owner** can do, not what the app broadcasts. No
-substance ever generates a finding-driven send — **with one recorded exception**.
+Keep substance records out of share links, emergency cards, and print surfaces
+by default. Consent is profile-scoped even when one login's chat serves several
+profiles. There is no substance slash-command vocabulary.
 
-**The exception (owner decision, 2026-09-02, #4775 §5).** The paired-observation
-`alcohol-*` entries (`lib/paired-observations.ts`) may render **one** line in the
-morning digest, behind `substance_telegram_enabled` and only above the pair's own
-effect floor. This overrules #2177's "never a send" for this pair family and nothing
-else. It is one line, never a message of its own: it is appended to a Sleep section
-that already exists, so it cannot be the thing that makes a digest go out. Everything
-that made the original ruling right still holds — the opt-in is off by default, the
-pair's monthly dismissal silences the line as it silences the card, and the copy is
-the verdict's own sentence with both arms' n and no advice verb. The gather is
-`gatherSubstanceObservationLine` (`lib/notifications/digest-data.ts`), which asks the
-flag before it computes anything at all.
+| Outbound content                                                         | Consent and owner                                                                   |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| Alcohol food-nudge buttons and tally                                     | `food_telegram_enabled` / `getProfileFoodTelegram`, like other food groups          |
+| Non-alcohol substance cap lines in Telegram, Web Push, and Email recaps  | `substance_telegram_enabled`, off by default; `gatherRecapInput(..., forSend=true)` |
+| One paired alcohol-observation line in an existing morning Sleep section | `substance_telegram_enabled`; digest gather checks consent before computing it      |
 
-What the exception does NOT open: no other substance, no cap finding, no second line,
-and no send that exists because of a substance.
+Alcohol caps follow the food-ledger exception in recap filtering. For other
+substances, gate both the current-week cap verdict and the period's cap-weeks
+line. Stored AI recap narratives gather with `forSend: true` because their prose
+can leave the app. In-app deterministic recap cards and year retrospectives
+retain the profile's own cap facts.
 
-**Alcohol is the special case, by owner ruling (2026-09-02).** Its ledger is a food group
-(`ledger: "food-log"`), so it rides the food nudge's buttons and tally under the
-food-buttons consent (`food_telegram_enabled`, `getProfileFoodTelegram`) exactly like
-every other group, and its cap is named on the recap like any food cap. #3330 first put
-alcohol behind the substance flag below; that read "off" for every existing profile and
-removed the 🍷 button from the one nudge that logs most drinks, so the drinks went
-unlogged — which is a worse record, not a better protection. The food-buttons consent is
-already profile-scoped for the same reason (one login's chat receives every profile it
-manages, so the choice belongs to the data subject), and it is the choice that governs.
+Remove withheld content rather than redacting it. `renderRecapMessage` sends
+nothing when the recap is empty **or has no lines**; a gated cap can be the
+only line even when other recorded evidence makes `isEmpty` false. Do not send
+an empty shell.
 
-Every other substance, curated or custom, lives in `substance_daily_totals` and has no
-food-nudge surface; a declared **cap** on one is named by its own noun on the periodic
-recap's two cap lines, which go out over Telegram, Web Push and Email (#3900). Those ride
-only behind `substance_telegram_enabled` — off by default, per profile, no backfill; the
-toggle sits on the Recap row in Settings → Notifications. `TELEGRAM_DOMAIN_CENSUS` keeps
-`substance` off the slash-command vocabulary.
+The digest exception covers only the paired `alcohol-*` observations, at most
+one line in registry order, above the pair's effect floor and honoring its
+monthly dismissal. Use the existing verdict sentence with both sample counts
+and no advice. It cannot create a digest or a standalone send. No other
+substance or cap finding gains a finding-driven notification from this exception.
 
-The flag is read in ONE gather, and that is the whole of it (an earlier design read it in
-three — `buildFoodNudge`'s buttons and tally, and the eating-time correction rows' recent-tap
-read — both of which were alcohol-only and went with the alcohol ruling above; every chat
-surface now pairs correction bursts straight from `getRecentFoodTaps`):
+Consent controls what leaves the app, not the write core: correcting a food
+burst must still update every event in that burst. Medication interaction copy
+such as “avoid alcohol” describes a medication and is not disclosure of a
+profile's drinking record.
 
-- `gatherRecapInput` drops `scope_kind: "substance"` targets whose ledger is the
-  substance log from both cadence cap readers when the gather is `forSend`, including the
-  gather used to generate a stored AI narrative — the predicate is
-  `substanceDef(scope_value).ledger === "food-log"`, the same line `isSubstanceLogged`
-  draws for writes, so an alcohol cap passes and a nicotine, cannabis or custom cap does
-  not. This removes the week **verdict** line ("over the Nicotine cap") and the period
-  **cap-weeks** line ("over the Nicotine cap in 2 of 4 weeks") — a custom substance names
-  itself on both, since `cadenceScopeNoun` returns the profile's own string. The
-  dashboard recap card and year retrospective remain unfiltered: they are surfaces the
-  profile is standing on, not sends. The stored AI narrative is safe to paste into the
-  send because it is generated from the gated facts; its in-app card renders the
-  deterministic cap facts beside that prose, preserving the
-  profile's own substance view (#3909).
+## Verification
 
-  **This gate can suppress a whole recap, and that is the intended outcome.**
-  `renderRecapMessage` returns null on `recap.isEmpty || recap.lines.length === 0`, and
-  the gate moves the second clause: `isEmpty` is decided by gathered EVIDENCE, the lines
-  by the scale registry, so the two can disagree. A month holding one weigh-in and a
-  substance cap is not empty — but `weight` speaks only at week scale and
-  `weight-trajectory` needs a trend one reading cannot produce, so the cap line is the
-  recap's only line, and dropping it sends nothing where `main` sent
-  "over the Nicotine cap in 4 of 4 weeks". A message whose entire content was the gated
-  line must not go out as an empty shell.
-
-The first two gathers are read in `lib/__db_tests__/food-nudge-substance-optin.test.ts`
-over five senders — the proactive tick, `/food`, a fully expanded keyboard, the reconcile
-sweep and the picker — against everything the transport is asked to show, rather than
-against one field of the message. The third is read in
-`lib/__db_tests__/recap-substance-optin.test.ts`, against the rendered message string at
-both scales with the flag off and on, against the in-app surfaces with it off, and
-against the cap-line-only month that the gate silences entirely.
-
-In the nudge it REMOVES rather than redacts or suppresses: that message still sends with
-every other food group intact. The recap is the one surface where removal can empty the
-message, for the reason stated in its bullet — and it then takes the silence an empty
-recap already takes, rather than sending a shell. The WRITE core is deliberately not gated — `restampFoodEventsCore` re-derives
-a burst from the ledger, so a correction still moves every row of the meal it names;
-consent governs what is sent, and stranding one row of an eating event at the old time
-would corrupt the record rather than protect it. Nothing safety-class is downstream of
-either gather, including the "avoid alcohol" food-interaction line on a dose reminder's
-tail, which is a fact about the medication and not a record of anyone's drinking.
-
-Reduction targets are excluded from `getFrequencyTargetProgress` and always will be: a cap
-is a ceiling and every other frequency scope is a floor, so a floor-semantics reader would
-nag toward more consumption.
-
-## Never
-
-- No gamification. No streaks, no badges, no "X days sober" milestones, no celebratory
-  copy. The write paths never touch `activities`, so the milestone machinery is
-  structurally blind to this domain.
-- No crisis wiring. A severe screener score gets the calm "worth discussing with a
-  clinician" note, never a notification and never the crisis surface.
-- No editorial-policy language. "What your intake is", never "you drink too much".
-
-## Refs
-
-#998 and #1078 built the ledger and the curated three. #2380 is the doctrine.
-#3144 is the protocol tally the regimen path rides. #3279 records the rulings above.
-#3326 built the naming surface and #3327 the quick-log row. #3325 folded case for matching
-in this vocabulary and the symptom one at once. #3324 (whether a substance should survive
-going to zero) is still open and no surface pre-empts it.
+Reuse the substance-use and food/substance-correction tests for event/counter
+writes, vocabulary-fold tests for identity, and the existing migration tests for
+legacy rows. `food-nudge-substance-optin.test.ts` and
+`recap-substance-optin.test.ts` exercise rendered outbound content and consent;
+check the final message, not just one intermediate field. Follow the
+[change and test policy](../change-policy.md).
