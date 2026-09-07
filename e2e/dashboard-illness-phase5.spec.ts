@@ -707,6 +707,75 @@ for (const [label, viewport, wide] of [
       const [cardAfter] = await settledBoxes([card]);
       expect(cardAfter.x).toBe(cardBox.x);
       expect(cardAfter.width).toBe(cardBox.width);
+
+      // ── ONE PANEL IS ONE PANEL'S WORTH OF HEIGHT (#5487) ──────────────────
+      //
+      // The card was measured in production at ~800px at rest and ~890px with a
+      // panel open, against a board approved at ~215 and ~320: six disclosures
+      // opened independently, so a screenshot could carry the med panel and the
+      // whole add-medication form at once. The bound is stated on the card's own
+      // resting height rather than on a pixel target, because the fixture's symptom
+      // and med rows are the fixture's — what must hold is that opening ONE panel
+      // costs one panel, and that the card is nowhere near four boards tall.
+      expect(cardBox.height, `${label} cockpit at rest`).toBeLessThan(560);
+      const onePanel = cardAfter.height - cardBox.height;
+      expect(
+        onePanel,
+        `${label} cockpit growth for one open panel`
+      ).toBeLessThan(280);
+
+      // A SECOND PANEL IS NOT A SECOND PANEL'S HEIGHT. This is the screenshot's own
+      // gesture — the med detail panel and the whole add-medication form standing
+      // open together — and it is what put the card at ~800px against a board
+      // approved at ~215. Asking for the second now leaves the card exactly as tall
+      // as that panel alone, which is the claim rather than any pixel target: the
+      // add-medication fold is the card's largest block until #5301 shrinks it.
+      const addDoor = card.getByTestId("illness-add-medication");
+      await hydratedClick(page, addDoor);
+      await expect(
+        card.getByTestId("illness-medication-quick-add")
+      ).toBeVisible();
+      await expect(card.getByTestId("cockpit-med-panel")).toHaveCount(0);
+      const [bothAsked] = await settledBoxes([card]);
+      await hydratedClick(page, addDoor);
+      await expect(
+        card.getByTestId("illness-medication-quick-add")
+      ).toHaveCount(0);
+      const [backAtRest] = await settledBoxes([card]);
+      expect(backAtRest.height, `${label} cockpit back at rest`).toBe(
+        cardBox.height
+      );
+      await hydratedClick(page, addDoor);
+      const [addAlone] = await settledBoxes([card]);
+      expect(
+        bothAsked.height,
+        `${label} cockpit with a second panel asked for`
+      ).toBe(addAlone.height);
+      // Put the med panel back: the control sweep below reads the whole Now
+      // section's rendered names, and the clock door lives inside that panel.
+      await hydratedClick(page, addDoor);
+      await hydratedClick(
+        page,
+        chips.locator('[data-testid^="cockpit-med-chip-"]').first() // eslint-disable-line no-restricted-properties -- first-ok: the row's leading med chip; every chip opens the same panel
+      );
+      await expect(card.getByTestId("cockpit-med-panel")).toBeVisible();
+
+      // ── EXPANDED, THE ROW STATES NOTHING THE BODY RESTATES (#5488 fix 1) ──
+      //
+      // One rule over the row, not six clause rules: the situation, the day, the
+      // trend arrow, the last reading, the last dose and the fever clock are all the
+      // recovery header's, ~100px below. The name and the avatar stay — that is
+      // #531/#534's safety identity, and the one duplication the ruling keeps.
+      await expect(card.getByTestId("illness-cockpit-status-row")).toHaveCount(
+        0
+      );
+      const headerRow = card.getByTestId("illness-cockpit-header-row");
+      await expect(headerRow).not.toContainText(
+        (await card.getAttribute("data-situation"))!
+      );
+      await expect(
+        headerRow.locator('[data-testid^="illness-cockpit-name-"]')
+      ).toBeVisible();
       // ── ONE GRAMMAR ACROSS THE WHOLE SECTION (#4752 items 7 and 8) ────────
       //
       // A RENDERED sweep, not a source one: what a reader meets is the accessible

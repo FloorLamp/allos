@@ -152,7 +152,7 @@ export default async function EncounterDetailPage(props: {
       id: ep.id,
       situation: ep.situation,
       statusLabel: status?.dayLabel ?? ep.situation,
-      worsening: status?.worsening ?? false,
+      worsening: status?.worsening != null,
     };
   });
   const episodeSuggestion = episodeSuggestionForEncounter(

@@ -115,10 +115,15 @@ describe("administrationDayLabel", () => {
 
 describe("administrationLastDoseLabel", () => {
   it("leaves the daily count to an adjacent redose status", () => {
-    expect(administrationLastDoseLabel(0, "")).toBe("None today");
-    expect(administrationLastDoseLabel(1, "4:02pm")).toBe("Last dose 4:02pm");
-    expect(administrationLastDoseLabel(2, "4:02pm")).toBe("Last dose 4:02pm");
-    expect(administrationLastDoseLabel(3, "")).toBe("3 today");
+    expect(administrationLastDoseLabel("4:02pm")).toBe("Last dose 4:02pm");
+    // IT CANNOT NAME A DAY (#5488 fix 3). It ran only beside a redose line owning the
+    // 24h count, and answered "None today" off a day-scoped count that said nothing
+    // about the dose given at 5:44pm yesterday — under an eyebrow already saying
+    // "Today". With no count to ask, both arms are about the dose.
+    expect(administrationLastDoseLabel("Sep 6 at 5:44pm")).toBe(
+      "Last dose Sep 6 at 5:44pm"
+    );
+    expect(administrationLastDoseLabel("")).toBe("No doses logged");
   });
 });
 
