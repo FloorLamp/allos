@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { workerDbPath } from "./worker-env";
-import { openConfirm, settledClick } from "./helpers";
+import { appContent, openConfirm, settledClick } from "./helpers";
 
 // Import-detail cohesion (#1340), finishing the #1071/#1332 verb consolidation:
 //  1. Per-control explainers ride the rendered buttons — deterministic docs get
@@ -222,11 +222,12 @@ test.describe("Import detail cohesion (#1340)", () => {
     await expect(page.getByTestId("reapply-subtext")).toContainText(
       "no AI call, no quota"
     );
-    const sodium = page.getByRole("link", { name: "Sodium", exact: true });
+    const content = appContent(page);
+    const sodium = content.getByRole("link", { name: "Sodium", exact: true });
     await expect(sodium).toHaveCount(0);
     const dialog = await openConfirm(
       page,
-      page.getByTestId("reimport-from-raw")
+      content.getByTestId("reimport-from-raw")
     );
     await settledClick(
       page,
