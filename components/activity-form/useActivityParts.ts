@@ -21,6 +21,7 @@ import {
   initialPartsFromSeed,
   repeatSessionFill,
   latchVaried,
+  sharedLoadSets,
   asPlan,
   setDone,
 } from "@/lib/activity-form-model";
@@ -28,8 +29,8 @@ import {
 // Which set's weight field the plate builder is targeting, if open. `seed`
 // (display-unit weight) pre-loads the builder from the coached suggestion instead
 // of the field's current value (#335); omitted for a plain icon tap. `"all"` is the
-// exercise-level weight (#5371): while every set shares one load the builder is
-// seeded from it and its result lands on every set, so the grid stays shared.
+// shared load: the builder reads and updates the remaining plans, or every set
+// when all are recorded.
 export interface PlateTarget {
   pi: number;
   si: number | "all";
@@ -229,8 +230,8 @@ export function useActivityParts({
       perSide: false,
     });
   }
-  // Patch one set, or every set at once — the exercise-level weight (#5371) is one
-  // load stated for the whole grid, so it writes through the same door as a row.
+  // Patch one set, or the still-planned sets from the exercise-level weight (#5371).
+  // An all-record edit keeps the established behavior of changing every set.
   //
   // AND CONFIRMING IS A PATCH LIKE ANY OTHER (#5373). A set row's own controls send
   // `confirmSet`'s patch with whatever they changed, and the confirm control sends it
@@ -245,16 +246,17 @@ export function useActivityParts({
     )
       onSetCheckedOff();
     setParts((prev) =>
-      prev.map((p, idx) =>
-        idx === pi
-          ? {
-              ...p,
-              sets: p.sets.map((s, j) =>
-                si === "all" || j === si ? { ...s, ...patch } : s
-              ),
-            }
-          : p
-      )
+      prev.map((p, idx) => {
+        if (idx !== pi) return p;
+        const shared = sharedLoadSets(p.sets);
+        return latchVaried({
+          ...p,
+          sets: p.sets.map((s, j) => {
+            const selected = si === "all" ? shared.includes(s) : j === si;
+            return selected ? { ...s, ...patch } : s;
+          }),
+        });
+      })
     );
   }
   // Append a further set as a PLAN copied from the last one the person confirmed

@@ -227,13 +227,11 @@ test("each set groups its identity and options above its values at 390px (#1612)
     expect(b.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
   }
 
-  // The sticky schema shows only the VALUE schema on a phone, aligned to the
-  // steppers — no detached "Set / Options" headings. With the load stated once
-  // above the rows (#5371) the value schema is the reps column; the weight names
-  // itself on its own band, unit and all.
+  // The remaining plan states its load and unit above the rows. The phone schema
+  // keeps reps visible without detached Set / Options headings.
   const headings = page.getByTestId("set-column-headings");
   await expect(page.getByTestId("exercise-weight")).toContainText(
-    /^Weight \((kg|lb)\)/
+    /^Remaining weight \((kg|lb)\)/
   );
   await expect(headings.getByTestId("weight-column-heading")).toHaveCount(0);
   await expect(headings.getByTestId("reps-column-heading")).toBeVisible();
