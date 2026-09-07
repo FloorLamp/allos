@@ -292,23 +292,43 @@ export default function IntakeItemForm({
   // is one pick, not a form plus a disclosure. Create mode only — an existing item
   // links and unlinks through SharedSupplyPicker, whose separate-submit, one-way
   // count-migration design this does not touch.
-  const [bottles, setBottles] = useState<SupplyOption[]>(
+  const [availableBottles, setAvailableBottles] = useState<SupplyOption[]>(
     initialSupply ? [initialSupply] : []
   );
   useEffect(() => {
     let live = true;
     void listSharedSupplyOptions().then((options) => {
-      const offered = bottlesForKindDoor(options, lockedKind);
-      const linkedId = s?.supply_id ?? initialSupply?.id;
-      const linked = options.find((option) => option.id === linkedId);
-      if (linked && !offered.some((option) => option.id === linked.id))
-        offered.unshift(linked);
-      if (live) setBottles(offered);
+      if (live) setAvailableBottles(options);
     });
     return () => {
       live = false;
     };
-  }, [s, initialSupply, lockedKind]);
+  }, []);
+
+  // The link ID is the durable owner. Bottle rows are loaded reference data: filter
+  // what this kind-locked door may offer, but keep the currently linked bottle as a
+  // fact after draft restore even if its siblings would filter it from new choices.
+  const bottles = useMemo(() => {
+    const offered = bottlesForKindDoor(availableBottles, lockedKind);
+    const linked = availableBottles.find(
+      (option) => String(option.id) === state.supplyId
+    );
+    return linked && !offered.some((option) => option.id === linked.id)
+      ? [linked, ...offered]
+      : offered;
+  }, [availableBottles, lockedKind, state.supplyId]);
+  const selectedSupplyName = useMemo(() => {
+    if (!state.supplyId) return null;
+    const loaded = availableBottles.find(
+      (option) => String(option.id) === state.supplyId
+    );
+    if (loaded) return loaded.name;
+    if (String(s?.supply_id ?? "") === state.supplyId)
+      return s?.supply_name ?? null;
+    if (String(initialSupply?.id ?? "") === state.supplyId)
+      return initialSupply?.name ?? null;
+    return null;
+  }, [availableBottles, initialSupply, s, state.supplyId]);
   const rx = useIntakeRxcui(s);
 
   const kind = lockedKind;
@@ -323,9 +343,6 @@ export default function IntakeItemForm({
   // the person set the start date themselves (so an obligation flip stops moving it).
   const [brandNarrowing, setBrandNarrowing] = useState<string[] | null>(null);
   const [startedOnTouched, setStartedOnTouched] = useState(false);
-  const [supplyLabel, setSupplyLabel] = useState<string | null>(
-    s?.supply_name ?? initialSupply?.name ?? null
-  );
   // Selection-prefill bookkeeping (#846, #4665). ONE ledger answers "may I overwrite
   // this field?" for all seven seed paths, and marks everything it lets through: before
   // it there were four mechanisms and the places they disagreed were bugs. The rules
@@ -429,11 +446,18 @@ export default function IntakeItemForm({
     () =>
       prnLabelIdentityFor({
         name: state.name,
-        supplyName: supplyLabel,
+        supplyId: state.supplyId,
+        supplyName: selectedSupplyName,
         rxcui: rx.rxcui,
         rxcuiIngredients: rx.rxcuiIngredients,
       }),
-    [state.name, supplyLabel, rx.rxcui, rx.rxcuiIngredients]
+    [
+      state.name,
+      state.supplyId,
+      selectedSupplyName,
+      rx.rxcui,
+      rx.rxcuiIngredients,
+    ]
   );
   const prnDefaults = useMemo(
     () =>
@@ -594,7 +618,8 @@ export default function IntakeItemForm({
     const bottle = bottleForOptionLabel(bottles, picked);
     const bottleSeed = bottle ? itemSeedFromPool(bottle) : null;
     const pickedName = bottleSeed ? bottleSeed.name : picked;
-    const pickedSupplyName = bottle?.name ?? supplyLabel;
+    const pickedSupplyId = bottle ? String(bottle.id) : state.supplyId;
+    const pickedSupplyName = bottle?.name ?? selectedSupplyName;
     if (bottle) {
       onPickSupply(bottle);
     }
@@ -638,6 +663,7 @@ export default function IntakeItemForm({
             ? prnDefaultsFor(
                 prnLabelIdentityFor({
                   name: generic,
+                  supplyId: pickedSupplyId,
                   supplyName: pickedSupplyName,
                   rxcui: confirmed?.rxcui ?? null,
                   rxcuiIngredients: confirmed?.rxcuiIngredients ?? null,
@@ -708,9 +734,12 @@ export default function IntakeItemForm({
 
   function onLinkSupply(supply: SupplyOption | null): void {
     patch({ supplyId: supply ? String(supply.id) : "" });
-    setSupplyLabel(supply?.name ?? null);
-    if (supply && !bottles.some((option) => option.id === supply.id))
-      setBottles([...bottles, supply]);
+    if (supply)
+      setAvailableBottles((current) =>
+        current.some((option) => option.id === supply.id)
+          ? current
+          : [...current, supply]
+      );
   }
 
   function selectPediatricBand(band: PediatricBand) {
@@ -803,7 +832,7 @@ export default function IntakeItemForm({
     brand: state.brand,
     product: state.product,
     stack: state.stack,
-    supplyLabel,
+    supplyLabel: selectedSupplyName,
     quantityOnHand: state.quantityOnHand,
     stopDate: state.endDate,
     ingredientCount: state.ingredients.filter((g) => g.name.trim()).length,
@@ -922,7 +951,6 @@ export default function IntakeItemForm({
     rx.reset();
     setBrandNarrowing(null);
     setStartedOnTouched(false);
-    setSupplyLabel(null);
     setFormulationSlug("");
     setSelectedPediatricBandMinLbs(null);
     setIngredientSeedNote(null);
@@ -1638,7 +1666,7 @@ export default function IntakeItemForm({
             item={s}
             bottles={bottles}
             supplyId={state.supplyId}
-            supplyName={supplyLabel}
+            supplyName={selectedSupplyName}
             onPickSupply={s ? onLinkSupply : onPickSupply}
             quantityOnHand={state.quantityOnHand}
             setQuantityOnHand={(quantityOnHand) => patch({ quantityOnHand })}

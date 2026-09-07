@@ -551,6 +551,7 @@ export default function MedicationCard({
               <QuickLogPrnControl
                 identity={prnLabelIdentityFor({
                   name: s.name,
+                  supplyId: s.supply_id,
                   supplyName: s.supply_name,
                   rxcui: s.rxcui,
                   rxcuiIngredients: parseRxcuiIngredients(s.rxcui_ingredients),

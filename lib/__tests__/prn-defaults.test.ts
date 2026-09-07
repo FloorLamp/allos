@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { prnDefaultEntries, prnDefaultsFor } from "@/lib/prn-defaults";
+import {
+  prnDefaultEntries,
+  prnDefaultsFor,
+  prnLabelIdentityFor,
+} from "@/lib/prn-defaults";
 import {
   prnDefaultsDataset,
   prnDefaultSlugStrategy,
@@ -70,6 +74,37 @@ describe("prn-defaults dataset", () => {
       rxcuiIngredients: ["161"],
     });
     expect(hit?.slug).toBe("acetaminophen");
+  });
+
+  it("distinguishes an unresolved bottle link from an unlinked display name", () => {
+    const base = {
+      name: "Acetaminophen",
+      rxcui: null,
+      rxcuiIngredients: null,
+    };
+    expect(
+      prnLabelIdentityFor({ ...base, supplyId: null, supplyName: null }).name
+    ).toBe("Acetaminophen");
+    expect(
+      prnLabelIdentityFor({ ...base, supplyId: "99", supplyName: null }).name
+    ).toBe("");
+    expect(
+      prnLabelIdentityFor({
+        ...base,
+        supplyId: "99",
+        supplyName: "Acetaminophen with Codeine",
+      }).name
+    ).toBe("Acetaminophen with Codeine");
+
+    const confirmed = prnLabelIdentityFor({
+      ...base,
+      supplyId: "99",
+      supplyName: null,
+      rxcui: "5640",
+      rxcuiIngredients: ["5640"],
+    });
+    expect(confirmed.name).toBe("");
+    expect(prnDefaultsFor(confirmed)?.slug).toBe("ibuprofen");
   });
 
   it("falls back to a name/synonym match when no CUI", () => {

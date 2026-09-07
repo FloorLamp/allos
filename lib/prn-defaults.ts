@@ -15,10 +15,17 @@ type PrnItem = Omit<MedFamilyItem, "id">;
 // owns what the product is. Project that split once before label matching so every
 // live and persisted surface asks the matcher about the same product name.
 export function prnLabelIdentityFor(
-  item: PrnItem & { supplyName: string | null }
+  item: PrnItem & {
+    supplyId: number | string | null;
+    supplyName: string | null;
+  }
 ): PrnItem {
-  const { supplyName, ...identity } = item;
-  return { ...identity, name: supplyName ?? identity.name };
+  const { supplyId, supplyName, ...identity } = item;
+  const linked = supplyId != null && String(supplyId).trim() !== "";
+  return {
+    ...identity,
+    name: supplyName ?? (linked ? "" : identity.name),
+  };
 }
 
 // Re-export the entry + sub-types from their framework home (lib/datasets/prn-defaults

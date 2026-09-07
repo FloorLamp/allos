@@ -234,6 +234,16 @@ function deferLookup() {
   return { resolve: release, reject: () => reject(new Error("offline")) };
 }
 
+/** Hold the authoritative bottle list across a restored draft's unresolved window. */
+function deferSupplyOptions() {
+  let release!: (options: SupplyOption[]) => void;
+  const pending = new Promise<SupplyOption[]>((resolve) => {
+    release = resolve;
+  });
+  actions.listSharedSupplyOptions.mockImplementationOnce(() => pending);
+  return { resolve: release };
+}
+
 /** The recorded PRN resolutions for one drug name. */
 const prnCallsFor = (name: string) =>
   prnSpy.calls.filter((call) => call.name === name);
@@ -677,6 +687,101 @@ describe("product identity owns every pending RxNorm stage (#5518)", () => {
     );
     expect(screen.getByTestId("pediatric-band-picker")).toBeTruthy();
   });
+
+  it.each([
+    {
+      bottle: {
+        id: 99,
+        name: "Acetaminophen with Codeine",
+        strength: null,
+        form: null,
+        siblingKind: "medication" as const,
+      },
+      restoredAmount: "180 mg",
+      supported: false,
+    },
+    {
+      bottle: {
+        id: 98,
+        name: "Ibuprofen",
+        strength: null,
+        form: null,
+        siblingKind: "medication" as const,
+      },
+      restoredAmount: "",
+      supported: true,
+    },
+  ])(
+    "restores a draft linked to the $bottle.name bottle before delayed options arrive",
+    async ({ bottle, restoredAmount, supported }) => {
+      actions.listSharedSupplyOptions.mockResolvedValue([bottle]);
+      const first = mount("medication", CHILD_ON_PICK, true);
+      await pickName(ACETAMINOPHEN);
+      openFact("more");
+      fireEvent.click(screen.getByTestId("intake-more-supply"));
+      await screen.findByRole("option", { name: bottle.name });
+      fireEvent.change(screen.getByTestId("shared-supply-new-item-select"), {
+        target: { value: String(bottle.id) },
+      });
+      openFact("dose");
+      fireEvent.change(screen.getByRole("combobox", { name: "Amount" }), {
+        target: { value: restoredAmount },
+      });
+      expect(screen.getByRole("combobox", { name: "Name" })).toHaveProperty(
+        "value",
+        "Acetaminophen"
+      );
+      expect(Boolean(screen.queryByTestId("pediatric-band-picker"))).toBe(
+        supported
+      );
+
+      first.unmount();
+      await waitFor(() => expect(actions.putDraft).toHaveBeenCalled());
+      const saved = actions.putDraft.mock.calls.at(-1)![0];
+      expect(
+        (saved.extra as { state: { supplyId: string } }).state.supplyId
+      ).toBe(String(bottle.id));
+      actions.getDraft.mockResolvedValue(saved);
+
+      const delayed = deferSupplyOptions();
+      mount("medication", CHILD_ON_PICK, true);
+      fireEvent.click(await screen.findByTestId("draft-restore-resume"));
+      await waitFor(() =>
+        expect(screen.getByRole("combobox", { name: "Name" })).toHaveProperty(
+          "value",
+          "Acetaminophen"
+        )
+      );
+      openFact("dose");
+      expect(screen.queryByTestId("pediatric-band-picker")).toBeNull();
+      expect(screen.getByRole("combobox", { name: "Amount" })).toHaveProperty(
+        "value",
+        restoredAmount
+      );
+
+      const resumedBottle = supported
+        ? { ...bottle, siblingKind: "supplement" as const }
+        : bottle;
+      await act(async () => delayed.resolve([resumedBottle]));
+      openFact("supply");
+      expect(
+        await screen.findByRole("option", { name: bottle.name })
+      ).toHaveProperty("selected", true);
+      openFact("dose");
+      if (supported) {
+        expect(
+          screen.getByTestId("pediatric-suggestion").textContent
+        ).toContain("Ibuprofen");
+        expect(screen.getByTestId("pediatric-band-picker")).toBeTruthy();
+      } else {
+        expect(screen.queryByTestId("pediatric-band-picker")).toBeNull();
+      }
+      expect(screen.getByRole("combobox", { name: "Amount" })).toHaveProperty(
+        "value",
+        restoredAmount
+      );
+    }
+  );
 
   it.each([
     ["stated", "180 mg"],

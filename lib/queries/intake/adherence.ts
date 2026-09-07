@@ -1976,6 +1976,7 @@ export interface PrnMedForQuickLog {
 // gather so every redose surface widens identically.
 const PRN_QUICK_LOG_STMT = hoistedStatement(
   `SELECT s.id AS id, s.name AS name, s.kind AS kind, s.product AS product,
+              s.supply_id AS supply_id,
               s.rxcui, s.rxcui_ingredients,
               (SELECT ss.name FROM shared_supplies ss
                 WHERE ss.id = s.supply_id) AS supply_name,
@@ -2016,29 +2017,33 @@ function getPrnQuickLogItems(
   > & {
     rxcui: string | null;
     rxcui_ingredients: string | null;
+    supply_id: number | null;
     supply_name: string | null;
   })[];
   const families = getMedicationFamilyStates(
     profileId,
     ceilingWindowEndMinute(clockNow())
   );
-  return rows.map(({ rxcui, rxcui_ingredients, supply_name, ...r }) => {
-    const fam = families.get(r.id);
-    return {
-      ...r,
-      identity: prnLabelIdentityFor({
-        name: r.name,
-        supplyName: supply_name,
-        rxcui,
-        rxcuiIngredients: parseRxcuiIngredients(rxcui_ingredients),
-      }),
-      familyCount: fam?.countInWindow ?? r.count,
-      familyLastGivenAt: fam?.latestGivenAt ?? r.lastGivenAt,
-      familyMaxDailyCount: fam?.minConfirmedMax ?? r.maxDailyCount,
-      familyExposure: fam?.exposure ?? null,
-      familyMemberCount: fam?.memberIds.length ?? 1,
-    };
-  });
+  return rows.map(
+    ({ rxcui, rxcui_ingredients, supply_id, supply_name, ...r }) => {
+      const fam = families.get(r.id);
+      return {
+        ...r,
+        identity: prnLabelIdentityFor({
+          name: r.name,
+          supplyId: supply_id,
+          supplyName: supply_name,
+          rxcui,
+          rxcuiIngredients: parseRxcuiIngredients(rxcui_ingredients),
+        }),
+        familyCount: fam?.countInWindow ?? r.count,
+        familyLastGivenAt: fam?.latestGivenAt ?? r.lastGivenAt,
+        familyMaxDailyCount: fam?.minConfirmedMax ?? r.maxDailyCount,
+        familyExposure: fam?.exposure ?? null,
+        familyMemberCount: fam?.memberIds.length ?? 1,
+      };
+    }
+  );
 }
 
 export function getPrnMedicationsForQuickLog(
