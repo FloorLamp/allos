@@ -498,7 +498,7 @@ describe("the Meds chip yields to the fold's dose offer (#4712 ruling part 2)", 
     dayOnlyLabel: null,
     temperature: null,
     lastMeds: null,
-    worsening: false,
+    worsening: null,
   };
 
   // A PRN that is NOT a fever reducer. It is in the section and never in the offer, so

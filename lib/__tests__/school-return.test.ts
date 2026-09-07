@@ -121,7 +121,7 @@ describe("formatSchoolReturnLine / schoolReturnCompactClause", () => {
   });
 
   it("compact clause uses the cleared clock over the threshold", () => {
-    expect(schoolReturnCompactClause(status)).toBe("fever-free 18h/24h");
+    expect(schoolReturnCompactClause(status)).toBe("fever-free 18h of 24");
   });
 });
 
@@ -200,6 +200,6 @@ describe("no fever-free claim without a normal reading after the fever (#4685)",
     });
     expect(s.clearedForHours).toBe(20);
     expect(s.met).toBe(false);
-    expect(schoolReturnCompactClause(s)).toBe("fever-free 20h/24h");
+    expect(schoolReturnCompactClause(s)).toBe("fever-free 20h of 24");
   });
 });

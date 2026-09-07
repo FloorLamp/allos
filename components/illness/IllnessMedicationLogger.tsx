@@ -14,6 +14,11 @@ import type { IntakeFormContext } from "@/lib/intake-form-context";
 import { medChipsStatusLine, prnRowStatus } from "@/lib/redose-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { useDoseOfferLive } from "@/components/illness/DoseOfferContext";
+import {
+  ADD_MEDICATION_PANEL,
+  medicationPanel,
+  useCockpitPanels,
+} from "@/components/illness/CockpitPanelContext";
 
 // How many chips stand before the tail folds. Three is what the compact quick-log
 // content already showed, so the fold's threshold is unchanged by this rebuild.
@@ -100,8 +105,12 @@ export default function IllnessMedicationLogger({
   onLogged?: () => void;
 }) {
   const formatPrefs = useFormatPrefs();
-  const [adding, setAdding] = useState(false);
-  const [openMedId, setOpenMedId] = useState<number | null>(null);
+  // ONE PANEL OPEN PER CARD (#5487 fix 1). The med panel and the add-medication
+  // fold used to be two private booleans here, so either could stand open beside
+  // the symptom picker or the temperature fold in the sibling bar. "N more" stays
+  // local: it widens this row, it does not open a panel.
+  const panels = useCockpitPanels();
+  const adding = panels.openKey === ADD_MEDICATION_PANEL;
   const [showTail, setShowTail] = useState(false);
   const now = new Date(nowIso);
   const rows = meds.map((med) => ({
@@ -123,7 +132,10 @@ export default function IllnessMedicationLogger({
   const shown = showTail ? standing : standing.slice(0, COLLAPSED_CHIPS);
   // An open panel goes with its chip: the med it names is being offered in the fold,
   // and two `cockpit-med-panel` on one page is the collision this yield exists to end.
-  const open = standing.find((entry) => entry.med.id === openMedId);
+  const open = standing.find(
+    (entry) => panels.openKey === medicationPanel(entry.med.id)
+  );
+  const openMedId = open?.med.id ?? null;
 
   return (
     <section data-testid="cockpit-meds">
@@ -141,7 +153,9 @@ export default function IllnessMedicationLogger({
             testId={`cockpit-med-chip-${med.id}`}
             data={{ "data-item-id": med.id }}
             onClick={() =>
-              setOpenMedId((current) => (current === med.id ? null : med.id))
+              panels.setOpenKey(
+                med.id === openMedId ? null : medicationPanel(med.id)
+              )
             }
           >
             {med.displayName ?? med.name}
@@ -164,7 +178,9 @@ export default function IllnessMedicationLogger({
             control: (
               <IllnessAddMedicationControl
                 open={adding}
-                onToggle={() => setAdding((open) => !open)}
+                onToggle={() =>
+                  panels.setOpenKey(adding ? null : ADD_MEDICATION_PANEL)
+                }
               />
             ),
           }}
@@ -193,7 +209,15 @@ export default function IllnessMedicationLogger({
           id="cockpit-med-panel"
           data-testid="cockpit-med-panel"
           data-item-id={open.med.id}
-          className="subpanel-inset-sm mt-2 rounded-lg border border-black/5 p-3 dark:border-white/5"
+          // NO SECOND BORDER INSIDE ONE (#5487 fix 2). Mounted inside the fever
+          // offer's own inset, this panel's frame was the third border deep on a
+          // card that draws none of its own (#4076); one inset treatment per card,
+          // at one depth.
+          className={
+            panels.nested
+              ? "mt-2"
+              : "subpanel-inset-sm mt-2 rounded-lg border border-black/5 p-3 dark:border-white/5"
+          }
         >
           {/* IDENTITY RIDES ON THE PANEL (#531): the detail layout deliberately draws
               no name, because on the medications page the card above it already does.
@@ -242,7 +266,7 @@ export default function IllnessMedicationLogger({
             conditions={intakeContext.conditions}
             pediatric={intakeContext.pediatric}
             todayStr={intakeContext.todayStr}
-            onDone={() => setAdding(false)}
+            onDone={() => panels.setOpenKey(null)}
           />
         </div>
       ) : null}

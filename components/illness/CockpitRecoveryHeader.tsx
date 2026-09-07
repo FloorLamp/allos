@@ -3,6 +3,7 @@ import {
   cockpitRecoveryFraction,
   cockpitRecoveryHeadline,
   cockpitSummaryParts,
+  episodeWorseningLabel,
   type CockpitRecovery,
   type EpisodeCollapsedStatus,
 } from "@/lib/illness-episode-format";
@@ -72,7 +73,6 @@ export default function CockpitRecoveryHeader({
         <RecoveryRing
           fraction={fraction}
           hours={recovery.clearedForHours}
-          met={recovery.met}
           label={recovery.label}
         />
       ) : null}
@@ -84,15 +84,20 @@ export default function CockpitRecoveryHeader({
           >
             {cockpitRecoveryHeadline(name, recovery)}
           </h3>
+          {/* THE DAY IS TEXT, NOT A FILLED PILL (#5487 fix 4) — #4752 §1's board
+              draws it as plain rose type beside the headline. */}
           <span
             data-testid="cockpit-day-tag"
-            className="badge bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
+            className="text-xs font-medium text-rose-600 dark:text-rose-400"
           >
             {status.dayLabel}
           </span>
+          {/* THE ARROW NAMES WHAT WORSENED (#5488 fix 2). "Dune is on the mend"
+              beside a bare "Worsening ↑" is one question answered twice; the
+              formatter says which of the two things the engine measured moved. */}
           {status.worsening ? (
             <span className="text-xs font-medium text-rose-600 dark:text-rose-400">
-              Worsening ↑
+              {episodeWorseningLabel(status.worsening)}
             </span>
           ) : null}
         </div>
@@ -127,23 +132,22 @@ export default function CockpitRecoveryHeader({
 }
 
 // The countdown as a ring: a stroked circle whose dash offset is the cleared
-// fraction, with the hours inside it. `aria-hidden` on the drawing and the shared
+// fraction, with the hours inside it. ONE TONE (#5487 fix 4): #4752 §1's board draws
+// the ring green while the clock is still running, and the arc's own length is what
+// says how far along it is — a rose ring at 22 of 24 hours said the opposite. `aria-hidden` on the drawing and the shared
 // compact clause as the accessible text, so a screen reader hears the sentence the
 // summary line also carries rather than a number with no unit.
 function RecoveryRing({
   fraction,
   hours,
-  met,
   label,
 }: {
   fraction: number;
   hours: number;
-  met: boolean;
   label: string;
 }) {
   const radius = 22;
   const circumference = 2 * Math.PI * radius;
-  const tone = met ? "text-emerald-500" : "text-rose-500";
   return (
     <div
       data-testid="cockpit-recovery-ring"
@@ -168,7 +172,7 @@ function RecoveryRing({
           strokeLinecap="round"
           strokeDasharray={circumference}
           strokeDashoffset={circumference * (1 - fraction)}
-          className={`stroke-current ${tone}`}
+          className="stroke-current text-emerald-500"
         />
       </svg>
       <span
