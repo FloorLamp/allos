@@ -23,7 +23,11 @@ beforeEach(() => {
 });
 
 // A PRN medication (as_needed=1) with one dose + tracked supply, owned by `profileId`.
-function seedPrnMed(profileId: number, quantityOnHand = 10): number {
+function seedPrnMed(
+  profileId: number,
+  amount = "400 mg",
+  quantityOnHand = 10
+): number {
   const itemId = Number(
     db
       .prepare(
@@ -35,8 +39,8 @@ function seedPrnMed(profileId: number, quantityOnHand = 10): number {
   );
   db.prepare(
     `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
-     VALUES (?, '400 mg', 'any', 'any', 0)`
-  ).run(itemId);
+     VALUES (?, ?, 'any', 'any', 0)`
+  ).run(itemId, amount);
   return itemId;
 }
 
@@ -292,54 +296,43 @@ describe("logMedicationAdministration action (#797)", () => {
     expect(res.ok).toBe(false);
   });
 
-  // WHAT THE RECORD SAYS WAS GIVEN (#4713 fix 3). The dose row bands from the child's
-  // recorded weight at the tap, so the administration has to store that figure — the
-  // item's own `400 mg` is the adult snapshot a caregiver never saw on that row, and
-  // for a growing child it is exactly the number that has gone stale.
-  it("records the child's label band rather than the item's stored amount", async () => {
+  // THE BAND NEVER REACHES THE RECORD (#4713, after the falsifying pass on #5512).
+  // The dose row STATES the label band for a child beside the dose; the administration
+  // still stores the item's own amount, because `intake_item_doses.amount` records the
+  // dose and not its provenance — a lookup cannot tell a stale band figure from a
+  // prescriber's, and #798's line 15 forbids applying the band without the confirm
+  // that distinction would need. The clinician-set toddler dose is the case to rank
+  // on: the ibuprofen chart says 100 mg for 12 kg, and 50 mg is what was prescribed.
+  it.each([
+    {
+      subject: "a clinician-set toddler dose",
+      stored: "50 mg",
+      ageMonths: 24,
+      kg: 12,
+    },
+    {
+      subject: "a teenager's prescribed dose",
+      stored: "600 mg",
+      ageMonths: 192,
+      kg: 60,
+    },
+    {
+      // The issue's own scenario, from the other side: the child has GROWN past the
+      // band the item was saved with (20 kg is 44.1 lb, one band up at 150 mg). The
+      // row says so; the record still states the dose that was actually given.
+      subject: "a dose the child has outgrown",
+      stored: "100 mg",
+      ageMonths: 72,
+      kg: 20,
+    },
+  ])("records $subject unchanged", async ({ stored, ageMonths, kg }) => {
     const { profile } = seedActor();
-    const itemId = seedPrnMed(profile.id);
-    seedChild(profile.id, 72, 12, today(profile.id));
+    const itemId = seedPrnMed(profile.id, stored);
+    seedChild(profile.id, ageMonths, kg, today(profile.id));
     expect(
       (await logMedicationAdministration(fd({ id: itemId, offset: "now" }))).ok
     ).toBe(true);
-    // 12 kg is 26.5 lb — the 24–35 lb ibuprofen band.
-    expect(loggedAmount(itemId)).toBe("100 mg");
-  });
-
-  // …AND THE BAND FOLLOWS THE WEIGHT, with no edit to the medication. This is the
-  // whole failure: the snapshot never moves, so without this the second dose records
-  // the first dose's figure months later.
-  it("follows a newly logged weight on the next dose", async () => {
-    const { profile } = seedActor();
-    const itemId = seedPrnMed(profile.id);
-    const date = today(profile.id);
-    seedChild(profile.id, 72, 12, shiftDateStr(date, -1));
-    expect(
-      (await logMedicationAdministration(fd({ id: itemId, offset: "now" }))).ok
-    ).toBe(true);
-    expect(loggedAmount(itemId)).toBe("100 mg");
-
-    db.prepare(
-      "INSERT INTO body_metrics (profile_id, date, weight_kg, source) VALUES (?, ?, 20, 'manual')"
-    ).run(profile.id, date);
-    // A distinct minute, so the dedup window does not absorb the second tap.
-    expect(
-      (
-        await logMedicationAdministration(
-          fd({ id: itemId, offset: "custom", time: "00:01" })
-        )
-      ).ok
-    ).toBe(true);
-    // 20 kg is 44.1 lb — the next band up, and nothing about the item changed.
-    expect(loggedAmount(itemId)).toBe("150 mg");
-    expect(
-      (
-        db
-          .prepare("SELECT amount FROM intake_item_doses WHERE item_id = ?")
-          .get(itemId) as { amount: string }
-      ).amount
-    ).toBe("400 mg");
+    expect(loggedAmount(itemId)).toBe(stored);
   });
 
   // THE ADULT PATH IS UNTOUCHED, and it is an acceptance criterion rather than a

@@ -16,6 +16,7 @@
 //     silently applied (that confirm is the liability line).
 
 import { prnDefaultsFor } from "./prn-defaults";
+import { parseAmountMg } from "./prn-redose";
 import type {
   PediatricBand,
   PrnDefaultEntry,
@@ -346,60 +347,70 @@ export function pediatricRefusalLine(
   }
 }
 
-// What one PRN dose row offers, and what its tap writes (#4713).
+// What the label says about THIS dose row's subject, right now (#4713).
 //
 // THE BAND RUNS AT THE TAP, NOT ONLY AT ADD TIME. The machinery above had exactly one
-// consumer — the add/edit medication form — so a child's dose row rendered the
-// `amount` SNAPSHOT the band produced whenever the item was last edited. A growing
-// child's snapshot said 160 mg; three months later the tap still wrote 160 mg with
-// nothing re-deriving it, and the staleness refusals below were unreachable from the
-// only surface anybody opens to give a dose at 2 a.m.
+// consumer — the add/edit medication form — so a child's dose row said nothing at all
+// about the weight band, and the `amount` it showed was the snapshot the band produced
+// whenever the item was last edited. A growing child's snapshot said 160 mg and three
+// months later the row still said 160 mg with nothing re-deriving it, and the
+// staleness refusals were unreachable from the only surface anybody opens at 2 a.m.
 //
-// MATCHED BY NAME, DELIBERATELY. The quick-log projection carries no RxCUI (the same
-// row `antipyreticPrnMeds` already matches name-only, for the same reason), and the
-// row and the WRITE must resolve the same entry or the record would state a figure the
-// reader was never shown — #4753's primitive, that a chip's label is its payload. So
-// both sides run this one function over the same two fields.
+// IT STATES; IT DOES NOT APPLY. That is line 15 of this file, and it survives the
+// move: "the band amount is a SUGGESTION to confirm, carrying the label caveat —
+// never silently applied (that confirm is the liability line)". The row goes on
+// offering and recording the item's OWN dose, because nothing stored distinguishes a
+// band figure that has gone stale from a figure a prescriber set — `intake_item_doses
+// .amount` records the dose, not its provenance — and a lookup that cannot tell those
+// apart may not overwrite either. So this returns what the LABEL says, for the row to
+// state beside the dose, and the confirm stays where #798 put it.
 //
-// A REFUSAL DOES NOT BLOCK THE TAP. #798's gates decide what the LABEL suggests, and
-// this moves where they run, not what they decide: the add form states a refusal and
-// still saves, and a caregiver who has already given a dose must still be able to
-// record it. `amount` therefore falls back to the stored snapshot for every non-dose
-// verdict, and the row states the refusal beside it.
-export interface PrnDoseRowOffer {
-  // The amount the row offers and the tap records: the label band's figure when one
-  // is derivable, else the item's stored snapshot (adults, no-band items, refusals).
-  amount: string | null;
-  // The band the amount came from ("24–35 lb"), for the row's basis line. Null
-  // whenever `amount` is the stored snapshot — which is also what tells the write
-  // path there is nothing to override.
+// IN MILLIGRAMS OR NOT AT ALL. The chart's figures are milligrams of one ingredient,
+// so a stored dose that does not read as milligrams of anything (`5 mL` of a
+// combination liquid) has no comparable figure and gets NO band line: printing "160 mg"
+// beside a volume-dosed combination product would invite exactly the substitution this
+// function refuses to make. `parseAmountMg` is #1854's reader, already the one place
+// that answers "are these milligrams".
+export interface PrnDoseBandStatement {
+  // The band's own figure as the row should spell it ("100 mg"), or null when the
+  // label refuses. Never the row's offered amount — see above.
+  bandAmount: string | null;
+  // The band it came from ("24–35 lb"), for the row's basis line.
   bandLabel: string | null;
-  // The label's verdict, for the row to state. Null for an adult profile or an item
-  // with no pediatric chart — the byte-identical path, and the reason "no-pediatric"
-  // is not among the verdicts a caller has to handle: an entry without a chart never
-  // reaches the lookup.
+  // Whether the band's figure differs from the dose this item actually carries, so
+  // the row can say which one it is offering. False when they agree, which is the
+  // ordinary case: the add form's own band wrote that amount.
+  differsFromStored: boolean;
+  // The label's verdict, for the row to state. Null for an adult profile, an item
+  // with no pediatric chart, and an item whose dose is not in milligrams — the
+  // byte-identical paths. "no-pediatric" is not among the verdicts a caller has to
+  // handle: an entry without a chart never reaches the lookup.
   result: Exclude<PediatricDoseResult, { kind: "no-pediatric" }> | null;
 }
 
-export function prnDoseRowOffer(
+const NO_BAND: PrnDoseBandStatement = {
+  bandAmount: null,
+  bandLabel: null,
+  differsFromStored: false,
+  result: null,
+};
+
+export function prnDoseBandStatement(
   item: { name: string; product?: string | null; amount?: string | null },
   context: PediatricFormContext | null | undefined
-): PrnDoseRowOffer {
-  const snapshot: PrnDoseRowOffer = {
-    amount: item.amount ?? null,
-    bandLabel: null,
-    result: null,
-  };
-  if (!context) return snapshot;
+): PrnDoseBandStatement {
+  if (!context) return NO_BAND;
   const { ageMonths } = context;
-  if (ageMonths == null || !isChildProfileAge(ageMonths)) return snapshot;
+  if (ageMonths == null || !isChildProfileAge(ageMonths)) return NO_BAND;
+  const storedMg = parseAmountMg(item.amount);
+  if (storedMg == null) return NO_BAND;
   const entry = prnDefaultsFor({
     name: item.name,
     rxcui: null,
     rxcuiIngredients: null,
   });
   const pediatric = entry?.pediatric;
-  if (!entry || !pediatric) return snapshot;
+  if (!entry || !pediatric) return NO_BAND;
   const result = pediatricDoseSuggestion({
     entry: { ...entry, pediatric },
     ageMonths,
@@ -411,10 +422,11 @@ export function prnDoseRowOffer(
       item.product
     ),
   });
-  if (result.kind !== "dose") return { ...snapshot, result };
+  if (result.kind !== "dose") return { ...NO_BAND, result };
   return {
-    amount: formulationDoseAmount(result.mg),
+    bandAmount: formulationDoseAmount(result.mg),
     bandLabel: result.bandLabel,
+    differsFromStored: result.mg !== storedMg,
     result,
   };
 }

@@ -39,7 +39,7 @@ const mocks = vi.hoisted(() => ({
   updateHistoricalDose: vi.fn(),
   setDoseStatus: vi.fn(),
   logMedicationAdministration: vi.fn(),
-  addMeasurements: vi.fn(async () => ({})),
+  addMeasurements: vi.fn(async (_formData: FormData) => ({})),
 }));
 
 vi.mock("@/components/LoggedViaSurface", () => ({
@@ -692,7 +692,7 @@ describe("the PRN row's earlier-dose statement takes the card's day (#4691/#4738
 // The subject here is a 6-year-old at 12 kg (26.5 lb), whose ibuprofen label band is
 // 100 mg; the item still carries the 160 mg it was saved with, so every claim below
 // separates "what the label says now" from "what the row remembers".
-describe("the PRN row bands from the child's weight at dose time (#4713)", () => {
+describe("the PRN row states the child's label band at dose time (#4713)", () => {
   const CHILD: PediatricFormContext = {
     ageMonths: 72,
     weightKg: 12,
@@ -703,81 +703,106 @@ describe("the PRN row bands from the child's weight at dose time (#4713)", () =>
 
   function row(
     pediatric: PediatricFormContext | null,
-    over: { name?: string } = {}
+    over: { name?: string; doseAmount?: string; profileId?: number } = {}
   ) {
     render(
       <QuickLogPrnControl
         itemId={31}
         name={over.name ?? "Ibuprofen"}
-        doseAmount="160 mg"
+        doseAmount={over.doseAmount ?? "100 mg"}
         dayLabel="None today"
         tz="UTC"
+        profileId={over.profileId}
         pediatric={pediatric}
       />
     );
   }
 
-  it("offers the band's amount and states the basis it read", () => {
+  it("states the band the dose stands on, with the label caveat", () => {
     row(CHILD);
-    expect(screen.getByTestId("prn-log-now").getAttribute("aria-label")).toBe(
-      "Take Ibuprofen · 100 mg"
-    );
-    expect(screen.getByTestId("prn-band-basis").textContent).toBe(
-      "100 mg · 24–35 lb band"
-    );
+    const basis = screen.getByTestId("prn-band-basis").textContent!;
+    expect(basis).toContain("100 mg · 24–35 lb band");
+    expect(basis).toContain("confirm against your package");
     expect(screen.queryByTestId("prn-band-refusal")).toBeNull();
   });
 
-  // THE POSITIVE CONTROL for the criterion that matters most: the same row, same
-  // stored snapshot, with no child context and with a child the label chart does not
-  // cover. Both must be the row that shipped — no basis line, no refusal, the
-  // snapshot's own figure.
+  // THE LINE THE ISSUE EXISTS FOR, and the line that must not become a substitution.
+  // A 26.5 lb child whose item still carries the 160 mg it was saved with: the row
+  // SAYS the chart reads 100 mg for this weight, and goes on offering — and recording
+  // — the 160 mg the item actually carries. Nothing on this surface may overwrite a
+  // dose whose provenance the data does not record.
+  it("reports a band that differs without changing what the tap writes", () => {
+    row(CHILD, { doseAmount: "160 mg" });
+    expect(screen.getByTestId("prn-band-basis").textContent).toContain(
+      "Label band for this weight is 100 mg · 24–35 lb band"
+    );
+    expect(screen.getByTestId("prn-log-now").getAttribute("aria-label")).toBe(
+      "Take Ibuprofen · 160 mg"
+    );
+  });
+
+  // THE POSITIVE CONTROL for the criterion that matters most. Same row, same stored
+  // dose, four subjects that must all be the row that shipped — no band line, no
+  // refusal, the item's own figure. The mL case is the third falsified example: a
+  // volume-dosed combination liquid has no milligram figure to compare, so printing
+  // the OTC monograph's band beside it would invite exactly the wrong substitution.
   it.each([
-    { subject: "an adult profile", pediatric: null, name: "Ibuprofen" },
+    { subject: "an adult profile", pediatric: null, over: {} },
     {
       subject: "an item with no label chart",
       pediatric: CHILD,
-      name: "Aspirin",
+      over: { name: "Aspirin" },
     },
-  ])("leaves $subject exactly as it was", ({ pediatric, name }) => {
-    row(pediatric, { name });
-    expect(screen.getByTestId("prn-log-now").getAttribute("aria-label")).toBe(
-      `Take ${name} · 160 mg`
-    );
+    {
+      subject: "a dose that is not in milligrams",
+      pediatric: CHILD,
+      over: { name: "Tylenol with Codeine", doseAmount: "5 mL" },
+    },
+  ])("leaves $subject exactly as it was", ({ pediatric, over }) => {
+    row(pediatric, over);
     expect(screen.queryByTestId("prn-band-basis")).toBeNull();
     expect(screen.queryByTestId("prn-band-refusal")).toBeNull();
+    expect(
+      screen.getByTestId("prn-log-now").getAttribute("aria-label")
+    ).toContain(over.doseAmount ?? "100 mg");
   });
 
   // A MISSING WEIGHT DATE READS AS STALE (#798), and under 12 months the threshold is
   // 60 days — the infant case the machinery was built for, and the one that was
-  // unreachable from this row. The fixer opens WITH the refusal, so the trip to the
-  // Body page and back is not on the path.
-  it("surfaces the stale-weight refusal with the fixer already open, and re-offers in place", async () => {
+  // unreachable from this row. The fixer is one tap away in place, and the weight it
+  // writes is the SUBJECT's: this row carries a `profileId` exactly when the acting
+  // login is somebody else, which for an infant is always.
+  it("surfaces the stale-weight refusal and fixes the SUBJECT's weight in place", async () => {
     const infant = { ...CHILD, ageMonths: 8, weightKg: 5, weightDate: null };
-    row(infant);
+    row(infant, { doseAmount: "160 mg", profileId: 99 });
     expect(screen.getByTestId("prn-band-refusal").textContent).toContain(
       "over 60 days old"
     );
-    // Nothing was banded, so the row still offers what it remembers rather than a
-    // figure derived from a weight the label refuses.
     expect(screen.queryByTestId("prn-band-basis")).toBeNull();
-    expect(screen.getByTestId("prn-log-now").getAttribute("aria-label")).toBe(
-      "Take Ibuprofen · 160 mg"
-    );
 
-    // One field, one save, and the offer follows — no navigation, no item edit.
+    // Not open on arrival: a list refuses per row for ONE fact, so N rows would mount
+    // N editors. One tap opens it where it stands.
+    expect(screen.queryByTestId("pediatric-weight-input")).toBeNull();
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("pediatric-weight-update-open"))
+    );
     fireEvent.change(screen.getByTestId("pediatric-weight-input"), {
       target: { value: "12" },
     });
     await act(async () =>
       fireEvent.click(screen.getByRole("button", { name: "Save" }))
     );
+
+    // THE WEIGHT IS THE CHILD'S. Without this the body-metric write falls back to
+    // `gateItemProfile`'s acting profile and files an infant's weight on the parent.
+    const posted = mocks.addMeasurements.mock.calls.at(-1)![0];
+    expect(posted.get("weight")).toBe("12");
+    expect(posted.get("profile_id")).toBe("99");
+
+    // …and the refusal is answered in place, with the band now stated.
     expect(screen.queryByTestId("prn-band-refusal")).toBeNull();
-    expect(screen.getByTestId("prn-band-basis").textContent).toBe(
-      "100 mg · 24–35 lb band"
-    );
-    expect(screen.getByTestId("prn-log-now").getAttribute("aria-label")).toBe(
-      "Take Ibuprofen · 100 mg"
+    expect(screen.getByTestId("prn-band-basis").textContent).toContain(
+      "Label band for this weight is 100 mg · 24–35 lb band"
     );
   });
 });

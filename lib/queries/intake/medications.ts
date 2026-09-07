@@ -17,7 +17,6 @@ import {
   type EpisodeMedInput,
   type EpisodeMedSuggestion,
 } from "../../episode-med-reconcile";
-import { prnDoseRowOffer } from "../../prn-dosing";
 import type { PediatricFormContext } from "../../prn-dosing";
 import type { WeightUnit } from "../../settings";
 import type { MedicationCourse, MedicationSideEffect } from "../../types";
@@ -44,29 +43,6 @@ export function getPediatricFormContext(
     weightUnit,
     today: todayStr,
   };
-}
-
-// The amount ONE PRN administration should RECORD for a child (#4713 fix 3), or null
-// to keep the item's stored dose. The dose row offers the label band evaluated at the
-// tap; the record has to say the same thing, or the ledger keeps a snapshot the reader
-// was never shown — and for a growing child that snapshot is exactly the figure that
-// has gone stale. Derived server-side from the same pure `prnDoseRowOffer` the row
-// renders, over the same two fields, so the two cannot answer differently.
-export function pediatricAdministrationAmount(
-  profileId: number,
-  itemId: number
-): string | null {
-  const item = db
-    .prepare(
-      "SELECT name, product FROM intake_items WHERE id = ? AND profile_id = ?"
-    )
-    .get(itemId, profileId) as
-    { name: string; product: string | null } | undefined;
-  if (!item) return null;
-  const offer = prnDoseRowOffer(item, getPediatricFormContext(profileId));
-  // Only a BAND-derived figure overrides; every refusal keeps the stored snapshot,
-  // which is what the row offered too.
-  return offer.bandLabel ? offer.amount : null;
 }
 
 // ---- Episode-end medication reconciliation (issue #880) ----

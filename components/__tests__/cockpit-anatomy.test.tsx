@@ -215,15 +215,14 @@ describe("meds are labeled-verb chips, detail only when acting (#4752 item 4)", 
     expect(chip.getAttribute("aria-controls")).toBe(panel.id);
     // THE PANEL IS THE TAP THAT WRITES, and its label is the dose. A cross-profile
     // mount says "Give" because "Take" would be addressed to the wrong person.
-    //
-    // AND THE DOSE IS THE BAND'S, NOT THE SNAPSHOT'S (#4713). This subject is 26.5 lb,
-    // whose ibuprofen label band is 100 mg; the item still carries the 160 mg it was
-    // saved with, and the panel used to offer that. The row states the basis it read.
     const give = within(panel).getByTestId("prn-log-now");
-    expect(give.textContent).toBe("100 mgGive");
-    expect(give.getAttribute("aria-label")).toBe("Give Ibuprofen · 100 mg");
-    expect(within(panel).getByTestId("prn-band-basis").textContent).toBe(
-      "100 mg · 24–35 lb band"
+    expect(give.textContent).toBe("160 mgGive");
+    expect(give.getAttribute("aria-label")).toBe("Give Ibuprofen · 160 mg");
+    // AND THE PANEL STATES WHAT THE LABEL SAYS (#4713), without changing that dose.
+    // This subject is 26.5 lb, whose ibuprofen band is 100 mg; the item still carries
+    // the 160 mg it was saved with, and only a person may reconcile the two.
+    expect(within(panel).getByTestId("prn-band-basis").textContent).toContain(
+      "Label band for this weight is 100 mg · 24–35 lb band"
     );
     // The clock door, in its seat and spelled only as the glyph (#4752 item 8).
     const door = within(panel).getByTestId("prn-log-when-toggle");
@@ -293,7 +292,7 @@ describe("meds are labeled-verb chips, detail only when acting (#4752 item 4)", 
     meds();
     fireEvent.click(screen.getByTestId("cockpit-med-chip-31"));
     expect(screen.getByTestId("prn-log-now").getAttribute("aria-label")).toBe(
-      "Take Ibuprofen · 100 mg"
+      "Take Ibuprofen · 160 mg"
     );
   });
 });

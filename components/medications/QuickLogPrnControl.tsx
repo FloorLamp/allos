@@ -23,8 +23,9 @@ import {
 import { medicationHref } from "@/lib/hrefs";
 import { formatMedicationDoseProduct } from "@/lib/medication-dose-format";
 import {
+  PEDIATRIC_DOSE_CAVEAT,
   pediatricRefusalLine,
-  prnDoseRowOffer,
+  prnDoseBandStatement,
   type PediatricFormContext,
 } from "@/lib/prn-dosing";
 import { logMedicationAdministration } from "@/app/(app)/medications/actions";
@@ -176,14 +177,17 @@ export default function QuickLogPrnControl({
     pediatricProp,
     `${pediatricProp?.weightKg ?? ""}|${pediatricProp?.weightDate ?? ""}|${pediatricProp?.today ?? ""}`
   );
-  // #798's band lookup, run at DOSE time (#4713). For an adult, an item with no label
-  // chart, or a host that states no context, this is the stored snapshot and nothing
-  // below renders.
-  const offer = prnDoseRowOffer(
+  // #798's band lookup, run at DOSE time (#4713) — and STATED, never applied. The
+  // dose this row offers and records is the item's own, exactly as before; the band
+  // is a line beside it. Nothing distinguishes a stale band figure from a prescriber's
+  // in `intake_item_doses.amount`, so a lookup may not overwrite either (see
+  // `prnDoseBandStatement`). For an adult, an item with no label chart, or a host that
+  // states no context, nothing below renders at all.
+  const band = prnDoseBandStatement(
     { name, product, amount: doseAmount },
     pediatric
   );
-  const doseDetail = formatMedicationDoseProduct(offer.amount, product);
+  const doseDetail = formatMedicationDoseProduct(doseAmount, product);
   // WHAT THE TAP WRITES, as the reader should see it: this administration's DOSE.
   // A med with no recorded amount has nothing quantitative to promise, so the label
   // falls back to the medication itself — #4753's own `Ibuprofen · [Give]` shape.
@@ -329,16 +333,27 @@ export default function QuickLogPrnControl({
     />
   );
 
-  // THE ROW STATES ITS BASIS (#4713 fix 1, and #4752's last unmet clause). "160 mg ·
-  // 24–35 lb band" — the figure the tap writes, and the label band it came from, so a
-  // caregiver can see that the offer follows THIS child's recorded weight rather than
-  // whatever the item was last saved with.
-  const bandBasis = offer.bandLabel ? (
+  // THE ROW STATES ITS BASIS (#4713 fix 1, and #4752's last unmet clause). Two
+  // sentences, because there are two facts and only one of them is reassuring:
+  //
+  //   • the dose this row offers IS the label band for this child's recorded weight —
+  //     "160 mg · 24–35 lb band", which is the ordinary case, because the add form's
+  //     own band wrote that amount;
+  //   • the label band for that weight is a DIFFERENT figure — said plainly, with the
+  //     item's own dose still the thing the tap writes. A growing child reaches this
+  //     line, and so does a prescribed dose that the OTC chart does not agree with;
+  //     the row cannot tell those apart, so it reports and lets a person decide.
+  //
+  // The caveat rides both (#798): this is a label lookup, not a prescription.
+  const bandBasis = band.bandLabel ? (
     <div
       className="text-xs text-slate-500 dark:text-slate-400"
       data-testid="prn-band-basis"
     >
-      {doseDetail} · {offer.bandLabel} band
+      {band.differsFromStored
+        ? `Label band for this weight is ${band.bandAmount} · ${band.bandLabel} band`
+        : `${doseDetail} · ${band.bandLabel} band`}
+      <span className="block">{PEDIATRIC_DOSE_CAVEAT}</span>
     </div>
   ) : null;
 
@@ -347,18 +362,24 @@ export default function QuickLogPrnControl({
   // surface a dose is actually given from. A missing or stale weight also mounts the
   // shared one-field fixer already open, because "go to Body, expand the body group,
   // come back" is the trip that made these refusals unreachable in practice.
-  const refusalLine = pediatricRefusalLine(offer.result);
+  const refusalLine = pediatricRefusalLine(band.result);
   const needsWeight =
-    offer.result?.kind === "need-weight" ||
-    offer.result?.kind === "stale-weight";
+    band.result?.kind === "need-weight" || band.result?.kind === "stale-weight";
   const bandNote = refusalLine ? (
     <div data-testid="prn-band-refusal" className="text-xs">
       <p className="text-amber-700 dark:text-amber-300">{refusalLine}</p>
+      {/* THE FIXER OPENS ON DEMAND HERE, not `initiallyOpen` as in the add form —
+          which mounts exactly one of these, for the medicine being added. A list
+          refuses per ROW for ONE fact, so a child with two charted PRNs would get two
+          open editors racing for focus over a single weight. One tap still opens it in
+          place, which is what "zero navigation" was about. The write follows the
+          SUBJECT (#858): this row logs a household member's dose, so the body metric
+          it saves is theirs, not the acting login's. */}
       {needsWeight && pediatric ? (
         <PediatricWeightUpdate
           idPrefix={`prn-${itemId}`}
           context={pediatric}
-          initiallyOpen
+          profileId={profileId}
           onSaved={setPediatric}
         />
       ) : null}
