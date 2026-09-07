@@ -615,10 +615,10 @@ const ROUTER_REFRESH_BAN = {
 };
 
 const config = [
-  // Global ignores — mirror the old ignorePatterns. Build output, deps, and the
-  // runtime data dir are never linted.
+  // Global ignores: other checkouts, build output, dependencies, and runtime data.
   {
     ignores: [
+      ".claude/worktrees/",
       ".next/",
       ".next-demo/",
       "node_modules/",
