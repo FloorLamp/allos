@@ -8,16 +8,6 @@ import { weekdayOfDateStr } from "@/lib/date";
 import { SeriesPoint, SeriesSummary } from "@/components/SeriesAccess";
 import { StateLegend, stateCellClass } from "@/components/StateCells";
 
-const STATE_CLASS: Record<WeeklyAdherenceState, string> = {
-  taken: chartAdherenceState.taken.class,
-  partial: chartAdherenceState.partial.class,
-  skipped: chartAdherenceState.skipped.class,
-  missed: chartAdherenceState.missed.class,
-  na: "border border-black/10 bg-transparent text-slate-500 dark:border-white/10 dark:text-slate-400",
-  pending:
-    "border border-dashed border-brand-300 bg-brand-50 text-brand-800 dark:border-brand-800 dark:bg-brand-950/40 dark:text-brand-300",
-};
-
 const WEEKDAY_LABELS = ["Su", "M", "Tu", "W", "Th", "F", "Sa"] as const;
 const LEGEND_ORDER: WeeklyAdherenceState[] = [
   "taken",
@@ -118,7 +108,7 @@ export default function SupplementWeeklyAdherence({
                 data-testid="supplement-weekly-adherence-day"
                 data-state={day.state}
                 label={dayDescription(day, fullLabel)}
-                className={`relative ${stateCellClass("tile", STATE_CLASS[day.state])}`}
+                className={`relative ${stateCellClass("tile", chartAdherenceState[day.state].class)}`}
               >
                 {cellText(day)}
               </SeriesPoint>
@@ -138,7 +128,7 @@ export default function SupplementWeeklyAdherence({
         className="mt-3"
         items={legendStates.map((state) => ({
           key: state,
-          tone: STATE_CLASS[state],
+          tone: chartAdherenceState[state].class,
           label: STATE_LABEL[state],
         }))}
       />

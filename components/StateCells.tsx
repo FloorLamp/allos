@@ -1,16 +1,10 @@
 import Link from "next/link";
 import type { AppRoute } from "@/lib/hrefs";
+import { chartAdherenceState, type ChartCellTone } from "@/lib/chart-colors";
 import { SeriesPoint } from "@/components/SeriesAccess";
 
-// ONE PERIOD STRIP, ONE KEY (#4543). "N consecutive periods painted by state, with a
-// key" had five renderers and four hand-rolled legends between them — four cell
-// sizes, three radii, and one palette escape. This module owns the GEOMETRY, one
-// class per size token; `lib/chart-colors` owns the COLOR, so a `tone` is a class
-// from there and from nowhere else — the half lib/__tests__/chart-colors-scan.test.ts
-// guards. A strip is a labelled group: it carries the summary, and any cell with its
-// own name keeps it, so a strip whose cells name themselves and one named only as a
-// whole read the same way. A named cell is also its own door to that name (#4760):
-// focusable, and showing it while focused or hovered, so the strip needs no fold.
+// Shared period-strip geometry with tones restricted to the chart palette.
+// The group names the strip; a named cell exposes its label on focus and hover.
 
 export type StateCellSize = "dot" | "cell" | "tile";
 
@@ -23,8 +17,16 @@ const SIZE_CLASS: Record<StateCellSize, string> = {
 };
 
 /** The one geometry for a state-painted square, at the declared size. */
-export function stateCellClass(size: StateCellSize, tone: string): string {
-  return `${SIZE_CLASS[size]} ${tone}`;
+export function stateCellClass(
+  size: StateCellSize,
+  tone: ChartCellTone
+): string {
+  // An unfilled not-due swatch needs an outline away from its calendar grid.
+  const outline =
+    size === "dot" && tone === chartAdherenceState.na.class
+      ? " border border-black/15 dark:border-white/15"
+      : "";
+  return `${SIZE_CLASS[size]} ${tone}${outline}`;
 }
 
 // `tone` is a class from lib/chart-colors; `state` becomes `data-state`; `label` is
@@ -32,7 +34,7 @@ export function stateCellClass(size: StateCellSize, tone: string): string {
 // responsive visibility a caller owns (a strip that unrolls at a breakpoint).
 export type StateCellSpec = {
   key: string;
-  tone: string;
+  tone: ChartCellTone;
   state: string;
   label?: string;
   href?: AppRoute;
@@ -90,7 +92,7 @@ export function StateCells({
 /** `count` is how many periods are in this state, where the key doubles as a tally. */
 export type StateLegendItem = {
   key: string;
-  tone: string;
+  tone: ChartCellTone;
   label: string;
   count?: number;
 };

@@ -83,20 +83,8 @@ export const chartSleepStage = {
   awake: chartNeutral, // slate-500 — explicitly "not a stage"
 } as const;
 
-// ── Sequential cell ramps (issue #1445, Part 3a/4d) ──────────────────────────
-//
-// The calendar surfaces (DayHistory, ActiveDaysStrip, medications'
-// AdherenceCalendar) are charts too, but their cells are Tailwind CLASSES, not
-// SVG fills — which is exactly how three hand-rolled `emerald-200/900` ramps
-// drifted past the hex scan that guards the series palette. So the blessed ramp
-// ships in BOTH shapes: `stepClasses` for the DOM cells (what the surfaces
-// actually render) and `light`/`dark` hexes for the validator to check. Both
-// halves move together, and `chart-colors-scan.test.ts` fails a surface that
-// hand-rolls a same-hue `bg-*` ladder of its own again.
-//
-// A density ramp is a SEQUENTIAL job: one hue, light→dark (light theme) or
-// dark→light (dark theme), with the zero/empty cell a neutral so "no data" never
-// looks like "a little data".
+// Density ramps use one hue and a neutral empty cell. Rendered classes and
+// per-theme hexes travel together so palette validation checks the drawn colors.
 
 export interface CellRamp {
   /** Tailwind classes for the zero/empty cell (both themes). */
@@ -121,7 +109,7 @@ export interface CellRamp {
 /** Workout/activity density — the brand green, since activity is the brand's own
  *  metric. Four steps (1, 2, 3, 4+ sessions) over a neutral empty cell.
  *  Consumed by `DayHistory` and `ActiveDaysStrip`. */
-export const chartActivityRamp: CellRamp = {
+export const chartActivityRamp = {
   emptyClass: "bg-slate-100 dark:bg-ink-800",
   stepClasses: [
     "bg-brand-300 dark:bg-brand-800",
@@ -146,12 +134,12 @@ export const chartActivityRamp: CellRamp = {
     steps: ["#166534", "#15803d", "#16a34a", "#22c55e"],
     labelText: ["#ecf2e8", "#ffffff", "#ffffff", "#0c1710", "#0c1710"],
   },
-};
+} as const satisfies CellRamp;
 
 /** Observational quantity density — deliberately vivid royal blue rather than the
  *  brand green. Food servings and confirmed doses describe what was recorded;
  *  a darker cell must not imply that more is healthier or more adherent. */
-export const chartObservationRamp: CellRamp = {
+export const chartObservationRamp = {
   emptyClass: "bg-slate-100 dark:bg-ink-800",
   stepClasses: [
     "bg-blue-200 dark:bg-blue-700",
@@ -176,7 +164,7 @@ export const chartObservationRamp: CellRamp = {
     steps: ["#1d4ed8", "#3b82f6", "#93c5fd", "#dbeafe"],
     labelText: ["#ecf2e8", "#ffffff", "#0c1710", "#0c1710", "#0c1710"],
   },
-};
+} as const satisfies CellRamp;
 
 /** Medication-adherence cell states (`AdherenceCalendar`). `taken` and `partial`
  *  are two steps of the SAME brand ramp — partial is literally less of the same
@@ -242,6 +230,13 @@ export const chartAdherenceState = {
   },
 } as const;
 
+type DensityRamp = typeof chartActivityRamp | typeof chartObservationRamp;
+export type ChartCellTone =
+  | DensityRamp["emptyClass"]
+  | DensityRamp["stepClasses"][number]
+  | (typeof chartAdherenceState)[keyof typeof chartAdherenceState]["class"]
+  | (typeof chartActivityTypeBlock)[ActivityType]["blockClass"];
+
 // ── Activity TYPE, as a categorical block color (#2566's week spine) ─────────
 //
 // The week spine stacks one block per logged session on each day of the week, colored
@@ -269,16 +264,13 @@ export interface ActivityTypeBlockColor {
   hex: string;
 }
 
-export const chartActivityTypeBlock: Record<
-  ActivityType,
-  ActivityTypeBlockColor
-> = {
+export const chartActivityTypeBlock = {
   strength: { blockClass: "bg-violet-500", hex: chartSeries.violet },
   cardio: { blockClass: "bg-rose-600", hex: chartSeries.rose },
   sport: { blockClass: "bg-sky-600", hex: chartSeries.sky },
   mobility: { blockClass: "bg-brand-600", hex: chartSeries.brand },
   unclassified: { blockClass: "bg-slate-500", hex: chartNeutral },
-};
+} as const satisfies Record<ActivityType, ActivityTypeBlockColor>;
 
 // ── Fiber × GI read-together strip (#2788) ───────────────────────────────────
 //

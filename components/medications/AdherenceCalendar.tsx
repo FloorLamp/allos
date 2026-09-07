@@ -14,20 +14,6 @@ import { StateLegend, stateCellClass } from "@/components/StateCells";
 
 const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
 
-// Cell colors come from the ONE blessed adherence palette (issue #1445), whose
-// steps are validated in CI: `taken`/`partial` are two steps of the same brand
-// ramp, `skipped` the neutral, `missed` the rose. Each cell also carries a
-// `data-state` and names its own day and state, so state is never color-alone.
-const STATE_STYLE: Record<AdherenceCalendarState, string> = {
-  taken: chartAdherenceState.taken.class,
-  partial: chartAdherenceState.partial.class,
-  skipped: chartAdherenceState.skipped.class,
-  missed: chartAdherenceState.missed.class,
-  excused: chartAdherenceState.excused.class,
-  pending: chartAdherenceState.pending.class,
-  na: chartAdherenceState.na.class,
-};
-
 const STATE_LABEL: Record<AdherenceCalendarState, string> = {
   taken: "Taken",
   partial: "Partial",
@@ -64,7 +50,7 @@ function Cell({ cell }: { cell: AdherenceCalendarCell }) {
       data-testid="adherence-cal-day"
       data-state={cell.state}
       label={text}
-      className={`relative ${stateCellClass("tile", STATE_STYLE[cell.state])}`}
+      className={`relative ${stateCellClass("tile", chartAdherenceState[cell.state].class)}`}
     >
       {dayNumber(cell.date)}
     </SeriesPoint>
@@ -121,12 +107,7 @@ export default function AdherenceCalendar({
         className="lg:mt-5 lg:w-32 lg:flex-none lg:flex-col lg:border-l lg:border-black/5 lg:pl-3 dark:lg:border-white/5"
         items={legend.map((s) => ({
           key: s,
-          // `na` paints nothing, so in a key — away from the grid that gives it
-          // context — it needs an outline or there is no swatch to read.
-          tone:
-            s === "na"
-              ? `${STATE_STYLE[s]} border border-black/15 dark:border-white/15`
-              : STATE_STYLE[s],
+          tone: chartAdherenceState[s].class,
           label: STATE_LABEL[s],
           count: model.counts[s],
         }))}
