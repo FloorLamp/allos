@@ -329,6 +329,64 @@ describe("logHistoricalDose", () => {
     ).toBe(10);
   });
 
+  it("keeps each recorded amount unless the amendment states a replacement", async () => {
+    const { profile } = seedActor();
+    const dates = [-8, -7, -6, -5].map((days) =>
+      shiftDateStr(today(profile.id), days)
+    ) as [string, string, string, string];
+    const { itemId, doseId } = seedMedication(profile.id, {
+      startedOn: shiftDateStr(dates[0], -1),
+    });
+    const amounts = [null, "captured 7 mg", "captured 9 mg", "captured 4 mg"];
+    const insert = db.prepare(
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, status)
+       VALUES (?, ?, ?, ?, 'taken')`
+    );
+    for (const [index, date] of dates.entries()) {
+      insert.run(doseId, itemId, date, amounts[index]);
+    }
+    db.prepare(
+      "UPDATE intake_item_doses SET amount = 'live 20 mg' WHERE id = ?"
+    ).run(doseId);
+
+    async function amend(index: number, amount?: string) {
+      const log = db
+        .prepare(
+          "SELECT id FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+        )
+        .get(doseId, dates[index]) as { id: number };
+      return updateHistoricalDose(
+        fd({
+          id: itemId,
+          log_id: log.id,
+          date: dates[index],
+          time: "08:00",
+          amount,
+        })
+      );
+    }
+
+    expect([
+      await amend(0, ""),
+      await amend(1, "captured 7 mg"),
+      await amend(2, "stated 12 mg"),
+      await amend(3),
+    ]).toEqual([{ ok: true }, { ok: true }, { ok: true }, { ok: true }]);
+
+    expect(
+      db
+        .prepare(
+          "SELECT date, amount FROM intake_item_logs WHERE dose_id = ? ORDER BY date"
+        )
+        .all(doseId)
+    ).toEqual([
+      { date: dates[0], amount: null },
+      { date: dates[1], amount: "captured 7 mg" },
+      { date: dates[2], amount: "stated 12 mg" },
+      { date: dates[3], amount: "captured 4 mg" },
+    ]);
+  });
+
   it("deleting history restores supply only when that dose originally adjusted it", async () => {
     const { profile } = seedActor();
     const { itemId, doseId } = seedMedication(profile.id, {

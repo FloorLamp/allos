@@ -1045,8 +1045,8 @@ export const logHistoricalDoseDeclares = DOSE_RESOLUTION;
 // which is the wrong question for a row that already exists: the schedule was retired,
 // but the dose was really taken and the ledger entry is still a fact. Same for a paused
 // item — pausing stops future dueness, it does not make past history unamendable. So
-// this SELECT joins intake_item_doses for its amount WITHOUT a retired predicate and
-// never looks at `s.active`.
+// this SELECT still joins the row to its dose WITHOUT a retired predicate and never
+// looks at `s.active`.
 //
 // THE SCHEDULE IS NEVER TOUCHED. The only rows this writes are the ledger row itself
 // and (for a `may` medication reaching back before its course) medication_courses.
@@ -1094,7 +1094,7 @@ export function updateHistoricalDose(
     const row = db
       .prepare(
         `SELECT l.dose_id, l.date AS old_date, l.amount,
-                d.amount AS dose_amount, s.obligation
+                s.obligation
            FROM intake_item_logs l
            JOIN intake_item_doses d ON d.id = l.dose_id
            JOIN intake_items s ON s.id = l.item_id
@@ -1106,7 +1106,6 @@ export function updateHistoricalDose(
           dose_id: number;
           old_date: string;
           amount: string | null;
-          dose_amount: string | null;
           obligation: IntakeObligation;
         }
       | undefined;
@@ -1196,7 +1195,9 @@ export function updateHistoricalDose(
         return { kind: "outside-course" };
       }
     }
-    const amount = amountOverride?.trim() || row.dose_amount;
+    // Amendment starts from the administration snapshot, including a meaningful
+    // null; only a stated nonempty override replaces it.
+    const amount = amountOverride?.trim() || row.amount;
     db.prepare(
       `UPDATE intake_item_logs
           SET date = ?, occurred_at = ?, amount = ?
