@@ -232,9 +232,8 @@ export default function SymptomLogBar({
   const [picked, setPicked] = useState<{ key: string; label: string } | null>(
     null
   );
-  const [pickedSeverity, setPickedSeverity] = useState<number>(
-    MIN_SYMPTOM_SEVERITY
-  );
+  const [pickedSeverity, setPickedSeverity] =
+    useState<number>(MIN_SYMPTOM_SEVERITY);
   const [, startTransition] = useTransition();
   const toast = useToast();
   const ledger = useOptimisticLedger<number>("symptom-severity");

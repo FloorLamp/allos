@@ -511,7 +511,10 @@ describe("the symptom picker stages instead of logging (#4752 §3)", () => {
         await act(async () =>
           fireEvent.click(screen.getByTestId(`symptom-pick-severity-${level}`))
         );
-        expect(posted.log, "choosing a severity is not a write").toBeUndefined();
+        expect(
+          posted.log,
+          "choosing a severity is not a write"
+        ).toBeUndefined();
       }
       await act(async () =>
         fireEvent.click(screen.getByTestId("symptom-pick-save"))
