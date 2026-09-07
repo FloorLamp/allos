@@ -3,49 +3,16 @@
 import { useEffect, useRef, useState } from "react";
 import { UPDATE_CHECK_MS } from "@/lib/sw-update";
 
-// What commit the SERVER is running, read from /api/version (issue #1795).
-//
-// This is a DETECTOR, not a surface. It used to be components/VersionWatcher — a
-// component that polled, decided for itself that a deploy had happened, and rendered
-// its own banner with its own Refresh button, in parallel with the service worker's
-// update bar. One deploy, two notices, two reload mechanics, one of which left the
-// worker waiting. The polling was never the problem; owning a second answer was. So
-// the poll survives as a hook that reports only what the server said, and the single
-// decision is made by resolveUpdateState() for the single bar.
-//
-// THE ONLY THING THAT CAN NOTICE A DEPLOY IN AN OPEN TAB (issue #2329). #1795 turned
-// this poll OFF wherever a service worker existed, on the premise that the worker
-// would notice instead. It cannot: public/sw.js reads its version from its own URL,
-// so a deploy changes none of its bytes, `registration.update()` installs nothing,
-// and nothing re-registers a document that is already open. A waiting worker RESOLVES
-// an update; asking the server is how a running tab NOTICES one. So the mode is now
-// only about whether there is anything to ask:
-//
-//   * "poll" — there is a baseline sha to compare against. Ask on the shared cadence,
-//     immediately on mount, and whenever the tab regains focus so someone returning
-//     after a deploy doesn't wait out the interval.
-//   * "off" — no baseline, so there is no question. Ask nothing.
+// Reports /api/version; resolveUpdateState owns the pending-update decision.
+// Poll whenever a baseline exists, including worker-controlled tabs: a worker's
+// unchanged script cannot reliably detect a new deployment in an open document.
+// Read on mount, on visible intervals, and when the tab becomes visible.
+// Contract: docs/internals/deploy-skew.md.
 
 export type DeployedVersion = {
   sha: string | null;
   commitMessage: string | null;
-  /**
-   * A read has come back — the answer above is this hook's answer, for now.
-   *
-   * NOT "the hook has stopped asking" (#2329). Those were the same thing while the
-   * only reader was the one-shot "once" mode, and conflating them is a trap: a poll
-   * that keeps asking must still REPORT that it has an answer, because the
-   * load-time worker decision (#1905) blocks on exactly this flag — an unsettled
-   * read holds `plan === "wait"`, which suppresses the bar and defers the silent
-   * activation indefinitely. Whether to keep asking is a separate, private
-   * question (see `finalRef`): the poll stops only once the answer can no longer
-   * change.
-   *
-   * `sha: null, settled: true` is a real outcome, not a transient one: /api/version
-   * is session-gated (#390), so an anonymous tab settles knowing nothing. #1905
-   * needs to tell "hasn't answered yet" from "answered with nothing", because only
-   * the first is worth holding the bar for.
-   */
+  /** A read completed, even without a SHA. Independent of whether polling stops. */
   settled: boolean;
 };
 
@@ -165,15 +132,7 @@ export function useDeployedVersion({
       }
     }
 
-    // THE FIRST READ IS ON MOUNT (#2329), not one tick away — the one thing the
-    // retired "once" mode did that a poll did not. A document this server just
-    // rendered is by definition on this server's build, so the mount read normally
-    // reports the same sha, finds no mismatch and costs one cheap request — but it
-    // is the read `waitingWorkerPlan` blocks on (`plan === "wait"` suppresses the bar
-    // and defers the silent activation until it settles), so deferring it held a
-    // fresh post-deploy load silent for up to a full interval. The interval and the
-    // visibility hook are the other halves: someone returning to a tab after a deploy
-    // shouldn't wait it out either.
+    // The waiting-worker decision needs a settled answer immediately after load.
     void check({ onMount: true });
     intervalId = setInterval(
       () => void check({ onMount: false }),
