@@ -1,24 +1,5 @@
-// In-process, single-use cache for the reprocess-PREVIEW's PersistInput (issue #946).
-//
-// The reprocess-with-preview flow used to extract TWICE: `previewReprocessById`
-// ran a full model extraction to build the diff the user reviews, then the
-// confirmed apply (`reprocessDocumentById`) re-extracted from scratch and
-// persisted a DIFFERENT (nondeterministic) result — 2× spend/latency AND consent
-// drift (the user approves one diff, the app commits another). This cache lets the
-// apply commit EXACTLY the previewed input, extracting zero additional times.
-//
-// The preview stashes its reduced `PersistInput` here under a random single-use
-// token; the token rides back in `PreviewReprocessResult`. The apply passes the
-// token and, when it validates, persists the cached input through the SAME commit
-// machinery — no second model call. A missing/expired/stale token degrades to
-// today's re-extract with a typed outcome so the UI can say "re-extracted — results
-// may differ from the preview" instead of silently pretending.
-//
-// This module is DB-free and pure (a process-local Map): reprocess only ever runs
-// in the web app (the notify tick / poll sidecar never extract), so a lost cache
-// (restart, dev reload) simply degrades to the fallback. The DB-derived staleness
-// key is computed by the caller (medical-pipeline) and passed in, so this module
-// stays testable without a DB handle.
+// Single-use preview inputs, bound to a profile, document, and persisted generation.
+// Cache loss or expiry requires a new preview; apply never re-extracts as a fallback.
 import crypto from "node:crypto";
 import type { PersistInput } from "./import-shape";
 
@@ -32,8 +13,7 @@ interface PreviewEntry {
   input: PersistInput;
   // A signature of the document row captured at preview time (content_hash +
   // extraction generation). The apply refuses the cached input when the current
-  // row's signature differs — the #467 stale-form discipline applied to
-  // extractions (another tab reprocessed, the file was replaced).
+  // row's signature differs.
   stalenessKey: string;
   expiresAt: number;
 }
@@ -69,9 +49,8 @@ export function stashPreviewInput(args: {
 
 // Consume a previewed input for (profileId, docId) by token. SINGLE-USE: a
 // successful take — and any take by the RIGHTFUL owner (expired/stale included) —
-// deletes the entry, so a second apply with the same token is refused (it falls
-// back to a re-extract). A token minted for another profile is treated as
-// `missing` and NEVER consumes the owner's entry (cross-profile isolation): the
+// deletes the entry, so a second apply is refused. A token for another profile
+// is treated as `missing` and never consumes the owner's entry: the
 // key includes profileId AND docId, and only the matching owner may burn it.
 export function takePreviewInput(
   profileId: number,
@@ -96,7 +75,7 @@ export function takePreviewInput(
 // Drop every cached preview for a document. Called whenever an upload/reprocess/
 // delete/reassign mutates the document, so a preview can't be applied over a row
 // that has since changed underneath it. (The staleness key is the correctness
-// guard; this eviction is the belt-and-suspenders cleanup the issue asks for.)
+// guard; eviction also releases the cached input.)
 export function evictPreviewsForDocument(
   profileId: number,
   docId: number
