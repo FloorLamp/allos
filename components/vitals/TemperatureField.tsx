@@ -13,13 +13,7 @@ import type { useTemperatureUnitDetection } from "@/components/useTemperatureUni
 // arrangement and now the only one: the value can never run under it (`pr-16`), and
 // `select-bare` is the primitive that pins the OPEN option list's colors in dark mode.
 //
-// AND IT DECLARES ITS OWN MEASURE (#5490 site 2, #3938's ruling): a temperature is a
-// short number, so the field is a short field — at every host, once, rather than
-// whatever a call site's flex row has left over. The illness fold gave it `flex-1`,
-// which made a five-character reading ~530px inside the cockpit's 880px measure and
-// let every sibling's content move it: flipping the card's day toggle resized a text
-// input that might be focused and being typed into. Below `sm` it is still the line's
-// width, which is what a phone wants and what the fold already rendered.
+// Keep a short desktop field and a full-width phone field at every host.
 //
 // DETECTION IS THE HOST'S, passed in rather than owned here, because a host resets it
 // on its own schedule (the measurements form clears the whole sitting; the bar clears

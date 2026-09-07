@@ -102,11 +102,7 @@ export interface WhenControlProps {
   testId: string;
 }
 
-// THE DATE SLOT'S ONE DECLARED WIDTH (#5490 site 1, #3938's ruling applied here).
-// The picker arm declared `w-36` and the fixed-day arm declared nothing, so the slot
-// was content-sized in one arm and fixed in the other — and the content changes with
-// the day ("Today" is five characters, a written date is a dozen). A card's day
-// toggle then resized whatever sat beside this control. One constant, both arms.
+// Both date arms reserve the same space beside the time field.
 const DATE_SLOT = "h-8 w-36 text-sm";
 
 export default function WhenControl({
@@ -131,13 +127,7 @@ export default function WhenControl({
   const now = new Date();
   const today = dateStrInTz(tz, now);
   const fixedDay = minDate !== undefined && minDate === maxDate;
-  // WHAT A FIXED DAY SAYS IS THE SURFACE'S, NOT THE CLOCK'S (#5489 fix 3). This arm
-  // used to ask `dateStrInTz(tz, now)` whether the day was today and fall through to
-  // `value.date` — the storage spelling — whenever it was not, so a cockpit standing
-  // on Yesterday showed `Yesterday` on its toggle and `2026-09-06` in the temperature
-  // fold 130px below it. The card already computed the right words; this asks it for
-  // them, and formats through the login's own date shape (#964) where there is no
-  // card. `value.date` never reaches display text again.
+  // Prefer the host's day label, then the login's date format.
   const card = useCockpitDay();
   const prefs = useFormatPrefs();
 
@@ -162,10 +152,7 @@ export default function WhenControl({
   }, [value]);
 
   const setDate = (date: string) => {
-    // THE PICKER'S RAW VALUE BECOMES A DAY ONLY ONCE IT IS ONE (#5105's validating
-    // minter, applied by #5489). A date input emits "" while it is being cleared and
-    // a partial string while it is being typed; neither is a day, and the pair's
-    // `date` is `LocalDay` precisely so neither can become one by assignment.
+    // Empty or partial picker input is not yet a day.
     if (!isRealIsoDate(date)) return;
     // The pair moves together: a date change re-anchors the stated instant onto
     // the new day (or clears it — never invents one), so the two fields cannot

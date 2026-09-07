@@ -3,7 +3,13 @@ import { measurementsSavedText } from "@/lib/body-metric-input";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import type { StampedFormData } from "@/lib/logged-via";
 
-import { useMemo, useState, useTransition, type FormEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+  type FormEvent,
+} from "react";
 import {
   IconX,
   IconPlus,
@@ -23,6 +29,7 @@ import Chip from "@/components/Chip";
 import Combobox from "@/components/Combobox";
 import type { TemperatureUnit } from "@/lib/settings";
 import { useToast } from "@/components/Toast";
+import { useLatestRef } from "@/components/useLatestRef";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import { fmtTemp } from "@/lib/units";
 import { useTemperatureUnitDetection } from "@/components/useTemperatureUnitDetection";
@@ -208,6 +215,7 @@ export default function SymptomLogBar({
   // without a stated time.
   const day = useDayBinding(date, timeZone);
   const activeDate = day.activeDate;
+  const currentDay = useLatestRef(activeDate);
   const isPrimaryDay = day.isPrimaryDay;
   const hasToggle = !!card?.altDate;
 
@@ -275,21 +283,15 @@ export default function SymptomLogBar({
   const [tempError, setTempError] = useState<string | null>(null);
   const [tempPending, setTempPending] = useState(false);
 
-  // THE FEVER OFFER (#4712 judgement 1) — set on a fever-range reading, cleared by
-  // whatever ends its lifetime: dismissing it, accepting the episode offer, changing
-  // the day, or the fold closing. It never survives the fold: rendering below reads
-  // `tempOpen && feverOffer`, so there is no separate cleanup this state can forget
-  // that would leave the block up with the fold closed.
-  // IT CARRIES THE READING IT IS ABOUT (#5489 fix 5) — the degrees AND the minute
-  // that reading was stated for, which `logTemp` held two lines above and threw away.
-  // Without it the offer said only "That's a fever — 104.8 °F" about a reading taken
-  // at 11:30 PM yesterday, and the dose control it mounts opened its "When was it
-  // taken?" field empty. `at` is the reading's profile-local HH:MM on the day the fold
-  // is standing on, or null when nobody stated one.
-  const [feverOffer, setFeverOffer] = useState<{
+  // The offer retains the reading's day and stated instant, not a detached clock time.
+  const [offeredReading, setFeverOffer] = useState<{
     degF: number;
-    at: string | null;
+    when: WhenValue;
   } | null>(null);
+  const feverOffer =
+    offeredReading?.when.date === activeDate ? offeredReading : null;
+  const feverOfferTime =
+    statedHhmm(feverOffer?.when.statedAt ?? null, timeZone ?? tempZone) || null;
   const [episodeOfferPending, setEpisodeOfferPending] = useState(false);
   // WHICH DOOR ASKED (#4962). The offer and the "Mark as illness" bridge post the
   // same activation, so they share one failure sentence — but it has to appear
@@ -304,14 +306,15 @@ export default function SymptomLogBar({
   // episode half — an offer with no eligible PRN takes nothing off the screen.
   const offersDose = antipyreticMeds.length > 0 && !!intakeContext && !!nowIso;
   const yieldMeds = useDoseOfferSignal();
-  // ONE SETTER FOR THE OFFER AND ITS SIGNAL, so the host's Meds section cannot be
-  // left yielding to a block that is no longer there. Every path that raises or
-  // clears the offer goes through here.
+  // The persistent medication chips yield only while this day's offer is visible.
+  useEffect(() => {
+    yieldMeds(tempOpen && feverOffer !== null && offersDose);
+    return () => yieldMeds(false);
+  }, [tempOpen, feverOffer, offersDose, yieldMeds]);
   function showFeverOffer(
-    offer: { degF: number; at: string | null } | null
+    offer: { degF: number; when: WhenValue } | null
   ): void {
     setFeverOffer(offer);
-    yieldMeds(offer != null && offersDose);
     // The offer's own failure sentence lives and dies with the block it is in, so
     // a fresh reading never reopens the offer under the last attempt's error. The
     // bridge's sentence is not this function's to clear.
@@ -466,20 +469,23 @@ export default function SymptomLogBar({
     const res = await logTemperature(withTarget(fd));
     setTempPending(false);
     if (res.ok) {
-      form.reset();
-      tempUnitDetection.reset();
-      setTempWhen(whenOnDay(activeDate, timeZone ?? tempZone));
-      // FEVER-RANGE KEEPS THE FOLD OPEN (#4712 judgement 1). The confirmation block
-      // renders under the reading, in the SAME fold — closing it here would bury the
-      // offer under the very toggle that reveals it. A fever reading with nothing to
-      // offer (an episode already open and no eligible PRN) closes exactly as before.
-      const offers = !hasOpenEpisode || offersDose;
-      if (res.flag === "high" && offers) {
-        // The minute this reading was filed under — the one the offered dose proposes.
-        showFeverOffer({ degF: res.degF, at: hhmm || null });
-      } else {
-        showFeverOffer(null);
-        setTempOpen(false);
+      // A completed write still gets its toast, but cannot reset another day's form
+      // or offer a dose there using this reading's time.
+      if (currentDay.current === activeDate) {
+        form.reset();
+        tempUnitDetection.reset();
+        setTempWhen(whenOnDay(activeDate, timeZone ?? tempZone));
+        if (res.flag === "high" && (!hasOpenEpisode || offersDose)) {
+          showFeverOffer({
+            degF: res.degF,
+            when: res.statedTimeRefused
+              ? whenOnDay(activeDate, timeZone ?? tempZone)
+              : tempWhen,
+          });
+        } else {
+          showFeverOffer(null);
+          setTempOpen(false);
+        }
       }
       // NO ACTION ON THIS TOAST (#4712 judgement 1's second exclusion). The owner
       // ruled the offer never rides a toast; the toast stays exactly what it was
@@ -504,7 +510,7 @@ export default function SymptomLogBar({
         toast(measurementsSavedText("Saved", res.statedTimeRefused));
       }
     } else {
-      setTempError(res.error);
+      if (currentDay.current === activeDate) setTempError(res.error);
       toast(res.error, { tone: "error" });
     }
   }
@@ -1155,11 +1161,11 @@ export default function SymptomLogBar({
                 className="text-sm text-slate-700 dark:text-slate-200"
               >
                 That’s a fever — {fmtTemp(feverOffer.degF, temperatureUnit)}
-                {feverOffer.at
+                {feverOfferTime
                   ? ` at ${formatClock(
                       formatPrefs.timeFormat,
-                      Number(feverOffer.at.slice(0, 2)),
-                      Number(feverOffer.at.slice(3))
+                      Number(feverOfferTime.slice(0, 2)),
+                      Number(feverOfferTime.slice(3))
                     )}`
                   : ""}
                 .
@@ -1195,7 +1201,7 @@ export default function SymptomLogBar({
                       // reading with a stated minute opens the dose's statement on
                       // that minute; one with none proposes nothing and the tap asks
                       // wherever the day has ended (#4686).
-                      proposedTime={feverOffer.at}
+                      proposedTime={feverOfferTime}
                       // TAKEN ENDS THE OFFER (#4712 ruling part 2's own words). The
                       // dose is on the ledger and the host's Meds chip comes straight
                       // back; the fold itself stays open, exactly as accepting the

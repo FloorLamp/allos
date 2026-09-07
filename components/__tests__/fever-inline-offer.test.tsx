@@ -7,6 +7,7 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CockpitDayProvider } from "@/components/illness/CockpitDayContext";
 import SymptomLogBar from "@/components/illness/SymptomLogBar";
 import IllnessCockpitBody from "@/components/illness/IllnessCockpitBody";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
@@ -27,6 +28,11 @@ import type { DashboardIllnessCockpitModel } from "@/lib/dashboard-illness-cockp
 //   3. "Open an episode" is PRIMARY, the dose sits BESIDE it (reusing
 //      IllnessMedicationLogger per the 08:24 audit — no second dose control), and
 //      "Not now" is a LINK, not a third button.
+
+const pendingTemperature = vi.hoisted(() => ({
+  wait: null as Promise<void> | null,
+  refusedTime: false,
+}));
 
 const posted: Record<string, FormData[]> = {};
 const record = (name: string) => (fd: FormData) => {
@@ -58,12 +64,16 @@ vi.mock("@/app/(app)/symptom-actions", () => ({
   // fever-range reading every test that wants the offer sends.
   logTemperature: async (fd: FormData) => {
     record("temperature")(fd);
+    if (pendingTemperature.wait) await pendingTemperature.wait;
     const degF = Number(fd.get("temperature"));
     return {
       ok: true as const,
       degF,
       flag: degF >= 100.4 ? "high" : null,
       redFlag: null,
+      ...(pendingTemperature.refusedTime
+        ? { statedTimeRefused: "future" as const }
+        : {}),
     };
   },
   activateIllnessForSymptoms: async (fd?: FormData) => {
@@ -141,9 +151,10 @@ function bar(
     intakeContext: IntakeFormContext;
     nowIso: string;
     suggestActivateIllness: boolean;
+    dayToggle: boolean;
   }> = {}
 ): void {
-  render(
+  const content = (
     <SymptomLogBar
       date={TODAY}
       initial={{}}
@@ -160,6 +171,21 @@ function bar(
       intakeContext={props.intakeContext ?? INTAKE_CONTEXT}
       nowIso={props.nowIso ?? new Date().toISOString()}
     />
+  );
+  render(
+    props.dayToggle ? (
+      <CockpitDayProvider
+        date={TODAY}
+        altDate={new Date(Date.parse(TODAY) - 86400000)
+          .toISOString()
+          .slice(0, 10)}
+        tz="UTC"
+      >
+        {content}
+      </CockpitDayProvider>
+    ) : (
+      content
+    )
   );
 }
 
@@ -181,6 +207,8 @@ beforeEach(() => {
   toasts.length = 0;
   activation.next = { ok: true, episodeId: 900 };
   activation.throws = false;
+  pendingTemperature.wait = null;
+  pendingTemperature.refusedTime = false;
 });
 afterEach(() => cleanup());
 
@@ -343,6 +371,45 @@ describe("the row grammar: primary episode action, dose beside it, Not now as a 
 // fever — 104.8 °F" with no time, and the dose control it mounts opened its "When was
 // it taken?" field empty on the current instant. The one control that knows why it is
 // on screen could not say when.
+it.each([false, true])(
+  "keeps a pending reading on its submitted day (switch day: %s)",
+  async (switchDay) => {
+    let release!: () => void;
+    pendingTemperature.wait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    bar({ dayToggle: true });
+    await openFold();
+    fireEvent.change(screen.getByTestId("temp-quick-time"), {
+      target: { value: "08:30" },
+    });
+    fireEvent.change(screen.getByTestId("temp-quick-input"), {
+      target: { value: "104.8" },
+    });
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("temp-quick-save"))
+    );
+    expect(posted.temperature[0].get("date")).toBe(TODAY);
+    if (switchDay) {
+      fireEvent.click(screen.getByTestId("symptom-day-alt"));
+      fireEvent.change(screen.getByTestId("temp-quick-input"), {
+        target: { value: "101.6" },
+      });
+    }
+    await act(async () => release());
+    if (switchDay) {
+      expect(screen.queryByTestId("fever-offer")).toBeNull();
+      expect(
+        (screen.getByTestId("temp-quick-input") as HTMLInputElement).value
+      ).toBe("101.6");
+    } else {
+      expect(screen.getByTestId("fever-offer-sentence").textContent).toContain(
+        "08:30"
+      );
+    }
+  }
+);
+
 describe("the fever offer states the reading's time and proposes it (#5489)", () => {
   it("names the stated minute in its sentence and opens the dose on it", async () => {
     bar();
@@ -368,16 +435,24 @@ describe("the fever offer states the reading's time and proposes it (#5489)", ()
 
   // THE CONVERSE: a reading with no stated minute proposes nothing, so the offer never
   // invents a time the person did not give (#2053's rule, and #4686's).
-  it("proposes nothing when the reading stated no minute", async () => {
-    bar();
-    await openFold();
-    await logReading("104.8");
-    expect(screen.getByTestId("fever-offer-sentence").textContent).not.toMatch(
-      /\d{1,2}:\d{2}/
-    );
-    fireEvent.click(screen.getByTestId(`cockpit-med-chip-${ANTIPYRETIC.id}`));
-    expect(screen.queryByTestId("prn-log-when-time")).toBeNull();
-  });
+  it.each([false, true])(
+    "proposes nothing without an accepted minute (refused: %s)",
+    async (refused) => {
+      pendingTemperature.refusedTime = refused;
+      bar();
+      await openFold();
+      if (refused)
+        fireEvent.change(screen.getByTestId("temp-quick-time"), {
+          target: { value: "23:30" },
+        });
+      await logReading("104.8");
+      expect(
+        screen.getByTestId("fever-offer-sentence").textContent
+      ).not.toMatch(/\d{1,2}:\d{2}/);
+      fireEvent.click(screen.getByTestId(`cockpit-med-chip-${ANTIPYRETIC.id}`));
+      expect(screen.queryByTestId("prn-log-when-time")).toBeNull();
+    }
+  );
 });
 
 // ONE PROMPT FOR ONE DOSE (#4712, owner ruling 2026-09-04 11:20 UTC part 2).
