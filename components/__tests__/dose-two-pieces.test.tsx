@@ -767,6 +767,28 @@ describe("the PRN row states the child's label band at dose time (#4713)", () =>
     ).toContain(over.doseAmount ?? "100 mg");
   });
 
+  // THE REFUSALS ARE NOT GATED BY THE UNITS THE DOSE IS WRITTEN IN. The milligram
+  // check above suppresses the band FIGURE, and a refusal carries none — so an infant
+  // whose dose is written as a volume gets the same verdict a milligram-spelled one
+  // does. It matters because the dataset's own infant formulations are `50 mg /
+  // 1.25 mL` and `160 mg / 5 mL`: a volume IS how an infant dose is written, and the
+  // add form refuses for every one of these inputs.
+  it.each([
+    { spelling: "milligrams", doseAmount: "50 mg" },
+    { spelling: "a volume", doseAmount: "1.25 mL" },
+  ])(
+    "states the label's age gate for a 4-month-old dosed in $spelling",
+    ({ doseAmount }) => {
+      row({ ...CHILD, ageMonths: 4, weightKg: 6 }, { doseAmount });
+      // Ibuprofen's chart starts at 6 months; below it the label's own words stand in
+      // for any dose, and no band figure is printed beside either spelling.
+      expect(screen.getByTestId("prn-band-refusal").textContent).toContain(
+        "months"
+      );
+      expect(screen.queryByTestId("prn-band-basis")).toBeNull();
+    }
+  );
+
   // A MISSING WEIGHT DATE READS AS STALE (#798), and under 12 months the threshold is
   // 60 days — the infant case the machinery was built for, and the one that was
   // unreachable from this row. The fixer is one tap away in place, and the weight it
