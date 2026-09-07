@@ -718,10 +718,47 @@ for (const [label, viewport, wide] of [
       // and med rows are the fixture's — what must hold is that opening ONE panel
       // costs one panel, and that the card is nowhere near four boards tall.
       expect(cardBox.height, `${label} cockpit at rest`).toBeLessThan(560);
+      const onePanel = cardAfter.height - cardBox.height;
       expect(
-        cardAfter.height - cardBox.height,
+        onePanel,
         `${label} cockpit growth for one open panel`
       ).toBeLessThan(280);
+
+      // A SECOND PANEL IS NOT A SECOND PANEL'S HEIGHT. This is the screenshot's own
+      // gesture — the med detail panel and the whole add-medication form standing
+      // open together — and it is what put the card at ~800px against a board
+      // approved at ~215. Asking for the second now leaves the card exactly as tall
+      // as that panel alone, which is the claim rather than any pixel target: the
+      // add-medication fold is the card's largest block until #5301 shrinks it.
+      const addDoor = card.getByTestId("illness-add-medication");
+      await hydratedClick(page, addDoor);
+      await expect(
+        card.getByTestId("illness-medication-quick-add")
+      ).toBeVisible();
+      await expect(card.getByTestId("cockpit-med-panel")).toHaveCount(0);
+      const [bothAsked] = await settledBoxes([card]);
+      await hydratedClick(page, addDoor);
+      await expect(
+        card.getByTestId("illness-medication-quick-add")
+      ).toHaveCount(0);
+      const [backAtRest] = await settledBoxes([card]);
+      expect(backAtRest.height, `${label} cockpit back at rest`).toBe(
+        cardBox.height
+      );
+      await hydratedClick(page, addDoor);
+      const [addAlone] = await settledBoxes([card]);
+      expect(
+        bothAsked.height,
+        `${label} cockpit with a second panel asked for`
+      ).toBe(addAlone.height);
+      // Put the med panel back: the control sweep below reads the whole Now
+      // section's rendered names, and the clock door lives inside that panel.
+      await hydratedClick(page, addDoor);
+      await hydratedClick(
+        page,
+        chips.locator('[data-testid^="cockpit-med-chip-"]').first() // eslint-disable-line no-restricted-properties -- first-ok: the row's leading med chip; every chip opens the same panel
+      );
+      await expect(card.getByTestId("cockpit-med-panel")).toBeVisible();
 
       // ── EXPANDED, THE ROW STATES NOTHING THE BODY RESTATES (#5488 fix 1) ──
       //

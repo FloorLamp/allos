@@ -3,6 +3,7 @@ import {
   computeSchoolReturn,
   formatSchoolReturnLine,
   schoolReturnCompactClause,
+  schoolReturnCompactLabel,
 } from "@/lib/school-return";
 
 // Pure tests for the school-return "fever-free 24h without meds" countdown (issue #859
@@ -122,6 +123,13 @@ describe("formatSchoolReturnLine / schoolReturnCompactClause", () => {
 
   it("compact clause uses the cleared clock over the threshold", () => {
     expect(schoolReturnCompactClause(status)).toBe("fever-free 18h of 24");
+  });
+
+  // ONE SPELLING, BOTH SURFACES (#5487 fix 4). The household line reads the clause and
+  // the cockpit ring and episode hero read the label, so the board's "18h of 24" is
+  // asserted at the seam between them rather than once per surface.
+  it("labels the same clause for the cockpit and the episode hero", () => {
+    expect(schoolReturnCompactLabel(status)).toBe("Fever-free 18h of 24");
   });
 });
 
