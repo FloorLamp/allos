@@ -178,7 +178,7 @@ async function tapHeadache(
   // The chip stages and the save writes (#4752 §3) — the row this parity check
   // needs still arrives, it just costs the panel's one save to get there.
   fireEvent.click(await screen.findByTestId("symptom-pick-headache"));
-  fireEvent.click(await screen.findByTestId("symptom-pick-save"));
+  fireEvent.click(await screen.findByTestId("symptom-picker-save"));
   await waitFor(() => expect(actions.logSymptom).toHaveBeenCalled());
   actions.logSymptom.mockClear();
   fireEvent.click(await screen.findByTestId("symptom-headache-sev-3"));

@@ -490,10 +490,10 @@ describe("the symptom picker stages instead of logging (#4752 §3)", () => {
       choose();
     });
     expect(posted.log, "nothing is written until the save").toBeUndefined();
-    expect(screen.getByTestId("symptom-pick-save").textContent).toBe(verb);
+    expect(screen.getByTestId("symptom-picker-save").textContent).toBe(verb);
     // The domain's own 1–4 control, mounted whole — never a second drawing of it.
     expect(
-      screen.getByTestId("symptom-pick-severity-4").getAttribute("aria-label")
+      screen.getByTestId("symptom-picker-severity-4").getAttribute("aria-label")
     ).toContain("severity 4 of 4");
   });
 
@@ -509,7 +509,9 @@ describe("the symptom picker stages instead of logging (#4752 §3)", () => {
       );
       if (level !== null) {
         await act(async () =>
-          fireEvent.click(screen.getByTestId(`symptom-pick-severity-${level}`))
+          fireEvent.click(
+            screen.getByTestId(`symptom-picker-severity-${level}`)
+          )
         );
         expect(
           posted.log,
@@ -517,7 +519,7 @@ describe("the symptom picker stages instead of logging (#4752 §3)", () => {
         ).toBeUndefined();
       }
       await act(async () =>
-        fireEvent.click(screen.getByTestId("symptom-pick-save"))
+        fireEvent.click(screen.getByTestId("symptom-picker-save"))
       );
       expect(payload("log")).toMatchObject({
         symptom: "cough",
@@ -526,7 +528,7 @@ describe("the symptom picker stages instead of logging (#4752 §3)", () => {
         profile_id: String(SUBJECT),
       });
       // Spent: the stage goes with the write it became.
-      expect(screen.queryByTestId("symptom-pick-stage")).toBeNull();
+      expect(screen.queryByTestId("symptom-picker-stage")).toBeNull();
     }
   );
 
@@ -537,7 +539,7 @@ describe("the symptom picker stages instead of logging (#4752 §3)", () => {
     expect(chip().getAttribute("aria-pressed")).toBe("true");
     await act(async () => fireEvent.click(chip()));
     expect(chip().getAttribute("aria-pressed")).toBe("false");
-    expect(screen.queryByTestId("symptom-pick-stage")).toBeNull();
+    expect(screen.queryByTestId("symptom-picker-stage")).toBeNull();
     expect(posted.log).toBeUndefined();
   });
 });
@@ -703,7 +705,7 @@ describe("the day the bar shows is the day it writes (#4691)", () => {
     await act(async () =>
       fireEvent.click(screen.getByTestId("symptom-day-primary"))
     );
-    expect(screen.queryByTestId("symptom-pick-stage")).toBeNull();
+    expect(screen.queryByTestId("symptom-picker-stage")).toBeNull();
 
     await act(async () =>
       fireEvent.click(screen.getByTestId("symptom-day-alt"))
@@ -712,7 +714,7 @@ describe("the day the bar shows is the day it writes (#4691)", () => {
       fireEvent.click(screen.getByTestId("symptom-pick-cough"))
     );
     await act(async () =>
-      fireEvent.click(screen.getByTestId("symptom-pick-save"))
+      fireEvent.click(screen.getByTestId("symptom-picker-save"))
     );
     expect(payload("log").date).toBe(FOUND_DAY);
   });

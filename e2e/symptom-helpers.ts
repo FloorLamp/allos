@@ -82,7 +82,7 @@ export async function addFromPicker(
       ) {
         await pick.click();
       }
-      const save = bar.getByTestId("symptom-pick-save");
+      const save = bar.getByTestId("symptom-picker-save");
       if ((await save.count()) > 0) {
         await tap(save);
       }

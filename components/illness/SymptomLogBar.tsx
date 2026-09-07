@@ -979,19 +979,19 @@ export default function SymptomLogBar({
               primary lives in the temperature fold, which this one closes. */}
           {picked && (
             <div
-              data-testid="symptom-pick-stage"
+              data-testid="symptom-picker-stage"
               className="mt-3 flex flex-wrap items-center gap-3"
             >
               <SymptomSeverityControl
                 symptomLabel={picked.label}
                 value={pickedSeverity}
                 onChange={setPickedSeverity}
-                testIdPrefix="symptom-pick-severity"
+                testIdPrefix="symptom-picker-severity"
               />
               <Button
                 type="button"
                 variant="primary"
-                data-testid="symptom-pick-save"
+                data-testid="symptom-picker-save"
                 onClick={() => void savePick()}
               >
                 Log {picked.label}
